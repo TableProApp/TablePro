@@ -850,6 +850,7 @@ struct MainEditorContentView: View {
             executionTime: resultSet.executionTime,
             plan: resultSet.queryPlan,
             planContext: resultSet.explainPlanContext,
+            serverOutput: resultSet.serverOutput,
             tabState: queryPlanViewStates.tabState(forTab: tab.id),
             planState: queryPlanViewStates.planState(
                 forResultSet: resultSet.id,

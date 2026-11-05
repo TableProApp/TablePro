@@ -17,9 +17,10 @@ extension QueryResult: CarriesServerOutput {}
 
 /// Reads what a statement the editor ran printed on the server, on the session that ran it.
 ///
-/// The read happens after every statement, failed ones included, because the server hands the lines to whoever asks
-/// next: output a failed statement left unread would be reported under the statement after it. A read that fails is
-/// logged and reported as no output, since the statement it follows has already run.
+/// The session hands its lines to whoever asks next, so they are read before the statement and discarded: what a
+/// grid save, the toolbar Commit, an MCP or AI statement or a table read printed is never reported under this one.
+/// The read after runs for a failed statement too, for the failure to report. A read that fails is logged and
+/// reported as no output.
 enum ServerOutputCapture {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ServerOutputCapture")
 
@@ -28,6 +29,9 @@ enum ServerOutputCapture {
         failureOutput: ServerOutputBox,
         _ statement: () async throws -> Value
     ) async throws -> Value {
+        _ = await drain(driver)
+        // A Stop that landed during the read must not let the statement go out after it.
+        try Task.checkCancellation()
         do {
             var value = try await statement()
             value.serverOutput = await drain(driver)
@@ -73,6 +77,12 @@ enum ServerOutputCapture {
             logger.warning("Server output could not be read: \(error.publicLogShape, privacy: .public) \(String(describing: error), privacy: .private)")
             return .none
         }
+    }
+}
+
+extension PluginServerOutput {
+    func appending(_ later: PluginServerOutput) -> PluginServerOutput {
+        PluginServerOutput(lines: lines + later.lines, isTruncated: isTruncated || later.isTruncated)
     }
 }
 

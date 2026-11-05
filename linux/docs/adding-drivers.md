@@ -310,6 +310,7 @@ A run streams `ResultEvent`s into a `ResultSink`:
 - `ResultSetFinished { retained, total_rows, truncation }` closes the set. `Truncation` is `Complete`, `ServerStopped` or `ReadPastLimit`, and `total_rows` is `None` when the driver did not read the rest.
 - `CommandCompleted { rows_affected }` reports a statement that returned no rows; `None` is "not reported", not zero.
 - `Notice` passes on a server notice or warning.
+- `NoticeLimitReached { retained }` comes once per run when the driver kept fewer notices than the server sent, after the `retained` ones it passed on.
 
 `ResultSink::accept` is awaited before the next rows are read off the wire, so a grid that cannot keep up slows the read instead of growing a queue the size of the result. `SinkFlow::ConsumerGone` ends the run with `RunEnd::Cancelled`. PostgreSQL, MySQL, SQL Server and ClickHouse then stop the statement on the server, SQLite stops stepping it, DuckDB stops fetching its streamed result, and the Cassandra driver asks for no more pages. `stream_read` uses the same sink and events, without a row limit.
 

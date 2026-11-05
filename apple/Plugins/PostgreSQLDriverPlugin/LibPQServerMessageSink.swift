@@ -5,6 +5,7 @@
 
 import CLibPQ
 import Foundation
+import TableProPluginKit
 
 struct LibPQServerNotice: Sendable {
     let message: String
@@ -19,6 +20,8 @@ final class LibPQServerMessageSink: @unchecked Sendable {
     private var sessionEnding: LibPQPluginError?
     private var forwardedReceiver: PQnoticeReceiver?
     private var noticeObserver: (@Sendable (LibPQServerNotice) -> Void)?
+    private var output = LibPQNoticeOutput()
+    private var discardsOutput = false
 
     static func install(on connection: OpaquePointer) -> Unmanaged<LibPQServerMessageSink> {
         let retained = Unmanaged.passRetained(LibPQServerMessageSink())
@@ -33,10 +36,7 @@ final class LibPQServerMessageSink: @unchecked Sendable {
         lock.withLock { sessionEnding }
     }
 
-    /// Only ever called for a connection libpq still reports as `CONNECTION_OK`. A server before
-    /// 9.6 sends no non-localized severity, so a `RAISE WARNING ... ERRCODE '08006'` on a healthy
-    /// session reaches `receive` looking exactly like the real thing; a session that ended cannot
-    /// be healthy, so the healthy case is the one that must not keep the message.
+    // Before 9.6 the server sends no V field, so a healthy session's `RAISE WARNING ... ERRCODE '08006'` looks session-ending.
     func clearIfHealthy() {
         lock.withLock { sessionEnding = nil }
     }
@@ -47,17 +47,31 @@ final class LibPQServerMessageSink: @unchecked Sendable {
         lock.withLock { noticeObserver = observer }
     }
 
+    func takeOutput() -> PluginServerOutput {
+        lock.withLock { output.take() }
+    }
+
+    func discardingOutput<Value>(_ body: () throws -> Value) rethrows -> Value {
+        lock.withLock { discardsOutput = true }
+        defer { lock.withLock { discardsOutput = false } }
+        return try body()
+    }
+
     fileprivate func receive(_ result: OpaquePointer) {
-        let message = PQresultErrorMessage(result).map {
-            String(cString: $0).trimmingCharacters(in: .whitespacesAndNewlines)
-        } ?? ""
+        let text = PQresultErrorMessage(result).map { String(cString: $0) } ?? ""
+        let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let received = LibPQPluginError(message: message) { field in
             PQresultErrorField(result, field).map { String(cString: $0) }
         }
         let severity = PQresultErrorField(result, Self.severityField).map { String(cString: $0) }
+        let isOutput = LibPQNoticeOutput.isOutput(severity: severity, sqlState: received.sqlState)
         let (forward, observer) = lock.withLock { () -> (PQnoticeReceiver?, (@Sendable (LibPQServerNotice) -> Void)?) in
             if LibPQServerMessage.endsSession(severity: severity, sqlState: received.sqlState) {
                 sessionEnding = received
+            }
+            // The debugger shows what its observer gets, and nothing reads output from its target session.
+            if isOutput, noticeObserver == nil, !discardsOutput {
+                output.record(text)
             }
             return (forwardedReceiver, noticeObserver)
         }

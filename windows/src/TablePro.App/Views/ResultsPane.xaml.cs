@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using TablePro.App.Model;
 using TablePro.App.Services;
 using TablePro.DataGrid;
 using TablePro.DataGrid.Model;
@@ -10,8 +11,12 @@ namespace TablePro.App.Views;
 // A sort of the rows held shows a sorted copy, so the run's own set keeps arrival order for the next sort.
 public sealed partial class ResultsPane : UserControl
 {
+    private readonly RunMessages _messages = new(Strings.Get("MessagesCutShort"));
     private ResultSet? _source;
     private ResultSet? _shown;
+    private ResultsView _view;
+    private ResultsView? _picked;
+    private bool _messagesQueued;
 
     public ResultsPane()
     {
@@ -29,6 +34,8 @@ public sealed partial class ResultsPane : UserControl
     public event EventHandler<GridSort>? SortRequested;
 
     public DataGridView GridView => ResultGrid;
+
+    public TextBox MessagesBox => MessagesText;
 
     public IReadOnlyList<ResultColumn> Columns { get; private set; } = [];
 
@@ -92,6 +99,9 @@ public sealed partial class ResultsPane : UserControl
         Release();
         ErrorBar.IsOpen = false;
         Placeholder.Text = Strings.Get("ResultsEmpty");
+        _messages.Reset();
+        ShowMessages();
+        SelectView(ResultsView.Results);
     }
 
     // The rows shown stay until the new set has rows or ends, so a sort or a refresh never blanks the grid.
@@ -101,6 +111,9 @@ public sealed partial class ResultsPane : UserControl
         ErrorBar.IsOpen = false;
         Status(Strings.Get("StatusRunning"));
         ResultSetCount = 0;
+        // The last run's messages stay on screen until this one's arrive or it ends, as its rows do.
+        _messages.Reset();
+        _picked = null;
         var shownIndex = -1;
         (ResultSet Set, IReadOnlyList<ResultColumn> Columns)? waiting = null;
         long rows = 0;
@@ -112,6 +125,10 @@ public sealed partial class ResultsPane : UserControl
             {
                 waiting = null;
                 Show(next.Set, next.Columns, sort);
+                if (_picked is null)
+                {
+                    SelectView(ResultsView.Results);
+                }
             }
         }
 
@@ -147,11 +164,17 @@ public sealed partial class ResultsPane : UserControl
                     case QueryEvent.CommandCompleted command:
                         affected = (affected ?? 0) + (command.RowsAffected ?? 0);
                         break;
+                    case QueryEvent.Notice or QueryEvent.NoticeLimitReached:
+                        _messages.Add(queryEvent);
+                        QueueMessages();
+                        break;
                     case QueryEvent.Finished finished:
                         ShowWaiting();
                         RowCount = shownIndex >= 0 ? rows : 0;
                         Transaction = finished.Transaction;
                         Finish(finished.Outcome, shownIndex >= 0, rows, affected, truncated);
+                        ShowMessages();
+                        SelectView(_messages.ViewAtEnd(shownIndex >= 0, _picked));
                         break;
                     default:
                         break;
@@ -236,6 +259,43 @@ public sealed partial class ResultsPane : UserControl
                 Status(Strings.Get("StatusCancelled"));
                 break;
         }
+    }
+
+    // Notices that arrive together are laid out once, after the batch: a TextBox lays out all its text on each change.
+    private void QueueMessages()
+    {
+        if (!_messagesQueued)
+        {
+            _messagesQueued = DispatcherQueue.TryEnqueue(ShowMessages);
+        }
+    }
+
+    private void ShowMessages()
+    {
+        _messagesQueued = false;
+        MessagesText.Text = _messages.Text;
+        ViewBar.Visibility = _messages.IsEmpty ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void SelectView(ResultsView view)
+    {
+        _view = view;
+        ViewBar.SelectedItem = view == ResultsView.Messages ? MessagesItem : ResultsItem;
+        ResultsArea.Visibility = view == ResultsView.Results ? Visibility.Visible : Visibility.Collapsed;
+        MessagesText.Visibility = view == ResultsView.Messages ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void OnViewChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
+    {
+        var view = ReferenceEquals(sender.SelectedItem, MessagesItem) ? ResultsView.Messages : ResultsView.Results;
+        // SelectView's own change comes back here with the view it already set.
+        if (view == _view)
+        {
+            return;
+        }
+
+        _picked = view;
+        SelectView(view);
     }
 
     private void Status(string text) => StatusChanged?.Invoke(this, text);

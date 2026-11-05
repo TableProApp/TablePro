@@ -42,6 +42,11 @@ pub enum RunEvent {
         message: String,
         code: Option<String>,
     },
+    /// The run raised more notices than it keeps; `retained` came before
+    /// this and the rest are gone.
+    NoticeLimitReached {
+        retained: u64,
+    },
     /// The last event of every run, with the transaction the editor's
     /// connection is left in.
     Finished {

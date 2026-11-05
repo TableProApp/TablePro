@@ -4,9 +4,7 @@ use std::sync::atomic::Ordering;
 use futures_util::StreamExt;
 use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptToken};
-use tablepro_core::{
-    DriverError, ResultEvent, ResultSink, RowLimit, RunEnd, ServerCode, ServerNotice, SinkFlow, Truncation, Value,
-};
+use tablepro_core::{DriverError, ResultEvent, ResultSink, RowLimit, RunEnd, SinkFlow, Truncation, Value};
 use tokio_postgres::SimpleQueryMessage;
 
 use super::cursor_flight::{
@@ -31,6 +29,10 @@ enum Role {
     /// The driver's own statement: its results and notices are not the
     /// user's data.
     Control,
+    /// The driver's own statement around the user's, as the cursor's
+    /// DECLARE and the COMMIT that ends it: no rows of its own, but what
+    /// the server says while it runs belongs to the user's statement.
+    Wrapper,
     User {
         class: StatementClass,
         cursor: bool,
@@ -44,6 +46,8 @@ pub(crate) struct Run<'a> {
     watch: StopWatch,
     limit: RowLimit,
     sink_gone: bool,
+    notices_sent: u64,
+    notice_limit_reported: bool,
 }
 
 /// The result set an exchange is reading.
@@ -69,6 +73,8 @@ impl<'a> Run<'a> {
             watch,
             limit,
             sink_gone: false,
+            notices_sent: 0,
+            notice_limit_reported: false,
         }
     }
 
@@ -175,12 +181,18 @@ impl<'a> Run<'a> {
         if let Some(error) = self.exchange(open, Role::Control).await? {
             return Ok(Some(error));
         }
-        if let Some(error) = self.exchange(&declare(text), Role::Control).await? {
-            let error = correct_position(error);
-            if needs_plain_statement(&error) && !self.stopped() {
-                self.abandon_cursor(owner, true).await?;
-                return self.simple(text, class, fallback(owner)).await;
-            }
+        let declared = self.read(&declare(text), Role::Wrapper).await?.map(correct_position);
+        if declared
+            .as_ref()
+            .is_some_and(|error| needs_plain_statement(error) && !self.stopped())
+        {
+            // The statement raises the same notices again when it goes plain.
+            self.core.discard_notices();
+            self.abandon_cursor(owner, true).await?;
+            return self.simple(text, class, fallback(owner)).await;
+        }
+        self.forward_notices().await;
+        if let Some(error) = declared {
             self.abandon_cursor(owner, false).await?;
             return Ok(Some(error));
         }
@@ -192,9 +204,10 @@ impl<'a> Run<'a> {
             return Ok(Some(error));
         }
         self.exchange(CLOSE, Role::Control).await?;
+        // Deferred triggers fire at the COMMIT, for the user's statement.
         let closed = match owner {
-            CursorOwner::Driver { .. } => self.exchange("COMMIT", Role::Control).await?,
-            CursorOwner::Savepoint => self.exchange(RELEASE_SAVEPOINT, Role::Control).await?,
+            CursorOwner::Driver { .. } => self.exchange("COMMIT", Role::Wrapper).await?,
+            CursorOwner::Savepoint => self.exchange(RELEASE_SAVEPOINT, Role::Wrapper).await?,
         };
         Ok(closed)
     }
@@ -251,13 +264,23 @@ impl<'a> Run<'a> {
         Err(Lost)
     }
 
-    /// Send one message and read everything it returns, keeping the
-    /// first error. A stop that fires meanwhile sends the cancel request
-    /// and keeps reading, because the statement's answer, its 57014 or
-    /// its rows, is still on the wire.
+    /// Send one message and read everything it returns, keeping the first
+    /// error. Its notices reach the sink unless it is the driver's own.
     async fn exchange(&mut self, sql: &str, role: Role) -> Result<Option<DriverError>, Lost> {
+        let error = self.read(sql, role).await?;
+        match role {
+            Role::User { .. } | Role::Wrapper => self.forward_notices().await,
+            Role::Control => self.core.discard_notices(),
+        }
+        Ok(error)
+    }
+
+    /// An exchange that leaves its notices queued. A stop that fires
+    /// meanwhile sends the cancel request and keeps reading, because the
+    /// statement's answer, its 57014 or its rows, is still on the wire.
+    async fn read(&mut self, sql: &str, role: Role) -> Result<Option<DriverError>, Lost> {
         self.watch.settle().await;
-        if self.stopped() && role != Role::Control {
+        if self.stopped() && matches!(role, Role::User { .. }) {
             return Ok(Some(DriverError::Cancelled));
         }
         let stream = match self.core.client.simple_query_raw(sql).await {
@@ -292,10 +315,6 @@ impl<'a> Run<'a> {
                     first_error.get_or_insert_with(|| map_error(&error));
                 }
             }
-        }
-        match role {
-            Role::User { .. } => self.forward_notices().await,
-            Role::Control => self.core.discard_notices(),
         }
         Ok(first_error)
     }
@@ -376,12 +395,17 @@ impl<'a> Run<'a> {
     }
 
     pub(crate) async fn forward_notices(&mut self) {
+        // Read first: a drop comes after every notice queued before it.
+        let dropped = self.core.notices_dropped();
         while let Some(notice) = self.core.next_notice() {
-            self.accept(ResultEvent::Notice(ServerNotice {
-                severity: notice.severity().to_owned(),
-                message: notice.message().to_owned(),
-                code: Some(ServerCode::SqlState(notice.code().code().to_owned())),
-            }))
+            self.notices_sent += 1;
+            self.accept(ResultEvent::Notice(notice)).await;
+        }
+        if dropped && !self.notice_limit_reported {
+            self.notice_limit_reported = true;
+            self.accept(ResultEvent::NoticeLimitReached {
+                retained: self.notices_sent,
+            })
             .await;
         }
     }

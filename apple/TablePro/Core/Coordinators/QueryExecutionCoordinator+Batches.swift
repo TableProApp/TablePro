@@ -61,6 +61,12 @@ private struct BatchPrintedOutput {
     }
 }
 
+/// One repetition's answer, carried through ``ServerOutputCapture`` so a batch reads its output where a statement does.
+private struct PrintedBatchAnswer: CarriesServerOutput {
+    let answer: QueryBatchResult
+    var serverOutput: PluginServerOutput = .none
+}
+
 private struct BatchRun {
     let outcome: BatchStatementOutcome<BatchOutput>
     let plan: BatchTransactionPlan
@@ -286,21 +292,25 @@ extension QueryExecutionCoordinator {
         var printed = BatchPrintedOutput()
         for _ in 0..<max(prepared.batch.repeatCount, 1) {
             try Task.checkCancellation()
-            let answer: QueryBatchResult
+            let repetitionFailure = ServerOutputBox()
+            let printedAnswer: PrintedBatchAnswer
             do {
-                answer = try await driver.answerBatch(
-                    query: prepared.sentSQL,
-                    rowCap: prepared.rowCap,
-                    parameters: prepared.parameterValues
-                )
+                printedAnswer = try await ServerOutputCapture.running(on: driver, failureOutput: repetitionFailure) {
+                    PrintedBatchAnswer(answer: try await driver.answerBatch(
+                        query: prepared.sentSQL,
+                        rowCap: prepared.rowCap,
+                        parameters: prepared.parameterValues
+                    ))
+                }
             } catch {
                 if !DatabaseCancellationDiagnosis.isCancellation(error) {
-                    printed.append(await ServerOutputCapture.drain(driver))
+                    printed.append(repetitionFailure.output)
                     failureOutput.store(printed.output)
                 }
                 throw error
             }
-            printed.append(await ServerOutputCapture.drain(driver))
+            printed.append(printedAnswer.serverOutput)
+            let answer = printedAnswer.answer
             combined = combined.followed(by: answer)
             guard answer.errors.isEmpty else { break }
         }

@@ -8,6 +8,7 @@
     <Grid BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -19,23 +20,57 @@
             IsOpen="False"
             Severity="Error" />
 
-        <grid:DataGridView
-            x:Name="ResultGrid"
-            x:Uid="ResultsGrid"
+        <!-- Only a run the server said something in has more than its results to show. -->
+        <SelectorBar
+            x:Name="ViewBar"
+            x:Uid="ResultsViews"
             Grid.Row="1"
-            AutomationProperties.AutomationId="ResultsGrid"
-            Visibility="Collapsed" />
+            Margin="4,0"
+            AutomationProperties.AutomationId="ResultsViews"
+            SelectionChanged="OnViewChanged"
+            Visibility="Collapsed">
+            <SelectorBarItem
+                x:Name="ResultsItem"
+                x:Uid="ResultsViewItem"
+                AutomationProperties.AutomationId="ResultsViewItem"
+                IsSelected="True" />
+            <SelectorBarItem
+                x:Name="MessagesItem"
+                x:Uid="MessagesViewItem"
+                AutomationProperties.AutomationId="MessagesViewItem" />
+        </SelectorBar>
 
-        <TextBlock
-            x:Name="Placeholder"
-            Grid.Row="1"
-            Margin="24"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"
-            AutomationProperties.AutomationId="ResultsPlaceholder"
-            AutomationProperties.LiveSetting="Polite"
-            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-            TextAlignment="Center"
-            TextWrapping="Wrap" />
+        <Grid x:Name="ResultsArea" Grid.Row="2">
+            <grid:DataGridView
+                x:Name="ResultGrid"
+                x:Uid="ResultsGrid"
+                AutomationProperties.AutomationId="ResultsGrid"
+                Visibility="Collapsed" />
+
+            <TextBlock
+                x:Name="Placeholder"
+                Margin="24"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                AutomationProperties.AutomationId="ResultsPlaceholder"
+                AutomationProperties.LiveSetting="Polite"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                TextAlignment="Center"
+                TextWrapping="Wrap" />
+        </Grid>
+
+        <TextBox
+            x:Name="MessagesText"
+            x:Uid="ResultsMessages"
+            Grid.Row="2"
+            Margin="8"
+            AcceptsReturn="True"
+            AutomationProperties.AutomationId="ResultsMessages"
+            FontFamily="Cascadia Mono, Consolas, Courier New"
+            IsReadOnly="True"
+            IsSpellCheckEnabled="False"
+            ScrollViewer.VerticalScrollBarVisibility="Auto"
+            TextWrapping="Wrap"
+            Visibility="Collapsed" />
     </Grid>
 </UserControl>

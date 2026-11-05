@@ -7966,6 +7966,14 @@ internal record RunEvent {
     ) : RunEvent {}
     
     /// <summary>
+    /// The run raised more notices than it keeps; `retained` came before
+    /// this and the rest are gone.
+    /// </summary>
+    public record NoticeLimitReached (
+        ulong Retained
+    ) : RunEvent {}
+    
+    /// <summary>
     /// The last event of every run, with the transaction the editor's
     /// connection is left in.
     /// </summary>
@@ -8022,6 +8030,10 @@ class FfiConverterTypeRunEvent : FfiConverterRustBuffer<RunEvent>{
                     FfiConverterOptionalString.INSTANCE.Read(stream)
                 );
             case 8:
+                return new RunEvent.NoticeLimitReached(
+                    FfiConverterUInt64.INSTANCE.Read(stream)
+                );
+            case 9:
                 return new RunEvent.Finished(
                     FfiConverterTypeRunOutcome.INSTANCE.Read(stream),
                     FfiConverterTypeTransactionStateTag.INSTANCE.Read(stream)
@@ -8063,6 +8075,9 @@ class FfiConverterTypeRunEvent : FfiConverterRustBuffer<RunEvent>{
                     + FfiConverterString.INSTANCE.AllocationSize(variant_value.Severity)
                     + FfiConverterString.INSTANCE.AllocationSize(variant_value.Message)
                     + FfiConverterOptionalString.INSTANCE.AllocationSize(variant_value.Code);
+            case RunEvent.NoticeLimitReached variant_value:
+                return 4
+                    + FfiConverterUInt64.INSTANCE.AllocationSize(variant_value.Retained);
             case RunEvent.Finished variant_value:
                 return 4
                     + FfiConverterTypeRunOutcome.INSTANCE.AllocationSize(variant_value.Outcome)
@@ -8111,8 +8126,12 @@ class FfiConverterTypeRunEvent : FfiConverterRustBuffer<RunEvent>{
                 FfiConverterString.INSTANCE.Write(variant_value.Message, stream);
                 FfiConverterOptionalString.INSTANCE.Write(variant_value.Code, stream);
                 break;
-            case RunEvent.Finished variant_value:
+            case RunEvent.NoticeLimitReached variant_value:
                 stream.WriteInt(8);
+                FfiConverterUInt64.INSTANCE.Write(variant_value.Retained, stream);
+                break;
+            case RunEvent.Finished variant_value:
+                stream.WriteInt(9);
                 FfiConverterTypeRunOutcome.INSTANCE.Write(variant_value.Outcome, stream);
                 FfiConverterTypeTransactionStateTag.INSTANCE.Write(variant_value.Transaction, stream);
                 break;

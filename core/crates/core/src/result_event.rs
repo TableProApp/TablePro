@@ -58,6 +58,11 @@ pub enum ResultEvent {
         rows_affected: Option<u64>,
     },
     Notice(ServerNotice),
+    /// The run raised more notices than it keeps. `retained` were sent
+    /// before it; the rest are gone.
+    NoticeLimitReached {
+        retained: u64,
+    },
 }
 
 /// How a run ended.

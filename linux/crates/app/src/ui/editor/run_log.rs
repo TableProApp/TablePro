@@ -203,6 +203,14 @@ impl BatchCollector {
             ResultEvent::Notice(notice) => self.entries.push(EntryKind::Notice {
                 message: format!("{}: {}", notice.severity, notice.message),
             }),
+            ResultEvent::NoticeLimitReached { retained } => self.entries.push(EntryKind::Notice {
+                message: crate::i18n::ngettext_f(
+                    "Only the first {n} notice is shown. The server sent more.",
+                    "Only the first {n} notices are shown. The server sent more.",
+                    u32::try_from(retained).unwrap_or(u32::MAX),
+                    &[("n", &retained.to_string())],
+                ),
+            }),
         }
     }
 
@@ -584,6 +592,47 @@ mod tests {
         assert_eq!(result.statement.as_str(), "SELECT a FROM t");
         assert!(matches!(&entries[1], EntryKind::Notice { message } if message.contains("vacuumed")));
         assert!(matches!(entries[2], EntryKind::Command { rows_affected: Some(4) }));
+    }
+
+    #[test]
+    fn notices_past_the_runs_limit_end_in_one_line_that_says_so() {
+        let notice = |message: &str| {
+            ResultEvent::Notice(ServerNotice {
+                severity: "NOTICE".to_owned(),
+                message: message.to_owned(),
+                code: None,
+            })
+        };
+
+        let (entries, _) = collect(
+            vec![
+                notice("row 1"),
+                notice("row 2"),
+                ResultEvent::NoticeLimitReached { retained: 2 },
+                ResultEvent::CommandCompleted { rows_affected: None },
+            ],
+            RunEnd::Completed,
+        );
+
+        let messages: Vec<&str> = entries
+            .iter()
+            .filter_map(|entry| match entry {
+                EntryKind::Notice { message } => Some(message.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            messages,
+            [
+                "NOTICE: row 1",
+                "NOTICE: row 2",
+                "Only the first 2 notices are shown. The server sent more."
+            ]
+        );
+        assert!(matches!(
+            entries.last(),
+            Some(EntryKind::Command { rows_affected: None })
+        ));
     }
 
     #[test]

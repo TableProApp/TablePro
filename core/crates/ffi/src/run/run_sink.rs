@@ -75,6 +75,7 @@ impl ResultSink for RunSink {
             }
             ResultEvent::CommandCompleted { rows_affected } => RunEvent::CommandCompleted { rows_affected },
             ResultEvent::Notice(notice) => notice.into(),
+            ResultEvent::NoticeLimitReached { retained } => RunEvent::NoticeLimitReached { retained },
         };
         self.state.post(event);
         SinkFlow::Continue
@@ -84,5 +85,45 @@ impl ResultSink for RunSink {
 impl RunSink {
     fn current_index(&self) -> u32 {
         self.current.as_ref().map_or(u32::MAX, |(index, _)| *index)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tablepro_core::ServerNotice;
+
+    use super::*;
+    use crate::run::RunListener;
+
+    struct Quiet;
+
+    impl RunListener for Quiet {
+        fn events_pending(&self) {}
+    }
+
+    #[tokio::test]
+    async fn the_notice_limit_reaches_the_app_after_the_notices_kept() {
+        let state = Arc::new(RunState::new(Box::new(Quiet)));
+        let mut sink = RunSink::new(state.clone());
+
+        sink.accept(ResultEvent::Notice(ServerNotice {
+            severity: "NOTICE".to_owned(),
+            message: "row 1".to_owned(),
+            code: None,
+        }))
+        .await;
+        sink.accept(ResultEvent::NoticeLimitReached { retained: 1 }).await;
+
+        assert_eq!(
+            state.drain(),
+            [
+                RunEvent::Notice {
+                    severity: "NOTICE".to_owned(),
+                    message: "row 1".to_owned(),
+                    code: None,
+                },
+                RunEvent::NoticeLimitReached { retained: 1 },
+            ]
+        );
     }
 }

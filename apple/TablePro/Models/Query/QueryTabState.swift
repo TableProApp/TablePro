@@ -703,6 +703,12 @@ struct TabDisplayState: Equatable {
         leaveOutputModeWithoutOutput()
     }
 
+    @MainActor
+    mutating func replaceActiveServerOutput(_ output: PluginServerOutput) {
+        activeResultSet?.serverOutput = output
+        leaveOutputModeWithoutOutput()
+    }
+
     // New results join after the pinned ones, so a counted name starts there and never repeats a pinned one.
     @MainActor
     var pinnedResultCount: Int {

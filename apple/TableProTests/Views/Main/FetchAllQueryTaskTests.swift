@@ -4,6 +4,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProPluginKit
 import TableProTestSupport
 import Testing
 
@@ -52,6 +53,49 @@ struct FetchAllQueryTaskTests {
         #expect(coordinator.tabExecution.isBusy(tab.id) == false)
         #expect(tabManager.tabs.first { $0.id == tab.id }?.pagination.isLoadingMore == false)
     }
+
+    @Test("Fetch All on a query tab shows what its own run printed, not the first run's or anything before it")
+    func fetchAllReplacesTheOutput() async {
+        let firstRun = PluginServerOutput(lines: ["NOTICE:  page 1"], isTruncated: false)
+        let leftOver = PluginServerOutput(lines: ["NOTICE:  audit row written"], isTruncated: false)
+        let refetched = PluginServerOutput(lines: ["NOTICE:  page 1", "NOTICE:  page 2"], isTruncated: false)
+        let connection = TestFixtures.makeConnection()
+        let driver = GatedQueryDriver(connection: connection)
+        driver.serverOutputs = [leftOver, refetched]
+        await driver.release()
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
+        session.browseDatabase = connection.database
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        var tab = QueryTab(title: "Query", query: "SELECT noisy()", tabType: .query)
+        let shown = ResultSet(label: "Result")
+        shown.serverOutput = firstRun
+        tab.display.replaceUnpinnedResults(with: [shown])
+        tabManager.tabs.append(tab)
+        tabManager.selectedTabId = tab.id
+
+        coordinator.paginationCoordinator.performFetchAll(
+            tabId: tab.id,
+            baseQuery: "SELECT noisy()",
+            scope: DatabaseScope(connectionId: connection.id, database: connection.database, schema: nil)
+        )
+        guard let handle = coordinator.queryTasks.task(for: tab.id) else {
+            Issue.record("the fetch installed no query handle")
+            return
+        }
+        await handle.value
+
+        #expect(tabManager.tabs.first { $0.id == tab.id }?.display.activeResultSet?.serverOutput == refetched)
+    }
 }
 
 /// Answers `executeUserQuery` only once the test lets it, and never by raising: a cancel has to find
@@ -62,6 +106,7 @@ private final class GatedQueryDriver: DatabaseDriver, @unchecked Sendable {
     var serverVersion: String? { nil }
 
     private let answer = AsyncGate()
+    var serverOutputs: [PluginServerOutput] = []
 
     init(connection: DatabaseConnection) {
         self.connection = connection
@@ -80,6 +125,10 @@ private final class GatedQueryDriver: DatabaseDriver, @unchecked Sendable {
     func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult {
         await answer.wait()
         return Self.emptyResult
+    }
+
+    func fetchServerOutput() async throws -> PluginServerOutput {
+        serverOutputs.isEmpty ? .none : serverOutputs.removeFirst()
     }
 
     func connect() async throws {}

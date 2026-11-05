@@ -107,6 +107,8 @@ impl ResultCollector {
                     state.notices.push(format!("{}: {}", notice.severity, notice.message));
                 }
             }
+            // The answer keeps far fewer notices than a run does.
+            ResultEvent::NoticeLimitReached { .. } => {}
         }
         SinkFlow::Continue
     }

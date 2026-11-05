@@ -105,6 +105,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
         var queryTimeoutSeconds = 0
         var sessionSchema: String?
         var capturesServerOutput = false
+        var pendingServerOutput = OracleServerOutputPending()
         var close = OracleCloseRecord()
         var serverRelease: OracleServerRelease?
         var loginWarning: String?
@@ -635,6 +636,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
         await queryGate.acquire()
         do {
             let connection = try requireConnection()
+            noteStatement()
             let rows = try await withQueryDeadline { [self] in
                 try await runDirect(sql, binds: binds, autoCommit: autoCommit, readsRows: readsRows, on: connection)
             }
@@ -696,7 +698,11 @@ public final class OracleCoreConnection: @unchecked Sendable {
         guard state.withLock({ $0.capturesServerOutput }), maxLines > 0 else { return .empty }
         await queryGate.acquire()
 
-        guard let connection = state.withLock({ $0.isConnected ? $0.nioConnection : nil }) else {
+        let connection = state.withLock { current -> OracleNIO.OracleConnection? in
+            guard current.isConnected, current.pendingServerOutput.needsRead else { return nil }
+            return current.nioConnection
+        }
+        guard let connection else {
             await queryGate.release()
             return .empty
         }
@@ -704,6 +710,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
             let output = try await withQueryDeadline { [self] in
                 try await readServerOutput(on: connection, maxLines: maxLines)
             }
+            state.withLock { $0.pendingServerOutput.noteRead() }
             await queryGate.release()
             return output
         } catch {
@@ -711,6 +718,10 @@ public final class OracleCoreConnection: @unchecked Sendable {
             await queryGate.release()
             throw mapped
         }
+    }
+
+    private func noteStatement() {
+        state.withLock { $0.pendingServerOutput.noteStatement() }
     }
 
     private func readServerOutput(
@@ -827,6 +838,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
 
         do {
             let connection = try await reconnectedConnection()
+            noteStatement()
             let admitted = try admit(role)
             let result = try await withQueryDeadline { [self] in
                 let zones = await sessionZones(on: connection)
@@ -859,6 +871,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
         let admitted: (options: StatementOptions, session: Int)
         do {
             connection = try await reconnectedConnection()
+            noteStatement()
             admitted = try admit(role)
             try await withQueryDeadline { [self] in
                 try await discardRows(OracleStatement(unsafeSQL: statement), options: admitted.options, on: connection)
@@ -983,6 +996,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
 
         do {
             let connection = try await reconnectedConnection()
+            noteStatement()
             let admitted = try admit(role)
             try await withQueryDeadline { [self] in
                 let zones = await sessionZones(on: connection)

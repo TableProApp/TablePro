@@ -67,6 +67,8 @@ public sealed partial class TableTabView : UserControl, ITabContent
 
     public bool GridIsTarget => true;
 
+    public TextBox? MessagesTarget => null;
+
     private int PageSize => _chosenSize ?? _workbench.Settings.PageSize;
 
     public bool Shows(string? schema, string table) =>

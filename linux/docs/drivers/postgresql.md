@@ -103,7 +103,7 @@ An editor tab runs SQL the way psql does:
 
 - The script is split on the client with the PostgreSQL grammar and sent one statement per message, stopping at the first failure. When a statement changes `standard_conforming_strings`, the rest of the script is split again with the new rule.
 - No session-level `SET` is ever sent. The run's deadline and the session's statement timeout are enforced with cancel requests, and nothing new goes to the server until an outstanding cancel request has finished. A statement that has not ended by the end of the cancel grace ends the session.
-- Notices (`RAISE NOTICE`, warnings) arrive as `ResultEvent::Notice`.
+- Notices (`RAISE NOTICE`, warnings) arrive as `ResultEvent::Notice` with the statement that raised them, those of the cursor's `DECLARE` and its closing `COMMIT` or `RELEASE` included. Those of the driver's own statements, such as its `BEGIN`, `ROLLBACK` and the transaction probe, are dropped. A run keeps 10,000; past that the connection drops the rest and the run sends `NoticeLimitReached` once.
 - `COPY FROM STDIN` and `COPY TO STDOUT` are refused with `Unsupported`.
 - Result columns are text: the simple protocol gives a column no type, so every value arrives as `Value::Text`. Typed columns wait on rust-postgres #1358.
 

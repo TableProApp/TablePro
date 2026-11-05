@@ -123,6 +123,7 @@ internal static class Mapping
         Native.RunEvent.CommandCompleted command =>
             new QueryEvent.CommandCompleted(command.RowsAffected is { } affected ? Count(affected) : null),
         Native.RunEvent.Notice notice => new QueryEvent.Notice(notice.Severity, notice.Message, notice.Code),
+        Native.RunEvent.NoticeLimitReached limit => new QueryEvent.NoticeLimitReached(Count(limit.Retained)),
         Native.RunEvent.Finished finished =>
             new QueryEvent.Finished(Outcome(finished.Outcome), Transaction(finished.Transaction)),
         _ => throw new InvalidOperationException($"The core sent an event this build does not know: {nativeEvent}"),

@@ -46,6 +46,15 @@ internal extension BatchStatementOutcome {
     }
 }
 
+internal extension BatchStatementOutcome where Output: CarriesServerOutput {
+    // The app's own COMMIT runs after the last statement, so what it printed (a deferred trigger's notices) shows there.
+    func appendingCommitOutput(_ output: PluginServerOutput) -> Self {
+        guard !output.isEmpty, case .completed(var results) = self, let last = results.indices.last else { return self }
+        results[last].serverOutput = results[last].serverOutput.appending(output)
+        return .completed(results: results)
+    }
+}
+
 /// The driver calls one multi-statement run makes, in order, for one ``BatchTransactionPlan``.
 ///
 /// Extracted from the coordinator so the order is testable without a window, a tab or a server:
@@ -68,6 +77,7 @@ internal enum BatchStatementRun {
         isCommitPoint: (Statement) -> Bool,
         serverError: (Output) -> String? = { _ in nil },
         replanned: @escaping @MainActor @Sendable (_ ranCount: Int) async -> [Statement]? = { _ in nil },
+        commitOutput: ServerOutputBox = ServerOutputBox(),
         execute: @escaping @MainActor @Sendable (Statement) async throws -> Output
     ) async -> BatchStatementOutcome<Output> {
         let opensTransaction = plan.opensTransaction && driver.supportsTransactions
@@ -131,7 +141,9 @@ internal enum BatchStatementRun {
         }
 
         guard opensTransaction else { return .completed(results: results) }
-        return await commit(results: results, driver: driver, connectionId: connectionId, gate: gate, plan: plan)
+        return await commit(
+            results: results, driver: driver, connectionId: connectionId, gate: gate, plan: plan, output: commitOutput
+        )
     }
 
     /// A statement the script wrote itself is ordinary work unless it is the script's own commit,
@@ -174,7 +186,8 @@ internal enum BatchStatementRun {
         driver: DatabaseDriver,
         connectionId: UUID,
         gate: BatchClaimGate,
-        plan: BatchTransactionPlan
+        plan: BatchTransactionPlan,
+        output: ServerOutputBox
     ) async -> BatchStatementOutcome<Output> {
         let committed = await BatchCommitPoint.run(
             driver: driver,
@@ -188,10 +201,16 @@ internal enum BatchStatementRun {
             await rollback(driver: driver, connectionId: connectionId, plan: plan, opensTransaction: true)
             return .cancelled(results: plan.keepsExecutedStatements ? results : [])
         case .committed:
+            output.store(await ServerOutputCapture.drain(driver))
             return .completed(results: results)
-        case .failed(let failure) where failure.outcomeIsUnknown:
-            return .failed(results: results, failure: .commitOutcomeUnknown, errorDescription: failure.errorDescription)
         case .failed(let failure):
+            // Read before the rollback: PostgreSQL answers a ROLLBACK after a failed COMMIT with a warning of its own.
+            output.store(await ServerOutputCapture.drain(driver))
+            guard !failure.outcomeIsUnknown else {
+                return .failed(
+                    results: results, failure: .commitOutcomeUnknown, errorDescription: failure.errorDescription
+                )
+            }
             await rollback(driver: driver, connectionId: connectionId, plan: plan, opensTransaction: true)
             return .failed(results: results, failure: .commit, errorDescription: failure.errorDescription)
         }
