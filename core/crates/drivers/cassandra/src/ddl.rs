@@ -210,6 +210,15 @@ impl DdlDialect for CqlDialect {
             self.quote_identifier(name),
             replication_map(replication)?
         );
+        // ScyllaDB keeps tablets only for NetworkTopologyStrategy, and turns
+        // them on by default, so SimpleStrategy needs them off.
+        let simple = matches!(replication, KeyspaceReplication::Simple { .. });
+        if simple && capabilities.database_fields.tablets && draft.tablets != Some(false) {
+            return Err(BuildDdlError::InvalidOption {
+                option: CatalogOption::ReplicationFactor,
+                value: "SimpleStrategy with tablets".to_owned(),
+            });
+        }
         if !draft.durable_writes {
             sql.push_str(" AND durable_writes = false");
         }
@@ -550,6 +559,27 @@ mod tests {
         );
         assert!(scylla().catalog_capabilities().database_fields.tablets);
         assert!(!dialect().catalog_capabilities().database_fields.tablets);
+    }
+
+    #[test]
+    fn scylladb_takes_simple_replication_only_with_tablets_off() {
+        let mut draft = keyspace(KeyspaceReplication::Simple { factor: 1 });
+
+        for tablets in [None, Some(true)] {
+            draft.tablets = tablets;
+            assert_eq!(
+                invalid(scylla().plan_create_database(&draft)),
+                Some(CatalogOption::ReplicationFactor),
+                "{tablets:?}"
+            );
+        }
+        draft.tablets = Some(false);
+        assert!(scylla().plan_create_database(&draft).is_ok());
+        draft.tablets = None;
+        assert!(
+            dialect().plan_create_database(&draft).is_ok(),
+            "Cassandra has no tablets"
+        );
     }
 
     #[test]

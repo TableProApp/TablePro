@@ -154,6 +154,7 @@ impl WorkspaceModel {
         let (form, dialog) = FormDialog::new(&title, &gettext("_Create"));
         let state = Rc::new(database_form(form, choices, dialect, capabilities));
         state.follow_character_set();
+        state.follow_strategy();
         connect_database_form(&state);
         let (input, parent, asks) = (self.input.clone(), self.parent_ref(), asks_first(&session));
         let submitting = Rc::downgrade(&state);
@@ -402,6 +403,7 @@ fn connect_database_form(state: &Rc<DatabaseForm>) {
             if let Some(replication) = &state.replication {
                 replication.show_strategy();
             }
+            state.follow_strategy();
             state.check();
         }
     });
@@ -471,6 +473,19 @@ impl DatabaseForm {
     /// while it is left to the server. Left to the server, neither option
     /// is sent and the server's own collation holds, which need not be its
     /// character set's default.
+    /// ScyllaDB keeps tablets only for network topology replication, so
+    /// Simple turns them off and holds the switch there.
+    fn follow_strategy(&self) {
+        let (Some(replication), Some(tablets)) = (&self.replication, &self.tablets) else {
+            return;
+        };
+        let simple = replication.simple();
+        if simple {
+            tablets.set_active(false);
+        }
+        tablets.set_sensitive(!simple);
+    }
+
     fn follow_character_set(&self) {
         let (Some(character_set), Some(collation)) = (&self.character_set, &self.collation) else {
             return;
@@ -579,11 +594,12 @@ impl Replication {
             .title(gettext("Replication"))
             .model(&gtk::StringList::new(&strategies))
             .build();
-        let factor = replicas(&gettext("Replication factor"));
+        let factor = replicas(&gettext("Replication factor"), 1.0);
+        // 0 leaves a data centre out, so a keyspace can live in some only.
         let centres: Vec<(String, adw::SpinRow)> = data_centers
             .into_iter()
             .map(|centre| {
-                let row = replicas(&gettext_f("Replicas in {dc}", &[("dc", &centre)]));
+                let row = replicas(&gettext_f("Replicas in {dc}", &[("dc", &centre)]), 0.0);
                 (centre, row)
             })
             .collect();
@@ -633,6 +649,7 @@ impl Replication {
                     .centres
                     .iter()
                     .map(|(centre, row)| (centre.clone(), replica_count(row)))
+                    .filter(|(_, count)| *count > 0)
                     .collect(),
             },
         }
@@ -652,8 +669,8 @@ impl Replication {
 
 /// One replica is all a single-node cluster can hold; a real cluster
 /// raises it.
-fn replicas(title: &str) -> adw::SpinRow {
-    let row = adw::SpinRow::with_range(1.0, 99.0, 1.0);
+fn replicas(title: &str, least: f64) -> adw::SpinRow {
+    let row = adw::SpinRow::with_range(least, 99.0, 1.0);
     // A data centre's name is never markup.
     row.set_use_markup(false);
     row.set_title(title);
@@ -661,7 +678,31 @@ fn replicas(title: &str) -> adw::SpinRow {
     row
 }
 
-/// The row's range keeps the count from 1 to 99.
+/// The row's range keeps the count from 0 to 99.
 fn replica_count(row: &adw::SpinRow) -> u32 {
     row.value() as u32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[gtk4::test]
+    fn a_data_centre_left_at_zero_holds_no_replicas() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let group = adw::PreferencesGroup::new();
+        let replication = Replication::new(&group, vec!["dc1".to_owned(), "dc2".to_owned()]);
+
+        replication.centres[0].1.set_value(3.0);
+        replication.centres[1].1.set_value(0.0);
+
+        assert_eq!(
+            replication.chosen(),
+            KeyspaceReplication::NetworkTopology {
+                factors: vec![("dc1".to_owned(), 3)]
+            }
+        );
+        replication.strategy.set_selected(SIMPLE);
+        assert_eq!(replication.chosen(), KeyspaceReplication::Simple { factor: 1 });
+    }
 }
