@@ -26,6 +26,8 @@ pub struct ConnectionUrl {
     pub database: String,
     pub tls: UrlTls,
     pub options: NetworkOptions,
+    // Parameters the connection has no setting for, which the caller tells the user it did not use.
+    pub unread: Vec<String>,
 }
 
 // What a URL says about TLS. No mode leaves the connection's default, with the files still applied.
@@ -40,7 +42,7 @@ pub struct UrlTls {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Engine {
     Postgres,
-    Mysql { x_protocol: bool },
+    Mysql { x_protocol: bool, mariadb: bool },
     Mssql,
     Mongo { seed_list: bool },
     Redis { tls: bool },
@@ -54,8 +56,18 @@ impl Engine {
     fn from_scheme(scheme: &str) -> Option<Self> {
         Some(match scheme {
             "postgres" | "postgresql" => Self::Postgres,
-            "mysql" | "mariadb" => Self::Mysql { x_protocol: false },
-            "mysqlx" => Self::Mysql { x_protocol: true },
+            "mysql" => Self::Mysql {
+                x_protocol: false,
+                mariadb: false,
+            },
+            "mariadb" => Self::Mysql {
+                x_protocol: false,
+                mariadb: true,
+            },
+            "mysqlx" => Self::Mysql {
+                x_protocol: true,
+                mariadb: false,
+            },
             "sqlserver" | "mssql" => Self::Mssql,
             "mongodb" => Self::Mongo { seed_list: false },
             "mongodb+srv" => Self::Mongo { seed_list: true },
@@ -140,6 +152,7 @@ fn file_url(engine: Engine, rest: &str) -> Result<ConnectionUrl, ConnectionUrlEr
         database: path,
         tls: UrlTls::default(),
         options: NetworkOptions::default(),
+        unread: Vec::new(),
     })
 }
 
@@ -206,6 +219,7 @@ struct Draft {
     direct: Option<bool>,
     query_user: Option<String>,
     query_password: Option<String>,
+    unread: Vec<String>,
 }
 
 fn network_url(engine: Engine, rest: &str, properties: bool) -> Result<ConnectionUrl, ConnectionUrlError> {
@@ -224,13 +238,17 @@ fn network_url(engine: Engine, rest: &str, properties: bool) -> Result<Connectio
         username,
         password,
         database: decode(parts.path.trim_start_matches('/'))?,
-        tls: TlsHints::default(),
+        tls: TlsHints {
+            use_ssl_verifies: matches!(engine, Engine::Mysql { mariadb: true, .. }),
+            ..TlsHints::default()
+        },
         options: NetworkOptions::default(),
         socket: None,
         instance: false,
         direct: None,
         query_user: None,
         query_password: None,
+        unread: Vec::new(),
     };
     for pair in parameters(parts.query, false).chain(parameters(parts.properties, true)) {
         let (key, value) = pair?;
@@ -257,6 +275,7 @@ fn network_url(engine: Engine, rest: &str, properties: bool) -> Result<Connectio
         database: draft.database,
         tls: draft.tls.resolve(),
         options: draft.options,
+        unread: draft.unread,
     })
 }
 
@@ -289,7 +308,7 @@ fn read_parameter(engine: Engine, draft: &mut Draft, key: &str, value: String) -
             return Err(ConnectionUrlError::UnsupportedParameter { name: key.to_owned() });
         }
         (Engine::Mongo { .. }, "directconnection") => draft.direct = Some(value.trim().eq_ignore_ascii_case("true")),
-        (Engine::Mongo { .. }, _) => {}
+        (Engine::Mongo { .. }, _) => draft.unread(key),
         // libpq's `host` names one host and no port; a list is its failover, which is not read.
         (Engine::Postgres, "host") => {
             if value.contains(',') {
@@ -308,7 +327,35 @@ fn read_parameter(engine: Engine, draft: &mut Draft, key: &str, value: String) -
         (Engine::Postgres, "gssencmode" | "sslcertmode") if value.trim().eq_ignore_ascii_case("require") => {
             return Err(ConnectionUrlError::UnsupportedParameter { name: key.to_owned() });
         }
-        (Engine::Mysql { .. }, "ssl-crl" | "ssl_crl" | "ssl-crlpath" | "ssl_crlpath") if !value.trim().is_empty() => {
+        (
+            Engine::Mysql { .. },
+            "ssl-crl"
+            | "ssl_crl"
+            | "ssl-crlpath"
+            | "ssl_crlpath"
+            | "server-public-key-path"
+            | "server_public_key_path"
+            | "serverrsapublickeyfile",
+        )
+        | (Engine::Mssql, "authenticationscheme" | "servercertificate" | "truststore")
+            if !value.trim().is_empty() =>
+        {
+            return Err(ConnectionUrlError::UnsupportedParameter { name: key.to_owned() });
+        }
+        // sqlx asks the server for its RSA key, so a URL that forbids it cannot be honored.
+        (Engine::Mysql { .. }, "allowpublickeyretrieval") if value.trim().eq_ignore_ascii_case("false") => {
+            return Err(ConnectionUrlError::UnsupportedParameter { name: key.to_owned() });
+        }
+        // Only a SQL login: another would send its secret to the server as a password.
+        (Engine::Mssql, "authentication")
+            if !matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "" | "sqlpassword" | "notspecified"
+            ) =>
+        {
+            return Err(ConnectionUrlError::UnsupportedParameter { name: key.to_owned() });
+        }
+        (Engine::Mssql, "integratedsecurity") if value.trim().eq_ignore_ascii_case("true") => {
             return Err(ConnectionUrlError::UnsupportedParameter { name: key.to_owned() });
         }
         (Engine::Postgres, "dbname") | (Engine::Mssql, "database" | "databasename") if draft.database.is_empty() => {
@@ -319,16 +366,48 @@ fn read_parameter(engine: Engine, draft: &mut Draft, key: &str, value: String) -
         (Engine::Mysql { .. }, "socket" | "unix_socket") => draft.socket = Some(value),
         (_, "user" | "username") => draft.query_user = Some(value),
         (_, "password") => draft.query_password = Some(value),
-        _ => {}
+        _ => draft.unread(key),
     }
     Ok(())
+}
+
+impl Draft {
+    // Pool sizes, timeouts and client names change nothing about where or how safely the connection goes.
+    fn unread(&mut self, key: &str) {
+        const UNSAID: &[&str] = &[
+            "appname",
+            "application_name",
+            "applicationname",
+            "connect_timeout",
+            "connecttimeout",
+            "connecttimeoutms",
+            "logintimeout",
+            "sockettimeout",
+            "sockettimeoutms",
+            "serverselectiontimeoutms",
+            "retrywrites",
+            "retryreads",
+            "w",
+            "wtimeoutms",
+            "journal",
+            "maxpoolsize",
+            "minpoolsize",
+            "maxidletimems",
+            "connection_limit",
+            "pool_timeout",
+            "pgbouncer",
+        ];
+        if !UNSAID.contains(&key) && !self.unread.iter().any(|seen| seen == key) {
+            self.unread.push(key.to_owned());
+        }
+    }
 }
 
 // What each engine reads in the host, the port and the path, and the TLS its scheme implies.
 fn finish(engine: Engine, draft: &mut Draft, more: &[HostPort], fragment: &str) -> Result<(), ConnectionUrlError> {
     match engine {
         Engine::Postgres => (draft.host, draft.port) = postgres_socket(std::mem::take(&mut draft.host), draft.port),
-        Engine::Mysql { x_protocol } => {
+        Engine::Mysql { x_protocol, .. } => {
             let local = draft.host.is_empty() || draft.host.eq_ignore_ascii_case("localhost");
             if let Some(socket) = draft.socket.take().filter(|_| local) {
                 draft.host = absolute_socket(socket.trim_start_matches('(').trim_end_matches(')'))?;
@@ -487,7 +566,11 @@ fn redis_database(path: &str) -> Result<String, ConnectionUrlError> {
 // The password logins the driver offers; another mechanism would fail as a wrong password.
 fn check_mechanism(value: &str) -> Result<(), ConnectionUrlError> {
     match value.to_ascii_uppercase().as_str() {
-        "" | "DEFAULT" | "SCRAM-SHA-1" | "SCRAM-SHA-256" => Ok(()),
+        "" | "DEFAULT" | "SCRAM-SHA-1" => Ok(()),
+        // The driver negotiates the mechanism, so one the URL insists on cannot be held to.
+        "SCRAM-SHA-256" => Err(ConnectionUrlError::UnsupportedParameter {
+            name: "authMechanism".to_owned(),
+        }),
         _ => Err(ConnectionUrlError::AuthMechanism {
             mechanism: value.to_owned(),
         }),

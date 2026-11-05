@@ -392,6 +392,7 @@ impl ConnectDialog {
             .ok_or_else(|| crate::i18n::gettext("No driver selected"))?;
         // No host is the client's default socket, found on this computer; a path the URL names is kept.
         let default_socket = url.host.is_empty();
+        let unread = url.unread.join(", ");
         let mut form = ConnectForm::from_url(url, entry.capabilities(), &self.form())
             .map_err(|error| crate::ui::error_text::config_message(&error))?;
         // libpq and the mysql client log in to a socket as the desktop user when no user is named.
@@ -411,6 +412,12 @@ impl ConnectDialog {
         }
         self.recheck_files();
         self.refresh();
+        if !unread.is_empty() {
+            self.show_toast(
+                &crate::i18n::gettext_f("Not used from the URL: {parameters}", &[("parameters", &unread)]),
+                None,
+            );
+        }
         Ok(())
     }
 

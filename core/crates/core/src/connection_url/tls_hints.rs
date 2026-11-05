@@ -19,8 +19,11 @@ pub(super) struct TlsHints {
     mode: Option<Wanted>,
     switch: Option<Wanted>,
     pub(super) by_scheme: Option<Wanted>,
-    weakened: bool,
+    // The last of the switches that turn the certificate check off, as JDBC reads a property given twice.
+    weakened: Option<bool>,
     verify_server: bool,
+    // MariaDB's Connector/J checks the certificate under useSsl; MySQL's checks it only with verifyServerCertificate.
+    pub(super) use_ssl_verifies: bool,
     system_roots: bool,
     ca_file: Option<PathBuf>,
     certificate: Option<PathBuf>,
@@ -36,10 +39,9 @@ impl TlsHints {
             "sslmode" | "ssl-mode" | "ssl_mode" => self.mode = named_mode(&lower).or(self.mode),
             "tlsmode" => self.mode = numbered_mode(&lower).or(self.mode),
             "ssl" | "tls" | "secure" | "s" => self.switch = switch(&lower).or(self.switch),
-            // Connector/J checks the certificate only with verifyServerCertificate.
             "usessl" => {
                 self.switch = match switch(&lower) {
-                    Some(Wanted::VerifyFull) => Some(Wanted::Require),
+                    Some(Wanted::VerifyFull) if !self.use_ssl_verifies => Some(Wanted::Require),
                     other => other.or(self.switch),
                 }
             }
@@ -61,7 +63,7 @@ impl TlsHints {
             }
             // Only a check of the whole certificate can be turned off; a name check alone stays on.
             "trustservercertificate" | "tlsinsecure" | "tlsallowinvalidcertificates" => {
-                self.weakened |= is_true(&lower);
+                self.weakened = Some(is_true(&lower));
             }
             "sslrootcert" if lower == "system" => self.system_roots = true,
             // libpq's, MongoDB's and the mysql client's spellings.
@@ -94,7 +96,7 @@ impl TlsHints {
     }
 
     pub(super) fn weaken(&mut self) {
-        self.weakened = true;
+        self.weakened = Some(true);
     }
 
     // No mode leaves it to the form: the URL said nothing, or asked for prefer, which the core does not have.
@@ -107,7 +109,7 @@ impl TlsHints {
         if verifies_with_roots && matches!(wanted, None | Some(Wanted::Prefer | Wanted::Require)) {
             wanted = Some(Wanted::VerifyFull);
         }
-        if self.weakened && wanted == Some(Wanted::VerifyFull) {
+        if self.weakened == Some(true) && wanted == Some(Wanted::VerifyFull) {
             wanted = Some(Wanted::Require);
         }
         let mode = wanted.and_then(|wanted| match wanted {

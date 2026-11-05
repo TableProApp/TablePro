@@ -232,6 +232,17 @@ fn mysql_tls_spellings_and_the_x_protocol_port() {
         Some(TlsMode::VerifyFull)
     );
     assert_eq!(mode("mysql://h/db?useSSL=true"), Some(TlsMode::Require));
+    assert_eq!(mode("jdbc:mariadb://u:p@db/app?useSsl=true"), Some(TlsMode::VerifyFull));
+    for url in [
+        "mysql://u:p@db/app?ssl-mode=DISABLED&server-public-key-path=/etc/mysql/server.pem",
+        "mysql://u:p@db/app?allowPublicKeyRetrieval=false",
+    ] {
+        assert_eq!(refused(url).code(), "url.unsupported_parameter", "{url}");
+    }
+    assert_eq!(
+        read("mysql://u:p@db/app?allowPublicKeyRetrieval=true").unread,
+        ["allowpublickeyretrieval"]
+    );
     assert_eq!(
         mode("mysql://h/db?useSSL=true&verifyServerCertificate=true"),
         Some(TlsMode::VerifyFull)
@@ -304,6 +315,23 @@ fn sql_server_reads_urls_and_jdbc_properties() {
         refused("jdbc:sqlserver://db;instanceName=SQLEXPRESS"),
         ConnectionUrlError::InstanceName
     );
+    assert_eq!(
+        mode("jdbc:sqlserver://db;encrypt=true;trustServerCertificate=true;trustServerCertificate=false"),
+        Some(TlsMode::VerifyFull),
+        "the last of a property given twice is the one JDBC reads"
+    );
+    for url in [
+        "jdbc:sqlserver://db;authentication=ActiveDirectoryServicePrincipal;user=id;password=secret",
+        "jdbc:sqlserver://db;integratedSecurity=true",
+        "jdbc:sqlserver://db;encrypt=strict;serverCertificate=/etc/current.pem",
+        "jdbc:sqlserver://db;trustStore=/etc/store.jks",
+    ] {
+        assert_eq!(refused(url).code(), "url.unsupported_parameter", "{url}");
+    }
+    assert_eq!(
+        read("jdbc:sqlserver://db;authentication=SqlPassword;user=sa").username,
+        "sa"
+    );
     let instance = read("jdbc:sqlserver://db\\SQLEXPRESS:1434;database=s");
     assert_eq!((instance.host.as_str(), instance.port), ("db", Some(1434)));
 
@@ -361,7 +389,11 @@ fn mongodb_srv_names_one_host_and_turns_tls_on_unless_told_not_to() {
             mechanism: "MONGODB-X509".to_owned()
         }
     );
-    assert_eq!(read("mongodb://h/db?authMechanism=SCRAM-SHA-256&user=x").username, "");
+    assert_eq!(read("mongodb://h/db?authMechanism=SCRAM-SHA-1&user=x").username, "");
+    assert_eq!(
+        refused("mongodb://u:p@h/db?authMechanism=SCRAM-SHA-256").code(),
+        "url.unsupported_parameter"
+    );
     assert_eq!(refused("mongodb://h1,/db"), ConnectionUrlError::NoHost);
     let direct = read("mongodb://ada:pw@nodeA/shop?replicaSet=rs0&directConnection=true");
     assert_eq!(
@@ -455,6 +487,15 @@ fn a_jdbc_prefix_and_login_parameters_are_read() {
     let kept = read("postgresql://ada:mine@db.example.com/app?user=analyst&password=pw");
     assert_eq!(kept.username, "ada");
     assert_eq!(password(&kept), Some("mine"));
+}
+
+#[test]
+fn parameters_the_connection_has_no_setting_for_are_reported_unread() {
+    let parsed = read("postgresql://db/x?schema=reporting&connect_timeout=5&application_name=app&schema=again");
+    assert_eq!(parsed.unread, ["schema"]);
+    let atlas = read("mongodb+srv://u:p@cluster0.example.net/?retryWrites=true&w=majority&appName=Cluster0");
+    assert!(atlas.unread.is_empty(), "{:?}", atlas.unread);
+    assert_eq!(read("redis://h/0?client_name=x").unread, ["client_name"]);
 }
 
 #[test]

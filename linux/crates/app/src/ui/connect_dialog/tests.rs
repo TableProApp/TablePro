@@ -1467,6 +1467,22 @@ fn a_url_the_parser_refuses_marks_its_row_and_says_why_without_echoing_it() {
 }
 
 #[gtk4::test]
+fn a_url_says_which_of_its_parameters_it_did_not_use() {
+    let harness = dialog();
+
+    paste_url(
+        &harness.dialog,
+        "postgresql://ada@db.example.com/shop?schema=reporting&connect_timeout=5",
+    );
+
+    assert_eq!(harness.dialog.form().host, "db.example.com");
+    assert_eq!(
+        harness.dialog.imp().toasts.borrow().as_slice(),
+        ["Not used from the URL: schema"]
+    );
+}
+
+#[gtk4::test]
 fn the_url_row_is_offered_only_for_a_new_connection() {
     let harness = dialog();
     assert!(harness.dialog.imp().url_group.is_visible());

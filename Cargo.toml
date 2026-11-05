@@ -155,7 +155,6 @@ gio-unix = { version = "0.22", features = ["v2_84"] }
 glib = { version = "0.22", features = ["v2_88"] }
 glib-build-tools = "0.22"
 uuid = { version = "1", features = ["v4", "serde"] }
-url = "2"
 percent-encoding = "2"
 # The Windows Credential Manager, where the core keeps secrets on Windows, and the
 # owning process of a loopback connection, from GetExtendedTcpTable.
