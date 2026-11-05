@@ -9,6 +9,8 @@ pub enum EditRefusal {
     NoPrimaryKey,
     /// The table's columns have not been read yet.
     NoColumns,
+    // A query result's rows wait for its save, and are read again after it.
+    Saving,
 }
 
 impl EditRefusal {
@@ -18,6 +20,7 @@ impl EditRefusal {
             Self::ReadOnly => Some(gettext("This connection is read-only.")),
             Self::NoPrimaryKey => Some(gettext("This table has no primary key, so editing is turned off.")),
             Self::NoColumns => None,
+            Self::Saving => Some(gettext("Wait for the changes to finish saving")),
         }
     }
 }
@@ -31,6 +34,17 @@ pub struct EditPolicy {
     pub duplicate: Result<(), EditRefusal>,
     pub delete: Result<(), EditRefusal>,
     pub paste: Result<(), EditRefusal>,
+}
+
+pub fn saving_policy() -> EditPolicy {
+    let verdict = Err(EditRefusal::Saving);
+    EditPolicy {
+        cells: verdict,
+        insert: verdict,
+        duplicate: verdict,
+        delete: verdict,
+        paste: verdict,
+    }
 }
 
 pub fn edit_policy(read_only: bool, has_primary_key: bool, has_columns: bool) -> EditPolicy {

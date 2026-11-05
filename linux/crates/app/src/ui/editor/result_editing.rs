@@ -17,7 +17,7 @@ use super::run_log::{EntryKind, RunLog};
 use super::run_scope::ScopedText;
 use crate::application::{ShortcutOwner, local_shortcut_controller};
 use crate::services::change_tracker::{RowKey, StatementSource, pk_identity};
-use crate::services::grid::{GridColumn, ResultRefusal, RowKeyBuilder, edit_policy};
+use crate::services::grid::{EditPolicy, GridColumn, ResultRefusal, RowKeyBuilder, edit_policy, saving_policy};
 use crate::services::save_batch::SaveTarget;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::ui::browse_tab::{ColumnFreshness, PendingChangesRequest, load_columns};
@@ -66,6 +66,8 @@ pub struct ResultEditing {
     // The run that reads a result again after its save; history keeps what the user ran, not this.
     rereading: Cell<bool>,
     quiet_run: Cell<bool>,
+    // No row changes while a save runs, so the result read after it loses none.
+    saving: Cell<bool>,
 }
 
 impl SqlEditor {
@@ -326,12 +328,43 @@ impl SqlEditor {
             rows: editable_rows(&target, view),
             rules: Some(EditRules {
                 identity: target.identity.clone(),
-                policy: edit_policy(false, true, true),
+                policy: self.result_policy(),
             }),
             tracker: Some(tracker),
             table: Some(target.table.clone()),
             result_lock: None,
         })
+    }
+
+    fn result_policy(&self) -> EditPolicy {
+        match self.imp().editing.saving.get() {
+            true => saving_policy(),
+            false => edit_policy(false, true, true),
+        }
+    }
+
+    fn follow_saving(&self, saving: bool) {
+        let editing = &self.imp().editing;
+        editing.saving.set(saving);
+        let target = match editing
+            .owner
+            .get()
+            .and_then(|owner| editing.states.borrow().get(&owner).cloned())
+        {
+            Some(ResultEdit::Editable(target)) => target,
+            _ => return,
+        };
+        if let Some(grid) = self.owner_grid() {
+            grid.edit().set_rules(
+                &grid,
+                Some(EditRules {
+                    identity: target.identity.clone(),
+                    policy: self.result_policy(),
+                }),
+            );
+            grid.refresh_actions();
+            grid.redraw();
+        }
     }
 
     fn refresh_result_page(&self, index: usize) {
@@ -356,11 +389,12 @@ impl SqlEditor {
         };
         let tracker = self.row_tracker();
         let grid = self.owner_grid();
-        let unsaved = tracker
+        // Held while anything is pending, so a second Ctrl+S during a save never reaches the file's.
+        let pending = tracker
             .as_ref()
-            .is_some_and(|tracker| tracker.pending_state() == PendingState::Unsaved);
+            .is_some_and(|tracker| tracker.pending_state() != PendingState::Clean || tracker.pending_count() > 0);
         let editing = grid.as_ref().is_some_and(DataGrid::is_editing);
-        actions.save.set_enabled(unsaved || editing);
+        actions.save.set_enabled(pending || editing);
         let idle = grid.is_some()
             && tracker
                 .as_ref()
@@ -400,7 +434,10 @@ impl SqlEditor {
         if let Some(grid) = self.owner_grid() {
             grid.commit_edit();
         }
-        if self.row_tracker().is_some_and(|tracker| tracker.pending_count() > 0) {
+        let unsaved = self
+            .row_tracker()
+            .is_some_and(|tracker| tracker.pending_state() == PendingState::Unsaved && tracker.pending_count() > 0);
+        if unsaved {
             self.emit_by_name::<()>("save-rows", &[]);
         }
     }
@@ -430,7 +467,11 @@ impl SqlEditor {
         self.imp().results.kept_grid(owner)
     }
 
+    // After a save whose outcome is unknown the rows on screen may not be what the table holds, so they are read again.
     fn discard_rows(&self) {
+        let unknown = self
+            .row_tracker()
+            .is_some_and(|tracker| matches!(tracker.pending_state(), PendingState::OutcomeUnknown(_)));
         match self.owner_grid() {
             Some(grid) => {
                 grid.discard();
@@ -443,30 +484,28 @@ impl SqlEditor {
             }
         }
         self.on_rows_pending_changed();
+        if unknown {
+            self.reread_result();
+        }
     }
 
     pub(crate) fn rows_save_started(&self) {
         self.imp().results.pending_bar().show_saving(true);
-        if let Some(grid) = self.owner_grid() {
-            grid.redraw();
-        }
+        self.follow_saving(true);
         self.refresh_result_actions();
     }
 
     fn rows_save_ended(&self) {
         self.imp().results.pending_bar().show_saving(false);
+        self.follow_saving(false);
         self.refresh_pending_bar();
     }
 
-    // The tracker let go of what the save wrote; the statement behind the result runs again for what the server
-    // stored. Changes made while the save ran stay, and so do the rows they were made on, until they are saved too.
+    // The tracker let go of what the save wrote, and nothing changed while it ran, so the statement behind the result
+    // runs again for what the server stored.
     pub(crate) fn rows_saved(&self) {
         self.rows_save_ended();
-        if self.row_tracker().is_some_and(|tracker| tracker.pending_count() == 0) {
-            self.reread_result();
-        } else if let Some(grid) = self.owner_grid() {
-            grid.redraw();
-        }
+        self.reread_result();
     }
 
     pub(crate) fn rows_save_failed(&self, failing: Option<StatementSource>) {
