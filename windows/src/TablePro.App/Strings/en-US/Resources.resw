@@ -1041,6 +1041,33 @@
   <data name="Error_url_no_host" xml:space="preserve">
     <value>The URL names no host.</value>
   </data>
+  <data name="Error_url_several_hosts" xml:space="preserve">
+    <value>The URL lists several hosts, which only a MongoDB connection takes.</value>
+  </data>
+  <data name="Error_url_invalid_port" xml:space="preserve">
+    <value>The URL's port isn't a number from 1 to 65535.</value>
+  </data>
+  <data name="Error_url_seed_list_host" xml:space="preserve">
+    <value>A mongodb+srv URL names one host and no port.</value>
+  </data>
+  <data name="Error_url_database_number" xml:space="preserve">
+    <value>A Redis URL ends with the database's number, such as /0.</value>
+  </data>
+  <data name="Error_url_relative_path" xml:space="preserve">
+    <value>A path in the URL must be a full path.</value>
+  </data>
+  <data name="Error_url_instance_name" xml:space="preserve">
+    <value>SQL Server instance names aren't supported. Put the instance's port in the URL instead.</value>
+  </data>
+  <data name="Error_url_auth_mechanism" xml:space="preserve">
+    <value>The URL logs in to MongoDB another way than with a password, which TablePro doesn't support.</value>
+  </data>
+  <data name="Error_url_direct_connection" xml:space="preserve">
+    <value>directConnection=true takes one host and no DNS seed list, and false takes a replicaSet or several hosts.</value>
+  </data>
+  <data name="Error_url_settings_unsupported" xml:space="preserve">
+    <value>The URL needs a setting a connection here can't keep yet: a local socket, a DNS seed list, several hosts or an authentication database.</value>
+  </data>
   <data name="Error_library_name_required" xml:space="preserve">
     <value>Enter a name.</value>
   </data>

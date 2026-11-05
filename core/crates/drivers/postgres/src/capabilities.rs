@@ -3,6 +3,8 @@ use tablepro_core::{
     AuthMode, CommitResolutionSupport, DriverCapabilities, EndpointKind, EstimateQuality, ReadOnlyEnforcement,
     ScriptExecution, ServerNameOverride, StatementStop, TlsCapabilities, TlsMode, WriteAtomicity,
 };
+#[cfg(unix)]
+use tablepro_core::{LocalSocket, NetworkOption};
 
 pub(crate) const DEFAULT_PORT: u16 = 5432;
 
@@ -39,7 +41,14 @@ pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
         ObjectKind::Trigger,
     ],
     database_required: false,
-    network_options: &[],
+    network_options: &[
+        // libpq's naming. Debian, Ubuntu and Fedora build libpq for /var/run/postgresql, Arch for /run/postgresql, upstream for /tmp.
+        #[cfg(unix)]
+        NetworkOption::LocalSocket(LocalSocket::Folder {
+            file_prefix: ".s.PGSQL.",
+            defaults: &["/run/postgresql", "/var/run/postgresql", "/tmp"],
+        }),
+    ],
     statement_stop: StatementStop::Server,
 };
 
@@ -65,5 +74,6 @@ mod tests {
         );
         assert_eq!(CAPABILITIES.object_kinds.len(), 9);
         assert!(!CAPABILITIES.database_required);
+        assert_eq!(CAPABILITIES.local_socket().is_some(), cfg!(unix));
     }
 }

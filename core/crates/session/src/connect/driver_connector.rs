@@ -5,8 +5,8 @@ use futures::future::BoxFuture;
 use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::meta::{ObjectInfo, ObjectScope, SchemaInfo};
 use tablepro_core::{
-    CallOptions, ConfigError, ConnectOptions, ConnectTarget, Connection, DriverError, NetworkTarget, TlsMode,
-    Transport, UnsupportedFeature,
+    CallOptions, ConfigError, ConnectOptions, ConnectTarget, Connection, DriverError, LivenessPolicy, LocalSocket,
+    NetworkEndpoint, NetworkTarget, TlsMode, Transport, UnsupportedFeature, is_local_socket_host,
 };
 use tablepro_net::DirectTcpTransport;
 use tokio::time::Instant;
@@ -99,7 +99,7 @@ async fn establish(
                         .map_err(|error| stage_error(&cancel, error.into()))?;
                     (transport, Some(session))
                 }
-                None => (Arc::new(DirectTcpTransport::new(endpoint.clone(), &liveness)), None),
+                None => (direct_transport(&request, endpoint, liveness)?, None),
             };
             let target = NetworkTarget {
                 transport,
@@ -155,6 +155,46 @@ async fn establish(
     }
 }
 
+/// A host that is an absolute path is the server's own socket, named the
+/// way the engine's client names it.
+fn direct_transport(
+    request: &ConnectRequest,
+    endpoint: &NetworkEndpoint,
+    liveness: LivenessPolicy,
+) -> Result<Arc<dyn Transport>, ConnectError> {
+    if !is_local_socket_host(endpoint.host()) {
+        return Ok(Arc::new(DirectTcpTransport::new(endpoint.clone(), &liveness)));
+    }
+    let Some(naming) = request.driver.capabilities().local_socket() else {
+        return Err(ConnectError::Driver(ConfigError::LocalSocketUnsupported.into()));
+    };
+    local_socket_transport(naming, endpoint, liveness)
+}
+
+#[cfg(unix)]
+fn local_socket_transport(
+    naming: LocalSocket,
+    endpoint: &NetworkEndpoint,
+    liveness: LivenessPolicy,
+) -> Result<Arc<dyn Transport>, ConnectError> {
+    let socket = naming.socket_file(std::path::Path::new(endpoint.host()), endpoint.port());
+    Ok(Arc::new(tablepro_net::LocalSocketTransport::new(
+        socket,
+        endpoint.clone(),
+        &liveness,
+    )))
+}
+
+// No engine offers a socket here (its capabilities leave it out off Unix), so this is a saved file's.
+#[cfg(not(unix))]
+fn local_socket_transport(
+    _naming: LocalSocket,
+    _endpoint: &NetworkEndpoint,
+    _liveness: LivenessPolicy,
+) -> Result<Arc<dyn Transport>, ConnectError> {
+    Err(ConnectError::Driver(ConfigError::LocalSocketUnsupported.into()))
+}
+
 /// A request the driver cannot serve is refused before anything is
 /// opened: a saved file can name an auth mode or TLS option the driver
 /// never had, and sending it anyway fails as a confusing login error.
@@ -170,15 +210,19 @@ fn validate(request: &ConnectRequest) -> Result<(), ConnectError> {
             feature: UnsupportedFeature::NetworkConnection,
         }),
         RequestTarget::Network {
+            endpoint,
+            ssh,
             credentials,
             database,
             tls,
             options,
-            ..
         } => {
             if !capabilities.supports(credentials.mode()) {
                 return refuse(ConfigError::AuthModeUnsupported.into());
             }
+            capabilities
+                .check_socket_host(endpoint.host(), ssh.is_some())
+                .map_err(DriverError::from)?;
             match (&capabilities.tls, request.target.transport_class()) {
                 (Some(caps), Some(route)) => tls.validate(caps, route).map_err(DriverError::from)?,
                 _ if tls.mode != TlsMode::Disable => return refuse(ConfigError::UnsupportedTlsMode.into()),
@@ -350,6 +394,77 @@ mod tests {
         assert_eq!(sent.transport.service_endpoint().host(), "db.example.com");
         assert_eq!(sent.database.as_deref(), Some("shop"));
         assert!(pending.established().ssh_session.is_none());
+    }
+
+    const SOCKET_CAPABILITIES: DriverCapabilities = DriverCapabilities {
+        network_options: &[tablepro_core::NetworkOption::LocalSocket(LocalSocket::Folder {
+            file_prefix: ".s.PGSQL.",
+            defaults: &["/run/postgresql"],
+        })],
+        ..FakeDriver::NETWORK_CAPABILITIES
+    };
+
+    const SOCKET_WITH_TLS: DriverCapabilities = DriverCapabilities {
+        tls: Some(tablepro_core::TlsCapabilities {
+            modes: &[TlsMode::Disable, TlsMode::VerifyFull],
+            ca_file: false,
+            client_identity: false,
+            server_name_override: tablepro_core::ServerNameOverride::Unsupported,
+        }),
+        ..SOCKET_CAPABILITIES
+    };
+
+    fn socket_target() -> RequestTarget {
+        RequestTarget::Network {
+            endpoint: NetworkEndpoint::new("/run/postgresql", 5433).unwrap(),
+            ssh: None,
+            credentials: password(),
+            database: Some("shop".to_owned()),
+            tls: TlsConfig::disabled(),
+            options: Default::default(),
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(start_paused = true)]
+    async fn a_socket_host_dials_the_socket_the_engine_names() {
+        let driver = Arc::new(FakeDriver::connecting(&SOCKET_CAPABILITIES, cataloguing()));
+
+        establish(request(driver.clone(), socket_target()), CancellationToken::new())
+            .await
+            .unwrap();
+
+        let ConnectTarget::Network(sent) = &driver.requests()[0].target else {
+            panic!("a network request reached the driver as a file");
+        };
+        assert_eq!(
+            sent.transport.kind(),
+            TransportKind::LocalSocket {
+                path: PathBuf::from("/run/postgresql/.s.PGSQL.5433")
+            }
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_socket_host_is_refused_by_an_engine_without_one_and_over_tls() {
+        let without = Arc::new(FakeDriver::connecting(&FakeDriver::NETWORK_CAPABILITIES, cataloguing()));
+        let refused = establish(request(without.clone(), socket_target()), CancellationToken::new()).await;
+        assert_eq!(
+            refused.unwrap_err(),
+            ConnectError::Driver(DriverError::Config(ConfigError::LocalSocketUnsupported))
+        );
+
+        let driver = Arc::new(FakeDriver::connecting(&SOCKET_WITH_TLS, cataloguing()));
+        let mut target = socket_target();
+        if let RequestTarget::Network { tls, .. } = &mut target {
+            *tls = TlsConfig::verify_full();
+        }
+        let refused = establish(request(driver.clone(), target), CancellationToken::new()).await;
+        assert_eq!(
+            refused.unwrap_err(),
+            ConnectError::Driver(DriverError::Config(ConfigError::TlsOverLocalSocket))
+        );
+        assert!(without.requests().is_empty() && driver.requests().is_empty());
     }
 
     #[tokio::test(start_paused = true)]

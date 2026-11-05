@@ -12,6 +12,7 @@ comfy-table.workspace = true
 csv.workspace = true
 futures.workspace = true
 num-bigint.workspace = true
+percent-encoding.workspace = true
 rust_xlsxwriter.workspace = true
 rustls-pki-types.workspace = true
 secrecy.workspace = true

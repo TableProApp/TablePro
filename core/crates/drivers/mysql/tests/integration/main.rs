@@ -13,6 +13,8 @@ mod decode;
 mod editor_session;
 mod flavour_suite;
 mod lenient_server;
+#[cfg(unix)]
+mod local_socket;
 mod metadata;
 mod non_transactional;
 mod round_trip;

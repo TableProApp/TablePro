@@ -1,5 +1,7 @@
 use crate::auth_mode::AuthMode;
+use crate::config_error::ConfigError;
 use crate::file_format::FileFormat;
+use crate::local_socket::{LocalSocket, is_local_socket_host};
 use crate::meta::ObjectKind;
 use crate::network_options::NetworkOption;
 use crate::tls_capabilities::TlsCapabilities;
@@ -146,6 +148,27 @@ impl DriverCapabilities {
     pub fn offers(&self, option: NetworkOption) -> bool {
         self.network_options.contains(&option)
     }
+
+    pub fn local_socket(&self) -> Option<LocalSocket> {
+        self.network_options.iter().find_map(|option| match option {
+            NetworkOption::LocalSocket(socket) => Some(*socket),
+            _ => None,
+        })
+    }
+
+    // The socket is this machine's, so a tunnel never reaches it.
+    pub fn check_socket_host(&self, host: &str, tunnelled: bool) -> Result<(), ConfigError> {
+        if !is_local_socket_host(host.trim()) {
+            return Ok(());
+        }
+        if self.local_socket().is_none() {
+            return Err(ConfigError::LocalSocketUnsupported);
+        }
+        if tunnelled {
+            return Err(ConfigError::LocalSocketOverSsh);
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -201,5 +224,30 @@ mod tests {
         assert_eq!(NETWORK.file_format(), None);
         assert!(NETWORK.supports(AuthMode::Password));
         assert!(!NETWORK.supports(AuthMode::Kerberos));
+    }
+
+    #[test]
+    fn a_socket_host_needs_an_engine_that_reads_one_and_no_tunnel() {
+        const SOCKET: LocalSocket = LocalSocket::Folder {
+            file_prefix: ".s.PGSQL.",
+            defaults: &["/run/postgresql"],
+        };
+        let with_socket = DriverCapabilities {
+            network_options: &[NetworkOption::LocalSocket(SOCKET)],
+            ..NETWORK
+        };
+
+        assert_eq!(with_socket.local_socket(), Some(SOCKET));
+        assert_eq!(NETWORK.local_socket(), None);
+        assert_eq!(with_socket.check_socket_host("/run/postgresql", false), Ok(()));
+        assert_eq!(with_socket.check_socket_host("db.example.com", true), Ok(()));
+        assert_eq!(
+            with_socket.check_socket_host("/run/postgresql", true),
+            Err(ConfigError::LocalSocketOverSsh)
+        );
+        assert_eq!(
+            NETWORK.check_socket_host(" /run/postgresql", false),
+            Err(ConfigError::LocalSocketUnsupported)
+        );
     }
 }

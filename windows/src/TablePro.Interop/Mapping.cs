@@ -354,7 +354,11 @@ internal static class Mapping
         url.Username,
         url.Password,
         url.Database,
-        url.TlsMode is { } mode ? Tls(mode) : null);
+        url.TlsMode is { } mode ? Tls(mode) : null,
+        url.CaFile,
+        url.ClientCertificate,
+        url.ClientKey,
+        url.ServerName);
 
     private static Native.TlsModeTag Tls(TlsMode mode) => mode switch
     {

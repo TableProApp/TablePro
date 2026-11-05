@@ -5,7 +5,7 @@ use deadpool::managed::{PoolError, TimeoutType};
 use sqlx::mysql::MySqlDatabaseError;
 use tablepro_core::{
     BusyReason, DriverError, LossPhase, NetworkEndpoint, ReadOnlyRefusal, ServerCode, ServerDiagnostics, TimeoutPhase,
-    TlsFailure, TransportError,
+    TlsFailure, TransportError, UnsupportedFeature,
 };
 
 use crate::flavour::MySqlFlavour;
@@ -68,6 +68,12 @@ pub(crate) fn map_connect_error(error: &sqlx::Error, endpoint: &NetworkEndpoint)
             Some((failure, detail)) => DriverError::Tls { failure, detail },
             None => connect_io_error(io, endpoint),
         },
+        // sqlx speaks four client plugins and names any other this way, as on MariaDB's ed25519 and parsec.
+        sqlx::Error::Protocol(message) if message.starts_with("unknown authentication plugin") => {
+            DriverError::Unsupported {
+                feature: UnsupportedFeature::AuthPlugin,
+            }
+        }
         other => match map_with(other, None) {
             DriverError::ConnectionLost { .. } => DriverError::ConnectionLost {
                 during: LossPhase::Connect,
@@ -254,6 +260,21 @@ mod tests {
                 server_cancelled: true
             }
         )
+    }
+
+    #[test]
+    fn an_account_on_a_plugin_sqlx_lacks_is_an_unsupported_login() {
+        let endpoint = NetworkEndpoint::new("db.example.com", 3306).unwrap();
+        let ed25519 = sqlx::Error::Protocol("unknown authentication plugin: client_ed25519".to_owned());
+        let other = sqlx::Error::Protocol("unexpected packet".to_owned());
+
+        assert_eq!(
+            map_connect_error(&ed25519, &endpoint),
+            DriverError::Unsupported {
+                feature: UnsupportedFeature::AuthPlugin
+            }
+        );
+        assert!(matches!(map_connect_error(&other, &endpoint), DriverError::Protocol(_)));
     }
 
     #[test]

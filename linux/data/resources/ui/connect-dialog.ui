@@ -32,6 +32,23 @@
             <property name="child">
               <object class="AdwPreferencesPage">
                 <child>
+                  <!-- Fills the rows below and is cleared, so a password in it is never kept here. -->
+                  <object class="AdwPreferencesGroup" id="url_group">
+                    <property name="description" translatable="yes">Paste a URL such as postgresql://user@host:5432/database to fill in the fields below</property>
+                    <child>
+                      <object class="AdwEntryRow" id="url_row">
+                        <property name="title" translatable="yes">Connection URL</property>
+                        <property name="show-apply-button">true</property>
+                        <property name="input-purpose">url</property>
+                        <property name="input-hints">no-spellcheck | no-emoji</property>
+                        <property name="activates-default">false</property>
+                        <!-- Undo would bring a cleared password back. -->
+                        <property name="enable-undo">false</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
                   <object class="AdwPreferencesGroup">
                     <property name="title" translatable="yes">Connection</property>
                     <child>
@@ -51,6 +68,13 @@
                       </object>
                     </child>
                     <child>
+                      <!-- Shown for an engine whose client reaches a server on this computer through its Unix-domain socket. -->
+                      <object class="AdwSwitchRow" id="socket_row">
+                        <property name="title" translatable="yes">Unix Socket</property>
+                        <property name="subtitle" translatable="yes">Connect to a server on this computer through its socket</property>
+                      </object>
+                    </child>
+                    <child>
                       <object class="AdwEntryRow" id="host_row">
                         <property name="title" translatable="yes">Host</property>
                         <property name="activates-default">true</property>
@@ -62,6 +86,22 @@
                       <object class="AdwSwitchRow" id="seed_list_row">
                         <property name="title" translatable="yes">DNS Seed List</property>
                         <property name="subtitle" translatable="yes">Find the servers from the host’s SRV record, as mongodb+srv:// does</property>
+                      </object>
+                    </child>
+                    <child>
+                      <!-- A replica set's members besides the host, for the client to find the set from. -->
+                      <object class="AdwEntryRow" id="more_hosts_row">
+                        <property name="title" translatable="yes">Other Hosts (optional)</property>
+                        <property name="tooltip-text" translatable="yes">Each as host:port, separated by commas</property>
+                        <property name="activates-default">true</property>
+                        <property name="input-hints">no-spellcheck | no-emoji</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwEntryRow" id="replica_set_row">
+                        <property name="title" translatable="yes">Replica Set (optional)</property>
+                        <property name="activates-default">true</property>
+                        <property name="input-hints">no-spellcheck | no-emoji</property>
                       </object>
                     </child>
                     <child>

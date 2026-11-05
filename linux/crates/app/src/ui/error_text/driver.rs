@@ -1,6 +1,6 @@
 use tablepro_core::{
-    BusyReason, ConfigError, DriverError, ErrorCategory, ReadOnlyRefusal, ServerCode, ServerDiagnostics, TimeoutPhase,
-    TransportError,
+    BusyReason, ConfigError, DriverError, ErrorCategory, LocalSocketProblem, ReadOnlyRefusal, ServerCode,
+    ServerDiagnostics, TimeoutPhase, TransportError,
 };
 
 use super::files::{certificate_problem_text, file_io_message};
@@ -103,6 +103,21 @@ pub fn config_message(error: &ConfigError) -> String {
         ConfigError::NetworkOptionUnsupported => {
             crate::i18n::gettext("This database does not take one of this connection's options.")
         }
+        ConfigError::HostListOverSsh => crate::i18n::gettext(
+            "A replica set's other members cannot be reached through an SSH tunnel. Remove the other hosts and the replica set, or turn the tunnel off.",
+        ),
+        ConfigError::HostListWithSeedList => crate::i18n::gettext(
+            "A DNS seed list names the servers itself. Remove the other hosts, or turn the seed list off.",
+        ),
+        ConfigError::LocalSocketUnsupported => {
+            crate::i18n::gettext("This database does not connect through a socket. Enter the server's host name.")
+        }
+        ConfigError::LocalSocketOverSsh => crate::i18n::gettext(
+            "A socket is on this computer, so an SSH tunnel cannot reach it. Turn the tunnel off, or enter the server's host name.",
+        ),
+        ConfigError::TlsOverLocalSocket => crate::i18n::gettext(
+            "This connection asks for TLS over a socket on this computer, which takes none. Edit the connection and save it to turn TLS off.",
+        ),
     }
 }
 
@@ -119,7 +134,35 @@ fn network_message(error: &DriverError) -> String {
             "Could not reach {host}:{port}.",
             &[("host", endpoint.host()), ("port", &endpoint.port().to_string())],
         ),
+        DriverError::Transport(TransportError::LocalSocket { path, problem }) => local_socket_message(path, problem),
         _ => crate::i18n::gettext("The server could not be reached."),
+    }
+}
+
+fn local_socket_message(path: &std::path::Path, problem: &LocalSocketProblem) -> String {
+    let path = path.display().to_string();
+    match problem {
+        // Flatpak sets FLATPAK_ID in every sandbox, and the sandbox has its own /tmp and /var/run.
+        LocalSocketProblem::Missing if std::env::var_os("FLATPAK_ID").is_some() => crate::i18n::gettext_f(
+            "No socket is at {path}. The Flatpak sees only the sockets under /run/postgresql and /run/mysqld; connect to 127.0.0.1 for another one.",
+            &[("path", &path)],
+        ),
+        LocalSocketProblem::Missing => crate::i18n::gettext_f(
+            "No socket is at {path}. Is the database running, and is this where it puts its socket?",
+            &[("path", &path)],
+        ),
+        LocalSocketProblem::Refused => crate::i18n::gettext_f(
+            "Nothing is listening on {path}. Is the database running?",
+            &[("path", &path)],
+        ),
+        LocalSocketProblem::PermissionDenied => crate::i18n::gettext_f(
+            "You may not open the socket {path}. Ask for access to it, or connect over the network.",
+            &[("path", &path)],
+        ),
+        LocalSocketProblem::Other { detail } => crate::i18n::gettext_f(
+            "Could not connect to the socket {path}: {detail}",
+            &[("path", &path), ("detail", detail)],
+        ),
     }
 }
 

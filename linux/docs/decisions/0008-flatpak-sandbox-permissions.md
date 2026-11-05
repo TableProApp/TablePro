@@ -1,6 +1,6 @@
 # 0008: Flatpak sandbox permissions
 
-- **Status**: Accepted; the Flathub submission deferred by 0018
+- **Status**: Accepted; the Flathub submission deferred by 0018; amended by 0034
 - **Date**: 2026-10-14
 
 ## Context

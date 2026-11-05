@@ -1,5 +1,5 @@
 // Two entries name one connection when these match. The core keeps a Redis database index in
-// `database` and has no socket path, so the macOS key's extra fields have no home here.
+// `database` and a socket path in `host`, so the macOS key's extra fields have no home here.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(super) struct MatchKey {
     host: String,

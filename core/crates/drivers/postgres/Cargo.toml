@@ -28,6 +28,7 @@ uuid.workspace = true
 tablepro-test-fixtures.workspace = true
 tablepro-test-support.workspace = true
 rustls.workspace = true
+tempfile.workspace = true
 tokio = { workspace = true, features = ["io-util", "test-util"] }
 
 [lints]

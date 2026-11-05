@@ -6,8 +6,8 @@ use secrecy::ExposeSecret;
 use sqlx::mysql::{MySqlConnectOptions, MySqlConnection, MySqlSslMode};
 use sqlx::{AssertSqlSafe, ConnectOptions as _, Executor as _, Row as _};
 use tablepro_core::{
-    ConfigError, Credentials, DriverError, LivenessPolicy, NetworkEndpoint, NetworkTarget, TimeoutPhase, TlsMode,
-    Transport, TransportError, TransportRoute,
+    ConfigError, Credentials, DriverError, LivenessPolicy, LocalSocketProblem, NetworkEndpoint, NetworkTarget,
+    TimeoutPhase, TlsMode, Transport, TransportClass, TransportError, TransportKind, TransportRoute,
 };
 use tablepro_net::PrivateAddress;
 use tokio_util::sync::CancellationToken;
@@ -63,10 +63,17 @@ impl MysqlEndpoint {
             return Err(DriverError::Config(ConfigError::AuthModeUnsupported));
         };
         tablepro_net::tls::check_pem_files(&target.tls)?;
+        let local_socket = target.transport.kind().class() == TransportClass::LocalSocket;
+        // MySQL counts a socket as secure and expects caching_sha2_password's cleartext there,
+        // which sqlx sends only inside TLS: without it the first login after a restart is refused.
+        let ssl = match local_socket {
+            true => MySqlSslMode::Preferred,
+            false => ssl_mode(target.tls.mode)?,
+        };
         let mut options = MySqlConnectOptions::new()
             .username(username)
             .password(password.expose_secret())
-            .ssl_mode(ssl_mode(target.tls.mode)?)
+            .ssl_mode(ssl)
             // Each of these would send a session statement of sqlx's own
             // at login, and the session must be the server's default.
             .pipes_as_concat(false)
@@ -98,10 +105,15 @@ impl MysqlEndpoint {
                     .ssl_client_key_from_pem(identity.key);
             }
         }
+        // sqlx makes a TLS name of `host` even unchecked, and a socket's path is none.
+        let tls_server_name = match local_socket {
+            true => "localhost".to_owned(),
+            false => target.tls_server_name().to_owned(),
+        };
         Ok(Self {
             transport: target.transport.clone(),
             options,
-            tls_server_name: target.tls_server_name().to_owned(),
+            tls_server_name,
             verifies_name: target.tls.mode == TlsMode::VerifyFull,
             liveness,
             relay: OnceLock::new(),
@@ -202,7 +214,7 @@ impl MysqlEndpoint {
         }
         let mut connection = match options.connect().await {
             Ok(connection) => connection,
-            Err(error) => return Err(self.explain(map_connect_error(&error, self.service())).await),
+            Err(error) => return Err(self.explain(self.connect_error(&error)).await),
         };
         let (connection_id, version) = identify(&mut connection, self.service()).await?;
         let flavour = MySqlFlavour::detect(&version);
@@ -227,6 +239,24 @@ impl MysqlEndpoint {
             version,
             flavour,
         })
+    }
+
+    // sqlx opens a local socket itself, so the transport never says what was wrong with it.
+    fn connect_error(&self, error: &sqlx::Error) -> DriverError {
+        if let (TransportKind::LocalSocket { path }, sqlx::Error::Io(io)) = (self.transport.kind(), error)
+            && matches!(
+                io.kind(),
+                std::io::ErrorKind::NotFound
+                    | std::io::ErrorKind::ConnectionRefused
+                    | std::io::ErrorKind::PermissionDenied
+            )
+        {
+            return DriverError::Transport(TransportError::LocalSocket {
+                path,
+                problem: LocalSocketProblem::from_io(io),
+            });
+        }
+        map_connect_error(error, self.service())
     }
 
     /// A stream that closed may be the transport's doing, such as an SSH
@@ -469,6 +499,51 @@ mod tests {
         assert_eq!(
             options.get_socket().map(|path| path.as_path()),
             Some(std::path::Path::new("/run/user/1000/forward.sock"))
+        );
+    }
+
+    #[test]
+    fn a_local_socket_logs_in_with_tls_when_offered_under_a_name_sqlx_accepts() {
+        let socket = mysql_endpoint_with(
+            Route {
+                service: endpoint("/run/mysqld/mysqld.sock"),
+                kind: TransportKind::LocalSocket {
+                    path: "/run/mysqld/mysqld.sock".into(),
+                },
+                route: TransportRoute::UnixSocket("/run/mysqld/mysqld.sock".into()),
+            },
+            TlsConfig::disabled(),
+        );
+
+        let options = socket.options_for(SessionKind::Workspace).unwrap();
+
+        assert_eq!(options.get_host(), "localhost");
+        assert_eq!(
+            options.get_socket().map(|path| path.as_path()),
+            Some(std::path::Path::new("/run/mysqld/mysqld.sock"))
+        );
+        assert!(matches!(options.get_ssl_mode(), MySqlSslMode::Preferred));
+    }
+
+    #[test]
+    fn a_missing_local_socket_is_reported_as_the_socket() {
+        let path = std::path::PathBuf::from("/run/mysqld/mysqld.sock");
+        let socket = mysql_endpoint_with(
+            Route {
+                service: endpoint("/run/mysqld/mysqld.sock"),
+                kind: TransportKind::LocalSocket { path: path.clone() },
+                route: TransportRoute::UnixSocket(path.clone()),
+            },
+            TlsConfig::disabled(),
+        );
+        let missing = sqlx::Error::Io(std::io::Error::from(std::io::ErrorKind::NotFound));
+
+        assert_eq!(
+            socket.connect_error(&missing),
+            DriverError::Transport(TransportError::LocalSocket {
+                path,
+                problem: LocalSocketProblem::Missing,
+            })
         );
     }
 

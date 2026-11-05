@@ -5,6 +5,7 @@
 //! adds later still lands in a branch that says what to do next; the
 //! variant only adds detail.
 
+mod connection_url;
 mod ddl;
 mod driver;
 mod edit;
@@ -23,6 +24,7 @@ mod tls;
 mod tls_remedy;
 mod unsupported;
 
+pub use connection_url::connection_url_message;
 pub use ddl::{build_error_text, refusal_text, save_blocker_text};
 pub use driver::{config_message, driver_message};
 pub use edit::{edit_parse_message, row_error_message};
