@@ -69,7 +69,8 @@ TABLEPRO_APP_BUNDLE_IDENTIFIER = com.TablePro
 // Only the app target reads this, so a profile passed here never reaches a plugin or package target.
 TABLEPRO_PROVISIONING_PROFILE =
 
-// The PostHog project both apps send usage data to. Empty sends nothing; a release sets it in Secrets.xcconfig.
+// The PostHog project both apps send usage data to. Empty sends nothing; a release sets it in Secrets.xcconfig, and
+// Debug.xcconfig empties it again.
 POSTHOG_PROJECT_KEY =
 
 #include? "Secrets.xcconfig"

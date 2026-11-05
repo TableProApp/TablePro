@@ -243,6 +243,13 @@ struct TelemetryTests {
         #expect(fixture.client?.calls == [.optIn])
     }
 
+    #if DEBUG
+    @Test("A Debug build carries no PostHog project key, so local runs and tests never make a client")
+    func debugBuildHasNoProjectKey() {
+        #expect(PostHogTelemetryClient.projectKey(from: Bundle.main.object(forInfoDictionaryKey: "PostHogProjectKey")) == nil)
+    }
+    #endif
+
     @Test("The PostHog client on iOS collects nothing on its own and shows nothing")
     func postHogConfiguration() {
         let config = PostHogTelemetryClient.configuration(projectKey: "phc_test")

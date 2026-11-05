@@ -179,6 +179,13 @@ struct TelemetryTests {
         #expect(PostHogTelemetryClient.projectKey(from: " phc_abc ") == "phc_abc")
     }
 
+    #if DEBUG
+    @Test("A Debug build carries no PostHog project key, so local runs and tests never make a client")
+    func debugBuildHasNoProjectKey() {
+        #expect(PostHogTelemetryClient.projectKey(from: Bundle.main.object(forInfoDictionaryKey: "PostHogProjectKey")) == nil)
+    }
+    #endif
+
     @Test("With Share Usage Data off no client is made, so PostHog is never contacted")
     func optedOutMakesNoClient() async throws {
         let fixture = try TelemetryFixture(sharesUsageData: false)
