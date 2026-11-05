@@ -5,8 +5,9 @@ name: Linux packages
 # builds for, and its binaries are built from it the way Launchpad builds
 # them: offline, in a fresh container with only the declared build
 # dependencies, then checked with lintian. The .rpm is built in a fresh
-# fedora:44 with only its BuildRequires. Each package is then installed in
-# another fresh container with only its runtime dependencies and started.
+# container of each Fedora release COPR builds for, with only its
+# BuildRequires. Each package is then installed in another fresh container
+# of its release with only its runtime dependencies and started.
 # release-linux.yml calls this workflow and uploads the source packages.
 # A run by hand can add arm64, which the nightly and pull requests leave out.
 # Given a release tag, it packages that release's tarballs instead, with
@@ -196,17 +197,19 @@ jobs:
           if-no-files-found: error
 
   rpm:
-    name: RPM package (${{ matrix.runner }})
+    name: RPM package (Fedora ${{ matrix.fedora }}, ${{ matrix.runner }})
     needs: sources
     if: inputs.release-tag == ''
     strategy:
       fail-fast: false
       matrix:
         runner: ${{ fromJSON(inputs.rpm-runners || (inputs.arm64 && '["ubuntu-24.04", "ubuntu-24.04-arm"]') || '["ubuntu-24.04"]') }}
+        # Every Fedora release the COPR project builds for.
+        fedora: ["44", "45"]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 300
     container:
-      image: fedora:44
+      image: fedora:${{ matrix.fedora }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -224,7 +227,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: linux-rpm-testlog-${{ runner.arch }}
+          name: linux-rpm-testlog-${{ matrix.fedora }}-${{ runner.arch }}
           path: |
             _packages/rpm/testlog.txt
             _packages/rpm/disk-usage.tsv
@@ -233,28 +236,29 @@ jobs:
           retention-days: 7
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: linux-rpm-${{ runner.arch }}
+          name: linux-rpm-${{ matrix.fedora }}-${{ runner.arch }}
           path: _packages/rpm
           if-no-files-found: error
 
   rpm-install:
-    name: Install the RPM package (${{ matrix.runner }})
+    name: Install the RPM package (Fedora ${{ matrix.fedora }}, ${{ matrix.runner }})
     needs: rpm
     strategy:
       fail-fast: false
       matrix:
         runner: ${{ fromJSON(inputs.rpm-runners || (inputs.arm64 && '["ubuntu-24.04", "ubuntu-24.04-arm"]') || '["ubuntu-24.04"]') }}
+        fedora: ["44", "45"]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     container:
-      image: fedora:44
+      image: fedora:${{ matrix.fedora }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: linux-rpm-${{ runner.arch }}
+          name: linux-rpm-${{ matrix.fedora }}-${{ runner.arch }}
           path: _packages/rpm
       - name: Install, start and validate
         run: |

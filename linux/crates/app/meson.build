@@ -60,7 +60,14 @@ test(
   'workspace',
   cargo,
   # windows.yml tests tablepro-ffi, whose binaries each link every engine and filled a package builder's disk.
-  args: ['test'] + cargo_options + ['--workspace', '--exclude', 'tablepro', '--exclude', 'tablepro-ffi'],
+  # tablepro-bindgen is the macOS build's generator, and uniffi's CLI changes the build dependencies'
+  # features, so the gtk suite then built DuckDB's C++ again.
+  args: ['test'] + cargo_options + [
+    '--workspace',
+    '--exclude', 'tablepro',
+    '--exclude', 'tablepro-ffi',
+    '--exclude', 'tablepro-bindgen',
+  ],
   env: test_env,
   suite: 'unit',
   is_parallel: false,

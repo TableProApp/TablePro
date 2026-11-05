@@ -459,6 +459,9 @@ jobs:
             release: postgres-14
             postgres: "14"
           - package: tablepro-driver-postgres
+            release: postgres-15
+            postgres: "15"
+          - package: tablepro-driver-postgres
             release: postgres-18
             postgres: "18"
           - package: tablepro-driver-mysql

@@ -1,8 +1,8 @@
 #!/bin/sh
 # Builds the source and binary RPMs from the two release tarballs, as root
-# in a fresh fedora:44, with only the BuildRequires the spec declares, and
-# checks them with rpmlint. COPR builds the same spec in mock from the
-# release (build-aux/rpm/copr-sources.sh).
+# in a fresh Fedora container, with only the BuildRequires the spec
+# declares, and checks them with rpmlint. COPR builds the same spec in mock
+# from the release (build-aux/rpm/copr-sources.sh).
 # Usage: build-rpm.sh <tablepro-X.Y.Z.tar.xz> <tablepro-X.Y.Z-vendor.tar.xz> <output dir>
 set -eu
 

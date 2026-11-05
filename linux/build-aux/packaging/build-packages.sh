@@ -2,13 +2,13 @@
 # Builds the Ubuntu and Fedora packages from the committed tree the way CI
 # does, each step in a fresh container: the source tarballs in
 # ubuntu:26.04; the Debian source package for each Ubuntu series and its
-# binaries, built offline by build-deb.sh; the .rpm in fedora:44; and each
-# package installed and started in another fresh container. The steps
-# write to a container volume that is removed at the end, and the packages
-# land in <output dir>.
+# binaries, built offline by build-deb.sh; the .rpm in a Fedora release;
+# and each package installed and started in another fresh container. The
+# steps write to a container volume that is removed at the end, and the
+# packages land in <output dir>.
 # Usage: build-packages.sh deb|rpm|all <output dir> [series...]
-# The series default to resolute. CONTAINER_ENGINE picks docker (the
-# default) or podman.
+# The series default to resolute and the Fedora release to 44, which
+# FEDORA changes. CONTAINER_ENGINE picks docker (the default) or podman.
 set -eu
 
 usage() {
@@ -17,6 +17,7 @@ usage() {
 }
 
 engine="${CONTAINER_ENGINE:-docker}"
+fedora="${FEDORA:-44}"
 [ $# -ge 2 ] || usage
 which="$1"
 case "$which" in
@@ -63,7 +64,7 @@ if [ "$which" != rpm ]; then
     done
 fi
 if [ "$which" != deb ]; then
-    run fedora:44 "$here/build-rpm.sh" "$dist" "$vendor" "$out/rpm"
-    run fedora:44 "$here/smoke-test.sh" "$(find "$out/rpm" -name 'tablepro-[0-9]*.rpm' ! -name '*.src.rpm')" \
+    run "fedora:$fedora" "$here/build-rpm.sh" "$dist" "$vendor" "$out/rpm"
+    run "fedora:$fedora" "$here/smoke-test.sh" "$(find "$out/rpm" -name 'tablepro-[0-9]*.rpm' ! -name '*.src.rpm')" \
         "$root/po/LINGUAS"
 fi
