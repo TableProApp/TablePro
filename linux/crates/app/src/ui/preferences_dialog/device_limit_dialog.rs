@@ -138,11 +138,7 @@ impl DeviceLimitDialog {
     }
 
     fn row(self: &Rc<Self>, device: &DeviceRow, removing: Option<&str>) -> adw::ActionRow {
-        let row = adw::ActionRow::builder()
-            .use_markup(false)
-            .title(&device.name)
-            .subtitle(&device.subtitle)
-            .build();
+        let row = super::account_page::plain_row(&device.name, Some(&device.subtitle));
         match &device.removal {
             Removal::KeptUntil(until) => {
                 let label = gtk4::Label::builder().label(until).valign(gtk4::Align::Center).build();

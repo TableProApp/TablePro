@@ -360,6 +360,15 @@ mod tests {
         }
     }
 
+    // A plain test thread may not take GLib's default context, which the GTK tests hold, so this polls.
+    fn until(condition: impl Fn() -> bool) {
+        let started = std::time::Instant::now();
+        while !condition() {
+            assert!(started.elapsed() < Duration::from_secs(20), "gave up waiting");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
     #[test]
     fn only_a_run_that_worked_counts_as_the_first_query() {
         let runtime = crate::test_support::test_runtime();
@@ -381,7 +390,7 @@ mod tests {
             true,
             &runtime.tasks(),
         );
-        crate::test_support::wait_until(Duration::from_secs(20), || telemetry.is_sending()).expect("sending");
+        until(|| telemetry.is_sending());
         // The history is off: the run is still counted.
         let service = HistoryService::start(paths(&root), preferences(30, false), &runtime.tasks())
             .with_telemetry(telemetry.clone());
@@ -395,10 +404,7 @@ mod tests {
         drop(service.record(run_of("SELECT 2"), fake_dialect()));
         telemetry.flush();
 
-        crate::test_support::wait_until(Duration::from_secs(20), || {
-            !collector.named("first_query_executed").is_empty()
-        })
-        .expect("the first query sent");
+        until(|| !collector.named("first_query_executed").is_empty());
         assert_eq!(after_the_failure, 0);
         assert_eq!(collector.named("first_query_executed").len(), 1);
     }

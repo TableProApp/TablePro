@@ -718,11 +718,7 @@ impl AccountPage {
     }
 
     fn plan_row(&self, license: &PlanRow) -> adw::ActionRow {
-        let row = adw::ActionRow::builder()
-            .use_markup(false)
-            .title(&license.title)
-            .subtitle(&license.subtitle)
-            .build();
+        let row = plain_row(&license.title, Some(&license.subtitle));
         let Some(path) = license.billing.clone() else {
             return row;
         };
@@ -749,11 +745,7 @@ impl AccountPage {
         };
         let busy = self.imp().busy.get();
         for device in rows {
-            let row = adw::ActionRow::builder()
-                .use_markup(false)
-                .title(&device.name)
-                .subtitle(&device.subtitle)
-                .build();
+            let row = plain_row(&device.name, Some(&device.subtitle));
             match &device.removal {
                 Removal::ThisDevice => {}
                 Removal::KeptUntil(until) => row.add_suffix(&dim_label(until)),
@@ -896,11 +888,8 @@ impl AccountPage {
     }
 
     fn web_row(&self, title: &str, address: &'static str) -> adw::ActionRow {
-        let row = adw::ActionRow::builder()
-            .use_markup(false)
-            .title(title)
-            .activatable(true)
-            .build();
+        let row = plain_row(title, None);
+        row.set_activatable(true);
         row.add_suffix(&decoration(icons::WEB_BROWSER));
         row.set_tooltip_text(Some(&gettext("Opens in your web browser")));
         let page = self.downgrade();
@@ -913,14 +902,8 @@ impl AccountPage {
     }
 
     fn link_row(&self, title: &str, subtitle: Option<&str>, path: &str) -> adw::ActionRow {
-        let row = adw::ActionRow::builder()
-            .use_markup(false)
-            .title(title)
-            .activatable(true)
-            .build();
-        if let Some(subtitle) = subtitle {
-            row.set_subtitle(subtitle);
-        }
+        let row = plain_row(title, subtitle);
+        row.set_activatable(true);
         row.add_suffix(&decoration(icons::WEB_BROWSER));
         row.set_tooltip_text(Some(&gettext("Opens in your web browser")));
         let page = self.downgrade();
@@ -1069,10 +1052,7 @@ fn machine_id_markup(machine_id: &str) -> String {
 }
 
 fn identity_row(name: &str, email: Option<&str>) -> adw::ActionRow {
-    let row = adw::ActionRow::builder().use_markup(false).title(name).build();
-    if let Some(email) = email {
-        row.set_subtitle(email);
-    }
+    let row = plain_row(name, email);
     let avatar = adw::Avatar::builder()
         .size(40)
         .text(name)
@@ -1083,12 +1063,19 @@ fn identity_row(name: &str, email: Option<&str>) -> adw::ActionRow {
     row
 }
 
+// Names and messages from the account service are never markup. The text goes in after construction, since the labels
+// take use-markup only once the row's own notifications are let out.
+pub(super) fn plain_row(title: &str, subtitle: Option<&str>) -> adw::ActionRow {
+    let row = adw::ActionRow::builder().use_markup(false).build();
+    row.set_title(title);
+    if let Some(subtitle) = subtitle {
+        row.set_subtitle(subtitle);
+    }
+    row
+}
+
 fn warning_row(title: &str, body: &str) -> adw::ActionRow {
-    let row = adw::ActionRow::builder()
-        .use_markup(false)
-        .title(title)
-        .subtitle(body)
-        .build();
+    let row = plain_row(title, Some(body));
     let icon = decoration(icons::DIALOG_WARNING);
     icon.add_css_class("warning");
     row.add_prefix(&icon);
