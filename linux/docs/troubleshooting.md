@@ -73,6 +73,8 @@ Read the log before you attach it. It names your hosts, databases and tables. It
 
 TablePro writes a report of each crash to `~/.local/state/tablepro/crashes/`. Attach the newest one to the bug report, with the log from the same time.
 
+The Flatpak's line tables, which turn a backtrace's addresses into files and lines, are its `.Debug` extension, from the repository it came from: `flatpak install tablepro app.tablepro.TablePro.Debug//stable`, or `tablepro-beta` and `//beta` for the beta. With flatpak-builder and the GNOME 51 SDK installed, `flatpak-coredumpctl app.tablepro.TablePro` then opens a crash's core dump in gdb with them.
+
 ## Reporting a bug
 
 Open an issue at https://github.com/TableProApp/TablePro/issues with:

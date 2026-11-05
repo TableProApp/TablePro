@@ -9,8 +9,9 @@
 # the release key; CI's install test with a throwaway one.
 #
 # Usage:
-#   flatpak-repo.sh import <build repo> <repo> <key>
-#       Commits the app of each architecture in the build repo to <repo>, signed.
+#   flatpak-repo.sh import <build repo> <repo> <key> [<branch>]
+#       Commits the app and its .Debug extension of each architecture in the
+#       build repo to <repo>, signed, on <branch> when given.
 #   flatpak-repo.sh update <repo> <branch> <key> <url>
 #       Writes the signed summary and the deltas, prunes, and writes the
 #       .flatpakrepo and .flatpakref that name <url>, where <repo> is served.
@@ -44,17 +45,24 @@ app_refs() {
 import() {
     src="$1"
     repo="$2"
+    if [ -n "${4:-}" ]; then
+        check_branch "$4"
+    fi
     if [ ! -d "$repo/objects" ]; then
         mkdir -p "$repo"
         ostree init --mode=archive-z2 --repo="$repo"
     fi
-    refs="$(ostree refs --repo="$src" | grep "^app/$app/" || true)"
-    if [ -z "$refs" ]; then
+    if [ -z "$(ostree refs --repo="$src" | grep "^app/$app/" || true)" ]; then
         echo "flatpak-repo.sh: $src holds no $app" >&2
         exit 1
     fi
-    for ref in $refs; do
-        flatpak build-commit-from --gpg-sign="$3" --src-repo="$src" --no-update-summary --force "$repo" "$ref"
+    for ref in $(ostree refs --repo="$src" | grep -E "^(app/$app|runtime/$app\.Debug)/" || true); do
+        target="$ref"
+        if [ -n "${4:-}" ]; then
+            target="${ref%/*}/$4"
+        fi
+        flatpak build-commit-from --gpg-sign="$3" --src-repo="$src" --src-ref="$ref" \
+            --no-update-summary --force "$repo" "$target"
     done
 }
 
@@ -126,7 +134,7 @@ command="$1"
 shift
 case "$command" in
 import)
-    [ $# -eq 3 ] || usage
+    [ $# -eq 3 ] || [ $# -eq 4 ] || usage
     import "$@"
     ;;
 update)

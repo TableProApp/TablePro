@@ -80,7 +80,8 @@ repository, which it names for its updates, all for amd64 and arm64, with
 
 The Flatpak comes from `build-aux/flatpak/app.tablepro.TablePro.json`: the
 release profile under the real app id, GNOME 51, built offline from the
-same tarballs, and translations kept in the app. The `.Devel` manifest
+same tarballs, line tables in its `.Debug` extension, and translations
+kept in the app. The `.Devel` manifest
 stays for development builds, as GNOME apps keep a `.Devel` id. This
 manifest serves our repository only; a Flathub submission stays one a
 maintainer writes by hand under Flathub's policy.
@@ -98,10 +99,10 @@ metainfo `<release>` has `type="development"`.
   `ppa:libreoffice/libreoffice-prereleases` ("Defer to
   ~libreoffice/+archive/ubuntu/ppa for stable updates!") each pair with a
   stable PPA. None copies its releases into the testing repository.
-- **One version order everywhere.** dpkg, RPM and AppStream sort
+- **One version order for the packages.** dpkg, RPM and AppStream sort
   `X.Y.Z~beta.N` below `X.Y.Z` and above the release before it, so a
-  tester with both repositories gets 0.1.0 over its betas, and
-  0.2.0~beta.1 over 0.1.0.
+  tester with both apt or dnf repositories gets 0.1.0 over its betas, and
+  0.2.0~beta.1 over 0.1.0. Flatpak branches do not compare versions.
 - **Flatpak reaches what the floor excludes, with updates.** The GNOME 51
   runtime carries the libraries 22.04 and 24.04 lack, and a remote updates
   the app where a bundle alone would not, through `flatpak update` and the
@@ -128,13 +129,19 @@ metainfo `<release>` has `type="development"`.
 - Until 0.1.0 only the beta repositories hold packages. A tester who added
   only the beta one keeps the last beta after 0.1.0 until they add the
   stable one or the next beta ships.
-- The Flatpak's build runs no Meson suite: under the real app id glycin
-  decodes pictures through flatpak-spawn, which needs the app installed,
-  so the gtk suite fails in a build sandbox. The Devel Flatpak runs every
-  suite on GNOME 51, and the packages in the release profile. CI signs the
-  build into a repository with a throwaway key, serves it, and installs
-  and updates it, from its `.flatpakref` and from a bundle, on Ubuntu
-  22.04, 24.04 and 26.04.
+- The Flatpak's build runs every Meson suite in the release profile. CI
+  signs it into both repositories with a throwaway key, validates what it
+  installs, serves them, and installs and updates the app from its
+  `.flatpakref` and from a bundle, installs its `.Debug` extension, and
+  switches between the release and beta branches, on Ubuntu 22.04, 24.04
+  and 26.04.
+- Flatpak keeps the release and the beta as two branches with one set of
+  data and never moves between them by version: users choose with
+  `flatpak make-current`, unlike apt and dnf, which take the highest version.
+- `release-matrix.json` declares the Ubuntu series, Fedora releases and
+  architectures; CI builds from it, and a release's assets must be exactly
+  those, each matching `SHA256SUMS` and its package's own name, version and
+  architecture. GitHub attests every asset's build.
 - `release-linux.yml` gathers every asset in one job, which a dry run by
   hand runs too, publishing nothing.
 - `check_packaging.py` refuses another pre-release form, a metainfo beta

@@ -77,12 +77,17 @@ sudo dnf install tablepro
 
 Before 0.1.0, add the beta repository alone, then the stable one once 0.1.0 is out; without it the last beta stays installed until the next one. To stop testing, `sudo add-apt-repository --remove ppa:tablepro/tablepro-beta` or `sudo dnf copr disable @tablepro/tablepro-beta`. The installed beta stays until the stable repository has a newer version.
 
-The Flatpak beta is the branch `beta` of a second repository, and installs beside the release, as Flathub's beta does:
+The Flatpak beta is the branch `beta` of a second repository, and installs beside the release, as Flathub's beta does. The two branches share one set of settings and connections, and Flatpak never moves from one to the other by version: you choose which one the app's name starts.
 
 ```bash
 flatpak install --from https://flatpak.tablepro.app/beta-repo/app.tablepro.TablePro.flatpakref
 flatpak run --branch=beta app.tablepro.TablePro
+flatpak make-current app.tablepro.TablePro beta     # the menu and `flatpak run` start the beta
+flatpak make-current app.tablepro.TablePro stable   # and the release again
+flatpak uninstall app.tablepro.TablePro//beta       # stop testing, after making the release current
 ```
+
+A beta may store settings the release before it cannot read; [docs/troubleshooting.md](docs/troubleshooting.md#after-a-downgrade) says what that looks like.
 
 ### From GitHub Releases
 
@@ -94,7 +99,10 @@ Each release and beta on [GitHub Releases](https://github.com/TableProApp/TableP
 | `tablepro-<version>-fedora-<release>-<arch>.rpm` | The Fedora release it names, `x86_64` or `aarch64` |
 | `tablepro-<version>-<arch>.flatpak` | Any distribution with Flatpak, `x86_64` or `aarch64` |
 
+GitHub attests each file's build. Check a download against it, or against `SHA256SUMS`, before installing it:
+
 ```bash
+gh attestation verify tablepro-0.1.0-x86_64.flatpak --repo TableProApp/TablePro
 sha256sum --check --ignore-missing SHA256SUMS
 sudo apt install ./tablepro-0.1.0-ubuntu-26.04-amd64.deb
 sudo dnf install ./tablepro-0.1.0-fedora-44-x86_64.rpm

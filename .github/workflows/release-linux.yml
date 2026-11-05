@@ -279,10 +279,14 @@ jobs:
         with:
           name: linux-flatpak-bundles
           path: _artifacts/linux-flatpak-bundles
-      - name: Gather the assets and SHA256SUMS
+      # Exactly what release-matrix.json declares, each package naming itself as its file does.
+      - name: Gather the assets and SHA256SUMS, and check them
         env:
           VERSION: ${{ needs.verify.outputs.version }}
-        run: python3 linux/build-aux/packaging/release_assets.py --version "$VERSION" _artifacts release
+        run: |
+          python3 linux/build-aux/packaging/release_assets.py gather --version "$VERSION" _artifacts release
+          sudo apt-get update -q && sudo apt-get install -y --no-install-recommends rpm
+          python3 linux/build-aux/packaging/release_assets.py verify --version "$VERSION" release
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-release
@@ -298,6 +302,8 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -306,6 +312,11 @@ jobs:
         with:
           name: linux-release
           path: release
+      # gh attestation verify checks a downloaded file against this provenance (README.md, Install).
+      - name: Attest the assets
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: release/*
       # A beta has no CHANGELOG.md section; its notes are a draft of the fragments at the tag.
       - name: Install towncrier
         if: needs.verify.outputs.prerelease == 'true'
@@ -331,6 +342,15 @@ jobs:
           # The repository's latest release stays the macOS one.
           gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false \
             --title "TablePro for Linux $VERSION" --notes-file notes.md "$@"
+      - name: Check what the release serves
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir published
+          sudo apt-get update -q && sudo apt-get install -y --no-install-recommends rpm
+          python3 linux/build-aux/packaging/release_assets.py verify --version "$VERSION" published
 
   # Objects first and summaries last (flatpak-publish.sh), after the GitHub
   # release, whose bundles update from this repository.

@@ -4,10 +4,11 @@
 # rclone and the r2 remote that the RCLONE_CONFIG_R2_* variables configure.
 #
 # pull records the published summary's SHA-256 beside the local copy, and
-# push refuses to publish when the bucket's summary is no longer that one:
-# another run published in between, and its objects would be deleted. A
-# listing that fails stops both, so a failed read never looks like an empty
-# repository.
+# push refuses to publish when the bucket's summary is neither that one nor
+# the local one: another run published in between, and its objects would be
+# deleted. The local one is this push's own, interrupted, which a rerun of
+# the job finishes. A listing that fails stops both, so a failed read never
+# looks like an empty repository.
 #
 # push uploads the new objects and deltas first, then the refs, the
 # .flatpakrepo, the .flatpakref and last the summaries, so a client never
@@ -119,8 +120,10 @@ push() {
     to="$bucket/$2"
     [ -f "$from.published-summary" ] || fail "$from was not pulled with flatpak-publish.sh pull"
     summary="$(published_summary "$2")" || fail "not pushing to $2"
-    [ "$summary" = "$(cat "$from.published-summary")" ] ||
+    own="$(sha256sum "$from/summary" | cut -d ' ' -f 1)"
+    if [ "$summary" != "$(cat "$from.published-summary")" ] && [ "$summary" != "$own" ]; then
         fail "$2 changed since $from was pulled; run the release again"
+    fi
     meta="Cache-Control: no-cache"
     # shellcheck disable=SC2046 # one word per option
     rclone copy --fast-list $(local_only) --exclude "/refs/**" --exclude "/summaries/**" \

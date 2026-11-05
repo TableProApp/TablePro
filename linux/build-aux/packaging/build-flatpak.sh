@@ -1,18 +1,16 @@
 #!/bin/sh
 # Builds TablePro as a Flatpak from the two release tarballs, offline, with
 # build-aux/flatpak/app.tablepro.TablePro.json, on the branch given (stable
-# when none is). Writes <output dir>/repo, an unsigned OSTree repository that
-# flatpak-repo.sh signs into the published one, and
+# when none is), and runs every Meson suite in the build sandbox. Writes
+# <output dir>/repo, an unsigned OSTree repository with the app and its
+# .Debug extension that flatpak-repo.sh signs into the published one, and
 # <output dir>/tablepro-<arch>.flatpak, an unsigned bundle to try the build.
 # The manifest reads the tarballs as tablepro.tar.xz and
 # tablepro-vendor.tar.xz beside it, so they go next to a copy of it. The SDK
 # and its extensions come from Flathub into this user's installation: one
 # baked into a container image cannot update in place.
 #
-# The build runs no Meson suite. Under the real app ID, glycin decodes a
-# picture through flatpak-spawn, which needs the app installed, so the gtk
-# suite cannot pass in a build sandbox. The Devel Flatpak runs every suite on
-# the same runtime, and the .deb and .rpm in the release profile.
+# The gtk suite needs a display; without one, run this under xvfb-run.
 # Usage: build-flatpak.sh [--branch stable|beta] <dist tarball> <vendor tarball> <output dir>
 set -eu
 

@@ -1,40 +1,35 @@
 #!/bin/sh
-# Makes the repository smoke-test-flatpak.sh serves, from the build
+# Makes the repositories smoke-test-flatpak.sh serves, from the build
 # repositories of build-flatpak.sh, with flatpak-repo.sh and a throwaway key,
-# for http://127.0.0.1:8080/. <output dir>/one is the repository after one
-# commit per architecture, <output dir>/two after a second, so an installed
-# app has an update to take, and <output dir>/bundles holds the bundles of
-# the first commit.
+# for http://127.0.0.1:8080/: repo/ on the branch stable and beta-repo/ on
+# the branch beta, as flatpak.tablepro.app lays them out. <output dir>/one
+# holds them after one commit per architecture, <output dir>/two after a
+# second, so an installed app has an update to take, and
+# <output dir>/bundles/<branch> the bundles of the first commit. It also
+# validates the desktop entry, the metainfo and the schema each app commit
+# installs.
 #
 # --install-deps first installs, as root in a throwaway Ubuntu, the tools
 # this needs.
-# Usage: flatpak-test-site.sh [--install-deps] <stable|beta> <output dir> <build repo>...
+# Usage: flatpak-test-site.sh [--install-deps] <output dir> <build repo>...
 set -eu
 
 if [ "${1:-}" = --install-deps ]; then
     shift
     export DEBIAN_FRONTEND=noninteractive
     apt-get update
-    apt-get install -y --no-install-recommends ca-certificates flatpak ostree gnupg
+    apt-get install -y --no-install-recommends ca-certificates flatpak ostree gnupg \
+        desktop-file-utils appstream libglib2.0-bin
 fi
-if [ $# -lt 3 ]; then
-    echo "usage: flatpak-test-site.sh [--install-deps] <stable|beta> <output dir> <build repo>..." >&2
+if [ $# -lt 2 ]; then
+    echo "usage: flatpak-test-site.sh [--install-deps] <output dir> <build repo>..." >&2
     exit 2
 fi
 here="$(cd "$(dirname "$0")" && pwd)"
-branch="$1"
-case "$branch" in
-stable) dir=repo ;;
-beta) dir=beta-repo ;;
-*)
-    echo "flatpak-test-site.sh: the branch is stable or beta, not $branch" >&2
-    exit 2
-    ;;
-esac
-mkdir -p "$2"
-out="$(cd "$2" && pwd)"
-shift 2
-url="http://127.0.0.1:8080/$dir/"
+app=app.tablepro.TablePro
+mkdir -p "$1"
+out="$(cd "$1" && pwd)"
+shift
 
 GNUPGHOME="$(mktemp -d)"
 export GNUPGHOME
@@ -44,17 +39,34 @@ gpg --batch --passphrase '' --quick-generate-key 'TablePro CI <ci@tablepro.inval
 key="$(gpg --batch --with-colons --list-secret-keys | awk -F: '$1 == "fpr" { print $10; exit }')"
 
 commit() {
-    for build in "$@"; do
-        "$here/flatpak-repo.sh" import "$build" "$work/$dir" "$key"
+    for pair in stable:repo beta:beta-repo; do
+        branch="${pair%%:*}"
+        dir="${pair#*:}"
+        for build in "$@"; do
+            "$here/flatpak-repo.sh" import "$build" "$work/$dir" "$key" "$branch"
+        done
+        "$here/flatpak-repo.sh" update "$work/$dir" "$branch" "$key" "http://127.0.0.1:8080/$dir/"
     done
-    "$here/flatpak-repo.sh" update "$work/$dir" "$branch" "$key" "$url"
 }
 
 rm -rf "$out/one" "$out/two" "$out/bundles"
-commit "$@"
 mkdir -p "$out/one" "$out/two"
-cp -a "$work/$dir" "$out/one/"
-"$here/flatpak-repo.sh" bundle "$work/$dir" "$branch" "$key" "$url" "$out/bundles"
 commit "$@"
-cp -a "$work/$dir" "$out/two/"
-ls -l "$out" "$out/bundles"
+cp -a "$work/repo" "$work/beta-repo" "$out/one/"
+for pair in stable:repo beta:beta-repo; do
+    "$here/flatpak-repo.sh" bundle "$work/${pair#*:}" "${pair%%:*}" "$key" \
+        "http://127.0.0.1:8080/${pair#*:}/" "$out/bundles/${pair%%:*}"
+done
+
+# What each architecture installs, checked with this Ubuntu's validators.
+for ref in $(ostree refs --repo="$work/repo" | grep "^app/$app/"); do
+    tree="$work/tree-$(echo "$ref" | cut -d/ -f3)"
+    ostree checkout --repo="$work/repo" -U "$ref" "$tree"
+    desktop-file-validate "$tree/files/share/applications/$app.desktop"
+    appstreamcli validate --no-net "$tree/files/share/metainfo/$app.metainfo.xml"
+    glib-compile-schemas --strict --dry-run "$tree/files/share/glib-2.0/schemas"
+done
+
+commit "$@"
+cp -a "$work/repo" "$work/beta-repo" "$out/two/"
+ls -l "$out" "$out/bundles"/*
