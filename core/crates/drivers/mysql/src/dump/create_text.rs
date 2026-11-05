@@ -47,16 +47,21 @@ pub(crate) fn without_definer(create: &str) -> String {
 /// dump's own objects, so the file loads into a database of any name.
 /// MySQL qualifies a stored function a view calls, and every name of a
 /// view that reads another database too; MariaDB qualifies the sequence
-/// a column's default takes from. `names` is in lower case. A column
-/// qualified by a table that shares the database's name keeps it.
+/// a column's default takes from; a routine or trigger keeps its body as
+/// written. `names` is in lower case.
+///
+/// A text that names the database other than as `name.` keeps every
+/// qualifier: there the name can be a table alias, which SHOW CREATE
+/// VIEW writes without `AS`, a label, a variable or a table of another
+/// database, and `name.` can mean that one.
 pub(crate) fn without_database(create: &str, database: &str, names: &HashSet<String>) -> String {
     let tokens = significant(create);
-    // A text that also uses the database's name as an alias can mean that
-    // alias by `name.`, and nothing tells the two apart, so it is kept.
-    let aliased = tokens.windows(2).any(|pair| {
-        text(create, &pair[0]).eq_ignore_ascii_case("AS") && name_of(create, &pair[1]).as_deref() == Some(database)
+    let alone = (0..tokens.len()).any(|at| {
+        let named = name_of(create, &tokens[at]).is_some_and(|name| name.eq_ignore_ascii_case(database));
+        let qualifies = tokens.get(at + 1).is_some_and(|token| text(create, token) == ".");
+        named && !qualifies
     });
-    if aliased {
+    if alone {
         return create.to_owned();
     }
     let mut cuts = Vec::new();
@@ -77,24 +82,6 @@ pub(crate) fn without_database(create: &str, database: &str, names: &HashSet<Str
         }
     }
     cut(create, &cuts)
-}
-
-/// [`without_database`] for a routine or trigger, whose body the server
-/// keeps as written. There an alias, label or variable can take the
-/// database's name without `AS`, and a table in another database can
-/// too, so a body that names it other than as `name.` keeps every
-/// qualifier.
-pub(crate) fn program_without_database(create: &str, database: &str, names: &HashSet<String>) -> String {
-    let tokens = significant(create);
-    let alone = (0..tokens.len()).any(|at| {
-        let named = name_of(create, &tokens[at]).is_some_and(|name| name.eq_ignore_ascii_case(database));
-        let qualifies = tokens.get(at + 1).is_some_and(|token| text(create, token) == ".");
-        named && !qualifies
-    });
-    if alone {
-        return create.to_owned();
-    }
-    without_database(create, database, names)
 }
 
 fn significant(sql: &str) -> Vec<ScriptToken> {
@@ -202,11 +189,24 @@ mod tests {
 
     #[test]
     fn other_databases_columns_and_literals_keep_their_qualifier() {
-        let ours = names(&["app", "parent"]);
+        let ours = names(&["parent"]);
         let create = "CREATE VIEW `v` AS select `app`.`id` AS `id`, '`app`.`parent`' AS `s` \
-                      from (`app` join `other`.`parent`) where `x`.`app`.`parent` = 1";
+                      from `other`.`parent` where `x`.`app`.`parent` = 1";
 
-        assert_eq!(without_database(create, "app", &ours), create);
+        assert_eq!(
+            without_database(create, "app", &ours),
+            "CREATE VIEW `v` AS select `app`.`id` AS `id`, '`app`.`parent`' AS `s` \
+             from `other`.`parent` where `x`.`app`.`parent` = 1"
+        );
+    }
+
+    #[test]
+    fn a_view_with_an_alias_named_like_the_database_keeps_its_qualifiers() {
+        let ours = names(&["items", "id"]);
+        let create = "CREATE VIEW `v` AS select `shop`.`id` AS `id` \
+                      from (`shop`.`items` `shop` join `shop`.`id` `j` on(`j`.`id` = `shop`.`id`))";
+
+        assert_eq!(without_database(create, "shop", &ours), create);
     }
 
     #[test]
@@ -216,7 +216,7 @@ mod tests {
                       SELECT * FROM `shop`.`orders` JOIN other.orders USING (id);\nEND";
 
         assert_eq!(
-            program_without_database(create, "shop", &ours),
+            without_database(create, "shop", &ours),
             "CREATE PROCEDURE `p`()\nBEGIN\n  SELECT label_of(id) FROM orders o;\n  \
              SELECT * FROM `orders` JOIN other.orders USING (id);\nEND"
         );
@@ -228,6 +228,6 @@ mod tests {
         let create = "CREATE TRIGGER `t` AFTER INSERT ON `orders` FOR EACH ROW \
                       UPDATE shop.orders SET total = 0 WHERE shop.id IN (SELECT id FROM orders shop)";
 
-        assert_eq!(program_without_database(create, "shop", &ours), create);
+        assert_eq!(without_database(create, "shop", &ours), create);
     }
 }

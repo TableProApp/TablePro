@@ -80,6 +80,10 @@ pub(crate) fn dump_warnings(report: &DumpReport) -> Option<String> {
     }
     for skipped in &report.skipped {
         let special = match skipped.reason {
+            DumpSkipReason::RowsNotCarried if skipped.kind == DumpObjectKind::Table => Some(gettext_f(
+                "{name} is in the file without its rows: it has no columns to read them from.",
+                &[("name", &skipped.name)],
+            )),
             DumpSkipReason::RowsNotCarried => Some(gettext_f(
                 "{name} is in the file without the rows it stores: a materialized view fills only from rows inserted after it.",
                 &[("name", &skipped.name)],

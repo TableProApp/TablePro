@@ -21,7 +21,7 @@ use crate::dialect::MySqlDialect;
 use crate::errors::map_error;
 use crate::metadata::{catalog_rows, not_there, text_column};
 
-use create_text::{program_without_database, without_database, without_definer};
+use create_text::{without_database, without_definer};
 use program_settings::ProgramSettings;
 
 /// SHOW CREATE prints by the session's mode: `ANSI_QUOTES` quotes names
@@ -338,7 +338,7 @@ impl Reader<'_> {
             sql_mode: text_column(&row, "sql_mode")?,
             collation_connection: text_column(&row, "collation_connection")?,
         };
-        let create = program_without_database(&without_definer(&create), &self.database, &self.names);
+        let create = without_database(&without_definer(&create), &self.database, &self.names);
         let statements = settings.around(DumpStatement::body(create));
         self.push(kind, DumpSection::Programs, name, statements);
         Ok(())
@@ -369,7 +369,7 @@ impl Reader<'_> {
             sql_mode: text_column(&row, "sql_mode")?,
             collation_connection: text_column(&row, "collation_connection")?,
         };
-        let create = program_without_database(&without_definer(&create), &self.database, &self.names);
+        let create = without_database(&without_definer(&create), &self.database, &self.names);
         let statements = settings.around(DumpStatement::body(create));
         self.push(DumpObjectKind::Trigger, DumpSection::Triggers, name, statements);
         Ok(())

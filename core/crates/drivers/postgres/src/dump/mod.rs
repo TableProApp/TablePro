@@ -277,12 +277,14 @@ fn assemble(facts: &CatalogFacts) -> DumpCatalog {
     let mut catalog = DumpCatalog::default();
     let mut before = namespaces(facts);
     before.extend(collations(facts, &mut catalog.skipped));
+    // A domain's DEFAULT can take from a sequence, which it names in a
+    // string the dump's order does not read. A sequence needs no type.
+    before.extend(sequences(facts));
     let (types, domain_checks) = types(facts, &lookup, &mut catalog.skipped);
     before.extend(types);
     let (routines_before, mut programs) = routines(facts, &mut catalog.skipped);
     before.extend(routines_before);
     before.extend(domain_checks);
-    before.extend(sequences(facts));
     let mut after = AfterData {
         values: sequence_values(facts, &lookup, &mut catalog.skipped),
         ..AfterData::default()

@@ -20,7 +20,10 @@ use crate::value::Value;
 
 use super::dump_order::{creation_order, order_tables};
 use super::insert_batch::InsertBatch;
-use super::{DumpCatalog, DumpDialect, DumpObject, DumpScope, DumpSection, DumpSkip, DumpStatement, DumpTable};
+use super::{
+    DumpCatalog, DumpDialect, DumpObject, DumpObjectKind, DumpScope, DumpSection, DumpSkip, DumpSkipReason,
+    DumpStatement, DumpTable,
+};
 
 /// Chunks between a table's read and the file. Few, so a slow disk holds
 /// the read back.
@@ -235,6 +238,17 @@ impl Writer<'_> {
             if table.plain_columns.contains(&column.name) {
                 column.is_generated = false;
             }
+        }
+        // PostgreSQL allows a table of no columns, which no SELECT list
+        // can read and whose rows only DEFAULT VALUES can write.
+        if columns.is_empty() {
+            self.report.skipped.push(DumpSkip {
+                kind: DumpObjectKind::Table,
+                schema: table.table.schema.clone(),
+                name: table.table.name.clone(),
+                reason: DumpSkipReason::RowsNotCarried,
+            });
+            return Ok(());
         }
         let columns: Arc<[ColumnInfo]> = columns.into();
         let identity = connection.row_identity(&table.table, options.clone()).await?;
