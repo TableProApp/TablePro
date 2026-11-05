@@ -160,6 +160,7 @@ pub async fn run_sql_import(
         grammar,
         policy: options.on_error,
         wrapped: transaction.is_some(),
+        ended_by_file: false,
         report: SqlImportReport {
             end: SqlImportEnd::Completed,
             statements: 0,
@@ -234,6 +235,7 @@ pub async fn run_sql_import(
     let _ = reading.await;
 
     run.report.transaction = match transaction {
+        Some(_) if run.ended_by_file => TransactionOutcome::AsWritten,
         Some(dump) if began => match run.report.end {
             SqlImportEnd::Completed => match run.finish(dump.commit(), TransactionOutcome::Committed).await {
                 // A SQL Server file that opened a transaction of its own and
@@ -281,6 +283,9 @@ struct Run<'a> {
     grammar: SqlGrammar,
     policy: SqlImportErrorPolicy,
     wrapped: bool,
+    /// The file's own code closed the import's transaction, so what ran
+    /// before is kept.
+    ended_by_file: bool,
     report: SqlImportReport,
 }
 
@@ -348,6 +353,14 @@ impl Run<'_> {
                     return;
                 }
             }
+        }
+        // A procedure or a string the batch runs can COMMIT where the
+        // batch's text does not show it. The session says whether the
+        // import's transaction is still there.
+        if self.wrapped && runs_other_code(&unit.text, self.grammar) && self.open_state().await == Some(false) {
+            self.ended_by_file = true;
+            self.failure(&unit, SqlImportFault::FileEndsTransaction);
+            self.report.end = SqlImportEnd::Stopped;
         }
     }
 
@@ -548,6 +561,23 @@ fn ends_transaction(text: &str, grammar: SqlGrammar) -> bool {
     !module && words.iter().any(|word| word == "COMMIT" || word == "ROLLBACK")
 }
 
+/// Whether a SQL Server batch runs a procedure or a string, whose code
+/// the batch's text does not hold.
+fn runs_other_code(text: &str, grammar: SqlGrammar) -> bool {
+    if grammar != SqlGrammar::MsSql {
+        return false;
+    }
+    let plan = ScriptPlan::build(text, grammar, LexicalSettings::default_for(grammar));
+    plan.tokens(0..text.len())
+        .filter(|token| token.kind == ScriptTokenKind::Word)
+        .filter_map(|token| text.get(token.range))
+        .any(|word| {
+            ["EXEC", "EXECUTE", "sp_executesql"]
+                .iter()
+                .any(|wanted| word.eq_ignore_ascii_case(wanted))
+        })
+}
+
 /// PostgreSQL's PREPARE TRANSACTION, COMMIT PREPARED or ROLLBACK
 /// PREPARED, which take a transaction out of the session.
 fn two_phase(text: &str, grammar: SqlGrammar) -> bool {
@@ -588,6 +618,20 @@ mod tests {
         assert!(foreign_keys_off("pragma foreign_keys = 0;"));
         assert!(!foreign_keys_off("PRAGMA foreign_keys=ON"));
         assert!(!foreign_keys_off("PRAGMA defer_foreign_keys=OFF"));
+    }
+
+    #[test]
+    fn a_batch_that_runs_a_procedure_or_a_string_is_found() {
+        let ms = SqlGrammar::MsSql;
+
+        assert!(runs_other_code(
+            "INSERT INTO t VALUES (1); EXEC(N'COMMIT TRANSACTION')",
+            ms
+        ));
+        assert!(runs_other_code("execute app.load_rows", ms));
+        assert!(runs_other_code("EXEC sys.sp_executesql N'COMMIT'", ms));
+        assert!(!runs_other_code("INSERT INTO t VALUES (N'EXEC')", ms));
+        assert!(!runs_other_code("EXEC p", SqlGrammar::PostgreSql));
     }
 
     #[test]

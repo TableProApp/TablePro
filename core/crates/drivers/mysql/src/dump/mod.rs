@@ -21,7 +21,7 @@ use crate::dialect::MySqlDialect;
 use crate::errors::map_error;
 use crate::metadata::{catalog_rows, not_there, text_column};
 
-use create_text::{remote_table, without_database, without_definer};
+use create_text::{ModeReading, remote_table, without_database, without_definer};
 use program_settings::ProgramSettings;
 
 /// SHOW CREATE prints by the session's mode: `ANSI_QUOTES` quotes names
@@ -276,7 +276,7 @@ impl Reader<'_> {
             });
             return Ok(());
         }
-        let create = without_database(&create, &self.database, &self.names);
+        let create = without_database(&create, &self.database, &self.names, ModeReading::of(None));
         let table = self.reference(name);
         self.catalog
             .objects
@@ -338,7 +338,8 @@ impl Reader<'_> {
             sql_mode: text_column(&row, "sql_mode")?,
             collation_connection: text_column(&row, "collation_connection")?,
         };
-        let create = without_database(&without_definer(&create), &self.database, &self.names);
+        let reading = ModeReading::of(settings.sql_mode.as_deref());
+        let create = without_database(&without_definer(&create), &self.database, &self.names, reading);
         let statements = settings.around(DumpStatement::body(create));
         self.push(kind, DumpSection::Programs, name, statements);
         Ok(())
@@ -352,7 +353,12 @@ impl Reader<'_> {
             sql_mode: None,
             collation_connection: text_column(&row, "collation_connection")?,
         };
-        let create = without_database(&without_definer(&create), &self.database, &self.names);
+        let create = without_database(
+            &without_definer(&create),
+            &self.database,
+            &self.names,
+            ModeReading::of(None),
+        );
         let statements = settings.around(DumpStatement::new(create));
         self.push(DumpObjectKind::View, DumpSection::Programs, name, statements);
         Ok(())
@@ -369,7 +375,8 @@ impl Reader<'_> {
             sql_mode: text_column(&row, "sql_mode")?,
             collation_connection: text_column(&row, "collation_connection")?,
         };
-        let create = without_database(&without_definer(&create), &self.database, &self.names);
+        let reading = ModeReading::of(settings.sql_mode.as_deref());
+        let create = without_database(&without_definer(&create), &self.database, &self.names, reading);
         let statements = settings.around(DumpStatement::body(create));
         self.push(DumpObjectKind::Trigger, DumpSection::Triggers, name, statements);
         Ok(())

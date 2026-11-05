@@ -207,10 +207,13 @@ fn mentions(object: &DumpObject, grammar: SqlGrammar) -> Vec<(Option<String>, St
             let Some(name) = name_at(at) else {
                 continue;
             };
-            if is_dot(at + 1) || (at > 0 && is_as(at - 1)) || local.contains(&name) {
+            if is_dot(at + 1) || (at > 0 && is_as(at - 1)) {
                 continue;
             }
             let schema = (at >= 2 && is_dot(at - 1)).then(|| name_at(at - 2)).flatten();
+            if schema.is_none() && local.contains(&name) {
+                continue;
+            }
             if !declared && name == own && (schema.is_none() || schema == own_schema) {
                 declared = true;
                 continue;
@@ -452,6 +455,23 @@ mod tests {
         let refs: Vec<&DumpObject> = objects.iter().collect();
 
         assert_eq!(order_programs(&refs, SqlGrammar::PostgreSql), [1, 0]);
+    }
+
+    #[test]
+    fn a_qualified_name_a_common_table_expression_shares_is_the_catalogs() {
+        let objects = [
+            view("a", "CREATE VIEW a AS WITH z AS (SELECT * FROM main.z) SELECT * FROM z"),
+            DumpObject::new(
+                DumpObjectKind::View,
+                DumpSection::Programs,
+                Some("main".to_owned()),
+                "z",
+                vec![DumpStatement::new("CREATE VIEW z AS SELECT 1 AS n")],
+            ),
+        ];
+        let refs: Vec<&DumpObject> = objects.iter().collect();
+
+        assert_eq!(order_programs(&refs, SqlGrammar::DuckDb), [1, 0]);
     }
 
     #[test]

@@ -54,10 +54,11 @@ pub(crate) fn without_definer(create: &str) -> String {
 /// qualifier: there the name can be a table alias, which SHOW CREATE
 /// VIEW writes without `AS`, a label, a variable or a table of another
 /// database, and `name.` can mean that one.
-pub(crate) fn without_database(create: &str, database: &str, names: &HashSet<String>) -> String {
-    let tokens = significant(create);
+pub(crate) fn without_database(create: &str, database: &str, names: &HashSet<String>, reading: ModeReading) -> String {
+    let tokens = reading.tokens(create);
+    let name_of = |token: &ScriptToken| reading.name_of(create, token);
     let alone = (0..tokens.len()).any(|at| {
-        let named = name_of(create, &tokens[at]).is_some_and(|name| name.eq_ignore_ascii_case(database));
+        let named = name_of(&tokens[at]).is_some_and(|name| name.eq_ignore_ascii_case(database));
         let qualifies = tokens.get(at + 1).is_some_and(|token| text(create, token) == ".");
         named && !qualifies
     });
@@ -72,12 +73,8 @@ pub(crate) fn without_database(create: &str, database: &str, names: &HashSet<Str
         let follows_dot = at
             .checked_sub(1)
             .is_some_and(|before| text(create, &tokens[before]) == ".");
-        let names_ours = name_of(create, name).is_some_and(|name| names.contains(&name.to_lowercase()));
-        if !follows_dot
-            && name_of(create, qualifier).as_deref() == Some(database)
-            && text(create, dot) == "."
-            && names_ours
-        {
+        let names_ours = name_of(name).is_some_and(|name| names.contains(&name.to_lowercase()));
+        if !follows_dot && name_of(qualifier).as_deref() == Some(database) && text(create, dot) == "." && names_ours {
             cuts.push(qualifier.range.start..dot.range.end);
         }
     }
@@ -118,15 +115,51 @@ fn is_word(sql: &str, token: &ScriptToken, word: &str) -> bool {
     token.kind == ScriptTokenKind::Word && text(sql, token).eq_ignore_ascii_case(word)
 }
 
-/// The name a token spells, quoted or not.
-fn name_of(sql: &str, token: &ScriptToken) -> Option<String> {
-    match token.kind {
-        ScriptTokenKind::Word => Some(text(sql, token).to_owned()),
-        ScriptTokenKind::QuotedIdentifier => {
-            let inner = text(sql, token).strip_prefix('`')?.strip_suffix('`')?;
-            Some(inner.replace("``", "`"))
+/// How a text reads under the `sql_mode` a routine or trigger was made
+/// in: `ANSI_QUOTES` makes `"name"` a name, and `NO_BACKSLASH_ESCAPES`
+/// ends a string at a quote after a backslash. SHOW CREATE TABLE and
+/// VIEW print under the session's mode, which is the default here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ModeReading {
+    ansi_quotes: bool,
+    backslash_escapes: bool,
+}
+
+impl ModeReading {
+    pub(crate) fn of(sql_mode: Option<&str>) -> Self {
+        let mode = sql_mode.unwrap_or_default().to_ascii_uppercase();
+        let has = |flag: &str| mode.split(',').any(|set| set.trim() == flag);
+        Self {
+            ansi_quotes: has("ANSI_QUOTES"),
+            backslash_escapes: !has("NO_BACKSLASH_ESCAPES"),
         }
-        _ => None,
+    }
+
+    fn tokens(self, sql: &str) -> Vec<ScriptToken> {
+        let settings = LexicalSettings {
+            backslash_escapes: self.backslash_escapes,
+        };
+        ScriptPlan::build(sql, SqlGrammar::MySql, settings)
+            .tokens(0..sql.len())
+            .filter(|token| !token.kind.is_trivia())
+            .collect()
+    }
+
+    /// The name a token spells, quoted or not.
+    fn name_of(self, sql: &str, token: &ScriptToken) -> Option<String> {
+        let spelled = text(sql, token);
+        match token.kind {
+            ScriptTokenKind::Word => Some(spelled.to_owned()),
+            ScriptTokenKind::QuotedIdentifier => {
+                let inner = spelled.strip_prefix('`')?.strip_suffix('`')?;
+                Some(inner.replace("``", "`"))
+            }
+            ScriptTokenKind::StringLiteral if self.ansi_quotes => {
+                let inner = spelled.strip_prefix('"')?.strip_suffix('"')?;
+                Some(inner.replace("\"\"", "\""))
+            }
+            _ => None,
+        }
     }
 }
 
@@ -192,7 +225,8 @@ mod tests {
             without_database(
                 "CREATE VIEW `v` AS select `app`.`label_of`(`p`.`id`) AS `l` from `app`.`parent` `p`",
                 "app",
-                &ours
+                &ours,
+                ModeReading::of(None)
             ),
             "CREATE VIEW `v` AS select `label_of`(`p`.`id`) AS `l` from `parent` `p`"
         );
@@ -200,7 +234,8 @@ mod tests {
             without_database(
                 "CREATE TABLE `invoice` (\n  `no` bigint(20) NOT NULL DEFAULT nextval(`app`.`invoice_no`)\n)",
                 "app",
-                &ours
+                &ours,
+                ModeReading::of(None)
             ),
             "CREATE TABLE `invoice` (\n  `no` bigint(20) NOT NULL DEFAULT nextval(`invoice_no`)\n)"
         );
@@ -213,7 +248,7 @@ mod tests {
                       from `other`.`parent` where `x`.`app`.`parent` = 1";
 
         assert_eq!(
-            without_database(create, "app", &ours),
+            without_database(create, "app", &ours, ModeReading::of(None)),
             "CREATE VIEW `v` AS select `app`.`id` AS `id`, '`app`.`parent`' AS `s` \
              from `other`.`parent` where `x`.`app`.`parent` = 1"
         );
@@ -225,7 +260,7 @@ mod tests {
         let create = "CREATE VIEW `v` AS select `shop`.`id` AS `id` \
                       from (`shop`.`items` `shop` join `shop`.`id` `j` on(`j`.`id` = `shop`.`id`))";
 
-        assert_eq!(without_database(create, "shop", &ours), create);
+        assert_eq!(without_database(create, "shop", &ours, ModeReading::of(None)), create);
     }
 
     #[test]
@@ -250,10 +285,23 @@ mod tests {
                       SELECT * FROM `shop`.`orders` JOIN other.orders USING (id);\nEND";
 
         assert_eq!(
-            without_database(create, "shop", &ours),
+            without_database(create, "shop", &ours, ModeReading::of(None)),
             "CREATE PROCEDURE `p`()\nBEGIN\n  SELECT label_of(id) FROM orders o;\n  \
              SELECT * FROM `orders` JOIN other.orders USING (id);\nEND"
         );
+    }
+
+    #[test]
+    fn a_routine_made_under_ansi_quotes_loses_a_double_quoted_qualifier() {
+        let ours = names(&["t"]);
+        let create = "CREATE PROCEDURE `p`()\nBEGIN\n  DELETE FROM \"shop\".\"t\" WHERE note = 'a\\';\nEND";
+        let reading = ModeReading::of(Some("ANSI_QUOTES,NO_BACKSLASH_ESCAPES"));
+
+        assert_eq!(
+            without_database(create, "shop", &ours, reading),
+            "CREATE PROCEDURE `p`()\nBEGIN\n  DELETE FROM \"t\" WHERE note = 'a\\';\nEND"
+        );
+        assert_eq!(without_database(create, "shop", &ours, ModeReading::of(None)), create);
     }
 
     #[test]
@@ -262,6 +310,6 @@ mod tests {
         let create = "CREATE TRIGGER `t` AFTER INSERT ON `orders` FOR EACH ROW \
                       UPDATE shop.orders SET total = 0 WHERE shop.id IN (SELECT id FROM orders shop)";
 
-        assert_eq!(without_database(create, "shop", &ours), create);
+        assert_eq!(without_database(create, "shop", &ours, ModeReading::of(None)), create);
     }
 }
