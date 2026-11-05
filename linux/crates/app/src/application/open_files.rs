@@ -5,6 +5,7 @@ use tablepro_session::SessionKey;
 use super::{TableProApplication, WindowLaunch};
 use crate::services::file_resolution::{FileTarget, ResolvedFile, resolve_file_blocking};
 use crate::ui::{SessionWindow, SessionWindowInput};
+use crate::workspace::saved_editor_files_blocking;
 
 impl TableProApplication {
     /// Open each file the file manager or the command line hands over.
@@ -88,6 +89,49 @@ impl TableProApplication {
             window.present();
             return;
         }
+        let restoring: Vec<(SessionWindow, std::path::PathBuf)> = match self.services() {
+            Some(services) => windows
+                .iter()
+                .flat_map(|window| {
+                    window
+                        .restoring_keys()
+                        .into_iter()
+                        .map(|key| (window.clone(), services.storage.workspaces().saved_tabs_path(&key)))
+                })
+                .collect(),
+            None => Vec::new(),
+        };
+        let Some(services) = self.services().filter(|_| !restoring.is_empty()) else {
+            self.route_script(windows, file);
+            return;
+        };
+        // A session still coming back may hold the file in a saved tab, which a tab opened now would
+        // duplicate; its record says so before it connects.
+        let uri = file.uri().to_string();
+        let paths: Vec<std::path::PathBuf> = restoring.iter().map(|(_, path)| path.clone()).collect();
+        let reading = services.tasks.spawn_blocking_task(move || {
+            paths
+                .iter()
+                .position(|path| saved_editor_files_blocking(path).contains(&uri))
+        });
+        let hold = self.hold();
+        let app = self.downgrade();
+        glib::spawn_future_local(async move {
+            let owner = reading.await.ok().flatten();
+            if let Some(app) = app.upgrade() {
+                match owner.and_then(|index| restoring.get(index)) {
+                    Some((window, _)) => {
+                        window.present();
+                        window.tell_script_is_being_restored(&file);
+                    }
+                    None => app.route_script(windows, file),
+                }
+            }
+            drop(hold);
+        });
+    }
+
+    fn route_script(&self, windows: Vec<SessionWindow>, file: gio::File) {
         let window = match windows.into_iter().next() {
             Some(window) => Some(window),
             None => self.open_window(WindowLaunch::Picker).and_downcast::<SessionWindow>(),

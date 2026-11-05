@@ -915,6 +915,11 @@ impl Workspace {
 
     /// The editor tab bound to `file`. `None` while the workspace is
     /// handling input.
+    // Until then a script waits in the workspace, and its saved tabs may hold the file.
+    pub(crate) fn tabs_loading(&self) -> bool {
+        self.read(|model| model.loading_scripts.is_some()).unwrap_or(false)
+    }
+
     pub(crate) fn editor_tab_for(&self, file: &gio::File) -> Option<Uuid> {
         self.read(|model| model.editor_tab_for(file)).flatten()
     }

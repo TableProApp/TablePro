@@ -125,3 +125,4 @@ pub use workspace_record::WorkspaceRecord;
 pub use workspace_record_builder::workspace_record;
 pub use workspace_save_error::WorkspaceSaveError;
 pub use workspace_store::WorkspaceStore;
+pub(crate) use workspace_store::saved_editor_files_blocking;

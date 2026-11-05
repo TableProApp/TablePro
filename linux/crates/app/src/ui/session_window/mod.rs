@@ -1121,6 +1121,25 @@ impl SessionWindow {
         }
     }
 
+    // The sessions whose saved tabs are not back yet: still to connect, or connected and reading them.
+    pub(crate) fn restoring_keys(&self) -> Vec<SessionKey> {
+        let mut keys = self.imp().restoring.borrow().clone();
+        keys.extend(
+            self.workspaces()
+                .iter()
+                .filter(|workspace| workspace.tabs_loading())
+                .filter_map(Workspace::key),
+        );
+        keys
+    }
+
+    pub(crate) fn tell_script_is_being_restored(&self, file: &gio::File) {
+        self.show_toast(&crate::i18n::gettext_f(
+            "“{name}” is in a saved tab that is still coming back.",
+            &[("name", &file_display_name(&file.uri()))],
+        ));
+    }
+
     pub(crate) fn script_tab(&self, file: &gio::File) -> Option<uuid::Uuid> {
         self.workspaces()
             .iter()
