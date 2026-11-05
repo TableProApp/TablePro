@@ -171,13 +171,20 @@ struct TelemetryTests {
 
     @Test("The Info.plist value reads as no key when empty or when the build setting was never defined")
     func projectKeyFromInfoPlist() {
-        #expect(Telemetry.projectKey(from: nil) == nil)
-        #expect(Telemetry.projectKey(from: "") == nil)
-        #expect(Telemetry.projectKey(from: " \n") == nil)
-        #expect(Telemetry.projectKey(from: "$(POSTHOG_PROJECT_KEY)") == nil)
-        #expect(Telemetry.projectKey(from: 42) == nil)
-        #expect(Telemetry.projectKey(from: " phc_abc ") == "phc_abc")
+        #expect(PostHogTelemetryClient.projectKey(from: nil) == nil)
+        #expect(PostHogTelemetryClient.projectKey(from: "") == nil)
+        #expect(PostHogTelemetryClient.projectKey(from: " \n") == nil)
+        #expect(PostHogTelemetryClient.projectKey(from: "$(POSTHOG_PROJECT_KEY)") == nil)
+        #expect(PostHogTelemetryClient.projectKey(from: 42) == nil)
+        #expect(PostHogTelemetryClient.projectKey(from: " phc_abc ") == "phc_abc")
     }
+
+    #if DEBUG
+    @Test("A Debug build carries no PostHog project key, so local runs and tests never make a client")
+    func debugBuildHasNoProjectKey() {
+        #expect(PostHogTelemetryClient.projectKey(from: Bundle.main.object(forInfoDictionaryKey: "PostHogProjectKey")) == nil)
+    }
+    #endif
 
     @Test("With Share Usage Data off no client is made, so PostHog is never contacted")
     func optedOutMakesNoClient() async throws {
@@ -497,5 +504,7 @@ struct TelemetryTests {
         #expect(!config.errorTrackingConfig.autoCapture)
         #expect(config.personProfiles == .identifiedOnly)
         #expect(config.flushAt == 1)
+        let protocols = config.urlSessionConfiguration?.protocolClasses ?? []
+        #expect(protocols.first.map(ObjectIdentifier.init) == ObjectIdentifier(PostHogTransportGate.self))
     }
 }

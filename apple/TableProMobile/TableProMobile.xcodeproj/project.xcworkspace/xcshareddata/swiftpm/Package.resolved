@@ -1,5 +1,5 @@
 {
-  "originHash" : "fcb1fbfb1cf41d99fb533f3d60a346045e6e48c2906e97b28b4f53ce4285e6f8",
+  "originHash" : "b5a141e279807cef1b3d969b58652dfdc000eed2a6585cf53d5c3b8ce3b4b3c0",
   "pins" : [
     {
       "identity" : "bigint",
@@ -16,6 +16,15 @@
       "location" : "https://github.com/TableProApp/oracle-nio",
       "state" : {
         "revision" : "045a44674e9f9da3904e0f2b87995490a7cc88e4"
+      }
+    },
+    {
+      "identity" : "posthog-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/PostHog/posthog-ios",
+      "state" : {
+        "revision" : "2b6b6b4301c14c3b51cb1a7827c954bb17d1b083",
+        "version" : "3.92.7"
       }
     },
     {
