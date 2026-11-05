@@ -561,7 +561,13 @@ pub(crate) enum WorkspaceInput {
     ExportDatabase,
     /// The main menu's Import SQL File.
     ImportSqlFile,
-    ImportSqlFileChosen(gtk4::gio::File),
+    /// The file Import SQL File chose, with its size and whether it is
+    /// a pipe or a device, as GIO read them.
+    ImportSqlFileChosen {
+        file: gtk4::gio::File,
+        size: u64,
+        special: bool,
+    },
     OpenHistoryQuery(String),
     ReplaceActiveTabQuery(String),
     TabCloseDecided {
@@ -1329,7 +1335,9 @@ impl WorkspaceModel {
             WorkspaceInput::ImportCsvRequested { schema, table } => self.on_import_csv_requested(schema, table),
             WorkspaceInput::ExportDatabase => self.on_export_database(),
             WorkspaceInput::ImportSqlFile => self.on_import_sql_file(),
-            WorkspaceInput::ImportSqlFileChosen(file) => self.on_import_sql_file_chosen(file),
+            WorkspaceInput::ImportSqlFileChosen { file, size, special } => {
+                self.on_import_sql_file_chosen(file, size, special);
+            }
             WorkspaceInput::ImportCsvReady {
                 schema,
                 table,

@@ -15,6 +15,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::{WorkspaceInput, WorkspaceModel};
 use crate::runtime::DeliverInput;
+use crate::services::import_file;
 use crate::ui::dump_dialog::DumpDialogInit;
 use crate::ui::sql_import_dialog::{SqlImportDialog, SqlImportDialogInit};
 
@@ -117,24 +118,53 @@ impl WorkspaceModel {
             .build();
         let input = self.input.clone();
         file_dialog.open(self.window().as_ref(), gio::Cancellable::NONE, move |chosen| {
-            if let Ok(file) = chosen {
-                input.deliver(WorkspaceInput::ImportSqlFileChosen(file));
-            }
+            let Ok(file) = chosen else {
+                return;
+            };
+            glib::spawn_future_local(async move {
+                let info = file
+                    .query_info_future(
+                        "standard::type,standard::size",
+                        gio::FileQueryInfoFlags::NONE,
+                        glib::Priority::DEFAULT,
+                    )
+                    .await
+                    .ok();
+                let special = info.as_ref().is_some_and(|info| {
+                    info.has_attribute(gio::FILE_ATTRIBUTE_STANDARD_TYPE) && info.file_type() == gio::FileType::Special
+                });
+                let size = info
+                    .filter(|info| info.has_attribute(gio::FILE_ATTRIBUTE_STANDARD_SIZE))
+                    .and_then(|info| u64::try_from(info.size()).ok())
+                    .unwrap_or(0);
+                input.deliver(WorkspaceInput::ImportSqlFileChosen { file, size, special });
+            });
         });
     }
 
-    pub(super) fn on_import_sql_file_chosen(&self, file: gio::File) {
+    pub(super) fn on_import_sql_file_chosen(&self, file: gio::File, size: u64, special: bool) {
         let Some(session) = self.context.active.get() else {
             return;
         };
-        let Some(path) = file.path() else {
-            self.show_error_alert(
-                &crate::i18n::gettext("Couldn't Import"),
-                &crate::i18n::gettext("Choose a file on this computer."),
-            );
-            return;
+        let path = match file.path() {
+            // Opening a pipe or a device waits for a writer that may
+            // never come.
+            Some(_) if special => {
+                self.show_error_alert(
+                    &crate::i18n::gettext("Couldn't Import"),
+                    &crate::i18n::gettext("Choose a file, not a pipe or a device."),
+                );
+                return;
+            }
+            Some(path) => path,
+            None => {
+                self.show_error_alert(
+                    &crate::i18n::gettext("Couldn't Import"),
+                    &crate::i18n::gettext("Choose a file on this computer."),
+                );
+                return;
+            }
         };
-        let size = std::fs::metadata(&path).map(|metadata| metadata.len()).unwrap_or(0);
         let file_name = file.basename().map_or_else(
             || file.parse_name().to_string(),
             |name| name.to_string_lossy().into_owned(),
@@ -224,7 +254,14 @@ impl StartImport {
                 glib::timeout_future(PROGRESS_EVERY).await;
             }
         });
-        let work = import(self.session.clone(), self.path, options, progress, cancel);
+        let work = import(
+            self.session.clone(),
+            self.tasks.clone(),
+            self.path,
+            options,
+            progress,
+            cancel,
+        );
         let imports = self.imports.clone();
         let input = self.input.clone();
         let dialog = self.dialog;
@@ -250,6 +287,7 @@ impl StartImport {
 /// what the file sets stays on that session, then close it.
 async fn import(
     session: Arc<Session>,
+    tasks: tablepro_session::runtime::Tasks,
     path: std::path::PathBuf,
     options: SqlImportOptions,
     progress: watch::Sender<SqlImportProgress>,
@@ -258,9 +296,13 @@ async fn import(
     let Some(dialect) = session.current_dialect() else {
         return Err(crate::i18n::gettext("Connect to a database first."));
     };
-    let file = std::fs::File::open(&path).map_err(|error| {
-        crate::i18n::gettext_f("The file cannot be read: {detail}", &[("detail", &error.to_string())])
-    })?;
+    let file = tasks
+        .spawn_blocking_task(move || import_file::open_import_file_blocking(&path))
+        .await
+        .map_err(|failure| crate::ui::error_text::task_failure_message(&failure))?
+        .map_err(|error| {
+            crate::i18n::gettext_f("The file cannot be read: {detail}", &[("detail", &error.to_string())])
+        })?;
     let editor = session
         .open_editor_session(EditorSessionOptions::default(), &cancel)
         .await
