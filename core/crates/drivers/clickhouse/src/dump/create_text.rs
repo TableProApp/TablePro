@@ -41,16 +41,16 @@ pub(crate) fn without_definer(create: &str) -> String {
     cut(create, &cuts)
 }
 
-/// A materialized view that keeps its rows in an inner table, made to
-/// fill itself from its source when it is created. The inner table's
-/// name changes with every CREATE, so its rows cannot be loaded, and the
-/// view comes after the source's rows. One with a `TO` target, or one
-/// that refreshes itself, comes back as it is.
-pub(crate) fn populated(create: &str) -> String {
+/// Whether a materialized view keeps its rows in an inner table of its
+/// own: one with no `TO` target and no refresh. That table's name changes
+/// with every CREATE, so its rows cannot go in the file, and a POPULATE
+/// would recompute them from the source rows still there, not the ones
+/// the view kept.
+pub(crate) fn keeps_own_rows(create: &str) -> bool {
     let tokens = tokens(create);
     let head = head(create, &tokens);
     let Some(after_name) = after_created_name(create, &tokens) else {
-        return create.to_owned();
+        return false;
     };
     let mut depth = 0usize;
     for token in &tokens[after_name.min(head)..] {
@@ -58,24 +58,17 @@ pub(crate) fn populated(create: &str) -> String {
             ScriptTokenKind::OpenParen => depth += 1,
             ScriptTokenKind::CloseParen => depth = depth.saturating_sub(1),
             _ if depth > 0 => {}
-            _ if ["TO", "REFRESH", "POPULATE", "EMPTY"]
-                .iter()
-                .any(|word| is_word(create, token, word)) =>
-            {
-                return create.to_owned();
-            }
+            _ if ["TO", "REFRESH"].iter().any(|word| is_word(create, token, word)) => return false,
             _ if ["AS", "COMMENT", "DEFINER", "SQL"]
                 .iter()
                 .any(|word| is_word(create, token, word)) =>
             {
-                let mut text = create.to_owned();
-                text.insert_str(token.range.start, "POPULATE ");
-                return text;
+                return true;
             }
             _ => {}
         }
     }
-    create.to_owned()
+    false
 }
 
 /// Whether `create` makes a dictionary, rather than a table over one.
@@ -260,29 +253,23 @@ mod tests {
     }
 
     #[test]
-    fn an_inner_materialized_view_fills_itself() {
-        let create = "CREATE MATERIALIZED VIEW mv\n(\n    `k` UInt64\n)\nENGINE = SummingMergeTree\nORDER BY k\nSETTINGS index_granularity = 8192\nAS SELECT k FROM src";
-        assert_eq!(
-            populated(create),
-            "CREATE MATERIALIZED VIEW mv\n(\n    `k` UInt64\n)\nENGINE = SummingMergeTree\nORDER BY k\nSETTINGS index_granularity = 8192\nPOPULATE AS SELECT k FROM src"
-        );
-        assert_eq!(
-            populated(
-                "CREATE MATERIALIZED VIEW mv (`k` UInt64) ENGINE = Memory SQL SECURITY DEFINER AS SELECT k FROM src"
-            ),
-            "CREATE MATERIALIZED VIEW mv (`k` UInt64) ENGINE = Memory POPULATE SQL SECURITY DEFINER AS SELECT k FROM src"
-        );
+    fn an_inner_materialized_view_keeps_its_own_rows() {
+        assert!(keeps_own_rows(
+            "CREATE MATERIALIZED VIEW mv\n(\n    `k` UInt64\n)\nENGINE = SummingMergeTree\nORDER BY k\nAS SELECT k FROM src"
+        ));
+        assert!(keeps_own_rows(
+            "CREATE MATERIALIZED VIEW mv (`k` UInt64) ENGINE = Memory SQL SECURITY DEFINER AS SELECT k FROM src"
+        ));
     }
 
     #[test]
-    fn a_view_with_a_target_or_a_refresh_is_left_as_it_is() {
+    fn a_view_with_a_target_or_a_refresh_keeps_none() {
         for create in [
             "CREATE MATERIALIZED VIEW mv TO counts (`k` UInt64) AS SELECT k FROM src",
             "CREATE MATERIALIZED VIEW mv REFRESH EVERY 1 HOUR (`k` UInt64) ENGINE = Memory AS SELECT k FROM src",
-            "CREATE MATERIALIZED VIEW mv (`k` UInt64) ENGINE = Memory POPULATE AS SELECT k FROM src",
-            "CREATE VIEW v AS SELECT 1",
+            "CREATE VIEW v",
         ] {
-            assert_eq!(populated(create), create);
+            assert!(!keeps_own_rows(create), "{create}");
         }
     }
 

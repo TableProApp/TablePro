@@ -113,10 +113,11 @@ ORDER BY n.nspname, p.proname, pg_catalog.pg_get_function_identity_arguments(p.o
     };
 }
 
-/// Whether a routine waits for the tables: a body in standard SQL, which
-/// the server reads when it is made (PostgreSQL 14 and later), or a
-/// signature that names a table's or view's row type, which exists only
-/// once the relation does.
+/// Whether a routine waits for the tables: a body in standard SQL that
+/// names a table or view, which the server resolves when it is made
+/// (PostgreSQL 14 and later), or a signature that names a table's or
+/// view's row type, which exists only once the relation does. Any other
+/// routine goes first, where a table's DEFAULT or CHECK can call it.
 macro_rules! after_tables {
     ($sql_body:literal) => {
         concat!(
@@ -132,7 +133,11 @@ macro_rules! after_tables {
     };
 }
 
-pub(crate) const FUNCTIONS_SQL: &str = functions_sql!(after_tables!("p.prosqlbody IS NOT NULL"));
+pub(crate) const FUNCTIONS_SQL: &str = functions_sql!(after_tables!(
+    "(p.prosqlbody IS NOT NULL AND EXISTS (SELECT 1 FROM pg_catalog.pg_depend dep
+       WHERE dep.classid = 'pg_catalog.pg_proc'::pg_catalog.regclass AND dep.objid = p.oid
+         AND dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass))"
+));
 pub(crate) const FUNCTIONS_SQL_BEFORE_14: &str = functions_sql!(after_tables!("false"));
 
 /// Every sequence, with the column that owns it (`a`) or whose identity

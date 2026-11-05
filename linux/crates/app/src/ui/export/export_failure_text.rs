@@ -79,12 +79,22 @@ pub(crate) fn dump_warnings(report: &DumpReport) -> Option<String> {
         ));
     }
     for skipped in &report.skipped {
+        if skipped.reason == DumpSkipReason::RowsNotCarried {
+            lines.push(gettext_f(
+                "{name} is in the file without the rows it stores: a materialized view fills only from rows inserted after it.",
+                &[("name", &skipped.name)],
+            ));
+            continue;
+        }
         let reason = match skipped.reason {
             DumpSkipReason::NoDefinition => gettext("the server gave no SQL for it"),
             DumpSkipReason::Encrypted => gettext("its code is encrypted"),
             DumpSkipReason::ClrRoutine => gettext("its code is a .NET assembly"),
             DumpSkipReason::HiddenSecret => gettext("the server hides a secret in its SQL"),
             DumpSkipReason::SplitsApart => gettext("its code holds a line that is only GO"),
+            DumpSkipReason::RemoteRows => {
+                gettext("its rows live on another server, which loading the file would write to")
+            }
             _ => gettext("the export writes no object of its kind"),
         };
         lines.push(gettext_f(

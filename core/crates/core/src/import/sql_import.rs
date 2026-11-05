@@ -286,19 +286,16 @@ impl Run<'_> {
                 None => {}
             }
         }
+        // A SQL Server batch can hold a COMMIT or ROLLBACK among other
+        // statements, or run one from a string; either would end the
+        // import's transaction and leave what came before it kept.
+        if self.wrapped && ends_transaction(&unit.text, self.grammar) {
+            self.failure(&unit, SqlImportFault::FileEndsTransaction);
+            self.report.end = SqlImportEnd::Stopped;
+            return;
+        }
         for _ in 0..unit.repeat.max(1) {
             match self.execute(&unit.text, cancel).await {
-                Ok(()) if self.wrapped && ends_transaction(&unit.text, self.grammar) => {
-                    self.report.statements += 1;
-                    // A SQL Server batch can hold a COMMIT or ROLLBACK
-                    // among other statements; one that closed the import's
-                    // own transaction would leave the rest committing alone.
-                    if self.open_state().await == Some(false) {
-                        self.failure(&unit, SqlImportFault::FileEndsTransaction);
-                        self.report.end = SqlImportEnd::Stopped;
-                        return;
-                    }
-                }
                 Ok(()) => self.report.statements += 1,
                 Err(Fault::Statement(error)) => {
                     self.failure(&unit, SqlImportFault::Statement(error));
@@ -406,19 +403,25 @@ impl Run<'_> {
     }
 }
 
-/// Whether a unit holds a word that can end a transaction, so the import
-/// asks after it whether its own is still open. PostgreSQL, SQLite and
-/// DuckDB send a statement at a time and are told apart before it runs.
+/// Whether a SQL Server batch could end a transaction: a COMMIT or
+/// ROLLBACK as a word, or inside a string it could run. PostgreSQL,
+/// SQLite and DuckDB send a statement at a time, each told apart by
+/// `transaction_control` before it runs.
 fn ends_transaction(text: &str, grammar: SqlGrammar) -> bool {
     if grammar != SqlGrammar::MsSql {
         return false;
     }
     let plan = ScriptPlan::build(text, grammar, LexicalSettings::default_for(grammar));
     plan.tokens(0..text.len()).any(|token| {
-        token.kind == ScriptTokenKind::Word
-            && text
-                .get(token.range)
-                .is_some_and(|word| word.eq_ignore_ascii_case("COMMIT") || word.eq_ignore_ascii_case("ROLLBACK"))
+        let Some(code) = text.get(token.range) else {
+            return false;
+        };
+        let upper = code.to_ascii_uppercase();
+        match token.kind {
+            ScriptTokenKind::Word => upper == "COMMIT" || upper == "ROLLBACK",
+            ScriptTokenKind::StringLiteral => upper.contains("COMMIT") || upper.contains("ROLLBACK"),
+            _ => false,
+        }
     })
 }
 
@@ -430,5 +433,20 @@ struct Discard;
 impl ResultSink for Discard {
     async fn accept(&mut self, _event: ResultEvent) -> SinkFlow {
         SinkFlow::Continue
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_sql_server_batch_that_ends_a_transaction_is_found_before_it_runs() {
+        let ms = SqlGrammar::MsSql;
+
+        assert!(ends_transaction("DELETE FROM t; COMMIT; BEGIN TRANSACTION;", ms));
+        assert!(ends_transaction("EXEC('rollback tran')", ms));
+        assert!(!ends_transaction("INSERT INTO t VALUES (1)", ms));
+        assert!(!ends_transaction("COMMIT", SqlGrammar::PostgreSql));
     }
 }

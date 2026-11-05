@@ -49,10 +49,7 @@ pub(crate) async fn fetch_table_definition(
 
 /// SHOW CREATE TABLE names the table in SQL, so its name is bound as an
 /// identifier by the client rather than quoted here.
-pub(crate) async fn create_statement(
-    calls: &CallClient,
-    catalog: &CatalogTable,
-) -> Result<Option<String>, DriverError> {
+async fn create_statement(calls: &CallClient, catalog: &CatalogTable) -> Result<Option<String>, DriverError> {
     let query = calls
         .template("SHOW CREATE TABLE ?.?")?
         .bind(Identifier(&catalog.database))

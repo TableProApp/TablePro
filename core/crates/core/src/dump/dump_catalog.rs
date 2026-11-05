@@ -195,6 +195,11 @@ pub enum DumpSkipReason {
     /// The dump writes no object of its kind, such as a foreign table or
     /// an aggregate.
     NotSupported,
+    /// Its definition is in the file but not the rows it stores, such as
+    /// a materialized view that refills only from rows inserted later.
+    RowsNotCarried,
+    /// Its rows live on another server, which a load would write to.
+    RemoteRows,
 }
 
 /// What a dump of one scope writes, read from the catalog in one go.

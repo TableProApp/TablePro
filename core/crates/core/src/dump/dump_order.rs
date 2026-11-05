@@ -60,21 +60,32 @@ pub(super) fn order_programs(objects: &[&DumpObject], grammar: SqlGrammar) -> Ve
 }
 
 /// Every identifier the object's statements hold, unquoted and in lower
-/// case, past the object's own name where its CREATE states it.
+/// case, but a name an `AS` gives: a column or table alias names nothing
+/// the object needs.
 fn mentioned_names(object: &DumpObject, grammar: SqlGrammar) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
     for statement in &object.statements {
         let plan = ScriptPlan::build(&statement.sql, grammar, LexicalSettings::default_for(grammar));
+        let mut after_as = false;
         for token in plan.tokens(0..statement.sql.len()) {
+            if token.kind.is_trivia() {
+                continue;
+            }
             let Some(text) = statement.sql.get(token.range.clone()) else {
                 continue;
             };
+            let aliased = std::mem::replace(
+                &mut after_as,
+                token.kind == ScriptTokenKind::Word && text.eq_ignore_ascii_case("AS"),
+            );
             let name = match token.kind {
                 ScriptTokenKind::Word => text.to_lowercase(),
                 ScriptTokenKind::QuotedIdentifier => unquote(text).to_lowercase(),
                 _ => continue,
             };
-            names.insert(name);
+            if !aliased {
+                names.insert(name);
+            }
         }
     }
     names
@@ -199,6 +210,17 @@ mod tests {
 
         let named: Vec<&str> = order.iter().map(|&position| objects[position].name.as_str()).collect();
         assert_eq!(named, ["double_it", "base", "Middle", "top"]);
+    }
+
+    #[test]
+    fn a_column_alias_is_not_a_reference() {
+        let objects = [
+            view("a", "CREATE VIEW a AS SELECT * FROM z"),
+            view("z", "CREATE VIEW z AS SELECT 1 AS a"),
+        ];
+        let refs: Vec<&DumpObject> = objects.iter().collect();
+
+        assert_eq!(order_programs(&refs, SqlGrammar::DuckDb), [1, 0]);
     }
 
     #[test]

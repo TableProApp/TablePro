@@ -267,6 +267,15 @@ impl Reader<'_> {
         let Some((create, _)) = self.create_text(DumpObjectKind::Table, name, "Create Table").await? else {
             return Ok(());
         };
+        if remote_table(&create) {
+            self.catalog.skipped.push(DumpSkip {
+                kind: DumpObjectKind::Table,
+                schema: self.qualifier.clone(),
+                name: name.to_owned(),
+                reason: DumpSkipReason::RemoteRows,
+            });
+            return Ok(());
+        }
         let create = without_database(&create, &self.database, &self.names);
         let table = self.reference(name);
         self.catalog
@@ -383,6 +392,16 @@ fn set_value(sequence_sql: &str, next: &str) -> Result<DumpStatement, DriverErro
         detail: format!("{next:?} is not a number"),
     })?;
     Ok(DumpStatement::new(format!("DO SETVAL({sequence_sql}, {value}, 0)")))
+}
+
+/// A table whose rows are another server's, through FEDERATED or
+/// MariaDB's CONNECT: its CREATE would reach that server again on load,
+/// password and all, and its rows would be written there.
+fn remote_table(create: &str) -> bool {
+    let upper = create.to_ascii_uppercase();
+    ["ENGINE=FEDERATED", "ENGINE=CONNECT", "CONNECTION="]
+        .iter()
+        .any(|option| upper.contains(option))
 }
 
 #[cfg(test)]

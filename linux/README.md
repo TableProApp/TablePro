@@ -353,9 +353,9 @@ well as with TablePro:
 | Engine | Written like | Load it with | Left out |
 |---|---|---|---|
 | PostgreSQL | `pg_dump` plain format, INSERTs instead of COPY | `psql -v ON_ERROR_STOP=1 -f file.sql` | Owners, grants, policies, rules, publications, event triggers, foreign tables |
-| MySQL, MariaDB | `mysqldump`, with its `SET` header and `DELIMITER ;;` blocks | `mysql db < file.sql` | Events; `DEFINER` clauses, so the account that loads the file owns the objects |
+| MySQL, MariaDB | `mysqldump`, with its `SET` header and `DELIMITER ;;` blocks | `mysql db < file.sql` | Events; FEDERATED and CONNECT tables, whose rows are another server's; `DEFINER` clauses, so the account that loads the file owns the objects |
 | SQL Server | SSMS's Generate Scripts, a `GO` after each batch | `sqlcmd -b -i file.sql` | CLR and encrypted modules, which have no SQL to write |
-| ClickHouse | `SHOW CREATE` for each table and view | `clickhouse-client < file.sql` | User-defined functions, which belong to no database |
+| ClickHouse | `SHOW CREATE` for each table and view | `clickhouse-client < file.sql` | User-defined functions, which belong to no database; the rows a materialized view without `TO` keeps itself, so it fills again only from new rows |
 | SQLite | `sqlite3 .dump` | `sqlite3 new.db < file.sql` | |
 | DuckDB | `EXPORT DATABASE`, in one file | `duckdb new.duckdb < file.sql` | |
 
@@ -383,7 +383,8 @@ line.
 - **Run as One Transaction** is offered on PostgreSQL, SQL Server, SQLite
   and DuckDB, whose CREATE and DROP roll back: a failure or Stop then
   undoes everything the file did. The file's own `BEGIN` and `COMMIT`
-  are passed over inside it, and a `ROLLBACK` stops the import. MySQL,
+  are passed over inside it, and a `ROLLBACK`, or a SQL Server batch that
+  holds a `COMMIT` or `ROLLBACK`, stops the import before it runs. MySQL,
   MariaDB and ClickHouse commit each statement as it runs, so what ran
   before a failure stays.
 - On Safe Mode Read-Only, Import SQL File is off. On Confirm

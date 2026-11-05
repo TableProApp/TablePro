@@ -9,7 +9,7 @@ use tablepro_core::ddl::ddl_sql::parenthesized;
 use tablepro_core::meta::{IndexInfo, RowIdentity, TableEstimate};
 
 pub(crate) use clickhouse_column_row::ClickHouseColumnRow;
-pub(crate) use table_definition::{create_statement, fetch_table_definition};
+pub(crate) use table_definition::fetch_table_definition;
 
 use crate::call_client::CallClient;
 use crate::dialect::quote;

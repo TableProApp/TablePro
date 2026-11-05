@@ -13,7 +13,9 @@ use tablepro_core::dump::{
 use tablepro_core::meta::TableRef;
 
 use crate::call_client::CallClient;
-use crate::catalog::{CatalogTable, create_statement};
+use clickhouse::sql::Identifier;
+
+use crate::catalog::CatalogTable;
 use crate::dialect::ClickHouseDialect;
 use crate::result_reader::{CatalogRow, read_table};
 
@@ -44,7 +46,7 @@ pub(crate) async fn read_dump_catalog(
             database: database.to_owned(),
             name: name.clone(),
         };
-        let create = create_statement(calls, &source).await?;
+        let create = hidden_secrets_create(calls, &source).await?;
         let table = match qualified {
             true => TableRef::new(Some(database.to_owned()), name.clone()),
             false => TableRef::unqualified(name.clone()),
@@ -52,6 +54,19 @@ pub(crate) async fn read_dump_catalog(
         add_object(&mut catalog, table, &engine, create, database);
     }
     Ok(catalog)
+}
+
+/// SHOW CREATE TABLE with any password or key the text names shown as
+/// `[HIDDEN]`, which the dump then leaves out, even for a login allowed
+/// to see secrets.
+async fn hidden_secrets_create(calls: &CallClient, table: &CatalogTable) -> Result<Option<String>, DriverError> {
+    let query = calls
+        .template("SHOW CREATE TABLE ?.?")?
+        .bind(Identifier(&table.database))
+        .bind(Identifier(&table.name))
+        .with_setting("format_display_secrets_in_show_and_select", "0");
+    let result = read_table(query, None).await?;
+    result.rows.first().map(|row| CatalogRow(row).text(0)).transpose()
 }
 
 fn add_object(catalog: &mut DumpCatalog, table: TableRef, engine: &str, create: Option<String>, database: &str) {
@@ -82,10 +97,17 @@ fn add_object(catalog: &mut DumpCatalog, table: TableRef, engine: &str, create: 
         }
         Placement::Program(kind) => {
             let create = match kind {
-                DumpObjectKind::View => create_text::without_definer(&create),
-                DumpObjectKind::MaterializedView => create_text::populated(&create_text::without_definer(&create)),
+                DumpObjectKind::View | DumpObjectKind::MaterializedView => create_text::without_definer(&create),
                 _ => create,
             };
+            if kind == DumpObjectKind::MaterializedView && create_text::keeps_own_rows(&create) {
+                catalog.skipped.push(DumpSkip {
+                    kind,
+                    schema: None,
+                    name: table.name.clone(),
+                    reason: DumpSkipReason::RowsNotCarried,
+                });
+            }
             catalog.objects.push(DumpObject::new(
                 kind,
                 DumpSection::Programs,
