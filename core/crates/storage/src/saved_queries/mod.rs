@@ -34,11 +34,13 @@ const MAX_NAME_CHARS: usize = 200;
 #[derive(Debug, Clone)]
 pub struct SavedQueries {
     pool: SqlitePool,
+    // The database's file, whose upgrade copies a delete reaches too.
+    path: std::path::PathBuf,
 }
 
 impl SavedQueries {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+    pub(crate) fn new(pool: SqlitePool, path: std::path::PathBuf) -> Self {
+        Self { pool, path }
     }
 
     /// Keep `query` under its name, replacing whatever that name held
@@ -215,6 +217,15 @@ impl SavedQueries {
             .execute(&self.pool)
             .await?
             .rows_affected();
+        crate::query_history::delete_in_upgrade_copies(
+            &self.path,
+            "saved_queries",
+            vec![(
+                "DELETE FROM saved_queries WHERE id = ?".to_owned(),
+                vec![crate::query_history::Bind::Integer(id)],
+            )],
+        )
+        .await?;
         match affected {
             0 => Err(StorageError::NotFound),
             _ => Ok(()),
@@ -230,6 +241,15 @@ impl SavedQueries {
             .execute(&self.pool)
             .await?
             .rows_affected();
+        crate::query_history::delete_in_upgrade_copies(
+            &self.path,
+            "saved_queries",
+            vec![(
+                "DELETE FROM saved_queries WHERE connection_id = ?".to_owned(),
+                vec![crate::query_history::Bind::Text(connection.to_string())],
+            )],
+        )
+        .await?;
         Ok(affected as usize)
     }
 }

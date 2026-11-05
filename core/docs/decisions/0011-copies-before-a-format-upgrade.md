@@ -18,7 +18,7 @@ Before the first write that replaces a file holding an older format, the storage
 - **Beside the file, like the copies a Reset moves aside.** `connections.json.v1-…` sits next to `connections.json.corrupt-…`, a restore is a rename in one folder, and a session's purge removes its copies with its file.
 - **Three per file, as Chromium keeps three user-data snapshots** taken at each major update for a rollback ([Keep data during version rollback](https://support.google.com/chrome/a/answer/9917429)). A copy whose bytes match the newest one is not made again.
 - **No copy, no write.** A failed copy fails the write, the file stays as it was, and the app words the error by the copy's path like any other failed write. Upgrading without the way back is what this decision removes.
-- **What the user deletes is deleted from the copies.** Clear History and deleting a connection's history also delete those rows from each history copy, then `VACUUM` it; saved queries stay.
+- **What the user deletes is deleted from the copies.** Every deletion from the history or the saved queries, and the history's retention window, applies to each history copy as well, which then optimizes its full-text indexes and runs `VACUUM`, so a copy never outlives the user's choice about their SQL.
 
 ## Consequences
 

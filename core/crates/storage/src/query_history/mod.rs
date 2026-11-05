@@ -52,7 +52,7 @@ const ENTRY_COLUMNS: &str = "h.id, h.query, h.driver_id, h.connection_id, h.conn
      h.duration_ms, h.rows_affected, h.success, h.cancelled, h.pinned, h.error";
 
 /// A value for a placeholder of a statement built from parts.
-enum Bind {
+pub(crate) enum Bind {
     Text(String),
     Integer(i64),
 }
@@ -98,7 +98,7 @@ impl QueryHistory {
     /// migration chain, one open: what the user keeps and what they
     /// ran are the same kind of thing in the same place.
     pub fn saved_queries(&self) -> crate::saved_queries::SavedQueries {
-        crate::saved_queries::SavedQueries::new(self.pool.clone())
+        crate::saved_queries::SavedQueries::new(self.pool.clone(), self.path.clone())
     }
 
     pub async fn record(&self, entry: NewEntry) -> Result<i64, StorageError> {
@@ -264,6 +264,17 @@ impl QueryHistory {
             }
         }
         transaction.commit().await?;
+        let in_copies = ids
+            .chunks(IDS_PER_STATEMENT)
+            .map(|chunk| {
+                let placeholders = vec!["?"; chunk.len()].join(",");
+                (
+                    format!("DELETE FROM history WHERE id IN ({placeholders})"),
+                    chunk.iter().map(|id| Bind::Integer(*id)).collect(),
+                )
+            })
+            .collect();
+        delete_in_upgrade_copies(&self.path, "history", in_copies).await?;
         deleted.sort_by_key(|entry| entry.id);
         Ok(deleted)
     }
@@ -311,7 +322,12 @@ impl QueryHistory {
                 .execute(&self.pool)
                 .await?;
         }
-        self.delete_from_upgrade_copies(None).await?;
+        delete_in_upgrade_copies(
+            &self.path,
+            "history",
+            vec![("DELETE FROM history".to_owned(), Vec::new())],
+        )
+        .await?;
         Ok(affected as usize)
     }
 
@@ -331,6 +347,16 @@ impl QueryHistory {
                 .execute(&self.pool)
                 .await?
                 .rows_affected();
+            // A copy keeps no query past the window the user chose either.
+            delete_in_upgrade_copies(
+                &self.path,
+                "history",
+                vec![(
+                    "DELETE FROM history WHERE pinned = 0 AND executed_at < ?".to_owned(),
+                    vec![Bind::Integer(to_unix(cutoff))],
+                )],
+            )
+            .await?;
         }
 
         report.over_cap = sqlx::query(
@@ -394,39 +420,16 @@ impl QueryHistory {
                 .execute(&self.pool)
                 .await?;
         }
-        self.delete_from_upgrade_copies(Some(connection)).await?;
+        delete_in_upgrade_copies(
+            &self.path,
+            "history",
+            vec![(
+                "DELETE FROM history WHERE connection_id = ?".to_owned(),
+                vec![Bind::Text(connection.to_string())],
+            )],
+        )
+        .await?;
         Ok(removed)
-    }
-
-    // What the user asked to be gone goes from the copies too: each full-text index is optimized, so
-    // no deleted word stays in its blocks, and VACUUM leaves none in free pages.
-    async fn delete_from_upgrade_copies(&self, connection: Option<Uuid>) -> Result<(), StorageError> {
-        crate::upgrade_copies::remove_partials_blocking(&self.path)?;
-        for copy in crate::upgrade_copies::copies_blocking(&self.path)? {
-            let mut database = SqliteConnectOptions::new()
-                .filename(&copy.path)
-                .journal_mode(sqlx::sqlite::SqliteJournalMode::Delete)
-                .disable_statement_logging()
-                .connect()
-                .await?;
-            let delete = match connection {
-                Some(connection) => {
-                    sqlx::query("DELETE FROM history WHERE connection_id = ?").bind(connection.to_string())
-                }
-                None => sqlx::query("DELETE FROM history"),
-            };
-            delete.execute(&mut database).await?;
-            for index in full_text_indexes(&mut database).await? {
-                sqlx::query(AssertSqlSafe(format!(
-                    "INSERT INTO \"{index}\"(\"{index}\") VALUES('optimize')"
-                )))
-                .execute(&mut database)
-                .await?;
-            }
-            sqlx::query("VACUUM").execute(&mut database).await?;
-            database.close().await?;
-        }
-        Ok(())
     }
 
     /// Every connection the history holds entries for, under the name
@@ -478,6 +481,54 @@ impl QueryHistory {
         let entries = self.fetch_by_ids(ids).await?;
         history_csv(&entries)
     }
+}
+
+// What the user deleted, or the retention window dropped, goes from the copies an upgrade kept too:
+// each full-text index is optimized, so no deleted word stays in its blocks, and VACUUM leaves none in
+// free pages. A copy without `table` is left alone.
+pub(crate) async fn delete_in_upgrade_copies(
+    path: &Path,
+    table: &str,
+    deletes: Vec<(String, Vec<Bind>)>,
+) -> Result<(), StorageError> {
+    crate::upgrade_copies::remove_partials_blocking(path)?;
+    for copy in crate::upgrade_copies::copies_blocking(path)? {
+        let mut database = SqliteConnectOptions::new()
+            .filename(&copy.path)
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Delete)
+            .disable_statement_logging()
+            .connect()
+            .await?;
+        let has_table: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?")
+            .bind(table)
+            .fetch_one(&mut database)
+            .await?;
+        let mut removed = 0;
+        if has_table > 0 {
+            for (sql, binds) in &deletes {
+                let mut statement = sqlx::query(AssertSqlSafe(sql.clone()));
+                for bind in binds {
+                    statement = match bind {
+                        Bind::Text(text) => statement.bind(text.clone()),
+                        Bind::Integer(value) => statement.bind(*value),
+                    };
+                }
+                removed += statement.execute(&mut database).await?.rows_affected();
+            }
+        }
+        if removed > 0 {
+            for index in full_text_indexes(&mut database).await? {
+                sqlx::query(AssertSqlSafe(format!(
+                    "INSERT INTO \"{index}\"(\"{index}\") VALUES('optimize')"
+                )))
+                .execute(&mut database)
+                .await?;
+            }
+            sqlx::query("VACUUM").execute(&mut database).await?;
+        }
+        database.close().await?;
+    }
+    Ok(())
 }
 
 // A copy holds the schema of the build that wrote it, so its indexes are found rather than named.
@@ -1267,5 +1318,61 @@ mod tests {
             .await
             .expect("count");
         assert_eq!(saved, 1, "a saved query went with the history");
+    }
+
+    #[tokio::test]
+    async fn deleted_entries_expired_ones_and_deleted_saved_queries_leave_the_copies_too() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let history = QueryHistory::open(&paths(&root)).await.expect("open");
+        let kept = history.record(entry("SELECT qqqq", Uuid::nil())).await.expect("record");
+        let deleted = history.record(entry("SELECT zzzz", Uuid::nil())).await.expect("record");
+        let mut old = entry("SELECT xxxx", Uuid::nil());
+        old.executed_at = SystemTime::now() - Duration::from_secs(400 * 24 * 60 * 60);
+        history.record(old).await.expect("record");
+        let saved = history.saved_queries();
+        let named = |name: &str| crate::saved_queries::NewSavedQuery {
+            name: name.to_owned(),
+            query: "SELECT 1".to_owned(),
+            connection_id: Uuid::nil(),
+            connection_name: "test".to_owned(),
+        };
+        saved.save(named("first")).await.expect("a saved query");
+        saved.save(named("second")).await.expect("a saved query");
+        let first = saved
+            .list(None)
+            .await
+            .expect("list")
+            .into_iter()
+            .find(|query| query.name == "first")
+            .expect("the first saved query")
+            .id;
+        let copy = crate::upgrade_copies::keep_database(&history.pool, &history.path, 1)
+            .await
+            .expect("a copy");
+
+        history.delete_returning(&[deleted]).await.expect("delete");
+        history.prune(30).await.expect("prune");
+        saved.delete(first).await.expect("delete a saved query");
+
+        assert_eq!(
+            copy_rows(&copy).await,
+            1,
+            "a deleted or expired query stayed in the copy"
+        );
+        assert!(!indexed(&copy, "zzz").await);
+        assert!(!indexed(&copy, "xxx").await);
+        assert!(indexed(&copy, "qqq").await, "a kept query went");
+        let mut database = SqliteConnectOptions::new()
+            .filename(&copy)
+            .read_only(true)
+            .connect()
+            .await
+            .expect("open the copy");
+        let names: Vec<String> = sqlx::query_scalar("SELECT name FROM saved_queries")
+            .fetch_all(&mut database)
+            .await
+            .expect("names");
+        assert_eq!(names, ["second"], "a deleted saved query stayed in the copy");
+        assert!(all(&history).await.iter().any(|entry| entry.id == kept));
     }
 }

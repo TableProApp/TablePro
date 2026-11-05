@@ -251,8 +251,11 @@ can tell whether a re-pinned entry falls in the pages already read.
 - `delete_for_connection` removes one connection's entries, pinned ones
   included, for a connection deleted along with its history, then runs
   `optimize` as a prune does.
-- Both delete the same rows from every copy an upgrade kept, then `VACUUM`
-  it, so nothing of them stays on disk. A copy keeps its saved queries.
+- Every deletion, `delete_returning`, `clear_all`, `delete_for_connection`,
+  the retention part of `prune` and the saved queries' `delete` and
+  `delete_for_connection`, deletes the same rows from each copy an upgrade
+  kept, optimizes its full-text indexes and runs `VACUUM`, so nothing of them
+  stays on disk (`delete_in_upgrade_copies`).
 - `connections_with_history` lists each connection the history holds
   under the name of its latest run, so a renamed connection shows once.
 
