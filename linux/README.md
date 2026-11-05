@@ -71,7 +71,7 @@ Each release and beta on [GitHub Releases](https://github.com/TableProApp/TableP
 | File | For |
 |---|---|
 | `tablepro-<version>-ubuntu-<series>-<arch>.deb` | Ubuntu 26.04 or 26.10, `amd64` or `arm64` |
-| `tablepro-<version>-fedora-44-<arch>.rpm` | Fedora 44, `x86_64` or `aarch64` |
+| `tablepro-<version>-fedora-<release>-<arch>.rpm` | The Fedora release it names, `x86_64` or `aarch64` |
 | `tablepro-<version>-<arch>.flatpak` | Any distribution with Flatpak, `x86_64` or `aarch64` |
 
 ```bash
@@ -229,18 +229,14 @@ reason for each grant.
 
 `build-aux/flatpak/app.tablepro.TablePro.json` builds the bundle a release
 carries: the release profile under the real app ID, offline from the two
-release tarballs, which it reads as `tablepro.tar.xz` and
-`tablepro-vendor.tar.xz` beside it. From `linux/`, with the version that
-`meson.build` names:
+release tarballs, with every Meson suite in the sandbox. From `linux/`,
+with the version that `meson.build` names:
 
 ```bash
 build-aux/packaging/make-sources.sh _packages/sources
-cp _packages/sources/tablepro-0.1.0.tar.xz build-aux/flatpak/tablepro.tar.xz
-cp _packages/sources/tablepro-0.1.0-vendor.tar.xz build-aux/flatpak/tablepro-vendor.tar.xz
-flatpak-builder --user --install-deps-from=flathub --force-clean --default-branch=stable \
-  --repo=_flatpak/repo _flatpak/build build-aux/flatpak/app.tablepro.TablePro.json
-flatpak build-bundle --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
-  _flatpak/repo tablepro.flatpak app.tablepro.TablePro stable
+build-aux/packaging/build-flatpak.sh _packages/sources/tablepro-0.1.0.tar.xz \
+  _packages/sources/tablepro-0.1.0-vendor.tar.xz _packages/flatpak
+flatpak install --user _packages/flatpak/tablepro-x86_64.flatpak
 ```
 
 Neither manifest is for Flathub. Flathub's policy refuses manifests and

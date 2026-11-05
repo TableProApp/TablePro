@@ -49,9 +49,9 @@ other pre-release. Each goes to its own repositories, which testers layer:
 
 Every GitHub release and pre-release carries what CI built offline, tested
 and installed from that tag's tarballs: the .deb for each Ubuntu series and
-the .rpm built on Fedora 44, for amd64 and arm64, a single-file Flatpak
-bundle for each architecture, and `SHA256SUMS`, all named after the tag's
-version.
+the .rpm for each Fedora release CI builds, for amd64 and arm64, a
+single-file Flatpak bundle for each architecture, and `SHA256SUMS`, all
+named after the tag's version.
 
 The bundle comes from `build-aux/flatpak/app.tablepro.TablePro.json`: the
 release profile under the real app id, GNOME 51, built offline from the

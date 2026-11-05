@@ -272,10 +272,8 @@ jobs:
           linux/build-aux/packaging/smoke-test.sh \
             "$(find _packages/rpm -name 'tablepro-[0-9]*.rpm' ! -name '*.src.rpm')" linux/po/LINGUAS
 
-  # The release manifest names the two tarballs at fixed paths beside it, and
-  # builds from them offline, as the packages do, with every Meson suite in
-  # the sandbox. The bundle names Flathub as the repository its GNOME runtime
-  # comes from.
+  # From the same tarballs as the packages, offline, with every Meson suite
+  # in the sandbox (build-flatpak.sh).
   flatpak:
     name: Flatpak bundle (${{ matrix.runner }})
     needs: sources
@@ -297,31 +295,18 @@ jobs:
         with:
           name: linux-sources
           path: _packages/sources
-      - name: Put the tarballs where the manifest names them
-        id: arch
+      - name: Build, test and bundle
         run: |
-          cp "$(find _packages/sources -name 'tablepro-*.tar.xz' ! -name '*-vendor.tar.xz')" \
-            linux/build-aux/flatpak/tablepro.tar.xz
-          cp "$(find _packages/sources -name 'tablepro-*-vendor.tar.xz')" \
-            linux/build-aux/flatpak/tablepro-vendor.tar.xz
-          echo "arch=$(uname -m)" >> "$GITHUB_OUTPUT"
-      - uses: flatpak/flatpak-github-actions/flatpak-builder@79327416609af08178ad73b352877e51450790b3 # v6.8
-        with:
-          manifest-path: linux/build-aux/flatpak/app.tablepro.TablePro.json
-          arch: ${{ steps.arch.outputs.arch }}
-          branch: stable
-          run-tests: true
-          bundle: tablepro-${{ steps.arch.outputs.arch }}.flatpak
-          repository-url: https://dl.flathub.org/repo/flathub.flatpakrepo
-          cache: false
-          upload-artifact: false
+          xvfb-run --auto-servernum linux/build-aux/packaging/build-flatpak.sh \
+            "$(find _packages/sources -name 'tablepro-*.tar.xz' ! -name '*-vendor.tar.xz')" \
+            "$(find _packages/sources -name 'tablepro-*-vendor.tar.xz')" _packages/flatpak
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-flatpak-${{ runner.arch }}
-          path: tablepro-${{ steps.arch.outputs.arch }}.flatpak
+          path: _packages/flatpak/tablepro-*.flatpak
           if-no-files-found: error
       - name: Lint the manifest
-        if: steps.arch.outputs.arch == 'x86_64'
+        if: runner.arch == 'X64'
         run: flatpak-builder-lint manifest linux/build-aux/flatpak/app.tablepro.TablePro.json
 
   flatpak-install:
