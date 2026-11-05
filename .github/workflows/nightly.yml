@@ -1,20 +1,54 @@
-name: Release Build
+name: Nightly
 
-# The Release configuration of the app and every registry plugin, universal and unsigned, packaged
-# the way a tag packages it, so a packaging failure shows before the tag: nightly on main and on
-# demand.
+# The one schedule. Every suite a change can select runs on main in full, which also saves main's caches, and so does
+# the coverage pull requests leave out: the Arm64 SSH tunnel tests and the app and registry plugins built and packaged
+# as a tag does, unsigned. GitHub mails a red run to whoever last edited the schedule.
 
 on:
   schedule:
-    - cron: '0 19 * * *'
+    - cron: "17 19 * * *"
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
-  build:
+  lint:
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/ci-lint.yml
+    with:
+      swiftlint: true
+      hana: true
+
+  macos:
+    uses: ./.github/workflows/macos-tests.yml
+    with:
+      plugins: true
+
+  ios:
+    uses: ./.github/workflows/ios-tests.yml
+    with:
+      oracle: true
+
+  core:
+    uses: ./.github/workflows/core.yml
+    with:
+      extended: true
+
+  windows:
+    uses: ./.github/workflows/windows.yml
+
+  # After macOS Tests, so it never takes a fifth macOS runner beside the four the suites start with.
+  release-build:
     name: Release Build
+    needs: macos
+    if: ${{ !cancelled() }}
     runs-on: xcode-27
     timeout-minutes: 240
     # The tag's version settings run here first; 9999999 is the largest build at MAJOR 0 (apple/RELEASING.md, Versions).
@@ -26,6 +60,8 @@ jobs:
         working-directory: apple
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-xcode
 

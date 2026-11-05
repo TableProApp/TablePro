@@ -1,10 +1,20 @@
 name: Core
 
-# The shared Rust core on the platforms other than Linux it is built for.
-# CI calls it whenever it runs the Linux suite.
+# The shared Rust core on the platforms other than Linux it is built for, and its Swift bindings.
+# CI calls it when the core suite changed; nightly.yml calls it with extended.
 on:
   workflow_call:
+    inputs:
+      extended:
+        description: Also run the Arm64 SSH tunnel tests through Windows' OpenSSH Server.
+        type: boolean
+        default: false
   workflow_dispatch:
+    inputs:
+      extended:
+        description: Also run the Arm64 SSH tunnel tests through Windows' OpenSSH Server.
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -22,11 +32,13 @@ jobs:
           - name: Windows Arm64
             runner: windows-11-arm
             target: aarch64-pc-windows-msvc
+          # Also builds the Swift bindings, so a core change takes one macOS runner rather than two.
           - name: macOS
             runner: macos-15
             target: aarch64-apple-darwin
             # GSSAPI from the system's GSS framework, as the macOS app links it.
             features: tablepro-driver-mssql/kerberos
+            swift: true
     runs-on: ${{ matrix.runner }}
     # DuckDB's C++ takes most of it, and MSVC builds it slowly.
     timeout-minutes: 150
@@ -50,9 +62,11 @@ jobs:
         with:
           toolchain: "1.98"
           targets: ${{ matrix.target }}
+      # Saved from main only: a pull request's cache serves that pull request alone and pushes main's out.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: ${{ matrix.target }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # rust-cache restores DuckDB's unpacked sources as empty folders, which its build script cannot unpack over.
       - name: Drop the emptied DuckDB sources
         run: rm -rf "target/$TARGET/duckdb-sources"
@@ -77,16 +91,18 @@ jobs:
           # The rest of net's tests read how Linux handles a full listen backlog.
           cargo test --locked --target "$TARGET" -p tablepro-net --lib -- loopback private_
           cargo test --locked --target "$TARGET" --features tablepro-ssh/in-process -p tablepro-ssh --lib in_process
+      # The Arm64 image has no OpenSSH Server, and installing it takes about 20 minutes, so Arm64 runs these nightly.
       - name: Start Windows' OpenSSH Server
-        if: runner.os == 'Windows'
+        id: sshd
+        if: runner.os == 'Windows' && (matrix.name == 'Windows x64' || inputs.extended)
         shell: pwsh
         run: scripts/ci/start-windows-sshd.ps1 -Out (Join-Path $env:RUNNER_TEMP 'tablepro-ssh')
       - name: SSH tunnels through Windows' OpenSSH Server
-        if: runner.os == 'Windows'
+        if: steps.sshd.outcome == 'success'
         # One login at a time: the Arm64 runner is slow to start each session's process.
         run: cargo test --locked --target "$TARGET" --features tablepro-ssh/in-process -p tablepro-ssh --test in_process_windows -- --ignored --test-threads=1
       - name: The OpenSSH Server's log
-        if: failure() && runner.os == 'Windows'
+        if: failure() && steps.sshd.outcome != 'skipped' && runner.os == 'Windows'
         shell: pwsh
         run: |
           Get-Content (Join-Path $env:ProgramData 'ssh\sshd_config') | Where-Object { $_ -notmatch '^\s*(#|$)' }
@@ -94,6 +110,13 @@ jobs:
       # Each importer reads its app's files from this platform's own places.
       - name: Importers from other apps
         run: cargo test --locked --target "$TARGET" -p tablepro-foreign-import
+      # Release with fat LTO, without the engines (core/docs/decisions/0010-macos-on-the-core.md).
+      - name: Build the static library and its Swift bindings
+        if: ${{ !cancelled() && matrix.swift }}
+        run: apple/scripts/build-core.sh arm64
+      - name: Swift binding tests
+        if: ${{ !cancelled() && matrix.swift }}
+        run: swift test --package-path apple/Packages/TableProFFI
 
   sql-server-windows:
     name: SQL Server integrated login (Windows x64)
@@ -115,6 +138,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: sql-server-windows
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Build the SQL Server tests
         run: cargo test --locked -p tablepro-driver-mssql --test integration --no-run
       - name: Install SQL Server 2022 Express
@@ -132,29 +156,3 @@ jobs:
         run: |
           cargo test --locked -p tablepro-driver-mssql --test integration -- --ignored windows_server::force_strict:: 2>&1 | tee force-strict.log
           grep "test result: ok. 1 passed" force-strict.log
-
-  swift:
-    name: Core (Swift bindings)
-    runs-on: macos-15
-    # Release with fat LTO, without the engines (core/docs/decisions/0010-macos-on-the-core.md).
-    timeout-minutes: 90
-    env:
-      RUSTFLAGS: -D warnings
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
-        with:
-          toolchain: "1.98"
-          targets: aarch64-apple-darwin
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          key: swift-bindings
-      - name: Build the static library and its Swift bindings
-        run: apple/scripts/build-core.sh arm64
-      - name: Swift binding tests
-        run: swift test --package-path apple/Packages/TableProFFI

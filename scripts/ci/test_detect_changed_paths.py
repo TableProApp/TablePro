@@ -78,16 +78,51 @@ class DetectChangedPathsTests(unittest.TestCase):
             ".github/workflows/build-linux.yml",
             ".github/workflows/linux-packages.yml",
             ".github/workflows/release-linux.yml",
-            "scripts/ci/start-windows-sshd.ps1",
         ]:
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("linux", path), "true")
 
-    def test_linux_runs_on_the_cores_swift_bindings(self):
-        for path in ["apple/Packages/TableProFFI/Package.swift", "apple/scripts/build-core.sh",
-                     "apple/scripts/lib/deployment-target.sh", "apple/project.yml"]:
+    def test_core_runs_on_the_core_its_workspace_and_its_swift_bindings(self):
+        for path in [
+            "core/crates/core/src/lib.rs",
+            "core/crates/drivers/mssql/tests/windows/sql-server.ps1",
+            "Cargo.toml",
+            "Cargo.lock",
+            "rust-toolchain.toml",
+            "apple/Packages/TableProFFI/Package.swift",
+            "apple/scripts/build-core.sh",
+            "apple/scripts/lib/deployment-target.sh",
+            "apple/project.yml",
+            "scripts/ci/start-windows-sshd.ps1",
+            ".github/workflows/core.yml",
+        ]:
             with self.subTest(path=path):
-                self.assertEqual(self.verdict_after("linux", path), "true")
+                self.assertEqual(self.verdict_after("core", path), "true")
+
+    def test_core_skips_the_apps_and_the_linux_only_settings(self):
+        for path in [
+            "linux/crates/app/src/main.rs",
+            "linux/meson.build",
+            "windows/src/TablePro.Interop/QueryRun.cs",
+            "apple/TablePro/App.swift",
+            "core/AGENTS.md",
+            "core/docs/decisions/0001-shared-core.md",
+            "rustfmt.toml",
+            "clippy.toml",
+            "deny.toml",
+            ".config/nextest.toml",
+            ".github/workflows/build-linux.yml",
+            ".github/workflows/windows.yml",
+        ]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("core", path), "false")
+
+    def test_linux_skips_what_only_the_other_platforms_build(self):
+        for path in ["apple/Packages/TableProFFI/Package.swift", "apple/scripts/build-core.sh",
+                     "apple/scripts/lib/deployment-target.sh", "apple/project.yml", "scripts/ci/start-windows-sshd.ps1",
+                     ".github/workflows/core.yml"]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("linux", path), "false")
 
     def test_linux_skips_the_apple_apps(self):
         for path in ["apple/TablePro/App.swift", "apple/TableProMobile/App.swift", "apple/Plugins/Shared/Timeout.swift",
@@ -130,7 +165,6 @@ class DetectChangedPathsTests(unittest.TestCase):
         for path in [
             "core/crates/core/src/lib.rs",
             "core/crates/drivers/postgres/Cargo.toml",
-            ".github/workflows/core.yml",
         ]:
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("linux", path), "true")
@@ -170,8 +204,6 @@ class DetectChangedPathsTests(unittest.TestCase):
             "core/crates/ffi/src/lib.rs",
             "core/crates/ffi/uniffi.toml",
             ".github/workflows/windows.yml",
-            ".github/workflows/release-windows.yml",
-            ".github/workflows/windows-grid-gate.yml",
             "windows/ci/winget-manifest.py",
         ]:
             with self.subTest(path=path):
@@ -203,6 +235,8 @@ class DetectChangedPathsTests(unittest.TestCase):
             "rustfmt.toml",
             "deny.toml",
             ".github/workflows/core.yml",
+            ".github/workflows/release-windows.yml",
+            ".github/workflows/windows-grid-gate.yml",
         ]:
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("windows", path), "false")
@@ -217,7 +251,7 @@ class DetectChangedPathsTests(unittest.TestCase):
             "apple/Packages/TableProCore/Sources/Core.swift",
             "apple/.swiftlint.yml",
             "apple/TableProTests/.swiftlint.yml",
-            ".github/workflows/swiftlint.yml",
+            ".github/workflows/ci-lint.yml",
         ]:
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("swiftlint", path), "true")
@@ -231,7 +265,7 @@ class DetectChangedPathsTests(unittest.TestCase):
         spec.write_text("sources:\n  - path: ../Packages/TableProCore\n", encoding="utf-8")
         self.seed = self.commit([])
         for suite in [
-            "macos", "plugins", "ios", "oracle", "hana", "release", "swiftlint", "linux", "linux-docs", "windows",
+            "macos", "plugins", "ios", "oracle", "hana", "release", "swiftlint", "linux", "linux-docs", "core", "windows",
         ]:
             with self.subTest(suite=suite):
                 self.assertEqual(self.verdict_after(suite, ".github/workflows/ci.yml"), "true")
@@ -268,7 +302,7 @@ class DetectChangedPathsTests(unittest.TestCase):
             "apple/scripts/ci/verify-plugin-loads.sh",
             ".github/actions/setup-xcode/action.yml",
             ".github/actions/prepare-build/action.yml",
-            ".github/workflows/release-build.yml",
+            ".github/workflows/nightly.yml",
         ]:
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("release", path), "true")
@@ -297,7 +331,7 @@ class DetectChangedPathsTests(unittest.TestCase):
     def test_macos_keeps_its_test_folders_and_ignores_the_release_workflow(self):
         self.assertEqual(self.verdict_after("macos", "apple/TableProTests/AppTests.swift"), "true")
         self.assertEqual(self.verdict_after("macos", "apple/Plugins/MySQLDriverTests/MySQLTests.swift"), "true")
-        self.assertEqual(self.verdict_after("macos", ".github/workflows/release-build.yml"), "false")
+        self.assertEqual(self.verdict_after("macos", ".github/workflows/nightly.yml"), "false")
         self.assertEqual(self.verdict_after("macos", "apple/scripts/release/build.sh"), "false")
 
     def test_macos_and_ios_run_on_the_catalog_check_their_builds_run(self):
@@ -372,7 +406,7 @@ class DetectChangedPathsTests(unittest.TestCase):
             "apple/scripts/ci/summarize-xcresult.sh",
             "apple/scripts/release/build.sh",
             ".github/workflows/ios-tests.yml",
-            ".github/workflows/release-build.yml",
+            ".github/workflows/nightly.yml",
         ]:
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("plugins", path), "false")
@@ -390,7 +424,7 @@ class DetectChangedPathsTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("shipped", path), "true")
         for path in [
-            ".github/workflows/release-build.yml",
+            ".github/workflows/nightly.yml",
             ".github/workflows/release.yml",
             ".github/actions/setup-xcode/action.yml",
             ".github/actions/prepare-build/action.yml",
@@ -410,7 +444,7 @@ class DetectChangedPathsTests(unittest.TestCase):
         self.git("update-ref", "refs/remotes/origin/main", base)
         self.commit(["apple/CHANGELOG.md"])
         for suite in [
-            "macos", "plugins", "ios", "oracle", "hana", "release", "swiftlint", "linux", "linux-docs", "windows",
+            "macos", "plugins", "ios", "oracle", "hana", "release", "swiftlint", "linux", "linux-docs", "core", "windows",
         ]:
             with self.subTest(suite=suite):
                 self.assertEqual(self.detect(suite, base), (0, "false"))

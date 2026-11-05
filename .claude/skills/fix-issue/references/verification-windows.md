@@ -60,7 +60,7 @@ These hold on GitHub's `windows-2025` and `windows-11-arm` images, where CI and 
 
 ## Reading CI
 
-- `ci.yml` calls `windows.yml` when the `windows` suite changed (`.claude/rules/ci.md`). Its jobs are `windows / Windows (x64)`, `windows / Windows (Arm64)` and `windows / Windows (macOS)`. The Windows jobs test the solution, publish the app with Native AOT, ready the desktop, run the UI tests and keep the screenshots; the macOS job tests the solution, checks the bindings and runs zizmor on the Windows workflows. A change under `core/` also runs `core.yml` on the same runners.
+- `ci.yml` calls `windows.yml` when the `windows` suite changed (`.claude/rules/ci.md`). Its jobs are `windows / Windows (x64)`, `windows / Windows (Arm64)` and `windows / Windows (macOS)`. The Windows jobs test the solution, publish the app with Native AOT, ready the desktop, run the UI tests and keep the screenshots; the macOS job tests the solution and checks the bindings. A change under `core/` also runs `core.yml` on the same runners.
 - A failed job's tail: `gh run view --repo TableProApp/TablePro --job <job-id> --log-failed`. The screenshots, failure shots included: `windows-screenshots-x64` and `windows-screenshots-Arm64` (`references/platform-windows.md`, Screen). The UI tests' `TestResults/` and the WSL watch log are not uploaded.
 - **Fork pull request runs need approval.** A push to a fork's pull request starts its workflow runs with conclusion `action_required`, and no job starts until a maintainer approves. Before the 45-minute rule in `SKILL.md`, Phase 7, applies, look for them:
   ```bash

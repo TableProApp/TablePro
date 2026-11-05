@@ -30,12 +30,11 @@ jobs:
             app: true
             rid: win-arm64
             platform: ARM64
-          # Also checks that the committed bindings match the library, and the Windows workflows.
+          # Also checks that the committed bindings match the library.
           - name: macOS
             runner: macos-15
             target: aarch64-apple-darwin
             bindings: true
-            workflows: true
     runs-on: ${{ matrix.runner }}
     # DuckDB's C++ takes most of it, and MSVC builds it slowly.
     timeout-minutes: 150
@@ -56,9 +55,11 @@ jobs:
         with:
           toolchain: "1.98"
           targets: ${{ matrix.target }}
+      # Saved from main only: a pull request's cache serves that pull request alone and pushes main's out.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: windows-${{ matrix.target }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # rust-cache restores DuckDB's unpacked sources as empty folders, which its build script cannot unpack over.
       - name: Drop the emptied DuckDB sources
         run: rm -rf "target/${{ matrix.target }}/duckdb-sources" target/duckdb-sources
@@ -190,16 +191,3 @@ jobs:
             exit 1
           fi
 
-      # The Linux workflows' supply chain checks run in build-linux.yml; these are the Windows ones.
-      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
-        if: matrix.workflows
-        with:
-          tool: zizmor@1.30.1
-      - name: The Windows workflows
-        if: matrix.workflows
-        # Offline, so the verdict depends on these files alone.
-        run: |
-          zizmor --offline --format=github --min-severity=medium \
-            .github/workflows/windows.yml \
-            .github/workflows/release-windows.yml \
-            .github/workflows/windows-grid-gate.yml

@@ -67,7 +67,7 @@ TableProPluginKit is built with Library Evolution, so an already-built plugin ke
 - A new driver needs: its `apple/project.yml` target and a `RegistryPlugins` entry (`BundledPlugins` and the app's `copy: { destination: plugins }` dependency for a bundled one), a `DatabaseType` constant, for a registry one an entry in `.github/plugin-registry.json` keyed by its target, with `name` (a bundled one stays out of it), a curated snapshot in `PluginMetadataRegistry` (without it the type never appears in the New Connection picker), its `TableProProvides*` keys (below), a row in `../tablepro-docs/databases/index.mdx` through a paired docs PR, and a changelog fragment.
 - A new engine ships as a registry plugin (`apple/AGENTS.md`, Scope).
 - `PluginManager` registers a plugin from the `TableProProvidesDatabaseTypeIds`, `TableProProvidesExportFormatIds` and `TableProProvidesImportFormatIds` arrays in its `Info.plist` and loads its code on first use. A plugin with none of them loads at launch. The first database type id is the primary one.
-- `apple/scripts/ci/check-plugin-provides.py` checks those arrays against the class's `databaseTypeId`, `additionalDatabaseTypeIds` and `formatId` in Repo Hygiene; `--write` stamps them.
+- `apple/scripts/ci/check-plugin-provides.py` checks those arrays against the class's `databaseTypeId`, `additionalDatabaseTypeIds` and `formatId` in CI's Lint job; `--write` stamps them.
 - Where a plugin's tests go, and how a test target is added in `apple/project.yml`: `.claude/rules/tests.md`, Where a test goes and Adding a test target.
 
 ## Releases
