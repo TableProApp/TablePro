@@ -29,6 +29,8 @@ pub struct TelemetrySettings {
     pub person: PersonProperties,
 }
 
+const SHUTDOWN_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
 // clients.md, macOS Telemetry, without feature_gate_shown. Without a key there is nothing at all,
 // and the PostHog client is made at the first time Share Usage Data is on. Clones share one.
 #[derive(Clone, Default)]
@@ -213,10 +215,27 @@ impl Telemetry {
         self.capture("support_ask_answered", vec![("answer", Value::from(answer))]);
     }
 
-    // Blocks until PostHog answered or the request timed out.
+    // posthog-rs's flush waits for every event still queued, each up to its own request timeout, so the
+    // wait is bounded here as a whole: quitting never holds for more than SHUTDOWN_WAIT.
     pub fn flush(&self) {
-        if let Some(client) = self.inner.get().and_then(|inner| inner.client.get()) {
-            client.flush();
+        let Some(inner) = self.inner.get().filter(|inner| inner.client.get().is_some()).cloned() else {
+            return;
+        };
+        let (done, flushed) = std::sync::mpsc::channel();
+        let flushing = std::thread::Builder::new()
+            .name("usage-data-flush".to_owned())
+            .spawn(move || {
+                if let Some(client) = inner.client.get() {
+                    client.flush();
+                }
+                let _ = done.send(());
+            });
+        if let Err(error) = flushing {
+            tracing::warn!(%error, "the usage data was not flushed");
+            return;
+        }
+        if flushed.recv_timeout(SHUTDOWN_WAIT).is_err() {
+            tracing::info!("usage data still waiting for PostHog was left unsent");
         }
     }
 
@@ -865,6 +884,26 @@ mod tests {
         telemetry.flush();
 
         assert_eq!(names(&collector), ["upgrade_clicked"]);
+    }
+
+    #[test]
+    fn quitting_waits_for_posthog_at_most_the_shutdown_wait_however_many_events_queue() {
+        let runtime = test_runtime();
+        let collector = Collector::start();
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let telemetry = start("phc_test", true, &collector, &dir, &runtime.tasks());
+        until(|| telemetry.is_sending());
+        collector.hold();
+        for source in ["app-settings", "app-ask", "app-settings", "app-ask"] {
+            telemetry.upgrade_clicked(source);
+        }
+
+        let started = Instant::now();
+        telemetry.flush();
+        let waited = started.elapsed();
+        collector.release();
+
+        assert!(waited < SHUTDOWN_WAIT + Duration::from_secs(1), "{waited:?}");
     }
 
     #[test]

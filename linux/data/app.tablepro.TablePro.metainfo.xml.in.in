@@ -55,6 +55,31 @@
       <caption>Connect through an SSH tunnel</caption>
     </screenshot>
   </screenshots>
+  <agreement type="privacy" version_id="2026-11-05">
+    <agreement_section id="account">
+      <name>TablePro account</name>
+      <description>
+        <p>
+          Signed in to a TablePro account, TablePro reaches account.tablepro.app and api.tablepro.app to keep
+          the sign-in, to register this computer as a device with its host name, the TablePro and system
+          versions and a machine ID hashed from /etc/machine-id, to check the plan at launch and once a day,
+          and to list teams and devices while Preferences shows the account.
+        </p>
+      </description>
+    </agreement_section>
+    <agreement_section id="usage-data">
+      <name>Usage data</name>
+      <description>
+        <p>
+          Nothing is sent to PostHog until you choose Share, and Preferences > General > Privacy turns it off
+          again. Shared, a daily launch with the kinds and number of open connections, the first connection and
+          query, sign-in and sign-out, and upgrade clicks go to eu.i.posthog.com, with a random installation ID,
+          or the account's ID with the TablePro and system versions, processor type and language once signed
+          in. Never a host name, a password, a query or a row.
+        </p>
+      </description>
+    </agreement_section>
+  </agreement>
   <!-- A signed-in account reaches TablePro's account service, usage data goes to PostHog once the user
        chooses to share it, and a toast asks about buying a license. -->
   <content_rating type="oars-1.1">

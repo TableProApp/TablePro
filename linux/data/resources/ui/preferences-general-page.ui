@@ -26,7 +26,7 @@
       <object class="AdwPreferencesGroup" id="privacy_group">
         <property name="visible">False</property>
         <property name="title" translatable="yes">Privacy</property>
-        <property name="description" translatable="yes">Once a day, a summary to api.tablepro.app: this computer’s machine ID, hashed, the TablePro and system versions, the processor type, the interface language, the types and number of open connections, and whether a license is held. Never a query, a host name, a password or anything in your databases.</property>
+        <property name="description" translatable="yes">Sent to PostHog: a daily launch with the kinds and number of open connections, the first connection and query, sign-in and sign-out, and upgrade clicks, with a random installation ID, or your account’s ID once you sign in. Never a host name, a password, a query or a row.</property>
         <child>
           <object class="AdwSwitchRow" id="share_usage_data_row">
             <property name="title" translatable="yes">Share Usage Data</property>

@@ -59,12 +59,11 @@ on:
         description: The PPA upload number, the N in X.Y.Z-0ppaN.
         type: string
         default: "1"
-    # No repository secret can have this name, so a run of this workflow
-    # on its own never reads one.
-    secrets:
+      # Only a release's call passes it, so a run of this workflow on its own builds packages without one.
       posthog-key:
-        description: The PostHog project key the vendor tarball carries for the .deb and .rpm.
-        required: false
+        description: The PostHog project key the vendor tarball carries for the .deb and .rpm. Public by design.
+        type: string
+        default: ""
 
 # A pull request keeps only its newest run; every other run, a release's call included, has its own group.
 concurrency:
@@ -94,7 +93,7 @@ jobs:
       - name: Make the source and vendor tarballs
         if: inputs.release-tag == ''
         env:
-          POSTHOG_KEY: ${{ secrets.posthog-key }}
+          POSTHOG_KEY: ${{ inputs.posthog-key }}
         run: linux/build-aux/packaging/make-sources.sh --install-deps --posthog-key "$POSTHOG_KEY" _packages/sources
       - name: Download the released source and vendor tarballs
         if: inputs.release-tag != ''

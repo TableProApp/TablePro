@@ -19,8 +19,6 @@ use crate::i18n::gettext;
 
 // Flatpak binds the host's first file into every sandbox at the first path, or else its second, as D-Bus's older
 // copy, so the host build reads them in the same order and both builds are one device.
-const MACHINE_ID_FILE: &str = "/etc/machine-id";
-const DBUS_MACHINE_ID_FILE: &str = "/var/lib/dbus/machine-id";
 // Flatpak writes the first at the root of every sandbox, and shows the host's os-release(5) at the second.
 const FLATPAK_INFO: &str = "/.flatpak-info";
 const HOST_OS_RELEASE: &str = "/run/host/os-release";
@@ -218,15 +216,6 @@ fn this_device() -> DeviceDescription {
 
 pub(crate) fn os_name() -> String {
     os_release_value("PRETTY_NAME").unwrap_or_else(|| "Linux".to_owned())
-}
-
-// The distribution and its version without the edition, such as "Fedora Linux 43", for the usage heartbeat.
-pub(crate) fn os_version() -> String {
-    let name = os_release_value("NAME").unwrap_or_else(|| "Linux".to_owned());
-    match os_release_value("VERSION_ID") {
-        Some(version) => format!("{name} {version}"),
-        None => name,
-    }
 }
 
 fn os_release_value(key: &str) -> Option<String> {

@@ -54,10 +54,10 @@ pub(super) fn usage_data_dialog() -> adw::AlertDialog {
     let body = format!(
         "{}\n\n{}\n\n{}",
         gettext(
-            "TablePro would send PostHog, the analytics service TablePro uses, events such as a launch, a first connection or query and a sign-in, with the TablePro and system versions, the processor type, the interface language and the kinds of database you open. Once you sign in, they carry your account’s ID."
+            "If you share it, TablePro sends PostHog (eu.i.posthog.com), the analytics service it uses: a daily launch with the kinds and number of open connections, the first connection and the first query, sign-in and sign-out, and clicks on Upgrade and Buy a License. Each carries a random ID for this installation and the system’s name and version; once you sign in, your account’s ID, with the TablePro and system versions, the processor type and the interface language. PostHog also sees the network address they come from."
         ),
         gettext("Never a host name, a password, a query or a row."),
-        gettext("You can change this in Preferences."),
+        gettext("You can change this at any time in Preferences > General > Privacy."),
     );
     let alert = adw::AlertDialog::new(Some(&gettext("Share Usage Data?")), Some(&body));
     alert.add_response(DONT_SHARE, &gettext("_Don’t Share"));

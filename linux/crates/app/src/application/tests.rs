@@ -292,6 +292,55 @@ fn startup_installs_the_app_actions_and_their_accels() {
     }
 }
 
+// The app's own wiring, with a key as a release has one: nothing reaches PostHog before the choice, after a
+// refusal, or once Share Usage Data is turned off again.
+#[gtk4::test]
+fn no_usage_data_leaves_before_the_choice_after_a_refusal_or_once_it_is_turned_off() {
+    let (services, _backing) = fake_services();
+    let collector = crate::test_support::PostHogCollector::start();
+    services.start_telemetry_with("phc_test", &collector.url);
+    let telemetry = services.telemetry();
+    let pump = |time: u64| {
+        let _ = wait_until(Duration::from_millis(time), || false);
+    };
+    let everything = || {
+        telemetry.connection_attempted("sqlite");
+        telemetry.connection_succeeded("sqlite");
+        telemetry.query_executed("sqlite");
+        telemetry.upgrade_clicked("app-settings");
+        telemetry.support_ask_shown();
+        telemetry.signed_in("acct_01k8d6wk00f8xsr79e7x052rkk");
+        telemetry.signed_out();
+    };
+
+    everything();
+    pump(500);
+    let before_the_choice = collector.connections();
+    services.settings.choose_usage_data(false).expect("the refusal stored");
+    everything();
+    pump(500);
+    let after_the_refusal = collector.connections();
+    services.settings.choose_usage_data(true).expect("the choice stored");
+    telemetry.upgrade_clicked("app-ask");
+    wait_until(Duration::from_secs(20), || {
+        !collector.named("upgrade_clicked").is_empty()
+    })
+    .expect("sent once shared");
+    telemetry.flush();
+    pump(300);
+    let while_shared = collector.connections();
+    services.settings.choose_usage_data(false).expect("the opt-out stored");
+    pump(300);
+    everything();
+    telemetry.flush();
+    pump(500);
+
+    assert_eq!(before_the_choice, 0);
+    assert_eq!(after_the_refusal, 0);
+    assert!(while_shared > 0);
+    assert_eq!(collector.connections(), while_shared);
+}
+
 #[gtk4::test]
 fn startup_in_a_test_build_has_no_posthog_key() {
     let test = TestApp::started("UsageData");

@@ -253,9 +253,13 @@ impl AppServices {
 
     // An empty key, as in every build without -Dposthog_key, makes no client at all.
     fn start_telemetry(&self) {
+        self.start_telemetry_with(config::POSTHOG_KEY, config::POSTHOG_HOST);
+    }
+
+    pub(super) fn start_telemetry_with(&self, key: &str, host: &str) {
         let settings = TelemetrySettings {
-            key: config::POSTHOG_KEY.to_owned(),
-            host: config::POSTHOG_HOST.to_owned(),
+            key: key.to_owned(),
+            host: host.to_owned(),
             state_file: self.storage.paths().telemetry_file(),
             person: person_properties(),
         };
