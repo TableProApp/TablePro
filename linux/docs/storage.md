@@ -399,14 +399,17 @@ that replaces it with a newer format ([core ADR 0011](../../core/docs/decisions/
   bytes as read, written 0600 by `write_private_blocking`; a copy whose bytes
   match the newest one is not made again. The history's is `VACUUM INTO` through
   the open connection, so it holds what the WAL holds too, into a 0600
-  `.partial` file that is synced and renamed into place.
+  `.partial` file. Its full-text indexes are then optimized with `secure_delete`
+  on, since `VACUUM INTO` copies the words of entries deleted before, and only
+  then is it synced and renamed into place.
 - Each file keeps its newest 3 copies (`KEPT_PER_FILE`); a new one deletes the
   oldest past that.
 - A copy of a session's tabs names their editor drafts and holds none of their
   text. Drafts have no format version, so the older build reads them as they
   are now; a tab closed since the copy comes back without its text.
-- `ConnectionStore::remove_blocking` takes the connection out of each copy of
-  `connections.json` too, and deletes a copy it cannot read that way. Deleting
+- Every write of the connection list first takes the connections it no longer
+  has out of each copy of `connections.json`, and deletes a copy it cannot
+  read that way; a failed trim fails the write, so the next one tries again. Deleting
   a connection deletes the copies of the column layout and filter files, which
   name its tables and filter values.
 - A copy that cannot be made fails the write or the open, and the file is

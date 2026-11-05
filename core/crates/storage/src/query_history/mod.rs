@@ -461,7 +461,6 @@ pub(crate) async fn trim_upgrade_copies(path: &Path) -> Result<(), StorageError>
             .execute(&mut database)
             .await?;
         let mut transaction = database.begin().await?;
-        let mut removed = 0;
         for table in ["history", "saved_queries"] {
             let present: i64 = sqlx::query_scalar(
                 "SELECT (SELECT COUNT(*) FROM main.sqlite_master WHERE type = 'table' AND name = ?1) \
@@ -471,26 +470,44 @@ pub(crate) async fn trim_upgrade_copies(path: &Path) -> Result<(), StorageError>
             .fetch_one(&mut *transaction)
             .await?;
             if present > 0 {
-                removed += sqlx::query(AssertSqlSafe(format!(
-                    "DELETE FROM main.{table} WHERE id NOT IN (SELECT id FROM live.{table})"
-                )))
-                .execute(&mut *transaction)
-                .await?
-                .rows_affected();
-            }
-        }
-        if removed > 0 {
-            for index in full_text_indexes(&mut transaction).await? {
                 sqlx::query(AssertSqlSafe(format!(
-                    "INSERT INTO main.\"{index}\"(\"{index}\") VALUES('optimize')"
+                    "DELETE FROM main.{table} WHERE id NOT IN (SELECT id FROM live.{table})"
                 )))
                 .execute(&mut *transaction)
                 .await?;
             }
         }
+        // Every time, which costs little on an index already merged.
+        optimize_full_text_indexes(&mut transaction).await?;
         transaction.commit().await?;
         sqlx::query("DETACH DATABASE live").execute(&mut database).await?;
         database.close().await?;
+    }
+    Ok(())
+}
+
+// A copy fresh from VACUUM INTO still holds, in its full-text blocks, the words of entries deleted
+// before it was made.
+pub(crate) async fn scrub_copy(copy: &Path) -> Result<(), StorageError> {
+    let mut database = SqliteConnectOptions::new()
+        .filename(copy)
+        .journal_mode(sqlx::sqlite::SqliteJournalMode::Delete)
+        .pragma("secure_delete", "ON")
+        .disable_statement_logging()
+        .connect()
+        .await?;
+    optimize_full_text_indexes(&mut database).await?;
+    database.close().await?;
+    Ok(())
+}
+
+async fn optimize_full_text_indexes(database: &mut sqlx::SqliteConnection) -> Result<(), StorageError> {
+    for index in full_text_indexes(database).await? {
+        sqlx::query(AssertSqlSafe(format!(
+            "INSERT INTO main.\"{index}\"(\"{index}\") VALUES('optimize')"
+        )))
+        .execute(&mut *database)
+        .await?;
     }
     Ok(())
 }
@@ -1346,5 +1363,25 @@ mod tests {
             .expect("names");
         assert_eq!(names, ["second"], "a deleted saved query stayed in the copy");
         assert!(all(&history).await.iter().any(|entry| entry.id == kept));
+    }
+
+    // VACUUM INTO copies the index blocks as they are, words of entries already deleted included.
+    #[tokio::test]
+    async fn a_copy_holds_no_word_of_an_entry_deleted_before_it_was_made() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let history = QueryHistory::open(&paths(&root)).await.expect("open");
+        history.record(entry("SELECT qqqq", Uuid::nil())).await.expect("record");
+        let deleted = history.record(entry("SELECT zzzz", Uuid::nil())).await.expect("record");
+        history.delete_returning(&[deleted]).await.expect("delete");
+
+        let copy = crate::upgrade_copies::keep_database(&history.pool, &history.path, 1)
+            .await
+            .expect("a copy");
+
+        assert!(
+            !indexed(&copy, "zzz").await,
+            "a deleted entry's words came along into the copy"
+        );
+        assert!(indexed(&copy, "qqq").await);
     }
 }

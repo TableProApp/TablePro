@@ -105,6 +105,10 @@ pub(crate) async fn keep_database(pool: &SqlitePool, path: &Path, version: u64) 
             source: database_io_error(&error),
         });
     }
+    if let Err(error) = crate::query_history::scrub_copy(&partial).await {
+        let _ = std::fs::remove_file(&partial);
+        return Err(error);
+    }
     // Renamed into place only once on disk, so a copy cut short by a
     // power cut never carries a name that says it is whole.
     let write_error = |source| StorageError::Write {
@@ -641,6 +645,59 @@ mod tests {
         assert_eq!(
             std::fs::metadata(&kept_copy).expect("metadata").permissions().mode() & 0o777,
             0o600
+        );
+    }
+
+    fn saved(name: &str) -> crate::SavedConnection {
+        crate::SavedConnection {
+            id: uuid::Uuid::new_v4(),
+            name: name.to_owned(),
+            driver_id: "postgres".to_owned(),
+            host: format!("{name}.example"),
+            port: 5432,
+            database: "app".to_owned(),
+            username: "admin".to_owned(),
+            tls: tablepro_core::TlsConfig::disabled(),
+            safe_mode: tablepro_core::SafeModeLevel::Off,
+            external_access: Default::default(),
+            ai_policy: Default::default(),
+            query_timeout_secs: None,
+            auth_mode: Default::default(),
+            ssh: None,
+            last_opened_at: None,
+            color: None,
+            group_id: None,
+            order: 0,
+            tags: Vec::new(),
+            icon: None,
+            options: Default::default(),
+        }
+    }
+
+    // The copy here is written by hand, so the list needs no older format to test with.
+    #[test]
+    fn deleting_a_connection_takes_it_out_of_the_copies_before_the_list_is_written() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let paths = crate::StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro");
+        let store = crate::ConnectionStore::new(&paths);
+        let (kept, deleted) = (saved("kept"), saved("deleted"));
+        store.upsert_blocking(kept.clone()).expect("save");
+        store.upsert_blocking(deleted.clone()).expect("save");
+        let copy = keep_bytes_blocking(
+            &paths.connections_file(),
+            1,
+            &std::fs::read(paths.connections_file()).expect("the list"),
+            at(100),
+        )
+        .expect("a copy");
+
+        store.remove_blocking(deleted.id).expect("remove");
+
+        let text = std::fs::read_to_string(&copy).expect("read");
+        assert!(text.contains("kept.example"), "{text}");
+        assert!(
+            !text.contains("deleted.example"),
+            "the deleted connection stayed in the copy"
         );
     }
 
