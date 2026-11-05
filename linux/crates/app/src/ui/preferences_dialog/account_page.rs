@@ -1978,8 +1978,8 @@ mod tests {
         .expect("the offline file shown again after Cancel");
     }
 
-    // The approval runs in Chrome through tests/browser/portal.cjs, which hands back the redirect to
-    // the loopback listener instead of following it, so the browser need not reach this machine.
+    // The approval runs in Chrome through core/crates/account/tests/browser/portal.cjs, which hands back the
+    // redirect to the loopback listener instead of following it, so the browser need not reach this machine.
     struct StackBrowser {
         email: String,
         profile: tempfile::TempDir,
@@ -1989,7 +1989,8 @@ mod tests {
     impl BrowserLauncher for StackBrowser {
         async fn open(&self, url: &Url) -> Result<(), String> {
             let callback = self.profile.path().join("callback");
-            let portal = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../account/tests/browser/portal.cjs");
+            let portal = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../core/crates/account/tests/browser/portal.cjs");
             let mut command = std::process::Command::new("node");
             command
                 .arg(portal)

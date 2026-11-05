@@ -185,10 +185,11 @@ impl AppSettings {
         self.settings.boolean(keys::SHARE_USAGE_DATA)
     }
 
-    // Either answer is a choice made, so neither asks again.
+    // Either answer is a choice made, so neither asks again. The answer is stored first: what follows the sharing
+    // key, such as the Privacy switch, reads it as answered.
     pub fn choose_usage_data(&self, share: bool) -> Result<(), SettingsError> {
-        self.set_boolean(keys::SHARE_USAGE_DATA, share)?;
-        self.set_boolean(keys::USAGE_DATA_ASKED, true)
+        self.set_boolean(keys::USAGE_DATA_ASKED, true)?;
+        self.set_boolean(keys::SHARE_USAGE_DATA, share)
     }
 
     pub fn usage_data_asked(&self) -> bool {
