@@ -82,10 +82,11 @@ final class TelemetryFixture {
 
 @MainActor
 struct TelemetryTests {
-    @Test("With nothing stored, usage data is on and app_opened goes once the app is in front")
-    func onByDefault() async throws {
+    @Test("A device that opted in to the old daily report keeps sharing, and app_opened goes once the app is in front")
+    func optedInBeforeStaysOn() async throws {
         let fixture = try TelemetryFixture()
-        fixture.start(sharesUsageData: OnboardingPreferences(defaults: fixture.defaults).sharesUsageData)
+        fixture.defaults.set(true, forKey: AppPreferences.usageDataKey)
+        fixture.start(sharesUsageData: OnboardingPreferences(defaults: fixture.defaults).isUsageDataEnabled)
         fixture.telemetry.sceneBecameActive()
 
         try await fixture.passLaunchDelay()
@@ -96,18 +97,34 @@ struct TelemetryTests {
         ])
     }
 
-    @Test("Usage data turned off before the update makes no client, so PostHog is never contacted")
-    func storedOffMakesNoClient() async throws {
+    @Test("Nothing is sent until the user chooses Share Usage Data, whether they declined or never answered")
+    func notChosenMakesNoClient() throws {
+        for stored in [nil, false] as [Bool?] {
+            let fixture = try TelemetryFixture()
+            if let stored { fixture.defaults.set(stored, forKey: AppPreferences.usageDataKey) }
+            fixture.start(sharesUsageData: OnboardingPreferences(defaults: fixture.defaults).isUsageDataEnabled)
+            fixture.telemetry.sceneBecameActive()
+
+            fixture.telemetry.connectionAttempted(databaseType: "PostgreSQL")
+            fixture.clock.advance(by: .seconds(48 * 60 * 60))
+
+            #expect(fixture.clients.isEmpty, "stored \(String(describing: stored))")
+            #expect(fixture.clock.pendingSleeperCount == 0, "stored \(String(describing: stored))")
+        }
+    }
+
+    @Test("Choosing Share Usage Data on first launch starts sending, app_opened included")
+    func choosingShareStartsSending() async throws {
         let fixture = try TelemetryFixture()
-        fixture.defaults.set(false, forKey: AppPreferences.usageDataKey)
-        fixture.start(sharesUsageData: OnboardingPreferences(defaults: fixture.defaults).sharesUsageData)
+        let preferences = OnboardingPreferences(defaults: fixture.defaults)
+        fixture.start(sharesUsageData: preferences.isUsageDataEnabled)
         fixture.telemetry.sceneBecameActive()
 
-        fixture.telemetry.connectionAttempted(databaseType: "PostgreSQL")
-        fixture.clock.advance(by: .seconds(48 * 60 * 60))
+        preferences.setUsageDataChoice(true)
+        fixture.telemetry.setEnabled(preferences.isUsageDataEnabled)
+        try await fixture.passLaunchDelay()
 
-        #expect(fixture.clients.isEmpty)
-        #expect(fixture.clock.pendingSleeperCount == 0)
+        #expect(fixture.client?.captured == ["app_opened"])
     }
 
     @Test("A build without a project key makes no client")

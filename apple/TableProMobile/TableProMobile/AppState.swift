@@ -582,6 +582,7 @@ final class AppState {
         let presentation = FirstRunPlan(
             hasSeenWelcome: onboarding.hasSeenWelcome,
             syncChoice: onboarding.syncChoice,
+            usageDataChoice: onboarding.usageDataChoice,
             lastSeenVersion: onboarding.lastSeenVersion,
             currentVersion: version,
             hasHighlightsForCurrentVersion: FeatureHighlights.release(version) != nil
@@ -604,11 +605,18 @@ final class AppState {
         if pages.contains(.iCloud), onboarding.syncChoice == nil {
             setCloudSyncEnabled(false)
         }
+        if pages.contains(.usageData), onboarding.usageDataChoice == nil {
+            setUsageDataEnabled(false)
+        }
     }
 
     func setCloudSyncEnabled(_ enabled: Bool) {
         onboarding.setSyncChoice(enabled)
         syncCoordinator.setEnabled(enabled)
+    }
+
+    func setUsageDataEnabled(_ enabled: Bool) {
+        onboarding.setUsageDataChoice(enabled)
     }
 
     // MARK: - Sample Database

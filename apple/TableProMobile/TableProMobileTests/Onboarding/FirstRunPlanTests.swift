@@ -7,6 +7,7 @@ struct FirstRunPlanTests {
     private func plan(
         hasSeenWelcome: Bool = false,
         syncChoice: Bool? = nil,
+        usageDataChoice: Bool? = nil,
         lastSeenVersion: String? = nil,
         currentVersion: String = "1.1",
         hasHighlights: Bool = true
@@ -14,35 +15,36 @@ struct FirstRunPlanTests {
         FirstRunPlan(
             hasSeenWelcome: hasSeenWelcome,
             syncChoice: syncChoice,
+            usageDataChoice: usageDataChoice,
             lastSeenVersion: lastSeenVersion,
             currentVersion: currentVersion,
             hasHighlightsForCurrentVersion: hasHighlights
         ).presentation
     }
 
-    @Test("A fresh install shows the welcome, then the iCloud question, and asks nothing about usage data")
+    @Test("A fresh install asks every question, welcome first")
     func freshInstall() {
-        #expect(plan() == .firstRun([.welcome, .iCloud]))
+        #expect(plan() == .firstRun([.welcome, .iCloud, .usageData]))
     }
 
     @Test("A fresh install never shows What's New")
     func freshInstallSkipsWhatsNew() {
-        #expect(plan(lastSeenVersion: nil) == .firstRun([.welcome, .iCloud]))
+        #expect(plan(lastSeenVersion: nil) == .firstRun([.welcome, .iCloud, .usageData]))
     }
 
-    @Test("A user who saw the welcome before usage data had a default is not asked about it")
-    func unansweredUsageDataAsksNothing() {
-        #expect(plan(hasSeenWelcome: true, syncChoice: true) == .none)
+    @Test("A TestFlight user who finished the old onboarding is asked about usage data only")
+    func legacyUserAskedOnce() {
+        #expect(plan(hasSeenWelcome: true, syncChoice: true, usageDataChoice: nil) == .firstRun([.usageData]))
     }
 
     @Test("The iCloud page belongs to the welcome and is never shown on its own later")
     func iCloudOnlyWithWelcome() {
-        #expect(plan(hasSeenWelcome: true, syncChoice: nil) == .none)
+        #expect(plan(hasSeenWelcome: true, syncChoice: nil, usageDataChoice: false) == .none)
     }
 
     @Test("A sync choice already made keeps the iCloud page out of the welcome")
     func answeredSyncSkipsPage() {
-        #expect(plan(syncChoice: false) == .firstRun([.welcome]))
+        #expect(plan(syncChoice: false, usageDataChoice: true) == .firstRun([.welcome]))
     }
 
     @Test("An upgrade with highlights shows What's New once everything is answered")
@@ -50,6 +52,7 @@ struct FirstRunPlanTests {
         let presentation = plan(
             hasSeenWelcome: true,
             syncChoice: false,
+            usageDataChoice: false,
             lastSeenVersion: "1.0",
             currentVersion: "1.1"
         )
@@ -61,6 +64,7 @@ struct FirstRunPlanTests {
         let presentation = plan(
             hasSeenWelcome: true,
             syncChoice: true,
+            usageDataChoice: true,
             lastSeenVersion: "1.0",
             hasHighlights: false
         )
@@ -72,16 +76,17 @@ struct FirstRunPlanTests {
         let presentation = plan(
             hasSeenWelcome: true,
             syncChoice: true,
+            usageDataChoice: false,
             lastSeenVersion: "1.1",
             currentVersion: "1.1"
         )
         #expect(presentation == .none)
     }
 
-    @Test("The welcome wins over What's New")
-    func welcomeBeatsWhatsNew() {
-        let presentation = plan(syncChoice: true, lastSeenVersion: "1.0")
-        #expect(presentation == .firstRun([.welcome]))
+    @Test("A pending question wins over What's New")
+    func questionBeatsWhatsNew() {
+        let presentation = plan(hasSeenWelcome: true, syncChoice: true, lastSeenVersion: "1.0")
+        #expect(presentation == .firstRun([.usageData]))
     }
 
     @Test("An older version shows nothing")
@@ -89,6 +94,7 @@ struct FirstRunPlanTests {
         let presentation = plan(
             hasSeenWelcome: true,
             syncChoice: true,
+            usageDataChoice: false,
             lastSeenVersion: "1.1",
             currentVersion: "1.0"
         )
@@ -100,6 +106,7 @@ struct FirstRunPlanTests {
         let presentation = plan(
             hasSeenWelcome: true,
             syncChoice: true,
+            usageDataChoice: false,
             lastSeenVersion: "1.9",
             currentVersion: "1.10"
         )

@@ -1,8 +1,8 @@
 import Foundation
 import os
 
-// Usage data for PostHog (clients.md, iOS), on unless Settings > Privacy turns it off. A build without a project key
-// never makes a client, and while the setting is off a client made earlier gets no call but optOut().
+// Usage data for PostHog (clients.md, iOS), sent only once the user chooses Share Usage Data. A build without a project
+// key never makes a client, and while the setting is off a client made earlier gets no call but optOut().
 @MainActor
 final class Telemetry {
     static let shared = Telemetry(

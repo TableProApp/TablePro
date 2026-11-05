@@ -75,9 +75,9 @@ struct TableProMobileApp: App {
                 break
             }
         }
-        .onChange(of: appState.onboarding.sharesUsageData) { _, shares in
+        .onChange(of: appState.onboarding.usageDataChoice) { _, choice in
             guard !TestRuntime.isActive else { return }
-            Telemetry.shared.setEnabled(shares)
+            Telemetry.shared.setEnabled(choice == true)
         }
         .backgroundTask(.appRefresh(Self.backgroundSyncIdentifier)) {
             await runBackgroundSync()
@@ -85,7 +85,7 @@ struct TableProMobileApp: App {
     }
 
     private static func startTelemetry(appState: AppState) {
-        Telemetry.shared.start(sharesUsageData: appState.onboarding.sharesUsageData) {
+        Telemetry.shared.start(sharesUsageData: appState.onboarding.isUsageDataEnabled) {
             appState.connections
                 .filter { appState.connectionManager.session(for: $0.id) != nil }
                 .map(\.type.rawValue)
