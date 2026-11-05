@@ -305,6 +305,8 @@ impl Inner {
             .store(if sharing { kept.consent } else { 0 }, Ordering::SeqCst);
         if !sharing {
             kept.pending.clear();
+            // An $identify still queued is dropped with the rest, so the next opt-in sends it again.
+            kept.identified_this_run = None;
             return;
         }
         self.reconcile(&mut kept);
@@ -923,6 +925,26 @@ mod tests {
         telemetry.flush();
 
         assert_eq!(names(&collector), ["upgrade_clicked", "first_query_executed"]);
+    }
+
+    #[test]
+    fn an_identify_dropped_at_an_opt_out_goes_out_at_the_next_opt_in() {
+        let runtime = test_runtime();
+        let collector = Collector::start();
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let telemetry = start("phc_test", true, &collector, &dir, &runtime.tasks());
+        until(|| telemetry.is_sending());
+        collector.hold();
+
+        telemetry.upgrade_clicked("app-settings");
+        until(|| !collector.named("upgrade_clicked").is_empty());
+        telemetry.account_changed(Some(ACCOUNT));
+        telemetry.set_sharing(false);
+        telemetry.set_sharing(true);
+        collector.release();
+        telemetry.flush();
+
+        assert_eq!(names(&collector), ["upgrade_clicked", "$identify"]);
     }
 
     #[test]

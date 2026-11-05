@@ -308,15 +308,26 @@ impl AccountPage {
             return;
         };
         let page = self.downgrade();
-        let dialog = DeviceLimitDialog::new(holding, deps.handle.clone(), deps.tasks.clone(), move |name| {
-            if let Some(page) = page.upgrade() {
-                page.toast(&gettext_f(
-                    "Removed {name}. The paid features work on this computer now.",
-                    &[("name", name)],
-                ));
-                page.reload_details();
-            }
-        });
+        let dialog = DeviceLimitDialog::new(
+            holding,
+            deps.handle.clone(),
+            deps.tasks.clone(),
+            move |name, unverified| {
+                if let Some(page) = page.upgrade() {
+                    page.toast(&match unverified {
+                        None => gettext_f(
+                            "Removed {name}. The paid features work on this computer now.",
+                            &[("name", name)],
+                        ),
+                        Some(error) => gettext_f(
+                            "Removed {name}. Your plan could not be verified yet: {reason}",
+                            &[("name", name), ("reason", &account_error_message(error))],
+                        ),
+                    });
+                    page.reload_details();
+                }
+            },
+        );
         let page = self.downgrade();
         dialog.dialog.connect_closed(move |_| {
             if let Some(page) = page.upgrade() {
@@ -566,8 +577,16 @@ impl AccountPage {
             }
             (Mode::Offline, identity) => {
                 let name = identity.map_or_else(|| gettext("Offline File"), |identity| identity.name);
-                let row = identity_row(&name, Some(&gettext("Using an offline file")));
-                row.add_suffix(&self.sign_in_button(ready, false));
+                let signing_in = imp.signing_in.borrow().is_some();
+                let subtitle = match signing_in {
+                    true => gettext("Finish signing in in the web browser that opened."),
+                    false => gettext("Using an offline file"),
+                };
+                let row = identity_row(&name, Some(&subtitle));
+                match signing_in {
+                    true => self.add_sign_in_progress(&row),
+                    false => row.add_suffix(&self.sign_in_button(ready, false)),
+                }
                 self.add(&group, &row);
             }
             (Mode::SignedOut, _) => self.render_sign_in(&group, ready),
@@ -589,22 +608,26 @@ impl AccountPage {
             })
             .build();
         if signing_in {
-            row.add_suffix(&adw::Spinner::new());
-            let cancel = gtk4::Button::builder()
-                .label(gettext("Cancel"))
-                .valign(gtk4::Align::Center)
-                .build();
-            let page = self.downgrade();
-            cancel.connect_clicked(move |_| {
-                if let Some(page) = page.upgrade() {
-                    page.cancel_sign_in();
-                }
-            });
-            row.add_suffix(&cancel);
+            self.add_sign_in_progress(&row);
         } else {
             row.add_suffix(&self.sign_in_button(ready, true));
         }
         self.add(group, &row);
+    }
+
+    fn add_sign_in_progress(&self, row: &adw::ActionRow) {
+        row.add_suffix(&adw::Spinner::new());
+        let cancel = gtk4::Button::builder()
+            .label(gettext("Cancel"))
+            .valign(gtk4::Align::Center)
+            .build();
+        let page = self.downgrade();
+        cancel.connect_clicked(move |_| {
+            if let Some(page) = page.upgrade() {
+                page.cancel_sign_in();
+            }
+        });
+        row.add_suffix(&cancel);
     }
 
     fn sign_out_button(&self) -> gtk4::Button {
@@ -1726,6 +1749,49 @@ mod tests {
     }
 
     #[gtk4::test]
+    fn a_removal_whose_check_fails_says_the_device_is_gone_and_the_plan_not_verified() {
+        let harness = Harness::new(None);
+        let machine = MachineId::derive("4c4f5e2a0b6d4f3c9e8a7b6c5d4e3f20\n").expect("a machine ID");
+        let stub = limit_stub_then(&machine, false);
+        let endpoints = Endpoints::new(&stub.url, &format!("{}/v2", stub.url)).expect("the endpoints");
+        harness.ready_with(
+            endpoints,
+            fakes::keys().expect("the test key"),
+            machine,
+            Arc::new(Approving),
+        );
+        let window = OwnedWindow::presented(adw::Window::builder().default_width(900).default_height(700).build());
+        window.set_content(Some(&harness.page));
+        let toasts = Rc::new(RefCell::new(Vec::new()));
+        let kept = toasts.clone();
+        harness
+            .page
+            .connect_toast(move |_, toast| kept.borrow_mut().push(toast.title().unwrap_or_default().to_string()));
+
+        harness.button(&harness.page, "Sign In…").emit_clicked();
+        wait_until(WAIT, || harness.page.device_limit_dialog().is_some()).expect("the device limit dialog");
+        let dialog = harness.page.device_limit_dialog().expect("the device limit dialog");
+        let mac = dialog
+            .rows()
+            .into_iter()
+            .find(|row| row.title() == "Ada's Mac")
+            .expect("Ada's Mac");
+        harness.button(&mac, "Remove").emit_clicked();
+        wait_until(WAIT, || crate::workspace::answer(&window, "remove")).expect("the confirmation");
+        let unverified = || {
+            toasts
+                .borrow()
+                .iter()
+                .any(|toast| toast.starts_with("Removed Ada's Mac. Your plan could not be verified yet: "))
+        };
+        let closed = wait_until(WAIT, || harness.page.device_limit_dialog().is_none() && unverified());
+
+        assert!(closed.is_ok(), "{:?}", toasts.borrow());
+        assert!(stub.requests().contains(&"DELETE /v2/devices/dev_mac".to_owned()));
+        drop(window);
+    }
+
+    #[gtk4::test]
     fn try_again_refreshes_the_entitlement_and_loads_the_account_again() {
         let harness = Harness::new(None);
         let machine = MachineId::derive("4c4f5e2a0b6d4f3c9e8a7b6c5d4e3f20\n").expect("a machine ID");
@@ -1880,6 +1946,38 @@ mod tests {
         harness.audit();
     }
 
+    #[gtk4::test]
+    fn signing_in_over_an_offline_file_shows_the_wait_and_its_cancel() {
+        let harness = Harness::new(None);
+        harness.ready();
+        let mut claims = fakes::claims(Utc::now(), TimeDelta::days(30), &["data_rewind"]);
+        claims.offline = true;
+        harness.send(AccountStatus::Offline(Box::new(
+            fakes::entitlement(&claims).expect("an entitlement"),
+        )));
+
+        harness.button(&harness.row("Dat"), "Sign In…").emit_clicked();
+        wait_until(WAIT, || !harness.browser.opened.lock().expect("the URLs").is_empty()).expect("the browser opened");
+
+        let row = harness.row("Dat");
+        assert!(row.subtitle().is_some_and(|text| text.contains("web browser")));
+        assert!(
+            descendants(&row)
+                .into_iter()
+                .filter_map(|widget| widget.downcast::<gtk4::Button>().ok())
+                .all(|button| button.label().is_none_or(|label| label != "Sign In…"))
+        );
+        harness.button(&row, "Cancel").emit_clicked();
+        wait_until(WAIT, || {
+            harness.settle();
+            harness
+                .row("Dat")
+                .subtitle()
+                .is_some_and(|text| text == "Using an offline file")
+        })
+        .expect("the offline file shown again after Cancel");
+    }
+
     // The approval runs in Chrome through tests/browser/portal.cjs, which hands back the redirect to
     // the loopback listener instead of following it, so the browser need not reach this machine.
     struct StackBrowser {
@@ -1915,6 +2013,11 @@ mod tests {
     // Three devices hold the license: Lab machine with an offline file device_limit_reached names, Old laptop
     // with one made since, which the server still refuses to remove, and Ada's Mac, whose removal frees a slot.
     fn limit_stub(machine: &MachineId) -> CloudStub {
+        limit_stub_then(machine, true)
+    }
+
+    // With `verifies` false, the entitlement asked for after a removal fails as an unavailable service's would.
+    fn limit_stub_then(machine: &MachineId, verifies: bool) -> CloudStub {
         let now = Utc::now();
         let at = |delta: TimeDelta| (now + delta).to_rfc3339();
         let device = |id: &str, name: &str, platform: &str, machine_id: &str, more: &str| {
@@ -1951,7 +2054,12 @@ mod tests {
         CloudStub::start(move |method, path| match (method, path) {
             ("POST", "/oauth/token") => (200, tokens.to_owned()),
             ("POST", "/v2/devices") => (201, here.clone()),
-            ("POST", "/v2/devices/dev_here/entitlement") if freed.load(Ordering::SeqCst) => (200, entitlement.clone()),
+            ("POST", "/v2/devices/dev_here/entitlement") if freed.load(Ordering::SeqCst) && verifies => {
+                (200, entitlement.clone())
+            }
+            ("POST", "/v2/devices/dev_here/entitlement") if freed.load(Ordering::SeqCst) => {
+                (503, problem(503, "service_unavailable", ""))
+            }
             ("POST", "/v2/devices/dev_here/entitlement") => (409, limit.clone()),
             ("DELETE", "/v2/devices/dev_old") => (409, problem(409, "offline_file_active", "")),
             ("DELETE", "/v2/devices/dev_mac") => {

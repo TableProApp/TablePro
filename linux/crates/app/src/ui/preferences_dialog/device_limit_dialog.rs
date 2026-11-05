@@ -5,7 +5,7 @@ use chrono::Utc;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use tablepro_account::Device;
+use tablepro_account::{AccountError, AccountStatus, Device, EntitlementProblem};
 use tablepro_session::runtime::Tasks;
 
 use super::account_view::{self, DeviceRow, Removal};
@@ -26,7 +26,8 @@ pub(crate) struct DeviceLimitDialog {
     removing: RefCell<Option<String>>,
     handle: AccountHandle,
     tasks: Tasks,
-    removed: Box<dyn Fn(&str)>,
+    // The device's name, and why the plan is not verified yet when the check after the removal failed.
+    removed: Box<dyn Fn(&str, Option<&AccountError>)>,
     following: RefCell<Option<glib::JoinHandle<()>>>,
     closed: Cell<bool>,
 }
@@ -36,7 +37,7 @@ impl DeviceLimitDialog {
         holding: Vec<Device>,
         handle: AccountHandle,
         tasks: Tasks,
-        removed: impl Fn(&str) + 'static,
+        removed: impl Fn(&str, Option<&AccountError>) + 'static,
     ) -> Rc<Self> {
         let banner = adw::Banner::builder().use_markup(false).revealed(false).build();
         let group = adw::PreferencesGroup::builder()
@@ -212,7 +213,12 @@ impl DeviceLimitDialog {
         self.removing.replace(None);
         match removed {
             Ok(Ok(())) => {
-                (self.removed)(&name);
+                (self.removed)(&name, None);
+                self.close();
+            }
+            // The device is gone and only the check after it failed, which the page goes on showing.
+            Ok(Err(error)) if refresh_failed(&self.handle.status.borrow()) => {
+                (self.removed)(&name, Some(&error));
                 self.close();
             }
             Ok(Err(error)) => {
@@ -226,4 +232,8 @@ impl DeviceLimitDialog {
             }
         }
     }
+}
+
+fn refresh_failed(status: &AccountStatus) -> bool {
+    matches!(status, AccountStatus::SignedIn(held) if matches!(held.problem, Some(EntitlementProblem::RefreshFailed(_))))
 }
