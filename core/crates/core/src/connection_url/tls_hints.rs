@@ -64,9 +64,16 @@ impl TlsHints {
                 self.weakened |= is_true(&lower);
             }
             "sslrootcert" if lower == "system" => self.system_roots = true,
-            "sslrootcert" | "tlscafile" => self.ca_file = Some(absolute(value)?),
-            "sslcert" => self.certificate = Some(absolute(value)?),
-            "sslkey" => self.key = Some(absolute(value)?),
+            // libpq's, MongoDB's and the mysql client's spellings.
+            "sslrootcert" | "tlscafile" | "ssl-ca" | "ssl_ca" => self.ca_file = Some(absolute(value)?),
+            "sslcert" | "ssl-cert" | "ssl_cert" => self.certificate = Some(absolute(value)?),
+            "sslkey" | "ssl-key" | "ssl_key" => self.key = Some(absolute(value)?),
+            // One PEM holding both, which each loader reads its part of.
+            "tlscertificatekeyfile" => {
+                let both = absolute(value)?;
+                self.certificate = Some(both.clone());
+                self.key = Some(both);
+            }
             "hostnameincertificate" => {
                 // A wildcard such as *.database.windows.net is what the host already matches.
                 let name = value.trim();

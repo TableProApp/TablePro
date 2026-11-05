@@ -1441,6 +1441,24 @@ mod tests {
     }
 
     #[test]
+    fn a_mysql_socket_url_with_a_ca_file_keeps_the_certificate_check() {
+        let form = from_url(
+            "mysql://app:secret@localhost/db?socket=%2Ftmp%2Fmysql.sock&ssl-ca=%2Fetc%2Fdb-ca.pem",
+            mysql(),
+            &ConnectForm::new("mysql", mysql()),
+        )
+        .expect("a form");
+
+        let valid = form
+            .validate(mysql())
+            .expect("a socket connection that checks its certificate");
+        let (endpoint, _, _, tls) = network(&valid.target);
+        assert_eq!(endpoint.host(), "/tmp/mysql.sock");
+        assert_eq!(tls.mode, TlsMode::VerifyFull);
+        assert_eq!(tls.ca_file.as_deref(), Some(Path::new("/etc/db-ca.pem")));
+    }
+
+    #[test]
     fn a_url_that_requires_channel_binding_keeps_it_for_postgresql_only() {
         let form = from_url(
             "postgresql://alex:pw@ep-cool.neon.tech/db?sslmode=require&channel_binding=require",

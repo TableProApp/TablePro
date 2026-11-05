@@ -305,6 +305,12 @@ fn read_parameter(engine: Engine, draft: &mut Draft, key: &str, value: String) -
         (Engine::Postgres, "gssencmode" | "sslcertmode") if value.trim().eq_ignore_ascii_case("require") => {
             return Err(ConnectionUrlError::UnsupportedParameter { name: key.to_owned() });
         }
+        (Engine::Mysql { .. }, "ssl-crl" | "ssl_crl" | "ssl-crlpath" | "ssl_crlpath")
+        | (Engine::Mongo { .. }, "tlscrlfile")
+            if !value.trim().is_empty() =>
+        {
+            return Err(ConnectionUrlError::UnsupportedParameter { name: key.to_owned() });
+        }
         (Engine::Postgres, "dbname") | (Engine::Mssql, "database" | "databasename") if draft.database.is_empty() => {
             draft.database = value;
         }

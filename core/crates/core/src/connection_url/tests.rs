@@ -236,6 +236,20 @@ fn mysql_tls_spellings_and_the_x_protocol_port() {
         mode("mysql://h/db?useSSL=true&verifyServerCertificate=true"),
         Some(TlsMode::VerifyFull)
     );
+    let ca = absolute("/etc/db-ca.pem");
+    let pinned = read(&format!(
+        "mysql://app:secret@localhost/db?socket=%2Ftmp%2Fmysql.sock&ssl-ca={ca}"
+    ));
+    assert_eq!(
+        pinned.tls.mode,
+        Some(TlsMode::VerifyFull),
+        "a CA file means a checked certificate"
+    );
+    assert_eq!(pinned.tls.ca_file, Some(PathBuf::from(&ca)));
+    assert_eq!(
+        refused("mysql://h/db?ssl-crl=/etc/crl.pem").code(),
+        "url.unsupported_parameter"
+    );
     assert_eq!(read("mysqlx://u:p@h:33060/db").port, None);
     assert_eq!(read("mysqlx://u:p@h:13040/db").port, Some(13040));
 }
