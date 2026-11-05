@@ -312,7 +312,7 @@ fn a_sql_file_already_open_brings_its_tab_forward() {
     wait_until(WAIT, || !in_front()).expect("another tab in front");
 
     test.app.open(std::slice::from_ref(&file), "");
-    wait_until(WAIT, || in_front()).expect("the script's tab in front");
+    wait_until(WAIT, in_front).expect("the script's tab in front");
 
     let bound = editors(&test.window)
         .iter()

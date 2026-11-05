@@ -68,7 +68,7 @@ pub(super) use self::picker_page::PickerPage;
 use self::resolve_file_identity::{FileResolveError, FileTarget, ResolvedFile, resolve_file_blocking};
 use self::session_page::{FailedConnect, OpenSession, PendingConnect, SessionPage, TakenFailure, source_key};
 use self::session_window_command::{AttemptError, ConnectFailure, Connected, SessionWindowCommand};
-pub(crate) use self::session_window_input::{LibraryEdit, MovedTab, SessionWindowInput};
+pub(crate) use self::session_window_input::{LibraryEdit, MovedTab, ScriptInput, SessionWindowInput};
 use crate::application::{AppServices, WindowHost, WindowLaunch};
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::session_context::SessionContext;
@@ -172,7 +172,7 @@ impl SessionWindow {
         let drop_input = input.clone();
         picker
             .script_banner()
-            .connect_button_clicked(move |_| drop_input.deliver(SessionWindowInput::DropWaitingScripts));
+            .connect_button_clicked(move |_| drop_input.deliver(SessionWindowInput::Script(ScriptInput::DropWaiting)));
         let window = self.downgrade();
         imp.list_observer.set(Some(list.connect_state_changed(move |_| {
             if let Some(window) = window.upgrade() {
@@ -441,13 +441,7 @@ impl SessionWindow {
             SessionWindowInput::OpenSaved(saved) => self.on_open_saved(*saved),
             SessionWindowInput::OpenFile(file) => self.on_open_file(file),
             SessionWindowInput::FileResolved(resolved) => self.on_file_resolved(*resolved),
-            SessionWindowInput::OpenScript(file) => self.on_open_script(file),
-            SessionWindowInput::ScriptLoaded { file, text, target } => self.on_script_loaded(file, text, target),
-            SessionWindowInput::ScriptsFor { key, scripts } => self.on_scripts_for(key, scripts),
-            SessionWindowInput::DropWaitingScripts => {
-                self.imp().waiting_scripts.borrow_mut().clear();
-                self.show_waiting_scripts();
-            }
+            SessionWindowInput::Script(input) => self.on_script_input(input),
             SessionWindowInput::Restore(key) => self.on_restore(key),
             SessionWindowInput::RestoreSaved { id, saved } => self.on_restore_saved(id, saved.map(|saved| *saved)),
             SessionWindowInput::RestoreUnread(key) => self.end_restore(&key),
@@ -1162,6 +1156,18 @@ impl SessionWindow {
     }
 
     // Read the way Open SQL File reads, with the same limit and messages.
+    fn on_script_input(&self, input: ScriptInput) {
+        match input {
+            ScriptInput::Open(file) => self.on_open_script(file),
+            ScriptInput::Loaded { file, text, target } => self.on_script_loaded(file, text, target),
+            ScriptInput::For { key, scripts } => self.on_scripts_for(key, scripts),
+            ScriptInput::DropWaiting => {
+                self.imp().waiting_scripts.borrow_mut().clear();
+                self.show_waiting_scripts();
+            }
+        }
+    }
+
     // The session in front now is the one it goes to, even if another comes forward during a slow read.
     fn on_open_script(&self, file: gio::File) {
         let Some(input) = self.input() else {
@@ -1173,7 +1179,7 @@ impl SessionWindow {
             .and_then(|workspace| workspace.key());
         glib::spawn_future_local(async move {
             let text = crate::ui::editor::load_text(&file).await;
-            input.deliver(SessionWindowInput::ScriptLoaded { file, text, target });
+            input.deliver(SessionWindowInput::Script(ScriptInput::Loaded { file, text, target }));
         });
     }
 
@@ -1234,11 +1240,11 @@ impl SessionWindow {
             return;
         };
         for (file, text) in scripts {
-            window.send(SessionWindowInput::ScriptLoaded {
+            window.send(SessionWindowInput::Script(ScriptInput::Loaded {
                 file,
                 text: Ok(text),
                 target: None,
-            });
+            }));
         }
     }
 
@@ -1266,10 +1272,10 @@ impl SessionWindow {
             return;
         }
         let scripts = self.imp().waiting_scripts.take();
-        owner.send(SessionWindowInput::ScriptsFor {
+        owner.send(SessionWindowInput::Script(ScriptInput::For {
             key: key.clone(),
             scripts,
-        });
+        }));
         self.show_waiting_scripts();
     }
 

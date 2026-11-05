@@ -4,7 +4,7 @@ use tablepro_session::SessionKey;
 
 use super::{TableProApplication, WindowLaunch};
 use crate::services::file_resolution::{FileTarget, ResolvedFile, resolve_file_blocking};
-use crate::ui::{SessionWindow, SessionWindowInput};
+use crate::ui::{ScriptInput, SessionWindow, SessionWindowInput};
 
 impl TableProApplication {
     /// Open each file the file manager or the command line hands over.
@@ -99,7 +99,7 @@ impl TableProApplication {
         };
         match window {
             Some(window) => {
-                window.send(SessionWindowInput::OpenScript(file));
+                window.send(SessionWindowInput::Script(ScriptInput::Open(file)));
                 window.present();
             }
             None => tracing::warn!("no window to open a SQL file in"),

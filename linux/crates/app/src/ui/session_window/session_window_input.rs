@@ -26,21 +26,8 @@ pub(crate) enum SessionWindowInput {
     OpenFile(gio::File),
     /// The file resolved, off the GTK thread, to the session it opens.
     FileResolved(Box<ResolvedFile>),
-    /// Open a SQL script in an editor tab, from Files or the command line.
-    OpenScript(gio::File),
-    ScriptLoaded {
-        file: gio::File,
-        text: Result<String, String>,
-        /// The session in front when the read began, which takes the script if it is still open.
-        target: Option<SessionKey>,
-    },
-    /// The waiting scripts banner's Cancel.
-    DropWaitingScripts,
-    /// Scripts another window's user chose this window's session for.
-    ScriptsFor {
-        key: SessionKey,
-        scripts: Vec<(gio::File, String)>,
-    },
+    /// A SQL script from Files or the command line, on its way to an editor tab.
+    Script(ScriptInput),
     /// Open one of the sessions the window was opened to restore.
     Restore(SessionKey),
     /// The saved connections could not be read for this restored key,
@@ -222,4 +209,23 @@ pub(crate) enum LibraryEdit {
     DeleteGroup(Uuid),
     Change(LibraryMove),
     SetFavourite(Uuid, bool),
+}
+
+#[derive(Debug)]
+pub(crate) enum ScriptInput {
+    /// Open it in an editor tab.
+    Open(gio::File),
+    Loaded {
+        file: gio::File,
+        text: Result<String, String>,
+        /// The session in front when the read began, which takes the script if it is still open.
+        target: Option<SessionKey>,
+    },
+    /// The waiting scripts banner's Cancel.
+    DropWaiting,
+    /// Scripts another window's user chose this window's session for.
+    For {
+        key: SessionKey,
+        scripts: Vec<(gio::File, String)>,
+    },
 }
