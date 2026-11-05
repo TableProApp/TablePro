@@ -713,6 +713,16 @@ impl ConnectDialog {
                     .unwrap_or_default(),
                 None => imp.other_host.take(),
             };
+            // The engine takes a network host, so the TLS it had over the network comes back too.
+            if socket_after.is_none() {
+                let tls = entry.capabilities().tls.as_ref();
+                form.tls = imp.network_tls.take().unwrap_or_else(|| TlsFormState::new(tls));
+                if let Some(tls) = tls
+                    && !tls.modes.contains(&form.tls.mode)
+                {
+                    form.tls = TlsFormState::new(Some(tls));
+                }
+            }
         }
         self.show_driver(index, &form);
         if moved && socket_after.is_some() {

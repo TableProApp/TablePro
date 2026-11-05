@@ -129,6 +129,22 @@ fn libpq_modes_map_and_prefer_leaves_the_default() {
     assert_eq!(mode("postgresql://db/x?tlsmode=0"), Some(TlsMode::Disable));
     assert_eq!(mode("postgresql://db/x"), None);
     assert_eq!(
+        mode("jdbc:mariadb://alice:pw@db.example/app?sslMode=trust"),
+        Some(TlsMode::Require)
+    );
+    assert_eq!(
+        refused("postgresql://db/x?sslmode=verify-everything").code(),
+        "url.unsupported_parameter"
+    );
+    assert_eq!(
+        refused("postgresql://db/x?tlsmode=9").code(),
+        "url.unsupported_parameter"
+    );
+    assert_eq!(
+        refused("jdbc:sqlserver://db;databaseName=app;encrypt=true;columnEncryptionSetting=Enabled").code(),
+        "url.unsupported_parameter"
+    );
+    assert_eq!(
         mode("postgresql://db/x?sslmode=require&ssl=false"),
         Some(TlsMode::Require)
     );

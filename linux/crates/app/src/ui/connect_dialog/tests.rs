@@ -1583,6 +1583,11 @@ fn a_path_typed_as_the_host_is_a_socket_folder() {
 
     assert!(!imp.socket_row.is_visible());
     assert!(!imp.host_row.text().starts_with('/'), "MongoDB was left a socket path");
+    assert_eq!(
+        imp.tls_section.form_state().mode,
+        TlsMode::VerifyFull,
+        "MongoDB kept the socket's TLS off"
+    );
 }
 
 #[gtk4::test]

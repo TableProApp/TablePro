@@ -37,8 +37,9 @@ impl TlsHints {
     pub(super) fn read(&mut self, key: &str, value: &str) -> Result<bool, ConnectionUrlError> {
         let lower = value.trim().to_ascii_lowercase();
         match key {
-            "sslmode" | "ssl-mode" | "ssl_mode" => self.mode = named_mode(&lower).or(self.mode),
-            "tlsmode" => self.mode = numbered_mode(&lower).or(self.mode),
+            // A mode the parser does not know may ask for more than any it does, so it refuses the URL.
+            "sslmode" | "ssl-mode" | "ssl_mode" => self.mode = Some(named_mode(&lower).ok_or_else(|| unknown(key))?),
+            "tlsmode" => self.mode = Some(numbered_mode(&lower).ok_or_else(|| unknown(key))?),
             "ssl" | "tls" | "secure" | "s" => self.switch = switch(&lower).or(self.switch),
             "usessl" => {
                 self.switch = match switch(&lower) {
@@ -168,9 +169,9 @@ fn named_mode(value: &str) -> Option<Wanted> {
         "allow" | "prefer" | "preferred" => Wanted::Prefer,
         "require" | "required" => Wanted::Require,
         "verify-ca" | "verify-full" | "verify-identity" => Wanted::VerifyFull,
-        // ClickHouse JDBC's own spellings.
+        // ClickHouse JDBC's own spellings, and MariaDB Connector/J's trust.
         "strict" => Wanted::VerifyFull,
-        "none" => Wanted::Require,
+        "none" | "trust" => Wanted::Require,
         _ => return None,
     })
 }
@@ -204,6 +205,10 @@ fn switch(value: &str) -> Option<Wanted> {
 
 fn is_true(value: &str) -> bool {
     matches!(value, "" | "true" | "1" | "yes")
+}
+
+fn unknown(key: &str) -> ConnectionUrlError {
+    ConnectionUrlError::UnsupportedParameter { name: key.to_owned() }
 }
 
 fn absolute(value: &str) -> Result<PathBuf, ConnectionUrlError> {

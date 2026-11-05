@@ -428,9 +428,13 @@ impl ConnectForm {
         form.username = url.username;
         form.password = url.password.unwrap_or_else(|| SecretString::from(String::new()));
         if let Some(tls_caps) = caps.tls.as_ref() {
-            // A socket starts with TLS off, as a network connection starts on the default.
+            // A socket starts with TLS off, as a network connection starts on the default, unless the
+            // URL gives a client certificate, which only TLS carries.
             if is_local_socket_host(&form.host) {
-                form.tls.mode = TlsMode::Disable;
+                form.tls.mode = match url.tls.client_certificate.is_some() || url.tls.client_key.is_some() {
+                    true => TlsMode::Require,
+                    false => TlsMode::Disable,
+                };
             }
             if let Some(mode) = url.tls.mode.filter(|mode| tls_caps.modes.contains(mode)) {
                 form.tls.mode = mode;

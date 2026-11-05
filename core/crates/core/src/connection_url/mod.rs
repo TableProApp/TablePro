@@ -385,6 +385,10 @@ fn read_parameter(engine: Engine, draft: &mut Draft, key: &str, value: String) -
         (Engine::Mssql, "integratedsecurity") if value.trim().eq_ignore_ascii_case("true") => {
             return Err(ConnectionUrlError::UnsupportedParameter { name: key.to_owned() });
         }
+        // Always Encrypted keeps values from the server, which the driver does not do.
+        (Engine::Mssql, "columnencryptionsetting") if value.trim().eq_ignore_ascii_case("enabled") => {
+            return Err(ConnectionUrlError::UnsupportedParameter { name: key.to_owned() });
+        }
         (Engine::Postgres, "dbname") if draft.database.is_empty() => draft.database = value,
         // JDBC reads the last of a property given twice; a path names the database first.
         (Engine::Mssql, "database" | "databasename") if !draft.path_database => {
