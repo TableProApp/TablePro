@@ -20498,6 +20498,9 @@
         }
       }
     },
+    "Sent to PostHog with a random ID: app and iOS versions, device model, screen size, language, time zone, network type, database types, connection count, and first connection and query. PostHog derives an approximate location from your IP address. Never hostnames, credentials, queries, or rows." : {
+
+    },
     "Sentinel resolved to another Sentinel rather than a data node. Check the primary group name in your sentinel configuration." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
