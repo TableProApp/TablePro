@@ -347,11 +347,19 @@ fn read_parameter(engine: Engine, draft: &mut Draft, key: &str, value: String) -
         (Engine::Postgres, "channel_binding") => {
             draft.options.channel_binding = value.trim().eq_ignore_ascii_case("require")
         }
-        // Protections libpq enforces that the driver cannot: refused, never dropped.
-        (Engine::Postgres, "requirepeer" | "require_auth" | "sslcrl" | "sslcrldir") if !value.trim().is_empty() => {
+        // Protections libpq enforces that the driver cannot: refused, never dropped. Startup options set
+        // server settings such as search_path, which the driver never sends, since a pooler refuses them.
+        (Engine::Postgres, "requirepeer" | "require_auth" | "sslcrl" | "sslcrldir" | "options")
+            if !value.trim().is_empty() =>
+        {
             return Err(ConnectionUrlError::UnsupportedParameter { name: key.to_owned() });
         }
         (Engine::Postgres, "gssencmode" | "sslcertmode") if value.trim().eq_ignore_ascii_case("require") => {
+            return Err(ConnectionUrlError::UnsupportedParameter { name: key.to_owned() });
+        }
+        (Engine::Postgres, "target_session_attrs")
+            if !matches!(value.trim().to_ascii_lowercase().as_str(), "" | "any") =>
+        {
             return Err(ConnectionUrlError::UnsupportedParameter { name: key.to_owned() });
         }
         (

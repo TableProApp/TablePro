@@ -60,6 +60,8 @@ fn provider_urls_fill_the_login_and_their_tls() {
         "postgresql://u:p@db/app?require_auth=scram-sha-256",
         "postgresql://u:p@db/app?gssencmode=require",
         "postgresql://u:p@db/app?sslcrl=/etc/crl.pem",
+        "postgresql://u:p@db/app?options=-csearch_path%3D",
+        "postgresql://u:p@db/app?target_session_attrs=read-write",
     ] {
         assert_eq!(
             refused(refused_url).code(),
