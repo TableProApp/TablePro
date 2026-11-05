@@ -401,6 +401,7 @@ impl QueryHistory {
     // What the user asked to be gone goes from the copies too: each full-text index is optimized, so
     // no deleted word stays in its blocks, and VACUUM leaves none in free pages.
     async fn delete_from_upgrade_copies(&self, connection: Option<Uuid>) -> Result<(), StorageError> {
+        crate::upgrade_copies::remove_partials_blocking(&self.path)?;
         for copy in crate::upgrade_copies::copies_blocking(&self.path)? {
             let mut database = SqliteConnectOptions::new()
                 .filename(&copy.path)

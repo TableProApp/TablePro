@@ -34,6 +34,11 @@ pub(crate) enum SessionWindowInput {
     },
     /// The waiting scripts banner's Cancel.
     DropWaitingScripts,
+    /// Scripts another window's user chose this window's session for.
+    ScriptsFor {
+        key: SessionKey,
+        scripts: Vec<(gio::File, String)>,
+    },
     /// Open one of the sessions the window was opened to restore.
     Restore(SessionKey),
     /// The saved connections could not be read for this restored key,

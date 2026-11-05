@@ -232,8 +232,10 @@ impl WorkspaceModel {
     }
 
     pub(super) fn editor_tab_for(&self, file: &gio::File) -> Option<Uuid> {
+        let wanted = canonical(file);
+        let same = |bound: &gio::File| bound.equal(file) || wanted.is_some() && canonical(bound) == wanted;
         self.workspace_tabs.borrow().iter().find_map(|(id, tab)| match tab {
-            WorkspaceTab::Editor(slot) if slot.editor.file().is_some_and(|bound| bound.equal(file)) => Some(*id),
+            WorkspaceTab::Editor(slot) if slot.editor.file().is_some_and(|bound| same(&bound)) => Some(*id),
             _ => None,
         })
     }
@@ -846,6 +848,11 @@ fn saved_drafts(record: &WorkspaceRecord) -> impl Iterator<Item = DraftId> + '_ 
         TabRecord::Editor { draft, .. } => Some(*draft),
         _ => None,
     })
+}
+
+// A link and its target are one file, so a tab bound to either is the one for both.
+fn canonical(file: &gio::File) -> Option<std::path::PathBuf> {
+    file.path().and_then(|path| std::fs::canonicalize(path).ok())
 }
 
 #[cfg(test)]

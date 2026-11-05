@@ -87,9 +87,10 @@ pub(crate) async fn pending_upgrade(pool: &SqlitePool, migrator: &Migrator) -> R
 
 // Through the connection, since a copy of the file alone leaves out what the WAL still holds.
 pub(crate) async fn keep_database(pool: &SqlitePool, path: &Path, version: u64) -> Result<PathBuf, StorageError> {
+    // One a crash left behind holds the history too, and nothing else would ever delete it.
+    remove_partials_blocking(path)?;
     let copy = vacant_name(path, version, SystemTime::now())?;
     let partial = partial_name(&copy);
-    remove_if_present(&partial)?;
     // VACUUM INTO refuses a file that is not empty, and creates a missing
     // one from the umask: made here, it is 0600 like the database.
     crate::fs::create_private_file_if_missing(&partial)?;
@@ -111,12 +112,15 @@ pub(crate) async fn keep_database(pool: &SqlitePool, path: &Path, version: u64) 
         source,
     };
     // Windows flushes only a handle opened for writing.
-    std::fs::OpenOptions::new()
+    let landed = std::fs::OpenOptions::new()
         .write(true)
         .open(&partial)
         .and_then(|file| file.sync_all())
-        .map_err(write_error)?;
-    std::fs::rename(&partial, &copy).map_err(write_error)?;
+        .and_then(|()| std::fs::rename(&partial, &copy));
+    if let Err(error) = landed {
+        let _ = std::fs::remove_file(&partial);
+        return Err(write_error(error));
+    }
     if let Some(directory) = copy.parent() {
         tablepro_core::sync_directory(directory).map_err(write_error)?;
     }
@@ -155,6 +159,7 @@ pub fn copies_blocking(path: &Path) -> Result<Vec<UpgradeCopy>, StorageError> {
 }
 
 pub fn remove_all_blocking(path: &Path) -> Result<usize, StorageError> {
+    remove_partials_blocking(path)?;
     let copies = copies_blocking(path)?;
     for copy in &copies {
         remove_if_present(&copy.path)?;
@@ -163,6 +168,36 @@ pub fn remove_all_blocking(path: &Path) -> Result<usize, StorageError> {
 }
 
 // The copy just made stays even when a clock set back dates it before the others.
+// Copies of a database that never finished, as `.<name>.v<version>-<seconds>.partial`.
+pub fn remove_partials_blocking(path: &Path) -> Result<(), StorageError> {
+    let Some(name) = path.file_name().map(|name| name.to_string_lossy().into_owned()) else {
+        return Ok(());
+    };
+    let parent = parent_of(path);
+    let entries = match std::fs::read_dir(parent) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(source) => {
+            return Err(StorageError::Io {
+                path: parent.to_owned(),
+                source,
+            });
+        }
+    };
+    let prefix = format!(".{name}.v");
+    for entry in entries {
+        let entry = entry.map_err(|source| StorageError::Io {
+            path: parent.to_owned(),
+            source,
+        })?;
+        let found = entry.file_name().to_string_lossy().into_owned();
+        if found.starts_with(&prefix) && found.ends_with(".partial") {
+            remove_if_present(&entry.path())?;
+        }
+    }
+    Ok(())
+}
+
 fn prune_blocking(path: &Path, made: &Path) -> Result<(), StorageError> {
     let older: Vec<UpgradeCopy> = copies_blocking(path)?
         .into_iter()
@@ -413,6 +448,26 @@ mod tests {
                 .count(),
             0
         );
+    }
+
+    #[tokio::test]
+    async fn a_copy_a_crash_left_unfinished_is_removed_before_the_next() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let path = root.path().join("items.db");
+        let abandoned = root.path().join(".items.db.v1-100.partial");
+        std::fs::write(&abandoned, b"half a copy").expect("seed");
+        let unrelated = root.path().join(".other.db.v1-100.partial");
+        std::fs::write(&unrelated, b"another file's").expect("seed");
+        let pool = database(&path).await;
+        base().run(&pool).await.expect("the older schema");
+
+        keep_database(&pool, &path, 1).await.expect("a copy");
+
+        assert!(!abandoned.exists(), "the unfinished copy stayed");
+        assert!(unrelated.exists(), "another file's copy went");
+        std::fs::write(&abandoned, b"half a copy").expect("seed");
+        remove_all_blocking(&path).expect("remove");
+        assert!(!abandoned.exists(), "a purge left the unfinished copy");
     }
 
     #[tokio::test]

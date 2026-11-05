@@ -443,6 +443,7 @@ impl SessionWindow {
             SessionWindowInput::FileResolved(resolved) => self.on_file_resolved(*resolved),
             SessionWindowInput::OpenScript(file) => self.on_open_script(file),
             SessionWindowInput::ScriptLoaded { file, text } => self.on_script_loaded(file, text),
+            SessionWindowInput::ScriptsFor { key, scripts } => self.on_scripts_for(key, scripts),
             SessionWindowInput::DropWaitingScripts => {
                 self.imp().waiting_scripts.borrow_mut().clear();
                 self.show_waiting_scripts();
@@ -833,6 +834,15 @@ impl SessionWindow {
         self.render();
         shell.add_session(&workspace);
         workspace.start();
+        let handed: Vec<(gio::File, String)> = {
+            let mut scripts_for = self.imp().scripts_for.borrow_mut();
+            let (handed, others) = std::mem::take(&mut *scripts_for)
+                .into_iter()
+                .partition(|(owner, ..)| *owner == key);
+            *scripts_for = others;
+            handed.into_iter().map(|(_, file, text)| (file, text)).collect()
+        };
+        self.open_scripts_in(&workspace, handed);
         if workspace.data_model() == Some(DataModel::Relational) {
             self.open_waiting_scripts(&workspace);
         }
@@ -890,7 +900,7 @@ impl SessionWindow {
                 let opened_for_file = self.imp().opened_for_file.replace(false);
                 let presented = self.present_owner(window_id, &key);
                 if presented {
-                    self.hand_waiting_scripts_to(window_id);
+                    self.hand_waiting_scripts_to(window_id, &key);
                 }
                 if presented && opened_for_file {
                     self.close();
@@ -1187,8 +1197,8 @@ impl SessionWindow {
         }
     }
 
-    // The connection the user picked for them is in front there now.
-    fn hand_waiting_scripts_to(&self, window_id: u32) {
+    // The session the user chose for them is open, or still connecting, in another window.
+    fn hand_waiting_scripts_to(&self, window_id: u32, key: &SessionKey) {
         let Some(owner) = self
             .application()
             .and_then(|app| app.window_by_id(window_id))
@@ -1196,14 +1206,43 @@ impl SessionWindow {
         else {
             return;
         };
-        let waiting = self.imp().waiting_scripts.take();
-        if waiting.is_empty() {
+        let scripts = self.imp().waiting_scripts.take();
+        if scripts.is_empty() {
             return;
         }
-        for (file, text) in waiting {
-            owner.send(SessionWindowInput::ScriptLoaded { file, text: Ok(text) });
-        }
+        owner.send(SessionWindowInput::ScriptsFor {
+            key: key.clone(),
+            scripts,
+        });
         self.show_waiting_scripts();
+    }
+
+    fn on_scripts_for(&self, key: SessionKey, scripts: Vec<(gio::File, String)>) {
+        match self
+            .workspaces()
+            .into_iter()
+            .find(|workspace| workspace.key().as_ref() == Some(&key))
+        {
+            Some(workspace) => self.open_scripts_in(&workspace, scripts),
+            None => self
+                .imp()
+                .scripts_for
+                .borrow_mut()
+                .extend(scripts.into_iter().map(|(file, text)| (key.clone(), file, text))),
+        }
+    }
+
+    // A session that runs no SQL leaves them waiting for one that does.
+    fn open_scripts_in(&self, workspace: &Workspace, scripts: Vec<(gio::File, String)>) {
+        let input = workspace
+            .sender()
+            .filter(|_| workspace.data_model() == Some(DataModel::Relational));
+        for (file, text) in scripts {
+            match &input {
+                Some(input) => input.deliver(WorkspaceInput::OpenScript { file, text }),
+                None => self.wait_for_session(file, text),
+            }
+        }
     }
 
     fn open_waiting_scripts(&self, workspace: &Workspace) {
