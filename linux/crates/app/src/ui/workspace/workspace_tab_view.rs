@@ -12,6 +12,12 @@ pub(super) fn keep_child_navigation_keys(view: &adw::TabView) {
     view.remove_shortcuts(CHILD_NAVIGATION_KEYS);
 }
 
+/// Where `page` is in `view`, if the view holds it. `page_position`
+/// logs a critical for a page of another view.
+pub(crate) fn page_position(view: &adw::TabView, page: &adw::TabPage) -> Option<i32> {
+    (0..view.n_pages()).find(|&position| &view.nth_page(position) == page)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

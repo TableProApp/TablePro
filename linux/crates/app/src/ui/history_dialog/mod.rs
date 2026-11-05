@@ -39,7 +39,6 @@ use crate::i18n::{gettext, ngettext_f};
 use crate::runtime::spawn_and_deliver;
 use crate::services::history_service::HistoryService;
 use crate::ui::file_reveal::{FileRevealer, reveal_failure_toast};
-use crate::ui::format::plural_count;
 use history_export::{ExportKind, history_export_failure_text, save_export, show_export_failure};
 
 use connection_filter::ConnectionFilterModel;
@@ -75,7 +74,7 @@ pub(crate) enum QueryDestination {
 }
 
 impl QueryDestination {
-    fn signal(self) -> &'static str {
+    pub(crate) fn signal(self) -> &'static str {
         match self {
             Self::NewTab => "open-in-new-tab",
             Self::CurrentTab => "replace-current-tab",
@@ -373,12 +372,8 @@ impl HistoryDialog {
             return;
         }
         let n = count as u64;
-        imp.selection_label.set_label(&ngettext_f(
-            "{n} selected",
-            "{n} selected",
-            plural_count(n),
-            &[("n", &n.to_string())],
-        ));
+        imp.selection_label
+            .set_label(&ngettext_f("{n} selected", "{n} selected", n, &[("n", &n.to_string())]));
         imp.selection_bar.set_reveal_child(true);
     }
 
@@ -641,7 +636,7 @@ impl HistoryDialog {
         let toast = crate::ui::plain_toast(&ngettext_f(
             "{count} query deleted",
             "{count} queries deleted",
-            plural_count(count),
+            count,
             &[("count", &count.to_string())],
         ));
         toast.set_button_label(Some(&gettext("_Undo")));

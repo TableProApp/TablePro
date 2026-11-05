@@ -25,7 +25,7 @@ pub(crate) struct WriteConfirmation {
 impl WriteConfirmation {
     /// Editor statements that need an answer before the run starts.
     pub(crate) fn statements(connection: &str, statements: &[String], destructive: bool) -> Self {
-        let count = u32::try_from(statements.len()).unwrap_or(u32::MAX);
+        let count = statements.len();
         let args = [("connection", connection), ("n", &statements.len().to_string())];
         let body = match destructive {
             true => crate::i18n::ngettext_f(
@@ -114,7 +114,7 @@ impl WriteConfirmation {
             body.push_str(&crate::i18n::ngettext_f(
                 "The import runs {n} statement; the first is shown.",
                 "The import runs {n} statements; the first is shown.",
-                u32::try_from(count).unwrap_or(u32::MAX),
+                count,
                 &[("n", &count.to_string())],
             ));
         }
@@ -122,7 +122,7 @@ impl WriteConfirmation {
             heading: crate::i18n::ngettext_f(
                 "Import {n} Row into “{table}”?",
                 "Import {n} Rows into “{table}”?",
-                u32::try_from(rows).unwrap_or(u32::MAX),
+                rows,
                 &[("n", &rows_text), ("table", table)],
             ),
             body,

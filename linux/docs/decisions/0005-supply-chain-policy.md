@@ -1,6 +1,6 @@
 # 0005: Supply-chain policy
 
-- **Status**: Accepted
+- **Status**: Accepted; the MySQL CA bundle's watch list amended by [0033](0033-mysql-ca-bundle-removal-condition.md)
 - **Date**: 2026-09-15
 
 ## Context

@@ -1076,8 +1076,6 @@ Files: vendor/async-channel-2.5.0/*
  vendor/quote-1.0.47/*
  vendor/ref-cast-1.0.27/*
  vendor/ref-cast-impl-1.0.27/*
- vendor/relm4-0.11.0/*
- vendor/relm4-macros-0.11.0/*
  vendor/rustversion-1.0.23/*
  vendor/semver-1.0.28/*
  vendor/serde-1.0.229/*
@@ -1103,10 +1101,10 @@ Copyright: the authors of async-channel, async-lock, async-task, async-trait,
  lexical-parse-float, lexical-parse-integer, lexical-util,
  lexical-write-float, lexical-write-integer, once_cell, ordered-stream,
  parking, paste, pastey, pin-project-lite, piper, portable-atomic,
- proc-macro-crate, proc-macro2, quote, ref-cast, ref-cast-impl, relm4,
- relm4-macros, rustversion, semver, serde, serde_bytes, serde_core,
- serde_derive, serde_derive_internals, serde_json, serde_repr, sqlformat,
- syn, thiserror, thiserror-impl, typed-builder, typed-builder-macro,
+ proc-macro-crate, proc-macro2, quote, ref-cast, ref-cast-impl,
+ rustversion, semver, serde, serde_bytes, serde_core, serde_derive,
+ serde_derive_internals, serde_json, serde_repr, sqlformat, syn,
+ thiserror, thiserror-impl, typed-builder, typed-builder-macro,
  typed-path
 License: Apache-2.0 or Expat
  Permission is hereby granted, free of charge, to any
@@ -3724,8 +3722,7 @@ License: Unicode-3.0
  ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation and others.
 
 Files: vendor/flagset-0.4.7/*
- vendor/fragile-2.1.0/*
-Copyright: the authors of flagset, fragile
+Copyright: the authors of flagset
 License: Apache-2.0
  On Debian systems, the complete text of the Apache License, Version 2.0
  can be found in "/usr/share/common-licenses/Apache-2.0".

@@ -57,8 +57,6 @@ The GTK main loop owns every widget and runs on the main thread. Everything else
 
 Views cross between the two through `crate::runtime` (`spawn_and_deliver`, `spawn_held`, the input queues and `WatchForwarder`), and `crates/app/clippy.toml` bans the ways around it; [state-management.md](docs/state-management.md#rules-for-every-view) has the rules every view follows.
 
-One second runtime remains. Relm4 runs a component's commands (`sender.command`, `oneshot_command`) on a runtime of its own, built the first time one runs, with one worker since nothing sets `RELM_THREADS`. The saved-queries dialog still loads through commands, so that runtime starts when it opens.
-
 ## The application
 
 `TableProApplication` (`crates/app/src/application/`) is an `adw::Application` subclass. `run()` builds it with the `AppServices` every window shares: the driver registry, the connector and its deadlines, the liveness policy, the `SessionRegistry`, the settings, the storage, the saved connection list and its editor, the SSH services, the credential sources, the file revealer, `Tasks`, the process hold, the open-sessions record and the query history.
@@ -93,9 +91,7 @@ The `WorkspaceShell` (`crates/app/src/ui/workspace/workspace_shell.rs`) is what 
 
 ## UI architecture
 
-The application, its windows, the workspace and every view a rewrite has reached are gtk-rs subclasses. A widget with a layout has a CompositeTemplate `.ui` file under `data/resources/ui/`, compiled into the GResource: the session window and its pages, the workspace, the browse, structure and SQL editor tabs, the browse tab's filter strip and its rule rows, its pager (`PagerBar`) and its pending-changes bar (`PendingChangesBar`), the results pane, the SQL editor's find bar, the picker's welcome view, the query history dialog and its rows, the export operations button, the import from another app dialog, and the connect and preferences dialogs with their sections. A subclass keeps its state in its `imp` struct and reports through signals. The window and the workspace take input through their input queues; a browse or structure tab handles its input in `send` at once, and one that arrives while another is being handled waits for it.
-
-A few views are still [Relm4](https://relm4.org) components ([ADR 0003](docs/decisions/0003-relm4-architecture.md)): the saved-queries and CSV import dialogs. Their output reaches the workspace through `connect_receiver`, which puts it on the workspace's input queue. The two patterns coexist until a rewrite turns each component into a subclass.
+The application, its windows, the workspace and every view are gtk-rs subclasses. A widget with a layout has a CompositeTemplate `.ui` file under `data/resources/ui/`, compiled into the GResource: the session window and its pages, the workspace, the browse, structure and SQL editor tabs, the browse tab's filter strip and its rule rows, its pager (`PagerBar`) and its pending-changes bar (`PendingChangesBar`), the results pane, the SQL editor's find bar, the picker's welcome view, the query history and saved queries dialogs and their rows, the CSV import dialog, the export operations button, the import from another app dialog, and the connect and preferences dialogs with their sections. A subclass keeps its state in its `imp` struct and reports through signals. The window and the workspace take input through their input queues; a browse or structure tab handles its input in `send` at once, and one that arrives while another is being handled waits for it.
 
 See [docs/state-management.md](docs/state-management.md) for the patterns and naming we use.
 

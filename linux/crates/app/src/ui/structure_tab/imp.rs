@@ -141,6 +141,7 @@ impl ObjectImpl for StructureTab {
     /// The model holds a handler on the app-wide style manager, which
     /// would otherwise outlive the tab.
     fn dispose(&self) {
+        crate::ui::text_view_teardown::release(&self.sql_view.get());
         self.link_watch.take();
         if let Ok(mut model) = self.model.try_borrow_mut()
             && let Some(mut model) = model.take()

@@ -71,7 +71,13 @@ Read the log before you attach it. It names your hosts, databases and tables. It
 
 ## Crash reports
 
-TablePro writes a report of each crash to `~/.local/state/tablepro/crashes/`. Attach the newest one to the bug report, with the log from the same time.
+When TablePro stops on an error of its own, it writes a report to `~/.local/state/tablepro/crashes/`. Attach the newest one to the bug report, with the log from the same time.
+
+A crash in a system library leaves no report there. On a system with systemd-coredump, list it with:
+
+```sh
+coredumpctl list tablepro
+```
 
 ## Reporting a bug
 

@@ -13,13 +13,13 @@ use super::{AbortOutcome, ExpectedRows, ExportFailure, ExportOutcome, ExportStre
 use crate::i18n::{gettext, gettext_f, ngettext_f};
 use crate::ui::error_text::operation_error_message;
 use crate::ui::file_reveal::{FileRevealer, reveal_failure_toast};
-use crate::ui::format::{format_thousands, plural_count};
+use crate::ui::format::format_thousands;
 
 pub(crate) fn exported_text(rows: u64, name: &str) -> String {
     ngettext_f(
         "Exported {rows} row to {name}",
         "Exported {rows} rows to {name}",
-        plural_count(rows),
+        rows,
         &[("rows", &format_thousands(rows)), ("name", name)],
     )
 }
@@ -39,16 +39,16 @@ pub(crate) fn progress_text(rows: u64, expected: Option<ExpectedRows>) -> String
         Some(ExpectedRows::Exact(total)) => ngettext_f(
             "{rows} of {total} row",
             "{rows} of {total} rows",
-            plural_count(total),
+            total,
             &[("rows", &count), ("total", &format_thousands(total))],
         ),
         Some(ExpectedRows::About(total)) => ngettext_f(
             "{rows} of about {total} row",
             "{rows} of about {total} rows",
-            plural_count(total),
+            total,
             &[("rows", &count), ("total", &format_thousands(total))],
         ),
-        None => ngettext_f("{rows} row", "{rows} rows", plural_count(rows), &[("rows", &count)]),
+        None => ngettext_f("{rows} row", "{rows} rows", rows, &[("rows", &count)]),
     }
 }
 

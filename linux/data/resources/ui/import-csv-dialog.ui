@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProImportCsvDialog" parent="AdwDialog">
+    <property name="title" translatable="yes">Import CSV</property>
+    <property name="content-width">560</property>
+    <property name="content-height">680</property>
+    <property name="child">
+      <object class="AdwToolbarView">
+        <child type="top">
+          <object class="AdwHeaderBar">
+            <property name="title-widget">
+              <object class="AdwWindowTitle" id="window_title">
+                <property name="title" translatable="yes">Import CSV</property>
+              </object>
+            </property>
+            <child type="end">
+              <object class="GtkButton" id="import_button">
+                <property name="label" translatable="yes">Import</property>
+                <property name="sensitive">false</property>
+                <style>
+                  <class name="suggested-action"/>
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+        <property name="content">
+          <object class="AdwPreferencesPage">
+            <child>
+              <object class="AdwPreferencesGroup">
+                <property name="title" translatable="yes">File</property>
+                <child>
+                  <object class="AdwComboRow" id="delimiter_row">
+                    <property name="title" translatable="yes">Delimiter</property>
+                    <property name="model">
+                      <object class="GtkStringList">
+                        <items>
+                          <item translatable="yes">Comma</item>
+                          <item translatable="yes">Semicolon</item>
+                          <item translatable="yes">Tab</item>
+                          <item translatable="yes">Pipe</item>
+                        </items>
+                      </object>
+                    </property>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwSwitchRow" id="header_row">
+                    <property name="title" translatable="yes">First Row Is a Header</property>
+                    <property name="subtitle" translatable="yes">Its values name the fields instead of being imported.</property>
+                    <property name="active">true</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwEntryRow" id="null_row">
+                    <property name="title" translatable="yes">Text that means NULL</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="AdwPreferencesGroup" id="mapping_group">
+                <property name="title" translatable="yes">Columns</property>
+                <property name="description" translatable="yes">Each table column takes one field from the file. A column set to Skip keeps its own default.</property>
+              </object>
+            </child>
+            <child>
+              <!-- Problems with the file are told here, inside the dialog that
+                   covers the window a toast would go to, and long enough to read. -->
+              <object class="AdwPreferencesGroup">
+                <child>
+                  <object class="GtkLabel" id="summary">
+                    <property name="xalign">0</property>
+                    <property name="wrap">true</property>
+                    <property name="wrap-mode">word-char</property>
+                    <property name="selectable">true</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+</interface>

@@ -12,7 +12,8 @@ use libadwaita::prelude::*;
 /// forced shut, answers with its close response.
 ///
 /// `choose_future` is not used: its callback aborts the process when
-/// the dialog goes away without a response.
+/// the dialog goes away without a response (docs/toolkit-workarounds.md,
+/// "AdwAlertDialog.choose_future").
 pub(crate) async fn respond(dialog: &adw::AlertDialog, parent: &gtk::Widget) -> String {
     let fallback = dialog.close_response().to_string();
     let (sender, receiver) = oneshot::channel();

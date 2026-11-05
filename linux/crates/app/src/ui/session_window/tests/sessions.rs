@@ -610,8 +610,16 @@ fn a_safe_mode_reopen_keeps_a_dialog_connect_running() {
     assert!(toast_titled(&test.window, "The connection was deleted.").is_none());
 }
 
+/// Three editor tabs in `test`'s session, and the middle one.
+fn three_tabs(test: &TestWindow) -> adw::TabPage {
+    let pages: Vec<adw::TabPage> = (0..3)
+        .map(|_| crate::ui::workspace::tests::new_editor_page(&test.workspace()).expect("a tab"))
+        .collect();
+    pages[1].clone()
+}
+
 #[gtk4::test]
-fn a_tab_dropped_on_another_window_goes_back_to_its_own() {
+fn a_tab_dropped_on_another_window_goes_back_where_it_left() {
     let test = TestWindow::connected("ForeignTab");
     let other = second_connection(&test);
     let second = test
@@ -620,13 +628,108 @@ fn a_tab_dropped_on_another_window_goes_back_to_its_own() {
         .and_then(|window| window.downcast::<SessionWindow>().ok())
         .expect("a second window");
     wait_until(WAIT, || second.page_name() == "workspace").expect("the second window's session");
-    let page = crate::ui::workspace::tests::new_editor_page(&test.workspace()).expect("a tab");
+    let page = three_tabs(&test);
     let home = test.window.shell().expect("the shell").tab_view();
     let away = second.shell().expect("the second shell").tab_view();
+    let left_at = crate::ui::workspace::page_position(&home, &page).expect("the tab in its own view");
 
     home.transfer_page(&page, &away, away.n_pages());
-    second.send(SessionWindowInput::ReturnForeignTab(page.downgrade().into()));
 
     wait_until(WAIT, || holds_page(&home, &page) && !holds_page(&away, &page))
         .expect("the tab to go back to its session's window");
+    assert_eq!(crate::ui::workspace::page_position(&home, &page), Some(left_at));
+    assert_eq!(home.selected_page().as_ref(), Some(&page));
+    assert_eq!(
+        test.window
+            .shell()
+            .and_then(|shell| shell.owner_of(&page))
+            .and_then(|(workspace, _)| workspace.key()),
+        Some(test.key())
+    );
+}
+
+/// libadwaita takes a dragged tab out of the view, asks for a window when
+/// it is dropped outside every one, and attaches it to the view it gets
+/// back at position 0. A view outside any window stands in for the drag.
+#[gtk4::test]
+fn a_tab_dropped_outside_every_window_stays_where_it_was() {
+    let test = TestWindow::connected("TearOut");
+    let page = three_tabs(&test);
+    let home = test.window.shell().expect("the shell").tab_view();
+    let left_at = crate::ui::workspace::page_position(&home, &page).expect("the tab in its view");
+    let drag = adw::TabView::new();
+    home.transfer_page(&page, &drag, 0);
+
+    let new_window = home.emit_by_name::<Option<adw::TabView>>("create-window", &[]);
+    drag.transfer_page(&page, &home, 0);
+    drain_main_context();
+
+    assert_eq!(new_window.as_ref(), Some(&home), "no window opens for the tab");
+    assert_eq!(crate::ui::workspace::page_position(&home, &page), Some(left_at));
+    assert_eq!(home.selected_page().as_ref(), Some(&page));
+    assert_eq!(home.n_pages(), 3);
+}
+
+#[gtk4::test]
+fn a_tab_dropped_back_on_its_own_bar_stays_where_it_was_dropped() {
+    let test = TestWindow::connected("DropHome");
+    let page = three_tabs(&test);
+    let home = test.window.shell().expect("the shell").tab_view();
+    let drag = adw::TabView::new();
+    home.transfer_page(&page, &drag, 0);
+
+    drag.transfer_page(&page, &home, 0);
+    drain_main_context();
+
+    assert_eq!(crate::ui::workspace::page_position(&home, &page), Some(0));
+}
+
+#[gtk4::test]
+fn a_tab_whose_session_is_gone_closes_rather_than_stay_in_another_window() {
+    let test = TestWindow::connected("StrayTab");
+    let home = test.window.shell().expect("the shell").tab_view();
+    let stray = home.append(&gtk4::Label::new(None));
+
+    test.window
+        .send(SessionWindowInput::ReturnTab(stray.downgrade().into()));
+    wait_until(WAIT, || !holds_page(&home, &stray)).expect("the stray tab to close");
+}
+
+#[gtk4::test]
+fn a_session_closing_while_its_tab_is_out_leaves_that_tab_alone() {
+    let (test, other) = open_both("TabOut");
+    let shell = test.window.shell().expect("the shell");
+    let leaving = test
+        .window
+        .workspaces()
+        .into_iter()
+        .find(|workspace| workspace.key() == Some(SessionKey::Saved(other.id)))
+        .expect("the second session");
+    let page = crate::ui::workspace::tests::new_editor_page(&leaving).expect("a tab");
+    let drag = adw::TabView::new();
+    shell.tab_view().transfer_page(&page, &drag, 0);
+    let criticals = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = criticals.clone();
+    let handler = gtk4::glib::log_set_handler(
+        Some("Adwaita"),
+        gtk4::glib::LogLevels::LEVEL_CRITICAL,
+        false,
+        false,
+        move |_, _, _| {
+            counted.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        },
+    );
+
+    test.window
+        .send(SessionWindowInput::DisconnectSession(SessionKey::Saved(other.id)));
+    wait_until(WAIT, || test.window.workspaces().len() == 1).expect("the session to go");
+    gtk4::glib::log_remove_handler(Some("Adwaita"), handler);
+
+    assert_eq!(
+        criticals.load(std::sync::atomic::Ordering::Relaxed),
+        0,
+        "the view was asked to close a page it does not hold"
+    );
+    assert!(holds_page(&drag, &page));
+    assert!(shell.owner_of(&page).is_none());
 }

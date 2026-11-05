@@ -77,11 +77,10 @@ impl WorkspaceModel {
             WorkspaceLoad::Blocked(_) => self.layout_banner.set_revealed(true),
         }
         if unreadable > 0 {
-            let count = u32::try_from(unreadable).unwrap_or(u32::MAX);
             self.show_toast(&crate::i18n::ngettext_f(
                 "Saved text of {n} query tab could not be read. The file was kept.",
                 "Saved text of {n} query tabs could not be read. The files were kept.",
-                count,
+                unreadable,
                 &[("n", &unreadable.to_string())],
             ));
         }
@@ -693,6 +692,12 @@ impl TabViewWatch {
         for handler in handlers {
             view.disconnect(handler);
         }
+        // A page out on another window's bar closes there once it is
+        // sent back and finds no session, and this view cannot close it.
+        let pages: Vec<adw::TabPage> = pages
+            .into_iter()
+            .filter(|page| super::page_position(&view, page).is_some())
+            .collect();
         self.leaving.replace(pages.clone());
         for page in &pages {
             view.close_page(page);

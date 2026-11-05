@@ -51,9 +51,9 @@ A fact the repository keeps elsewhere, such as a workflow trigger, a branch, a v
 |---|---|---|---|
 | [0001](0001-no-plugin-system.md) | No plugin system; drivers are statically linked | Superseded by core 0004 | Drivers are crates, registered at compile time. No `.tableplugin`-equivalent on Linux. |
 | [0002](0002-rust-gtk4-libadwaita.md) | Rust + GTK4 + libadwaita | Accepted; version floor superseded by 0015, the Relm4 consequence by 0012 | Validated by spike. Only stack with a production virtualized data grid (GtkColumnView). |
-| [0003](0003-relm4-architecture.md) | Relm4 for app architecture | Accepted; superseded by 0012 except for the saved-queries and CSV import dialogs | Elm-style components scale to TablePro's view count. |
+| [0003](0003-relm4-architecture.md) | Relm4 for app architecture | Superseded by 0012 | Elm-style components scale to TablePro's view count. |
 | [0004](0004-libsecret-secret-storage.md) | Secret storage through oo7 | Accepted; store API and Flatpak path amended 2026-09-15, the rules for edits 2026-10-15 | The Secret Service on the host, and oo7's own keyring file with a key from the Secret portal inside Flatpak; never a plain-text file. |
-| [0005](0005-supply-chain-policy.md) | Supply-chain policy | Accepted | Maintained crates first; custom code needs recorded evidence and a removal trigger. |
+| [0005](0005-supply-chain-policy.md) | Supply-chain policy | Accepted; the MySQL CA bundle's watch list amended by 0033 | Maintained crates first; custom code needs recorded evidence and a removal trigger. |
 | [0006](0006-meson-cargo-build.md) | Meson drives Cargo | Accepted; where the version lives amended by 0017, the release tarball and the place of the Cargo workspace amended by core 0001 | Meson owns install, data files and the build-time config; Cargo stays the Rust compiler. |
 | [0007](0007-gsettings-preferences.md) | Preferences and window geometry in GSettings | Accepted; the schema id and path per profile amended 2026-10-15 | A schema with ranges and enums replaces preferences.json and window.json; keyed data stays in files. |
 | [0008](0008-flatpak-sandbox-permissions.md) | Flatpak sandbox permissions | Accepted; the Flathub submission deferred by 0018 | Network, display, home and removable drives for SQLite, the SSH agent and the Kerberos KCM socket; portals for the rest; two Flathub lint exceptions. |
@@ -80,6 +80,7 @@ A fact the repository keeps elsewhere, such as a workflow trigger, a branch, a v
 | [0030](0030-a-database-is-a-session-of-its-own.md) | A query tab's database, and another database as a session of its own | Accepted | A query tab's own editor session moves to its database through the driver, or opens there where the engine binds it at connect; another database the window shows is a sibling session with its own workspace and sidebar row. |
 | [0031](0031-duckdb-2.md) | DuckDB 2.0, writing files DuckDB 1.x reads | Accepted | duckdb 1.20000.1 compiles DuckDB 2.0.0, and every database opens with `storage_compatibility_version = 'v0.10.2'` so new and attached files stay readable by DuckDB 1.x. |
 | [0032](0032-connection-list-tree.md) | The connection list is the library's tree in a list view | Accepted | The picker and the window's tree show groups nested and in the library's order from one outline keyed by id, with Favourites and Recent sections in the picker, drag and drop, and a menu item for every move. |
+| [0033](0033-mysql-ca-bundle-removal-condition.md) | When the MySQL CA bundle goes | Accepted | sqlx #4044/#4045 add rustls-platform-verifier features, not a caller's ClientConfig; the bundle goes once sqlx's own TLS passes system-trust, extra-CA and name tests against MySQL. |
 
 0011 is not used. It was reserved for the DDL decision, which was recorded as 0010, and docs cite ADRs by number, so the later ones keep theirs.
 
