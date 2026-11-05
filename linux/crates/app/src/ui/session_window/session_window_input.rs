@@ -79,6 +79,8 @@ pub(crate) enum SessionWindowInput {
     ChooseDatabaseIn(SessionKey),
     /// New Database… on a connection's row.
     NewDatabaseIn(SessionKey),
+    /// New Schema… on a connection's row.
+    NewSchemaIn(SessionKey),
     /// Drop Database… on a connection's row, which asks which one first,
     /// or on the row of a database open beside its connection.
     DropDatabaseIn(SessionKey),

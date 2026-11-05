@@ -775,7 +775,10 @@ async fn truncate_empties_the_table_and_restarts_its_counter() {
             connection.as_ref(),
             WriteKind::RowChanges,
             &table("emptied"),
-            &["INSERT INTO emptied (label) VALUES ('a'), ('b'), ('c')", "INSERT INTO parent (id) VALUES (1)"],
+            &[
+                "INSERT INTO emptied (label) VALUES ('a'), ('b'), ('c')",
+                "INSERT INTO parent (id) VALUES (1)",
+            ],
         )
         .await
         .expect("rows to empty");

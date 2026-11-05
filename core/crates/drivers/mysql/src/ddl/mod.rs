@@ -467,14 +467,14 @@ mod tests {
     use tablepro_core::column::{ColumnDefault, ColumnInfo, SqlExpression};
     use tablepro_core::ddl::{
         CollationName, ColumnAttributes, ColumnVisibility, DdlOperation, DraftColumn, DraftType, DropDatabaseOptions,
-        DropSchemaOptions, DropTableOptions, GeneratedColumn, GeneratedStorage, InboundForeignKey, PrimaryKeyConstraint,
-        SchemaDraft, TableOptions, TruncateTableOptions, UnmodeledAttribute, catalog_capabilities, diff_table,
-        plan_create_database, plan_create_schema, plan_drop_database, plan_drop_schema, plan_truncate_table,
-        protects_database,
+        DropSchemaOptions, DropTableOptions, GeneratedColumn, GeneratedStorage, InboundForeignKey,
+        PrimaryKeyConstraint, SchemaDraft, TableOptions, TruncateTableOptions, UnmodeledAttribute,
+        catalog_capabilities, diff_table, plan_create_database, plan_create_schema, plan_drop_database,
+        plan_drop_schema, plan_truncate_table, protects_database,
     };
-    use tablepro_core::{ForeignKeyInfo, ServerInfo, WriteKind};
     use tablepro_core::meta::{IndexInfo, IndexKey};
     use tablepro_core::value::Value;
+    use tablepro_core::{ForeignKeyInfo, ServerInfo, WriteKind};
 
     use super::*;
     use crate::flavour::MySqlFlavour;

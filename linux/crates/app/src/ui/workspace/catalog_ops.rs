@@ -120,7 +120,7 @@ pub(crate) struct TruncateCheck {
 #[derive(Debug)]
 pub(crate) enum CatalogLanded {
     Truncated { table: TableRef, cascaded: Vec<TableRef> },
-    SchemaCreated(String),
+    SchemaCreated,
     SchemaDropped(String),
     DatabaseCreated(String),
     DatabaseDropped(String),
@@ -356,6 +356,33 @@ impl WorkspaceModel {
                 })
             })
             .collect()
+    }
+
+    /// The tables of the table tabs that hold no unsaved edits, other
+    /// than those in `known`.
+    fn clean_table_tabs_besides(&self, known: &[TableRef]) -> Vec<TableRef> {
+        let tabs: Vec<(Uuid, TableRef)> = self
+            .workspace_tabs
+            .borrow()
+            .values()
+            .filter_map(|tab| match tab {
+                WorkspaceTab::Table(slot) => Some((slot.id, TableRef::new(slot.schema.clone(), slot.table.clone()))),
+                _ => None,
+            })
+            .collect();
+        let mut clean: Vec<TableRef> = Vec::new();
+        for (tab, table) in tabs {
+            let unsaved = self.change_trackers.get(tab).is_some_and(|tracker| {
+                matches!(
+                    tracker.pending_state(),
+                    PendingState::Unsaved | PendingState::OutcomeUnknown(_)
+                )
+            });
+            if !unsaved && !known.contains(&table) && !clean.contains(&table) {
+                clean.push(table);
+            }
+        }
+        clean
     }
 
     /// Sidebar "Drop Schema…". What the schema still holds is counted
@@ -621,7 +648,7 @@ impl WorkspaceModel {
     fn on_catalog_landed(&mut self, landed: CatalogLanded) {
         match landed {
             CatalogLanded::Truncated { table, cascaded } => self.on_truncated(table, cascaded),
-            CatalogLanded::SchemaCreated(_) => self.catalog_shape_changed(),
+            CatalogLanded::SchemaCreated => self.catalog_shape_changed(),
             CatalogLanded::SchemaDropped(schema) => {
                 self.close_tabs_in(&schema);
                 self.catalog_shape_changed();
@@ -646,11 +673,16 @@ impl WorkspaceModel {
     /// go through the input, after the drop of the edits.
     fn on_truncated(&mut self, table: TableRef, cascaded: Vec<TableRef>) {
         self.show_toast(&gettext_f("“{table}” is empty", &[("table", &display_name(&table))]));
-        let emptied: Vec<TableRef> = std::iter::once(table).chain(cascaded).collect();
+        let mut emptied: Vec<TableRef> = std::iter::once(table).chain(cascaded).collect();
         let discarded: Vec<Uuid> = emptied.iter().flat_map(|table| self.unsaved_tabs_on(table)).collect();
         if !discarded.is_empty() {
             self.workspace_handle.discard(&discarded, false);
         }
+        // A PostgreSQL truncate also empties the table's partitions and
+        // inheritance children, which no foreign key names, so every other
+        // tab with nothing unsaved reads its rows again. One with unsaved
+        // edits keeps them, and its save's row guards refuse rows now gone.
+        emptied.extend(self.clean_table_tabs_besides(&emptied));
         self.input
             .deliver(WorkspaceInput::Catalog(CatalogInput::ReloadTables(emptied)));
     }

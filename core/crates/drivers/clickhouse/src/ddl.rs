@@ -665,7 +665,12 @@ mod tests {
             dropped(Some("main")).sql(),
             ["DROP DATABASE `sh\\`op` ON CLUSTER `main`"]
         );
-        for plan in [created(None), created(Some("main")), dropped(None), dropped(Some("main"))] {
+        for plan in [
+            created(None),
+            created(Some("main")),
+            dropped(None),
+            dropped(Some("main")),
+        ] {
             assert_eq!(plan.kind, WriteKind::DatabaseChanges);
         }
     }

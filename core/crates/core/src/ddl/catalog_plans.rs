@@ -26,10 +26,7 @@ pub fn catalog_capabilities(dialect: &dyn SqlDialect) -> CatalogCapabilities {
             ..CatalogCapabilities::default()
         };
     }
-    dialect
-        .ddl()
-        .map(|ddl| ddl.catalog_capabilities())
-        .unwrap_or_default()
+    dialect.ddl().map(|ddl| ddl.catalog_capabilities()).unwrap_or_default()
 }
 
 /// Whether the engine keeps the database `name` for itself.
@@ -199,7 +196,10 @@ pub fn check_database_draft(capabilities: &CatalogCapabilities, draft: &Database
     let refused = [
         (!capabilities.create_database, DdlOperation::CreateDatabase),
         (draft.owner.is_some() && !fields.owner, DdlOperation::CatalogOwner),
-        (draft.cluster.is_some() && !capabilities.on_cluster, DdlOperation::OnCluster),
+        (
+            draft.cluster.is_some() && !capabilities.on_cluster,
+            DdlOperation::OnCluster,
+        ),
     ];
     refuse_first(&refused)?;
     let unplaced = [
@@ -215,7 +215,10 @@ pub fn check_database_draft(capabilities: &CatalogCapabilities, draft: &Database
             draft.replication.is_some() && !fields.replication,
             CatalogOption::ReplicationFactor,
         ),
-        (draft.tablets.is_some() && !fields.tablets, CatalogOption::ReplicationFactor),
+        (
+            draft.tablets.is_some() && !fields.tablets,
+            CatalogOption::ReplicationFactor,
+        ),
         (
             draft.first_collection.is_some() && !fields.first_collection,
             CatalogOption::Collection,

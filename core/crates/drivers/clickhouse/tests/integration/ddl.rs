@@ -96,7 +96,10 @@ async fn truncate_empties_the_table_and_keeps_it() {
         .expect("the truncate runs");
 
     let kept = format!("SELECT count() FROM system.tables WHERE database = '{DATABASE}' AND name = '{name}'");
-    assert_eq!(count(connection.as_ref(), &format!("SELECT count() FROM {qualified}")).await, 0);
+    assert_eq!(
+        count(connection.as_ref(), &format!("SELECT count() FROM {qualified}")).await,
+        0
+    );
     assert_eq!(count(connection.as_ref(), &kept).await, 1);
     connection.close().await.expect("a close");
 }
@@ -125,7 +128,10 @@ async fn a_database_is_created_and_dropped_through_a_save() {
         .await
         .expect("the database is dropped");
 
-    let made = schemas.iter().find(|schema| schema.name == name).expect("the new database");
+    let made = schemas
+        .iter()
+        .find(|schema| schema.name == name)
+        .expect("the new database");
     assert!(!made.is_default && !made.is_system, "{made:?}");
     assert_eq!(count(connection.as_ref(), &listed).await, 0);
     connection.close().await.expect("a close");

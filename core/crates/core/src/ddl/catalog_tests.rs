@@ -73,7 +73,9 @@ fn a_default_truncate_writes_the_options_the_engine_takes() {
         cluster: None,
     };
 
-    let plan = ddl(every_operation()).plan_truncate_table(&table, &both).expect("a plan");
+    let plan = ddl(every_operation())
+        .plan_truncate_table(&table, &both)
+        .expect("a plan");
 
     assert_eq!(
         plan.sql(),
@@ -176,7 +178,10 @@ fn a_database_plan_runs_outside_a_transaction_and_refuses_options_it_has_no_plac
 
 #[test]
 fn a_bare_word_is_letters_digits_and_underscores() {
-    assert_eq!(bare_word(CatalogOption::Collation, "utf8mb4_0900_ai_ci"), Ok("utf8mb4_0900_ai_ci"));
+    assert_eq!(
+        bare_word(CatalogOption::Collation, "utf8mb4_0900_ai_ci"),
+        Ok("utf8mb4_0900_ai_ci")
+    );
     for refused in ["", "latin1'; DROP", "a b", "a-b"] {
         assert!(bare_word(CatalogOption::Collation, refused).is_err(), "{refused:?}");
     }
@@ -197,12 +202,12 @@ fn mongodb_empties_a_collection_and_makes_a_database_through_its_shell() {
         emptied.sql(),
         [r#"db.getSiblingDB("shop").getCollection("orders").deleteMany({})"#]
     );
-    assert_eq!(
-        created.sql(),
-        [r#"db.getSiblingDB("shop").createCollection("orders")"#]
-    );
+    assert_eq!(created.sql(), [r#"db.getSiblingDB("shop").createCollection("orders")"#]);
     assert_eq!(dropped.sql(), [r#"db.getSiblingDB("shop").dropDatabase()"#]);
-    assert_eq!((created.kind, dropped.kind), (WriteKind::DatabaseChanges, WriteKind::DatabaseChanges));
+    assert_eq!(
+        (created.kind, dropped.kind),
+        (WriteKind::DatabaseChanges, WriteKind::DatabaseChanges)
+    );
     assert_eq!(emptied.kind, WriteKind::SchemaChanges);
     assert!(protects_database(&shell, "admin") && !protects_database(&shell, "shop"));
     let capabilities = catalog_capabilities(&shell);

@@ -173,13 +173,13 @@ impl WorkspaceModel {
     }
 
     pub(super) fn on_create_schema(&mut self, draft: SchemaDraft) {
-        let (target, created) = (TableRef::new(Some(draft.name.clone()), ""), draft.name.clone());
+        let target = TableRef::new(Some(draft.name.clone()), "");
         self.start_catalog_change(
             WriteKind::SchemaChanges,
             target,
             move |dialect, _| ddl::plan_create_schema(dialect, &draft),
             move |result| match result {
-                Ok(()) => WorkspaceInput::Catalog(CatalogInput::Landed(CatalogLanded::SchemaCreated(created))),
+                Ok(()) => WorkspaceInput::Catalog(CatalogInput::Landed(CatalogLanded::SchemaCreated)),
                 Err(error) => WorkspaceInput::ShowAlert {
                     title: gettext("Could Not Create Schema"),
                     body: error_text::operation_error_message(&error),

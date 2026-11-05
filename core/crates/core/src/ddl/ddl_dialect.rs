@@ -98,7 +98,11 @@ pub trait DdlDialect: Send + Sync + std::fmt::Debug {
     /// Empty the table and keep its definition.
     fn plan_truncate_table(&self, table: &TableRef, options: &TruncateTableOptions) -> Result<DdlPlan, BuildDdlError> {
         refuse_options(&self.catalog_capabilities(), options)?;
-        let restart = if options.restart_identity { " RESTART IDENTITY" } else { "" };
+        let restart = if options.restart_identity {
+            " RESTART IDENTITY"
+        } else {
+            ""
+        };
         let cascade = if options.cascade { " CASCADE" } else { "" };
         Ok(DdlPlan::from_sql([format!(
             "TRUNCATE TABLE {}{restart}{cascade}",

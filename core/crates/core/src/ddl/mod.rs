@@ -63,9 +63,9 @@ mod tests;
 pub use build_ddl_error::BuildDdlError;
 pub use catalog_capabilities::{CatalogCapabilities, DatabaseFields, DatabaseNoun, NameLimit};
 pub use catalog_plans::{
-    bare_word, catalog_capabilities, catalog_name, check_database_draft, named, plan_create_database, plan_create_schema,
-    plan_drop_database, plan_drop_schema, plan_truncate_table, protects_database, protects_schema, refuse_drop_options,
-    refuse_options,
+    bare_word, catalog_capabilities, catalog_name, check_database_draft, named, plan_create_database,
+    plan_create_schema, plan_drop_database, plan_drop_schema, plan_truncate_table, protects_database, protects_schema,
+    refuse_drop_options, refuse_options,
 };
 pub use change_review::ChangeReview;
 pub use changed_attributes::ChangedAttributes;

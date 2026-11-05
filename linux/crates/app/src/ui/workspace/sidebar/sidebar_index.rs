@@ -702,9 +702,12 @@ mod tests {
         );
     }
 
-    /// Each section's title, the schema it names, whether it offers a
-    /// drop, and its run's place and span, in list order.
-    fn sections(index: &SidebarIndex) -> Vec<(String, Option<String>, bool, Option<(usize, u32, u32)>)> {
+    /// A section's title, the schema it names, whether it offers a drop,
+    /// and its run's place and span.
+    type Listed = (String, Option<String>, bool, Option<(usize, u32, u32)>);
+
+    /// Each section as `Listed`, in list order.
+    fn sections(index: &SidebarIndex) -> Vec<Listed> {
         index
             .listed_sections()
             .map(|(section, run)| {

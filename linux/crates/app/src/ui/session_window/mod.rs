@@ -471,6 +471,7 @@ impl SessionWindow {
             SessionWindowInput::DisconnectSession(key) => self.on_disconnect(key),
             SessionWindowInput::ChooseDatabaseIn(key) => self.choose_database_in(key),
             SessionWindowInput::NewDatabaseIn(key) => self.deliver_to(&key, WorkspaceInput::NewDatabasePrompt),
+            SessionWindowInput::NewSchemaIn(key) => self.deliver_to(&key, WorkspaceInput::NewSchemaPrompt),
             SessionWindowInput::DropDatabaseIn(key) => self.drop_database_in(key),
             SessionWindowInput::ReleaseDatabase { target, options } => self.release_database(target, options),
             SessionWindowInput::DatabaseDropFinished(target) => self.lift_reservation(&target),

@@ -396,7 +396,11 @@ async fn objects_and_estimates_are_listed() {
             .map(|schema| schema.name.as_str())
             .collect();
         assert_eq!(defaults, ["tablepro"], "{flavour:?}: {schemas:?}");
-        assert!(schemas.iter().any(|schema| schema.name == "information_schema" && schema.is_system));
+        assert!(
+            schemas
+                .iter()
+                .any(|schema| schema.name == "information_schema" && schema.is_system)
+        );
         assert!(estimate.rows.value().is_some(), "{flavour:?}: {estimate:?}");
         connection.close().await.expect("a close");
     }

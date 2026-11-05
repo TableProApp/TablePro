@@ -11,6 +11,7 @@ const NEW_QUERY_IN: &str = "win.new-query-in";
 const REFRESH_IN: &str = "win.refresh-in";
 const OPEN_DATABASE_IN: &str = "win.open-database-in";
 const NEW_DATABASE_IN: &str = "win.new-database-in";
+const NEW_SCHEMA_IN: &str = "win.new-schema-in";
 const DROP_DATABASE_IN: &str = "win.drop-database-in";
 pub(super) const DISCONNECT_SESSION: &str = "win.disconnect-session";
 const STOP_CONNECTING: &str = "win.stop-connecting";
@@ -56,6 +57,10 @@ pub(super) fn session_section(key: &SessionKey, state: InWindow, affordances: Si
                     DatabaseNoun::Keyspace => crate::i18n::gettext("_New Keyspace…"),
                 };
                 add(label, NEW_DATABASE_IN);
+            }
+            // Here too, for a database whose every schema was dropped and so has no schema row.
+            if affordances.offers_new_schema() {
+                add(crate::i18n::gettext("New Sc_hema…"), NEW_SCHEMA_IN);
             }
             add(crate::i18n::gettext("_Disconnect"), DISCONNECT_SESSION);
             if drops_database(key, affordances) {
@@ -124,6 +129,7 @@ mod tests {
             catalog: CatalogCapabilities {
                 create_database: true,
                 drop_database: true,
+                create_schema: true,
                 ..CatalogCapabilities::default()
             },
             ..SidebarAffordances::default()
@@ -160,6 +166,25 @@ mod tests {
 
     fn actions(menu: &gio::Menu) -> Vec<String> {
         items(menu.upcast_ref()).into_iter().map(|(action, _)| action).collect()
+    }
+
+    #[test]
+    fn a_connection_that_makes_schemas_offers_one_without_a_schema_row() {
+        let key = SessionKey::Saved(Uuid::new_v4());
+        let schemas = SidebarAffordances {
+            catalog: CatalogCapabilities {
+                create_schema: true,
+                ..CatalogCapabilities::default()
+            },
+            ..SidebarAffordances::default()
+        };
+        let read_only = SidebarAffordances {
+            read_only: true,
+            ..schemas
+        };
+
+        assert!(actions(&session_section(&key, InWindow::Open, schemas)).contains(&NEW_SCHEMA_IN.to_owned()));
+        assert!(!actions(&session_section(&key, InWindow::Open, read_only)).contains(&NEW_SCHEMA_IN.to_owned()));
     }
 
     #[test]
