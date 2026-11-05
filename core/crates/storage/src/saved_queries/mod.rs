@@ -212,12 +212,20 @@ impl SavedQueries {
     }
 
     pub async fn delete(&self, id: i64) -> Result<(), StorageError> {
+        crate::query_history::trim_upgrade_copies(
+            &self.path,
+            &[crate::query_history::CopyDelete {
+                table: "saved_queries",
+                sql: "DELETE FROM main.saved_queries WHERE id = ?".to_owned(),
+                binds: vec![crate::query_history::Bind::Integer(id)],
+            }],
+        )
+        .await?;
         let affected = sqlx::query("DELETE FROM saved_queries WHERE id = ?")
             .bind(id)
             .execute(&self.pool)
             .await?
             .rows_affected();
-        crate::query_history::trim_upgrade_copies(&self.path).await?;
         match affected {
             0 => Err(StorageError::NotFound),
             _ => Ok(()),
@@ -228,12 +236,20 @@ impl SavedQueries {
     /// connection itself is removed. Its queries name tables only that
     /// database has.
     pub async fn delete_for_connection(&self, connection: Uuid) -> Result<usize, StorageError> {
+        crate::query_history::trim_upgrade_copies(
+            &self.path,
+            &[crate::query_history::CopyDelete {
+                table: "saved_queries",
+                sql: "DELETE FROM main.saved_queries WHERE connection_id = ?".to_owned(),
+                binds: vec![crate::query_history::Bind::Text(connection.to_string())],
+            }],
+        )
+        .await?;
         let affected = sqlx::query("DELETE FROM saved_queries WHERE connection_id = ?")
             .bind(connection.to_string())
             .execute(&self.pool)
             .await?
             .rows_affected();
-        crate::query_history::trim_upgrade_copies(&self.path).await?;
         Ok(affected as usize)
     }
 }

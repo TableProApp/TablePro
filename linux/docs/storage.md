@@ -251,10 +251,13 @@ can tell whether a re-pinned entry falls in the pages already read.
 - `delete_for_connection` removes one connection's entries, pinned ones
   included, for a connection deleted along with its history, then runs
   `optimize` as a prune does.
-- After every deletion (`delete_returning`, `clear_all`,
-  `delete_for_connection`, `prune` and the saved queries' `delete` and
-  `delete_for_connection`), `trim_upgrade_copies` makes each copy an upgrade
-  kept hold no history entry or saved query the database no longer has. It
+- A deletion the user asks for (`delete_returning`, `clear_all`,
+  `delete_for_connection` and the saved queries' `delete` and
+  `delete_for_connection`) reaches each copy an upgrade kept before the
+  database, so a copy that fails leaves the database as it was and an Undo
+  never loses its entries. `prune` trims the copies after its own deletes.
+  Either way `trim_upgrade_copies` also makes each copy hold no history entry
+  or saved query the database no longer has. It
   attaches the database and deletes the rest in one transaction with
   `secure_delete` on, optimizing the copy's full-text indexes, so the words
   leave its blocks and freed pages together. A copy that cannot be trimmed,

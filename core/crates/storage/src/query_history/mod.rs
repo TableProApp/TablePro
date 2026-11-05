@@ -52,7 +52,7 @@ const ENTRY_COLUMNS: &str = "h.id, h.query, h.driver_id, h.connection_id, h.conn
      h.duration_ms, h.rows_affected, h.success, h.cancelled, h.pinned, h.error";
 
 /// A value for a placeholder of a statement built from parts.
-enum Bind {
+pub(crate) enum Bind {
     Text(String),
     Integer(i64),
 }
@@ -247,6 +247,18 @@ impl QueryHistory {
     /// Delete the entries and hand back what they held, so the delete
     /// can be undone with `restore`.
     pub async fn delete_returning(&self, ids: &[i64]) -> Result<Vec<Entry>, StorageError> {
+        let from_copies: Vec<CopyDelete> = ids
+            .chunks(IDS_PER_STATEMENT)
+            .map(|chunk| CopyDelete {
+                table: "history",
+                sql: format!(
+                    "DELETE FROM main.history WHERE id IN ({})",
+                    vec!["?"; chunk.len()].join(",")
+                ),
+                binds: chunk.iter().map(|id| Bind::Integer(*id)).collect(),
+            })
+            .collect();
+        trim_upgrade_copies(&self.path, &from_copies).await?;
         let mut transaction = self.pool.begin().await?;
         let mut deleted = Vec::with_capacity(ids.len());
         for chunk in ids.chunks(IDS_PER_STATEMENT) {
@@ -264,7 +276,6 @@ impl QueryHistory {
             }
         }
         transaction.commit().await?;
-        trim_upgrade_copies(&self.path).await?;
         deleted.sort_by_key(|entry| entry.id);
         Ok(deleted)
     }
@@ -302,6 +313,15 @@ impl QueryHistory {
     }
 
     pub async fn clear_all(&self) -> Result<usize, StorageError> {
+        trim_upgrade_copies(
+            &self.path,
+            &[CopyDelete {
+                table: "history",
+                sql: "DELETE FROM main.history".to_owned(),
+                binds: Vec::new(),
+            }],
+        )
+        .await?;
         let affected = sqlx::query("DELETE FROM history")
             .execute(&self.pool)
             .await?
@@ -312,7 +332,6 @@ impl QueryHistory {
                 .execute(&self.pool)
                 .await?;
         }
-        trim_upgrade_copies(&self.path).await?;
         Ok(affected as usize)
     }
 
@@ -352,7 +371,7 @@ impl QueryHistory {
                 .await?;
         }
         // Rows expired here, or unpinned since a copy was made, leave the copies too.
-        trim_upgrade_copies(&self.path).await?;
+        trim_upgrade_copies(&self.path, &[]).await?;
         Ok(report)
     }
 
@@ -368,6 +387,15 @@ impl QueryHistory {
     /// Drop every query run on a connection, pinned ones included, for a
     /// connection the user deleted along with its history.
     pub async fn delete_for_connection(&self, connection: Uuid) -> Result<u64, StorageError> {
+        trim_upgrade_copies(
+            &self.path,
+            &[CopyDelete {
+                table: "history",
+                sql: "DELETE FROM main.history WHERE connection_id = ?".to_owned(),
+                binds: vec![Bind::Text(connection.to_string())],
+            }],
+        )
+        .await?;
         let removed = sqlx::query("DELETE FROM history WHERE connection_id = ?")
             .bind(connection.to_string())
             .execute(&self.pool)
@@ -380,7 +408,6 @@ impl QueryHistory {
                 .execute(&self.pool)
                 .await?;
         }
-        trim_upgrade_copies(&self.path).await?;
         Ok(removed)
     }
 
@@ -438,7 +465,15 @@ impl QueryHistory {
 // A copy an upgrade kept never holds a history entry or saved query the database no longer has, so
 // what the user deleted, or the retention window dropped, is gone from it too. One transaction with
 // secure_delete, so the words leave the full-text blocks and freed pages at once, even after a crash.
-pub(crate) async fn trim_upgrade_copies(path: &Path) -> Result<(), StorageError> {
+// A delete the user asked for goes to the copies before the database: when a copy fails, nothing is
+// deleted, so the user is told and an Undo never loses what it would put back.
+pub(crate) struct CopyDelete {
+    pub(crate) table: &'static str,
+    pub(crate) sql: String,
+    pub(crate) binds: Vec<Bind>,
+}
+
+pub(crate) async fn trim_upgrade_copies(path: &Path, first: &[CopyDelete]) -> Result<(), StorageError> {
     crate::upgrade_copies::remove_leftovers_blocking(path)?;
     let copies = crate::upgrade_copies::copies_blocking(path)?;
     if copies.is_empty() {
@@ -451,14 +486,14 @@ pub(crate) async fn trim_upgrade_copies(path: &Path) -> Result<(), StorageError>
     for copy in copies {
         // A copy that cannot be trimmed, being damaged or unreadable, goes rather than keep what the
         // user deleted.
-        if trim_copy(&copy.path, live).await.is_err() {
+        if trim_copy(&copy.path, live, first).await.is_err() {
             crate::upgrade_copies::remove_copy_blocking(&copy.path)?;
         }
     }
     Ok(())
 }
 
-async fn trim_copy(copy: &Path, live: &str) -> Result<(), StorageError> {
+async fn trim_copy(copy: &Path, live: &str, first: &[CopyDelete]) -> Result<(), StorageError> {
     let mut database = SqliteConnectOptions::new()
         .filename(copy)
         .journal_mode(sqlx::sqlite::SqliteJournalMode::Delete)
@@ -471,6 +506,23 @@ async fn trim_copy(copy: &Path, live: &str) -> Result<(), StorageError> {
         .execute(&mut database)
         .await?;
     let mut transaction = database.begin().await?;
+    for delete in first {
+        let present: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM main.sqlite_master WHERE type = 'table' AND name = ?")
+                .bind(delete.table)
+                .fetch_one(&mut *transaction)
+                .await?;
+        if present > 0 {
+            let mut statement = sqlx::query(AssertSqlSafe(delete.sql.clone()));
+            for bind in &delete.binds {
+                statement = match bind {
+                    Bind::Text(text) => statement.bind(text.clone()),
+                    Bind::Integer(value) => statement.bind(*value),
+                };
+            }
+            statement.execute(&mut *transaction).await?;
+        }
+    }
     for table in ["history", "saved_queries"] {
         let present: i64 = sqlx::query_scalar(
             "SELECT (SELECT COUNT(*) FROM main.sqlite_master WHERE type = 'table' AND name = ?1) \
