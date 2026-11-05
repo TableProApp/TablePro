@@ -63,8 +63,11 @@ on:
 permissions:
   contents: read
 
+# Tags run one at a time, so two releases never pull and publish one Flatpak
+# repository together; flatpak-publish.sh also refuses a repository that
+# changed since its run pulled it. A third tag cancels the one waiting.
 concurrency:
-  group: release-linux-${{ github.ref }}
+  group: release-linux-${{ github.event_name == 'push' && 'tags' || github.ref }}
   cancel-in-progress: false
 
 jobs:

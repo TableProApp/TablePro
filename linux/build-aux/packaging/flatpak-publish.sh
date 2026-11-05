@@ -3,6 +3,12 @@
 # tablepro-flatpak R2 bucket that https://flatpak.tablepro.app serves, with
 # rclone and the r2 remote that the RCLONE_CONFIG_R2_* variables configure.
 #
+# pull records the published summary's SHA-256 beside the local copy, and
+# push refuses to publish when the bucket's summary is no longer that one:
+# another run published in between, and its objects would be deleted. A
+# listing that fails stops both, so a failed read never looks like an empty
+# repository.
+#
 # push uploads the new objects and deltas first, then the refs, the
 # .flatpakrepo, the .flatpakref and last the summaries, so a client never
 # reads a summary that names an object not there yet. Only then does it
@@ -66,19 +72,55 @@ local_only() {
     echo "$@"
 }
 
+fail() {
+    echo "flatpak-publish.sh: $*" >&2
+    exit 1
+}
+
+# The SHA-256 of the published summary, or none before the first publication.
+published_summary() {
+    status=0
+    listing="$(rclone lsf --files-only --max-depth 1 "$bucket/$1")" || status=$?
+    case "$status" in
+    0) ;;
+    # rclone's exit status for a directory that does not exist.
+    3)
+        echo none
+        return 0
+        ;;
+    *)
+        echo "flatpak-publish.sh: could not list $bucket/$1, rclone exit status $status" >&2
+        return 1
+        ;;
+    esac
+    if ! printf '%s\n' "$listing" | grep -qx summary; then
+        echo none
+        return 0
+    fi
+    copy="$(mktemp)"
+    rclone copyto "$bucket/$1/summary" "$copy" || return 1
+    sha256sum "$copy" | cut -d ' ' -f 1
+    rm -f "$copy"
+}
+
 pull() {
     check_dir "$1"
     mkdir -p "$2"
-    # A repository not published yet has no objects to fetch.
-    if rclone lsf --max-depth 1 "$bucket/$1" 2>/dev/null | grep -q .; then
+    summary="$(published_summary "$1")" || fail "not pulling $1"
+    if [ "$summary" != none ]; then
         rclone copy --fast-list "$bucket/$1" "$2"
     fi
+    echo "$summary" > "$2.published-summary"
 }
 
 push() {
     check_dir "$2"
     from="$1"
     to="$bucket/$2"
+    [ -f "$from.published-summary" ] || fail "$from was not pulled with flatpak-publish.sh pull"
+    summary="$(published_summary "$2")" || fail "not pushing to $2"
+    [ "$summary" = "$(cat "$from.published-summary")" ] ||
+        fail "$2 changed since $from was pulled; run the release again"
     meta="Cache-Control: no-cache"
     # shellcheck disable=SC2046 # one word per option
     rclone copy --fast-list $(local_only) --exclude "/refs/**" --exclude "/summaries/**" \
