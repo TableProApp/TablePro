@@ -257,7 +257,9 @@ can tell whether a re-pinned entry falls in the pages already read.
   kept hold no history entry or saved query the database no longer has. It
   attaches the database and deletes the rest in one transaction with
   `secure_delete` on, optimizing the copy's full-text indexes, so the words
-  leave its blocks and freed pages together.
+  leave its blocks and freed pages together. A copy that cannot be trimmed,
+  being damaged, is deleted, and so is what a crash left of one: an unfinished
+  copy, a temporary file and the journals of a copy that is gone.
 - `connections_with_history` lists each connection the history holds
   under the name of its latest run, so a renamed connection shows once.
 
