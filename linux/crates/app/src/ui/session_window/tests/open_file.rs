@@ -283,7 +283,7 @@ fn an_unreadable_sql_file_says_why_and_opens_nothing() {
             .toasts
             .borrow()
             .iter()
-            .any(|toast| toast.title().contains("not UTF-8 text"))
+            .any(|toast| toast.title().is_some_and(|title| title.contains("not UTF-8 text")))
     })
     .expect("a toast saying why");
     drain_main_context();
