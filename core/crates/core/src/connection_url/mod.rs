@@ -295,6 +295,16 @@ fn read_parameter(engine: Engine, draft: &mut Draft, key: &str, value: String) -
             draft.host = value.trim().trim_start_matches('[').trim_end_matches(']').to_owned();
         }
         (Engine::Postgres | Engine::Mssql, "port" | "portnumber") => draft.port = Some(parse_port(&value)?),
+        (Engine::Postgres, "channel_binding") => {
+            draft.options.channel_binding = value.trim().eq_ignore_ascii_case("require")
+        }
+        // Protections libpq enforces that the driver cannot: refused, never dropped.
+        (Engine::Postgres, "requirepeer" | "require_auth" | "sslcrl" | "sslcrldir") if !value.trim().is_empty() => {
+            return Err(ConnectionUrlError::UnsupportedParameter { name: key.to_owned() });
+        }
+        (Engine::Postgres, "gssencmode" | "sslcertmode") if value.trim().eq_ignore_ascii_case("require") => {
+            return Err(ConnectionUrlError::UnsupportedParameter { name: key.to_owned() });
+        }
         (Engine::Postgres, "dbname") | (Engine::Mssql, "database" | "databasename") if draft.database.is_empty() => {
             draft.database = value;
         }

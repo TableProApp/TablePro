@@ -25,6 +25,10 @@ pub fn connection_url_message(error: &ConnectionUrlError) -> String {
         ConnectionUrlError::DirectConnection => crate::i18n::gettext(
             "directConnection=true takes one host and no DNS seed list, and false takes a replicaSet or several hosts.",
         ),
+        ConnectionUrlError::UnsupportedParameter { name } => crate::i18n::gettext_f(
+            "The URL asks for {name}, a protection TablePro cannot enforce. Remove it to connect without it.",
+            &[("name", name)],
+        ),
         ConnectionUrlError::AuthMechanism { mechanism } => crate::i18n::gettext_f(
             "The URL logs in with {mechanism}, and TablePro logs in to MongoDB with a password only.",
             &[("mechanism", mechanism)],

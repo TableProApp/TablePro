@@ -43,7 +43,10 @@ impl PgEndpoint {
             .user(username)
             .password(password.expose_secret())
             .application_name(APPLICATION_NAME)
-            .channel_binding(ChannelBinding::Prefer)
+            .channel_binding(match target.options.channel_binding {
+                true => ChannelBinding::Require,
+                false => ChannelBinding::Prefer,
+            })
             .ssl_mode(tls.ssl_mode());
         if let Some(database) = target.database.as_deref().filter(|name| !name.is_empty()) {
             config.dbname(database);

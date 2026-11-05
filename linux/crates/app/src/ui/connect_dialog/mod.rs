@@ -639,6 +639,7 @@ impl ConnectDialog {
                     .filter(|host| !host.is_empty())
                     .map(str::to_owned)
                     .collect(),
+                channel_binding: imp.binding_row.is_active(),
             },
         }
     }
@@ -723,6 +724,7 @@ impl ConnectDialog {
         imp.replica_set_row
             .set_text(form.options.replica_set.as_deref().unwrap_or_default());
         imp.more_hosts_row.set_text(&form.options.more_hosts.join(", "));
+        imp.binding_row.set_active(form.options.channel_binding);
         imp.auth_database_row
             .set_text(form.options.auth_database.as_deref().unwrap_or_default());
         if imp.password_row.text() != secrecy::ExposeSecret::expose_secret(&form.password) {
@@ -835,6 +837,8 @@ impl ConnectDialog {
         let caps = entry.as_ref().map_or(&NO_DRIVER, DriverEntry::capabilities);
         imp.auth_database_row
             .set_visible(password && caps.offers(NetworkOption::AuthDatabase));
+        imp.binding_row
+            .set_visible(password && caps.offers(NetworkOption::ChannelBinding));
     }
 
     /// A seed list's SRV records give the ports, so the port row goes

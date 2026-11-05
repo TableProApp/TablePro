@@ -68,6 +68,8 @@ pub struct ConnectDialog {
     #[template_child]
     pub remember_row: TemplateChild<adw::SwitchRow>,
     #[template_child]
+    pub binding_row: TemplateChild<adw::SwitchRow>,
+    #[template_child]
     pub tls_section: TemplateChild<TlsSection>,
     #[template_child]
     pub ssh_section: TemplateChild<SshSection>,

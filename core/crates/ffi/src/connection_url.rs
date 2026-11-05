@@ -67,6 +67,9 @@ fn unkept_setting(parsed: &ConnectionUrl) -> Option<&'static str> {
     if parsed.options.uses_host_list() {
         return Some("a replica set");
     }
+    if parsed.options.channel_binding {
+        return Some("required channel binding");
+    }
     // Without one the driver checks the login in the database, else in admin: the same database needs no field.
     let derived = Some(parsed.database.trim())
         .filter(|name| !name.is_empty())
@@ -137,6 +140,7 @@ mod tests {
             "mongodb+srv://u:p@cluster0.example.net/",
             "mongodb://h1,h2/db?replicaSet=rs0",
             "mongodb://h1/db?authSource=admin",
+            "postgresql://u:p@ep-x.neon.tech/db?sslmode=require&channel_binding=require",
         ] {
             assert_eq!(refusal(url), "url.settings_unsupported", "{url}");
         }

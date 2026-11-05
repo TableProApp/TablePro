@@ -34,6 +34,9 @@ pub enum ConnectionUrlError {
 
     #[error("directConnection=true takes one host and no seed list, and false a replica set or several hosts")]
     DirectConnection,
+
+    #[error("the {name} protection is not supported")]
+    UnsupportedParameter { name: String },
 }
 
 impl ConnectionUrlError {
@@ -50,6 +53,7 @@ impl ConnectionUrlError {
             Self::InstanceName => "url.instance_name",
             Self::AuthMechanism { .. } => "url.auth_mechanism",
             Self::DirectConnection => "url.direct_connection",
+            Self::UnsupportedParameter { .. } => "url.unsupported_parameter",
         }
     }
 }

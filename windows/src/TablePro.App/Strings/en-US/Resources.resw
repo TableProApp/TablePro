@@ -1065,8 +1065,11 @@
   <data name="Error_url_direct_connection" xml:space="preserve">
     <value>directConnection=true takes one host and no DNS seed list, and false takes a replicaSet or several hosts.</value>
   </data>
+  <data name="Error_url_unsupported_parameter" xml:space="preserve">
+    <value>The URL asks for a protection TablePro can't enforce, such as requirepeer or require_auth.</value>
+  </data>
   <data name="Error_url_settings_unsupported" xml:space="preserve">
-    <value>The URL needs a setting a connection here can't keep yet: a local socket, a DNS seed list, several hosts or an authentication database.</value>
+    <value>The URL needs a setting a connection here can't keep yet: a local socket, a DNS seed list, several hosts, an authentication database or required channel binding.</value>
   </data>
   <data name="Error_library_name_required" xml:space="preserve">
     <value>Enter a name.</value>

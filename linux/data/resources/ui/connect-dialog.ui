@@ -165,6 +165,13 @@
                         <property name="active">true</property>
                       </object>
                     </child>
+                    <child>
+                      <!-- libpq's channel_binding=require: a server in the middle cannot take the password. -->
+                      <object class="AdwSwitchRow" id="binding_row">
+                        <property name="title" translatable="yes">Require Channel Binding</property>
+                        <property name="subtitle" translatable="yes">Log in only when the server binds the login to its TLS certificate</property>
+                      </object>
+                    </child>
                   </object>
                 </child>
                 <child>

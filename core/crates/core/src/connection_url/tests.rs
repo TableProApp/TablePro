@@ -52,15 +52,22 @@ fn provider_urls_fill_the_login_and_their_tls() {
     );
     assert_eq!(neon.port, None);
     assert_eq!(neon.database, "dbname");
-    assert_eq!(
-        neon.tls.mode,
-        Some(TlsMode::VerifyFull),
-        "channel_binding=require asks for no password to a server in the middle"
-    );
-    assert_eq!(
-        mode("postgresql://db/x?sslmode=require&channel_binding=prefer"),
-        Some(TlsMode::Require)
-    );
+    assert_eq!(neon.tls.mode, Some(TlsMode::Require));
+    assert!(neon.options.channel_binding, "the binding the URL requires was dropped");
+    assert!(!read("postgresql://db/x?channel_binding=prefer").options.channel_binding);
+    for refused_url in [
+        "postgresql://u:p@/app?host=/tmp&requirepeer=postgres",
+        "postgresql://u:p@db/app?require_auth=scram-sha-256",
+        "postgresql://u:p@db/app?gssencmode=require",
+        "postgresql://u:p@db/app?sslcrl=/etc/crl.pem",
+    ] {
+        assert_eq!(
+            refused(refused_url).code(),
+            "url.unsupported_parameter",
+            "{refused_url}"
+        );
+    }
+    assert_eq!(read("postgresql://db/app?gssencmode=prefer").host, "db");
 
     let heroku =
         read("postgres://u1:pw@ec2-1-2-3-4.compute-1.amazonaws.com:5432/d9?sslmode=verify-full&sslrootcert=system");

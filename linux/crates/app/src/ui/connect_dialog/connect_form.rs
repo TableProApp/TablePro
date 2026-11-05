@@ -382,6 +382,9 @@ impl ConnectForm {
                 true => self.options.more_hosts.clone(),
                 false => Vec::new(),
             },
+            channel_binding: self.options.channel_binding
+                && self.auth == AuthMode::Password
+                && caps.offers(NetworkOption::ChannelBinding),
         }
     }
 
@@ -1435,6 +1438,23 @@ mod tests {
         assert_eq!((defaulted.port, defaulted.port_edited), (5432, false));
         assert_eq!(defaulted.tls.mode, ConnectForm::new("postgres", postgres()).tls.mode);
         assert!(defaulted.password.expose_secret().is_empty());
+    }
+
+    #[test]
+    fn a_url_that_requires_channel_binding_keeps_it_for_postgresql_only() {
+        let form = from_url(
+            "postgresql://alex:pw@ep-cool.neon.tech/db?sslmode=require&channel_binding=require",
+            postgres(),
+            &ConnectForm::new("postgres", postgres()),
+        )
+        .expect("a form");
+
+        let valid = form.validate(postgres()).expect("a valid form");
+        assert!(options_of(&valid.target).channel_binding);
+        let saved = form.saved_connection(postgres(), &valid, Uuid::new_v4(), None);
+        assert!(ConnectForm::from_saved(&saved, postgres()).options.channel_binding);
+        let elsewhere = form.validate(mysql()).expect("MySQL has no channel binding");
+        assert!(!options_of(&elsewhere.target).channel_binding);
     }
 
     #[test]

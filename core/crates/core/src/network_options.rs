@@ -20,6 +20,9 @@ pub struct NetworkOptions {
     // Members besides the host, as `host:port`, for the client to find the set from.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub more_hosts: Vec<String>,
+    // Refuse a login the server does not bind to the TLS session, as libpq's channel_binding=require.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub channel_binding: bool,
 }
 
 impl NetworkOptions {
@@ -32,7 +35,8 @@ impl NetworkOptions {
     pub fn validate(&self, capabilities: &DriverCapabilities, route: TransportClass) -> Result<(), ConfigError> {
         let unread = (self.dns_seed_list && !capabilities.offers(NetworkOption::DnsSeedList))
             || (self.auth_database().is_some() && !capabilities.offers(NetworkOption::AuthDatabase))
-            || (self.uses_host_list() && !capabilities.offers(NetworkOption::HostList));
+            || (self.uses_host_list() && !capabilities.offers(NetworkOption::HostList))
+            || (self.channel_binding && !capabilities.offers(NetworkOption::ChannelBinding));
         if unread {
             return Err(ConfigError::NetworkOptionUnsupported);
         }
@@ -83,6 +87,7 @@ pub enum NetworkOption {
     AuthDatabase,
     // A replica set name and more members to seed it from.
     HostList,
+    ChannelBinding,
     // A host that is an absolute path names the server's socket, as the engine's client names it.
     LocalSocket(LocalSocket),
 }
