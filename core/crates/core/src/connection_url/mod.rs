@@ -266,6 +266,7 @@ fn network_url(engine: Engine, rest: &str, properties: bool) -> Result<Connectio
         }
     }
     finish(engine, &mut draft, &more, parts.fragment)?;
+    draft.tls.check_wildcard(&draft.host)?;
     Ok(ConnectionUrl {
         driver_id: engine.driver_id(),
         host: draft.host,
@@ -406,7 +407,16 @@ impl Draft {
 // What each engine reads in the host, the port and the path, and the TLS its scheme implies.
 fn finish(engine: Engine, draft: &mut Draft, more: &[HostPort], fragment: &str) -> Result<(), ConnectionUrlError> {
     match engine {
-        Engine::Postgres => (draft.host, draft.port) = postgres_socket(std::mem::take(&mut draft.host), draft.port),
+        Engine::Postgres => {
+            (draft.host, draft.port) = postgres_socket(std::mem::take(&mut draft.host), draft.port);
+            // The server answers N to TLS on its socket, so a URL that asks for it there cannot be held to it.
+            let socket = draft.host.is_empty() || draft.host.starts_with('/');
+            if socket && draft.tls.requires_protection() {
+                return Err(ConnectionUrlError::UnsupportedParameter {
+                    name: "sslmode".to_owned(),
+                });
+            }
+        }
         Engine::Mysql { x_protocol, .. } => {
             let local = draft.host.is_empty() || draft.host.eq_ignore_ascii_case("localhost");
             if let Some(socket) = draft.socket.take().filter(|_| local) {

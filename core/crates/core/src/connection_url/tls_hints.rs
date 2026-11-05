@@ -29,6 +29,7 @@ pub(super) struct TlsHints {
     certificate: Option<PathBuf>,
     key: Option<PathBuf>,
     server_name: Option<String>,
+    wildcard_name: Option<String>,
 }
 
 impl TlsHints {
@@ -77,10 +78,11 @@ impl TlsHints {
                 self.key = Some(both);
             }
             "hostnameincertificate" => {
-                // A wildcard such as *.database.windows.net is what the host already matches.
                 let name = value.trim();
-                if !name.is_empty() && !name.contains('*') {
-                    self.server_name = Some(name.to_owned());
+                match name.contains('*') {
+                    true => self.wildcard_name = Some(name.to_ascii_lowercase()),
+                    false if !name.is_empty() => self.server_name = Some(name.to_owned()),
+                    false => {}
                 }
             }
             _ => return Ok(false),
@@ -93,6 +95,31 @@ impl TlsHints {
             self.mode.or(self.switch).or(self.by_scheme),
             Some(Wanted::Require | Wanted::VerifyFull | Wanted::Strict)
         )
+    }
+
+    // TLS, a CA or a client certificate: what a server that takes no TLS cannot give.
+    pub(super) fn requires_protection(&self) -> bool {
+        self.asks_for_tls() || self.ca_file.is_some() || self.certificate.is_some() || self.system_roots
+    }
+
+    // The host is the name checked, so a wildcard the URL asks for holds only when the host is one it covers,
+    // as `*.database.windows.net` covers `srv.database.windows.net`.
+    pub(super) fn check_wildcard(&self, host: &str) -> Result<(), ConnectionUrlError> {
+        let Some(wildcard) = &self.wildcard_name else {
+            return Ok(());
+        };
+        let host = host.to_ascii_lowercase();
+        let covered = wildcard
+            .strip_prefix("*.")
+            .and_then(|domain| host.strip_suffix(domain))
+            .and_then(|label| label.strip_suffix('.'))
+            .is_some_and(|label| !label.is_empty() && !label.contains('.'));
+        match covered {
+            true => Ok(()),
+            false => Err(ConnectionUrlError::UnsupportedParameter {
+                name: "hostNameInCertificate".to_owned(),
+            }),
+        }
     }
 
     pub(super) fn weaken(&mut self) {

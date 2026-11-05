@@ -190,6 +190,15 @@ fn a_postgres_socket_is_a_folder_given_as_the_host() {
         ("/run/postgresql", Some(5435))
     );
 
+    for url in [
+        "postgresql://app:secret@/db?host=/tmp&sslmode=verify-full",
+        "postgresql:///db?sslmode=require",
+        "postgresql://%2Ftmp/db?sslrootcert=system",
+    ] {
+        assert_eq!(refused(url).code(), "url.unsupported_parameter", "{url}");
+    }
+    assert_eq!(read("postgresql:///db?sslmode=prefer").host, "");
+
     let default_socket = read("postgresql:///shop");
     assert_eq!(default_socket.host, "");
     assert_eq!(default_socket.database, "shop");
@@ -299,6 +308,14 @@ fn sql_server_reads_urls_and_jdbc_properties() {
     assert_eq!(
         mode("sqlserver://localhost/s?trustServerCertificate=true"),
         Some(TlsMode::Require)
+    );
+    assert_eq!(
+        refused("jdbc:sqlserver://gateway.example;encrypt=true;hostNameInCertificate=*.prod.example").code(),
+        "url.unsupported_parameter"
+    );
+    assert_eq!(
+        refused("jdbc:sqlserver://a.b.prod.example;hostNameInCertificate=*.prod.example").code(),
+        "url.unsupported_parameter"
     );
     let semicolon = read("mssql://sa:p;ss@db.example.com/app");
     assert_eq!(
