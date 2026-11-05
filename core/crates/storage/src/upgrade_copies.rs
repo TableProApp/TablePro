@@ -14,6 +14,9 @@ pub const KEPT_PER_FILE: usize = 3;
 
 const MAX_NAME_ATTEMPTS: u32 = 1_000;
 
+// What SQLite keeps beside a database it writes: a crash leaves the pages it was replacing in them.
+const SIDECARS: [&str; 3] = ["-journal", "-wal", "-shm"];
+
 // Named `<name>.v<version>-<unix seconds>`, with `-<n>` after it for a second copy in one second.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpgradeCopy {
@@ -99,14 +102,14 @@ pub(crate) async fn keep_database(pool: &SqlitePool, path: &Path, version: u64) 
         source: std::io::Error::new(ErrorKind::InvalidInput, "the path is not UTF-8"),
     })?;
     if let Err(error) = sqlx::query("VACUUM INTO ?").bind(target).execute(pool).await {
-        let _ = std::fs::remove_file(&partial);
+        let _ = remove_with_sidecars(&partial);
         return Err(StorageError::Write {
             path: copy,
             source: database_io_error(&error),
         });
     }
     if let Err(error) = crate::query_history::scrub_copy(&partial).await {
-        let _ = std::fs::remove_file(&partial);
+        let _ = remove_with_sidecars(&partial);
         return Err(error);
     }
     // Renamed into place only once on disk, so a copy cut short by a
@@ -122,7 +125,7 @@ pub(crate) async fn keep_database(pool: &SqlitePool, path: &Path, version: u64) 
         .and_then(|file| file.sync_all())
         .and_then(|()| std::fs::rename(&partial, &copy));
     if let Err(error) = landed {
-        let _ = std::fs::remove_file(&partial);
+        let _ = remove_with_sidecars(&partial);
         return Err(write_error(error));
     }
     if let Some(directory) = copy.parent() {
@@ -207,7 +210,7 @@ pub fn remove_all_blocking(path: &Path) -> Result<usize, StorageError> {
     remove_partials_blocking(path)?;
     let copies = copies_blocking(path)?;
     for copy in &copies {
-        remove_if_present(&copy.path)?;
+        remove_with_sidecars(&copy.path)?;
     }
     Ok(copies.len())
 }
@@ -236,7 +239,11 @@ pub fn remove_partials_blocking(path: &Path) -> Result<(), StorageError> {
             source,
         })?;
         let found = entry.file_name().to_string_lossy().into_owned();
-        if found.starts_with(&prefix) && found.ends_with(".partial") {
+        let unfinished = found.ends_with(".partial")
+            || SIDECARS
+                .iter()
+                .any(|sidecar| found.ends_with(&format!(".partial{sidecar}")));
+        if found.starts_with(&prefix) && unfinished {
             remove_if_present(&entry.path())?;
         }
     }
@@ -316,6 +323,16 @@ fn parent_of(path: &Path) -> &Path {
         Some(parent) if !parent.as_os_str().is_empty() => parent,
         _ => Path::new("."),
     }
+}
+
+fn remove_with_sidecars(path: &Path) -> Result<(), StorageError> {
+    remove_if_present(path)?;
+    for sidecar in SIDECARS {
+        let mut name = path.as_os_str().to_owned();
+        name.push(sidecar);
+        remove_if_present(Path::new(&name))?;
+    }
+    Ok(())
 }
 
 fn remove_if_present(path: &Path) -> Result<(), StorageError> {
@@ -501,6 +518,8 @@ mod tests {
         let path = root.path().join("items.db");
         let abandoned = root.path().join(".items.db.v1-100.partial");
         std::fs::write(&abandoned, b"half a copy").expect("seed");
+        let journal = root.path().join(".items.db.v1-100.partial-journal");
+        std::fs::write(&journal, b"pages a scrub was replacing").expect("seed");
         let unrelated = root.path().join(".other.db.v1-100.partial");
         std::fs::write(&unrelated, b"another file's").expect("seed");
         let pool = database(&path).await;
@@ -509,10 +528,16 @@ mod tests {
         keep_database(&pool, &path, 1).await.expect("a copy");
 
         assert!(!abandoned.exists(), "the unfinished copy stayed");
+        assert!(!journal.exists(), "the unfinished copy's journal stayed");
         assert!(unrelated.exists(), "another file's copy went");
         std::fs::write(&abandoned, b"half a copy").expect("seed");
+        let copy = copies_blocking(&path).expect("copies").pop().expect("the copy").path;
+        let mut sidecar = copy.as_os_str().to_owned();
+        sidecar.push("-journal");
+        std::fs::write(&sidecar, b"a trim's journal").expect("seed");
         remove_all_blocking(&path).expect("remove");
         assert!(!abandoned.exists(), "a purge left the unfinished copy");
+        assert!(!Path::new(&sidecar).exists(), "a purge left a copy's journal");
     }
 
     #[tokio::test]
