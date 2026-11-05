@@ -4,7 +4,7 @@ use crate::meta::TableRef;
 use crate::sql_syntax::SqlGrammar;
 use crate::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptTokenKind};
 
-use super::{DumpObject, DumpTable};
+use super::{DumpObject, DumpObjectKind, DumpTable};
 
 /// The tables' positions with every table after those it references,
 /// and the tables a reference cycle left in the order they came.
@@ -44,31 +44,39 @@ fn order_programs(objects: &[&DumpObject], grammar: SqlGrammar) -> Vec<usize> {
 /// What is made before the rows, and what after the keys and indexes.
 ///
 /// `before` is every object of the pre-data section, the tables among
-/// them in the order their rows load. A view or routine a table's CREATE
-/// names, through a DEFAULT, a CHECK or a generated column, is made with
-/// them, and so is whatever that one names in turn. Each group is put in
-/// the order its objects name each other in, ties kept as they came.
+/// them in the order their rows load, and `after` the keys, checks and
+/// indexes the rows come before. A view or routine a table's CREATE or
+/// one of `after` names, through a DEFAULT, a CHECK, a generated column
+/// or an index expression, is made with the tables, and so is whatever
+/// that one names in turn. A materialized view never is: its rows come
+/// from the tables', and ClickHouse's would take each row loaded after
+/// it again. Each group is put in the order its objects name each other
+/// in, ties kept as they came.
 pub(super) fn creation_order<'a>(
     before: &[&'a DumpObject],
     programs: &[&'a DumpObject],
+    after: &[&'a DumpObject],
     grammar: SqlGrammar,
 ) -> (Vec<&'a DumpObject>, Vec<&'a DumpObject>) {
-    let all: Vec<&DumpObject> = before.iter().chain(programs).copied().collect();
+    let all: Vec<&DumpObject> = before.iter().chain(programs).chain(after).copied().collect();
+    let made = before.len() + programs.len();
     let parents = mention_edges(&all, grammar);
-    let mut early: Vec<bool> = (0..all.len()).map(|position| position < before.len()).collect();
+    let mut early: Vec<bool> = (0..made).map(|position| position < before.len()).collect();
     let mut pending: Vec<usize> = (0..before.len())
         .filter(|&position| all[position].table.is_some())
+        .chain(made..all.len())
         .collect();
     while let Some(node) = pending.pop() {
         for &parent in &parents[node] {
-            if !early[parent] {
+            let movable = parent < made && all[parent].kind != DumpObjectKind::MaterializedView;
+            if movable && !early[parent] {
                 early[parent] = true;
                 pending.push(parent);
             }
         }
     }
     let group = |wanted: bool| {
-        let members: Vec<usize> = (0..all.len()).filter(|&position| early[position] == wanted).collect();
+        let members: Vec<usize> = (0..made).filter(|&position| early[position] == wanted).collect();
         let local: HashMap<usize, usize> = members
             .iter()
             .enumerate()
@@ -319,11 +327,53 @@ mod tests {
         );
         let other = view("other", "CREATE VIEW other AS SELECT * FROM base");
 
-        let (early, late) = creation_order(&[&uses, &base], &[&routine, &other], SqlGrammar::DuckDb);
+        let (early, late) = creation_order(&[&uses, &base], &[&routine, &other], &[], SqlGrammar::DuckDb);
 
         let named = |objects: &[&DumpObject]| objects.iter().map(|object| object.name.clone()).collect::<Vec<_>>();
         assert_eq!(named(&early), ["base", "total", "uses"]);
         assert_eq!(named(&late), ["other"]);
+    }
+
+    #[test]
+    fn a_routine_a_check_after_the_rows_calls_is_made_before_the_rows() {
+        let routine = DumpObject::new(
+            DumpObjectKind::Function,
+            DumpSection::Programs,
+            Some("dbo".to_owned()),
+            "in_stock",
+            vec![DumpStatement::new(
+                "CREATE FUNCTION dbo.in_stock(@id int) RETURNS bit WITH SCHEMABINDING AS \
+                 BEGIN RETURN (SELECT 1 FROM dbo.stock WHERE id = @id) END",
+            )],
+        );
+        let stock = DumpObject::table(
+            TableRef::new(Some("dbo".to_owned()), "stock".to_owned()),
+            vec![DumpStatement::new("CREATE TABLE dbo.stock (id int)")],
+        );
+        let check = DumpObject::new(
+            DumpObjectKind::Constraint,
+            DumpSection::AfterData,
+            Some("dbo".to_owned()),
+            "ck_stock",
+            vec![DumpStatement::new(
+                "ALTER TABLE dbo.orders ADD CONSTRAINT ck_stock CHECK (dbo.in_stock(item) = 1)",
+            )],
+        );
+        let totals = DumpObject::new(
+            DumpObjectKind::MaterializedView,
+            DumpSection::Programs,
+            Some("dbo".to_owned()),
+            "item",
+            vec![DumpStatement::new(
+                "CREATE MATERIALIZED VIEW dbo.item AS SELECT id FROM dbo.stock",
+            )],
+        );
+
+        let (early, late) = creation_order(&[&stock], &[&totals, &routine], &[&check], SqlGrammar::MsSql);
+
+        let named = |objects: &[&DumpObject]| objects.iter().map(|object| object.name.clone()).collect::<Vec<_>>();
+        assert_eq!(named(&early), ["stock", "in_stock"]);
+        assert_eq!(named(&late), ["item"]);
     }
 
     #[test]

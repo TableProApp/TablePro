@@ -12,6 +12,8 @@ use tablepro_core::dump::{
     DumpStatement, DumpTable,
 };
 use tablepro_core::meta::TableRef;
+use tablepro_core::sql_syntax::SqlGrammar;
+use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptToken, ScriptTokenKind};
 
 use crate::catalog::DEFAULT_SCHEMA;
 use crate::dialect::DuckDbDialect;
@@ -109,7 +111,9 @@ impl Reader<'_> {
             Ok(Named {
                 schema: row.get(0)?,
                 name: row.get(1)?,
-                sql: row.get(2)?,
+                sql: row
+                    .get::<_, Option<String>>(2)?
+                    .map(|sql| without_catalog(&sql, self.catalog)),
             })
         })
     }
@@ -380,7 +384,9 @@ fn add_macros(reader: &Reader<'_>, dialect: &DuckDbDialect, dump: &mut DumpCatal
                 .enumerate()
                 .filter_map(|(position, name)| Some((name?, types.get(position).cloned().flatten())))
                 .collect(),
-            definition: row.get(5)?,
+            definition: row
+                .get::<_, Option<String>>(5)?
+                .map(|body| without_catalog(&body, reader.catalog)),
         })
     })?;
     // Stable, so each macro's overloads keep their order.
@@ -440,6 +446,49 @@ fn macro_sql(dialect: &DuckDbDialect, name: &str, overloads: &[MacroOverload]) -
         })
         .collect::<Option<Vec<String>>>()?;
     Some(format!("CREATE MACRO {name} {}", definitions.join(", ")))
+}
+
+/// `sql` without the catalog in front of `catalog.schema.name`: DuckDB
+/// keeps a definition's names as they were written, and the catalog is
+/// the source file's name, which the file the dump loads into does not
+/// have. A text that names the catalog on its own, as an alias or a
+/// table, can mean that by `name.schema.`, so it is kept.
+fn without_catalog(sql: &str, catalog: &str) -> String {
+    let plan = ScriptPlan::build(
+        sql,
+        SqlGrammar::DuckDb,
+        LexicalSettings::default_for(SqlGrammar::DuckDb),
+    );
+    let tokens: Vec<ScriptToken> = plan
+        .tokens(0..sql.len())
+        .filter(|token| !token.kind.is_trivia())
+        .collect();
+    let text = |at: usize| tokens.get(at).and_then(|token| sql.get(token.range.clone()));
+    let dot = |at: usize| text(at) == Some(".");
+    let is_catalog = |at: usize| name_of(sql, &tokens[at]).is_some_and(|name| name.eq_ignore_ascii_case(catalog));
+    if (0..tokens.len()).any(|at| is_catalog(at) && !dot(at + 1)) {
+        return sql.to_owned();
+    }
+    let mut kept = String::with_capacity(sql.len());
+    let mut from = 0;
+    for at in 0..tokens.len() {
+        let qualifies = is_catalog(at) && dot(at + 1) && dot(at + 3) && !at.checked_sub(1).is_some_and(dot);
+        if qualifies {
+            kept.push_str(&sql[from..tokens[at].range.start]);
+            from = tokens[at + 1].range.end;
+        }
+    }
+    kept.push_str(&sql[from..]);
+    kept
+}
+
+fn name_of(sql: &str, token: &ScriptToken) -> Option<String> {
+    let text = sql.get(token.range.clone())?;
+    match token.kind {
+        ScriptTokenKind::Word => Some(text.to_owned()),
+        ScriptTokenKind::QuotedIdentifier => Some(text.strip_prefix('"')?.strip_suffix('"')?.replace("\"\"", "\"")),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -544,6 +593,31 @@ mod tests {
         let mut missing = overload(&[], "", false);
         missing.definition = None;
         assert_eq!(macro_sql(&dialect, "\"app\".\"m\"", &[missing]), None);
+    }
+
+    #[test]
+    fn the_source_catalog_comes_off_three_part_names() {
+        assert_eq!(
+            without_catalog(
+                "CREATE VIEW v AS SELECT * FROM source.main.t JOIN \"Source\".app.u USING (id) JOIN other.main.t USING (id);",
+                "source"
+            ),
+            "CREATE VIEW v AS SELECT * FROM main.t JOIN app.u USING (id) JOIN other.main.t USING (id);"
+        );
+        assert_eq!(
+            without_catalog(
+                "CREATE VIEW v AS SELECT 'source.main.t' AS s, x.source.main AS m FROM x;",
+                "source"
+            ),
+            "CREATE VIEW v AS SELECT 'source.main.t' AS s, x.source.main AS m FROM x;"
+        );
+    }
+
+    #[test]
+    fn a_text_that_names_the_catalog_alone_keeps_it() {
+        let view = "CREATE VIEW v AS SELECT source.payload.id FROM main.events AS source;";
+
+        assert_eq!(without_catalog(view, "source"), view);
     }
 
     #[test]

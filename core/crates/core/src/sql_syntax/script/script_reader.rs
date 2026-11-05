@@ -138,11 +138,11 @@ impl ScriptReader {
             }
             // A line this long is no directive, and a file written on one
             // line still has to be cut where its statements end.
-            let limit = match (end, self.pending.rfind('\n')) {
-                (true, _) => self.pending.len(),
-                (false, Some(at)) => at + 1,
-                (false, None) if self.pending.len() >= PLAN_STEP => self.pending.len(),
-                (false, None) => break,
+            let line_start = self.pending.rfind('\n').map_or(0, |at| at + 1);
+            let limit = match end || self.pending.len() - line_start >= PLAN_STEP {
+                true => self.pending.len(),
+                false if line_start > 0 => line_start,
+                false => break,
             };
             match self.plan(limit, end) {
                 Planned::Interrupted => continue,

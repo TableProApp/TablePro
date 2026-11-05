@@ -73,7 +73,6 @@ impl SqlImportDialog {
             .title(&init.file_name)
             .subtitle(glib::format_size(init.file_size).as_str())
             .build();
-        file.add_css_class("property");
         target.add(&file);
         let mut description = gettext_f(
             "Every statement in the file runs on “{connection}”.",

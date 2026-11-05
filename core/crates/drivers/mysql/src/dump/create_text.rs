@@ -54,7 +54,7 @@ pub(crate) fn without_database(create: &str, database: &str, names: &HashSet<Str
     // A text that also uses the database's name as an alias can mean that
     // alias by `name.`, and nothing tells the two apart, so it is kept.
     let aliased = tokens.windows(2).any(|pair| {
-        text(create, &pair[0]).eq_ignore_ascii_case("AS") && quoted_name(create, &pair[1]).as_deref() == Some(database)
+        text(create, &pair[0]).eq_ignore_ascii_case("AS") && name_of(create, &pair[1]).as_deref() == Some(database)
     });
     if aliased {
         return create.to_owned();
@@ -67,9 +67,9 @@ pub(crate) fn without_database(create: &str, database: &str, names: &HashSet<Str
         let follows_dot = at
             .checked_sub(1)
             .is_some_and(|before| text(create, &tokens[before]) == ".");
-        let names_ours = quoted_name(create, name).is_some_and(|name| names.contains(&name.to_lowercase()));
+        let names_ours = name_of(create, name).is_some_and(|name| names.contains(&name.to_lowercase()));
         if !follows_dot
-            && quoted_name(create, qualifier).as_deref() == Some(database)
+            && name_of(create, qualifier).as_deref() == Some(database)
             && text(create, dot) == "."
             && names_ours
         {
@@ -77,6 +77,24 @@ pub(crate) fn without_database(create: &str, database: &str, names: &HashSet<Str
         }
     }
     cut(create, &cuts)
+}
+
+/// [`without_database`] for a routine or trigger, whose body the server
+/// keeps as written. There an alias, label or variable can take the
+/// database's name without `AS`, and a table in another database can
+/// too, so a body that names it other than as `name.` keeps every
+/// qualifier.
+pub(crate) fn program_without_database(create: &str, database: &str, names: &HashSet<String>) -> String {
+    let tokens = significant(create);
+    let alone = (0..tokens.len()).any(|at| {
+        let named = name_of(create, &tokens[at]).is_some_and(|name| name.eq_ignore_ascii_case(database));
+        let qualifies = tokens.get(at + 1).is_some_and(|token| text(create, token) == ".");
+        named && !qualifies
+    });
+    if alone {
+        return create.to_owned();
+    }
+    without_database(create, database, names)
 }
 
 fn significant(sql: &str) -> Vec<ScriptToken> {
@@ -94,12 +112,16 @@ fn is_word(sql: &str, token: &ScriptToken, word: &str) -> bool {
     token.kind == ScriptTokenKind::Word && text(sql, token).eq_ignore_ascii_case(word)
 }
 
-fn quoted_name(sql: &str, token: &ScriptToken) -> Option<String> {
-    if token.kind != ScriptTokenKind::QuotedIdentifier {
-        return None;
+/// The name a token spells, quoted or not.
+fn name_of(sql: &str, token: &ScriptToken) -> Option<String> {
+    match token.kind {
+        ScriptTokenKind::Word => Some(text(sql, token).to_owned()),
+        ScriptTokenKind::QuotedIdentifier => {
+            let inner = text(sql, token).strip_prefix('`')?.strip_suffix('`')?;
+            Some(inner.replace("``", "`"))
+        }
+        _ => None,
     }
-    let inner = text(sql, token).strip_prefix('`')?.strip_suffix('`')?;
-    Some(inner.replace("``", "`"))
 }
 
 fn cut(sql: &str, cuts: &[Range<usize>]) -> String {
@@ -185,5 +207,27 @@ mod tests {
                       from (`app` join `other`.`parent`) where `x`.`app`.`parent` = 1";
 
         assert_eq!(without_database(create, "app", &ours), create);
+    }
+
+    #[test]
+    fn a_routine_body_loses_the_qualifier_as_written() {
+        let ours = names(&["orders", "label_of"]);
+        let create = "CREATE PROCEDURE `p`()\nBEGIN\n  SELECT shop.label_of(id) FROM shop.orders o;\n  \
+                      SELECT * FROM `shop`.`orders` JOIN other.orders USING (id);\nEND";
+
+        assert_eq!(
+            program_without_database(create, "shop", &ours),
+            "CREATE PROCEDURE `p`()\nBEGIN\n  SELECT label_of(id) FROM orders o;\n  \
+             SELECT * FROM `orders` JOIN other.orders USING (id);\nEND"
+        );
+    }
+
+    #[test]
+    fn a_body_that_names_the_database_alone_keeps_it() {
+        let ours = names(&["orders"]);
+        let create = "CREATE TRIGGER `t` AFTER INSERT ON `orders` FOR EACH ROW \
+                      UPDATE shop.orders SET total = 0 WHERE shop.id IN (SELECT id FROM orders shop)";
+
+        assert_eq!(program_without_database(create, "shop", &ours), create);
     }
 }

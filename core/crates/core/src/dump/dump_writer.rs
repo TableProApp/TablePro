@@ -169,7 +169,8 @@ impl Writer<'_> {
             .collect();
         before.extend(tables_in_order(&catalog.objects, &tables));
         let programs: Vec<&DumpObject> = section(DumpSection::Programs).collect();
-        let (early, late) = creation_order(&before, &programs, self.dialect.grammar());
+        let after: Vec<&DumpObject> = section(DumpSection::AfterData).collect();
+        let (early, late) = creation_order(&before, &programs, &after, self.dialect.grammar());
         self.objects(&early, &options).await?;
 
         if data {
@@ -181,7 +182,6 @@ impl Writer<'_> {
             }
         }
 
-        let after: Vec<&DumpObject> = section(DumpSection::AfterData).collect();
         self.objects(&after, &options).await?;
         self.objects(&late, &options).await?;
         let triggers: Vec<&DumpObject> = section(DumpSection::Triggers).collect();

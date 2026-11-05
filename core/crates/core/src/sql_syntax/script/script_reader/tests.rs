@@ -192,6 +192,24 @@ fn a_file_on_one_line_is_cut_where_its_statements_end() {
 }
 
 #[test]
+fn a_long_line_after_a_comment_line_is_cut_where_its_statements_end() {
+    let line: String = (0..20_000).map(|n| format!("INSERT INTO t VALUES ({n});")).collect();
+    let mut reader = ScriptReader::new(SqlGrammar::Sqlite);
+
+    let early = reader
+        .push(&format!("-- header\nINSERT INTO t VALUES\n(-1);{line}"))
+        .expect("the line");
+
+    assert!(
+        early.len() > 19_000,
+        "only {} statements came before the end",
+        early.len()
+    );
+    let rest = reader.finish().expect("the end");
+    assert_eq!(early.len() + rest.len(), 20_001);
+}
+
+#[test]
 fn a_routine_made_under_no_backslash_escapes_splits_as_the_server_reads_it() {
     let units = read_every_way(
         SqlGrammar::MySql,
