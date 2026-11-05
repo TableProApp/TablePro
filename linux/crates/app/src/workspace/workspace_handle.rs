@@ -182,6 +182,23 @@ impl WorkspaceHandle {
         starts
     }
 
+    pub async fn save_rows_of(&self, parent: &gtk::Widget, tab: Uuid) -> SaveStart {
+        let Some(tracker) = self.0.deps.rows.get(tab) else {
+            return SaveStart::NothingToSave;
+        };
+        self.save_tracked_rows(parent, tab, &tracker).await
+    }
+
+    async fn save_tracked_rows(&self, parent: &gtk::Widget, tab: Uuid, tracker: &TabTrackerHandle) -> SaveStart {
+        let Some(_claim) = ReviewClaim::take(&self.0.reviewing, tab) else {
+            return SaveStart::Rejected(SaveRejection::InReview);
+        };
+        if let Err(start) = self.confirm_rows(parent, tracker).await {
+            return start;
+        }
+        self.save_rows(tab, tracker)
+    }
+
     /// Stop the saves `scope` covers. Each settles when its driver
     /// answers the cancel, as rolled back or with an unknown outcome.
     pub fn stop_saves(&self, scope: CloseScope) {
@@ -276,15 +293,13 @@ impl WorkspaceHandle {
                 tracker.pending_state() != PendingState::Clean || !self.0.deps.directory.has_file(tab)
             });
         if let Some(tracker) = rows {
-            let start = {
-                let Some(_claim) = ReviewClaim::take(&self.0.reviewing, tab) else {
-                    return SaveStart::Rejected(SaveRejection::InReview);
-                };
-                if let Err(start) = self.confirm_rows(parent, &tracker).await {
-                    return start;
-                }
-                self.save_rows(tab, &tracker)
-            };
+            let start = self.save_tracked_rows(parent, tab, &tracker).await;
+            if !matches!(
+                start,
+                SaveStart::Started(_) | SaveStart::Saved | SaveStart::NothingToSave
+            ) {
+                return start;
+            }
             return match self.0.deps.directory.save_file(tab) {
                 Some(saving) => match saving.await {
                     Ok(()) => start,

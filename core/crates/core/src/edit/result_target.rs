@@ -1,4 +1,4 @@
-use crate::column::{ColumnInfo, ColumnKind, ColumnOrigin, ColumnType, ReadForm, ResultColumn};
+use crate::column::{ColumnInfo, ColumnKind, ColumnOrigin, ColumnType, ReadForm, ResultColumn, TemporalZone};
 use crate::meta::TableRef;
 use crate::sql_syntax::{
     SourceItem, SourceRefusal, SourceTable, SqlGrammar, same_name, source_columns_for_result, source_table,
@@ -134,6 +134,19 @@ pub fn parsed_origins(statement: &SourceTable, table: &TableRef, names: &[String
 // A driver that reads a column as the server's text, as PostgreSQL's editor does, leaves its type to the catalog; a key
 // or a copied value has to bind as that type. A value any other driver read is kept as it was stored.
 pub fn value_for_column(value: &Value, read: &ColumnType, column: &ColumnType) -> Option<Value> {
+    // MySQL's editor reads TIMESTAMP in the session's zone, which names no instant the column's offset binding takes.
+    if matches!(
+        (value, &column.kind),
+        (
+            Value::Timestamp(_),
+            ColumnKind::Timestamp {
+                zone: TemporalZone::Offset,
+                ..
+            }
+        )
+    ) {
+        return None;
+    }
     let Value::Text(text) = value else {
         return Some(value.clone());
     };
@@ -401,6 +414,24 @@ mod tests {
             Some(Value::Bytes(vec![1, 255]))
         );
         assert_eq!(value_for_column(&Value::Int(7), &read, &int()), Some(Value::Int(7)));
+    }
+
+    #[test]
+    fn a_wall_clock_time_is_not_a_value_of_an_offset_column() {
+        let stamp = typed(
+            "timestamp",
+            ColumnKind::Timestamp {
+                zone: TemporalZone::Offset,
+                fractional_digits: None,
+            },
+        );
+        let naive = Value::Timestamp(crate::value::Temporal::Finite(
+            chrono::NaiveDate::from_ymd_opt(2026, 11, 5)
+                .and_then(|date| date.and_hms_opt(12, 0, 0))
+                .expect("a time"),
+        ));
+
+        assert_eq!(value_for_column(&naive, &stamp, &stamp), None);
     }
 
     #[test]

@@ -11,7 +11,7 @@ use tablepro_core::column::{ColumnDefault, ColumnInfo, ResultColumn};
 use tablepro_core::edit::{ResultSource, result_source, result_target, value_for_column};
 use tablepro_core::meta::{RowIdentity, TableRef};
 use tablepro_core::value::{UndecodableReason, UndecodedValue};
-use tablepro_core::{RowLimit, Value};
+use tablepro_core::{RowLimit, TransactionState, Value};
 use tokio_util::sync::CancellationToken;
 
 use super::SqlEditor;
@@ -40,6 +40,8 @@ pub(super) struct EditTarget {
     table: TableRef,
     // One per result column, in result order; a column the result can't write back is generated, so no statement names it.
     save_columns: Vec<ColumnInfo>,
+    // Which result columns are the table's own, so only their values are retyped.
+    traced: Vec<bool>,
     grid_columns: Arc<[GridColumn]>,
     identity: RowIdentity,
 }
@@ -180,10 +182,18 @@ impl SqlEditor {
         let Some(session) = deps.session.get() else {
             return;
         };
+        // The save runs on the window's connection, so rows read inside the tab's own transaction would be written outside it.
+        let transaction = imp.log.borrow().as_ref().and_then(RunLog::transaction);
         let common = if session.read_only() {
             Some(ResultRefusal::ReadOnlySession)
-        } else if imp.open_transaction.get().is_some() {
+        } else if matches!(
+            transaction,
+            Some(TransactionState::InTransaction | TransactionState::Failed)
+        ) || imp.open_transaction.get().is_some()
+        {
             Some(ResultRefusal::OpenTransaction)
+        } else if transaction != Some(TransactionState::Idle) {
+            Some(ResultRefusal::TransactionUnknown)
         } else if self.tab_database().is_some() || imp.editing.moves_database.get() {
             Some(ResultRefusal::OtherDatabase)
         } else {
@@ -562,6 +572,15 @@ impl SqlEditor {
 
     fn reread_result(&self, index: usize) {
         let imp = self.imp();
+        // The tab's connection now reads another database than the one these rows and the save are in.
+        if self.tab_database().is_some() {
+            imp.editing
+                .states
+                .borrow_mut()
+                .insert(index, ResultEdit::Locked(ResultRefusal::OtherDatabase));
+            self.refresh_result_page(index);
+            return;
+        }
         let Some(deps) = self.deps() else {
             return;
         };
@@ -698,21 +717,23 @@ fn edit_target(
             },
         )
         .collect();
+    // Every column carries its entry, a computed one generated, so pasting and deleting see the whole row.
     let grid_columns = result
         .iter()
-        .zip(positions)
+        .zip(&save_columns)
         .enumerate()
-        .map(|(index, (column, position))| GridColumn {
+        .map(|(index, (column, info))| GridColumn {
             index,
             name: column.name.clone(),
             column_type: column.column_type.clone(),
-            catalog: position.and_then(|position| catalog.get(position)).cloned(),
+            catalog: Some(info.clone()),
             addressable: true,
         })
         .collect();
     EditTarget {
         table: table.clone(),
         identity: pk_identity(&save_columns),
+        traced: positions.iter().map(Option::is_some).collect(),
         save_columns,
         grid_columns,
     }
@@ -735,20 +756,17 @@ fn unwritable(index: usize, column: &ResultColumn) -> ColumnInfo {
 
 // PostgreSQL's editor reads text; keys and copied values have to be the columns' own types.
 fn typed_rows(target: &EditTarget, read: &[ResultColumn], rows: Vec<Arc<[Value]>>) -> Vec<Arc<[Value]>> {
-    if !rows
-        .iter()
-        .flat_map(|row| row.iter())
-        .any(|value| matches!(value, Value::Text(_)))
-    {
+    let retyped = |value: &Value| matches!(value, Value::Text(_) | Value::Timestamp(_));
+    if !rows.iter().flat_map(|row| row.iter()).any(retyped) {
         return rows;
     }
     rows.into_iter()
         .map(|row| {
             row.iter()
-                .zip(read.iter().zip(&target.save_columns))
-                .map(|(value, (read, column))| match column.is_generated {
-                    true => value.clone(),
-                    false => match value_for_column(value, &read.column_type, &column.column_type) {
+                .zip(read.iter().zip(target.save_columns.iter().zip(&target.traced)))
+                .map(|(value, (read, (column, traced)))| match traced {
+                    false => value.clone(),
+                    true => match value_for_column(value, &read.column_type, &column.column_type) {
                         Some(typed) => typed,
                         None if column.primary_key => Value::Undecodable(Box::new(UndecodedValue {
                             type_name: column.column_type.name.clone(),

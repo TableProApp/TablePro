@@ -37,6 +37,22 @@ impl WorkspaceModel {
         });
     }
 
+    pub(super) fn request_save_rows(&self, tab: Uuid) {
+        let Some(parent) = self.dialog_parent() else {
+            return;
+        };
+        let (handle, input) = (self.workspace_handle.clone(), self.input.clone());
+        glib::spawn_future_local(async move {
+            match handle.save_rows_of(&parent, tab).await {
+                SaveStart::Rejected(rejection) if rejection.needs_alert() => input.deliver(WorkspaceInput::ShowAlert {
+                    title: crate::i18n::gettext("Cannot Save"),
+                    body: rejection.message(),
+                }),
+                start => tracing::debug!(?start, %tab, "rows save"),
+            }
+        });
+    }
+
     pub(super) fn stop_saving(&self, tab: Uuid) {
         self.workspace_handle.stop_saves(CloseScope::Tab(tab));
     }

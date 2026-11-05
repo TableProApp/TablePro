@@ -521,7 +521,7 @@ pub(super) fn connect_editor(
     let toast = input.clone();
     editor.connect_toast(move |_, text| toast.deliver(WorkspaceInput::ShowToast(text)));
     let save = input.clone();
-    editor.connect_save_rows(move |_| save.deliver(WorkspaceInput::SaveTab(tab_id)));
+    editor.connect_save_rows(move |_| save.deliver(WorkspaceInput::SaveRows(tab_id)));
     let stop = input.clone();
     editor.connect_stop_saving_rows(move |_| stop.deliver(WorkspaceInput::StopSaving(tab_id)));
     let dirty = input.clone();

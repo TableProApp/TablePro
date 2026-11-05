@@ -13,6 +13,7 @@ pub enum ResultRefusal {
     ColumnsChanged,
     ReadOnlySession,
     OpenTransaction,
+    TransactionUnknown,
     OtherDatabase,
     OtherResult,
     Checking,
@@ -47,6 +48,9 @@ impl ResultRefusal {
             Self::ColumnsChanged => gettext("The table changed since the query ran. Run it again to edit its rows."),
             Self::ReadOnlySession => gettext("This connection is read-only."),
             Self::OpenTransaction => gettext("Rows read inside an open transaction can't be edited here"),
+            Self::TransactionUnknown => {
+                gettext("The server doesn't say whether a transaction is open, so these rows can't be edited here")
+            }
             Self::OtherDatabase => gettext("Rows from another database than the connection's can't be edited here"),
             Self::OtherResult => gettext("Save or discard the changes to another result first"),
             Self::Checking => gettext("Checking whether these rows can be edited…"),
@@ -73,6 +77,7 @@ mod tests {
             ResultRefusal::ColumnsChanged,
             ResultRefusal::ReadOnlySession,
             ResultRefusal::OpenTransaction,
+            ResultRefusal::TransactionUnknown,
             ResultRefusal::OtherDatabase,
             ResultRefusal::OtherResult,
             ResultRefusal::Checking,
