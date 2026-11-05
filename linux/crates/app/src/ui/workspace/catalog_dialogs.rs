@@ -654,6 +654,8 @@ impl Replication {
 /// raises it.
 fn replicas(title: &str) -> adw::SpinRow {
     let row = adw::SpinRow::with_range(1.0, 99.0, 1.0);
+    // A data centre's name is never markup.
+    row.set_use_markup(false);
     row.set_title(title);
     row.set_value(1.0);
     row

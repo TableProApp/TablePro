@@ -305,6 +305,7 @@ mod tests {
                 NEW_QUERY_IN,
                 REFRESH_IN,
                 NEW_DATABASE_IN,
+                NEW_SCHEMA_IN,
                 DISCONNECT_SESSION,
                 DROP_DATABASE_IN
             ]

@@ -6,7 +6,7 @@ use tablepro_core::{DriverError, ReadOnlyRefusal, SessionFate, StopRequest, Writ
 
 use crate::call::generated;
 use crate::endpoint::MongoEndpoint;
-use crate::execute::{Source, start};
+use crate::execute::{Source, start, start_write};
 
 /// Refuse a batch before anything is sent: a read-only connection never
 /// writes, and MongoDB has no foreign keys to suspend.
@@ -46,7 +46,7 @@ pub(crate) async fn perform(
         let (_, planned) = generated(&step.statement, &plan.database)
             .map_err(|error| ledger.failed(index, error, SessionFate::RolledBack))?;
         ledger.statement_sending(index);
-        let affected = match start(&plan.endpoint, &plan.client, session, planned).await {
+        let affected = match start_write(&plan.endpoint, &plan.client, session, planned).await {
             // Applied where it ran, with its fate open: as a write whose
             // answer never came.
             Ok(Source::Write {

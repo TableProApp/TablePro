@@ -1125,7 +1125,12 @@ impl CatalogPrompt {
     }
 
     fn switch(&mut self, title: &str, subtitle: &str) -> glib::WeakRef<adw::SwitchRow> {
-        let row = adw::SwitchRow::builder().title(title).subtitle(subtitle).build();
+        // The subtitle names tables, which are never markup.
+        let row = adw::SwitchRow::builder()
+            .title(title)
+            .subtitle(subtitle)
+            .use_markup(false)
+            .build();
         self.options.append(&row);
         self.options.set_visible(true);
         let weak = row.downgrade();
@@ -1137,6 +1142,7 @@ impl CatalogPrompt {
         let entries: Vec<&str> = entries.iter().map(String::as_str).collect();
         let row = adw::ComboRow::builder()
             .title(title)
+            .use_markup(false)
             .model(&gtk::StringList::new(&entries))
             .build();
         self.options.append(&row);
