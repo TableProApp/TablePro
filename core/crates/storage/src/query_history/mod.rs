@@ -486,11 +486,26 @@ pub(crate) async fn trim_upgrade_copies(path: &Path, first: &[CopyDelete]) -> Re
     for copy in copies {
         // A copy that cannot be trimmed, being damaged or unreadable, goes rather than keep what the
         // user deleted.
-        if trim_copy(&copy.path, live, first).await.is_err() {
-            crate::upgrade_copies::remove_copy_blocking(&copy.path)?;
+        match trim_copy(&copy.path, live, first).await {
+            Ok(()) => {}
+            // Another trim holds it: the copy is fine, and this one tries again next time.
+            Err(error) if is_busy(&error) => return Err(error),
+            Err(_) => crate::upgrade_copies::remove_copy_blocking(&copy.path)?,
         }
     }
     Ok(())
+}
+
+// SQLITE_BUSY and SQLITE_LOCKED, with their extended codes.
+fn is_busy(error: &StorageError) -> bool {
+    let StorageError::Database(error) = error else {
+        return false;
+    };
+    error
+        .as_database_error()
+        .and_then(|database| database.code())
+        .and_then(|code| code.parse::<i32>().ok())
+        .is_some_and(|code| matches!(code & 0xff, 5 | 6))
 }
 
 async fn trim_copy(copy: &Path, live: &str, first: &[CopyDelete]) -> Result<(), StorageError> {

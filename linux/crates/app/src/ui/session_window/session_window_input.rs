@@ -31,6 +31,8 @@ pub(crate) enum SessionWindowInput {
     ScriptLoaded {
         file: gio::File,
         text: Result<String, String>,
+        /// The session in front when the read began, which takes the script if it is still open.
+        target: Option<SessionKey>,
     },
     /// The waiting scripts banner's Cancel.
     DropWaitingScripts,

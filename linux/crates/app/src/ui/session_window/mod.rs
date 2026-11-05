@@ -442,7 +442,7 @@ impl SessionWindow {
             SessionWindowInput::OpenFile(file) => self.on_open_file(file),
             SessionWindowInput::FileResolved(resolved) => self.on_file_resolved(*resolved),
             SessionWindowInput::OpenScript(file) => self.on_open_script(file),
-            SessionWindowInput::ScriptLoaded { file, text } => self.on_script_loaded(file, text),
+            SessionWindowInput::ScriptLoaded { file, text, target } => self.on_script_loaded(file, text, target),
             SessionWindowInput::ScriptsFor { key, scripts } => self.on_scripts_for(key, scripts),
             SessionWindowInput::DropWaitingScripts => {
                 self.imp().waiting_scripts.borrow_mut().clear();
@@ -1127,6 +1127,10 @@ impl SessionWindow {
         let imp = self.imp();
         !imp.restoring.try_borrow().is_ok_and(|restoring| restoring.is_empty())
             || !imp.connects.try_borrow().is_ok_and(|connects| connects.is_empty())
+            || !imp
+                .sessions
+                .try_borrow()
+                .is_ok_and(|sessions| sessions.iter().all(|open| !open.databases.is_opening()))
             || self.workspaces().iter().any(Workspace::tabs_loading)
     }
 
@@ -1158,18 +1162,23 @@ impl SessionWindow {
     }
 
     // Read the way Open SQL File reads, with the same limit and messages.
+    // The session in front now is the one it goes to, even if another comes forward during a slow read.
     fn on_open_script(&self, file: gio::File) {
         let Some(input) = self.input() else {
             return;
         };
+        let target = self
+            .workspace()
+            .filter(|workspace| workspace.data_model() == Some(DataModel::Relational))
+            .and_then(|workspace| workspace.key());
         glib::spawn_future_local(async move {
             let text = crate::ui::editor::load_text(&file).await;
-            input.deliver(SessionWindowInput::ScriptLoaded { file, text });
+            input.deliver(SessionWindowInput::ScriptLoaded { file, text, target });
         });
     }
 
     // A script opens in the relational session in front and is never run.
-    fn on_script_loaded(&self, file: gio::File, text: Result<String, String>) {
+    fn on_script_loaded(&self, file: gio::File, text: Result<String, String>, target: Option<SessionKey>) {
         let text = match text {
             Ok(text) => text,
             Err(reason) => {
@@ -1184,8 +1193,13 @@ impl SessionWindow {
         if self.focus_bound_tab(&file) {
             return;
         }
-        let front = self
-            .workspace()
+        let chosen = target.and_then(|key| {
+            self.workspaces()
+                .into_iter()
+                .find(|workspace| workspace.key().as_ref() == Some(&key))
+        });
+        let front = chosen
+            .or_else(|| self.workspace())
             .filter(|workspace| workspace.data_model() == Some(DataModel::Relational))
             .and_then(|workspace| workspace.sender());
         match front {
@@ -1220,7 +1234,11 @@ impl SessionWindow {
             return;
         };
         for (file, text) in scripts {
-            window.send(SessionWindowInput::ScriptLoaded { file, text: Ok(text) });
+            window.send(SessionWindowInput::ScriptLoaded {
+                file,
+                text: Ok(text),
+                target: None,
+            });
         }
     }
 
