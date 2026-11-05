@@ -1,4 +1,4 @@
-use crate::column::{ColumnInfo, ColumnKind, ColumnOrigin, ColumnType, ResultColumn};
+use crate::column::{ColumnInfo, ColumnKind, ColumnOrigin, ColumnType, ReadForm, ResultColumn};
 use crate::meta::TableRef;
 use crate::sql_syntax::{
     SourceItem, SourceRefusal, SourceTable, SqlGrammar, same_name, source_columns_for_result, source_table,
@@ -131,11 +131,15 @@ pub fn parsed_origins(statement: &SourceTable, table: &TableRef, names: &[String
     origins
 }
 
-// PostgreSQL's editor reads every value as text; a key or a copied value has to bind as the column's own type.
-pub fn value_for_column(value: &Value, column: &ColumnType) -> Option<Value> {
+// A driver that reads a column as the server's text, as PostgreSQL's editor does, leaves its type to the catalog; a key
+// or a copied value has to bind as that type. A value any other driver read is kept as it was stored.
+pub fn value_for_column(value: &Value, read: &ColumnType, column: &ColumnType) -> Option<Value> {
     let Value::Text(text) = value else {
         return Some(value.clone());
     };
+    if !matches!(read.kind, ColumnKind::Other) || read.read_form != ReadForm::ServerText {
+        return Some(value.clone());
+    }
     match &column.kind {
         ColumnKind::Text { .. } => Some(value.clone()),
         ColumnKind::Bytes { .. } => postgres_bytea(text).map(Value::Bytes),
@@ -376,15 +380,16 @@ mod tests {
 
     #[test]
     fn server_text_becomes_the_columns_type() {
+        let read = ColumnType::untyped_text("text");
         assert_eq!(
-            value_for_column(&Value::Text("42".to_owned()), &int()),
+            value_for_column(&Value::Text("42".to_owned()), &read, &int()),
             Some(Value::Int(42))
         );
         assert_eq!(
-            value_for_column(&Value::Text("x".to_owned()), &text()),
+            value_for_column(&Value::Text("x".to_owned()), &read, &text()),
             Some(Value::Text("x".to_owned()))
         );
-        assert_eq!(value_for_column(&Value::Text("forty".to_owned()), &int()), None);
+        assert_eq!(value_for_column(&Value::Text("forty".to_owned()), &read, &int()), None);
         let bytes = typed(
             "bytea",
             ColumnKind::Bytes {
@@ -392,9 +397,18 @@ mod tests {
             },
         );
         assert_eq!(
-            value_for_column(&Value::Text("\\x01ff".to_owned()), &bytes),
+            value_for_column(&Value::Text("\\x01ff".to_owned()), &read, &bytes),
             Some(Value::Bytes(vec![1, 255]))
         );
-        assert_eq!(value_for_column(&Value::Int(7), &int()), Some(Value::Int(7)));
+        assert_eq!(value_for_column(&Value::Int(7), &read, &int()), Some(Value::Int(7)));
+    }
+
+    #[test]
+    fn text_a_driver_read_as_stored_is_never_reparsed() {
+        let date = typed("DATE", ColumnKind::Date);
+        let padded = Value::Text(" 2024-01-01 ".to_owned());
+
+        assert_eq!(value_for_column(&padded, &date, &date), Some(padded.clone()));
+        assert_eq!(value_for_column(&padded, &text(), &date), Some(padded));
     }
 }

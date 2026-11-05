@@ -496,6 +496,11 @@ impl SqlEditor {
                 .iter()
                 .any(|batch| tablepro_core::sql_syntax::changes_catalog(&batch.text, grammar)),
         );
+        self.note_run_moves_database(
+            batches
+                .iter()
+                .any(|batch| tablepro_core::sql_syntax::may_change_database(&batch.text, grammar)),
+        );
         let statements = batches.iter().map(|batch| UserSql::new(batch.text.as_str())).collect();
         let run = ScriptRun {
             batches,

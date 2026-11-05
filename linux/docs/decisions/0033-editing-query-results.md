@@ -11,9 +11,9 @@
 
 - A query tab holds one change tracker, registered under its tab id as a table tab's is, so Save, Confirm Writes, history, the ledger and the close prompts treat it as they treat a table tab.
 - The result on screen takes the tracker when no other result holds changes; another result then shows read-only and says to save or discard first.
-- After a run, each result that `result_source` accepts reads its table's columns on the window's connection and becomes editable once `result_target` maps them. A Read-Only connection, a run that leaves a transaction open, and a tab in another database than the connection's keep every result read-only.
+- After a run, each result that `result_source` accepts reads its table's columns on the window's connection and becomes editable once `result_target` maps them. A Read-Only connection, a run that leaves a transaction open, a run that may change database, and a tab in another database than the connection's keep every result read-only.
 - The pending changes bar of a table tab sits under the results. Ctrl+S saves changed rows while the results have the focus, and the file otherwise; Ctrl+Z and Ctrl+Shift+Z undo and redo the rows there.
-- After a save the statement behind the result runs again on the tab's connection, and its rows replace the result's.
+- After a save the statement behind the result runs again on the tab's connection, and its rows replace the result's. When it now reads another table or other columns, the tracker follows while it holds nothing, and the result turns read-only while it holds changes made on the rows read before.
 - A run, Commit or Roll Back with changes pending asks to discard them first, and waits while a save runs.
 - Why a result or a column is read-only shows where an edit would open, in the row details, as for a table tab's locked cell.
 

@@ -40,7 +40,8 @@ pub enum SourceRefusal {
 }
 
 pub fn source_table(sql: &str, grammar: SqlGrammar) -> Result<SourceTable, SourceRefusal> {
-    single_table_query(&parse_query(sql, grammar)?, grammar)
+    let query = parse_query(sql, grammar)?;
+    single_table_query(&query, grammar)
 }
 
 fn parse_query(sql: &str, grammar: SqlGrammar) -> Result<Box<Query>, SourceRefusal> {
@@ -152,6 +153,9 @@ fn single_table_query(query: &Query, grammar: SqlGrammar) -> Result<SourceTable,
         .iter()
         .map(|item| source_item(item, &qualifiers, schema.as_ref(), grammar))
         .collect::<Result<Vec<_>, _>>()?;
+    if grammar == SqlGrammar::ClickHouse && alias_shadows_a_column(&select.projection, &items, grammar) {
+        return Err(SourceRefusal::Collapsed);
+    }
     Ok(SourceTable {
         table: TableRef::new(
             schema.map(|ident| resolved_name(&ident, grammar)),
@@ -226,6 +230,21 @@ fn column(expr: &Expr, qualifiers: &[&Ident], schema: Option<&Ident>, grammar: S
     SourceItem::Column(SourceName {
         name: resolved_name(name, grammar),
         quoted: name.quote_style.is_some(),
+    })
+}
+
+// ClickHouse substitutes a select-list alias for a column of the same name anywhere in the query, so `2 AS id, id AS k`
+// reads 2 into k.
+fn alias_shadows_a_column(projection: &[SelectItem], items: &[SourceItem], grammar: SqlGrammar) -> bool {
+    projection.iter().enumerate().any(|(index, item)| {
+        let SelectItem::ExprWithAlias { alias, .. } = item else {
+            return false;
+        };
+        let alias = resolved_name(alias, grammar);
+        items
+            .iter()
+            .enumerate()
+            .any(|(other, item)| other != index && matches!(item, SourceItem::Column(column) if column.name == alias))
     })
 }
 
@@ -521,6 +540,18 @@ mod tests {
                 SourceItem::Expression,
             ]
         );
+    }
+
+    #[test]
+    fn a_clickhouse_alias_that_names_another_items_column_refuses_the_read() {
+        let clickhouse = |sql| source_table(sql, SqlGrammar::ClickHouse);
+
+        assert_eq!(
+            clickhouse("SELECT 2 AS id, id AS k, a FROM t"),
+            Err(SourceRefusal::Collapsed)
+        );
+        assert!(clickhouse("SELECT id AS id, a AS x FROM t").is_ok());
+        assert!(source_table("SELECT 2 AS id, id AS k FROM t", SqlGrammar::PostgreSql).is_ok());
     }
 
     #[test]

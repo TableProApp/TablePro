@@ -16,7 +16,7 @@ Measured on PostgreSQL 17.11, MySQL 8.4.13, MariaDB 11.8.9, SQLite 3.46.1, DuckD
 
 The statement decides whether a result is one table's rows; the driver proves which table and columns, on the connection that ran it.
 
-- `sql_syntax::source_table` accepts one `SELECT` over one table, optionally qualified and aliased, with `WHERE`, `ORDER BY` on row expressions, `LIMIT` and locking clauses. It refuses joins, comma lists, subqueries and functions in `FROM`, CTEs, set operations, `DISTINCT`, `GROUP BY`, `HAVING`, and any function or subquery in the select list, since a function's name cannot say whether it aggregates.
+- `sql_syntax::source_table` accepts one `SELECT` over one table, optionally qualified and aliased, with `WHERE`, `ORDER BY` on row expressions, `LIMIT` and locking clauses. It refuses joins, comma lists, subqueries and functions in `FROM`, CTEs, set operations, `DISTINCT`, `GROUP BY`, `HAVING`, and any function or subquery in the select list, since a function's name cannot say whether it aggregates. On ClickHouse it also refuses an alias that names another item's column, since ClickHouse substitutes the alias there. PostgreSQL's bare `current_role`, `current_schema` and their kin are expressions.
 - `ResultColumn::origin` is a `ColumnOrigin { table, column }`, set by the driver only for a direct column, renamed or not, of a permanent base table, with the table qualified so any connection to the same database names it. A view, a temporary table, an expression and an untraced column carry none.
   - PostgreSQL: after the DECLARE, the statement's table resolves with `to_regclass` on the tab's connection, and counts only when the open cursor holds a lock on it, so it is the relation the statement read; relkind `r` or `p`, persistence permanent or unlogged. A `prepare` of the FETCH gives the OIDs too, but makes tokio-postgres look up every non-built-in column type by name, a round trip each.
   - MySQL and MariaDB: `Column::origin()` for a run of one statement, confirmed after it by `SHOW CREATE TABLE` on the same connection, which names a temporary table that shadows the base one.
@@ -26,7 +26,7 @@ The statement decides whether a result is one table's rows; the driver proves wh
   - MongoDB and Redis: none.
 - `edit::result_source` requires every origin to name one table, the one the statement names. `edit::result_target` maps each result column to the table's catalog column, refuses a table without a primary key and a result that leaves out part of it, locks expressions and a second copy of a column, and refuses a result whose wildcard no longer matches the catalog.
 - A driver looks nothing up inside the user's transaction, and a lookup that fails leaves every origin empty and the run unchanged.
-- PostgreSQL's editor reads text; `edit::value_for_column` turns a key or a copied value into the column's type, and a key it cannot read leaves the row read-only.
+- PostgreSQL's editor reads text; `edit::value_for_column` turns a value of a column the driver left as server text into the catalog's type, and a key it cannot read leaves the row read-only. A value any other driver read stays as it was stored, so SQLite's ` 2024-01-01 ` is not the key `2024-01-01`.
 
 ## Rationale
 

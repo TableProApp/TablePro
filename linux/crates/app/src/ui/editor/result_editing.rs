@@ -56,13 +56,16 @@ pub struct ResultEditing {
     tracker: OnceCell<TabTrackerHandle>,
     actions: OnceCell<ResultActions>,
     states: RefCell<HashMap<usize, ResultEdit>>,
-    // The result whose target the tracker holds.
+    // The result whose target the tracker holds, and that target.
     owner: Cell<Option<usize>>,
+    bound: RefCell<Option<Rc<EditTarget>>>,
     built_editable: RefCell<HashSet<usize>>,
     // Bumped by every run, so a catalog read for an older one is dropped.
     run: Cell<u64>,
     rereading: Cell<bool>,
     dirty: Cell<bool>,
+    // A result read after a USE in the same run came from a database the tab may have left again.
+    moves_database: Cell<bool>,
 }
 
 impl SqlEditor {
@@ -119,6 +122,10 @@ impl SqlEditor {
         self.imp().editing.tracker.get().cloned()
     }
 
+    pub(super) fn note_run_moves_database(&self, moves: bool) {
+        self.imp().editing.moves_database.set(moves);
+    }
+
     // The rows of the last run are about to be replaced, which the caller made sure loses no change.
     pub(super) fn forget_result_edits(&self) {
         let editing = &self.imp().editing;
@@ -126,6 +133,7 @@ impl SqlEditor {
         editing.states.borrow_mut().clear();
         editing.built_editable.borrow_mut().clear();
         editing.owner.set(None);
+        editing.bound.replace(None);
         if let Some(tracker) = self.row_tracker() {
             let _ = tracker.discard();
         }
@@ -176,7 +184,7 @@ impl SqlEditor {
             Some(ResultRefusal::ReadOnlySession)
         } else if imp.open_transaction.get().is_some() {
             Some(ResultRefusal::OpenTransaction)
-        } else if self.tab_database().is_some() {
+        } else if self.tab_database().is_some() || imp.editing.moves_database.get() {
             Some(ResultRefusal::OtherDatabase)
         } else {
             None
@@ -255,14 +263,49 @@ impl SqlEditor {
                     Err(lock) => ResultEdit::Locked(lock.into()),
                     Ok(target) => {
                         let target = edit_target(&target.table, &result.columns, &target.positions, catalog);
-                        result.rows = typed_rows(&target, std::mem::take(&mut result.rows));
+                        result.rows = typed_rows(&target, &result.columns, std::mem::take(&mut result.rows));
                         ResultEdit::Editable(Rc::new(target))
                     }
                 },
             }
         };
+        let state = self.keep_tracker_on(index, state);
         imp.editing.states.borrow_mut().insert(index, state);
         self.refresh_result_page(index);
+    }
+
+    // The result read again after a save can name another table or other columns; the tracker follows only while it
+    // holds nothing, since its changes were made on the rows read before.
+    fn keep_tracker_on(&self, index: usize, state: ResultEdit) -> ResultEdit {
+        let editing = &self.imp().editing;
+        let (ResultEdit::Editable(target), Some(tracker)) = (&state, self.row_tracker()) else {
+            return state;
+        };
+        if editing.owner.get() != Some(index) {
+            return state;
+        }
+        let same = editing
+            .bound
+            .borrow()
+            .as_ref()
+            .is_some_and(|bound| bound.table == target.table && bound.save_columns == target.save_columns);
+        if same {
+            return state;
+        }
+        if tracker.pending_count() == 0 && tracker.pending_state() == PendingState::Clean {
+            self.bind_tracker(&tracker, target);
+            return state;
+        }
+        ResultEdit::Locked(ResultRefusal::ColumnsChanged)
+    }
+
+    fn bind_tracker(&self, tracker: &TabTrackerHandle, target: &Rc<EditTarget>) {
+        let _ = tracker.discard();
+        let _ = tracker.set_target(SaveTarget {
+            table: target.table.clone(),
+            columns: target.save_columns.clone(),
+        });
+        self.imp().editing.bound.replace(Some(target.clone()));
     }
 
     pub(super) fn result_grid(&self, index: usize, view: &ResultSetView) -> Option<ResultGrid> {
@@ -315,11 +358,7 @@ impl SqlEditor {
             }
             return;
         }
-        let _ = tracker.discard();
-        let _ = tracker.set_target(SaveTarget {
-            table: target.table.clone(),
-            columns: target.save_columns.clone(),
-        });
+        self.bind_tracker(&tracker, &target);
         editing.owner.set(Some(index));
         let built: Vec<usize> = editing.built_editable.borrow().iter().copied().collect();
         self.imp().results.forget_pages(|page| {
@@ -599,7 +638,7 @@ impl SqlEditor {
                 // The same columns from the same table: the rows change in place, and the grid keeps its place.
                 (Some(shown), Some(result)) if target.is_some() && shown.columns == result.columns => {
                     if let Some(target) = &target {
-                        shown.rows = typed_rows(target, result.rows);
+                        shown.rows = typed_rows(target, &result.columns, result.rows);
                         shown.summary = result.summary;
                     }
                     None
@@ -695,7 +734,7 @@ fn unwritable(index: usize, column: &ResultColumn) -> ColumnInfo {
 }
 
 // PostgreSQL's editor reads text; keys and copied values have to be the columns' own types.
-fn typed_rows(target: &EditTarget, rows: Vec<Arc<[Value]>>) -> Vec<Arc<[Value]>> {
+fn typed_rows(target: &EditTarget, read: &[ResultColumn], rows: Vec<Arc<[Value]>>) -> Vec<Arc<[Value]>> {
     if !rows
         .iter()
         .flat_map(|row| row.iter())
@@ -706,10 +745,10 @@ fn typed_rows(target: &EditTarget, rows: Vec<Arc<[Value]>>) -> Vec<Arc<[Value]>>
     rows.into_iter()
         .map(|row| {
             row.iter()
-                .zip(&target.save_columns)
-                .map(|(value, column)| match column.is_generated {
+                .zip(read.iter().zip(&target.save_columns))
+                .map(|(value, (read, column))| match column.is_generated {
                     true => value.clone(),
-                    false => match value_for_column(value, &column.column_type) {
+                    false => match value_for_column(value, &read.column_type, &column.column_type) {
                         Some(typed) => typed,
                         None if column.primary_key => Value::Undecodable(Box::new(UndecodedValue {
                             type_name: column.column_type.name.clone(),
