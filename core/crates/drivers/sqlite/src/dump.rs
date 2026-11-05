@@ -1,12 +1,14 @@
 //! A SQLite file as a SQL dump in the order `sqlite3 .dump` writes it:
 //! the stored CREATE text of `main`, its AUTOINCREMENT counters, and the
-//! rows in between. Virtual tables and their shadow tables are left out:
-//! their rows belong to a module the loading side may not have.
+//! rows in between. Virtual tables are left out and named in the report,
+//! and their shadow tables with them: their rows belong to a module the
+//! loading side may not have.
 
 use sqlx::Row;
 use sqlx::sqlite::{SqliteConnection as SqlxConnection, SqliteRow};
 use tablepro_core::dump::{
-    DumpCatalog, DumpDialect, DumpObject, DumpObjectKind, DumpScope, DumpSection, DumpStatement, DumpTable,
+    DumpCatalog, DumpDialect, DumpObject, DumpObjectKind, DumpScope, DumpSection, DumpSkip, DumpSkipReason,
+    DumpStatement, DumpTable,
 };
 use tablepro_core::meta::TableRef;
 use tablepro_core::{DriverError, UnsupportedFeature};
@@ -30,10 +32,12 @@ impl DumpDialect for SqliteDialect {
         true
     }
 
-    /// Inside an import's own transaction the file's `foreign_keys=OFF`
-    /// does nothing, so the checks wait for the COMMIT instead.
-    fn after_begin(&self) -> &'static [&'static str] {
-        &["PRAGMA defer_foreign_keys = ON"]
+    /// The file's own `foreign_keys=OFF` does nothing inside the import's
+    /// transaction, and deferring the checks is not enough: a key whose
+    /// parent is unique only by an index made after the rows refuses
+    /// each row at once. The import's session closes after it.
+    fn before_begin(&self) -> &'static [&'static str] {
+        &["PRAGMA foreign_keys = OFF"]
     }
 }
 
@@ -121,7 +125,13 @@ fn dump_catalog(entries: Vec<SchemaEntry>, counters: &[(String, i64)]) -> DumpCa
         let object =
             |kind, section, statement| DumpObject::new(kind, section, None, entry.name.clone(), vec![statement]);
         match (entry.kind.as_str(), entry.table_kind.as_str()) {
-            ("table", "virtual" | "shadow") => {}
+            ("table", "virtual") => catalog.skipped.push(DumpSkip {
+                kind: DumpObjectKind::Table,
+                schema: None,
+                name: entry.name.clone(),
+                reason: DumpSkipReason::NotSupported,
+            }),
+            ("table", "shadow") => {}
             ("table", _) => {
                 let table = TableRef::unqualified(entry.name.clone());
                 catalog
@@ -278,6 +288,6 @@ mod tests {
 
         assert_eq!(dialect.header(), "PRAGMA foreign_keys=OFF;\nBEGIN TRANSACTION;\n");
         assert!(dialect.transactional_ddl());
-        assert_eq!(dialect.after_begin(), ["PRAGMA defer_foreign_keys = ON"]);
+        assert_eq!(dialect.before_begin(), ["PRAGMA foreign_keys = OFF"]);
     }
 }

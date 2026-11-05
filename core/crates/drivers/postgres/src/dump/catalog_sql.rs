@@ -180,7 +180,8 @@ ORDER BY n.nspname, c.relname"
 
 /// Tables, partitioned tables and foreign tables. A partition names its
 /// parent; a child or parent by INHERITS is marked, since a read of the
-/// parent returns its children's rows too.
+/// parent returns its children's rows too. The last column says whether
+/// row-level security shows this login only some of the table's rows.
 pub(crate) const TABLES_SQL: &str = concat!(
     "SELECT n.nspname::text, c.relname::text, c.relkind::text, c.relpersistence::text,
        CASE WHEN c.relkind = 'p' THEN pg_catalog.pg_get_partkeydef(c.oid)::text END,
@@ -191,7 +192,11 @@ pub(crate) const TABLES_SQL: &str = concat!(
                     JOIN pg_catalog.pg_class ch ON ch.oid = h.inhrelid
                     WHERE h.inhparent = c.oid AND NOT ch.relispartition)),
        c.reloptions::text[], am.amname::text, ts.spcname::text,
-       pg_catalog.obj_description(c.oid, 'pg_class')::text
+       pg_catalog.obj_description(c.oid, 'pg_class')::text,
+       c.relrowsecurity
+         AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles r
+                          WHERE r.rolname = CURRENT_USER AND (r.rolsuper OR r.rolbypassrls))
+         AND (c.relforcerowsecurity OR NOT pg_catalog.pg_has_role(c.relowner, 'USAGE'))
 FROM pg_catalog.pg_class c
 JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 LEFT JOIN pg_catalog.pg_inherits i ON i.inhrelid = c.oid AND c.relispartition

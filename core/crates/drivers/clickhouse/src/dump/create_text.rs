@@ -6,10 +6,19 @@ use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptToken
 /// `create` with every `database.` qualifier gone, so the file loads into
 /// a database of any name. The server qualifies the names a view's query
 /// reads, as well as the created name and a materialized view's target.
+/// Where the query also uses the database's name as an alias, `name.`
+/// there can be a column of that alias, so only the header's go.
 pub(crate) fn without_database(create: &str, database: &str) -> String {
     let tokens = tokens(create);
+    let aliased = tokens
+        .windows(2)
+        .any(|pair| is_word(create, &pair[0], "AS") && name_text(create, &pair[1]).as_deref() == Some(database));
+    let considered = match aliased {
+        true => &tokens[..head(create, &tokens)],
+        false => &tokens[..],
+    };
     let mut cuts = Vec::new();
-    for (at, window) in tokens.windows(3).enumerate() {
+    for (at, window) in considered.windows(3).enumerate() {
         let [name, dot, next] = window else {
             continue;
         };
@@ -249,6 +258,16 @@ mod tests {
         assert_eq!(
             without_definer("CREATE VIEW v AS SELECT 1"),
             "CREATE VIEW v AS SELECT 1"
+        );
+    }
+
+    #[test]
+    fn an_alias_named_like_the_database_keeps_its_columns() {
+        let create = "CREATE VIEW app.v AS SELECT app.id FROM app.events AS app";
+
+        assert_eq!(
+            without_database(create, "app"),
+            "CREATE VIEW v AS SELECT app.id FROM app.events AS app"
         );
     }
 

@@ -5,7 +5,7 @@ use gtk4::{self as gtk, gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::ErrorCategory;
-use tablepro_core::dump::{DumpReport, DumpSkipReason};
+use tablepro_core::dump::{DumpObjectKind, DumpReport, DumpSkipReason};
 use tablepro_core::export::{EncodeError, RenderError};
 use tablepro_session::OperationError;
 use tablepro_session::runtime::TaskFailure;
@@ -79,11 +79,23 @@ pub(crate) fn dump_warnings(report: &DumpReport) -> Option<String> {
         ));
     }
     for skipped in &report.skipped {
-        if skipped.reason == DumpSkipReason::RowsNotCarried {
-            lines.push(gettext_f(
+        let special = match skipped.reason {
+            DumpSkipReason::RowsNotCarried => Some(gettext_f(
                 "{name} is in the file without the rows it stores: a materialized view fills only from rows inserted after it.",
                 &[("name", &skipped.name)],
-            ));
+            )),
+            DumpSkipReason::RowsFiltered => Some(gettext_f(
+                "{name} is in the file without its rows: row-level security shows this login only some of them.",
+                &[("name", &skipped.name)],
+            )),
+            DumpSkipReason::NotReadable if skipped.kind == DumpObjectKind::SequenceValue => Some(gettext_f(
+                "The position of sequence {name} could not be read, so it starts over when the file loads.",
+                &[("name", &skipped.name)],
+            )),
+            _ => None,
+        };
+        if let Some(line) = special {
+            lines.push(line);
             continue;
         }
         let reason = match skipped.reason {
@@ -92,6 +104,7 @@ pub(crate) fn dump_warnings(report: &DumpReport) -> Option<String> {
             DumpSkipReason::ClrRoutine => gettext("its code is a .NET assembly"),
             DumpSkipReason::HiddenSecret => gettext("the server hides a secret in its SQL"),
             DumpSkipReason::SplitsApart => gettext("its code holds a line that is only GO"),
+            DumpSkipReason::NotReadable => gettext("this login may not read it"),
             DumpSkipReason::RemoteRows => {
                 gettext("its rows live on another server, which loading the file would write to")
             }

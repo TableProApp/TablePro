@@ -271,12 +271,14 @@ fn assemble(facts: &CatalogFacts) -> DumpCatalog {
     let lookup = Lookup::new(facts);
     let mut catalog = DumpCatalog::default();
     let mut before = namespaces(facts);
-    before.extend(types(facts, &lookup, &mut catalog.skipped));
+    let (types, domain_checks) = types(facts, &lookup, &mut catalog.skipped);
+    before.extend(types);
     let (routines_before, mut programs) = routines(facts, &mut catalog.skipped);
     before.extend(routines_before);
+    before.extend(domain_checks);
     before.extend(sequences(facts));
     let mut after = AfterData {
-        values: sequence_values(facts, &lookup),
+        values: sequence_values(facts, &lookup, &mut catalog.skipped),
         ..AfterData::default()
     };
     for table in &facts.tables {
@@ -288,7 +290,17 @@ fn assemble(facts: &CatalogFacts) -> DumpCatalog {
         }
         before.push(create_table(table, &lookup));
         table_after_data(table, &lookup, &mut after);
-        catalog.tables.push(dump_table(table));
+        let mut dumped = dump_table(table);
+        // A read would give the policy's rows as if they were all, as
+        // pg_dump's `row_security = off` refuses to.
+        if table.filtered {
+            dumped.rows = false;
+            catalog.skipped.push(DumpSkip {
+                reason: DumpSkipReason::RowsFiltered,
+                ..skip(DumpObjectKind::Table, &table.schema, &table.name)
+            });
+        }
+        catalog.tables.push(dumped);
     }
     programs.extend(views(facts, &lookup));
     let triggers = triggers(facts, &lookup);
@@ -323,13 +335,28 @@ fn namespaces(facts: &CatalogFacts) -> Vec<DumpObject> {
     schemas.chain(extensions).collect()
 }
 
-fn types(facts: &CatalogFacts, lookup: &Lookup<'_>, skipped: &mut Vec<DumpSkip>) -> Vec<DumpObject> {
+/// The types, and the domains' checks, which wait for the routines.
+fn types(facts: &CatalogFacts, lookup: &Lookup<'_>, skipped: &mut Vec<DumpSkip>) -> (Vec<DumpObject>, Vec<DumpObject>) {
     let mut objects = Vec::new();
+    let mut checks = Vec::new();
     for user_type in &facts.types {
         let key = (user_type.schema.as_str(), user_type.name.as_str());
         let sql = match &user_type.shape {
             TypeShape::Enum(labels) => vec![statements::create_enum(key.0, key.1, labels)],
-            TypeShape::Domain(domain) => statements::create_domain(key.0, key.1, domain, listed(&lookup.checks, key)),
+            TypeShape::Domain(domain) => {
+                let mut sql = statements::create_domain(key.0, key.1, domain, listed(&lookup.checks, key));
+                let added = sql.split_off(1);
+                if !added.is_empty() {
+                    checks.push(DumpObject::new(
+                        DumpObjectKind::Constraint,
+                        DumpSection::BeforeData,
+                        Some(user_type.schema.clone()),
+                        user_type.name.clone(),
+                        plain(added),
+                    ));
+                }
+                sql
+            }
             TypeShape::Composite => vec![statements::create_composite(key.0, key.1, listed(&lookup.columns, key))],
             TypeShape::Other => {
                 skipped.push(skip(DumpObjectKind::Type, key.0, key.1));
@@ -344,7 +371,7 @@ fn types(facts: &CatalogFacts, lookup: &Lookup<'_>, skipped: &mut Vec<DumpSkip>)
             plain(sql),
         ));
     }
-    objects
+    (objects, checks)
 }
 
 /// The routines made before the tables, and those made with the views.
@@ -395,7 +422,17 @@ fn sequences(facts: &CatalogFacts) -> Vec<DumpObject> {
         .collect()
 }
 
-fn sequence_values(facts: &CatalogFacts, lookup: &Lookup<'_>) -> Vec<DumpObject> {
+/// Each sequence's position, and the ones the login may not read, which
+/// the report names: their numbers would start over on load.
+fn sequence_values(facts: &CatalogFacts, lookup: &Lookup<'_>, skipped: &mut Vec<DumpSkip>) -> Vec<DumpObject> {
+    for sequence in facts.sequences.iter().filter(|sequence| lookup.makes(sequence)) {
+        if sequence.last_value.is_none() {
+            skipped.push(DumpSkip {
+                reason: DumpSkipReason::NotReadable,
+                ..skip(DumpObjectKind::SequenceValue, &sequence.schema, &sequence.name)
+            });
+        }
+    }
     facts
         .sequences
         .iter()
@@ -622,6 +659,7 @@ mod tests {
             partition_key: (kind == "p").then(|| "RANGE (k)".to_owned()),
             partition: None,
             inherits: false,
+            filtered: false,
             options: Vec::new(),
             access_method: None,
             tablespace: None,
@@ -968,7 +1006,10 @@ mod tests {
 
         assert_eq!(
             sql_of(&catalog, "positive"),
-            ["CREATE DOMAIN \"app\".\"positive\" AS integer\n    CONSTRAINT \"positive_check\" CHECK ((VALUE > 0))"]
+            [
+                "CREATE DOMAIN \"app\".\"positive\" AS integer",
+                "ALTER DOMAIN \"app\".\"positive\" ADD CONSTRAINT \"positive_check\" CHECK ((VALUE > 0))"
+            ]
         );
         assert_eq!(
             sql_of(&catalog, "pair"),

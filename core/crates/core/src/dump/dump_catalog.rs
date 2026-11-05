@@ -200,6 +200,11 @@ pub enum DumpSkipReason {
     RowsNotCarried,
     /// Its rows live on another server, which a load would write to.
     RemoteRows,
+    /// Row-level security shows the login only some of its rows, so none
+    /// go in the file.
+    RowsFiltered,
+    /// The login may not read it, such as a sequence's position.
+    NotReadable,
 }
 
 /// What a dump of one scope writes, read from the catalog in one go.

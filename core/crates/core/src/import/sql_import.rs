@@ -171,13 +171,22 @@ pub async fn run_sql_import(
     let mut opened = true;
     let mut began = false;
     if let Some(dump) = transaction {
-        for statement in std::iter::once(dump.begin()).chain(dump.after_begin().iter().copied()) {
+        for statement in dump.before_begin() {
             if let Err(fault) = run.execute(statement, cancel).await {
                 run.fail_on_setup(statement, fault);
                 opened = false;
                 break;
             }
-            began = true;
+        }
+        if opened {
+            for statement in std::iter::once(dump.begin()).chain(dump.after_begin().iter().copied()) {
+                if let Err(fault) = run.execute(statement, cancel).await {
+                    run.fail_on_setup(statement, fault);
+                    opened = false;
+                    break;
+                }
+                began = true;
+            }
         }
     }
 
@@ -403,26 +412,28 @@ impl Run<'_> {
     }
 }
 
-/// Whether a SQL Server batch could end a transaction: a COMMIT or
-/// ROLLBACK as a word, or inside a string it could run. PostgreSQL,
-/// SQLite and DuckDB send a statement at a time, each told apart by
-/// `transaction_control` before it runs.
+/// Whether a SQL Server batch runs a COMMIT or ROLLBACK. A batch that
+/// makes a procedure, function or trigger only stores its body. One that
+/// builds the statement in a string and runs it is not seen here.
+/// PostgreSQL, SQLite and DuckDB send a statement at a time, each told
+/// apart by `transaction_control` before it runs.
 fn ends_transaction(text: &str, grammar: SqlGrammar) -> bool {
     if grammar != SqlGrammar::MsSql {
         return false;
     }
     let plan = ScriptPlan::build(text, grammar, LexicalSettings::default_for(grammar));
-    plan.tokens(0..text.len()).any(|token| {
-        let Some(code) = text.get(token.range) else {
-            return false;
-        };
-        let upper = code.to_ascii_uppercase();
-        match token.kind {
-            ScriptTokenKind::Word => upper == "COMMIT" || upper == "ROLLBACK",
-            ScriptTokenKind::StringLiteral => upper.contains("COMMIT") || upper.contains("ROLLBACK"),
-            _ => false,
-        }
-    })
+    let words: Vec<String> = plan
+        .tokens(0..text.len())
+        .filter(|token| token.kind == ScriptTokenKind::Word)
+        .filter_map(|token| text.get(token.range).map(str::to_ascii_uppercase))
+        .collect();
+    let module = words.first().is_some_and(|word| word == "CREATE" || word == "ALTER")
+        && words
+            .iter()
+            .skip(1)
+            .take(3)
+            .any(|word| matches!(word.as_str(), "PROC" | "PROCEDURE" | "FUNCTION" | "TRIGGER"));
+    !module && words.iter().any(|word| word == "COMMIT" || word == "ROLLBACK")
 }
 
 /// The import keeps no rows: a dump's SELECTs, such as `setval`, are run
@@ -445,8 +456,13 @@ mod tests {
         let ms = SqlGrammar::MsSql;
 
         assert!(ends_transaction("DELETE FROM t; COMMIT; BEGIN TRANSACTION;", ms));
-        assert!(ends_transaction("EXEC('rollback tran')", ms));
-        assert!(!ends_transaction("INSERT INTO t VALUES (1)", ms));
+        assert!(ends_transaction("rollback tran", ms));
+        assert!(!ends_transaction("INSERT INTO t VALUES (N'commitment', N'COMMIT')", ms));
+        assert!(!ends_transaction("CREATE PROCEDURE p AS BEGIN COMMIT END", ms));
+        assert!(!ends_transaction(
+            "CREATE OR ALTER TRIGGER t ON x AFTER INSERT AS ROLLBACK",
+            ms
+        ));
         assert!(!ends_transaction("COMMIT", SqlGrammar::PostgreSql));
     }
 }

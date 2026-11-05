@@ -108,6 +108,8 @@ pub(super) struct Table {
     pub(super) access_method: Option<String>,
     pub(super) tablespace: Option<String>,
     pub(super) comment: Option<String>,
+    /// Row-level security filters what this login reads of it.
+    pub(super) filtered: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -296,6 +298,7 @@ pub(super) fn table(row: &Row) -> Result<Table, DriverError> {
         access_method: row.try_get(10).map_err(&field)?,
         tablespace: row.try_get(11).map_err(&field)?,
         comment: row.try_get(12).map_err(&field)?,
+        filtered: row.try_get(13).map_err(&field)?,
     })
 }
 

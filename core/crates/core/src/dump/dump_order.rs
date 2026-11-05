@@ -31,24 +31,26 @@ pub(super) fn order_tables(tables: &[DumpTable]) -> (Vec<usize>, Vec<TableRef>) 
     (order, unordered)
 }
 
-/// The objects' positions with each one after the others whose names its
-/// text mentions. A name that is also a column's can add an edge that is
-/// not there; a cycle that makes keeps those objects in the order they
-/// came.
+/// The objects' positions with each one after the others its text names.
+/// A name written with its schema matches only that schema's object; a
+/// bare one matches any of that name, so a name that is also a column's
+/// can add an edge that is not there, and a cycle that makes keeps those
+/// objects in the order they came.
 pub(super) fn order_programs(objects: &[&DumpObject], grammar: SqlGrammar) -> Vec<usize> {
-    let names: Vec<String> = objects.iter().map(|object| object.name.to_lowercase()).collect();
-    let mut by_name: HashMap<&str, Vec<usize>> = HashMap::new();
-    for (position, name) in names.iter().enumerate() {
-        by_name.entry(name.as_str()).or_default().push(position);
+    let mut by_name: HashMap<String, Vec<usize>> = HashMap::new();
+    for (position, object) in objects.iter().enumerate() {
+        by_name.entry(object.name.to_lowercase()).or_default().push(position);
     }
+    let schema_of = |position: usize| objects[position].schema.as_deref().map(str::to_lowercase);
     let edges: Vec<Vec<usize>> = objects
         .iter()
         .enumerate()
         .map(|(position, object)| {
             let mut parents = BTreeSet::new();
-            for word in mentioned_names(object, grammar) {
-                for &other in by_name.get(word.as_str()).into_iter().flatten() {
-                    if other != position {
+            for (schema, name) in mentions(object, grammar) {
+                for &other in by_name.get(&name).into_iter().flatten() {
+                    let same_schema = schema.is_none() || schema == schema_of(other);
+                    if other != position && same_schema {
                         parents.insert(other);
                     }
                 }
@@ -59,36 +61,45 @@ pub(super) fn order_programs(objects: &[&DumpObject], grammar: SqlGrammar) -> Ve
     stable_topological(&edges).0
 }
 
-/// Every identifier the object's statements hold, unquoted and in lower
-/// case, but a name an `AS` gives: a column or table alias names nothing
-/// the object needs.
-fn mentioned_names(object: &DumpObject, grammar: SqlGrammar) -> BTreeSet<String> {
-    let mut names = BTreeSet::new();
+/// The names the object's statements hold, each with the schema written
+/// before it, unquoted and in lower case. Left out: the object's own name
+/// where its CREATE states it, a name an `AS` gives (a column or table
+/// alias), and a schema written before a dot.
+fn mentions(object: &DumpObject, grammar: SqlGrammar) -> Vec<(Option<String>, String)> {
+    let own = object.name.to_lowercase();
+    let own_schema = object.schema.as_deref().map(str::to_lowercase);
+    let mut found = Vec::new();
+    let mut declared = false;
     for statement in &object.statements {
         let plan = ScriptPlan::build(&statement.sql, grammar, LexicalSettings::default_for(grammar));
-        let mut after_as = false;
-        for token in plan.tokens(0..statement.sql.len()) {
-            if token.kind.is_trivia() {
-                continue;
-            }
-            let Some(text) = statement.sql.get(token.range.clone()) else {
+        let tokens: Vec<(ScriptTokenKind, &str)> = plan
+            .tokens(0..statement.sql.len())
+            .filter(|token| !token.kind.is_trivia())
+            .filter_map(|token| statement.sql.get(token.range.clone()).map(|text| (token.kind, text)))
+            .collect();
+        let name_at = |at: usize| match tokens.get(at) {
+            Some((ScriptTokenKind::Word, text)) => Some(text.to_lowercase()),
+            Some((ScriptTokenKind::QuotedIdentifier, text)) => Some(unquote(text).to_lowercase()),
+            _ => None,
+        };
+        let is_dot = |at: usize| matches!(tokens.get(at), Some((ScriptTokenKind::Punct, ".")));
+        let is_as = |at: usize| matches!(tokens.get(at), Some((ScriptTokenKind::Word, text)) if text.eq_ignore_ascii_case("AS"));
+        for at in 0..tokens.len() {
+            let Some(name) = name_at(at) else {
                 continue;
             };
-            let aliased = std::mem::replace(
-                &mut after_as,
-                token.kind == ScriptTokenKind::Word && text.eq_ignore_ascii_case("AS"),
-            );
-            let name = match token.kind {
-                ScriptTokenKind::Word => text.to_lowercase(),
-                ScriptTokenKind::QuotedIdentifier => unquote(text).to_lowercase(),
-                _ => continue,
-            };
-            if !aliased {
-                names.insert(name);
+            if is_dot(at + 1) || (at > 0 && is_as(at - 1)) {
+                continue;
             }
+            let schema = (at >= 2 && is_dot(at - 1)).then(|| name_at(at - 2)).flatten();
+            if !declared && name == own && (schema.is_none() || schema == own_schema) {
+                declared = true;
+                continue;
+            }
+            found.push((schema, name));
         }
     }
-    names
+    found
 }
 
 fn unquote(text: &str) -> &str {
@@ -210,6 +221,26 @@ mod tests {
 
         let named: Vec<&str> = order.iter().map(|&position| objects[position].name.as_str()).collect();
         assert_eq!(named, ["double_it", "base", "Middle", "top"]);
+    }
+
+    #[test]
+    fn a_view_named_like_one_in_another_schema_follows_the_one_it_reads() {
+        let schema_view = |schema: &str, sql: &str| {
+            DumpObject::new(
+                DumpObjectKind::View,
+                DumpSection::Programs,
+                Some(schema.to_owned()),
+                "v",
+                vec![DumpStatement::new(sql)],
+            )
+        };
+        let objects = [
+            schema_view("a", "CREATE VIEW a.v AS SELECT * FROM z.v"),
+            schema_view("z", "CREATE VIEW z.v AS SELECT 1 AS n"),
+        ];
+        let refs: Vec<&DumpObject> = objects.iter().collect();
+
+        assert_eq!(order_programs(&refs, SqlGrammar::PostgreSql), [1, 0]);
     }
 
     #[test]

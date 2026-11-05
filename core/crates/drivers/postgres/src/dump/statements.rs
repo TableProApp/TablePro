@@ -41,8 +41,10 @@ pub(super) fn create_enum(schema: &str, name: &str, labels: &[String]) -> String
     )
 }
 
-/// A check the domain's values have not all been held to is added on its
-/// own, since CREATE DOMAIN checks nothing and would mark it valid.
+/// The CREATE first, then each check as an ALTER DOMAIN, which the dump
+/// runs once the routines exist: a check can call one, and the server
+/// resolves it when the check is added. One the values have not all been
+/// held to stays NOT VALID.
 pub(super) fn create_domain(schema: &str, name: &str, domain: &Domain, checks: &[&DomainCheck]) -> Vec<String> {
     let mut create = format!("CREATE DOMAIN {} AS {}", qualified(schema, name), domain.base);
     if let Some(collation) = &domain.collation {
@@ -54,16 +56,15 @@ pub(super) fn create_domain(schema: &str, name: &str, domain: &Domain, checks: &
     if domain.not_null {
         create.push_str(" NOT NULL");
     }
-    let mut later = Vec::new();
-    for check in checks {
-        let clause = format!("CONSTRAINT {} {}", quote(&check.name), check.definition);
-        match check.validated {
-            true => create.push_str(&format!("\n    {clause}")),
-            false => later.push(format!("ALTER DOMAIN {} ADD {clause}", qualified(schema, name))),
-        }
-    }
     let mut statements = vec![create];
-    statements.extend(later);
+    statements.extend(checks.iter().map(|check| {
+        format!(
+            "ALTER DOMAIN {} ADD CONSTRAINT {} {}",
+            qualified(schema, name),
+            quote(&check.name),
+            check.definition
+        )
+    }));
     statements
 }
 
@@ -362,6 +363,7 @@ mod tests {
             partition_key: None,
             partition: None,
             inherits: false,
+            filtered: false,
             options: Vec::new(),
             access_method: None,
             tablespace: None,
@@ -525,7 +527,8 @@ mod tests {
         assert_eq!(
             create_domain("app", "positive", &domain, &[&held, &pending]),
             [
-                "CREATE DOMAIN \"app\".\"positive\" AS integer DEFAULT 1 NOT NULL\n    CONSTRAINT \"positive_check\" CHECK ((VALUE > 0))",
+                "CREATE DOMAIN \"app\".\"positive\" AS integer DEFAULT 1 NOT NULL",
+                "ALTER DOMAIN \"app\".\"positive\" ADD CONSTRAINT \"positive_check\" CHECK ((VALUE > 0))",
                 "ALTER DOMAIN \"app\".\"positive\" ADD CONSTRAINT \"small\" CHECK ((VALUE < 100)) NOT VALID",
             ]
         );

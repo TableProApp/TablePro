@@ -88,6 +88,9 @@ const FOREIGN_KEYS_SQL: &str = "SELECT SCHEMA_NAME(t.schema_id), t.name, fk.name
 const MODULES_SQL: &str = "SELECT SCHEMA_NAME(o.schema_id), o.name, RTRIM(o.type), OBJECT_DEFINITION(o.object_id), \
         CAST(OBJECTPROPERTY(o.object_id, 'IsEncrypted') AS int), \
         CAST(m.uses_ansi_nulls AS int), CAST(m.uses_quoted_identifier AS int), \
+        CAST(CASE WHEN EXISTS (SELECT 1 FROM sys.sql_expression_dependencies d \
+             JOIN sys.objects r ON r.object_id = d.referenced_id \
+             WHERE d.referencing_id = o.object_id AND r.type IN ('U', 'V')) THEN 1 ELSE 0 END AS int), \
         CAST(ISNULL(m.is_schema_bound, 0) AS int) \
     FROM sys.objects o LEFT JOIN sys.sql_modules m ON m.object_id = o.object_id \
     WHERE o.type IN ('V', 'FN', 'IF', 'TF', 'FS', 'FT', 'P', 'PC') AND o.is_ms_shipped = 0 AND {scope} \
@@ -364,7 +367,7 @@ impl CatalogRead<'_> {
                 encrypted: cells.flag(4),
                 settings: settings(&cells, 5),
             };
-            let section = module_section(&module.code, cells.flag(7));
+            let section = module_section(&module.code, cells.flag(7), cells.flag(8));
             place_module(&mut self.catalog, module, section, None);
         }
         for row in self.rows(TRIGGERS_SQL, "p.schema_id").await? {
@@ -553,11 +556,12 @@ struct Module {
 
 /// Where a module goes. A table's DEFAULT, CHECK or computed column can
 /// call a scalar or multi-statement function, so those come before the
-/// tables; their bodies name tables only when they run. A schema-bound
-/// one, an inline function and a view need what they name to exist.
-fn module_section(code: &str, schema_bound: bool) -> DumpSection {
-    match (code, schema_bound) {
-        ("FN" | "TF", false) => DumpSection::BeforeData,
+/// tables: the server finds the tables their bodies name when they run.
+/// A schema-bound one that names a table or view needs it to exist, as
+/// inline functions and views do, so those wait for the tables.
+fn module_section(code: &str, names_relations: bool, schema_bound: bool) -> DumpSection {
+    match code {
+        "FN" | "TF" if !(names_relations && schema_bound) => DumpSection::BeforeData,
         _ => DumpSection::Programs,
     }
 }
