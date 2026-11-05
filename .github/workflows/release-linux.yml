@@ -70,10 +70,11 @@ jobs:
       prerelease: ${{ steps.check.outputs.prerelease }}
       version: ${{ steps.check.outputs.version }}
     steps:
-      - name: Install git and meson
+      # meson introspect detects the project's compilers, C and Rust, before it reads the version.
+      - name: Install git, meson and the compilers
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates git meson python3
+          apt-get install -y --no-install-recommends ca-certificates git meson python3 gcc libc6-dev rustc
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
