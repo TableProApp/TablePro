@@ -82,6 +82,67 @@ class DetectChangedPathsTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("linux", path), "true")
 
+    def test_packages_run_on_dependency_build_and_packaging_declarations(self):
+        for path in [
+            "Cargo.toml",
+            "Cargo.lock",
+            "rust-toolchain.toml",
+            "core/crates/drivers/duckdb/Cargo.toml",
+            "linux/crates/app/Cargo.toml",
+            "linux/build-aux/debian/control",
+            "linux/build-aux/rpm/tablepro.spec",
+            "linux/build-aux/packaging/build-deb.sh",
+            "linux/build-aux/flatpak/app.tablepro.TablePro.json",
+            "linux/build-aux/about/THIRD-PARTY-NOTICE.md.hbs",
+            "linux/build-aux/cargo-build.sh",
+            "linux/build-aux/update-third-party-licenses.sh",
+            "linux/about.toml",
+            "linux/meson.build",
+            "linux/meson.options",
+            "linux/crates/app/meson.build",
+            "linux/data/meson.build",
+            "linux/po/meson.build",
+            "linux/po/LINGUAS",
+            ".github/workflows/linux-packages.yml",
+        ]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("packages", path), "true")
+
+    def test_packages_skip_source_tests_and_docs(self):
+        for path in [
+            "core/crates/core/src/lib.rs",
+            "core/crates/drivers/postgres/tests/integration.rs",
+            "linux/crates/app/src/main.rs",
+            "linux/data/resources/window.ui",
+            "linux/po/vi.po",
+            "linux/build-aux/tests/test_check_packaging.py",
+            "linux/docs/releasing.md",
+            "linux/build-aux/debian/README.md",
+            ".github/workflows/build-linux.yml",
+        ]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("packages", path), "false")
+
+    def test_linux_deps_run_on_toolchain_dependency_and_manifest_changes(self):
+        for path in [
+            "Cargo.toml",
+            "Cargo.lock",
+            "rust-toolchain.toml",
+            "deny.toml",
+            "core/crates/net/Cargo.toml",
+            "linux/crates/platform/Cargo.toml",
+            "linux/build-aux/flatpak/app.tablepro.TablePro.Devel.json",
+            "linux/build-aux/debian/control",
+            "linux/build-aux/packaging/add-rust-toolchain-ppa.sh",
+            ".github/workflows/build-linux.yml",
+        ]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("linux-deps", path), "true")
+        for path in ["core/crates/core/src/lib.rs", "linux/crates/app/src/main.rs", "linux/meson.build",
+                     "linux/build-aux/debian/rules", ".github/workflows/linux-packages.yml"]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("linux-deps", path), "false")
+
     def test_core_runs_on_the_core_its_workspace_and_its_swift_bindings(self):
         for path in [
             "core/crates/core/src/lib.rs",
@@ -265,7 +326,8 @@ class DetectChangedPathsTests(unittest.TestCase):
         spec.write_text("sources:\n  - path: ../Packages/TableProCore\n", encoding="utf-8")
         self.seed = self.commit([])
         for suite in [
-            "macos", "plugins", "ios", "oracle", "hana", "release", "swiftlint", "linux", "linux-docs", "core", "windows",
+            "macos", "plugins", "ios", "oracle", "hana", "release", "swiftlint", "linux", "linux-docs", "linux-deps",
+            "packages", "core", "windows",
         ]:
             with self.subTest(suite=suite):
                 self.assertEqual(self.verdict_after(suite, ".github/workflows/ci.yml"), "true")
@@ -444,7 +506,8 @@ class DetectChangedPathsTests(unittest.TestCase):
         self.git("update-ref", "refs/remotes/origin/main", base)
         self.commit(["apple/CHANGELOG.md"])
         for suite in [
-            "macos", "plugins", "ios", "oracle", "hana", "release", "swiftlint", "linux", "linux-docs", "core", "windows",
+            "macos", "plugins", "ios", "oracle", "hana", "release", "swiftlint", "linux", "linux-docs", "linux-deps",
+            "packages", "core", "windows",
         ]:
             with self.subTest(suite=suite):
                 self.assertEqual(self.detect(suite, base), (0, "false"))

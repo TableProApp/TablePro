@@ -3,7 +3,8 @@ set -euo pipefail
 
 # Prints "true" when a suite has to run for the changes from <base> to <head>, "false" when it can skip.
 # Usage: detect-changed-paths.sh [--base <sha>] [--head <rev>] [--ref <git ref>] <suite>
-# Suites: macos, plugins, ios, oracle, hana, release, shipped, swiftlint, linux, linux-docs, core, windows.
+# Suites: macos, plugins, ios, oracle, hana, release, shipped, swiftlint, linux, linux-docs, linux-deps, packages, core,
+# windows.
 
 BASE=""
 HEAD_REV="HEAD"
@@ -100,6 +101,21 @@ case "$SUITE" in
             SKIP='(linux|core)/.*\.md$'
             KEEP='linux/CHANGELOG\.md$|linux/docs/regression-tests\.md$|linux/data/'
         fi ;;
+    linux-deps)
+        # The Linux checks a dependency, toolchain or manifest change needs beyond the baseline: the minimum Rust
+        # version with the distribution's compiler, the Arm64 Flatpak and the advisory database.
+        PATTERNS=('Cargo\.(toml|lock)$' '(linux|core)/(.*/)?Cargo\.toml$' '(rust-toolchain|deny)\.toml$'
+            'linux/build-aux/flatpak/' 'linux/build-aux/debian/control$'
+            'linux/build-aux/packaging/add-rust-toolchain-ppa\.sh$' 'scripts/ci/detect-changed-paths\.sh$'
+            '\.github/workflows/(ci|build-linux)\.yml$') ;;
+    packages)
+        # The clean distribution builds: what declares a build or runtime dependency, how the build runs and installs,
+        # and the packaging itself. A source change alone builds no package.
+        PATTERNS=('Cargo\.(toml|lock)$' '(linux|core)/(.*/)?Cargo\.toml$' 'rust-toolchain\.toml$'
+            'linux/build-aux/(debian|rpm|packaging|flatpak|about)/' 'linux/build-aux/[^/]+$' 'linux/about\.toml$'
+            'linux/meson\.(build|options)$' 'linux/(.*/)?meson\.build$' 'linux/po/LINGUAS$'
+            'scripts/ci/detect-changed-paths\.sh$' '\.github/workflows/(ci|linux-packages)\.yml$')
+        SKIP='linux/.*\.md$' ;;
     core)
         # core.yml: the core on Windows and macOS, and its Swift bindings, which take the deployment target from
         # apple/project.yml. A change to linux/ alone runs none of it.
@@ -114,7 +130,7 @@ case "$SUITE" in
             'scripts/ci/(detect-changed-paths\.sh|start-windows-sshd\.ps1)$' '\.github/workflows/(ci|windows)\.yml$')
         SKIP='(windows|core)/.*\.md$' ;;
     *)
-        echo "detect-changed-paths.sh: expected macos, plugins, ios, oracle, hana, release, shipped, swiftlint, linux, linux-docs, core or windows, got '$SUITE'" >&2
+        echo "detect-changed-paths.sh: expected macos, plugins, ios, oracle, hana, release, shipped, swiftlint, linux, linux-docs, linux-deps, packages, core or windows, got '$SUITE'" >&2
         exit 2 ;;
 esac
 
