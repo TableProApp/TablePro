@@ -1130,6 +1130,22 @@ impl SessionWindow {
             || self.workspaces().iter().any(Workspace::tabs_loading)
     }
 
+    // Every window: while a script waited, a tab bound to its file may have come back in another one.
+    fn focus_bound_tab(&self, file: &gio::File) -> bool {
+        let found = self.application().and_then(|app| {
+            app.windows()
+                .into_iter()
+                .filter_map(|window| window.downcast::<SessionWindow>().ok())
+                .find_map(|window| window.script_tab(file).map(|tab| (window, tab)))
+        });
+        let Some((window, tab)) = found else {
+            return false;
+        };
+        window.send(SessionWindowInput::FocusTab(tab));
+        window.present();
+        true
+    }
+
     pub(crate) fn script_tab(&self, file: &gio::File) -> Option<uuid::Uuid> {
         self.workspaces()
             .iter()
@@ -1160,8 +1176,7 @@ impl SessionWindow {
                 return;
             }
         };
-        if let Some(tab) = self.script_tab(&file) {
-            self.on_focus_tab(tab);
+        if self.focus_bound_tab(&file) {
             return;
         }
         let front = self
@@ -1253,6 +1268,10 @@ impl SessionWindow {
 
     // A session that runs no SQL leaves them waiting for one that does.
     fn open_scripts_in(&self, workspace: &Workspace, scripts: Vec<(gio::File, String)>) {
+        let scripts: Vec<(gio::File, String)> = scripts
+            .into_iter()
+            .filter(|(file, _)| !self.focus_bound_tab(file))
+            .collect();
         let input = workspace
             .sender()
             .filter(|_| workspace.data_model() == Some(DataModel::Relational));
