@@ -300,6 +300,15 @@ fn sql_server_reads_urls_and_jdbc_properties() {
     assert_eq!(password(&azure), Some("p;ss"));
     assert_eq!(azure.tls.mode, Some(TlsMode::VerifyFull));
 
+    assert_eq!(
+        read("jdbc:sqlserver://db;databaseName=master;databaseName=app").database,
+        "app"
+    );
+    assert_eq!(
+        refused("postgresql://alice:secret@%20%2Ftmp%2Fpg/app?sslmode=verify-full").code(),
+        "url.unsupported_parameter",
+        "a padded socket host slipped past the TLS refusal"
+    );
     let trusting = read("jdbc:sqlserver://db:1433;databaseName=s;encrypt=true;trustServerCertificate=true");
     assert_eq!(trusting.database, "s");
     assert_eq!(trusting.tls.mode, Some(TlsMode::Require));

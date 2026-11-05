@@ -251,7 +251,7 @@ impl ConnectForm {
             };
         }
 
-        let endpoint = self.checked_endpoint(caps, &mut errors);
+        let endpoint = self.checked_endpoint(&mut errors);
 
         if !caps.supports(self.auth) {
             errors.push(
@@ -327,7 +327,7 @@ impl ConnectForm {
         })
     }
 
-    fn checked_endpoint(&self, caps: &DriverCapabilities, errors: &mut FormErrors) -> Option<NetworkEndpoint> {
+    fn checked_endpoint(&self, errors: &mut FormErrors) -> Option<NetworkEndpoint> {
         let endpoint = match NetworkEndpoint::new(&self.host, self.port) {
             Ok(endpoint) => Some(endpoint),
             Err(error) => {

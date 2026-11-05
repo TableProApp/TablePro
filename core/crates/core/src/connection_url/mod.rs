@@ -238,6 +238,7 @@ struct Draft {
     query_user: Option<String>,
     query_password: Option<String>,
     unread: Vec<String>,
+    path_database: bool,
 }
 
 fn network_url(engine: Engine, rest: &str, properties: bool) -> Result<ConnectionUrl, ConnectionUrlError> {
@@ -267,6 +268,7 @@ fn network_url(engine: Engine, rest: &str, properties: bool) -> Result<Connectio
         query_user: None,
         query_password: None,
         unread: Vec::new(),
+        path_database: !parts.path.trim_start_matches('/').is_empty(),
     };
     for pair in parameters(parts.query, false).chain(parameters(parts.properties, true)) {
         let (key, value) = pair?;
@@ -378,7 +380,9 @@ fn read_parameter(engine: Engine, draft: &mut Draft, key: &str, value: String) -
         (Engine::Mssql, "integratedsecurity") if value.trim().eq_ignore_ascii_case("true") => {
             return Err(ConnectionUrlError::UnsupportedParameter { name: key.to_owned() });
         }
-        (Engine::Postgres, "dbname") | (Engine::Mssql, "database" | "databasename") if draft.database.is_empty() => {
+        (Engine::Postgres, "dbname") if draft.database.is_empty() => draft.database = value,
+        // JDBC reads the last of a property given twice; a path names the database first.
+        (Engine::Mssql, "database" | "databasename") if !draft.path_database => {
             draft.database = value;
         }
         (Engine::Mssql, "servername") if draft.host.is_empty() => draft.host = value,
@@ -545,7 +549,8 @@ fn host_port(text: &str) -> Result<HostPort, ConnectionUrlError> {
         Some(port) => Some(parse_port(port)?),
     };
     Ok(HostPort {
-        host: decode(host)?,
+        // Trimmed as the connection trims it, so a socket check here sees the host the connection uses.
+        host: decode(host)?.trim().to_owned(),
         port,
     })
 }
