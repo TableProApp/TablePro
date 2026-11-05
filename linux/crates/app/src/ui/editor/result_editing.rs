@@ -17,7 +17,9 @@ use super::run_log::EntryKind;
 use super::run_scope::ScopedText;
 use crate::application::{ShortcutOwner, local_shortcut_controller};
 use crate::services::change_tracker::{RowKey, StatementSource, pk_identity};
-use crate::services::grid::{EditPolicy, GridColumn, ResultRefusal, RowKeyBuilder, edit_policy, saving_policy};
+use crate::services::grid::{
+    EditPolicy, EditRefusal, GridColumn, ResultRefusal, RowKeyBuilder, edit_policy, saving_policy,
+};
 use crate::services::save_batch::SaveTarget;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::ui::browse_tab::{ColumnFreshness, PendingChangesRequest, load_columns};
@@ -40,6 +42,8 @@ pub(super) struct EditTarget {
     save_columns: Vec<ColumnInfo>,
     // Which result columns are the table's own, so only their values are retyped.
     traced: Vec<bool>,
+    // A value kept as the server's text would bind as text in a copied row.
+    copyable: Cell<bool>,
     grid_columns: Arc<[GridColumn]>,
     identity: RowIdentity,
 }
@@ -208,21 +212,17 @@ impl SqlEditor {
             let Some(log) = log.as_ref() else {
                 return;
             };
-            let results: Vec<(usize, Option<ResultSource>)> = log
+            let results: Vec<usize> = log
                 .entries()
                 .iter()
                 .enumerate()
-                .filter_map(|(index, entry)| match &entry.kind {
-                    EntryKind::ResultSet(result) => Some((
-                        index,
-                        result_source(result.statement.as_str(), grammar, &result.columns).ok(),
-                    )),
-                    _ => None,
-                })
+                .filter(|(_, entry)| matches!(entry.kind, EntryKind::ResultSet(_)))
+                .map(|(index, _)| index)
                 .collect();
             (results, log.transaction())
         };
         // The save runs on the window's connection, so rows read inside the tab's own transaction would be written outside it.
+        // These come before any parse: a batch of many SELECTs hands each result the whole batch.
         let common = if session.read_only() {
             Some(ResultRefusal::ReadOnlySession)
         } else if matches!(
@@ -241,22 +241,23 @@ impl SqlEditor {
             None
         };
         let run = imp.editing.run.get();
-        for (index, source) in results {
-            let state = match (common, source) {
-                (Some(refusal), _) => ResultEdit::Locked(refusal),
-                (None, Some(source)) => {
-                    self.read_target_columns(run, index, source);
-                    ResultEdit::Checking
-                }
-                (None, None) => {
-                    let log = imp.log.borrow();
-                    let lock = log
+        for index in results {
+            let state = match common {
+                Some(refusal) => ResultEdit::Locked(refusal),
+                None => {
+                    let source = imp
+                        .log
+                        .borrow()
                         .as_ref()
                         .and_then(|log| log.result(index))
                         .map(|result| result_source(result.statement.as_str(), grammar, &result.columns));
-                    match lock {
+                    match source {
+                        Some(Ok(source)) => {
+                            self.read_target_columns(run, index, source);
+                            ResultEdit::Checking
+                        }
                         Some(Err(lock)) => ResultEdit::Locked(lock.into()),
-                        _ => ResultEdit::Locked(ResultRefusal::Untraced),
+                        None => ResultEdit::Locked(ResultRefusal::Untraced),
                     }
                 }
             };
@@ -336,7 +337,7 @@ impl SqlEditor {
             rows: editable_rows(&target, view),
             rules: Some(EditRules {
                 identity: target.identity.clone(),
-                policy: self.result_policy(),
+                policy: self.result_policy(&target),
             }),
             tracker: Some(tracker),
             table: Some(target.table.clone()),
@@ -344,10 +345,16 @@ impl SqlEditor {
         })
     }
 
-    fn result_policy(&self) -> EditPolicy {
+    fn result_policy(&self, target: &EditTarget) -> EditPolicy {
         match self.imp().editing.saving.get() {
             true => saving_policy(),
-            false => edit_policy(false, true, true),
+            false => EditPolicy {
+                duplicate: match target.copyable.get() {
+                    true => Ok(()),
+                    false => Err(EditRefusal::NotCopyable),
+                },
+                ..edit_policy(false, true, true)
+            },
         }
     }
 
@@ -367,7 +374,7 @@ impl SqlEditor {
                 &grid,
                 Some(EditRules {
                     identity: target.identity.clone(),
-                    policy: self.result_policy(),
+                    policy: self.result_policy(&target),
                 }),
             );
             grid.refresh_actions();
@@ -397,12 +404,8 @@ impl SqlEditor {
         };
         let tracker = self.row_tracker();
         let grid = self.owner_grid();
-        // Held while anything is pending, so a second Ctrl+S during a save never reaches the file's.
-        let pending = tracker
-            .as_ref()
-            .is_some_and(|tracker| tracker.pending_state() != PendingState::Clean || tracker.pending_count() > 0);
-        let editing = grid.as_ref().is_some_and(DataGrid::is_editing);
-        actions.save.set_enabled(pending || editing);
+        // Held while the run's result edits, whether or not it has changes, so Ctrl+S in the results never saves the file.
+        actions.save.set_enabled(self.imp().editing.owner.get().is_some());
         let idle = grid.is_some()
             && tracker
                 .as_ref()
@@ -614,6 +617,7 @@ fn edit_target(
         table: table.clone(),
         identity: pk_identity(&save_columns),
         traced: positions.iter().map(Option::is_some).collect(),
+        copyable: Cell::new(true),
         save_columns,
         grid_columns,
     }
@@ -646,9 +650,10 @@ fn typed_rows(target: &EditTarget, read: &[ResultColumn], rows: Vec<Arc<[Value]>
                 .zip(read.iter().zip(target.save_columns.iter().zip(&target.traced)))
                 .map(|(value, (read, (column, traced)))| match traced {
                     false => value.clone(),
-                    true => {
-                        value_for_column(value, &read.column_type, &column.column_type).unwrap_or_else(|| value.clone())
-                    }
+                    true => value_for_column(value, &read.column_type, &column.column_type).unwrap_or_else(|| {
+                        target.copyable.set(false);
+                        value.clone()
+                    }),
                 })
                 .collect()
         })

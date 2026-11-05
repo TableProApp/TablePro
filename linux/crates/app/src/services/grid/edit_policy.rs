@@ -11,6 +11,8 @@ pub enum EditRefusal {
     NoColumns,
     // A query result's rows wait for its save, and are read again after it.
     Saving,
+    // A query result holds a value read as the server's text, which a copied row would write as text.
+    NotCopyable,
 }
 
 impl EditRefusal {
@@ -21,6 +23,9 @@ impl EditRefusal {
             Self::NoPrimaryKey => Some(gettext("This table has no primary key, so editing is turned off.")),
             Self::NoColumns => None,
             Self::Saving => Some(gettext("Wait for the changes to finish saving")),
+            Self::NotCopyable => Some(gettext(
+                "Rows of this result can't be duplicated, since some values were read as text",
+            )),
         }
     }
 }

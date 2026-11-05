@@ -158,9 +158,11 @@ pub fn value_for_column(value: &Value, read: &ColumnType, column: &ColumnType) -
     match &column.kind {
         ColumnKind::Text { .. } | ColumnKind::Enum { .. } | ColumnKind::Other => Some(value.clone()),
         ColumnKind::Bytes { .. } => postgres_bytea(text).map(Value::Bytes),
-        ColumnKind::Integer(_) | ColumnKind::Decimal { .. } | ColumnKind::Bool(_) | ColumnKind::Uuid => {
-            parse_literal_text(text, column).ok()
-        }
+        ColumnKind::Integer(_)
+        | ColumnKind::Decimal { .. }
+        | ColumnKind::Bool(_)
+        | ColumnKind::Uuid
+        | ColumnKind::Json { .. } => parse_literal_text(text, column).ok(),
         _ => None,
     }
 }
