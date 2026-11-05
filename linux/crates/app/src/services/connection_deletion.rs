@@ -10,6 +10,7 @@ use uuid::Uuid;
 use super::deletion_error::DeletionError;
 use super::deletion_report::{DeletionReport, PurgeFailure};
 use crate::persistence::{ColumnWidthStore, FilterSettingsStore};
+use crate::workspace::WorkspaceSaveError;
 use crate::workspace::WorkspaceStore;
 
 /// What the user chose in the delete dialog.
@@ -58,6 +59,26 @@ impl ConnectionDeletion {
         // cannot leave them on disk.
         self.column_widths.flush().await;
         self.filters.flush().await;
+        // Copies kept before an upgrade hold the connection's tables and filter values, and are not
+        // worth keeping without them.
+        let files = [self.column_widths.path().to_owned(), self.filters.path().to_owned()];
+        let copies = self
+            .spawner
+            .spawn_blocking_task(move || {
+                files
+                    .iter()
+                    .try_for_each(|file| tablepro_storage::upgrade_copies::remove_all_blocking(file).map(drop))
+            })
+            .await;
+        if let Some(error) = match copies {
+            Ok(Ok(())) => None,
+            Ok(Err(error)) => Some(error.to_string()),
+            Err(failure) => Some(failure.to_string()),
+        } {
+            report
+                .purge_failures
+                .push(PurgeFailure::Workspace(WorkspaceSaveError::Purge(error)));
+        }
         if let Err(error) = self.workspaces.purge(&SessionKey::Saved(id)).await {
             report.purge_failures.push(PurgeFailure::Workspace(error));
         }

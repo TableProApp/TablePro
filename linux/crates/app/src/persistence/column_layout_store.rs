@@ -27,6 +27,10 @@ impl ColumnLayoutStore {
         }
     }
 
+    pub fn path(&self) -> &std::path::Path {
+        self.file.path()
+    }
+
     pub fn layout(&self, connection_id: Uuid, schema: Option<&str>, table: &str) -> ColumnLayout {
         self.read(connection_id, schema, table, |layout| {
             layout.cloned().unwrap_or_default()

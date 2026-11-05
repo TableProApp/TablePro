@@ -128,6 +128,47 @@ pub(crate) async fn keep_database(pool: &SqlitePool, path: &Path, version: u64) 
     Ok(copy)
 }
 
+// A copy of the connection list keeps no connection the list no longer has, so a deleted one is gone
+// from it too; a copy that cannot be read that way is deleted rather than kept with it.
+pub fn trim_connection_copies_blocking(
+    path: &Path,
+    kept: &std::collections::HashSet<String>,
+) -> Result<(), StorageError> {
+    for copy in copies_blocking(path)? {
+        let bytes = match std::fs::read(&copy.path) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == ErrorKind::NotFound => continue,
+            Err(source) => {
+                return Err(StorageError::Io {
+                    path: copy.path.clone(),
+                    source,
+                });
+            }
+        };
+        let trimmed = serde_json::from_slice::<serde_json::Value>(&bytes)
+            .ok()
+            .and_then(|mut document| {
+                let connections = document.get_mut("connections")?.as_array_mut()?;
+                let before = connections.len();
+                connections.retain(|connection| {
+                    connection
+                        .get("id")
+                        .and_then(serde_json::Value::as_str)
+                        .is_some_and(|id| kept.contains(id))
+                });
+                Some((connections.len() != before).then_some(document))
+            });
+        match trimmed {
+            Some(None) => {}
+            Some(Some(document)) => {
+                crate::fs::write_private_blocking(&copy.path, &serde_json::to_vec_pretty(&document)?)?;
+            }
+            None => remove_if_present(&copy.path)?,
+        }
+    }
+    Ok(())
+}
+
 // Oldest first.
 pub fn copies_blocking(path: &Path) -> Result<Vec<UpgradeCopy>, StorageError> {
     let Some(name) = path.file_name().map(|name| name.to_string_lossy().into_owned()) else {
@@ -577,6 +618,29 @@ mod tests {
         assert_eq!(
             names(root.path()),
             ["sample.json.v2-100", "sample.json.v2-600", "sample.json.v2-700"]
+        );
+    }
+
+    #[test]
+    fn a_connection_list_copy_keeps_only_the_connections_still_saved() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let file = root.path().join("connections.json");
+        let both = br#"{"version": 1, "connections": [{"id": "a", "host": "kept.example"}, {"id": "b", "host": "gone.example"}]}"#;
+        let kept_copy = keep_bytes_blocking(&file, 1, both, at(100)).expect("keep");
+        let unreadable = keep_bytes_blocking(&file, 1, b"{ not json", at(200)).expect("keep");
+        let kept: std::collections::HashSet<String> = ["a".to_owned()].into_iter().collect();
+
+        trim_connection_copies_blocking(&file, &kept).expect("trim");
+
+        let text = std::fs::read_to_string(&kept_copy).expect("read");
+        assert!(
+            text.contains("kept.example") && !text.contains("gone.example"),
+            "{text}"
+        );
+        assert!(!unreadable.exists(), "a copy that could not be trimmed stayed");
+        assert_eq!(
+            std::fs::metadata(&kept_copy).expect("metadata").permissions().mode() & 0o777,
+            0o600
         );
     }
 

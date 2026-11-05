@@ -24,6 +24,10 @@ impl ColumnWidthStore {
         &self.layouts
     }
 
+    pub fn path(&self) -> &std::path::Path {
+        self.layouts.path()
+    }
+
     pub fn width(&self, connection_id: Uuid, schema: Option<&str>, table: &str, column: &str) -> Option<i32> {
         self.layouts.read(connection_id, schema, table, |layout| {
             layout.and_then(|layout| layout.widths.get(column).copied())

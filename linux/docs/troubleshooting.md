@@ -94,7 +94,7 @@ Installing the newer release again brings all of it back, unless it was reset.
 
 ### Going back to what the older release saved
 
-Before a release writes a file in a newer format for the first time, it keeps a copy of the file as it was, in the same folder, named after the file, the format version it holds and the time in seconds, such as `connections.json.v1-1762300000`. It keeps the newest three copies of each file. What you delete from the history or the saved queries, and what the history's retention setting drops, is deleted from the copies too.
+Before a release writes a file in a newer format for the first time, it keeps a copy of the file as it was, in the same folder, named after the file, the format version it holds and the time in seconds, such as `connections.json.v1-1762300000`. It keeps the newest three copies of each file. A copy never keeps what you deleted since: a connection, query history or saved queries you delete, and history the retention setting drops, leave the copies too.
 
 To give the older release its files back:
 

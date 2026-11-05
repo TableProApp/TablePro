@@ -589,7 +589,10 @@ impl ConnectionStore {
         if document.connections.len() == before {
             return Ok(RemoveOutcome::NotPresent);
         }
+        let kept = document.connections.iter().map(|saved| saved.id.to_string()).collect();
         self.commit(&mut state, document)?;
+        // The commit itself may have just copied the older file with the connection in it.
+        crate::upgrade_copies::trim_connection_copies_blocking(&self.inner.path, &kept)?;
         Ok(RemoveOutcome::Removed)
     }
 

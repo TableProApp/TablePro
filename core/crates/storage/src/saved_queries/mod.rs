@@ -217,15 +217,7 @@ impl SavedQueries {
             .execute(&self.pool)
             .await?
             .rows_affected();
-        crate::query_history::delete_in_upgrade_copies(
-            &self.path,
-            "saved_queries",
-            vec![(
-                "DELETE FROM saved_queries WHERE id = ?".to_owned(),
-                vec![crate::query_history::Bind::Integer(id)],
-            )],
-        )
-        .await?;
+        crate::query_history::trim_upgrade_copies(&self.path).await?;
         match affected {
             0 => Err(StorageError::NotFound),
             _ => Ok(()),
@@ -241,15 +233,7 @@ impl SavedQueries {
             .execute(&self.pool)
             .await?
             .rows_affected();
-        crate::query_history::delete_in_upgrade_copies(
-            &self.path,
-            "saved_queries",
-            vec![(
-                "DELETE FROM saved_queries WHERE connection_id = ?".to_owned(),
-                vec![crate::query_history::Bind::Text(connection.to_string())],
-            )],
-        )
-        .await?;
+        crate::query_history::trim_upgrade_copies(&self.path).await?;
         Ok(affected as usize)
     }
 }

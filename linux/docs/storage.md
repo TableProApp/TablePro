@@ -251,11 +251,13 @@ can tell whether a re-pinned entry falls in the pages already read.
 - `delete_for_connection` removes one connection's entries, pinned ones
   included, for a connection deleted along with its history, then runs
   `optimize` as a prune does.
-- Every deletion, `delete_returning`, `clear_all`, `delete_for_connection`,
-  the retention part of `prune` and the saved queries' `delete` and
-  `delete_for_connection`, deletes the same rows from each copy an upgrade
-  kept, optimizes its full-text indexes and runs `VACUUM`, so nothing of them
-  stays on disk (`delete_in_upgrade_copies`).
+- After every deletion (`delete_returning`, `clear_all`,
+  `delete_for_connection`, `prune` and the saved queries' `delete` and
+  `delete_for_connection`), `trim_upgrade_copies` makes each copy an upgrade
+  kept hold no history entry or saved query the database no longer has. It
+  attaches the database and deletes the rest in one transaction with
+  `secure_delete` on, optimizing the copy's full-text indexes, so the words
+  leave its blocks and freed pages together.
 - `connections_with_history` lists each connection the history holds
   under the name of its latest run, so a renamed connection shows once.
 
@@ -403,8 +405,10 @@ that replaces it with a newer format ([core ADR 0011](../../core/docs/decisions/
 - A copy of a session's tabs names their editor drafts and holds none of their
   text. Drafts have no format version, so the older build reads them as they
   are now; a tab closed since the copy comes back without its text.
-- `count_for_connection` counts the history's copies too, so the queries of a
-  deleted connection that only a copy still holds can go with it.
+- `ConnectionStore::remove_blocking` takes the connection out of each copy of
+  `connections.json` too, and deletes a copy it cannot read that way. Deleting
+  a connection deletes the copies of the column layout and filter files, which
+  name its tables and filter values.
 - A copy that cannot be made fails the write or the open, and the file is
   left as it was. The error names the copy's path.
 - Reading never makes a copy. Nothing restores one on its own:

@@ -12,6 +12,7 @@ use tablepro_storage::{DocumentProblem, DocumentProblemKind};
 /// go through a latest-wins writer on a blocking thread, so a burst
 /// costs two writes rather than one per event.
 pub struct StateFile<D> {
+    path: PathBuf,
     value: RefCell<D>,
     persistence: Cell<Persistence>,
     writer: LatestWinsWriter<D>,
@@ -39,10 +40,15 @@ where
         let path_for_writes = path.clone();
         let writer = LatestWinsWriter::spawn(tasks, move |document: &D| write(&path_for_writes, document));
         Self {
+            path,
             value: RefCell::new(value),
             persistence: Cell::new(persistence),
             writer,
         }
+    }
+
+    pub fn path(&self) -> &std::path::Path {
+        &self.path
     }
 
     pub fn read<R>(&self, with: impl FnOnce(&D) -> R) -> R {
