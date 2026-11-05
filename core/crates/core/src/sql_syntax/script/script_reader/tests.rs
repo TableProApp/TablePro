@@ -174,3 +174,38 @@ fn transaction_statements_are_told_apart_from_savepoints() {
         assert_eq!(transaction_control(text, SqlGrammar::PostgreSql), expected, "{text}");
     }
 }
+
+#[test]
+fn a_file_on_one_line_is_cut_where_its_statements_end() {
+    let line: String = (0..20_000).map(|n| format!("INSERT INTO t VALUES ({n});")).collect();
+    let mut reader = ScriptReader::new(SqlGrammar::Sqlite);
+
+    let early = reader.push(&line).expect("the line");
+
+    assert!(
+        early.len() > 19_000,
+        "only {} statements came before the end",
+        early.len()
+    );
+    let rest = reader.finish().expect("the end");
+    assert_eq!(early.len() + rest.len(), 20_000);
+}
+
+#[test]
+fn a_routine_made_under_no_backslash_escapes_splits_as_the_server_reads_it() {
+    let units = read_every_way(
+        SqlGrammar::MySql,
+        "SET @saved_sql_mode = @@sql_mode;\nSET sql_mode = 'NO_BACKSLASH_ESCAPES';\nDELIMITER ;;\nCREATE FUNCTION f() RETURNS text RETURN 'a\\';;\nDELIMITER ;\nSET sql_mode = @saved_sql_mode;\nSELECT 'it\\'s';\n",
+    );
+
+    assert_eq!(
+        texts(&units),
+        [
+            "SET @saved_sql_mode = @@sql_mode",
+            "SET sql_mode = 'NO_BACKSLASH_ESCAPES'",
+            "CREATE FUNCTION f() RETURNS text RETURN 'a\\'",
+            "SET sql_mode = @saved_sql_mode",
+            "SELECT 'it\\'s'"
+        ]
+    );
+}

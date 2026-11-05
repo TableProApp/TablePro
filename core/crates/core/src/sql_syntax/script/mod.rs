@@ -3,6 +3,7 @@ mod compound_tracker;
 mod copy_rows;
 mod directive_scan;
 pub(crate) mod lexer;
+mod lexical_change;
 mod lexical_settings;
 mod open_construct;
 mod script_batch;

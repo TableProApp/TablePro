@@ -218,12 +218,14 @@ pub(super) fn owned_by(sequence: &Sequence, owner: &SequenceOwner) -> String {
     )
 }
 
-/// `None` for a sequence never used, which a new one already matches.
+/// Where the sequence stands, used or not: a RESTART leaves the next
+/// value away from START. `None` where the login could not read it.
 pub(super) fn set_value(sequence: &Sequence) -> Option<String> {
     sequence.last_value.map(|value| {
         format!(
-            "SELECT pg_catalog.setval({}, {value}, true)",
-            literal(&qualified(&sequence.schema, &sequence.name))
+            "SELECT pg_catalog.setval({}, {value}, {})",
+            literal(&qualified(&sequence.schema, &sequence.name)),
+            sequence.is_called.unwrap_or(true)
         )
     })
 }
@@ -331,6 +333,7 @@ mod tests {
             cycle: false,
             unlogged: false,
             last_value: Some(4),
+            is_called: Some(true),
             owner: None,
         }
     }
@@ -485,9 +488,16 @@ mod tests {
             set_value(&sequence("it's")).as_deref(),
             Some("SELECT pg_catalog.setval('\"app\".\"it''s\"', 4, true)")
         );
-        let mut unused = sequence("unused");
-        unused.last_value = None;
-        assert_eq!(set_value(&unused), None);
+        let mut unread = sequence("unread");
+        unread.last_value = None;
+        assert_eq!(set_value(&unread), None);
+        let mut restarted = sequence("restarted");
+        restarted.last_value = Some(1000);
+        restarted.is_called = Some(false);
+        assert_eq!(
+            set_value(&restarted).as_deref(),
+            Some("SELECT pg_catalog.setval('\"app\".\"restarted\"', 1000, false)")
+        );
     }
 
     #[test]

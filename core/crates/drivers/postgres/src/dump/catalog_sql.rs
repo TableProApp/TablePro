@@ -93,7 +93,7 @@ ORDER BY n.nspname, t.typname, k.conname"
 
 /// `pg_get_functiondef` refuses an aggregate, so one has no text.
 macro_rules! functions_sql {
-    ($sql_body:literal) => {
+    ($sql_body:expr) => {
         concat!(
             "SELECT n.nspname::text, p.proname::text, p.prokind::text,
        CASE WHEN p.prokind <> 'a' THEN pg_catalog.pg_get_functiondef(p.oid)::text END,
@@ -113,20 +113,50 @@ ORDER BY n.nspname, p.proname, pg_catalog.pg_get_function_identity_arguments(p.o
     };
 }
 
-/// A body in standard SQL came with PostgreSQL 14.
-pub(crate) const FUNCTIONS_SQL: &str = functions_sql!("p.prosqlbody IS NOT NULL");
-pub(crate) const FUNCTIONS_SQL_BEFORE_14: &str = functions_sql!("false");
+/// Whether a routine waits for the tables: a body in standard SQL, which
+/// the server reads when it is made (PostgreSQL 14 and later), or a
+/// signature that names a table's or view's row type, which exists only
+/// once the relation does.
+macro_rules! after_tables {
+    ($sql_body:literal) => {
+        concat!(
+            "(",
+            $sql_body,
+            " OR EXISTS (SELECT 1 FROM pg_catalog.pg_type rt
+               JOIN pg_catalog.pg_class rc ON rc.oid = rt.typrelid
+              WHERE rc.relkind IN ('r', 'p', 'v', 'm', 'f')
+                AND (rt.oid = p.prorettype OR rt.typarray = p.prorettype
+                     OR rt.oid = ANY (COALESCE(p.proallargtypes, p.proargtypes::pg_catalog.oid[]))
+                     OR rt.typarray = ANY (COALESCE(p.proallargtypes, p.proargtypes::pg_catalog.oid[])))))"
+        )
+    };
+}
+
+pub(crate) const FUNCTIONS_SQL: &str = functions_sql!(after_tables!("p.prosqlbody IS NOT NULL"));
+pub(crate) const FUNCTIONS_SQL_BEFORE_14: &str = functions_sql!(after_tables!("false"));
 
 /// Every sequence, with the column that owns it (`a`) or whose identity
-/// it is (`i`). `last_value` is NULL until the sequence is first used.
+/// it is (`i`), and its position read from the sequence itself:
+/// `pg_sequences.last_value` is NULL until the next `nextval`, after a
+/// RESTART as well as before the first use. NULL where the login may not
+/// read the sequence.
 pub(crate) const SEQUENCES_SQL: &str = concat!(
     "SELECT n.nspname::text, c.relname::text, s.data_type::text,
        s.start_value, s.increment_by, s.min_value, s.max_value, s.cache_size, s.cycle,
-       c.relpersistence::text, s.last_value,
-       d.deptype::text, tn.nspname::text, t.relname::text, a.attname::text
+       c.relpersistence::text, seq_state.last_value,
+       d.deptype::text, tn.nspname::text, t.relname::text, a.attname::text, seq_state.is_called
 FROM pg_catalog.pg_class c
 JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 JOIN pg_catalog.pg_sequences s ON s.schemaname = n.nspname AND s.sequencename = c.relname
+LEFT JOIN LATERAL (
+    SELECT (pg_catalog.xpath('/row/last_value/text()', probe.state))[1]::text::bigint AS last_value,
+           (pg_catalog.xpath('/row/is_called/text()', probe.state))[1]::text::boolean AS is_called
+    FROM (SELECT CASE WHEN pg_catalog.has_sequence_privilege(c.oid, 'SELECT')
+                      THEN pg_catalog.query_to_xml(
+                               pg_catalog.format('SELECT last_value, is_called FROM %I.%I', n.nspname, c.relname),
+                               false, true, '')
+                 END AS state) probe
+) seq_state ON true
 LEFT JOIN pg_catalog.pg_depend d
        ON d.classid = 'pg_catalog.pg_class'::pg_catalog.regclass::pg_catalog.oid AND d.objid = c.oid
       AND d.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass::pg_catalog.oid

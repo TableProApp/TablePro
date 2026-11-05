@@ -8,6 +8,7 @@ mod mssql_dump;
 
 use std::collections::HashMap;
 
+use tablepro_core::ddl::IdentitySeed;
 use tablepro_core::ddl::ddl_sql::index_keys_sql;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::dump::{
@@ -19,7 +20,7 @@ use tablepro_core::{DriverError, ForeignKeyInfo, Value};
 use tiberius::ColumnData;
 
 use crate::catalog::Cells;
-use crate::ddl::{CreateTableFacts, IdentitySeed, KeyClause};
+use crate::ddl::{CreateTableFacts, KeyClause};
 use crate::dialect::MssqlDialect;
 use crate::in_band_request::{Interrupt, Watch};
 use crate::metadata::{self, CLR_TYPES, SEQUENCE_COLUMNS, SequenceRow, referential_action, sequence_statement};
@@ -86,7 +87,8 @@ const FOREIGN_KEYS_SQL: &str = "SELECT SCHEMA_NAME(t.schema_id), t.name, fk.name
 /// `sys.sql_modules` row.
 const MODULES_SQL: &str = "SELECT SCHEMA_NAME(o.schema_id), o.name, RTRIM(o.type), OBJECT_DEFINITION(o.object_id), \
         CAST(OBJECTPROPERTY(o.object_id, 'IsEncrypted') AS int), \
-        CAST(m.uses_ansi_nulls AS int), CAST(m.uses_quoted_identifier AS int) \
+        CAST(m.uses_ansi_nulls AS int), CAST(m.uses_quoted_identifier AS int), \
+        CAST(ISNULL(m.is_schema_bound, 0) AS int) \
     FROM sys.objects o LEFT JOIN sys.sql_modules m ON m.object_id = o.object_id \
     WHERE o.type IN ('V', 'FN', 'IF', 'TF', 'FS', 'FT', 'P', 'PC') AND o.is_ms_shipped = 0 AND {scope} \
     ORDER BY 1, 2";
@@ -297,11 +299,10 @@ impl CatalogRead<'_> {
                 vec![statement],
             ));
         }
-        let last_value = parts.identity.and_then(|identity| identity.last_value.as_deref());
-        if let Some(last_value) = last_value
-            && has_rows(self.client, self.watch, &relation).await?
+        if let Some(identity) = parts.identity
+            && let Some(last_value) = identity.last_value.as_deref()
         {
-            let statements = reseed(&relation, last_value).into_iter().collect();
+            let statements = reseed(&relation, last_value, &identity.increment).into_iter().collect();
             self.after_data
                 .positions
                 .push(after(DumpObjectKind::SequenceValue, schema(), &table.name, statements));
@@ -363,7 +364,8 @@ impl CatalogRead<'_> {
                 encrypted: cells.flag(4),
                 settings: settings(&cells, 5),
             };
-            place_module(&mut self.catalog, module, DumpSection::Programs, None);
+            let section = module_section(&module.code, cells.flag(7));
+            place_module(&mut self.catalog, module, section, None);
         }
         for row in self.rows(TRIGGERS_SQL, "p.schema_id").await? {
             let cells = Cells::new(&row, "sys.triggers");
@@ -498,12 +500,6 @@ struct TableParts<'a> {
     identity: Option<&'a IdentityRow>,
 }
 
-async fn has_rows(client: &mut MssqlClient, watch: &Watch, relation: &str) -> Result<bool, Interrupt> {
-    let sql = format!("SELECT CAST(CASE WHEN EXISTS (SELECT 1 FROM {relation}) THEN 1 ELSE 0 END AS int)");
-    let rows = catalogue_rows(client, watch, &sql, &[]).await?;
-    Ok(rows.first().is_some_and(|row| Cells::new(row, "EXISTS").flag(0)))
-}
-
 struct ForeignKeyRow {
     table: TableRef,
     key: ForeignKeyInfo,
@@ -553,6 +549,17 @@ struct Module {
     text: Option<String>,
     encrypted: bool,
     settings: ModuleSettings,
+}
+
+/// Where a module goes. A table's DEFAULT, CHECK or computed column can
+/// call a scalar or multi-statement function, so those come before the
+/// tables; their bodies name tables only when they run. A schema-bound
+/// one, an inline function and a view need what they name to exist.
+fn module_section(code: &str, schema_bound: bool) -> DumpSection {
+    match (code, schema_bound) {
+        ("FN" | "TF", false) => DumpSection::BeforeData,
+        _ => DumpSection::Programs,
+    }
 }
 
 /// A module with no `sys.sql_modules` row reads as made under the

@@ -82,6 +82,8 @@ pub(super) struct Sequence {
     pub(super) cycle: bool,
     pub(super) unlogged: bool,
     pub(super) last_value: Option<i64>,
+    /// Whether `last_value` was handed out, so the next is the one after.
+    pub(super) is_called: Option<bool>,
     pub(super) owner: Option<SequenceOwner>,
 }
 
@@ -263,6 +265,7 @@ pub(super) fn sequence(row: &Row) -> Result<Sequence, DriverError> {
         cycle: row.try_get(8).map_err(&field)?,
         unlogged: persistence == "u",
         last_value: row.try_get(10).map_err(&field)?,
+        is_called: row.try_get(15).map_err(&field)?,
         owner,
     })
 }

@@ -4,6 +4,8 @@ use crate::sql_syntax::SqlGrammar;
 use crate::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptToken, ScriptTokenKind};
 
 use super::copy_rows::CopyRows;
+use super::directive_scan::delimiter_line;
+use super::lexical_change::LexicalTracker;
 
 /// Text a reader holds before it plans again with nothing settled, so a
 /// statement of many megabytes is lexed a few times, not once per piece.
@@ -62,7 +64,9 @@ pub enum ScriptReadError {
 /// last line break is planned until the end, since a directive is a whole
 /// line. On PostgreSQL it also reads what psql reads in a pg_dump file:
 /// `COPY ... FROM stdin` rows up to `\.`, which become INSERTs, and
-/// backslash lines.
+/// backslash lines. A `SET` of `standard_conforming_strings` or of a
+/// `sql_mode` with `NO_BACKSLASH_ESCAPES` changes how the rest reads, as
+/// it does on the server.
 #[derive(Debug)]
 pub struct ScriptReader {
     grammar: SqlGrammar,
@@ -76,6 +80,7 @@ pub struct ScriptReader {
     /// What lets an INSERT made from COPY rows set an identity column, as
     /// COPY itself may.
     copy_overriding: Option<String>,
+    tracker: LexicalTracker,
     units: VecDeque<ScriptUnit>,
 }
 
@@ -90,6 +95,7 @@ impl ScriptReader {
             plan_at: 0,
             copy: None,
             copy_overriding: None,
+            tracker: LexicalTracker::default(),
             units: VecDeque::new(),
         }
     }
@@ -127,13 +133,17 @@ impl ScriptReader {
             if self.grammar == SqlGrammar::PostgreSql && self.backslash_line(end) {
                 continue;
             }
-            let limit = match end {
-                true => self.pending.len(),
-                false => self.pending.rfind('\n').map_or(0, |at| at + 1),
-            };
-            if limit == 0 || (!end && self.pending.len() < self.plan_at) {
+            if !end && self.pending.len() < self.plan_at {
                 break;
             }
+            // A line this long is no directive, and a file written on one
+            // line still has to be cut where its statements end.
+            let limit = match (end, self.pending.rfind('\n')) {
+                (true, _) => self.pending.len(),
+                (false, Some(at)) => at + 1,
+                (false, None) if self.pending.len() >= PLAN_STEP => self.pending.len(),
+                (false, None) => break,
+            };
             match self.plan(limit, end) {
                 Planned::Interrupted => continue,
                 Planned::Settled => {
@@ -166,6 +176,7 @@ impl ScriptReader {
         };
         let mut found = Vec::new();
         let mut interrupted_at = None;
+        let mut delimiter_at_cut = None;
         for batch in plan.batches() {
             if batch.range.end > whole_to {
                 break;
@@ -192,6 +203,18 @@ impl ScriptReader {
                 }
             }
             found.push((batch.range.clone(), batch.repeat.get(), None));
+            // A statement that changes how a backslash reads changes how
+            // the rest of the text splits, so it is planned again from here.
+            if let Some(settings) = self.tracker.after(unit_text, self.grammar, self.settings) {
+                self.settings = settings;
+                let cut = plan
+                    .statements()
+                    .get(batch.statements.start)
+                    .map_or(batch.range.end, |statement| statement.extent.end.max(batch.range.end));
+                delimiter_at_cut = Some(self.delimiter_at(&plan, text, cut));
+                interrupted_at = Some((cut, None));
+                break;
+            }
         }
         let lines_before = |offset: usize| text.get(..offset).unwrap_or_default().matches('\n').count() as u64;
         for (range, repeat, refused) in &found {
@@ -213,7 +236,7 @@ impl ScriptReader {
             Some((cut, copy)) => {
                 self.cut(cut);
                 self.copy = copy.map(|copy| copy.at_line(self.line));
-                self.delimiter = settled.delimiter;
+                self.delimiter = delimiter_at_cut.unwrap_or_else(|| self.delimiter.clone());
                 Planned::Interrupted
             }
             None if end => {
@@ -227,6 +250,21 @@ impl ScriptReader {
             }
             None => Planned::Nothing,
         }
+    }
+
+    /// The delimiter in effect at `offset` of `text`, from the `DELIMITER`
+    /// lines before it.
+    fn delimiter_at(&self, plan: &ScriptPlan, text: &str, offset: usize) -> String {
+        let mut delimiter = self.delimiter.clone();
+        for token in plan.tokens(0..offset) {
+            if token.kind != ScriptTokenKind::Directive || token.range.end > offset {
+                continue;
+            }
+            if let Some(chosen) = delimiter_line(text, token.range.start).and_then(|line| line.delimiter) {
+                delimiter = chosen.to_owned();
+            }
+        }
+        delimiter
     }
 
     /// psql reads a line that starts with a backslash where no statement

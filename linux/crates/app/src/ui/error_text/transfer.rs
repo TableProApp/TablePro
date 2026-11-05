@@ -45,8 +45,8 @@ pub fn sql_import_fault_message(fault: &SqlImportFault) -> String {
             gettext("Only COPY data in the text format pg_dump writes can be imported, with no options.")
         }
         SqlImportFault::Refused(RefusedUnit::CopyNotText) => gettext("This COPY row is not UTF-8 text."),
-        SqlImportFault::FileRollsBack => gettext(
-            "The file rolls back its own transaction, which would undo the whole import. Turn off Run as One Transaction to run it as written.",
+        SqlImportFault::FileEndsTransaction => gettext(
+            "The file ends its own transaction, which would end the one the import runs it in. Turn off Run as One Transaction to run it as written.",
         ),
     }
 }

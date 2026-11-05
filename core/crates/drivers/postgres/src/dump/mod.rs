@@ -431,6 +431,14 @@ fn create_table(table: &Table, lookup: &Lookup<'_>) -> DumpObject {
         .copied()
         .collect();
     let mut sql = vec![statements::create_table(table, &columns, &checks)];
+    if let Some(partition) = &table.partition {
+        let parent = (partition.parent_schema.as_str(), partition.parent.as_str());
+        sql.extend(partition_overrides(
+            table,
+            listed(&lookup.columns, key),
+            listed(&lookup.columns, parent),
+        ));
+    }
     for sequence in listed(&lookup.serials, key) {
         if let Some(owner) = &sequence.owner {
             sql.push(statements::owned_by(sequence, owner));
@@ -440,6 +448,36 @@ fn create_table(table: &Table, lookup: &Lookup<'_>) -> DumpObject {
         TableRef::new(Some(table.schema.clone()), table.name.clone()),
         plain(sql),
     )
+}
+
+/// What a partition sets on its columns apart from its parent: a
+/// default of its own, or a NOT NULL the parent does not have. `PARTITION
+/// OF` takes the parent's columns as they are.
+fn partition_overrides(table: &Table, own: &[&Column], parent: &[&Column]) -> Vec<String> {
+    let name = statements::qualified(&table.schema, &table.name);
+    let mut sql = Vec::new();
+    for column in own
+        .iter()
+        .filter(|column| column.identity.is_empty() && column.generated.is_empty())
+    {
+        let Some(inherited) = parent.iter().find(|candidate| candidate.name == column.name) else {
+            continue;
+        };
+        let target = format!(
+            "ALTER TABLE ONLY {name} ALTER COLUMN {}",
+            statements::quote(&column.name)
+        );
+        if column.default != inherited.default {
+            sql.push(match &column.default {
+                Some(default) => format!("{target} SET DEFAULT {default}"),
+                None => format!("{target} DROP DEFAULT"),
+            });
+        }
+        if column.not_null && !inherited.not_null {
+            sql.push(format!("{target} SET NOT NULL"));
+        }
+    }
+    sql
 }
 
 /// A partitioned table's rows are its partitions', which come after it.
@@ -619,6 +657,7 @@ mod tests {
             cycle: false,
             unlogged: false,
             last_value: Some(4),
+            is_called: Some(true),
             owner: owner.map(|(table, column, identity)| SequenceOwner {
                 identity,
                 schema: "app".to_owned(),

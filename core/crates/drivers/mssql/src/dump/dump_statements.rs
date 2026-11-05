@@ -87,17 +87,24 @@ pub(super) fn next_unused(position: &SequencePosition<'_>) -> String {
     }
 }
 
-/// The identity's next number follows the reseeded one, as it did on the
-/// server the dump was read from. A table that took no rows since it was
-/// made would hand out the reseeded number itself, so only a table with
-/// rows is reseeded.
-pub(super) fn reseed(relation: &str, last_value: &str) -> Option<String> {
-    whole_number(last_value).then(|| {
-        format!(
-            "DBCC CHECKIDENT ({}, RESEED, {last_value}) WITH NO_INFOMSGS",
-            national_literal(relation)
-        )
-    })
+/// The identity's next number as it was on the server the dump was read
+/// from. A table that took rows since it was made hands out the reseeded
+/// number plus the increment, and one that took none the reseeded number
+/// itself, so an empty table, as after a load of no rows, is reseeded one
+/// increment further.
+pub(super) fn reseed(relation: &str, last_value: &str, increment: &str) -> Option<String> {
+    if !whole_number(last_value) || !whole_number(increment) {
+        return None;
+    }
+    let next = last_value
+        .parse::<i128>()
+        .ok()?
+        .checked_add(increment.parse::<i128>().ok()?)?;
+    let name = national_literal(relation);
+    Some(format!(
+        "IF EXISTS (SELECT 1 FROM {relation}) DBCC CHECKIDENT ({name}, RESEED, {last_value}) WITH NO_INFOMSGS \
+         ELSE DBCC CHECKIDENT ({name}, RESEED, {next}) WITH NO_INFOMSGS"
+    ))
 }
 
 /// Whether the server checks a constraint, as SMO restates it: an
@@ -179,7 +186,7 @@ pub(super) struct ModuleSettings {
 pub(super) fn module_statements(schema: &str, text: &str, settings: ModuleSettings) -> Vec<DumpStatement> {
     let quoted = quote(schema);
     let body = qualified_view(
-        &qualify_created_name(from_first_token(text), SqlGrammar::MsSql, &quoted),
+        &qualify_created_name(&as_create(from_first_token(text)), SqlGrammar::MsSql, &quoted),
         &quoted,
     );
     let mut set = Vec::new();
@@ -240,6 +247,36 @@ fn qualified_view(text: &str, quoted_schema: &str) -> String {
     }
 }
 
+/// The server keeps the text of the last CREATE or ALTER, so a module
+/// changed with ALTER would be altered on load, where nothing exists yet.
+fn as_create(text: &str) -> String {
+    let grammar = SqlGrammar::MsSql;
+    let plan = ScriptPlan::build(text, grammar, LexicalSettings::default_for(grammar));
+    let mut words = plan
+        .tokens(0..text.len())
+        .filter(|token| !token.kind.is_trivia())
+        .take(2)
+        .map(|token| (token.kind, token.range.clone()));
+    let first = words.next();
+    let second = words.next();
+    let word = |token: &Option<(ScriptTokenKind, std::ops::Range<usize>)>, wanted: &[&str]| {
+        token.as_ref().is_some_and(|(kind, range)| {
+            *kind == ScriptTokenKind::Word
+                && text
+                    .get(range.clone())
+                    .is_some_and(|word| wanted.iter().any(|candidate| word.eq_ignore_ascii_case(candidate)))
+        })
+    };
+    match first {
+        Some((_, range))
+            if word(&first, &["ALTER"]) && word(&second, &["VIEW", "PROC", "PROCEDURE", "FUNCTION", "TRIGGER"]) =>
+        {
+            format!("CREATE{}", text.get(range.end..).unwrap_or_default())
+        }
+        _ => text.to_owned(),
+    }
+}
+
 fn from_first_token(text: &str) -> &str {
     let grammar = SqlGrammar::MsSql;
     let plan = ScriptPlan::build(text, grammar, LexicalSettings::default_for(grammar));
@@ -257,6 +294,23 @@ pub(super) fn disable_trigger(schema: &str, name: &str, relation: &str) -> Strin
 #[cfg(test)]
 mod tests {
     use tablepro_core::ddl::ReferentialAction;
+
+    #[test]
+    fn a_module_last_changed_with_alter_is_made_with_create() {
+        assert_eq!(
+            super::as_create("ALTER PROCEDURE p AS SELECT 1"),
+            "CREATE PROCEDURE p AS SELECT 1"
+        );
+        assert_eq!(
+            super::as_create("alter view v AS SELECT 1"),
+            "CREATE view v AS SELECT 1"
+        );
+        assert_eq!(
+            super::as_create("CREATE OR ALTER VIEW v AS SELECT 1"),
+            "CREATE OR ALTER VIEW v AS SELECT 1"
+        );
+        assert_eq!(super::as_create("ALTER TABLE t ADD c int"), "ALTER TABLE t ADD c int");
+    }
     use tablepro_core::meta::IndexKey;
 
     use super::*;
@@ -342,14 +396,17 @@ mod tests {
     }
 
     #[test]
-    fn only_a_whole_number_reseeds() {
+    fn only_a_whole_number_reseeds_and_an_empty_table_one_step_on() {
         assert_eq!(
-            reseed("[app].[o'rders]", "20").as_deref(),
-            Some("DBCC CHECKIDENT (N'[app].[o''rders]', RESEED, 20) WITH NO_INFOMSGS")
+            reseed("[app].[o'rders]", "20", "5").as_deref(),
+            Some(
+                "IF EXISTS (SELECT 1 FROM [app].[o'rders]) DBCC CHECKIDENT (N'[app].[o''rders]', RESEED, 20) \
+                 WITH NO_INFOMSGS ELSE DBCC CHECKIDENT (N'[app].[o''rders]', RESEED, 25) WITH NO_INFOMSGS"
+            )
         );
-        assert!(reseed("[t]", "-3").is_some());
-        assert_eq!(reseed("[t]", "1; DROP TABLE x"), None);
-        assert_eq!(reseed("[t]", ""), None);
+        assert!(reseed("[t]", "-3", "1").is_some());
+        assert_eq!(reseed("[t]", "1; DROP TABLE x", "1"), None);
+        assert_eq!(reseed("[t]", "", "1"), None);
     }
 
     #[test]

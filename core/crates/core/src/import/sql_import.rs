@@ -15,7 +15,10 @@ use crate::result_sink::{ResultSink, SinkFlow};
 use crate::row_limit::RowLimit;
 use crate::run_options::RunOptions;
 use crate::sql_syntax::SqlGrammar;
-use crate::sql_syntax::script::{RefusedUnit, ScriptUnit, ScriptUnitKind, TransactionControl, transaction_control};
+use crate::sql_syntax::script::{
+    LexicalSettings, RefusedUnit, ScriptPlan, ScriptTokenKind, ScriptUnit, ScriptUnitKind, TransactionControl,
+    transaction_control,
+};
 use crate::timeout_phase::TimeoutPhase;
 use crate::transaction_state::TransactionState;
 use crate::user_sql::UserSql;
@@ -74,9 +77,10 @@ pub enum SqlImportFault {
     Statement(DriverError),
     /// A line nothing here can run.
     Refused(RefusedUnit),
-    /// The file rolls back its own transaction inside the one the import
-    /// runs it in, which would roll back everything before it too.
-    FileRollsBack,
+    /// The file ends the transaction the import runs it in, with a
+    /// ROLLBACK that would undo everything before it, or a SQL Server
+    /// COMMIT or ROLLBACK that leaves the rest outside it.
+    FileEndsTransaction,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -275,7 +279,7 @@ impl Run<'_> {
                     return;
                 }
                 Some(TransactionControl::Rollback) => {
-                    self.failure(&unit, SqlImportFault::FileRollsBack);
+                    self.failure(&unit, SqlImportFault::FileEndsTransaction);
                     self.report.end = SqlImportEnd::Stopped;
                     return;
                 }
@@ -284,6 +288,17 @@ impl Run<'_> {
         }
         for _ in 0..unit.repeat.max(1) {
             match self.execute(&unit.text, cancel).await {
+                Ok(()) if self.wrapped && ends_transaction(&unit.text, self.grammar) => {
+                    self.report.statements += 1;
+                    // A SQL Server batch can hold a COMMIT or ROLLBACK
+                    // among other statements; one that closed the import's
+                    // own transaction would leave the rest committing alone.
+                    if self.open_state().await == Some(false) {
+                        self.failure(&unit, SqlImportFault::FileEndsTransaction);
+                        self.report.end = SqlImportEnd::Stopped;
+                        return;
+                    }
+                }
                 Ok(()) => self.report.statements += 1,
                 Err(Fault::Statement(error)) => {
                     self.failure(&unit, SqlImportFault::Statement(error));
@@ -335,8 +350,9 @@ impl Run<'_> {
         if cancel.is_cancelled() {
             return Err(Fault::Cancelled);
         }
-        let options =
-            RunOptions::new(cancel.child_token()).with_row_limit(RowLimit::new(1).unwrap_or(RowLimit::EDITOR_DEFAULT));
+        // The rows go nowhere, but a limit would stop a statement early on
+        // an engine that reads through a cursor, and with it what it does.
+        let options = RunOptions::new(cancel.child_token()).with_row_limit(RowLimit::LARGEST);
         match self.editor.run(UserSql::new(sql), options, Box::new(Discard)).await {
             Ok(summary) => match summary.end {
                 RunEnd::Completed => Ok(()),
@@ -388,6 +404,22 @@ impl Run<'_> {
             Ok(TransactionState::Unknown) | Err(_) => None,
         }
     }
+}
+
+/// Whether a unit holds a word that can end a transaction, so the import
+/// asks after it whether its own is still open. PostgreSQL, SQLite and
+/// DuckDB send a statement at a time and are told apart before it runs.
+fn ends_transaction(text: &str, grammar: SqlGrammar) -> bool {
+    if grammar != SqlGrammar::MsSql {
+        return false;
+    }
+    let plan = ScriptPlan::build(text, grammar, LexicalSettings::default_for(grammar));
+    plan.tokens(0..text.len()).any(|token| {
+        token.kind == ScriptTokenKind::Word
+            && text
+                .get(token.range)
+                .is_some_and(|word| word.eq_ignore_ascii_case("COMMIT") || word.eq_ignore_ascii_case("ROLLBACK"))
+    })
 }
 
 /// The import keeps no rows: a dump's SELECTs, such as `setval`, are run
