@@ -337,6 +337,10 @@ fn parent_of(path: &Path) -> &Path {
     }
 }
 
+pub(crate) fn remove_copy_blocking(path: &Path) -> Result<(), StorageError> {
+    remove_with_sidecars(path)
+}
+
 // Journals first, so one stopped halfway leaves the database, which the next cleanup still finds.
 fn remove_with_sidecars(path: &Path) -> Result<(), StorageError> {
     for sidecar in SIDECARS {

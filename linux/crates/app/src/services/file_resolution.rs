@@ -69,12 +69,9 @@ pub fn resolve_file_blocking(
             target: Ok(FileTarget::Script),
         };
     }
-    if let Some(script) = path.as_deref().filter(|path| is_script_blocking(path, drivers)) {
-        // One file reached through a link and through its target opens one tab, as a database opens one session.
-        let uri = std::fs::canonicalize(script)
-            .ok()
-            .and_then(|canonical| glib::filename_to_uri(&canonical, None).ok())
-            .map_or(uri, |canonical| canonical.to_string());
+    // Kept as handed over, as Open SQL File binds a tab to the location it was given, so the same
+    // location finds the same tab whichever way it came.
+    if path.as_deref().is_some_and(|path| is_script_blocking(path, drivers)) {
         return ResolvedFile {
             uri,
             target: Ok(FileTarget::Script),
@@ -431,7 +428,7 @@ mod tests {
     }
 
     #[test]
-    fn a_script_through_a_link_resolves_to_its_target() {
+    fn a_script_keeps_the_location_it_was_handed() {
         let root = tempfile::tempdir().expect("tempdir");
         let target = root.path().join("report.sql");
         std::fs::write(&target, b"SELECT 1;").expect("seed");
@@ -442,34 +439,14 @@ mod tests {
             "tablepro-test",
             "app.tablepro.Test",
         ));
+        let uri = format!("file://{}", link.display());
 
         let resolved = resolve_file_blocking(
             Some(link.clone()),
-            format!("file://{}", link.display()),
+            uri.clone(),
             &store,
             &drivers(&FakeDriver::FILE_CAPABILITIES),
         );
-
-        assert!(
-            matches!(resolved.target, Ok(FileTarget::Script)),
-            "{:?}",
-            resolved.target
-        );
-        let canonical = std::fs::canonicalize(&target).expect("canonical");
-        assert_eq!(gio::File::for_uri(&resolved.uri).path(), Some(canonical));
-    }
-
-    #[test]
-    fn a_remote_sql_file_with_no_local_path_is_a_script() {
-        let root = tempfile::tempdir().expect("tempdir");
-        let store = ConnectionStore::new(&tablepro_storage::StoragePaths::under(
-            root.path(),
-            "tablepro-test",
-            "app.tablepro.Test",
-        ));
-        let uri = "sftp://db.example/home/ada/report.SQL".to_owned();
-
-        let resolved = resolve_file_blocking(None, uri.clone(), &store, &drivers(&FakeDriver::FILE_CAPABILITIES));
 
         assert!(
             matches!(resolved.target, Ok(FileTarget::Script)),

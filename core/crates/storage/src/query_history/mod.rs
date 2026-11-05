@@ -449,40 +449,49 @@ pub(crate) async fn trim_upgrade_copies(path: &Path) -> Result<(), StorageError>
         source: std::io::Error::new(std::io::ErrorKind::InvalidInput, "the path is not UTF-8"),
     })?;
     for copy in copies {
-        let mut database = SqliteConnectOptions::new()
-            .filename(&copy.path)
-            .journal_mode(sqlx::sqlite::SqliteJournalMode::Delete)
-            .pragma("secure_delete", "ON")
-            .disable_statement_logging()
-            .connect()
-            .await?;
-        sqlx::query("ATTACH DATABASE ? AS live")
-            .bind(live)
-            .execute(&mut database)
-            .await?;
-        let mut transaction = database.begin().await?;
-        for table in ["history", "saved_queries"] {
-            let present: i64 = sqlx::query_scalar(
-                "SELECT (SELECT COUNT(*) FROM main.sqlite_master WHERE type = 'table' AND name = ?1) \
-                 * (SELECT COUNT(*) FROM live.sqlite_master WHERE type = 'table' AND name = ?1)",
-            )
-            .bind(table)
-            .fetch_one(&mut *transaction)
-            .await?;
-            if present > 0 {
-                sqlx::query(AssertSqlSafe(format!(
-                    "DELETE FROM main.{table} WHERE id NOT IN (SELECT id FROM live.{table})"
-                )))
-                .execute(&mut *transaction)
-                .await?;
-            }
+        // A copy that cannot be trimmed, being damaged or unreadable, goes rather than keep what the
+        // user deleted.
+        if trim_copy(&copy.path, live).await.is_err() {
+            crate::upgrade_copies::remove_copy_blocking(&copy.path)?;
         }
-        // Every time, which costs little on an index already merged.
-        optimize_full_text_indexes(&mut transaction).await?;
-        transaction.commit().await?;
-        sqlx::query("DETACH DATABASE live").execute(&mut database).await?;
-        database.close().await?;
     }
+    Ok(())
+}
+
+async fn trim_copy(copy: &Path, live: &str) -> Result<(), StorageError> {
+    let mut database = SqliteConnectOptions::new()
+        .filename(copy)
+        .journal_mode(sqlx::sqlite::SqliteJournalMode::Delete)
+        .pragma("secure_delete", "ON")
+        .disable_statement_logging()
+        .connect()
+        .await?;
+    sqlx::query("ATTACH DATABASE ? AS live")
+        .bind(live)
+        .execute(&mut database)
+        .await?;
+    let mut transaction = database.begin().await?;
+    for table in ["history", "saved_queries"] {
+        let present: i64 = sqlx::query_scalar(
+            "SELECT (SELECT COUNT(*) FROM main.sqlite_master WHERE type = 'table' AND name = ?1) \
+             * (SELECT COUNT(*) FROM live.sqlite_master WHERE type = 'table' AND name = ?1)",
+        )
+        .bind(table)
+        .fetch_one(&mut *transaction)
+        .await?;
+        if present > 0 {
+            sqlx::query(AssertSqlSafe(format!(
+                "DELETE FROM main.{table} WHERE id NOT IN (SELECT id FROM live.{table})"
+            )))
+            .execute(&mut *transaction)
+            .await?;
+        }
+    }
+    // Every time, which costs little on an index already merged.
+    optimize_full_text_indexes(&mut transaction).await?;
+    transaction.commit().await?;
+    sqlx::query("DETACH DATABASE live").execute(&mut database).await?;
+    database.close().await?;
     Ok(())
 }
 
@@ -1383,5 +1392,17 @@ mod tests {
             "a deleted entry's words came along into the copy"
         );
         assert!(indexed(&copy, "qqq").await);
+    }
+
+    #[tokio::test]
+    async fn a_copy_that_cannot_be_trimmed_is_removed() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let history = QueryHistory::open(&paths(&root)).await.expect("open");
+        let damaged = root.path().join("state/tablepro/history.db.v1-100");
+        std::fs::write(&damaged, b"not a database").expect("seed");
+
+        history.clear_all().await.expect("clear");
+
+        assert!(!damaged.exists(), "a copy that could not be trimmed stayed");
     }
 }
