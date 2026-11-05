@@ -280,9 +280,8 @@ jobs:
       image: ubuntu:26.04
       env:
         DEBIAN_FRONTEND: noninteractive
-    defaults:
-      run:
-        working-directory: source tree/linux
+    # The runner passes a step's working directory to docker exec unquoted,
+    # so each step changes into the source tree itself.
     steps:
       - name: Install git and the build dependencies
         run: |
@@ -293,7 +292,6 @@ jobs:
             libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev \
             libsqlite3-dev libkrb5-dev liblcms2-dev libseccomp-dev clang libclang-dev
           git config --global --add safe.directory "$GITHUB_WORKSPACE/source tree"
-        working-directory: /
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -303,6 +301,7 @@ jobs:
           toolchain: "1.98"
       - name: Build and install both executables
         run: |
+          cd "source tree/linux"
           meson setup "build dir" -Dprofile=development
           meson compile -C "build dir"
           DESTDIR="$PWD/install root" meson install -C "build dir" --no-rebuild
