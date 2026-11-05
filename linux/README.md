@@ -68,7 +68,7 @@ Before 0.1.0, add the beta repository alone, then the stable one once 0.1.0 is o
 
 ### From GitHub Releases
 
-Each release and beta on [GitHub Releases](https://github.com/TableProApp/TablePro/releases) carries the packages CI built, tested and installed, and their `SHA256SUMS`. They do not update themselves.
+Each release and beta on [GitHub Releases](https://github.com/TableProApp/TablePro/releases) carries the packages CI built and installed, the .deb and .rpm also tested, and their `SHA256SUMS`. They do not update themselves.
 
 | File | For |
 |---|---|
@@ -231,8 +231,7 @@ reason for each grant.
 
 `build-aux/flatpak/app.tablepro.TablePro.json` builds the bundle a release
 carries: the release profile under the real app ID, offline from the two
-release tarballs, with every Meson suite in the sandbox. From `linux/`,
-with the version that `meson.build` names:
+release tarballs. From `linux/`, with the version that `meson.build` names:
 
 ```bash
 build-aux/packaging/make-sources.sh _packages/sources

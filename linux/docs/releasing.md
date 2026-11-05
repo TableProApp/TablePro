@@ -60,7 +60,7 @@ Before a tag, run the workflow by hand on the branch it will be on:
 gh workflow run release-linux.yml --ref main -f dry-run=true
 ```
 
-It checks the version's metadata as the `release-metadata` test does, builds, tests and installs both packages and the Flatpak bundle on amd64 and arm64, and keeps every file a tag would publish, `SHA256SUMS` among them, as the run's `linux-release` artifact. It publishes nothing and needs no reviewer.
+It checks the version's metadata as the `release-metadata` test does, builds, tests and installs both packages, builds and installs the Flatpak bundle, on amd64 and arm64, and keeps every file a tag would publish, `SHA256SUMS` among them, as the run's `linux-release` artifact. It publishes nothing and needs no reviewer.
 
 ## A release or a beta
 
@@ -75,7 +75,7 @@ It checks the version's metadata as the `release-metadata` test does, builds, te
 
    The pull request changes only these files and `changelog.d/`. The `release-metadata` Meson test checks that they agree from the commit that sets a beta's version, or adds a release's changelog heading, so the pull request fails before the tag does.
 2. **The tag**: `linux-vX.Y.Z` or `linux-vX.Y.Z-beta.N` on the merged commit, pushed the same UTC day. The workflow compares the metainfo date with the commit date.
-3. **The workflow** checks the tag, builds and tests both packages and the Flatpak bundle on amd64 and arm64, and publishes them on GitHub with the tarballs, the translation template `tablepro.pot`, `SHA256SUMS`, and the version's changelog section as notes; a beta as a pre-release. Then it uploads the signed source package to the PPA and posts the tag to the COPR project: the stable ones for a release, the beta ones for a beta. A reviewer approves each step that uses the environment.
+3. **The workflow** checks the tag, builds and tests both packages, builds the Flatpak bundle, installs all three on amd64 and arm64, and publishes them on GitHub with the tarballs, the translation template `tablepro.pot`, `SHA256SUMS`, and the version's changelog section as notes; a beta as a pre-release. Then it uploads the signed source package to the PPA and posts the tag to the COPR project: the stable ones for a release, the beta ones for a beta. A reviewer approves each step that uses the environment.
 4. **Afterwards**: watch the Launchpad build page of each series and the COPR build the workflow prints. A failed build there does not fail the workflow.
 
 ## The first release

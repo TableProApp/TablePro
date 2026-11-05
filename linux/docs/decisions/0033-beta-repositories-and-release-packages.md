@@ -47,16 +47,16 @@ other pre-release. Each goes to its own repositories, which testers layer:
 | Launchpad | `ppa:tablepro/tablepro` | `ppa:tablepro/tablepro-beta` |
 | COPR | `@tablepro/tablepro` | `@tablepro/tablepro-beta` |
 
-Every GitHub release and pre-release carries what CI built offline, tested
-and installed from that tag's tarballs: the .deb for each Ubuntu series and
-the .rpm for each Fedora release CI builds, for amd64 and arm64, a
-single-file Flatpak bundle for each architecture, and `SHA256SUMS`, all
-named after the tag's version.
+Every GitHub release and pre-release carries what CI built offline from
+that tag's tarballs and installed in fresh containers: the .deb for each
+Ubuntu series and the .rpm for each Fedora release CI builds, both tested
+as they build, and a single-file Flatpak bundle, all for amd64 and arm64,
+with `SHA256SUMS`, and named after the tag's version.
 
 The bundle comes from `build-aux/flatpak/app.tablepro.TablePro.json`: the
 release profile under the real app id, GNOME 51, built offline from the
-same tarballs with every Meson suite run in the sandbox, translations kept
-in the app, and the Flathub repository named for the runtime. The `.Devel` manifest stays for development builds,
+same tarballs, translations kept in the app, and the Flathub repository
+named for the runtime. The `.Devel` manifest stays for development builds,
 as GNOME apps keep a `.Devel` id. This manifest serves our bundles only; a
 Flathub submission stays one a maintainer writes by hand under Flathub's
 policy.
@@ -96,6 +96,11 @@ metainfo `<release>` has `type="development"`.
   only the beta one keeps the last beta after 0.1.0 until they add the
   stable one or the next beta ships.
 - A bundle does not update itself. A newer bundle installs over it.
+- The bundle's build runs no Meson suite: under the real app id glycin
+  decodes pictures through flatpak-spawn, which needs the app installed,
+  so the gtk suite fails in a build sandbox. The Devel Flatpak runs every
+  suite on GNOME 51, and the packages in the release profile. CI installs
+  and starts the bundle on Ubuntu 22.04, 24.04 and 26.04.
 - Each tag's run builds two bundles besides the packages.
   `release-linux.yml` gathers every asset in one job, which a dry run by
   hand runs too, publishing nothing.

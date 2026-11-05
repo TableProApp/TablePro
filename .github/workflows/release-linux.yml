@@ -4,8 +4,9 @@ name: Release Linux
 # (linux/docs/decisions/0033-beta-repositories-and-release-packages.md). Both
 # publish on GitHub Releases, a beta as a pre-release: the source and vendor
 # tarballs, the translation template, the .deb for each Ubuntu series and the
-# .rpm for Fedora, each built offline, tested and installed in a fresh
-# container, a Flatpak bundle, all for amd64 and arm64, and SHA256SUMS.
+# .rpm for each Fedora release, each built offline, tested and installed in a
+# fresh container, a Flatpak bundle built offline and installed on Ubuntu
+# 22.04, 24.04 and 26.04, all for amd64 and arm64, and SHA256SUMS.
 # Then a release uploads the signed Debian source package for each Ubuntu
 # series to the stable PPA, which builds and publishes the .deb, and posts the
 # tag to the stable COPR project's custom webhook, which builds the Fedora

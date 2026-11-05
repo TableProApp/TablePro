@@ -1,13 +1,16 @@
 #!/bin/sh
 # Builds the Flatpak bundle a release carries from the two release tarballs,
-# offline, with build-aux/flatpak/app.tablepro.TablePro.json, and runs every
-# Meson suite in the build sandbox. The manifest reads the tarballs as
-# tablepro.tar.xz and tablepro-vendor.tar.xz beside it, so they go next to a
-# copy of it. The SDK and its extensions come from Flathub into this user's
-# installation: one baked into a container image cannot update in place. The
-# bundle names Flathub as the repository of its runtime.
+# offline, with build-aux/flatpak/app.tablepro.TablePro.json. The manifest
+# reads the tarballs as tablepro.tar.xz and tablepro-vendor.tar.xz beside it,
+# so they go next to a copy of it. The SDK and its extensions come from
+# Flathub into this user's installation: one baked into a container image
+# cannot update in place. The bundle names Flathub as the repository of its
+# runtime.
 #
-# The gtk suite needs a display; without one, run this under xvfb-run.
+# The build runs no Meson suite. Under the real app ID, glycin decodes a
+# picture through flatpak-spawn, which needs the app installed, so the gtk
+# suite cannot pass in a build sandbox. The Devel Flatpak runs every suite on
+# the same runtime, and the .deb and .rpm in the release profile.
 # Usage: build-flatpak.sh <dist tarball> <vendor tarball> <output dir>
 set -eu
 

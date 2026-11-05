@@ -32,10 +32,6 @@
             "CARGO_NET_OFFLINE": "true",
             "CARGO_PROFILE_RELEASE_LTO": "thin"
         },
-        "test-args": [
-            "--socket=x11",
-            "--share=network"
-        ],
         "arch": {
             "aarch64": {
                 "env": {
@@ -52,7 +48,6 @@
             "name": "tablepro",
             "buildsystem": "meson",
             "subdir": "linux",
-            "run-tests": true,
             "config-opts": [
                 "-Dprofile=default",
                 "-Dflatpak=true"
