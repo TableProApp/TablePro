@@ -5,6 +5,7 @@ use gtk4::{self as gtk, gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::ErrorCategory;
+use tablepro_core::dump::{DumpReport, DumpSkipReason};
 use tablepro_core::export::{EncodeError, RenderError};
 use tablepro_session::OperationError;
 use tablepro_session::runtime::TaskFailure;
@@ -29,6 +30,76 @@ pub(crate) fn stopped_text(outcome: AbortOutcome, name: &str) -> String {
         AbortOutcome::Removed | AbortOutcome::Untouched => gettext("Export stopped"),
         AbortOutcome::Incomplete => gettext_f("Export stopped. {name} is incomplete.", &[("name", name)]),
     }
+}
+
+/// How far a database export has got.
+pub(crate) fn tables_progress_text(done: usize, total: usize, rows: u64) -> String {
+    let rows_text = ngettext_f(
+        "{rows} row",
+        "{rows} rows",
+        plural_count(rows),
+        &[("rows", &format_thousands(rows))],
+    );
+    ngettext_f(
+        "{done} of {total} table, {rows_text}",
+        "{done} of {total} tables, {rows_text}",
+        plural_count(total as u64),
+        &[
+            ("done", &format_thousands(done as u64)),
+            ("total", &format_thousands(total as u64)),
+            ("rows_text", &rows_text),
+        ],
+    )
+}
+
+/// What a database export wrote, for its toast.
+pub(crate) fn dumped_text(report: &DumpReport, name: &str) -> String {
+    ngettext_f(
+        "Exported {tables} table to {name}",
+        "Exported {tables} tables to {name}",
+        plural_count(report.tables as u64),
+        &[("tables", &format_thousands(report.tables as u64)), ("name", name)],
+    )
+}
+
+/// What a database export could not carry, one line each, or `None`
+/// when it carried everything.
+pub(crate) fn dump_warnings(report: &DumpReport) -> Option<String> {
+    let mut lines = Vec::new();
+    for omitted in &report.omitted {
+        lines.push(ngettext_f(
+            "{count} value in {table}.{column} has no SQL form and was written as NULL.",
+            "{count} values in {table}.{column} have no SQL form and were written as NULL.",
+            plural_count(omitted.count),
+            &[
+                ("count", &format_thousands(omitted.count)),
+                ("table", &omitted.table.name),
+                ("column", &omitted.column),
+            ],
+        ));
+    }
+    for skipped in &report.skipped {
+        let reason = match skipped.reason {
+            DumpSkipReason::NoDefinition => gettext("the server gave no SQL for it"),
+            DumpSkipReason::Encrypted => gettext("its code is encrypted"),
+            DumpSkipReason::ClrRoutine => gettext("its code is a .NET assembly"),
+            DumpSkipReason::HiddenSecret => gettext("the server hides a secret in its SQL"),
+            DumpSkipReason::SplitsApart => gettext("its code holds a line that is only GO"),
+            _ => gettext("the export writes no object of its kind"),
+        };
+        lines.push(gettext_f(
+            "{name} was left out: {reason}.",
+            &[("name", &skipped.name), ("reason", &reason)],
+        ));
+    }
+    if !report.unordered.is_empty() {
+        let names: Vec<&str> = report.unordered.iter().map(|table| table.name.as_str()).collect();
+        lines.push(gettext_f(
+            "The foreign keys of {tables} point at each other, so their rows may need foreign key checks off to load.",
+            &[("tables", &names.join(", "))],
+        ));
+    }
+    (!lines.is_empty()).then(|| lines.join("\n"))
 }
 
 /// How far a running export has got, for its row in the operations
@@ -79,6 +150,8 @@ pub(crate) fn failure_text(failure: &ExportFailure, file: Option<AbortOutcome>, 
             &[("name", name)],
         ),
         ExportFailure::Image(_) => gettext("The image couldn't be drawn."),
+        ExportFailure::Dump(error) => crate::ui::error_text::dump_error_message(error),
+        ExportFailure::DumpSession(error) => operation_error_message(error),
         ExportFailure::Task(TaskFailure::Panicked(_) | TaskFailure::Aborted)
         | ExportFailure::Stream(ExportStreamFailure::Task(_)) => gettext("The export stopped unexpectedly."),
     };
@@ -181,6 +254,23 @@ impl ExportReporter {
 
     pub(crate) fn report(&self, file: &gio::File, name: &str, outcome: &ExportOutcome) {
         match outcome {
+            ExportOutcome::Dumped(report) => {
+                let toast = crate::ui::plain_toast(&dumped_text(report, name));
+                toast.set_button_label(Some(&gettext("Show in Files")));
+                let (shown, reporter) = (file.clone(), self.clone());
+                toast.connect_button_clicked(move |_| reporter.show_in_files(&shown));
+                self.toast(toast);
+                if let Some(warnings) = dump_warnings(report)
+                    && let Some(parent) = self.parent.upgrade()
+                {
+                    let alert = adw::AlertDialog::new(Some(&gettext("Exported with Warnings")), Some(&warnings));
+                    alert.set_body_use_markup(false);
+                    alert.add_response("close", &gettext("_Close"));
+                    alert.set_default_response(Some("close"));
+                    alert.set_close_response("close");
+                    alert.present(Some(&parent));
+                }
+            }
             ExportOutcome::Exported { .. } | ExportOutcome::Saved => {
                 let text = match outcome {
                     ExportOutcome::Exported { rows } => exported_text(*rows, name),

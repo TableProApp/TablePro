@@ -21,6 +21,7 @@ mod syntax;
 mod tests;
 mod tls;
 mod tls_remedy;
+mod transfer;
 mod unsupported;
 
 pub use ddl::{build_error_text, refusal_text, save_blocker_text};
@@ -34,3 +35,4 @@ pub use script::script_diagnostic_message;
 pub use ssh::ssh_destination_problem_text;
 pub use syntax::{expression_syntax_message, type_syntax_message};
 pub use tls_remedy::{TlsRemedy, connect_remedy};
+pub use transfer::{dump_error_message, sql_file_message, sql_import_fault_message};

@@ -7,6 +7,7 @@
 
 pub(super) mod dialog;
 mod document_sink;
+mod dump_job;
 mod encoding_sink;
 mod export_failure_text;
 mod export_format;
@@ -24,6 +25,7 @@ mod export_source;
 mod replace_file_writer;
 
 pub(crate) use document_sink::DocumentSink;
+pub(crate) use dump_job::DumpJob;
 pub(crate) use encoding_sink::EncodingSink;
 pub(crate) use export_failure_text::{ExportReporter, failure_text};
 pub(crate) use export_format::{DocumentFormat, ExportFormat, InsertTarget, RowFormat};

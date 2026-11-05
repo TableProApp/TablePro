@@ -2,14 +2,14 @@ use tablepro_core::column::{ColumnDefault, ColumnKind};
 use tablepro_core::ddl::ddl_sql::{column_list, create_index_sql, default_sql, foreign_key_sql, parenthesized};
 use tablepro_core::ddl::{
     BuildDdlError, ColumnAlteration, ColumnAttributes, ColumnCapabilities, ColumnDefinition, DdlCapabilities,
-    DdlDialect, DdlOperation, DdlPlan, DraftColumn, DraftType, GeneratedStorage, IdentityStyle, Permission,
-    ReferentialAction, RefusalReason, ResolvedType, TableChanges, TableDefinition, TableDraft,
+    DdlDialect, DdlOperation, DdlPlan, DraftColumn, DraftType, GeneratedStorage, IdentitySeed, IdentityStyle,
+    Permission, ReferentialAction, RefusalReason, ResolvedType, TableChanges, TableDefinition, TableDraft,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{IndexInfo, TableRef};
 
 use crate::catalog::SqlServerType;
-use crate::dialect::{MssqlDialect, national_literal};
+use crate::dialect::{MssqlDialect, national_literal, quote};
 use crate::index_statements::disabling;
 
 static CAPABILITIES: DdlCapabilities = DdlCapabilities {
@@ -124,39 +124,15 @@ impl DdlDialect for MssqlDialect {
     }
 
     fn plan_create_table(&self, draft: &TableDraft) -> Result<DdlPlan, BuildDdlError> {
-        self.create_table(draft, "")
+        Ok(DdlPlan::from_sql(
+            self.create_table(draft, &CreateTableFacts::default(), false)?
+                .into_statements(),
+        ))
     }
 
     fn create_table_script(&self, definition: &TableDefinition) -> Result<DdlPlan, BuildDdlError> {
-        let mut draft = TableDraft::from_definition(definition);
-        let (stated, written): (Vec<IndexInfo>, Vec<IndexInfo>) =
-            draft.indexes.into_iter().partition(|index| index.definition.is_some());
-        draft.indexes = written;
-        let stated: Vec<(&str, &str)> = stated
-            .iter()
-            .filter_map(|index| Some((index.name.as_str(), index.definition.as_deref()?)))
-            .collect();
-        // A table has one clustered index, so a stated one leaves the key nonclustered.
-        let clustered = stated
-            .iter()
-            .any(|(_, sql)| sql.starts_with("CREATE CLUSTERED ") || sql.starts_with("CREATE UNIQUE CLUSTERED "));
-        let mut plan = self.create_table(&draft, if clustered { " NONCLUSTERED" } else { "" })?;
-        let relation = self.qualify(&definition.table);
-        let (mut created, mut disabled) = (Vec::new(), Vec::new());
-        // A disabled clustered index refuses every index made after it.
-        for (name, sql) in stated {
-            let disable = disabling(name, &relation);
-            match sql.strip_suffix(&format!(";\n\n{disable}")) {
-                Some(create) => {
-                    created.push(create.to_owned());
-                    disabled.push(disable);
-                }
-                None => created.push(sql.to_owned()),
-            }
-        }
-        plan.statements
-            .extend(DdlPlan::from_sql(created.into_iter().chain(disabled)).statements);
-        Ok(plan)
+        let script = self.table_script(definition, &CreateTableFacts::default())?;
+        Ok(DdlPlan::from_sql(script.into_statements()))
     }
 
     fn plan_alter_table(&self, original: &TableDefinition, changes: &TableChanges) -> Result<DdlPlan, BuildDdlError> {
@@ -203,7 +179,7 @@ impl DdlDialect for MssqlDialect {
             self.alter_column(&table, alteration, &mut statements)?;
         }
         for column in &changes.added_columns {
-            statements.push(alter(format!("ADD {}", self.column_definition(column)?)));
+            statements.push(alter(format!("ADD {}", self.column_definition(column, None)?)));
             if let Some(comment) = column.comment_text() {
                 statements.push(column_comment(&table, &column.name, false, Some(comment)));
             }
@@ -231,39 +207,153 @@ impl DdlDialect for MssqlDialect {
     }
 }
 
+/// What a dump's CREATE TABLE states that the structure model does not
+/// carry. Left at its default, the script is the model's.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct CreateTableFacts {
+    pub(crate) key: Option<KeyClause>,
+    pub(crate) identity: Option<IdentitySeed>,
+}
+
+/// The primary key as its constraint and index have it. The model keeps
+/// the key's columns in column order and no name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct KeyClause {
+    pub(crate) name: String,
+    pub(crate) clustered: bool,
+    /// The keys in key order, each with its direction.
+    pub(crate) keys: String,
+}
+
+impl KeyClause {
+    fn sql(&self) -> String {
+        let kind = match self.clustered {
+            true => "CLUSTERED",
+            false => "NONCLUSTERED",
+        };
+        format!("CONSTRAINT {} PRIMARY KEY {kind} ({})", quote(&self.name), self.keys)
+    }
+}
+
+fn identity_clause(seed: &IdentitySeed) -> String {
+    format!("IDENTITY({},{})", seed.seed(), seed.increment())
+}
+
+/// An integer as the catalogue prints one, the only text a counter's
+/// value is spliced into a statement as.
+pub(crate) fn whole_number(text: &str) -> bool {
+    let digits = text.strip_prefix('-').unwrap_or(text);
+    !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+/// A table's script in the parts a dump places apart.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TableScript {
+    pub(crate) create: String,
+    pub(crate) indexes: Vec<String>,
+    pub(crate) comments: Vec<String>,
+    /// The indexes the server's catalogue states, then the ones disabled.
+    pub(crate) stated: Vec<String>,
+}
+
+impl TableScript {
+    fn into_statements(self) -> Vec<String> {
+        let mut statements = vec![self.create];
+        statements.extend(self.indexes);
+        statements.extend(self.comments);
+        statements.extend(self.stated);
+        statements
+    }
+}
+
 impl MssqlDialect {
-    // `key_kind` is " NONCLUSTERED" where another index of the table is the clustered one.
-    fn create_table(&self, draft: &TableDraft, key_kind: &str) -> Result<DdlPlan, BuildDdlError> {
+    pub(crate) fn table_script(
+        &self,
+        definition: &TableDefinition,
+        facts: &CreateTableFacts,
+    ) -> Result<TableScript, BuildDdlError> {
+        let mut draft = TableDraft::from_definition(definition);
+        let (stated, written): (Vec<IndexInfo>, Vec<IndexInfo>) =
+            draft.indexes.into_iter().partition(|index| index.definition.is_some());
+        draft.indexes = written;
+        let stated: Vec<(&str, &str)> = stated
+            .iter()
+            .filter_map(|index| Some((index.name.as_str(), index.definition.as_deref()?)))
+            .collect();
+        // A table has one clustered index, so a stated one leaves the key nonclustered.
+        let clustered = stated
+            .iter()
+            .any(|(_, sql)| sql.starts_with("CREATE CLUSTERED ") || sql.starts_with("CREATE UNIQUE CLUSTERED "));
+        let mut script = self.create_table(&draft, facts, clustered)?;
+        let relation = self.qualify(&definition.table);
+        let mut disabled = Vec::new();
+        // A disabled clustered index refuses every index made after it.
+        for (name, sql) in stated {
+            let disable = disabling(name, &relation);
+            match sql.strip_suffix(&format!(";\n\n{disable}")) {
+                Some(create) => {
+                    script.stated.push(create.to_owned());
+                    disabled.push(disable);
+                }
+                None => script.stated.push(sql.to_owned()),
+            }
+        }
+        script.stated.extend(disabled);
+        Ok(script)
+    }
+
+    fn create_table(
+        &self,
+        draft: &TableDraft,
+        facts: &CreateTableFacts,
+        nonclustered_key: bool,
+    ) -> Result<TableScript, BuildDdlError> {
         draft.check_create(self)?;
         let table = TableRef::new(draft.table.schema.clone(), draft.table.name.trim());
         let mut definitions = draft
             .columns
             .iter()
-            .map(|column| self.column_definition(column))
+            .map(|column| self.column_definition(column, facts.identity.as_ref()))
             .collect::<Result<Vec<_>, _>>()?;
         let key: Vec<String> = draft.primary_key().into_iter().map(str::to_owned).collect();
-        if !key.is_empty() {
-            definitions.push(format!("PRIMARY KEY{key_kind} ({})", column_list(self, &key)));
+        match &facts.key {
+            Some(clause) => definitions.push(clause.sql()),
+            None if !key.is_empty() => {
+                let kind = if nonclustered_key { " NONCLUSTERED" } else { "" };
+                definitions.push(format!("PRIMARY KEY{kind} ({})", column_list(self, &key)));
+            }
+            None => {}
         }
         definitions.extend(draft.foreign_keys.iter().map(|key| foreign_key_sql(self, &table, key)));
-        let mut statements = vec![format!(
+        let create = format!(
             "CREATE TABLE {} (\n  {}\n)",
             self.qualify(&table),
             definitions.join(",\n  ")
-        )];
-        statements.extend(
-            draft
-                .indexes
-                .iter()
-                .filter(|index| !index.primary)
-                .map(|index| create_index_sql(self, &table, index)),
         );
-        for column in &draft.columns {
-            if let Some(comment) = column.comment_text() {
-                statements.push(column_comment(&table, &column.name, false, Some(comment)));
-            }
-        }
-        Ok(DdlPlan::from_sql(statements))
+        let indexes = draft
+            .indexes
+            .iter()
+            .filter(|index| !index.primary)
+            .map(|index| create_index_sql(self, &table, index))
+            .collect();
+        let comments = draft
+            .columns
+            .iter()
+            .filter_map(|column| {
+                Some(column_comment(
+                    &table,
+                    &column.name,
+                    false,
+                    Some(column.comment_text()?),
+                ))
+            })
+            .collect();
+        Ok(TableScript {
+            create,
+            indexes,
+            comments,
+            stated: Vec::new(),
+        })
     }
 
     /// A column bound to a default cannot change type, so its default
@@ -359,10 +449,11 @@ impl MssqlDialect {
         Ok(())
     }
 
-    /// `name type [COLLATE c] [SPARSE] [MASKED WITH (..)] [IDENTITY(1,1)]
+    /// `name type [COLLATE c] [SPARSE] [MASKED WITH (..)] [IDENTITY(s,i)]
     /// NULL|NOT NULL [DEFAULT (..)]`, or a computed column read from the
-    /// catalogue as `name AS (..)`.
-    fn column_definition(&self, column: &DraftColumn) -> Result<String, BuildDdlError> {
+    /// catalogue as `name AS (..)`. A new column with no seed of its own
+    /// is `IDENTITY(1,1)`.
+    fn column_definition(&self, column: &DraftColumn, seed: Option<&IdentitySeed>) -> Result<String, BuildDdlError> {
         let name = self.quote_identifier(&column.name);
         let attributes = column.original.as_ref().map(|original| &original.attributes);
         if let Some(generated) = attributes.and_then(|attributes| attributes.generated.as_ref()) {
@@ -392,7 +483,8 @@ impl MssqlDialect {
         let identity = column.auto_increment
             || attributes.is_some_and(|attributes| attributes.identity == IdentityStyle::MssqlIdentity);
         if identity {
-            parts.push("IDENTITY(1,1)".to_owned());
+            let seed = seed.or_else(|| attributes.and_then(|attributes| attributes.identity_seed.as_ref()));
+            parts.push(seed.map_or_else(|| "IDENTITY(1,1)".to_owned(), identity_clause));
         }
         // SQL Server refuses an identity on a nullable column (error 8147).
         parts.push(
@@ -709,6 +801,47 @@ mod tests {
                  PRIMARY KEY ([id])\n)"
             ]
         );
+    }
+
+    #[test]
+    fn a_dumped_table_states_its_seed_and_its_key_as_the_catalogue_has_them() {
+        let mut table = orders();
+        table.columns[0].attributes.identity = IdentityStyle::MssqlIdentity;
+        table.columns[0].info.is_auto_increment = true;
+        table.columns[2].info.comment = Some("why".to_owned());
+        let facts = CreateTableFacts {
+            key: Some(KeyClause {
+                name: "PK_orders".to_owned(),
+                clustered: false,
+                keys: "[id] DESC".to_owned(),
+            }),
+            identity: IdentitySeed::new("1000", "-5"),
+        };
+
+        let script = dialect().table_script(&table, &facts).expect("the script");
+
+        assert_eq!(
+            script.create,
+            "CREATE TABLE [dbo].[orders] (\n  [id] int IDENTITY(1000,-5) NOT NULL,\n  [status] int NULL DEFAULT ((0)),\n  \
+             [note] nvarchar(20) NULL,\n  CONSTRAINT [PK_orders] PRIMARY KEY NONCLUSTERED ([id] DESC)\n)"
+        );
+        assert_eq!(script.comments.len(), 1);
+        assert!(script.indexes.is_empty() && script.stated.is_empty());
+        let shown = sql(dialect().create_table_script(&table));
+        assert!(shown[0].contains("[id] int IDENTITY(1,1) NOT NULL"), "{}", shown[0]);
+        assert!(shown[0].ends_with("PRIMARY KEY ([id])\n)"), "{}", shown[0]);
+    }
+
+    #[test]
+    fn show_create_table_keeps_the_seed_the_catalogue_read() {
+        let mut table = orders();
+        table.columns[0].attributes.identity = IdentityStyle::MssqlIdentity;
+        table.columns[0].attributes.identity_seed = IdentitySeed::new("100", "5");
+        table.columns[0].info.is_auto_increment = true;
+
+        let shown = sql(dialect().create_table_script(&table));
+
+        assert!(shown[0].contains("[id] int IDENTITY(100,5) NOT NULL"), "{}", shown[0]);
     }
 
     #[test]

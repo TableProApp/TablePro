@@ -319,6 +319,7 @@ crates/app/src/ui/diagram/tab_imp.rs
 crates/app/src/ui/diagram/tests.rs
 crates/app/src/ui/diagram/zoom.rs
 crates/app/src/ui/discard_alert.rs
+crates/app/src/ui/dump_dialog.rs
 crates/app/src/ui/editor/assistant_actions.rs
 crates/app/src/ui/editor/buffer_edit.rs
 crates/app/src/ui/editor/completion/catalog_read.rs
@@ -382,9 +383,11 @@ crates/app/src/ui/error_text/syntax.rs
 crates/app/src/ui/error_text/tests.rs
 crates/app/src/ui/error_text/tls.rs
 crates/app/src/ui/error_text/tls_remedy.rs
+crates/app/src/ui/error_text/transfer.rs
 crates/app/src/ui/error_text/unsupported.rs
 crates/app/src/ui/export/dialog.rs
 crates/app/src/ui/export/document_sink.rs
+crates/app/src/ui/export/dump_job.rs
 crates/app/src/ui/export/encoding_sink.rs
 crates/app/src/ui/export/export_failure_text.rs
 crates/app/src/ui/export/export_format.rs
@@ -511,6 +514,7 @@ crates/app/src/ui/session_window/work_notifier.rs
 crates/app/src/ui/shell/mod.rs
 crates/app/src/ui/shell/primary_menu_button.rs
 crates/app/src/ui/source_dialog.rs
+crates/app/src/ui/sql_import_dialog.rs
 crates/app/src/ui/ssh_inputs.rs
 crates/app/src/ui/ssh_section.rs
 crates/app/src/ui/store_sync.rs
@@ -571,6 +575,7 @@ crates/app/src/ui/welcome_view.rs
 crates/app/src/ui/window_geometry.rs
 crates/app/src/ui/workspace/assistant.rs
 crates/app/src/ui/workspace/close_flow.rs
+crates/app/src/ui/workspace/database_transfer.rs
 crates/app/src/ui/workspace/definitions.rs
 crates/app/src/ui/workspace/diagram.rs
 crates/app/src/ui/workspace/editor_label.rs

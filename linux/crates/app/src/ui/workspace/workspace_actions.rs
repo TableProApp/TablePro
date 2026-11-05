@@ -22,8 +22,10 @@ type ActionInput = fn() -> WorkspaceInput;
 /// they are not left greyed out with no reason.
 const HISTORY_ACTIONS: [&str; 2] = ["show-history", "show-saved-queries"];
 
-const ENTRIES: [(&str, ActionInput); 6] = [
+const ENTRIES: [(&str, ActionInput); 8] = [
     ("new-editor-tab", || WorkspaceInput::NewEditorTab),
+    (EXPORT_DATABASE, || WorkspaceInput::ExportDatabase),
+    (IMPORT_SQL_FILE, || WorkspaceInput::ImportSqlFile),
     ("refresh-tables", || WorkspaceInput::RefreshCatalog),
     ("save-query", || WorkspaceInput::SaveActiveQuery),
     ("show-history", || WorkspaceInput::ShowHistory),
@@ -31,6 +33,8 @@ const ENTRIES: [(&str, ActionInput); 6] = [
     (super::health_banner::REVIEW_HOST_KEY, || WorkspaceInput::ReviewHostKey),
 ];
 
+const EXPORT_DATABASE: &str = "export-database";
+const IMPORT_SQL_FILE: &str = "import-sql-file";
 const REOPEN_CLOSED_TAB: &str = "reopen-closed-tab";
 const CLOSE_ALL_TABS: &str = "close-all-tabs";
 const SWITCH_RECENT_TAB: &str = "switch-recent-tab";
@@ -114,6 +118,21 @@ pub(super) fn remove(window: &adw::ApplicationWindow) {
     window.remove_action(CLOSE_ALL_TABS);
     window.remove_action(SWITCH_RECENT_TAB);
     window.remove_action(SHOW_TABS);
+}
+
+/// Offer Export Database and Import SQL File where the session in front
+/// has a SQL dump, and Import only where it may write.
+pub(crate) fn show_transfer_actions(window: &adw::ApplicationWindow, front: Option<&tablepro_session::Session>) {
+    set_enabled(
+        window,
+        EXPORT_DATABASE,
+        front.is_some_and(super::database_transfer::dumps),
+    );
+    set_enabled(
+        window,
+        IMPORT_SQL_FILE,
+        front.is_some_and(super::database_transfer::imports_sql),
+    );
 }
 
 fn set_enabled(window: &adw::ApplicationWindow, name: &str, enabled: bool) {
