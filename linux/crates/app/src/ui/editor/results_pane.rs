@@ -219,6 +219,23 @@ impl ResultsPane {
         }
     }
 
+    // The line's count after its rows were read again; the line is put back, and picked again when it was.
+    pub fn retitle(&self, index: u32, title: &str) {
+        let imp = self.imp();
+        let Some(items) = imp.items.get() else {
+            return;
+        };
+        let Some(item) = items.item(index).and_downcast::<ResultItem>() else {
+            return;
+        };
+        let picked = self.selected() == Some(index);
+        let line = ResultItem::new(title, &item.subtitle(), &item.icon_name());
+        items.splice(index, 1, &[line]);
+        if picked {
+            self.select(index);
+        }
+    }
+
     pub fn shown_grid(&self) -> Option<DataGrid> {
         let selected = self.selected()?;
         self.imp()

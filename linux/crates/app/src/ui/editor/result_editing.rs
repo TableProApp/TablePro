@@ -52,7 +52,7 @@ struct ResultActions {
     redo: gio::SimpleAction,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct ResultEditing {
     tracker: OnceCell<TabTrackerHandle>,
     actions: OnceCell<ResultActions>,
@@ -65,6 +65,8 @@ pub struct ResultEditing {
     run: Cell<u64>,
     rereading: Cell<bool>,
     reread_cancel: RefCell<Option<CancellationToken>>,
+    // A run asked for while a read after a save was stopping, sent once that read lets go of the connection.
+    after_reread: RefCell<Option<Box<dyn Fn(&SqlEditor)>>>,
     dirty: Cell<bool>,
     // A result read after a USE in the same run came from a database the tab may have left again.
     moves_database: Cell<bool>,
@@ -150,9 +152,12 @@ impl SqlEditor {
         if let Some(grid) = self.imp().results.shown_grid() {
             grid.commit_edit();
         }
-        // A run replaces the rows a slow read after a save would bring back, so it stops that read rather than wait.
+        // A run replaces the rows a slow read after a save would bring back, so it stops that read, then goes once the
+        // connection is free.
         if self.imp().editing.rereading.get() {
             self.stop_reread();
+            self.imp().editing.after_reread.replace(Some(Box::new(then)));
+            return false;
         }
         if tracker.pending_state() == PendingState::Saving {
             self.emit_by_name::<()>(
@@ -513,9 +518,23 @@ impl SqlEditor {
                 if let Some(tracker) = self.row_tracker() {
                     let _ = tracker.discard();
                 }
+                self.forget_owner_page();
             }
         }
         self.on_rows_pending_changed();
+    }
+
+    // A kept page of the owner off screen still draws the tracker as it was; it is built again when shown.
+    fn forget_owner_page(&self) {
+        if let Some(owner) = self
+            .imp()
+            .editing
+            .owner
+            .get()
+            .and_then(|owner| u32::try_from(owner).ok())
+        {
+            self.imp().results.forget_pages(|page| page == owner);
+        }
     }
 
     pub(crate) fn rows_save_started(&self) {
@@ -552,21 +571,24 @@ impl SqlEditor {
                 grid.reveal_row(&key);
             }
         }
-        if let Some(grid) = grid {
-            grid.redraw();
+        match grid {
+            Some(grid) => grid.redraw(),
+            None => self.forget_owner_page(),
         }
     }
 
     pub(crate) fn rows_save_unknown(&self) {
         self.rows_save_ended();
-        if let Some(grid) = self.owner_grid() {
-            grid.redraw();
+        match self.owner_grid() {
+            Some(grid) => grid.redraw(),
+            None => self.forget_owner_page(),
         }
     }
 
     pub(crate) fn rows_discarded(&self, reload: bool) {
-        if let Some(grid) = self.owner_grid() {
-            grid.resync();
+        match self.owner_grid() {
+            Some(grid) => grid.resync(),
+            None => self.forget_owner_page(),
         }
         self.on_rows_pending_changed();
         if let (true, Some(index)) = (reload, self.imp().editing.owner.get()) {
@@ -656,6 +678,10 @@ impl SqlEditor {
         imp.editing.rereading.set(false);
         imp.editing.reread_cancel.replace(None);
         imp.results.set_running(self.is_running());
+        if let Some(then) = imp.editing.after_reread.take() {
+            then(self);
+            return;
+        }
         if imp.editing.run.get() != run {
             return;
         }
@@ -663,15 +689,21 @@ impl SqlEditor {
             Some(ResultEdit::Editable(target)) => Some(target.clone()),
             _ => None,
         };
+        let mut retitle = None;
         let read = {
             let mut log = imp.log.borrow_mut();
             let shown = log.as_mut().and_then(|log| log.result_mut(index));
             match (shown, result) {
                 // The same columns from the same table: the rows change in place, and the grid keeps its place.
                 (Some(shown), Some(result)) if target.is_some() && shown.columns == result.columns => {
+                    let counted = shown.summary == result.summary;
                     if let Some(target) = &target {
                         shown.rows = typed_rows(target, &result.columns, result.rows);
                         shown.summary = result.summary;
+                    }
+                    // The footer, the limit banner and the list's count were built from the old summary.
+                    if !counted {
+                        retitle = Some(shown.summary.tab_label(index));
                     }
                     None
                 }
@@ -686,11 +718,16 @@ impl SqlEditor {
                 _ => Some(None),
             }
         };
+        if let (Some(title), Ok(page)) = (&retitle, u32::try_from(index)) {
+            imp.results.retitle(page, title);
+        }
         let Some(read) = read else {
             // Another result can have taken the clean tracker while this one was read again.
             let shown = imp.results.selected().and_then(|page| usize::try_from(page).ok());
             match (target, self.owner_grid()) {
-                (Some(target), Some(grid)) if shown == Some(index) && imp.editing.owner.get() == Some(index) => {
+                (Some(target), Some(grid))
+                    if retitle.is_none() && shown == Some(index) && imp.editing.owner.get() == Some(index) =>
+                {
                     let rows = imp
                         .log
                         .borrow()

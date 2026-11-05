@@ -150,13 +150,16 @@ impl Shared {
             }
             _ => TransactionState::Unknown,
         };
-        if let (Ok((RunEnd::Completed, true)), true, Some(set)) = (&supervised, placed, traced) {
-            self.trace(&mut held.connection, set, transaction_state, &options, sink.as_mut())
-                .await;
-        }
+        let settled = match (&supervised, placed, traced) {
+            (Ok((RunEnd::Completed, true)), true, Some(set)) => {
+                self.trace(&mut held.connection, set, transaction_state, sink.as_mut())
+                    .await
+            }
+            _ => true,
+        };
         self.running.store(false, Ordering::SeqCst);
         let end = match supervised {
-            Ok((end, true)) if placed => end,
+            Ok((end, true)) if placed && settled => end,
             Ok((end, _)) => {
                 self.lost.store(true, Ordering::SeqCst);
                 *guard = None;
@@ -251,28 +254,31 @@ impl Shared {
         }
     }
 
-    // Unknown still looks: SHOW CREATE TABLE neither commits nor fails a transaction, and a MySQL login that cannot read performance_schema never knows.
+    // Only a session known to be outside a transaction is traced, since the host edits no other. False when the lookup
+    // did not finish: its answer may still be due on the connection, which then takes no other statement.
     async fn trace(
         &self,
         connection: &mut MySqlConnection,
         set: TracedSet,
         state: TransactionState,
-        options: &RunOptions,
         sink: &mut dyn ResultSink,
-    ) {
-        if matches!(state, TransactionState::InTransaction | TransactionState::Failed) {
-            return;
+    ) -> bool {
+        if state != TransactionState::Idle {
+            return true;
         }
         let resolving = tokio::time::timeout(self.liveness.cancel_grace, resolved_columns(connection, set));
         let resolved = tokio::select! {
             biased;
-            () = options.cancel.cancelled() => None,
-            () = self.closing.cancelled() => None,
-            resolved = resolving => resolved.ok().flatten(),
+            () = self.closing.cancelled() => return false,
+            resolved = resolving => match resolved {
+                Ok(resolved) => resolved,
+                Err(_) => return false,
+            },
         };
         if let Some(event) = resolved {
             sink.accept(event).await;
         }
+        true
     }
 
     fn stop_due(&self, options: &RunOptions, deadline: Option<Instant>) -> Option<Stop> {

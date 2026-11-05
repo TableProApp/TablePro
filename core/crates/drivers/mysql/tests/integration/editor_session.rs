@@ -412,10 +412,10 @@ async fn only_a_plain_read_of_a_permanent_table_traces_its_columns() {
     }
 }
 
-// The lookup changes no transaction, so a read is still traced when the transaction state is unknown.
+// The host edits only rows read outside a transaction, so a session that cannot say is not traced.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
-async fn mysql_user_without_ps_select_still_traces() {
+async fn mysql_user_without_ps_select_is_not_traced() {
     let fixture = start(MysqlFlavour::Mysql).await;
     let connection = connect(&fixture, false).await;
     setup(
@@ -428,7 +428,7 @@ async fn mysql_user_without_ps_select_still_traces() {
     let (summary, events) = crate::support::run(editor.as_ref(), "SELECT * FROM t").await;
 
     assert_eq!(summary.transaction_state, TransactionState::Unknown);
-    assert_eq!(origins_in(&events), [traced(fixture.database(), "t", "id")]);
+    assert_eq!(origins_in(&events), [None]);
     editor.close().await;
     connection.close().await.expect("a close");
 }
