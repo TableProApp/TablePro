@@ -843,9 +843,10 @@ impl SessionWindow {
             handed.into_iter().map(|(_, file, text)| (file, text)).collect()
         };
         self.open_scripts_in(&workspace, handed);
-        if workspace.data_model() == Some(DataModel::Relational) {
-            self.open_waiting_scripts(&workspace);
-        }
+        // The picker that asked is gone from view, so a session that runs no SQL hands the question on.
+        let waiting = self.imp().waiting_scripts.take();
+        self.show_waiting_scripts();
+        self.open_scripts_in(&workspace, waiting);
         self.sync_actions();
         for warning in warnings {
             self.show_toast(&warning);
@@ -1170,7 +1171,7 @@ impl SessionWindow {
         match front {
             Some(input) => input.deliver(WorkspaceInput::OpenScript { file, text }),
             None if self.page() != SessionPage::Shell => self.wait_for_session(file, text),
-            None => self.open_script_elsewhere(file, text),
+            None => self.ask_elsewhere(vec![(file, text)]),
         }
     }
 
@@ -1185,15 +1186,21 @@ impl SessionWindow {
 
     // A session that holds keys or documents runs no SQL, so the script
     // asks for a connection in a window of its own.
-    fn open_script_elsewhere(&self, file: gio::File, text: String) {
+    fn ask_elsewhere(&self, scripts: Vec<(gio::File, String)>) {
+        if scripts.is_empty() {
+            return;
+        }
         let window = self
             .application()
             .and_downcast::<crate::application::TableProApplication>()
             .and_then(|app| app.open_window(WindowLaunch::Picker))
             .and_downcast::<SessionWindow>();
-        match window {
-            Some(window) => window.send(SessionWindowInput::ScriptLoaded { file, text: Ok(text) }),
-            None => tracing::warn!("no window to open a SQL file in"),
+        let Some(window) = window else {
+            tracing::warn!("no window to open a SQL file in");
+            return;
+        };
+        for (file, text) in scripts {
+            window.send(SessionWindowInput::ScriptLoaded { file, text: Ok(text) });
         }
     }
 
@@ -1237,26 +1244,14 @@ impl SessionWindow {
         let input = workspace
             .sender()
             .filter(|_| workspace.data_model() == Some(DataModel::Relational));
-        for (file, text) in scripts {
-            match &input {
-                Some(input) => input.deliver(WorkspaceInput::OpenScript { file, text }),
-                None => self.wait_for_session(file, text),
+        match input {
+            Some(input) => {
+                for (file, text) in scripts {
+                    input.deliver(WorkspaceInput::OpenScript { file, text });
+                }
             }
+            None => self.ask_elsewhere(scripts),
         }
-    }
-
-    fn open_waiting_scripts(&self, workspace: &Workspace) {
-        let Some(input) = workspace.sender() else {
-            return;
-        };
-        let waiting = self.imp().waiting_scripts.take();
-        if waiting.is_empty() {
-            return;
-        }
-        for (file, text) in waiting {
-            input.deliver(WorkspaceInput::OpenScript { file, text });
-        }
-        self.show_waiting_scripts();
     }
 
     fn show_waiting_scripts(&self) {

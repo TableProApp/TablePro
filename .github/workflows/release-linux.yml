@@ -224,10 +224,12 @@ jobs:
 
   ppa:
     name: Upload to the Launchpad PPA
-    needs: [verify, packages, revision-packages]
+    needs: [verify, packages, template, revision-packages]
+    # A tag publishes only once every shipped catalogue is complete (template).
     if: >-
       !cancelled() && (
-        (needs.packages.result == 'success' && needs.verify.outputs.prerelease == 'false') ||
+        (needs.packages.result == 'success' && needs.template.result == 'success' &&
+          needs.verify.outputs.prerelease == 'false') ||
         needs.revision-packages.result == 'success')
     runs-on: ubuntu-24.04
     environment: linux-release
