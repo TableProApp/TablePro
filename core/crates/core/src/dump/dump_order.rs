@@ -180,8 +180,9 @@ fn mention_edges(objects: &[&DumpObject], grammar: SqlGrammar) -> Vec<Vec<Mentio
 /// The names the object's statements hold, each with the schema written
 /// before it, unquoted and in lower case. Left out: the object's own name
 /// where its CREATE states it, a name an `AS` gives (a column or table
-/// alias), and a schema written before a dot. Each says whether it
-/// stands where only a relation or a routine can.
+/// alias), a common table expression's name, and a schema written
+/// before a dot. Each says whether it stands where only a relation or a
+/// routine can.
 fn mentions(object: &DumpObject, grammar: SqlGrammar) -> Vec<(Option<String>, String, bool)> {
     let own = object.name.to_lowercase();
     let own_schema = object.schema.as_deref().map(str::to_lowercase);
@@ -201,11 +202,12 @@ fn mentions(object: &DumpObject, grammar: SqlGrammar) -> Vec<(Option<String>, St
         };
         let is_dot = |at: usize| matches!(tokens.get(at), Some((ScriptTokenKind::Punct, ".")));
         let is_as = |at: usize| matches!(tokens.get(at), Some((ScriptTokenKind::Word, text)) if text.eq_ignore_ascii_case("AS"));
+        let local = common_table_names(&tokens);
         for at in 0..tokens.len() {
             let Some(name) = name_at(at) else {
                 continue;
             };
-            if is_dot(at + 1) || (at > 0 && is_as(at - 1)) {
+            if is_dot(at + 1) || (at > 0 && is_as(at - 1)) || local.contains(&name) {
                 continue;
             }
             let schema = (at >= 2 && is_dot(at - 1)).then(|| name_at(at - 2)).flatten();
@@ -227,14 +229,58 @@ fn mentions(object: &DumpObject, grammar: SqlGrammar) -> Vec<(Option<String>, St
     found
 }
 
-fn unquote(text: &str) -> &str {
-    let mut chars = text.chars();
-    match (chars.next(), chars.next_back()) {
-        (Some('"'), Some('"')) | (Some('`'), Some('`')) | (Some('['), Some(']')) => {
-            text.get(1..text.len() - 1).unwrap_or(text)
+/// The names a WITH gives its common table expressions, `name AS (` or
+/// `name (columns) AS (`, in lower case. A query reads its own one by
+/// that name, not the catalog's.
+fn common_table_names(tokens: &[(ScriptTokenKind, &str)]) -> BTreeSet<String> {
+    let word = |at: usize, wanted: &str| matches!(tokens.get(at), Some((ScriptTokenKind::Word, text)) if text.eq_ignore_ascii_case(wanted));
+    let open = |at: usize| matches!(tokens.get(at), Some((ScriptTokenKind::OpenParen, _)));
+    let mut names = BTreeSet::new();
+    for at in 1..tokens.len() {
+        let after_list = matches!(tokens[at - 1].0, ScriptTokenKind::Punct if tokens[at - 1].1 == ",")
+            || word(at - 1, "WITH")
+            || word(at - 1, "RECURSIVE");
+        if !after_list {
+            continue;
         }
-        _ => text,
+        let name = match tokens[at] {
+            (ScriptTokenKind::Word, text) => text.to_lowercase(),
+            (ScriptTokenKind::QuotedIdentifier, text) => unquote(text).to_lowercase(),
+            _ => continue,
+        };
+        let mut next = at + 1;
+        if open(next) {
+            let mut depth = 0usize;
+            while let Some((kind, _)) = tokens.get(next) {
+                match kind {
+                    ScriptTokenKind::OpenParen => depth += 1,
+                    ScriptTokenKind::CloseParen => depth = depth.saturating_sub(1),
+                    _ => {}
+                }
+                next += 1;
+                if depth == 0 {
+                    break;
+                }
+            }
+        }
+        if word(next, "AS") && (open(next + 1) || (word(next + 1, "MATERIALIZED") || word(next + 1, "NOT"))) {
+            names.insert(name);
+        }
     }
+    names
+}
+
+/// The name a quoted identifier spells, its doubled quote read as one.
+fn unquote(text: &str) -> String {
+    let mut chars = text.chars();
+    let close = match (chars.next(), chars.next_back()) {
+        (Some('"'), Some('"')) => '"',
+        (Some('`'), Some('`')) => '`',
+        (Some('['), Some(']')) => ']',
+        _ => return text.to_owned(),
+    };
+    let inner = text.get(1..text.len() - 1).unwrap_or(text);
+    inner.replace(&format!("{close}{close}"), &close.to_string())
 }
 
 /// Kahn's order, taking the earliest ready position each step so an
@@ -392,6 +438,31 @@ mod tests {
         let named = |objects: &[&DumpObject]| objects.iter().map(|object| object.name.clone()).collect::<Vec<_>>();
         assert_eq!(named(&early), ["base", "total", "uses"]);
         assert_eq!(named(&late), ["other"]);
+    }
+
+    #[test]
+    fn a_common_table_expression_is_not_the_view_of_its_name() {
+        let objects = [
+            view("a", "CREATE VIEW a AS SELECT n FROM z"),
+            view(
+                "z",
+                "CREATE VIEW z AS WITH a AS (SELECT 1 AS n), b (m) AS MATERIALIZED (SELECT 2) SELECT n FROM a, b",
+            ),
+        ];
+        let refs: Vec<&DumpObject> = objects.iter().collect();
+
+        assert_eq!(order_programs(&refs, SqlGrammar::PostgreSql), [1, 0]);
+    }
+
+    #[test]
+    fn a_doubled_quote_in_a_name_is_one_quote() {
+        let objects = [
+            view("a", "CREATE VIEW a AS SELECT * FROM \"z\"\"base\""),
+            view("z\"base", "CREATE VIEW \"z\"\"base\" AS SELECT 1 AS n"),
+        ];
+        let refs: Vec<&DumpObject> = objects.iter().collect();
+
+        assert_eq!(order_programs(&refs, SqlGrammar::DuckDb), [1, 0]);
     }
 
     #[test]

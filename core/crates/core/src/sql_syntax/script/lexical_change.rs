@@ -89,12 +89,22 @@ fn set_assignments(statement: &str) -> Option<Vec<(String, String)>> {
     Some(pairs)
 }
 
+/// The statement with `/*!` and MariaDB's `/*M!` openers, their version
+/// digits and the closing `*/` taken off.
 fn without_executable_markers(statement: &str) -> String {
     let mut out = String::with_capacity(statement.len());
     let mut rest = statement;
-    while let Some(at) = rest.find("/*!") {
+    while let Some(at) = rest.find("/*") {
+        let marker = ["/*!", "/*M!"]
+            .into_iter()
+            .find(|marker| rest[at..].starts_with(marker));
+        let Some(marker) = marker else {
+            out.push_str(&rest[..at + 2]);
+            rest = &rest[at + 2..];
+            continue;
+        };
         out.push_str(&rest[..at]);
-        let after = &rest[at + 3..];
+        let after = &rest[at + marker.len()..];
         let digits = after.len() - after.trim_start_matches(|c: char| c.is_ascii_digit()).len();
         rest = &after[digits..];
     }
@@ -159,6 +169,20 @@ mod tests {
         assert_eq!(
             tracker.after("/*!50003 SET sql_mode = @saved_sql_mode */", my, NO_ESCAPES),
             Some(ESCAPES)
+        );
+    }
+
+    #[test]
+    fn a_mariadb_executable_comment_sets_the_mode_too() {
+        let mut tracker = LexicalTracker::default();
+
+        assert_eq!(
+            tracker.after(
+                "/*M!100100 SET sql_mode='NO_BACKSLASH_ESCAPES' */",
+                SqlGrammar::MySql,
+                ESCAPES
+            ),
+            Some(NO_ESCAPES)
         );
     }
 
