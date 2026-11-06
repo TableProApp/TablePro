@@ -483,12 +483,15 @@ impl ConnectDialog {
         let next = match socket {
             true => {
                 imp.network_tls.replace(Some(imp.tls_section.form_state()));
-                TlsFormState {
-                    mode: TlsMode::Disable,
-                    ..TlsFormState::new(tls)
-                }
+                TlsFormState::new(TlsMode::Disable)
             }
-            false => imp.network_tls.take().unwrap_or_else(|| TlsFormState::new(tls)),
+            false => imp.network_tls.take().unwrap_or_else(|| {
+                let form = self.form();
+                let mode = entry.as_ref().map_or(TlsMode::Disable, |entry| {
+                    entry.capabilities().new_connection_tls(form.port, &form.options)
+                });
+                TlsFormState::new(mode)
+            }),
         };
         imp.tls_section.apply(tls, TransportClass::DirectTcp, &next);
     }
@@ -721,13 +724,12 @@ impl ConnectDialog {
             };
             // The engine takes a network host, so the TLS it had over the network comes back too.
             if socket_after.is_none() {
-                let tls = entry.capabilities().tls.as_ref();
-                form.tls = imp.network_tls.take().unwrap_or_else(|| TlsFormState::new(tls));
-                if let Some(tls) = tls
-                    && !tls.modes.contains(&form.tls.mode)
-                {
-                    form.tls = TlsFormState::new(Some(tls));
-                }
+                let caps = entry.capabilities();
+                form.tls = imp
+                    .network_tls
+                    .take()
+                    .unwrap_or_else(|| TlsFormState::new(caps.new_connection_tls(form.port, &form.options)));
+                form.follow_tls_default(caps);
             }
         }
         self.show_driver(index, &form);
