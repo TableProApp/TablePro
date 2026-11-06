@@ -15,7 +15,7 @@ use tablepro_core::import::{
 };
 
 use crate::i18n::{gettext, gettext_f, ngettext_f};
-use crate::ui::format::{format_thousands, plural_count};
+use crate::ui::format::format_thousands;
 
 /// Failures listed in the summary; Copy Details carries every one kept.
 const LISTED_FAILURES: usize = 100;
@@ -442,7 +442,7 @@ fn counts_text(statements: u64, failed: u64) -> String {
     let ran = ngettext_f(
         "{n} statement run",
         "{n} statements run",
-        plural_count(statements),
+        statements,
         &[("n", &format_thousands(statements))],
     );
     match failed {
@@ -450,7 +450,7 @@ fn counts_text(statements: u64, failed: u64) -> String {
         failed => ngettext_f(
             "{ran}, {n} failed",
             "{ran}, {n} failed",
-            plural_count(failed),
+            failed,
             &[("ran", &ran), ("n", &format_thousands(failed))],
         ),
     }
@@ -504,7 +504,7 @@ fn report_lines(report: &SqlImportReport) -> Vec<String> {
         lines.push(ngettext_f(
             "{n} line only a client reads was passed over.",
             "{n} lines only a client reads were passed over.",
-            plural_count(report.skipped),
+            report.skipped,
             &[("n", &format_thousands(report.skipped))],
         ));
     }
@@ -532,18 +532,13 @@ fn elapsed_text(elapsed: Duration) -> String {
     let seconds = elapsed.as_secs();
     match seconds {
         0 => gettext("under a second"),
-        seconds if seconds < 60 => ngettext_f(
-            "{n} second",
-            "{n} seconds",
-            plural_count(seconds),
-            &[("n", &seconds.to_string())],
-        ),
+        seconds if seconds < 60 => ngettext_f("{n} second", "{n} seconds", seconds, &[("n", &seconds.to_string())]),
         seconds => {
             let minutes = seconds / 60;
             ngettext_f(
                 "{n} minute",
                 "{n} minutes",
-                plural_count(minutes),
+                minutes,
                 &[("n", &format_thousands(minutes))],
             )
         }

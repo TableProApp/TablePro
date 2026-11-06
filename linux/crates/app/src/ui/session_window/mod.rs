@@ -476,9 +476,9 @@ impl SessionWindow {
             SessionWindowInput::NewQueryIn(key) => self.deliver_to(&key, WorkspaceInput::NewEditorTab),
             SessionWindowInput::RefreshIn(key) => self.deliver_to(&key, WorkspaceInput::RefreshCatalog),
             SessionWindowInput::FrontChanged => self.sync_actions(),
-            SessionWindowInput::ReturnForeignTab(page) => {
+            SessionWindowInput::ReturnTab(page) => {
                 if let Some(page) = page.upgrade() {
-                    self.on_return_foreign_tab(&page);
+                    self.on_return_tab(&page);
                 }
             }
             SessionWindowInput::SetSafeMode { key, level } => self.on_set_safe_mode(&key, level),
@@ -760,29 +760,38 @@ impl SessionWindow {
         }
     }
 
-    /// A tab belongs to its session, which only its own window holds: one
-    /// dropped here goes back to the end of that window's tab bar.
-    fn on_return_foreign_tab(&self, page: &adw::TabPage) {
+    /// A tab belongs to its session, and a session to one window. A tab
+    /// that landed here goes back to its session's view, where the drag
+    /// took it from; one whose session closed meanwhile closes, since that
+    /// close already asked about it.
+    fn on_return_tab(&self, page: &adw::TabPage) {
         let (Some(shell), Some(app)) = (self.shell(), self.application()) else {
             return;
         };
         let view = shell.tab_view();
-        if !(0..view.n_pages()).any(|position| &view.nth_page(position) == page) {
+        if crate::ui::workspace::page_position(&view, page).is_none() {
             return;
         }
         let owner = app
             .windows()
             .into_iter()
             .filter_map(|window| window.downcast::<SessionWindow>().ok())
-            .filter(|window| window != self)
             .filter_map(|window| window.shell())
             .find(|other| other.owner_of(page).is_some());
         let Some(owner) = owner else {
-            tracing::debug!("a tab no other window's session owns was dropped here");
+            view.close_page(page);
             return;
         };
         let target = owner.tab_view();
-        view.transfer_page(page, &target, target.n_pages());
+        let left_at = owner.take_departure(page);
+        if target == view {
+            if let Some(position) = left_at {
+                view.reorder_page(page, position.min(view.n_pages() - 1));
+            }
+        } else {
+            let position = left_at.unwrap_or(i32::MAX).min(target.n_pages());
+            view.transfer_page(page, &target, position);
+        }
     }
 
     /// Start the session that connected and build its workspace in the
