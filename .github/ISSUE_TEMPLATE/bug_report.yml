@@ -40,12 +40,23 @@ body:
         - MySQL / MariaDB
         - PostgreSQL
         - SQLite
+        - DuckDB
         - SQL Server
         - MongoDB
         - Redis
         - ClickHouse
+        - Cassandra
+        - ScyllaDB
         - Oracle
         - N/A
+    validations:
+      required: false
+
+  - type: input
+    id: server-version
+    attributes:
+      label: Database server version
+      description: The server version, or the SQLite or DuckDB library version for a local file.
     validations:
       required: false
 
@@ -89,8 +100,10 @@ body:
     attributes:
       label: Installed from (Linux)
       options:
-        - Ubuntu PPA
-        - Fedora COPR
+        - .deb from the Ubuntu PPA
+        - .rpm from Fedora COPR
+        - Flatpak repository
+        - GitHub release file (.deb, .rpm or .flatpak)
         - Built from source
     validations:
       required: false
@@ -113,6 +126,15 @@ body:
       description: >-
         If applicable, add screenshots, screen recordings, or crash logs.
         On Linux, `journalctl --user --boot | grep -i tablepro` shows the log, and crash reports
-        are in `~/.local/state/tablepro/crashes/`. Logs name your hosts and tables, so read them first.
+        are in `~/.local/state/tablepro/crashes/` for native packages, or
+        `~/.var/app/app.tablepro.TablePro/.local/state/tablepro/crashes/` for Flatpak.
+        Flatpak keeps connections under `~/.var/app/app.tablepro.TablePro/config/tablepro/`,
+        history under `.local/state/tablepro/` and drafts under `data/tablepro/` in that app folder.
+        For Flatpak logs, quit the app, then run
+        `flatpak run --env=RUST_LOG=debug app.tablepro.TablePro 2> tablepro.log`.
+        Read and redact logs and crash text before posting: they can contain hosts, paths, SQL or values.
+        For native crashes, send redacted `coredumpctl info` metadata first, never a raw core dump.
+        See [Linux crash reporting](https://github.com/TableProApp/TablePro/blob/main/linux/docs/troubleshooting.md#crash-reports)
+        for missing reports and private sharing.
     validations:
       required: false
