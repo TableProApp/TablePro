@@ -73,6 +73,8 @@ pub const ACCELERATORS: &[Accelerator] = &[
     application("app.new-window", &["<Primary><Shift>n"], General),
     application("app.preferences", &["<Primary>comma"], General),
     application("win.show-history", &["<Primary><Shift>h"], General),
+    // As in GIMP and Inkscape.
+    application("win.export-results", &["<Primary><Shift>e"], General),
     // As in GNOME Files.
     application("win.show-sidebar", &["F9"], General),
     application("win.show-assistant", &["<Primary><Alt>a"], General),

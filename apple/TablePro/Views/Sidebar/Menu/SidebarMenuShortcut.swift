@@ -22,9 +22,11 @@ internal protocol SidebarMenuShortcutProviding {
 
 extension SidebarMenuCommand: SidebarMenuShortcutProviding {
     /// Only the commands whose menu-bar twin actually carries a `ShortcutAction` today: Database >
-    /// Refresh, Database > Truncate Table, File > Import Data and File > Export. Drop is left out
+    /// Refresh, Database > Truncate Table, File > Import Data and File > Export Tables. Drop is left out
     /// deliberately, because the menu bar's Delete is the data grid's row delete and pointing the
-    /// sidebar's object drop at it would show a shortcut that deletes something else.
+    /// sidebar's object drop at it would show a shortcut that deletes something else. A database or
+    /// schema's Export… is left out for the same reason: Export Tables… exports the selected tables,
+    /// so its key would open the dialog with nothing in that container chosen.
     internal var shortcutAction: ShortcutAction? {
         switch self {
         case .refreshContainers, .refreshObjectKind, .refreshContainerObjectKind, .refreshHierarchicalSchema:
@@ -33,7 +35,7 @@ extension SidebarMenuCommand: SidebarMenuShortcutProviding {
             return .truncateTable
         case .importTables:
             return .importData
-        case .exportTables, .exportContainers:
+        case .exportTables:
             return .export
         default:
             return nil

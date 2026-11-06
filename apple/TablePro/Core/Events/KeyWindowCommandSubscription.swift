@@ -3,7 +3,6 @@
 //  TablePro
 //
 
-import AppKit
 import Combine
 import Foundation
 
@@ -20,13 +19,5 @@ internal enum KeyWindowCommandSubscription {
                 guard isFrontmost() else { return }
                 handler(payload)
             }
-    }
-
-    internal static func sink<Payload>(
-        _ publisher: PassthroughSubject<Payload, Never>,
-        whileKey window: @escaping @MainActor () -> NSWindow?,
-        perform handler: @escaping @MainActor (Payload) -> Void
-    ) -> AnyCancellable {
-        sink(publisher, when: { window()?.isKeyWindow == true }, perform: handler)
     }
 }

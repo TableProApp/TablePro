@@ -63,6 +63,45 @@ extension GlobalStateSuites {
             #expect(actions.canSaveAsFavorite)
         }
 
+        // MARK: - Export Results from the grid
+
+        private func gridHoldingRows(
+            _ actions: MainContentCommandActions,
+            _ coordinator: MainContentCoordinator
+        ) throws -> DataTabGridAdapter {
+            coordinator.commandActions = actions
+            coordinator.tabManager.addTab(initialQuery: "SELECT 1", databaseName: "testdb")
+            let tabId = try #require(coordinator.tabManager.selectedTabId)
+            coordinator.tabSessionRegistry.setTableRows(
+                TableRows.from(queryRows: [[.text("1")]], columns: ["id"], columnTypes: [.text(rawType: nil)]),
+                for: tabId
+            )
+            _ = coordinator.gridModel(forTab: tabId)
+            return try #require(coordinator.dataGridEntries[tabId]?.adapter)
+        }
+
+        // It went out as a broadcast only the key window answered, so with TablePro in the background it did nothing.
+        @Test("The grid's Export Results… opens on its own window when no window is key")
+        func gridExportResultsReachesItsOwnWindow() throws {
+            let (actions, coordinator) = makeSUT()
+            let adapter = try gridHoldingRows(actions, coordinator)
+
+            adapter.gridExportResults()
+
+            #expect(coordinator.activeSheet?.id == ActiveSheet.exportQueryResults.id)
+        }
+
+        @Test("A grid whose tab is not in front does not export the front tab's rows")
+        func gridExportResultsNeedsItsTabInFront() throws {
+            let (actions, coordinator) = makeSUT()
+            let adapter = try gridHoldingRows(actions, coordinator)
+            coordinator.tabManager.addTab(initialQuery: "SELECT 2", databaseName: "testdb")
+
+            adapter.gridExportResults()
+
+            #expect(coordinator.activeSheet == nil)
+        }
+
         // MARK: - loadQueryIntoEditor
 
         @Test("loadQueryIntoEditor forwards query to coordinator and updates tab")

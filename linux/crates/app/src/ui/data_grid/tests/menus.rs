@@ -160,6 +160,11 @@ fn the_cell_menu_shows_the_cell_keys() {
     );
     assert_eq!(accel_of(&menu, "grid.edit"), Some(Some("F2".to_owned())));
     assert_eq!(accel_of(&menu, "grid.set-empty"), Some(None));
+    assert_eq!(
+        accel_of(&menu, "grid.export"),
+        Some(Some("<Primary><Shift>e".to_owned())),
+        "Export does not show the window's Export Results key"
+    );
 }
 
 #[gtk4::test]

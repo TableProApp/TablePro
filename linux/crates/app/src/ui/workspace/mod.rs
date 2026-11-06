@@ -545,7 +545,7 @@ pub(crate) enum WorkspaceInput {
     DraftsNotSaved,
     ShowHistory,
     ShowSavedQueries,
-    SaveActiveQuery,
+    ActiveTab(workspace_tabs::ActiveTabCommand),
     SaveQueryNamed {
         name: String,
         query: String,
@@ -1404,7 +1404,7 @@ impl WorkspaceModel {
                 bytes,
             } => self.on_import_csv_ready(schema, table, columns, bytes),
             WorkspaceInput::ImportCsvRun(import) => self.on_import_csv_run(*import),
-            WorkspaceInput::SaveActiveQuery => self.on_save_active_query(),
+            WorkspaceInput::ActiveTab(command) => self.on_active_tab_command(command),
             WorkspaceInput::SaveQueryNamed { name, query } => self.on_save_query_named(name, query),
             WorkspaceInput::OpenHistoryQuery(text) => self.open_editor_tab(Some(text)),
             WorkspaceInput::ReplaceActiveTabQuery(text) => self.on_replace_active_tab_query(text),

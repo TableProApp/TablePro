@@ -64,9 +64,14 @@ pub(super) fn build(tab: &BrowseTab, init: &LayoutInit<'_>) -> BrowseTabWidgets 
 /// What the bottom bar holds past the tab's breakpoint, where it has no
 /// room for it.
 fn more_menu(page_sizes: &[u64]) -> gio::Menu {
+    let export = gio::MenuItem::new(Some(&gettext("_Export Rows…")), Some("browse.export"));
+    // The window's Export Results key reaches this tab's Export.
+    if let Some(key) = crate::application::triggers_for("win.export-results").first() {
+        export.set_attribute_value("accel", Some(&key.to_variant()));
+    }
     let actions = gio::Menu::new();
     actions.append(Some(&gettext("_Filter Rows")), Some("browse.filter"));
-    actions.append(Some(&gettext("_Export Rows…")), Some("browse.export"));
+    actions.append_item(&export);
     actions.append(Some(&gettext("_Count Rows")), Some("browse.count-rows"));
     let sizes = gio::Menu::new();
     for size in page_sizes {
@@ -289,6 +294,21 @@ mod tests {
     fn every_action_in_the_more_menu_has_an_access_key_of_its_own() {
         // A page size is a number, which takes no key.
         crate::test_support::assert_access_keys(&more_menu(&[]));
+    }
+
+    #[test]
+    fn the_more_menus_export_shows_the_export_results_key() {
+        let actions = more_menu(&[]).item_link(0, "section").expect("the menu's actions");
+        let read = |item: i32, attribute: &str| {
+            actions
+                .item_attribute_value(item, attribute, None)
+                .and_then(|value| value.get::<String>())
+        };
+        let export = (0..actions.n_items())
+            .find(|&item| read(item, "action").as_deref() == Some("browse.export"))
+            .expect("Export Rows in the More menu");
+
+        assert_eq!(read(export, "accel").as_deref(), Some("<Primary><Shift>e"));
     }
 
     #[gtk4::test]

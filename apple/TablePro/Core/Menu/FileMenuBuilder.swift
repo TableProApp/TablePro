@@ -272,7 +272,9 @@ enum FileMenuBuilder {
             ),
             MenuItemFactory.item(
                 String(localized: "Export Results…"),
-                action: #selector(MainSplitViewController.exportQueryResults(_:))
+                action: #selector(MainSplitViewController.exportQueryResults(_:)),
+                shortcut: .exportResults,
+                keyboard: keyboard
             ),
             MenuItemFactory.item(
                 String(localized: "Export Data Dictionary…"),

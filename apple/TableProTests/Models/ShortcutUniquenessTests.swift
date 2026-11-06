@@ -76,7 +76,7 @@ struct ShortcutUniquenessTests {
         ShortcutAction.showTablesList, .showFavoritesList, .restorePreviousValues,
         .newAgentSession, .openAgentSession, .closeAgentSession, .deleteAgentSession, .newAIConversation,
         .copyPath, .copyRelativePath, .setCellsToValue, .pinTab,
-        .showServerDashboard, .showQueryInsights,
+        .showServerDashboard, .showQueryInsights, .exportResults,
     ])
     func newlyRebindableCommandsAreListable(action: ShortcutAction) {
         #expect(!action.displayName.isEmpty)
@@ -84,6 +84,19 @@ struct ShortcutUniquenessTests {
     }
 
     // Left to the context switch's `default:` it would be `.global`, and the recorder would call a grid combo free for it.
+    // The raw value keys every stored and synced override of Export Tables, so only the name in Settings changes.
+    @Test("Export Tables and Export Results are separate rows, each on its own key")
+    func exportCommandsAreSeparateRows() {
+        #expect(ShortcutAction.export.rawValue == "export")
+        #expect(ShortcutAction.export.displayName == String(localized: "Export Tables"))
+        #expect(ShortcutAction.exportResults.displayName == String(localized: "Export Results"))
+        #expect(ShortcutAction.exportResults.category == ShortcutAction.export.category)
+        #expect(ShortcutAction.exportResults.context == .global)
+        #expect(
+            KeyboardSettings.default.shortcut(for: .exportResults) == .character("e", command: true, shift: true, option: true)
+        )
+    }
+
     @Test("Restore Previous Values is a data-grid command")
     func restorePreviousValuesIsAGridCommand() {
         #expect(ShortcutAction.restorePreviousValues.context == .dataGrid)

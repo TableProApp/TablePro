@@ -1,6 +1,7 @@
 //! The shell's chrome: the header bars, the sidebar, the breakpoints and
 //! the window floor, the overview and the main menu.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use gtk4 as gtk;
@@ -8,11 +9,14 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
+use tablepro_core::column::{ColumnType, ResultColumn};
+use tablepro_core::{EditorSession, ResultEvent, Truncation, Value};
+use tablepro_test_support::{FakeEditorSession, FakeReply, FakeRun, Replies};
 
 use super::{served_table, shell_of};
 use crate::test_support::{descendants, wait_until};
 use crate::ui::SessionWindowInput;
-use crate::ui::session_window::tests::{Script, TestWindow, WAIT};
+use crate::ui::session_window::tests::{Script, TestWindow, WAIT, editors};
 use crate::ui::workspace::{WorkspaceShell, WorkspaceTab};
 
 fn overview_new_tab_button(overview: &adw::TabOverview) -> gtk::Button {
@@ -395,6 +399,96 @@ fn f9_toggles_sidebar() {
     let test = TestWindow::picker("F9");
 
     assert_eq!(test.app.accels_for_action("win.show-sidebar"), ["F9"]);
+}
+
+#[gtk4::test]
+fn ctrl_shift_e_exports_results() {
+    use crate::test_support::shortcut_keys::keystroke;
+    let test = TestWindow::picker("CtrlShiftE");
+
+    let installed = test.app.accels_for_action("win.export-results");
+    let keys: Vec<_> = installed.iter().map(|accel| keystroke(accel)).collect();
+    assert_eq!(keys, [keystroke("<Primary><Shift>e")]);
+}
+
+fn two_rows() -> Arc<dyn EditorSession> {
+    let columns: Arc<[ResultColumn]> = vec![ResultColumn::new("n", ColumnType::untyped_text("text"))].into();
+    let mut runs = Replies::default();
+    runs.always(FakeRun::completed(vec![
+        ResultEvent::ResultSetStarted { columns },
+        ResultEvent::Rows(vec![vec![Value::Int(1)], vec![Value::Int(2)]]),
+        ResultEvent::ResultSetFinished {
+            retained: 2,
+            total_rows: Some(2),
+            truncation: Truncation::Complete,
+        },
+    ]));
+    Arc::new(FakeEditorSession::new(runs))
+}
+
+fn export_results(test: &TestWindow) {
+    WidgetExt::activate_action(&test.window, "win.export-results", None).expect("win.export-results");
+}
+
+fn wait_for_export_dialog(test: &TestWindow) {
+    wait_until(WAIT, || test.window.visible_dialog().is_some()).expect("the export dialog");
+    let dialog = test.window.visible_dialog().expect("the export dialog");
+    assert_eq!(dialog.title(), "Export Rows");
+}
+
+#[gtk4::test]
+fn export_results_offers_the_result_an_editor_shows() {
+    let session = two_rows();
+    let test = TestWindow::connected_with("ExportResultsEditor", |script| {
+        script.open_editor_session.always(FakeReply::ok(session));
+    });
+    test.run_in_new_editor_tab();
+
+    export_results(&test);
+
+    wait_for_export_dialog(&test);
+}
+
+#[gtk4::test]
+fn export_results_offers_the_rows_a_table_tab_shows() {
+    use crate::ui::browse_tab::BrowseTab;
+    let test = TestWindow::connected_with("ExportResultsTable", |script| *script = served_table());
+    let page = test
+        .workspace()
+        .with_model(|model| {
+            model.open_tab(super::super::tab_spec::TabSpec::Table {
+                table: tablepro_core::meta::TableRef::new(Some("public".to_owned()), "customers"),
+                page: super::super::tab_spec::TablePage::first(1_000),
+                filter: crate::ui::browse_tab::TableFilter::Remembered,
+            })
+        })
+        .flatten()
+        .expect("a table tab");
+    let tab = page.child().downcast::<BrowseTab>().expect("a browse tab");
+    wait_until(WAIT, || tab.grid().row_count() > 0).expect("the tab's rows");
+
+    export_results(&test);
+
+    wait_for_export_dialog(&test);
+}
+
+#[gtk4::test]
+fn export_results_says_when_the_tab_in_front_has_no_rows() {
+    let test = TestWindow::connected("ExportResultsNothing");
+    WidgetExt::activate_action(&test.window, "win.new-editor-tab", None).expect("win.new-editor-tab");
+    wait_until(WAIT, || editors(&test.window).len() == 1).expect("an editor tab that has not run");
+    let overlay = shell_of(&test.workspace()).toast_overlay();
+
+    export_results(&test);
+
+    wait_until(WAIT, || {
+        descendants(&overlay)
+            .iter()
+            .filter_map(|widget| widget.downcast_ref::<gtk::Label>())
+            .any(|label| label.label() == "Nothing to export")
+    })
+    .expect("the toast says there is nothing to export");
+    assert_eq!(test.window.visible_dialog(), None, "a dialog opened with no rows");
 }
 
 /// A session that comes forward with a tab it opened while handling

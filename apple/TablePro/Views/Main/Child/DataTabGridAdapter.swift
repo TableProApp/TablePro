@@ -180,7 +180,8 @@ final class DataTabGridAdapter: DataGridDataSource, DataGridActions {
     }
 
     func gridExportResults() {
-        AppCommands.shared.exportQueryResults.send(())
+        guard ownsWindowState else { return }
+        coordinator?.commandActions?.exportQueryResults()
     }
 
     func gridClearResults() {
