@@ -8,6 +8,7 @@ use crate::{FixtureImage, ServerVersion};
 pub enum PostgresVersion {
     V13,
     V14,
+    V15,
     #[default]
     V17,
     V18,
@@ -18,6 +19,7 @@ impl PostgresVersion {
         match self {
             Self::V13 => 13,
             Self::V14 => 14,
+            Self::V15 => 15,
             Self::V17 => 17,
             Self::V18 => 18,
         }
@@ -26,12 +28,13 @@ impl PostgresVersion {
 
 impl ServerVersion for PostgresVersion {
     const VARIABLE: &'static str = "TABLEPRO_TEST_POSTGRES";
-    const ALL: &'static [Self] = &[Self::V13, Self::V14, Self::V17, Self::V18];
+    const ALL: &'static [Self] = &[Self::V13, Self::V14, Self::V15, Self::V17, Self::V18];
 
     fn name(self) -> &'static str {
         match self {
             Self::V13 => "13",
             Self::V14 => "14",
+            Self::V15 => "15",
             Self::V17 => "17",
             Self::V18 => "18",
         }
@@ -41,6 +44,7 @@ impl ServerVersion for PostgresVersion {
         match self {
             Self::V13 => FixtureImage::POSTGRES_13,
             Self::V14 => FixtureImage::POSTGRES_14,
+            Self::V15 => FixtureImage::POSTGRES_15,
             Self::V17 => FixtureImage::POSTGRES,
             Self::V18 => FixtureImage::POSTGRES_18,
         }

@@ -15,8 +15,11 @@
         "client_identity": null,
         "server_name": null
       },
-      "read_only": false,
-      "auth_mode": "password"
+      "safe_mode": "off",
+      "external_access": "read_only",
+      "ai_policy": "ask",
+      "auth_mode": "password",
+      "order": 1
     },
     {
       "id": "6f1e2d3c-4b5a-4968-8776-655443322110",
@@ -35,7 +38,10 @@
         },
         "server_name": "mysql.example.com"
       },
-      "read_only": true,
+      "safe_mode": "read_only",
+      "external_access": "blocked",
+      "ai_policy": "never",
+      "query_timeout_secs": 300,
       "auth_mode": "password",
       "ssh": {
         "host": "bastion",
@@ -53,7 +59,12 @@
       },
       "last_opened_at": "2026-10-01T08:30:00Z",
       "color": "red",
-      "group": "Production"
+      "group_id": "2a378134-5812-82b4-84aa-ed5c6c3cf409",
+      "order": 0,
+      "tags": [
+        "b1c2d3e4-f5a6-4b7c-8d9e-0f1a2b3c4d5e"
+      ],
+      "icon": "shield"
     },
     {
       "id": "1a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d",
@@ -69,7 +80,9 @@
         "client_identity": null,
         "server_name": null
       },
-      "read_only": false,
+      "safe_mode": "off",
+      "external_access": "read_only",
+      "ai_policy": "ask",
       "auth_mode": "kerberos",
       "ssh": {
         "host": "gateway.corp.example",
@@ -77,7 +90,8 @@
           "kind": "agent"
         }
       },
-      "group": "Production"
+      "group_id": "2a378134-5812-82b4-84aa-ed5c6c3cf409",
+      "order": 1
     },
     {
       "id": "9c8b7a6f-5e4d-4c3b-a2a1-0f9e8d7c6b5a",
@@ -93,7 +107,9 @@
         "client_identity": null,
         "server_name": null
       },
-      "read_only": false,
+      "safe_mode": "off",
+      "external_access": "read_only",
+      "ai_policy": "ask",
       "auth_mode": "password",
       "ssh": {
         "host": "10.0.0.5",
@@ -102,7 +118,9 @@
           "kind": "private_key"
         }
       },
-      "color": "teal"
+      "color": "teal",
+      "group_id": "e7d6c5b4-a392-4180-9f7e-6d5c4b3a2918",
+      "order": 0
     },
     {
       "id": "3d4e5f60-7182-4934-a5b6-c7d8e9f0a1b2",
@@ -118,7 +136,9 @@
         "client_identity": null,
         "server_name": null
       },
-      "read_only": false,
+      "safe_mode": "confirm_writes",
+      "external_access": "read_write",
+      "ai_policy": "allow",
       "auth_mode": "password",
       "ssh": {
         "host": "staging-bastion",
@@ -126,7 +146,8 @@
           "kind": "keyboard_interactive"
         }
       },
-      "last_opened_at": "2026-09-30T17:05:42.123Z"
+      "last_opened_at": "2026-09-30T17:05:42.123Z",
+      "order": 0
     },
     {
       "id": "c0ffee00-1234-4abc-8def-0123456789ab",
@@ -142,8 +163,11 @@
         "client_identity": null,
         "server_name": null
       },
-      "read_only": false,
-      "auth_mode": "password"
+      "safe_mode": "off",
+      "external_access": "read_only",
+      "ai_policy": "ask",
+      "auth_mode": "password",
+      "order": 2
     },
     {
       "id": "5a5b5c5d-6e6f-4071-8283-949596979899",
@@ -159,7 +183,9 @@
         "client_identity": null,
         "server_name": null
       },
-      "read_only": false,
+      "safe_mode": "off",
+      "external_access": "read_only",
+      "ai_policy": "ask",
       "auth_mode": "password",
       "ssh": {
         "host": "legacy.example.com",
@@ -169,7 +195,58 @@
           "kind": "password"
         }
       },
+      "color": "slate",
+      "group_id": "4c3b2a19-0817-4f6e-8d5c-4b3a29180716",
+      "order": 0
+    }
+  ],
+  "groups": [
+    {
+      "id": "2a378134-5812-82b4-84aa-ed5c6c3cf409",
+      "name": "Production",
+      "order": 0,
+      "color": "red",
+      "icon": {
+        "named": "shield"
+      }
+    },
+    {
+      "id": "f1e2d3c4-b5a6-4978-8695-a4b3c2d1e0f9",
+      "name": "Analytics",
+      "order": 1,
+      "icon": {
+        "symbol": "chart.bar.xaxis"
+      }
+    },
+    {
+      "id": "e7d6c5b4-a392-4180-9f7e-6d5c4b3a2918",
+      "name": "ClickHouse",
+      "parent_id": "f1e2d3c4-b5a6-4978-8695-a4b3c2d1e0f9",
+      "order": 0,
+      "color": "teal"
+    },
+    {
+      "id": "4c3b2a19-0817-4f6e-8d5c-4b3a29180716",
+      "name": "Retired",
+      "parent_id": "e7d6c5b4-a392-4180-9f7e-6d5c4b3a2918",
+      "order": 0
+    },
+    {
+      "id": "8a7b6c5d-4e3f-4a2b-9c1d-0e9f8a7b6c5d",
+      "name": "Archive",
+      "order": 2,
       "color": "slate"
     }
+  ],
+  "tags": [
+    {
+      "id": "b1c2d3e4-f5a6-4b7c-8d9e-0f1a2b3c4d5e",
+      "name": "critical",
+      "color": "red"
+    }
+  ],
+  "favorites": [
+    "3d4e5f60-7182-4934-a5b6-c7d8e9f0a1b2",
+    "6f1e2d3c-4b5a-4968-8776-655443322110"
   ]
 }

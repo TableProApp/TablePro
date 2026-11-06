@@ -15,6 +15,8 @@ mod decode;
 #[cfg(test)]
 mod duckdb_engine;
 #[cfg(test)]
+mod dump;
+#[cfg(test)]
 mod filter;
 #[cfg(test)]
 mod open_semantics;

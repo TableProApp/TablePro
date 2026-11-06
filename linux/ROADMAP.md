@@ -17,7 +17,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Import and export | A JSON file with no secrets in it, tags and icons included. On import, an entry with the same id and the same settings updates its name, colour, group, tags and icon; any other is added as a new connection. Tags are matched by id, then by name, so a second import adds none |
 | Test before saving | Test connects once and reports, then disconnects |
 | Passwords | Kept in the Secret Service; a prompt asks when one is missing or refused, with Remember Password |
-| Safe Mode | A level per connection, set in the connect dialog or the main menu while connected and saved back to the connection. Off asks before DROP, TRUNCATE, and DELETE or UPDATE without WHERE. Confirm Writes also asks before every other write from the editor, a grid save, a structure save, a CSV import or Drop Table, showing the SQL and the connection, with Cancel the default. Read-Only refuses every editor statement that does not read, and opens the connection read-only: SQLite, DuckDB and ClickHouse refuse writes at the engine, PostgreSQL and MySQL run in read-only transactions, SQL Server relies on the login, with the app's own reads in a rolled-back transaction, and Cassandra and ScyllaDB rely on the login. A statement is a read only when its engine's grammar shows it reads, each statement of a script on its own. Moving to or from Read-Only reconnects the window |
+| Safe Mode | A level per connection, set in the connect dialog or the main menu while connected and saved back to the connection. Off asks before DROP, TRUNCATE, and DELETE or UPDATE without WHERE. Confirm Writes also asks before every other write from the editor, a grid save, a structure save, a CSV import, a SQL file import or Drop Table, showing the SQL, or the file, and the connection, with Cancel the default. Read-Only refuses every editor statement that does not read, and opens the connection read-only: SQLite, DuckDB and ClickHouse refuse writes at the engine, PostgreSQL and MySQL run in read-only transactions, SQL Server relies on the login, with the app's own reads in a rolled-back transaction, and Cassandra and ScyllaDB rely on the login. A statement is a read only when its engine's grammar shows it reads, each statement of a script on its own. Moving to or from Read-Only reconnects the window |
 | Query timeout per connection | Custom Query Timeout in the connect dialog sets the editor's timeout for that connection in place of the one in Preferences, from the next connect; 0 turns it off. The app's own calls keep their fixed limits: 15 seconds for metadata, 60 for a page or a count, 120 for a row save or a CSV import, none for a schema change or an export, and on the server 60 for a table-tab statement and 10 for a lock wait |
 | Database files | SQLite and DuckDB: choose a file, create a new one, open one from Files or a terminal, where the file's header picks the engine, find a moved one with Locate, and choose read-only or read-write for one on a network or FUSE filesystem |
 | Kerberos for SQL Server | From the ticket cache, in the Flatpak through the KCM socket |
@@ -118,12 +118,20 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Formats | CSV with its options, JSON, Markdown, HTML, XML, Excel, and SQL INSERT from a table tab |
 | Scope | From a table tab, the current page with its pending edits, or every saved row under the filter and sort. From the editor, the rows shown, or every row by running the statement again on a separate read-only connection without the tab's USE or SET; a statement that writes is refused |
 | Running | Off the GTK thread with progress and Stop; closing or quitting asks about a running export |
+| Database | Export Database in the main menu writes a whole database or one schema to a `.sql` or `.sql.gz` file: tables, views, routines and triggers, and every table's rows as multi-row INSERTs, in the order `pg_dump` and `mysqldump` use, so `psql`, `mysql`, `sqlcmd`, `sqlite3` and `clickhouse-client` load it as well as Import SQL File does. Read in process from the connection, not by calling those tools ([core ADR 0011](../core/docs/decisions/0011-sql-dump-and-import-in-process.md)); not offered on Redis, MongoDB, Cassandra and ScyllaDB ([README](README.md#export-a-database-and-import-a-sql-file)) |
+
+### Import
+
+| Capability | Detail |
+|---|---|
+| SQL files | Import SQL File in the main menu runs a `.sql` or `.sql.gz` file of any size on an editor session of its own, split as the engine's client splits it (`DELIMITER`, `GO n`, routine bodies, dollar quotes), with progress, Stop and a summary of what failed and where. pg_dump's `COPY ... FROM stdin` rows run as INSERTs and its `\restrict` lines are passed over |
+| Errors and transactions | Stop at First Error, or run the rest and list each failure with its line. On PostgreSQL, SQL Server, SQLite and DuckDB the file can run as one transaction, so a failure or Stop undoes it all; MySQL, MariaDB and ClickHouse commit each statement as it runs. Safe Mode Read-Only offers neither import, and the import dialog is the one question Confirm Writes asks for the whole file |
 
 ### Windows and sessions
 
 | Capability | Detail |
 |---|---|
-| Window per session | A window holds one connection; another connection opens in a window of its own, and one already open brings its window forward ([ADR 0012](docs/decisions/0012-window-per-session.md)) |
+| Sessions in a window | A window holds several connection sessions, their tabs side by side in one tab view, and a connection already open brings its window forward ([ADR 0028](docs/decisions/0028-sessions-share-a-window.md)) |
 | One instance | A second launch presents the running app; New Window (Ctrl+Shift+N) opens a picker |
 | Tabs | `AdwTabView` with the tab overview and split header bars, adapting down to 360×294 |
 | Session restore | The windows of saved connections and database files open at quit open again at launch (Restore Session, on by default), also after New Window or a quit during the restore |
@@ -154,11 +162,11 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Capability | Detail |
 |---|---|
 | Flatpak | The Devel manifest builds on GNOME 51 for x86_64 and aarch64 with every Meson suite in the sandbox, and is linted, in the nightly Linux run |
-| .deb and .rpm | Ubuntu 26.04 and 26.10 and Fedora 44, built offline in CI the way Launchpad and COPR build them, linted, then installed and started in fresh containers; a `linux-v*` tag uploads to the PPA and starts the COPR build ([ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md)) |
+| .deb and .rpm | Ubuntu 26.04 and 26.10 and Fedora 44 and 45, built offline in CI the way Launchpad and COPR build them, linted, then installed and started in fresh containers; a `linux-v*` tag uploads to the PPA and starts the COPR build ([ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md)) |
 | Desktop integration | Desktop file with Open With for SQLite files, D-Bus activation, a man page, metainfo with screenshots, and SVG icons |
 | Translations | Vietnamese ships. The app's own strings go through gettext, and CI fails when `POTFILES.in` is stale or a translation loses a placeholder. CI builds the template with gettext 1.0 and publishes it from main and with each release; translators send pull requests against `po/*.po` ([po/README.md](po/README.md#where-translators-work)) |
 | Logs | stderr, which the session journals, with JSON lines on request. A panic also writes a crash report under `$XDG_STATE_HOME`, offered with Show Report on the next launch |
-| Tests | Unit, gtk (with an accessibility audit of the picker, the connect pages, the workspace, the connect dialog and every preferences page), data and packaging suites; connection, DDL and TLS conformance, and a CSV and SQL INSERT export round trip and a copy and paste round trip, on every SQL engine, keyspace and TLS conformance on Redis, and document and TLS conformance on MongoDB; Docker jobs for PostgreSQL with PgBouncer, MySQL and MariaDB, SQL Server, ClickHouse, Cassandra and ScyllaDB, Redis, MongoDB, SSH, the session and the grid save ([testing.md](docs/testing.md)); every critical audit finding has named guards ([regression-tests.md](docs/regression-tests.md)) |
+| Tests | Unit, gtk (with an accessibility audit of the picker, the connect pages, the workspace, the connect dialog and every preferences page), data and packaging suites; connection, DDL and TLS conformance, a CSV and SQL INSERT export round trip, a copy and paste round trip, and a database dump loaded back through Import SQL File and dumped again to the same file, on every SQL engine, keyspace and TLS conformance on Redis, and document and TLS conformance on MongoDB; Docker jobs for PostgreSQL with PgBouncer, MySQL and MariaDB, SQL Server, ClickHouse, Cassandra and ScyllaDB, Redis, MongoDB, SSH, the session and the grid save ([testing.md](docs/testing.md)); every critical audit finding has named guards ([regression-tests.md](docs/regression-tests.md)) |
 
 ## Backlog
 
@@ -197,7 +205,7 @@ Microsoft's mssql-tds is checked again each release as a SQL Server client. Toda
 
 ### Ideas
 
-Not committed: server monitoring (sessions, locks, slow queries), maintenance commands, backup and restore, replication status, comparing result sets, schema diff and data sync between connections, drawn query plans, scheduled queries, and opt-in usage telemetry.
+Not committed: server monitoring (sessions, locks, slow queries), maintenance commands, backup and restore through the engines' own tools (`pg_dump`, `mysqldump`), replication status, comparing result sets, schema diff and data sync between connections, drawn query plans, scheduled queries, and opt-in usage telemetry.
 
 ## Release criteria
 

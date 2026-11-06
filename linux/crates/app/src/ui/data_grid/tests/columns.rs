@@ -7,6 +7,7 @@ use gtk4::subclass::prelude::ObjectSubclassIsExt;
 use tablepro_core::column::ColumnKind;
 use tablepro_core::value::Temporal;
 use tablepro_core::{ColumnInfo, Value};
+use unicode_width::UnicodeWidthStr;
 
 use super::{Layouts, close_menus, data_column, keyed, laid_out, settled_width, shown_width, step, text, untyped};
 use crate::services::grid::display_text::editable_null_sentinel;
@@ -402,14 +403,36 @@ fn values_of_one_length_draw_whole_in_the_monospace_font() {
     }
 }
 
+/// `script` repeated until it draws wider in the cells' font than a Latin
+/// value one character longer, and that Latin value. Where no font has the
+/// script its letters draw as boxes two cells wide, and a fallback font's
+/// can be barely wider than a cell, so the length depends on the fonts.
+fn wider_than_a_longer_latin_value(script: &str) -> (String, String) {
+    let probe = laid_out(Grid::open(
+        vec![named("id", "integer", true), named("area", "text", false)],
+        vec![vec![Value::Int(1), text(script)]],
+    ));
+    let display = drawn(&probe, &[1]).pop().expect("the value's text");
+    // A text column opens at no more than 40 cells and cuts a longer value.
+    (1..)
+        .map(|times| script.repeat(times))
+        .take_while(|wide| wide.width() < 40)
+        .map(|wide| {
+            let narrow: String = "Marunouchi".chars().cycle().take(wide.chars().count() + 1).collect();
+            (wide, narrow)
+        })
+        .find(|(wide, narrow)| tabular_width(&display, wide) > tabular_width(&display, narrow))
+        .unwrap_or_else(|| panic!("the fonts draw {script} no wider than a cell a letter"))
+}
+
 /// A Chinese or Japanese character takes two cells of a monospace font,
 /// and a script the font lacks draws in a fallback font, so the value
 /// with the most characters is not the widest, in either order.
 #[gtk4::test]
 fn a_value_in_another_script_shows_whole() {
-    let narrow = "Marunouchi 12";
-    for wide in ["東京都千代田区丸の内一丁", "कखगघङचछजझञटठ"] {
-        for values in [[wide, narrow], [narrow, wide]] {
+    for script in ["東京都千代田区丸の内一丁", "कखगघङचछजझञटठ"] {
+        let (wide, narrow) = wider_than_a_longer_latin_value(script);
+        for values in [[&wide, &narrow], [&narrow, &wide]] {
             let grid = laid_out(Grid::open(
                 vec![named("id", "integer", true), named("area", "text", false)],
                 vec![
@@ -419,10 +442,6 @@ fn a_value_in_another_script_shows_whole() {
             ));
             let shown = drawn(&grid, &[1]);
             assert_eq!(shown.len(), 2);
-            assert!(
-                tabular_width(&shown[0], wide) > tabular_width(&shown[0], narrow),
-                "the font draws {wide} no wider than {narrow}"
-            );
 
             for display in &shown {
                 wait_until(WAIT, || shows_whole(display)).unwrap_or_else(|_| panic!("{:?} cut", display.text()));
@@ -676,15 +695,16 @@ fn an_empty_table_opens_its_columns_at_their_types_width() {
     }
 }
 
-/// Digits and capitals run wider than an average character, so a count
-/// of them would cut a date, a UUID or a label typed into an empty
-/// table. The label with the most characters is not the widest.
+/// An empty table's column opens wide enough for a date, a UUID and the
+/// widest of its type's labels, which need not be the one with the most
+/// characters.
 #[gtk4::test]
 fn an_empty_tables_column_holds_a_whole_value_of_its_type() {
+    let (wide, narrow) = wider_than_a_longer_latin_value("कखगघङचछजझञटठ");
     let state = || {
         let mut column = named("state", "text", false);
         column.column_type.kind = ColumnKind::Enum {
-            labels: vec!["illiterate".to_owned(), "WWWWWWWWW".to_owned()],
+            labels: vec![narrow.clone(), wide.clone()],
             multiple: false,
         };
         column
@@ -695,11 +715,7 @@ fn an_empty_tables_column_holds_a_whole_value_of_its_type() {
 
     let held = Grid::open(
         columns(),
-        vec![vec![
-            Value::Uuid(id),
-            Value::Date(Temporal::Finite(day)),
-            text("WWWWWWWWW"),
-        ]],
+        vec![vec![Value::Uuid(id), Value::Date(Temporal::Finite(day)), text(&wide)]],
     );
     let empty = Grid::open(columns(), Vec::new());
 

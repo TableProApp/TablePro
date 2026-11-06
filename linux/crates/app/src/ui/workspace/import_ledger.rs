@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 use crate::i18n::{gettext, ngettext_f};
 use crate::workspace::{CloseBlockPrompt, CloseBlocker, InhibitReason, WindowInhibitor};
 
-/// The CSV imports a workspace has running.
+/// The CSV and SQL file imports a workspace has running.
 ///
 /// Each one holds the process, so quitting while one writes lets it
 /// commit or roll back and report, and closing the window asks before
@@ -150,8 +150,8 @@ impl CloseBlocker for ImportLedger {
         (running > 0).then(|| CloseBlockPrompt {
             heading: gettext("Stop Imports?"),
             body: ngettext_f(
-                "{n} CSV import is still running. Stopping it rolls back the rows it wrote, unless the table has no transactions.",
-                "{n} CSV imports are still running. Stopping them rolls back the rows they wrote, unless the table has no transactions.",
+                "{n} import is still running. Stopping it rolls back what it wrote, where the database can.",
+                "{n} imports are still running. Stopping them rolls back what they wrote, where the database can.",
                 running,
                 &[("n", &running.to_string())],
             ),
@@ -217,11 +217,7 @@ mod tests {
         let prompt = ledger.blocking().expect("a running import blocks the close");
 
         assert_eq!(prompt.heading, "Stop Imports?");
-        assert!(
-            prompt.body.starts_with("1 CSV import is still running."),
-            "{}",
-            prompt.body
-        );
+        assert!(prompt.body.starts_with("1 import is still running."), "{}", prompt.body);
         assert_eq!(hold.live(), 1);
         assert_eq!(session.held.get(), 1);
 

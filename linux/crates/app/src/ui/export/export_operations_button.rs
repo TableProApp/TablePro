@@ -6,7 +6,7 @@ use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
 
 use super::ExportJobItem;
-use super::export_failure_text::progress_text;
+use super::export_failure_text::{progress_text, tables_progress_text};
 use crate::i18n::gettext;
 
 mod imp {
@@ -154,5 +154,9 @@ fn show_progress(item: &ExportJobItem, progress: &gtk::ProgressBar, subtitle: &g
         None if item.rows() > 0 => progress.pulse(),
         None => {}
     }
-    subtitle.set_label(&progress_text(item.rows(), item.expected()));
+    let text = match item.tables() {
+        Some((done, total)) => tables_progress_text(done, total, item.rows()),
+        None => progress_text(item.rows(), item.expected()),
+    };
+    subtitle.set_label(&text);
 }

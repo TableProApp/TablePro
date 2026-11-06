@@ -1,4 +1,4 @@
-# 0033: When the MySQL CA bundle goes
+# 0037: When the MySQL CA bundle goes
 
 - **Status**: Accepted
 - **Date**: 2026-11-05

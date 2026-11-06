@@ -42,6 +42,12 @@ pub struct MySqlEngine<S> {
     server: PhantomData<S>,
 }
 
+impl<S> MySqlEngine<S> {
+    pub fn fixture(&self) -> &MysqlFixture {
+        &self.fixture
+    }
+}
+
 fn quoted(name: &str) -> String {
     format!("`{}`", name.replace('`', "``"))
 }

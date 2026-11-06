@@ -7,6 +7,7 @@ use sqlx::Executor as _;
 use tablepro_core::column::ColumnInfo;
 use tablepro_core::ddl::{CharacterSet, InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
+use tablepro_core::dump::{DumpCatalog, DumpScope};
 use tablepro_core::meta::{
     IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
 };
@@ -22,6 +23,7 @@ use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 
 use crate::cancel::{ControlLink, MySqlStop, StopProgress};
 use crate::dialect::MySqlDialect;
+use crate::dump;
 use crate::editor_session::MysqlEditorSession;
 use crate::errors::{map_error, map_pool_error};
 use crate::flavour::MySqlFlavour;
@@ -113,6 +115,39 @@ impl MysqlConnection {
                         Err(error) => Err(error),
                     };
                     (call, result)
+                },
+            )
+            .await;
+        self.settle(outcome, &stop).await
+    }
+
+    /// Run one read on a login of its own, closed after it, so it never
+    /// holds a pool slot.
+    async fn read_alone<T: Send + 'static>(
+        &self,
+        options: CallOptions,
+        limits: SessionLimits,
+        op: ReadOp<T>,
+    ) -> Result<T, DriverError> {
+        self.ensure_open()?;
+        let stop = Arc::new(MySqlStop::new(self.control.clone()));
+        let endpoint = self.endpoint.clone();
+        let work_stop = stop.clone();
+        let outcome = self
+            .calls
+            .run_read(
+                options,
+                Standalone::new(),
+                stop.clone(),
+                move |mut link, request| async move {
+                    if let Err(error) = link.open(&endpoint, &limits, &request, &work_stop).await {
+                        return (link, Err(error));
+                    }
+                    let result = match link.connection() {
+                        Ok((connection, flavour)) => op(connection, flavour).await,
+                        Err(error) => Err(error),
+                    };
+                    (link, result)
                 },
             )
             .await;
@@ -447,31 +482,33 @@ impl Connection for MysqlConnection {
         mut sink: Box<dyn ResultSink>,
         options: CallOptions,
     ) -> Result<StreamSummary, DriverError> {
-        self.ensure_open()?;
-        let stop = Arc::new(MySqlStop::new(self.control.clone()));
-        let endpoint = self.endpoint.clone();
-        let limits = self.stream_limits();
         let read = read.clone();
-        let work_stop = stop.clone();
-        let outcome = self
-            .calls
-            .run_read(
-                options,
-                Standalone::new(),
-                stop.clone(),
-                move |mut link, request| async move {
-                    if let Err(error) = link.open(&endpoint, &limits, &request, &work_stop).await {
-                        return (link, Err(error));
-                    }
-                    let result = match link.connection() {
-                        Ok((connection, flavour)) => stream(connection, flavour, &read, sink.as_mut()).await,
-                        Err(error) => Err(error),
-                    };
-                    (link, result)
-                },
-            )
-            .await;
-        self.settle(outcome, &stop).await
+        self.read_alone(
+            options,
+            self.stream_limits(),
+            read_op(move |connection, flavour| {
+                Box::pin(async move { stream(connection, flavour, &read, sink.as_mut()).await })
+            }),
+        )
+        .await
+    }
+
+    async fn read_dump_catalog(&self, scope: &DumpScope, options: CallOptions) -> Result<DumpCatalog, DriverError> {
+        let scope = scope.clone();
+        let dialect = *self.dialect;
+        // The read sets the mode SHOW CREATE prints under, which no pooled session may keep.
+        let limits = SessionLimits {
+            read_only: true,
+            ..SessionLimits::workspace(&self.settings)
+        };
+        self.read_alone(
+            options,
+            limits,
+            read_op(move |connection, _| {
+                Box::pin(async move { dump::read_catalog(connection, &dialect, &scope).await })
+            }),
+        )
+        .await
     }
 
     async fn write_batch(&self, batch: &WriteBatch, options: CallOptions) -> Result<WriteReport, DriverError> {

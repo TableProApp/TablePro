@@ -699,8 +699,9 @@ impl SessionWindow {
 
     /// Tick the level of the session in front in the main menu.
     pub(super) fn show_safe_mode(&self) {
-        let level = self.front_session().map(|(_, session)| session.safe_mode());
-        super::window_actions::show_safe_mode(self.upcast_ref(), level);
+        let front = self.front_session().map(|(_, session)| session);
+        super::window_actions::show_safe_mode(self.upcast_ref(), front.as_ref().map(|session| session.safe_mode()));
+        crate::ui::workspace::show_transfer_actions(self.upcast_ref(), front.as_deref());
     }
 
     /// Run a change to a saved connection, holding the process until it
@@ -1265,7 +1266,7 @@ mod tests {
             ..test.saved.clone()
         };
         let entry = serde_json::to_string(&lookalike).expect("the entry");
-        let bytes = format!(r#"{{"version": 2, "connections": [{entry}]}}"#).into_bytes();
+        let bytes = format!(r#"{{"version": 1, "connections": [{entry}]}}"#).into_bytes();
 
         test.window.send(SessionWindowInput::ConnectionsFileRead {
             path: "/tmp/connections.json".into(),

@@ -31,8 +31,7 @@ crates/app/src/lib.rs
 crates/app/src/logging.rs
 crates/app/src/main.rs
 crates/app/src/persistence/column_layout_store.rs
-crates/app/src/persistence/column_width_store.rs
-crates/app/src/persistence/column_widths_document.rs
+crates/app/src/persistence/column_layouts_document.rs
 crates/app/src/persistence/filter_settings_document.rs
 crates/app/src/persistence/filter_settings_store.rs
 crates/app/src/persistence/mod.rs
@@ -98,6 +97,7 @@ crates/app/src/services/grid/test_columns.rs
 crates/app/src/services/history_availability.rs
 crates/app/src/services/history_preferences.rs
 crates/app/src/services/history_service.rs
+crates/app/src/services/import_file.rs
 crates/app/src/services/library_outline.rs
 crates/app/src/services/mcp_service.rs
 crates/app/src/services/mcp_status.rs
@@ -319,6 +319,7 @@ crates/app/src/ui/diagram/tab_imp.rs
 crates/app/src/ui/diagram/tests.rs
 crates/app/src/ui/diagram/zoom.rs
 crates/app/src/ui/discard_alert.rs
+crates/app/src/ui/dump_dialog.rs
 crates/app/src/ui/editor/assistant_actions.rs
 crates/app/src/ui/editor/buffer_edit.rs
 crates/app/src/ui/editor/completion/catalog_read.rs
@@ -382,9 +383,11 @@ crates/app/src/ui/error_text/syntax.rs
 crates/app/src/ui/error_text/tests.rs
 crates/app/src/ui/error_text/tls.rs
 crates/app/src/ui/error_text/tls_remedy.rs
+crates/app/src/ui/error_text/transfer.rs
 crates/app/src/ui/error_text/unsupported.rs
 crates/app/src/ui/export/dialog.rs
 crates/app/src/ui/export/document_sink.rs
+crates/app/src/ui/export/dump_job.rs
 crates/app/src/ui/export/encoding_sink.rs
 crates/app/src/ui/export/export_failure_text.rs
 crates/app/src/ui/export/export_format.rs
@@ -520,6 +523,7 @@ crates/app/src/ui/session_window/work_notifier.rs
 crates/app/src/ui/shell/mod.rs
 crates/app/src/ui/shell/primary_menu_button.rs
 crates/app/src/ui/source_dialog.rs
+crates/app/src/ui/sql_import_dialog.rs
 crates/app/src/ui/ssh_inputs.rs
 crates/app/src/ui/ssh_section.rs
 crates/app/src/ui/store_sync.rs
@@ -581,6 +585,7 @@ crates/app/src/ui/welcome_view.rs
 crates/app/src/ui/window_geometry.rs
 crates/app/src/ui/workspace/assistant.rs
 crates/app/src/ui/workspace/close_flow.rs
+crates/app/src/ui/workspace/database_transfer.rs
 crates/app/src/ui/workspace/definitions.rs
 crates/app/src/ui/workspace/diagram.rs
 crates/app/src/ui/workspace/editor_label.rs
@@ -662,7 +667,6 @@ crates/app/src/workspace/draft_writer.rs
 crates/app/src/workspace/editor_file_record.rs
 crates/app/src/workspace/engine_profile.rs
 crates/app/src/workspace/inhibit_reason.rs
-crates/app/src/workspace/legacy_tab_file.rs
 crates/app/src/workspace/mod.rs
 crates/app/src/workspace/open_sessions.rs
 crates/app/src/workspace/open_sessions_load.rs

@@ -1,3 +1,5 @@
+use std::sync::OnceLock;
+
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{gdk, gio, glib};
@@ -96,7 +98,7 @@ async fn decode(
     cancellable: gio::Cancellable,
 ) -> Result<Option<gdk::Texture>, Box<glycin::ErrorCtx>> {
     let mechanism = glycin::SandboxSelector::Auto.determine_sandbox_mechanism().await;
-    let Some(sandbox) = sandbox(mechanism, cfg!(test)) else {
+    let Some(sandbox) = sandbox(usable(mechanism, in_flatpak_builder()), cfg!(test)) else {
         tracing::debug!("no sandbox to decode a value's picture in");
         return Ok(None);
     };
@@ -108,6 +110,25 @@ async fn decode(
         return Ok(None);
     }
     Ok(Some(image.next_frame().await.map_err(Box::new)?.texture()))
+}
+
+// flatpak-spawn starts the installed app of this id, and a flatpak-builder instance is none. glycin knows
+// that only of an id ending in Devel, so the release manifest's build waited on a loader that never started.
+pub(super) fn usable(mechanism: glycin::SandboxMechanism, in_flatpak_builder: bool) -> glycin::SandboxMechanism {
+    match mechanism {
+        glycin::SandboxMechanism::FlatpakSpawn if in_flatpak_builder => glycin::SandboxMechanism::NotSandboxed,
+        other => other,
+    }
+}
+
+// The key glycin reads too. The file is the sandbox's own and never changes while the app runs.
+fn in_flatpak_builder() -> bool {
+    static IN_BUILDER: OnceLock<bool> = OnceLock::new();
+    *IN_BUILDER.get_or_init(|| {
+        let info = glib::KeyFile::new();
+        info.load_from_file("/.flatpak-info", glib::KeyFileFlags::NONE).is_ok()
+            && info.boolean("Instance", "build").unwrap_or(false)
+    })
 }
 
 // glycin's Auto falls back to no sandbox where bwrap cannot make namespaces, and database bytes must

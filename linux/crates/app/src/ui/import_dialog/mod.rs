@@ -227,13 +227,14 @@ impl ImportCsvDialog {
     }
 
     fn mapping_row(&self, column: &ImportColumn, field: Option<usize>, choices: &gtk::StringList) -> adw::ComboRow {
-        // The subtitle shows values from the file, which may hold & or <.
+        // The title and subtitle show names and values from the file,
+        // which may hold & or <, so markup goes off before they go in.
         let row = adw::ComboRow::builder()
-            .use_markup(false)
-            .title(column.info.name.as_str())
             .model(choices)
             .sensitive(!column.server_filled)
             .build();
+        row.set_use_markup(false);
+        row.set_title(column.info.name.as_str());
         row.set_selected(field.and_then(|index| u32::try_from(index + 1).ok()).unwrap_or(0));
         let dialog = self.downgrade();
         row.connect_selected_notify(move |_| {

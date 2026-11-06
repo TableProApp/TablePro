@@ -57,6 +57,7 @@ pub(super) fn unsupported_message(feature: UnsupportedFeature) -> String {
             "{command} cannot run in the editor: it turns the connection into a stream the editor cannot show.",
             &[("command", command)],
         ),
+        UnsupportedFeature::SqlDump => gettext("This database cannot be exported as a SQL file."),
     }
 }
 
@@ -95,6 +96,7 @@ mod tests {
             UnsupportedFeature::ClrRoutine,
             UnsupportedFeature::EncryptedDefinition,
             UnsupportedFeature::EditorCommand { command: "MONITOR" },
+            UnsupportedFeature::SqlDump,
         ];
 
         let messages: Vec<String> = features.iter().map(|feature| unsupported_message(*feature)).collect();
