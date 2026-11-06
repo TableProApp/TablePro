@@ -9,6 +9,7 @@
 )]
 
 mod cancellation;
+mod catalog_operations;
 mod conformance_engine;
 mod csv_import;
 mod ddl;

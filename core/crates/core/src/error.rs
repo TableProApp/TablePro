@@ -108,6 +108,12 @@ pub enum DriverError {
     #[error("no database file at {}", .path.display())]
     FileNotFound { path: PathBuf },
 
+    /// The server has no database by the name the connection opens, as
+    /// when it was dropped. Retrying cannot help until the connection
+    /// names another one or the database is made again.
+    #[error("the server has no database {database:?}")]
+    DatabaseNotFound { database: String },
+
     #[error("no permission to open {}", .path.display())]
     FileAccessDenied { path: PathBuf },
 
@@ -160,6 +166,7 @@ impl DriverError {
             Self::CommitOutcomeUnknown { .. } => "driver.commit_outcome_unknown",
             Self::PartiallyApplied { .. } => "driver.partially_applied",
             Self::FileNotFound { .. } => "driver.file_not_found",
+            Self::DatabaseNotFound { .. } => "driver.database_not_found",
             Self::FileAccessDenied { .. } => "driver.file_access_denied",
             Self::NotADatabase { .. } => "driver.not_a_database",
             Self::FileIo { .. } => "driver.file_io",
@@ -208,7 +215,7 @@ impl DriverError {
             | Self::NotADatabase { .. }
             | Self::FileIo { .. } => ErrorCategory::File,
             Self::Busy(_) | Self::EditorSessionBusy => ErrorCategory::Busy,
-            Self::Config(_) | Self::Unsupported { .. } => ErrorCategory::Configuration,
+            Self::Config(_) | Self::Unsupported { .. } | Self::DatabaseNotFound { .. } => ErrorCategory::Configuration,
             Self::GuardUnsupported { .. } | Self::Decode { .. } | Self::Protocol(_) => ErrorCategory::Internal,
         }
     }

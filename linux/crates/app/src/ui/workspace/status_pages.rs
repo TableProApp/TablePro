@@ -1,9 +1,8 @@
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use relm4::{Component, ComponentController};
 
 use crate::ui::history_dialog::{HistoryDialog, HistoryDialogInit, QueryDestination};
-use crate::ui::saved_queries_dialog::{SavedQueriesDialog, SavedQueriesDialogInit, SavedQueriesDialogOutput};
+use crate::ui::saved_queries_dialog::{SavedQueriesDialog, SavedQueriesDialogInit};
 
 use super::{WorkspaceInput, WorkspaceModel};
 use crate::runtime::DeliverInput;
@@ -69,23 +68,19 @@ impl WorkspaceModel {
         if self.alert_history_unavailable(&crate::i18n::gettext("Saved Queries Unavailable")) {
             return;
         }
-        let dialog = SavedQueriesDialog::builder()
-            .launch(SavedQueriesDialogInit {
-                store: self.history.store().map(|history| history.saved_queries()),
-                active_connection: self.context.active.metadata().map(|metadata| metadata.id),
-            })
-            .connect_receiver({
-                let input = self.input.clone();
-                move |_, out| {
-                    input.deliver(match out {
-                        SavedQueriesDialogOutput::OpenInNewTab(text) => WorkspaceInput::OpenHistoryQuery(text),
-                        SavedQueriesDialogOutput::ReplaceCurrentTabQuery(text) => {
-                            WorkspaceInput::ReplaceActiveTabQuery(text)
-                        }
-                    });
-                }
+        let dialog = SavedQueriesDialog::new(SavedQueriesDialogInit {
+            store: self.history.store().map(|history| history.saved_queries()),
+            active_connection: self.context.active.metadata().map(|metadata| metadata.id),
+            tasks: self.tasks.clone(),
+        });
+        let input = self.input.clone();
+        dialog.connect_query_chosen(move |_, destination, text| {
+            input.deliver(match destination {
+                QueryDestination::NewTab => WorkspaceInput::OpenHistoryQuery(text),
+                QueryDestination::CurrentTab => WorkspaceInput::ReplaceActiveTabQuery(text),
             });
-        dialog.model().dialog().present(self.dialog_parent().as_ref());
+        });
+        dialog.present(self.dialog_parent().as_ref());
         self.saved_queries_dialog = Some(dialog);
     }
 

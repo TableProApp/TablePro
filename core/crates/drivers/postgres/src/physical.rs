@@ -75,6 +75,15 @@ impl PgEndpoint {
         self.config.get_dbname()
     }
 
+    /// The database a login opens: the one named, or else the server's
+    /// default, a database named after the user.
+    fn login_database(&self) -> &str {
+        self.config
+            .get_dbname()
+            .or_else(|| self.config.get_user())
+            .unwrap_or_default()
+    }
+
     pub(crate) fn liveness(&self) -> &LivenessPolicy {
         &self.liveness
     }
@@ -104,7 +113,7 @@ impl PgEndpoint {
             Ok(Ok(connected)) => Ok(connected),
             Ok(Err(error)) => {
                 let started = handshake_started.load(Ordering::SeqCst);
-                let mapped = map_connect_error(&error, self.tls.requested(), started);
+                let mapped = map_connect_error(&error, self.login_database(), self.tls.requested(), started);
                 Err(self.explain(mapped).await)
             }
         }

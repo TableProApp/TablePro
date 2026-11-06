@@ -2,8 +2,6 @@ use gtk4::glib;
 use gtk4::glib::prelude::*;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
-use super::{DeliverInput, Delivery};
-
 /// What a widget's actions, signal handlers and background work send it.
 /// It is `Send`, so a task on the runtime can answer through it.
 pub type InputSender<M> = UnboundedSender<M>;
@@ -74,27 +72,13 @@ impl<M, F: FnMut(M)> Drop for Leftovers<M, F> {
     }
 }
 
-/// A relm4 sender whose messages land in `input`, for a relm4 child that
-/// can only forward its output to one. Abort the handle with the widget
-/// that owns `input`.
-pub fn relm4_bridge<M: 'static>(input: InputSender<M>) -> (relm4::Sender<M>, glib::JoinHandle<()>) {
-    let (sender, receiver) = relm4::channel::<M>();
-    let forwarding = glib::spawn_future_local(async move {
-        while let Some(message) = receiver.recv().await {
-            if input.try_deliver(message) == Delivery::ReceiverGone {
-                return;
-            }
-        }
-    });
-    (sender, forwarding)
-}
-
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
     use super::*;
+    use crate::runtime::{DeliverInput, Delivery};
     use crate::test_support::drain_main_context;
 
     #[gtk4::test]
@@ -158,20 +142,5 @@ mod tests {
             [2, 3],
             "a message sent after the pump stopped was taken"
         );
-    }
-
-    #[gtk4::test]
-    fn a_bridge_forwards_until_its_target_is_gone() {
-        let (input, mut receiver) = input_queue::<u8>();
-        let (bridge, _forwarding) = relm4_bridge(input);
-
-        bridge.deliver(3);
-        drain_main_context();
-        assert_eq!(receiver.try_recv().ok(), Some(3));
-
-        drop(receiver);
-        bridge.deliver(4);
-        drain_main_context();
-        assert_eq!(bridge.try_deliver(5), Delivery::ReceiverGone);
     }
 }

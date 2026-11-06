@@ -23,6 +23,7 @@ pub fn build(grid: &DataGrid) -> gtk::ColumnViewColumn {
         let Some(cell) = item.downcast_ref::<gtk::ColumnViewCell>() else {
             return;
         };
+        // Not `set_focusable`: docs/toolkit-workarounds.md, "ColumnViewCell.set_focusable in gtk-rs".
         cell.set_property("focusable", false);
         let icon = gtk::Image::builder().pixel_size(16).visible(false).build();
         icon.set_accessible_role(gtk::AccessibleRole::Presentation);

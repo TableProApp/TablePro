@@ -9,6 +9,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures::FutureExt;
+use futures::future::LocalBoxFuture;
 use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
@@ -21,6 +23,10 @@ use tablepro_session::{Session, SessionKey};
 use super::SessionWindow;
 use super::session_page::OpenSession;
 use crate::ui::workspace::WorkspaceShell;
+
+/// A session's close and its editor tabs', which a drop of its database
+/// waits for. Dropping it lets the close run on unwatched.
+pub(super) type SessionClosing = LocalBoxFuture<'static, ()>;
 
 impl SessionWindow {
     /// Take every session down once the close prompts approved, each
@@ -47,7 +53,7 @@ impl SessionWindow {
         self.set_title(Some(&crate::i18n::gettext("TablePro")));
         let shell = imp.shell.take();
         for open in sessions {
-            self.close_open_session(None, open, false);
+            drop(self.close_open_session(None, open, false));
         }
         if let Some(shell) = shell {
             shell.shutdown();
@@ -61,23 +67,27 @@ impl SessionWindow {
     /// it. With the last one the shell goes too. False when the window
     /// holds no such session.
     pub(super) fn tear_down_session(&self, key: &SessionKey) -> bool {
+        self.take_down_session(key).is_some()
+    }
+
+    /// As `tear_down_session`, with the close of the session's
+    /// connections to wait for.
+    pub(super) fn take_down_session(&self, key: &SessionKey) -> Option<SessionClosing> {
         let imp = self.imp();
         let open = {
             let Ok(mut sessions) = imp.sessions.try_borrow_mut() else {
                 tracing::warn!("a session was torn down while the sessions were read");
-                return false;
+                return None;
             };
             match sessions.iter().position(|open| open.claim.key() == key) {
                 Some(position) => Some(sessions.remove(position)),
                 None => sessions.iter_mut().find_map(|open| open.databases.take(key)),
             }
         };
-        let Some(open) = open else {
-            return false;
-        };
+        let open = open?;
         open.flush();
         let shell = self.shell();
-        self.close_open_session(shell.as_ref(), open, true);
+        let closing = self.close_open_session(shell.as_ref(), open, true);
         if imp.sessions.borrow().is_empty() {
             if let Some(shell) = imp.shell.take() {
                 shell.shutdown();
@@ -88,16 +98,21 @@ impl SessionWindow {
         }
         self.refresh_dirty();
         self.render();
-        true
+        Some(closing)
     }
 
     /// Close the other databases open beside `open` and stop those still
     /// opening, then take `open`'s workspace off the shell when one is
     /// given, shut it down, drop its claim and record, and close its
     /// session. Its pages leave the tab view when `close_pages`.
-    fn close_open_session(&self, shell: Option<&WorkspaceShell>, open: OpenSession, close_pages: bool) {
+    fn close_open_session(
+        &self,
+        shell: Option<&WorkspaceShell>,
+        open: OpenSession,
+        close_pages: bool,
+    ) -> SessionClosing {
         let Some(state) = self.state() else {
-            return;
+            return Box::pin(std::future::ready(()));
         };
         let OpenSession {
             claim,
@@ -105,9 +120,11 @@ impl SessionWindow {
             workspace,
             databases,
         } = open;
-        for database in databases.close() {
-            self.close_open_session(shell, database, close_pages);
-        }
+        let mut closings: Vec<SessionClosing> = databases
+            .close()
+            .into_iter()
+            .map(|database| self.close_open_session(shell, database, close_pages))
+            .collect();
         let editor_sessions = workspace.take_editor_sessions();
         let key = claim.key().clone();
         if let Some(shell) = shell {
@@ -119,27 +136,30 @@ impl SessionWindow {
         // A quit freezes the record first, so only a disconnect or a
         // window closed by hand takes the session off it.
         self.forget_session(&key);
-        close_session(
+        let closed = close_session(
             session,
             editor_sessions,
             &*state.services.hold(),
             &state.services.tasks,
             state.context.close_timeout(),
         );
+        closings.push(closed.map(drop).boxed_local());
+        futures::future::join_all(closings).map(drop).boxed_local()
     }
 }
 
 /// Close the session and every editor tab's connection together, under
 /// the close deadline. One hold keeps the process alive until all of
 /// them end, so quitting right after a disconnect closes them rather
-/// than cutting them off.
+/// than cutting them off. The handle answers once they have; dropping
+/// it leaves the close running.
 fn close_session(
     session: Arc<Session>,
     editor_sessions: Vec<Arc<dyn EditorSession>>,
     hold: &dyn ProcessHold,
     tasks: &Tasks,
     close_timeout: Duration,
-) {
+) -> glib::JoinHandle<()> {
     let hold = hold.acquire();
     let editors_closing = tablepro_session::close_editor_sessions(editor_sessions, close_timeout, tasks);
     let closing = session.begin_shutdown();
@@ -155,7 +175,7 @@ fn close_session(
             Err(failure) => tracing::warn!(%failure, "closing the editor tabs' sessions failed"),
         }
         drop(hold);
-    });
+    })
 }
 
 #[cfg(test)]

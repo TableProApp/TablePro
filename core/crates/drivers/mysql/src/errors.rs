@@ -33,6 +33,9 @@ pub(crate) const MARIADB_STATEMENT_TIMEOUT: u16 = 1969;
 /// ER_SECURE_TRANSPORT_REQUIRED under `require_secure_transport`, which
 /// MariaDB took over with MySQL's number.
 pub(crate) const SECURE_TRANSPORT_REQUIRED: u16 = 3159;
+/// ER_BAD_DB_ERROR: the database a login or a statement names is not
+/// there.
+const UNKNOWN_DATABASE: u16 = 1049;
 /// ER_SERVER_SHUTDOWN.
 const SERVER_SHUTDOWN: u16 = 1053;
 /// MariaDB's ER_CONNECTION_KILLED.
@@ -61,8 +64,13 @@ pub(crate) fn map_error(error: &sqlx::Error, flavour: MySqlFlavour) -> DriverErr
 }
 
 /// What a failed connect means. The flavour is not known before the
-/// login, so the numbers either server uses are both read.
-pub(crate) fn map_connect_error(error: &sqlx::Error, endpoint: &NetworkEndpoint) -> DriverError {
+/// login, so the numbers either server uses are both read. `database`
+/// is the one the login names.
+pub(crate) fn map_connect_error(
+    error: &sqlx::Error,
+    endpoint: &NetworkEndpoint,
+    database: Option<&str>,
+) -> DriverError {
     match error {
         sqlx::Error::Io(io) => match tablepro_net::tls::classify(io) {
             Some((failure, detail)) => DriverError::Tls { failure, detail },
@@ -74,11 +82,23 @@ pub(crate) fn map_connect_error(error: &sqlx::Error, endpoint: &NetworkEndpoint)
                 feature: UnsupportedFeature::AuthPlugin,
             }
         }
-        other => match map_with(other, None) {
-            DriverError::ConnectionLost { .. } => DriverError::ConnectionLost {
-                during: LossPhase::Connect,
+        other => during_login(map_with(other, None), database),
+    }
+}
+
+/// An error read during the login. Only here does 1049 mean the
+/// connection itself cannot open: a statement's 1049 is about a database
+/// the statement names.
+fn during_login(mapped: DriverError, database: Option<&str>) -> DriverError {
+    match mapped {
+        DriverError::ConnectionLost { .. } => DriverError::ConnectionLost {
+            during: LossPhase::Connect,
+        },
+        mapped => match database {
+            Some(database) if server_number(&mapped) == Some(UNKNOWN_DATABASE) => DriverError::DatabaseNotFound {
+                database: database.to_owned(),
             },
-            mapped => mapped,
+            _ => mapped,
         },
     }
 }
@@ -269,12 +289,15 @@ mod tests {
         let other = sqlx::Error::Protocol("unexpected packet".to_owned());
 
         assert_eq!(
-            map_connect_error(&ed25519, &endpoint),
+            map_connect_error(&ed25519, &endpoint, None),
             DriverError::Unsupported {
                 feature: UnsupportedFeature::AuthPlugin
             }
         );
-        assert!(matches!(map_connect_error(&other, &endpoint), DriverError::Protocol(_)));
+        assert!(matches!(
+            map_connect_error(&other, &endpoint, None),
+            DriverError::Protocol(_)
+        ));
     }
 
     #[test]
@@ -339,8 +362,32 @@ mod tests {
         let error = sqlx::Error::Io(io::Error::from(io::ErrorKind::ConnectionRefused));
 
         assert_eq!(
-            map_connect_error(&error, &endpoint),
+            map_connect_error(&error, &endpoint, Some("shop")),
             DriverError::Transport(TransportError::Refused { endpoint })
+        );
+    }
+
+    #[test]
+    fn an_unknown_database_is_missing_only_for_the_login() {
+        let unknown = || classify_number(numbered(UNKNOWN_DATABASE), None);
+
+        assert!(matches!(unknown(), DriverError::Server(_)));
+        assert_eq!(
+            during_login(unknown(), Some("shop")),
+            DriverError::DatabaseNotFound {
+                database: "shop".to_owned()
+            }
+        );
+        assert!(matches!(during_login(unknown(), None), DriverError::Server(_)));
+        assert!(matches!(
+            during_login(classify_number(numbered(ACCESS_DENIED), None), Some("shop")),
+            DriverError::Auth { .. }
+        ));
+        assert_eq!(
+            during_login(classify_number(numbered(SERVER_SHUTDOWN), None), Some("shop")),
+            DriverError::ConnectionLost {
+                during: LossPhase::Connect
+            }
         );
     }
 

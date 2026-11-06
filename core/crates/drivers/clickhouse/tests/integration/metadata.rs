@@ -3,9 +3,14 @@
 use tablepro_core::column::{ColumnKind, TemporalZone, TextLength};
 use tablepro_core::meta::{IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity};
 use tablepro_core::statement::StatementBuilder;
-use tablepro_core::{Connection, FilterOp, FilterRule, FilterSet, FilterValue, RowLimit, Value, build_filter};
+use tablepro_core::{
+    ConnectTarget, Connection, DatabaseDriver, DriverError, FilterOp, FilterRule, FilterSet, FilterValue, RowLimit,
+    Value, WorkspaceSettings, build_filter,
+};
+use tablepro_driver_clickhouse::ClickhouseDriver;
+use tokio_util::sync::CancellationToken;
 
-use crate::support::{CALL, DATABASE, connect, quoted, setup, start, table, unique, within};
+use crate::support::{CALL, DATABASE, connect, fixture_options, quoted, setup, start, table, unique, within};
 
 async fn matching(connection: &dyn Connection, name: &str, rule: FilterRule) -> Vec<String> {
     let table = table(name);
@@ -246,6 +251,41 @@ async fn objects_and_schemas_are_listed_by_kind() {
     );
     assert!(schemas.iter().any(|schema| schema.name == "system" && schema.is_system));
     connection.close().await.expect("a close");
+}
+
+/// A stock single server lists a `default` cluster of one host and has
+/// no Keeper, so ON CLUSTER would fail there and none is offered.
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn a_single_server_offers_no_cluster() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+
+    let choices = connection
+        .fetch_database_choices(within(CALL))
+        .await
+        .expect("the choices");
+
+    assert!(choices.clusters.is_empty(), "{choices:?}");
+    connection.close().await.expect("a close");
+}
+
+/// A login that names a database the server does not have stops at
+/// the connect with the name, rather than as a server error the health
+/// monitor would retry.
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn a_login_to_a_missing_database_names_it() {
+    let fixture = start().await;
+    let gone = unique("gone");
+    let mut options = fixture_options(&fixture, WorkspaceSettings::workspace(false));
+    if let ConnectTarget::Network(target) = &mut options.target {
+        target.database = Some(gone.clone());
+    }
+
+    let outcome = ClickhouseDriver.connect(options, CancellationToken::new()).await;
+
+    assert_eq!(outcome.err(), Some(DriverError::DatabaseNotFound { database: gone }));
 }
 
 #[tokio::test]

@@ -19,7 +19,7 @@ Where the packages put the socket:
 
 ## Decision
 
-The manifest grants `--filesystem=/run/postgresql:ro` and `--filesystem=/run/mysqld:ro`.
+The stable and Devel manifests grant `--filesystem=/run/postgresql:ro` and `--filesystem=/run/mysqld:ro`.
 
 ## Rationale
 

@@ -9,7 +9,6 @@ use tablepro_session::runtime::{HoldToken, ProcessHold};
 use tokio_util::sync::CancellationToken;
 
 use crate::i18n::{gettext, ngettext_f};
-use crate::ui::format::plural_count;
 use crate::workspace::{CloseBlockPrompt, CloseBlocker, InhibitReason, WindowInhibitor};
 
 /// The CSV and SQL file imports a workspace has running.
@@ -153,7 +152,7 @@ impl CloseBlocker for ImportLedger {
             body: ngettext_f(
                 "{n} import is still running. Stopping it rolls back what it wrote, where the database can.",
                 "{n} imports are still running. Stopping them rolls back what they wrote, where the database can.",
-                plural_count(running as u64),
+                running,
                 &[("n", &running.to_string())],
             ),
             keep_label: gettext("_Keep Importing"),

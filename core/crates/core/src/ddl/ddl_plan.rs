@@ -9,6 +9,9 @@ use crate::write_batch::{WriteBatch, WriteKind};
 #[derive(Debug, Clone, PartialEq)]
 pub struct DdlPlan {
     pub statements: Vec<Statement>,
+    /// How the write is wrapped: a database is created or dropped
+    /// outside any transaction.
+    pub kind: WriteKind,
     pub foreign_keys: ForeignKeyMode,
     pub precondition: Option<DdlPrecondition>,
     /// Set where the plan copies the table into a new one, which the
@@ -29,6 +32,27 @@ impl DdlPlan {
                     builder.finish()
                 })
                 .collect(),
+            kind: WriteKind::SchemaChanges,
+            foreign_keys: ForeignKeyMode::Enforced,
+            precondition: None,
+            rebuild: None,
+        }
+    }
+
+    /// SQL that creates or drops a database, which PostgreSQL and SQL
+    /// Server refuse inside a transaction.
+    pub fn for_databases(statements: impl IntoIterator<Item = String>) -> Self {
+        Self {
+            kind: WriteKind::DatabaseChanges,
+            ..Self::from_sql(statements)
+        }
+    }
+
+    /// Shell calls with their values bound, as MongoDB runs them.
+    pub fn from_statements(statements: Vec<Statement>) -> Self {
+        Self {
+            statements,
+            kind: WriteKind::SchemaChanges,
             foreign_keys: ForeignKeyMode::Enforced,
             precondition: None,
             rebuild: None,
@@ -79,8 +103,8 @@ impl DdlPlan {
 
     /// `table` is the table as it is named before the plan runs.
     pub fn into_write_batch(self, table: TableRef) -> WriteBatch {
-        let foreign_keys = self.foreign_keys.clone();
-        WriteBatch::new(WriteKind::SchemaChanges, table, self.into_steps(), foreign_keys)
+        let (kind, foreign_keys) = (self.kind, self.foreign_keys.clone());
+        WriteBatch::new(kind, table, self.into_steps(), foreign_keys)
     }
 }
 

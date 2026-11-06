@@ -14,6 +14,7 @@ use tablepro_storage::{DraftId, DraftScope};
 use uuid::Uuid;
 
 use crate::ui::browse_tab::{BrowseTabInput, PagingInput, SaveInput, TableFilter};
+use crate::ui::editor::SqlEditor;
 use crate::ui::structure_tab::StructureMode;
 use crate::workspace::{
     EditorFileRecord, RestoredDrafts, TabRecord, WorkspaceFileName, WorkspaceLoad, WorkspaceRecord, WorkspaceSaveError,
@@ -77,17 +78,19 @@ impl WorkspaceModel {
             WorkspaceLoad::Blocked(_) => self.layout_banner.set_revealed(true),
         }
         if unreadable > 0 {
-            let count = u32::try_from(unreadable).unwrap_or(u32::MAX);
             self.show_toast(&crate::i18n::ngettext_f(
                 "Saved text of {n} query tab could not be read. The file was kept.",
                 "Saved text of {n} query tabs could not be read. The files were kept.",
-                count,
+                unreadable,
                 &[("n", &unreadable.to_string())],
             ));
         }
         self.workspace
             .attach(key, &self.tab_view, self.workspace_tabs.clone(), self.index.clone());
         self.persist_workspace_state();
+        for (file, text) in self.loading_scripts.take().unwrap_or_default() {
+            self.open_script(&file, text);
+        }
     }
 
     /// Delete the session's drafts that neither the saved tabs nor an
@@ -208,6 +211,43 @@ impl WorkspaceModel {
         });
     }
 
+    pub(super) fn open_script(&mut self, file: &gio::File, text: String) {
+        if let Some(waiting) = self.loading_scripts.as_mut() {
+            waiting.push((file.clone(), text));
+            return;
+        }
+        if let Some(id) = self.editor_tab_for(file) {
+            self.focus_tab(id);
+            return;
+        }
+        // Released after the saved tabs came back, by which time another window may hold the file.
+        let elsewhere = self
+            .window
+            .upgrade()
+            .and_then(|window| window.application())
+            .is_some_and(|app| crate::ui::SessionWindow::focus_tab_bound_to(&app, file));
+        if elsewhere {
+            return;
+        }
+        self.open_editor(TabSpec::Editor {
+            initial_query: Some(text),
+            draft: None,
+            file: Some(EditorFileRecord {
+                uri: file.uri().to_string(),
+                modified: false,
+            }),
+            database: None,
+        });
+    }
+
+    // By location only: the GTK thread reads no file system, so a tab bound through another path is not found.
+    pub(super) fn editor_tab_for(&self, file: &gio::File) -> Option<Uuid> {
+        self.workspace_tabs.borrow().iter().find_map(|(id, tab)| match tab {
+            WorkspaceTab::Editor(slot) if slot.editor.file().is_some_and(|bound| bound.equal(file)) => Some(*id),
+            _ => None,
+        })
+    }
+
     // AdwTabView moves the focus to the page it selects only from the page
     // that held it, so an editor opened from the sidebar, a header button
     // or a key pressed there would leave the typing where it was.
@@ -230,13 +270,24 @@ impl WorkspaceModel {
     /// Tear down a tab without prompting. Internal helper called once
     /// the close-with-pending dialog (if any) has resolved.
     pub(super) fn finish_close_workspace_tab(&mut self, id: Uuid, tab_view: &adw::TabView) {
+        self.tear_down_tab(id, tab_view, true);
+    }
+
+    /// Tear down a tab whose table, schema or database is gone, so Reopen
+    /// Closed Tab never offers it.
+    pub(super) fn forget_workspace_tab(&mut self, id: Uuid, tab_view: &adw::TabView) {
+        self.tear_down_tab(id, tab_view, false);
+    }
+
+    fn tear_down_tab(&mut self, id: Uuid, tab_view: &adw::TabView, remember: bool) {
         let removed = self.workspace_tabs.borrow_mut().remove(&id);
         let Some(removed) = removed else {
             return;
         };
         // Before the teardown, while the tab still has its page, sort
         // and query.
-        if let Some(descriptor) = describe_closed_tab(&removed)
+        if remember
+            && let Some(descriptor) = describe_closed_tab(&removed)
             && let (Some(shell), Some(this)) = (self.shell.upgrade(), self.this.upgrade())
         {
             shell.remember_closed_tab(&this, descriptor);
@@ -244,6 +295,7 @@ impl WorkspaceModel {
         match &removed {
             WorkspaceTab::Editor(slot) => {
                 slot.editor.shutdown();
+                self.change_trackers.unregister(id);
                 // The record no longer names this draft, so the file has
                 // nothing left pointing at it.
                 self.drafts.discard(&self.draft_scope(), slot.draft);
@@ -476,9 +528,12 @@ impl WorkspaceModel {
     /// name rows of the connection going away, so they cannot be saved
     /// after it.
     pub(super) fn close_tabs(&mut self) {
-        for tab in self.workspace_tabs.borrow().values() {
+        for (id, tab) in self.workspace_tabs.borrow().iter() {
             match tab {
-                WorkspaceTab::Editor(slot) => slot.editor.shutdown(),
+                WorkspaceTab::Editor(slot) => {
+                    slot.editor.shutdown();
+                    self.change_trackers.unregister(*id);
+                }
                 WorkspaceTab::Structure(slot) => {
                     slot.structure.shutdown();
                     self.structure_trackers.unregister(slot.id);
@@ -493,6 +548,13 @@ impl WorkspaceModel {
         }
         self.index.clear();
         self.workspace_tabs.borrow_mut().clear();
+    }
+
+    pub(super) fn editor_tab(&self, tab_id: Uuid) -> Option<SqlEditor> {
+        match self.workspace_tabs.borrow().get(&tab_id) {
+            Some(WorkspaceTab::Editor(slot)) => Some(slot.editor.clone()),
+            _ => None,
+        }
     }
 
     /// Forward a per-tab Browse input to the `Table` slot's Browse-side
@@ -692,6 +754,12 @@ impl TabViewWatch {
         for handler in handlers {
             view.disconnect(handler);
         }
+        // A page out on another window's bar closes there once it is
+        // sent back and finds no session, and this view cannot close it.
+        let pages: Vec<adw::TabPage> = pages
+            .into_iter()
+            .filter(|page| super::page_position(&view, page).is_some())
+            .collect();
         self.leaving.replace(pages.clone());
         for page in &pages {
             view.close_page(page);

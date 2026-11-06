@@ -11,6 +11,9 @@ use crate::statement::GuardedStatement;
 pub enum WriteKind {
     RowChanges,
     SchemaChanges,
+    /// Creates or drops a database. PostgreSQL and SQL Server refuse
+    /// that inside a transaction, so each statement runs on its own.
+    DatabaseChanges,
 }
 
 /// One save, as the steps that make it up.

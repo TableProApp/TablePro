@@ -7,9 +7,11 @@ mod result_set_view;
 mod result_summary;
 
 use std::rc::Rc;
+use std::sync::Arc;
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
+use tablepro_core::meta::TableRef;
 use tablepro_linux_platform::AppSettings;
 use tablepro_session::runtime::Tasks;
 
@@ -17,10 +19,11 @@ pub(crate) use self::result_limit_banner::ResultLimitBanner;
 pub(crate) use self::result_set_view::ResultSetView;
 pub(crate) use self::result_summary::ResultSummary;
 use crate::i18n::ngettext_f;
-use crate::services::grid::grid_columns;
-use crate::ui::data_grid::{DataGrid, DialectSource, GridConfig, GridSorting, RowData};
+use crate::services::grid::{GridColumn, ResultRefusal, grid_columns};
+use crate::services::tab_tracker_handle::TabTrackerHandle;
+use crate::ui::data_grid::{DataGrid, DialectSource, EditRules, GridConfig, GridSorting, RowData};
 use crate::ui::export::ExportSource;
-use crate::ui::format::{format_thousands, plural_count};
+use crate::ui::format::format_thousands;
 
 /// What a result grid reads from the tab that shows it.
 #[derive(Clone)]
@@ -31,26 +34,58 @@ pub(crate) struct ResultGridDeps {
     pub dialect: Option<DialectSource>,
 }
 
+pub(crate) struct ResultGrid {
+    pub columns: Arc<[GridColumn]>,
+    pub rows: Vec<RowData>,
+    pub rules: Option<EditRules>,
+    pub tracker: Option<TabTrackerHandle>,
+    pub table: Option<TableRef>,
+    pub result_lock: Option<ResultRefusal>,
+}
+
+impl ResultGrid {
+    pub(crate) fn read_only(view: &ResultSetView, result_lock: Option<ResultRefusal>) -> Self {
+        Self {
+            columns: grid_columns(&view.columns, &[], |_| true),
+            rows: view.rows.iter().cloned().map(RowData::result).collect(),
+            rules: None,
+            tracker: None,
+            table: None,
+            result_lock,
+        }
+    }
+}
+
 /// The page for `view` and the grid on it, named `name` as the results
 /// list names it. Export All on its banner hands `export_all` the rows
 /// the grid shows, in the order it shows them, for the dialog's Shown
 /// Rows.
 pub(crate) fn result_set_page(
     view: &ResultSetView,
+    shown: ResultGrid,
     name: &str,
     deps: &ResultGridDeps,
     export_all: impl Fn(ExportSource) + 'static,
 ) -> (gtk::Widget, DataGrid) {
+    let ResultGrid {
+        columns,
+        rows,
+        rules,
+        tracker,
+        table,
+        result_lock,
+    } = shown;
     let grid = DataGrid::new(GridConfig {
-        columns: grid_columns(&view.columns, &[], |_| true),
+        columns,
         sorting: GridSorting::Client,
-        rules: None,
-        tracker: None,
+        rules,
+        tracker,
+        result_lock,
         settings: deps.settings.clone(),
         layout: None,
         references: None,
         dialect: deps.dialect.clone(),
-        table: None,
+        table,
         find: true,
         filter_by_value: false,
         tasks: deps.tasks.clone(),
@@ -58,7 +93,7 @@ pub(crate) fn result_set_page(
     });
     grid.set_hexpand(true);
     grid.set_vexpand(true);
-    grid.replace_rows(view.rows.iter().cloned().map(RowData::result).collect(), 0);
+    grid.replace_rows(rows, 0);
     let banner = ResultLimitBanner::new(&view.summary);
     let shown = grid.downgrade();
     banner.connect_export_all(move || {
@@ -81,7 +116,7 @@ fn row_count_footer(shown: u64) -> gtk::Label {
         .label(ngettext_f(
             "{n} row",
             "{n} rows",
-            plural_count(shown),
+            shown,
             &[("n", &format_thousands(shown))],
         ))
         .xalign(0.0)

@@ -213,11 +213,12 @@ impl MysqlEndpoint {
         if let Some(relay) = self.relay.get() {
             relay.take_failure();
         }
+        let database = options.get_database();
         let mut connection = match options.connect().await {
             Ok(connection) => connection,
-            Err(error) => return Err(self.explain(self.connect_error(&error)).await),
+            Err(error) => return Err(self.explain(self.connect_error(&error, database)).await),
         };
-        let (connection_id, version) = identify(&mut connection, self.service()).await?;
+        let (connection_id, version) = identify(&mut connection, self.service(), database).await?;
         let flavour = MySqlFlavour::detect(&version);
         let mut statements = match kind {
             SessionKind::Control => Vec::new(),
@@ -243,7 +244,7 @@ impl MysqlEndpoint {
     }
 
     // sqlx opens a local socket itself, so the transport never says what was wrong with it.
-    fn connect_error(&self, error: &sqlx::Error) -> DriverError {
+    fn connect_error(&self, error: &sqlx::Error, database: Option<&str>) -> DriverError {
         if let (TransportKind::LocalSocket { path }, sqlx::Error::Io(io)) = (self.transport.kind(), error)
             && matches!(
                 io.kind(),
@@ -257,7 +258,7 @@ impl MysqlEndpoint {
                 problem: LocalSocketProblem::from_io(io),
             });
         }
-        map_connect_error(error, self.service())
+        map_connect_error(error, self.service(), database)
     }
 
     /// A stream that closed may be the transport's doing, such as an SSH
@@ -328,11 +329,15 @@ fn ssl_mode(mode: TlsMode) -> Result<MySqlSslMode, DriverError> {
 
 /// The connection id and version, read over the text protocol so no
 /// statement is prepared before the session is set up.
-async fn identify(connection: &mut MySqlConnection, endpoint: &NetworkEndpoint) -> Result<(u64, String), DriverError> {
+async fn identify(
+    connection: &mut MySqlConnection,
+    endpoint: &NetworkEndpoint,
+    database: Option<&str>,
+) -> Result<(u64, String), DriverError> {
     let row = sqlx::raw_sql("SELECT CONNECTION_ID(), VERSION()")
         .fetch_one(&mut *connection)
         .await
-        .map_err(|error| map_connect_error(&error, endpoint))?;
+        .map_err(|error| map_connect_error(&error, endpoint, database))?;
     let text = |index: usize| -> Result<String, DriverError> {
         let bytes: &[u8] = row.try_get_unchecked(index).map_err(|error| DriverError::Decode {
             column: index.to_string(),
@@ -556,7 +561,7 @@ mod tests {
         let missing = sqlx::Error::Io(std::io::Error::from(std::io::ErrorKind::NotFound));
 
         assert_eq!(
-            socket.connect_error(&missing),
+            socket.connect_error(&missing, None),
             DriverError::Transport(TransportError::LocalSocket {
                 path,
                 problem: LocalSocketProblem::Missing,

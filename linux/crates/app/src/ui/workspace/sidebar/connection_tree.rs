@@ -813,7 +813,8 @@ impl TreeInner {
     }
 
     /// A lone schema, as a file or a key-value engine has, opens as it
-    /// comes, while its connection's row is open.
+    /// comes, while its connection's row is open. An empty one opens
+    /// once it holds something, a batch of rows at a time like any other.
     fn open_lone_schema(&self, key: &SessionKey) {
         let Some(view) = self.view_of(key) else {
             return;
@@ -821,7 +822,8 @@ impl TreeInner {
         let schemas = view.schemas();
         let lone = (schemas.n_items() == 1)
             .then(|| schemas.item(0).and_downcast::<TreeNode>())
-            .flatten();
+            .flatten()
+            .filter(|schema| schema.rows().is_some_and(|rows| rows.n_items() > 0));
         {
             let mut branches = self.branches.borrow_mut();
             let Some(branch) = branches.get_mut(key) else {
@@ -1202,6 +1204,7 @@ impl TreeInner {
                 &ObjectKey(object.target()),
                 object.kind(),
                 view.affordances(),
+                view.holds(),
             ));
         }
         let node = item.downcast_ref::<TreeNode>()?;
@@ -1209,7 +1212,9 @@ impl TreeInner {
             NodeKind::Schema => {
                 let view = view?;
                 self.popover.insert_action_group(GROUP, Some(view.actions()));
-                schema_menu(node.schema_name().as_deref(), view.affordances(), view.holds())
+                let schema = node.schema_name();
+                let droppable = schema.as_deref().is_some_and(|schema| view.droppable(schema));
+                schema_menu(schema.as_deref(), droppable, view.affordances(), view.holds())
             }
             NodeKind::Connection => self.connection_menu(node),
             NodeKind::Group => self.group_menu(node),
@@ -1287,15 +1292,13 @@ impl TreeInner {
                 stored: self.stored(node).is_some(),
             }
         };
-        // A saved connection's own row, on an engine whose catalog holds
-        // one database (0030).
-        let opens_databases = matches!(key, SessionKey::Saved(_))
-            && self
-                .branches
-                .borrow()
-                .get(&key)
-                .is_some_and(|branch| branch.view.affordances().opens_databases);
-        let lead = session_section(&key, state, opens_databases);
+        let affordances = self
+            .branches
+            .borrow()
+            .get(&key)
+            .map(|branch| branch.view.affordances())
+            .unwrap_or_default();
+        let lead = session_section(&key, state, affordances);
         let saved = match &key {
             SessionKey::Saved(id) => self.saved.get(*id),
             SessionKey::SavedIn { .. } | SessionKey::File(_) => None,

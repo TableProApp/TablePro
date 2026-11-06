@@ -32,7 +32,7 @@ paths:
 - The base is a PR's base SHA, or on a main push the head SHA of the last green CI push run on main. No such run, or a dispatch, runs everything. A dispatch never counts as main's last green run or for a tag.
 - Concurrency in `ci.yml`: a PR keeps its newest run, main pushes run one at a time and a newer pending run replaces the older, and each `release/**` commit and each dispatch has its own group. `linux-packages.yml` keeps a PR's newest run too; its other runs, a release's call included, each have their own group.
 - macOS Tests runs the Unit and UI plans in full, with no shard, parallel, iteration or retry flag.
-- A `v*` tag runs only `release.yml`, a `linux-v*` tag only `release-linux.yml`, a `windows-v*` tag only `release-windows.yml`, which also runs by dispatch and publishes nothing then (`windows/RELEASING.md`).
+- A `v*` tag runs only `release.yml`, a `linux-v*` tag only `release-linux.yml`, a `windows-v*` tag only `release-windows.yml`. The last two also run by dispatch: `release-windows.yml` then publishes nothing (`windows/RELEASING.md`), and `release-linux.yml` publishes nothing with `dry-run` and otherwise uploads a packaging fix (`linux/docs/releasing.md`).
 - `windows-grid-gate.yml` runs only by dispatch: the Windows data grid's timing and behavior gate on `windows-2025` and `windows-11-arm`, whose numbers vary too much between hosted runners to gate a merge (`windows/docs/decisions/0003-data-grid-control.md`, Gate). `windows.yml` runs the grid's tests on every change.
 
 ## Change detector

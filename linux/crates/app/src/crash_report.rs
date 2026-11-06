@@ -24,10 +24,11 @@ const ANNOUNCED: &str = "announced";
 /// oldest go once there are more than this.
 const KEPT_REPORTS: usize = 20;
 
-/// Keep the default hook, which writes the panic to stderr and so to
-/// the journal, and also write it with a backtrace to a file of its own
-/// in `dir`. A GTK callback that panics panics a second time when it
-/// cannot unwind, and that goes in the same file.
+/// Keep the default hook, which writes the panic to stderr, and also
+/// write it with a backtrace to a file of its own in `dir`. A GTK
+/// callback that panics panics a second time when it cannot unwind, and
+/// that goes in the same file. Signals such as a segmentation fault are
+/// left to the system's core dump handler.
 pub fn install(dir: PathBuf) {
     let report = OnceLock::new();
     let default_hook = std::panic::take_hook();

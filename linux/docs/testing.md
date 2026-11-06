@@ -173,9 +173,12 @@ Every case but the last plans through `connection.dialect().ddl()` and runs the 
 - `create_table_script_recreates_the_table` drops a table and runs its `create_table_script`, which has to bring back the same column definitions and index keys.
 - `structure_changes_keep_rows_and_indexes` fills an indexed table, then changes a default and a nullability. The rows and the index have to come through, which on SQLite means through the table rebuild.
 - `index_statement_recreates_the_index` drops an index and runs the CREATE INDEX statement it was read with, which has to make the same index again.
+- `truncate_empties_the_table_and_keeps_it` fills a table and truncates it with no options: no rows are left and the columns stay.
+- `created_schema_is_listed_until_dropped` and `created_database_is_listed_until_dropped` create a schema or database, which `list_schemas` or `list_databases` has to list, then drop it, after which it is gone. A keyspace gets SimpleStrategy with a factor of 1 and, on ScyllaDB, tablets off. An engine that needs a first collection (MongoDB) is left to its own tests.
+- Each of these three runs only what `ddl::catalog_capabilities` offers. What it leaves out has to be refused by its plan.
 - `builtin_snippets_run_as_written` takes the SQL editor's built-in snippets for the connection's grammar, fills their table, index, column and value stops, with the row's `id` too on CQL, which finds a row only by its key, and keeps the rest as written (`tablepro_test_support::expand_snippet`), and runs each one through an editor session as the editor splits it: one statement each, all completing.
 
-The PostgreSQL, MySQL, SQL Server, ClickHouse, SQLite and DuckDB targets run it, and the MySQL target runs it on MariaDB as well. SQLite and DuckDB pass `docker: false`, so their cases run in the unit suite.
+The PostgreSQL, MySQL, SQL Server, ClickHouse, Cassandra, SQLite and DuckDB targets run it, the MySQL target on MariaDB as well and the Cassandra target on ScyllaDB. SQLite and DuckDB pass `docker: false`, so their cases run in the unit suite.
 
 ### Large-table conformance
 
@@ -517,7 +520,7 @@ Left for a machine with a GPU and a HiDPI screen: the GL and Vulkan renderers on
 
 ## CI
 
-`.github/workflows/build-linux.yml` builds and tests the app, `.github/workflows/linux-packages.yml` builds, installs and starts the .deb and .rpm, and `.github/workflows/release-linux.yml` publishes a `linux-v*` tag. Each workflow's `on:` and each job's `if:` say when it runs; its steps say what it runs. To run the same checks locally: the [fast-job commands](../CONTRIBUTING.md#fast-job-commands) and `build-aux/packaging/build-packages.sh`.
+`.github/workflows/build-linux.yml` builds and tests the app, `.github/workflows/linux-packages.yml` builds, installs and starts the .deb and the .rpm, and installs and updates the Flatpak from a test repository, and `.github/workflows/release-linux.yml` publishes a `linux-v*` tag. Each workflow's `on:` and each job's `if:` say when it runs; its steps say what it runs. To run the same checks locally: the [fast-job commands](../CONTRIBUTING.md#fast-job-commands) and `build-aux/packaging/build-packages.sh`.
 
 `.github/workflows/core.yml` builds the core crates for Windows x64 and Arm64 and macOS, runs the unit tests of `tablepro-core` and the SQL Server driver there, with the driver's `kerberos` feature on macOS, where it links the system's GSS framework, and runs the SSPI login tests above.
 

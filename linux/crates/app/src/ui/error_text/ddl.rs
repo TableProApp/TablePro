@@ -1,7 +1,7 @@
 //! DDL refusals and problems in the user's words, for the Structure tab
 //! and for a save refused before it starts.
 
-use tablepro_core::ddl::{BuildDdlError, DdlOperation, DraftProblem, RefusalReason};
+use tablepro_core::ddl::{BuildDdlError, CatalogOption, DdlOperation, DraftProblem, RefusalReason};
 
 use super::syntax::{literal_message, type_syntax_message};
 use crate::services::pending_structure::SaveBlocker;
@@ -46,7 +46,7 @@ pub fn refusal_text(reason: &RefusalReason) -> String {
         RefusalReason::InsertedByPosition(triggers) => crate::i18n::ngettext_f(
             "Trigger {triggers} inserts into this table without naming its columns, so adding or removing a column would break it.",
             "Triggers {triggers} insert into this table without naming its columns, so adding or removing a column would break them.",
-            u32::try_from(triggers.len()).unwrap_or(u32::MAX),
+            triggers.len(),
             &[("triggers", &triggers.join(", "))],
         ),
         RefusalReason::ColumnsConverted => {
@@ -143,5 +143,44 @@ pub fn build_error_text(error: &BuildDdlError) -> String {
         BuildDdlError::NotAsReviewed => crate::i18n::gettext(
             "The changes were edited or the connection changed during the review, so nothing was saved. Save again to review them.",
         ),
+        BuildDdlError::InvalidOption { option, value } => invalid_option_text(*option, value),
+    }
+}
+
+/// A schema or database option the statement cannot carry. An empty
+/// value is one left out, or one the engine has no place for.
+fn invalid_option_text(option: CatalogOption, value: &str) -> String {
+    let blank = value.trim().is_empty();
+    match option {
+        CatalogOption::Name if blank => crate::i18n::gettext("Enter a name."),
+        CatalogOption::Name => crate::i18n::gettext_f(
+            "“{name}” is longer than this server keeps a name, or holds a character it refuses.",
+            &[("name", value)],
+        ),
+        CatalogOption::Collection if blank => crate::i18n::gettext("Enter the name of the first collection."),
+        _ if blank => crate::i18n::gettext_f(
+            "This database takes no {option} for a new database.",
+            &[("option", &option_name(option))],
+        ),
+        _ => crate::i18n::gettext_f(
+            "“{value}” is not a {option} this database takes.",
+            &[("value", value), ("option", &option_name(option))],
+        ),
+    }
+}
+
+fn option_name(option: CatalogOption) -> String {
+    match option {
+        CatalogOption::Name => crate::i18n::pgettext("database option", "name"),
+        CatalogOption::Owner => crate::i18n::pgettext("database option", "owner"),
+        CatalogOption::Template => crate::i18n::pgettext("database option", "template"),
+        CatalogOption::Encoding => crate::i18n::pgettext("database option", "encoding"),
+        CatalogOption::Locale => crate::i18n::pgettext("database option", "locale"),
+        CatalogOption::CharacterSet => crate::i18n::pgettext("database option", "character set"),
+        CatalogOption::Collation => crate::i18n::pgettext("database option", "collation"),
+        CatalogOption::Cluster => crate::i18n::pgettext("database option", "cluster"),
+        CatalogOption::DataCenter => crate::i18n::pgettext("database option", "data centre"),
+        CatalogOption::ReplicationFactor => crate::i18n::pgettext("database option", "replication factor"),
+        CatalogOption::Collection => crate::i18n::pgettext("database option", "collection"),
     }
 }

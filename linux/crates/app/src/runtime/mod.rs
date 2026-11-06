@@ -27,7 +27,7 @@ pub use detect_resume::{RESUME_THRESHOLD, detect_resume};
 pub use failed_requests::FailedRequests;
 pub use gio_process_hold::GioProcessHold;
 pub use gio_reachability::GioReachability;
-pub use input_queue::{InputSender, input_queue, pump_inputs, pump_inputs_with_leftovers, relm4_bridge};
+pub use input_queue::{InputSender, input_queue, pump_inputs, pump_inputs_with_leftovers};
 pub use network_watch::NetworkWatch;
 pub use reachability_fanout::ReachabilityFanout;
 pub use reachability_probe::ReachabilityProbe;

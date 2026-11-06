@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use super::health_banner::REVIEW_HOST_KEY;
 use super::sidebar::ConnectionTree;
-use super::workspace_shell_imp::{self as imp, ClosedTab, HeldSession};
+use super::workspace_shell_imp::{self as imp, ClosedTab, Departure, HeldSession};
 use super::{CLOSED_TABS_CAPACITY, ClosedTabDescriptor, Workspace, WorkspaceInput};
 use crate::application::AppServices;
 use crate::i18n::{gettext, gettext_f};
@@ -248,31 +248,60 @@ impl WorkspaceShell {
                 shell.follow_selected_page();
             }
         });
-        // libadwaita 1.9 has no tab groups: every tab bar of the process
-        // takes a dropped tab, and a drop outside one asks for a window.
-        // A tab never leaves its session, so it comes back to this view.
-        view.connect_create_window(|view| Some(view.clone()));
+        // A tab never leaves its session's window (ADR 0028), and libadwaita has no way to decline the new window
+        // it asks for here, so the tab comes back to this view: docs/toolkit-workarounds.md, "A tab dropped outside
+        // every window".
+        let shell = self.downgrade();
+        view.connect_create_window(move |view| {
+            if let Some(shell) = shell.upgrade() {
+                shell.imp().declined_tear_out.set(true);
+            }
+            Some(view.clone())
+        });
         let shell = self.downgrade();
         view.connect_page_attached(move |view, page, _| {
             let Some(shell) = shell.upgrade() else {
                 return;
             };
             shell.tell_sharing();
-            // A page appended here is not in its session's index yet; one
-            // dragged in from another window is in none of them.
-            if view.is_transferring_page()
-                && shell.owner_of(page).is_none()
-                && let Some(sender) = shell.imp().sender.get()
-            {
-                sender.deliver(SessionWindowInput::ReturnForeignTab(page.downgrade().into()));
+            // A page appended here is not in its session's index yet, so
+            // only a transfer counts.
+            if !view.is_transferring_page() {
+                return;
+            }
+            let declined = shell.imp().declined_tear_out.replace(false);
+            if declined || shell.owner_of(page).is_none() {
+                // libadwaita is still attaching it; the window's queue
+                // moves it once that is done.
+                shell.tell_window(SessionWindowInput::ReturnTab(page.downgrade().into()));
+            } else {
+                shell.take_departure(page);
             }
         });
         let shell = self.downgrade();
-        view.connect_page_detached(move |_, _, _| {
-            if let Some(shell) = shell.upgrade() {
-                shell.tell_sharing();
+        view.connect_page_detached(move |view, page, position| {
+            let Some(shell) = shell.upgrade() else {
+                return;
+            };
+            shell.tell_sharing();
+            if view.is_transferring_page() && shell.owner_of(page).is_some() {
+                shell.imp().departure.replace(Some(Departure {
+                    page: page.downgrade(),
+                    position,
+                }));
             }
         });
+    }
+
+    /// Where `page` stood before a drag took it out of this view, once.
+    pub(crate) fn take_departure(&self, page: &adw::TabPage) -> Option<i32> {
+        let mut departure = self.imp().departure.borrow_mut();
+        let left = departure
+            .as_ref()
+            .filter(|left| left.page.upgrade().as_ref() == Some(page))?;
+        let position = left.position;
+        *departure = None;
+        Some(position)
     }
 
     /// The header bars, the window's title and the actions that act on

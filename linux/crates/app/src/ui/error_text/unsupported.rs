@@ -48,6 +48,7 @@ pub(super) fn unsupported_message(feature: UnsupportedFeature) -> String {
         UnsupportedFeature::Keys => gettext("This database holds tables, not keys."),
         UnsupportedFeature::CharacterSets => gettext("This database has no character sets to pick from."),
         UnsupportedFeature::DatabaseSwitching => gettext("This connection cannot switch to another database."),
+        UnsupportedFeature::DatabaseOptions => gettext("This database lists no options for a new database."),
         UnsupportedFeature::ObjectDefinitions => gettext("This database cannot show the object's definition."),
         UnsupportedFeature::ClrRoutine => {
             gettext("This routine runs code from a .NET assembly, so the server has no SQL for it.")
@@ -95,6 +96,7 @@ mod tests {
             UnsupportedFeature::Keys,
             UnsupportedFeature::CharacterSets,
             UnsupportedFeature::DatabaseSwitching,
+            UnsupportedFeature::DatabaseOptions,
             UnsupportedFeature::ObjectDefinitions,
             UnsupportedFeature::ClrRoutine,
             UnsupportedFeature::EncryptedDefinition,

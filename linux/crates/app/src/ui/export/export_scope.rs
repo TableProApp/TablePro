@@ -6,7 +6,7 @@ use super::dialog::SqlTarget;
 use super::{ExpectedRows, ExportQuery, ExportSource};
 use crate::i18n::{gettext, ngettext_f, pgettext};
 use crate::ui::browse_tab::RowTotal;
-use crate::ui::format::{format_thousands, plural_count};
+use crate::ui::format::format_thousands;
 
 /// What a tab asks the window to export.
 #[derive(Debug, Clone)]
@@ -161,18 +161,13 @@ impl ExportOrigin {
 }
 
 fn rows_text(rows: u64, format: &impl Fn(u64) -> String) -> String {
-    ngettext_f("{n} row", "{n} rows", plural_count(rows), &[("n", &format(rows))])
+    ngettext_f("{n} row", "{n} rows", rows, &[("n", &format(rows))])
 }
 
 fn table_total(total: &RowTotal, format: &impl Fn(u64) -> String) -> String {
     match (total.exact(), total.estimate()) {
         (Some(exact), _) => rows_text(exact, format),
-        (None, Some(estimate)) => ngettext_f(
-            "About {n} row",
-            "About {n} rows",
-            plural_count(estimate),
-            &[("n", &format(estimate))],
-        ),
+        (None, Some(estimate)) => ngettext_f("About {n} row", "About {n} rows", estimate, &[("n", &format(estimate))]),
         (None, None) => gettext("Every row"),
     }
 }

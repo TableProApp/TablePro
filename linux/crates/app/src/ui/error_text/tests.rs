@@ -812,3 +812,42 @@ fn a_column_change_beside_a_convert_says_to_save_it_first() {
          columns."
     );
 }
+
+#[test]
+fn a_database_that_is_gone_is_named_on_the_connect_page_and_the_banner() {
+    let gone = DriverError::DatabaseNotFound {
+        database: "shop".to_owned(),
+    };
+
+    assert_eq!(
+        connect_error_message(&ConnectError::Driver(gone.clone())),
+        "The database “shop” does not exist on the server."
+    );
+    assert_eq!(
+        operation_error_message(&OperationError::Driver(gone)),
+        "The database “shop” does not exist on the server."
+    );
+}
+
+#[test]
+fn a_catalog_option_the_statement_cannot_carry_says_which() {
+    use tablepro_core::ddl::{BuildDdlError, CatalogOption};
+
+    let invalid = |option, value: &str| {
+        build_error_text(&BuildDdlError::InvalidOption {
+            option,
+            value: value.to_owned(),
+        })
+    };
+
+    assert_eq!(invalid(CatalogOption::Name, "  "), "Enter a name.");
+    assert!(invalid(CatalogOption::Name, "a_very_long_name").contains("a_very_long_name"));
+    assert_eq!(
+        invalid(CatalogOption::Collation, "utf8 bin"),
+        "“utf8 bin” is not a collation this database takes."
+    );
+    assert_eq!(
+        invalid(CatalogOption::Template, ""),
+        "This database takes no template for a new database."
+    );
+}

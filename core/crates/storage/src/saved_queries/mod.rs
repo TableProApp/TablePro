@@ -34,11 +34,13 @@ const MAX_NAME_CHARS: usize = 200;
 #[derive(Debug, Clone)]
 pub struct SavedQueries {
     pool: SqlitePool,
+    // The database's file, whose upgrade copies a delete reaches too.
+    path: std::path::PathBuf,
 }
 
 impl SavedQueries {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+    pub(crate) fn new(pool: SqlitePool, path: std::path::PathBuf) -> Self {
+        Self { pool, path }
     }
 
     /// Keep `query` under its name, replacing whatever that name held
@@ -210,6 +212,15 @@ impl SavedQueries {
     }
 
     pub async fn delete(&self, id: i64) -> Result<(), StorageError> {
+        crate::query_history::trim_upgrade_copies(
+            &self.path,
+            &[crate::query_history::CopyDelete {
+                table: "saved_queries",
+                sql: "DELETE FROM main.saved_queries WHERE id = ?".to_owned(),
+                binds: vec![crate::query_history::Bind::Integer(id)],
+            }],
+        )
+        .await?;
         let affected = sqlx::query("DELETE FROM saved_queries WHERE id = ?")
             .bind(id)
             .execute(&self.pool)
@@ -225,6 +236,15 @@ impl SavedQueries {
     /// connection itself is removed. Its queries name tables only that
     /// database has.
     pub async fn delete_for_connection(&self, connection: Uuid) -> Result<usize, StorageError> {
+        crate::query_history::trim_upgrade_copies(
+            &self.path,
+            &[crate::query_history::CopyDelete {
+                table: "saved_queries",
+                sql: "DELETE FROM main.saved_queries WHERE connection_id = ?".to_owned(),
+                binds: vec![crate::query_history::Bind::Text(connection.to_string())],
+            }],
+        )
+        .await?;
         let affected = sqlx::query("DELETE FROM saved_queries WHERE connection_id = ?")
             .bind(connection.to_string())
             .execute(&self.pool)

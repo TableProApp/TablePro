@@ -325,7 +325,7 @@ impl DiagramTab {
                     &crate::i18n::ngettext_f(
                         "Drew {n} table",
                         "Drew {n} tables",
-                        u32::try_from(tables).unwrap_or(u32::MAX),
+                        tables,
                         &[("n", &tables.to_string())],
                     ),
                     gtk::AccessibleAnnouncementPriority::Medium,
@@ -489,7 +489,7 @@ impl DiagramTab {
             total => crate::i18n::ngettext_f(
                 "{done} of {total} table read",
                 "{done} of {total} tables read",
-                u32::try_from(total).unwrap_or(u32::MAX),
+                total,
                 &[("done", &progress.done.to_string()), ("total", &total.to_string())],
             ),
         };

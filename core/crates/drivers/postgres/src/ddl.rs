@@ -1,9 +1,11 @@
 use tablepro_core::column::{ColumnKind, ColumnType, IntegerKind, IntegerWidth, NetworkFamily, TextLength};
 use tablepro_core::ddl::ddl_sql::{column_list, create_index_sql, default_sql, foreign_key_sql};
 use tablepro_core::ddl::{
-    BuildDdlError, CollationName, ColumnAlteration, ColumnAttributes, ColumnCapabilities, ColumnCompression,
-    ColumnDefinition, ColumnStorage, DdlCapabilities, DdlDialect, DdlOperation, DdlPlan, DraftColumn, GeneratedStorage,
-    IdentityStyle, Permission, RefusalReason, ResolvedType, TableChanges, TableDefinition, TableDraft,
+    BuildDdlError, CatalogCapabilities, CatalogOption, CollationName, ColumnAlteration, ColumnAttributes,
+    ColumnCapabilities, ColumnCompression, ColumnDefinition, ColumnStorage, DatabaseDraft, DatabaseFields,
+    DatabaseNoun, DdlCapabilities, DdlDialect, DdlOperation, DdlPlan, DraftColumn, DropDatabaseOptions,
+    GeneratedStorage, IdentityStyle, NameLimit, Permission, RefusalReason, ResolvedType, TableChanges, TableDefinition,
+    TableDraft, catalog_name, check_database_draft, named, refuse_drop_options,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::TableRef;
@@ -58,6 +60,14 @@ const TYPE_SUGGESTIONS: &[&str] = &[
     "json",
     "bytea",
 ];
+
+/// The `server_version_num` of the release that added DROP DATABASE's
+/// FORCE and CREATE DATABASE's LOCALE.
+const RELEASE_13: u32 = 130_000;
+
+/// NAMEDATALEN less its terminator. The server cuts a longer name short
+/// with only a notice.
+const NAME_BYTES: usize = 63;
 
 /// PostgreSQL changes a table in one ALTER TABLE: it orders the
 /// subcommands itself, drops before adds, so one statement carries
@@ -208,6 +218,102 @@ impl DdlDialect for PgDialect {
                 .map(|index| create_index_sql(self, &table, index)),
         );
         DdlPlan::for_changes(changes, statements)
+    }
+
+    fn catalog_capabilities(&self) -> CatalogCapabilities {
+        CatalogCapabilities {
+            truncate_table: true,
+            truncate_cascade: true,
+            truncate_restart_identity: true,
+            truncate_refused_when_referenced: false,
+            create_schema: true,
+            drop_schema: true,
+            drop_schema_cascade: true,
+            schema_owner: true,
+            create_database: true,
+            drop_database: true,
+            drop_database_force: self.server_version_num() >= RELEASE_13,
+            database_fields: DatabaseFields {
+                owner: true,
+                template: true,
+                encoding: true,
+                locale: true,
+                ..DatabaseFields::default()
+            },
+            database_noun: DatabaseNoun::Database,
+            on_cluster: false,
+            name_limit: Some(NameLimit::Bytes(NAME_BYTES)),
+        }
+    }
+
+    /// The server refuses to drop a template. `postgres` is only where
+    /// clients connect by default, and the server drops it like any other.
+    fn protects_database(&self, name: &str) -> bool {
+        matches!(name, "template0" | "template1")
+    }
+
+    fn protects_schema(&self, name: &str) -> bool {
+        name == "information_schema" || name.starts_with("pg_")
+    }
+
+    /// Only the options set are written, so the server's defaults hold
+    /// for the rest. The server takes an encoding or locale other than
+    /// the template's only from template0, so one set without a template
+    /// copies template0.
+    fn plan_create_database(&self, draft: &DatabaseDraft) -> Result<DdlPlan, BuildDdlError> {
+        let capabilities = self.catalog_capabilities();
+        check_database_draft(&capabilities, draft)?;
+        let mut sql = format!(
+            "CREATE DATABASE {}",
+            self.quote_identifier(named(&capabilities, CatalogOption::Name, &draft.name)?)
+        );
+        if let Some(owner) = &draft.owner {
+            sql.push_str(" OWNER ");
+            sql.push_str(&self.quote_identifier(catalog_name(CatalogOption::Owner, owner)?));
+        }
+        match &draft.template {
+            Some(template) => {
+                sql.push_str(" TEMPLATE ");
+                sql.push_str(&self.quote_identifier(catalog_name(CatalogOption::Template, template)?));
+            }
+            None if draft.encoding.is_some() || draft.locale.is_some() => sql.push_str(" TEMPLATE template0"),
+            None => {}
+        }
+        if let Some(encoding) = &draft.encoding {
+            sql.push_str(&format!(" ENCODING '{}'", encoding_name(encoding)?));
+        }
+        if let Some(locale) = &draft.locale {
+            let locale = self.locale_literal(locale)?;
+            // Before LOCALE, the two settings it stands for were set apart.
+            match self.server_version_num() >= RELEASE_13 {
+                true => sql.push_str(&format!(" LOCALE {locale}")),
+                false => sql.push_str(&format!(" LC_COLLATE {locale} LC_CTYPE {locale}")),
+            }
+        }
+        Ok(DdlPlan::for_databases([sql]))
+    }
+
+    fn plan_drop_database(&self, database: &str, options: &DropDatabaseOptions) -> Result<DdlPlan, BuildDdlError> {
+        refuse_drop_options(&self.catalog_capabilities(), options)?;
+        let force = if options.force { " WITH (FORCE)" } else { "" };
+        Ok(DdlPlan::for_databases([format!(
+            "DROP DATABASE {}{force}",
+            self.quote_identifier(catalog_name(CatalogOption::Name, database)?)
+        )]))
+    }
+}
+
+/// An encoding is a string the server looks up by name, so only the
+/// letters, digits, underscores and hyphens its names are spelled with
+/// reach the statement.
+fn encoding_name(value: &str) -> Result<&str, BuildDdlError> {
+    let spelled = !value.is_empty() && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    match spelled {
+        true => Ok(value),
+        false => Err(BuildDdlError::InvalidOption {
+            option: CatalogOption::Encoding,
+            value: value.to_owned(),
+        }),
     }
 }
 
@@ -433,6 +539,16 @@ impl PgDialect {
             None => format!("COMMENT ON COLUMN {target} IS NULL"),
         }
     }
+
+    fn locale_literal(&self, locale: &str) -> Result<String, BuildDdlError> {
+        let locale = catalog_name(CatalogOption::Locale, locale)?;
+        SqlDialect::literal(self, &Value::Text(locale.to_owned()), &ColumnType::untyped_text("text")).map_err(|_| {
+            BuildDdlError::InvalidOption {
+                option: CatalogOption::Locale,
+                value: locale.to_owned(),
+            }
+        })
+    }
 }
 
 /// Turning numbering off drops the identity or the serial default.
@@ -619,14 +735,15 @@ fn serial_type(column_type: &ColumnType) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
-    use tablepro_core::ForeignKeyInfo;
-    use tablepro_core::ServerInfo;
     use tablepro_core::column::{ColumnDefault, ColumnInfo, SqlExpression};
     use tablepro_core::ddl::{
-        ColumnAttributes, DraftType, DropTableOptions, InboundForeignKey, PrimaryKeyConstraint, ReferentialAction,
-        diff_table,
+        ColumnAttributes, DraftType, DropSchemaOptions, DropTableOptions, InboundForeignKey, KeyspaceReplication,
+        PrimaryKeyConstraint, ReferentialAction, SchemaDraft, TruncateTableOptions, catalog_capabilities, diff_table,
+        plan_create_database, plan_create_schema, plan_drop_database, plan_drop_schema, plan_truncate_table,
+        protects_database, protects_schema,
     };
     use tablepro_core::meta::{IndexInfo, IndexKey};
+    use tablepro_core::{ForeignKeyInfo, ServerInfo, WriteKind};
 
     use super::*;
 
@@ -1307,5 +1424,344 @@ mod tests {
             assert!(dialect.parse_type(suggestion).is_ok(), "{suggestion}");
         }
         assert!(dialect.parse_type(dialect.default_column_type()).is_ok());
+    }
+
+    fn released(major: u32) -> PgDialect {
+        PgDialect::new(&ServerInfo::new("PostgreSQL", format!("{major}.0"), major, 0, 0))
+    }
+
+    fn orders() -> TableRef {
+        TableRef::new(Some("app".to_owned()), "orders")
+    }
+
+    fn create(draft: DatabaseDraft) -> Vec<String> {
+        sql(dialect().plan_create_database(&draft))
+    }
+
+    fn refused_option(plan: Result<DdlPlan, BuildDdlError>) -> Option<CatalogOption> {
+        match plan {
+            Err(BuildDdlError::InvalidOption { option, .. }) => Some(option),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn a_truncate_restarts_identity_before_it_cascades() {
+        let truncate = |cascade, restart_identity| {
+            let options = TruncateTableOptions {
+                cascade,
+                restart_identity,
+                cluster: None,
+            };
+            dialect().plan_truncate_table(&orders(), &options)
+        };
+
+        assert_eq!(sql(truncate(false, false)), ["TRUNCATE TABLE \"app\".\"orders\""]);
+        assert_eq!(
+            sql(truncate(true, false)),
+            ["TRUNCATE TABLE \"app\".\"orders\" CASCADE"]
+        );
+        assert_eq!(
+            sql(truncate(false, true)),
+            ["TRUNCATE TABLE \"app\".\"orders\" RESTART IDENTITY"]
+        );
+        assert_eq!(
+            sql(truncate(true, true)),
+            ["TRUNCATE TABLE \"app\".\"orders\" RESTART IDENTITY CASCADE"]
+        );
+        assert_eq!(
+            truncate(false, false).map(|plan| plan.kind),
+            Ok(WriteKind::SchemaChanges)
+        );
+        let on_cluster = TruncateTableOptions {
+            cluster: Some("main".to_owned()),
+            ..TruncateTableOptions::default()
+        };
+        assert_eq!(
+            dialect().plan_truncate_table(&orders(), &on_cluster),
+            Err(BuildDdlError::Unsupported(DdlOperation::OnCluster))
+        );
+    }
+
+    #[test]
+    fn a_schema_is_created_with_its_owner_and_dropped_with_what_it_holds() {
+        let owned = SchemaDraft {
+            name: "sa\"les".to_owned(),
+            owner: Some("ann".to_owned()),
+        };
+        let plain = SchemaDraft {
+            name: "sales".to_owned(),
+            owner: None,
+        };
+
+        assert_eq!(
+            sql(dialect().plan_create_schema(&owned)),
+            ["CREATE SCHEMA \"sa\"\"les\" AUTHORIZATION \"ann\""]
+        );
+        assert_eq!(sql(dialect().plan_create_schema(&plain)), ["CREATE SCHEMA \"sales\""]);
+        assert_eq!(
+            sql(dialect().plan_drop_schema("sales", DropSchemaOptions { cascade: true })),
+            ["DROP SCHEMA \"sales\" CASCADE"]
+        );
+        assert_eq!(
+            sql(dialect().plan_drop_schema("sales", DropSchemaOptions::default())),
+            ["DROP SCHEMA \"sales\""]
+        );
+    }
+
+    #[test]
+    fn a_new_database_writes_only_the_options_set_in_the_servers_order() {
+        let every = DatabaseDraft {
+            owner: Some("ann".to_owned()),
+            template: Some("tpl\"x".to_owned()),
+            encoding: Some("LATIN1".to_owned()),
+            locale: Some("de_DE.ISO8859-1".to_owned()),
+            ..DatabaseDraft::named("shop")
+        };
+        let owned = DatabaseDraft {
+            owner: Some("ann".to_owned()),
+            ..DatabaseDraft::named("shop")
+        };
+        let copied = DatabaseDraft {
+            template: Some("tpl".to_owned()),
+            ..DatabaseDraft::named("shop")
+        };
+
+        assert_eq!(create(DatabaseDraft::named("sh\"op")), ["CREATE DATABASE \"sh\"\"op\""]);
+        assert_eq!(create(owned), ["CREATE DATABASE \"shop\" OWNER \"ann\""]);
+        assert_eq!(create(copied), ["CREATE DATABASE \"shop\" TEMPLATE \"tpl\""]);
+        assert_eq!(
+            create(every),
+            ["CREATE DATABASE \"shop\" OWNER \"ann\" TEMPLATE \"tpl\"\"x\" ENCODING 'LATIN1' LOCALE 'de_DE.ISO8859-1'"]
+        );
+        let plan = dialect().plan_create_database(&DatabaseDraft::named("shop"));
+        assert_eq!(plan.map(|plan| plan.kind), Ok(WriteKind::DatabaseChanges));
+    }
+
+    /// template1 takes only its own encoding and locale, so either one
+    /// set without a template copies template0. A template the user chose
+    /// stays, and the server answers for it.
+    #[test]
+    fn an_encoding_or_locale_without_a_template_copies_template0() {
+        let encoded = DatabaseDraft {
+            encoding: Some("UTF8".to_owned()),
+            ..DatabaseDraft::named("shop")
+        };
+        let localised = DatabaseDraft {
+            locale: Some("C".to_owned()),
+            ..DatabaseDraft::named("shop")
+        };
+        let chosen = DatabaseDraft {
+            template: Some("template1".to_owned()),
+            ..encoded.clone()
+        };
+
+        assert_eq!(
+            create(encoded),
+            ["CREATE DATABASE \"shop\" TEMPLATE template0 ENCODING 'UTF8'"]
+        );
+        assert_eq!(
+            create(localised.clone()),
+            ["CREATE DATABASE \"shop\" TEMPLATE template0 LOCALE 'C'"]
+        );
+        assert_eq!(
+            create(chosen),
+            ["CREATE DATABASE \"shop\" TEMPLATE \"template1\" ENCODING 'UTF8'"]
+        );
+        assert_eq!(
+            sql(released(12).plan_create_database(&localised)),
+            ["CREATE DATABASE \"shop\" TEMPLATE template0 LC_COLLATE 'C' LC_CTYPE 'C'"]
+        );
+    }
+
+    #[test]
+    fn an_encoding_or_locale_that_could_leave_its_string_is_refused() {
+        let encoded = |encoding: &str| DatabaseDraft {
+            encoding: Some(encoding.to_owned()),
+            ..DatabaseDraft::named("shop")
+        };
+        let localised = |locale: &str| DatabaseDraft {
+            locale: Some(locale.to_owned()),
+            ..DatabaseDraft::named("shop")
+        };
+
+        assert_eq!(
+            create(encoded("UTF-8")),
+            ["CREATE DATABASE \"shop\" TEMPLATE template0 ENCODING 'UTF-8'"]
+        );
+        for encoding in ["", "UTF8'; DROP DATABASE prod; --", "UTF 8"] {
+            assert_eq!(
+                refused_option(dialect().plan_create_database(&encoded(encoding))),
+                Some(CatalogOption::Encoding),
+                "{encoding:?}"
+            );
+        }
+        assert_eq!(
+            create(localised("it's")),
+            ["CREATE DATABASE \"shop\" TEMPLATE template0 LOCALE 'it''s'"]
+        );
+        for locale in ["", "  ", "C\0"] {
+            assert_eq!(
+                refused_option(dialect().plan_create_database(&localised(locale))),
+                Some(CatalogOption::Locale),
+                "{locale:?}"
+            );
+        }
+        let empty_owner = DatabaseDraft {
+            owner: Some(String::new()),
+            ..DatabaseDraft::named("shop")
+        };
+        assert_eq!(
+            refused_option(dialect().plan_create_database(&empty_owner)),
+            Some(CatalogOption::Owner)
+        );
+    }
+
+    #[test]
+    fn a_name_past_63_bytes_is_refused_before_the_server_cuts_it_short() {
+        let longest = "a".repeat(63);
+        let schema = |name: &str| SchemaDraft {
+            name: name.to_owned(),
+            owner: None,
+        };
+
+        assert!(dialect().plan_create_database(&DatabaseDraft::named(&longest)).is_ok());
+        assert!(dialect().plan_create_schema(&schema(longest.as_str())).is_ok());
+        for name in ["a".repeat(64), "é".repeat(32)] {
+            assert_eq!(
+                refused_option(dialect().plan_create_database(&DatabaseDraft::named(&name))),
+                Some(CatalogOption::Name),
+                "{name}"
+            );
+            assert_eq!(
+                refused_option(dialect().plan_create_schema(&schema(name.as_str()))),
+                Some(CatalogOption::Name),
+                "{name}"
+            );
+        }
+        assert_eq!(dialect().catalog_capabilities().name_limit, Some(NameLimit::Bytes(63)));
+    }
+
+    #[test]
+    fn a_drop_closes_the_other_sessions_only_from_13() {
+        let forced = DropDatabaseOptions {
+            force: true,
+            cluster: None,
+        };
+        let plain = DropDatabaseOptions::default();
+
+        assert_eq!(
+            sql(released(13).plan_drop_database("sh\"op", &forced)),
+            ["DROP DATABASE \"sh\"\"op\" WITH (FORCE)"]
+        );
+        assert_eq!(
+            sql(released(13).plan_drop_database("shop", &plain)),
+            ["DROP DATABASE \"shop\""]
+        );
+        assert_eq!(
+            sql(released(12).plan_drop_database("shop", &plain)),
+            ["DROP DATABASE \"shop\""]
+        );
+        assert_eq!(
+            released(12).plan_drop_database("shop", &forced),
+            Err(BuildDdlError::Unsupported(DdlOperation::DropDatabaseForce))
+        );
+        assert!(released(13).catalog_capabilities().drop_database_force);
+        assert!(!released(12).catalog_capabilities().drop_database_force);
+        let plan = released(18).plan_drop_database("shop", &forced);
+        assert_eq!(plan.map(|plan| plan.kind), Ok(WriteKind::DatabaseChanges));
+    }
+
+    #[test]
+    fn templates_and_system_schemas_are_withheld_from_a_drop() {
+        let dialect = dialect();
+
+        for database in ["template0", "template1"] {
+            assert!(protects_database(&dialect, database), "{database}");
+        }
+        for database in ["postgres", "shop", "Template1"] {
+            assert!(!protects_database(&dialect, database), "{database}");
+        }
+        for schema in ["pg_catalog", "pg_toast", "pg_temp_3", "information_schema"] {
+            assert!(protects_schema(&dialect, schema), "{schema}");
+        }
+        for schema in ["public", "sales", "PG_sales"] {
+            assert!(!protects_schema(&dialect, schema), "{schema}");
+        }
+    }
+
+    /// The menu offers what the capabilities say, so each one has to plan.
+    #[test]
+    fn every_catalog_operation_offered_plans() {
+        for major in [12, 13, 18] {
+            let dialect = released(major);
+            let offered = catalog_capabilities(&dialect);
+            let fields = offered.database_fields;
+            let set = |on: bool, value: &str| on.then(|| value.to_owned());
+            let truncate = TruncateTableOptions {
+                cascade: offered.truncate_cascade,
+                restart_identity: offered.truncate_restart_identity,
+                cluster: set(offered.on_cluster, "main"),
+            };
+            let schema = SchemaDraft {
+                name: "sales".to_owned(),
+                owner: set(offered.schema_owner, "ann"),
+            };
+            let database = DatabaseDraft {
+                owner: set(fields.owner, "ann"),
+                template: set(fields.template, "template0"),
+                encoding: set(fields.encoding, "UTF8"),
+                locale: set(fields.locale, "C"),
+                character_set: set(fields.character_set, "utf8mb4"),
+                collation: set(fields.collation, "C"),
+                cluster: set(offered.on_cluster, "main"),
+                replication: fields.replication.then_some(KeyspaceReplication::Simple { factor: 1 }),
+                tablets: fields.tablets.then_some(true),
+                first_collection: set(fields.first_collection, "orders"),
+                ..DatabaseDraft::named("shop")
+            };
+            let cascade = DropSchemaOptions {
+                cascade: offered.drop_schema_cascade,
+            };
+            let drop = DropDatabaseOptions {
+                force: offered.drop_database_force,
+                cluster: set(offered.on_cluster, "main"),
+            };
+
+            let truncated = plan_truncate_table(&dialect, &orders(), &truncate);
+            let created_schema = plan_create_schema(&dialect, &schema);
+            let dropped_schema = plan_drop_schema(&dialect, "sales", cascade);
+            let created = plan_create_database(&dialect, &database);
+            let dropped = plan_drop_database(&dialect, "shop", &drop);
+
+            assert_eq!(truncated.is_ok(), offered.truncate_table, "{major}: {truncated:?}");
+            assert_eq!(
+                created_schema.is_ok(),
+                offered.create_schema,
+                "{major}: {created_schema:?}"
+            );
+            assert_eq!(
+                dropped_schema.is_ok(),
+                offered.drop_schema,
+                "{major}: {dropped_schema:?}"
+            );
+            assert_eq!(created.is_ok(), offered.create_database, "{major}: {created:?}");
+            assert_eq!(dropped.is_ok(), offered.drop_database, "{major}: {dropped:?}");
+        }
+        let offered = released(18).catalog_capabilities();
+        assert!(offered.truncate_table && offered.truncate_cascade && offered.truncate_restart_identity);
+        assert!(offered.create_schema && offered.drop_schema && offered.drop_schema_cascade && offered.schema_owner);
+        assert!(offered.create_database && offered.drop_database && offered.drop_database_force);
+        assert!(!offered.truncate_refused_when_referenced && !offered.on_cluster);
+        assert_eq!(
+            offered.database_fields,
+            DatabaseFields {
+                owner: true,
+                template: true,
+                encoding: true,
+                locale: true,
+                ..DatabaseFields::default()
+            }
+        );
     }
 }

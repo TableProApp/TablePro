@@ -37,6 +37,7 @@ Errors are typed enums, built with `thiserror` wherever they cross a crate bound
 | `Busy(BusyReason)` | Something was busy: `NoFreeConnection` (the server has no room for another connection, or the pool had no free slot in time) or `FileLocked` (another connection held the database file's lock past the lock timeout). |
 | `EditorSessionBusy` | The tab's session is already running a statement. |
 | `Config(ConfigError)` | The settings cannot be used: a bad host, port, path, TLS option, auth mode or missing database name. |
+| `DatabaseNotFound { database }` | The server has no database by the name the connection opens, as after a drop. A driver maps it at login only; a statement that names a missing database stays `Server`. |
 | `Decode { column, detail }` | The driver could not read a value. A bug on our side, not the server's. The detail is for the log. |
 | `Protocol(String)` | The server or the client library said something the driver did not expect. The text is for the log. |
 | `Unsupported { feature }` | The engine has no such feature. `UnsupportedFeature` names it, and the app writes the sentence. |
@@ -54,7 +55,7 @@ Rules:
 
 | Category | Variants | What the app does |
 |---|---|---|
-| `Configuration` | `Config`, `Unsupported`; SSH setup failures | Names the setting to change. The session stops retrying until the user changes something. |
+| `Configuration` | `Config`, `Unsupported`, `DatabaseNotFound`; SSH setup failures | Names the setting to change. The session stops retrying until the user changes something. |
 | `Network` | `Transport` (resolution, refused, unreachable); an SSH forward that was rejected or could not open, or an SSH master that exited | Names the host and port. A session retries on a backoff. |
 | `Tls` | `Tls` | One sentence per `TlsFailure`, with a remedy button where one exists. The session stops retrying. |
 | `Authentication` | `Auth`, `LoginRefused`, `IntegratedAuth`; SSH auth and host-key failures, and a cancelled SSH prompt | Says the login or the host key was refused, with the server's reason. Never echoes what was typed. The session stops retrying. |
@@ -138,7 +139,7 @@ The only text shown as it came is what another party wrote, inside a sentence th
 
 ## Logging
 
-Logging goes through `tracing`. `crates/app/src/logging.rs` installs a `tracing_subscriber` fmt layer that writes to **stderr**, which the GNOME session journals for both Flatpak and system installs. Panics land in the same stream, so a panic and the lines around it stay in order. There is no journald writer.
+Logging goes through `tracing`. `crates/app/src/logging.rs` installs a `tracing_subscriber` fmt layer that writes to **stderr**. Started from the desktop, a systemd user session connects stderr to the journal, for Flatpak and system installs alike; started from a terminal, it goes to the terminal. Panics land in the same stream, so a panic and the lines around it stay in order. There is no journald writer.
 
 - The filter comes from `RUST_LOG`. Without it, a development build logs at `debug` and an installed one at `info`. A `RUST_LOG` that does not parse falls back to that default and logs a warning saying so.
 - `TABLEPRO_LOG_FORMAT=json` writes one JSON object per line; `text`, the default, writes plain lines.
@@ -159,7 +160,7 @@ The libraries under the drivers log what a database was sent or answered: tokio-
 
 A panic on the GTK thread ends the process: GTK calls the app back through C, which a panic cannot unwind, so it aborts. A panic on a runtime thread is caught there (`session/src/runtime/catch_panic.rs`, and tokio's own `JoinError`) and ends one task, which the UI shows as a failure.
 
-- `crates/app/src/crash_report.rs` installs a panic hook in `run()`, right after logging. It runs the default hook first, so stderr and the journal keep the usual line.
+- `crates/app/src/crash_report.rs` installs a panic hook in `run()`, right after logging. It runs the default hook first, so stderr keeps the usual line. It handles Rust panics only: a signal such as a segmentation fault in a C library ends the process without a report here, and systemd-coredump, where the system has it, keeps that one (`coredumpctl`).
 - For a panic on the GTK thread it then appends a report to `StoragePaths::crashes_dir()` (`$XDG_STATE_HOME/<dir>/crashes`): the version, application ID, profile, debug or release build, the time, the message and place, and a backtrace captured whatever `RUST_BACKTRACE` says. The file is 0600 in a 0700 directory, written through `tablepro_storage::fs::append_private_blocking`. One file per process, named `crash-<UTC time>-<pid>.txt`; the second panic Rust raises when the first cannot unwind goes in the same file.
 - At the next launch the primary instance looks for the newest report it has not announced, off the GTK thread, and records its name in `crashes/announced`. The first window shows a toast, "TablePro quit unexpectedly last time", whose Show Report button opens the folder with the report selected. The toast moves with the window from page to page until it is dismissed or times out. Only the 20 newest reports are kept.
 - Nothing leaves the machine: the user decides whether to attach the report to an issue.

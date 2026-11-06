@@ -178,6 +178,20 @@ mod tests {
         assert!(matches!(mapped, SecretError::PortalUnavailable { .. }), "{mapped:?}");
     }
 
+    // oo7 0.6 returns this from Keyring::new in a sandbox with no Secret portal, before any Secret Service
+    // fallback, so it is what the store sees there (docs/storage.md, Passwords in the keyring).
+    #[test]
+    fn a_missing_secret_portal_is_portal_unavailable() {
+        let portal = oo7::zbus::names::OwnedInterfaceName::try_from("org.freedesktop.portal.Secret")
+            .expect("a valid interface name");
+        let mapped = map_error(
+            oo7::file::Error::Portal(oo7::ashpd::Error::PortalNotFound(portal)).into(),
+            Stage::Open,
+        );
+
+        assert!(matches!(mapped, SecretError::PortalUnavailable { .. }), "{mapped:?}");
+    }
+
     #[test]
     fn only_a_wire_error_invalidates_the_handle() {
         assert!(!invalidates_handle(&oo7::dbus::Error::Dismissed.into()));

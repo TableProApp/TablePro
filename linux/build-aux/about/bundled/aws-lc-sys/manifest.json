@@ -1,0 +1,11 @@
+{
+  "crate": "aws-lc-sys",
+  "version": "0.45.0",
+  "source": "https://crates.io/crates/aws-lc-sys/0.45.0",
+  "components": [
+    {"name": "AWS-LC", "path": "aws-lc", "provides": "aws-lc", "version": "5.7.0"},
+    {"name": "jitterentropy", "path": "aws-lc/third_party/jitterentropy", "provides": "jitterentropy", "version": "3.6.3"},
+    {"name": "s2n-bignum", "path": "aws-lc/third_party/s2n-bignum", "provides": "s2n-bignum"},
+    {"name": "fiat-crypto", "path": "aws-lc/third_party/fiat", "provides": "fiat-crypto"}
+  ]
+}

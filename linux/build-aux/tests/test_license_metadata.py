@@ -89,23 +89,19 @@ UNICODE = "COPYRIGHT AND PERMISSION NOTICE\n\nCopyright © 1991-2024 Unicode, In
 X11 = EXPAT_ALICE + "Except as contained in this notice, the name of Alice shall not be used in advertising.\n"
 
 
-def crate(name, version):
-    return {"crate": {"name": name, "version": version}}
+EXPAT_TERMS_TEXT = """Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction.
+"""
 
 
-def entry(spdx_id, text, *crates):
-    return {"id": spdx_id, "name": spdx_id, "text": text, "used_by": list(crates)}
-
-
-def declared(licenses, **expressions):
-    crates = []
-    for license in licenses:
-        for used_by in license["used_by"]:
-            name, version = used_by["crate"]["name"], used_by["crate"]["version"]
-            record = {"name": name, "version": version, "license": expressions.get(name, license["id"])}
-            if record not in crates:
-                crates.append(record)
-    return crates
+def crate_unit(name, version, expression, *texts, authors=None):
+    return {
+        "files": [f"vendor/{name}-{version}/*"],
+        "expression": expression,
+        "texts": list(texts),
+        "authors": authors or [f"the {name} authors"],
+    }
 
 
 def paragraphs(copyright_text):
@@ -186,7 +182,8 @@ class Dep5Tests(unittest.TestCase):
         self.assertEqual(self.dep5("ISC AND Zlib"), "ISC and Zlib")
 
     def test_or_later_and_only_take_the_dep5_suffix(self):
-        self.assertEqual(self.dep5("LGPL-2.1-or-later OR GPL-2.0-only"), "GPL-2.0 or LGPL-2.1+")
+        self.assertEqual(self.dep5("LGPL-2.1-or-later OR GPL-2.0-only"), "GPL-2 or LGPL-2.1+")
+        self.assertEqual(self.dep5("AGPL-3.0-or-later AND GFDL-1.2-or-later"), "AGPL-3+ and GFDL-1.2+")
 
     def test_an_exception_is_written_the_dep5_way(self):
         self.assertEqual(self.dep5("Apache-2.0 WITH LLVM-exception"), "Apache-2.0 with LLVM exception")
@@ -197,13 +194,17 @@ class Dep5Tests(unittest.TestCase):
 
 
 class RenderCopyrightTests(unittest.TestCase):
-    def render(self, licenses, crates=None, upstream="GNU AFFERO GENERAL PUBLIC LICENSE\n\nTerms.\n", metainfo="AGPL-3.0-or-later"):
-        if crates is None:
-            crates = declared(licenses)
-        return license_metadata.render_copyright(licenses, crates, upstream, metainfo)
+    def setUp(self):
+        workdir = tempfile.TemporaryDirectory()
+        self.addCleanup(workdir.cleanup)
+        self.texts = Path(workdir.name)
+        (self.texts / "MIT.txt").write_text(EXPAT_TERMS_TEXT, encoding="utf-8")
+
+    def render(self, crates=(), dist=(), nested=(), upstream="GNU AFFERO GENERAL PUBLIC LICENSE\n\nTerms.\n", metainfo="AGPL-3.0-or-later"):
+        return license_metadata.render_copyright(list(dist), list(crates), list(nested), upstream, metainfo, self.texts)
 
     def test_header_comes_first_and_upstream_covers_every_file(self):
-        rendered = self.render([entry("MIT", MIT_ALICE, crate("a", "1.0.0"))])
+        rendered = self.render([crate_unit("a", "1.0.0", "MIT", MIT_ALICE)])
         header, upstream = paragraphs(rendered)[:2]
 
         self.assertEqual(header["Format"], [license_metadata.DEP5_FORMAT])
@@ -211,11 +212,11 @@ class RenderCopyrightTests(unittest.TestCase):
         self.assertEqual(upstream["Copyright"], ["TablePro Authors"])
         self.assertEqual(
             upstream["License"],
-            ["AGPL-3.0+", "GNU AFFERO GENERAL PUBLIC LICENSE", ".", "Terms."],
+            ["AGPL-3+", "GNU AFFERO GENERAL PUBLIC LICENSE", ".", "Terms."],
         )
 
     def test_the_metainfo_gets_its_own_license(self):
-        rendered = self.render([entry("MIT", MIT_ALICE, crate("a", "1.0.0"))], metainfo="CC0-1.0")
+        rendered = self.render([crate_unit("a", "1.0.0", "MIT", MIT_ALICE)], metainfo="CC0-1.0")
         paragraph = files_paragraph(rendered, "metainfo")
 
         self.assertEqual(paragraph["Files"], ["linux/data/app.tablepro.TablePro.metainfo.xml.in.in"])
@@ -224,106 +225,140 @@ class RenderCopyrightTests(unittest.TestCase):
 
     def test_a_metainfo_license_with_no_text_is_refused(self):
         with self.assertRaises(license_metadata.MetadataError):
-            self.render([entry("MIT", MIT_ALICE, crate("a", "1.0.0"))], metainfo="FSFAP")
+            self.render([crate_unit("a", "1.0.0", "MIT", MIT_ALICE)], metainfo="FSFAP")
 
-    def test_a_crate_names_every_license_it_offers_with_the_text_it_is_used_under(self):
-        licenses = [entry("MIT", EXPAT_ALICE, crate("memchr", "2.7.0"))]
-        crates = declared(licenses, memchr="Unlicense OR MIT")
-        paragraph = files_paragraph(self.render(licenses, crates), "vendor/memchr-2.7.0/*")
+    def test_a_crate_names_every_license_it_offers_with_the_texts_it_ships(self):
+        paragraph = files_paragraph(
+            self.render([crate_unit("memchr", "2.7.0", "Unlicense OR MIT", EXPAT_ALICE, "This is free and unencumbered software.\n")]),
+            "vendor/memchr-2.7.0/*",
+        )
 
         self.assertEqual(paragraph["License"][0], "Expat or Unlicense")
-        self.assertIn("Permission is hereby granted", "\n".join(paragraph["License"]))
+        body = "\n".join(paragraph["License"])
+        self.assertIn("Permission is hereby granted", body)
+        self.assertIn("This is free and unencumbered software.", body)
 
     def test_an_mit_text_that_is_not_expat_keeps_the_name_mit(self):
-        licenses = [entry("MIT", X11, crate("a", "1.0.0"))]
-        paragraph = files_paragraph(self.render(licenses), "vendor/a-1.0.0/*")
+        paragraph = files_paragraph(self.render([crate_unit("a", "1.0.0", "MIT", X11)]), "vendor/a-1.0.0/*")
 
         self.assertEqual(paragraph["License"][0], "MIT")
 
     def test_crates_with_one_text_and_different_expressions_get_their_own_paragraphs(self):
-        licenses = [entry("MIT", MIT_ALICE, crate("a", "1.0.0"), crate("b", "2.1.0"))]
-        rendered = self.render(licenses, declared(licenses, b="MIT OR Apache-2.0"))
+        rendered = self.render(
+            [crate_unit("a", "1.0.0", "MIT", MIT_ALICE), crate_unit("b", "2.1.0", "MIT OR Apache-2.0", MIT_ALICE)]
+        )
 
         self.assertEqual(files_paragraph(rendered, "vendor/a-1.0.0/*")["Files"], ["vendor/a-1.0.0/*"])
         self.assertEqual(files_paragraph(rendered, "vendor/b-2.1.0/*")["Files"], ["vendor/b-2.1.0/*"])
 
-    def test_a_crate_with_a_text_and_no_expression_or_the_reverse_is_refused(self):
-        licenses = [entry("MIT", MIT_ALICE, crate("a", "1.0.0"))]
-        extra = {"name": "b", "version": "1.0.0", "license": "MIT"}
-        for crates in ([], declared(licenses) + [extra]):
-            with self.subTest(crates=crates), self.assertRaises(license_metadata.MetadataError):
-                self.render(licenses, crates)
-
-    def test_every_crate_is_named_once_by_its_versioned_vendor_directory(self):
-        licenses = [
-            entry("MIT", MIT_ALICE, crate("a", "1.0.0"), crate("b", "2.1.0")),
-            entry("MIT", MIT_NO_NOTICE, crate("c", "0.3.0"), crate("c", "0.4.1")),
-        ]
-        rendered = self.render(licenses)
-
-        patterns = []
-        for paragraph in paragraphs(rendered)[2:]:
-            patterns.extend(" ".join(paragraph["Files"]).split())
-        self.assertEqual(
-            sorted(patterns),
-            ["vendor/a-1.0.0/*", "vendor/b-2.1.0/*", "vendor/c-0.3.0/*", "vendor/c-0.4.1/*"],
+    def test_crates_sharing_texts_and_holders_share_a_paragraph(self):
+        rendered = self.render(
+            [crate_unit("b", "2.1.0", "MIT", MIT_ALICE), crate_unit("a", "1.0.0", "MIT", MIT_ALICE)]
         )
 
-    def test_crates_sharing_a_text_share_a_paragraph(self):
-        rendered = self.render([entry("MIT", MIT_ALICE, crate("a", "1.0.0"), crate("b", "2.1.0"))])
+        self.assertEqual(files_paragraph(rendered, "vendor/a-1.0.0/*")["Files"], ["vendor/a-1.0.0/*", "vendor/b-2.1.0/*"])
 
-        paragraph = files_paragraph(rendered, "vendor/a-1.0.0/*")
-        self.assertEqual(paragraph["Files"], ["vendor/a-1.0.0/*", "vendor/b-2.1.0/*"])
+    def test_crates_sharing_a_text_but_not_their_authors_keep_apart(self):
+        rendered = self.render(
+            [
+                crate_unit("a", "1.0.0", "MIT", MIT_NO_NOTICE, authors=["Alice"]),
+                crate_unit("b", "1.0.0", "MIT", MIT_NO_NOTICE, authors=["Bob"]),
+            ]
+        )
+
+        self.assertEqual(files_paragraph(rendered, "vendor/a-1.0.0/*")["Copyright"], ["Alice"])
+        self.assertEqual(files_paragraph(rendered, "vendor/b-1.0.0/*")["Copyright"], ["Bob"])
 
     def test_a_crate_under_two_licenses_lists_both_with_both_texts(self):
-        licenses = [
-            entry("MIT", MIT_ALICE, crate("unicode-ident", "1.0.24")),
-            entry("Unicode-3.0", UNICODE, crate("unicode-ident", "1.0.24")),
-        ]
-        crates = declared(licenses, **{"unicode-ident": "(MIT OR Apache-2.0) AND Unicode-3.0"})
-        paragraph = files_paragraph(self.render(licenses, crates), "vendor/unicode-ident-1.0.24/*")
+        paragraph = files_paragraph(
+            self.render([crate_unit("unicode-ident", "1.0.24", "(MIT OR Apache-2.0) AND Unicode-3.0", MIT_ALICE, UNICODE)]),
+            "vendor/unicode-ident-1.0.24/*",
+        )
 
         self.assertEqual(paragraph["License"][0], "Apache-2.0 or MIT, and Unicode-3.0")
         body = "\n".join(paragraph["License"][1:])
         self.assertIn("Permission is hereby granted", body)
         self.assertIn("Copyright © 1991-2024 Unicode, Inc.", body)
 
-    def test_one_text_used_for_several_licenses_appears_once(self):
-        licenses = [
-            entry("ISC", MIT_ALICE, crate("aws-lc-sys", "0.45.0")),
-            entry("MIT", MIT_ALICE, crate("aws-lc-sys", "0.45.0")),
-        ]
-        crates = declared(licenses, **{"aws-lc-sys": "ISC AND MIT"})
-        paragraph = files_paragraph(self.render(licenses, crates), "vendor/aws-lc-sys-0.45.0/*")
+    def test_one_text_shipped_twice_appears_once(self):
+        paragraph = files_paragraph(
+            self.render([crate_unit("aws-lc-sys", "0.45.0", "ISC AND MIT", MIT_ALICE, MIT_ALICE)]),
+            "vendor/aws-lc-sys-0.45.0/*",
+        )
 
-        self.assertEqual(paragraph["License"][0], "ISC and MIT")
         self.assertEqual("\n".join(paragraph["License"]).count("Permission is hereby granted"), 1)
 
     def test_copyright_takes_the_notices_without_their_prefix(self):
-        licenses = [
-            entry("MIT", MIT_ALICE, crate("a", "1.0.0")),
-            entry("Unicode-3.0", UNICODE, crate("a", "1.0.0")),
-        ]
-        paragraph = files_paragraph(self.render(licenses, declared(licenses, a="MIT AND Unicode-3.0")), "vendor/a-1.0.0/*")
+        paragraph = files_paragraph(
+            self.render([crate_unit("a", "1.0.0", "MIT AND Unicode-3.0", MIT_ALICE, UNICODE)]), "vendor/a-1.0.0/*"
+        )
 
         self.assertEqual(paragraph["Copyright"], ["2019 Alice", "1991-2024 Unicode, Inc."])
 
     def test_a_notice_written_as_a_field_loses_its_colon(self):
         text = "This product includes code from Apache Spark.\n\nCopyright: 2014 The Apache Software Foundation.\n"
-        licenses = [entry("MIT", text, crate("a", "1.0.0"))]
-        paragraph = files_paragraph(self.render(licenses), "vendor/a-1.0.0/*")
+        paragraph = files_paragraph(self.render([crate_unit("a", "1.0.0", "MIT", text)]), "vendor/a-1.0.0/*")
 
         self.assertEqual(paragraph["Copyright"], ["2014 The Apache Software Foundation."])
 
     def test_a_text_without_a_notice_credits_the_crates_authors(self):
-        licenses = [entry("MIT", MIT_NO_NOTICE, crate("serde", "1.0.0"), crate("syn", "1.0.0"), crate("syn", "2.0.0"))]
-        paragraph = files_paragraph(self.render(licenses), "vendor/serde-1.0.0/*")
+        paragraph = files_paragraph(
+            self.render([crate_unit("serde", "1.0.0", "MIT", MIT_NO_NOTICE, authors=["Erick Tryzelaar <erick.tryzelaar@gmail.com>", "David Tolnay <dtolnay@gmail.com>"])]),
+            "vendor/serde-1.0.0/*",
+        )
 
-        self.assertEqual(paragraph["Copyright"], ["the authors of serde, syn"])
+        self.assertEqual(paragraph["Copyright"], ["Erick Tryzelaar <erick.tryzelaar@gmail.com>", "David Tolnay <dtolnay@gmail.com>"])
+
+    def test_a_crate_that_ships_no_license_file_points_at_stand_alone_paragraphs(self):
+        rendered = self.render([crate_unit("windows-sys", "0.61.2", "MIT OR Apache-2.0", authors=["Microsoft"])])
+        paragraph = files_paragraph(rendered, "vendor/windows-sys-0.61.2/*")
+
+        self.assertEqual(paragraph["License"], ["Apache-2.0 or Expat"])
+        self.assertEqual(paragraph["Copyright"], ["Microsoft"])
+        standalone = {p["License"][0]: p["License"][1:] for p in paragraphs(rendered) if list(p) == ["License"]}
+        self.assertEqual(sorted(standalone), ["Apache-2.0", "Expat"])
+        self.assertIn('"/usr/share/common-licenses/Apache-2.0".', "\n".join(standalone["Apache-2.0"]))
+        self.assertIn("Permission is hereby granted, free of charge, to any person obtaining a copy", standalone["Expat"])
+
+    def test_a_stand_alone_license_with_no_text_is_refused(self):
+        with self.assertRaises(license_metadata.MetadataError):
+            self.render([crate_unit("adler", "1.0.0", "0BSD")])
+
+    def test_code_a_crate_carries_comes_after_every_crate_paragraph(self):
+        rendered = self.render(
+            [crate_unit("a", "1.0.0", "MIT", MIT_ALICE), crate_unit("z", "1.0.0", "MIT", MIT_ALICE)],
+            nested=[
+                {
+                    "files": ["vendor/a-1.0.0/third_party/fiat/*"],
+                    "expression": "MIT OR Apache-2.0 OR BSD-1-Clause",
+                    "texts": ["The fiat-crypto authors.\n"],
+                    "copyright": ["2015-2020 the fiat-crypto authors"],
+                }
+            ],
+        )
+        files = [p["Files"] for p in paragraphs(rendered) if "Files" in p]
+
+        self.assertEqual(files[-1], ["vendor/a-1.0.0/third_party/fiat/*"])
+        self.assertEqual(files[-2], ["vendor/a-1.0.0/*", "vendor/z-1.0.0/*"])
+        nested = files_paragraph(rendered, "third_party/fiat")
+        self.assertEqual(nested["Copyright"], ["2015-2020 the fiat-crypto authors"])
+        self.assertEqual(nested["License"][0], "Apache-2.0 or BSD-1-Clause or MIT")
+
+    def test_the_dist_tarballs_exceptions_follow_the_upstream_paragraphs(self):
+        rendered = self.render(
+            [crate_unit("a", "1.0.0", "MIT", MIT_ALICE)],
+            dist=[{"files": ["core/fixtures/chinook.db"], "expression": "MIT", "texts": [MIT_ALICE], "copyright": []}],
+        )
+        files = [p["Files"] for p in paragraphs(rendered) if "Files" in p]
+
+        self.assertEqual(files[:2], [["*"], ["core/fixtures/chinook.db"]])
+
+    def test_a_unit_with_no_holder_is_refused(self):
+        with self.assertRaises(license_metadata.MetadataError):
+            self.render(nested=[{"files": ["vendor/a-1.0.0/x/*"], "expression": "MIT", "texts": [MIT_NO_NOTICE], "copyright": []}])
 
     def test_the_apache_terms_point_at_common_licenses(self):
-        licenses = [entry("Apache-2.0", APACHE + "\nCopyright 2011 Google Inc.\n", crate("ryu", "1.0.0"))]
-        rendered = self.render(licenses)
+        rendered = self.render([crate_unit("ryu", "1.0.0", "Apache-2.0", APACHE + "\nCopyright 2011 Google Inc.\n")])
         paragraph = files_paragraph(rendered, "vendor/ryu-1.0.0/*")
 
         self.assertNotIn(license_metadata.APACHE_TERMS, rendered)
@@ -333,19 +368,32 @@ class RenderCopyrightTests(unittest.TestCase):
         self.assertIn("APPENDIX: How to apply the Apache License to your work.", body)
         self.assertEqual(paragraph["Copyright"], ["2011 Google Inc."])
 
+    def test_apache_terms_written_as_markdown_point_at_common_licenses(self):
+        markdown = (
+            "## Apache2 With LLVM Exceptions\n\n### Terms and Conditions for use, reproduction, and distribution\n\n"
+            "#### 2. Grant of Copyright License\n\n_END OF TERMS AND CONDITIONS_\n\n### LLVM Exceptions to the Apache 2.0 License\n"
+        )
+        rendered = self.render([crate_unit("lexical-core", "1.0.6", "MIT OR Apache-2.0", "Copyright 2018 Alex Huszagh\n\n" + markdown)])
+        body = "\n".join(files_paragraph(rendered, "vendor/lexical-core-1.0.6/*")["License"][1:])
+
+        self.assertNotIn("Grant of Copyright License", rendered)
+        self.assertIn("## Apache2 With LLVM Exceptions", body)
+        self.assertIn("/usr/share/common-licenses/Apache-2.0", body)
+        self.assertIn("### LLVM Exceptions to the Apache 2.0 License", body)
+
     def test_an_apache_text_with_no_end_line_is_refused(self):
         broken = APACHE.replace("END OF TERMS AND CONDITIONS", "")
 
         with self.assertRaises(license_metadata.MetadataError):
-            self.render([entry("Apache-2.0", broken, crate("ryu", "1.0.0"))])
+            self.render([crate_unit("ryu", "1.0.0", "Apache-2.0", broken)])
 
     def test_the_gpl2_terms_and_their_fsf_address_point_at_common_licenses(self):
         dual = "Copyright The Mbed TLS Contributors\n\nApache-2.0 OR GPL-2.0-or-later.\n" + APACHE + "\n=====\n" + GPL2
-        licenses = [entry("Apache-2.0", dual, crate("mbedtls", "1.0.0"))]
-        rendered = self.render(licenses, declared(licenses, mbedtls="Apache-2.0 OR GPL-2.0-or-later"))
+        rendered = self.render([crate_unit("mbedtls", "1.0.0", "Apache-2.0 OR GPL-2.0-or-later", dual)])
         paragraph = files_paragraph(rendered, "vendor/mbedtls-1.0.0/*")
         body = "\n".join(paragraph["License"][1:])
 
+        self.assertEqual(paragraph["License"][0], "Apache-2.0 or GPL-2+")
         self.assertNotIn("TERMS AND CONDITIONS FOR COPYING", rendered)
         self.assertNotIn("02110-1301", rendered)
         self.assertIn("/usr/share/common-licenses/Apache-2.0", body)
@@ -353,27 +401,152 @@ class RenderCopyrightTests(unittest.TestCase):
         self.assertTrue(body.rstrip().endswith('"/usr/share/common-licenses/GPL-2".'))
         self.assertEqual(paragraph["Copyright"], ["The Mbed TLS Contributors"])
 
-    def test_an_lgpl_text_is_kept(self):
-        licenses = [entry("LGPL-2.1-or-later", LGPL21, crate("a", "1.0.0"))]
-        body = "\n".join(files_paragraph(self.render(licenses), "vendor/a-1.0.0/*")["License"][1:])
+    def test_the_gpl3_terms_point_at_common_licenses(self):
+        gpl3 = (
+            "                    GNU GENERAL PUBLIC LICENSE\n                       Version 3, 29 June 2007\n\n"
+            " Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>\n\n"
+            "                       TERMS AND CONDITIONS\n\n"
+            "Public License instead of this License.  But first, please read\n"
+            "<https://www.gnu.org/philosophy/why-not-lgpl.html>.\n"
+        )
+        unit = {"files": ["vendor/gettext-sys-0.26.0/gettext-0.26.tar.xz"], "expression": "GPL-3.0-or-later", "texts": [gpl3], "copyright": ["Free Software Foundation, Inc."]}
+        paragraph = files_paragraph(self.render(nested=[unit]), "gettext-0.26.tar.xz")
 
-        self.assertIn("TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION", body)
-        self.assertNotIn("common-licenses", body)
+        self.assertEqual(paragraph["License"][0], "GPL-3+")
+        self.assertEqual(
+            paragraph["License"][1:],
+            [
+                "On Debian systems, the complete text of the GNU General Public License",
+                'version 3 can be found in "/usr/share/common-licenses/GPL-3".',
+            ],
+        )
+
+    def test_the_lgpl_terms_and_their_fsf_address_point_at_common_licenses(self):
+        lgpl = LGPL21 + "\n 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA\n\nThat's all there is to it!\n"
+        rendered = self.render([crate_unit("a", "1.0.0", "LGPL-2.1-or-later", lgpl)])
+        body = files_paragraph(rendered, "vendor/a-1.0.0/*")["License"][1:]
+
+        self.assertNotIn("02110-1301", rendered)
+        self.assertEqual(
+            body,
+            [
+                "On Debian systems, the complete text of the GNU Lesser General Public License",
+                'version 2.1 can be found in "/usr/share/common-licenses/LGPL-2.1".',
+            ],
+        )
 
     def test_a_gpl2_text_with_no_last_line_is_refused(self):
         broken = GPL2.replace("Public License instead of this License.", "")
 
         with self.assertRaises(license_metadata.MetadataError):
-            self.render([entry("GPL-2.0-or-later", broken, crate("a", "1.0.0"))])
+            self.render([crate_unit("a", "1.0.0", "GPL-2.0-or-later", broken)])
 
     def test_blank_lines_and_tabs_are_deb822_safe(self):
-        licenses = [entry("MIT", "Copyright 2020 Bob\n\n\tIndented\fline\n\n", crate("a", "1.0.0"))]
-        rendered = self.render(licenses)
+        rendered = self.render([crate_unit("a", "1.0.0", "MIT", "Copyright 2020 Bob\n\n\tIndented\fline\n\n")])
         lines = files_paragraph(rendered, "vendor/a-1.0.0/*")["License"]
 
         self.assertEqual(lines, ["MIT", "Copyright 2020 Bob", ".", "        Indentedline"])
         self.assertNotIn("\t", rendered)
         self.assertTrue(rendered.endswith("\n") and not rendered.endswith("\n\n"))
+
+
+class CoverageTests(unittest.TestCase):
+    LOCK = """version = 4
+
+[[package]]
+name = "cc"
+version = "1.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00"
+
+[[package]]
+name = "serde"
+version = "1.0.228"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00"
+
+[[package]]
+name = "tablepro"
+version = "0.1.0"
+
+[[package]]
+name = "windows-sys"
+version = "0.61.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00"
+"""
+
+    def copyright(self, *patterns):
+        files = "\n".join([f"Files: {patterns[0]}"] + [f" {pattern}" for pattern in patterns[1:]])
+        return f"Format: x\n\nFiles: *\nCopyright: TablePro Authors\nLicense: AGPL-3+\n\n{files}\nCopyright: Alice\nLicense: Expat\n"
+
+    def test_a_build_only_or_platform_only_crate_without_a_paragraph_fails(self):
+        # cc builds DuckDB and windows-sys is for Windows only: neither is in
+        # the binaries' inventory, and both are in the vendor tarball.
+        problems = license_metadata.check_coverage(self.copyright("vendor/serde-1.0.228/*"), self.LOCK)
+
+        self.assertEqual(len(problems), 1)
+        self.assertIn("cc-1.4.6, windows-sys-0.61.2", problems[0])
+
+    def test_every_crate_of_the_lock_with_a_paragraph_passes(self):
+        copyright_text = self.copyright("vendor/cc-1.4.6/*", "vendor/serde-1.0.228/*", "vendor/windows-sys-0.61.2/*")
+
+        self.assertEqual(license_metadata.check_coverage(copyright_text, self.LOCK), [])
+
+    def test_a_paragraph_for_a_crate_the_lock_no_longer_has_fails(self):
+        copyright_text = self.copyright(
+            "vendor/cc-1.4.6/*", "vendor/serde-1.0.227/*", "vendor/serde-1.0.228/*", "vendor/windows-sys-0.61.2/*"
+        )
+        problems = license_metadata.check_coverage(copyright_text, self.LOCK)
+
+        self.assertEqual(len(problems), 1)
+        self.assertIn("serde-1.0.227", problems[0])
+
+    def test_a_paragraph_for_code_inside_a_crate_does_not_count_as_the_crate(self):
+        copyright_text = self.copyright("vendor/cc-1.4.6/third_party/*", "vendor/serde-1.0.228/*", "vendor/windows-sys-0.61.2/*")
+
+        self.assertIn("cc-1.4.6", license_metadata.check_coverage(copyright_text, self.LOCK)[0])
+
+
+class RpmProvidesTests(unittest.TestCase):
+    BUNDLES = {
+        ("engine-sys", "1.2.3"): {
+            "crate": "engine-sys",
+            "version": "1.2.3",
+            "components": [
+                {"name": "Engine", "provides": "engine", "version": "2.0.0"},
+                {"name": "RE2", "provides": "re2"},
+                {"name": "a snippet", "license": "MIT"},
+            ],
+        }
+    }
+
+    def test_each_library_is_provided_with_its_version_when_it_has_one(self):
+        crates = [{"name": "engine-sys", "version": "1.2.3", "license": "MIT"}]
+
+        self.assertEqual(
+            license_metadata.rpm_provides(crates, self.BUNDLES), ["bundled(engine) = 2.0.0", "bundled(re2)"]
+        )
+
+    def test_a_bundle_for_a_crate_the_binaries_do_not_link_is_refused(self):
+        with self.assertRaises(license_metadata.MetadataError):
+            license_metadata.rpm_provides([{"name": "engine-sys", "version": "1.2.4", "license": "MIT"}], self.BUNDLES)
+
+    def test_the_block_after_its_comment_is_replaced_in_place(self):
+        comment = license_metadata.PROVIDES_COMMENT
+        spec = f"License: MIT\n{comment}\nProvides:       bundled(old) = 1\nProvides:       bundled(gone)\nURL: x\n"
+
+        self.assertEqual(
+            license_metadata.apply_spec_provides(spec, ["bundled(engine) = 2.0.0"]),
+            f"License: MIT\n{comment}\nProvides:       bundled(engine) = 2.0.0\nURL: x\n",
+        )
+        self.assertEqual(license_metadata.apply_spec_provides(f"{comment}\nURL: x\n", []), f"{comment}\nURL: x\n")
+
+    def test_a_spec_without_exactly_one_block_is_refused(self):
+        comment = license_metadata.PROVIDES_COMMENT
+        for spec in ("License: MIT\nProvides: bundled(a)\n", f"{comment}\nURL: x\n{comment}\n"):
+            with self.subTest(spec=spec), self.assertRaises(license_metadata.MetadataError):
+                license_metadata.apply_spec_provides(spec, ["bundled(a)"])
 
 
 class RpmLicenseTests(unittest.TestCase):
@@ -416,51 +589,133 @@ class RpmLicenseTests(unittest.TestCase):
                 license_metadata.apply_spec_license(spec, ["MIT"])
 
 
+class ClarificationTests(unittest.TestCase):
+    def test_only_a_git_clarification_takes_the_fetched_text(self):
+        with tempfile.TemporaryDirectory() as directory:
+            about = Path(directory) / "about.toml"
+            about.write_text(
+                '[scylla.clarify]\nlicense = "MIT OR Apache-2.0"\n[[scylla.clarify.git]]\npath = "LICENSE-MIT"\n'
+                '[ryu.clarify]\nlicense = "Apache-2.0 OR BSL-1.0"\n[[ryu.clarify.files]]\npath = "LICENSE-APACHE"\n',
+                encoding="utf-8",
+            )
+            licenses = [
+                {"id": "MIT", "text": "Copyright 2020 ScyllaDB\n", "used_by": [{"crate": {"name": "scylla", "version": "1.9.0"}}]},
+                {"id": "Apache-2.0", "text": "Apache\n", "used_by": [{"crate": {"name": "ryu", "version": "1.0.0"}}]},
+                {"id": "MIT", "text": "DuckDB\n", "component": "DuckDB", "used_by": [{"crate": {"name": "scylla", "version": "1.9.0"}}]},
+            ]
+
+            expressions, fetched = license_metadata.clarifications(about, licenses)
+
+        self.assertEqual(expressions, {"scylla": "MIT OR Apache-2.0", "ryu": "Apache-2.0 OR BSL-1.0"})
+        self.assertEqual(fetched, {("scylla", "1.9.0"): ["Copyright 2020 ScyllaDB\n"]})
+
+
 class CommandTests(unittest.TestCase):
+    LOCK = """version = 4
+
+[[package]]
+name = "a"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "cc"
+version = "1.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "tablepro"
+version = "0.1.0"
+"""
+
     def setUp(self):
         workdir = tempfile.TemporaryDirectory()
         self.addCleanup(workdir.cleanup)
         self.dir = Path(workdir.name)
-        licenses = [entry("MIT", MIT_ALICE, crate("a", "1.0.0"))]
-        (self.dir / "third-party.json").write_text(
-            json.dumps({"licenses": licenses, "crates": declared(licenses)}),
+        self.linux = self.dir / "linux"
+        self.linux.mkdir()
+        (self.linux / "third-party.json").write_text(
+            json.dumps(
+                {
+                    "licenses": [{"id": "MIT", "name": "MIT", "text": MIT_ALICE, "used_by": [{"crate": {"name": "a", "version": "1.0.0"}}]}],
+                    "crates": [{"name": "a", "version": "1.0.0", "license": "MIT"}],
+                }
+            ),
             encoding="utf-8",
         )
-        (self.dir / "LICENSE").write_text("AGPL text\n", encoding="utf-8")
-        metainfo = self.dir / license_metadata.METAINFO
+        (self.linux / "LICENSE").write_text("AGPL text\n", encoding="utf-8")
+        metainfo = self.linux / license_metadata.METAINFO
         metainfo.parent.mkdir(parents=True)
-        metainfo.write_text(
-            "<component><metadata_license>CC0-1.0</metadata_license></component>\n", encoding="utf-8"
+        metainfo.write_text("<component><metadata_license>CC0-1.0</metadata_license></component>\n", encoding="utf-8")
+        (self.linux / "tablepro.spec").write_text(
+            f"License: AGPL-3.0-or-later\n{license_metadata.PROVIDES_COMMENT}\nProvides:       bundled(old)\n",
+            encoding="utf-8",
         )
-        (self.dir / "tablepro.spec").write_text("License: AGPL-3.0-or-later\n", encoding="utf-8")
-        (self.dir / "copyright").write_text("stale\n", encoding="utf-8")
+        (self.linux / "copyright").write_text("stale\n", encoding="utf-8")
+        (self.dir / "Cargo.lock").write_text(self.LOCK, encoding="utf-8")
+        for name in ("a-1.0.0", "cc-1.4.6", "tablepro"):
+            (self.dir / "registry" / name).mkdir(parents=True)
+            (self.dir / "registry" / name / "Cargo.toml").write_text("[package]\n", encoding="utf-8")
+        (self.dir / "registry" / "a-1.0.0" / "LICENSE-MIT").write_text(MIT_ALICE, encoding="utf-8")
+        registry = "registry+https://github.com/rust-lang/crates.io-index"
+        packages = [
+            {"name": "a", "version": "1.0.0", "source": registry, "license": "MIT", "authors": [], "dir": "a-1.0.0"},
+            {"name": "cc", "version": "1.4.6", "source": registry, "license": "MIT OR Apache-2.0", "authors": ["Alex Crichton"], "dir": "cc-1.4.6"},
+            {"name": "tablepro", "version": "0.1.0", "source": None, "license": "AGPL-3.0-or-later", "authors": [], "dir": "tablepro"},
+        ]
+        for package in packages:
+            package["manifest_path"] = str(self.dir / "registry" / package.pop("dir") / "Cargo.toml")
+        (self.dir / "metadata.json").write_text(json.dumps({"packages": packages}), encoding="utf-8")
+        (self.dir / "about.toml").write_text("accepted = []\n", encoding="utf-8")
+        (self.dir / "source.json").write_text('{"crates": [], "files": []}\n', encoding="utf-8")
+        (self.dir / "bundled").mkdir()
+        (self.dir / "texts").mkdir()
+        (self.dir / "texts" / "MIT.txt").write_text(EXPAT_TERMS_TEXT, encoding="utf-8")
 
     def run_command(self, command):
         self.stderr = io.StringIO()
+        arguments = [
+            command,
+            "--licenses", str(self.linux / "third-party.json"),
+            "--license-file", str(self.linux / "LICENSE"),
+            "--copyright", str(self.linux / "copyright"),
+            "--spec", str(self.linux / "tablepro.spec"),
+            "--lock", str(self.dir / "Cargo.lock"),
+            "--bundled", str(self.dir / "bundled"),
+        ]
+        if command == "write":
+            arguments += [
+                "--metadata", str(self.dir / "metadata.json"),
+                "--about", str(self.dir / "about.toml"),
+                "--source", str(self.dir / "source.json"),
+                "--texts", str(self.dir / "texts"),
+            ]
         with contextlib.redirect_stderr(self.stderr):
-            return license_metadata.main(
-                [
-                    command,
-                    "--licenses", str(self.dir / "third-party.json"),
-                    "--license-file", str(self.dir / "LICENSE"),
-                    "--copyright", str(self.dir / "copyright"),
-                    "--spec", str(self.dir / "tablepro.spec"),
-                ]
-            )
+            return license_metadata.main(arguments)
 
     def test_check_fails_on_stale_files_and_passes_after_write(self):
         self.assertEqual(self.run_command("check"), 1)
         self.assertIn("update-third-party-licenses.sh", self.stderr.getvalue())
-        self.assertEqual((self.dir / "copyright").read_text(encoding="utf-8"), "stale\n")
+        self.assertEqual((self.linux / "copyright").read_text(encoding="utf-8"), "stale\n")
 
-        self.assertEqual(self.run_command("write"), 0)
+        self.assertEqual(self.run_command("write"), 0, self.stderr.getvalue())
 
-        self.assertEqual(self.run_command("check"), 0)
+        self.assertEqual(self.run_command("check"), 0, self.stderr.getvalue())
         self.assertEqual(
-            (self.dir / "tablepro.spec").read_text(encoding="utf-8"),
-            "License: %{shrink:\n    AGPL-3.0-or-later AND\n    CC0-1.0 AND\n    MIT\n}\n",
+            (self.linux / "tablepro.spec").read_text(encoding="utf-8"),
+            f"License: %{{shrink:\n    AGPL-3.0-or-later AND\n    CC0-1.0 AND\n    MIT\n}}\n{license_metadata.PROVIDES_COMMENT}\n",
         )
-        self.assertIn("Files: vendor/a-1.0.0/*", (self.dir / "copyright").read_text(encoding="utf-8"))
+        copyright_text = (self.linux / "copyright").read_text(encoding="utf-8")
+        self.assertIn("Files: vendor/a-1.0.0/*", copyright_text)
+        self.assertIn("Files: vendor/cc-1.4.6/*\nCopyright: Alex Crichton\nLicense: Apache-2.0 or Expat\n", copyright_text)
+
+    def test_check_fails_when_the_lock_gains_a_crate_the_copyright_file_lacks(self):
+        self.assertEqual(self.run_command("write"), 0, self.stderr.getvalue())
+        lock = self.LOCK + '\n[[package]]\nname = "windows-sys"\nversion = "0.61.2"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n'
+        (self.dir / "Cargo.lock").write_text(lock, encoding="utf-8")
+
+        self.assertEqual(self.run_command("check"), 1)
+        self.assertIn("windows-sys-0.61.2", self.stderr.getvalue())
 
 
 if __name__ == "__main__":
