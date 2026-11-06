@@ -94,7 +94,7 @@ case "$SUITE" in
         # The Linux app builds the shared core in the Cargo workspace whose files are at the top.
         PATTERNS=('linux/' 'core/' 'Cargo\.(toml|lock)$' '(rust-toolchain|rustfmt|clippy|deny)\.toml$'
             '\.config/nextest\.toml$' 'scripts/ci/detect-changed-paths\.sh$'
-            '\.github/workflows/(ci|build-linux|linux-packages|release-linux)\.yml$')
+            '\.github/workflows/(ci|build-linux)\.yml$')
         # linux-docs decides the docs links job, which reads every path. The other Linux jobs skip
         # Markdown, except the files a Meson test reads and the notices the build installs.
         if [ "$SUITE" = linux ]; then
@@ -114,7 +114,8 @@ case "$SUITE" in
         PATTERNS=('Cargo\.(toml|lock)$' '(linux|core)/(.*/)?Cargo\.toml$' 'rust-toolchain\.toml$'
             'linux/build-aux/(debian|rpm|packaging|flatpak|about)/' 'linux/build-aux/[^/]+$' 'linux/about\.toml$'
             'linux/meson\.(build|options)$' 'linux/(.*/)?meson\.build$' 'linux/po/LINGUAS$'
-            'scripts/ci/detect-changed-paths\.sh$' '\.github/workflows/(ci|linux-packages)\.yml$')
+            'scripts/ci/detect-changed-paths\.sh$' '\.github/workflows/(ci|linux-packages)\.yml$'
+            '\.github/actions/linux-package-disk/')
         SKIP='linux/.*\.md$' ;;
     core)
         # core.yml: the core on Windows and macOS, and its Swift bindings, which take the deployment target from

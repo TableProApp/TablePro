@@ -76,11 +76,12 @@ class DetectChangedPathsTests(unittest.TestCase):
             "linux/crates/app/src/main.rs",
             "linux/meson.build",
             ".github/workflows/build-linux.yml",
-            ".github/workflows/linux-packages.yml",
-            ".github/workflows/release-linux.yml",
         ]:
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("linux", path), "true")
+        for path in [".github/workflows/linux-packages.yml", ".github/workflows/release-linux.yml"]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("linux", path), "false")
 
     def test_packages_run_on_dependency_build_and_packaging_declarations(self):
         for path in [
@@ -104,6 +105,7 @@ class DetectChangedPathsTests(unittest.TestCase):
             "linux/po/meson.build",
             "linux/po/LINGUAS",
             ".github/workflows/linux-packages.yml",
+            ".github/actions/linux-package-disk/action.yml",
         ]:
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("packages", path), "true")

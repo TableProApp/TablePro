@@ -36,6 +36,8 @@ jobs:
       swiftlint: ${{ steps.decide.outputs.swiftlint }}
       linux: ${{ steps.decide.outputs.linux }}
       linux-docs: ${{ steps.decide.outputs.linux-docs }}
+      linux-deps: ${{ steps.decide.outputs.linux-deps }}
+      packages: ${{ steps.decide.outputs.packages }}
       core: ${{ steps.decide.outputs.core }}
       windows: ${{ steps.decide.outputs.windows }}
     steps:
@@ -89,7 +91,7 @@ jobs:
           echo "tested=$tested" >> "$GITHUB_OUTPUT"
 
       # --ref makes a release/** push run every suite. Linux ships from main or linux-X.Y, and the core and the Windows
-      # app have no release line, so a release/** push or a pull request into one skips those three.
+      # app have no release line, so a release/** push or a pull request into one skips them.
       - name: Decide which suites run
         id: decide
         env:
@@ -102,13 +104,13 @@ jobs:
           release_line=false
           case "$REF" in refs/heads/release/*) release_line=true ;; esac
           case "$BASE_REF" in release/*) release_line=true ;; esac
-          for suite in macos plugins ios oracle hana swiftlint linux linux-docs core windows; do
+          for suite in macos plugins ios oracle hana swiftlint linux linux-docs linux-deps packages core windows; do
             verdict=false
             if [ "$TESTED" != true ]; then
               verdict="$(scripts/ci/detect-changed-paths.sh --base "$BASE" --ref "$REF" "$suite")"
             fi
             case "$suite" in
-              linux | linux-docs | core | windows) [ "$release_line" = false ] || verdict=false ;;
+              linux | linux-docs | linux-deps | packages | core | windows) [ "$release_line" = false ] || verdict=false ;;
             esac
             echo "$suite=$verdict"
             echo "$suite=$verdict" >> "$GITHUB_OUTPUT"
@@ -144,6 +146,14 @@ jobs:
     uses: ./.github/workflows/build-linux.yml
     with:
       docs-only: ${{ needs.plan.outputs.linux != 'true' }}
+      dependencies: ${{ needs.plan.outputs.linux-deps == 'true' }}
+
+  # The clean distribution builds, when a change touches what the packages declare or how they build. A source change
+  # alone leaves them to the nightly.
+  packages:
+    needs: plan
+    if: needs.plan.outputs.packages == 'true'
+    uses: ./.github/workflows/linux-packages.yml
 
   core:
     needs: plan
@@ -161,7 +171,7 @@ jobs:
   # is skipped, which passes.
   ci:
     name: CI
-    needs: [plan, lint, macos, ios, linux, core, windows]
+    needs: [plan, lint, macos, ios, linux, packages, core, windows]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -173,11 +183,13 @@ jobs:
           MACOS: ${{ needs.macos.result }}
           IOS: ${{ needs.ios.result }}
           LINUX: ${{ needs.linux.result }}
+          PACKAGES: ${{ needs.packages.result }}
           CORE: ${{ needs.core.result }}
           WINDOWS: ${{ needs.windows.result }}
           WANT_MACOS: ${{ needs.plan.outputs.macos }}
           WANT_IOS: ${{ needs.plan.outputs.ios }}
           WANT_LINUX: ${{ needs.plan.outputs.linux-docs }}
+          WANT_PACKAGES: ${{ needs.plan.outputs.packages }}
           WANT_CORE: ${{ needs.plan.outputs.core }}
           WANT_WINDOWS: ${{ needs.plan.outputs.windows }}
         run: |
@@ -201,6 +213,7 @@ jobs:
           check macos "$MACOS" "$WANT_MACOS"
           check ios "$IOS" "$WANT_IOS"
           check linux "$LINUX" "$WANT_LINUX"
+          check packages "$PACKAGES" "$WANT_PACKAGES"
           check core "$CORE" "$WANT_CORE"
           check windows "$WINDOWS" "$WANT_WINDOWS"
           exit "$status"

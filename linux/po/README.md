@@ -37,8 +37,8 @@ translation service.
 Start from the template CI builds, so you do not need gettext 1.0:
 
 - the `tablepro-pot` artifact of the latest
-  [Build Linux run on main](https://github.com/TableProApp/TablePro/actions/workflows/build-linux.yml?query=branch%3Amain),
-  which a nightly run keeps fresh (downloading it needs a GitHub sign-in);
+  [Nightly run on main](https://github.com/TableProApp/TablePro/actions/workflows/nightly.yml?query=branch%3Amain)
+  (downloading it needs a GitHub sign-in);
 - `tablepro.pot` on each `linux-v*` release.
 
 ## Adding a new translation
