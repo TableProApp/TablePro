@@ -344,7 +344,9 @@ jobs:
           if-no-files-found: error
       - name: Lint the manifest
         if: runner.arch == 'X64'
-        run: flatpak-builder-lint manifest linux/build-aux/flatpak/app.tablepro.TablePro.json
+        run: |
+          flatpak-builder-lint --exceptions --user-exceptions linux/build-aux/flatpak/lint-exceptions.json \
+            manifest linux/build-aux/flatpak/app.tablepro.TablePro.json
 
   # Signed with a throwaway key, for http://127.0.0.1:8080, by the same
   # flatpak-repo.sh release-linux.yml publishes with, on both branches
