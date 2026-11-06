@@ -78281,6 +78281,46 @@
         }
       }
     },
+    "Export Results" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exporter les résultats"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "결과 내보내기"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sonuçları Dışa Aktar"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xuất kết quả"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导出结果"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "匯出結果"
+          }
+        }
+      }
+    },
     "Export Results…" : {
       "localizations" : {
         "fr" : {
@@ -78304,7 +78344,7 @@
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Export Kết Quả…"
+            "value" : "Xuất kết quả…"
           }
         },
         "zh-Hans" : {
@@ -78339,6 +78379,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tabloyu dışa aktar"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xuất bảng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导出表"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "匯出資料表"
+          }
+        }
+      }
+    },
+    "Export Tables" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exporter les tables"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "테이블 내보내기"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tabloları Dışa Aktar"
           }
         },
         "vi" : {

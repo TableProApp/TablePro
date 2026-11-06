@@ -27,6 +27,10 @@
         <attribute name="action">win.save-query</attribute>
       </item>
       <item>
+        <attribute name="label" translatable="yes">E_xport Results…</attribute>
+        <attribute name="action">win.export-results</attribute>
+      </item>
+      <item>
         <attribute name="label" translatable="yes">Forma_t</attribute>
         <attribute name="action">editor.format</attribute>
         <attribute name="accel">&lt;Primary&gt;&lt;Shift&gt;f</attribute>

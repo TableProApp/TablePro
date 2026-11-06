@@ -94,7 +94,7 @@ pub(super) fn describe_buttons(tab: &BrowseTab) {
             gettext("Delete Selected Rows"),
             Some("grid.delete-rows"),
         ),
-        (&imp.export_button, gettext("Export Rows…"), None),
+        (&imp.export_button, gettext("Export Rows…"), Some("win.export-results")),
     ] {
         describe_icon_button(&button.get(), &label, action);
     }

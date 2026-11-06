@@ -10,6 +10,7 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 
+use super::workspace_tabs::ActiveTabCommand;
 use super::{TransferInput, WorkspaceInput, WorkspaceShell};
 use crate::runtime::DeliverInput;
 use crate::services::history_availability::HistoryAvailability;
@@ -22,7 +23,7 @@ type ActionInput = fn() -> WorkspaceInput;
 /// they are not left greyed out with no reason.
 const HISTORY_ACTIONS: [&str; 2] = ["show-history", "show-saved-queries"];
 
-const ENTRIES: [(&str, ActionInput); 8] = [
+const ENTRIES: [(&str, ActionInput); 9] = [
     ("new-editor-tab", || WorkspaceInput::NewEditorTab),
     (EXPORT_DATABASE, || {
         WorkspaceInput::Transfer(TransferInput::ExportDatabase)
@@ -31,7 +32,10 @@ const ENTRIES: [(&str, ActionInput); 8] = [
         WorkspaceInput::Transfer(TransferInput::ImportSqlFile)
     }),
     ("refresh-tables", || WorkspaceInput::RefreshCatalog),
-    ("save-query", || WorkspaceInput::SaveActiveQuery),
+    ("save-query", || WorkspaceInput::ActiveTab(ActiveTabCommand::SaveQuery)),
+    ("export-results", || {
+        WorkspaceInput::ActiveTab(ActiveTabCommand::ExportResults)
+    }),
     ("show-history", || WorkspaceInput::ShowHistory),
     ("show-saved-queries", || WorkspaceInput::ShowSavedQueries),
     (super::health_banner::REVIEW_HOST_KEY, || WorkspaceInput::ReviewHostKey),
@@ -209,10 +213,17 @@ mod tests {
 
         install(&window, &shell);
 
+        assert!(
+            window
+                .lookup_action("export-results")
+                .is_some_and(|action| action.is_enabled()),
+            "Export Results is not on the window, or greyed out"
+        );
         // With no session in front the action has nowhere to go.
         WidgetExt::activate_action(&*window, "win.new-editor-tab", None).expect("win resolves to the window's own map");
         remove(&window);
         assert!(window.lookup_action("new-editor-tab").is_none());
+        assert!(window.lookup_action("export-results").is_none());
         assert!(window.lookup_action(REOPEN_CLOSED_TAB).is_none());
         assert!(window.lookup_action(CLOSE_ALL_TABS).is_none());
         assert!(window.lookup_action(SWITCH_RECENT_TAB).is_none());

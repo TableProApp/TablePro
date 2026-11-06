@@ -45,12 +45,6 @@ final class DataFileSplitViewController: NSSplitViewController {
         addSplitViewItem(contentItem)
         addSplitViewItem(inspectorItem)
 
-        KeyWindowCommandSubscription
-            .sink(AppCommands.shared.exportQueryResults, whileKey: { [weak self] in self?.view.window }) { [weak self] _ in
-                self?.presentExport()
-            }
-            .store(in: &cancellables)
-
         controller.$isInspectorVisible
             .removeDuplicates()
             .sink { [weak self] visible in

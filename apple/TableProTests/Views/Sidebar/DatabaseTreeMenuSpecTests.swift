@@ -991,6 +991,13 @@ struct DatabaseTreeMenuSpecTests {
         #expect(SidebarMenuCommand.refreshRedisKeys.shortcutAction == nil)
     }
 
+    // Export Tables… exports the selected tables, so its key never exported the database or schema it was shown on.
+    @Test("A database or schema's Export… shows no shortcut")
+    func containerExportShowsNoShortcut() {
+        #expect(SidebarMenuCommand.exportContainers([.database("analytics")]).shortcutAction == nil)
+        #expect(SidebarMenuCommand.exportContainers([.schema(database: "app", schema: "public")]).shortcutAction == nil)
+    }
+
     /// Elasticsearch, Typesense and Weaviate have no listing, and the item used to run a MongoDB command
     /// against them.
     @Test("Show All Tables is offered only when the engine has a listing")

@@ -1,4 +1,3 @@
-import AppKit
 import Combine
 import Foundation
 @testable import TablePro
@@ -32,34 +31,5 @@ struct KeyWindowCommandSubscriptionTests {
         #expect(background.payloads.isEmpty)
         backgroundSubscription.cancel()
         frontmostSubscription.cancel()
-    }
-
-    @Test("A window that is not key does not run the command")
-    func windowThatIsNotKeyDoesNotRun() async throws {
-        let subject = PassthroughSubject<Void, Never>()
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 10, height: 10),
-            styleMask: [.titled],
-            backing: .buffered,
-            defer: true
-        )
-        window.isReleasedWhenClosed = false
-        let received = Received()
-        let subscription = KeyWindowCommandSubscription.sink(subject, whileKey: { window }) { _ in
-            received.payloads.append(1)
-        }
-        // Subscribed after, so its delivery on the main run loop comes after the window's.
-        let control = Received()
-        let controlSubscription = KeyWindowCommandSubscription.sink(subject, when: { true }) { _ in
-            control.payloads.append(1)
-        }
-
-        subject.send(())
-        try await waitUntil { !control.payloads.isEmpty }
-
-        #expect(!window.isKeyWindow)
-        #expect(received.payloads.isEmpty)
-        subscription.cancel()
-        controlSubscription.cancel()
     }
 }

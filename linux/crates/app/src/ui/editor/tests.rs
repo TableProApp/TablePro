@@ -930,6 +930,51 @@ fn export_all_uses_originating_statement_of_second_result() {
 }
 
 #[gtk4::test]
+fn export_shown_result_offers_the_result_on_show() {
+    let mut runs = Replies::default();
+    runs.when_sql_contains("second", result_set(2, Some(2), Truncation::Complete));
+    runs.always(result_set(3, Some(3), Truncation::Complete));
+    let harness = editor_with(runs, "SELECT n FROM first;\nSELECT n FROM second;");
+    let offers = SignalLog::connect(&harness.editor, "export-results", |values| {
+        values[1]
+            .get::<glib::BoxedAnyObject>()
+            .expect("an offer")
+            .borrow::<ExportOffer>()
+            .clone()
+    });
+    run_and_wait(&harness);
+    harness.editor.imp().results.select(1);
+
+    assert!(harness.editor.export_shown_result());
+
+    let offers = offers.take();
+    let [offer] = offers.as_slice() else {
+        panic!("one offer, not {}", offers.len());
+    };
+    let ExportOrigin::Editor {
+        shown,
+        query: ExportQuery::Editor { sql },
+        ..
+    } = &offer.origin
+    else {
+        panic!("not an editor result: {:?}", offer.origin);
+    };
+    assert_eq!(sql.as_str(), "SELECT n FROM second");
+    assert_eq!(shown.row_count(), Some(2));
+}
+
+#[gtk4::test]
+fn export_shown_result_offers_nothing_without_rows() {
+    let harness = editor_with(answering(), "SELECT 1");
+    let offers = SignalLog::connect(&harness.editor, "export-results", |_| ());
+
+    assert!(!harness.editor.export_shown_result(), "an editor that never ran");
+    run_and_wait(&harness);
+    assert!(!harness.editor.export_shown_result(), "a command offered rows");
+    assert_eq!(offers.count(), 0);
+}
+
+#[gtk4::test]
 fn history_records_none_for_capped_result() {
     let root = tempfile::tempdir().expect("tempdir");
     let mut runs = Replies::default();

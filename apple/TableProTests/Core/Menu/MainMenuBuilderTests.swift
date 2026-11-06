@@ -359,6 +359,30 @@ struct MainMenuShortcutCoverageTests {
         #expect(item?.keyEquivalent == "j")
         #expect(item?.keyEquivalentModifierMask == [.command, .shift])
     }
+
+    @Test("Export Results… sits in File > Export on Option-Shift-Command-E")
+    func exportResultsLivesUnderExport() {
+        let file = buildMenu().items.first { $0.title == String(localized: "File") }?.submenu
+        let export = file?.items.first { $0.title == String(localized: "Export") }?.submenu
+        let item = export?.items.first { $0.identifier == MenuItemFactory.identifier(for: .exportResults) }
+
+        #expect(item?.title == String(localized: "Export Results…"))
+        #expect(item?.action == #selector(MainSplitViewController.exportQueryResults(_:)))
+        #expect(item?.keyEquivalent == "e")
+        #expect(item?.keyEquivalentModifierMask == [.command, .shift, .option])
+    }
+
+    @Test("A rebound Export Results reaches its menu item")
+    func reboundExportResultsApplies() {
+        let menu = buildMenu()
+        var keyboard = KeyboardSettings()
+        keyboard.setShortcut(.character("r", command: true, shift: true, option: true), for: .exportResults)
+        MainMenuKeyEquivalentSync.apply(keyboard: keyboard, to: menu)
+
+        let item = flatten(menu).first { $0.identifier == MenuItemFactory.identifier(for: .exportResults) }
+        #expect(item?.keyEquivalent == "r")
+        #expect(item?.keyEquivalentModifierMask == [.command, .shift, .option])
+    }
 }
 
 // Sessions and conversations had no menu-bar home, so their seven commands couldn't be searched, rebound or reached.

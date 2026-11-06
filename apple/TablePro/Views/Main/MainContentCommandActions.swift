@@ -123,16 +123,6 @@ final class MainContentCommandActions: ObservableObject {
         return host.workspaces.selected?.sessionState?.coordinator === coordinator
     }
 
-    private func observeKeyWindowOnly(
-        _ name: Notification.Name,
-        handler: @escaping @MainActor (Notification) -> Void
-    ) {
-        observe(name) { [weak self] notification in
-            guard self?.isVisibleInKeyWindow() == true else { return }
-            handler(notification)
-        }
-    }
-
     private func observeKeyWindowOnly<Payload>(
         _ publisher: PassthroughSubject<Payload, Never>,
         handler: @escaping @MainActor (Payload) -> Void
@@ -170,15 +160,10 @@ final class MainContentCommandActions: ObservableObject {
     // MARK: - Observer Setup
 
     private func setupObservers() {
-        setupNonMenuNotificationObservers()
         setupDataBroadcastObservers()
         setupDatabaseBroadcastObservers()
         setupWindowObservers()
         setupFileOpenObservers()
-    }
-
-    private func setupNonMenuNotificationObservers() {
-        observeKeyWindowOnly(AppCommands.shared.exportQueryResults) { [weak self] _ in self?.exportQueryResults() }
     }
 
     // MARK: - Row Operations (Group A: Called Directly)
@@ -473,7 +458,7 @@ final class MainContentCommandActions: ObservableObject {
         }
     }
 
-    // Save As and Export Results gate on this, not isConnected, which left them lit over a handler that did nothing.
+    // Save As gates on this, not isConnected, which left it lit over a handler that did nothing.
     var isQueryTab: Bool {
         coordinator?.tabManager.selectedTab?.tabType == .query
     }

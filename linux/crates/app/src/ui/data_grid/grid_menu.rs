@@ -175,7 +175,12 @@ fn cell_menu(grid: &DataGrid, references: &gio::Menu, expressions: &gio::Menu) -
         ]),
     );
     menu.append_section(None, &column_section(sorts));
-    let rows = section([item(&gettext("E_xport…"), "grid.export")]);
+    let export = item(&gettext("E_xport…"), "grid.export");
+    // The window's Export Results key reaches the grid of the tab in front.
+    if let Some(key) = crate::application::triggers_for("win.export-results").first() {
+        export.set_attribute_value("accel", Some(&key.to_variant()));
+    }
+    let rows = section([export]);
     if editable {
         rows.append_item(&item(&gettext("_Insert Row"), "grid.insert-row"));
         rows.append_item(&item(&gettext("D_uplicate"), "grid.duplicate-rows"));

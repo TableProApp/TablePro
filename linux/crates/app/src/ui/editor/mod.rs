@@ -896,6 +896,19 @@ impl SqlEditor {
         )
     }
 
+    pub(crate) fn export_shown_result(&self) -> bool {
+        let results = &self.imp().results;
+        let Some(index) = results.selected() else {
+            return false;
+        };
+        // Only a result set's page has a grid.
+        let Some(grid) = results.kept_grid(index).filter(|grid| grid.row_count() > 0) else {
+            return false;
+        };
+        self.offer_export(index, grid.export_source());
+        true
+    }
+
     /// Ask the window to export the result on line `index`: the rows
     /// its grid shows, or every row its statement returns when run
     /// again.

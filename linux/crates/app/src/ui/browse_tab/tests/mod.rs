@@ -1255,6 +1255,7 @@ fn browse_buttons_announce_their_keys() {
     for (name, button) in [
         ("insert row", imp.insert_button.get().upcast::<gtk4::Widget>()),
         ("delete rows", imp.delete_button.get().upcast()),
+        ("export rows", imp.export_button.get().upcast()),
         ("row details", imp.details_toggle.get().upcast()),
         ("filter", imp.filter_button.get().upcast()),
         ("previous page", imp.pager_bar.imp().prev_button.get().upcast()),

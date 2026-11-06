@@ -150,7 +150,8 @@ internal enum ConnectionActionsMenuResolver {
             entries.append(
                 ActionsMenuEntry(
                     title: String(localized: "Export Results…"),
-                    selector: NSSelectorFromString("exportQueryResults:")
+                    selector: NSSelectorFromString("exportQueryResults:"),
+                    shortcut: .exportResults
                 )
             )
         }

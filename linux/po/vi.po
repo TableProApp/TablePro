@@ -6243,6 +6243,14 @@ msgid "Save _Query…"
 msgstr "Lưu t_ruy vấn…"
 
 #: data/resources/ui/sql-editor.ui
+msgid "E_xport Results…"
+msgstr "_Xuất kết quả…"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Export Results"
+msgstr "Xuất kết quả"
+
+#: data/resources/ui/sql-editor.ui
 msgid "_Find…"
 msgstr "_Tìm…"
 

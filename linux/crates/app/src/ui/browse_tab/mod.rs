@@ -70,7 +70,7 @@ use self::browse_tab_widgets::BrowseTabWidgets;
 use self::column_recheck::ColumnRecheck;
 pub(super) use self::columns_fetch::{ColumnFreshness, load_columns};
 pub(crate) use self::data_input::DataInput;
-use self::grid_input::GridInput;
+pub(crate) use self::grid_input::GridInput;
 pub(crate) use self::page_reply::PageReply;
 use self::page_state::PageState;
 #[cfg(test)]

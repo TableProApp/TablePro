@@ -34,6 +34,12 @@
           </object>
         </child>
         <child>
+          <object class="AdwShortcutsItem" id="win-export-results">
+            <property name="title" translatable="yes">Export Results</property>
+            <property name="action-name">win.export-results</property>
+          </object>
+        </child>
+        <child>
           <object class="AdwShortcutsItem" id="win-show-sidebar">
             <property name="title" translatable="yes">Show or Hide the Sidebar</property>
             <property name="action-name">win.show-sidebar</property>

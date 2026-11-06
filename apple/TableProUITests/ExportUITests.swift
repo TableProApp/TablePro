@@ -43,6 +43,51 @@ final class ExportUITests: UITestCase {
         )
     }
 
+    func testExportingQueryResultsFromTheKeyboardWritesACSVFile() throws {
+        let launch = try launchWithFixture()
+        let window = launch.window
+        let app = launch.app
+        let destination = try XCTUnwrap(sandboxRoot)
+        let exported = destination.appendingPathComponent("album-results.csv")
+
+        app.typeShortcut(.newTab)
+        typeQuery("SELECT id, title FROM album ORDER BY id;", in: window)
+        app.typeShortcut(.runQuery)
+        // A disabled menu item still takes its key equivalent, so the rows must be there first.
+        XCTAssertTrue(waitForClickableRows(in: dataGrid(in: window)), "Cmd+Return must run the query into a grid")
+        app.typeShortcut(.exportResults)
+
+        let sheet = window.children(matching: .sheet).firstMatch
+        XCTAssertTrue(
+            sheet.staticTexts["6 rows to export"].waitToExist(timeout: 30),
+            "Option-Shift-Command-E must open Export Results on the query's rows"
+        )
+        let format = element(sheet.popUpButtons, labelEndingWith: "Format")
+        XCTAssertTrue(format.waitToExist(timeout: 10), "The export sheet must offer a format menu")
+        if (format.value as? String) != "CSV" {
+            format.click()
+            let csv = app.menuItems["CSV"].firstMatch
+            XCTAssertTrue(csv.waitToExist(timeout: 10), "CSV must be an export format")
+            csv.click()
+        }
+        XCTAssertTrue(waitForPredicate(timeout: 10) { (format.value as? String) == "CSV" }, "The format must be CSV")
+
+        save(from: sheet, to: exported, in: app)
+
+        XCTAssertTrue(
+            waitForPredicate(timeout: 30) { FileManager.default.fileExists(atPath: exported.path) },
+            "Export must write \(exported.lastPathComponent) into the chosen folder"
+        )
+        let lines = try String(contentsOf: exported, encoding: .utf8)
+            .split(separator: "\n")
+            .map(String.init)
+        XCTAssertEqual(
+            lines,
+            ["id,title", "1,North", "2,South", "3,East", "4,West", "5,Up", "6,Down"],
+            "The file must hold the query's header and every row it returned"
+        )
+    }
+
     func testExportingADataDictionaryWritesMarkdown() throws {
         let launch = try launchWithFixture()
         let window = launch.window

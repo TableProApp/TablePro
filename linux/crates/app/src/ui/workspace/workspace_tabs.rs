@@ -13,7 +13,7 @@ use tablepro_session::{Session, SessionKey};
 use tablepro_storage::{DraftId, DraftScope};
 use uuid::Uuid;
 
-use crate::ui::browse_tab::{BrowseTabInput, PagingInput, SaveInput, TableFilter};
+use crate::ui::browse_tab::{BrowseTabInput, GridInput, PagingInput, SaveInput, TableFilter};
 use crate::ui::editor::SqlEditor;
 use crate::ui::structure_tab::StructureMode;
 use crate::workspace::{
@@ -671,6 +671,41 @@ impl WorkspaceModel {
             _ => None,
         }
     }
+
+    pub(super) fn on_active_tab_command(&self, command: ActiveTabCommand) {
+        match command {
+            ActiveTabCommand::SaveQuery => self.on_save_active_query(),
+            ActiveTabCommand::ExportResults => self.export_active_results(),
+        }
+    }
+
+    fn export_active_results(&self) {
+        let offered = self
+            .selected_workspace_tab_id()
+            .is_some_and(|id| self.offer_shown_rows(id));
+        if !offered {
+            self.show_toast(&crate::i18n::gettext("Nothing to export"));
+        }
+    }
+
+    fn offer_shown_rows(&self, id: Uuid) -> bool {
+        match self.workspace_tabs.borrow().get(&id) {
+            // A table tab says itself when it has nothing to export.
+            Some(WorkspaceTab::Table(slot)) => {
+                slot.browse.send(GridInput::Export);
+                true
+            }
+            Some(WorkspaceTab::Editor(slot)) => slot.editor.export_shown_result(),
+            Some(WorkspaceTab::Key(slot)) => slot.tab.export_shown(),
+            Some(WorkspaceTab::Structure(_) | WorkspaceTab::Diagram(_)) | None => false,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum ActiveTabCommand {
+    SaveQuery,
+    ExportResults,
 }
 
 /// The tab view's own signals, as the workspace's inputs. The view is
