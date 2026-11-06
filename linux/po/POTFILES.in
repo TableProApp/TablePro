@@ -31,8 +31,7 @@ crates/app/src/lib.rs
 crates/app/src/logging.rs
 crates/app/src/main.rs
 crates/app/src/persistence/column_layout_store.rs
-crates/app/src/persistence/column_width_store.rs
-crates/app/src/persistence/column_widths_document.rs
+crates/app/src/persistence/column_layouts_document.rs
 crates/app/src/persistence/filter_settings_document.rs
 crates/app/src/persistence/filter_settings_store.rs
 crates/app/src/persistence/mod.rs
@@ -652,7 +651,6 @@ crates/app/src/workspace/draft_writer.rs
 crates/app/src/workspace/editor_file_record.rs
 crates/app/src/workspace/engine_profile.rs
 crates/app/src/workspace/inhibit_reason.rs
-crates/app/src/workspace/legacy_tab_file.rs
 crates/app/src/workspace/mod.rs
 crates/app/src/workspace/open_sessions.rs
 crates/app/src/workspace/open_sessions_load.rs

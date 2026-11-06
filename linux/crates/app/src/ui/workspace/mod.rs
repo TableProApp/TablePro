@@ -362,7 +362,7 @@ pub struct KeyTabSlot {
     pub tab: crate::ui::key_tab::KeyTab,
 }
 
-/// A tab in the unified workspace.
+/// A tab in the workspace.
 ///
 /// - **Table**: one (schema, table) entity in Data (Browse grid)
 ///   view. Default for every sidebar single-click.
@@ -389,7 +389,7 @@ impl WorkspaceTab {
     }
 
     /// The Structure-side controller. Only `Structure` slots carry
-    /// one (Table slots no longer fuse the DDL editor in).
+    /// one.
     pub fn structure_tab(&self) -> Option<&crate::ui::structure_tab::StructureTab> {
         match self {
             WorkspaceTab::Structure(s) => Some(&s.structure),

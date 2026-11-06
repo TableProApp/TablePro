@@ -1265,7 +1265,7 @@ mod tests {
             ..test.saved.clone()
         };
         let entry = serde_json::to_string(&lookalike).expect("the entry");
-        let bytes = format!(r#"{{"version": 2, "connections": [{entry}]}}"#).into_bytes();
+        let bytes = format!(r#"{{"version": 1, "connections": [{entry}]}}"#).into_bytes();
 
         test.window.send(SessionWindowInput::ConnectionsFileRead {
             path: "/tmp/connections.json".into(),

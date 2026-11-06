@@ -2,9 +2,8 @@ use std::io::ErrorKind;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use tablepro_session::SessionKey;
-use tablepro_storage::document::{Upgrade, VersionedDocument, decode_document};
+use tablepro_storage::document::{VersionedDocument, decode_document};
 
 use super::workspace_store::{MAX_FILE_BYTES, read_capped};
 use super::{OpenSessionsLoad, SessionKeyRecord};
@@ -21,31 +20,7 @@ pub struct OpenSessionsRecord {
 
 impl VersionedDocument for OpenSessionsRecord {
     const KIND: &'static str = "open-sessions";
-    const VERSION: u32 = 3;
-    const UPGRADES: &'static [Upgrade] = &[window_per_session, databases_beside_connections];
-}
-
-/// Version 1 listed the sessions alone, and each opened in a window of
-/// its own; version 2 keeps that by giving each one its own window.
-fn window_per_session(mut document: Value) -> Result<Value, String> {
-    let Value::Object(fields) = &mut document else {
-        return Err("the record is not an object".to_owned());
-    };
-    let windows = match fields.remove("sessions") {
-        None | Some(Value::Null) => Vec::new(),
-        Some(Value::Array(sessions)) => sessions.into_iter().map(|key| Value::Array(vec![key])).collect(),
-        Some(_) => return Err("the sessions are not a list".to_owned()),
-    };
-    fields.insert("windows".to_owned(), Value::Array(windows));
-    Ok(document)
-}
-
-/// Version 3 adds another database of a connection beside it. Every
-/// version 2 key reads as it was, and a build that knows only version 2
-/// says a version 3 record is from a newer build rather than calling it
-/// unreadable.
-fn databases_beside_connections(document: Value) -> Result<Value, String> {
-    Ok(document)
+    const VERSION: u32 = 1;
 }
 
 impl OpenSessionsRecord {
@@ -152,7 +127,7 @@ mod tests {
 
         assert_eq!(decoded, record);
         let text = String::from_utf8_lossy(&bytes);
-        assert!(text.contains("\"version\": 3"), "{text}");
+        assert!(text.contains("\"version\": 1"), "{text}");
         assert!(text.contains("\"kind\": \"saved\""), "{text}");
     }
 
@@ -160,7 +135,7 @@ mod tests {
     fn unsupported_version_moved_aside_and_loads_empty() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join(OpenSessionsRecord::FILE_NAME);
-        let original = br#"{"version": 4, "windows": []}"#;
+        let original = br#"{"version": 2, "windows": []}"#;
         std::fs::write(&path, original).expect("seed");
 
         let load = read_open_sessions_blocking(&path);
@@ -202,45 +177,7 @@ mod tests {
     }
 
     #[test]
-    fn a_version_1_record_opens_each_session_in_a_window_of_its_own() {
-        let first = Uuid::new_v4();
-        let bytes = format!(
-            r#"{{"version": 1, "sessions": [{{"kind": "saved", "id": "{first}"}}, {{"kind": "file", "uri": "file:///srv/app.db"}}]}}"#
-        );
-
-        let record: OpenSessionsRecord = decode_document(Path::new("/tmp/o.json"), bytes.as_bytes()).expect("decode");
-
-        assert_eq!(
-            record.windows(),
-            [
-                vec![SessionKey::Saved(first)],
-                vec![SessionKey::File("file:///srv/app.db".to_owned())],
-            ]
-        );
-    }
-
-    /// A version 2 record, the last without another database beside a
-    /// connection. Never edit the literal: it is what that build wrote.
-    #[test]
-    fn a_version_2_record_reads_as_it_was_written() {
-        let first = Uuid::new_v4();
-        let bytes = format!(
-            r#"{{"version": 2, "windows": [[{{"kind": "saved", "id": "{first}"}}, {{"kind": "file", "uri": "file:///srv/app.db"}}]]}}"#
-        );
-
-        let record: OpenSessionsRecord = decode_document(Path::new("/tmp/o.json"), bytes.as_bytes()).expect("decode");
-
-        assert_eq!(
-            record.windows(),
-            [vec![
-                SessionKey::Saved(first),
-                SessionKey::File("file:///srv/app.db".to_owned()),
-            ]]
-        );
-    }
-
-    #[test]
-    fn a_version_1_record_without_sessions_opens_nothing() {
+    fn a_record_without_windows_opens_nothing() {
         let record: OpenSessionsRecord =
             decode_document(Path::new("/tmp/o.json"), br#"{"version": 1}"#).expect("decode");
 

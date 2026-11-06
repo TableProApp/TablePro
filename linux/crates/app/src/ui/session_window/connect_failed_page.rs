@@ -113,11 +113,7 @@ impl ConnectFailedPage {
         let priority = gtk::AccessibleAnnouncementPriority::High;
         #[cfg(test)]
         imp.announced.borrow_mut().push((announcement.clone(), priority));
-        // libadwaita's own Accessible impls sit behind a feature left off,
-        // and every widget is one.
-        imp.status_page
-            .upcast_ref::<gtk::Widget>()
-            .announce(&announcement, priority);
+        imp.status_page.announce(&announcement, priority);
     }
 
     /// Enter Password when the server refused one, which Retry would

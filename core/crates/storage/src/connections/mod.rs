@@ -16,7 +16,6 @@ use crate::{ConnectionGroup, ConnectionTag, ConnectionTagName, GroupTree};
 
 mod additions;
 mod cloud;
-mod legacy_groups;
 mod library;
 mod placement;
 
@@ -35,32 +34,26 @@ pub struct SavedConnection {
     pub port: u16,
     pub database: String,
     pub username: String,
-    /// Required, with no default: a file without it was written before
-    /// TLS modes existed, and guessing a mode for it could silently
-    /// connect in the clear.
+    /// Required, with no default: guessing a mode for a file that lost it
+    /// could silently connect in the clear.
     pub tls: TlsConfig,
     /// Required, with no default: guessing Off for a file that lost it
     /// would drop a guard the user set.
     pub safe_mode: SafeModeLevel,
-    /// What MCP clients may do here. A file written before the level
-    /// existed reads as Read Only, the level a new connection starts at.
-    #[serde(default)]
+    /// What MCP clients may do here.
     pub external_access: ExternalAccess,
-    /// What the AI assistant may send from here. A file written before
-    /// the policy existed reads as Ask, the policy a new connection
-    /// starts at.
-    #[serde(default)]
+    /// What the AI assistant may send from here.
     pub ai_policy: AiPolicy,
-    /// The editor's query timeout here, in seconds, zero for none. A file
-    /// written before it existed, like a connection that never set one,
-    /// leaves it out and follows the one in Preferences.
+    /// The editor's query timeout here, in seconds, zero for none. A
+    /// connection that never set one leaves it out and follows the one in
+    /// Preferences.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query_timeout_secs: Option<u32>,
     #[serde(default)]
     pub auth_mode: AuthMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ssh: Option<SavedSshConfig>,
-    // The picker's Recent section reads it; `None` for one never opened or saved before it existed.
+    // The picker's Recent section reads it; `None` for one never opened.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_opened_at: Option<DateTime<Utc>>,
     /// A colour the user put on this connection to tell production
@@ -201,17 +194,9 @@ pub enum SavedSshAuth {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 struct ConnectionsDocument {
     connections: Vec<SavedConnection>,
-    #[serde(
-        default,
-        skip_serializing_if = "Vec::is_empty",
-        deserialize_with = "crate::connection_group::deserialize_list"
-    )]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     groups: Vec<ConnectionGroup>,
-    #[serde(
-        default,
-        skip_serializing_if = "Vec::is_empty",
-        deserialize_with = "crate::connection_tag::deserialize_list"
-    )]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     tags: Vec<ConnectionTag>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     favorites: Vec<Uuid>,
@@ -267,46 +252,7 @@ impl ConnectionsDocument {
 
 impl crate::document::VersionedDocument for ConnectionsDocument {
     const KIND: &'static str = "connections";
-    const VERSION: u32 = 3;
-    const UPGRADES: &'static [crate::document::Upgrade] =
-        &[read_only_to_safe_mode, legacy_groups::group_names_to_groups];
-}
-
-/// Version 1 had a read-only switch, which became the Safe Mode level:
-/// on is Read-Only, off is Off.
-fn read_only_to_safe_mode(mut document: serde_json::Value) -> Result<serde_json::Value, String> {
-    let slot = document
-        .get_mut("connections")
-        .ok_or_else(|| "the file has no list of connections".to_owned())?;
-    let switches: Vec<ReadOnlySwitch> = serde_json::from_value(slot.take()).map_err(|error| error.to_string())?;
-    let levels: Vec<SafeModeLevelled> = switches
-        .into_iter()
-        .map(|connection| SafeModeLevelled {
-            safe_mode: match connection.read_only.unwrap_or(false) {
-                true => SafeModeLevel::ReadOnly,
-                false => SafeModeLevel::Off,
-            },
-            rest: connection.rest,
-        })
-        .collect();
-    *slot = serde_json::to_value(levels).map_err(|error| error.to_string())?;
-    Ok(document)
-}
-
-/// A version 1 connection: its switch, and everything else as it was.
-#[derive(Deserialize)]
-struct ReadOnlySwitch {
-    #[serde(default)]
-    read_only: Option<bool>,
-    #[serde(flatten)]
-    rest: serde_json::Value,
-}
-
-#[derive(Serialize)]
-struct SafeModeLevelled {
-    safe_mode: SafeModeLevel,
-    #[serde(flatten)]
-    rest: serde_json::Value,
+    const VERSION: u32 = 1;
 }
 
 /// The connections, their groups and tags, and the favourites, as one
@@ -768,8 +714,8 @@ impl ConnectionStore {
             landed.insert(from, entry.connection.id);
             entries.push(entry);
         }
-        // Added and never taken away: a file written before favourites
-        // existed lists none, and must not clear the user's.
+        // Added and never taken away: a file that lists none must not
+        // clear the user's.
         let mut favorites: HashSet<Uuid> = document.favorites.iter().copied().collect();
         for id in incoming.favorites.iter().filter_map(|id| landed.get(id)) {
             if favorites.insert(*id) {
@@ -1153,206 +1099,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(
-        clippy::disallowed_types,
-        reason = "old library fixtures need names the current types reject; JSON key order does not matter"
-    )]
-    fn older_invisible_group_and_tag_names_keep_the_library_and_its_links() {
-        let root = TempDir::new().expect("tempdir");
-        let group = Uuid::new_v4();
-        let tags = [Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()];
-        let connection = SavedConnection {
-            group_id: Some(group),
-            tags: tags.to_vec(),
-            ..sample_connection()
-        };
-        let document = serde_json::json!({
-            "version": 3,
-            "connections": [connection],
-            "groups": [{"id": group, "name": "\u{200b}"}],
-            "tags": [
-                {"id": tags[0], "name": "\u{feff}", "color": "teal"},
-                {"id": tags[1], "name": "\u{200b}".repeat(32), "color": "red"},
-                {"id": tags[2], "name": format!("{}\u{feff}", "\u{200b}".repeat(31)), "color": "blue"},
-            ],
-        });
-        seed(&root, &serde_json::to_string(&document).expect("old file"));
-        let opened = store(&root);
-        let list = opened.list_blocking().expect("load the old library");
-        assert_eq!(list.connections.as_ref(), std::slice::from_ref(&connection));
-        assert_eq!(list.groups.len(), 1);
-        assert_eq!(list.groups[0].id, group);
-        assert_eq!(list.groups[0].name.as_str(), "\\u{200b}");
-        assert_eq!(list.tags.len(), 3);
-        assert_eq!(list.tags[0].name.as_str(), "\\u{feff}");
-        for tag in &list.tags[1..] {
-            assert_eq!(tag.name.as_str(), tag.id.simple().to_string());
-        }
-
-        opened.upsert_blocking(connection.clone()).expect("save the library");
-        let reread = store(&root).list_blocking().expect("read the saved library");
-        assert_eq!(reread.connections.as_ref(), &[connection]);
-        assert_eq!(reread.groups, list.groups);
-        assert_eq!(reread.tags, list.tags);
-    }
-
-    #[test]
-    #[expect(
-        clippy::disallowed_types,
-        reason = "old library fixtures need names the current types reject; JSON key order does not matter"
-    )]
-    fn recovered_names_do_not_take_visible_names_in_either_file_order() {
-        let tag_ids = [Uuid::new_v4(), Uuid::new_v4()];
-        let group_ids = [Uuid::new_v4(), Uuid::new_v4()];
-        let connections: Vec<SavedConnection> = (0..2)
-            .map(|index| SavedConnection {
-                group_id: Some(group_ids[index]),
-                tags: vec![tag_ids[index]],
-                ..sample_connection()
-            })
-            .collect();
-        for reverse in [false, true] {
-            let root = TempDir::new().expect("tempdir");
-            let mut tags = vec![
-                serde_json::json!({"id": tag_ids[0], "name": "\\u{200b}", "color": "blue"}),
-                serde_json::json!({"id": tag_ids[1], "name": "\u{200b}", "color": "red"}),
-            ];
-            let mut groups = vec![
-                serde_json::json!({"id": group_ids[0], "name": "\\u{200b}", "color": "blue"}),
-                serde_json::json!({"id": group_ids[1], "name": "\u{200b}", "color": "red"}),
-            ];
-            if reverse {
-                tags.reverse();
-                groups.reverse();
-            }
-            seed(
-                &root,
-                &serde_json::json!({"version": 3, "connections": connections, "tags": tags, "groups": groups})
-                    .to_string(),
-            );
-            let opened = store(&root);
-            let list = opened.list_blocking().expect("read the old library");
-            assert_eq!(list.tags.len(), 2);
-            assert_eq!(list.groups.len(), 2);
-            for (index, color, name) in [
-                (0, crate::ConnectionColor::Blue, "\\u{200b}"),
-                (1, crate::ConnectionColor::Red, "\\u{200b} (2)"),
-            ] {
-                let tag = list.tags.iter().find(|tag| tag.id == tag_ids[index]).expect("tag kept");
-                assert_eq!(tag.name.as_str(), name);
-                assert_eq!(tag.color, color);
-                let group = list
-                    .groups
-                    .iter()
-                    .find(|group| group.id == group_ids[index])
-                    .expect("group kept");
-                assert_eq!(group.name.as_str(), name);
-                assert_eq!(group.color, Some(color));
-                let connection = list
-                    .connections
-                    .iter()
-                    .find(|connection| connection.id == connections[index].id)
-                    .expect("connection kept");
-                assert_eq!(connection.group_id, Some(group_ids[index]));
-                assert_eq!(connection.tags, [tag_ids[index]]);
-            }
-            opened.upsert_blocking(list.connections[0].clone()).expect("rewrite");
-            let reread = store(&root).list_blocking().expect("read the saved library");
-            assert_eq!(reread.tags, list.tags);
-            assert_eq!(reread.groups, list.groups);
-            let imported_root = TempDir::new().expect("tempdir");
-            let imported = store(&imported_root);
-            imported
-                .import_blocking(
-                    Path::new("/tmp/library.json"),
-                    &opened.export_blocking().expect("export"),
-                )
-                .expect("import");
-            let imported = imported.list_blocking().expect("read imported library");
-            assert_eq!(imported.tags.len(), 2);
-            assert_eq!(imported.groups.len(), 2);
-            for connection in connections.iter() {
-                let saved = imported
-                    .connections
-                    .iter()
-                    .find(|saved| saved.id == connection.id)
-                    .expect("imported connection");
-                assert_eq!(saved.group_id, connection.group_id);
-                assert_eq!(saved.tags, connection.tags);
-            }
-        }
-    }
-
-    #[test]
-    #[expect(
-        clippy::disallowed_types,
-        reason = "old library fixtures need names the current types reject; JSON key order does not matter"
-    )]
-    fn older_group_name_upgrade_keeps_literal_escapes_separate_from_invisible_names() {
-        let connections = [sample_connection(), sample_connection()];
-        let mut expected_groups = None;
-        for reverse in [false, true] {
-            let root = TempDir::new().expect("tempdir");
-            let mut entries: Vec<serde_json::Value> = connections
-                .iter()
-                .zip(["\\u{200b}", "\u{200b}"])
-                .map(|(connection, group)| {
-                    let mut entry = serde_json::to_value(connection).expect("connection");
-                    entry["group"] = serde_json::Value::String(group.to_owned());
-                    entry
-                })
-                .collect();
-            if reverse {
-                entries.reverse();
-            }
-            seed(
-                &root,
-                &serde_json::json!({"version": 2, "connections": entries}).to_string(),
-            );
-            let opened = store(&root);
-            let list = opened.list_blocking().expect("upgrade the library");
-            assert_eq!(list.groups.len(), 2);
-            let group_ids: Vec<_> = connections
-                .iter()
-                .zip(["\\u{200b}", "\\u{200b} (2)"])
-                .map(|(connection, name)| {
-                    let entry = list
-                        .connections
-                        .iter()
-                        .find(|entry| entry.id == connection.id)
-                        .expect("connection kept");
-                    let group = list
-                        .groups
-                        .iter()
-                        .find(|group| Some(group.id) == entry.group_id)
-                        .expect("group kept");
-                    assert_eq!(group.name.as_str(), name);
-                    group.id
-                })
-                .collect();
-            if let Some(expected) = &expected_groups {
-                assert_eq!(&group_ids, expected);
-            } else {
-                expected_groups = Some(group_ids);
-            }
-            opened.upsert_blocking(list.connections[0].clone()).expect("rewrite");
-            let reread = store(&root).list_blocking().expect("read the saved library");
-            assert_eq!(reread.groups, list.groups);
-            for entry in list.connections.iter() {
-                assert_eq!(
-                    reread
-                        .connections
-                        .iter()
-                        .find(|saved| saved.id == entry.id)
-                        .expect("saved connection")
-                        .group_id,
-                    entry.group_id
-                );
-            }
-        }
-    }
-
-    #[test]
     fn f003_truncated_file_is_unavailable_and_upsert_leaves_bytes_identical() {
         let root = TempDir::new().expect("tempdir");
         let path = seed(&root, r#"{"version": 1, "connections": [{"id":"#);
@@ -1399,10 +1145,7 @@ mod tests {
     #[test]
     fn unknown_auth_mode_is_corrupt_not_empty() {
         let root = TempDir::new().expect("tempdir");
-        seed(
-            &root,
-            r#"{"version": 1, "connections": [{"id":"550e8400-e29b-41d4-a716-446655440000","name":"n","driver_id":"postgres","host":"h","port":5432,"database":"d","username":"u","tls":{"mode":"disable"},"auth_mode":"from_the_future"}]}"#,
-        );
+        seed(&root, &connections_json(r#","auth_mode":"from_the_future""#));
 
         let refused = store(&root).load_blocking();
 
@@ -1415,60 +1158,39 @@ mod tests {
     }
 
     #[test]
-    fn a_version_1_entry_without_the_switch_reads_as_off() {
-        let root = TempDir::new().expect("tempdir");
-        seed(&root, &connections_json(None));
+    fn an_entry_without_a_level_a_policy_or_an_access_level_is_refused() {
+        for (field, value) in [
+            ("safe_mode", r#""off""#),
+            ("external_access", r#""read_only""#),
+            ("ai_policy", r#""ask""#),
+        ] {
+            let root = TempDir::new().expect("tempdir");
+            let full = connections_json("");
+            let without = full.replace(&format!(r#","{field}":{value}"#), "");
+            assert_ne!(without, full, "{field}");
+            seed(&root, &without);
 
-        let list = store(&root).load_blocking().expect("load");
+            let refused = store(&root).load_blocking();
 
-        assert_eq!(list[0].safe_mode, SafeModeLevel::Off);
-    }
-
-    #[test]
-    fn a_version_1_switch_that_is_not_a_bool_is_refused() {
-        let root = TempDir::new().expect("tempdir");
-        seed(
-            &root,
-            r#"{"version": 1, "connections": [{"id":"550e8400-e29b-41d4-a716-446655440000","name":"n","driver_id":"postgres","host":"h","port":5432,"database":"d","username":"u","tls":{"mode":"disable"},"read_only":"yes"}]}"#,
-        );
-
-        let refused = store(&root).load_blocking();
-
-        assert!(
-            matches!(refused, Err(StorageError::DocumentUnavailable(_))),
-            "{refused:?}"
-        );
-    }
-
-    #[test]
-    fn a_version_2_entry_without_a_level_is_refused() {
-        let root = TempDir::new().expect("tempdir");
-        seed(
-            &root,
-            r#"{"version": 2, "connections": [{"id":"550e8400-e29b-41d4-a716-446655440000","name":"n","driver_id":"postgres","host":"h","port":5432,"database":"d","username":"u","tls":{"mode":"disable"}}]}"#,
-        );
-
-        let refused = store(&root).load_blocking();
-
-        // Guessing Off would drop a Read-Only the user set.
-        assert!(
-            matches!(refused, Err(StorageError::DocumentUnavailable(_))),
-            "{refused:?}"
-        );
+            // Guessing would drop a guard the user set.
+            assert!(
+                matches!(refused, Err(StorageError::DocumentUnavailable(_))),
+                "{field}: {refused:?}"
+            );
+        }
     }
 
     #[test]
     fn saved_connection_requires_tls_field() {
         let root = TempDir::new().expect("tempdir");
-        seed(
-            &root,
-            r#"{"version": 1, "connections": [{"id":"550e8400-e29b-41d4-a716-446655440000","name":"n","driver_id":"postgres","host":"h","port":5432,"database":"d","username":"u","use_tls":true}]}"#,
-        );
+        let full = connections_json("");
+        let without = full.replace(r#","tls":{"mode":"disable"}"#, "");
+        assert_ne!(without, full);
+        seed(&root, &without);
 
         let refused = store(&root).load_blocking();
 
-        // A list written before TLS modes is refused rather than read as
-        // a guess, which could connect in the clear.
+        // A guessed mode could connect in the clear.
         assert!(
             matches!(refused, Err(StorageError::DocumentUnavailable(_))),
             "{refused:?}"
@@ -1748,7 +1470,7 @@ mod tests {
 
         assert!(text.contains("production"), "{text}");
         assert!(text.contains("staging"), "{text}");
-        assert!(text.contains("\"version\": 3"), "{text}");
+        assert!(text.contains("\"version\": 1"), "{text}");
     }
 
     /// Every key in `value`, however deep, so a secret cannot be added
@@ -2274,11 +1996,16 @@ mod tests {
         assert!(problem.is_newer_version(), "{problem:?}");
     }
 
-    fn connections_json(group: Option<&str>) -> String {
-        let group = group.map_or_else(String::new, |group| format!(r#","group":{group}"#));
+    /// One complete entry, with `extra` added to it and `rest` after the
+    /// connections, as the store writes them.
+    fn connections_document(extra: &str, rest: &str) -> String {
         format!(
-            r#"{{"version": 1, "connections": [{{"id":"550e8400-e29b-41d4-a716-446655440000","name":"n","driver_id":"postgres","host":"h","port":5432,"database":"d","username":"u","tls":{{"mode":"disable"}}{group}}}]}}"#
+            r#"{{"version": 1, "connections": [{{"id":"550e8400-e29b-41d4-a716-446655440000","name":"n","driver_id":"postgres","host":"h","port":5432,"database":"d","username":"u","tls":{{"mode":"disable"}},"safe_mode":"off","external_access":"read_only","ai_policy":"ask"{extra}}}]{rest}}}"#
         )
+    }
+
+    fn connections_json(extra: &str) -> String {
+        connections_document(extra, "")
     }
 
     /// The label of the group `store`'s first connection sits in.
@@ -2289,48 +2016,23 @@ mod tests {
     }
 
     #[test]
-    fn a_group_name_from_an_older_file_becomes_a_group_written_by_id() {
-        let root = TempDir::new().expect("tempdir");
-        seed(&root, &connections_json(None));
-        assert_eq!(first_group(&store(&root)), None);
-
-        let root = TempDir::new().expect("tempdir");
-        seed(&root, &connections_json(Some(r#"" Work ""#)));
-        let opened = store(&root);
-        assert_eq!(first_group(&opened).as_deref(), Some("Work"));
-        let work = crate::ConnectionGroup::legacy(crate::ConnectionGroupName::new("Work").expect("a name"));
-        let list = opened.load_blocking().expect("load");
-        assert_eq!(list[0].group_id, Some(work.id));
-        opened.upsert_blocking(list[0].clone()).expect("rewrite");
-        let raw: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(opened.path()).expect("read")).expect("json");
-        assert_eq!(raw["version"], 3);
-        assert_eq!(raw["connections"][0]["group_id"], work.id.to_string());
-        assert!(raw["connections"][0].get("group").is_none(), "{raw}");
-        assert_eq!(raw["groups"][0]["name"], "Work");
-
-        for blank in [r#""""#, r#""   ""#, "null"] {
-            let root = TempDir::new().expect("tempdir");
-            seed(&root, &connections_json(Some(blank)));
-
-            assert_eq!(first_group(&store(&root)), None, "{blank}");
-            assert!(store(&root).list_blocking().expect(blank).groups.is_empty(), "{blank}");
-        }
-    }
-
-    #[test]
     fn a_long_group_loads_whole_and_control_characters_are_cleaned() {
         let long = "g".repeat(200);
+        let group = "6a1f0c2e-3b4d-4e5f-8a9b-0c1d2e3f4a5b";
         for (stored, read) in [
             (format!(r#""{long}""#), long.clone()),
             (String::from(r#""Work\tHome""#), String::from("Work Home")),
         ] {
             let root = TempDir::new().expect("tempdir");
-            seed(&root, &connections_json(Some(&stored)));
+            seed(
+                &root,
+                &connections_document(
+                    &format!(r#","group_id":"{group}""#),
+                    &format!(r#", "groups": [{{"id":"{group}","name":{stored}}}]"#),
+                ),
+            );
 
-            let group = first_group(&store(&root));
-
-            assert_eq!(group.as_deref(), Some(read.as_str()), "{stored}");
+            assert_eq!(first_group(&store(&root)).as_deref(), Some(read.as_str()), "{stored}");
         }
     }
 
@@ -2548,7 +2250,7 @@ mod tests {
         let root = TempDir::new().expect("tempdir");
         seed(
             &root,
-            r#"{"version": 2, "connections": [], "tags": [{"id":"550e8400-e29b-41d4-a716-446655440000","name":"  ","color":"red"}]}"#,
+            r#"{"version": 1, "connections": [], "tags": [{"id":"550e8400-e29b-41d4-a716-446655440000","name":"  ","color":"red"}]}"#,
         );
 
         assert!(matches!(
@@ -2560,7 +2262,7 @@ mod tests {
     #[test]
     fn a_file_without_tags_or_icons_reads_and_writes_none() {
         let root = TempDir::new().expect("tempdir");
-        seed(&root, &connections_json(None));
+        seed(&root, &connections_json(""));
         let store = store(&root);
 
         let list = store.load_blocking().expect("load");
