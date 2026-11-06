@@ -399,10 +399,7 @@ impl RowDetailPane {
         let view = imp.value_view.get();
         view.set_editable(content.message.is_none());
         imp.field_label.set_label(name);
-        // Through the widget: sourceview5 maps GtkAccessible only from
-        // GTK 4.10, a feature the app does not turn on.
-        view.upcast_ref::<gtk::Widget>()
-            .update_property(&[gtk::accessible::Property::Label(name)]);
+        view.update_property(&[gtk::accessible::Property::Label(name)]);
         self.show_message(content.message.as_deref(), false);
         imp.calendar_button.set_visible(content.calendar);
         let (wrap, hscroll) = match content.hex_dump {
@@ -445,8 +442,7 @@ impl RowDetailPane {
         set_class(&view, "error", refused);
         crate::ui::a11y::show_invalid(&view, message.filter(|_| refused));
         if let (false, Some(message)) = (refused, message) {
-            view.upcast_ref::<gtk::Widget>()
-                .update_property(&[gtk::accessible::Property::Description(message)]);
+            view.update_property(&[gtk::accessible::Property::Description(message)]);
         }
     }
 

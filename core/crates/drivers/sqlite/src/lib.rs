@@ -13,6 +13,7 @@ mod deadline;
 mod decode;
 mod dialect;
 mod driver;
+mod dump;
 mod editor_session;
 mod encode;
 mod errors;

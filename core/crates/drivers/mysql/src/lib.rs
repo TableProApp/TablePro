@@ -15,6 +15,7 @@ mod ddl;
 mod decode;
 mod dialect;
 mod driver;
+mod dump;
 mod editor_run;
 mod editor_session;
 mod encode;

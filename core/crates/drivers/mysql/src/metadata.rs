@@ -283,7 +283,7 @@ pub(crate) async fn fetch_object_definition(
     }))
 }
 
-fn text_column(row: &sqlx::mysql::MySqlRow, column: &str) -> Result<Option<String>, DriverError> {
+pub(crate) fn text_column(row: &sqlx::mysql::MySqlRow, column: &str) -> Result<Option<String>, DriverError> {
     let decode = |detail: String| DriverError::Decode {
         column: column.to_owned(),
         detail,
@@ -296,7 +296,7 @@ fn text_column(row: &sqlx::mysql::MySqlRow, column: &str) -> Result<Option<Strin
         .transpose()
 }
 
-fn not_there(error: &sqlx::Error) -> bool {
+pub(crate) fn not_there(error: &sqlx::Error) -> bool {
     let sqlx::Error::Database(database) = error else {
         return false;
     };

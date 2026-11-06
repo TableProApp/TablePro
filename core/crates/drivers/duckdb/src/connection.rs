@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use async_trait::async_trait;
 use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
+use tablepro_core::dump::{DumpCatalog, DumpScope};
 use tablepro_core::meta::{IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef};
 use tablepro_core::statement::Statement;
 use tablepro_core::{
@@ -338,6 +339,19 @@ impl Connection for DuckDbConnection {
             link.hold_stops();
             batch(link, "ROLLBACK")?;
             definition
+        })
+        .await
+    }
+
+    async fn read_dump_catalog(&self, scope: &DumpScope, options: CallOptions) -> Result<DumpCatalog, DriverError> {
+        let scope = scope.clone();
+        // One transaction, so the parts come from the same moment.
+        self.read(options, move |link, catalog| {
+            batch(link, "BEGIN TRANSACTION READ ONLY")?;
+            let read = crate::dump::read_dump_catalog(link, catalog, &scope);
+            link.hold_stops();
+            batch(link, "ROLLBACK")?;
+            read
         })
         .await
     }

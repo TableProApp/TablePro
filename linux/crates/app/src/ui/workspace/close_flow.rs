@@ -39,7 +39,7 @@ impl WorkspaceModel {
     /// disconnect does not lose them.
     pub(super) fn flush(&self) {
         let hold = self.context.hold.acquire();
-        let column_widths = self.storage.column_widths().flush();
+        let column_layouts = self.storage.column_layouts().flush();
         let filter_settings = self.storage.filter_settings().flush();
         // The key is free once the window lets go of it, which is before
         // these land; a delete of the connection waits for them.
@@ -48,7 +48,7 @@ impl WorkspaceModel {
         let writer = self.drafts.clone();
         let tabs = self.workspace.detach();
         glib::spawn_future_local(async move {
-            column_widths.await;
+            column_layouts.await;
             filter_settings.await;
             for failure in editor_drafts.await {
                 tracing::warn!(failure, "an editor draft was not saved");

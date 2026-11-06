@@ -532,68 +532,7 @@ mod tests {
             .fetch_one(&history.pool)
             .await
             .expect("count migrations");
-        assert_eq!(applied, 3);
-    }
-
-    /// The fixture for the substring-search migration: a database the
-    /// two migrations before it built, with rows in it.
-    #[tokio::test]
-    async fn opens_database_created_with_previous_schema() {
-        const BEFORE_SUBSTRING_SEARCH: i64 = 20260918000000;
-        let root = tempfile::tempdir().expect("tempdir");
-        let paths = paths(&root);
-        crate::fs::create_private_file_if_missing(&paths.history_database()).expect("the database file");
-        let options = SqliteConnectOptions::new()
-            .filename(paths.history_database())
-            .create_if_missing(true);
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect_with(options)
-            .await
-            .expect("connect");
-        schema::MIGRATOR
-            .run_to(BEFORE_SUBSTRING_SEARCH, &pool)
-            .await
-            .expect("the earlier schema");
-        for (query, executed_at) in [("SELECT * FROM ÉLÈVES", 100_i64), ("SELECT id FROM orders", 200)] {
-            sqlx::query(
-                "INSERT INTO history (query, driver_id, connection_id, connection_name, executed_at, success) \
-                 VALUES (?, 'sqlite', ?, 'old', ?, 1)",
-            )
-            .bind(query)
-            .bind(Uuid::nil().to_string())
-            .bind(executed_at)
-            .execute(&pool)
-            .await
-            .expect("an old row");
-        }
-        pool.close().await;
-
-        let history = QueryHistory::open(&paths).await.expect("open");
-        history
-            .record(entry("SELECT élèves FROM classes", Uuid::nil()))
-            .await
-            .expect("record");
-
-        assert_eq!(matching(&history, "élèves").await.len(), 2, "an old row was not folded");
-        assert_eq!(
-            matching(&history, "ORD").await,
-            vec!["SELECT id FROM orders".to_owned()]
-        );
-        let unfolded: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM history WHERE query_folded IS NULL")
-            .fetch_one(&history.pool)
-            .await
-            .expect("count");
-        assert_eq!(unfolded, 0);
-        let word_index: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE name = 'history_fts'")
-            .fetch_one(&history.pool)
-            .await
-            .expect("look up the old index");
-        assert_eq!(word_index, 0, "the word index outlived its migration");
-        let integrity = sqlx::query("INSERT INTO history_search(history_search) VALUES('integrity-check')")
-            .execute(&history.pool)
-            .await;
-        assert!(integrity.is_ok(), "{integrity:?}");
+        assert_eq!(applied, 1);
     }
 
     #[tokio::test]
@@ -652,7 +591,8 @@ mod tests {
             "history_search_ad",
             "history_search_ai",
             "history_search_au",
-            "history_unfolded_idx",
+            "saved_queries",
+            "saved_queries_name_idx",
         ] {
             assert!(
                 names.iter().any(|name| name == expected),
@@ -737,7 +677,7 @@ mod tests {
     /// means a change went into a file that has already run somewhere.
     #[test]
     fn migrator_embeds_every_migration() {
-        assert_eq!(schema::MIGRATOR.iter().count(), 3);
+        assert_eq!(schema::MIGRATOR.iter().count(), 1);
     }
 
     #[tokio::test]

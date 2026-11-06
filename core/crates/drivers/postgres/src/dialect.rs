@@ -9,6 +9,7 @@ use tablepro_core::dialect::{
     BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertConflict, KeysetDirection, LiteralError,
     Placeholder, SqlDialect,
 };
+use tablepro_core::dump::DumpDialect;
 use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
@@ -18,6 +19,8 @@ use tablepro_core::sql_syntax::{
 };
 use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::{Temporal, Value};
+
+use crate::dump::PgDump;
 
 /// The type a bit string is cast to. A cast to the column's own `bit`
 /// would silently truncate to one bit, while `varbit` keeps every bit and
@@ -181,6 +184,10 @@ impl SqlDialect for PgDialect {
 
     fn ddl(&self) -> Option<&dyn DdlDialect> {
         Some(self)
+    }
+
+    fn dump(&self) -> Option<&dyn DumpDialect> {
+        Some(&PgDump)
     }
 
     /// A column without a binary decoder is read as the server's text,
@@ -417,7 +424,7 @@ fn array_element(text: &str) -> String {
 
 /// A string literal that reads the same whatever
 /// `standard_conforming_strings` is.
-fn quoted(text: &str) -> String {
+pub(crate) fn quoted(text: &str) -> String {
     escape_literal(text).trim_start().to_owned()
 }
 

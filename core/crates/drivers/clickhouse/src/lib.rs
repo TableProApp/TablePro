@@ -19,6 +19,7 @@ mod connection;
 mod ddl;
 mod dialect;
 mod driver;
+mod dump;
 mod editor_run;
 mod editor_session;
 mod endpoint;

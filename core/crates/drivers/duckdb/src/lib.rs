@@ -11,6 +11,7 @@ mod decode;
 mod dialect;
 mod driver;
 mod duck_type;
+mod dump;
 mod editor_session;
 mod encode;
 mod errors;

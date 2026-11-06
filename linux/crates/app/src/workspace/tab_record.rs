@@ -20,8 +20,7 @@ pub enum TabRecord {
         page_size: u64,
         sort: Option<SortRecord>,
         /// The tab's own filter, which two tabs on one table can hold
-        /// apart. `None` in a record written before tabs kept one,
-        /// which opens on the table's remembered filter as it did.
+        /// apart. `None` opens on the table's remembered filter.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         filter: Option<FilterSet>,
     },
@@ -45,7 +44,7 @@ pub enum TabRecord {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         file: Option<EditorFileRecord>,
         /// The database the editor bar moved the tab to. `None` keeps the
-        /// connection's own, as in a record written before tabs kept one.
+        /// connection's own.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         database: Option<String>,
     },
