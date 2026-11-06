@@ -3,7 +3,7 @@ use std::time::SystemTime;
 use tablepro_storage::query_history::Entry;
 
 use crate::i18n::{gettext, ngettext_f};
-use crate::ui::format::{format_thousands, plural_count};
+use crate::ui::format::format_thousands;
 
 const TITLE_CHARS: usize = 80;
 const ERROR_CHARS: usize = 48;
@@ -39,7 +39,7 @@ pub(super) fn subtitle(entry: &Entry, now: SystemTime) -> String {
         parts.push(ngettext_f(
             "{n} row",
             "{n} rows",
-            plural_count(rows),
+            rows,
             &[("n", &format_thousands(rows))],
         ));
     }
@@ -69,7 +69,7 @@ pub(super) fn outcome_icon(entry: &Entry) -> &'static str {
 
 fn relative_time(when: SystemTime, now: SystemTime) -> String {
     let secs = now.duration_since(when).unwrap_or_default().as_secs();
-    let count = |n: u64| (plural_count(n), n.to_string());
+    let count = |n: u64| (n, n.to_string());
     if secs < 60 {
         gettext("just now")
     } else if secs < 3_600 {

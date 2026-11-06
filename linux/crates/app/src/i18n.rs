@@ -3,7 +3,7 @@ use thiserror::Error;
 
 use crate::config;
 
-pub use gettextrs::{gettext, ngettext, npgettext, pgettext};
+pub use gettextrs::{gettext, npgettext, pgettext};
 
 #[derive(Debug, Error)]
 pub enum I18nError {
@@ -52,8 +52,44 @@ pub fn gettext_f(msgid: &str, args: &[(&str, &str)]) -> String {
     substitute(&gettext(msgid), args)
 }
 
-pub fn ngettext_f(msgid: &str, plural: &str, n: u32, args: &[(&str, &str)]) -> String {
+pub trait Quantity: Copy {
+    fn quantity(self) -> u64;
+}
+
+impl Quantity for u64 {
+    fn quantity(self) -> u64 {
+        self
+    }
+}
+
+impl Quantity for u32 {
+    fn quantity(self) -> u64 {
+        u64::from(self)
+    }
+}
+
+impl Quantity for usize {
+    fn quantity(self) -> u64 {
+        self as u64
+    }
+}
+
+pub fn ngettext(msgid: &str, plural: &str, n: impl Quantity) -> String {
+    let n = gettext_quantity(n.quantity(), glib::ffi::gulong::BITS) as glib::ffi::gulong;
+    glib::dngettext(None, msgid, plural, n).into()
+}
+
+pub fn ngettext_f(msgid: &str, plural: &str, n: impl Quantity, args: &[(&str, &str)]) -> String {
     substitute(&ngettext(msgid, plural, n), args)
+}
+
+// gettext takes an unsigned long. Past it, the gettext manual (Plural forms) keeps the last six digits,
+// which decide every language's form.
+fn gettext_quantity(n: u64, ulong_bits: u32) -> u64 {
+    match n.checked_shr(ulong_bits).unwrap_or(0) {
+        0 => n,
+        _ => n % 1_000_000 + 1_000_000,
+    }
 }
 
 pub fn pgettext_f(context: &str, msgid: &str, args: &[(&str, &str)]) -> String {
@@ -130,8 +166,25 @@ mod tests {
 
     #[test]
     fn ngettext_f_picks_singular_or_plural_in_the_c_locale() {
-        assert_eq!(ngettext_f("{n} row", "{n} rows", 1, &[("n", "1")]), "1 row");
-        assert_eq!(ngettext_f("{n} row", "{n} rows", 4, &[("n", "4")]), "4 rows");
+        assert_eq!(ngettext_f("{n} row", "{n} rows", 1_u64, &[("n", "1")]), "1 row");
+        assert_eq!(ngettext_f("{n} row", "{n} rows", 4_usize, &[("n", "4")]), "4 rows");
+        assert_eq!(ngettext_f("{n} row", "{n} rows", 0_u32, &[("n", "0")]), "0 rows");
+    }
+
+    #[test]
+    fn a_count_past_u32_reaches_gettext_whole() {
+        let count = u64::from(u32::MAX) + 2;
+
+        assert_eq!(gettext_quantity(count, 64), count);
+    }
+
+    #[test]
+    fn a_count_past_unsigned_long_keeps_its_last_six_digits() {
+        let ulong_max = u64::from(u32::MAX);
+
+        assert_eq!(gettext_quantity(ulong_max + 2, 32), 1_967_297);
+        assert_eq!(gettext_quantity(5_000_000_001, 32), 1_000_001);
+        assert_eq!(gettext_quantity(ulong_max, 32), ulong_max);
     }
 
     #[test]

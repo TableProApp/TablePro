@@ -55,7 +55,7 @@ License:        %{shrink:
     Zlib
 }
 URL:            https://tablepro.app
-# A pre-release packages as 0.2.0~rc.1 and is tagged linux-v0.2.0-rc.1.
+# A beta packages as 0.2.0~beta.1 and is tagged linux-v0.2.0-beta.1.
 Source0:        https://github.com/TableProApp/TablePro/releases/download/linux-v%{version_no_tilde}/%{name}-%{version_no_tilde}.tar.xz
 Source1:        https://github.com/TableProApp/TablePro/releases/download/linux-v%{version_no_tilde}/%{name}-%{version_no_tilde}-vendor.tar.xz
 
@@ -117,6 +117,42 @@ Recommends:     glycin-loaders
 # kinit, for SQL Server sign-in with Kerberos.
 Suggests:       krb5-workstation
 
+# Fedora asks for a bundled() Provides for each library built from a copy
+# the package carries: DuckDB and AWS-LC have no Fedora package, and the
+# duckdb and aws-lc-sys crates build only their own copies.
+# build-aux/update-third-party-licenses.sh writes these from build-aux/about/bundled.
+Provides:       bundled(aws-lc) = 5.7.0
+Provides:       bundled(jitterentropy) = 3.6.3
+Provides:       bundled(s2n-bignum)
+Provides:       bundled(fiat-crypto)
+Provides:       bundled(duckdb) = 2.0.0
+Provides:       bundled(brotli) = 1.1.0
+Provides:       bundled(moodycamel-concurrentqueue)
+Provides:       bundled(fast_float)
+Provides:       bundled(fastpfor)
+Provides:       bundled(fmt) = 6.1.2
+Provides:       bundled(fsst)
+Provides:       bundled(cpp-httplib) = 0.53.1
+Provides:       bundled(hyperloglog)
+Provides:       bundled(jaro_winkler)
+Provides:       bundled(lz4) = 1.9.4
+Provides:       bundled(mbedtls) = 3.6.7
+Provides:       bundled(miniz) = 10.0.3
+Provides:       bundled(parquet-format)
+Provides:       bundled(pcg-cpp)
+Provides:       bundled(pdqsort)
+Provides:       bundled(re2)
+Provides:       bundled(ska_sort)
+Provides:       bundled(skiplist)
+Provides:       bundled(snappy)
+Provides:       bundled(tdigest)
+Provides:       bundled(thrift)
+Provides:       bundled(utf8proc) = 2.9.0
+Provides:       bundled(vergesort)
+Provides:       bundled(yyjson) = 0.9.0
+Provides:       bundled(zstd) = 1.5.6
+Provides:       bundled(nanoarrow)
+
 %description
 TablePro connects to PostgreSQL, MySQL, SQLite, DuckDB, SQL Server,
 ClickHouse, Cassandra, ScyllaDB, Redis and MongoDB. Browse tables, edit
@@ -146,10 +182,15 @@ export CARGO_PROFILE_RELEASE_LTO=thin
 # sends no usage data.
 %meson -Dprofile=default -Dkerberos=true -Dposthog_key="$(cat vendor/posthog-key 2>/dev/null)"
 %meson_build
-# These cover the whole workspace, test-only crates included: cargo2rpm
-# 0.4 drops the value of its --package option.
-%{cargo_license_summary}
-%{cargo_license} > LICENSE.dependencies
+# cargo2rpm's own call behind %%cargo_license, on the two packages Meson
+# builds for this architecture. The macro covers every workspace member on
+# every target: the 28.5 macros take no -p, and cargo2rpm 0.4 drops the
+# package it is given ("--package={package}" lacks its f prefix).
+%{__cargo} tree --offline -p tablepro -p tablepro-ssh --edges=no-build,no-dev,no-proc-macro \
+    --prefix=none --format '{l}: {p}' |
+    sed -E '/ \(\*\)$/d; s/ \([^)]*\)$//; s# / #/#g; s#/# OR #g' |
+    LC_ALL=C sort -u > LICENSE.dependencies
+cut -d: -f1 LICENSE.dependencies | LC_ALL=C sort -u
 %{cargo_vendor_manifest}
 
 %install

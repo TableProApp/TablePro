@@ -4,7 +4,8 @@
 # `accepted` is deny.toml's [licenses].allow in the same order, so a crate
 # under "MIT OR Apache-2.0" is listed under the first one deny accepts.
 # third-party.json also keeps the whole expression of each crate, which
-# the Debian copyright file and the RPM License tag name.
+# the RPM License tag names. A clarify entry's license also corrects the
+# crate's paragraph in the Debian copyright file.
 accepted = [
     "AGPL-3.0-or-later",
     "MIT",

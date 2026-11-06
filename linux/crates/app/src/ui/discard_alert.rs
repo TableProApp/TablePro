@@ -13,7 +13,7 @@ pub(crate) fn confirm_discard(
     let body = crate::i18n::ngettext_f(
         "{n} unsaved change on this tab will be lost, and Undo cannot bring it back.",
         "{n} unsaved changes on this tab will be lost, and Undo cannot bring them back.",
-        u32::try_from(pending).unwrap_or(u32::MAX),
+        pending,
         &[("n", &pending.to_string())],
     );
     let dialog = adw::AlertDialog::new(Some(&crate::i18n::gettext("Discard Changes?")), Some(&body));

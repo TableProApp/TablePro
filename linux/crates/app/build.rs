@@ -64,7 +64,7 @@ fn render_template() -> Result<String, String> {
     let rendered = template
         .replace("@app-id@", &app_id)
         .replace("@gettext-package@", &package)
-        .replace("@version@", version);
+        .replace("@version@", &metainfo_release::tag_version(version));
     if let Some(name) = unfilled_placeholder(&rendered) {
         return Err(format!(
             "{METAINFO_TEMPLATE} uses @{name}@, which build.rs does not fill"

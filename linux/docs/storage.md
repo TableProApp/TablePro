@@ -58,7 +58,7 @@ SSH passwords and key passphrases sit in the keyring next to database passwords.
 
 `SecretStore` (`tablepro_linux_platform`) is the app's `SecretVault`: `store`, `load`, `relabel`, `delete_kind` and `delete_connection`, keyed by connection id and `SecretKind`, with the secret as a `SecretString`. It is also the app's `SecretItems`, which holds the MCP access token and the AI providers' API keys and labels them through the app's `SecretItemLabeler`.
 
-Backed by the [`oo7`](https://crates.io/crates/oo7) crate ([ADR 0004](decisions/0004-libsecret-secret-storage.md)). Outside Flatpak it talks to the host's Secret Service over D-Bus, which GNOME Keyring and KWallet both implement. Inside Flatpak it keeps the items in an encrypted file in the sandbox, unlocked with a key from the Secret portal, and uses the Secret Service only when there is no portal.
+Backed by the [`oo7`](https://crates.io/crates/oo7) crate ([ADR 0004](decisions/0004-libsecret-secret-storage.md)). Outside Flatpak it talks to the host's Secret Service over D-Bus, which GNOME Keyring and KWallet both implement. Inside Flatpak it keeps the items in an encrypted file in the sandbox, unlocked with a key from the Secret portal. Without the portal, oo7 0.6 reports the portal's error rather than trying the Secret Service, which the sandbox cannot reach anyway, so the store reports `PortalUnavailable`.
 
 Notes:
 
@@ -69,7 +69,7 @@ Notes:
 - Labels name the kind and the target, for example `TablePro database password for app@db.example.com:5432/shop`, so the item is identifiable in Seahorse on a host install. Under Flatpak the items sit in the app's own file keyring.
 - The store unlocks the keyring and the item before reading. A locked keyring otherwise looks exactly like a connection with no saved password.
 - Failures are typed (`SecretError`): a dismissed prompt, a locked keyring, a missing service, a missing portal and a bad encoding each get their own message and their own next step.
-- With no Secret Service at all the store reports `ServiceUnavailable` and the UI prompts at connect time. The app never writes passwords to a plain file as a fallback.
+- With no Secret Service on the host, or no Secret portal inside Flatpak, the store reports `ServiceUnavailable` or `PortalUnavailable` and the UI prompts at connect time. The app never writes passwords to a plain file as a fallback.
 - Never log a password, ever. Wrap them in `secrecy::SecretString` from the `secrecy` crate before they leave the storage layer.
 
 ### When the keyring cannot supply a secret
