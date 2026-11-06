@@ -40,6 +40,10 @@ name: Release Linux
 # Variables LINUX_PPA and LINUX_PPA_BETA: the stable and the beta PPA, as
 # owner/name.
 # Variable LINUX_FLATPAK_R2_ENDPOINT: https://<account id>.r2.cloudflarestorage.com.
+# Variable POSTHOG_PROJECT_KEY: the PostHog project key the macOS release
+# (release.yml) builds with too, public by design, which make-sources.sh puts
+# in the vendor tarball. The packages send usage data to it unless the user
+# turns it off. A packaging fix reuses the release's tarballs, and so its key.
 # Variable LINUX_BRANCH: the branch a release tag must be on, main when unset.
 
 on:
@@ -83,6 +87,14 @@ jobs:
       version: ${{ steps.check.outputs.version }}
       flatpak-branch: ${{ steps.check.outputs.flatpak-branch }}
     steps:
+      - name: The PostHog key is set
+        env:
+          POSTHOG_KEY: ${{ vars.POSTHOG_PROJECT_KEY }}
+        run: |
+          if [ -z "$POSTHOG_KEY" ]; then
+            echo "::error::Set the POSTHOG_PROJECT_KEY repository variable, the PostHog project key the packages send usage data to"
+            exit 1
+          fi
       # meson introspect detects the project's compilers, C and Rust, before it reads the version.
       - name: Install git, meson and the compilers
         run: |
@@ -132,6 +144,7 @@ jobs:
     with:
       deb-runners: '["ubuntu-24.04", "ubuntu-24.04-arm"]'
       rpm-runners: '["ubuntu-24.04", "ubuntu-24.04-arm"]'
+      posthog-key: ${{ vars.POSTHOG_PROJECT_KEY }}
       flatpak: true
       flatpak-branch: ${{ needs.verify.outputs.flatpak-branch }}
 

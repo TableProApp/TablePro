@@ -74,6 +74,9 @@ gtk_env = app_env
 if profile != 'development'
   gtk_env.set('CARGO_PROFILE_RELEASE_LTO', 'off')
 endif
+# Tests never reach PostHog. The integration tests and the binary they
+# start are not built with cfg(test), so they get no key from here.
+gtk_env.set('TABLEPRO_POSTHOG_KEY', '')
 gtk_env.set('GSK_RENDERER', 'cairo')
 gtk_env.set('GTK_A11Y', 'test')
 # The key tests press real keys through XTEST, which only an X11 display

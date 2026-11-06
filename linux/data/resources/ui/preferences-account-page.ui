@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProAccountPage" parent="AdwPreferencesPage">
+    <property name="title" translatable="yes">Account</property>
+    <property name="icon-name">avatar-default-symbolic</property>
+    <child>
+      <object class="AdwPreferencesGroup" id="account_group">
+        <property name="title" translatable="yes">Account</property>
+      </object>
+    </child>
+    <child>
+      <object class="AdwPreferencesGroup" id="plan_group">
+        <property name="title" translatable="yes">Plan</property>
+      </object>
+    </child>
+    <child>
+      <object class="AdwPreferencesGroup" id="features_group">
+        <property name="title" translatable="yes">Features</property>
+        <property name="description" translatable="yes">What a plan unlocks. Everything else in TablePro works without one.</property>
+      </object>
+    </child>
+    <child>
+      <object class="AdwPreferencesGroup" id="devices_group">
+        <property name="title" translatable="yes">Devices</property>
+        <property name="description" translatable="yes">Paid features work on 3 devices at a time, across Mac and Linux.</property>
+        <property name="header-suffix">
+          <object class="GtkButton" id="manage_devices_button">
+            <property name="label" translatable="yes">Manage…</property>
+            <property name="tooltip-text" translatable="yes">Manage Devices in Your Account</property>
+            <property name="valign">center</property>
+            <style>
+              <class name="flat"/>
+            </style>
+          </object>
+        </property>
+      </object>
+    </child>
+    <child>
+      <object class="AdwPreferencesGroup" id="teams_group">
+        <property name="title" translatable="yes">Teams</property>
+      </object>
+    </child>
+    <child>
+      <object class="AdwPreferencesGroup" id="offline_group">
+        <property name="title" translatable="yes">Offline</property>
+        <property name="description" translatable="yes">For a computer that never reaches the internet: make an offline file for its machine ID in your account, then import the file here.</property>
+      </object>
+    </child>
+  </template>
+</interface>

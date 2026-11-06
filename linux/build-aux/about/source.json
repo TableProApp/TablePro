@@ -50,6 +50,14 @@
       ]
     },
     {
+      "crate": "async-compression",
+      "version": "0.4.52",
+      "own": [
+        "tests/artifacts/lib.rs.zst",
+        "tests/artifacts/long-window-size-lib.rs.zst"
+      ]
+    },
+    {
       "crate": "aws-lc-sys",
       "version": "0.45.0",
       "own": [
@@ -634,6 +642,21 @@
             "the nix contributors"
           ]
         }
+      ]
+    },
+    {
+      "crate": "objc2-foundation",
+      "version": "0.3.2",
+      "own": [
+        "src/copying.rs",
+        "src/tests/copying.rs"
+      ]
+    },
+    {
+      "crate": "openapiv3",
+      "version": "2.2.0",
+      "own": [
+        "src/license.rs"
       ]
     },
     {

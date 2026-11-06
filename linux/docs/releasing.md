@@ -52,7 +52,7 @@ A repository admin does these once. The workflow's header names the same secrets
 
 5. **GitHub**: the `linux-release` environment takes a required reviewer and deploys from `linux-v*` tags and the `main` branch only. The branch is for a [packaging fix](#a-packaging-fix).
    - Secrets in it: `LINUX_PPA_SIGNING_KEY`, the file the first step exported; `LINUX_COPR_WEBHOOK`, the URL of `@tablepro/tablepro`; `LINUX_COPR_WEBHOOK_BETA`, the URL of `@tablepro/tablepro-beta`; `LINUX_FLATPAK_GPG_KEY`, the Flatpak key's file; `LINUX_FLATPAK_R2_ACCESS_KEY_ID` and `LINUX_FLATPAK_R2_SECRET_ACCESS_KEY`, the R2 token's. Then delete the exported key files.
-   - Repository variables: `LINUX_PPA` set to `tablepro/tablepro`, `LINUX_PPA_BETA` set to `tablepro/tablepro-beta`, `LINUX_FLATPAK_R2_ENDPOINT` set to the S3 endpoint. `LINUX_BRANCH` stays unset unless a release comes from a [maintenance branch](#a-fix-release).
+   - Repository variables: `LINUX_PPA` set to `tablepro/tablepro`, `LINUX_PPA_BETA` set to `tablepro/tablepro-beta`, `LINUX_FLATPAK_R2_ENDPOINT` set to the S3 endpoint, `POSTHOG_PROJECT_KEY` set to the project API key (`phc_...`) of the one PostHog project, which the macOS release builds with too. It is public by design, so a variable, not a secret; the .deb and .rpm send usage data to it unless the user turns it off ([ADR 0039](decisions/0039-usage-data.md)), and a release fails without it. `LINUX_BRANCH` stays unset unless a release comes from a [maintenance branch](#a-fix-release).
 
    ```sh
    gh secret set LINUX_PPA_SIGNING_KEY --env linux-release --repo TableProApp/TablePro < linux-ppa-signing-key.asc
@@ -64,6 +64,7 @@ A repository admin does these once. The workflow's header names the same secrets
    gh variable set LINUX_PPA --body tablepro/tablepro --repo TableProApp/TablePro
    gh variable set LINUX_PPA_BETA --body tablepro/tablepro-beta --repo TableProApp/TablePro
    gh variable set LINUX_FLATPAK_R2_ENDPOINT --body 'https://<account id>.r2.cloudflarestorage.com' --repo TableProApp/TablePro
+   gh variable set POSTHOG_PROJECT_KEY --repo TableProApp/TablePro
    ```
 
 Until these exist, a tag still builds and checks everything, and each publishing step that lacks its secret or variable fails and publishes nothing.
@@ -117,7 +118,7 @@ A fix to `build-aux/debian` or `build-aux/rpm` that needs no new version, such a
 gh workflow run release-linux.yml --ref main -f tag=linux-v0.1.0 -f revision=2
 ```
 
-It downloads that release's two tarballs, checks them against its `SHA256SUMS`, builds the source package with the packaging from `main` as `0.1.0-0ppa2~YY.MM`, builds and tests the .deb on both architectures, and uploads it to the stable PPA once a reviewer approves. Launchpad accepts the release's own orig tarballs again, and would refuse new ones whose bytes differ. Count the revision up for each further upload of the same version. The release's GitHub assets stay as they were.
+It downloads that release's two tarballs, checks them against its `SHA256SUMS`, builds the source package with the packaging from `main` as `0.1.0-0ppa2~YY.MM`, builds and tests the .deb on both architectures, and uploads it to the stable PPA once a reviewer approves. Launchpad accepts the release's own orig tarballs again, and would refuse new ones whose bytes differ. The vendor tarball brings the release's PostHog key with it. Count the revision up for each further upload of the same version. The release's GitHub assets stay as they were.
 
 **COPR.** COPR builds the spec at the tag, so a fix to it goes in by hand. Raise `Release` in `build-aux/rpm/tablepro.spec` on `main` with a `%changelog` entry, then, on Fedora with `copr-cli` signed in, build the source RPM from that spec and submit it:
 

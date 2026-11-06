@@ -6,13 +6,15 @@ use gtk4::{gio, glib};
 use libadwaita as adw;
 
 use super::SessionWindow;
-use crate::i18n::{gettext, gettext_f};
+use crate::i18n::{gettext, gettext_f, ngettext_f};
 use crate::ui::file_reveal::reveal_failure_toast;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum LaunchNotice {
     Crash(PathBuf),
     Update(String),
+    // The days of use, from the 30th day without a license.
+    LicenseAsk(u32),
 }
 
 impl LaunchNotice {
@@ -93,6 +95,17 @@ impl SessionWindow {
                 .title(gettext_f("TablePro was updated to {version}", &[("version", version)]))
                 .button_label(gettext("What’s New"))
                 .action_name("app.about")
+                .use_markup(false)
+                .build(),
+            LaunchNotice::LicenseAsk(days) => adw::Toast::builder()
+                .title(ngettext_f(
+                    "You’ve used TablePro on {n} day. If it’s part of your work, please buy a license.",
+                    "You’ve used TablePro on {n} days. If it’s part of your work, please buy a license.",
+                    *days,
+                    &[("n", &days.to_string())],
+                ))
+                .button_label(gettext("Buy a License"))
+                .action_name("app.buy-license")
                 .use_markup(false)
                 .build(),
         };

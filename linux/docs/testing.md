@@ -9,6 +9,7 @@ Three layers, three tools. Each crate's test policy follows from its position in
 | `net` | TLS setup | Unit tests, a TLS handshake test against a local server | Yes |
 | `ssh` | OpenSSH transport | Unit tests, `testcontainers-rs` tests against an OpenSSH server | Yes |
 | `test-fixtures` | Containers for the other crates' tests | `testcontainers-rs` tests of the fixtures themselves | Yes |
+| `account` | Sign-in, tokens, device, entitlement, gate | Unit tests, among them tablepro-cloud's entitlement vectors and the loopback listener over real sockets, plus tests against a local tablepro-cloud through a headless browser | Yes, the unit tests |
 | `session` | Sessions, connect, health | Unit tests over the fakes in `tablepro-test-support` and `tablepro_session::fakes`, plus `testcontainers-rs` tests | Yes |
 | `drivers/<engine>` | Real engines | Unit tests, the conformance suites, `testcontainers-rs` integration tests | Yes |
 | `app` | GTK 4 widgets | `#[gtk4::test]` widget tests; pure logic is unit-tested | Yes |
@@ -287,6 +288,7 @@ Three reasons are allowed:
 - `#[ignore = "requires docker"]` for testcontainers suites.
 - `#[ignore = "requires a Secret Service"]` for tests that talk to a keyring.
 - `#[ignore = "requires a SQL Server on this Windows machine"]` for the SQL Server driver's integrated login through SSPI (`tests/integration/windows_server.rs`). SQL Server installs on x64 Windows only, so `core.yml`'s `sql-server-windows` job runs them on `windows-2025`: `tests/windows/sql-server.ps1 -Install` sets up SQL Server 2022 Express with a self-signed certificate, the `sspi` tests sign in over TDS 7.4 and strict TLS, `-ForceStrict` turns on Force Strict Encryption, and the `force_strict` test checks that a TDS 7.4 login is refused and a strict one gets in. The runner is in no domain, so SSPI signs in with NTLM.
+- `#[ignore = "requires a tablepro-cloud stack"]` for the account's tests against a running backend ([below](#tablepro-cloud-stack)).
 
 The workspace denies `clippy::ignore_without_reason`, so a bare `#[ignore]` fails the build.
 
@@ -313,6 +315,64 @@ meson and distro builds use cargo test, which works too:
 ```bash
 cargo test -p tablepro-driver-postgres -- --ignored --test-threads=1
 ```
+
+### Files from tablepro-cloud
+
+`core/crates/account` keeps copies of two tablepro-cloud files: `openapi/v2.openapi-3.0.json`, the `/v2` document `build.rs` generates the client from, and `tests/data/entitlement_vectors.json`, the vectors the entitlement checks run against. tablepro-cloud is private and CI cannot reach it, so they are copies, never links. From `linux/`, refresh both from a tablepro-cloud checkout:
+
+```bash
+build-aux/update-cloud-api.sh ~/src/tablepro-cloud   # without an argument, the checkout beside this repository
+```
+
+It prints the tablepro-cloud commit, for the commit message. Then build and run `tablepro-account`'s tests, and the stack tests below against a stack of that commit.
+
+### tablepro-cloud stack
+
+`core/crates/account/tests/cloud_stack.rs` runs the account against a running tablepro-cloud, such as the stack its `web/e2e` suite starts, through the real OAuth flow. Its browser steps, `core/crates/account/tests/browser/portal.cjs`, are Puppeteer driving a headless Chrome: it signs in to the portal with the code the stack's fake Resend keeps, then does one step:
+
+- `approve`: gives the account a Starter license the way the e2e seed does when asked, and licensed devices of its own with `TABLEPRO_CLOUD_SEED_DEVICES`, the first with an offline file valid 30 days; then approves the app's sign-in on the confirmation screen. The redirect reaches the account's loopback listener as from a desktop browser, or, with `TABLEPRO_CLOUD_CALLBACK_FILE`, is written to that file for the test to send itself.
+- `remove-device`: removes the machine from the portal's Devices page.
+- `offline-file`: makes an offline file for `TABLEPRO_CLOUD_MACHINE_ID` through the portal's API, as its Devices page does, into `TABLEPRO_CLOUD_OUTPUT`.
+
+The cases cover a licensed sign-in with a restart, a refresh and a sign-out whose token the server then refuses; a free account without a keyring; a fourth machine told `device_limit_reached` with the three that hold the license; a machine over the limit that removes a holder in place and gets the license, while the holder with an offline file, which `device_limit_reached` names with its `offline_until`, is refused with `offline_file_active`; a second sign-in, which revokes the first one's token; a device removed in the portal, which signs the account out at its next refresh; and the profile and devices of an account, with an offline file the portal made unlocking a machine that never signed in, without opening its keyring.
+
+They read the stack from the environment:
+
+| Variable | Value |
+|---|---|
+| `TABLEPRO_CLOUD_ACCOUNT_URL`, `TABLEPRO_CLOUD_API_URL` | The issuer and the `/v2` base, such as `http://account.localhost:5284` and `http://api.localhost:5284/v2` |
+| `TABLEPRO_CLOUD_ENTITLEMENT_KEY` | The `x` of the stack's entitlement signing key, base64url |
+| `TABLEPRO_CLOUD_EMAIL_DOMAIN` | The domain of the accounts the tests make, so runs never share one |
+| `TABLEPRO_CLOUD_MAIL_URL` | The fake Resend that keeps the sign-in emails |
+| `TABLEPRO_CLOUD_DATABASE_URL` | The stack's database, for the license grant and the seeded devices |
+| `TABLEPRO_CLOUD_CHROME` | A Chrome or chrome-headless-shell binary |
+| `NODE_PATH` | Where `puppeteer` and `pg` are installed |
+
+```bash
+cargo test -p tablepro-account --test cloud_stack -- --ignored --test-threads=1
+```
+
+The app has one case of its own, in `crates/app/src/ui/preferences_dialog/account_page.rs`: Sign In on Preferences > Account, through the page's own code, against the same stack, until the page shows the plan and this computer, then Sign Out. It needs the gtk suite's variables and a display, and the browser step hands back the redirect, so Chrome and the app need not share a loopback:
+
+```bash
+GSK_RENDERER=cairo GTK_A11Y=test GDK_BACKEND=x11 xvfb-run -a dbus-run-session -- \
+  meson devenv -C _build cargo test -p tablepro --lib -- --ignored the_page_signs_in
+```
+
+No CI job runs them. They never point at a production host.
+
+### The app against a local stack
+
+A development build signs in to a local tablepro-cloud when Meson is given its addresses and the public key it signs entitlements with:
+
+```bash
+meson setup _build -Dprofile=development \
+  -Ddev_account_url=http://account.localhost:5284 \
+  -Ddev_api_url=http://api.localhost:5284/v2 \
+  -Ddev_entitlement_keys="$(openssl pkey -in web/e2e/.stack/keys/entitlement -pubout -outform DER | tail -c 32 | base64 | tr '+/' '-_' | tr -d '=')"
+```
+
+The key comes from the tablepro-cloud checkout, with an OpenSSL that knows Ed25519. Portal links then open the local account pages. `meson setup` refuses these options outside the development profile, and a release build signs in to `account.tablepro.app` whatever it was built with ([ADR 0038](decisions/0038-account-page-and-license-ask.md)). An address without the other, or a key that does not parse, keeps the account from starting, which Preferences > Account says.
 
 ### Server releases
 

@@ -159,6 +159,15 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | External Clients | A level per connection: Blocked hides it, Read Only (the default) lets clients read, Read & Write lets them write after the user approves each statement in Safe Mode's dialog. Safe Mode Read-Only refuses every client write |
 | Tools | List connections, open one in a window, list schemas and tables, describe a table and show its DDL, browse and count rows with filters, and run one statement; runs go into the query history |
 
+### TablePro account
+
+| Capability | Detail |
+|---|---|
+| Sign-in | Preferences > Account signs in to a TablePro account through the browser, as on macOS; the sign-in is kept in the keyring ([ADR 0038](docs/decisions/0038-account-page-and-license-ask.md)) |
+| Plan, devices and teams | The plan and its status, the ten paid features (all in TablePro for macOS for now, so nothing is gated), the account's devices with Remove, the device limit dialog, teams, and offline files for a computer with no internet |
+| License ask | From the 30th day of use without a license, a toast asks whether you would buy one, then at most every 90 days |
+| Usage data | On by default, as on macOS: the clients.md events go to PostHog until Preferences > General > Privacy turns it off ([ADR 0039](docs/decisions/0039-usage-data.md)) |
+
 ### Packaging and platform
 
 | Capability | Detail |
@@ -207,7 +216,7 @@ Microsoft's mssql-tds is checked again each release as a SQL Server client. Toda
 
 ### Ideas
 
-Not committed: server monitoring (sessions, locks, slow queries), maintenance commands, backup and restore through the engines' own tools (`pg_dump`, `mysqldump`), replication status, comparing result sets, schema diff and data sync between connections, drawn query plans, scheduled queries, and opt-in usage telemetry.
+Not committed: server monitoring (sessions, locks, slow queries), maintenance commands, backup and restore through the engines' own tools (`pg_dump`, `mysqldump`), replication status, comparing result sets, schema diff and data sync between connections, drawn query plans and scheduled queries.
 
 ## Release criteria
 

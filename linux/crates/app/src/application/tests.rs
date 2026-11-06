@@ -280,9 +280,64 @@ fn handle_local_options_without_new_window_does_not_register() {
 fn startup_installs_the_app_actions_and_their_accels() {
     let test = TestApp::started("Actions");
 
-    for action in ["new-window", "quit", "preferences", "about"] {
+    for action in ["new-window", "quit", "preferences", "about", "buy-license"] {
         assert!(test.app.lookup_action(action).is_some(), "app.{action} is missing");
     }
+}
+
+// The app's own wiring, with a key as a release has one: usage data goes from the start, as on macOS, and nothing
+// reaches PostHog once Share Usage Data is off, until it is on again.
+#[gtk4::test]
+fn usage_data_goes_by_default_and_nothing_leaves_once_it_is_turned_off() {
+    let (services, _backing) = fake_services();
+    let collector = crate::test_support::PostHogCollector::start();
+    services.start_telemetry_with("phc_test", &collector.url);
+    let telemetry = services.telemetry();
+    let pump = |time: u64| {
+        let _ = wait_until(Duration::from_millis(time), || false);
+    };
+    let everything = || {
+        telemetry.connection_attempted("sqlite");
+        telemetry.connection_succeeded("sqlite");
+        telemetry.query_executed("sqlite");
+        telemetry.upgrade_clicked("app-settings");
+        telemetry.support_ask_shown();
+        telemetry.signed_in("acct_01k8d6wk00f8xsr79e7x052rkk");
+        telemetry.signed_out();
+    };
+    let sent = || (collector.connections(), collector.bodies().len());
+
+    telemetry.upgrade_clicked("app-ask");
+    wait_until(Duration::from_secs(20), || {
+        !collector.named("upgrade_clicked").is_empty()
+    })
+    .expect("sent by default");
+    telemetry.flush();
+    pump(300);
+    let by_default = sent();
+    services.settings.set_share_usage_data(false).expect("turned off");
+    pump(300);
+    everything();
+    telemetry.flush();
+    pump(500);
+    let while_off = sent();
+    services.settings.set_share_usage_data(true).expect("turned on again");
+    telemetry.upgrade_clicked("app-settings");
+    wait_until(Duration::from_secs(20), || {
+        collector.named("upgrade_clicked").len() == 2
+    })
+    .expect("sent once on again");
+
+    assert!(by_default.1 > 0);
+    assert_eq!(while_off, by_default);
+}
+
+#[gtk4::test]
+fn startup_in_a_test_build_has_no_posthog_key() {
+    let test = TestApp::started("NoPostHogKey");
+
+    assert_eq!(crate::config::POSTHOG_KEY, "");
+    assert!(!test.services().telemetry().has_project_key());
 }
 
 #[gtk4::test]
