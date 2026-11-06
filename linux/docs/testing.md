@@ -288,7 +288,7 @@ Three reasons are allowed:
 - `#[ignore = "requires docker"]` for testcontainers suites.
 - `#[ignore = "requires a Secret Service"]` for tests that talk to a keyring.
 - `#[ignore = "requires a SQL Server on this Windows machine"]` for the SQL Server driver's integrated login through SSPI (`tests/integration/windows_server.rs`). SQL Server installs on x64 Windows only, so `core.yml`'s `sql-server-windows` job runs them on `windows-2025`: `tests/windows/sql-server.ps1 -Install` sets up SQL Server 2022 Express with a self-signed certificate, the `sspi` tests sign in over TDS 7.4 and strict TLS, `-ForceStrict` turns on Force Strict Encryption, and the `force_strict` test checks that a TDS 7.4 login is refused and a strict one gets in. The runner is in no domain, so SSPI signs in with NTLM.
-- `#[ignore = "requires a tablepro-cloud stack"]` for the account's tests against a running backend ([below](#tablepro-cloud-stack)).
+- `#[ignore = "requires a tablepro-cloud stack"]` for the account's tests against a running backend ([below](#tablepro-cloud-stack)). They live in a `cloud_stack` test binary or module, which nextest's default filter in `.config/nextest.toml` leaves out, so the Docker jobs' `--run-ignored only` never picks them up.
 
 The workspace denies `clippy::ignore_without_reason`, so a bare `#[ignore]` fails the build.
 
