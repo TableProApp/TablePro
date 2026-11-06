@@ -1,4 +1,4 @@
-// Why a file an older build wrote is copied before its first write in a newer format: core ADR 0011.
+// Why a file an older build wrote is copied before its first write in a newer format: core ADR 0012.
 
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};

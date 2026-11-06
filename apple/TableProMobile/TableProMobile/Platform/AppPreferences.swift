@@ -16,10 +16,6 @@ nonisolated enum AppPreferences {
         UserDefaults.standard.bool(forKey: cloudSyncEnabledKey)
     }
 
-    static var isUsageDataEnabled: Bool {
-        UserDefaults.standard.bool(forKey: usageDataKey)
-    }
-
     static var syncsPasswords: Bool {
         isCloudSyncEnabled && UserDefaults.standard.bool(forKey: syncPasswordsKey)
     }

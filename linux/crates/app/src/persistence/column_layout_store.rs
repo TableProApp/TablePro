@@ -4,14 +4,14 @@ use tablepro_session::runtime::Tasks;
 use uuid::Uuid;
 
 use super::StateFile;
-use super::column_widths_document::ColumnWidthsDocument;
+use super::column_layouts_document::ColumnLayoutsDocument;
 use crate::services::grid::ColumnLayout;
 
 /// Each table's column order, hidden columns and widths, remembered per
 /// connection, schema and table.
 #[derive(Clone)]
 pub struct ColumnLayoutStore {
-    file: Rc<StateFile<ColumnWidthsDocument>>,
+    file: Rc<StateFile<ColumnLayoutsDocument>>,
 }
 
 impl std::fmt::Debug for ColumnLayoutStore {
@@ -60,7 +60,7 @@ impl ColumnLayoutStore {
         self.file.flush()
     }
 
-    pub(super) fn read<R>(
+    fn read<R>(
         &self,
         connection_id: Uuid,
         schema: Option<&str>,
@@ -81,7 +81,7 @@ impl ColumnLayoutStore {
     /// Change one table's layout. `change` returns whether anything moved.
     /// A layout left with nothing in it is removed with any map it empties,
     /// so a reset shrinks the file back.
-    pub(super) fn change(
+    fn change(
         &self,
         connection_id: Uuid,
         schema: Option<&str>,
@@ -113,7 +113,7 @@ fn schema_key(schema: Option<&str>) -> &str {
     schema.unwrap_or("")
 }
 
-fn prune(document: &mut ColumnWidthsDocument, connection_id: Uuid, schema: Option<&str>, table: &str) -> bool {
+fn prune(document: &mut ColumnLayoutsDocument, connection_id: Uuid, schema: Option<&str>, table: &str) -> bool {
     let connection_key = connection_id.to_string();
     let Some(schemas) = document.connections.get_mut(&connection_key) else {
         return false;
@@ -135,7 +135,7 @@ fn prune(document: &mut ColumnWidthsDocument, connection_id: Uuid, schema: Optio
 mod tests {
     use super::*;
     use crate::services::grid::LayoutSlot;
-    use crate::test_support::{paused_tasks, read_text_file, write_text_file};
+    use crate::test_support::{paused_tasks, read_text_file};
 
     fn store_at(path: &std::path::Path) -> ColumnLayoutStore {
         ColumnLayoutStore::load(path.to_path_buf(), &paused_tasks())
@@ -153,37 +153,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_version_1_file_opens_with_its_widths() {
-        let root = tempfile::tempdir().expect("tempdir");
-        let path = root.path().join("column_widths.json");
-        let id = Uuid::new_v4();
-        write_text_file(
-            &path,
-            &format!(r#"{{"version": 1, "connections": {{"{id}": {{"public": {{"users": {{"name": 240}}}}}}}}}}"#),
-        );
-
-        let store = store_at(&path);
-
-        assert_eq!(
-            store.layout(id, Some("public"), "users"),
-            ColumnLayout::default().with_width("name", 240)
-        );
-        assert!(
-            read_text_file(&path).contains("\"version\": 1"),
-            "a read rewrites nothing"
-        );
-        store.save(id, Some("public"), "users", &arranged());
-        store.flush().await;
-        assert!(
-            read_text_file(&path).contains("\"version\": 2"),
-            "the next save writes version 2"
-        );
-    }
-
-    #[tokio::test]
     async fn a_saved_layout_survives_a_reopen() {
         let root = tempfile::tempdir().expect("tempdir");
-        let path = root.path().join("column_widths.json");
+        let path = root.path().join("column_layouts.json");
         let id = Uuid::new_v4();
         let store = store_at(&path);
 
@@ -198,7 +170,7 @@ mod tests {
     #[tokio::test]
     async fn a_save_replaces_one_tables_layout_and_leaves_the_rest() {
         let root = tempfile::tempdir().expect("tempdir");
-        let store = store_at(&root.path().join("column_widths.json"));
+        let store = store_at(&root.path().join("column_layouts.json"));
         let id = Uuid::new_v4();
         store.save(id, Some("public"), "users", &arranged());
         store.save(
@@ -225,7 +197,7 @@ mod tests {
     #[tokio::test]
     async fn an_empty_layout_removes_the_entry() {
         let root = tempfile::tempdir().expect("tempdir");
-        let path = root.path().join("column_widths.json");
+        let path = root.path().join("column_layouts.json");
         let store = store_at(&path);
         let id = Uuid::new_v4();
         store.save(id, Some("public"), "users", &arranged());
@@ -242,7 +214,7 @@ mod tests {
     #[tokio::test]
     async fn forget_connection_drops_only_that_connection() {
         let root = tempfile::tempdir().expect("tempdir");
-        let store = store_at(&root.path().join("column_widths.json"));
+        let store = store_at(&root.path().join("column_layouts.json"));
         let kept = Uuid::new_v4();
         let dropped = Uuid::new_v4();
         store.save(kept, None, "users", &arranged());

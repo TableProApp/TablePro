@@ -15,6 +15,8 @@ pub(crate) enum ExportOutcome {
     /// A file made whole before it was written, such as an image, which
     /// has no rows to count.
     Saved,
+    /// A whole database or schema, with what it could not carry.
+    Dumped(Box<tablepro_core::dump::DumpReport>),
     Stopped(AbortOutcome),
     /// `file` says what became of the file, when the export had opened
     /// it.
@@ -27,7 +29,7 @@ pub(crate) enum ExportOutcome {
 impl From<&ExportOutcome> for WorkOutcome {
     fn from(outcome: &ExportOutcome) -> Self {
         match outcome {
-            ExportOutcome::Exported { .. } | ExportOutcome::Saved => Self::Succeeded,
+            ExportOutcome::Exported { .. } | ExportOutcome::Saved | ExportOutcome::Dumped(_) => Self::Succeeded,
             ExportOutcome::Stopped(_) => Self::Cancelled,
             ExportOutcome::Failed { .. } => Self::Failed,
         }
@@ -54,6 +56,12 @@ pub(crate) enum ExportFailure {
     /// The image could not be drawn or encoded.
     #[error("the image could not be made: {0}")]
     Image(String),
+    /// Reading the database for a dump failed.
+    #[error("the database could not be read: {0}")]
+    Dump(tablepro_core::dump::DumpError),
+    /// The session the dump read through failed.
+    #[error("the database could not be read: {0}")]
+    DumpSession(OperationError),
 }
 
 impl From<OpenError> for ExportFailure {

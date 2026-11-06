@@ -2,7 +2,6 @@ import AppIntents
 import BackgroundTasks
 import os
 import SwiftUI
-import TableProAnalytics
 import TableProDatabase
 import TableProModels
 import TableProSyncTransport
@@ -13,15 +12,19 @@ struct TableProMobileApp: App {
     private static let backgroundLogger = Logger(subsystem: "com.TablePro", category: "BackgroundSync")
 
     @UIApplicationDelegateAdaptor(TableProAppDelegate.self) private var appDelegate
-    @State private var appState = AppState()
+    @State private var appState: AppState
     @State private var lockState: AppLockState
     @State private var syncTask: Task<Void, Never>?
-    @State private var heartbeatService: AnalyticsHeartbeatService?
-    @State private var heartbeatTask: Task<Void, Never>?
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
         ConnectionListTips.configure()
+        let appState = AppState()
+        _appState = State(initialValue: appState)
+        // At launch, so a connection opened before the scene first turns active still sends its first-use event.
+        if !TestRuntime.isActive {
+            Self.startTelemetry(appState: appState)
+        }
         let lockState = AppLockState()
         _lockState = State(initialValue: lockState)
         AppDependencyManager.shared.add(dependency: lockState)
@@ -54,13 +57,13 @@ struct TableProMobileApp: App {
                         await appState.syncCoordinator.sync(.activation)
                     }
                 }
-                startHeartbeatIfConsented()
+                Telemetry.shared.sceneBecameActive()
             case .inactive:
                 appState.backgroundRelease.prepareForSuspension()
             case .background:
                 syncTask?.cancel()
                 syncTask = nil
-                stopHeartbeat()
+                Telemetry.shared.sceneEnteredBackground()
                 Task {
                     let released = await appState.backgroundRelease.releaseForSuspension()
                     for connectionId in released {
@@ -74,30 +77,19 @@ struct TableProMobileApp: App {
         }
         .onChange(of: appState.onboarding.usageDataChoice) { _, choice in
             guard !TestRuntime.isActive else { return }
-            guard choice == true else {
-                stopHeartbeat()
-                return
-            }
-            startHeartbeatIfConsented()
+            Telemetry.shared.setEnabled(choice == true)
         }
         .backgroundTask(.appRefresh(Self.backgroundSyncIdentifier)) {
             await runBackgroundSync()
         }
     }
 
-    private func startHeartbeatIfConsented() {
-        guard heartbeatTask == nil, appState.onboarding.isUsageDataEnabled else { return }
-        let provider = IOSAnalyticsProvider.shared
-        provider.attach(appState: appState)
-        let service = AnalyticsHeartbeatService(provider: provider)
-        heartbeatService = service
-        heartbeatTask = service.startPeriodicHeartbeat()
-    }
-
-    private func stopHeartbeat() {
-        heartbeatTask?.cancel()
-        heartbeatTask = nil
-        heartbeatService = nil
+    private static func startTelemetry(appState: AppState) {
+        Telemetry.shared.start(sharesUsageData: appState.onboarding.isUsageDataEnabled) {
+            appState.connections
+                .filter { appState.connectionManager.session(for: $0.id) != nil }
+                .map(\.type.rawValue)
+        }
     }
 
     private func scheduleBackgroundSync() {

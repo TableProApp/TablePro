@@ -1,6 +1,6 @@
 use super::{
-    CollationName, ColumnCompression, ColumnKeyRoles, ColumnStorage, ColumnVisibility, GeneratedColumn, IdentityStyle,
-    UnmodeledAttribute,
+    CollationName, ColumnCompression, ColumnKeyRoles, ColumnStorage, ColumnVisibility, GeneratedColumn, IdentitySeed,
+    IdentityStyle, UnmodeledAttribute,
 };
 use crate::column::SqlExpression;
 
@@ -42,6 +42,9 @@ pub struct ColumnAttributes {
     /// method rather than following the server's default.
     pub compression: Option<ColumnCompression>,
     pub identity: IdentityStyle,
+    /// SQL Server's identity seed and increment, which a CREATE has to
+    /// state to number the rows as the table does.
+    pub identity_seed: Option<IdentitySeed>,
     /// The SQL Server constraint that holds the default. A type change
     /// has to drop it by name first and add it back afterwards.
     pub default_constraint_name: Option<String>,
