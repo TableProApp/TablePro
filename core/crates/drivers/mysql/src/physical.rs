@@ -200,11 +200,12 @@ impl MysqlEndpoint {
         if let Some(relay) = self.relay.get() {
             relay.take_failure();
         }
+        let database = options.get_database();
         let mut connection = match options.connect().await {
             Ok(connection) => connection,
-            Err(error) => return Err(self.explain(map_connect_error(&error, self.service())).await),
+            Err(error) => return Err(self.explain(map_connect_error(&error, self.service(), database)).await),
         };
-        let (connection_id, version) = identify(&mut connection, self.service()).await?;
+        let (connection_id, version) = identify(&mut connection, self.service(), database).await?;
         let flavour = MySqlFlavour::detect(&version);
         let mut statements = match kind {
             SessionKind::Control => Vec::new(),
@@ -297,11 +298,15 @@ fn ssl_mode(mode: TlsMode) -> Result<MySqlSslMode, DriverError> {
 
 /// The connection id and version, read over the text protocol so no
 /// statement is prepared before the session is set up.
-async fn identify(connection: &mut MySqlConnection, endpoint: &NetworkEndpoint) -> Result<(u64, String), DriverError> {
+async fn identify(
+    connection: &mut MySqlConnection,
+    endpoint: &NetworkEndpoint,
+    database: Option<&str>,
+) -> Result<(u64, String), DriverError> {
     let row = sqlx::raw_sql("SELECT CONNECTION_ID(), VERSION()")
         .fetch_one(&mut *connection)
         .await
-        .map_err(|error| map_connect_error(&error, endpoint))?;
+        .map_err(|error| map_connect_error(&error, endpoint, database))?;
     let text = |index: usize| -> Result<String, DriverError> {
         let bytes: &[u8] = row.try_get_unchecked(index).map_err(|error| DriverError::Decode {
             column: index.to_string(),

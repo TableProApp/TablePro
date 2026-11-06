@@ -37,6 +37,22 @@ impl WorkspaceModel {
         });
     }
 
+    pub(super) fn request_save_rows(&self, tab: Uuid) {
+        let Some(parent) = self.dialog_parent() else {
+            return;
+        };
+        let (handle, input) = (self.workspace_handle.clone(), self.input.clone());
+        glib::spawn_future_local(async move {
+            match handle.save_rows_of(&parent, tab).await {
+                SaveStart::Rejected(rejection) if rejection.needs_alert() => input.deliver(WorkspaceInput::ShowAlert {
+                    title: crate::i18n::gettext("Cannot Save"),
+                    body: rejection.message(),
+                }),
+                start => tracing::debug!(?start, %tab, "rows save"),
+            }
+        });
+    }
+
     pub(super) fn stop_saving(&self, tab: Uuid) {
         self.workspace_handle.stop_saves(CloseScope::Tab(tab));
     }
@@ -46,6 +62,9 @@ impl WorkspaceModel {
             WorkspaceEvent::SaveStarted { tab } => {
                 self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveStarted);
                 self.send_to_structure_tab(tab, structure_tab::SaveInput::SaveStarted);
+                if let Some(editor) = self.editor_tab(tab) {
+                    editor.rows_save_started();
+                }
             }
             WorkspaceEvent::SaveSettled { settled, in_prompt } => self.on_save_settled(*settled, in_prompt),
             WorkspaceEvent::Discarded { tabs, reload } => {
@@ -60,6 +79,9 @@ impl WorkspaceModel {
                         false => structure_tab::SaveInput::Discard,
                     };
                     self.send_to_structure_tab(tab, structure);
+                    if let Some(editor) = self.editor_tab(tab) {
+                        editor.rows_discarded(reload);
+                    }
                 }
             }
         }
@@ -98,19 +120,34 @@ impl WorkspaceModel {
                     .timeout(4)
                     .build();
                 self.add_toast(toast);
-                self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveCommitted(origins));
-            }
-            (WriteKind::RowChanges, SaveOutcome::RolledBack(cause)) => {
-                // The row behind the failing step is marked before the
-                // error shows, so the user sees which one it was.
-                if let Some(source) = failing {
-                    self.dispatch_to_tab(tab, browse_tab::SaveInput::MarkErrorRow(source));
+                match self.editor_tab(tab) {
+                    Some(editor) => editor.rows_saved(),
+                    None => self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveCommitted(origins)),
                 }
-                self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveFailed(cause.message()));
             }
+            (WriteKind::RowChanges, SaveOutcome::RolledBack(cause)) => match self.editor_tab(tab) {
+                Some(editor) => {
+                    editor.rows_save_failed(failing);
+                    self.show_error_alert(&crate::i18n::gettext("Save Failed"), &cause.message());
+                }
+                None => {
+                    // The row behind the failing step is marked before the
+                    // error shows, so the user sees which one it was.
+                    if let Some(source) = failing {
+                        self.dispatch_to_tab(tab, browse_tab::SaveInput::MarkErrorRow(source));
+                    }
+                    self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveFailed(cause.message()));
+                }
+            },
             (WriteKind::RowChanges, SaveOutcome::Unknown(cause)) => {
                 let message = cause.sentence(&self.tab_name(tab));
-                self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveOutcomeUnknown(message));
+                match self.editor_tab(tab) {
+                    Some(editor) => {
+                        editor.rows_save_unknown();
+                        self.show_error_alert(&crate::i18n::gettext("Save Result Unknown"), &message);
+                    }
+                    None => self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveOutcomeUnknown(message)),
+                }
             }
             (WriteKind::SchemaChanges, SaveOutcome::Committed { .. }) => {
                 self.on_structure_save_completed(tab, saved_table_name);
@@ -126,6 +163,8 @@ impl WorkspaceModel {
                 let message = cause.sentence(&self.tab_name(tab));
                 self.send_to_structure_tab(tab, structure_tab::SaveInput::SaveOutcomeUnknown(message));
             }
+            // A database is created or dropped from the sidebar, never by a tab's save.
+            (WriteKind::DatabaseChanges, _) => {}
         }
         // The close prompt waited for the save in front of the user, and
         // goes on to close the tab or asks about it again.

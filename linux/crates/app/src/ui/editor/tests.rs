@@ -3045,3 +3045,230 @@ fn completion_reads_only_the_session_of_the_tabs_database() {
     pick_database(&harness, "shop");
     assert_eq!(followed_catalog(&harness), None, "the last database's catalog stayed");
 }
+
+mod result_edits {
+    use tablepro_core::column::{ColumnDefault, ColumnInfo, ColumnOrigin};
+    use tablepro_core::edit::CellInput;
+    use tablepro_core::meta::TableRef;
+
+    use super::*;
+    use crate::services::change_tracker::RowKey;
+    use crate::services::change_tracker_registry::ChangeTrackerRegistry;
+    use crate::services::grid::ResultRefusal;
+    use crate::services::tab_tracker_handle::TabTrackerHandle;
+    use crate::services::tracker_edit::TrackerEdit;
+
+    fn table() -> TableRef {
+        TableRef::new(Some("public".to_owned()), "t")
+    }
+
+    fn traced(name: &str, column: &str) -> ResultColumn {
+        ResultColumn::new(name, ColumnType::untyped_text("text")).with_origin(Some(ColumnOrigin::new(table(), column)))
+    }
+
+    fn catalog_column(name: &str, primary_key: bool) -> ColumnInfo {
+        ColumnInfo {
+            name: name.to_owned(),
+            column_type: ColumnType::untyped_text("text"),
+            nullable: !primary_key,
+            primary_key,
+            is_auto_increment: false,
+            is_generated: false,
+            partition_scoped: false,
+            default: ColumnDefault::None,
+            comment: None,
+        }
+    }
+
+    fn rows_of(columns: Vec<ResultColumn>, transaction: TransactionState) -> Replies<FakeRun> {
+        let width = columns.len();
+        let rows = (1..=2)
+            .map(|id| {
+                (0..width)
+                    .map(|column| match column {
+                        0 => Value::Int(id),
+                        _ => Value::Text(format!("v{id}")),
+                    })
+                    .collect()
+            })
+            .collect();
+        let mut run = FakeRun::completed(vec![
+            ResultEvent::ResultSetStarted {
+                columns: columns.into(),
+            },
+            ResultEvent::Rows(rows),
+            ResultEvent::ResultSetFinished {
+                retained: 2,
+                total_rows: Some(2),
+                truncation: Truncation::Complete,
+            },
+        ]);
+        run.transaction_state = transaction;
+        let mut runs = Replies::default();
+        runs.always(run);
+        runs
+    }
+
+    fn editing(runs: Replies<FakeRun>, text: &str) -> (Harness, TabTrackerHandle) {
+        crate::register_test_resources();
+        let runtime = crate::test_support::test_runtime();
+        let fake = Arc::new(FakeEditorSession::new(runs));
+        let mut script = ConnectionScript::default();
+        script.fetch_columns.always(FakeReply::ok(vec![
+            catalog_column("id", true),
+            catalog_column("a", false),
+        ]));
+        let active = ActiveSession::new();
+        active.replace(session_on(fake.clone(), runtime.tasks(), script));
+        let settings = MemorySettings::new();
+        let editor = SqlEditor::new(SqlEditorInit {
+            initial_query: Some(text.to_owned()),
+            settings: settings.get().clone(),
+            history: None,
+            tasks: runtime.tasks(),
+            session: active.clone(),
+            hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
+            close_timeout: Duration::from_secs(5),
+            snippets: crate::test_support::builtin_snippets_only(),
+        });
+        let tracker = ChangeTrackerRegistry::default().register(uuid::Uuid::new_v4());
+        editor.attach_row_tracker(tracker.clone());
+        let harness = Harness {
+            editor,
+            fake,
+            history: None,
+            active,
+            settings,
+            runtime,
+        };
+        (harness, tracker)
+    }
+
+    fn settled(harness: &Harness) -> Option<ResultRefusal> {
+        let mut state = None;
+        wait_until(WAIT, || {
+            state = harness.editor.result_refusal(0);
+            state.is_some_and(|refusal| refusal != Some(ResultRefusal::Checking))
+        })
+        .expect("the result to settle");
+        state.flatten()
+    }
+
+    fn change_a(tracker: &TabTrackerHandle) {
+        let _ = tracker.apply(TrackerEdit::Cell {
+            row_key: RowKey::from_pk_values(&[Value::Int(1)]).expect("a key"),
+            col: 1,
+            original: Value::Text("v1".to_owned()),
+            value: CellInput::Value(Value::Text("changed".to_owned())),
+        });
+    }
+
+    #[gtk4::test]
+    fn a_result_read_from_one_table_with_its_key_edits_and_saves_through_the_window() {
+        let (harness, tracker) = editing(
+            rows_of(vec![traced("id", "id"), traced("x", "a")], TransactionState::Idle),
+            "SELECT id, a AS x FROM t",
+        );
+        let _window = shown(&harness);
+        run_and_wait(&harness);
+
+        assert_eq!(settled(&harness), None);
+        let grid = shown_grid(&harness);
+        assert!(grid.config().is_some_and(|config| config.tracker.is_some()));
+        change_a(&tracker);
+        let saves = SignalLog::connect(&harness.editor, "save-rows", |_| ());
+        harness.editor.save_rows();
+
+        assert_eq!(saves.count(), 1, "Save did not reach the window");
+        let (target, _) = tracker.preview_save().expect("a plan").expect("changes");
+        assert_eq!(target.table, table());
+        let names: Vec<&str> = target.columns.iter().map(|column| column.name.as_str()).collect();
+        assert_eq!(names, ["id", "a"], "the renamed column writes its own column");
+    }
+
+    #[gtk4::test]
+    fn a_join_stays_read_only_and_says_why() {
+        let (harness, _) = editing(
+            rows_of(vec![traced("id", "id"), traced("a", "a")], TransactionState::Idle),
+            "SELECT t.id, u.a FROM t JOIN u ON u.id = t.id",
+        );
+        let _window = shown(&harness);
+        run_and_wait(&harness);
+
+        assert_eq!(settled(&harness), Some(ResultRefusal::MoreThanOneTable));
+        let grid = shown_grid(&harness);
+        assert_eq!(
+            grid.config().and_then(|config| config.result_lock),
+            Some(ResultRefusal::MoreThanOneTable)
+        );
+    }
+
+    #[gtk4::test]
+    fn a_result_without_its_whole_key_is_read_only() {
+        let (harness, _) = editing(
+            rows_of(vec![traced("a", "a")], TransactionState::Idle),
+            "SELECT a FROM t",
+        );
+        run_and_wait(&harness);
+
+        assert_eq!(settled(&harness), Some(ResultRefusal::KeyNotShown));
+    }
+
+    #[gtk4::test]
+    fn rows_read_inside_an_open_transaction_are_read_only() {
+        let (harness, _) = editing(
+            rows_of(
+                vec![traced("id", "id"), traced("a", "a")],
+                TransactionState::InTransaction,
+            ),
+            "SELECT id, a FROM t",
+        );
+        run_and_wait(&harness);
+
+        assert_eq!(settled(&harness), Some(ResultRefusal::OpenTransaction));
+    }
+
+    #[gtk4::test]
+    fn columns_no_driver_traced_are_read_only() {
+        let (harness, _) = editing(
+            rows_of(
+                vec![
+                    ResultColumn::new("id", ColumnType::untyped_text("text")),
+                    ResultColumn::new("a", ColumnType::untyped_text("text")),
+                ],
+                TransactionState::Idle,
+            ),
+            "SELECT id, a FROM t",
+        );
+        run_and_wait(&harness);
+
+        assert_eq!(settled(&harness), Some(ResultRefusal::Untraced));
+    }
+
+    #[gtk4::test]
+    fn a_run_asks_before_it_drops_changed_rows() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let (harness, tracker) = editing(
+            rows_of(vec![traced("id", "id"), traced("a", "a")], TransactionState::Idle),
+            "SELECT id, a FROM t",
+        );
+        let window = shown(&harness);
+        run_and_wait(&harness);
+        assert_eq!(settled(&harness), None);
+        change_a(&tracker);
+        let before = sent(&harness.fake).len();
+
+        harness.editor.run();
+
+        assert!(!harness.editor.is_running(), "the run dropped a pending change");
+        let mut alert = None;
+        wait_until(WAIT, || {
+            alert = crate::workspace::visible_alert(&window);
+            alert.is_some()
+        })
+        .expect("the discard question");
+        crate::test_support::respond(&alert.expect("the alert"), "discard");
+        wait_until(WAIT, || sent(&harness.fake).len() > before).expect("the run after the discard");
+        assert_eq!(tracker.pending_count(), 0);
+    }
+}

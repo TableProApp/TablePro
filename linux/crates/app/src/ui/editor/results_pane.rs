@@ -6,6 +6,7 @@ use libadwaita as adw;
 use super::result_item::ResultItem;
 use super::run_log::{EntryKind, RunLogEntry};
 use super::sidebar_policy::{self, SidebarState};
+use crate::ui::browse_tab::PendingChangesBar;
 use crate::ui::data_grid::DataGrid;
 
 /// How many results keep their page once shown, so going back to one
@@ -66,6 +67,8 @@ mod imp {
         pub list_view: TemplateChild<gtk4::ListView>,
         #[template_child]
         pub stack: TemplateChild<gtk4::Stack>,
+        #[template_child]
+        pub pending_bar: TemplateChild<PendingChangesBar>,
         pub items: std::cell::OnceCell<gio::ListStore>,
         pub selection: std::cell::OnceCell<gtk4::SingleSelection>,
         pub sidebar: Cell<SidebarState>,
@@ -81,6 +84,7 @@ mod imp {
         type ParentType = adw::Bin;
 
         fn class_init(klass: &mut Self::Class) {
+            PendingChangesBar::ensure_type();
             klass.bind_template();
         }
 
@@ -178,6 +182,42 @@ impl ResultsPane {
     /// thousands of statements builds one, not thousands.
     pub fn set_page_builder(&self, builder: impl Fn(u32) -> Option<ResultPage> + 'static) {
         self.imp().page_builder.replace(Some(Box::new(builder)));
+    }
+
+    pub(crate) fn pending_bar(&self) -> PendingChangesBar {
+        self.imp().pending_bar.get()
+    }
+
+    pub fn forget_pages(&self, forget: impl Fn(u32) -> bool) {
+        let imp = self.imp();
+        let forgotten: std::collections::VecDeque<KeptPage> = {
+            let mut built = imp.built.borrow_mut();
+            let (forgotten, kept) = built.drain(..).partition(|page| forget(page.index));
+            *built = kept;
+            forgotten
+        };
+        for page in forgotten {
+            if let Some(widget) = imp.stack.child_by_name(&page_name(page.index)) {
+                imp.stack.remove(&widget);
+            }
+        }
+    }
+
+    pub fn rebuild_page(&self, index: u32) {
+        self.forget_pages(|page| page == index);
+        if self.selected() == Some(index) {
+            self.show_page(index);
+        }
+    }
+
+    // The grid of line `index` while its page is kept, shown or not.
+    pub fn kept_grid(&self, index: u32) -> Option<DataGrid> {
+        self.imp()
+            .built
+            .borrow()
+            .iter()
+            .find(|page| page.index == index)
+            .and_then(|page| page.grid.clone())
     }
 
     pub fn set_running(&self, running: bool) {
@@ -565,6 +605,23 @@ mod tests {
             pane.imp().stack.child_by_name("entry-0").is_none(),
             "the oldest page was kept"
         );
+    }
+
+    #[gtk4::test]
+    fn a_page_the_host_changed_is_built_again() {
+        let pane = pane();
+        pane.append(&[command(), command()]);
+        let first = pane.imp().stack.visible_child().expect("the first page");
+
+        pane.rebuild_page(0);
+
+        let rebuilt = pane.imp().stack.visible_child().expect("the first page again");
+        assert_ne!(rebuilt, first, "the page was not built again");
+        assert_eq!(built_pages(&pane), 1);
+        pane.select(1);
+        pane.forget_pages(|index| index == 0);
+        assert_eq!(built_pages(&pane), 1, "a forgotten page stayed");
+        assert_eq!(pane.imp().stack.visible_child_name().as_deref(), Some("entry-1"));
     }
 
     #[gtk4::test]

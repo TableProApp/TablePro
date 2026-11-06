@@ -91,7 +91,7 @@ fn holds_page(view: &adw::TabView, page: &adw::TabPage) -> bool {
 }
 
 /// Give `workspace` a table tab with a cell edited and not saved.
-fn edit_a_table(workspace: &Workspace, name: &str) {
+pub(super) fn edit_a_table(workspace: &Workspace, name: &str) {
     let before = workspace.open_tabs().unwrap_or_default();
     workspace
         .sender()

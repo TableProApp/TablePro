@@ -98,6 +98,9 @@
                 </child>
               </object>
             </child>
+            <child type="bottom">
+              <object class="TableProPendingChangesBar" id="pending_bar"/>
+            </child>
             <property name="content">
               <object class="AdwOverlaySplitView" id="split_view">
                 <property name="show-sidebar">false</property>

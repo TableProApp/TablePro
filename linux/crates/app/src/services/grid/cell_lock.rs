@@ -1,5 +1,6 @@
 use tablepro_core::edit::{EditParseError, ReadOnlyReason};
 
+use super::ResultRefusal;
 use crate::i18n::gettext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -13,6 +14,9 @@ pub enum CellLock {
     AutoIncrement,
     UnkeyedRow,
     ResultRow,
+    Result(ResultRefusal),
+    // An expression, or a second copy of a column the result already writes.
+    NotTableColumn,
     ReadOnlySession,
     /// The row is marked for deletion.
     PendingDelete,
@@ -34,6 +38,8 @@ impl CellLock {
             Self::AutoIncrement => gettext("The database numbers this column's values"),
             Self::UnkeyedRow => gettext("Rows of a table without a primary key can't be edited"),
             Self::ResultRow => gettext("Query results can't be edited here"),
+            Self::Result(refusal) => refusal.explanation(),
+            Self::NotTableColumn => gettext("This column can't be written back to the table"),
             Self::ReadOnlySession => gettext("This connection is read-only."),
             Self::PendingDelete => gettext("Rows marked for deletion can't be edited"),
             Self::Unaddressable => {
@@ -60,6 +66,7 @@ mod tests {
             CellLock::AutoIncrement,
             CellLock::UnkeyedRow,
             CellLock::ResultRow,
+            CellLock::NotTableColumn,
             CellLock::ReadOnlySession,
             CellLock::PendingDelete,
             CellLock::Unaddressable,

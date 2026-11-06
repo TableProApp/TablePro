@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use tablepro_core::column::ColumnInfo;
-use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
+use tablepro_core::ddl::{DatabaseChoices, InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{
     IndexInfo, ObjectInfo, ObjectScope, RowCountEstimate, RowIdentity, SchemaInfo, TableEstimate, TableRef,
@@ -247,6 +247,18 @@ impl Connection for CqlConnection {
     /// query tab can move between.
     async fn list_databases(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
         self.list_schemas(options).await
+    }
+
+    /// A keyspace's replication names data centres; nothing else is
+    /// chosen when one is made.
+    async fn fetch_database_choices(&self, options: CallOptions) -> Result<DatabaseChoices, DriverError> {
+        self.read(options, move |link, _| async move {
+            catalog::data_centers(&link).await.map(|data_centers| DatabaseChoices {
+                data_centers,
+                ..DatabaseChoices::default()
+            })
+        })
+        .await
     }
 
     async fn list_schemas(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {

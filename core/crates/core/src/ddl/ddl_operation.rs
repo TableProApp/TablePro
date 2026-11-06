@@ -37,6 +37,23 @@ pub enum DdlOperation {
     /// NOT NULL on a column outside the primary key, on an engine with
     /// no such constraint.
     RequiredColumn,
+    TruncateTable,
+    /// Emptying the tables whose foreign keys point at the table too.
+    TruncateTableCascade,
+    /// Starting a table's numbering again as it is emptied.
+    TruncateRestartIdentity,
+    CreateSchema,
+    DropSchema,
+    /// Dropping a schema with everything in it.
+    DropSchemaCascade,
+    /// An owner other than the user who creates a schema or database.
+    CatalogOwner,
+    CreateDatabase,
+    DropDatabase,
+    /// Closing the other sessions on a database so it can be dropped.
+    DropDatabaseForce,
+    /// Running the statement on every server of a cluster.
+    OnCluster,
 }
 
 impl fmt::Display for DdlOperation {
@@ -68,6 +85,17 @@ impl fmt::Display for DdlOperation {
             Self::DropForeignKey => "dropping a foreign key",
             Self::ColumnDefault => "a column default",
             Self::RequiredColumn => "a column that refuses NULL outside the primary key",
+            Self::TruncateTable => "emptying a table",
+            Self::TruncateTableCascade => "emptying a table with the tables that reference it",
+            Self::TruncateRestartIdentity => "restarting a table's numbering",
+            Self::CreateSchema => "creating a schema",
+            Self::DropSchema => "dropping a schema",
+            Self::DropSchemaCascade => "dropping a schema with everything in it",
+            Self::CatalogOwner => "naming an owner",
+            Self::CreateDatabase => "creating a database",
+            Self::DropDatabase => "dropping a database",
+            Self::DropDatabaseForce => "closing other sessions on a database",
+            Self::OnCluster => "running on a cluster",
         })
     }
 }

@@ -321,22 +321,28 @@ After a change to `Cargo.lock`, `build-aux/update-third-party-licenses.sh`
 rewrites `debian/copyright` and the spec's `License` tag and `bundled()`
 Provides along with `data/licenses`.
 
-## Opening database files
+## Opening files
 
 Once installed, TablePro is in the file manager's **Open With** for
-SQLite databases (`application/vnd.sqlite3`). shared-mime-info has no
-type for DuckDB files, so a `.duckdb` file opens from the connect dialog
-or a terminal:
+SQLite databases (`application/vnd.sqlite3`) and SQL files
+(`application/sql`). shared-mime-info has no type for DuckDB files, so a
+`.duckdb` file opens from the connect dialog or a terminal:
 
 ```bash
-tablepro app.sqlite3 sales.duckdb
+tablepro app.sqlite3 sales.duckdb report.sql
 ```
 
 The file's own header picks the engine, whatever its name. A running
-TablePro opens each file in its own window and the new launch exits. A
-file already open brings its window forward. A database on a network or
-FUSE filesystem asks whether to open read-only first, because neither
-engine's locking can be trusted there.
+TablePro opens each database in its own window and the new launch exits.
+A database already open brings its window forward. A database on a
+network or FUSE filesystem asks whether to open read-only first, because
+neither engine's locking can be trusted there.
+
+A SQL file opens in a new editor tab of the connection in front of the
+last window you used, and Save writes back to it. It never runs by
+itself. With no SQL connection in front, or while a window is still
+connecting or reopening its tabs, a window asks you to choose one first.
+A file already open in a tab under the same path brings that tab forward.
 
 ## Vim keybindings
 

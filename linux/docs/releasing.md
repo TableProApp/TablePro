@@ -136,4 +136,4 @@ The next version's release commit sets `Release` back to 1.
 
 ## Downgrades
 
-An older build never writes over what a newer one stored; it refuses it until the user resets it or upgrades again. [troubleshooting.md](troubleshooting.md#after-a-downgrade) tells users what they see.
+A build refuses a file in a storage format newer than its own and never writes over it; a file in a format it knows it reads and writes, whichever release wrote it. Before the first write in a newer format, a build keeps a copy of the older file beside it ([storage.md](storage.md#copies-before-a-format-upgrade)). [troubleshooting.md](troubleshooting.md#after-a-downgrade) tells users what they see and how to put a copy back.

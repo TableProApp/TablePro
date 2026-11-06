@@ -1,8 +1,9 @@
 use tablepro_core::column::{ColumnInfo, SqlExpression};
 use tablepro_core::ddl::{
-    ColumnAttributes, ColumnDefinition, DdlOperation, DraftType, GeneratedColumn, IdentityStyle, InboundForeignKey,
-    Permission, PrimaryKeyConstraint, RecreatedObject, ReferentialAction, RefusalReason, SchemaObjectSource,
-    TableRebuild, TableSource, diff_table,
+    self as catalog, ColumnAttributes, ColumnDefinition, DatabaseDraft, DdlOperation, DraftType, DropDatabaseOptions,
+    DropSchemaOptions, GeneratedColumn, IdentityStyle, InboundForeignKey, Permission, PrimaryKeyConstraint,
+    RecreatedObject, ReferentialAction, RefusalReason, SchemaDraft, SchemaObjectSource, TableRebuild, TableSource,
+    diff_table,
 };
 use tablepro_core::meta::IndexKey;
 use tablepro_core::value::Value;
@@ -1445,4 +1446,88 @@ fn a_rebuild_names_what_it_drops_and_makes_again() {
     );
     assert!(keyed.rebuild.is_some_and(|rebuild| rebuild.renumbers_rowids));
     assert_eq!(native.rebuild, None);
+}
+
+#[test]
+fn a_truncate_is_a_delete_of_every_row() {
+    let qualified = TableRef::new(Some("main".to_owned()), "or\"ders");
+
+    let plan = dialect()
+        .plan_truncate_table(&qualified, &TruncateTableOptions::default())
+        .expect("a plan");
+    let bare = dialect()
+        .plan_truncate_table(&TableRef::unqualified("orders"), &TruncateTableOptions::default())
+        .expect("a plan");
+
+    assert_eq!(plan.sql(), ["DELETE FROM \"main\".\"or\"\"ders\""]);
+    assert_eq!(bare.sql(), ["DELETE FROM \"orders\""]);
+    assert_eq!(plan.foreign_keys, ForeignKeyMode::Enforced);
+    let Some(precondition) = &plan.precondition else {
+        panic!("a truncate without the inbound keys probe");
+    };
+    assert_eq!(precondition.rows, 0);
+    let probe = precondition.probe.sql();
+    for read in [
+        "FROM \"main\".\"sqlite_schema\" m, pragma_foreign_key_list(m.name, 'main') f",
+        "f.\"table\" = 'or\"ders' COLLATE NOCASE",
+        "m.name <> 'or\"ders' COLLATE NOCASE",
+    ] {
+        assert!(probe.contains(read), "{read} is not in {probe}");
+    }
+    assert!(plan.clone().into_steps()[0].guard.probe().is_some());
+    let restart = TruncateTableOptions {
+        restart_identity: true,
+        ..TruncateTableOptions::default()
+    };
+    assert_eq!(
+        dialect().plan_truncate_table(&qualified, &restart),
+        Err(BuildDdlError::Unsupported(DdlOperation::TruncateRestartIdentity))
+    );
+    let cascade = TruncateTableOptions {
+        cascade: true,
+        ..TruncateTableOptions::default()
+    };
+    assert_eq!(
+        dialect().plan_truncate_table(&qualified, &cascade),
+        Err(BuildDdlError::Unsupported(DdlOperation::TruncateTableCascade))
+    );
+}
+
+/// The sidebar offers what the capabilities say, so each one has to
+/// plan, with every option it offers, and nothing else may.
+#[test]
+fn every_offered_catalog_operation_plans_and_no_other() {
+    let dialect = dialect();
+    let offered = catalog::catalog_capabilities(&dialect);
+    let table = TableRef::new(Some("main".to_owned()), "orders");
+    let truncate = TruncateTableOptions {
+        cascade: offered.truncate_cascade,
+        restart_identity: offered.truncate_restart_identity,
+        cluster: None,
+    };
+    let schema = SchemaDraft {
+        name: "sales".to_owned(),
+        owner: None,
+    };
+
+    assert!(offered.truncate_table && offered.truncate_refused_when_referenced);
+    assert!(catalog::plan_truncate_table(&dialect, &table, &truncate).is_ok());
+    assert!(!offered.create_schema && !offered.drop_schema);
+    assert!(!offered.create_database && !offered.drop_database);
+    assert_eq!(
+        catalog::plan_create_schema(&dialect, &schema),
+        Err(BuildDdlError::Unsupported(DdlOperation::CreateSchema))
+    );
+    assert_eq!(
+        catalog::plan_drop_schema(&dialect, "sales", DropSchemaOptions::default()),
+        Err(BuildDdlError::Unsupported(DdlOperation::DropSchema))
+    );
+    assert_eq!(
+        catalog::plan_create_database(&dialect, &DatabaseDraft::named("sales")),
+        Err(BuildDdlError::Unsupported(DdlOperation::CreateDatabase))
+    );
+    assert_eq!(
+        catalog::plan_drop_database(&dialect, "sales", &DropDatabaseOptions::default()),
+        Err(BuildDdlError::Unsupported(DdlOperation::DropDatabase))
+    );
 }

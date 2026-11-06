@@ -49,6 +49,29 @@ pub(crate) async fn start(
     session: &mut ClientSession,
     plan: Plan,
 ) -> Result<Source, DriverError> {
+    send(endpoint, client, session, plan, false).await
+}
+
+/// As `start`, for a save. A command such as `dropDatabase` whose write
+/// concern the server could not meet has still applied on the primary,
+/// so it comes back as a write whose fate is open rather than an error,
+/// which a save would report as rolled back.
+pub(crate) async fn start_write(
+    endpoint: &MongoEndpoint,
+    client: &Client,
+    session: &mut ClientSession,
+    plan: Plan,
+) -> Result<Source, DriverError> {
+    send(endpoint, client, session, plan, true).await
+}
+
+async fn send(
+    endpoint: &MongoEndpoint,
+    client: &Client,
+    session: &mut ClientSession,
+    plan: Plan,
+    saving: bool,
+) -> Result<Source, DriverError> {
     match plan {
         Plan::Use(database) => Ok(Source::Used(database)),
         Plan::Cursor {
@@ -99,16 +122,26 @@ pub(crate) async fn start(
                 return Err(error);
             }
             let unconfirmed = reply_write_concern_error(&answer);
-            match (shaped(answer, reply), unconfirmed) {
-                (Source::Write { affected, summary, .. }, unconfirmed) => Ok(Source::Write {
-                    affected,
-                    summary,
-                    unconfirmed,
-                }),
-                (_, Some(error)) => Err(error),
-                (source, None) => Ok(source),
-            }
+            outcome(shaped(answer, reply), unconfirmed, saving)
         }
+    }
+}
+
+/// A reply with the write concern it could not meet, if any.
+fn outcome(source: Source, unconfirmed: Option<DriverError>, saving: bool) -> Result<Source, DriverError> {
+    match (source, unconfirmed) {
+        (Source::Write { affected, summary, .. }, unconfirmed) => Ok(Source::Write {
+            affected,
+            summary,
+            unconfirmed,
+        }),
+        (_, Some(error)) if saving => Ok(Source::Write {
+            affected: 0,
+            summary: Document::new(),
+            unconfirmed: Some(error),
+        }),
+        (_, Some(error)) => Err(error),
+        (source, None) => Ok(source),
     }
 }
 
@@ -243,5 +276,27 @@ mod tests {
             panic!("not a count");
         };
         assert_eq!(count, 42);
+    }
+
+    #[test]
+    fn a_saved_command_whose_write_concern_failed_is_applied_with_its_fate_open() {
+        let whole = || shaped(doc! { "ok": 1.0_f64 }, Reply::Whole);
+        let concern = || DriverError::server("waiting for replication timed out");
+
+        let saved = outcome(whole(), Some(concern()), true);
+        let run = outcome(whole(), Some(concern()), false);
+
+        assert!(
+            matches!(
+                saved,
+                Ok(Source::Write {
+                    unconfirmed: Some(_),
+                    ..
+                })
+            ),
+            "a save reads it as rolled back"
+        );
+        assert!(run.is_err(), "the editor shows the server's error");
+        assert!(matches!(outcome(whole(), None, true), Ok(Source::Documents { .. })));
     }
 }

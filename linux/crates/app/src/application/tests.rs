@@ -450,6 +450,63 @@ fn opening_a_file_held_behind_another_session_brings_that_session_forward() {
 }
 
 #[gtk4::test]
+fn a_sql_file_with_no_window_opens_a_picker_that_asks() {
+    let test = TestApp::started("OpenScriptNoWindow");
+    let path = test._backing.dir.path().join("report.sql");
+    std::fs::write(&path, "SELECT 1;").expect("write the script");
+
+    test.app.open(&[gio::File::for_path(&path)], "");
+
+    let picker = || {
+        test.app
+            .windows()
+            .into_iter()
+            .find_map(|window| window.downcast::<SessionWindow>().ok())
+    };
+    wait_until(WAIT, || {
+        picker()
+            .and_then(|window| window.script_banner())
+            .is_some_and(|banner| banner.is_revealed())
+    })
+    .expect("a picker asking for a connection");
+    assert_eq!(test.app.windows().len(), 1, "more than the one picker opened");
+    assert_eq!(picker().map(|window| window.page_name()), Some("picker"));
+}
+
+// A restored session may hold the file in a tab that is not back yet, so a picker asks rather than
+// opening a second tab beside it.
+#[gtk4::test]
+fn a_sql_file_opened_while_sessions_restore_asks_for_a_connection() {
+    let test = TestApp::started("ScriptWhileRestoring");
+    let first = test.database("first.db");
+    test.record(std::slice::from_ref(&first));
+    let path = test._backing.dir.path().join("report.sql");
+    std::fs::write(&path, "SELECT 1;").expect("write the script");
+    let script = gio::File::for_path(&path);
+
+    test.app.open(std::slice::from_ref(&script), "");
+    test.wait_for_sessions(std::slice::from_ref(&first));
+    let windows = || {
+        test.app
+            .windows()
+            .into_iter()
+            .filter_map(|window| window.downcast::<SessionWindow>().ok())
+            .collect::<Vec<_>>()
+    };
+    wait_until(WAIT, || {
+        windows()
+            .iter()
+            .any(|window| window.script_banner().is_some_and(|banner| banner.is_revealed()))
+    })
+    .expect("a picker asking for a connection");
+
+    assert!(
+        windows().iter().all(|window| window.script_tab(&script).is_none()),
+        "the script opened in a session while it was restoring"
+    );
+}
+
+#[gtk4::test]
 fn activate_restores_nothing_when_restore_session_false() {
     let test = TestApp::started("NoRestore");
     let first = test.database("first.db");

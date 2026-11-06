@@ -13,6 +13,7 @@ use super::EditorDeps;
 use super::editor_session_slot::EditorSessionSlot;
 use super::editor_view::EditorView;
 use super::find_bar::FindBar;
+use super::result_editing::ResultEditing;
 use super::results_pane::ResultsPane;
 use super::run_log::RunLog;
 use super::transaction_dirty::OpenTransaction;
@@ -103,6 +104,7 @@ pub struct SqlEditor {
     /// completion list closes itself on Escape before the editor's keys
     /// run, and lets the key go on.
     pub(super) escape_found_popup: Cell<bool>,
+    pub(super) editing: ResultEditing,
 }
 
 #[glib::object_subclass]
@@ -156,6 +158,9 @@ impl ObjectImpl for SqlEditor {
                 Signal::builder("assistant-requested")
                     .param_types([glib::BoxedAnyObject::static_type()])
                     .build(),
+                Signal::builder("save-rows").build(),
+                Signal::builder("stop-saving-rows").build(),
+                Signal::builder("rows-dirty-changed").build(),
             ]
         })
     }

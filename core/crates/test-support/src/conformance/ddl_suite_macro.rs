@@ -4,8 +4,8 @@
 ///
 /// Each case but the last plans through the connection's own
 /// `DdlDialect` and runs the plan with `write_batch`, so what it checks
-/// is the SQL the structure tab would send. The last runs the SQL
-/// editor's built-in snippets through an editor session.
+/// is the SQL the structure tab or the sidebar would send. The last runs
+/// the SQL editor's built-in snippets through an editor session.
 #[macro_export]
 macro_rules! ddl_conformance_suite {
     (engine: $engine:ty, docker: $docker:tt $(,)?) => {
@@ -38,6 +38,24 @@ macro_rules! ddl_conformance_suite {
             $engine as ConformanceEngine,
             index_statement_recreates_the_index,
             $crate::conformance::cases::ddl::index_statement_recreates_the_index::<$engine>
+        }
+        $crate::__conformance_case! {
+            $docker,
+            $engine as ConformanceEngine,
+            truncate_empties_the_table_and_keeps_it,
+            $crate::conformance::cases::ddl::truncate_empties_the_table_and_keeps_it::<$engine>
+        }
+        $crate::__conformance_case! {
+            $docker,
+            $engine as ConformanceEngine,
+            created_schema_is_listed_until_dropped,
+            $crate::conformance::cases::ddl::created_schema_is_listed_until_dropped::<$engine>
+        }
+        $crate::__conformance_case! {
+            $docker,
+            $engine as ConformanceEngine,
+            created_database_is_listed_until_dropped,
+            $crate::conformance::cases::ddl::created_database_is_listed_until_dropped::<$engine>
         }
         $crate::__conformance_case! {
             $docker,

@@ -106,13 +106,46 @@ Open an issue at https://github.com/TableProApp/TablePro/issues with:
 
 ## After a downgrade
 
-An older version never changes a file a newer one wrote. It refuses the file instead, until the newer version is installed again or you reset it:
+Each file TablePro keeps carries the version of its format. A build refuses a file in a format newer than it knows, and never writes over it. A format does not change with every release, so an older release still reads and changes a file a newer one wrote in the same format. The refusals look like this:
 
 - The connection list shows "Saved connections were created by a newer version of TablePro". Reset… moves the file aside, under a name the toast shows, and starts an empty list.
 - A connection's saved tabs do not reopen, and a toast says "Saved tabs could not be read" with Reset.
-- The query history says it could not be read.
+- The query history and saved queries say "The query history was written by a newer version of TablePro".
+- Column widths and filters saved in the newer format are left as they are, and the older release does not save its own.
 
-Installing the newer version again brings all of it back, unless it was reset. Column widths and filters saved by the newer version are left as they are, and the older version does not save its own.
+Installing the newer release again brings all of it back, unless it was reset.
+
+### Going back to what the older release saved
+
+Before a release writes a file in a newer format for the first time, it keeps a copy of the file as it was, in the same folder, named after the file, the format version it holds and the time in seconds, such as `connections.json.v1-1762300000`. It keeps the newest three copies of each file. A copy never keeps what you deleted since: a connection, query history or saved queries you delete, and history the retention setting drops, leave the copies too.
+
+To give the older release its files back:
+
+1. Quit TablePro. A second launch hands over to the running one, so check that no `tablepro` process is left.
+2. List the copies, newest last, in the folders from [Where TablePro keeps its files](#where-tablepro-keeps-its-files):
+
+   ```sh
+   ls -ltr ~/.config/tablepro/ ~/.local/state/tablepro/ ~/.local/state/tablepro/workspaces/
+   ```
+
+3. Move the current file aside rather than deleting it. It holds what the newer release saved, and the newer release reads it again. For the history, move its `-wal` and `-shm` files with it, if they are there:
+
+   ```sh
+   cd ~/.local/state/tablepro
+   mv history.db history.db.newer
+   mv history.db-wal history.db-wal.newer
+   mv history.db-shm history.db-shm.newer
+   ```
+
+4. Copy the newest copy back under the file's own name. For the connection list:
+
+   ```sh
+   cp ~/.config/tablepro/connections.json.v1-1762300000 ~/.config/tablepro/connections.json
+   ```
+
+5. Start the older release.
+
+What was saved after the copy was made, such as a connection added in the newer release, is only in the file you moved aside. The Flatpak keeps the same files under `~/.var/app/app.tablepro.TablePro/`, in `config/tablepro/` and `.local/state/tablepro/`.
 
 ## Where TablePro keeps its files
 
@@ -124,6 +157,7 @@ Installing the newer version again brings all of it back, unless it was reset. C
 | `~/.local/state/tablepro/workspaces/` | Each connection's tabs, and the connections open at the last quit |
 | `~/.local/share/tablepro/drafts/` | The text of each SQL editor tab |
 | `~/.local/state/tablepro/crashes/` | Crash reports |
+| `<file>.v<version>-<seconds>` beside a file above | A copy kept before an upgrade changed the file's format ([After a downgrade](#after-a-downgrade)) |
 
 Preferences are in GSettings: `gsettings list-recursively app.tablepro.TablePro` lists them. `man tablepro` has the same list.
 

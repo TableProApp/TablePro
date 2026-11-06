@@ -5,6 +5,7 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::document_problem::{DocumentProblem, DocumentProblemKind};
+use crate::error::StorageError;
 
 /// One step of a document's upgrade chain: a file at one version
 /// rewritten into the shape of the next. Its `version` field is left for
@@ -95,6 +96,17 @@ fn corrupt(path: &Path, error: &serde_json::Error) -> DocumentProblem {
             column: error.column(),
         },
     )
+}
+
+pub(crate) fn stored_version(bytes: &[u8]) -> Option<u32> {
+    serde_json::from_slice::<VersionProbe>(bytes).ok()?.version
+}
+
+// A file an older build wrote is copied aside first, and a failed copy leaves it as it was.
+pub fn write_document_blocking<D: VersionedDocument>(path: &Path, document: &D) -> Result<(), StorageError> {
+    let bytes = encode_document(document)?;
+    crate::upgrade_copies::keep_before_write_blocking::<D>(path)?;
+    crate::fs::write_private_blocking(path, &bytes)
 }
 
 pub fn encode_document<D: VersionedDocument>(document: &D) -> Result<Vec<u8>, serde_json::Error> {

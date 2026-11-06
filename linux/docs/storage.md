@@ -21,9 +21,10 @@ The app's data goes to the store its shape calls for. The core's `storage` crate
 `ConnectionStore` holds the saved-connection list, one store per storage root:
 
 - `load_blocking`, `list_blocking`, `upsert_blocking`, `insert_after_blocking`, `update_blocking`, `remove_blocking`, `touch_last_opened_blocking`, the group and favourite operations below, `preview_import_blocking`, `apply_import_blocking` and `export_blocking` run off the GTK thread. A change holds the store's lock across read, change and write, so two writers never lose an entry. `update_blocking` changes one entry as the list holds it at the write, so a last-opened stamp from another window in between is kept.
-- A write goes through `write_private_blocking` first and the cached list changes only once it landed, so a failed write leaves both as they were.
+- A write goes through `write_document_blocking` first and the cached list changes only once it landed, so a failed write leaves both as they were. The first write over a file an older build wrote keeps a copy of it first ([Copies before a format upgrade](#copies-before-a-format-upgrade)).
+- A file that another version wrote in a newer format is refused; one in the same format is read and written whichever build wrote it.
 - `subscribe` hands out a watch of `ConnectionListSnapshot`, so every picker sees every writer's change.
-- A file that cannot be read, or that another version wrote, leaves the store `Unavailable`, and it refuses every write until the user picks Reset (`reset_unreadable_blocking`), which moves the file aside.
+- A file that cannot be read, or that holds a format newer than this build's, leaves the store `Unavailable`, and it refuses every write until the user picks Reset (`reset_unreadable_blocking`), which moves the file aside.
 - A `SavedConnection` does **not** carry a password. Secrets live in the keyring, keyed by the connection's UUID, so a rename or a new host keeps them.
 - `safe_mode` is the connection's Safe Mode level: `off`, `confirm_writes` or `read_only`. It has no default, since guessing Off would drop a guard.
 - `external_access` is what MCP clients may do on the connection: `blocked`, `read_only` or `read_write` ([ADR 0022](decisions/0022-ai-assistant-and-mcp-server.md)). A new connection starts at `read_only`. It has no default either.
@@ -108,8 +109,9 @@ leaves nothing unreachable behind when a step fails:
    secret with no entry is orphaned in the keyring.
 2. The entry in `connections.json`.
 3. Everything kept for it: column layouts, filters, the saved tabs with any
-   copy Reset moved aside, the editor drafts (`WorkspaceStore::purge`), the
-   saved queries, and the query history when the user turned that on. A
+   copy Reset moved aside or an upgrade kept, the editor drafts
+   (`WorkspaceStore::purge`), the saved queries, and the query history when
+   the user turned that on. A
    failure here is reported and does not bring the entry back.
 
 A connection open or connecting in a window is not deleted; the dialog
@@ -165,6 +167,10 @@ Everything private goes through `tablepro_storage::fs`:
   and the new file is 0600 whatever mode the old one had.
 - `append_private_blocking` appends to a file it creates 0600 when absent,
   for the crash report, which a second panic adds to.
+- `document::write_document_blocking` encodes a versioned document and
+  writes it with `write_private_blocking`, after keeping a copy of a file
+  an older build wrote ([Copies before a format upgrade](#copies-before-a-format-upgrade)).
+  Every store writes its documents through it.
 - `create_private_file_if_missing` pre-creates an empty 0600 file. SQLite
   creates its database, WAL and SHM with the umask mode, so pre-creating
   the database is what keeps all three off world-readable.
@@ -192,10 +198,14 @@ paging, and the `saved_queries` table.
 file with its own fixture test. Editing one in place changes its checksum,
 which makes sqlx refuse every database that already applied it.
 
-A database carrying a version this build has no migration for is refused
-with `StorageError::HistoryNewerThanApp` and nothing is written, so an
-older binary cannot damage a newer file. Any other migration failure is
+A database carrying a migration this build does not have is refused with
+`StorageError::HistoryNewerThanApp` and nothing is written, so a build never
+changes a schema newer than its own. A database at the same schema is read
+and written by any build. Any other migration failure is
 `StorageError::HistoryMigration`.
+
+Before a migration runs on a database that already has some, `open` keeps a
+copy of it ([Copies before a format upgrade](#copies-before-a-format-upgrade)).
 
 `QueryHistory::record` refuses a query over 1 MiB with
 `StorageError::TooLarge`.
@@ -241,6 +251,18 @@ can tell whether a re-pinned entry falls in the pages already read.
 - `delete_for_connection` removes one connection's entries, pinned ones
   included, for a connection deleted along with its history, then runs
   `optimize` as a prune does.
+- A deletion the user asks for (`delete_returning`, `clear_all`,
+  `delete_for_connection` and the saved queries' `delete` and
+  `delete_for_connection`) reaches each copy an upgrade kept before the
+  database, so a copy that fails leaves the database as it was and an Undo
+  never loses its entries. `prune` trims the copies after its own deletes.
+  Either way `trim_upgrade_copies` also makes each copy hold no history entry
+  or saved query the database no longer has. It
+  attaches the database and deletes the rest in one transaction with
+  `secure_delete` on, optimizing the copy's full-text indexes, so the words
+  leave its blocks and freed pages together. A copy that cannot be trimmed,
+  being damaged, is deleted, and so is what a crash left of one: an unfinished
+  copy, a temporary file and the journals of a copy that is gone.
 - `connections_with_history` lists each connection the history holds
   under the name of its latest run, so a renamed connection shows once.
 
@@ -367,8 +389,41 @@ A keyring failure is a `SecretError` from `tablepro-core`, not a `StorageError`;
 ## Changing a format
 
 - A JSON document is a `VersionedDocument` with a `version` field. Every document starts at version 1 with no upgrade step: builds before the first release left no format to read ([ADR 0033](decisions/0033-no-compatibility-with-pre-release-states.md)). A new shape bumps its `VERSION` and appends a step to its `UPGRADES`, which turns a file of the version before into the new shape. `decode_document` runs an older file through every step it is behind, oldest first, so a user who skipped releases keeps their data. A step that shipped is never changed or dropped.
-- The upgrade happens in memory. The file stays as it was until the next save writes the current version.
-- A file older than the first step, one a step cannot read, or one from a newer build is never written over. The connection list and a workspace wait for the user's Reset, which moves the file aside; the smaller state files move an unusable file aside themselves.
+- The upgrade happens in memory. The file stays as it was until the next save, which keeps a copy of it and then writes the current version ([Copies before a format upgrade](#copies-before-a-format-upgrade)).
+- A file older than the first step, one a step cannot read, or one in a format newer than the build's is never written over. The connection list and a workspace wait for the user's Reset, which moves the file aside; the smaller state files move an unusable file aside themselves.
 - Each released version of the connection list and the workspace file has a golden file that a test reads into the model it was written from: `core/crates/storage/tests/fixtures/connections-v1.json` and `crates/app/tests/fixtures/workspace-v1.json`. Once a release ships it, a fixture is never edited. A format change adds the new version's fixture and updates the expected models of the old ones, which then read through the upgrade.
 - The history database moves forward by sqlx migration: a new timestamped file under `core/crates/storage/migrations/` with its own fixture test, never an edit to an applied one.
 - Update this page, and add a fragment to the Linux changelog.
+
+## Copies before a format upgrade
+
+A file an older build wrote is copied beside itself before the first write
+that replaces it with a newer format ([core ADR 0012](../../core/docs/decisions/0012-copies-before-a-format-upgrade.md)):
+
+- The copy is `<file>.v<version>-<unix seconds>`, with `-<n>` after it for a
+  second copy in the same second, such as `connections.json.v1-1762300000`.
+  `<version>` is the format the copy
+  holds, the document's `version` or the history's newest migration.
+- `tablepro_storage::upgrade_copies` makes them. A JSON document's copy is its
+  bytes as read, written 0600 by `write_private_blocking`; a copy whose bytes
+  match the newest one is not made again. The history's is `VACUUM INTO` through
+  the open connection, so it holds what the WAL holds too, into a 0600
+  `.partial` file. Its full-text indexes are then optimized with `secure_delete`
+  on, since `VACUUM INTO` copies the words of entries deleted before, and only
+  then is it synced and renamed into place.
+- Each file keeps its newest 3 copies (`KEPT_PER_FILE`); a new one deletes the
+  oldest past that.
+- A copy of a session's tabs names their editor drafts and holds none of their
+  text. Drafts have no format version, so the older build reads them as they
+  are now; a tab closed since the copy comes back without its text.
+- Every write of the connection list first takes the connections it no longer
+  has out of each copy of `connections.json`, and deletes a copy it cannot
+  read that way; a failed trim fails the write, so the next one tries again. Deleting
+  a connection deletes the copies of the column layout and filter files, which
+  name its tables and filter values.
+- A copy that cannot be made fails the write or the open, and the file is
+  left as it was. The error names the copy's path.
+- Reading never makes a copy. Nothing restores one on its own:
+  [troubleshooting.md](troubleshooting.md#after-a-downgrade) has the steps.
+- `upgrade_copies` tests the hook with a synthetic version bump of a document
+  and of a migration list, so it needs no format the app shipped.

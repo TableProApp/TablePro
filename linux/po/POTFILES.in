@@ -93,6 +93,7 @@ crates/app/src/services/grid/grid_column.rs
 crates/app/src/services/grid/grid_row_id.rs
 crates/app/src/services/grid/hex_dump.rs
 crates/app/src/services/grid/mod.rs
+crates/app/src/services/grid/result_refusal.rs
 crates/app/src/services/grid/row_key_builder.rs
 crates/app/src/services/grid/row_snapshot.rs
 crates/app/src/services/grid/selection_summary.rs
@@ -359,6 +360,7 @@ crates/app/src/ui/editor/format_plan.rs
 crates/app/src/ui/editor/imp.rs
 crates/app/src/ui/editor/inline_suggestion.rs
 crates/app/src/ui/editor/mod.rs
+crates/app/src/ui/editor/result_editing.rs
 crates/app/src/ui/editor/result_item.rs
 crates/app/src/ui/editor/result_widgets.rs
 crates/app/src/ui/editor/results_pane.rs
@@ -431,6 +433,7 @@ crates/app/src/ui/filter_strip/rule_operators.rs
 crates/app/src/ui/filter_strip/rule_row.rs
 crates/app/src/ui/filter_strip/rule_value_editor.rs
 crates/app/src/ui/filter_strip/tests.rs
+crates/app/src/ui/form_dialog.rs
 crates/app/src/ui/format/mod.rs
 crates/app/src/ui/format/thousands.rs
 crates/app/src/ui/handler_guard.rs
@@ -554,7 +557,6 @@ crates/app/src/ui/structure_tab/foreign_key_draft.rs
 crates/app/src/ui/structure_tab/foreign_key_handlers.rs
 crates/app/src/ui/structure_tab/foreign_key_object.rs
 crates/app/src/ui/structure_tab/foreign_keys_input.rs
-crates/app/src/ui/structure_tab/form_dialog.rs
 crates/app/src/ui/structure_tab/imp.rs
 crates/app/src/ui/structure_tab/index_dialog.rs
 crates/app/src/ui/structure_tab/index_draft.rs
@@ -597,6 +599,8 @@ crates/app/src/ui/text_view_teardown.rs
 crates/app/src/ui/welcome_view.rs
 crates/app/src/ui/window_geometry.rs
 crates/app/src/ui/workspace/assistant.rs
+crates/app/src/ui/workspace/catalog_dialogs.rs
+crates/app/src/ui/workspace/catalog_ops.rs
 crates/app/src/ui/workspace/close_flow.rs
 crates/app/src/ui/workspace/database_transfer.rs
 crates/app/src/ui/workspace/definitions.rs
@@ -642,6 +646,7 @@ crates/app/src/ui/workspace/tab_spec.rs
 crates/app/src/ui/workspace/tab_title.rs
 crates/app/src/ui/workspace/table_naming.rs
 crates/app/src/ui/workspace/tests/assistant.rs
+crates/app/src/ui/workspace/tests/catalog_ops.rs
 crates/app/src/ui/workspace/tests/close_tab.rs
 crates/app/src/ui/workspace/tests/definitions.rs
 crates/app/src/ui/workspace/tests/diagram.rs

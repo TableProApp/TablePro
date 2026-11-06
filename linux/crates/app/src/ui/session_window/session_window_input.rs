@@ -2,6 +2,7 @@ use gtk4::glib;
 use libadwaita as adw;
 use tablepro_core::SafeModeLevel;
 use tablepro_core::credentials::SecretKind;
+use tablepro_core::ddl::DropDatabaseOptions;
 use tablepro_session::SessionKey;
 use tablepro_storage::{ConnectionColor, ConnectionGroupName, ConnectionTag, ConnectionTagName, SavedConnection};
 use uuid::Uuid;
@@ -15,6 +16,7 @@ use super::resolve_file_identity::ResolvedFile;
 use super::session_window_command::SessionWindowCommand;
 use crate::services::connection_deletion::DeletionOptions;
 use crate::ui::connect_dialog::ConnectSubmission;
+use crate::ui::workspace::DatabaseDrop;
 use crate::workspace::{CloseReason, CompletedWork};
 
 #[derive(Debug)]
@@ -26,6 +28,8 @@ pub(crate) enum SessionWindowInput {
     OpenFile(gio::File),
     /// The file resolved, off the GTK thread, to the session it opens.
     FileResolved(Box<ResolvedFile>),
+    /// A SQL script from Files or the command line, on its way to an editor tab.
+    Script(ScriptInput),
     /// Open one of the sessions the window was opened to restore.
     Restore(SessionKey),
     /// The saved connections could not be read for this restored key,
@@ -75,6 +79,34 @@ pub(crate) enum SessionWindowInput {
     /// Open Database… on a connection's row: pick another of its server's
     /// databases to open beside it.
     ChooseDatabaseIn(SessionKey),
+    /// New Database… on a connection's row.
+    NewDatabaseIn(SessionKey),
+    /// New Schema… on a connection's row.
+    NewSchemaIn(SessionKey),
+    /// Drop Database… on a connection's row, which asks which one first,
+    /// or on the row of a database open beside its connection.
+    DropDatabaseIn(SessionKey),
+    /// A session is about to drop a database. The window first closes
+    /// the session it holds on that database, through that session's own
+    /// prompts, then hands the drop back to the session that asked, and
+    /// to no other (0034).
+    ReleaseDatabase {
+        target: DatabaseDrop,
+        options: DropDatabaseOptions,
+    },
+    /// The drop the window let go of a database for ran or failed, so the
+    /// database may open again.
+    DatabaseDropFinished(DatabaseDrop),
+    /// A database of the connection under the key was created or
+    /// dropped, so each of the connection's sessions lists them again.
+    DatabasesChanged(SessionKey),
+    /// Open `database` beside the connection under `key`, as a new one
+    /// shows nowhere else where the connection's catalog holds its own
+    /// database only.
+    OpenDatabaseIn {
+        key: SessionKey,
+        database: String,
+    },
     MovedTab(MovedTab),
     /// The prompts approved closing the session under the key.
     SessionTeardownApproved(SessionKey),
@@ -208,4 +240,23 @@ pub(crate) enum LibraryEdit {
     DeleteGroup(Uuid),
     Change(LibraryMove),
     SetFavourite(Uuid, bool),
+}
+
+#[derive(Debug)]
+pub(crate) enum ScriptInput {
+    /// Open it in an editor tab.
+    Open(gio::File),
+    Loaded {
+        file: gio::File,
+        text: Result<String, String>,
+        /// The session in front when the read began, which takes the script if it is still open.
+        target: Option<SessionKey>,
+    },
+    /// The waiting scripts banner's Cancel.
+    DropWaiting,
+    /// Scripts another window's user chose this window's session for.
+    For {
+        key: SessionKey,
+        scripts: Vec<(gio::File, String)>,
+    },
 }

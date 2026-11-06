@@ -131,6 +131,18 @@ impl WriteConfirmation {
             destructive: false,
         }
     }
+
+    /// A schema or database the sidebar creates, on a connection that
+    /// asks before every write. `heading` names what is created.
+    pub(crate) fn creation(connection: &str, heading: String, sql: String) -> Self {
+        Self {
+            heading,
+            body: asks_before_writes(connection),
+            sql,
+            proceed: crate::i18n::gettext("_Create"),
+            destructive: false,
+        }
+    }
 }
 
 /// A client's statement as the user should read it. A character that
@@ -381,6 +393,27 @@ mod tests {
             confirmation.body,
             "Safe Mode on “Prod” asks before every change to the database. The import runs 2 statements; the first is shown."
         );
+    }
+
+    #[gtk4::test]
+    fn a_creation_asks_with_its_sql_and_create() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let confirmation = WriteConfirmation::creation(
+            "Prod",
+            "Create Database “shop”?".to_owned(),
+            "CREATE DATABASE \"shop\";".to_owned(),
+        );
+
+        let dialog = build(&confirmation);
+
+        assert_eq!(dialog.heading().as_deref(), Some("Create Database “shop”?"));
+        assert_eq!(
+            dialog.body(),
+            "Safe Mode on “Prod” asks before every change to the database."
+        );
+        assert_eq!(shown_sql(&dialog), "CREATE DATABASE \"shop\";");
+        assert_eq!(dialog.response_label(PROCEED).as_str(), "_Create");
+        assert_eq!(dialog.default_response().as_deref(), Some(CANCEL));
     }
 
     fn bound(sql: &str, value: Option<Value>) -> Statement {

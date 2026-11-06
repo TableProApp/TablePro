@@ -50,6 +50,10 @@ fn configuration_message(error: &DriverError) -> String {
     match error {
         DriverError::Config(config) => config_message(config),
         DriverError::Unsupported { feature } => unsupported_message(*feature),
+        DriverError::DatabaseNotFound { database } => crate::i18n::gettext_f(
+            "The database “{database}” does not exist on the server.",
+            &[("database", database)],
+        ),
         _ => crate::i18n::gettext("The connection settings cannot be used."),
     }
 }

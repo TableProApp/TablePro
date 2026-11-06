@@ -7,8 +7,9 @@ use super::{Accelerator, AcceleratorScope, ShortcutListing, ShortcutOwner, Short
 use AcceleratorScope::{Application, Component, Local, Stock};
 use ShortcutListing::{Listed, Unlisted};
 use ShortcutOwner::{
-    AssistantComposer, BrowseTab, CellEditor, ConnectionTree, DiagramCanvas, DiagramTab, FilterStrip, Grid, GridCell,
-    HistoryRow, InlineSuggestion, PickerPage, PickerRow, SqlEditor, SqlEditorCursors, SqlEditorTab, StructureTab,
+    AssistantComposer, BrowseTab, CellEditor, ConnectionTree, DiagramCanvas, DiagramTab, EditorResults, FilterStrip,
+    Grid, GridCell, HistoryRow, InlineSuggestion, PickerPage, PickerRow, SqlEditor, SqlEditorCursors, SqlEditorTab,
+    StructureTab,
 };
 use ShortcutSection::{BrowseTable, DataGrid, ErDiagram, General, TableStructure, Tabs};
 
@@ -348,6 +349,15 @@ pub const ACCELERATORS: &[Accelerator] = &[
         &["<Primary>s"],
         Listed(ShortcutSection::SqlEditor),
     ),
+    local(EditorResults, BUBBLE, "results.save", &["<Primary>s"], Unlisted),
+    local(EditorResults, BUBBLE, "results.undo", &["<Primary>z"], Unlisted),
+    local(
+        EditorResults,
+        BUBBLE,
+        "results.redo",
+        &["<Primary><Shift>z", "<Primary>y"],
+        Unlisted,
+    ),
     local(
         SqlEditorTab,
         BUBBLE,
@@ -551,6 +561,7 @@ pub const fn controller_name(owner: ShortcutOwner) -> &'static str {
         SqlEditor => "tablepro-sql-editor-shortcuts",
         SqlEditorCursors => "tablepro-sql-editor-cursor-shortcuts",
         SqlEditorTab => "tablepro-sql-editor-tab-shortcuts",
+        EditorResults => "tablepro-editor-results-shortcuts",
         StructureTab => "tablepro-structure-tab-shortcuts",
         FilterStrip => "tablepro-filter-strip-shortcuts",
         ConnectionTree => "tablepro-connection-tree-shortcuts",

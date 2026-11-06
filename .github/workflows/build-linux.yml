@@ -409,6 +409,18 @@ jobs:
       # checks in every rust-format entry.
       - name: Check the catalogues
         run: meson test -C _build --no-rebuild --suite po --print-errorlogs
+      # Reported, never failed: strings land before the translation run
+      # after the string freeze. A release refuses the gap
+      # (release-linux.yml, po/README.md).
+      - name: Report untranslated entries
+        run: |
+          status=0
+          po/check-complete.sh >> "$GITHUB_STEP_SUMMARY" || status=$?
+          case "$status" in
+            0) ;;
+            1) echo "::warning title=Translations::a language in po/LINGUAS has untranslated or fuzzy entries, which a release refuses (linux/po/README.md)" ;;
+            *) exit "$status" ;;
+          esac
       # Translators start from this template (po/README.md), since few
       # distributions ship gettext 1.0 yet.
       - name: Publish tablepro.pot

@@ -258,6 +258,7 @@ fn key_grid(key: &str, settings: Rc<AppSettings>, tasks: Tasks) -> DataGrid {
         sorting: GridSorting::Client,
         rules: None,
         tracker: None,
+        result_lock: None,
         settings,
         layout: None,
         references: None,

@@ -7,7 +7,7 @@ use tablepro_core::{
 use uuid::Uuid;
 
 use crate::client_factory::{base_client, read_level, read_only_settings};
-use crate::errors::{ErrorContext, map_error_in};
+use crate::errors::{ErrorContext, map_error_in, missing_at_login};
 use crate::result_reader::drain;
 
 /// How long the server keeps an editor session's state between runs.
@@ -34,6 +34,8 @@ pub(crate) struct ClickHouseEndpoint {
     read_only: bool,
     // The login's own `readonly` level, learned on connect.
     login_readonly: u8,
+    /// The database every request names, as the client was built with it.
+    database: Option<String>,
 }
 
 impl ClickHouseEndpoint {
@@ -53,6 +55,7 @@ impl ClickHouseEndpoint {
             session_timeout: SESSION_TIMEOUT,
             read_only,
             login_readonly: 0,
+            database: target.database.clone().filter(|name| !name.is_empty()),
         };
         endpoint.hold(0);
         Ok(endpoint)
@@ -145,7 +148,8 @@ impl ClickHouseEndpoint {
                 let context = ErrorContext::Login {
                     tls_requested: self.tls_requested,
                 };
-                return Err(self.explain(map_error_in(&error, context)).await);
+                let mapped = missing_at_login(map_error_in(&error, context), self.database.as_deref());
+                return Err(self.explain(mapped).await);
             }
             Ok(Ok(body)) => body,
         };

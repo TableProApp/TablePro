@@ -65,6 +65,7 @@ mod tests {
             (OperationKind::Count, true),
             (OperationKind::Save(WriteKind::RowChanges), false),
             (OperationKind::Save(WriteKind::SchemaChanges), false),
+            (OperationKind::Save(WriteKind::DatabaseChanges), false),
             (OperationKind::Probe, false),
             (OperationKind::Close, false),
             (OperationKind::Export, false),

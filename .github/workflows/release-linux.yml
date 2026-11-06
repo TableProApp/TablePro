@@ -179,6 +179,9 @@ jobs:
         run: |
           meson setup _build --fatal-meson-warnings
           meson compile -C _build tablepro-pot
+      # A language in po/LINGUAS ships complete (po/README.md).
+      - name: Every shipped catalogue is complete
+        run: po/check-complete.sh >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-pot
