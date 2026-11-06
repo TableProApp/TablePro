@@ -199,38 +199,103 @@ class ProblemsTests(unittest.TestCase):
                 self.assertEqual(len(found), expected)
 
     def test_a_version_rpm_or_git_cannot_carry_fails(self):
-        for version in ("1.2", "1.2.0~rc1", "1.2.0-rc-1", "1.2.0-", "1.2.0-rc..1"):
+        for version in ("1.2", "1.2.0~beta.1", "1.2.0-beta-1", "1.2.0-", "1.2.0-beta..1"):
             with self.subTest(version=version):
                 found = check_packaging.problems(self.tree(), version)
 
-                self.assertTrue(any("is neither X.Y.Z nor a pre-release" in problem for problem in found))
+                self.assertTrue(any("is neither X.Y.Z nor a beta" in problem for problem in found))
 
-    def test_a_pre_release_packages_with_a_tilde(self):
-        self.assertEqual(check_packaging.package_version("1.2.0-rc.1"), "1.2.0~rc.1")
+    def test_a_pre_release_other_than_a_beta_fails(self):
+        for version in ("1.2.0-rc.1", "1.2.0-alpha.1", "1.2.0-beta1", "1.2.0-beta.0", "1.2.0-beta.01"):
+            with self.subTest(version=version):
+                found = check_packaging.problems(self.tree(), version)
+
+                self.assertTrue(any("is neither X.Y.Z nor a beta" in problem for problem in found))
+
+    def test_a_beta_packages_with_a_tilde(self):
+        self.assertEqual(check_packaging.package_version("1.2.0-beta.1"), "1.2.0~beta.1")
         self.assertEqual(check_packaging.package_version("1.2.0"), "1.2.0")
 
-    def test_a_pre_release_tag_passes_when_the_spec_packages_the_tilde_version(self):
-        root = self.tree(
-            releases='<release version="1.2.0-rc.1" date="2026-10-14"/>',
-            version="1.2.0~rc.1",
-            changelog="1.2.0~rc.1",
-            man_version="1.2.0-rc.1",
-        )
+    def beta_tree(self, **changes):
+        fields = {
+            "releases": '<release version="1.2.0~beta.1" date="2026-10-14" type="development"/>',
+            "version": "1.2.0~beta.1",
+            "changelog": "1.2.0~beta.1",
+            "man_version": "1.2.0-beta.1",
+            "notes": "# Changelog\n",
+        }
+        fields.update(changes)
+        return self.tree(**fields)
 
-        self.assertEqual(check_packaging.problems(root, "1.2.0-rc.1", "linux-v1.2.0-rc.1", "2026-10-14"), [])
+    def test_a_beta_tag_passes_when_the_spec_and_metainfo_package_the_tilde_version(self):
+        root = self.beta_tree()
 
-    def test_a_spec_with_the_upstream_pre_release_fails(self):
-        root = self.tree(
-            releases='<release version="1.2.0-rc.1" date="2026-10-14"/>',
-            version="1.2.0-rc.1",
-            changelog="1.2.0~rc.1",
-            man_version="1.2.0-rc.1",
-        )
+        self.assertEqual(check_packaging.problems(root, "1.2.0-beta.1", "linux-v1.2.0-beta.1", "2026-10-14"), [])
+        self.assertEqual(check_packaging.problems(root, "1.2.0-beta.1"), [])
 
-        found = check_packaging.problems(root, "1.2.0-rc.1")
+    def test_a_spec_with_the_upstream_beta_fails(self):
+        root = self.beta_tree(version="1.2.0-beta.1")
+
+        found = check_packaging.problems(root, "1.2.0-beta.1")
 
         self.assertEqual(len(found), 1)
-        self.assertIn("packages version 1.2.0-rc.1, not 1.2.0~rc.1", found[0])
+        self.assertIn("packages version 1.2.0-beta.1, not 1.2.0~beta.1", found[0])
+
+    # AppStream sorts 1.2.0-beta.1 above 1.2.0, so the release's entry would fail validation.
+    def test_a_metainfo_with_the_upstream_beta_fails(self):
+        root = self.beta_tree(releases='<release version="1.2.0-beta.1" date="2026-10-14" type="development"/>')
+
+        found = check_packaging.problems(root, "1.2.0-beta.1")
+
+        self.assertEqual(found, [f"the newest release in {check_packaging.METAINFO} is 1.2.0-beta.1, not 1.2.0~beta.1"])
+
+    def test_a_beta_is_a_development_release(self):
+        for releases in (
+            '<release version="1.2.0~beta.1" date="2026-10-14"/>',
+            '<release version="1.2.0~beta.1" date="2026-10-14" type="stable"/>',
+            '<release version="1.2.0~beta.1" date="2026-10-14" type="snapshot"/>',
+        ):
+            with self.subTest(releases=releases):
+                found = check_packaging.problems(self.beta_tree(releases=releases), "1.2.0-beta.1")
+
+                self.assertEqual(len(found), 1)
+                self.assertIn('not "development"', found[0])
+
+    def test_a_release_is_not_a_development_release(self):
+        root = self.tree(releases='<release version="1.2.0" date="2026-10-14" type="development"/>')
+
+        found = check_packaging.problems(root, "1.2.0")
+
+        self.assertEqual(found, [f'the newest release in {check_packaging.METAINFO} has type="development", not "stable"'])
+
+    def test_a_release_above_its_betas_passes(self):
+        releases = (
+            '<release version="1.2.0" date="2026-10-14" type="stable"/>\n'
+            '<release version="1.2.0~beta.2" date="2026-10-07" type="development"/>\n'
+            '<release version="1.2.0~beta.1" date="2026-09-30" type="development"/>'
+        )
+
+        self.assertEqual(check_packaging.problems(self.tree(releases=releases), "1.2.0", "linux-v1.2.0", "2026-10-14"), [])
+
+    # A beta has no CHANGELOG.md heading; its version alone marks the release commit.
+    def test_a_beta_release_commit_carries_its_dates(self):
+        found = check_packaging.problems(
+            self.beta_tree(spec_date="Tue Oct 13 2026", man_date="2026-10-13"), "1.2.0-beta.1"
+        )
+
+        self.assertEqual(
+            found,
+            [
+                f"{check_packaging.MAN} is dated 2026-10-13, the metainfo 2026-10-14",
+                f"the %changelog entry for 1.2.0~beta.1-1 in {check_packaging.SPEC} is dated 2026-10-13, "
+                "the metainfo 2026-10-14",
+            ],
+        )
+
+    def test_a_beta_needs_no_changelog_notes(self):
+        found = check_packaging.problems(self.beta_tree(), "1.2.0-beta.1", "linux-v1.2.0-beta.1", "2026-10-14")
+
+        self.assertEqual(found, [])
 
     def test_the_debian_package_builds_with_the_workspace_rust_version(self):
         cases = [

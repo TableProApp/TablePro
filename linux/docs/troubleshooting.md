@@ -1,6 +1,6 @@
 # Troubleshooting
 
-What to check when TablePro for Linux does not behave, and what to send with a bug report. Paths are for the PPA and COPR packages.
+What to check when TablePro for Linux does not behave, and what to send with a bug report. Paths are for the .deb and .rpm packages; the Flatpak's are in [Where TablePro keeps its files](#where-tablepro-keeps-its-files).
 
 ## Passwords
 
@@ -73,12 +73,14 @@ Read the log before you attach it. It names your hosts, databases and tables. It
 
 TablePro writes a report of each crash to `~/.local/state/tablepro/crashes/`. Attach the newest one to the bug report, with the log from the same time.
 
+The Flatpak's line tables, which turn a backtrace's addresses into files and lines, are its `.Debug` extension, from the repository it came from: `flatpak install tablepro app.tablepro.TablePro.Debug//stable`, or `tablepro-beta` and `//beta` for the beta. With flatpak-builder and the GNOME 51 SDK installed, `flatpak-coredumpctl app.tablepro.TablePro` then opens a crash's core dump in gdb with them.
+
 ## Reporting a bug
 
 Open an issue at https://github.com/TableProApp/TablePro/issues with:
 
 - The text from About TablePro > Troubleshooting > Debugging Information. Copy Text puts it on the clipboard. It holds the versions and no connection details.
-- Where TablePro came from (the PPA, COPR or a source build), the distribution and version, and the desktop and session (`echo $XDG_CURRENT_DESKTOP $XDG_SESSION_TYPE`).
+- Where TablePro came from (the PPA, COPR, the Flatpak repository, a .deb, .rpm or Flatpak bundle from GitHub Releases, or a source build), the distribution and version, and the desktop and session (`echo $XDG_CURRENT_DESKTOP $XDG_SESSION_TYPE`).
 - The log and crash report above, when there is one.
 
 ## After a downgrade
@@ -103,3 +105,5 @@ Installing the newer version again brings all of it back, unless it was reset. C
 | `~/.local/state/tablepro/crashes/` | Crash reports |
 
 Preferences are in GSettings: `gsettings list-recursively app.tablepro.TablePro` lists them. `man tablepro` has the same list.
+
+The Flatpak keeps the same files under `~/.var/app/app.tablepro.TablePro/`: `config/tablepro/`, `.local/state/tablepro/` and `data/tablepro/` in place of `~/.config/tablepro/`, `~/.local/state/tablepro/` and `~/.local/share/tablepro/`. Its preferences are listed by `flatpak run --command=gsettings app.tablepro.TablePro list-recursively app.tablepro.TablePro`, and a detailed log comes from `flatpak run --env=RUST_LOG=debug app.tablepro.TablePro 2> tablepro.log`.

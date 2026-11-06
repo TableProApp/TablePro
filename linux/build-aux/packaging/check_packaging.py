@@ -4,12 +4,12 @@
 # translations exactly when po/LINGUAS ships one, and that the Debian
 # package builds with the Rust the workspace names as its rust-version. The
 # release workflow adds the tag and its date, and then CHANGELOG.md must
-# carry that version's notes, unless it is a pre-release, and the spec must
-# be the version's first package release.
+# carry that version's notes, unless it is a beta, and the spec must be the
+# version's first package release.
 #
-# Once CHANGELOG.md has a heading for the version, the release commit has
-# set its dates, and the heading, the spec's %changelog entry and the man
-# page must carry the metainfo's release date.
+# A beta's version exists only from its release commit on, as does a
+# release's CHANGELOG.md heading. From then the heading, the spec's
+# %changelog entry and the man page must carry the metainfo's release date.
 
 import argparse
 import re
@@ -29,9 +29,8 @@ CONTROL = Path("build-aux/debian/control")
 RULES = Path("build-aux/debian/rules")
 MAN = Path("data/tablepro.1")
 
-# X.Y.Z, or a pre-release such as X.Y.Z-rc.1 with no '-' after the first,
-# so the package version below stays a plain substitution.
-RELEASE_VERSION = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?$")
+# X.Y.Z, or the beta X.Y.Z-beta.N, which goes to the beta repositories.
+RELEASE_VERSION = re.compile(r"^\d+\.\d+\.\d+(?:-beta\.[1-9]\d*)?$")
 SPEC_VERSION = re.compile(r"^Version:\s*(\S+)\s*$", re.MULTILINE)
 SPEC_CHANGELOG = re.compile(r"^%changelog\s*\n\*[^\n]*\s-\s(\S+)\s*$", re.MULTILINE)
 SPEC_RELEASE = re.compile(r"^Release:\s*(\S+)\s*$", re.MULTILINE)
@@ -45,9 +44,13 @@ RULES_TOOLCHAIN = re.compile(r"/usr/lib/rust-(\d+\.\d+)/bin\b")
 
 
 def package_version(version):
-    # RPM forbids '-' in Version and git forbids '~' in a tag. Debian and
-    # Fedora both sort X.Y.Z~rc.1 below X.Y.Z.
+    # RPM forbids '-' in Version and git forbids '~' in a tag. dpkg, RPM and
+    # AppStream all sort X.Y.Z~beta.1 below X.Y.Z, and X.Y.Z-beta.1 above it.
     return version.replace("-", "~", 1)
+
+
+def is_beta(version):
+    return "-" in version
 
 
 def newest_release(metainfo):
@@ -164,12 +167,12 @@ def toolchain_problems(root):
 def problems(root, version, tag=None, tag_date=None):
     found = []
     if not RELEASE_VERSION.match(version):
-        found.append(f"version {version} is neither X.Y.Z nor a pre-release such as X.Y.Z-rc.1")
+        found.append(f"version {version} is neither X.Y.Z nor a beta such as X.Y.Z-beta.1")
     if tag is not None:
         if tag != f"linux-v{version}":
             found.append(f"tag {tag} does not name version {version}; expected linux-v{version}")
-        # A pre-release keeps the fragments; its notes are a towncrier draft of them.
-        if "-" not in version and not release_notes(root / CHANGELOG, version):
+        # A beta keeps the fragments; its notes are a towncrier draft of them.
+        if not is_beta(version) and not release_notes(root / CHANGELOG, version):
             found.append(f"{CHANGELOG} has no notes under ## [{version}]")
 
     packaged = package_version(version)
@@ -180,10 +183,14 @@ def problems(root, version, tag=None, tag_date=None):
     if release is None:
         found.append(f"{METAINFO} has no <release>")
     else:
-        if release.get("version") != version:
+        if release.get("version") != packaged:
             found.append(
-                f"the newest release in {METAINFO} is {release.get('version')}, not {version}"
+                f"the newest release in {METAINFO} is {release.get('version')}, not {packaged}"
             )
+        kind = release.get("type", "stable")
+        expected_kind = "development" if is_beta(version) else "stable"
+        if kind != expected_kind:
+            found.append(f'the newest release in {METAINFO} has type="{kind}", not "{expected_kind}"')
         released = release.get("date", "")
         dated = True
         try:
@@ -196,8 +203,10 @@ def problems(root, version, tag=None, tag_date=None):
                 f"the newest release in {METAINFO} is dated {released or 'nothing'}, "
                 f"the tagged commit {tag_date}"
             )
-        released_at_commit = tag is not None or release_heading_date(root / CHANGELOG, version) is not None
-        if dated and release.get("version") == version and released_at_commit:
+        released_at_commit = (
+            tag is not None or is_beta(version) or release_heading_date(root / CHANGELOG, version) is not None
+        )
+        if dated and release.get("version") == packaged and released_at_commit:
             found.extend(release_date_problems(root, version, spec, released, spec_opens_with_version))
 
     versions = SPEC_VERSION.findall(spec)
