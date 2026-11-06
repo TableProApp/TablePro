@@ -9,8 +9,8 @@ use http_body_util::Full;
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
-use hyper_util::rt::TokioIo;
-use tokio::net::TcpListener;
+use hyper_util::rt::{TokioIo, TokioTimer};
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
@@ -19,6 +19,14 @@ use crate::account_settings::CallbackPage;
 const CALLBACK_PATH: &str = "/oauth/callback";
 // The browser may still be reading the page when the answer is in.
 const PAGE_GRACE: Duration = Duration::from_secs(2);
+// A browser sends its request as soon as it connects.
+const HEADER_TIMEOUT: Duration = Duration::from_secs(5);
+// A browser holds one or two. At the cap the rest wait in the backlog until a header timeout frees a slot; evicting
+// one instead could drop the browser's connection before its request arrives.
+const MAX_CONNECTIONS: usize = 32;
+// A full descriptor table clears once a connection closes, and accept(2) on Linux asks for a retry after a new
+// connection's network error.
+const ACCEPT_RETRY: Duration = Duration::from_millis(100);
 
 // RFC 8252 section 7.3: only a request carrying this sign-in's `state` ends the wait.
 pub(crate) struct Loopback {
@@ -43,35 +51,54 @@ impl Loopback {
         format!("http://127.0.0.1:{}{CALLBACK_PATH}", self.port)
     }
 
-    pub(crate) async fn wait(self, state: &str, page: &CallbackPage) -> std::io::Result<Callback> {
-        let (answers, mut answered) = mpsc::channel(1);
+    pub(crate) async fn wait(self, state: &str, page: &CallbackPage) -> Callback {
         let mut connections = JoinSet::new();
-        let callback = loop {
-            tokio::select! {
-                accepted = self.listener.accept() => {
-                    let (stream, _) = accepted?;
-                    let (state, page, answers) = (state.to_owned(), page.clone(), answers.clone());
-                    let service = service_fn(move |request: Request<Incoming>| {
-                        let reply = reply(&request, &state, &page);
-                        let answers = answers.clone();
-                        async move {
-                            if let Some(callback) = reply.callback {
-                                let _ = answers.send(callback).await;
-                            }
-                            Ok::<_, Infallible>(reply.response)
-                        }
-                    });
-                    connections.spawn(
-                        http1::Builder::new()
-                            .keep_alive(false)
-                            .serve_connection(TokioIo::new(stream), service),
-                    );
-                }
-                Some(callback) = answered.recv() => break callback,
-            }
-        };
+        let callback = self.serve(state, page, &mut connections).await;
         let _ = tokio::time::timeout(PAGE_GRACE, async { while connections.join_next().await.is_some() {} }).await;
-        Ok(callback)
+        callback
+    }
+
+    async fn serve(&self, state: &str, page: &CallbackPage, connections: &mut JoinSet<()>) -> Callback {
+        let (answers, mut answered) = mpsc::channel(1);
+        loop {
+            tokio::select! {
+                biased;
+                Some(callback) = answered.recv() => return callback,
+                Some(_) = connections.join_next(), if !connections.is_empty() => {}
+                accepted = self.listener.accept(), if connections.len() < MAX_CONNECTIONS => match accepted {
+                    Ok((stream, _)) => {
+                        connections.spawn(answer(stream, state.to_owned(), page.clone(), answers.clone()));
+                    }
+                    Err(error) => {
+                        tracing::debug!(%error, "the sign-in callback listener could not accept");
+                        tokio::time::sleep(ACCEPT_RETRY).await;
+                    }
+                },
+            }
+        }
+    }
+}
+
+async fn answer(stream: TcpStream, state: String, page: CallbackPage, answers: mpsc::Sender<Callback>) {
+    let service = service_fn(move |request: Request<Incoming>| {
+        let reply = reply(&request, &state, &page);
+        let answers = answers.clone();
+        async move {
+            if let Some(callback) = reply.callback {
+                let _ = answers.send(callback).await;
+            }
+            Ok::<_, Infallible>(reply.response)
+        }
+    });
+    // Without a timer Hyper skips its header timeout, default included.
+    let served = http1::Builder::new()
+        .timer(TokioTimer::new())
+        .header_read_timeout(HEADER_TIMEOUT)
+        .keep_alive(false)
+        .serve_connection(TokioIo::new(stream), service)
+        .await;
+    if let Err(error) = served {
+        tracing::debug!(%error, "a sign-in callback connection failed");
     }
 }
 
@@ -152,6 +179,10 @@ fn escape(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Instant;
+
+    use tokio::io::AsyncReadExt;
+
     use super::*;
 
     fn page() -> CallbackPage {
@@ -210,12 +241,85 @@ mod tests {
             .await
             .expect("an answer");
         let real_page = real.text().await.expect("the page");
-        let callback = waiting.await.expect("the wait ends").expect("a callback");
+        let callback = waiting.await.expect("the wait ends");
 
         assert!(redirect.starts_with("http://127.0.0.1:"));
         assert_eq!(favicon.status(), StatusCode::NOT_FOUND);
         assert_eq!(forged.status(), StatusCode::BAD_REQUEST);
         assert!(real_page.contains("Back to &lt;TablePro&gt;"), "{real_page}");
         assert_eq!(callback, Callback::Code("abc".to_owned()));
+    }
+
+    #[tokio::test]
+    async fn an_idle_peer_is_closed_before_the_sign_in_deadline() {
+        let loopback = Loopback::bind().await.expect("a loopback port");
+        let port = loopback.port;
+        let waiting = tokio::spawn(async move { loopback.wait("s1", &page()).await });
+        let mut peer = TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+            .await
+            .expect("connect to the callback listener");
+        let mut byte = [0_u8; 1];
+        let read = tokio::time::timeout(2 * HEADER_TIMEOUT, peer.read(&mut byte)).await;
+        waiting.abort();
+
+        assert!(matches!(read, Ok(Ok(0) | Err(_))), "an idle peer stayed open: {read:?}");
+    }
+
+    #[tokio::test]
+    async fn the_callback_lands_once_idle_peers_past_the_cap_time_out() {
+        let started = Instant::now();
+        let loopback = Loopback::bind().await.expect("a loopback port");
+        let (port, redirect) = (loopback.port, loopback.redirect_uri());
+        let waiting = tokio::spawn(async move { loopback.wait("s1", &page()).await });
+        let mut peers = Vec::new();
+        for _ in 0..MAX_CONNECTIONS + 8 {
+            peers.push(
+                TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+                    .await
+                    .expect("an idle peer"),
+            );
+        }
+        let real = reqwest::get(format!("{redirect}?code=abc&state=s1"))
+            .await
+            .expect("an answer");
+        let answered_in = started.elapsed();
+        let mut byte = [0_u8; 1];
+        for (index, peer) in peers.iter_mut().take(MAX_CONNECTIONS).enumerate() {
+            let read = tokio::time::timeout(Duration::from_millis(100), peer.read(&mut byte)).await;
+            assert!(
+                matches!(read, Ok(Ok(0) | Err(_))),
+                "idle peer {index} is still held: {read:?}"
+            );
+        }
+        let callback = waiting.await.expect("the wait ends");
+
+        assert_eq!(real.status(), StatusCode::OK);
+        assert_eq!(callback, Callback::Code("abc".to_owned()));
+        assert!(answered_in < 2 * HEADER_TIMEOUT, "the callback waited {answered_in:?}");
+    }
+
+    #[tokio::test]
+    async fn finished_requests_are_not_kept() {
+        let loopback = Loopback::bind().await.expect("a loopback port");
+        let redirect = loopback.redirect_uri();
+        let base = redirect.trim_end_matches(CALLBACK_PATH).to_owned();
+        let http = reqwest::Client::new();
+        let (page, mut connections) = (page(), JoinSet::new());
+        let requests = async {
+            for _ in 0..50 {
+                let unknown = http.get(format!("{base}/")).send().await.expect("an answer");
+                assert_eq!(unknown.status(), StatusCode::NOT_FOUND);
+                unknown.bytes().await.expect("the page");
+            }
+            http.get(format!("{redirect}?code=abc&state=s1"))
+                .send()
+                .await
+                .expect("an answer")
+        };
+        let (callback, real) = tokio::join!(loopback.serve("s1", &page, &mut connections), requests);
+
+        assert_eq!(real.status(), StatusCode::OK);
+        assert_eq!(callback, Callback::Code("abc".to_owned()));
+        assert!(connections.len() <= 2, "{} connection tasks kept", connections.len());
     }
 }

@@ -269,9 +269,7 @@ impl Account {
             waited = tokio::time::timeout(SIGN_IN_TIMEOUT, waiting) => waited,
             () = cancelled => return Err(AccountError::SignInCanceled),
         };
-        let callback = callback
-            .map_err(|_| AccountError::SignInTimedOut)?
-            .map_err(|error| AccountError::Protocol(format!("the loopback listener failed: {error}")))?;
+        let callback = callback.map_err(|_| AccountError::SignInTimedOut)?;
         let code = match callback {
             Callback::Code(code) => code,
             Callback::Refused { error, description } => {
