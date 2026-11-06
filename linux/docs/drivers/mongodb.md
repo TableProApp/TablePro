@@ -103,7 +103,7 @@ Safe Mode reads statements the same way: Confirm Writes asks before every statem
 
 ## Trust
 
-A new connection starts on `Disable`, as mongosh does for `mongodb://`, and on `VerifyFull` with a DNS seed list, as it does for `mongodb+srv://` ([core ADR 0011](../../../core/docs/decisions/0011-tls-mode-of-a-new-connection.md)).
+A new connection starts on `Disable`, as mongosh does for `mongodb://`, and on `VerifyFull` with a DNS seed list, as it does for `mongodb+srv://` ([core ADR 0014](../../../core/docs/decisions/0014-tls-mode-of-a-new-connection.md)).
 
 The crate has no system store of its own: given no CA file it trusts only the Mozilla roots compiled into it. So where the crate does TLS, the driver hands it a bundle: the system store and the connection's CA file as one PEM (`tablepro_net::tls::ca_bundle_pem`), and the client certificate and key as one more, written mode 0600 into a private directory and removed once the client is built, which is when the crate reads them. The crate checks each server's certificate under that server's own name, so the server name override applies only through SSH (`ServerNameOverride::SshForwardOnly`). Require mode skips the check of the certificate and its name.
 

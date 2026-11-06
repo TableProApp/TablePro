@@ -65,7 +65,7 @@ A save or a schema change runs in the server's own zone, `@@GLOBAL.time_zone`, a
 
 ## TLS
 
-- A new connection starts on `Prefer`, as the mysql client's `--ssl-mode=PREFERRED` does ([core ADR 0011](../../../core/docs/decisions/0011-tls-mode-of-a-new-connection.md)). MariaDB's own client from 11.4 requires TLS and checks a self-signed certificate against the password, which sqlx cannot do, so MariaDB starts on `Prefer` too.
+- A new connection starts on `Prefer`, as the mysql client's `--ssl-mode=PREFERRED` does ([core ADR 0014](../../../core/docs/decisions/0014-tls-mode-of-a-new-connection.md)). MariaDB's own client from 11.4 requires TLS and checks a self-signed certificate against the password, which sqlx cannot do, so MariaDB starts on `Prefer` too.
 - `Prefer` is sqlx's `Preferred`: TLS when the server offers it, plaintext when it does not, and no certificate check. A handshake that fails after the server offered TLS is an error, as it is in the mysql client.
 - `Disable` connects without TLS. A server with `require_secure_transport` answers with error 3159, reported as `ServerRequiresTls`. MariaDB before 11.2 answers 1045, Access denied, as it does for a wrong password ([MDEV-30178](https://jira.mariadb.org/browse/MDEV-30178)), so on 10.11 the refusal reads as an authentication failure.
 - `Require` encrypts without checking the certificate. A server that does not offer TLS is reported as `ServerRefusedTls`.

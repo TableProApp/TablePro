@@ -6,13 +6,11 @@
 //! or that a newer TablePro wrote, is left exactly as it is.
 
 mod column_layout_store;
-mod column_width_store;
-mod column_widths_document;
+mod column_layouts_document;
 mod filter_settings_document;
 mod filter_settings_store;
 mod state_file;
 
 pub use column_layout_store::ColumnLayoutStore;
-pub use column_width_store::ColumnWidthStore;
 pub use filter_settings_store::FilterSettingsStore;
 pub use state_file::StateFile;

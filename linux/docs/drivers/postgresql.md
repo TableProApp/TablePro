@@ -1,6 +1,6 @@
 # PostgreSQL
 
-Driver id `postgres`, crate `core/crates/drivers/postgres`. It runs on tokio-postgres 0.7.18 with postgres-types and postgres-protocol, deadpool-postgres 0.14.2 for the pool and tokio-postgres-rustls 0.14 for TLS, all from crates.io ([ADR 0016](../decisions/0016-driver-contract-v2.md)). The integration suite runs against PostgreSQL 17, and CI runs it again on 14 and 18; the catalogue is also checked on 13 ([supported servers](../../README.md#supported-servers)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
+Driver id `postgres`, crate `core/crates/drivers/postgres`. It runs on tokio-postgres 0.7.18 with postgres-types and postgres-protocol, deadpool-postgres 0.14.2 for the pool and tokio-postgres-rustls 0.14 for TLS, all from crates.io ([ADR 0016](../decisions/0016-driver-contract-v2.md)). The integration suite runs against PostgreSQL 17, and CI runs it again on 14, 15 and 18; the catalogue is also checked on 13 ([supported servers](../../README.md#supported-servers)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
 
 ## Connections
 
@@ -15,7 +15,7 @@ Every connection logs in with `Config::connect_raw` over a stream from the trans
 
 ## TLS
 
-- A new connection starts on `Prefer`, as libpq's `sslmode=prefer` does ([core ADR 0011](../../../core/docs/decisions/0011-tls-mode-of-a-new-connection.md)).
+- A new connection starts on `Prefer`, as libpq's `sslmode=prefer` does ([core ADR 0014](../../../core/docs/decisions/0014-tls-mode-of-a-new-connection.md)).
 - `Disable` sends no SSLRequest. `Prefer` sends it, goes on in plaintext when the server answers `N`, and checks no certificate (tokio-postgres's `SslMode::Prefer`). Unlike libpq, it does not retry in plaintext after a handshake that fails. `Require` and `VerifyFull` both send it and refuse to continue in plaintext; they differ only in the certificate check.
 - `VerifyFull` trusts the system store plus the connection's CA file ([Trust](../../../core/ARCHITECTURE.md#trust)), and checks the name from `NetworkTarget::tls_server_name()`.
 - A client certificate is offered when one is set, for `cert` authentication in `pg_hba.conf`.

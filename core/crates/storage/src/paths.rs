@@ -38,8 +38,8 @@ impl StoragePaths {
         self.state.join("workspaces")
     }
 
-    pub fn column_widths_file(&self) -> PathBuf {
-        self.config.join("column_widths.json")
+    pub fn column_layouts_file(&self) -> PathBuf {
+        self.config.join("column_layouts.json")
     }
 
     pub fn filter_settings_file(&self) -> PathBuf {

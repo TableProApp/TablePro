@@ -964,15 +964,18 @@ fn an_import_prefers_the_group_of_the_exact_name_over_one_that_differs_in_case()
 }
 
 #[test]
-fn a_version_2_file_with_groups_that_differ_only_in_case_imports_them_as_two() {
+fn a_file_with_groups_that_differ_only_in_case_imports_them_as_two() {
     let target = Library::new();
-    let bytes = br#"{"version": 2, "connections": [
+    let bytes = br#"{"version": 1, "connections": [
         {"id": "550e8400-e29b-41d4-a716-446655440001", "name": "upper", "driver_id": "postgres", "host": "h",
          "port": 5432, "database": "d", "username": "u", "tls": {"mode": "disable"}, "safe_mode": "off",
-         "group": "Work"},
+         "external_access": "read_only", "ai_policy": "ask", "group_id": "7b0e6f4a-1c2d-4e3f-9a8b-0c1d2e3f4a51"},
         {"id": "550e8400-e29b-41d4-a716-446655440002", "name": "lower", "driver_id": "postgres", "host": "h",
          "port": 5432, "database": "d", "username": "u", "tls": {"mode": "disable"}, "safe_mode": "off",
-         "group": "work"}
+         "external_access": "read_only", "ai_policy": "ask", "group_id": "7b0e6f4a-1c2d-4e3f-9a8b-0c1d2e3f4a52"}
+    ], "groups": [
+        {"id": "7b0e6f4a-1c2d-4e3f-9a8b-0c1d2e3f4a51", "name": "Work", "order": 0},
+        {"id": "7b0e6f4a-1c2d-4e3f-9a8b-0c1d2e3f4a52", "name": "work", "order": 1}
     ]}"#;
 
     target

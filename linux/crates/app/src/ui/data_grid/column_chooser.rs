@@ -513,7 +513,7 @@ mod tests {
         adw::init().expect("libadwaita initialises under the test backend");
         let root = tempfile::tempdir().expect("tempdir");
         let runtime = crate::test_support::test_runtime();
-        let store = ColumnLayoutStore::load(root.path().join("column_widths.json"), &runtime.tasks());
+        let store = ColumnLayoutStore::load(root.path().join("column_layouts.json"), &runtime.tasks());
         let connection_id = Uuid::new_v4();
         let saved = || store.layout(connection_id, Some("public"), "users");
         let spec = GridSpec {

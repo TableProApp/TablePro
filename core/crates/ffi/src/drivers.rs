@@ -37,7 +37,7 @@ pub struct DriverInfo {
     pub category: EngineCategoryTag,
     pub endpoint: EndpointInfo,
     pub supported_tls_modes: Vec<TlsModeTag>,
-    // What a new connection starts on (core/docs/decisions/0011-tls-mode-of-a-new-connection.md).
+    // What a new connection starts on (core/docs/decisions/0014-tls-mode-of-a-new-connection.md).
     pub default_tls_mode: TlsModeTag,
     // Ports where a new connection starts on VerifyFull instead.
     pub tls_ports: Vec<u16>,

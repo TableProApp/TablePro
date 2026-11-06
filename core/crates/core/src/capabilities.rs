@@ -149,7 +149,7 @@ impl DriverCapabilities {
     }
 
     /// The TLS mode a new connection to `port` with these options starts
-    /// on, as the engine's own client starts on it (core ADR 0011).
+    /// on, as the engine's own client starts on it (core ADR 0014).
     pub fn new_connection_tls(&self, port: u16, options: &NetworkOptions) -> TlsMode {
         let Some(tls) = &self.tls else {
             return TlsMode::Disable;

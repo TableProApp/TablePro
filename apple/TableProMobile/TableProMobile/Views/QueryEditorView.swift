@@ -893,7 +893,7 @@ struct QueryEditorView: View {
             executionTime = viewModel.executionTime
             if outcome == .completed {
                 hapticSuccess.toggle()
-                IOSAnalyticsProvider.shared.markFirstQueryExecuted()
+                Telemetry.shared.queryExecuted(databaseType: databaseType.rawValue)
             }
             recordHistory(
                 query: trimmed,

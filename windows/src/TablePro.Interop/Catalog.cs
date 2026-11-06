@@ -49,7 +49,7 @@ public sealed record DatabaseEngine(
         _ => false,
     };
 
-    // The core's rule (core/docs/decisions/0011-tls-mode-of-a-new-connection.md).
+    // The core's rule (core/docs/decisions/0014-tls-mode-of-a-new-connection.md).
     public TlsMode NewConnectionTls(int? port) =>
         port is { } number && TlsPorts.Contains(number) ? TlsMode.VerifyFull : DefaultTlsMode;
 

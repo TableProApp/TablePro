@@ -4,7 +4,7 @@ use crate::{ServerNameOverride, TlsMode};
 pub struct TlsCapabilities {
     pub modes: &'static [TlsMode],
     /// The mode a new connection starts on: the one the engine's own
-    /// client starts on (core ADR 0011).
+    /// client starts on (core ADR 0014).
     pub default_mode: TlsMode,
     /// Ports that serve only TLS, where a new connection starts on
     /// `VerifyFull` instead.

@@ -27,7 +27,6 @@ impl StaleBanner {
             && (!self.banner.is_revealed() || self.banner.tooltip_text().as_deref() != message.as_deref());
         self.banner.set_tooltip_text(message.as_deref());
         self.banner
-            .upcast_ref::<gtk::Widget>()
             .update_property(&[gtk::accessible::Property::Description(message.as_deref().unwrap_or(""))]);
         self.banner.set_revealed(stale.is_some());
         if let Some(message) = message.filter(|_| news) {

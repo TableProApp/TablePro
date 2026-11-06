@@ -30,6 +30,16 @@
         <attribute name="action">win.show-saved-queries</attribute>
         <attribute name="hidden-when">action-missing</attribute>
       </item>
+      <item>
+        <attribute name="label" translatable="yes">E_xport Database…</attribute>
+        <attribute name="action">win.export-database</attribute>
+        <attribute name="hidden-when">action-missing</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Import SQL _File…</attribute>
+        <attribute name="action">win.import-sql-file</attribute>
+        <attribute name="hidden-when">action-missing</attribute>
+      </item>
       <!-- The window always has it, enabled only while it shows a
            session. -->
       <item>
