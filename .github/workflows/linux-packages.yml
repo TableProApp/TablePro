@@ -65,7 +65,7 @@ on:
         default: stable
       # Only a release's call passes it, so a run of this workflow on its own builds packages without one.
       posthog-key:
-        description: The PostHog project key the vendor tarball carries for the .deb and .rpm. Public by design.
+        description: The PostHog project key the vendor tarball carries for the .deb, the .rpm and the Flatpak. Public by design.
         type: string
         default: ""
 

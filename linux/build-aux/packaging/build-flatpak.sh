@@ -19,6 +19,11 @@ usage() {
     exit 2
 }
 
+not_a_key() {
+    echo "build-flatpak.sh: vendor/posthog-key holds no PostHog project key, phc_ then letters and digits" >&2
+    exit 2
+}
+
 branch=stable
 if [ "${1:-}" = --branch ]; then
     [ $# -ge 2 ] || usage
@@ -39,6 +44,26 @@ trap 'rm -rf "$work"' EXIT
 cp "$here/../flatpak/app.tablepro.TablePro.json" "$work/"
 cp "$1" "$work/tablepro.tar.xz"
 cp "$2" "$work/tablepro-vendor.tar.xz"
+
+# A release's vendor tarball carries the PostHog key (make-sources.sh), which
+# debian/rules and the RPM spec pass to Meson; here it joins the module's
+# config-opts. Without it the Flatpak sends no usage data.
+tar -C "$work" -xJf "$2" vendor/posthog-key 2>/dev/null || true
+if [ -f "$work/vendor/posthog-key" ]; then
+    key="$(cat "$work/vendor/posthog-key")"
+    case "$key" in
+    *[!0-9A-Za-z_-]*) not_a_key ;;
+    phc_?*) ;;
+    *) not_a_key ;;
+    esac
+    manifest="$work/app.tablepro.TablePro.json"
+    sed "s|\"-Dflatpak=true\"|\"-Dflatpak=true\", \"-Dposthog_key=$key\"|" "$manifest" > "$manifest.keyed"
+    mv "$manifest.keyed" "$manifest"
+    if ! grep -qF "\"-Dposthog_key=$key\"" "$manifest"; then
+        echo "build-flatpak.sh: the manifest has no -Dflatpak=true for the key to join" >&2
+        exit 1
+    fi
+fi
 
 flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 rm -rf "$out/repo"

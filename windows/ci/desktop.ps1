@@ -72,24 +72,25 @@ function Set-DragFullWindows {
     "drag full windows before=$before after=$after"
 }
 
-# The Arm64 image runs wsl.exe a minute after first logon, and its update prompt opens over the desktop.
-function Start-WslWatch([string]$Log, [int]$Minutes = 20) {
-    $script = @"
-`$end = (Get-Date).AddMinutes($Minutes)
-while ((Get-Date) -lt `$end) {
-    foreach (`$p in Get-CimInstance Win32_Process -Filter "Name='wsl.exe'") {
-        `$parent = Get-CimInstance Win32_Process -Filter "ProcessId=`$(`$p.ParentProcessId)"
-        Add-Content -Path '$Log' -Value "`$(Get-Date -Format o) stopping wsl.exe `$(`$p.ProcessId) from `$(`$parent.Name): `$(`$parent.CommandLine)"
-        Stop-Process -Id `$p.ProcessId -Force -ErrorAction SilentlyContinue
+# The Arm64 image's provisioning agent runs wsl.exe every 30 seconds, and now and then its update console opens
+# over the app, takes the activation and so closes a flyout a test has open. Windows starts systray.exe, which
+# shows nothing and exits, in place of any wsl.exe from here on.
+function Block-Wsl {
+    $wsl = Join-Path $env:WINDIR 'System32\wsl.exe'
+    if (-not (Test-Path $wsl)) { return 'the image has no wsl.exe' }
+    $stub = Join-Path $env:WINDIR 'System32\systray.exe'
+    if (-not (Test-Path $stub)) { throw "$stub is missing" }
+    $key = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\wsl.exe'
+    New-Item -Path $key -Force | Out-Null
+    Set-ItemProperty -Path $key -Name Debugger -Value $stub
+    $out = New-TemporaryFile
+    $run = Start-Process $wsl -ArgumentList '--version' -WindowStyle Hidden -PassThru -RedirectStandardOutput $out
+    if (-not $run.WaitForExit(10000)) {
+        Stop-Process -Id $run.Id -Force
+        throw 'the stand-in for wsl.exe did not exit'
     }
-    foreach (`$w in Get-Process WindowsTerminal, conhost -ErrorAction SilentlyContinue | Where-Object { `$_.MainWindowTitle -like '*wsl.exe*' }) {
-        Add-Content -Path '$Log' -Value "`$(Get-Date -Format o) closing `$(`$w.ProcessName) `$(`$w.Id) '`$(`$w.MainWindowTitle)'"
-        Stop-Process -Id `$w.Id -Force -ErrorAction SilentlyContinue
-    }
-    Start-Sleep -Milliseconds 500
-}
-"@
-    New-Item -ItemType File -Path $Log -Force | Out-Null
-    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script))
-    Start-Process pwsh -WindowStyle Hidden -ArgumentList '-NoProfile', '-EncodedCommand', $encoded
+    $said = Get-Content $out -Raw
+    Remove-Item $out
+    if ($said) { throw "wsl.exe still runs: $said" }
+    'wsl.exe blocked'
 }
