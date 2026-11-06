@@ -272,13 +272,14 @@ impl ImportCsvDialog {
         let suggested = suggest_mapping(&self.sheet.headers, &self.columns);
 
         for (column, field) in self.columns.iter().zip(&suggested) {
-            // The subtitle shows values from the file, which may hold & or <.
+            // The title and subtitle show names and values from the file,
+            // which may hold & or <, so markup goes off before they go in.
             let row = adw::ComboRow::builder()
-                .use_markup(false)
-                .title(column.info.name.as_str())
                 .model(&choices)
                 .sensitive(!column.server_filled)
                 .build();
+            row.set_use_markup(false);
+            row.set_title(column.info.name.as_str());
             row.set_selected(field.map_or(0, |index| index as u32 + 1));
             let sender = sender.clone();
             row.connect_selected_notify(move |_| sender.deliver(ImportCsvDialogInput::MappingChanged));

@@ -30,6 +30,10 @@ packages:
     path: ../Packages/TableProCore
   TableProOracle:
     path: ../Packages/TableProOracle
+  # Usage data (clients.md, iOS). The same pin as ../project.yml; a build sends it only with POSTHOG_PROJECT_KEY set.
+  PostHog:
+    url: https://github.com/PostHog/posthog-ios
+    exactVersion: 3.92.7
 
 targets:
 
@@ -69,6 +73,8 @@ targets:
       - ../Plugins/Shared/PluginQueryTimeout.swift
       # The toolbar glyph rule both apps follow on and before the 26 releases.
       - ../TablePro/Core/Services/Infrastructure/Toolbar/ToolbarSymbols.swift
+      # The PostHog client and what it may collect, the same in both apps.
+      - ../TablePro/Core/Services/Telemetry/PostHogTelemetryClient.swift
       # The ClickHouse plugin driver runs whole behind PluginBackedDriver, so every file of the plugin is compiled in.
       - path: ../Plugins/ClickHouseDriverPlugin
         excludes:
@@ -136,7 +142,6 @@ targets:
           destination: plugins
       - package: TableProCore
         products:
-          - TableProAnalytics
           - TableProAutocomplete
           - TableProConnectionLibrary
           - TableProCoreTypes
@@ -164,6 +169,7 @@ targets:
           - TableProTLSClientIdentity
       - package: TableProOracle
         product: TableProOracleCore
+      - package: PostHog
       - framework: ../Libs/ios/DuckDB.xcframework
         embed: false
       - framework: ../Libs/ios/FreeTDS.xcframework
@@ -267,6 +273,8 @@ targets:
       - target: TableProMobile
       - package: TableProCore
         product: TableProTLSTestFixtures
+      - package: TableProCore
+        product: TableProTestSupport
     settings:
       base:
         CURRENT_PROJECT_VERSION: 1

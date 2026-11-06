@@ -9,3 +9,6 @@ MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE
 ONLY_ACTIVE_ARCH = YES
 SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG $(inherited)
 SWIFT_OPTIMIZATION_LEVEL = -Onone
+
+// Local runs, tests, UI tests and previews never send to the production project, whatever Secrets.xcconfig sets.
+POSTHOG_PROJECT_KEY =

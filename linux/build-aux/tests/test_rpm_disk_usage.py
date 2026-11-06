@@ -23,16 +23,45 @@ class RpmDiskUsageTest(unittest.TestCase):
             rpmbuild.write_text("""#!/bin/sh
 set -eu
 build_top=${2#_topdir }
-if [ "$3" = -bs ]; then
-    mkdir -p "$build_top/SRPMS" "$build_top/BUILD/failed/meson-logs"
-    touch "$build_top/SRPMS/tablepro.src.rpm"
-else
-    printf 'package test failed\\n' > "$build_top/BUILD/failed/meson-logs/testlog.txt"
-    sleep 2
-    exit 37
-fi
+mkdir -p "$build_top/SRPMS"
+touch "$build_top/SRPMS/tablepro.src.rpm"
 """)
             rpmbuild.chmod(0o755)
+            mock_root = work / "mock root"
+            mock = tools / "mock"
+            # Mock removes a failed build's chroot unless told to keep it.
+            mock.write_text(f"""#!/bin/sh
+set -eu
+keep=no
+result=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --print-root-path) echo '{mock_root}'; exit 0 ;;
+    --config-opts=cleanup_on_failure=False) keep=yes ;;
+    --resultdir) result="$2"; shift ;;
+    --rebuild)
+        mkdir -p '{mock_root}/builddir/build/BUILD/failed/meson-logs' "$result"
+        printf 'package test failed\\n' > '{mock_root}/builddir/build/BUILD/failed/meson-logs/testlog.txt'
+        printf 'mock build log\\n' > "$result/build.log"
+        sleep 2
+        if [ "$keep" = no ]; then
+            rm -rf '{mock_root}'
+        fi
+        exit 37
+        ;;
+    esac
+    shift
+done
+""")
+            mock.chmod(0o755)
+            for name, script in {
+                "rpm": "#!/bin/sh\necho 44\n",
+                "ip": "#!/bin/sh\nexit 0\n",
+                "unshare": "#!/bin/sh\nshift\nexec \"$@\"\n",
+            }.items():
+                tool = tools / name
+                tool.write_text(script)
+                tool.chmod(0o755)
             temporary = work / "temporary"
             temporary.mkdir()
             source = work / "tablepro-0.1.0.tar.xz"
@@ -59,6 +88,7 @@ fi
             self.assertEqual(result.returncode, 37, result.stderr)
             self.assertEqual(list(temporary.iterdir()), [])
             self.assertEqual((output / "testlog.txt").read_text(), "package test failed\n")
+            self.assertEqual((output / "build.log").read_text(), "mock build log\n")
             with (output / "disk-usage.tsv").open() as samples:
                 rows = list(csv.DictReader(samples, delimiter="\t"))
             self.assertGreaterEqual(len(rows), 3)

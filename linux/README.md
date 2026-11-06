@@ -4,7 +4,7 @@ Native Linux database client, the Linux sibling of the macOS TablePro app. It bu
 
 ## Status
 
-It connects to nine engines: PostgreSQL, MySQL and MariaDB, SQL Server, ClickHouse, Cassandra and ScyllaDB, SQLite, DuckDB, Redis and MongoDB. Each connection session gets a window of its own. Nothing is released yet: no `linux-v*` tag exists. [ROADMAP.md](ROADMAP.md) lists what is built, what is not, and the release criteria.
+It connects to nine engines: PostgreSQL, MySQL and MariaDB, SQL Server, ClickHouse, Cassandra and ScyllaDB, SQLite, DuckDB, Redis and MongoDB. A window holds several connection sessions side by side in one tab view. Nothing is released yet: no `linux-v*` tag exists. [ROADMAP.md](ROADMAP.md) lists what is built, what is not, and the release criteria.
 
 ## Supported servers
 
@@ -12,7 +12,7 @@ TablePro supports the server releases their vendors still support. CI runs each 
 
 | Engine | Tested releases | Not supported |
 |---|---|---|
-| PostgreSQL | 14, 17 and 18 | 13 and older, past end of life (13 on 2025-11-13). 19 until it is released |
+| PostgreSQL | 14, 15, 17 and 18 | 13 and older, past end of life (13 on 2025-11-13). 19 until it is released |
 | MySQL | 8.0, 8.4 and 9.7 | 8.1 to 9.6, innovation releases past end of life. 5.7 and older |
 | MariaDB | 10.11, 11.4 and 12.3 | 10.6 and older, past end of life (10.6 on 2026-07-06). Rolling releases such as 13.0 |
 | SQL Server | 2017, 2019, 2022 and 2025 | 2016 and older, past extended support (2016 on 2026-07-14) |
@@ -24,9 +24,9 @@ TablePro supports the server releases their vendors still support. CI runs each 
 | Redis | 7.4 and 8.10 | 7.2 and older, past end of life. Cluster and Sentinel deployments. Valkey answers the same commands and is not tested |
 | MongoDB | 7.0 and 8.0 | 6.0 and older, past end of life (6.0 on 2025-07-31). Minor releases between major ones, such as 8.2, are not tested. A sharded cluster is reached through `mongos` and is not tested |
 
-- PostgreSQL 14 reaches end of life on 2026-11-12.
+- PostgreSQL 14 reaches end of life on 2026-11-12, and 15, the oldest release after it, is tested already.
 - MySQL 8.0 reached end of life on 2026-04-30, but Amazon RDS keeps 8.0 instances under paid Extended Support until 2029-07-31, so it stays tested.
-- MariaDB 11.8, PostgreSQL 15 and 16, and Cassandra 4.1 are supported between the tested releases, which bound them.
+- MariaDB 11.8, PostgreSQL 16 and Cassandra 4.1 are supported between the tested releases, which bound them.
 
 ## Install
 
@@ -84,10 +84,10 @@ TablePro makes no network requests of its own: no telemetry, no update check and
 System dependencies:
 
 ```bash
-# Ubuntu 26.04
+# Ubuntu 26.04 and 26.10
 sudo apt install -y build-essential pkgconf meson ninja-build gettext desktop-file-utils appstream libglib2.0-bin libxml2-utils libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev libsqlite3-dev libkrb5-dev liblcms2-dev libseccomp-dev clang libclang-dev openssh-client
 
-# Fedora 44
+# Fedora 44 and 45
 sudo dnf install -y gcc gcc-c++ pkgconf meson ninja-build gettext desktop-file-utils appstream glib2-devel libxml2 gtk4-devel libadwaita-devel gtksourceview5-devel sqlite-devel krb5-devel lcms2-devel libseccomp-devel clang-devel openssh-clients
 
 # Arch (not covered by CI)
@@ -102,11 +102,11 @@ test, gnome-keyring for the Secret Service tests and the glycin loaders
 for the Row Details picture tests.
 
 ```bash
-# Ubuntu 26.04
+# Ubuntu 26.04 and 26.10
 sudo apt install -y xvfb xauth dbus-daemon adwaita-icon-theme locales gnome-keyring glycin-loaders
 sudo localedef -i en_US -f UTF-8 en_US.UTF-8
 
-# Fedora 44
+# Fedora 44 and 45
 sudo dnf install -y xorg-x11-server-Xvfb xorg-x11-xauth dbus-daemon adwaita-icon-theme glibc-langpack-en gnome-keyring glycin-loaders
 ```
 
@@ -227,11 +227,13 @@ build-aux/packaging/build-packages.sh all _packages
 
 It writes the source and vendor tarballs, the Debian source package and
 its .deb built offline as Launchpad builds it (checked by lintian), and
-the RPMs (checked by rpmlint) under `_packages`, then installs each
-package in a fresh container and starts it. `deb` or `rpm` in place of
-`all` builds one, and Ubuntu series names after the output directory
-replace the default `resolute`. The source tarball archives `HEAD`, so
-commit first.
+the RPMs built offline in Mock as COPR builds them (checked by rpmlint)
+under `_packages`, then installs each package in a fresh container and
+starts it. `deb` or `rpm` in place of `all` builds one, Ubuntu series
+names after the output directory replace the default `resolute`, and
+`FEDORA` picks the Fedora release, 44 by default. The RPM build runs in a
+privileged container, since Mock mounts filesystems. The source tarball
+archives `HEAD`, so commit first.
 
 After a change to `Cargo.lock`, `build-aux/update-third-party-licenses.sh`
 rewrites `debian/copyright` and the spec's `License` tag and `bundled()`
@@ -338,6 +340,59 @@ The SQL editor can type, delete, paste and move at several places at once.
 | Escape | Returns to one cursor, keeping its selection |
 
 Typing, Return, Tab, BackSpace, Delete and the moves by character, word or line work at every cursor, and one Ctrl+Z takes an edit back at all of them and returns to one cursor. Copy joins the selections with new lines, and pasting as many lines as there are cursors puts one line at each. Ctrl+/ comments every cursor's lines. A click, a find, Format, a query from history and Page Up or Down return to one cursor, as do moving lines (Alt+Up, Alt+Down) and words (Alt+Left, Alt+Right), which act on one line. The completion list, snippets and suggestions while typing work with one cursor, so another cursor ends the snippet being filled in and drops a suggestion, and overwrite (Insert) and Vim mode keep one cursor.
+
+## Export a database and import a SQL file
+
+**Main menu → Export Database…** writes the database, or one of its
+schemas, to a `.sql` file, gzipped as `.sql.gz` if you ask. It holds the
+tables, views, routines and triggers, and every table's rows as
+multi-row INSERTs, in the order a restore needs: structure, then rows,
+then keys, indexes, foreign keys and sequence positions, then views and
+routines, and triggers last so loading the rows fires none. The file is
+meant for an empty database, and loads with the engine's own client as
+well as with TablePro:
+
+| Engine | Written like | Load it with | Left out |
+|---|---|---|---|
+| PostgreSQL | `pg_dump` plain format, INSERTs instead of COPY | `psql -v ON_ERROR_STOP=1 -f file.sql` | Owners, grants, policies, rules, publications, event triggers, foreign tables; the rows of extension configuration tables |
+| MySQL, MariaDB | `mysqldump`, with its `SET` header and `DELIMITER ;;` blocks | `mysql db < file.sql` | Events; FEDERATED and CONNECT tables, whose rows are another server's; `DEFINER` clauses, so the account that loads the file owns the objects |
+| SQL Server | SSMS's Generate Scripts, a `GO` after each batch | `sqlcmd -b -i file.sql` | CLR and encrypted modules, which have no SQL to write; the indexes of indexed views; system versioning, so a temporal table and its history load as ordinary tables with their period times |
+| ClickHouse | `SHOW CREATE` for each table and view | `clickhouse-client < file.sql` | User-defined functions, which belong to no database; the rows a materialized view without `TO` keeps itself, so it fills again only from new rows |
+| SQLite | `sqlite3 .dump` | `sqlite3 new.db < file.sql` | |
+| DuckDB | `EXPORT DATABASE`, in one file | `duckdb new.duckdb < file.sql` | |
+
+Tables are read one after another, each in a read-only transaction of
+its own, so stop writes to the database for a dump whose tables agree.
+A value the engine has no SQL for is written as NULL, and the export
+says which columns that happened to. Redis, MongoDB, Cassandra and
+ScyllaDB have no SQL dump; use `redis-cli --rdb`, `mongodump` or
+`nodetool snapshot`.
+
+**Main menu → Import SQL File…** runs a `.sql` or `.sql.gz` file on the
+connection, on a session of its own so what the file sets stays there.
+The file is read as it runs, so its size does not matter. It is split
+as the engine's client splits it: at `;`, at a MySQL `DELIMITER`, and at
+SQL Server `GO` lines, a `GO 3` batch running three times. Files from
+`pg_dump` load too: their `COPY ... FROM stdin` rows run as INSERTs, and
+the `\restrict` and `\unrestrict` lines that only psql reads are passed
+over. Any other psql command, such as `\connect`, is refused with its
+line.
+
+- **Stop at First Error** is on by default, as with `mysql` and with
+  `psql -v ON_ERROR_STOP=1`. Off, the rest of the file runs and the
+  summary lists each failure with its line; Copy Details copies them with
+  their statements.
+- **Run as One Transaction** is offered on PostgreSQL, SQL Server, SQLite
+  and DuckDB, whose CREATE and DROP roll back: a failure or Stop then
+  undoes everything the file did. The file's own `BEGIN` and `COMMIT`
+  are passed over inside it, and a `ROLLBACK`, or a SQL Server batch that
+  holds a `COMMIT` or `ROLLBACK`, stops the import before it runs. MySQL,
+  MariaDB and ClickHouse commit each statement as it runs, so what ran
+  before a failure stays.
+- On Safe Mode Read-Only, Import SQL File is off. On Confirm
+  Writes, the import dialog is the one question for the whole file.
+- A file must be UTF-8. A MySQL dump of binary columns made without
+  `--hex-blob` holds raw bytes and is refused at its first such line.
 
 ## SQL Server with Windows integrated auth
 

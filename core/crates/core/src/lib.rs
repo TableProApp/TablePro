@@ -20,6 +20,7 @@ pub mod dialect;
 pub mod dml;
 pub mod document;
 mod driver;
+pub mod dump;
 pub mod edit;
 mod editor_session;
 mod engine_category;

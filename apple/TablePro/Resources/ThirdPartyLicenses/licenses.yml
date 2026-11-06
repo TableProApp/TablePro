@@ -534,8 +534,8 @@
   textFile: texts/posthog-ios.txt
   source: spm:posthog-ios
   patched: false
-  platforms: [macos]
-  notes: 'The PostHog product, linked statically into the app for usage data. LICENSE is MIT for PostHog''s
+  platforms: [macos, ios]
+  notes: 'The PostHog product, linked statically into both apps for usage data. LICENSE is MIT for PostHog''s
     code plus an MIT section for the files taken from getsentry/sentry-cocoa. The package also compiles two
     vendored targets into the app, listed in vendor/UPSTREAM.md: PHPLCrashReporter (PLCrashReporter 1.12.2,
     MIT, with protobuf-c 1.4.0 and PLCrashLogWriterEncoding.c under Apache-2.0) and phlibwebp (libwebp

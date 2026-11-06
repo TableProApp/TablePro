@@ -71,20 +71,28 @@ const TRIGGER_DEFINITION_SQL: &str = "SELECT OBJECT_DEFINITION(t.object_id), RTR
       AND p.schema_id = SCHEMA_ID(COALESCE(@P1, SCHEMA_NAME()))";
 
 /// The module types whose code is a .NET assembly, not SQL.
-const CLR_TYPES: [&str; 4] = ["FS", "FT", "PC", "TA"];
+pub(crate) const CLR_TYPES: [&str; 4] = ["FS", "FT", "PC", "TA"];
 
-/// The catalogue gives the numbers in the sequence's own type, which can
-/// be wider than any integer here, so they come as text.
-/// The type as declared: an alias type by its schema and name, which
-/// `system_type_id` would give as the built-in type under it.
-const SEQUENCE_SQL: &str = "SELECT CASE WHEN t.is_user_defined = 1 \
+/// What `SequenceRow` reads, from `sys.sequences s` joined to the
+/// `sys.types t` it is declared as. The catalogue gives the numbers in
+/// the sequence's own type, which can be wider than any integer here, so
+/// they come as text. The type as declared: an alias type by its schema
+/// and name, which `system_type_id` would give as the built-in type
+/// under it.
+pub(crate) const SEQUENCE_COLUMNS: &str = "CASE WHEN t.is_user_defined = 1 \
             THEN QUOTENAME(SCHEMA_NAME(t.schema_id)) + N'.' + QUOTENAME(t.name) ELSE t.name END, \
         CAST(s.start_value AS nvarchar(64)), \
         CAST(s.increment AS nvarchar(64)), CAST(s.minimum_value AS nvarchar(64)), \
         CAST(s.maximum_value AS nvarchar(64)), CAST(s.is_cycling AS int), CAST(s.is_cached AS int), \
-        CAST(s.cache_size AS bigint), CAST(s.precision AS int) \
-    FROM sys.sequences s JOIN sys.types t ON t.user_type_id = s.user_type_id \
-    WHERE s.schema_id = SCHEMA_ID(COALESCE(@P1, SCHEMA_NAME())) AND s.name = @P2";
+        CAST(s.cache_size AS bigint), CAST(s.precision AS int)";
+
+fn sequence_sql() -> String {
+    format!(
+        "SELECT {SEQUENCE_COLUMNS} \
+         FROM sys.sequences s JOIN sys.types t ON t.user_type_id = s.user_type_id \
+         WHERE s.schema_id = SCHEMA_ID(COALESCE(@P1, SCHEMA_NAME())) AND s.name = @P2"
+    )
+}
 
 const INDEXES_SQL: &str = "SELECT i.name, CAST(i.is_unique AS int), CAST(i.is_primary_key AS int), c.name, \
         CAST(ic.is_descending_key AS int), i.filter_definition \
@@ -264,7 +272,7 @@ async fn sequence_definition(
     object: &ObjectInfo,
 ) -> Result<Option<ObjectDefinition>, Interrupt> {
     let params = [optional_text_param(object.schema.as_deref()), text_param(&object.name)];
-    let rows = catalogue_rows(client, watch, SEQUENCE_SQL, &params).await?;
+    let rows = catalogue_rows(client, watch, &sequence_sql(), &params).await?;
     let Some(row) = rows.first() else {
         return Ok(None);
     };
@@ -277,20 +285,20 @@ async fn sequence_definition(
     }))
 }
 
-struct SequenceRow {
+pub(crate) struct SequenceRow {
     type_name: String,
-    start: String,
-    increment: String,
-    minimum: String,
-    maximum: String,
-    cycles: bool,
+    pub(crate) start: String,
+    pub(crate) increment: String,
+    pub(crate) minimum: String,
+    pub(crate) maximum: String,
+    pub(crate) cycles: bool,
     cached: bool,
     cache_size: Option<i64>,
     precision: i64,
 }
 
 impl SequenceRow {
-    fn from_cells(cells: &Cells<'_>) -> Result<Self, DriverError> {
+    pub(crate) fn from_cells(cells: &Cells<'_>) -> Result<Self, DriverError> {
         Ok(Self {
             type_name: cells.required_text(0)?,
             start: cells.required_text(1)?,
@@ -305,7 +313,7 @@ impl SequenceRow {
     }
 }
 
-fn sequence_statement(qualified: &str, row: &SequenceRow) -> String {
+pub(crate) fn sequence_statement(qualified: &str, row: &SequenceRow) -> String {
     let data_type = match row.type_name.as_str() {
         "decimal" | "numeric" => format!("{}({})", row.type_name, row.precision),
         other => other.to_owned(),
@@ -431,7 +439,7 @@ fn foreign_keys(rows: &[Vec<Value>]) -> Result<Vec<ForeignKeyInfo>, DriverError>
 }
 
 /// `sys.foreign_keys` spells each action as its `_desc` text.
-fn referential_action(description: &str) -> Option<ReferentialAction> {
+pub(crate) fn referential_action(description: &str) -> Option<ReferentialAction> {
     match description {
         "NO_ACTION" => Some(ReferentialAction::NoAction),
         "CASCADE" => Some(ReferentialAction::Cascade),

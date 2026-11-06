@@ -15,6 +15,7 @@ mod connection;
 mod ddl;
 mod dialect;
 mod driver;
+mod dump;
 mod editor;
 mod errors;
 mod metadata;
