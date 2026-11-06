@@ -198,11 +198,6 @@ public sealed class ConnectionDraft
             TlsMode = engine.NewConnectionTls(ParsePort(Port));
             TlsModeChosen = false;
         }
-
-        CaFile = url.CaFile ?? CaFile;
-        ClientCertificate = url.ClientCertificate ?? ClientCertificate;
-        ClientKey = url.ClientKey ?? ClientKey;
-        ServerName = url.ServerName ?? ServerName;
     }
 
     public IReadOnlyList<FieldError> Validate()
