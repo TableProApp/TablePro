@@ -1,0 +1,56 @@
+[package]
+name = "tablepro-account"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# Entitlements signed with RFC 8037's test key, for the app's tests.
+fakes = []
+
+[dependencies]
+tablepro-core.workspace = true
+tablepro-storage.workspace = true
+async-trait.workspace = true
+# HMAC and SHA-256 from the one crypto provider (Linux ADR 0009).
+aws-lc-rs.workspace = true
+base64.workspace = true
+bytes.workspace = true
+chrono.workspace = true
+http.workspace = true
+http-body-util = "0.1"
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util.workspace = true
+jsonwebtoken = { version = "11.1.0", default-features = false, features = ["aws_lc_rs"] }
+# Its own reqwest 0.12 stays off: requests go through the workspace's
+# reqwest, with redirects off.
+oauth2 = { version = "5.0.0", default-features = false }
+progenitor-client = "0.15.1"
+# The generated client checks the document's string patterns with it.
+regress = "0.12.0"
+reqwest.workspace = true
+secrecy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["fs", "rt"] }
+tracing.workspace = true
+url.workspace = true
+
+[build-dependencies]
+openapiv3 = "2.2"
+progenitor = { version = "0.15.1", default-features = false }
+serde_json.workspace = true
+
+[dev-dependencies]
+getrandom = "0.3"
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt", "test-util"] }
+
+[lints]
+workspace = true
+
+# Only the v2 client build.rs generates into OUT_DIR uses it, and shear does not read that.
+[package.metadata.cargo-shear]
+ignored = ["regress"]

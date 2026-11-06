@@ -82,6 +82,28 @@ impl SecretStore {
             .await
     }
 
+    pub async fn load_account_token(&self) -> Result<Option<SecretString>, SecretError> {
+        self.load_text(&secret_attributes::for_account_token(&self.schema))
+            .await
+    }
+
+    // Replaces the item: the server rotates the token on every refresh.
+    pub async fn store_account_token(&self, token: &SecretString, label: &str) -> Result<(), SecretError> {
+        let attributes = secret_attributes::for_account_token(&self.schema);
+        self.with_keyring(async |keyring| {
+            keyring
+                .create_item(label, &attributes, oo7::Secret::text(token.expose_secret()), true)
+                .await
+        })
+        .await
+    }
+
+    pub async fn delete_account_token(&self) -> Result<(), SecretError> {
+        let attributes = secret_attributes::for_account_token(&self.schema);
+        self.with_keyring(async |keyring| keyring.delete(&attributes).await)
+            .await
+    }
+
     /// The text of the first item matching `attributes`.
     async fn load_text(&self, attributes: &HashMap<&'static str, String>) -> Result<Option<SecretString>, SecretError> {
         let secret = self

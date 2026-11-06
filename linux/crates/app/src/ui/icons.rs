@@ -1,6 +1,7 @@
 //! Every icon name the app asks the icon theme for. Keeping them in
 //! one place is what lets `all_icons_resolve` prove the set is real.
 
+pub const ACCOUNT: &str = "avatar-default-symbolic";
 pub const ACTION_UNAVAILABLE: &str = "action-unavailable-symbolic";
 pub const APPLICATIONS_ENGINEERING: &str = "applications-engineering-symbolic";
 pub const APPLICATIONS_SCIENCE: &str = "applications-science-symbolic";
@@ -82,6 +83,7 @@ pub const ZOOM_OUT: &str = "zoom-out-symbolic";
     )
 )]
 pub const ALL: &[&str] = &[
+    ACCOUNT,
     ACTION_UNAVAILABLE,
     APPLICATIONS_ENGINEERING,
     APPLICATIONS_SCIENCE,

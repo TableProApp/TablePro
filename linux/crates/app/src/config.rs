@@ -3,6 +3,18 @@ pub const VERSION: &str = default_env(option_env!("TABLEPRO_VERSION"), "unknown"
 pub const PROFILE: &str = default_env(option_env!("TABLEPRO_PROFILE"), "development");
 pub const LOCALEDIR: &str = default_env(option_env!("TABLEPRO_LOCALEDIR"), "/usr/share/locale");
 pub const LIBEXECDIR: &str = default_env(option_env!("TABLEPRO_LIBEXECDIR"), "/usr/libexec");
+// Meson passes these from -Ddev_account_url and the like, for a development build only.
+pub const DEV_ACCOUNT_URL: &str = default_env(option_env!("TABLEPRO_DEV_ACCOUNT_URL"), "");
+pub const DEV_API_URL: &str = default_env(option_env!("TABLEPRO_DEV_API_URL"), "");
+pub const DEV_ENTITLEMENT_KEYS: &str = default_env(option_env!("TABLEPRO_DEV_ENTITLEMENT_KEYS"), "");
+// Empty, so no usage data leaves the machine, unless the build was given -Dposthog_key; with one, nothing is
+// sent until the user chooses to share it. Tests never reach PostHog: a unit test build has no key whatever Cargo
+// was given, and meson.build builds the integration tests and the binary they start without one.
+#[cfg(not(test))]
+pub const POSTHOG_KEY: &str = default_env(option_env!("TABLEPRO_POSTHOG_KEY"), "");
+#[cfg(test)]
+pub const POSTHOG_KEY: &str = "";
+pub const POSTHOG_HOST: &str = "https://eu.i.posthog.com";
 
 pub const GETTEXT_PACKAGE: &str = env!("CARGO_PKG_NAME");
 pub const RESOURCE_BASE_PATH: &str = "/app/tablepro/TablePro";

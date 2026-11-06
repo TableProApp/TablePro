@@ -49,6 +49,7 @@ License:        %{shrink:
     (LGPL-2.1-or-later OR MPL-2.0) AND
     MIT AND
     (MIT OR Unlicense) AND
+    MPL-2.0 AND
     Unicode-3.0 AND
     Unicode-DFS-2015 AND
     Zlib
@@ -177,7 +178,9 @@ export CARGO_BUILD_JOBS=%{_smp_build_ncpus}
 # this binary; thin LTO fits a builder. %%check repeats it, since meson
 # test rebuilds the binary first.
 export CARGO_PROFILE_RELEASE_LTO=thin
-%meson -Dprofile=default -Dkerberos=true
+# A release's vendor tarball carries the PostHog key; without it the app
+# sends no usage data.
+%meson -Dprofile=default -Dkerberos=true -Dposthog_key="$(cat vendor/posthog-key 2>/dev/null)"
 %meson_build
 # cargo2rpm's own call behind %%cargo_license, on the two packages Meson
 # builds for this architecture. The macro covers every workspace member on

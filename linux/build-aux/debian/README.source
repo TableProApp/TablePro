@@ -14,7 +14,9 @@ tablepro_X.Y.Z.orig-vendor.tar.xz holds vendor/ from cargo vendor
 --versioned-dirs, with the source replacement cargo printed as
 vendor/cargo-config.toml. dpkg-source unpacks it into vendor/, and
 debian/rules copies the replacement to .cargo/config.toml before it
-configures, so the build needs no network.
+configures, so the build needs no network. A release's vendor tarball
+also holds vendor/posthog-key, the PostHog project key debian/rules passes
+to Meson as -Dposthog_key. Without it the package sends no usage data.
 
 Toolchain: the package build-depends on rustc-X.Y and cargo-X.Y, X.Y being
 the workspace rust-version, and debian/rules puts /usr/lib/rust-X.Y/bin first

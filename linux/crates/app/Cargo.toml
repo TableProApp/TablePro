@@ -58,6 +58,7 @@ default = ["kerberos"]
 kerberos = ["tablepro-driver-mssql/kerberos"]
 
 [dependencies]
+tablepro-account.workspace = true
 tablepro-ai.workspace = true
 tablepro-core.workspace = true
 tablepro-driver-cassandra.workspace = true
@@ -108,6 +109,9 @@ icu_locale_core = { version = "2.3", features = ["alloc"] }
 indexmap = "2.14"
 # A selection's sum and average, exact past what i128 holds.
 num-bigint.workspace = true
+# Usage data (docs/decisions/0039-usage-data.md): the blocking client, whose worker is a thread of
+# its own. Error tracking stays off: crash reports stay on disk.
+posthog-rs = { version = "0.27.0", default-features = false }
 # The assistant's replies are Markdown; the HTML writer stays off.
 pulldown-cmark = { version = "0.13", default-features = false }
 semver = "1"
@@ -115,6 +119,7 @@ sqlformat = "0.5"
 
 [dev-dependencies]
 proptest.workspace = true
+tablepro-account = { workspace = true, features = ["fakes"] }
 tablepro-session = { workspace = true, features = ["fakes"] }
 tablepro-test-fixtures.workspace = true
 tablepro-test-support.workspace = true

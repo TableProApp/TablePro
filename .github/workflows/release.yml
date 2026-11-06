@@ -111,7 +111,7 @@ jobs:
 
       - name: Write Secrets.xcconfig
         env:
-          POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
+          POSTHOG_PROJECT_KEY: ${{ vars.POSTHOG_PROJECT_KEY }}
         run: printf 'POSTHOG_PROJECT_KEY = %s\n' "$POSTHOG_PROJECT_KEY" > Configs/Secrets.xcconfig
 
       - uses: ./.github/actions/prepare-build

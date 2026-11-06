@@ -35,13 +35,16 @@ generate() {
 
 # A crate with no license file cargo-about can read gets the SPDX template
 # text, which names no copyright holder, and --fail lets that through.
+# MPL-2.0's text has no holder to name, so its SPDX text is the license as
+# the crate ships it. progenitor-client packages no LICENSE, and cargo-about
+# 0.9.2 cannot fetch its repository's: the manifest's URL ends in .git.
 fallbacks="$(mktemp)"
 metadata="$(mktemp)"
 trap 'rm -f "$fallbacks" "$metadata"' EXIT
 generate "$root/build-aux/about/fallbacks.hbs" "$fallbacks"
-if grep -q '[^[:space:]]' "$fallbacks"; then
+if grep -v ': MPL-2.0$' "$fallbacks" | grep -q '[^[:space:]]'; then
     echo "update-third-party-licenses.sh: no license file read for these crates; add or fix their [<crate>.clarify] entry in about.toml:" >&2
-    cat "$fallbacks" >&2
+    grep -v ': MPL-2.0$' "$fallbacks" >&2
     exit 1
 fi
 
