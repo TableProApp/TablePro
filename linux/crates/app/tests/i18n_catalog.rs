@@ -113,12 +113,12 @@ fn child() -> ExitCode {
     );
     check(
         "ngettext_f singular",
-        tablepro_app::i18n::ngettext_f("{n} row", "{n} rows", 1, &[("n", "1")]),
+        tablepro_app::i18n::ngettext_f("{n} row", "{n} rows", 1_u64, &[("n", "1")]),
         "exactly 1 row",
     );
     check(
         "ngettext_f plural",
-        tablepro_app::i18n::ngettext_f("{n} row", "{n} rows", 7, &[("n", "7")]),
+        tablepro_app::i18n::ngettext_f("{n} row", "{n} rows", 7_u64, &[("n", "7")]),
         "all 7 rows",
     );
     check(

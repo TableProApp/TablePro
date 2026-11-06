@@ -4,7 +4,9 @@
 # license file, and libduckdb-sys packs DuckDB's third_party code, whose
 # licenses are not in the crate, into one archive. Each folder under
 # build-aux/about/bundled names a crate version and holds those texts as
-# the bundled project ships them.
+# the bundled project ships them. A component with no file is code the
+# crate's own license file already covers, listed for the RPM's bundled()
+# Provides.
 
 import argparse
 import json
@@ -33,8 +35,9 @@ def load_bundles(root):
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         components = []
         for component in manifest["components"]:
-            text = (manifest_path.parent / component["file"]).read_text(encoding="utf-8")
-            components.append({**component, "text": text})
+            if "file" in component:
+                component = {**component, "text": (manifest_path.parent / component["file"]).read_text(encoding="utf-8")}
+            components.append(component)
         bundles.append({**manifest, "components": components})
     return bundles
 
@@ -58,7 +61,8 @@ def merge_json(data, bundles):
                 f"build-aux/about/bundled/{bundle['crate']} is for {bundle['version']}, but {crate['version']} is "
                 "linked; take the license files of the code the new version bundles"
             )
-        for component in bundle["components"]:
+        described = [component for component in bundle["components"] if "text" in component]
+        for component in described:
             data["licenses"].append(
                 {
                     "id": component["id"],
@@ -68,21 +72,20 @@ def merge_json(data, bundles):
                     "component": component["name"],
                 }
             )
-        crate["license"] = combined_expression(
-            [crate["license"]] + [component["license"] for component in bundle["components"]]
-        )
+        crate["license"] = combined_expression([crate["license"]] + [component["license"] for component in described])
     return data
 
 
 def render_section(bundles):
     lines = [SECTION, "", SECTION_INTRO]
     for bundle in bundles:
-        for component in bundle["components"]:
+        for component in (component for component in bundle["components"] if "text" in component):
             lines += [
                 "",
                 f"### {component['name']}: {component['license_name']}",
                 "",
-                f"Compiled into {bundle['crate']} {bundle['version']}, from `{component['path']}` in {bundle['source']}.",
+                f"Compiled into {bundle['crate']} {bundle['version']}, from `{component['path']}` in "
+                f"{component.get('source', bundle['source'])}.",
                 "",
                 "~~~~text",
                 component["text"].rstrip("\n"),

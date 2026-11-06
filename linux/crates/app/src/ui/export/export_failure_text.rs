@@ -14,13 +14,13 @@ use super::{AbortOutcome, ExpectedRows, ExportFailure, ExportOutcome, ExportStre
 use crate::i18n::{gettext, gettext_f, ngettext_f};
 use crate::ui::error_text::operation_error_message;
 use crate::ui::file_reveal::{FileRevealer, reveal_failure_toast};
-use crate::ui::format::{format_thousands, plural_count};
+use crate::ui::format::format_thousands;
 
 pub(crate) fn exported_text(rows: u64, name: &str) -> String {
     ngettext_f(
         "Exported {rows} row to {name}",
         "Exported {rows} rows to {name}",
-        plural_count(rows),
+        rows,
         &[("rows", &format_thousands(rows)), ("name", name)],
     )
 }
@@ -34,16 +34,11 @@ pub(crate) fn stopped_text(outcome: AbortOutcome, name: &str) -> String {
 
 /// How far a database export has got.
 pub(crate) fn tables_progress_text(done: usize, total: usize, rows: u64) -> String {
-    let rows_text = ngettext_f(
-        "{rows} row",
-        "{rows} rows",
-        plural_count(rows),
-        &[("rows", &format_thousands(rows))],
-    );
+    let rows_text = ngettext_f("{rows} row", "{rows} rows", rows, &[("rows", &format_thousands(rows))]);
     ngettext_f(
         "{done} of {total} table, {rows_text}",
         "{done} of {total} tables, {rows_text}",
-        plural_count(total as u64),
+        total as u64,
         &[
             ("done", &format_thousands(done as u64)),
             ("total", &format_thousands(total as u64)),
@@ -57,7 +52,7 @@ pub(crate) fn dumped_text(report: &DumpReport, name: &str) -> String {
     ngettext_f(
         "Exported {tables} table to {name}",
         "Exported {tables} tables to {name}",
-        plural_count(report.tables as u64),
+        report.tables as u64,
         &[("tables", &format_thousands(report.tables as u64)), ("name", name)],
     )
 }
@@ -70,7 +65,7 @@ pub(crate) fn dump_warnings(report: &DumpReport) -> Option<String> {
         lines.push(ngettext_f(
             "{count} value in {table}.{column} has no SQL form and was written as NULL.",
             "{count} values in {table}.{column} have no SQL form and were written as NULL.",
-            plural_count(omitted.count),
+            omitted.count,
             &[
                 ("count", &format_thousands(omitted.count)),
                 ("table", &omitted.table.name),
@@ -145,16 +140,16 @@ pub(crate) fn progress_text(rows: u64, expected: Option<ExpectedRows>) -> String
         Some(ExpectedRows::Exact(total)) => ngettext_f(
             "{rows} of {total} row",
             "{rows} of {total} rows",
-            plural_count(total),
+            total,
             &[("rows", &count), ("total", &format_thousands(total))],
         ),
         Some(ExpectedRows::About(total)) => ngettext_f(
             "{rows} of about {total} row",
             "{rows} of about {total} rows",
-            plural_count(total),
+            total,
             &[("rows", &count), ("total", &format_thousands(total))],
         ),
-        None => ngettext_f("{rows} row", "{rows} rows", plural_count(rows), &[("rows", &count)]),
+        None => ngettext_f("{rows} row", "{rows} rows", rows, &[("rows", &count)]),
     }
 }
 

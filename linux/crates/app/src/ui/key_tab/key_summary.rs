@@ -4,7 +4,7 @@ use tablepro_core::keyspace::KeyTtl;
 use tablepro_core::meta::KeyKind;
 
 use crate::i18n::{ngettext_f, pgettext};
-use crate::ui::format::{format_thousands, plural_count};
+use crate::ui::format::format_thousands;
 
 /// The type of value a key holds, in Redis's documentation's words.
 pub(crate) fn key_kind_name(kind: KeyKind) -> String {
@@ -22,15 +22,14 @@ pub(crate) fn key_kind_name(kind: KeyKind) -> String {
 /// How many entries the key holds, in the words its type uses: a
 /// string's bytes, a hash's fields, a list's elements.
 pub(super) fn length_text(kind: KeyKind, length: u64) -> Option<String> {
-    let count = plural_count(length);
     let n = format_thousands(length);
     let placeholders = [("n", n.as_str())];
     Some(match kind {
-        KeyKind::String => ngettext_f("{n} byte", "{n} bytes", count, &placeholders),
-        KeyKind::Hash => ngettext_f("{n} field", "{n} fields", count, &placeholders),
-        KeyKind::List => ngettext_f("{n} element", "{n} elements", count, &placeholders),
-        KeyKind::Set | KeyKind::SortedSet => ngettext_f("{n} member", "{n} members", count, &placeholders),
-        KeyKind::Stream => ngettext_f("{n} entry", "{n} entries", count, &placeholders),
+        KeyKind::String => ngettext_f("{n} byte", "{n} bytes", length, &placeholders),
+        KeyKind::Hash => ngettext_f("{n} field", "{n} fields", length, &placeholders),
+        KeyKind::List => ngettext_f("{n} element", "{n} elements", length, &placeholders),
+        KeyKind::Set | KeyKind::SortedSet => ngettext_f("{n} member", "{n} members", length, &placeholders),
+        KeyKind::Stream => ngettext_f("{n} entry", "{n} entries", length, &placeholders),
         KeyKind::Other => return None,
     })
 }
@@ -46,7 +45,6 @@ pub(super) fn ttl_text(ttl: KeyTtl) -> Option<String> {
     let (count, unit) = largest_unit(left);
     let n = count.to_string();
     let placeholders = [("n", n.as_str())];
-    let count = plural_count(count);
     Some(match unit {
         Unit::Seconds => ngettext_f("Expires in {n} second", "Expires in {n} seconds", count, &placeholders),
         Unit::Minutes => ngettext_f("Expires in {n} minute", "Expires in {n} minutes", count, &placeholders),
@@ -81,15 +79,10 @@ pub(super) fn shown_text(shown: u64, length: Option<u64>) -> String {
         Some(length) if length > shown => ngettext_f(
             "{shown} of {n} shown",
             "{shown} of {n} shown",
-            plural_count(length),
+            length,
             &[("shown", &format_thousands(shown)), ("n", &format_thousands(length))],
         ),
-        _ => ngettext_f(
-            "{n} shown",
-            "{n} shown",
-            plural_count(shown),
-            &[("n", &format_thousands(shown))],
-        ),
+        _ => ngettext_f("{n} shown", "{n} shown", shown, &[("n", &format_thousands(shown))]),
     }
 }
 

@@ -13,7 +13,7 @@ use tablepro_session::runtime::Tasks;
 
 use crate::services::grid::RowSnapshot;
 use crate::ui::clipboard::{ClipboardFormat, ClipboardPayload};
-use crate::ui::format::{format_thousands, plural_count};
+use crate::ui::format::format_thousands;
 use crate::ui::source_dialog::{SourceText, cut, more_bytes, source_dialog};
 
 /// Longer text is cut in the dialog: the view lays out every character
@@ -81,7 +81,7 @@ fn shown(value: Value, shortened: &mut bool) -> Value {
         kept.push(Value::Text(crate::i18n::ngettext_f(
             "… ({count} more item)",
             "… ({count} more items)",
-            plural_count(more),
+            more,
             &[("count", &format_thousands(more))],
         )));
     }

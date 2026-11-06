@@ -785,20 +785,14 @@ impl SqlEditor {
         providers.push(words.upcast());
     }
 
-    // GtkSourceView before 5.21 never frees a view that has drawn its line
-    // numbers, so the closing editor takes back the script and the session.
-    // GTK 4.24 gives the input method the view from construction until the
-    // view's own dispose, and IBus takes a reference on it, so the view is
-    // never disposed unless it drops its input method first
-    // (https://github.com/ibus/ibus/issues/2968).
+    // The view can outlive the tab, so it lets go of the script and the session here.
     fn release_view(&self) {
         let view = self.imp().source_view.get();
-        view.set_im_module(Some("gtk-im-context-none"));
         let completion = view.completion();
         for provider in self.imp().completion_providers.take() {
             completion.remove_provider(&provider);
         }
-        view.set_buffer(Some(&sourceview5::Buffer::new(None)));
+        crate::ui::text_view_teardown::release(&view);
     }
 
     fn connect_buffer(&self, buffer: &sourceview5::Buffer) {
@@ -1000,7 +994,7 @@ fn show_cursor_position(label: &gtk4::Label, view: &EditorView) {
     let iter = buffer.iter_at_mark(&buffer.get_insert());
     let line = (iter.line() + 1).to_string();
     let column = (iter.line_offset() + 1).to_string();
-    let count = u32::try_from(view.caret_count()).unwrap_or(u32::MAX);
+    let count = view.caret_count();
     label.set_label(&if count > 1 {
         crate::i18n::ngettext_f(
             "Ln {line}, Col {column}, {count} cursor",

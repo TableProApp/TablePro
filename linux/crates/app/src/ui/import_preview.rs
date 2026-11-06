@@ -24,7 +24,7 @@ pub(crate) fn import_preview_dialog(preview: &ImportPreview, drivers: &DriverReg
         Some(&crate::i18n::ngettext_f(
             "Import {n} Connection?",
             "Import {n} Connections?",
-            u32::try_from(count).unwrap_or(u32::MAX),
+            count,
             &[("n", &count.to_string())],
         )),
         Some(&crate::i18n::gettext(

@@ -863,9 +863,9 @@ fn new_window_action_opens_another_window() {
 
 fn released_version() -> String {
     let xml = super::about_dialog::embedded_metainfo();
-    super::metainfo_release::newest_release(&xml)
-        .expect("the metainfo lists a release")
-        .to_owned()
+    super::metainfo_release::tag_version(
+        super::metainfo_release::newest_release(&xml).expect("the metainfo lists a release"),
+    )
 }
 
 fn said_at_launch(test: &TestApp) -> Vec<crate::ui::LaunchNotice> {

@@ -54,7 +54,6 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use relm4::{ComponentController, Controller};
 
 use tablepro_core::meta::SchemaInfo;
 use tablepro_core::{DataModel, EditorSession};
@@ -66,6 +65,7 @@ use self::session_watches::SessionWatches;
 use self::tab_title::ConnectionLabel;
 pub(crate) use self::workspace_actions::show_transfer_actions;
 pub(crate) use self::workspace_shell::WorkspaceShell;
+pub(crate) use self::workspace_tab_view::page_position;
 use super::browse_tab::BrowseTab;
 use super::editor::SqlEditor;
 use super::export::{ExportLedger, ExportLedgerInit, ExportOffer, ExportReporter};
@@ -176,8 +176,8 @@ pub(crate) struct WorkspaceModel {
     /// The CSV imports running into this workspace's tables.
     imports: Rc<import_ledger::ImportLedger>,
     history_dialog: Option<HistoryDialog>,
-    saved_queries_dialog: Option<Controller<super::saved_queries_dialog::SavedQueriesDialog>>,
-    import_dialog: Option<Controller<super::import_dialog::ImportCsvDialog>>,
+    saved_queries_dialog: Option<super::saved_queries_dialog::SavedQueriesDialog>,
+    import_dialog: Option<super::import_dialog::ImportCsvDialog>,
     driver_id: String,
     /// The driver as the user knows it, for the header's subtitle.
     driver_name: String,
@@ -1236,10 +1236,10 @@ impl WorkspaceModel {
             close_if_presented(dialog.upcast_ref());
         }
         if let Some(dialog) = self.saved_queries_dialog.take() {
-            close_if_presented(dialog.model().dialog());
+            close_if_presented(dialog.upcast_ref());
         }
         if let Some(dialog) = self.import_dialog.take() {
-            close_if_presented(dialog.model().dialog());
+            close_if_presented(dialog.upcast_ref());
         }
         let pages = if close_pages { self.index.pages() } else { Vec::new() };
         self.close_tabs();

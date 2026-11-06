@@ -19,7 +19,7 @@ pub(crate) fn count_failure_text(error: &OperationError, count_deadline: Option<
             crate::i18n::ngettext_f(
                 "Counting took longer than {seconds} second and was stopped.",
                 "Counting took longer than {seconds} seconds and was stopped.",
-                u32::try_from(seconds).unwrap_or(u32::MAX),
+                seconds,
                 &[("seconds", &seconds.to_string())],
             )
         }

@@ -9,7 +9,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "packaging"))
 
 import bundled_licenses  # noqa: E402
-import license_metadata  # noqa: E402
 
 CRATE_MIT = "Copyright 2021 The Crate Authors\n\nPermission is hereby granted, free of charge.\n"
 RE2 = "Copyright (c) 2009 The RE2 Authors. All rights reserved.\n\nRedistribution and use in source and binary forms.\n"
@@ -94,14 +93,15 @@ class MergeJsonTest(unittest.TestCase):
         with self.assertRaisesRegex(bundled_licenses.BundledError, "engine-sys is no longer linked"):
             bundled_licenses.merge_json(data, bundles())
 
-    def test_the_copyright_file_names_every_bundled_holder(self):
-        data = bundled_licenses.merge_json(third_party(), bundles())
+    def test_a_component_with_no_text_of_its_own_adds_no_license(self):
+        extra = bundles()
+        extra[0]["components"].append({"name": "AWS-LC", "provides": "aws-lc", "version": "5.7.0"})
 
-        copyright = license_metadata.render_copyright(data["licenses"], data["crates"], "AGPL text\n", "AGPL-3.0-or-later")
+        data = bundled_licenses.merge_json(third_party(), extra)
 
-        self.assertIn("2009 The RE2 Authors. All rights reserved.", copyright)
-        self.assertIn("Malte Skarupke 2016.", copyright)
-        self.assertIn("License: BSD-3-Clause and BSL-1.0 and MIT", copyright)
+        self.assertEqual([record.get("component") for record in data["licenses"]], [None, "RE2", "ska_sort"])
+        self.assertEqual(data["crates"][0]["license"], "BSD-3-Clause AND BSL-1.0 AND MIT")
+        self.assertNotIn("AWS-LC", bundled_licenses.render_section(extra))
 
 
 class RenderJsonTest(unittest.TestCase):
