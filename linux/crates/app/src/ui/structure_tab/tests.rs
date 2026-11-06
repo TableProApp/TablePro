@@ -1384,7 +1384,7 @@ fn a_default_the_parser_refuses_is_marked_until_it_parses() {
 /// The tab in a window of its own, which the add rows open their forms
 /// on.
 fn in_window(harness: &Harness) -> OwnedWindow<adw::Window> {
-    let window = super::form_dialog::tests::window();
+    let window = crate::ui::form_dialog::tests::window();
     window.set_content(Some(harness.tab()));
     window
 }
@@ -1422,7 +1422,7 @@ fn add_index_from_the_tab_adds_the_index() {
         form.activate_action("index.add-key", Some(&"score".to_variant()))
             .is_ok()
     );
-    super::form_dialog::tests::press_enter(&name);
+    crate::ui::form_dialog::tests::press_enter(&name);
 
     wait_until(WAIT, || harness.draft().indexes.len() == 1).expect("the index to be added");
     let index = harness.draft().indexes[0].clone();
@@ -1474,7 +1474,7 @@ fn add_foreign_key_from_the_tab_adds_the_key() {
         rows_titled::<adw::ComboRow>(&form, "id references").is_some_and(|pair| pair.is_sensitive())
     })
     .expect("the columns of accounts to be read");
-    super::form_dialog::tests::press_enter(&name);
+    crate::ui::form_dialog::tests::press_enter(&name);
 
     wait_until(WAIT, || harness.draft().foreign_keys.len() == 1).expect("the key to be added");
     let key = harness.draft().foreign_keys[0].clone();

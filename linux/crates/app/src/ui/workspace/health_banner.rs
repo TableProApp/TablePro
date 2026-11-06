@@ -571,6 +571,22 @@ mod tests {
         assert_eq!(banner.button_label().as_deref(), Some("Retry"));
     }
 
+    /// A database dropped under the session parks it rather than
+    /// retrying forever, and the banner names the database.
+    #[gtk4::test]
+    fn a_session_whose_database_is_gone_parks_and_says_which() {
+        let gone = FakeEstablish::Fail(ConnectError::Driver(DriverError::DatabaseNotFound {
+            database: "shop".to_owned(),
+        }));
+        let test = parked("DatabaseGone", vec![gone], None);
+
+        let banner = banner(&test);
+        wait_until(WAIT, || {
+            banner.title() == "The database “shop” does not exist on the server."
+        })
+        .unwrap_or_else(|_| panic!("the banner said {}", banner.title()));
+    }
+
     #[gtk4::test]
     fn review_action_disabled_for_other_failures() {
         let refused = FakeEstablish::Fail(ConnectError::Driver(DriverError::auth(None)));

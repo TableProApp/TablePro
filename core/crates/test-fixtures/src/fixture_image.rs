@@ -19,6 +19,10 @@ impl FixtureImage {
         name: "postgres",
         tag: "14-alpine",
     };
+    pub const POSTGRES_15: Self = Self {
+        name: "postgres",
+        tag: "15-alpine",
+    };
     pub const POSTGRES_18: Self = Self {
         name: "postgres",
         tag: "18-alpine",

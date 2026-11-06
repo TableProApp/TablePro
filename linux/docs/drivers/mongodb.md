@@ -11,10 +11,11 @@ What the connection names decides how the crate reaches it:
 | Route | What the crate dials | TLS |
 |---|---|---|
 | A host, directly | That one host, with `directConnection`, as mongosh does with one host: a replica set member is used as named, never swapped for the names the set gives its members, which the app may not be able to reach | The crate's, from files the driver writes (below) |
+| Other hosts or a replica set | The host and the other hosts as seeds, with the replica set's name and the set's discovery, as mongosh does with a host list | The crate's |
 | DNS Seed List on | The servers the host's SRV records name, with the options its TXT record sets (`replicaSet`, `authSource`, `loadBalanced`), and the set's discovery | The crate's |
 | SSH | A private socket the driver listens on (`tablepro_net::PrivateListener`: a Unix socket, or on Windows a loopback port that serves only this process); each connection the crate opens there is a new `Transport::open()` stream through the forward, one host, `directConnection` | The driver's, around each stream |
 
-A seed list is a DNS lookup the forward cannot carry, so DNS Seed List over SSH is refused before anything is opened (`ConfigError::SeedListOverSsh`). The session's reachability check does not wait on a seed list's host, which may have no address of its own. The seed list's port is the records' to give, so the connect dialog hides the Port row while DNS Seed List is on.
+A seed list is a DNS lookup the forward cannot carry, so DNS Seed List over SSH is refused before anything is opened (`ConfigError::SeedListOverSsh`). Discovery swaps the seeds for the names the members give themselves, which a forward does not reach, so other hosts or a replica set over SSH are refused too (`ConfigError::HostListOverSsh`). A replica set named with a seed list wins over the one its TXT record gives. The session's reachability check does not wait on a seed list's host, which may have no address of its own, nor on one member of a replica set. The seed list's port is the records' to give, so the connect dialog hides the Port row while DNS Seed List is on.
 
 On Unix the relay socket sits in a private directory under `$XDG_RUNTIME_DIR` (the system temporary directory without one), mode 0700, and is removed with the connection. A stream the forward fails to open closes the crate's connection, and the transport's own error (the SSH master exited, the destination refused) is what the call reports.
 
@@ -103,9 +104,13 @@ Safe Mode reads statements the same way: Confirm Writes asks before every statem
 
 ## Trust
 
+A new connection starts on `Disable`, as mongosh does for `mongodb://`, and on `VerifyFull` with a DNS seed list, as it does for `mongodb+srv://` ([core ADR 0014](../../../core/docs/decisions/0014-tls-mode-of-a-new-connection.md)).
+
 The crate has no system store of its own: given no CA file it trusts only the Mozilla roots compiled into it. So where the crate does TLS, the driver hands it a bundle: the system store and the connection's CA file as one PEM (`tablepro_net::tls::ca_bundle_pem`), and the client certificate and key as one more, written mode 0600 into a private directory and removed once the client is built, which is when the crate reads them. The crate checks each server's certificate under that server's own name, so the server name override applies only through SSH (`ServerNameOverride::SshForwardOnly`). Require mode skips the check of the certificate and its name.
 
 Through SSH the driver does TLS around each stream with `tablepro_net::tls::build_client_config`, the platform verifier and the CA file, checked against `tls_server_name()`. `tests/system_trust.rs` measures both paths against a CA only the system store holds.
+
+With TLS off and one host, direct or through SSH, a connect the server drops is checked with a TLS handshake of its own, which sends no credential, and is reported as `TlsFailure::ServerRequiresTls` when the server completes it. A seed list is not checked, since its host is not a server.
 
 ## Server codes
 

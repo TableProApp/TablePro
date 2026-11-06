@@ -177,6 +177,11 @@ impl SchemaCatalog {
         self.read::<SchemaInfo>(()).await
     }
 
+    /// Read the schemas again, even when a list is cached.
+    pub async fn refresh_schemas(&self) -> Fetched<SchemaInfo> {
+        self.refresh::<SchemaInfo>(()).await
+    }
+
     pub async fn objects(&self, scope: ObjectScope) -> Fetched<ObjectInfo> {
         self.read::<ObjectInfo>(scope).await
     }

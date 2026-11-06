@@ -1,0 +1,904 @@
+{
+  "crates": [
+    {
+      "crate": "aes",
+      "version": "0.8.4",
+      "paragraphs": [
+        {
+          "files": [
+            "src/armv8.rs"
+          ],
+          "license": "(MIT OR Apache-2.0) AND public-domain",
+          "copyright": [
+            "RustCrypto Developers",
+            "Jeffrey Walton",
+            "ARM",
+            "Johannes Schneiders",
+            "Skip Hovsmith",
+            "Barry O'Rourke"
+          ],
+          "texts": [
+            "LICENSE-MIT",
+            "src/armv8.rs:3-8"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "askama_parser",
+      "version": "0.14.0",
+      "paragraphs": [
+        {
+          "files": [
+            "benches/librustdoc/*"
+          ],
+          "license": "MIT OR Apache-2.0",
+          "copyright": [
+            "The Rust Project Developers"
+          ],
+          "texts": [
+            "benches/librustdoc/LICENSE.md"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "astral-tokio-tar",
+      "version": "0.6.4",
+      "own": [
+        "tests/archives/*.tar"
+      ]
+    },
+    {
+      "crate": "async-compression",
+      "version": "0.4.52",
+      "own": [
+        "tests/artifacts/lib.rs.zst",
+        "tests/artifacts/long-window-size-lib.rs.zst"
+      ]
+    },
+    {
+      "crate": "aws-lc-sys",
+      "version": "0.45.0",
+      "own": [
+        "aws-lc/LICENSE",
+        "aws-lc/third_party/fiat/LICENSE"
+      ],
+      "paragraphs": [
+        {
+          "files": [
+            "aws-lc/cmake/JoinPaths.cmake"
+          ],
+          "license": "MIT OR CC0-1.0",
+          "copyright": [
+            "2020 Jan Tojnar"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "axum",
+      "version": "0.8.9",
+      "paragraphs": [
+        {
+          "files": [
+            "src/extract/ws.rs"
+          ],
+          "license": "MIT",
+          "texts": [
+            "src/extract/ws.rs:751-770"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "bnum",
+      "version": "0.13.0",
+      "paragraphs": [
+        {
+          "files": [
+            "src/buint/radix.rs",
+            "src/buint/numtraits.rs"
+          ],
+          "license": "MIT",
+          "texts": [
+            "licenses/LICENSE-num-bigint"
+          ]
+        },
+        {
+          "files": [
+            "src/random.rs"
+          ],
+          "license": "MIT",
+          "texts": [
+            "licenses/LICENSE-rand"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "bollard",
+      "version": "0.20.2",
+      "paragraphs": [
+        {
+          "files": [
+            "resources/dockerfiles/windows/registry/*"
+          ],
+          "license": "MIT",
+          "texts": [
+            "resources/dockerfiles/windows/registry/LICENSE"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "bollard-buildkit-proto",
+      "version": "0.7.0",
+      "paragraphs": [
+        {
+          "files": [
+            "resources/google/protobuf/*"
+          ],
+          "license": "BSD-3-Clause",
+          "texts": [
+            "resources/google/protobuf/descriptor.proto:2-29"
+          ]
+        },
+        {
+          "files": [
+            "resources/gogoproto/*"
+          ],
+          "license": "BSD-3-Clause",
+          "texts": [
+            "resources/gogoproto/gogo.proto:1-27"
+          ]
+        },
+        {
+          "files": [
+            "resources/google/rpc/status.proto"
+          ],
+          "license": "Apache-2.0",
+          "copyright": [
+            "2025 Google LLC"
+          ]
+        },
+        {
+          "files": [
+            "resources/grpc/health/v1/health.proto"
+          ],
+          "license": "Apache-2.0",
+          "copyright": [
+            "2015 The gRPC Authors"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "chacha20",
+      "version": "0.9.1",
+      "paragraphs": [
+        {
+          "files": [
+            "src/backends/neon.rs"
+          ],
+          "license": "(Apache-2.0 OR MIT) AND public-domain",
+          "copyright": [
+            "RustCrypto Developers",
+            "Jack Lloyd",
+            "Jeffrey Walton"
+          ],
+          "texts": [
+            "LICENSE-MIT",
+            "src/backends/neon.rs:1-4"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "chacha20",
+      "version": "0.10.2",
+      "paragraphs": [
+        {
+          "files": [
+            "src/backends/neon.rs"
+          ],
+          "license": "(Apache-2.0 OR MIT) AND public-domain",
+          "copyright": [
+            "RustCrypto Developers",
+            "Jack Lloyd",
+            "Jeffrey Walton"
+          ],
+          "texts": [
+            "LICENSE-MIT",
+            "src/backends/neon.rs:1-5"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "crossbeam-channel",
+      "version": "0.5.17",
+      "paragraphs": [
+        {
+          "files": [
+            "examples/matching.rs"
+          ],
+          "license": "CC-BY-3.0",
+          "copyright": [
+            "Stefan Nilsson"
+          ],
+          "texts": [
+            "LICENSE-THIRD-PARTY:6-324"
+          ]
+        },
+        {
+          "files": [
+            "tests/golang.rs"
+          ],
+          "license": "BSD-3-Clause",
+          "texts": [
+            "LICENSE-THIRD-PARTY:331-357"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "crypto-bigint",
+      "version": "0.7.9",
+      "paragraphs": [
+        {
+          "files": [
+            "src/modular/safegcd.rs"
+          ],
+          "license": "Apache-2.0 AND MIT",
+          "copyright": [
+            "2023 Privacy Scaling Explorations Team"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "crypto-primes",
+      "version": "0.7.2",
+      "paragraphs": [
+        {
+          "files": [
+            "src/hazmat/libm.rs"
+          ],
+          "license": "MIT AND SunPro",
+          "copyright": [
+            "1993 Sun Microsystems, Inc.",
+            "2005-2020 Rich Felker, et al."
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "flate2",
+      "version": "1.1.10",
+      "own": [
+        "examples/*.gz",
+        "tests/*.gz"
+      ]
+    },
+    {
+      "crate": "flume",
+      "version": "0.12.0",
+      "paragraphs": [
+        {
+          "files": [
+            "tests/golang.rs"
+          ],
+          "license": "BSD-3-Clause",
+          "copyright": [
+            "2009 The Go Authors"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "futures-channel",
+      "version": "0.3.34",
+      "paragraphs": [
+        {
+          "files": [
+            "src/mpsc/queue.rs"
+          ],
+          "license": "BSD-2-Clause-Views",
+          "texts": [
+            "src/mpsc/queue.rs:1-25"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "gettext-sys",
+      "version": "0.26.0",
+      "paragraphs": [
+        {
+          "files": [
+            "gettext-0.26.tar.xz"
+          ],
+          "license": "GPL-3.0-or-later AND (GPL-3.0-or-later WITH Autoconf-exception-generic-3.0) AND (GPL-3.0-or-later WITH Texinfo-exception) AND LGPL-2.1-or-later AND LGPL-2.1-only AND LGPL-3.0-or-later AND (GFDL-1.2-or-later OR GPL-2.0-or-later) AND (GFDL-1.3-or-later OR GPL-2.0-or-later) AND FSFAP AND FSFUL AND FSFULLR AND X11 AND MIT AND Unicode-DFS-2016 AND public-domain",
+          "copyright": [
+            "Free Software Foundation, Inc."
+          ],
+          "texts": [
+            "gettext-0.26.tar.xz!/gettext-0.26/COPYING",
+            "gettext-0.26.tar.xz!/gettext-0.26/build-aux/config.guess:22-27",
+            "gettext-0.26.tar.xz!/gettext-0.26/build-aux/texinfo.tex:25-28",
+            "gettext-0.26.tar.xz!/gettext-0.26/gettext-runtime/COPYING",
+            "gettext-0.26.tar.xz!/gettext-0.26/gettext-runtime/intl/COPYING.LIB",
+            "gettext-0.26.tar.xz!/gettext-0.26/gettext-runtime/libasprintf/COPYING",
+            "gettext-0.26.tar.xz!/gettext-0.26/gettext-runtime/libasprintf/COPYING.LIB",
+            "gettext-0.26.tar.xz!/gettext-0.26/gettext-tools/COPYING",
+            "gettext-0.26.tar.xz!/gettext-0.26/libtextstyle/COPYING",
+            "gettext-0.26.tar.xz!/gettext-0.26/libtextstyle/lib/libcroco/cr-utils.h:15-19",
+            "gettext-0.26.tar.xz!/gettext-0.26/gettext-tools/doc/gettext.texi:96-114",
+            "gettext-0.26.tar.xz!/gettext-0.26/gettext-runtime/libasprintf/autosprintf.texi:39-57",
+            "gettext-0.26.tar.xz!/gettext-0.26/INSTALL.generic:377-380",
+            "gettext-0.26.tar.xz!/gettext-0.26/configure:12-13",
+            "gettext-0.26.tar.xz!/gettext-0.26/m4/woe32-dll.m4:3-7",
+            "gettext-0.26.tar.xz!/gettext-0.26/build-aux/install-sh:10-32",
+            "gettext-0.26.tar.xz!/gettext-0.26/gettext-tools/gnulib-lib/libxml/COPYING",
+            "gettext-0.26.tar.xz!/gettext-0.26/gnulib-local/lib/libxml/COPYING",
+            "gettext-0.26.tar.xz!/gettext-0.26/libtextstyle/lib/libxml/COPYING",
+            "gettext-0.26.tar.xz!/gettext-0.26/gettext-tools/tree-sitter-0.23.2/LICENSE",
+            "gettext-0.26.tar.xz!/gettext-0.26/gettext-tools/tree-sitter-0.23.2/lib/src/unicode/LICENSE",
+            "gettext-0.26.tar.xz!/gettext-0.26/gettext-tools/tree-sitter-d-0.8.2/LICENSE",
+            "gettext-0.26.tar.xz!/gettext-0.26/gettext-tools/tree-sitter-go-0.23.4/LICENSE",
+            "gettext-0.26.tar.xz!/gettext-0.26/gettext-tools/tree-sitter-rust-0.23.2/LICENSE",
+            "gettext-0.26.tar.xz!/gettext-0.26/gettext-tools/tree-sitter-typescript-0.23.2/LICENSE",
+            "gettext-0.26.tar.xz!/gettext-0.26/gettext-tools/examples/hello-objc-gnustep/GNUmakefile:1-2"
+          ],
+          "text": [
+            "On Debian systems, the complete text of the GNU Lesser General Public License version 3 can be found in \"/usr/share/common-licenses/LGPL-3\".\n",
+            "On Debian systems, the complete text of the GNU Free Documentation License version 1.2 can be found in \"/usr/share/common-licenses/GFDL-1.2\".\n",
+            "On Debian systems, the complete text of the GNU Free Documentation License version 1.3 can be found in \"/usr/share/common-licenses/GFDL-1.3\".\n",
+            "On Debian systems, the complete text of the GNU General Public License version 2 can be found in \"/usr/share/common-licenses/GPL-2\".\n"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "glib",
+      "version": "0.22.9",
+      "paragraphs": [
+        {
+          "files": [
+            "src/lib.rs"
+          ],
+          "license": "MIT",
+          "copyright": [
+            "The gtk-rs Project Developers",
+            "2020 Igor Aleksanov"
+          ],
+          "texts": [
+            "LICENSE"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "hickory-net",
+      "version": "0.26.3",
+      "paragraphs": [
+        {
+          "files": [
+            "src/dnssec/nsec3.rs"
+          ],
+          "license": "Apache-2.0",
+          "texts": [
+            "src/dnssec/nsec3.rs:80-93"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "idna",
+      "version": "1.1.0",
+      "paragraphs": [
+        {
+          "files": [
+            "tests/IdnaTestV2.txt"
+          ],
+          "license": "Unicode-3.0",
+          "copyright": [
+            "2024 Unicode, Inc."
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "jiff-tzdb",
+      "version": "0.1.8",
+      "paragraphs": [
+        {
+          "files": [
+            "concatenated-zoneinfo.dat"
+          ],
+          "license": "public-domain",
+          "copyright": [
+            "the IANA Time Zone Database contributors"
+          ],
+          "text": [
+            "Unless specified below, all files in the tz code and data (including this LICENSE file) are in the public domain.\n"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "lcms2-sys",
+      "version": "4.0.7",
+      "paragraphs": [
+        {
+          "files": [
+            "vendor/*"
+          ],
+          "license": "MIT",
+          "texts": [
+            "vendor/LICENSE"
+          ]
+        },
+        {
+          "files": [
+            "vendor/src/cmssm.c"
+          ],
+          "license": "MIT AND LicenseRef-softSurfer",
+          "copyright": [
+            "2001 softSurfer"
+          ],
+          "texts": [
+            "vendor/LICENSE",
+            "vendor/src/cmssm.c:207-212"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "lexical-parse-float",
+      "version": "1.0.6",
+      "paragraphs": [
+        {
+          "files": [
+            "src/libm.rs"
+          ],
+          "license": "MIT AND SunPro",
+          "copyright": [
+            "1993 Sun Microsystems, Inc.",
+            "2005-2020 Rich Felker, et al."
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "lexical-util",
+      "version": "1.0.7",
+      "paragraphs": [
+        {
+          "files": [
+            "src/libm.rs"
+          ],
+          "license": "MIT AND SunPro",
+          "copyright": [
+            "1993 Sun Microsystems, Inc.",
+            "2005-2020 Rich Felker, et al."
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "lexical-write-float",
+      "version": "1.0.6",
+      "paragraphs": [
+        {
+          "files": [
+            "src/compact.rs"
+          ],
+          "license": "BSL-1.0",
+          "copyright": [
+            "Andrea Samoljuk"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "libm",
+      "version": "0.2.16",
+      "paragraphs": [
+        {
+          "files": [
+            "src/math/acosf.rs",
+            "src/math/asinf.rs",
+            "src/math/atan.rs",
+            "src/math/atan2f.rs",
+            "src/math/atanf.rs",
+            "src/math/cbrtf.rs",
+            "src/math/cos.rs",
+            "src/math/cosf.rs",
+            "src/math/erf.rs",
+            "src/math/erff.rs",
+            "src/math/expf.rs",
+            "src/math/expm1.rs",
+            "src/math/expm1f.rs",
+            "src/math/j0f.rs",
+            "src/math/j1f.rs",
+            "src/math/jnf.rs",
+            "src/math/k_cosf.rs",
+            "src/math/k_sinf.rs",
+            "src/math/lgammaf_r.rs",
+            "src/math/log10f.rs",
+            "src/math/log1p.rs",
+            "src/math/log1pf.rs",
+            "src/math/log2f.rs",
+            "src/math/logf.rs",
+            "src/math/powf.rs",
+            "src/math/rem_pio2.rs",
+            "src/math/rem_pio2f.rs",
+            "src/math/sin.rs",
+            "src/math/sincos.rs",
+            "src/math/sincosf.rs",
+            "src/math/sinf.rs",
+            "src/math/tan.rs",
+            "src/math/tanf.rs"
+          ],
+          "license": "MIT AND SunPro",
+          "copyright": [
+            "1993 Sun Microsystems, Inc.",
+            "2005-2020 Rich Felker, et al."
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "libsqlite3-sys",
+      "version": "0.37.0",
+      "paragraphs": [
+        {
+          "files": [
+            "sqlite3/*"
+          ],
+          "license": "public-domain",
+          "copyright": [
+            "D. Richard Hipp and the other SQLite authors"
+          ],
+          "text": [
+            "The author disclaims copyright to this source code. In place of a legal notice, here is a blessing:\n\nMay you do good and not evil.\nMay you find forgiveness for yourself and forgive others.\nMay you share freely, never taking more than you give.\n"
+          ]
+        },
+        {
+          "files": [
+            "sqlcipher/*"
+          ],
+          "license": "BSD-3-Clause AND public-domain",
+          "copyright": [
+            "D. Richard Hipp and the other SQLite authors"
+          ],
+          "texts": [
+            "sqlcipher/LICENSE"
+          ],
+          "text": [
+            "The author disclaims copyright to this source code. In place of a legal notice, here is a blessing:\n\nMay you do good and not evil.\nMay you find forgiveness for yourself and forgive others.\nMay you share freely, never taking more than you give.\n"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "minimal-lexical",
+      "version": "0.2.1",
+      "paragraphs": [
+        {
+          "files": [
+            "src/libm.rs"
+          ],
+          "license": "MIT AND SunPro",
+          "copyright": [
+            "1993 Sun Microsystems, Inc.",
+            "2005-2020 Rich Felker, et al."
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "mongodb",
+      "version": "3.9.1",
+      "paragraphs": [
+        {
+          "files": [
+            "src/checked.rs"
+          ],
+          "license": "MIT",
+          "texts": [
+            "src/checked.rs:5-23"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "nix",
+      "version": "0.30.1",
+      "paragraphs": [
+        {
+          "files": [
+            "test/test_kmod/hello_mod/hello.c"
+          ],
+          "license": "GPL-2.0-or-later OR MIT",
+          "copyright": [
+            "the nix contributors"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "nix",
+      "version": "0.31.3",
+      "paragraphs": [
+        {
+          "files": [
+            "test/test_kmod/hello_mod/hello.c"
+          ],
+          "license": "GPL-2.0-or-later OR MIT",
+          "copyright": [
+            "the nix contributors"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "objc2-foundation",
+      "version": "0.3.2",
+      "own": [
+        "src/copying.rs",
+        "src/tests/copying.rs"
+      ]
+    },
+    {
+      "crate": "openapiv3",
+      "version": "2.2.0",
+      "own": [
+        "src/license.rs"
+      ]
+    },
+    {
+      "crate": "polyval",
+      "version": "0.7.3",
+      "paragraphs": [
+        {
+          "files": [
+            "src/field_element/mul64.rs"
+          ],
+          "license": "MIT",
+          "copyright": [
+            "2016 Thomas Pornin <pornin@bolet.org>"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "redis",
+      "version": "1.7.1",
+      "paragraphs": [
+        {
+          "files": [
+            "src/cluster_handling/async_connection/*"
+          ],
+          "license": "MIT",
+          "texts": [
+            "src/cluster_handling/async_connection/LICENSE"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "regex-syntax",
+      "version": "0.8.11",
+      "paragraphs": [
+        {
+          "files": [
+            "src/unicode_tables/*"
+          ],
+          "license": "(MIT OR Apache-2.0) AND Unicode-DFS-2016",
+          "copyright": [
+            "Unicode, Inc."
+          ],
+          "texts": [
+            "LICENSE-MIT",
+            "src/unicode_tables/LICENSE-UNICODE"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "ring",
+      "version": "0.17.14",
+      "paragraphs": [
+        {
+          "files": [
+            "crypto/curve25519/curve25519.c"
+          ],
+          "license": "Apache-2.0 AND public-domain",
+          "copyright": [
+            "2020 The BoringSSL Authors"
+          ],
+          "texts": [
+            "crypto/curve25519/curve25519.c:15-18"
+          ]
+        },
+        {
+          "files": [
+            "crypto/fipsmodule/aes/asm/vpaes-*.pl"
+          ],
+          "license": "Apache-2.0 AND public-domain",
+          "copyright": [
+            "2011-2016 The OpenSSL Project Authors",
+            "2009 Mike Hamburg (Stanford University)"
+          ],
+          "texts": [
+            "crypto/fipsmodule/aes/asm/vpaes-x86_64.pl:21-22"
+          ]
+        },
+        {
+          "files": [
+            "crypto/poly1305/poly1305_arm.c",
+            "crypto/poly1305/poly1305_arm_asm.S"
+          ],
+          "license": "ISC AND public-domain",
+          "copyright": [
+            "2014 Google Inc.",
+            "D. J. Bernstein",
+            "Peter Schwabe"
+          ],
+          "texts": [
+            "crypto/poly1305/poly1305_arm.c:1-16"
+          ]
+        },
+        {
+          "files": [
+            "src/polyfill/once_cell/*"
+          ],
+          "license": "MIT OR Apache-2.0",
+          "copyright": [
+            "Aleksey Kladov"
+          ],
+          "texts": [
+            "src/polyfill/once_cell/LICENSE-APACHE",
+            "src/polyfill/once_cell/LICENSE-MIT"
+          ]
+        },
+        {
+          "files": [
+            "third_party/fiat/*"
+          ],
+          "license": "Apache-2.0",
+          "texts": [
+            "third_party/fiat/LICENSE"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "security-framework",
+      "version": "3.7.0",
+      "paragraphs": [
+        {
+          "files": [
+            "src/*"
+          ],
+          "license": "(MIT OR Apache-2.0) AND APSL-2.0",
+          "copyright": [
+            "Apple Inc."
+          ],
+          "texts": [
+            "LICENSE-APACHE",
+            "LICENSE-MIT",
+            "THIRD_PARTY"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "system-deps",
+      "version": "9.0.0",
+      "own": [
+        "src/tests/test.*"
+      ]
+    },
+    {
+      "crate": "tower",
+      "version": "0.5.3",
+      "paragraphs": [
+        {
+          "files": [
+            "src/load/peak_ewma.rs"
+          ],
+          "license": "MIT AND Apache-2.0",
+          "copyright": [
+            "2017 Twitter, Inc."
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "tracing-core",
+      "version": "0.1.36",
+      "paragraphs": [
+        {
+          "files": [
+            "src/spin/*"
+          ],
+          "license": "MIT",
+          "texts": [
+            "src/spin/LICENSE"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "tracing-subscriber",
+      "version": "0.3.23",
+      "paragraphs": [
+        {
+          "files": [
+            "src/fmt/time/datetime.rs"
+          ],
+          "license": "MIT",
+          "texts": [
+            "src/fmt/time/datetime.rs:4-23"
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "unicode-width",
+      "version": "0.2.2",
+      "paragraphs": [
+        {
+          "files": [
+            "tests/emoji-test.txt"
+          ],
+          "license": "Unicode-3.0",
+          "copyright": [
+            "2025 Unicode, Inc."
+          ]
+        }
+      ]
+    },
+    {
+      "crate": "x11rb",
+      "version": "0.14.0",
+      "paragraphs": [
+        {
+          "files": [
+            "examples/record.rs"
+          ],
+          "license": "GPL-3.0-only",
+          "copyright": [
+            "2011 Noufal Ibrahim <noufal@nibrahim.net.in>"
+          ]
+        },
+        {
+          "files": [
+            "examples/tutorial.rs",
+            "examples/hypnomoire.rs"
+          ],
+          "license": "MIT",
+          "copyright": [
+            "2001-2006 Bart Massey, Jamey Sharp, and Josh Triplett"
+          ]
+        },
+        {
+          "files": [
+            "src/cursor/find_cursor.rs",
+            "src/cursor/parse_cursor.rs"
+          ],
+          "license": "X11",
+          "copyright": [
+            "2013 Michael Stapelberg",
+            "2002 Keith Packard"
+          ]
+        }
+      ]
+    }
+  ],
+  "files": []
+}

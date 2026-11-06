@@ -24,8 +24,10 @@ The session names itself to the server as TablePro with the app's version. The u
 
 ## TLS
 
+- A new connection starts on `Disable`, as cqlsh does ([core ADR 0014](../../../core/docs/decisions/0014-tls-mode-of-a-new-connection.md)).
 - `VerifyFull` trusts the system store plus the connection's CA file ([Trust](../../../core/ARCHITECTURE.md#trust)) and checks the certificate against `NetworkTarget::tls_server_name()`. scylla hands rustls the relay's address, so the driver's verifier checks the configured name instead (`tablepro_net::tls::FixedNameVerifier`). `Require` encrypts without checking the certificate.
 - A client certificate is sent when one is set. Both servers ask every client for one or none (`require_client_auth`), and still log the role in by its password.
+- With TLS off, a connect the node drops is checked with a TLS handshake of its own, which sends no credential, and is reported as `TlsFailure::ServerRequiresTls` when the node completes it.
 
 ## Read-only
 

@@ -65,6 +65,14 @@ internal static class Mapping
         })
     {
         SupportedTlsModes = driver.SupportedTlsModes.Select(Tls).ToArray(),
+        DefaultTlsMode = Tls(driver.DefaultTlsMode),
+        TlsPorts = driver.TlsPorts.Select(port => (int)port).ToArray(),
+        ServerNameOverride = driver.ServerNameOverride switch
+        {
+            Native.ServerNameOverrideTag.AnyRoute => ServerNameOverride.AnyRoute,
+            Native.ServerNameOverrideTag.SshForwardOnly => ServerNameOverride.SshForwardOnly,
+            _ => ServerNameOverride.Unsupported,
+        },
         SupportsIntegratedAuth = driver.SupportsIntegratedAuth,
         SupportsClientIdentity = driver.SupportsClientIdentity,
     };
@@ -355,11 +363,16 @@ internal static class Mapping
         url.Username,
         url.Password,
         url.Database,
-        url.TlsMode is { } mode ? Tls(mode) : null);
+        url.TlsMode is { } mode ? Tls(mode) : null,
+        url.CaFile,
+        url.ClientCertificate,
+        url.ClientKey,
+        url.ServerName);
 
     private static Native.TlsModeTag Tls(TlsMode mode) => mode switch
     {
         TlsMode.Disable => Native.TlsModeTag.Disable,
+        TlsMode.Prefer => Native.TlsModeTag.Prefer,
         TlsMode.Require => Native.TlsModeTag.Require,
         TlsMode.Strict => Native.TlsModeTag.Strict,
         _ => Native.TlsModeTag.VerifyFull,
@@ -368,6 +381,7 @@ internal static class Mapping
     private static TlsMode Tls(Native.TlsModeTag mode) => mode switch
     {
         Native.TlsModeTag.Disable => TlsMode.Disable,
+        Native.TlsModeTag.Prefer => TlsMode.Prefer,
         Native.TlsModeTag.Require => TlsMode.Require,
         Native.TlsModeTag.Strict => TlsMode.Strict,
         _ => TlsMode.VerifyFull,

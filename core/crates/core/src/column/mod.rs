@@ -1,6 +1,7 @@
 mod catalog_type;
 mod classify;
 mod column_info;
+mod column_origin;
 mod column_type;
 mod default;
 mod integer_kind;
@@ -13,6 +14,7 @@ mod sql_type_expr;
 pub use catalog_type::CatalogType;
 pub use classify::{classify_type_name, has_dynamic_storage};
 pub use column_info::ColumnInfo;
+pub use column_origin::ColumnOrigin;
 pub use column_type::ColumnType;
 pub use default::ColumnDefault;
 pub use integer_kind::{IntegerKind, IntegerWidth};

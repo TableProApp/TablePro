@@ -1,6 +1,6 @@
 //! What the server's schema tables say about keyspaces and tables.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use tablepro_core::DriverError;
 use tablepro_core::column::{ColumnDefault, ColumnInfo};
@@ -105,6 +105,23 @@ pub(crate) async fn list_schemas(link: &CqlLink, default: Option<&str>) -> Resul
             name,
         })
         .collect())
+}
+
+/// The cluster's data centres as the node the session stays on knows
+/// them: its own and its peers'.
+pub(crate) async fn data_centers(link: &CqlLink) -> Result<Vec<String>, DriverError> {
+    let mut centres = BTreeSet::new();
+    for sql in [
+        "SELECT data_center FROM system.local",
+        "SELECT data_center FROM system.peers",
+    ] {
+        let rows = link.catalogue(sql, ()).await?.into_rows_result().map_err(rows_error)?;
+        for row in rows.rows::<(Option<String>,)>().map_err(rows_error)? {
+            let (centre,) = row.map_err(rows_error)?;
+            centres.extend(centre);
+        }
+    }
+    Ok(centres.into_iter().collect())
 }
 
 /// Tables, then materialized views. ScyllaDB keeps each secondary index

@@ -2,9 +2,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use relm4::adw::prelude::*;
-use relm4::gtk::{gio, glib};
-use relm4::{adw, gtk};
+use gtk4::prelude::*;
+use gtk4::{self as gtk, gio, glib};
+use libadwaita as adw;
+use libadwaita::prelude::*;
 
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::export::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote, XLSX_MAX_DATA_ROWS};

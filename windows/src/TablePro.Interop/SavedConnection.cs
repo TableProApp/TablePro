@@ -3,6 +3,7 @@ namespace TablePro.Interop;
 public enum TlsMode
 {
     Disable,
+    Prefer,
     Require,
     VerifyFull,
     Strict,
@@ -97,4 +98,8 @@ public sealed record ParsedConnectionUrl(
     string UserName,
     string? Password,
     string Database,
-    TlsMode? TlsMode);
+    TlsMode? TlsMode,
+    string? CaFile = null,
+    string? ClientCertificate = null,
+    string? ClientKey = null,
+    string? ServerName = null);

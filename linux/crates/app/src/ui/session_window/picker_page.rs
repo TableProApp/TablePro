@@ -26,6 +26,8 @@ mod imp {
         #[template_child]
         pub connection_list_banner: TemplateChild<adw::Banner>,
         #[template_child]
+        pub script_banner: TemplateChild<adw::Banner>,
+        #[template_child]
         pub welcome_slot: TemplateChild<adw::Bin>,
     }
 
@@ -93,9 +95,10 @@ mod imp {
 }
 
 glib::wrapper! {
-    /// The saved connections, with a header bar of their own and the
-    /// banner that says when the list could not be read. It sits outside
-    /// any split view, so no empty sidebar can show while disconnected.
+    /// The saved connections, with a header bar of their own, the banner
+    /// that says when the list could not be read and the one that asks
+    /// for a connection to open SQL files in. It sits outside any split
+    /// view, so no empty sidebar can show while disconnected.
     pub struct PickerPage(ObjectSubclass<imp::PickerPage>)
         @extends adw::Bin, gtk::Widget,
         @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
@@ -120,6 +123,10 @@ impl PickerPage {
 
     pub fn banner(&self) -> adw::Banner {
         self.imp().connection_list_banner.get()
+    }
+
+    pub fn script_banner(&self) -> adw::Banner {
+        self.imp().script_banner.get()
     }
 
     pub fn search_entry(&self) -> gtk::SearchEntry {

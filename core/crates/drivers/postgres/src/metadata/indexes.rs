@@ -99,7 +99,7 @@ pub(super) async fn fetch_index_statements(
 
 // pg_get_indexdef prints ON ONLY for a partitioned table's index and has no form without it;
 // run as is, it builds the parent's index alone, invalid and on no partition.
-fn without_only(statement: String, unique: bool, quoted_name: &str) -> String {
+pub(crate) fn without_only(statement: String, unique: bool, quoted_name: &str) -> String {
     let head = format!("CREATE {}INDEX {quoted_name} ON ", if unique { "UNIQUE " } else { "" });
     match statement
         .strip_prefix(&head)
@@ -111,7 +111,7 @@ fn without_only(statement: String, unique: bool, quoted_name: &str) -> String {
 }
 
 // pg_get_indexdef leaves the tablespace out. It goes before the predicate, which ends the text.
-fn in_tablespace(statement: String, tablespace: &str, predicate: Option<&str>) -> String {
+pub(crate) fn in_tablespace(statement: String, tablespace: &str, predicate: Option<&str>) -> String {
     let clause = format!(" TABLESPACE {tablespace}");
     let head = predicate.and_then(|predicate| statement.strip_suffix(&format!(" WHERE {predicate}")));
     match (head, predicate) {

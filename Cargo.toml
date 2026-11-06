@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "core/crates/account",
     "core/crates/ai",
     "core/crates/bindgen",
     "core/crates/core",
@@ -33,6 +34,7 @@ license = "AGPL-3.0-or-later"
 publish = false
 
 [workspace.dependencies]
+tablepro-account = { path = "core/crates/account" }
 tablepro-ai = { path = "core/crates/ai" }
 tablepro-core = { path = "core/crates/core" }
 tablepro-driver-cassandra = { path = "core/crates/drivers/cassandra" }
@@ -138,6 +140,9 @@ rustix = { version = "1.1", default-features = false, features = ["std"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["aws_lc_rs", "logging", "tls12"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
 hyper-rustls = { version = "0.27", default-features = false, features = ["aws-lc-rs", "http1", "tls12"] }
+# rustls on aws-lc-rs with rustls-platform-verifier, the provider and verifier
+# tablepro-net's Verify Full builds.
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json", "query", "form"] }
 tower-service = "0.3"
 http = "1"
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "pem", "aws_lc_rs"] }
@@ -146,8 +151,10 @@ gtk4 = { version = "0.11", features = ["gnome_50"] }
 # The PNG and SVG surfaces the ER diagram exports through; the crate is
 # already in the tree through gtk4.
 cairo-rs = { version = "0.22", features = ["png", "svg"] }
-libadwaita = { version = "0.9", features = ["v1_9"] }
-sourceview5 = { version = "0.11", features = ["v5_18"] }
+# The gtk_v4 features match the GTK 4.22 floor; without them the bindings
+# leave out the GTK interfaces their widgets implement, Accessible among them.
+libadwaita = { version = "0.9", features = ["v1_9", "gtk_v4_22"] }
+sourceview5 = { version = "0.11", features = ["v5_18", "gtk_v4_18"] }
 # 3.x is the GNOME 50 release, which speaks the loaders' 2+ protocol.
 glycin = { version = "3.1", default-features = false, features = ["gdk4", "tokio"] }
 gio = { version = "0.22", features = ["v2_88"] }
@@ -185,7 +192,6 @@ tempfile = "3"
 testcontainers = { version = "0.27", default-features = false, features = ["aws-lc-rs"] }
 testcontainers-modules = { version = "0.15", default-features = false, features = ["aws-lc-rs"] }
 oo7 = { version = "0.6", default-features = false, features = ["tokio", "native_crypto"] }
-relm4 = { version = "0.11", default-features = false, features = ["macros", "libadwaita"] }
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

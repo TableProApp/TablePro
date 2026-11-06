@@ -203,7 +203,7 @@ impl SqlEditor {
     /// line that counts them says how many there are.
     fn announce_carets(&self) {
         let imp = self.imp();
-        let count = u32::try_from(imp.source_view.caret_count()).unwrap_or(u32::MAX);
+        let count = imp.source_view.caret_count();
         crate::ui::a11y::announce(
             &imp.cursor_info.get(),
             &crate::i18n::ngettext_f(

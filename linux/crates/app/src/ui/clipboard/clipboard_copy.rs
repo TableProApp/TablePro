@@ -11,7 +11,7 @@ use tablepro_session::runtime::Tasks;
 use super::clipboard_writer::{holds_nul, write};
 use super::{ClipboardError, ClipboardPayload, CopyError, CopyKind, CopyRequest, render_copy};
 use crate::i18n::{gettext, gettext_f, ngettext_f};
-use crate::ui::format::{format_thousands, plural_count};
+use crate::ui::format::format_thousands;
 use crate::ui::handler_guard::HandlerGuard;
 
 /// The copy asked for last, in the whole process: every window copies
@@ -85,16 +85,11 @@ impl Copied {
         let n = rows as u64;
         match self {
             Self::Value => gettext("Copied to clipboard"),
-            Self::Rows => ngettext_f(
-                "Copied {n} row",
-                "Copied {n} rows",
-                plural_count(n),
-                &[("n", &format_thousands(n))],
-            ),
+            Self::Rows => ngettext_f("Copied {n} row", "Copied {n} rows", n, &[("n", &format_thousands(n))]),
             Self::InList => ngettext_f(
                 "Copied {n} value",
                 "Copied {n} values",
-                plural_count(n),
+                n,
                 &[("n", &format_thousands(n))],
             ),
         }

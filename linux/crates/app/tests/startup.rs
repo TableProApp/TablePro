@@ -24,6 +24,9 @@ fn main() -> ExitCode {
         empty: &empty,
         runtime: &runtime,
     };
+    if the_binary_has_no_posthog_key().is_err() {
+        return ExitCode::FAILURE;
+    }
     if help_lists_the_gapplication_options(&schemas, &sandbox).is_err() {
         return ExitCode::FAILURE;
     }
@@ -146,6 +149,15 @@ fn combined(output: &Output) -> String {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     )
+}
+
+// The binary is built with the library this test links, so one key for both.
+fn the_binary_has_no_posthog_key() -> Result<(), ()> {
+    if tablepro_app::config::POSTHOG_KEY.is_empty() {
+        return Ok(());
+    }
+    eprintln!("the tests have a PostHog key; build them with TABLEPRO_POSTHOG_KEY empty, as meson test does");
+    Err(())
 }
 
 /// `--help-gapplication` appears only once GApplication has parsed the

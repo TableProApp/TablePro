@@ -132,7 +132,7 @@ impl LoginPlan {
         );
         match self.tls.mode() {
             TlsMode::Strict => prelogin && !strict,
-            TlsMode::Disable | TlsMode::Require | TlsMode::VerifyFull => strict && !prelogin,
+            TlsMode::Disable | TlsMode::Prefer | TlsMode::Require | TlsMode::VerifyFull => strict && !prelogin,
         }
     }
 

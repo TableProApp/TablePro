@@ -21,6 +21,10 @@ impl FilterSettingsStore {
         }
     }
 
+    pub fn path(&self) -> &std::path::Path {
+        self.file.path()
+    }
+
     pub fn filters(&self, connection_id: Uuid, schema: Option<&str>, table: &str) -> FilterSet {
         self.file.read(|document| {
             document

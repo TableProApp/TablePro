@@ -11,8 +11,9 @@
 use tablepro_core::column::{ColumnKind, ColumnType};
 use tablepro_core::ddl::ddl_sql::{column_list, create_index_sql, default_sql, foreign_key_sql};
 use tablepro_core::ddl::{
-    BuildDdlError, ColumnAttributes, ColumnCapabilities, ColumnDefinition, DdlCapabilities, DdlDialect, DdlOperation,
-    DdlPlan, DraftColumn, Permission, ReferentialAction, RefusalReason, TableChanges, TableDefinition, TableDraft,
+    BuildDdlError, CatalogCapabilities, ColumnAttributes, ColumnCapabilities, ColumnDefinition, DdlCapabilities,
+    DdlDialect, DdlOperation, DdlPlan, DraftColumn, Permission, ReferentialAction, RefusalReason, TableChanges,
+    TableDefinition, TableDraft,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{IndexInfo, TableRef};
@@ -51,6 +52,10 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     column_collations: false,
     table_options: false,
 };
+
+/// `main` is DuckDB's internal entry, which it refuses to drop; the
+/// other two hold its catalogue views.
+const PROTECTED_SCHEMAS: [&str; 3] = ["main", "information_schema", "pg_catalog"];
 
 const TYPE_SUGGESTIONS: &[&str] = &[
     "VARCHAR",
@@ -368,6 +373,26 @@ impl DdlDialect for DuckDbDialect {
             }
         }
         Ok(DdlPlan::from_sql(statements))
+    }
+
+    /// TRUNCATE is DuckDB's DELETE without a WHERE: it refuses a row
+    /// another table's key still points at, and the sequences behind
+    /// defaults go on counting. A database is a file attached to the
+    /// connection, so there is nothing to create or drop.
+    fn catalog_capabilities(&self) -> CatalogCapabilities {
+        CatalogCapabilities {
+            truncate_table: true,
+            create_schema: true,
+            drop_schema: true,
+            drop_schema_cascade: true,
+            ..CatalogCapabilities::default()
+        }
+    }
+
+    fn protects_schema(&self, name: &str) -> bool {
+        PROTECTED_SCHEMAS
+            .iter()
+            .any(|protected| protected.eq_ignore_ascii_case(name))
     }
 }
 

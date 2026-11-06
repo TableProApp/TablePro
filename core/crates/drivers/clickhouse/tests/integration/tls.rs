@@ -96,9 +96,10 @@ impl TlsConformanceEngine for ClickHouseTlsEngine {
     }
 
     /// Plain HTTP to the HTTPS port fails the server's handshake, and it
-    /// closes the connection without an HTTP answer.
+    /// closes the connection without an HTTP answer, then completes the
+    /// driver's own TLS handshake.
     fn plaintext_rejection_category(&self) -> ErrorCategory {
-        ErrorCategory::ConnectionLost
+        ErrorCategory::Tls
     }
 }
 

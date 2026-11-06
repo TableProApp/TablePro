@@ -4,8 +4,10 @@
 
 use std::time::Duration;
 
+use tablepro_core::column::ColumnOrigin;
 use tablepro_core::{
-    CallOptions, EditorSession, EditorSessionState, RowLimit, RunEnd, RunOptions, RunSummary, TransactionState, UserSql,
+    CallOptions, EditorSession, EditorSessionState, ResultEvent, RowLimit, RunEnd, RunOptions, RunSummary, TableRef,
+    TransactionState, UserSql,
 };
 use tablepro_test_fixtures::MysqlFlavour;
 use tokio_util::sync::CancellationToken;
@@ -287,4 +289,146 @@ async fn a_use_moves_the_session_and_it_says_where() {
         editor.close().await;
         connection.close().await.expect("a close");
     }
+}
+
+fn traced(schema: &str, table: &str, column: &str) -> Option<ColumnOrigin> {
+    Some(ColumnOrigin::new(TableRef::new(Some(schema.to_owned()), table), column))
+}
+
+// The first set's columns, as the last `ColumnsResolved` left them.
+fn origins_in(events: &Events) -> Vec<Option<ColumnOrigin>> {
+    let mut columns = None;
+    for event in events.all() {
+        match event {
+            ResultEvent::ResultSetStarted { columns: started } if columns.is_none() => columns = Some(started),
+            ResultEvent::ColumnsResolved {
+                set_index: 0,
+                columns: resolved,
+            } => columns = Some(resolved),
+            _ => {}
+        }
+    }
+    columns
+        .expect("a result set")
+        .iter()
+        .map(|column| column.origin.clone())
+        .collect()
+}
+
+async fn origins(editor: &dyn EditorSession, sql: &str) -> Vec<Option<ColumnOrigin>> {
+    origins_in(&run_ok(editor, sql).await)
+}
+
+// Root, so MySQL's performance_schema says where the transaction stands.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn only_a_plain_read_of_a_permanent_table_traces_its_columns() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let root = connect_root(&fixture).await;
+        setup(
+            root.as_ref(),
+            &[
+                "CREATE TABLE t (id int PRIMARY KEY, a varchar(10), b int)",
+                "INSERT INTO t VALUES (1, 'x', 2)",
+                "CREATE VIEW v AS SELECT * FROM t",
+                "CREATE ALGORITHM = TEMPTABLE VIEW vt AS SELECT * FROM t",
+                "CREATE DATABASE IF NOT EXISTS other",
+                "CREATE TABLE other.w (id int PRIMARY KEY, c int)",
+                "INSERT INTO other.w VALUES (1, 3)",
+            ],
+        )
+        .await;
+        let editor = session(root.as_ref()).await;
+        let database = fixture.database();
+        let table = |column: &str| traced(database, "t", column);
+        let editor = editor.as_ref();
+
+        let plain = run_ok(editor, "SELECT * FROM t").await;
+        assert_eq!(
+            plain.started(),
+            1,
+            "{flavour:?}: the lookup's own result reached the run"
+        );
+        assert_eq!(plain.rows().len(), 1, "{flavour:?}");
+        assert!(
+            !plain.all().iter().any(|event| matches!(event, ResultEvent::Notice(_))),
+            "{flavour:?}"
+        );
+        assert_eq!(origins_in(&plain), [table("id"), table("a"), table("b")], "{flavour:?}");
+        assert_eq!(
+            origins(editor, "SELECT a AS x, id FROM t").await,
+            [table("a"), table("id")],
+            "{flavour:?}"
+        );
+        assert_eq!(
+            origins(editor, "SELECT id, b + 1 AS c FROM t").await,
+            [table("id"), None],
+            "{flavour:?}"
+        );
+        assert_eq!(
+            origins(editor, "SELECT * FROM v").await,
+            [None, None, None],
+            "{flavour:?}"
+        );
+        assert_eq!(
+            origins(editor, "SELECT * FROM vt").await,
+            [None, None, None],
+            "{flavour:?}"
+        );
+        assert_eq!(
+            origins(editor, "SELECT * FROM other.w").await,
+            [traced("other", "w", "id"), traced("other", "w", "c")],
+            "{flavour:?}"
+        );
+        assert_eq!(
+            origins(editor, "SELECT * FROM t; SELECT 1").await,
+            [None, None, None],
+            "{flavour:?}: a run of two statements"
+        );
+
+        run_ok(editor, "START TRANSACTION; INSERT INTO t VALUES (2, 'y', 3)").await;
+        let (inside, events) = crate::support::run(editor, "SELECT * FROM t").await;
+        assert_eq!(inside.transaction_state, TransactionState::InTransaction, "{flavour:?}");
+        assert_eq!(origins_in(&events), [None, None, None], "{flavour:?}");
+        run_ok(editor, "ROLLBACK").await;
+
+        run_ok(editor, "CREATE TEMPORARY TABLE tt (id int PRIMARY KEY)").await;
+        run_ok(editor, "INSERT INTO tt VALUES (1)").await;
+        assert_eq!(origins(editor, "SELECT * FROM tt").await, [None], "{flavour:?}");
+        run_ok(
+            editor,
+            "CREATE TEMPORARY TABLE t (id int PRIMARY KEY, a varchar(10), b int)",
+        )
+        .await;
+        run_ok(editor, "INSERT INTO t VALUES (1, 'x', 2)").await;
+        assert_eq!(
+            origins(editor, "SELECT * FROM t").await,
+            [None, None, None],
+            "{flavour:?}: a temporary table over t"
+        );
+        editor.close().await;
+        root.close().await.expect("a close");
+    }
+}
+
+// The host edits only rows read outside a transaction, so a session that cannot say is not traced.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn mysql_user_without_ps_select_is_not_traced() {
+    let fixture = start(MysqlFlavour::Mysql).await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &["CREATE TABLE t (id int PRIMARY KEY)", "INSERT INTO t VALUES (1)"],
+    )
+    .await;
+    let editor = session(connection.as_ref()).await;
+
+    let (summary, events) = crate::support::run(editor.as_ref(), "SELECT * FROM t").await;
+
+    assert_eq!(summary.transaction_state, TransactionState::Unknown);
+    assert_eq!(origins_in(&events), [None]);
+    editor.close().await;
+    connection.close().await.expect("a close");
 }

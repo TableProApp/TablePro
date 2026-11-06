@@ -1,6 +1,6 @@
 # 0006: The connection library holds a group tree, manual order and favourites
 
-- **Status**: Accepted; how the Linux app shows groups superseded by linux 0032 (`linux/docs/decisions/0032-connection-list-tree.md`)
+- **Status**: Accepted; how the Linux app shows groups superseded by linux 0032 (`linux/docs/decisions/0032-connection-list-tree.md`); the version 2 upgrade superseded by linux 0033 (`linux/docs/decisions/0033-no-compatibility-with-pre-release-states.md`)
 - **Date**: 2026-11-02
 
 ## Context

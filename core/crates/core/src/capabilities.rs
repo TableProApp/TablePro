@@ -1,8 +1,11 @@
 use crate::auth_mode::AuthMode;
+use crate::config_error::ConfigError;
 use crate::file_format::FileFormat;
+use crate::local_socket::{LocalSocket, is_local_socket_host};
 use crate::meta::ObjectKind;
-use crate::network_options::NetworkOption;
+use crate::network_options::{NetworkOption, NetworkOptions};
 use crate::tls_capabilities::TlsCapabilities;
+use crate::tls_mode::TlsMode;
 use crate::write_ledger::WriteAtomicity;
 
 /// Where a driver connects to.
@@ -146,6 +149,47 @@ impl DriverCapabilities {
     pub fn offers(&self, option: NetworkOption) -> bool {
         self.network_options.contains(&option)
     }
+
+    /// The TLS mode a new connection to `port` with these options starts
+    /// on, as the engine's own client starts on it (core ADR 0014).
+    pub fn new_connection_tls(&self, port: u16, options: &NetworkOptions) -> TlsMode {
+        let Some(tls) = &self.tls else {
+            return TlsMode::Disable;
+        };
+        // A DNS seed list is MongoDB's mongodb+srv://, which turns TLS on
+        // unless told otherwise.
+        let seed_list = options.dns_seed_list && self.offers(NetworkOption::DnsSeedList);
+        let tls_only = seed_list || tls.tls_ports.contains(&port);
+        match tls_only && tls.modes.contains(&TlsMode::VerifyFull) {
+            true => TlsMode::VerifyFull,
+            false => tls.default_mode,
+        }
+    }
+
+    pub fn local_socket(&self) -> Option<LocalSocket> {
+        self.network_options.iter().find_map(|option| match option {
+            NetworkOption::LocalSocket(socket) => Some(*socket),
+            _ => None,
+        })
+    }
+
+    // The socket is this machine's, so a tunnel never reaches it, and TLS there is the engine's to take.
+    pub fn check_socket_host(&self, host: &str, tunnelled: bool, tls: TlsMode) -> Result<(), ConfigError> {
+        if !is_local_socket_host(host.trim()) {
+            return Ok(());
+        }
+        let Some(socket) = self.local_socket() else {
+            return Err(ConfigError::LocalSocketUnsupported);
+        };
+        if tunnelled {
+            return Err(ConfigError::LocalSocketOverSsh);
+        }
+        // Prefer goes on in the clear where TLS cannot be had, as libpq does on a socket.
+        if tls.requires_tls() && !socket.takes_tls() {
+            return Err(ConfigError::TlsOverLocalSocket);
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -195,11 +239,106 @@ mod tests {
     }
 
     #[test]
+    fn a_new_connection_starts_on_the_engines_default_and_a_seed_list_or_tls_port_on_verify_full() {
+        let tls = TlsCapabilities {
+            modes: &[TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull],
+            default_mode: TlsMode::Disable,
+            tls_ports: &[8443],
+            ca_file: true,
+            client_identity: true,
+            server_name_override: crate::ServerNameOverride::AnyRoute,
+        };
+        let document = DriverCapabilities {
+            tls: Some(tls),
+            network_options: &[NetworkOption::DnsSeedList],
+            ..NETWORK
+        };
+        let seed_list = NetworkOptions {
+            dns_seed_list: true,
+            ..NetworkOptions::default()
+        };
+
+        let plain = NetworkOptions::default();
+
+        assert_eq!(
+            NETWORK.new_connection_tls(8443, &seed_list),
+            TlsMode::Disable,
+            "no TLS at all"
+        );
+        assert_eq!(document.new_connection_tls(27017, &plain), TlsMode::Disable);
+        assert_eq!(document.new_connection_tls(27017, &seed_list), TlsMode::VerifyFull);
+        assert_eq!(
+            document.new_connection_tls(8443, &plain),
+            TlsMode::VerifyFull,
+            "a TLS port"
+        );
+        let no_seed_list = DriverCapabilities {
+            network_options: &[],
+            ..document
+        };
+        assert_eq!(
+            no_seed_list.new_connection_tls(27017, &seed_list),
+            TlsMode::Disable,
+            "an option the engine does not read changes nothing"
+        );
+    }
+
+    #[test]
     fn a_network_engine_offers_its_port_and_its_logins() {
         assert_eq!(NETWORK.default_port(), Some(5432));
         assert!(!NETWORK.is_file_based());
         assert_eq!(NETWORK.file_format(), None);
         assert!(NETWORK.supports(AuthMode::Password));
         assert!(!NETWORK.supports(AuthMode::Kerberos));
+    }
+
+    #[test]
+    fn a_socket_host_needs_an_engine_that_reads_one_and_no_tunnel() {
+        const SOCKET: LocalSocket = LocalSocket::Folder {
+            file_prefix: ".s.PGSQL.",
+            defaults: &["/run/postgresql"],
+        };
+        let with_socket = DriverCapabilities {
+            network_options: &[NetworkOption::LocalSocket(SOCKET)],
+            ..NETWORK
+        };
+
+        const FILE: LocalSocket = LocalSocket::File {
+            defaults: &["/run/mysqld/mysqld.sock"],
+        };
+        let with_file = DriverCapabilities {
+            network_options: &[NetworkOption::LocalSocket(FILE)],
+            ..NETWORK
+        };
+        let plain = TlsMode::Disable;
+
+        assert_eq!(with_socket.local_socket(), Some(SOCKET));
+        assert_eq!(NETWORK.local_socket(), None);
+        assert_eq!(with_socket.check_socket_host("/run/postgresql", false, plain), Ok(()));
+        assert_eq!(
+            with_socket.check_socket_host("db.example.com", true, TlsMode::VerifyFull),
+            Ok(())
+        );
+        assert_eq!(
+            with_socket.check_socket_host("/run/postgresql", true, plain),
+            Err(ConfigError::LocalSocketOverSsh)
+        );
+        assert_eq!(
+            NETWORK.check_socket_host(" /run/postgresql", false, plain),
+            Err(ConfigError::LocalSocketUnsupported)
+        );
+        assert_eq!(
+            with_socket.check_socket_host("/run/postgresql", false, TlsMode::Require),
+            Err(ConfigError::TlsOverLocalSocket)
+        );
+        assert_eq!(
+            with_socket.check_socket_host("/run/postgresql", false, TlsMode::Prefer),
+            Ok(()),
+            "a new PostgreSQL connection's default refused its own socket"
+        );
+        assert_eq!(
+            with_file.check_socket_host("/run/mysqld/mysqld.sock", false, TlsMode::VerifyFull),
+            Ok(())
+        );
     }
 }

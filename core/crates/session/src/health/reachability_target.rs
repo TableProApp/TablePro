@@ -31,8 +31,10 @@ impl ReachabilityTarget {
             }
             // The servers a DNS seed list names come from SRV records, which
             // a reachability check of the host cannot read: the host itself
-            // may have no address at all.
-            RequestTarget::Network { ssh: None, options, .. } if options.dns_seed_list => Self::Local,
+            // may have no address at all. A replica set reaches any member.
+            RequestTarget::Network { ssh: None, options, .. } if options.dns_seed_list || options.uses_host_list() => {
+                Self::Local
+            }
             RequestTarget::Network {
                 endpoint, ssh: None, ..
             } => Self::for_endpoint(endpoint),
@@ -115,8 +117,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn a_dns_seed_list_is_not_gated_on_its_host() {
+    fn with_options(options: tablepro_core::NetworkOptions) -> RequestTarget {
         let RequestTarget::Network {
             endpoint,
             ssh,
@@ -128,20 +129,34 @@ mod tests {
         else {
             unreachable!("a network target");
         };
-        let seed_list = RequestTarget::Network {
+        RequestTarget::Network {
             endpoint,
             ssh,
             credentials,
             database,
             tls,
-            options: tablepro_core::NetworkOptions {
-                dns_seed_list: true,
-                ..Default::default()
-            },
-        };
+            options,
+        }
+    }
+
+    #[test]
+    fn a_dns_seed_list_and_a_replica_set_are_not_gated_on_the_host() {
+        let seed_list = with_options(tablepro_core::NetworkOptions {
+            dns_seed_list: true,
+            ..Default::default()
+        });
+        let replica_set = with_options(tablepro_core::NetworkOptions {
+            replica_set: Some("rs0".to_owned()),
+            more_hosts: vec!["mongo2.example.com:27017".to_owned()],
+            ..Default::default()
+        });
 
         assert_eq!(
             ReachabilityTarget::for_request(&request(seed_list)),
+            ReachabilityTarget::Local
+        );
+        assert_eq!(
+            ReachabilityTarget::for_request(&request(replica_set)),
             ReachabilityTarget::Local
         );
     }

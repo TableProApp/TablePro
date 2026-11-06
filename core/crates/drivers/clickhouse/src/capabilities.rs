@@ -15,6 +15,10 @@ pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
     username_required: true,
     tls: Some(TlsCapabilities {
         modes: &[TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull],
+        default_mode: TlsMode::Disable,
+        // The HTTPS ports, as clickhouse-client turns TLS on for its secure
+        // native port.
+        tls_ports: &[443, 8443],
         ca_file: true,
         client_identity: true,
         server_name_override: ServerNameOverride::AnyRoute,

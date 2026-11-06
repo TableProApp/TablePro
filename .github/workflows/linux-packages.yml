@@ -4,39 +4,37 @@ name: Linux packages
 # The Debian source package is built once for each Ubuntu series the PPA
 # builds for, and its binaries are built from it the way Launchpad builds
 # them: offline, in a fresh container with only the declared build
-# dependencies, then checked with lintian. The .rpm is built in a fresh
-# fedora:44 with only its BuildRequires. Each package is then installed in
-# another fresh container with only its runtime dependencies and started.
+# dependencies, then checked with lintian. The .rpm is built in Mock, as
+# COPR builds it, for each Fedora release COPR builds for: the BuildRequires
+# go into a fresh chroot, then the build runs there with no network, then
+# rpmlint. Each package is then installed in another fresh container of its
+# release with only its runtime dependencies and started.
+# release-matrix.json names the series and releases.
+# The Flatpak is built offline from the same tarballs with the release
+# manifest, with every Meson suite, on the nightly and when asked for. It is
+# signed with a throwaway key into repositories laid out as
+# flatpak.tablepro.app serves them, validated, then installed from a
+# .flatpakref and from a bundle, updated, and switched between the release
+# and beta branches, in fresh Ubuntu 22.04, 24.04 and 26.04 containers that
+# have only their own Flatpak.
 # release-linux.yml calls this workflow and uploads the source packages.
-# A run by hand can add arm64, which the nightly and pull requests leave out.
+# ci.yml calls it when a change touches what the packages declare or how they
+# build (the packages suite), x86_64 only. nightly.yml calls it with the
+# Flatpak every night, and with arm64 on Sundays. A run by hand can add both.
 # Given a release tag, it packages that release's tarballs instead, with
 # the packaging from this checkout, for a PPA upload with a new revision.
+# Only release-linux.yml passes the PostHog key, so every other run builds
+# packages that send no usage data.
 
 on:
-  pull_request:
-    paths:
-      - "linux/build-aux/debian/**"
-      - "linux/build-aux/rpm/**"
-      - "linux/build-aux/packaging/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "core/**"
-      - "linux/meson.build"
-      - "linux/meson.options"
-      - "linux/crates/**/meson.build"
-      - "linux/data/**/meson.build"
-      - "linux/po/meson.build"
-      - "linux/po/LINGUAS"
-      - ".github/workflows/linux-packages.yml"
-  # Nightly on main, so a failure only one distribution's build shows turns
-  # up before tag time. Three hours after build-linux.yml's nightly, so the
-  # two do not share the account's 20 concurrent jobs.
-  schedule:
-    - cron: "13 17 * * *"
   workflow_dispatch:
     inputs:
       arm64:
         description: Also build, test and install the arm64 .deb and .rpm
+        type: boolean
+        default: false
+      flatpak:
+        description: Also build the Flatpak, and install and update it from a repository
         type: boolean
         default: false
   workflow_call:
@@ -57,16 +55,48 @@ on:
         description: The PPA upload number, the N in X.Y.Z-0ppaN.
         type: string
         default: "1"
-
-# A pull request keeps only its newest run; every other run, a release's call included, has its own group.
-concurrency:
-  group: linux-packages-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}-{1}', github.run_id, inputs.release-tag) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      flatpak:
+        description: Also build the Flatpak once per rpm-runners architecture, and install and update it from a repository.
+        type: boolean
+        default: false
+      flatpak-branch:
+        description: The Flatpak branch, stable or beta.
+        type: string
+        default: stable
+      # Only a release's call passes it, so a run of this workflow on its own builds packages without one.
+      posthog-key:
+        description: The PostHog project key the vendor tarball carries for the .deb and .rpm. Public by design.
+        type: string
+        default: ""
 
 permissions:
   contents: read
 
 jobs:
+  # The Ubuntu series and Fedora releases come from release-matrix.json, which
+  # release_assets.py checks a release's assets against.
+  matrix:
+    name: Release matrix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      ubuntu-series: ${{ steps.read.outputs.ubuntu-series }}
+      fedora: ${{ steps.read.outputs.fedora }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read release-matrix.json
+        id: read
+        run: |
+          python3 - >> "$GITHUB_OUTPUT" <<'EOF'
+          import json
+          with open("linux/build-aux/packaging/release-matrix.json", encoding="utf-8") as file:
+              matrix = json.load(file)
+          print("ubuntu-series=" + " ".join(ubuntu["series"] for ubuntu in matrix["ubuntu"]))
+          print("fedora=" + json.dumps(matrix["fedora"]))
+          EOF
+
   sources:
     name: Source tarballs
     runs-on: ubuntu-24.04
@@ -85,7 +115,9 @@ jobs:
           persist-credentials: false
       - name: Make the source and vendor tarballs
         if: inputs.release-tag == ''
-        run: linux/build-aux/packaging/make-sources.sh --install-deps _packages/sources
+        env:
+          POSTHOG_KEY: ${{ inputs.posthog-key }}
+        run: linux/build-aux/packaging/make-sources.sh --install-deps --posthog-key "$POSTHOG_KEY" _packages/sources
       - name: Download the released source and vendor tarballs
         if: inputs.release-tag != ''
         env:
@@ -99,14 +131,14 @@ jobs:
 
   source-package:
     name: Debian source packages
-    needs: sources
+    needs: [matrix, sources]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     container:
       image: ubuntu:26.04
     env:
       # Every Ubuntu series the PPA builds for.
-      UBUNTU_SERIES: resolute stonking
+      UBUNTU_SERIES: ${{ needs.matrix.outputs.ubuntu-series }}
     outputs:
       series: ${{ steps.build.outputs.series }}
     steps:
@@ -158,6 +190,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/linux-package-disk
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: linux-source-package
@@ -196,9 +229,88 @@ jobs:
           if-no-files-found: error
 
   rpm:
-    name: RPM package (${{ matrix.runner }})
-    needs: sources
+    name: RPM package (Fedora ${{ matrix.fedora }}, ${{ matrix.runner }})
+    needs: [matrix, sources]
     if: inputs.release-tag == ''
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ fromJSON(inputs.rpm-runners || (inputs.arm64 && '["ubuntu-24.04", "ubuntu-24.04-arm"]') || '["ubuntu-24.04"]') }}
+        # Every Fedora release the COPR project builds for, from release-matrix.json.
+        fedora: ${{ fromJSON(needs.matrix.outputs.fedora) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 300
+    # On the runner itself, so the build's container can go on the larger
+    # disk. It is privileged, since Mock mounts the chroot's filesystems and
+    # build-rpm.sh unshares the network for the build.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/linux-package-disk
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-sources
+          path: _packages/sources
+      - name: Build, test and lint the package
+        env:
+          FEDORA: ${{ matrix.fedora }}
+        run: |
+          dist="$(find _packages/sources -name 'tablepro-*.tar.xz' ! -name '*-vendor.tar.xz')"
+          vendor="$(find _packages/sources -name 'tablepro-*-vendor.tar.xz')"
+          docker run --rm --privileged -v "$PWD:$PWD" -w "$PWD" "fedora:$FEDORA" \
+            linux/build-aux/packaging/build-rpm.sh "$dist" "$vendor" _packages/rpm
+      - name: Keep the RPM failure logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-rpm-testlog-${{ matrix.fedora }}-${{ runner.arch }}
+          path: |
+            _packages/rpm/testlog.txt
+            _packages/rpm/build.log
+            _packages/rpm/disk-usage.tsv
+            _packages/rpm/disk-usage.txt
+          if-no-files-found: ignore
+          retention-days: 7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-rpm-${{ matrix.fedora }}-${{ runner.arch }}
+          path: _packages/rpm
+          if-no-files-found: error
+
+  rpm-install:
+    name: Install the RPM package (Fedora ${{ matrix.fedora }}, ${{ matrix.runner }})
+    needs: [matrix, rpm]
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ fromJSON(inputs.rpm-runners || (inputs.arm64 && '["ubuntu-24.04", "ubuntu-24.04-arm"]') || '["ubuntu-24.04"]') }}
+        # Every Fedora release the COPR project builds for, from release-matrix.json.
+        fedora: ${{ fromJSON(needs.matrix.outputs.fedora) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    container:
+      image: fedora:${{ matrix.fedora }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-rpm-${{ matrix.fedora }}-${{ runner.arch }}
+          path: _packages/rpm
+      - name: Install, start and validate
+        run: |
+          linux/build-aux/packaging/smoke-test.sh \
+            "$(find _packages/rpm -name 'tablepro-[0-9]*.rpm' ! -name '*.src.rpm')" linux/po/LINGUAS
+
+  # From the same tarballs as the packages, offline, with every Meson suite in
+  # the sandbox (build-flatpak.sh). The unsigned repository goes to
+  # release-linux.yml, which signs it.
+  flatpak:
+    name: Flatpak (${{ matrix.runner }})
+    needs: sources
+    if: inputs.flatpak || github.event_name == 'schedule'
     strategy:
       fail-fast: false
       matrix:
@@ -206,7 +318,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 300
     container:
-      image: fedora:44
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      options: --privileged
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -215,48 +328,82 @@ jobs:
         with:
           name: linux-sources
           path: _packages/sources
-      - name: Build, test and lint the package
+      - name: Build and test
+        env:
+          BRANCH: ${{ inputs.flatpak-branch || 'stable' }}
         run: |
-          dist="$(find _packages/sources -name 'tablepro-*.tar.xz' ! -name '*-vendor.tar.xz')"
-          vendor="$(find _packages/sources -name 'tablepro-*-vendor.tar.xz')"
-          linux/build-aux/packaging/build-rpm.sh "$dist" "$vendor" _packages/rpm
-      - name: Keep the RPM failure logs
-        if: failure()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: linux-rpm-testlog-${{ runner.arch }}
-          path: |
-            _packages/rpm/testlog.txt
-            _packages/rpm/disk-usage.tsv
-            _packages/rpm/disk-usage.txt
-          if-no-files-found: ignore
-          retention-days: 7
+          xvfb-run --auto-servernum linux/build-aux/packaging/build-flatpak.sh --branch "$BRANCH" \
+            "$(find _packages/sources -name 'tablepro-*.tar.xz' ! -name '*-vendor.tar.xz')" \
+            "$(find _packages/sources -name 'tablepro-*-vendor.tar.xz')" _packages/flatpak
+          tar -C _packages/flatpak -cf "_packages/flatpak-repo-$(uname -m).tar" repo
+      # One file, since an OSTree repository is thousands.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: linux-rpm-${{ runner.arch }}
-          path: _packages/rpm
+          name: linux-flatpak-repo-${{ runner.arch }}
+          path: _packages/flatpak-repo-*.tar
           if-no-files-found: error
+      - name: Lint the manifest
+        if: runner.arch == 'X64'
+        run: flatpak-builder-lint manifest linux/build-aux/flatpak/app.tablepro.TablePro.json
 
-  rpm-install:
-    name: Install the RPM package (${{ matrix.runner }})
-    needs: rpm
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: ${{ fromJSON(inputs.rpm-runners || (inputs.arm64 && '["ubuntu-24.04", "ubuntu-24.04-arm"]') || '["ubuntu-24.04"]') }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
+  # Signed with a throwaway key, for http://127.0.0.1:8080, by the same
+  # flatpak-repo.sh release-linux.yml publishes with, on both branches
+  # whatever the build's own.
+  flatpak-test-repo:
+    name: Flatpak test repository
+    needs: flatpak
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     container:
-      image: fedora:44
+      image: ubuntu:26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: linux-rpm-${{ runner.arch }}
-          path: _packages/rpm
-      - name: Install, start and validate
+          pattern: linux-flatpak-repo-*
+          path: _packages/flatpak-repo
+          merge-multiple: true
+      - name: Commit twice to both repositories, bundle the first commit and validate
         run: |
-          linux/build-aux/packaging/smoke-test.sh \
-            "$(find _packages/rpm -name 'tablepro-[0-9]*.rpm' ! -name '*.src.rpm')" linux/po/LINGUAS
+          for tarball in _packages/flatpak-repo/*.tar; do
+            mkdir -p "${tarball%.tar}"
+            tar -C "${tarball%.tar}" -xf "$tarball"
+            set -- "$@" "${tarball%.tar}/repo"
+          done
+          linux/build-aux/packaging/flatpak-test-site.sh --install-deps _packages/site "$@"
+          tar -C _packages -cf _packages/flatpak-test-site.tar site
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-flatpak-test-site
+          path: _packages/flatpak-test-site.tar
+          if-no-files-found: error
+
+  # Also on the Ubuntu releases below the GNOME 50 floor, whose users have the
+  # Flatpak and not the packages, each with its own Flatpak.
+  flatpak-install:
+    name: Install the Flatpak (Ubuntu ${{ matrix.ubuntu }}, ${{ matrix.runner }})
+    needs: flatpak-test-repo
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ fromJSON(inputs.rpm-runners || (inputs.arm64 && '["ubuntu-24.04", "ubuntu-24.04-arm"]') || '["ubuntu-24.04"]') }}
+        ubuntu: ["22.04", "24.04", "26.04"]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    container:
+      image: ubuntu:${{ matrix.ubuntu }}
+      options: --privileged
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-flatpak-test-site
+          path: _packages
+      - name: Install from the repositories and a bundle, start, update and switch branches
+        run: |
+          tar -C _packages -xf _packages/flatpak-test-site.tar
+          linux/build-aux/packaging/smoke-test-flatpak.sh _packages/site linux/po/LINGUAS

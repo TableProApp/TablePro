@@ -238,7 +238,9 @@ A call that times out or loses its connection may have met a dead route or only 
 
 ## 5. Writes and the `WriteLedger`
 
-A `WriteBatch` is a `WriteKind` (`RowChanges` or `SchemaChanges`), the `TableRef` it changes, the `GuardedStatement` steps and a `ForeignKeyMode`. A row change runs under the workspace statement timeout where the engine can stop one safely; a schema change never does. Both stay bounded by the call's deadline and cancel.
+A `WriteBatch` is a `WriteKind` (`RowChanges`, `SchemaChanges` or `DatabaseChanges`), the `TableRef` it changes, the `GuardedStatement` steps and a `ForeignKeyMode`. A row change runs under the workspace statement timeout where the engine can stop one safely; a schema or database change never does. All stay bounded by the call's deadline and cancel.
+
+A `DatabaseChanges` batch creates or drops a database, and its `TableRef` names that database as the schema with an empty table name. The driver opens no transaction for it and runs the statements one at a time, because PostgreSQL and SQL Server refuse CREATE and DROP DATABASE inside one.
 
 Each step is a statement and a `RowGuard`: `None`, `AffectedExactly(n)`, or `ProbeExactly { probe, rows }`, which counts the rows with a `SELECT` before the statement runs. A mismatch means the row is not the one that was loaded, and the batch stops with `RowGuardFailed`. An engine that cannot report an affected count refuses `AffectedExactly` with `GuardUnsupported` before anything is sent.
 

@@ -8,6 +8,7 @@ use tablepro_core::dialect::{
     BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertConflict, KeysetDirection, LikeCase, LikeForm,
     LiteralError, Placeholder, SqlDialect,
 };
+use tablepro_core::dump::DumpDialect;
 use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
@@ -230,6 +231,10 @@ impl SqlDialect for MySqlDialect {
     }
 
     fn ddl(&self) -> Option<&dyn DdlDialect> {
+        Some(self)
+    }
+
+    fn dump(&self) -> Option<&dyn DumpDialect> {
         Some(self)
     }
 

@@ -6,6 +6,9 @@ The app's data goes to the store its shape calls for. The core's `storage` crate
 |---|---|---|
 | Saved connections | JSON file | `ConnectionStore` |
 | Database passwords, SSH passwords and key passphrases | `oo7`: the host's Secret Service, or the Secret portal inside Flatpak | `SecretStore`, read at each connect by `KeyringCredentials` |
+| The TablePro account's refresh token | the same keyring, or memory alone when none answers | `SecretStore` through the app's `KeyringRefreshToken`, a `tablepro_account::RefreshTokenVault` |
+| The account's device ID and last entitlement, or an imported offline file | JSON file | `tablepro-account` ([core ADR 0016](../../core/docs/decisions/0016-tablepro-accounts.md), [ADR 0038](decisions/0038-account-page-and-license-ask.md)) |
+| The usage data's anonymous ID and what it sent once | JSON file | `Telemetry` in the app crate ([ADR 0039](decisions/0039-usage-data.md)) |
 | Preferences and window geometry | `gio::Settings` | `AppSettings` |
 | Query history and saved queries | SQLite, one database | `QueryHistory`, `SavedQueries` |
 | Editor tab text | one file per tab | `DraftStore` |
@@ -18,25 +21,25 @@ The app's data goes to the store its shape calls for. The core's `storage` crate
 `ConnectionStore` holds the saved-connection list, one store per storage root:
 
 - `load_blocking`, `list_blocking`, `upsert_blocking`, `insert_after_blocking`, `update_blocking`, `remove_blocking`, `touch_last_opened_blocking`, the group and favourite operations below, `preview_import_blocking`, `apply_import_blocking` and `export_blocking` run off the GTK thread. A change holds the store's lock across read, change and write, so two writers never lose an entry. `update_blocking` changes one entry as the list holds it at the write, so a last-opened stamp from another window in between is kept.
-- A write goes through `write_private_blocking` first and the cached list changes only once it landed, so a failed write leaves both as they were.
+- A write goes through `write_document_blocking` first and the cached list changes only once it landed, so a failed write leaves both as they were. The first write over a file an older build wrote keeps a copy of it first ([Copies before a format upgrade](#copies-before-a-format-upgrade)).
+- A file that another version wrote in a newer format is refused; one in the same format is read and written whichever build wrote it.
 - `subscribe` hands out a watch of `ConnectionListSnapshot`, so every picker sees every writer's change.
-- A file that cannot be read, or that another version wrote, leaves the store `Unavailable`, and it refuses every write until the user picks Reset (`reset_unreadable_blocking`), which moves the file aside.
+- A file that cannot be read, or that holds a format newer than this build's, leaves the store `Unavailable`, and it refuses every write until the user picks Reset (`reset_unreadable_blocking`), which moves the file aside.
 - A `SavedConnection` does **not** carry a password. Secrets live in the keyring, keyed by the connection's UUID, so a rename or a new host keeps them.
-- `safe_mode` is the connection's Safe Mode level: `off`, `confirm_writes` or `read_only`. It has no default, since guessing Off would drop a guard. Version 1 of the file had a `read_only` switch instead, which reads as `read_only` when on and `off` when off.
-- `external_access` is what MCP clients may do on the connection: `blocked`, `read_only` or `read_write` ([ADR 0022](decisions/0022-ai-assistant-and-mcp-server.md)). A file written before it existed reads as `read_only`, the level a new connection starts at.
-- `ai_policy` is what the AI assistant may send from the connection: `ask`, `allow` or `never`. A file written before it existed reads as `ask`, the policy a new connection starts at.
-- `query_timeout_secs` is the editor's query timeout on the connection, in seconds, with 0 for none. Left out, as in a file written before it existed, the connection follows the timeout in Preferences, and it is written back without one.
-- The file's `groups` list is the library's folders, a tree ([core ADR 0006](../../core/docs/decisions/0006-connection-library.md)). Each `ConnectionGroup` has an `id`, a `name` (`ConnectionGroupName`: in a connection name's form, not empty, of any length as on macOS, no control characters, which a read turns into spaces), a `parent_id` (none for a top-level group), an `order` among its siblings, and an optional `color` and `icon` (`GroupIcon`: one of the `ConnectionIcon` names, or the SF Symbol a macOS group wears, which Linux does not draw). Groups nest at most 3 levels. A new or moved group may not share a name with a sibling in any case; a list upgraded from version 2 can still hold two that differ only in case. A group reordered inside its own parent is checked for neither rule, so two such groups, or one a hand-edited file nests deeper than 3 levels, still reorder.
+- `safe_mode` is the connection's Safe Mode level: `off`, `confirm_writes` or `read_only`. It has no default, since guessing Off would drop a guard.
+- `external_access` is what MCP clients may do on the connection: `blocked`, `read_only` or `read_write` ([ADR 0022](decisions/0022-ai-assistant-and-mcp-server.md)). A new connection starts at `read_only`. It has no default either.
+- `ai_policy` is what the AI assistant may send from the connection: `ask`, `allow` or `never`. A new connection starts at `ask`. It has no default either.
+- `query_timeout_secs` is the editor's query timeout on the connection, in seconds, with 0 for none. Left out, the connection follows the timeout in Preferences, and it is written back without one.
+- The file's `groups` list is the library's folders, a tree ([core ADR 0006](../../core/docs/decisions/0006-connection-library.md)). Each `ConnectionGroup` has an `id`, a `name` (`ConnectionGroupName`: in a connection name's form, not empty, of any length as on macOS, no control characters, which a read turns into spaces), a `parent_id` (none for a top-level group), an `order` among its siblings, and an optional `color` and `icon` (`GroupIcon`: one of the `ConnectionIcon` names, or the SF Symbol a macOS group wears, which Linux does not draw). Groups nest at most 3 levels. A new or moved group may not share a name with a sibling in any case; an imported file can still bring two that differ only in case. A group reordered inside its own parent is checked for neither rule, so two such groups, or one a hand-edited file nests deeper than 3 levels, still reorder.
 - A connection's `group_id` names its group, none for the top of the list, and its `order` is its place there. Every write numbers each group's groups and connections from 0, so a new entry, or one moved to another group, goes last there. `insert_after_blocking` saves a new entry right after another one, in that one's group, in one write; when that one is gone it is saved as `upsert_blocking` saves it. A read roots a group whose parent is missing or that sits on a cycle, keeps the first of two entries with one id, and moves a connection whose group is missing to the top.
 - `create_group_blocking`, `rename_group_blocking`, `set_group_color_blocking`, `set_group_icon_blocking`, `move_groups_blocking` (to another parent, before a sibling), `delete_group_blocking`, `move_connections_blocking` (to a group, before a connection) and `move_connections_to_group_named_blocking` change the tree. Each refuses what would break it with a `StorageError` carrying a stable code: `GroupNotFound`, `GroupExists`, `GroupNameTaken`, `GroupCycle`, `GroupTooDeep`, `ConnectionNotFound`. Deleting a group deletes the groups inside it and moves their connections to the top of the list. `GroupTree::can_place` and `GroupTree::can_create_in` apply the same parent, cycle and depth rules without writing, so the app can turn off a move or a New Subgroup the store would refuse.
 - `favorites` lists the favourite connections in their order. `add_favorites_blocking` adds or moves some before a given one, `remove_favorites_blocking` takes them off, and deleting a connection drops it. `ConnectionList::recent` is the opened connections, newest first, without the favourites.
 - The Linux app's picker and the window's tree show the groups as a tree in the library's order, empty ones too, each group's subgroups above its connections. Only the Move to Group menus and the search results name a group by its path from the top, such as `Work / Staging`. The picker also has a Favourites section, in the favourites' order, and a Recent section with the last 5 connections opened, favourites left out. New Group makes a group at the top and New Subgroup makes one inside a group, up to 3 levels. Groups and connections move by drag and drop, or with Move Up and Move Down.
-- Version 2 filed a connection under a `group` name. Its upgrade makes each name a top-level group whose id comes from the name, so identical names share one group and a read before the first save gives the same ids; names are cleaned as above, and a blank one is no group. Groups and each group's connections are numbered by name.
 - The file's `tags` list holds every `ConnectionTag`: an `id`, a `name` (`ConnectionTagName`: in a connection name's form, 1 to 32 characters, no control characters, cleaned on read as a group's is and cut to 32) and a `color` from the same palette as `color`. No two tags share a name in any case: `create_tag_blocking` and `update_tag_blocking` refuse one with `TagNameTaken`.
 - A connection's `tags` are ids from that list. Every write drops an id the list lacks and a repeated one, so `delete_tag_blocking` takes the tag off every connection in the same write, and a connection saved with a tag deleted meanwhile loses it.
 - `icon` is one of the `ConnectionIcon` names. The app draws each with a symbolic icon from the theme (`crates/app/src/ui/icons.rs`).
 - A connection's `name` is stored and compared as the list shows it: characters that show as nothing (U+200B, U+FEFF) dropped, control characters and every other space (U+00A0, U+2007) as a plain space, no blanks around it, and in Unicode NFC, so a name that looks like a saved one is the same name. Tag and group names take the same form.
-- Older group and tag names made only of invisible characters read as Unicode escapes, so the library still opens. When those escapes exceed a tag's 32-character limit, its name becomes its id without hyphens. Recovery reserves visible names first and adds a number when a recovered name is taken, cutting a tag's prefix to stay within 32 characters. The ids and connection links stay the same; new invisible-only names are refused.
+- A stored group or tag name made only of invisible characters, which macOS accepts for a group, reads as its Unicode escapes, so the group still shows. A new name of that kind is refused.
 - An import is previewed first: `preview_import_blocking` works out every entry as it will be saved and writes nothing, the app shows each one with its host, and `apply_import_blocking` writes that result, or refuses with `ImportOutdated` when the list changed in between. For an added entry the preview also names its SSH server and a TLS mode looser than a new connection's; for an updated one, the name it had when the file renames it (`ImportChange::Updated`, `renamed_from`). An imported entry never takes a name another entry holds or held before the import, whatever order the file lists them in. An updated entry whose name the file keeps keeps it, even when another entry has the same one.
 - On import, a tag is matched by id, then by name in any case, and added only when neither matches, so importing a file twice leaves one tag of each name. A tag matched by id takes the file's colour, and its name unless another tag has it. A connection updated by an import takes the file's tags and icon.
 - On import, a group is matched by id, then by the exact name under the same parent, then by that name in any case among the groups the list had before the import, and otherwise added last in its place. So a file's own `Work` and `work` stay two groups, as a read of that file gives. A group matched by id keeps its place and takes the file's colour, icon, and name unless a sibling has it. Those renames come first, so a name one of them frees or takes decides how the rest match, whatever order the file lists them in. A group the file nests below the third level is not added: it and the groups under it map to the third-level group above them, so their connections land there, as macOS cuts the path. A connection updated by an import takes the file's group, going last there when the group changed; an added one keeps the file's order after the list's own. The file's favourites are added, and an import never removes one.
@@ -56,17 +59,18 @@ SSH passwords and key passphrases sit in the keyring next to database passwords.
 
 `SecretStore` (`tablepro_linux_platform`) is the app's `SecretVault`: `store`, `load`, `relabel`, `delete_kind` and `delete_connection`, keyed by connection id and `SecretKind`, with the secret as a `SecretString`. It is also the app's `SecretItems`, which holds the MCP access token and the AI providers' API keys and labels them through the app's `SecretItemLabeler`.
 
-Backed by the [`oo7`](https://crates.io/crates/oo7) crate ([ADR 0004](decisions/0004-libsecret-secret-storage.md)). Outside Flatpak it talks to the host's Secret Service over D-Bus, which GNOME Keyring and KWallet both implement. Inside Flatpak it keeps the items in an encrypted file in the sandbox, unlocked with a key from the Secret portal, and uses the Secret Service only when there is no portal.
+Backed by the [`oo7`](https://crates.io/crates/oo7) crate ([ADR 0004](decisions/0004-libsecret-secret-storage.md)). Outside Flatpak it talks to the host's Secret Service over D-Bus, which GNOME Keyring and KWallet both implement. Inside Flatpak it keeps the items in an encrypted file in the sandbox, unlocked with a key from the Secret portal. Without the portal, oo7 0.6 reports the portal's error rather than trying the Secret Service, which the sandbox cannot reach anyway, so the store reports `PortalUnavailable`.
 
 Notes:
 
 - Schema name: the application id plus `.Password`, so `app.tablepro.TablePro.Password` for an installed build and `app.tablepro.TablePro.Devel.Password` for a development one. Neither reads the other's secrets. Attributes: `xdg:schema`, `connection-id` and `kind` (`db_password`, `ssh_password`, `ssh_passphrase`).
 - The MCP server's access token is one item of its own, with `xdg:schema` and `kind` `mcp_token` and no `connection-id`, so deleting a connection never matches it. It is made on the server's first start and replaced from Preferences.
 - Each AI provider's API key is one item, with `xdg:schema`, `kind` `ai_api_key` and `provider` (`anthropic`, `openai` or `openai-compatible`) and no `connection-id`. Preferences > AI stores and removes it; the assistant reads it before each request.
+- The TablePro account's refresh token is one item, with `xdg:schema` and `kind` `account_refresh_token` and no `connection-id`. The server rotates it on every refresh, and each one replaces the item. Sign-out deletes it. When no keyring takes it, it lives in memory until the app quits and the next launch starts signed out; the item the keyring held before is deleted then, since the server refuses a rotated token.
 - Labels name the kind and the target, for example `TablePro database password for app@db.example.com:5432/shop`, so the item is identifiable in Seahorse on a host install. Under Flatpak the items sit in the app's own file keyring.
 - The store unlocks the keyring and the item before reading. A locked keyring otherwise looks exactly like a connection with no saved password.
 - Failures are typed (`SecretError`): a dismissed prompt, a locked keyring, a missing service, a missing portal and a bad encoding each get their own message and their own next step.
-- With no Secret Service at all the store reports `ServiceUnavailable` and the UI prompts at connect time. The app never writes passwords to a plain file as a fallback.
+- With no Secret Service on the host, or no Secret portal inside Flatpak, the store reports `ServiceUnavailable` or `PortalUnavailable` and the UI prompts at connect time. The app never writes passwords to a plain file as a fallback.
 - Never log a password, ever. Wrap them in `secrecy::SecretString` from the `secrecy` crate before they leave the storage layer.
 
 ### When the keyring cannot supply a secret
@@ -105,8 +109,9 @@ leaves nothing unreachable behind when a step fails:
    secret with no entry is orphaned in the keyring.
 2. The entry in `connections.json`.
 3. Everything kept for it: column layouts, filters, the saved tabs with any
-   copy Reset moved aside, the editor drafts (`WorkspaceStore::purge`), the
-   saved queries, and the query history when the user turned that on. A
+   copy Reset moved aside or an upgrade kept, the editor drafts
+   (`WorkspaceStore::purge`), the saved queries, and the query history when
+   the user turned that on. A
    failure here is reported and does not bring the entry back.
 
 A connection open or connecting in a window is not deleted; the dialog
@@ -130,13 +135,15 @@ nothing reaches outside it.
 | Accessor | Path |
 |---|---|
 | `connections_file()` | `$XDG_CONFIG_HOME/<dir>/connections.json` |
-| `column_widths_file()` | `$XDG_CONFIG_HOME/<dir>/column_widths.json`: each table's column layout (order, hidden columns, widths the user set), version 2; a version 1 file of widths alone is upgraded on read |
+| `column_layouts_file()` | `$XDG_CONFIG_HOME/<dir>/column_layouts.json`: each table's column layout (order, hidden columns, widths the user set) |
 | `filter_settings_file()` | `$XDG_CONFIG_HOME/<dir>/filter_settings.json` |
 | `history_database()` | `$XDG_STATE_HOME/<dir>/history.db` |
-| `workspaces_dir()` | `$XDG_STATE_HOME/<dir>/workspaces`: one file per session, and `open-sessions.json`, version 2: the sessions open at the last quit as `windows`, one list of keys per window, windows in the order of their first recorded session and keys in the order each window adopted them; a version 1 file of `sessions` alone is upgraded on read to one window per session |
+| `workspaces_dir()` | `$XDG_STATE_HOME/<dir>/workspaces`: one file per session, and `open-sessions.json`: the sessions open at the last quit as `windows`, one list of keys per window, windows in the order of their first recorded session and keys in the order each window adopted them |
 | `drafts_dir()` | `$XDG_DATA_HOME/<dir>/drafts` |
 | `snippets_dir()` | `$XDG_DATA_HOME/<dir>/snippets`: the user's SQL editor snippets, made when Preferences opens it ([README](../README.md#snippets)) |
 | `crashes_dir()` | `$XDG_STATE_HOME/<dir>/crashes`: crash reports ([error-handling.md](error-handling.md#crashes)) |
+| `telemetry_file()` | `$XDG_STATE_HOME/<dir>/telemetry.json`: the usage data's random `anonymous_id`, the account PostHog knows the install as (`identified`), the day `app_opened` last went out (`opened_on`) and the events sent once per install (`sent_once`). Written only by a build with a PostHog key, once the user shares usage data |
+| `account_file()` | `$XDG_STATE_HOME/<dir>/account.json`, version 1: the `device_id` this machine has on the TablePro account, the last `entitlement` token, which is signed and verified again on read, and the `account_id` it names, kept once the token expires so an offline file of another account is still refused. `offline_only` marks an offline file imported with no sign-in: the launch then never opens the keyring, and a file that no longer verifies is removed. A file of another version reads as empty, and the device is registered again. Sign-out removes it. Without it, a launch never opens the keyring for the account |
 
 `<dir>` is `tablepro` for an installed build and `tablepro-devel` for a
 development one, so `cargo run` never writes over an installed build's
@@ -160,6 +167,10 @@ Everything private goes through `tablepro_storage::fs`:
   and the new file is 0600 whatever mode the old one had.
 - `append_private_blocking` appends to a file it creates 0600 when absent,
   for the crash report, which a second panic adds to.
+- `document::write_document_blocking` encodes a versioned document and
+  writes it with `write_private_blocking`, after keeping a copy of a file
+  an older build wrote ([Copies before a format upgrade](#copies-before-a-format-upgrade)).
+  Every store writes its documents through it.
 - `create_private_file_if_missing` pre-creates an empty 0600 file. SQLite
   creates its database, WAL and SHM with the umask mode, so pre-creating
   the database is what keeps all three off world-readable.
@@ -177,23 +188,24 @@ tokenizer needs 3.34 or later, and `trigram_index_available_on_system_sqlite`
 fails against an older one.
 
 `core/crates/storage/migrations/` holds the schema as sqlx migrations, embedded
-at compile time with `sqlx::migrate!` and run by `QueryHistory::open`:
-
-1. `20260914000000_create_history.sql`: the `history` table.
-2. `20260918000000_create_saved_queries.sql`: the saved queries.
-3. `20261014000000_history_substring_search.sql`: adds `query_folded`,
-   replaces the word index over `query` with the trigram index
-   `history_search` over `query_folded`, and adds `history_page_idx` on
-   `(pinned DESC, executed_at DESC, id DESC)` for paging.
+at compile time with `sqlx::migrate!` and run by `QueryHistory::open`.
+`20260914000000_create_history.sql` creates the `history` table with
+`query_folded`, the trigram index `history_search` over it,
+`history_page_idx` on `(pinned DESC, executed_at DESC, id DESC)` for
+paging, and the `saved_queries` table.
 
 **An applied migration is never edited.** Each change is a new timestamped
 file with its own fixture test. Editing one in place changes its checksum,
 which makes sqlx refuse every database that already applied it.
 
-A database carrying a version this build has no migration for is refused
-with `StorageError::HistoryNewerThanApp` and nothing is written, so an
-older binary cannot damage a newer file. Any other migration failure is
+A database carrying a migration this build does not have is refused with
+`StorageError::HistoryNewerThanApp` and nothing is written, so a build never
+changes a schema newer than its own. A database at the same schema is read
+and written by any build. Any other migration failure is
 `StorageError::HistoryMigration`.
+
+Before a migration runs on a database that already has some, `open` keeps a
+copy of it ([Copies before a format upgrade](#copies-before-a-format-upgrade)).
 
 `QueryHistory::record` refuses a query over 1 MiB with
 `StorageError::TooLarge`.
@@ -210,9 +222,7 @@ shrinks. It returns a `PruneReport { expired, over_cap }`.
 `QueryHistory::search_page(&HistoryQuery, HistoryPageRequest)` finds
 entries that hold every search term anywhere, in any case. Each row keeps
 its query lowercased by Unicode rules in `query_folded`, which SQLite's
-`lower()` cannot do. Rows an older build recorded have none, and
-`QueryHistory::open` folds them 500 to a transaction; a partial index on
-the unfolded rows makes finding none left cost nothing. `history_search`,
+`lower()` cannot do, so the app writes it. `history_search`,
 an FTS5 trigram index over that column, answers a term of three
 characters or more as a quoted phrase, so quotes and FTS5 operators stay
 literal; a shorter term goes through `instr`.
@@ -241,6 +251,18 @@ can tell whether a re-pinned entry falls in the pages already read.
 - `delete_for_connection` removes one connection's entries, pinned ones
   included, for a connection deleted along with its history, then runs
   `optimize` as a prune does.
+- A deletion the user asks for (`delete_returning`, `clear_all`,
+  `delete_for_connection` and the saved queries' `delete` and
+  `delete_for_connection`) reaches each copy an upgrade kept before the
+  database, so a copy that fails leaves the database as it was and an Undo
+  never loses its entries. `prune` trims the copies after its own deletes.
+  Either way `trim_upgrade_copies` also makes each copy hold no history entry
+  or saved query the database no longer has. It
+  attaches the database and deletes the rest in one transaction with
+  `secure_delete` on, optimizing the copy's full-text indexes, so the words
+  leave its blocks and freed pages together. A copy that cannot be trimmed,
+  being damaged, is deleted, and so is what a crash left of one: an unfinished
+  copy, a temporary file and the journals of a copy that is gone.
 - `connections_with_history` lists each connection the history holds
   under the name of its latest run, so a renamed connection shows once.
 
@@ -300,6 +322,10 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `confirm-bulk-delete` | `b` | `true` | |
 | `restore-session` | `b` | `true` | |
 | `last-seen-version` | `s` | empty | |
+| `share-usage-data` | `b` | `true` | |
+| `usage-days` | `u` | `0` | |
+| `last-usage-day` | `s` | empty | `YYYY-MM-DD` |
+| `license-ask-day` | `s` | empty | `YYYY-MM-DD` |
 | `mcp-server-enabled` | `b` | `false` | |
 | `mcp-server-port` | `u` | `23508` | 1024 to 65535 |
 | `ai-provider` | enum | `none` | `none`, `anthropic`, `openai`, `openai-compatible` |
@@ -362,9 +388,42 @@ A keyring failure is a `SecretError` from `tablepro-core`, not a `StorageError`;
 
 ## Changing a format
 
-- A JSON document is a `VersionedDocument` with a `version` field. A new shape bumps its `VERSION` and appends a step to its `UPGRADES`, which turns a file of the version before into the new shape. `decode_document` runs an older file through every step it is behind, oldest first, so a user who skipped releases keeps their data. A step that shipped is never changed or dropped.
-- The upgrade happens in memory. The file stays as it was until the next save writes the current version.
-- A file older than the first step, one a step cannot read, or one from a newer build is never written over. The connection list and a workspace wait for the user's Reset, which moves the file aside; the smaller state files move an unusable file aside themselves.
-- Each released version of the connection list and the workspace file has a golden file that a test reads into the model it was written from: `core/crates/storage/tests/fixtures/connections-v1.json`, `connections-v2.json`, `connections-v3.json`, and `crates/app/tests/fixtures/workspace-v1.json` and `workspace-v2.json`. A committed fixture is never edited. A format change adds the new version's fixture and updates the expected models of the old ones, which now read through the upgrade.
+- A JSON document is a `VersionedDocument` with a `version` field. Every document starts at version 1 with no upgrade step: builds before the first release left no format to read ([ADR 0033](decisions/0033-no-compatibility-with-pre-release-states.md)). A new shape bumps its `VERSION` and appends a step to its `UPGRADES`, which turns a file of the version before into the new shape. `decode_document` runs an older file through every step it is behind, oldest first, so a user who skipped releases keeps their data. A step that shipped is never changed or dropped.
+- The upgrade happens in memory. The file stays as it was until the next save, which keeps a copy of it and then writes the current version ([Copies before a format upgrade](#copies-before-a-format-upgrade)).
+- A file older than the first step, one a step cannot read, or one in a format newer than the build's is never written over. The connection list and a workspace wait for the user's Reset, which moves the file aside; the smaller state files move an unusable file aside themselves.
+- Each released version of the connection list and the workspace file has a golden file that a test reads into the model it was written from: `core/crates/storage/tests/fixtures/connections-v1.json` and `crates/app/tests/fixtures/workspace-v1.json`. Once a release ships it, a fixture is never edited. A format change adds the new version's fixture and updates the expected models of the old ones, which then read through the upgrade.
 - The history database moves forward by sqlx migration: a new timestamped file under `core/crates/storage/migrations/` with its own fixture test, never an edit to an applied one.
 - Update this page, and add a fragment to the Linux changelog.
+
+## Copies before a format upgrade
+
+A file an older build wrote is copied beside itself before the first write
+that replaces it with a newer format ([core ADR 0012](../../core/docs/decisions/0012-copies-before-a-format-upgrade.md)):
+
+- The copy is `<file>.v<version>-<unix seconds>`, with `-<n>` after it for a
+  second copy in the same second, such as `connections.json.v1-1762300000`.
+  `<version>` is the format the copy
+  holds, the document's `version` or the history's newest migration.
+- `tablepro_storage::upgrade_copies` makes them. A JSON document's copy is its
+  bytes as read, written 0600 by `write_private_blocking`; a copy whose bytes
+  match the newest one is not made again. The history's is `VACUUM INTO` through
+  the open connection, so it holds what the WAL holds too, into a 0600
+  `.partial` file. Its full-text indexes are then optimized with `secure_delete`
+  on, since `VACUUM INTO` copies the words of entries deleted before, and only
+  then is it synced and renamed into place.
+- Each file keeps its newest 3 copies (`KEPT_PER_FILE`); a new one deletes the
+  oldest past that.
+- A copy of a session's tabs names their editor drafts and holds none of their
+  text. Drafts have no format version, so the older build reads them as they
+  are now; a tab closed since the copy comes back without its text.
+- Every write of the connection list first takes the connections it no longer
+  has out of each copy of `connections.json`, and deletes a copy it cannot
+  read that way; a failed trim fails the write, so the next one tries again. Deleting
+  a connection deletes the copies of the column layout and filter files, which
+  name its tables and filter values.
+- A copy that cannot be made fails the write or the open, and the file is
+  left as it was. The error names the copy's path.
+- Reading never makes a copy. Nothing restores one on its own:
+  [troubleshooting.md](troubleshooting.md#after-a-downgrade) has the steps.
+- `upgrade_copies` tests the hook with a synthetic version bump of a document
+  and of a migration list, so it needs no format the app shipped.

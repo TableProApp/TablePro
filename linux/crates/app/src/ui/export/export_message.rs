@@ -20,6 +20,12 @@ pub(crate) enum ExportMessage {
     Finished {
         rows: u64,
     },
+    /// How far a database export has got.
+    Tables {
+        done: usize,
+        total: usize,
+        rows: u64,
+    },
 }
 
 /// Why the rows could not be turned into the file's bytes.

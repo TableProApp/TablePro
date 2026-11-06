@@ -699,8 +699,9 @@ impl SessionWindow {
 
     /// Tick the level of the session in front in the main menu.
     pub(super) fn show_safe_mode(&self) {
-        let level = self.front_session().map(|(_, session)| session.safe_mode());
-        super::window_actions::show_safe_mode(self.upcast_ref(), level);
+        let front = self.front_session().map(|(_, session)| session);
+        super::window_actions::show_safe_mode(self.upcast_ref(), front.as_ref().map(|session| session.safe_mode()));
+        crate::ui::workspace::show_transfer_actions(self.upcast_ref(), front.as_deref());
     }
 
     /// Run a change to a saved connection, holding the process until it
@@ -851,7 +852,7 @@ impl SessionWindow {
                 Ok(Ok(report)) => crate::i18n::ngettext_f(
                     "Imported {n} connection.",
                     "Imported {n} connections.",
-                    u32::try_from(report.total()).unwrap_or(u32::MAX),
+                    report.total(),
                     &[("n", &report.total().to_string())],
                 ),
                 Ok(Err(tablepro_storage::StorageError::ImportOutdated)) => crate::i18n::gettext(
@@ -1265,7 +1266,7 @@ mod tests {
             ..test.saved.clone()
         };
         let entry = serde_json::to_string(&lookalike).expect("the entry");
-        let bytes = format!(r#"{{"version": 2, "connections": [{entry}]}}"#).into_bytes();
+        let bytes = format!(r#"{{"version": 1, "connections": [{entry}]}}"#).into_bytes();
 
         test.window.send(SessionWindowInput::ConnectionsFileRead {
             path: "/tmp/connections.json".into(),
@@ -1273,19 +1274,30 @@ mod tests {
         });
         let alert = wait_for_alert(&test.window);
         let list = alert.extra_child().expect("the dialog's rows");
-        let mut rows: Vec<adw::ActionRow> = Vec::new();
+        // A list view's row is its item widget, which holds the title and subtitle labels.
+        let mut rows: Vec<(String, String)> = Vec::new();
         wait_until(WAIT, || {
             rows = crate::test_support::descendants(&list)
                 .into_iter()
-                .filter_map(|widget| widget.downcast::<adw::ActionRow>().ok())
-                .filter(|row| !row.title().is_empty())
+                .filter(|widget| widget.css_name() == "row")
+                .filter_map(|row| {
+                    let labels: Vec<String> = crate::test_support::descendants(&row)
+                        .into_iter()
+                        .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+                        .map(|label| label.label().to_string())
+                        .collect();
+                    match labels.as_slice() {
+                        [title, subtitle] if !title.is_empty() => Some((title.clone(), subtitle.clone())),
+                        _ => None,
+                    }
+                })
                 .collect();
             !rows.is_empty()
         })
         .expect("the rows");
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].title(), format!("{} (imported)", test.saved.name));
-        let subtitle = rows[0].subtitle().unwrap_or_default();
+        assert_eq!(rows[0].0, format!("{} (imported)", test.saved.name));
+        let subtitle = &rows[0].1;
         assert!(subtitle.contains("app@db.elsewhere.example"), "{subtitle}");
         assert!(subtitle.contains("Connects without TLS"), "{subtitle}");
         assert!(!listed(&test, lookalike.id), "the preview wrote the list");

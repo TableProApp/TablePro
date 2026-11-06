@@ -63,13 +63,14 @@ impl EditController {
     /// A grid edits only with a tracker and the rules of its column set.
     pub fn set_rules(&self, grid: &DataGrid, rules: Option<EditRules>) {
         let tracker = grid.config().and_then(|config| config.tracker.clone());
+        let result_lock = grid.config().and_then(|config| config.result_lock);
         let (tracked, policy) = match (tracker, rules) {
             (Some(tracker), Some(rules)) => {
                 let read_only = rules.policy.cells == Err(EditRefusal::ReadOnly);
                 let tracked = TrackedValues::tracked(tracker, rules.identity).on_read_only_connection(read_only);
                 (tracked, Some(rules.policy))
             }
-            _ => (TrackedValues::untracked(), None),
+            _ => (TrackedValues::untracked().locked_by(result_lock), None),
         };
         self.tracked.replace(tracked);
         self.policy.set(policy);

@@ -1,6 +1,6 @@
 # PostgreSQL
 
-Driver id `postgres`, crate `core/crates/drivers/postgres`. It runs on tokio-postgres 0.7.18 with postgres-types and postgres-protocol, deadpool-postgres 0.14.2 for the pool and tokio-postgres-rustls 0.14 for TLS, all from crates.io ([ADR 0016](../decisions/0016-driver-contract-v2.md)). The integration suite runs against PostgreSQL 17, and CI runs it again on 14 and 18; the catalogue is also checked on 13 ([supported servers](../../README.md#supported-servers)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
+Driver id `postgres`, crate `core/crates/drivers/postgres`. It runs on tokio-postgres 0.7.18 with postgres-types and postgres-protocol, deadpool-postgres 0.14.2 for the pool and tokio-postgres-rustls 0.14 for TLS, all from crates.io ([ADR 0016](../decisions/0016-driver-contract-v2.md)). The integration suite runs against PostgreSQL 17, and CI runs it again on 14, 15 and 18; the catalogue is also checked on 13 ([supported servers](../../README.md#supported-servers)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
 
 ## Connections
 
@@ -11,14 +11,19 @@ Driver id `postgres`, crate `core/crates/drivers/postgres`. It runs on tokio-pos
 | One connection per editor tab | `EditorSession` | When the tab first runs SQL |
 | One stream per stop | The cancel request | For that request |
 
-Every connection logs in with `Config::connect_raw` over a stream from the transport, so a direct route and an SSH forward behave the same. The startup message carries the user, the database and `application_name = TablePro`, plus the `client_encoding = UTF8` that tokio-postgres always adds. The password goes in the authentication exchange, with channel binding set to prefer. The login runs under the 15 s login timeout. Startup options are never used: a transaction pooler refuses parameters it does not track.
+Every connection logs in with `Config::connect_raw` over a stream from the transport, so a direct route, an SSH forward and a local socket behave the same. The startup message carries the user, the database and `application_name = TablePro`, plus the `client_encoding = UTF8` that tokio-postgres always adds. The password goes in the authentication exchange, with channel binding set to prefer. The login runs under the 15 s login timeout. Startup options are never used: a transaction pooler refuses parameters it does not track.
+
+## Local socket
+
+A host that is an absolute path is the folder of a server on this computer, as libpq reads one: the transport opens `<folder>/.s.PGSQL.<port>` (`NetworkOption::LocalSocket`, Unix only). Peer and trust logins work there, since the server then asks for no password. The server answers an SSLRequest on a socket with `N`, so a socket takes no TLS (`ConfigError::TlsOverLocalSocket`) and no SSH tunnel (`ConfigError::LocalSocketOverSsh`). The connect dialog starts on the first of `/run/postgresql`, `/var/run/postgresql` and `/tmp` that holds the port's socket.
 
 ## TLS
 
-- `Disable` sends no SSLRequest. `Require` and `VerifyFull` both send it and refuse to continue in plaintext; they differ only in the certificate check.
+- A new connection starts on `Prefer`, as libpq's `sslmode=prefer` does ([core ADR 0014](../../../core/docs/decisions/0014-tls-mode-of-a-new-connection.md)).
+- `Disable` sends no SSLRequest. `Prefer` sends it, goes on in plaintext when the server answers `N`, and checks no certificate (tokio-postgres's `SslMode::Prefer`). Unlike libpq, it does not retry in plaintext after a handshake that fails. `Require` and `VerifyFull` both send it and refuse to continue in plaintext; they differ only in the certificate check.
 - `VerifyFull` trusts the system store plus the connection's CA file ([Trust](../../../core/ARCHITECTURE.md#trust)), and checks the name from `NetworkTarget::tls_server_name()`.
 - A client certificate is offered when one is set, for `cert` authentication in `pg_hba.conf`.
-- A server that answers the SSLRequest with `N` is reported as `ServerRefusedTls`, never as a certificate problem: the TLS connector records whether the handshake started.
+- Under `Require` or `VerifyFull`, a server that answers the SSLRequest with `N` is reported as `ServerRefusedTls`, never as a certificate problem: the TLS connector records whether the handshake started.
 - SCRAM channel binding (`tls-server-end-point`) is preferred, never required. It is used when the server's certificate is signed with RSA (SHA-1 to SHA-512) or ECDSA with SHA-256 or SHA-384. With any other signature, such as Ed25519 or ECDSA with SHA-512, tokio-postgres-rustls has no hash to bind with, and the login goes ahead without binding.
 
 ## Workspace calls
@@ -81,6 +86,8 @@ A call that timed out or lost its connection is checked before the link is decla
 2. Each step: its probe, if any; then the statement with `execute_typed`; then the affected-row check.
 3. The transaction id, `pg_current_xact_id()` (or `txid_current()` before PostgreSQL 13), read before COMMIT.
 4. `COMMIT`.
+
+A database change (`WriteKind::DatabaseChanges`) runs outside any transaction, because CREATE and DROP DATABASE refuse one. It is `StatementByStatement`: each statement goes out alone as a simple query, with no parameters, row guards or `SET LOCAL` bounds, and the call's deadline and cancel still stop it.
 
 A COMMIT the server answers with an error (a deferred constraint, a serialization failure) rolled back. A COMMIT that gets no answer is `CommitOutcomeUnknown` with `CommitToken::PostgresXid`, and `resolve_commit` asks `pg_xact_status` (or `txid_status`):
 

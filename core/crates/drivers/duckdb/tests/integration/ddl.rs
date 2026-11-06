@@ -1,9 +1,13 @@
 //! Structure changes DuckDB takes and refuses, beyond the conformance
 //! suite: what something depending on a table holds in place.
 
-use tablepro_core::ddl::{BuildDdlError, DdlOperation, DraftColumn, DraftType, RefusalReason, TableDraft, diff_table};
+use tablepro_core::ddl::{
+    self as catalog, BuildDdlError, DatabaseDraft, DdlOperation, DraftColumn, DraftType, DropDatabaseOptions,
+    DropSchemaOptions, RefusalReason, SchemaDraft, TableDraft, TruncateTableOptions, diff_table,
+};
 use tablepro_core::meta::TableRef;
 use tablepro_core::{Connection, DriverError, Value};
+use tablepro_driver_duckdb::DuckDbDialect;
 
 use crate::support::{TestFile, apply, call, query};
 
@@ -321,4 +325,182 @@ async fn an_index_statement_makes_the_index_again_on_its_own_table() {
         apply(connection.as_ref(), &[drop, statement.as_str()]).await.unwrap();
         assert_eq!(read(table).await, indexes, "{statement}");
     }
+}
+
+/// A truncate names the table with its file's catalogue; a schema is
+/// named alone, so it lands in the file the connection opened.
+#[test]
+fn the_catalog_plans_take_only_what_duckdb_has() {
+    let dialect = DuckDbDialect::for_catalog("shop");
+    let table = TableRef::new(Some("sa\"les".to_owned()), "orders");
+    let schema = SchemaDraft {
+        name: "sa\"les".to_owned(),
+        owner: None,
+    };
+
+    let truncated = catalog::plan_truncate_table(&dialect, &table, &TruncateTableOptions::default()).unwrap();
+    let created = catalog::plan_create_schema(&dialect, &schema).unwrap();
+    let dropped = catalog::plan_drop_schema(&dialect, "sales", DropSchemaOptions { cascade: true }).unwrap();
+    let restricted = catalog::plan_drop_schema(&dialect, "sales", DropSchemaOptions::default()).unwrap();
+
+    assert_eq!(truncated.sql(), ["TRUNCATE TABLE \"shop\".\"sa\"\"les\".\"orders\""]);
+    assert_eq!(created.sql(), ["CREATE SCHEMA \"sa\"\"les\""]);
+    assert_eq!(dropped.sql(), ["DROP SCHEMA \"sales\" CASCADE"]);
+    assert_eq!(restricted.sql(), ["DROP SCHEMA \"sales\""]);
+    let owned = SchemaDraft {
+        owner: Some("ann".to_owned()),
+        ..schema
+    };
+    assert_eq!(
+        catalog::plan_create_schema(&dialect, &owned),
+        Err(BuildDdlError::Unsupported(DdlOperation::CatalogOwner))
+    );
+    let restart = TruncateTableOptions {
+        restart_identity: true,
+        ..TruncateTableOptions::default()
+    };
+    assert_eq!(
+        catalog::plan_truncate_table(&dialect, &table, &restart),
+        Err(BuildDdlError::Unsupported(DdlOperation::TruncateRestartIdentity))
+    );
+    let cascade = TruncateTableOptions {
+        cascade: true,
+        ..TruncateTableOptions::default()
+    };
+    assert_eq!(
+        catalog::plan_truncate_table(&dialect, &table, &cascade),
+        Err(BuildDdlError::Unsupported(DdlOperation::TruncateTableCascade))
+    );
+    assert_eq!(
+        catalog::plan_create_database(&dialect, &DatabaseDraft::named("other")),
+        Err(BuildDdlError::Unsupported(DdlOperation::CreateDatabase))
+    );
+    assert_eq!(
+        catalog::plan_drop_database(&dialect, "other", &DropDatabaseOptions::default()),
+        Err(BuildDdlError::Unsupported(DdlOperation::DropDatabase))
+    );
+}
+
+#[test]
+fn main_and_the_catalogue_view_schemas_are_protected() {
+    let dialect = DuckDbDialect::for_catalog("shop");
+
+    for name in ["main", "MAIN", "information_schema", "pg_catalog"] {
+        assert!(catalog::protects_schema(&dialect, name), "{name}");
+    }
+    assert!(!catalog::protects_schema(&dialect, "sales"));
+    assert!(!catalog::protects_database(&dialect, "shop"));
+}
+
+/// The sidebar offers what the capabilities say, so each one has to
+/// plan, with every option it offers, and nothing else may.
+#[test]
+fn every_offered_catalog_operation_plans() {
+    let dialect = DuckDbDialect::for_catalog("shop");
+    let offered = catalog::catalog_capabilities(&dialect);
+    let table = TableRef::new(Some("main".to_owned()), "orders");
+    let truncate = TruncateTableOptions {
+        cascade: offered.truncate_cascade,
+        restart_identity: offered.truncate_restart_identity,
+        cluster: None,
+    };
+    let schema = SchemaDraft {
+        name: "sales".to_owned(),
+        owner: offered.schema_owner.then(|| "ann".to_owned()),
+    };
+    let drop_schema = DropSchemaOptions {
+        cascade: offered.drop_schema_cascade,
+    };
+
+    assert!(offered.truncate_table && offered.create_schema && offered.drop_schema && offered.drop_schema_cascade);
+    assert!(!offered.create_database && !offered.drop_database && !offered.schema_owner);
+    assert!(!offered.truncate_refused_when_referenced && offered.name_limit.is_none());
+    assert!(catalog::plan_truncate_table(&dialect, &table, &truncate).is_ok());
+    assert!(catalog::plan_create_schema(&dialect, &schema).is_ok());
+    assert!(catalog::plan_drop_schema(&dialect, "sales", drop_schema).is_ok());
+}
+
+/// The linked DuckDB parses TRUNCATE as DELETE without a WHERE: the
+/// table stays and its rows go, and a row another table's key still
+/// points at holds the whole statement back.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_truncate_empties_the_table_unless_a_key_points_at_a_row() {
+    let file = TestFile::new();
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE parent (id INTEGER PRIMARY KEY)",
+            "CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parent (id))",
+            "INSERT INTO parent VALUES (1), (2)",
+            "INSERT INTO child VALUES (10, 1)",
+        ],
+    )
+    .await
+    .unwrap();
+    let dialect = connection.dialect();
+    let truncate = |name: &str| {
+        let table = TableRef::new(Some("main".to_owned()), name);
+        catalog::plan_truncate_table(dialect.as_ref(), &table, &TruncateTableOptions::default())
+            .unwrap()
+            .into_write_batch(table)
+    };
+
+    let held = connection.write_batch(&truncate("parent"), call()).await;
+    let parents_held = query(connection.as_ref(), "SELECT count(*) FROM parent").await;
+    connection.write_batch(&truncate("child"), call()).await.unwrap();
+    connection.write_batch(&truncate("parent"), call()).await.unwrap();
+
+    assert!(matches!(held, Err(DriverError::RolledBack { .. })), "{held:?}");
+    assert_eq!(parents_held.rows, vec![vec![Value::Int(2)]]);
+    let left = query(
+        connection.as_ref(),
+        "SELECT (SELECT count(*) FROM parent), (SELECT count(*) FROM child), \
+         (SELECT count(*) FROM duckdb_tables() WHERE table_name IN ('parent', 'child'))",
+    )
+    .await;
+    assert_eq!(left.rows, vec![vec![Value::Int(0), Value::Int(0), Value::Int(2)]]);
+    connection.close().await.unwrap();
+}
+
+/// A schema that holds a table drops only with CASCADE, and DuckDB
+/// refuses to drop `main` at all, which is why it is never offered.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_schema_is_made_and_dropped_with_what_it_holds() {
+    let file = TestFile::new();
+    let connection = file.open().await;
+    let dialect = connection.dialect();
+    let sales = TableRef::new(Some("sales".to_owned()), "");
+    let draft = SchemaDraft {
+        name: "sales".to_owned(),
+        owner: None,
+    };
+    let drop_plan = |cascade| {
+        catalog::plan_drop_schema(dialect.as_ref(), "sales", DropSchemaOptions { cascade })
+            .unwrap()
+            .into_write_batch(sales.clone())
+    };
+    let created = catalog::plan_create_schema(dialect.as_ref(), &draft).unwrap();
+
+    connection
+        .write_batch(&created.into_write_batch(sales.clone()), call())
+        .await
+        .unwrap();
+    apply(connection.as_ref(), &["CREATE TABLE sales.orders (id INTEGER)"])
+        .await
+        .unwrap();
+    let listed = connection.list_schemas(call()).await.unwrap();
+    let restricted = connection.write_batch(&drop_plan(false), call()).await;
+    connection.write_batch(&drop_plan(true), call()).await.unwrap();
+    let main = apply(connection.as_ref(), &["DROP SCHEMA main CASCADE"]).await;
+
+    assert!(listed.iter().any(|schema| schema.name == "sales"), "{listed:?}");
+    assert!(
+        matches!(restricted, Err(DriverError::RolledBack { .. })),
+        "{restricted:?}"
+    );
+    let after = connection.list_schemas(call()).await.unwrap();
+    assert!(!after.iter().any(|schema| schema.name == "sales"), "{after:?}");
+    assert!(main.is_err(), "DuckDB dropped main");
+    connection.close().await.unwrap();
 }

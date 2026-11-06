@@ -27,6 +27,12 @@ public sealed class ConnectionLibraryTests : IDisposable
         Assert.Contains(TlsMode.Strict, sqlServer.SupportedTlsModes);
         Assert.All(_core.Engines.Where(engine => engine.Id != "mssql"),
             engine => Assert.DoesNotContain(TlsMode.Strict, engine.SupportedTlsModes));
+        Assert.Equal(TlsMode.VerifyFull, sqlServer.DefaultTlsMode);
+        var postgres = Assert.Single(_core.Engines, engine => engine.Id == "postgres");
+        Assert.Equal(TlsMode.Prefer, postgres.DefaultTlsMode);
+        Assert.Contains(TlsMode.Prefer, postgres.SupportedTlsModes);
+        var clickHouse = Assert.Single(_core.Engines, engine => engine.Id == "clickhouse");
+        Assert.Equal(TlsMode.VerifyFull, clickHouse.NewConnectionTls(8443));
         if (OperatingSystem.IsWindows())
         {
             Assert.True(sqlServer.SupportsIntegratedAuth);
@@ -171,6 +177,13 @@ public sealed class ConnectionLibraryTests : IDisposable
         Assert.Equal(
             "url.unknown_scheme",
             Assert.Throws<TableProException>(() => TableProCore.ParseConnectionUrl("ftp://example.com")).Code);
+        var ca = OperatingSystem.IsWindows() ? "C:/certs/rds.pem" : "/certs/rds.pem";
+        var rooted = TableProCore.ParseConnectionUrl($"postgresql://db.example.com/shop?sslmode=require&sslrootcert={ca}");
+        Assert.Equal(TlsMode.VerifyFull, rooted.TlsMode);
+        Assert.Equal(ca, rooted.CaFile);
+        Assert.Equal(
+            "url.settings_unsupported",
+            Assert.Throws<TableProException>(() => TableProCore.ParseConnectionUrl("mongodb+srv://u:p@cluster0.example.net/")).Code);
     }
 
     [Fact]

@@ -26,8 +26,8 @@ pub(crate) enum Search {
 }
 
 /// The session's tables as the connection tree lists them: a schema
-/// node per section of the index, each over its tables and over the
-/// ones the search finds. A new index or search is worked out into rows
+/// node per section of the index, an empty schema's too, each over its
+/// tables and over the ones the search finds. A new index or search is worked out into rows
 /// apart from the lists. A schema's tables take their rows in place; a
 /// schema whose results change gets a new list of them, which the tree
 /// swaps in with every other schema's in one change. A list of what the
@@ -35,7 +35,7 @@ pub(crate) enum Search {
 pub(crate) struct SidebarModel {
     /// Every section's schema, in list order.
     schemas: gio::ListStore,
-    /// Holds `nothing` once a list landed with no table in it.
+    /// Holds `nothing` once a list landed with no schema to show.
     empty: gio::ListStore,
     rows: gtk::FlattenListModel,
     nothing: TreeNode,
@@ -169,23 +169,25 @@ impl SidebarModel {
         // A schema named as an engine names the objects of none is a
         // section of its own under the same title.
         let mut titled: HashSet<&str> = HashSet::new();
-        for (at, run) in index.runs().iter().enumerate() {
-            let Some(section) = index.section(run.section) else {
-                continue;
-            };
+        for (section, run) in index.listed_sections() {
             let node = titled
                 .insert(section.title.as_str())
                 .then(|| held.get(&section.title).cloned())
                 .flatten()
                 .unwrap_or_else(|| TreeNode::schema(&section.title, None));
-            node.set_schema_name(index.entry(run.start).and_then(|entry| entry.object.schema.clone()));
+            node.set_schema_name(section.schema.clone());
+            let entries = run.map_or_else(Entries::default, |(_, run)| Entries::Run(run.start, run.end));
             if let Some(rows) = node.rows() {
-                rows.show(&index, Entries::Run(run.start, run.end));
+                rows.show(&index, entries.clone());
             }
             let results = match &mut found {
                 Found::Nothing => Entries::default(),
-                Found::Everything => Entries::Run(run.start, run.end),
-                Found::Picked(picked) => Entries::Picked(picked.get_mut(at).map(std::mem::take).unwrap_or_default()),
+                Found::Everything => entries,
+                Found::Picked(picked) => Entries::Picked(
+                    run.and_then(|(at, _)| picked.get_mut(at))
+                        .map(std::mem::take)
+                        .unwrap_or_default(),
+                ),
             };
             if node.found_rows().is_none_or(|list| !list.shows(&index, &results)) {
                 let list = SidebarList::new();
@@ -217,6 +219,11 @@ impl SidebarModel {
     /// Whether the lists show what was last asked for.
     pub(crate) fn settled(&self) -> bool {
         self.answered.get() == self.asked.get()
+    }
+
+    /// Whether the list on screen offers to drop the schema `name`.
+    pub(crate) fn droppable(&self, name: &str) -> bool {
+        self.shown.borrow().droppable(name)
     }
 
     /// The kind of `target` when it is listed at all, searched for or not.
@@ -521,5 +528,70 @@ mod tests {
             found(&model),
             [("public".to_owned(), vec!["user:1".to_owned(), "user:2".to_owned()])]
         );
+    }
+
+    #[gtk4::test]
+    fn an_empty_schema_has_its_node_and_the_placeholder_waits_for_none_at_all() {
+        let model = SidebarModel::new();
+
+        replace(
+            &model,
+            &[],
+            &[schema("public", true, false), schema("pg_catalog", false, true)],
+        );
+
+        let schemas = nodes(&model.schemas());
+        assert_eq!(listed(&model.schemas()), [("public".to_owned(), Vec::new())]);
+        assert_eq!(model.rows().n_items(), 1, "a placeholder beside an empty schema");
+        assert_eq!(schemas[0].schema_name().as_deref(), Some("public"));
+        replace(&model, &[object("public", "orders")], &[schema("public", true, false)]);
+        assert_eq!(
+            nodes(&model.schemas()),
+            schemas,
+            "the schema's node went when it filled"
+        );
+        assert_eq!(
+            listed(&model.schemas()),
+            [("public".to_owned(), vec!["orders".to_owned()])]
+        );
+    }
+
+    #[gtk4::test]
+    fn what_a_search_finds_stays_under_its_schema_past_an_empty_one() {
+        let model = SidebarModel::new();
+        replace(
+            &model,
+            &[object("public", "users"), object("sales", "leads")],
+            &[
+                schema("public", true, false),
+                schema("archive", false, false),
+                schema("sales", false, false),
+            ],
+        );
+        assert_eq!(
+            nodes(&model.schemas()).iter().map(TreeNode::title).collect::<Vec<_>>(),
+            ["public", "archive", "sales"]
+        );
+
+        search(&model, "lead");
+        assert_eq!(found(&model), [("sales".to_owned(), vec!["leads".to_owned()])]);
+        search(&model, "user");
+        assert_eq!(found(&model), [("public".to_owned(), vec!["users".to_owned()])]);
+        assert!(model.droppable("archive") && model.droppable("sales"));
+        assert!(!model.droppable("public"), "the default schema");
+    }
+
+    #[gtk4::test]
+    fn a_server_search_lists_nothing_under_an_empty_schema() {
+        let model = SidebarModel::new();
+        model.hold_search(Search::Everything);
+
+        replace(
+            &model,
+            &[object("sales", "user:1")],
+            &[schema("archive", false, false), schema("sales", false, false)],
+        );
+
+        assert_eq!(found(&model), [("sales".to_owned(), vec!["user:1".to_owned()])]);
     }
 }

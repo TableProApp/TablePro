@@ -280,9 +280,64 @@ fn handle_local_options_without_new_window_does_not_register() {
 fn startup_installs_the_app_actions_and_their_accels() {
     let test = TestApp::started("Actions");
 
-    for action in ["new-window", "quit", "preferences", "about"] {
+    for action in ["new-window", "quit", "preferences", "about", "buy-license"] {
         assert!(test.app.lookup_action(action).is_some(), "app.{action} is missing");
     }
+}
+
+// The app's own wiring, with a key as a release has one: usage data goes from the start, as on macOS, and nothing
+// reaches PostHog once Share Usage Data is off, until it is on again.
+#[gtk4::test]
+fn usage_data_goes_by_default_and_nothing_leaves_once_it_is_turned_off() {
+    let (services, _backing) = fake_services();
+    let collector = crate::test_support::PostHogCollector::start();
+    services.start_telemetry_with("phc_test", &collector.url);
+    let telemetry = services.telemetry();
+    let pump = |time: u64| {
+        let _ = wait_until(Duration::from_millis(time), || false);
+    };
+    let everything = || {
+        telemetry.connection_attempted("sqlite");
+        telemetry.connection_succeeded("sqlite");
+        telemetry.query_executed("sqlite");
+        telemetry.upgrade_clicked("app-settings");
+        telemetry.support_ask_shown();
+        telemetry.signed_in("acct_01k8d6wk00f8xsr79e7x052rkk");
+        telemetry.signed_out();
+    };
+    let sent = || (collector.connections(), collector.bodies().len());
+
+    telemetry.upgrade_clicked("app-ask");
+    wait_until(Duration::from_secs(20), || {
+        !collector.named("upgrade_clicked").is_empty()
+    })
+    .expect("sent by default");
+    telemetry.flush();
+    pump(300);
+    let by_default = sent();
+    services.settings.set_share_usage_data(false).expect("turned off");
+    pump(300);
+    everything();
+    telemetry.flush();
+    pump(500);
+    let while_off = sent();
+    services.settings.set_share_usage_data(true).expect("turned on again");
+    telemetry.upgrade_clicked("app-settings");
+    wait_until(Duration::from_secs(20), || {
+        collector.named("upgrade_clicked").len() == 2
+    })
+    .expect("sent once on again");
+
+    assert!(by_default.1 > 0);
+    assert_eq!(while_off, by_default);
+}
+
+#[gtk4::test]
+fn startup_in_a_test_build_has_no_posthog_key() {
+    let test = TestApp::started("NoPostHogKey");
+
+    assert_eq!(crate::config::POSTHOG_KEY, "");
+    assert!(!test.services().telemetry().has_project_key());
 }
 
 #[gtk4::test]
@@ -392,6 +447,63 @@ fn opening_a_file_held_behind_another_session_brings_that_session_forward() {
 
     wait_until(WAIT, || front_key().as_ref() == Some(&first)).expect("the file's session in front");
     assert_eq!(test.app.windows().len(), 1, "the file opened another window");
+}
+
+#[gtk4::test]
+fn a_sql_file_with_no_window_opens_a_picker_that_asks() {
+    let test = TestApp::started("OpenScriptNoWindow");
+    let path = test._backing.dir.path().join("report.sql");
+    std::fs::write(&path, "SELECT 1;").expect("write the script");
+
+    test.app.open(&[gio::File::for_path(&path)], "");
+
+    let picker = || {
+        test.app
+            .windows()
+            .into_iter()
+            .find_map(|window| window.downcast::<SessionWindow>().ok())
+    };
+    wait_until(WAIT, || {
+        picker()
+            .and_then(|window| window.script_banner())
+            .is_some_and(|banner| banner.is_revealed())
+    })
+    .expect("a picker asking for a connection");
+    assert_eq!(test.app.windows().len(), 1, "more than the one picker opened");
+    assert_eq!(picker().map(|window| window.page_name()), Some("picker"));
+}
+
+// A restored session may hold the file in a tab that is not back yet, so a picker asks rather than
+// opening a second tab beside it.
+#[gtk4::test]
+fn a_sql_file_opened_while_sessions_restore_asks_for_a_connection() {
+    let test = TestApp::started("ScriptWhileRestoring");
+    let first = test.database("first.db");
+    test.record(std::slice::from_ref(&first));
+    let path = test._backing.dir.path().join("report.sql");
+    std::fs::write(&path, "SELECT 1;").expect("write the script");
+    let script = gio::File::for_path(&path);
+
+    test.app.open(std::slice::from_ref(&script), "");
+    test.wait_for_sessions(std::slice::from_ref(&first));
+    let windows = || {
+        test.app
+            .windows()
+            .into_iter()
+            .filter_map(|window| window.downcast::<SessionWindow>().ok())
+            .collect::<Vec<_>>()
+    };
+    wait_until(WAIT, || {
+        windows()
+            .iter()
+            .any(|window| window.script_banner().is_some_and(|banner| banner.is_revealed()))
+    })
+    .expect("a picker asking for a connection");
+
+    assert!(
+        windows().iter().all(|window| window.script_tab(&script).is_none()),
+        "the script opened in a session while it was restoring"
+    );
 }
 
 #[gtk4::test]
@@ -806,9 +918,9 @@ fn new_window_action_opens_another_window() {
 
 fn released_version() -> String {
     let xml = super::about_dialog::embedded_metainfo();
-    super::metainfo_release::newest_release(&xml)
-        .expect("the metainfo lists a release")
-        .to_owned()
+    super::metainfo_release::tag_version(
+        super::metainfo_release::newest_release(&xml).expect("the metainfo lists a release"),
+    )
 }
 
 fn said_at_launch(test: &TestApp) -> Vec<crate::ui::LaunchNotice> {

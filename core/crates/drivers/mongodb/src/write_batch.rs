@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
 use mongodb::{Client, ClientSession};
+use tablepro_core::sql_syntax::mongo::ShellStatement;
 use tablepro_core::statement::{GuardedStatement, RowGuard};
 use tablepro_core::{DriverError, ReadOnlyRefusal, SessionFate, StopRequest, WriteBatch, WriteLedger, WriteReport};
 
 use crate::call::generated;
 use crate::endpoint::MongoEndpoint;
-use crate::execute::{Source, start};
+use crate::execute::{Source, start, start_write};
 
 /// Refuse a batch before anything is sent: a read-only connection never
 /// writes, and MongoDB has no foreign keys to suspend.
@@ -43,10 +44,11 @@ pub(crate) async fn perform(
             return Err(ledger.interrupted(DriverError::Cancelled, SessionFate::RolledBack));
         }
         prove(plan, session, index, step).await?;
-        let (_, planned) = generated(&step.statement, &plan.database)
+        let (parsed, planned) = generated(&step.statement, &plan.database)
             .map_err(|error| ledger.failed(index, error, SessionFate::RolledBack))?;
+        let several = writes_several(&parsed);
         ledger.statement_sending(index);
-        let affected = match start(&plan.endpoint, &plan.client, session, planned).await {
+        let affected = match start_write(&plan.endpoint, &plan.client, session, planned).await {
             // Applied where it ran, with its fate open: as a write whose
             // answer never came.
             Ok(Source::Write {
@@ -56,7 +58,7 @@ pub(crate) async fn perform(
             Ok(Source::Write { affected, .. }) => Some(affected),
             Ok(Source::Count(count)) => Some(count),
             Ok(_) => None,
-            Err(error) => return Err(failure(ledger, index, error)),
+            Err(error) => return Err(failure(ledger, index, error, several)),
         };
         // A single-document write that matched no document changed
         // nothing, so the step is not counted as applied.
@@ -105,11 +107,115 @@ fn expected_rows(guard: &RowGuard) -> Option<u64> {
 
 /// A refusal from the server applied nothing of its statement; a lost
 /// connection may have applied it.
-fn failure(ledger: &WriteLedger, index: usize, error: DriverError) -> DriverError {
+fn failure(ledger: &WriteLedger, index: usize, error: DriverError, several: bool) -> DriverError {
     match error {
         DriverError::ConnectionLost { .. } | DriverError::Transport(_) | DriverError::Timeout { .. } => {
             ledger.interrupted(error, SessionFate::Discarded)
         }
+        // A write over many documents applies one document at a time, so
+        // an error after it started, such as a killOp, can leave some
+        // written: its fate is open, not rolled back.
+        other if several => ledger.interrupted(other, SessionFate::Discarded),
         other => ledger.failed(index, other, SessionFate::RolledBack),
+    }
+}
+
+/// Whether the call writes any number of documents rather than one.
+fn writes_several(statement: &ShellStatement) -> bool {
+    let ShellStatement::Call(call) = statement else {
+        return false;
+    };
+    call.operation().is_some_and(|method| {
+        matches!(
+            method.name.as_str(),
+            "deleteMany" | "updateMany" | "insertMany" | "insert" | "remove" | "update"
+        )
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use bson::doc;
+    use tablepro_core::ddl::{
+        DatabaseDraft, DdlPlan, DropDatabaseOptions, TruncateTableOptions, plan_create_database, plan_drop_database,
+        plan_truncate_table,
+    };
+    use tablepro_core::meta::TableRef;
+
+    use super::*;
+    use crate::dialect::MongoDialect;
+    use crate::shell_command::{Plan, Reply, WriteKind};
+
+    /// The one command a catalog plan sends from a session whose own
+    /// database is `shop`.
+    fn sent(plan: &DdlPlan) -> Plan {
+        let [statement] = plan.statements.as_slice() else {
+            panic!("not one statement: {:?}", plan.statements);
+        };
+        generated(statement, "shop").expect("a command").1
+    }
+
+    #[test]
+    fn a_truncate_deletes_every_document_in_the_collection_s_own_database() {
+        let table = TableRef::new(Some("archive".to_owned()), "orders");
+        let plan = plan_truncate_table(&MongoDialect, &table, &TruncateTableOptions::default()).expect("a plan");
+
+        assert_eq!(
+            sent(&plan),
+            Plan::Command {
+                database: "archive".to_owned(),
+                command: doc! { "delete": "orders", "deletes": [{ "q": {}, "limit": 0_i32 }] },
+                reply: Reply::Write(WriteKind::Delete),
+            }
+        );
+    }
+
+    #[test]
+    fn a_new_database_is_made_by_its_first_collection_there() {
+        let mut draft = DatabaseDraft::named("fresh");
+        draft.first_collection = Some("first".to_owned());
+        let plan = plan_create_database(&MongoDialect, &draft).expect("a plan");
+
+        assert_eq!(
+            sent(&plan),
+            Plan::Command {
+                database: "fresh".to_owned(),
+                command: doc! { "create": "first" },
+                reply: Reply::Whole,
+            }
+        );
+    }
+
+    #[test]
+    fn a_drop_goes_to_the_database_it_names() {
+        let plan = plan_drop_database(&MongoDialect, "old", &DropDatabaseOptions::default()).expect("a plan");
+
+        assert_eq!(
+            sent(&plan),
+            Plan::Command {
+                database: "old".to_owned(),
+                command: doc! { "dropDatabase": 1_i32 },
+                reply: Reply::Whole,
+            }
+        );
+    }
+
+    #[test]
+    fn a_write_over_many_documents_that_fails_leaves_its_fate_open() {
+        let parsed = |text: &str| {
+            let mut builder = tablepro_core::statement::StatementBuilder::new();
+            builder.push_sql(text);
+            generated(&builder.finish(), "shop").expect("a call").0
+        };
+
+        assert!(writes_several(&parsed(r#"db.getCollection("orders").deleteMany({})"#)));
+        assert!(!writes_several(&parsed(
+            r#"db.getCollection("orders").deleteOne({"_id": 1})"#
+        )));
+        assert!(!writes_several(&parsed(r#"db.getSiblingDB("shop").dropDatabase()"#)));
+        let ledger = WriteLedger::new(tablepro_core::WriteAtomicity::StatementByStatement);
+        ledger.statement_sending(0);
+        let killed = failure(&ledger, 0, DriverError::server("operation was interrupted"), true);
+        assert!(!matches!(killed, DriverError::RolledBack { .. }), "{killed:?}");
     }
 }

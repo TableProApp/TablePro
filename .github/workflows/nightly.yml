@@ -1,0 +1,133 @@
+name: Nightly
+
+# The one schedule. Every suite a change can select runs on main in full, which also saves main's caches, and so does
+# the coverage pull requests leave out: every other server release, the minimum Rust version, the Arm64 Flatpak and
+# SSH tunnel tests, the advisory database, the x86_64 distribution packages and Flatpak repository (Arm64 on Sundays),
+# and the app and registry plugins built and packaged as a tag does, unsigned. GitHub mails a red run to whoever last
+# edited the schedule.
+
+on:
+  schedule:
+    - cron: "17 19 * * 1-6"
+    - cron: "17 19 * * 0"
+  workflow_dispatch:
+    inputs:
+      arm64:
+        description: Also build, test and install the Arm64 packages, as Sunday's run does.
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/ci-lint.yml
+    with:
+      swiftlint: true
+      hana: true
+
+  macos:
+    uses: ./.github/workflows/macos-tests.yml
+    with:
+      plugins: true
+
+  ios:
+    uses: ./.github/workflows/ios-tests.yml
+    with:
+      oracle: true
+
+  core:
+    uses: ./.github/workflows/core.yml
+    with:
+      extended: true
+
+  windows:
+    uses: ./.github/workflows/windows.yml
+
+  linux:
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      docs-only: false
+      extended: true
+
+  # After the Linux jobs, so the package builds never run beside them.
+  packages:
+    needs: linux
+    if: ${{ !cancelled() }}
+    uses: ./.github/workflows/linux-packages.yml
+    with:
+      deb-runners: ${{ (github.event.schedule == '17 19 * * 0' || inputs.arm64) && '["ubuntu-24.04", "ubuntu-24.04-arm"]' || '["ubuntu-24.04"]' }}
+      rpm-runners: ${{ (github.event.schedule == '17 19 * * 0' || inputs.arm64) && '["ubuntu-24.04", "ubuntu-24.04-arm"]' || '["ubuntu-24.04"]' }}
+      flatpak: true
+
+  # After macOS Tests, so it never takes a fifth macOS runner beside the four the suites start with.
+  release-build:
+    name: Release Build
+    needs: macos
+    if: ${{ !cancelled() }}
+    runs-on: xcode-27
+    timeout-minutes: 240
+    # The tag's version settings run here first; 9999999 is the largest build at MAJOR 0 (apple/RELEASING.md, Versions).
+    env:
+      VERSION: 0.0.0-dev
+      BUILD: "9999999"
+    defaults:
+      run:
+        working-directory: apple
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-xcode
+
+      - uses: ./.github/actions/prepare-build
+
+      - name: Set up Go for the SAP HANA helper
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: apple/Native/HanaBridge/go.mod
+          cache: false
+
+      # The Dameng and HANA targets copy these artifacts in and never build them.
+      - name: Build the native bridges
+        run: |
+          scripts/build-dameng.sh both
+          scripts/build-hana.sh both
+
+      - name: Build the app
+        id: app
+        run: scripts/release/build.sh app --unsigned
+
+      # Runs after an app failure too, so one run reports both.
+      - name: Build the registry plugins
+        id: plugins
+        if: ${{ !cancelled() }}
+        run: scripts/release/build.sh plugins --unsigned
+
+      - name: Package the app
+        if: ${{ !cancelled() && steps.app.outcome == 'success' }}
+        run: scripts/release/package.sh app --unsigned
+
+      - name: Package the plugins
+        if: ${{ !cancelled() && steps.plugins.outcome == 'success' }}
+        run: scripts/release/package.sh plugins --unsigned
+
+      - name: Upload the build logs
+        # A timeout cancels the job; the log shows where xcodebuild was when it stopped.
+        if: ${{ failure() || cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-build-logs-${{ github.run_attempt }}
+          path: apple/build/release/logs
+          if-no-files-found: ignore
+          retention-days: 7

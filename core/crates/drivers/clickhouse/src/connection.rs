@@ -5,8 +5,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use tablepro_core::column::ColumnInfo;
-use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
+use tablepro_core::ddl::{DatabaseChoices, InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
+use tablepro_core::dump::{DumpCatalog, DumpScope};
 use tablepro_core::meta::{
     IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
 };
@@ -25,6 +26,7 @@ use crate::cancel::{ClickHouseStop, StopProgress};
 use crate::catalog::{self, CatalogTable};
 use crate::commit_resolution::resolve;
 use crate::dialect::ClickHouseDialect;
+use crate::dump;
 use crate::editor_session::ClickHouseEditorSession;
 use crate::endpoint::ClickHouseEndpoint;
 use crate::http_call::HttpCall;
@@ -285,6 +287,13 @@ impl Connection for ClickHouseConnection {
             .await
     }
 
+    async fn fetch_database_choices(&self, options: CallOptions) -> Result<DatabaseChoices, DriverError> {
+        self.workspace_read(options, |calls| async move {
+            metadata::fetch_database_choices(&calls).await
+        })
+        .await
+    }
+
     async fn list_objects(&self, scope: &ObjectScope, options: CallOptions) -> Result<Vec<ObjectInfo>, DriverError> {
         let scope = scope.clone();
         let database = self.default_database.clone();
@@ -302,6 +311,18 @@ impl Connection for ClickHouseConnection {
         let object = object.clone();
         self.workspace_read(options, move |calls| async move {
             metadata::fetch_object_definition(&calls, &object).await
+        })
+        .await
+    }
+
+    async fn read_dump_catalog(&self, scope: &DumpScope, options: CallOptions) -> Result<DumpCatalog, DriverError> {
+        let database = match scope {
+            DumpScope::Database => self.default_database.clone(),
+            DumpScope::Schema(database) => database.clone(),
+        };
+        let qualified = database != self.default_database;
+        self.workspace_read(options, move |calls| async move {
+            dump::read_dump_catalog(&calls, &database, qualified).await
         })
         .await
     }

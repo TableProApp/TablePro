@@ -1,4 +1,6 @@
-use tablepro_core::{Credentials, FileEndpoint, NetworkEndpoint, NetworkOptions, TlsConfig, TransportClass};
+use tablepro_core::{
+    Credentials, FileEndpoint, NetworkEndpoint, NetworkOptions, TlsConfig, TransportClass, is_local_socket_host,
+};
 use tablepro_ssh::SshConfig;
 
 /// Where a connect request goes and how it logs in.
@@ -32,6 +34,9 @@ impl RequestTarget {
     pub fn transport_class(&self) -> Option<TransportClass> {
         match self {
             Self::Network { ssh: Some(_), .. } => Some(TransportClass::SshForward),
+            Self::Network { endpoint, .. } if is_local_socket_host(endpoint.host()) => {
+                Some(TransportClass::LocalSocket)
+            }
             Self::Network { ssh: None, .. } => Some(TransportClass::DirectTcp),
             Self::File(_) => None,
         }

@@ -94,4 +94,4 @@ Pass `-p:UniffiBindgenCs=<path>` when it is not on `PATH`; the target refuses an
 
 ## CI
 
-`.github/workflows/windows.yml`, which `ci.yml` calls when the `windows` suite changed (`.claude/rules/ci.md`). It builds the core and runs the tests on x64, Arm64 and macOS runners, publishes the app with Native AOT and runs its UI tests on the Windows runners with their screenshots as an artifact, and on macOS checks the committed bindings and runs zizmor on the Windows workflows. `.github/workflows/release-windows.yml` builds and ships a release (`RELEASING.md`).
+`.github/workflows/windows.yml`, which `ci.yml` calls when the `windows` suite changed (`.claude/rules/ci.md`). It builds the core and runs the tests on x64, Arm64 and macOS runners, publishes the app with Native AOT and runs its UI tests on the Windows runners with their screenshots as an artifact, and on macOS checks the committed bindings. CI's Lint job runs zizmor on every workflow. `.github/workflows/release-windows.yml` builds and ships a release (`RELEASING.md`).

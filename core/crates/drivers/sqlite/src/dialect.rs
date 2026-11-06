@@ -4,6 +4,7 @@ use tablepro_core::dialect::{
     BindError, BindTarget, DialectCapabilities, InsertConflict, KeysetDirection, LikeCase, LikeForm, LiteralError,
     Placeholder, SqlDialect,
 };
+use tablepro_core::dump::DumpDialect;
 use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
@@ -33,6 +34,11 @@ impl SqliteDialect {
 }
 
 impl SqlDialect for SqliteDialect {
+    /// main's objects are listed with no schema.
+    fn unqualified_default_schema(&self) -> bool {
+        true
+    }
+
     fn capabilities(&self) -> DialectCapabilities {
         DialectCapabilities {
             exact_row_counts: true,
@@ -186,6 +192,10 @@ impl SqlDialect for SqliteDialect {
     }
 
     fn ddl(&self) -> Option<&dyn DdlDialect> {
+        Some(self)
+    }
+
+    fn dump(&self) -> Option<&dyn DumpDialect> {
         Some(self)
     }
 }

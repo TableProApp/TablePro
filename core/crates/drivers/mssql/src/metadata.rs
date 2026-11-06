@@ -3,7 +3,7 @@
 //! which resolves an unqualified name in the login's default schema the
 //! way the server does everywhere else.
 
-use tablepro_core::ddl::{InboundForeignKey, ReferentialAction, TableDefinition};
+use tablepro_core::ddl::{DatabaseChoices, DatabaseDefaults, InboundForeignKey, ReferentialAction, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{
     EditorRefusal, IndexInfo, IndexKey, ObjectDefinition, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate,
@@ -36,6 +36,20 @@ const DATABASES_SQL: &str = "SELECT d.name, \
         CAST(CASE WHEN d.name = DB_NAME() THEN 1 ELSE 0 END AS int), \
         CAST(CASE WHEN d.database_id <= 4 THEN 1 ELSE 0 END AS int) \
     FROM sys.databases d WHERE d.state = 0 AND HAS_DBACCESS(d.name) = 1 ORDER BY d.name";
+
+const COLLATIONS_SQL: &str = "SELECT name FROM sys.fn_helpcollations() ORDER BY name";
+
+/// The users and roles of the connected database that can own a
+/// schema: not the fixed roles, nor the principals the server keeps.
+const OWNERS_SQL: &str = "SELECT name FROM sys.database_principals \
+    WHERE type IN ('S', 'U', 'G', 'E', 'X', 'R') AND is_fixed_role = 0 \
+      AND name NOT IN ('public', 'sys', 'INFORMATION_SCHEMA', 'guest') \
+    ORDER BY name";
+
+/// The server's collation, cast from its sql_variant so the row holds
+/// text, and USER_NAME(): the user the session runs as in this
+/// database, whom CREATE SCHEMA without AUTHORIZATION makes the owner.
+const DEFAULTS_SQL: &str = "SELECT CAST(SERVERPROPERTY('Collation') AS nvarchar(128)), USER_NAME()";
 
 /// One read for the objects and their triggers. `{objects}` and
 /// `{triggers}` narrow each half to a schema. `parent_class` 1 keeps the
@@ -71,20 +85,28 @@ const TRIGGER_DEFINITION_SQL: &str = "SELECT OBJECT_DEFINITION(t.object_id), RTR
       AND p.schema_id = SCHEMA_ID(COALESCE(@P1, SCHEMA_NAME()))";
 
 /// The module types whose code is a .NET assembly, not SQL.
-const CLR_TYPES: [&str; 4] = ["FS", "FT", "PC", "TA"];
+pub(crate) const CLR_TYPES: [&str; 4] = ["FS", "FT", "PC", "TA"];
 
-/// The catalogue gives the numbers in the sequence's own type, which can
-/// be wider than any integer here, so they come as text.
-/// The type as declared: an alias type by its schema and name, which
-/// `system_type_id` would give as the built-in type under it.
-const SEQUENCE_SQL: &str = "SELECT CASE WHEN t.is_user_defined = 1 \
+/// What `SequenceRow` reads, from `sys.sequences s` joined to the
+/// `sys.types t` it is declared as. The catalogue gives the numbers in
+/// the sequence's own type, which can be wider than any integer here, so
+/// they come as text. The type as declared: an alias type by its schema
+/// and name, which `system_type_id` would give as the built-in type
+/// under it.
+pub(crate) const SEQUENCE_COLUMNS: &str = "CASE WHEN t.is_user_defined = 1 \
             THEN QUOTENAME(SCHEMA_NAME(t.schema_id)) + N'.' + QUOTENAME(t.name) ELSE t.name END, \
         CAST(s.start_value AS nvarchar(64)), \
         CAST(s.increment AS nvarchar(64)), CAST(s.minimum_value AS nvarchar(64)), \
         CAST(s.maximum_value AS nvarchar(64)), CAST(s.is_cycling AS int), CAST(s.is_cached AS int), \
-        CAST(s.cache_size AS bigint), CAST(s.precision AS int) \
-    FROM sys.sequences s JOIN sys.types t ON t.user_type_id = s.user_type_id \
-    WHERE s.schema_id = SCHEMA_ID(COALESCE(@P1, SCHEMA_NAME())) AND s.name = @P2";
+        CAST(s.cache_size AS bigint), CAST(s.precision AS int)";
+
+fn sequence_sql() -> String {
+    format!(
+        "SELECT {SEQUENCE_COLUMNS} \
+         FROM sys.sequences s JOIN sys.types t ON t.user_type_id = s.user_type_id \
+         WHERE s.schema_id = SCHEMA_ID(COALESCE(@P1, SCHEMA_NAME())) AND s.name = @P2"
+    )
+}
 
 const INDEXES_SQL: &str = "SELECT i.name, CAST(i.is_unique AS int), CAST(i.is_primary_key AS int), c.name, \
         CAST(ic.is_descending_key AS int), i.filter_definition \
@@ -151,6 +173,41 @@ pub(crate) async fn list_databases(client: &mut MssqlClient, watch: &Watch) -> R
         })
         .collect::<Result<_, DriverError>>()
         .map_err(Interrupt::Failed)
+}
+
+/// The collations a new database can take and the owners a new schema
+/// can name, with what each gets when left out.
+pub(crate) async fn fetch_database_choices(
+    client: &mut MssqlClient,
+    watch: &Watch,
+) -> Result<DatabaseChoices, Interrupt> {
+    let collations = catalogue_rows(client, watch, COLLATIONS_SQL, &[]).await?;
+    let owners = catalogue_rows(client, watch, OWNERS_SQL, &[]).await?;
+    let defaults = catalogue_rows(client, watch, DEFAULTS_SQL, &[]).await?;
+    Ok(database_choices(&collations, &owners, &defaults)?)
+}
+
+fn database_choices(
+    collations: &[Vec<Value>],
+    owners: &[Vec<Value>],
+    defaults: &[Vec<Value>],
+) -> Result<DatabaseChoices, DriverError> {
+    let names = |rows: &[Vec<Value>], query: &'static str| {
+        rows.iter()
+            .map(|row| Cells::new(row, query).required_text(0))
+            .collect::<Result<Vec<_>, _>>()
+    };
+    let defaults = defaults.first().map(|row| Cells::new(row, "SERVERPROPERTY"));
+    Ok(DatabaseChoices {
+        collations: names(collations, "sys.fn_helpcollations")?,
+        owners: names(owners, "sys.database_principals")?,
+        defaults: DatabaseDefaults {
+            collation: defaults.and_then(|cells| cells.text(0)),
+            owner: defaults.and_then(|cells| cells.text(1)),
+            ..DatabaseDefaults::default()
+        },
+        ..DatabaseChoices::default()
+    })
 }
 
 pub(crate) async fn list_objects(
@@ -264,7 +321,7 @@ async fn sequence_definition(
     object: &ObjectInfo,
 ) -> Result<Option<ObjectDefinition>, Interrupt> {
     let params = [optional_text_param(object.schema.as_deref()), text_param(&object.name)];
-    let rows = catalogue_rows(client, watch, SEQUENCE_SQL, &params).await?;
+    let rows = catalogue_rows(client, watch, &sequence_sql(), &params).await?;
     let Some(row) = rows.first() else {
         return Ok(None);
     };
@@ -277,20 +334,20 @@ async fn sequence_definition(
     }))
 }
 
-struct SequenceRow {
+pub(crate) struct SequenceRow {
     type_name: String,
-    start: String,
-    increment: String,
-    minimum: String,
-    maximum: String,
-    cycles: bool,
+    pub(crate) start: String,
+    pub(crate) increment: String,
+    pub(crate) minimum: String,
+    pub(crate) maximum: String,
+    pub(crate) cycles: bool,
     cached: bool,
     cache_size: Option<i64>,
     precision: i64,
 }
 
 impl SequenceRow {
-    fn from_cells(cells: &Cells<'_>) -> Result<Self, DriverError> {
+    pub(crate) fn from_cells(cells: &Cells<'_>) -> Result<Self, DriverError> {
         Ok(Self {
             type_name: cells.required_text(0)?,
             start: cells.required_text(1)?,
@@ -305,7 +362,7 @@ impl SequenceRow {
     }
 }
 
-fn sequence_statement(qualified: &str, row: &SequenceRow) -> String {
+pub(crate) fn sequence_statement(qualified: &str, row: &SequenceRow) -> String {
     let data_type = match row.type_name.as_str() {
         "decimal" | "numeric" => format!("{}({})", row.type_name, row.precision),
         other => other.to_owned(),
@@ -431,7 +488,7 @@ fn foreign_keys(rows: &[Vec<Value>]) -> Result<Vec<ForeignKeyInfo>, DriverError>
 }
 
 /// `sys.foreign_keys` spells each action as its `_desc` text.
-fn referential_action(description: &str) -> Option<ReferentialAction> {
+pub(crate) fn referential_action(description: &str) -> Option<ReferentialAction> {
     match description {
         "NO_ACTION" => Some(ReferentialAction::NoAction),
         "CASCADE" => Some(ReferentialAction::Cascade),
@@ -566,6 +623,34 @@ mod tests {
         assert!(statement.ends_with(" CYCLE CACHE;"), "{statement}");
         row.cached = false;
         assert!(sequence_statement("[s]", &row).ends_with(" CYCLE NO CACHE;"));
+    }
+
+    #[test]
+    fn the_choices_list_collations_and_owners_with_the_servers_defaults() {
+        let collations = vec![
+            vec![text("Latin1_General_100_CI_AS")],
+            vec![text("SQL_Latin1_General_CP1_CI_AS")],
+        ];
+        let owners = vec![vec![text("ann")], vec![text("dbo")], vec![text("reporting")]];
+        let defaults = vec![vec![text("SQL_Latin1_General_CP1_CI_AS"), text("dbo")]];
+
+        let choices = database_choices(&collations, &owners, &defaults).unwrap();
+
+        assert_eq!(
+            choices.collations,
+            ["Latin1_General_100_CI_AS", "SQL_Latin1_General_CP1_CI_AS"]
+        );
+        assert_eq!(choices.owners, ["ann", "dbo", "reporting"]);
+        assert_eq!(
+            choices.defaults.collation.as_deref(),
+            Some("SQL_Latin1_General_CP1_CI_AS")
+        );
+        assert_eq!(choices.defaults.owner.as_deref(), Some("dbo"));
+        assert!(choices.encodings.is_empty() && choices.templates.is_empty());
+        let unknown = database_choices(&[], &[], &[vec![Value::Null, Value::Null]]).unwrap();
+        assert_eq!(unknown.defaults, DatabaseDefaults::default());
+        assert!(database_choices(&[vec![Value::Null]], &[], &[]).is_err());
+        assert!(database_choices(&[], &[vec![Value::Null]], &[]).is_err());
     }
 
     #[test]

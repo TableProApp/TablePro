@@ -23,6 +23,8 @@ if python.found()
       '--license-file', meson.project_source_root() / 'LICENSE',
       '--copyright', meson.current_source_dir() / 'debian' / 'copyright',
       '--spec', meson.current_source_dir() / 'rpm' / 'tablepro.spec',
+      '--lock', meson.project_source_root() / '..' / 'Cargo.lock',
+      '--bundled', meson.current_source_dir() / 'about' / 'bundled',
     ],
     env: python_env,
     suite: 'packaging',

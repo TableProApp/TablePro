@@ -7,7 +7,7 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::{ConfigError, TlsCapabilities, TlsConfig, TlsMode, TransportClass};
 
-use super::connect_form::{TlsFormState, default_tls_mode, shows_server_name, tls_field};
+use super::connect_form::{TlsFormState, shows_server_name, tls_field};
 use super::form_errors::FormErrors;
 use super::form_field::FormField;
 use super::row_problem::show_problem;
@@ -64,6 +64,8 @@ mod imp {
         pub ca_file: RefCell<Option<PathBuf>>,
         pub client_certificate: RefCell<Option<PathBuf>>,
         pub client_key: RefCell<Option<PathBuf>>,
+        /// Set once the user picks a mode; see `TlsFormState::mode_chosen`.
+        pub mode_chosen: Cell<bool>,
         /// Set while the code writes the rows, so its own writes are not
         /// reported as the user changing them.
         pub updating: Cell<bool>,
@@ -107,6 +109,7 @@ mod imp {
                 if let Some(section) = weak.upgrade()
                     && !section.imp().updating.get()
                 {
+                    section.imp().mode_chosen.set(true);
                     section.refresh_rows();
                     section.emit_changed();
                 }
@@ -183,8 +186,9 @@ impl TlsSection {
         let mode = if caps.modes.contains(&state.mode) {
             state.mode
         } else {
-            default_tls_mode(Some(caps))
+            caps.default_mode
         };
+        imp.mode_chosen.set(state.mode_chosen && mode == state.mode);
         let index = caps.modes.iter().position(|candidate| *candidate == mode).unwrap_or(0);
         imp.encryption_row.set_selected(index as u32);
         imp.ca_file.replace(state.ca_file.clone());
@@ -205,6 +209,7 @@ impl TlsSection {
         let imp = self.imp();
         TlsFormState {
             mode: self.mode(),
+            mode_chosen: imp.mode_chosen.get(),
             ca_file: imp.ca_file.borrow().clone(),
             client_certificate: imp.client_certificate.borrow().clone(),
             client_key: imp.client_key.borrow().clone(),
@@ -380,6 +385,7 @@ impl TlsSection {
 pub fn mode_label(mode: TlsMode) -> String {
     match mode {
         TlsMode::Disable => crate::i18n::gettext("Disable"),
+        TlsMode::Prefer => crate::i18n::gettext("Prefer"),
         TlsMode::Require => crate::i18n::gettext("Require"),
         TlsMode::VerifyFull => crate::i18n::gettext("Verify full"),
         TlsMode::Strict => crate::i18n::gettext("Strict"),
@@ -391,6 +397,9 @@ pub fn mode_description(mode: TlsMode) -> String {
     match mode {
         TlsMode::Disable => crate::i18n::gettext(
             "Not encrypted. Anyone on the network can read or change the traffic, password included.",
+        ),
+        TlsMode::Prefer => crate::i18n::gettext(
+            "Encrypted if the server offers TLS, otherwise not. The server certificate is not checked.",
         ),
         TlsMode::Require => crate::i18n::gettext("Encrypted. The server certificate is not checked."),
         TlsMode::VerifyFull => crate::i18n::gettext("Encrypted. The certificate must be valid for the server name."),

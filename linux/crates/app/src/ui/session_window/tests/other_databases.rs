@@ -1,14 +1,19 @@
 //! A connection's other databases open beside it and live and go with
 //! its session (0030).
 
+use std::time::Duration;
+
 use gtk4::prelude::*;
+use libadwaita::prelude::*;
+use tablepro_core::WriteReport;
 use tablepro_session::SessionKey;
 use tablepro_session::fakes::FakeEstablish;
-use tablepro_test_support::{ConnectionScript, FakeReply};
+use tablepro_test_support::{CallCounters, CloseBehaviour, ConnectionScript, FakeReply};
 
 use super::{Script, TestWindow, WAIT, editors, pick_level, refused};
 use crate::test_support::{drain_main_context, wait_until};
 use crate::ui::SessionWindowInput;
+use crate::workspace::{answer, visible_alert};
 
 const ANALYTICS: &str = "analytics";
 
@@ -64,11 +69,15 @@ fn analytics(test: &TestWindow) -> SessionKey {
 
 /// A connection that answers what a workspace asks as it opens.
 fn answering() -> FakeEstablish {
+    FakeEstablish::Connect(answering_script())
+}
+
+fn answering_script() -> ConnectionScript {
     let mut connection = ConnectionScript::default();
     connection.probe.always(FakeReply::ok(()));
     connection.list_schemas.always(FakeReply::ok(Vec::new()));
     connection.list_objects.always(FakeReply::ok(Vec::new()));
-    FakeEstablish::Connect(connection)
+    connection
 }
 
 /// The connection connects; another of its databases never answers
@@ -290,4 +299,229 @@ fn a_tab_moved_where_the_catalog_lists_every_database_opens_nothing() {
     );
     assert_eq!(test.connector.calls().len(), 1, "a session opened for the database");
     assert_eq!(tabs[0].followed_catalog(), None);
+}
+
+fn postgres() -> std::sync::Arc<dyn tablepro_core::dialect::SqlDialect> {
+    std::sync::Arc::new(tablepro_driver_postgres::PgDialect::new(
+        &tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0),
+    ))
+}
+
+/// A PostgreSQL connection that writes what it is sent and answers what
+/// a workspace asks as it opens.
+fn writing_postgres() -> ConnectionScript {
+    let mut connection = answering_script();
+    connection.dialect = postgres();
+    connection
+        .write_batch
+        .always(FakeReply::ok(WriteReport::new(vec![None])));
+    connection
+}
+
+/// A PostgreSQL connection whose own session writes what it is sent,
+/// and whose `ANALYTICS` takes `close` to close. `later` answers the
+/// connects after those two.
+fn dropping_window(name: &str, close: CloseBehaviour, later: Vec<FakeEstablish>) -> TestWindow {
+    let mut database = answering_script();
+    database.dialect = postgres();
+    database.close = close;
+    let mut establish = vec![
+        FakeEstablish::Connect(writing_postgres()),
+        FakeEstablish::Connect(database),
+    ];
+    establish.extend(later);
+    network_window_with(
+        name,
+        Script {
+            establish,
+            connection: ConnectionScript {
+                dialect: postgres(),
+                ..ConnectionScript::default()
+            },
+            ..Script::default()
+        },
+    )
+}
+
+/// Open `ANALYTICS` beside the connection, with an unsaved edit in it
+/// when `edited`, then confirm Drop Database on its row.
+fn confirm_dropping_analytics(test: &TestWindow, edited: bool) -> SessionKey {
+    connect(test);
+    let sibling = analytics(test);
+    test.window.open_database(test.saved.id, ANALYTICS.to_owned());
+    wait_until(WAIT, || test.window.held_session(&sibling).is_some()).expect("the database to open");
+    if edited {
+        let held = test
+            .window
+            .workspaces()
+            .into_iter()
+            .find(|workspace| workspace.key().as_ref() == Some(&sibling))
+            .expect("the database's workspace");
+        super::sessions::edit_a_table(&held, "events");
+    }
+
+    test.window.send(SessionWindowInput::DropDatabaseIn(sibling.clone()));
+    wait_for_alert(test, "Drop Database “analytics”?");
+    assert!(answer(&test.window, "drop"));
+    sibling
+}
+
+fn wait_for_alert(test: &TestWindow, heading: &str) {
+    wait_until(WAIT, || {
+        visible_alert(&test.window).is_some_and(|alert| alert.heading().as_deref() == Some(heading))
+    })
+    .unwrap_or_else(|_| panic!("no alert {heading:?}"));
+}
+
+fn sent_drop(connection: &tablepro_test_support::FakeConnection) -> bool {
+    connection
+        .observed_sql("write_batch")
+        .iter()
+        .flatten()
+        .any(|sql| sql.contains("DROP DATABASE \"analytics\""))
+}
+
+/// The server refuses to drop a database a session is on, so the
+/// window's own session there closes, down to its last connection,
+/// before the DROP leaves (0034).
+#[gtk4::test]
+fn dropping_another_database_closes_it_through_its_prompts_first() {
+    let test = dropping_window(
+        "DropOtherDatabase",
+        CloseBehaviour::Delay(Duration::from_millis(300)),
+        Vec::new(),
+    );
+    let sibling = confirm_dropping_analytics(&test, true);
+    wait_for_alert(&test, "Save Changes?");
+    let connections = test.connector.connections();
+    let (connection, database) = (connections[0].clone(), connections[1].clone());
+
+    assert!(answer(&test.window, "discard"));
+
+    wait_until(WAIT, || sent_drop(&connection)).expect("the drop");
+    assert!(
+        database.close_finished(),
+        "the drop left before the database's session closed"
+    );
+    assert!(test.window.held_session(&sibling).is_none());
+    assert_eq!(test.services.sessions.window_for(&sibling), None);
+}
+
+#[gtk4::test]
+fn a_cancelled_prompt_drops_nothing() {
+    let test = dropping_window("DropOtherDatabaseCancelled", CloseBehaviour::Immediate, Vec::new());
+    let sibling = confirm_dropping_analytics(&test, true);
+    wait_for_alert(&test, "Save Changes?");
+
+    assert!(answer(&test.window, "cancel"));
+    wait_until(WAIT, || visible_alert(&test.window).is_none()).expect("the prompt to close");
+    drain_main_context();
+
+    let connection = test.connector.connections()[0].clone();
+    assert_eq!(CallCounters::get(&connection.counters().write_batch), 0);
+    assert!(
+        test.window.held_session(&sibling).is_some(),
+        "a cancelled prompt closed the database"
+    );
+}
+
+/// The connection disconnected and connected again while the database
+/// was closing: the new session, perhaps to another server by now, was
+/// never asked to drop anything.
+#[gtk4::test]
+fn a_drop_never_runs_on_a_session_opened_again_under_the_same_key() {
+    let test = dropping_window(
+        "DropAfterReconnect",
+        CloseBehaviour::Delay(Duration::from_secs(3)),
+        vec![FakeEstablish::Connect(writing_postgres())],
+    );
+    confirm_dropping_analytics(&test, false);
+    let database = test.connector.connections()[1].clone();
+    wait_until(WAIT, || database.is_closed()).expect("the database to start closing");
+
+    test.window.send(SessionWindowInput::DisconnectSession(test.key()));
+    test.wait_for_page("picker");
+    connect(&test);
+    assert!(
+        !database.close_finished(),
+        "the database closed before the connection came back, so nothing was tested"
+    );
+
+    wait_until(WAIT, || database.close_finished()).expect("the database to close");
+    let dropped = wait_until(Duration::from_millis(500), || {
+        test.connector
+            .connections()
+            .iter()
+            .any(|connection| sent_drop(connection))
+    });
+    assert!(dropped.is_err(), "a drop confirmed on the old session ran");
+}
+
+/// Neither Open Database… nor a tab moving there opens a database on its
+/// way to a drop; once the drop has run, it opens again.
+#[gtk4::test]
+fn a_database_on_its_way_to_a_drop_does_not_open_again() {
+    let mut reopened = answering_script();
+    reopened.dialect = postgres();
+    let test = dropping_window(
+        "DropReservesTheDatabase",
+        CloseBehaviour::Delay(Duration::from_secs(2)),
+        vec![FakeEstablish::Connect(reopened)],
+    );
+    let sibling = confirm_dropping_analytics(&test, false);
+    wait_until(WAIT, || test.window.held_session(&sibling).is_none()).expect("the database to close");
+    let connection = test.connector.connections()[0].clone();
+    let connects = test.connector.calls().len();
+
+    test.window.open_database(test.saved.id, ANALYTICS.to_owned());
+    drain_main_context();
+
+    assert_eq!(
+        test.connector.calls().len(),
+        connects,
+        "the database opened while it was being dropped"
+    );
+    assert_eq!(test.services.sessions.window_for(&sibling), None);
+    wait_until(WAIT, || sent_drop(&connection)).expect("the drop");
+    wait_until(WAIT, || {
+        test.window.open_database(test.saved.id, ANALYTICS.to_owned());
+        test.window.held_session(&sibling).is_some()
+    })
+    .expect("the database to open once the drop ran");
+}
+
+#[test]
+fn a_drop_offers_neither_the_connections_database_nor_the_servers_own() {
+    let databases = [
+        tablepro_core::meta::SchemaInfo {
+            name: "postgres".to_owned(),
+            is_default: true,
+            is_system: false,
+        },
+        tablepro_core::meta::SchemaInfo {
+            name: "template1".to_owned(),
+            is_default: false,
+            is_system: false,
+        },
+        tablepro_core::meta::SchemaInfo {
+            name: "rdsadmin".to_owned(),
+            is_default: false,
+            is_system: true,
+        },
+        tablepro_core::meta::SchemaInfo {
+            name: "shop".to_owned(),
+            is_default: false,
+            is_system: false,
+        },
+        tablepro_core::meta::SchemaInfo {
+            name: "analytics".to_owned(),
+            is_default: false,
+            is_system: false,
+        },
+    ];
+
+    let offered =
+        super::super::other_databases::droppable(&databases, Some("analytics"), |name| name.starts_with("template"));
+
+    assert_eq!(offered, ["shop"]);
 }

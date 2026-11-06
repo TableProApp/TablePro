@@ -99,6 +99,15 @@ mod tests {
     }
 
     #[test]
+    fn a_database_the_server_no_longer_has_parks() {
+        let missing = DriverError::DatabaseNotFound {
+            database: "shop".to_owned(),
+        };
+
+        assert_eq!(FailureCause::of(&missing), Some(FailureCause::Configuration));
+    }
+
+    #[test]
     fn ssh_failures_a_retry_would_repeat_park() {
         let too_many = ssh(SshFailure::TooManyAuthenticationFailures {
             host: "bastion".to_owned(),

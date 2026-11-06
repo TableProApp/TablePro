@@ -30,16 +30,19 @@ pub(crate) struct DuckDbEditorSession {
     shared: Arc<Shared>,
 }
 
-/// What a run needs once its caller is gone. A run goes on a task of
-/// its own, so a dropped caller is a cancel that still interrupts the
-/// statement and settles the session.
+// A run goes on a task of its own, so a dropped caller is a cancel that still interrupts the statement and settles the
+// session.
 struct Shared {
     call: Arc<tokio::sync::Mutex<Option<DuckCall>>>,
     stop: StopHandle,
     running: AtomicBool,
     lost: AtomicBool,
-    /// Raised to keep the run from starting another statement.
+    // Raised to keep the run from starting another statement.
     halt: Arc<AtomicBool>,
+    // The file's catalogue, which the table tab's names are qualified with.
+    catalog: String,
+    // Where the last run or state read left the transaction; a new connection starts outside one.
+    idle: AtomicBool,
     statement_timeout: Option<Duration>,
     cancel_grace: Duration,
     close_timeout: Duration,
@@ -59,6 +62,7 @@ impl DuckDbEditorSession {
         liveness: &LivenessPolicy,
         cancel: CancellationToken,
     ) -> Result<Self, DriverError> {
+        let catalog = instance.catalog().to_owned();
         let connecting = blocking(move || instance.link());
         let link = tokio::select! {
             biased;
@@ -82,6 +86,8 @@ impl DuckDbEditorSession {
                 running: AtomicBool::new(false),
                 lost: AtomicBool::new(false),
                 halt: Arc::new(AtomicBool::new(false)),
+                catalog,
+                idle: AtomicBool::new(true),
                 statement_timeout: options.statement_timeout,
                 cancel_grace: liveness.cancel_grace,
                 close_timeout: liveness.close_timeout,
@@ -108,8 +114,7 @@ impl Shared {
         interrupt_until_settled(&self.stop).await;
     }
 
-    /// One run on the connection `held` holds, which it gives up when
-    /// the connection cannot take another.
+    // The run gives the connection up when it cannot take another.
     async fn run_held(
         &self,
         mut held: OwnedMutexGuard<Option<DuckCall>>,
@@ -134,6 +139,8 @@ impl Shared {
             Ok(_) => self.state_after_run(call).await,
             Err(_) => TransactionState::Unknown,
         };
+        self.idle
+            .store(transaction_state == TransactionState::Idle, Ordering::SeqCst);
         let kept = call.holds_connection();
         self.running.store(false, Ordering::SeqCst);
         let end = match ended {
@@ -155,9 +162,7 @@ impl Shared {
         })
     }
 
-    /// Run the script, stopping it on a cancel or at the deadline. A
-    /// stopped statement gets the cancel grace to give way; past that
-    /// the connection is given up.
+    // A stopped statement gets the cancel grace to give way; past that the connection is given up.
     async fn supervise(
         &self,
         call: &mut DuckCall,
@@ -185,8 +190,9 @@ impl Shared {
         };
         let text = sql.as_str().to_owned();
         let limit = options.row_limit;
+        let traced = self.idle.load(Ordering::SeqCst).then(|| self.catalog.clone());
         let running = stream_into(call, None, sink, move |link, events| {
-            run_script(link, &text, Some(limit), events, &halted)
+            run_script(link, &text, Some(limit), events, &halted, traced.as_deref())
         });
         tokio::pin!(running);
         let stop = tokio::select! {
@@ -367,6 +373,9 @@ impl EditorSession for DuckDbEditorSession {
         let given_up = LoseOnDrop(Some(&shared.lost));
         let state = call.run(None, |link| Ok(transaction_state(link))).await;
         given_up.disarm();
+        shared
+            .idle
+            .store(matches!(state, Ok(TransactionState::Idle)), Ordering::SeqCst);
         state
     }
 

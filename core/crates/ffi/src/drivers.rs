@@ -1,4 +1,7 @@
-use tablepro_core::{AuthMode, DataModel, DatabaseDriver, DriverRegistry, EndpointKind, EngineCategory, TlsMode};
+use tablepro_core::{
+    AuthMode, DataModel, DatabaseDriver, DriverRegistry, EndpointKind, EngineCategory, NetworkOptions,
+    ServerNameOverride,
+};
 
 use crate::library::TlsModeTag;
 
@@ -34,8 +37,21 @@ pub struct DriverInfo {
     pub category: EngineCategoryTag,
     pub endpoint: EndpointInfo,
     pub supported_tls_modes: Vec<TlsModeTag>,
+    // What a new connection starts on (core/docs/decisions/0014-tls-mode-of-a-new-connection.md).
+    pub default_tls_mode: TlsModeTag,
+    // Ports where a new connection starts on VerifyFull instead.
+    pub tls_ports: Vec<u16>,
+    pub server_name_override: ServerNameOverrideTag,
     pub supports_integrated_auth: bool,
     pub supports_client_identity: bool,
+}
+
+/// Where the certificate can be checked against a name other than the host.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum ServerNameOverrideTag {
+    AnyRoute,
+    SshForwardOnly,
+    Unsupported,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -92,17 +108,18 @@ impl DriverInfo {
                 DataModel::Document => DataModelTag::Document,
             },
             category: driver.category().into(),
-            supported_tls_modes: capabilities.tls.map_or_else(Vec::new, |tls| {
-                tls.modes
-                    .iter()
-                    .map(|mode| match mode {
-                        TlsMode::Disable => TlsModeTag::Disable,
-                        TlsMode::Require => TlsModeTag::Require,
-                        TlsMode::VerifyFull => TlsModeTag::VerifyFull,
-                        TlsMode::Strict => TlsModeTag::Strict,
-                    })
-                    .collect()
-            }),
+            supported_tls_modes: capabilities
+                .tls
+                .map_or_else(Vec::new, |tls| tls.modes.iter().map(|mode| (*mode).into()).collect()),
+            default_tls_mode: capabilities
+                .new_connection_tls(capabilities.default_port().unwrap_or(0), &NetworkOptions::default())
+                .into(),
+            tls_ports: capabilities.tls.map_or_else(Vec::new, |tls| tls.tls_ports.to_vec()),
+            server_name_override: match capabilities.tls.map(|tls| tls.server_name_override) {
+                Some(ServerNameOverride::AnyRoute) => ServerNameOverrideTag::AnyRoute,
+                Some(ServerNameOverride::SshForwardOnly) => ServerNameOverrideTag::SshForwardOnly,
+                Some(ServerNameOverride::Unsupported) | None => ServerNameOverrideTag::Unsupported,
+            },
             supports_integrated_auth: capabilities.supports(AuthMode::Kerberos),
             supports_client_identity: capabilities.tls.is_some_and(|tls| tls.client_identity),
             endpoint: match &capabilities.endpoint {
@@ -180,6 +197,62 @@ mod tests {
             DriverInfo::of(&tablepro_driver_sqlite::SqliteDriver)
                 .supported_tls_modes
                 .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_new_connection_starts_on_the_mode_the_engines_own_client_starts_on() {
+        let expected = [
+            ("cassandra", TlsModeTag::Disable),
+            ("clickhouse", TlsModeTag::Disable),
+            ("duckdb", TlsModeTag::Disable),
+            ("mongodb", TlsModeTag::Disable),
+            ("mssql", TlsModeTag::VerifyFull),
+            ("mysql", TlsModeTag::Prefer),
+            ("postgres", TlsModeTag::Prefer),
+            ("redis", TlsModeTag::Disable),
+            ("sqlite", TlsModeTag::Disable),
+        ];
+        for driver in registry().iter() {
+            let info = DriverInfo::of(driver.as_ref());
+            let wanted = expected.iter().find(|(id, _)| *id == info.id).map(|(_, mode)| *mode);
+            assert_eq!(Some(info.default_tls_mode), wanted, "{}", info.id);
+            assert!(
+                info.supported_tls_modes.is_empty() || info.supported_tls_modes.contains(&info.default_tls_mode),
+                "{}",
+                info.id
+            );
+            assert_eq!(
+                info.supported_tls_modes.contains(&TlsModeTag::Prefer),
+                matches!(info.id.as_str(), "mysql" | "postgres"),
+                "{}",
+                info.id
+            );
+            assert!(
+                info.tls_ports.is_empty() || info.supported_tls_modes.contains(&TlsModeTag::VerifyFull),
+                "{}",
+                info.id
+            );
+        }
+    }
+
+    #[test]
+    fn the_form_learns_where_a_server_name_can_be_checked() {
+        fn tag(driver: &dyn DatabaseDriver) -> ServerNameOverrideTag {
+            DriverInfo::of(driver).server_name_override
+        }
+
+        assert_eq!(
+            tag(&tablepro_driver_postgres::PgDriver),
+            ServerNameOverrideTag::AnyRoute
+        );
+        assert_eq!(
+            tag(&tablepro_driver_mysql::MysqlDriver),
+            ServerNameOverrideTag::SshForwardOnly
+        );
+        assert_eq!(
+            tag(&tablepro_driver_sqlite::SqliteDriver),
+            ServerNameOverrideTag::Unsupported
         );
     }
 

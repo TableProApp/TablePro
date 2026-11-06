@@ -15,6 +15,7 @@ core/crates/
 ├── storage/                       saved connections, history, drafts, credentials, file persistence
 ├── foreign-import/                connections and saved queries read from other apps' files, and their review
 ├── ai/                            the AI assistant's providers, prompts and replies
+├── account/                       the TablePro account: sign-in, device, entitlement and the feature gate
 ├── mcp/                           the MCP server: transport, token and tools
 ├── ffi/                           the library C# and Swift load: one UniFFI API and the grid's C ABI
 ├── bindgen/                       uniffi-bindgen-swift, which writes the Swift bindings from a built ffi
@@ -45,6 +46,7 @@ core/crates/
 | `session` | `core`, `net`, `ssh`, `storage` |
 | `mcp` | `core`, `session`, `storage` |
 | `ai` | `core`, `net` |
+| `account` | `core`, `storage` |
 | `ffi` | `core`, `session`, `ssh`, `storage`, and every driver behind its default `engines` feature |
 | An app, such as `linux/crates/app` | every crate above, and its platform crate |
 
@@ -57,6 +59,7 @@ Rules, enforced by review:
 - `session` depends on `core`, `net`, `ssh` and `storage`, and on no driver outside its tests: it reaches drivers through `DriverRegistry`, and SSH through the `SshTunnels` the app passes in. Its Docker tests take `tablepro-driver-postgres`, `tablepro-driver-redis` and `tablepro-driver-mongodb` as dev-dependencies.
 - `mcp` depends on `core`, `session` and `storage`, and on no driver outside its tests. It reaches the windows and the user through the `McpHost` trait the app implements.
 - `ai` depends on `core` and `net`. It speaks the providers' protocols and builds the prompts from what the app hands it; the app decides what a prompt may carry.
+- `account` depends on `core` and `storage`. It reaches the browser, the keyring and the machine ID through what the app passes in ([0016](docs/decisions/0016-tablepro-accounts.md)).
 - `ffi` stands in for an app outside Rust: it names every driver and passes the host's services in. No other core crate depends on it.
 - No core crate depends on a GUI toolkit or on a platform crate. An app, or `ffi` for one outside Rust, is the only crate that names every driver.
 - `test-support` and `test-fixtures` are dev-dependencies, with one exception: `session` takes `test-support` as an optional dependency behind its `fakes` feature, which only an app's dev-dependencies turn on.
@@ -78,6 +81,7 @@ A value or a trait the app passes in:
 | `SecretVault` and `SecretItems`, labelled through `SecretLabeler` and `SecretItemLabeler` | `tablepro_linux_platform::SecretStore`, the Secret Service through oo7 | `Core::with_system_secrets`, the platform's store the core reaches itself (below); `HostSecrets`, a callback interface, for a host with a store of its own |
 | `SshTunnels` | `tablepro_ssh::SshServices`, the system OpenSSH client | `tablepro_ssh::InProcessSsh`, behind `tablepro-session`'s `in-process-ssh` feature ([ADR 0009](docs/decisions/0009-in-process-ssh-on-windows.md)) |
 | `ProcessHold` | `gio::Application::hold` | none |
+| `RefreshTokenVault`, `BrowserLauncher`, `MachineId` and `AppClient` (`tablepro-account`) | the keyring through `SecretStore`, `gtk::UriLauncher`, `MachineId::derive` of what `tablepro_linux_platform::read_machine_id` reads, `AppClient::LINUX` | none yet |
 | `ForeignAppDirs` and `ForeignHost` (`tablepro-foreign-import`) | `tablepro_linux_platform::foreign_app_dirs`, the host's XDG directories inside a Flatpak, and `PlainHost`: no other app's keychain | none yet |
 
 A `cfg` split inside a crate:
@@ -93,6 +97,7 @@ A `cfg` split inside a crate:
 | `ffi`'s system secret store | none | none | Credential Manager, generic credentials named `TablePro/connection/<id>/<kind>` |
 | OpenSSH transport, askpass helper | yes | yes | not built |
 | The in-process SSH transport's agent | `SSH_AUTH_SOCK` | `SSH_AUTH_SOCK` | `SSH_AUTH_SOCK`, else `\\.\pipe\openssh-ssh-agent`, then Pageant |
+| A server's own Unix-domain socket (`tablepro_net::LocalSocketTransport`, `NetworkOption::LocalSocket`) | yes | yes | not built: no engine offers one |
 | MySQL's and MongoDB's relay for an in-process route (`tablepro_net::PrivateListener`) | a Unix socket in a 0700 directory | the same | a loopback port that serves this process, from `GetExtendedTcpTable` |
 | Cassandra's loopback relay | serves this user, from `/proc/net/tcp` | serves no one | serves this process, from `GetExtendedTcpTable` |
 
@@ -102,7 +107,7 @@ Each boundary error has a stable `code()`, such as `driver.timeout` or `ssh.host
 
 `ffi` is the library an app outside Rust loads: the Windows app as a DLL, the Apple apps as a static library in an XCFramework, built without the `engines` feature by `apple/scripts/build-core.sh`. Core ADRs 0002, on the bindings, 0003, on result windows, and 0009, on the macOS slices, hold the reasons.
 
-- One UniFFI API. `Core` lists the engines with the family each is listed under, opens a file, connects a saved connection or tests one from a form, and parses a connection URL. Its `ConnectionLibrary` reads and changes the saved connections, groups, favourites and tags in `connections.json` and stores their secrets, and gives the Apple apps the library's CloudKit records and merges a pull into it (`tablepro_storage::cloudkit`). A `DatabaseSession` reads the catalog one level at a time, writes a table's sorted page at an offset and counts the table, writes a query re-run with a sort (`docs/decisions/0007-sorting-a-result.md`), reports and waits on the session's health, and opens a `QueryEditor`. `QueryEditor::run` returns a `QueryRun` at once; the app drains its events after a `RunListener` call, which comes only when no earlier one is waiting to be drained, and the last says which transaction the editor is left in. Each result set is a `ResultSet`, whose `sorted` gives the rows it holds in a column's order.
+- One UniFFI API. `Core` lists the engines with the family each is listed under, opens a file, connects a saved connection or tests one from a form, and parses a connection URL with `tablepro_core::connection_url`, refusing one that needs a setting its record has no field for. Its `ConnectionLibrary` reads and changes the saved connections, groups, favourites and tags in `connections.json` and stores their secrets, and gives the Apple apps the library's CloudKit records and merges a pull into it (`tablepro_storage::cloudkit`). A `DatabaseSession` reads the catalog one level at a time, writes a table's sorted page at an offset and counts the table, writes a query re-run with a sort (`docs/decisions/0007-sorting-a-result.md`), reports and waits on the session's health, and opens a `QueryEditor`. `QueryEditor::run` returns a `QueryRun` at once; the app drains its events after a `RunListener` call, which comes only when no earlier one is waiting to be drained, and the last says which transaction the editor is left in. Each result set is a `ResultSet`, whose `sorted` gives the rows it holds in a column's order.
 - The grid reads a `ResultSet` through the C ABI in `src/window_abi.rs`: `tablepro_cursor_fetch` packs the display text of one visible range, and `tablepro_cursor_free` ends the cursor.
 - The library owns one tokio runtime. Each async export runs on it and is aborted when the foreign side drops the call; a `CancelToken` stops it sooner, since UniFFI cannot cancel.
 - A result set takes rows as the driver reads them. Each column keeps a kind byte, a raw `i64` and the exact text `tablepro_core::export::value_text` writes, or a binary value's bytes, in chunks of 65,536 rows. A window only cuts and copies.
@@ -183,11 +188,14 @@ The Windows app runs SSH in process on russh ([ADR 0009](docs/decisions/0009-in-
 A connection's `TlsConfig` holds the `TlsMode`, an optional CA file, an optional client certificate and key, and an optional server name:
 
 - `Disable`: no TLS.
+- `Prefer`: TLS when the server offers it, otherwise plain, and the certificate is not checked, as libpq's `prefer` and the mysql client's `PREFERRED` do. Only PostgreSQL and MySQL offer it, since only their protocols ask for TLS before going on without it.
 - `Require`: encrypted, and the certificate is not checked.
 - `VerifyFull`: the certificate must chain to a trusted root and carry the server name.
 - `Strict`: TLS before the first protocol byte, checked as `VerifyFull`. Only SQL Server offers it (TDS 8.0); Microsoft's drivers refuse to combine strict encryption with an unchecked certificate, so there is no unchecked variant.
 
-A CA file goes only with the modes that check the certificate, `VerifyFull` and `Strict`. libpq and the mysql client verify against a CA file given with their require mode, so taking one with `Require` and ignoring it would leave a user who expects a check with none. `validate` refuses the pair, the connect dialog shows the CA row only for the modes that check, and a saved or imported connection that holds the pair, from a build that allowed it, loads as `VerifyFull` with its CA file: a server the file does not vouch for then fails to connect instead of connecting unchecked.
+A new connection starts on the mode the engine's own client starts on, which `DriverCapabilities::new_connection_tls` gives from the driver's `TlsCapabilities::default_mode` and `tls_ports`, the port and the network options ([ADR 0014](docs/decisions/0014-tls-mode-of-a-new-connection.md) has the table). An app keeps a new connection's mode on that default until the user picks one; a saved connection keeps its own.
+
+A CA file goes only with the modes that check the certificate, `VerifyFull` and `Strict`. libpq and the mysql client verify against a CA file given with their require mode, so taking one with `Require` and ignoring it would leave a user who expects a check with none. `validate` refuses the pair, so a saved or imported connection that holds it fails to connect instead of connecting unchecked, and the connect dialog shows the CA row only for the modes that check.
 
 The name checked is `NetworkTarget::tls_server_name()`: the override when one is set, otherwise the host the user typed, never the address of a local SSH forward. `TlsConfig::validate` refuses a mode, file or override the driver cannot use on that route, and the connect dialog reads the chosen files up front, so a file with no certificate is named before anything connects. A CA, certificate or key file is read only when it is a regular file of at most 1 MiB, and drivers read it on the blocking pool, so a device or a pipe named in an imported connection can neither fill memory nor hold a connect.
 

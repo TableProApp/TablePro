@@ -21,10 +21,6 @@ cargo_built = cargo_target_dir / cargo_profile_dir
 app_env = cargo_env
 app_env.set('TABLEPRO_METAINFO', metainfo_file.full_path())
 
-cargo_build_command = ' '.join(
-  [cargo.full_path(), 'build', '-p', 'tablepro', '-p', 'tablepro-ssh'] + cargo_options,
-)
-
 custom_target(
   'cargo-build',
   build_always_stale: true,
@@ -34,12 +30,12 @@ custom_target(
   env: app_env,
   depends: metainfo_file,
   command: [
-    'sh',
-    '-c',
-    cargo_build_command
-    + ' && cp ' + cargo_built / 'tablepro' + ' @OUTPUT0@'
-    + ' && cp ' + cargo_built / 'tablepro-askpass' + ' @OUTPUT1@',
-  ],
+    find_program(meson.project_source_root() / 'build-aux' / 'cargo-build.sh'),
+    cargo_built / 'tablepro', '@OUTPUT0@',
+    cargo_built / 'tablepro-askpass', '@OUTPUT1@',
+    '--',
+    cargo, 'build', '-p', 'tablepro', '-p', 'tablepro-ssh',
+  ] + cargo_options,
   install: true,
   install_dir: [bindir, libexecdir],
 )
@@ -60,7 +56,14 @@ test(
   'workspace',
   cargo,
   # windows.yml tests tablepro-ffi, whose binaries each link every engine and filled a package builder's disk.
-  args: ['test'] + cargo_options + ['--workspace', '--exclude', 'tablepro', '--exclude', 'tablepro-ffi'],
+  # tablepro-bindgen is the macOS build's generator, and uniffi's CLI changes the build dependencies'
+  # features, so the gtk suite then built DuckDB's C++ again.
+  args: ['test'] + cargo_options + [
+    '--workspace',
+    '--exclude', 'tablepro',
+    '--exclude', 'tablepro-ffi',
+    '--exclude', 'tablepro-bindgen',
+  ],
   env: test_env,
   suite: 'unit',
   is_parallel: false,
@@ -71,6 +74,9 @@ gtk_env = app_env
 if profile != 'development'
   gtk_env.set('CARGO_PROFILE_RELEASE_LTO', 'off')
 endif
+# Tests never reach PostHog. The integration tests and the binary they
+# start are not built with cfg(test), so they get no key from here.
+gtk_env.set('TABLEPRO_POSTHOG_KEY', '')
 gtk_env.set('GSK_RENDERER', 'cairo')
 gtk_env.set('GTK_A11Y', 'test')
 # The key tests press real keys through XTEST, which only an X11 display

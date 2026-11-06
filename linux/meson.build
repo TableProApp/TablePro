@@ -68,6 +68,18 @@ cargo_env.set('TABLEPRO_PROFILE', profile)
 cargo_env.set('TABLEPRO_LOCALEDIR', localedir)
 cargo_env.set('TABLEPRO_LIBEXECDIR', libexecdir)
 
+# A release build always talks to tablepro.app (docs/testing.md, The app against a local stack).
+dev_cloud = ['dev_account_url', 'dev_api_url', 'dev_entitlement_keys']
+foreach name : dev_cloud
+  if get_option(name) != '' and profile != 'development'
+    error(name + ' is for -Dprofile=development only')
+  endif
+endforeach
+cargo_env.set('TABLEPRO_DEV_ACCOUNT_URL', get_option('dev_account_url'))
+cargo_env.set('TABLEPRO_DEV_API_URL', get_option('dev_api_url'))
+cargo_env.set('TABLEPRO_DEV_ENTITLEMENT_KEYS', get_option('dev_entitlement_keys'))
+cargo_env.set('TABLEPRO_POSTHOG_KEY', get_option('posthog_key'))
+
 subdir('data')
 subdir('po')
 subdir('crates/app')
@@ -91,4 +103,6 @@ summary({
   'Version': version,
   'Kerberos': get_option('kerberos'),
   'Flatpak': get_option('flatpak'),
+  'Account service': get_option('dev_account_url') == '' ? 'production' : get_option('dev_account_url'),
+  'Usage data': get_option('posthog_key') == '' ? 'off' : 'PostHog, on by default',
 })

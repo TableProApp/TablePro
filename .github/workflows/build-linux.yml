@@ -1,6 +1,6 @@
 name: Build Linux
 
-# CI calls it. Its own schedule and a manual run of it also take the nightly jobs.
+# CI calls it with the baseline, nightly.yml with extended. A manual run takes the extended jobs too.
 on:
   workflow_call:
     inputs:
@@ -8,9 +8,20 @@ on:
         description: Run only the docs links job.
         type: boolean
         required: true
-  schedule:
-    - cron: "13 14 * * *"
+      dependencies:
+        description: Also check the minimum Rust version, the Arm64 Flatpak and the advisory database.
+        type: boolean
+        default: false
+      extended:
+        description: Also run every other server release, the minimum Rust version, the Arm64 Flatpak, paths with spaces and the advisory database.
+        type: boolean
+        default: false
   workflow_dispatch:
+    inputs:
+      extended:
+        description: Also run every other server release, the minimum Rust version, the Arm64 Flatpak, paths with spaces and the advisory database.
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -20,7 +31,6 @@ env:
   CARGO_DENY_VERSION: 0.20.2
   CARGO_NEXTEST_VERSION: 0.9.144
   CARGO_SHEAR_VERSION: 1.13.4
-  ZIZMOR_VERSION: 1.30.1
   LYCHEE_VERSION: 0.24.2
   LYCHEE_SHA256: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
 
@@ -121,10 +131,12 @@ jobs:
       # Meson points Cargo at _build/cargo-home and _build/cargo-target,
       # so those are what the cache keeps. The workspace is the top of the
       # repository.
+      # Saved from main only: a pull request's cache serves that pull request alone and pushes main's out.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: . -> linux/_build/cargo-target
           cache-directories: linux/_build/cargo-home
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # rust-cache restores DuckDB's unpacked sources as empty folders, which its build script cannot unpack over.
       - name: Drop the emptied DuckDB sources
         run: rm -rf _build/cargo-target/duckdb-sources
@@ -178,10 +190,11 @@ jobs:
             exit 1
           fi
       - name: No em dash in user-facing text
-        # The GNOME writing style leaves the em dash out. The paths are
-        # the ones po/POTFILES.in lists. The dash is spelt as its UTF-8
-        # bytes so this file holds none. git grep exits 1 for no match,
-        # and above 1 when it could not search at all.
+        # The GNOME writing style leaves the em dash out. Style advice, so
+        # a match warns and the job goes on. The paths are the ones
+        # po/POTFILES.in lists. The dash is spelt as its UTF-8 bytes so
+        # this file holds none. git grep exits 1 for no match, and above 1
+        # when it could not search at all.
         run: |
           em_dash=$(printf '\342\200\224')
           status=0
@@ -189,8 +202,7 @@ jobs:
             'data/*.gschema.xml.in' 'data/*.metainfo.xml.in.in' || status=$?
           case "$status" in
             0)
-              echo "::error::write a comma, a colon or two sentences instead of an em dash"
-              exit 1
+              echo "::warning::write a comma, a colon or two sentences instead of an em dash"
               ;;
             1) ;;
             *)
@@ -232,9 +244,8 @@ jobs:
   # compiler and not with rustup's.
   msrv:
     name: Minimum Rust version
-    # Only in this workflow's own nightly or manual run, to keep a CI run under GitHub Free's 20
-    # concurrent jobs. A called workflow sees the caller's github context, so from CI this is "CI".
-    if: ${{ github.workflow == 'Build Linux' }}
+    # Nightly, and on a change to a dependency, the toolchain or a manifest.
+    if: ${{ !inputs.docs-only && (inputs.extended || inputs.dependencies) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     container:
@@ -266,6 +277,47 @@ jobs:
           "cargo-$RUST_VERSION" check --workspace --all-targets --locked
           "cargo-$RUST_VERSION" check --workspace --all-targets --locked --no-default-features
 
+  # Every other job builds from paths without a space. Meson hands each path
+  # to the build as one argument (build-aux/cargo-build.sh), and this checks
+  # it with a source, build and install directory that each hold one.
+  spaced-paths:
+    name: Build from paths with spaces
+    # Nightly only.
+    if: ${{ inputs.extended }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    container:
+      image: ubuntu:26.04
+      env:
+        DEBIAN_FRONTEND: noninteractive
+    # The runner passes a step's working directory to docker exec unquoted,
+    # so each step changes into the source tree itself.
+    steps:
+      - name: Install git and the build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates git curl build-essential pkgconf meson ninja-build gettext \
+            desktop-file-utils appstream libglib2.0-bin libxml2-utils \
+            libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev \
+            libsqlite3-dev libkrb5-dev liblcms2-dev libseccomp-dev clang libclang-dev
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/source tree"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: source tree
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: "1.98"
+      - name: Build and install both executables
+        run: |
+          cd "source tree/linux"
+          meson setup "build dir" -Dprofile=development
+          meson compile -C "build dir"
+          DESTDIR="$PWD/install root" meson install -C "build dir" --no-rebuild
+          test -x "install root/usr/local/bin/tablepro"
+          test -x "install root/usr/local/libexec/tablepro-askpass"
+
   supply-chain:
     name: Supply chain
     if: ${{ !inputs.docs-only }}
@@ -283,13 +335,19 @@ jobs:
           toolchain: "1.98"
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
-          tool: cargo-deny@${{ env.CARGO_DENY_VERSION }},cargo-shear@${{ env.CARGO_SHEAR_VERSION }},cargo-about@${{ env.CARGO_ABOUT_VERSION }},zizmor@${{ env.ZIZMOR_VERSION }}
-      - name: Advisories, bans, licenses and sources
+          tool: cargo-deny@${{ env.CARGO_DENY_VERSION }},cargo-shear@${{ env.CARGO_SHEAR_VERSION }},cargo-about@${{ env.CARGO_ABOUT_VERSION }}
+      - name: Bans, licenses and sources
         # deny.toml checks every feature, every target the core builds for
         # and the dev-dependencies, so a test-only crate is held to the
         # same rules. The workspace and deny.toml are at the top.
         working-directory: .
-        run: cargo deny --locked check advisories bans licenses sources
+        run: cargo deny --locked check bans licenses sources
+      - name: Advisories
+        # The advisory database changes under unchanged code, so it runs
+        # nightly and when a dependency changes rather than on every change.
+        if: ${{ inputs.extended || inputs.dependencies }}
+        working-directory: .
+        run: cargo deny --locked check advisories
       - name: No unused or misplaced dependencies
         working-directory: .
         run: cargo shear
@@ -297,24 +355,14 @@ jobs:
         run: build-aux/update-third-party-licenses.sh
       - name: The committed notices cover every shipped crate
         # A crate added to or bumped in Cargo.lock changes the regenerated
-        # files, and so does one whose license text changed. The Debian
-        # copyright file and the RPM License tag follow data/licenses.
+        # files, and so does one whose license text changed. The RPM
+        # License tag follows data/licenses, and the Debian copyright file
+        # every crate of Cargo.lock.
         run: |
           if ! git diff --exit-code -- data/licenses build-aux/debian/copyright build-aux/rpm/tablepro.spec; then
             echo "::error::the license files do not match Cargo.lock: run linux/build-aux/update-third-party-licenses.sh and commit the result"
             exit 1
           fi
-      - name: The Linux and core workflows
-        # Offline, so the verdict depends on these files alone and not on
-        # where a branch the pins name has moved since.
-        working-directory: .
-        run: |
-          zizmor --offline --format=github --min-severity=medium \
-            .github/workflows/ci.yml \
-            .github/workflows/build-linux.yml \
-            .github/workflows/core.yml \
-            .github/workflows/linux-packages.yml \
-            .github/workflows/release-linux.yml
 
   i18n:
     name: Translations
@@ -366,6 +414,18 @@ jobs:
       # checks in every rust-format entry.
       - name: Check the catalogues
         run: meson test -C _build --no-rebuild --suite po --print-errorlogs
+      # Reported, never failed: strings land before the translation run
+      # after the string freeze. A release refuses the gap
+      # (release-linux.yml, po/README.md).
+      - name: Report untranslated entries
+        run: |
+          status=0
+          po/check-complete.sh >> "$GITHUB_STEP_SUMMARY" || status=$?
+          case "$status" in
+            0) ;;
+            1) echo "::warning title=Translations::a language in po/LINGUAS has untranslated or fuzzy entries, which a release refuses (linux/po/README.md)" ;;
+            *) exit "$status" ;;
+          esac
       # Translators start from this template (po/README.md), since few
       # distributions ship gettext 1.0 yet.
       - name: Publish tablepro.pot
@@ -378,17 +438,13 @@ jobs:
 
   flatpak-devel:
     name: Flatpak Devel (${{ matrix.arch }})
-    # Only in this workflow's own nightly or manual run, to keep a CI run under GitHub Free's 20
-    # concurrent jobs. A called workflow sees the caller's github context, so from CI this is "CI".
-    if: ${{ github.workflow == 'Build Linux' }}
+    # x86_64 on every Linux change. aarch64 nightly, and on a change to a
+    # dependency, the toolchain or a manifest.
+    if: ${{ !inputs.docs-only }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - arch: x86_64
-            runner: ubuntu-24.04
-          - arch: aarch64
-            runner: ubuntu-24.04-arm
+        include: ${{ fromJSON((inputs.extended || inputs.dependencies) && '[{"arch":"x86_64","runner":"ubuntu-24.04"},{"arch":"aarch64","runner":"ubuntu-24.04-arm"}]' || '[{"arch":"x86_64","runner":"ubuntu-24.04"}]') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 180
     container:
@@ -419,10 +475,10 @@ jobs:
           flatpak-builder-lint --exceptions --user-exceptions linux/build-aux/flatpak/lint-exceptions.json \
             manifest linux/build-aux/flatpak/app.tablepro.TablePro.Devel.json
 
+  # Each fixture starts its engine's default release (docs/testing.md, Server releases).
   integration:
-    name: Docker tests (${{ matrix.package }}${{ matrix.release != 'default' && format(', {0}', matrix.release) || '' }})
-    needs: fast
-    if: ${{ !cancelled() && needs.fast.result == 'success' }}
+    name: Docker tests (${{ matrix.package }})
+    if: ${{ !inputs.docs-only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
@@ -440,16 +496,69 @@ jobs:
           - tablepro-driver-mongodb
           - tablepro-ssh
           - tablepro-test-fixtures
-        # Each fixture starts its engine's default release. An entry with
-        # another release runs the driver's whole suite again on the
-        # versions it names (docs/testing.md, Server releases).
-        release: [default]
         include:
           - package: tablepro-ssh
             apt: openssh-client
             features: tablepro-ssh/in-process
           - package: tablepro-test-fixtures
             apt: openssh-client
+    defaults:
+      run:
+        working-directory: linux
+    steps:
+      - &docker-checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - &docker-system
+        name: Install system dependencies
+        env:
+          EXTRA_PACKAGES: ${{ matrix.apt }}
+        run: |
+          sudo apt-get update
+          # shellcheck disable=SC2086 # the matrix names zero or more packages
+          sudo apt-get install -y build-essential pkg-config $EXTRA_PACKAGES
+      - &docker-toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: "1.98"
+      # Saved from main only: a pull request's cache serves that pull request alone and pushes main's out.
+      - &docker-cache
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: .
+          key: ${{ matrix.package }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - &docker-nextest
+        uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+        with:
+          tool: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
+      - &docker-available
+        name: Verify docker is available
+        run: docker version
+      - name: Docker tests
+        env:
+          PACKAGE: ${{ matrix.package }}
+          FEATURES: ${{ matrix.features }}
+        run: cargo nextest run --locked --profile ci -p "$PACKAGE" ${FEATURES:+--features "$FEATURES"} --run-ignored only
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: junit-${{ matrix.package }}
+          path: target/nextest/ci/junit.xml
+
+  # Nightly: each driver's whole suite again on every other release it supports (docs/testing.md, Server releases).
+  integration-releases:
+    name: Docker tests (${{ matrix.package }}, ${{ matrix.release }})
+    if: ${{ inputs.extended }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
           - package: tablepro-ssh
             release: openssh-9.9
             openssh: "9.9"
@@ -458,6 +567,9 @@ jobs:
           - package: tablepro-driver-postgres
             release: postgres-14
             postgres: "14"
+          - package: tablepro-driver-postgres
+            release: postgres-15
+            postgres: "15"
           - package: tablepro-driver-postgres
             release: postgres-18
             postgres: "18"
@@ -495,28 +607,12 @@ jobs:
       run:
         working-directory: linux
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Install system dependencies
-        env:
-          EXTRA_PACKAGES: ${{ matrix.apt }}
-        run: |
-          sudo apt-get update
-          # shellcheck disable=SC2086 # the matrix names zero or more packages
-          sudo apt-get install -y build-essential pkg-config $EXTRA_PACKAGES
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
-        with:
-          toolchain: "1.98"
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          workspaces: .
-          key: ${{ matrix.package }}
-      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
-        with:
-          tool: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
-      - name: Verify docker is available
-        run: docker version
+      - *docker-checkout
+      - *docker-system
+      - *docker-toolchain
+      - *docker-cache
+      - *docker-nextest
+      - *docker-available
       - name: Docker tests
         env:
           PACKAGE: ${{ matrix.package }}
@@ -536,7 +632,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: junit-${{ matrix.package }}${{ matrix.release != 'default' && format('-{0}', matrix.release) || '' }}
+          name: junit-${{ matrix.package }}-${{ matrix.release }}
           path: target/nextest/ci/junit.xml
 
   integration-session:
@@ -546,8 +642,7 @@ jobs:
     # is mounted; testcontainers sees /.dockerenv and reaches the
     # containers it starts through the bridge gateway.
     name: Docker tests (tablepro-session)
-    needs: fast
-    if: ${{ !cancelled() && needs.fast.result == 'success' }}
+    if: ${{ !inputs.docs-only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     container:
@@ -588,6 +683,7 @@ jobs:
         with:
           workspaces: .
           key: tablepro-session
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
           tool: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
@@ -610,8 +706,7 @@ jobs:
     # test needs Meson and the fast job already covers it. The library's
     # Docker tests put widgets on screen, so they run under Xvfb.
     name: Docker tests (tablepro)
-    needs: fast
-    if: ${{ !cancelled() && needs.fast.result == 'success' }}
+    if: ${{ !inputs.docs-only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     container:
@@ -660,6 +755,7 @@ jobs:
         with:
           workspaces: .
           key: tablepro-app
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # As in the fast job: the cache restores DuckDB's sources without files.
       - name: Drop the emptied DuckDB sources
         run: rm -rf ../target/duckdb-sources

@@ -14,7 +14,7 @@ runs:
       env:
         XCODEGEN_VERSION: "2.46.0"
         XCODEGEN_SHA256: "4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806"
-      run: |
+      run: | # zizmor: ignore[github-env] the path is the tool cache
         set -euo pipefail
         prefix="${RUNNER_TOOL_CACHE:?}/xcodegen/$XCODEGEN_VERSION"
         if [ "$("$prefix/bin/xcodegen" --version 2> /dev/null | awk '{print $2}')" = "$XCODEGEN_VERSION" ]; then

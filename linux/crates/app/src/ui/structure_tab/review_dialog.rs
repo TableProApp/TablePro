@@ -49,7 +49,7 @@ pub(crate) fn build(
     let heading = crate::i18n::ngettext_f(
         "Apply {count} Change to “{table}”?",
         "Apply {count} Changes to “{table}”?",
-        u32::try_from(count).unwrap_or(u32::MAX),
+        count,
         &[("count", &count.to_string()), ("table", table)],
     );
     let dialog = adw::AlertDialog::new(Some(&heading), Some(&body(review, engine, asks_first)));
@@ -162,11 +162,14 @@ pub(crate) fn sql_view(sql: &str, dialog: &adw::AlertDialog) -> gtk::ScrolledWin
             }
         }),
     )));
+    let view = sourceview5::View::with_buffer(&buffer);
+    let shown_in = view.downgrade();
     dialog.connect_closed(move |_| {
         theme_handler.borrow_mut().take();
+        if let Some(view) = shown_in.upgrade() {
+            crate::ui::text_view_teardown::release(&view);
+        }
     });
-
-    let view = sourceview5::View::with_buffer(&buffer);
     view.set_editable(false);
     view.set_cursor_visible(false);
     view.set_monospace(true);
@@ -175,8 +178,7 @@ pub(crate) fn sql_view(sql: &str, dialog: &adw::AlertDialog) -> gtk::ScrolledWin
     view.set_bottom_margin(8);
     view.set_left_margin(8);
     view.set_right_margin(8);
-    view.upcast_ref::<gtk::Widget>()
-        .update_property(&[gtk::accessible::Property::Label(&crate::i18n::gettext("SQL to run"))]);
+    view.update_property(&[gtk::accessible::Property::Label(&crate::i18n::gettext("SQL to run"))]);
     gtk::ScrolledWindow::builder()
         .child(&view)
         .has_frame(true)

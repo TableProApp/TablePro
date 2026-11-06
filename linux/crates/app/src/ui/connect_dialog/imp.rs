@@ -28,15 +28,25 @@ pub struct ConnectDialog {
     #[template_child]
     pub toast_overlay: TemplateChild<adw::ToastOverlay>,
     #[template_child]
+    pub url_group: TemplateChild<adw::PreferencesGroup>,
+    #[template_child]
+    pub url_row: TemplateChild<adw::EntryRow>,
+    #[template_child]
     pub name_row: TemplateChild<adw::EntryRow>,
     #[template_child]
     pub driver_row: TemplateChild<adw::ComboRow>,
     #[template_child]
     pub driver_names: TemplateChild<gtk4::StringList>,
     #[template_child]
+    pub socket_row: TemplateChild<adw::SwitchRow>,
+    #[template_child]
     pub host_row: TemplateChild<adw::EntryRow>,
     #[template_child]
     pub seed_list_row: TemplateChild<adw::SwitchRow>,
+    #[template_child]
+    pub more_hosts_row: TemplateChild<adw::EntryRow>,
+    #[template_child]
+    pub replica_set_row: TemplateChild<adw::EntryRow>,
     #[template_child]
     pub port_row: TemplateChild<adw::SpinRow>,
     #[template_child]
@@ -57,6 +67,8 @@ pub struct ConnectDialog {
     pub auth_database_row: TemplateChild<adw::EntryRow>,
     #[template_child]
     pub remember_row: TemplateChild<adw::SwitchRow>,
+    #[template_child]
+    pub binding_row: TemplateChild<adw::SwitchRow>,
     #[template_child]
     pub tls_section: TemplateChild<TlsSection>,
     #[template_child]
@@ -87,6 +99,14 @@ pub struct ConnectDialog {
     pub auth_modes: RefCell<Vec<AuthMode>>,
     /// Set once the user types a port; see `ConnectForm::port_edited`.
     pub port_edited: Cell<bool>,
+    // What the Host row held on the other side of the Unix Socket switch, to give back when it flips again.
+    pub other_host: RefCell<String>,
+    // The Security rows as they were over the network, kept while a socket hides them.
+    pub network_tls: RefCell<Option<super::connect_form::TlsFormState>>,
+    // Only the newest look for a default socket may fill the Host row.
+    pub socket_lookups: Cell<u64>,
+    // The socket naming the Host row is shown under, to move a path when the driver changes.
+    pub shown_socket: Cell<Option<tablepro_core::LocalSocket>>,
     /// Set while the code writes rows, so its writes are not taken for
     /// the user's.
     pub updating: Cell<bool>,

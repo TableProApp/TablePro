@@ -3,6 +3,8 @@ use tablepro_core::{
     AuthMode, CommitResolutionSupport, DriverCapabilities, EndpointKind, EstimateQuality, ReadOnlyEnforcement,
     ScriptExecution, ServerNameOverride, StatementStop, TlsCapabilities, TlsMode, WriteAtomicity,
 };
+#[cfg(unix)]
+use tablepro_core::{LocalSocket, NetworkOption};
 
 pub(crate) const DEFAULT_PORT: u16 = 3306;
 
@@ -14,7 +16,9 @@ pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
     auth_modes: &[AuthMode::Password],
     username_required: true,
     tls: Some(TlsCapabilities {
-        modes: &[TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull],
+        modes: &[TlsMode::Disable, TlsMode::Prefer, TlsMode::Require, TlsMode::VerifyFull],
+        default_mode: TlsMode::Prefer,
+        tls_ports: &[],
         ca_file: true,
         client_identity: true,
         // sqlx dials and verifies the same `host`, so a name other than
@@ -40,7 +44,18 @@ pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
         ObjectKind::Trigger,
     ],
     database_required: true,
-    network_options: &[],
+    network_options: &[
+        // Where MySQL's and MariaDB's packages put the server's socket: Debian, Ubuntu and Arch, then Fedora and RHEL, then upstream.
+        #[cfg(unix)]
+        NetworkOption::LocalSocket(LocalSocket::File {
+            defaults: &[
+                "/run/mysqld/mysqld.sock",
+                "/var/run/mysqld/mysqld.sock",
+                "/var/lib/mysql/mysql.sock",
+                "/tmp/mysql.sock",
+            ],
+        }),
+    ],
     statement_stop: StatementStop::Server,
 };
 
@@ -54,7 +69,11 @@ mod tests {
         assert!(CAPABILITIES.supports(AuthMode::Password));
         assert!(!CAPABILITIES.supports(AuthMode::Kerberos));
         let tls = CAPABILITIES.tls.expect("MySQL offers TLS");
-        assert_eq!(tls.modes.len(), 3);
+        assert_eq!(
+            tls.modes,
+            [TlsMode::Disable, TlsMode::Prefer, TlsMode::Require, TlsMode::VerifyFull]
+        );
+        assert_eq!(tls.default_mode, TlsMode::Prefer);
         assert!(tls.ca_file && tls.client_identity);
         assert_eq!(tls.server_name_override, ServerNameOverride::SshForwardOnly);
         assert_eq!(CAPABILITIES.read_only, ReadOnlyEnforcement::SessionDefault);
@@ -65,5 +84,6 @@ mod tests {
         assert_eq!(CAPABILITIES.row_count_estimate, EstimateQuality::Statistics);
         assert_eq!(CAPABILITIES.object_kinds.len(), 6);
         assert!(CAPABILITIES.database_required);
+        assert_eq!(CAPABILITIES.local_socket().is_some(), cfg!(unix));
     }
 }

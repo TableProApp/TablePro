@@ -64,7 +64,31 @@ public sealed partial class ShellTests
         app.Find("CancelButton", form).AsButton().Invoke();
     }
 
-    private static void ExpandTlsSettings(AppSession app, Window form)
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void ANewConnectionStartsOnTheEnginesOwnEncryptionDefault(string theme)
+    {
+        using var app = AppSession.Launch(theme);
+        app.Click(app.Find("NewConnectionCard"), () => app.HasWindow("New connection"));
+        var form = app.WaitForWindow("New connection");
+        app.Click(app.Find("Engine_postgres", form), () => app.TryFind("HostBox", form) is not null, form);
+        Assert.Equal("Preferred, any certificate", app.Find("TlsModeBox", form).AsComboBox().SelectedItem?.Text);
+        // Prefer checks no certificate, so the CA file row stays hidden and the client certificate shows.
+        ExpandTlsSettings(app, form, "ClientCertificateBox");
+        app.Screenshot("33-postgres-encryption-default", form);
+        app.Find("CancelButton", form).AsButton().Invoke();
+        app.WaitForClose("New connection");
+
+        app.Click(app.Find("NewConnectionCard"), () => app.HasWindow("New connection"));
+        form = app.WaitForWindow("New connection");
+        app.Click(app.Find("Engine_mssql", form), () => app.TryFind("HostBox", form) is not null, form);
+        Assert.Equal(
+            "Required, verify the certificate and host",
+            app.Find("TlsModeBox", form).AsComboBox().SelectedItem?.Text);
+        app.Find("CancelButton", form).AsButton().Invoke();
+    }
+
+    private static void ExpandTlsSettings(AppSession app, Window form, string shownField = "CaFileBox")
     {
         // The toolkit's outer peer is a group; its native Expander owns expansion.
         var expander = app.Find("TlsExpander", form).FindFirstDescendant(condition =>
@@ -74,7 +98,7 @@ public sealed partial class ShellTests
         Assert.NotNull(expansion);
         expansion.Expand();
         Assert.True(Retry.WhileFalse(
-            () => app.TryFind("CaFileBox", form) is { IsOffscreen: false },
+            () => app.TryFind(shownField, form) is { IsOffscreen: false },
             AppSession.Wait,
             throwOnTimeout: false).Success);
     }

@@ -119,7 +119,14 @@ async fn count(link: &CqlLink, probe: &Statement) -> Result<u64, DriverError> {
 /// nothing either way.
 fn may_have_applied(error: &DriverError) -> bool {
     match error {
-        DriverError::Server(diagnostics) => matches!(diagnostics.code, Some(ServerCode::Cql { code: 0x1100 | 0x1500 })),
+        // 0x1003 is a TRUNCATE some nodes may have carried out before
+        // another failed or timed out.
+        DriverError::Server(diagnostics) => matches!(
+            diagnostics.code,
+            Some(ServerCode::Cql {
+                code: 0x1003 | 0x1100 | 0x1500
+            })
+        ),
         DriverError::ConnectionLost { .. } | DriverError::Timeout { .. } | DriverError::Transport(_) => true,
         _ => false,
     }
@@ -196,6 +203,7 @@ mod tests {
 
         assert!(may_have_applied(&server(0x1100)));
         assert!(may_have_applied(&server(0x1500)));
+        assert!(may_have_applied(&server(0x1003)), "a truncate other nodes may have run");
         assert!(!may_have_applied(&server(0x2200)));
         assert!(
             !may_have_applied(&server(0x1000)),

@@ -14,9 +14,9 @@ mod source_read_error;
 use tablepro_core::column::{ColumnDefault, ColumnType};
 use tablepro_core::ddl::ddl_sql::{column_list, default_sql, index_keys_sql, parenthesized};
 use tablepro_core::ddl::{
-    BuildDdlError, ColumnCapabilities, ColumnDefinition, DdlCapabilities, DdlDialect, DdlOperation, DdlPlan,
-    DdlPrecondition, DraftColumn, DropTableOptions, GeneratedStorage, Permission, RefusalReason, SchemaObjectKind,
-    TableChanges, TableDefinition, TableDraft,
+    BuildDdlError, CatalogCapabilities, ColumnCapabilities, ColumnDefinition, DdlCapabilities, DdlDialect,
+    DdlOperation, DdlPlan, DdlPrecondition, DraftColumn, DropTableOptions, GeneratedStorage, Permission, RefusalReason,
+    SchemaObjectKind, TableChanges, TableDefinition, TableDraft, TruncateTableOptions, refuse_options,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{IndexInfo, TableRef};
@@ -196,6 +196,32 @@ impl DdlDialect for SqliteDialect {
         }
         let if_exists = if options.if_exists { "IF EXISTS " } else { "" };
         let mut plan = DdlPlan::from_sql([format!("DROP TABLE {if_exists}{}", self.qualify(table))]);
+        plan.precondition = Some(DdlPrecondition {
+            probe: self.inbound_keys_probe(table)?,
+            rows: 0,
+        });
+        Ok(plan)
+    }
+
+    /// ATTACH adds a file to this connection only, and nothing of it
+    /// stays in the database, so there is no database or schema to
+    /// create or drop.
+    fn catalog_capabilities(&self) -> CatalogCapabilities {
+        CatalogCapabilities {
+            truncate_table: true,
+            truncate_refused_when_referenced: true,
+            ..CatalogCapabilities::default()
+        }
+    }
+
+    /// SQLite has no TRUNCATE. A DELETE with no WHERE empties the table
+    /// and keeps it, and an AUTOINCREMENT counter goes on from where it
+    /// was. It would also run the ON DELETE action of every key pointing
+    /// at the table, emptying or clearing rows of other tables, so the
+    /// same precondition as Drop Table refuses a referenced table.
+    fn plan_truncate_table(&self, table: &TableRef, options: &TruncateTableOptions) -> Result<DdlPlan, BuildDdlError> {
+        refuse_options(&self.catalog_capabilities(), options)?;
+        let mut plan = DdlPlan::from_sql([format!("DELETE FROM {}", self.qualify(table))]);
         plan.precondition = Some(DdlPrecondition {
             probe: self.inbound_keys_probe(table)?,
             rows: 0,

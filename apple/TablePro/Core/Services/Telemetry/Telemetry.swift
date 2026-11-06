@@ -1,20 +1,6 @@
-//
-//  Telemetry.swift
-//  TablePro
-//
-
 import Combine
 import Foundation
 import os
-
-@MainActor
-internal protocol TelemetryClient: AnyObject {
-    func identify(_ accountID: String, personProperties: [String: Any])
-    func capture(_ event: String, properties: [String: Any])
-    func reset()
-    func optIn()
-    func optOut()
-}
 
 internal struct TelemetryEnvironment {
     var appVersion: String
@@ -34,13 +20,12 @@ internal struct TelemetryEnvironment {
 @MainActor
 internal final class Telemetry {
     static let shared = Telemetry(
-        projectKey: projectKey(from: Bundle.main.object(forInfoDictionaryKey: "PostHogProjectKey")),
+        projectKey: PostHogTelemetryClient.projectKey(from: Bundle.main.object(forInfoDictionaryKey: "PostHogProjectKey")),
         defaults: AppStorageEnvironment.shared.defaults,
         makeClient: { PostHogTelemetryClient(projectKey: $0) },
         environment: { .current() }
     )
 
-    nonisolated static let host = "https://eu.i.posthog.com"
     // Restored connections open first, so app_opened counts them.
     static let appOpenedDelay: Duration = .seconds(10)
     static let appOpenedCheckInterval: Duration = .seconds(60 * 60)
@@ -83,20 +68,13 @@ internal final class Telemetry {
         now: @escaping () -> Date = { Date() },
         calendar: Calendar = .current
     ) {
-        self.projectKey = Self.projectKey(from: projectKey)
+        self.projectKey = PostHogTelemetryClient.projectKey(from: projectKey)
         self.defaults = defaults
         self.makeClient = makeClient
         self.environment = environment
         self.clock = clock
         self.now = now
         self.calendar = calendar
-    }
-
-    // An unexpanded "$(POSTHOG_PROJECT_KEY)" means the build setting was never defined.
-    nonisolated static func projectKey(from infoValue: Any?) -> String? {
-        guard let value = infoValue as? String else { return nil }
-        let key = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return key.isEmpty || key.hasPrefix("$(") ? nil : key
     }
 
     func start(

@@ -5,8 +5,9 @@ use std::time::Duration;
 use async_trait::async_trait;
 use deadpool::managed::{PoolError, TimeoutType};
 use tablepro_core::column::ColumnInfo;
-use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
+use tablepro_core::ddl::{DatabaseChoices, InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
+use tablepro_core::dump::{DumpCatalog, DumpScope};
 use tablepro_core::meta::{
     IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
 };
@@ -15,13 +16,14 @@ use tablepro_core::{
     CallOptions, CommitResolution, CommitToken, Connection, DriverError, EditorSession, EditorSessionOptions,
     ErrorCategory, ForeignKeyInfo, LinkState, LinkWatch, LivenessPolicy, LossPhase, OwnedCalls, QueryResult,
     ReadStatement, ResultSink, RowLimit, ServerInfo, SessionFate, StreamSummary, TimeoutPhase, WorkspaceSettings,
-    WriteAtomicity, WriteBatch, WriteKind, WriteLedger, WriteReport,
+    WriteBatch, WriteKind, WriteLedger, WriteReport,
 };
 use tokio::time::Instant;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 
 use crate::cancel::{MssqlStop, StopProgress};
 use crate::dialect::MssqlDialect;
+use crate::dump;
 use crate::editor_session::MssqlEditorSession;
 use crate::endpoint::MssqlEndpoint;
 use crate::errors::map_pool_error;
@@ -32,7 +34,7 @@ use crate::mssql_pooled::MssqlPooled;
 use crate::standalone::Standalone;
 use crate::stream_read::stream;
 use crate::workspace_call::{Guard, ReadOp, count_op, query_bound_op, read_op};
-use crate::write_batch::{WritePlan, perform, precheck};
+use crate::write_batch::{WritePlan, atomicity, perform, precheck};
 
 /// A workspace's link to one SQL Server: a pool of four connections
 /// behind the sidebar, the grid and every save.
@@ -264,6 +266,14 @@ impl Connection for MssqlConnection {
         .await
     }
 
+    async fn fetch_database_choices(&self, options: CallOptions) -> Result<DatabaseChoices, DriverError> {
+        self.read(
+            options,
+            read_op(|client, watch| Box::pin(metadata::fetch_database_choices(client, watch))),
+        )
+        .await
+    }
+
     async fn list_objects(&self, scope: &ObjectScope, options: CallOptions) -> Result<Vec<ObjectInfo>, DriverError> {
         let scope = scope.clone();
         self.read(
@@ -284,6 +294,18 @@ impl Connection for MssqlConnection {
             options,
             read_op(move |client, watch| {
                 Box::pin(async move { metadata::fetch_object_definition(client, watch, &dialect, &object).await })
+            }),
+        )
+        .await
+    }
+
+    async fn read_dump_catalog(&self, scope: &DumpScope, options: CallOptions) -> Result<DumpCatalog, DriverError> {
+        let scope = scope.clone();
+        let dialect = *self.dialect;
+        self.read(
+            options,
+            read_op(move |client, watch| {
+                Box::pin(async move { dump::read_dump_catalog(client, watch, &dialect, &scope).await })
             }),
         )
         .await
@@ -460,10 +482,10 @@ impl Connection for MssqlConnection {
         // deadline and cancel still bound it.
         let options = match batch.kind {
             WriteKind::RowChanges => bounded(&options, Some(self.settings.statement_timeout)),
-            WriteKind::SchemaChanges => options,
+            WriteKind::SchemaChanges | WriteKind::DatabaseChanges => options,
         };
         let stop = Arc::new(MssqlStop::new());
-        let ledger = Arc::new(WriteLedger::new(WriteAtomicity::Transactional));
+        let ledger = Arc::new(WriteLedger::new(atomicity(batch.kind)));
         let pool = self.pool.clone();
         let timeouts = workspace_timeouts(self.liveness());
         let plan = WritePlan {

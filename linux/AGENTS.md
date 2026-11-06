@@ -52,4 +52,4 @@ From the repository root, through the verification wrapper, which keeps the full
 
 ## CI
 
-The Linux workflows are `.github/workflows/build-linux.yml`, `.github/workflows/linux-packages.yml` and `.github/workflows/release-linux.yml`. Each one's `on:`, job `if:` and steps are the record of what runs and when; read the workflow before changing it or reading a red check. Every action is pinned by commit SHA; a new one is too.
+The Linux workflows are `.github/workflows/build-linux.yml`, `.github/workflows/linux-packages.yml` and `.github/workflows/release-linux.yml`; `ci.yml` and `nightly.yml` call the first two (`docs/testing.md`, CI). Each one's `on:`, job `if:` and steps are the record of what runs and when; read the workflow before changing it or reading a red check. Every action is pinned by commit SHA; a new one is too.
