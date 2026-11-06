@@ -30,29 +30,90 @@ TablePro supports the server releases their vendors still support. CI runs each 
 
 ## Install
 
-These commands work from the first release, 0.1.0, on amd64 and arm64.
+TablePro runs on amd64 and arm64. A release such as 0.1.0 goes to the stable repositories and a beta such as 0.1.0-beta.1 to the beta ones, and both go to [GitHub Releases](https://github.com/TableProApp/TablePro/releases), a beta as a pre-release. Until 0.1.0 is out, only betas have packages.
 
-Ubuntu 26.04 and 26.10, from the Launchpad PPA:
+The .deb and .rpm need the GNOME 50 libraries of Ubuntu 26.04 and Fedora 44 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)). Ubuntu 22.04 and 24.04, Debian, Linux Mint, Pop!_OS and other distributions use the [Flatpak repository](#flatpak-repository).
+
+### Ubuntu 26.04 and 26.10
 
 ```bash
 sudo add-apt-repository ppa:tablepro/tablepro
 sudo apt install tablepro
 ```
 
-Fedora 44 and later, from COPR:
+### Fedora 44 and later
 
 ```bash
 sudo dnf copr enable @tablepro/tablepro
 sudo dnf install tablepro
 ```
 
-apt and dnf, and Software Updater and GNOME Software with them, install the updates. Other distributions build from source ([Quickstart](#quickstart)) until Flathub has the app.
+apt and dnf, and Software Updater and GNOME Software with them, install the updates.
+
+### Flatpak repository
+
+From TablePro's own Flatpak repository, signed, with the GNOME 51 runtime from Flathub:
+
+```bash
+flatpak install --from https://flatpak.tablepro.app/repo/app.tablepro.TablePro.flatpakref
+flatpak run app.tablepro.TablePro
+```
+
+Opening that link in a browser hands it to GNOME Software or KDE Discover. `flatpak update` and the software centre install the updates. TablePro is not on Flathub itself.
+
+### Betas
+
+Add the beta repository beside the stable one. apt and dnf install the highest version the two hold, so a release replaces its betas and the next beta replaces that release.
+
+```bash
+# Ubuntu
+sudo add-apt-repository ppa:tablepro/tablepro-beta
+sudo apt install tablepro
+
+# Fedora
+sudo dnf copr enable @tablepro/tablepro-beta
+sudo dnf install tablepro
+```
+
+Before 0.1.0, add the beta repository alone, then the stable one once 0.1.0 is out; without it the last beta stays installed until the next one. To stop testing, `sudo add-apt-repository --remove ppa:tablepro/tablepro-beta` or `sudo dnf copr disable @tablepro/tablepro-beta`. The installed beta stays until the stable repository has a newer version.
+
+The Flatpak beta is the branch `beta` of a second repository, and installs beside the release, as Flathub's beta does. The two branches share one set of settings and connections, and Flatpak never moves from one to the other by version: you choose which one the app's name starts.
+
+```bash
+flatpak install --from https://flatpak.tablepro.app/beta-repo/app.tablepro.TablePro.flatpakref
+flatpak run --branch=beta app.tablepro.TablePro
+flatpak make-current app.tablepro.TablePro beta     # the menu and `flatpak run` start the beta
+flatpak make-current app.tablepro.TablePro stable   # and the release again
+flatpak uninstall app.tablepro.TablePro//beta       # stop testing, after making the release current
+```
+
+A beta may store settings the release before it cannot read; [docs/troubleshooting.md](docs/troubleshooting.md#after-a-downgrade) says what that looks like.
+
+### From GitHub Releases
+
+Each release and beta on [GitHub Releases](https://github.com/TableProApp/TablePro/releases) carries the packages CI built and installed, the .deb and .rpm also tested, and their `SHA256SUMS`. The .deb and .rpm do not update themselves; an installed Flatpak bundle takes its updates from the [Flatpak repository](#flatpak-repository).
+
+| File | For |
+|---|---|
+| `tablepro-<version>-ubuntu-<series>-<arch>.deb` | Ubuntu 26.04 or 26.10, `amd64` or `arm64` |
+| `tablepro-<version>-fedora-<release>-<arch>.rpm` | The Fedora release it names, `x86_64` or `aarch64` |
+| `tablepro-<version>-<arch>.flatpak` | Any distribution with Flatpak, `x86_64` or `aarch64` |
+
+GitHub attests each file's build. Check a download against it, or against `SHA256SUMS`, before installing it:
+
+```bash
+gh attestation verify tablepro-0.1.0-x86_64.flatpak --repo TableProApp/TablePro
+sha256sum --check --ignore-missing SHA256SUMS
+sudo apt install ./tablepro-0.1.0-ubuntu-26.04-amd64.deb
+sudo dnf install ./tablepro-0.1.0-fedora-44-x86_64.rpm
+flatpak install ./tablepro-0.1.0-x86_64.flatpak
+```
 
 [docs/troubleshooting.md](docs/troubleshooting.md) covers saved passwords, SSH, Kerberos, logs, crash reports and bug reports.
 
 ## Privacy
 
-TablePro makes no network requests of its own: no telemetry, no update check and no crash upload. DuckDB fetches no extension unless your own SQL runs `INSTALL`. It connects to the database servers and SSH hosts you set up, and nothing else. With a provider chosen for the [AI assistant](#ai-assistant), it also sends what the assistant asks to that provider: Anthropic (`api.anthropic.com`), OpenAI (`api.openai.com`), or the Ollama or other server whose address you enter. That is your questions, your SQL, the structure of the tables involved and, for Fix with AI, the server's error message, and only from connections whose AI Assistant setting allows it; it reads no rows for it. With the [MCP server](#mcp-server) on, it also listens on `127.0.0.1` for MCP clients on this computer, which send what they read wherever their own settings say. Crash reports stay on your disk until you attach one to a bug report. Updates come from apt or dnf.
+TablePro makes no network requests of its own: no telemetry, no update check and no crash upload. DuckDB fetches no extension unless your own SQL runs `INSTALL`. It connects to the database servers and SSH hosts you set up, and nothing else. With a provider chosen for the [AI assistant](#ai-assistant), it also sends what the assistant asks to that provider: Anthropic (`api.anthropic.com`), OpenAI (`api.openai.com`), or the Ollama or other server whose address you enter. That is your questions, your SQL, the structure of the tables involved and, for Fix with AI, the server's error message, and only from connections whose AI Assistant setting allows it; it reads no rows for it. With the [MCP server](#mcp-server) on, it also listens on `127.0.0.1` for MCP clients on this computer, which send what they read wherever their own settings say. Crash reports stay on your disk until you attach one to a bug report. Updates come from apt, dnf or Flatpak, and the Flatpak ones from `flatpak.tablepro.app`.
 
 ## Stack
 
@@ -68,7 +129,7 @@ TablePro makes no network requests of its own: no telemetry, no update check and
 | Secrets | oo7: the Secret portal inside Flatpak, the Secret Service over D-Bus on the host ([ADR 0004](docs/decisions/0004-libsecret-secret-storage.md)) |
 | Storage | GSettings for preferences and window state ([ADR 0007](docs/decisions/0007-gsettings-preferences.md)), JSON files for connections and workspace state, SQLite for query history ([docs/storage.md](docs/storage.md)) |
 | Build | Meson driving Cargo ([ADR 0006](docs/decisions/0006-meson-cargo-build.md)) |
-| Distribution | A Launchpad PPA for Ubuntu 26.04 and later and a COPR project for Fedora 44 and later, Flathub later ([ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md)) |
+| Distribution | A Launchpad PPA for Ubuntu 26.04 and later, a COPR project for Fedora 44 and later and a Flatpak repository of our own for every distribution, each with a beta one beside it, and the packages and a Flatpak bundle on GitHub Releases; Flathub later ([ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md), [ADR 0041](docs/decisions/0041-beta-repositories-and-release-packages.md)) |
 
 ## What this is not
 
@@ -192,9 +253,26 @@ Secret Service, file choosers, notifications and links go through portals.
 [ADR 0008](docs/decisions/0008-flatpak-sandbox-permissions.md) gives the
 reason for each grant.
 
-The repository keeps no Flathub manifest. Flathub's policy refuses
-manifests and submissions written with AI tools, so maintainers write and
-submit that one by hand ([ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md)).
+`build-aux/flatpak/app.tablepro.TablePro.json` builds what a release
+publishes: the release profile under the real app ID, offline from the two
+release tarballs. `build-flatpak.sh` writes the unsigned repository and a
+bundle to try. From `linux/`, with the version that `meson.build` names:
+
+```bash
+build-aux/packaging/make-sources.sh _packages/sources
+build-aux/packaging/build-flatpak.sh _packages/sources/tablepro-0.1.0.tar.xz \
+  _packages/sources/tablepro-0.1.0-vendor.tar.xz _packages/flatpak
+flatpak install --user _packages/flatpak/tablepro-x86_64.flatpak
+```
+
+`build-aux/packaging/flatpak-repo.sh` signs that repository's commits into
+the one `flatpak.tablepro.app` serves, and `flatpak-publish.sh` uploads it.
+`flatpak-test-site.sh` and `smoke-test-flatpak.sh` do the same with a
+throwaway key on `127.0.0.1`, install, and update.
+
+Neither manifest is for Flathub. Flathub's policy refuses manifests and
+submissions written with AI tools, so maintainers write and submit that one
+by hand ([ADR 0041](docs/decisions/0041-beta-repositories-and-release-packages.md)).
 
 ### Screenshots
 
@@ -208,13 +286,17 @@ captions in step with the metainfo.
 
 ## Packages
 
-A `linux-vX.Y.Z` tag publishes the source and vendor tarballs on GitHub
-Releases, uploads a source package for Ubuntu 26.04 and 26.10 to the
-Launchpad PPA, and starts a COPR build of the spec for Fedora 44 and
-later. Both build offline from those tarballs, Launchpad with the Ubuntu
-Rust team's `rustc-1.97` and COPR with Fedora's Rust, and apt, dnf and
-the software centres update the installed packages
-([ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md)).
+A `linux-vX.Y.Z` tag publishes the source and vendor tarballs, the
+packages and the Flatpak bundle on GitHub Releases, signs the Flatpak into
+the repository at `flatpak.tablepro.app`, uploads a source package for
+Ubuntu 26.04 and 26.10 to the Launchpad PPA, and starts a COPR build of
+the spec for Fedora 44 and later; a `linux-vX.Y.Z-beta.N` tag goes to the
+beta Flatpak repository, PPA and COPR project instead. Both build offline from
+those tarballs, Launchpad with the Ubuntu Rust team's `rustc-1.97` and
+COPR with Fedora's Rust, and apt, dnf and the software centres update the
+installed packages
+([ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md),
+[ADR 0041](docs/decisions/0041-beta-repositories-and-release-packages.md)).
 The packaging is `build-aux/debian` and `build-aux/rpm/tablepro.spec`, and
 [docs/releasing.md](docs/releasing.md) has the release steps.
 
