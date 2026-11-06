@@ -1948,8 +1948,13 @@ fn context_menu_action_carries_object_key() {
     ] {
         actions.activate_action(action, Some(&key));
     }
-    actions.activate_action("drop-table", Some(&(None::<String>, String::new()).to_variant()));
+    // GIO refuses a target of another shape with a critical, which this makes abort the test, so the
+    // empty name reaches the action.
+    let previous = glib::log_set_always_fatal(glib::LogLevels::LEVEL_CRITICAL);
+    let empty_name = (None::<String>, String::new(), "rows", None::<String>).to_variant();
+    actions.activate_action("drop-table", Some(&empty_name));
     actions.activate_action("drop-table", Some(&ObjectKey::rows(table("gone")).to_variant()));
+    glib::log_set_always_fatal(previous);
 
     assert_eq!(
         events.take(),

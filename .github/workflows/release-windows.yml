@@ -344,7 +344,7 @@ jobs:
         run: |
           . windows/ci/desktop.ps1
           Clear-FirstLogon
-          Start-WslWatch "$env:RUNNER_TEMP/wsl-watch.log"
+          Block-Wsl
           Set-Display 1920 1080
       - name: The package starts and keeps its files in LocalState
         working-directory: windows

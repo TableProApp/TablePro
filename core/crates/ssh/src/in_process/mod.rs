@@ -12,6 +12,7 @@ mod pipe_owner;
 mod prompts;
 mod services;
 mod session;
+mod short_scalar;
 
 pub use forward::InProcessForward;
 pub use services::InProcessSsh;

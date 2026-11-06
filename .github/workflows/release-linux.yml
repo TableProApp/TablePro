@@ -42,8 +42,9 @@ name: Release Linux
 # Variable LINUX_FLATPAK_R2_ENDPOINT: https://<account id>.r2.cloudflarestorage.com.
 # Variable POSTHOG_PROJECT_KEY: the PostHog project key the macOS release
 # (release.yml) builds with too, public by design, which make-sources.sh puts
-# in the vendor tarball. The packages send usage data to it unless the user
-# turns it off. A packaging fix reuses the release's tarballs, and so its key.
+# in the vendor tarball. The packages and the Flatpak send usage data to it
+# unless the user turns it off. A packaging fix reuses the release's
+# tarballs, and so its key.
 # Variable LINUX_BRANCH: the branch a release tag must be on, main when unset.
 
 on:

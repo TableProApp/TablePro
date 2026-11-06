@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -586,6 +587,40 @@ fn the_editor_shows_catalog_tables_in_its_completion() {
     screen.view().completion().show();
 
     screen.wait_for("users").expect("users in the list");
+}
+
+// GtkSourceView asks for proposals on a later turn of the main loop, by
+// which time a tab closed meanwhile has taken its view with it.
+#[gtk4::test]
+fn a_completion_whose_view_is_gone_asks_it_nothing() {
+    let harness = connected(ConnectionScript::default(), vec![object("users", ObjectKind::Table)]);
+    let view = sourceview5::View::new();
+    view.buffer().set_text("SELECT * FROM us");
+    view.buffer().place_cursor(&view.buffer().end_iter());
+    view.completion().add_provider(&harness.provider);
+    let window = gtk4::Window::new();
+    window.set_child(Some(&view));
+    window.present();
+    view.grab_focus();
+    wait_until(WAIT, || view.is_mapped() && view.has_focus()).expect("the view on screen with the focus");
+    let started = Rc::new(Cell::new(false));
+    view.completion().connect_show({
+        let started = started.clone();
+        move |_| started.set(true)
+    });
+    view.completion().show();
+    assert!(started.get(), "no completion started");
+
+    let gone = view.downgrade();
+    window.destroy();
+    crate::ui::text_view_teardown::release(&view);
+    drop(view);
+    assert!(gone.upgrade().is_none(), "the view outlived its window");
+
+    // A critical aborts the test.
+    let previous = gtk4::glib::log_set_always_fatal(gtk4::glib::LogLevels::LEVEL_CRITICAL);
+    crate::test_support::drain_main_context();
+    gtk4::glib::log_set_always_fatal(previous);
 }
 
 #[gtk4::test]
