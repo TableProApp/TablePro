@@ -14,12 +14,19 @@ export PATH := /usr/lib/rust-1.97/bin:$(PATH)
 export CARGO_NET_OFFLINE = true
 
 # Cargo starts one rustc or DuckDB g++ per CPU unless told otherwise, and
-# the largest optimized crates and DuckDB translation units take up to 3 GB
+# the largest dependencies and DuckDB translation units take up to 3 GB
 # each, so the jobs follow the memory as well as DEB_BUILD_OPTIONS: one per
-# 3 GiB.
+# 3 GiB. The app crate, which takes more, builds after all of them.
 memory_jobs := $(shell awk '/^MemAvailable:/ { jobs = int($$2 / 3145728); print (jobs < 1 ? 1 : jobs) }' /proc/meminfo)
 parallel_jobs := $(or $(DEB_BUILD_OPTION_PARALLEL),1)
 export CARGO_BUILD_JOBS := $(shell if [ $(memory_jobs) -lt $(parallel_jobs) ]; then echo $(memory_jobs); else echo $(parallel_jobs); fi)
+# The gtk suite builds the app crate's library and its unit tests side by
+# side, then a test binary per job: on arm64 rustc took 6.3 GiB for the
+# library and more than 7 GiB for its unit tests, and ld up to 5.5 GiB per
+# test binary. At one job per 3 GiB the suite ran a 16 GB builder out of
+# memory, so it gets one job per 8 GiB.
+gtk_memory_jobs := $(shell awk '/^MemAvailable:/ { jobs = int($$2 / 8388608); print (jobs < 1 ? 1 : jobs) }' /proc/meminfo)
+gtk_jobs := $(shell if [ $(gtk_memory_jobs) -lt $(CARGO_BUILD_JOBS) ]; then echo $(gtk_memory_jobs); else echo $(CARGO_BUILD_JOBS); fi)
 
 # With the release profile's fat LTO, rustc 1.97 takes more than 7 GB to
 # link tablepro and an 8 GB machine kills it. With thin LTO the whole build
@@ -72,5 +79,6 @@ override_dh_auto_configure:
 # The gtk suite opens windows on a display and owns D-Bus names.
 override_dh_auto_test:
 ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS) $(DEB_BUILD_PROFILES)))
-	xvfb-run -a dbus-run-session -- dh_auto_test
+	xvfb-run -a dbus-run-session -- dh_auto_test -- --no-suite gtk
+	CARGO_BUILD_JOBS=$(gtk_jobs) xvfb-run -a dbus-run-session -- dh_auto_test -- --suite gtk
 endif
