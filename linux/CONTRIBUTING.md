@@ -41,6 +41,7 @@ The fast job in `.github/workflows/build-linux.yml` runs these steps in this ord
 
 ```bash
 localedef -i en_US -f UTF-8 en_US.UTF-8   # as root, once: the catalogue test needs a real locale
+cargo install --locked cargo-nextest      # before setup: the unit suite runs through it when Meson finds it
 meson setup _build -Dprofile=development
 cargo fmt --all -- --check
 meson devenv -C _build cargo clippy --locked --workspace --all-targets -- -D warnings
