@@ -61,6 +61,8 @@ pub enum UnsupportedFeature {
     EditorCommand {
         command: &'static str,
     },
+    /// A whole database written as one SQL file.
+    SqlDump,
 }
 
 impl fmt::Display for UnsupportedFeature {
@@ -92,6 +94,7 @@ impl fmt::Display for UnsupportedFeature {
             Self::ClrRoutine => f.write_str("the SQL of a CLR routine"),
             Self::EncryptedDefinition => f.write_str("the SQL of an encrypted module"),
             Self::EditorCommand { command } => write!(f, "{command} in the editor"),
+            Self::SqlDump => f.write_str("a SQL dump"),
         }
     }
 }

@@ -168,7 +168,7 @@ mod tests {
             match message {
                 ExportMessage::Chunk { bytes, rows } => chunks.push((bytes, rows)),
                 ExportMessage::Finished { rows } => finished = Some(rows),
-                ExportMessage::Progress { .. } => {}
+                ExportMessage::Progress { .. } | ExportMessage::Tables { .. } => {}
                 ExportMessage::Failed(failure) => panic!("the export failed: {failure}"),
             }
         }

@@ -7,6 +7,7 @@
 
 mod assistant;
 mod close_flow;
+mod database_transfer;
 mod definitions;
 mod diagram;
 mod editor_label;
@@ -60,8 +61,10 @@ use tablepro_core::{DataModel, EditorSession};
 use tablepro_session::{ObjectListSnapshot, Session, SessionHealth, SessionKey};
 use uuid::Uuid;
 
+pub(crate) use self::database_transfer::TransferInput;
 use self::session_watches::SessionWatches;
 use self::tab_title::ConnectionLabel;
+pub(crate) use self::workspace_actions::show_transfer_actions;
 pub(crate) use self::workspace_shell::WorkspaceShell;
 use super::browse_tab::BrowseTab;
 use super::editor::SqlEditor;
@@ -555,6 +558,8 @@ pub(crate) enum WorkspaceInput {
         bytes: Vec<u8>,
     },
     ImportCsvRun(Box<super::import_dialog::CsvImport>),
+    /// The main menu's Export Database and Import SQL File.
+    Transfer(TransferInput),
     OpenHistoryQuery(String),
     ReplaceActiveTabQuery(String),
     TabCloseDecided {
@@ -1320,6 +1325,7 @@ impl WorkspaceModel {
             WorkspaceInput::ShowHistory => self.on_show_history(),
             WorkspaceInput::ShowSavedQueries => self.on_show_saved_queries(),
             WorkspaceInput::ImportCsvRequested { schema, table } => self.on_import_csv_requested(schema, table),
+            WorkspaceInput::Transfer(input) => self.on_transfer(input),
             WorkspaceInput::ImportCsvReady {
                 schema,
                 table,

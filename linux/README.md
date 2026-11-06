@@ -341,6 +341,59 @@ The SQL editor can type, delete, paste and move at several places at once.
 
 Typing, Return, Tab, BackSpace, Delete and the moves by character, word or line work at every cursor, and one Ctrl+Z takes an edit back at all of them and returns to one cursor. Copy joins the selections with new lines, and pasting as many lines as there are cursors puts one line at each. Ctrl+/ comments every cursor's lines. A click, a find, Format, a query from history and Page Up or Down return to one cursor, as do moving lines (Alt+Up, Alt+Down) and words (Alt+Left, Alt+Right), which act on one line. The completion list, snippets and suggestions while typing work with one cursor, so another cursor ends the snippet being filled in and drops a suggestion, and overwrite (Insert) and Vim mode keep one cursor.
 
+## Export a database and import a SQL file
+
+**Main menu → Export Database…** writes the database, or one of its
+schemas, to a `.sql` file, gzipped as `.sql.gz` if you ask. It holds the
+tables, views, routines and triggers, and every table's rows as
+multi-row INSERTs, in the order a restore needs: structure, then rows,
+then keys, indexes, foreign keys and sequence positions, then views and
+routines, and triggers last so loading the rows fires none. The file is
+meant for an empty database, and loads with the engine's own client as
+well as with TablePro:
+
+| Engine | Written like | Load it with | Left out |
+|---|---|---|---|
+| PostgreSQL | `pg_dump` plain format, INSERTs instead of COPY | `psql -v ON_ERROR_STOP=1 -f file.sql` | Owners, grants, policies, rules, publications, event triggers, foreign tables; the rows of extension configuration tables |
+| MySQL, MariaDB | `mysqldump`, with its `SET` header and `DELIMITER ;;` blocks | `mysql db < file.sql` | Events; FEDERATED and CONNECT tables, whose rows are another server's; `DEFINER` clauses, so the account that loads the file owns the objects |
+| SQL Server | SSMS's Generate Scripts, a `GO` after each batch | `sqlcmd -b -i file.sql` | CLR and encrypted modules, which have no SQL to write; the indexes of indexed views; system versioning, so a temporal table and its history load as ordinary tables with their period times |
+| ClickHouse | `SHOW CREATE` for each table and view | `clickhouse-client < file.sql` | User-defined functions, which belong to no database; the rows a materialized view without `TO` keeps itself, so it fills again only from new rows |
+| SQLite | `sqlite3 .dump` | `sqlite3 new.db < file.sql` | |
+| DuckDB | `EXPORT DATABASE`, in one file | `duckdb new.duckdb < file.sql` | |
+
+Tables are read one after another, each in a read-only transaction of
+its own, so stop writes to the database for a dump whose tables agree.
+A value the engine has no SQL for is written as NULL, and the export
+says which columns that happened to. Redis, MongoDB, Cassandra and
+ScyllaDB have no SQL dump; use `redis-cli --rdb`, `mongodump` or
+`nodetool snapshot`.
+
+**Main menu → Import SQL File…** runs a `.sql` or `.sql.gz` file on the
+connection, on a session of its own so what the file sets stays there.
+The file is read as it runs, so its size does not matter. It is split
+as the engine's client splits it: at `;`, at a MySQL `DELIMITER`, and at
+SQL Server `GO` lines, a `GO 3` batch running three times. Files from
+`pg_dump` load too: their `COPY ... FROM stdin` rows run as INSERTs, and
+the `\restrict` and `\unrestrict` lines that only psql reads are passed
+over. Any other psql command, such as `\connect`, is refused with its
+line.
+
+- **Stop at First Error** is on by default, as with `mysql` and with
+  `psql -v ON_ERROR_STOP=1`. Off, the rest of the file runs and the
+  summary lists each failure with its line; Copy Details copies them with
+  their statements.
+- **Run as One Transaction** is offered on PostgreSQL, SQL Server, SQLite
+  and DuckDB, whose CREATE and DROP roll back: a failure or Stop then
+  undoes everything the file did. The file's own `BEGIN` and `COMMIT`
+  are passed over inside it, and a `ROLLBACK`, or a SQL Server batch that
+  holds a `COMMIT` or `ROLLBACK`, stops the import before it runs. MySQL,
+  MariaDB and ClickHouse commit each statement as it runs, so what ran
+  before a failure stays.
+- On Safe Mode Read-Only, Import SQL File is off. On Confirm
+  Writes, the import dialog is the one question for the whole file.
+- A file must be UTF-8. A MySQL dump of binary columns made without
+  `--hex-blob` holds raw bytes and is refused at its first such line.
+
 ## SQL Server with Windows integrated auth
 
 Pick **Method → Windows (Kerberos)** in the connect dialog. There is no
