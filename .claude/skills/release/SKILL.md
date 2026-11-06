@@ -26,13 +26,13 @@ gh issue list --label regression --state open
 gh release view vX.Y.0-beta.N --json publishedAt -q .publishedAt
 scripts/ci/detect-changed-paths.sh --base vX.Y.0-beta.N --head origin/release/X.Y shipped
 gh run list --workflow ci.yml --branch main --event push --limit 5
-gh run list --workflow release-build.yml --branch main --limit 3
+gh run list --workflow nightly.yml --branch main --limit 3
 gh api --paginate 'repos/TableProApp/TablePro/dependabot/alerts?state=open&per_page=100' -q '.[].security_advisory.summary'
 ```
 
 - The detector prints `true` when shipped source landed after the newest beta: promote only after beta.N+1.
 - `git grep -c '^## \[X.Y.Z\]' origin/main -- apple/CHANGELOG.md` finds the last stable's heading. Without it, the forward-port goes first.
-- A red Release Build is no gate, but the tag's `app` or `plugins` job likely fails the same way.
+- A red Release Build job in the nightly is no gate, but the tag's `app` or `plugins` job likely fails the same way.
 
 ## 2. Decide what ships
 

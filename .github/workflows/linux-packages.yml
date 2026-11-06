@@ -18,34 +18,15 @@ name: Linux packages
 # and beta branches, in fresh Ubuntu 22.04, 24.04 and 26.04 containers that
 # have only their own Flatpak.
 # release-linux.yml calls this workflow and uploads the source packages.
-# A run by hand can add arm64, which the nightly and pull requests leave out.
+# ci.yml calls it when a change touches what the packages declare or how they
+# build (the packages suite), x86_64 only. nightly.yml calls it with the
+# Flatpak every night, and with arm64 on Sundays. A run by hand can add both.
 # Given a release tag, it packages that release's tarballs instead, with
 # the packaging from this checkout, for a PPA upload with a new revision.
 # Only release-linux.yml passes the PostHog key, so every other run builds
 # packages that send no usage data.
 
 on:
-  pull_request:
-    paths:
-      - "linux/build-aux/debian/**"
-      - "linux/build-aux/rpm/**"
-      - "linux/build-aux/packaging/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "core/**"
-      - "linux/meson.build"
-      - "linux/meson.options"
-      - "linux/crates/**/meson.build"
-      - "linux/data/**/meson.build"
-      - "linux/po/meson.build"
-      - "linux/po/LINGUAS"
-      - ".github/workflows/linux-packages.yml"
-      - ".github/actions/linux-package-disk/**"
-  # Nightly on main, so a failure only one distribution's build shows turns
-  # up before tag time. Three hours after build-linux.yml's nightly, so the
-  # two do not share the account's 20 concurrent jobs.
-  schedule:
-    - cron: "13 17 * * *"
   workflow_dispatch:
     inputs:
       arm64:
@@ -87,11 +68,6 @@ on:
         description: The PostHog project key the vendor tarball carries for the .deb and .rpm. Public by design.
         type: string
         default: ""
-
-# A pull request keeps only its newest run; every other run, a release's call included, has its own group.
-concurrency:
-  group: linux-packages-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}-{1}', github.run_id, inputs.release-tag) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

@@ -393,7 +393,7 @@ A fixture starts its engine's default release unless the engine's variable names
 
 `core/crates/test-fixtures/src/fixture_image.rs` pins each release's image, and each engine's version type (`PostgresVersion`, `MysqlVersion`, `MariadbVersion`, `MssqlVersion`, `ClickHouseVersion`, `CassandraVersion`, `ScyllaVersion`, `RedisVersion`, `MongoVersion`, `OpenSshVersion`) reads its variable through `ServerVersion::selected`. An empty value picks the default; a release the fixtures do not pin fails the fixture with the ones they do. PostgreSQL 13 is past end of life and stays only for the catalogue test of the driver's query for servers before 14.
 
-The `integration` job runs each driver's suite on the defaults, then once more for each entry with a `release`: PostgreSQL 14, 15 and 18, MySQL 8.0 with MariaDB 10.11, MySQL 9.7 with MariaDB 12.3, SQL Server 2017, 2019 and 2025, ClickHouse 26.3, Cassandra 4.0 with ScyllaDB 2025.1, Redis 7.4, MongoDB 7.0, and OpenSSH 9.9 for `tablepro-ssh`. The README's [supported servers](../README.md#supported-servers) table says why those releases and not others. A test that checks the server's version reads it from the fixture (`PostgresFixture::version`, `MysqlFixture::server_version`, `MssqlFixture::version`, `ClickHouseFixture::version`, `CassandraFixture::server_version`, `RedisFixture::version`, `MongoFixture::version`, `OpenSshFixture::version`), never from a literal, so it holds on every release.
+The `integration` job runs each driver's suite on the defaults on every Linux change. The nightly's `integration-releases` job runs it once more for each other release: PostgreSQL 14, 15 and 18, MySQL 8.0 with MariaDB 10.11, MySQL 9.7 with MariaDB 12.3, SQL Server 2017, 2019 and 2025, ClickHouse 26.3, Cassandra 4.0 with ScyllaDB 2025.1, Redis 7.4, MongoDB 7.0, and OpenSSH 9.9 for `tablepro-ssh`. The README's [supported servers](../README.md#supported-servers) table says why those releases and not others. A test that checks the server's version reads it from the fixture (`PostgresFixture::version`, `MysqlFixture::server_version`, `MssqlFixture::version`, `ClickHouseFixture::version`, `CassandraFixture::server_version`, `RedisFixture::version`, `MongoFixture::version`, `OpenSshFixture::version`), never from a literal, so it holds on every release.
 
 Locally, set the variables for the run:
 
@@ -401,7 +401,7 @@ Locally, set the variables for the run:
 TABLEPRO_TEST_MYSQL=8.0 TABLEPRO_TEST_MARIADB=10.11 cargo nextest run -p tablepro-driver-mysql --run-ignored only
 ```
 
-A new release gets its image in `fixture_image.rs`, a variant in its version type, a matrix entry in `.github/workflows/build-linux.yml` and a row in the README table. A release past its vendor's end of life loses all four.
+A new release gets its image in `fixture_image.rs`, a variant in its version type, an `integration-releases` entry in `.github/workflows/build-linux.yml` and a row in the README table. A release past its vendor's end of life loses all four.
 
 ### Docker or Podman
 
@@ -584,7 +584,7 @@ Left for a machine with a GPU and a HiDPI screen: the GL and Vulkan renderers on
 
 `.github/workflows/core.yml` builds the core crates for Windows x64 and Arm64 and macOS, runs the unit tests of `tablepro-core` and the SQL Server driver there, with the driver's `kerberos` feature on macOS, where it links the system's GSS framework, and runs the SSPI login tests above.
 
-`.github/workflows/ci.yml` calls `build-linux.yml` for a pull request, a push to `main` and a manual run, never for a `release/**` push. A change to Markdown alone, other than `CHANGELOG.md` and `docs/regression-tests.md`, runs only its Documentation links job. The required check is `CI` (`.claude/rules/ci.md`).
+`.github/workflows/ci.yml` calls `build-linux.yml` for a pull request, a merge group and a push to `main`, never on a `release/**` line: the baseline, which is the fast job, the default server releases, the x86_64 Flatpak Devel build with its tests, translations and supply chain. A change to a dependency, the toolchain or a manifest adds the minimum Rust version, the aarch64 Flatpak and the advisory database. A change to what the packages declare or how they build also calls `linux-packages.yml`, x86_64 only. A change to Markdown alone, other than `CHANGELOG.md` and `docs/regression-tests.md`, runs only the Documentation links job. `.github/workflows/nightly.yml` runs the rest every night: every other server release, the minimum Rust version, both Flatpak architectures, paths with spaces, the advisory database, and the packages with the Flatpak repository, with arm64 on Sundays. The required check is `CI` (`.claude/rules/ci.md`).
 
 ## Coverage
 

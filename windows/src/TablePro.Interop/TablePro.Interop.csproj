@@ -48,6 +48,9 @@
 
   <PropertyGroup>
     <UniffiBindgenCs Condition="'$(UniffiBindgenCs)' == ''">uniffi-bindgen-cs</UniffiBindgenCs>
+    <!-- csbindgen runs on this machine, so it reuses the core's build only when that build is for this machine. -->
+    <CsbindgenCargoArguments Condition="'$(CoreRuntimeIdentifier)' == '$(NETCoreSdkRuntimeIdentifier)'">--target $(CargoTriple) --profile $(CargoProfile)</CsbindgenCargoArguments>
+    <CsbindgenEnvironment Condition="'$(CoreRuntimeIdentifier)' == '$(NETCoreSdkRuntimeIdentifier)'">$(CoreBuildEnvironment)</CsbindgenEnvironment>
     <UniffiBindgenCsVersion>0.11.1+v0.31.0</UniffiBindgenCsVersion>
     <GeneratedDirectory>$(MSBuildProjectDirectory)/Generated</GeneratedDirectory>
   </PropertyGroup>
@@ -60,8 +63,9 @@
     <Error Condition="!$(UniffiBindgenCsReported.EndsWith(' $(UniffiBindgenCsVersion)'))"
            Text="uniffi-bindgen-cs $(UniffiBindgenCsVersion) is needed, found '$(UniffiBindgenCsReported)'. windows/AGENTS.md, Bindings, has the install command." />
     <Exec Command="&quot;$(UniffiBindgenCs)&quot; --library &quot;$(CoreLibraryPath)&quot; --config &quot;$(RepositoryRoot)core/crates/ffi/uniffi.toml&quot; --no-format --out-dir &quot;$(GeneratedDirectory)&quot;" />
-    <Exec Command="cargo run --locked -p tablepro-ffi --example csbindgen -- &quot;$(GeneratedDirectory)/WindowMethods.g.cs&quot;"
+    <Exec Command="cargo run --locked -p tablepro-ffi $(CsbindgenCargoArguments) --example csbindgen -- &quot;$(GeneratedDirectory)/WindowMethods.g.cs&quot;"
           WorkingDirectory="$(RepositoryRoot)"
+          EnvironmentVariables="$(CsbindgenEnvironment)"
           IgnoreStandardErrorWarningFormat="true" />
   </Target>
 

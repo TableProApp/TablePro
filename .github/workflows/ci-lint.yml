@@ -1,11 +1,15 @@
-name: Repo Hygiene
+name: Lint
 
-# Checks that need no Mac: workflows, shell, release tooling and repo invariants. Ubuntu minutes are
-# free on a public repo, so CI runs it on every change.
+# The checks that need no Mac: workflows, shell, release tooling, changelog and repo invariants, and SwiftLint in its
+# Linux image. Ubuntu minutes are free on a public repo, so CI runs the lint job on every change.
 
 on:
   workflow_call:
     inputs:
+      swiftlint:
+        description: Also run SwiftLint.
+        type: boolean
+        required: true
       hana:
         description: Also check the SAP HANA helper.
         type: boolean
@@ -14,32 +18,57 @@ on:
 permissions:
   contents: read
 
+env:
+  ACTIONLINT_VERSION: 1.7.12
+  ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+  ZIZMOR_VERSION: 1.30.1
+  SWIFTLINT_IMAGE: ghcr.io/realm/swiftlint:0.65.1@sha256:f47e083201e47a136cda5ae847595bfe00226c444ca226fa74fa5dc648a9b057
+
 jobs:
-  hygiene:
-    name: Repo Hygiene
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Install shellcheck, PyYAML and actionlint
         run: |
+          set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y -qq shellcheck python3-yaml
-          bash <(curl -sSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl --fail --silent --show-error --location --output "$archive" \
+            "https://github.com/rhysd/actionlint/releases/download/v$ACTIONLINT_VERSION/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "$ACTIONLINT_SHA256  $archive" | sha256sum --check --strict
+          mkdir "$RUNNER_TEMP/actionlint"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/actionlint" actionlint
+          echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
+
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+        with:
+          tool: zizmor@${{ env.ZIZMOR_VERSION }}
 
       # actionlint runs shellcheck over every inline run: block, which nothing else sees.
       - name: Lint workflows
         env:
           SHELLCHECK_OPTS: --severity=warning
-        run: ./actionlint -color
+        run: actionlint -color
+
+      # Offline, so the verdict depends on these files alone and not on where a branch a pin names has moved since.
+      - name: Audit the workflows, actions and Dependabot settings
+        run: zizmor --offline --format=github --min-severity=medium .github
 
       - name: Lint scripts
         run: |
           set -euo pipefail
-          mapfile -t SCRIPTS < <(find scripts apple/scripts .claude/skills -name '*.sh' | sort)
+          mapfile -d '' -t SCRIPTS < <(git ls-files -z '*.sh')
           shellcheck --severity=warning "${SCRIPTS[@]}"
 
       - name: Test the CI and release tooling
@@ -78,6 +107,37 @@ jobs:
           set -euo pipefail
           "$RUNNER_TEMP/release-venv/bin/towncrier" build --draft --dir apple --version 0.0.0
           "$RUNNER_TEMP/release-venv/bin/towncrier" build --draft --dir linux --version 0.0.0
+
+      # pr-title.yml runs the same check on a title edit, which starts no CI run. The title is read now, not from the
+      # event, so a merge group or a re-run after a retitle sees the current one.
+      - name: Check only a release pull request edits a CHANGELOG.md
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GROUP_REF: ${{ github.event.merge_group.head_ref }}
+          GROUP_BASE: ${{ github.event.merge_group.base_sha }}
+          REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          case "$EVENT" in
+            pull_request)
+              number="$PR_NUMBER"
+              base="$(git rev-parse HEAD^1)"
+              ;;
+            merge_group)
+              number="${GROUP_REF##*/pr-}"
+              number="${number%%-*}"
+              base="$GROUP_BASE"
+              ;;
+            *)
+              echo "Not a pull request or a merge group, so nothing to check."
+              exit 0
+              ;;
+          esac
+          case "$number" in '' | *[!0-9]*) echo "::error::no pull request number for this $EVENT"; exit 1 ;; esac
+          title="$(gh api "repos/$REPOSITORY/pulls/$number" --jq .title)"
+          scripts/ci/check-changelog-edits.sh "$base" "$title"
 
       # shellcheck cannot tell a library function from a command, so a missing source is exit 127
       # at release time (v0.67.1).
@@ -171,3 +231,31 @@ jobs:
           GOOS=darwin "$RUNNER_TEMP/staticcheck" ./...
           GOBIN="$RUNNER_TEMP/bin" go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
           GOOS=darwin "$RUNNER_TEMP/bin/govulncheck" ./...
+
+  swiftlint:
+    name: SwiftLint
+    if: inputs.swiftlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The image's entrypoint is swiftlint itself, so a second "swiftlint" would lint everything
+      # twice. SwiftLint drops a custom rule whose regex does not compile with only a warning and
+      # still exits 0, so the warning fails the step here. No --quiet: "Done linting" carries the
+      # file count.
+      - name: Run SwiftLint
+        run: |
+          status=0
+          docker run --rm -v "$PWD:/work" -w /work/apple "$SWIFTLINT_IMAGE" \
+            lint --strict --reporter github-actions-logging > swiftlint.out 2> swiftlint.err || status=$?
+          # SwiftLint names each file from apple/; an annotation lands on the diff only with the repo path.
+          sed 's#^\(::[a-z]* file=\)#\1apple/#' swiftlint.out
+          grep -v "^Linting '" swiftlint.err >&2 || true
+          if grep -E "Invalid configuration|is not a valid rule identifier" swiftlint.err; then
+            echo "::error::A SwiftLint config has a rule SwiftLint could not load."
+            exit 1
+          fi
+          exit "$status"

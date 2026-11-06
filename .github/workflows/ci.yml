@@ -1,16 +1,17 @@
 name: CI
 
-# The one entry point for the test and lint workflows. The CI job at the end is the required check.
+# The one entry point for the test and lint workflows on a change. The CI job at the end is the required check.
 
 on:
   pull_request:
+  merge_group:
+    types: [checks_requested]
   push:
     branches: [main, 'release/**']
   workflow_dispatch:
 
-# A pull request keeps only its newest run. main runs one at a time, and a newer pending run
-# replaces the older one. Each release/** commit and each dispatch gets its own group, so none is
-# replaced.
+# A pull request keeps only its newest run. main runs one at a time, and a newer pending run replaces the older one.
+# Each merge group, each release/** commit and each dispatch gets its own group, so none is replaced.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.ref == 'refs/heads/main' && github.ref || format('{0}-{1}', github.ref, github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -35,6 +36,9 @@ jobs:
       swiftlint: ${{ steps.decide.outputs.swiftlint }}
       linux: ${{ steps.decide.outputs.linux }}
       linux-docs: ${{ steps.decide.outputs.linux-docs }}
+      linux-deps: ${{ steps.decide.outputs.linux-deps }}
+      packages: ${{ steps.decide.outputs.packages }}
+      core: ${{ steps.decide.outputs.core }}
       windows: ${{ steps.decide.outputs.windows }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -42,46 +46,85 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # A main push compares with the last commit a CI push run passed on, so a commit whose run was
-      # replaced or failed is tested again. No such run, one on HEAD itself, or a dispatch runs
-      # everything.
+      # A merge group compares with the commit it lands on. A main push compares with the last commit a CI push run
+      # passed on, so a commit whose run was replaced or failed is tested again; none, one on HEAD itself, or a
+      # dispatch runs everything. A main push runs no suite when that commit is its parent and the merge queue already
+      # passed CI at this exact commit, since nothing between them went untested.
       - name: Find the base
         id: base
         env:
           EVENT: ${{ github.event_name }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
+          GROUP_BASE: ${{ github.event.merge_group.base_sha }}
           REF: ${{ github.ref }}
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
           base=""
-          if [ "$EVENT" = pull_request ]; then
-            base="$PR_BASE"
-          elif [ "$EVENT" = push ] && [ "$REF" = refs/heads/main ]; then
-            passed="$(gh api "repos/$REPOSITORY/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=1" \
-              --jq '.workflow_runs[0].head_sha // ""')"
-            head="$(git rev-parse HEAD)"
-            if [ -n "$passed" ] && [ "$passed" != "$head" ] && git merge-base --is-ancestor "$passed" HEAD; then
-              base="$passed"
-            fi
+          tested=false
+          head="$(git rev-parse HEAD)"
+          case "$EVENT" in
+            pull_request) base="$PR_BASE" ;;
+            merge_group) base="$GROUP_BASE" ;;
+            push)
+              if [ "$REF" = refs/heads/main ]; then
+                passed="$(gh api "repos/$REPOSITORY/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=1" \
+                  --jq '.workflow_runs[0].head_sha // ""')"
+                if [ -n "$passed" ] && [ "$passed" != "$head" ] && git merge-base --is-ancestor "$passed" HEAD; then
+                  base="$passed"
+                fi
+                if [ -n "$base" ] && [ "$base" = "$(git rev-parse HEAD^1)" ]; then
+                  queued="$(gh api "repos/$REPOSITORY/actions/workflows/ci.yml/runs?event=merge_group&head_sha=$head&status=success&per_page=1" \
+                    --jq '.total_count')"
+                  [ "$queued" = 0 ] || tested=true
+                fi
+              fi
+              ;;
+          esac
+          if [ "$tested" = true ]; then
+            echo "The merge queue passed CI at $head, so no suite runs again."
+          else
+            echo "Base: ${base:-none, so every suite runs}"
           fi
-          echo "Base: ${base:-none, so every suite runs}"
           echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "tested=$tested" >> "$GITHUB_OUTPUT"
 
-      # --ref makes a release/** push run every suite. The linux job below still skips there.
+      # --ref makes a release/** push run every suite. Linux ships from main or linux-X.Y, and the core and the Windows
+      # app have no release line, so a release/** push or a pull request into one skips them.
       - name: Decide which suites run
         id: decide
         env:
           BASE: ${{ steps.base.outputs.base }}
+          TESTED: ${{ steps.base.outputs.tested }}
           REF: ${{ github.ref }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
-          for suite in macos plugins ios oracle hana swiftlint linux linux-docs windows; do
-            verdict="$(scripts/ci/detect-changed-paths.sh --base "$BASE" --ref "$REF" "$suite")"
+          release_line=false
+          case "$REF" in refs/heads/release/*) release_line=true ;; esac
+          case "$BASE_REF" in release/*) release_line=true ;; esac
+          for suite in macos plugins ios oracle hana swiftlint linux linux-docs linux-deps packages core windows; do
+            verdict=false
+            if [ "$TESTED" != true ]; then
+              verdict="$(scripts/ci/detect-changed-paths.sh --base "$BASE" --ref "$REF" "$suite")"
+            fi
+            case "$suite" in
+              linux | linux-docs | linux-deps | packages | core | windows) [ "$release_line" = false ] || verdict=false ;;
+            esac
             echo "$suite=$verdict"
             echo "$suite=$verdict" >> "$GITHUB_OUTPUT"
           done
+
+  lint:
+    needs: plan
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/ci-lint.yml
+    with:
+      swiftlint: ${{ needs.plan.outputs.swiftlint == 'true' }}
+      hana: ${{ needs.plan.outputs.hana == 'true' }}
 
   macos:
     needs: plan
@@ -97,51 +140,80 @@ jobs:
     with:
       oracle: ${{ needs.plan.outputs.oracle == 'true' }}
 
-  swiftlint:
-    needs: plan
-    if: needs.plan.outputs.swiftlint == 'true'
-    uses: ./.github/workflows/swiftlint.yml
-
-  hygiene:
-    needs: plan
-    uses: ./.github/workflows/repo-hygiene.yml
-    with:
-      hana: ${{ needs.plan.outputs.hana == 'true' }}
-
-  # Linux ships from main or linux-X.Y, so a release/** line skips it and an advisory that cargo deny
-  # learns later cannot fail the run an Apple tag's verify reads.
   linux:
     needs: plan
-    if: needs.plan.outputs.linux-docs == 'true' && !startsWith(github.ref, 'refs/heads/release/')
+    if: needs.plan.outputs.linux-docs == 'true'
     uses: ./.github/workflows/build-linux.yml
     with:
       docs-only: ${{ needs.plan.outputs.linux != 'true' }}
+      dependencies: ${{ needs.plan.outputs.linux-deps == 'true' }}
 
-  # The shared Rust core on Windows and macOS, with the Linux suite, which core/ and the workspace files at
-  # the top trigger. Skipped on a release/** line, as the Linux job is.
+  # The clean distribution builds, when a change touches what the packages declare or how they build. A source change
+  # alone leaves them to the nightly.
+  packages:
+    needs: plan
+    if: needs.plan.outputs.packages == 'true'
+    uses: ./.github/workflows/linux-packages.yml
+
   core:
     needs: plan
-    if: needs.plan.outputs.linux == 'true' && !startsWith(github.ref, 'refs/heads/release/')
+    if: needs.plan.outputs.core == 'true'
     uses: ./.github/workflows/core.yml
+    with:
+      extended: false
 
-  # The Windows app has no release line, so a release/** run skips it as it skips Linux.
   windows:
     needs: plan
-    if: needs.plan.outputs.windows == 'true' && !startsWith(github.ref, 'refs/heads/release/')
+    if: needs.plan.outputs.windows == 'true'
     uses: ./.github/workflows/windows.yml
 
+  # Fails on a failed or cancelled job, and on a job the plan selected that did not succeed. A job the plan left out
+  # is skipped, which passes.
   ci:
     name: CI
-    needs: [plan, macos, ios, swiftlint, hygiene, linux, core, windows]
+    needs: [plan, lint, macos, ios, linux, packages, core, windows]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Every job passed or was skipped
+      - name: Every selected job passed
         env:
-          RESULTS: ${{ join(needs.*.result, ' ') }}
+          PLAN: ${{ needs.plan.result }}
+          LINT: ${{ needs.lint.result }}
+          MACOS: ${{ needs.macos.result }}
+          IOS: ${{ needs.ios.result }}
+          LINUX: ${{ needs.linux.result }}
+          PACKAGES: ${{ needs.packages.result }}
+          CORE: ${{ needs.core.result }}
+          WINDOWS: ${{ needs.windows.result }}
+          WANT_MACOS: ${{ needs.plan.outputs.macos }}
+          WANT_IOS: ${{ needs.plan.outputs.ios }}
+          WANT_LINUX: ${{ needs.plan.outputs.linux-docs }}
+          WANT_PACKAGES: ${{ needs.plan.outputs.packages }}
+          WANT_CORE: ${{ needs.plan.outputs.core }}
+          WANT_WINDOWS: ${{ needs.plan.outputs.windows }}
         run: |
-          echo "$RESULTS"
-          case " $RESULTS " in
-            *" failure "* | *" cancelled "*) exit 1 ;;
-          esac
+          status=0
+          check() {
+            case "$2" in
+              failure | cancelled) echo "::error::$1 ended $2"; status=1 ;;
+              success) echo "$1: success" ;;
+              *)
+                if [ "$3" = true ]; then
+                  echo "::error::$1 was selected and ended ${2:-without a result}"
+                  status=1
+                else
+                  echo "$1: $2, not selected"
+                fi
+                ;;
+            esac
+          }
+          check plan "$PLAN" true
+          check lint "$LINT" true
+          check macos "$MACOS" "$WANT_MACOS"
+          check ios "$IOS" "$WANT_IOS"
+          check linux "$LINUX" "$WANT_LINUX"
+          check packages "$PACKAGES" "$WANT_PACKAGES"
+          check core "$CORE" "$WANT_CORE"
+          check windows "$WINDOWS" "$WANT_WINDOWS"
+          exit "$status"

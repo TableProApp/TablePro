@@ -3,7 +3,8 @@ set -euo pipefail
 
 # Prints "true" when a suite has to run for the changes from <base> to <head>, "false" when it can skip.
 # Usage: detect-changed-paths.sh [--base <sha>] [--head <rev>] [--ref <git ref>] <suite>
-# Suites: macos, plugins, ios, oracle, hana, release, shipped, swiftlint, linux, linux-docs, windows.
+# Suites: macos, plugins, ios, oracle, hana, release, shipped, swiftlint, linux, linux-docs, linux-deps, packages, core,
+# windows.
 
 BASE=""
 HEAD_REV="HEAD"
@@ -61,7 +62,7 @@ case "$SUITE" in
         PATTERNS=('apple/Packages/TableProOracle/' 'apple/scripts/ci/summarize-xcresult\.sh$'
             '\.github/actions/setup-xcode/' '\.github/workflows/(ci|ios-tests)\.yml$') ;;
     hana)
-        PATTERNS=('apple/Native/HanaBridge/' '\.github/workflows/(ci|repo-hygiene)\.yml$') ;;
+        PATTERNS=('apple/Native/HanaBridge/' '\.github/workflows/(ci|ci-lint)\.yml$') ;;
     release|shipped)
         # A Release build compiles no test target, so the test folders under Plugins/ and
         # Packages/ are skipped too.
@@ -73,7 +74,7 @@ case "$SUITE" in
             'apple/scripts/lib/' 'apple/scripts/release/(build|package|dmg)\.sh$'
             'apple/scripts/release/dmg\.DS_Store$' 'apple/scripts/release/(notes|registry|version)\.py$'
             'apple/scripts/ci/verify-plugin-loads\.sh$' 'scripts/ci/detect-changed-paths\.sh$'
-            '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/(ci|release-build)\.yml$')
+            '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/(ci|nightly)\.yml$')
         SKIP='apple/Plugins/[^/]+Tests/|apple/Packages/[^/]+/Tests/'
         # shipped is what an X.Y.0 may not change after its newest beta: the release build minus its CI.
         if [ "$SUITE" = shipped ]; then
@@ -88,27 +89,49 @@ case "$SUITE" in
         fi ;;
     swiftlint)
         PATTERNS=('.*\.swift$' '(.*/)?\.swiftlint\.yml$' 'scripts/ci/detect-changed-paths\.sh$'
-            '\.github/workflows/(ci|swiftlint)\.yml$') ;;
+            '\.github/workflows/(ci|ci-lint)\.yml$') ;;
     linux|linux-docs)
-        # The Linux app builds the shared core in the Cargo workspace whose files are at the top. core.yml also
-        # builds the core's Swift bindings and runs their tests.
+        # The Linux app builds the shared core in the Cargo workspace whose files are at the top.
         PATTERNS=('linux/' 'core/' 'Cargo\.(toml|lock)$' '(rust-toolchain|rustfmt|clippy|deny)\.toml$'
-            '\.config/nextest\.toml$' 'scripts/ci/(detect-changed-paths\.sh|start-windows-sshd\.ps1)$'
-            'apple/project\.yml$' 'apple/Packages/TableProFFI/' 'apple/scripts/build-core\.sh$' 'apple/scripts/lib/deployment-target\.sh$'
-            '\.github/workflows/(ci|build-linux|core|linux-packages|release-linux)\.yml$')
+            '\.config/nextest\.toml$' 'scripts/ci/detect-changed-paths\.sh$'
+            '\.github/workflows/(ci|build-linux)\.yml$')
         # linux-docs decides the docs links job, which reads every path. The other Linux jobs skip
         # Markdown, except the files a Meson test reads and the notices the build installs.
         if [ "$SUITE" = linux ]; then
             SKIP='(linux|core)/.*\.md$'
             KEEP='linux/CHANGELOG\.md$|linux/docs/regression-tests\.md$|linux/data/'
         fi ;;
+    linux-deps)
+        # The Linux checks a dependency, toolchain or manifest change needs beyond the baseline: the minimum Rust
+        # version with the distribution's compiler, the Arm64 Flatpak and the advisory database.
+        PATTERNS=('Cargo\.(toml|lock)$' '(linux|core)/(.*/)?Cargo\.toml$' '(rust-toolchain|deny)\.toml$'
+            'linux/build-aux/flatpak/' 'linux/build-aux/debian/control$'
+            'linux/build-aux/packaging/add-rust-toolchain-ppa\.sh$' 'scripts/ci/detect-changed-paths\.sh$'
+            '\.github/workflows/(ci|build-linux)\.yml$') ;;
+    packages)
+        # The clean distribution builds: what declares a build or runtime dependency, how the build runs and installs,
+        # and the packaging itself. A source change alone builds no package.
+        PATTERNS=('Cargo\.(toml|lock)$' '(linux|core)/(.*/)?Cargo\.toml$' 'rust-toolchain\.toml$'
+            'linux/build-aux/(debian|rpm|packaging|flatpak|about)/' 'linux/build-aux/[^/]+$' 'linux/about\.toml$'
+            'linux/meson\.(build|options)$' 'linux/(.*/)?meson\.build$' 'linux/po/LINGUAS$'
+            'scripts/ci/detect-changed-paths\.sh$' '\.github/workflows/(ci|linux-packages)\.yml$'
+            '\.github/actions/linux-package-disk/')
+        SKIP='linux/.*\.md$' ;;
+    core)
+        # core.yml: the core on Windows and macOS, and its Swift bindings, which take the deployment target from
+        # apple/project.yml. A change to linux/ alone runs none of it.
+        PATTERNS=('core/' 'Cargo\.(toml|lock)$' 'rust-toolchain\.toml$'
+            'scripts/ci/(detect-changed-paths\.sh|start-windows-sshd\.ps1)$'
+            'apple/project\.yml$' 'apple/Packages/TableProFFI/' 'apple/scripts/build-core\.sh$'
+            'apple/scripts/lib/deployment-target\.sh$' '\.github/workflows/(ci|core)\.yml$')
+        SKIP='core/.*\.md$' ;;
     windows)
         # The .NET tests run the whole core through its FFI crate, so any core or workspace change runs them.
         PATTERNS=('windows/' 'core/' 'Cargo\.(toml|lock)$' 'rust-toolchain\.toml$'
-            'scripts/ci/(detect-changed-paths\.sh|start-windows-sshd\.ps1)$' '\.github/workflows/(ci|windows|release-windows|windows-grid-gate)\.yml$')
+            'scripts/ci/(detect-changed-paths\.sh|start-windows-sshd\.ps1)$' '\.github/workflows/(ci|windows)\.yml$')
         SKIP='(windows|core)/.*\.md$' ;;
     *)
-        echo "detect-changed-paths.sh: expected macos, plugins, ios, oracle, hana, release, shipped, swiftlint, linux, linux-docs or windows, got '$SUITE'" >&2
+        echo "detect-changed-paths.sh: expected macos, plugins, ios, oracle, hana, release, shipped, swiftlint, linux, linux-docs, linux-deps, packages, core or windows, got '$SUITE'" >&2
         exit 2 ;;
 esac
 

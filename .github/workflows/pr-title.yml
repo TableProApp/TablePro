@@ -1,7 +1,8 @@
 name: PR Title
 
-# A squash merge uses the title as the commit subject. synchronize is listed so every new head
-# commit gets the check too, which a required check needs.
+# A squash merge uses the title as the commit subject. Advisory on main, where CI is the only required check and the
+# reviewer reads the subject; release/* still requires it. A title edit starts no CI run, so the changelog check runs
+# here too. synchronize keeps a result on every head commit.
 on:
   pull_request:
     types: [opened, edited, reopened, synchronize]
@@ -24,21 +25,14 @@ jobs:
         with:
           fetch-depth: 2
           sparse-checkout: scripts
+          persist-credentials: false
 
       - name: Check the title is a Conventional Commits subject
         env:
           TITLE: ${{ github.event.pull_request.title }}
         run: python3 scripts/ci/check-pr-title.py "$TITLE"
 
-      # A version heading added outside a release PR makes version.py refuse its betas and notes.py assemble refuse it.
       - name: Check only a release pull request edits a CHANGELOG.md
         env:
           TITLE: ${{ github.event.pull_request.title }}
-        run: |
-          set -euo pipefail
-          case "$TITLE" in 'chore(release)'*) exit 0 ;; esac
-          edited="$(git diff --no-renames --name-only HEAD^1 HEAD -- apple/CHANGELOG.md linux/CHANGELOG.md)"
-          if [ -n "$edited" ]; then
-            echo "::error title=Changelog::Only a chore(release) pull request edits ${edited//$'\n'/ or }. Add a changelog.d/<PR>.<type>.md fragment instead."
-            exit 1
-          fi
+        run: scripts/ci/check-changelog-edits.sh HEAD^1 "$TITLE"
