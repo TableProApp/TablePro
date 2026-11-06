@@ -6,6 +6,7 @@ use deadpool_postgres::{Pool, PoolError, TimeoutType, Timeouts};
 use tablepro_core::column::ColumnInfo;
 use tablepro_core::ddl::{DatabaseChoices, InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
+use tablepro_core::dump::{DumpCatalog, DumpScope};
 use tablepro_core::meta::{
     IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
 };
@@ -24,6 +25,7 @@ use crate::cancel::{PgStop, StopProgress};
 use crate::catalog;
 use crate::commit_resolution::resolve_op;
 use crate::dialect::PgDialect;
+use crate::dump;
 use crate::editor::PgEditorSession;
 use crate::errors::{map_error, map_pool_error};
 use crate::metadata;
@@ -348,6 +350,20 @@ impl Connection for PgConnection {
         self.catalog_read(
             options,
             read_op(move |client| Box::pin(async move { metadata::fetch_object_definition(client, &object).await })),
+        )
+        .await
+    }
+
+    /// Every read runs in one transaction that first empties the search
+    /// path, under which the server names every object with its schema.
+    async fn read_dump_catalog(&self, scope: &DumpScope, options: CallOptions) -> Result<DumpCatalog, DriverError> {
+        let scope = scope.clone();
+        let sql_bodies = self.server.at_least(14, 0, 0);
+        let begin = self.read_preamble(&options).with_dependent_queries();
+        self.read_in(
+            options,
+            begin,
+            read_op(move |client| Box::pin(async move { dump::read_dump_catalog(client, &scope, sql_bodies).await })),
         )
         .await
     }

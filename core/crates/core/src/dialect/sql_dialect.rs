@@ -1,5 +1,6 @@
 use crate::column::{ColumnInfo, ColumnType, SqlExpression};
 use crate::ddl::DdlDialect;
+use crate::dump::DumpDialect;
 use crate::edit::CellExpression;
 use crate::filter::{Combinator, FilterOp, operators_for};
 use crate::meta::{EngineRowId, EngineRowIdPart, TableRef};
@@ -93,6 +94,12 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
     /// The engine's structure-change spelling, or `None` where the app
     /// does not edit this engine's structure.
     fn ddl(&self) -> Option<&dyn DdlDialect> {
+        None
+    }
+
+    /// How the engine writes a SQL dump and runs one back, or `None`
+    /// where the app has no dump for it.
+    fn dump(&self) -> Option<&dyn DumpDialect> {
         None
     }
 

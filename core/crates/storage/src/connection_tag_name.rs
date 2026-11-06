@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::name_rules::{self, NameFault};
 use crate::tag_name_error::TagNameError;
@@ -36,14 +35,13 @@ impl ConnectionTagName {
         self.0.to_lowercase()
     }
 
-    pub(crate) fn from_stored(value: &str, id: Uuid) -> Result<Self, TagNameError> {
-        let cleaned = name_rules::cleaned(value);
-        // Cutting a recovered name's escapes would make distinct old
-        // tags look alike. Its full id fits the limit and stays stable.
-        if name_rules::shown(value).is_empty() && cleaned.chars().count() > Self::MAX_CHARS {
-            return Self::new(&id.simple().to_string());
-        }
-        Self::new(&cleaned.chars().take(Self::MAX_CHARS).collect::<String>())
+    pub(crate) fn from_stored(value: &str) -> Result<Self, TagNameError> {
+        Self::new(
+            &name_rules::cleaned(value)
+                .chars()
+                .take(Self::MAX_CHARS)
+                .collect::<String>(),
+        )
     }
 }
 
@@ -111,17 +109,16 @@ mod tests {
 
     #[test]
     fn a_stored_name_is_cleaned_and_a_blank_one_refused() {
-        let id = Uuid::new_v4();
         let long = "x".repeat(ConnectionTagName::MAX_CHARS + 5);
-        let read = ConnectionTagName::from_stored(&long, id).expect("a long name");
+        let read = ConnectionTagName::from_stored(&long).expect("a long name");
         assert_eq!(read.as_str(), "x".repeat(ConnectionTagName::MAX_CHARS));
 
-        let read = ConnectionTagName::from_stored("a\tb", id).expect("a control character");
+        let read = ConnectionTagName::from_stored("a\tb").expect("a control character");
         assert_eq!(read.as_str(), "a b");
 
-        let read = ConnectionTagName::from_stored("production\u{200b}", id).expect("a blank");
+        let read = ConnectionTagName::from_stored("production\u{200b}").expect("a blank");
         assert_eq!(read.as_str(), "production");
 
-        assert_eq!(ConnectionTagName::from_stored(" \n ", id), Err(TagNameError::Empty));
+        assert_eq!(ConnectionTagName::from_stored(" \n "), Err(TagNameError::Empty));
     }
 }

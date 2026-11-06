@@ -506,9 +506,8 @@ impl WorkspaceModel {
         self.workspace_tabs.borrow_mut().clear();
     }
 
-    /// Forward a per-tab Browse input to the right slot. Routes to the
-    /// Browse-side controller in both legacy `Browse` slots and the
-    /// unified `Table` slot.
+    /// Forward a per-tab Browse input to the `Table` slot's Browse-side
+    /// controller.
     pub(super) fn dispatch_to_tab(&self, tab_id: Uuid, msg: impl Into<BrowseTabInput>) {
         let browse = self
             .workspace_tabs

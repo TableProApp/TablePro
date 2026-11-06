@@ -20,7 +20,7 @@ pub(crate) struct SidebarAffordances {
     /// schema's row drops a database.
     pub lists_databases: bool,
     /// What the engine does to whole tables, schemas and databases
-    /// (core 0011).
+    /// (core 0013).
     pub catalog: CatalogCapabilities,
     /// Whether the database the session opened may be dropped from its
     /// row beside the connection: never one the engine keeps for itself.

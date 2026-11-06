@@ -39,7 +39,7 @@ meson setup _build -Dprofile=development
 dbus-run-session -- meson test -C _build --print-errorlogs
 ```
 
-Five suites: `unit` is `cargo test --workspace --exclude tablepro --exclude tablepro-ffi`. `gtk`
+Five suites: `unit` is `cargo test --workspace --exclude tablepro --exclude tablepro-ffi --exclude tablepro-bindgen`. `gtk`
 is `cargo test -p tablepro` with `GSK_RENDERER=cairo`, `GTK_A11Y=test`,
 `GDK_BACKEND=x11` and the build tree's schema directory, under a
 `dbus-run-session` of its own when one is installed, so its bus names
@@ -320,7 +320,7 @@ A fixture starts its engine's default release unless the engine's variable names
 
 | Variable | Releases | Default |
 |---|---|---|
-| `TABLEPRO_TEST_POSTGRES` | 13, 14, 17, 18 | 17 |
+| `TABLEPRO_TEST_POSTGRES` | 13, 14, 15, 17, 18 | 17 |
 | `TABLEPRO_TEST_MYSQL` | 8.0, 8.4, 9.7 | 8.4 |
 | `TABLEPRO_TEST_MARIADB` | 10.11, 11.4, 12.3 | 11.4 |
 | `TABLEPRO_TEST_MSSQL` | 2017, 2019, 2022, 2025 | 2022 |
@@ -333,7 +333,7 @@ A fixture starts its engine's default release unless the engine's variable names
 
 `core/crates/test-fixtures/src/fixture_image.rs` pins each release's image, and each engine's version type (`PostgresVersion`, `MysqlVersion`, `MariadbVersion`, `MssqlVersion`, `ClickHouseVersion`, `CassandraVersion`, `ScyllaVersion`, `RedisVersion`, `MongoVersion`, `OpenSshVersion`) reads its variable through `ServerVersion::selected`. An empty value picks the default; a release the fixtures do not pin fails the fixture with the ones they do. PostgreSQL 13 is past end of life and stays only for the catalogue test of the driver's query for servers before 14.
 
-The `integration` job runs each driver's suite on the defaults, then once more for each entry with a `release`: PostgreSQL 14 and 18, MySQL 8.0 with MariaDB 10.11, MySQL 9.7 with MariaDB 12.3, SQL Server 2017, 2019 and 2025, ClickHouse 26.3, Cassandra 4.0 with ScyllaDB 2025.1, Redis 7.4, MongoDB 7.0, and OpenSSH 9.9 for `tablepro-ssh`. The README's [supported servers](../README.md#supported-servers) table says why those releases and not others. A test that checks the server's version reads it from the fixture (`PostgresFixture::version`, `MysqlFixture::server_version`, `MssqlFixture::version`, `ClickHouseFixture::version`, `CassandraFixture::server_version`, `RedisFixture::version`, `MongoFixture::version`, `OpenSshFixture::version`), never from a literal, so it holds on every release.
+The `integration` job runs each driver's suite on the defaults, then once more for each entry with a `release`: PostgreSQL 14, 15 and 18, MySQL 8.0 with MariaDB 10.11, MySQL 9.7 with MariaDB 12.3, SQL Server 2017, 2019 and 2025, ClickHouse 26.3, Cassandra 4.0 with ScyllaDB 2025.1, Redis 7.4, MongoDB 7.0, and OpenSSH 9.9 for `tablepro-ssh`. The README's [supported servers](../README.md#supported-servers) table says why those releases and not others. A test that checks the server's version reads it from the fixture (`PostgresFixture::version`, `MysqlFixture::server_version`, `MssqlFixture::version`, `ClickHouseFixture::version`, `CassandraFixture::server_version`, `RedisFixture::version`, `MongoFixture::version`, `OpenSshFixture::version`), never from a literal, so it holds on every release.
 
 Locally, set the variables for the run:
 

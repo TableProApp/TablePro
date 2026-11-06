@@ -9,6 +9,7 @@ mod assistant;
 mod catalog_dialogs;
 mod catalog_ops;
 mod close_flow;
+mod database_transfer;
 mod definitions;
 mod diagram;
 mod editor_label;
@@ -63,8 +64,10 @@ use tablepro_session::{ObjectListSnapshot, Session, SessionHealth, SessionKey};
 use uuid::Uuid;
 
 pub(crate) use self::catalog_ops::DatabaseDrop;
+pub(crate) use self::database_transfer::TransferInput;
 use self::session_watches::SessionWatches;
 use self::tab_title::ConnectionLabel;
+pub(crate) use self::workspace_actions::show_transfer_actions;
 pub(crate) use self::workspace_shell::WorkspaceShell;
 use super::browse_tab::BrowseTab;
 use super::editor::SqlEditor;
@@ -365,7 +368,7 @@ pub struct KeyTabSlot {
     pub tab: crate::ui::key_tab::KeyTab,
 }
 
-/// A tab in the unified workspace.
+/// A tab in the workspace.
 ///
 /// - **Table**: one (schema, table) entity in Data (Browse grid)
 ///   view. Default for every sidebar single-click.
@@ -392,7 +395,7 @@ impl WorkspaceTab {
     }
 
     /// The Structure-side controller. Only `Structure` slots carry
-    /// one (Table slots no longer fuse the DDL editor in).
+    /// one.
     pub fn structure_tab(&self) -> Option<&crate::ui::structure_tab::StructureTab> {
         match self {
             WorkspaceTab::Structure(s) => Some(&s.structure),
@@ -558,6 +561,8 @@ pub(crate) enum WorkspaceInput {
         bytes: Vec<u8>,
     },
     ImportCsvRun(Box<super::import_dialog::CsvImport>),
+    /// The main menu's Export Database and Import SQL File.
+    Transfer(TransferInput),
     OpenHistoryQuery(String),
     ReplaceActiveTabQuery(String),
     TabCloseDecided {
@@ -647,7 +652,7 @@ pub(crate) enum WorkspaceInput {
     /// window.
     DropDatabasePrompt(String),
     /// The window let go of the database the user confirmed dropping,
-    /// so the DROP can run (0033).
+    /// so the DROP can run (0034).
     DropDatabaseReleased {
         target: DatabaseDrop,
         options: tablepro_core::ddl::DropDatabaseOptions,
@@ -1365,6 +1370,7 @@ impl WorkspaceModel {
             WorkspaceInput::ShowHistory => self.on_show_history(),
             WorkspaceInput::ShowSavedQueries => self.on_show_saved_queries(),
             WorkspaceInput::ImportCsvRequested { schema, table } => self.on_import_csv_requested(schema, table),
+            WorkspaceInput::Transfer(input) => self.on_transfer(input),
             WorkspaceInput::ImportCsvReady {
                 schema,
                 table,

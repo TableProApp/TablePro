@@ -80,7 +80,7 @@ pub struct SqlEditorInit {
     pub settings: Rc<tablepro_linux_platform::AppSettings>,
     pub history: Option<HistoryService>,
     pub tasks: Tasks,
-    /// The window's session, which the tab opens its own connection
+    /// The session the tab belongs to, which it opens its own connection
     /// from on the first run.
     pub session: ActiveSession,
     /// Keeps the process alive while the tab's connection closes.

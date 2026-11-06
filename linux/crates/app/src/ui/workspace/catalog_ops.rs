@@ -599,7 +599,7 @@ impl WorkspaceModel {
 
     /// Where another database is a session of its own beside the
     /// connection, the window closes the one it holds on this database
-    /// first and hands the drop back (0033).
+    /// first and hands the drop back (0034).
     fn on_drop_database_confirmed(&mut self, database: String, options: DropDatabaseOptions) {
         let Some(session) = self.context.active.get() else {
             return;

@@ -87,7 +87,7 @@ pub(crate) enum SessionWindowInput {
     /// A session is about to drop a database. The window first closes
     /// the session it holds on that database, through that session's own
     /// prompts, then hands the drop back to the session that asked, and
-    /// to no other (0033).
+    /// to no other (0034).
     ReleaseDatabase {
         target: DatabaseDrop,
         options: DropDatabaseOptions,

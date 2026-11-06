@@ -3,6 +3,7 @@ use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
     BindError, BindTarget, DialectCapabilities, InsertConflict, KeysetDirection, LiteralError, Placeholder, SqlDialect,
 };
+use tablepro_core::dump::DumpDialect;
 use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart, TableRef};
 use tablepro_core::sql_syntax::{
@@ -233,6 +234,10 @@ impl SqlDialect for DuckDbDialect {
     }
 
     fn ddl(&self) -> Option<&dyn DdlDialect> {
+        Some(self)
+    }
+
+    fn dump(&self) -> Option<&dyn DumpDialect> {
         Some(self)
     }
 

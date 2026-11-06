@@ -571,7 +571,7 @@ impl SessionWindow {
     /// dropping, through that session's own prompts and down to its last
     /// connection, then hand the drop back to the session that asked. From
     /// now until the drop ends nothing opens the database. A prompt
-    /// answered Cancel drops nothing (0033).
+    /// answered Cancel drops nothing (0034).
     pub(super) fn release_database(&self, target: DatabaseDrop, options: DropDatabaseOptions) {
         let release = Release { target, options };
         let Some(id) = connection_of(&release.target.key) else {
@@ -689,7 +689,7 @@ impl SessionWindow {
     }
 
     /// A database just created opens beside the connection where its
-    /// catalog lists only its own database, so it shows (0033).
+    /// catalog lists only its own database, so it shows (0034).
     pub(super) fn open_database_in(&self, key: &SessionKey, database: String) {
         if let Some(id) = connection_of(key)
             && self.opens_databases(id)

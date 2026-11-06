@@ -383,7 +383,7 @@ fn sent_drop(connection: &tablepro_test_support::FakeConnection) -> bool {
 
 /// The server refuses to drop a database a session is on, so the
 /// window's own session there closes, down to its last connection,
-/// before the DROP leaves (0033).
+/// before the DROP leaves (0034).
 #[gtk4::test]
 fn dropping_another_database_closes_it_through_its_prompts_first() {
     let test = dropping_window(

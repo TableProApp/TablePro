@@ -38,7 +38,7 @@ pub(super) enum InWindow {
 /// connection's own row whose catalog holds one database, New Database…
 /// where the engine makes one, and Drop Database… on that row, which
 /// picks among the server's databases, or on another database's row
-/// beside it (0033).
+/// beside it (0034).
 pub(super) fn session_section(key: &SessionKey, state: InWindow, affordances: SidebarAffordances) -> gio::Menu {
     let target = crate::ui::session_target::to_variant(key);
     let menu = gio::Menu::new();

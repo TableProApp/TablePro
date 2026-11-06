@@ -6,8 +6,8 @@ use crate::sql_syntax::StatementAccess;
 /// What an MCP client may do on one connection.
 ///
 /// It is persisted with the connection, so a variant is never renamed:
-/// the stored spelling is the serde name. A connection saved before the
-/// level existed reads as `ReadOnly`, the level a new one starts at.
+/// the stored spelling is the serde name. A new connection starts at
+/// `ReadOnly`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExternalAccess {

@@ -9,6 +9,7 @@
 mod conformance_engine;
 mod csv_import;
 mod ddl;
+mod dump;
 mod keys_and_decimals;
 mod metadata;
 mod round_trip;

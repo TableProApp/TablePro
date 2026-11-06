@@ -1,6 +1,6 @@
 # 0030: A query tab's database, and another database as a session of its own
 
-- **Status**: Accepted; dropping a sibling's database amended by 0033
+- **Status**: Accepted; dropping a sibling's database amended by 0034
 - **Date**: 2026-10-30
 
 ## Context

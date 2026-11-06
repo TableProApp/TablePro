@@ -251,7 +251,7 @@ impl TabFactory {
             initial_offset: page.offset,
             initial_sort: page.sort,
             filter,
-            column_widths: parts.storage.column_widths().clone(),
+            column_layouts: parts.storage.column_layouts().clone(),
             filter_settings: parts.storage.filter_settings().clone(),
             session,
             tasks: parts.context.tasks.clone(),
