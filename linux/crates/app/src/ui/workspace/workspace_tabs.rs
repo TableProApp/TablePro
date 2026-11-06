@@ -315,10 +315,13 @@ impl WorkspaceModel {
         self.index.remove(&page);
         self.move_focus_off(&page);
         // Only a page the view is closing can be finished; one closed from here, as a dropped table's
-        // is, starts its close, which no session's handler holds back once the index lets go of it.
-        tab_view.close_page(&page);
+        // is, starts its close, which no session's handler holds back once the index lets go of it. A
+        // page out on another window's bar is not this view's to close.
         if super::page_position(tab_view, &page).is_some() {
-            tab_view.close_page_finish(&page, true);
+            tab_view.close_page(&page);
+            if super::page_position(tab_view, &page).is_some() {
+                tab_view.close_page_finish(&page, true);
+            }
         }
         drop(removed);
         self.persist_workspace_state();
