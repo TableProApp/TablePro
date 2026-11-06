@@ -8,10 +8,10 @@
 # and the build dependencies in build-aux/debian/control, the toolchain
 # from ppa:rust-toolchain/staging among them.
 # --posthog-key writes the PostHog project key to vendor/posthog-key, which
-# debian/rules and the RPM spec pass to Meson as -Dposthog_key. The release
-# gives it from a repository variable. Without one, or with an empty one, the
-# packages send no usage data; with it, they send it unless the user turns it
-# off.
+# debian/rules, the RPM spec and build-flatpak.sh pass to Meson as
+# -Dposthog_key. The release gives it from a repository variable. Without one,
+# or with an empty one, the packages send no usage data; with it, they send it
+# unless the user turns it off.
 # Usage: make-sources.sh [--install-deps] [--posthog-key KEY] <output dir>
 set -eu
 

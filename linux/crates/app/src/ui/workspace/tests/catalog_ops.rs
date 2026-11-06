@@ -423,10 +423,22 @@ fn tabs_closed_by_a_drop_cannot_be_reopened() {
             open_mode: OpenMode::NewTab,
         });
     wait_until(WAIT, || workspace.open_tabs().is_some_and(|tabs| tabs.len() == 1)).expect("the table's tab");
+    let view = shell_of(&workspace).tab_view();
+    let pages = view.n_pages();
 
+    // Finishing the close of a page the view never started closing logs a critical and keeps the
+    // page, which this makes abort the test.
+    let previous = gtk::glib::log_set_always_fatal(gtk::glib::LogLevels::LEVEL_CRITICAL);
     workspace.with_model(|model| model.on_drop_table_confirmed(Some("public".to_owned()), "users".to_owned()));
+    let closed = wait_until(WAIT, || workspace.open_tabs().is_some_and(|tabs| tabs.is_empty()));
+    gtk::glib::log_set_always_fatal(previous);
 
-    wait_until(WAIT, || workspace.open_tabs().is_some_and(|tabs| tabs.is_empty())).expect("the tab to close");
+    closed.expect("the tab to close");
+    assert_eq!(
+        view.n_pages(),
+        pages - 1,
+        "the dropped table's page stayed on the tab bar"
+    );
     assert!(
         shell_of(&workspace).imp().closed_tabs.borrow().is_empty(),
         "Reopen Closed Tab would open a table that is gone"

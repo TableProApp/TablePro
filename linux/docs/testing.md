@@ -40,7 +40,11 @@ meson setup _build -Dprofile=development
 dbus-run-session -- meson test -C _build --print-errorlogs
 ```
 
-Five suites: `unit` is `cargo test --workspace --exclude tablepro --exclude tablepro-ffi --exclude tablepro-bindgen`. `gtk`
+Five suites: `unit` tests the workspace without `tablepro`, `tablepro-ffi` and `tablepro-bindgen`. When Meson
+finds `cargo-nextest`, as in the fast job and the Flatpak Devel build, it runs `cargo nextest run --profile ci`,
+which kills a test past five minutes and names it, and then the doc tests through `cargo test --doc`. Without
+nextest, as on the package builders, it runs `cargo test`, where a hung test holds the suite until Meson's two hour
+timeout. Install nextest before `meson setup`, which looks for it. `gtk`
 is `cargo test -p tablepro` with `GSK_RENDERER=cairo`, `GTK_A11Y=test`,
 `GDK_BACKEND=x11` and the build tree's schema directory, under a
 `dbus-run-session` of its own when one is installed, so its bus names
@@ -191,7 +195,7 @@ The PostgreSQL, MySQL, SQL Server, ClickHouse, Cassandra, SQLite and DuckDB targ
 
 The peak is the whole process's, so the case needs a process to itself. The PostgreSQL, MySQL, MariaDB, SQL Server, ClickHouse, Cassandra and ScyllaDB targets pass `docker: true` and run under cargo-nextest, which gives each test a process of its own. The `ci` nextest profile prints its times and memory for a passing run, so the job log keeps what the bounds are set from.
 
-SQLite and DuckDB pass `docker: false`, so the case runs in the unit suite, where `cargo test` runs the tests of one binary in one process. It is a test target of its own, as `core/crates/drivers/sqlite/tests/large_table.rs`, which holds nothing else and includes the adapter from `tests/integration/sqlite_engine.rs`. A passing run there prints nothing; `cargo test -p tablepro-driver-sqlite --test large_table -- --nocapture` shows the numbers.
+SQLite and DuckDB pass `docker: false`, so the case runs in the unit suite, where `cargo test`, the package builders' runner, runs the tests of one binary in one process. It is a test target of its own, as `core/crates/drivers/sqlite/tests/large_table.rs`, which holds nothing else and includes the adapter from `tests/integration/sqlite_engine.rs`. A passing run there prints nothing; `cargo test -p tablepro-driver-sqlite --test large_table -- --nocapture` shows the numbers.
 
 ### Large-catalog case
 
@@ -436,7 +440,7 @@ Helpers live in `crates/app/src/test_support`, compiled only for tests:
 
 - `drain_main_context()` runs pending main-loop sources. `wait_until(timeout, condition)` iterates the main loop until the condition holds or the timeout passes, so a missing signal fails the test instead of hanging it. `finish_on_main(timeout, future)` runs a future on the main context and gives it up at the timeout.
 - `SignalLog::connect(object, signal, extract)` records emissions and disconnects when dropped.
-- `OwnedWindow` holds a window a test presents, and on drop clears its focus, destroys it and drains the main context. GTK keeps every window, and whatever its widgets hold, until it is destroyed, and GTK 4.22 leaks a focused widget that is hidden and then unparented. The `cargo test` run of the gtk suite is one process, which package builds start with a limit of 1024 open files, so a leaked window's runtime and SQLite pool add up across tests.
+- `OwnedWindow` holds a window a test presents, and on drop clears its focus, destroys it and drains the main context. GTK keeps every window, and whatever its widgets hold, until it is destroyed, and GTK 4.22 leaks a focused widget that is hidden and then unparented. The `cargo test` run of the gtk suite is one process, which package builds start with a limit of 1024 open files, so a leaked window's runtime and SQLite pool add up across tests. The fast job runs the suites under the same limit.
 - `end_application(app)` ends an application a test registered the way `g_application_run` ends one: `shutdown`, then leaving the session bus. GtkApplication holds itself from startup until shutdown, so a registered application a test only drops leaks with every service it owns. `TestWindow` and the application tests' `TestApp` call it when dropped.
 - `descendants`, `find_by_action_name` and `first_descendant_of_type` walk a widget tree.
 - `MemorySettings` compiles the schema into a `TempDir` behind the memory backend, so a test never touches the developer's dconf database.

@@ -14,6 +14,7 @@ use tablepro_core::credentials::PromptReason;
 use zeroize::Zeroizing;
 
 use super::prompts::Prompts;
+use super::short_scalar;
 
 // OpenSSH's NumberOfPasswordPrompts default, which also bounds a key's passphrase.
 pub(crate) const TRIES: usize = 3;
@@ -239,7 +240,14 @@ async fn decode(
     let text = text.clone();
     // A key's KDF rounds take a while, so they run off the runtime.
     tokio::task::spawn_blocking(move || {
-        russh::keys::decode_secret_key(&text, passphrase.as_ref().map(ExposeSecret::expose_secret))
+        let passphrase = passphrase.as_ref().map(ExposeSecret::expose_secret);
+        russh::keys::decode_secret_key(&text, passphrase).or_else(|error| {
+            if short_scalar::is_refusal(&error) {
+                short_scalar::decode(&text, passphrase).ok_or(error)
+            } else {
+                Err(error)
+            }
+        })
     })
     .await
     .map_err(|_| russh::keys::Error::CouldNotReadKey)?
@@ -486,5 +494,90 @@ mod tests {
         );
 
         assert!(load(&path, true, &mut None, &unattended).await.unwrap().is_none());
+    }
+
+    // ssh-keygen keys whose P-256 scalar OpenSSH wrote in 31 bytes: in the clear, under aes256-ctr
+    // and under chacha20-poly1305, the last two with PASSPHRASE and 2 KDF rounds.
+    const SHORT_SCALAR_PUBLIC: &str = "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBPtxmfAPZke6lSSBnPp8bOOeEr96gWuT4Gjw9n1AYPEs3cVPR/ayGF4Lj1/6Vd568nmCdUYGf4JwpPELyzgMcCo= probe";
+    const SHORT_SCALAR_PLAIN: &str = "-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAaAAAABNlY2RzYS
+1zaGEyLW5pc3RwMjU2AAAACG5pc3RwMjU2AAAAQQT7cZnwD2ZHupUkgZz6fGzjnhK/eoFr
+k+Bo8PZ9QGDxLN3FT0f2shheC49f+lXeevJ5gnVGBn+CcKTxC8s4DHAqAAAAoAZrDEYGaw
+xGAAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBPtxmfAPZke6lSSB
+nPp8bOOeEr96gWuT4Gjw9n1AYPEs3cVPR/ayGF4Lj1/6Vd568nmCdUYGf4JwpPELyzgMcC
+oAAAAfePaBOK/gAb54F3hqBZlR2PwvlCCwvUHpQInJ8NgNPwAAAAVwcm9iZQECAwQ=
+-----END OPENSSH PRIVATE KEY-----
+";
+    const SHORT_SCALAR_AES: &str = "-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABD6Kt/OnH
+lAo5qoe2kgnvL2AAAAAgAAAAEAAABoAAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlz
+dHAyNTYAAABBBPtxmfAPZke6lSSBnPp8bOOeEr96gWuT4Gjw9n1AYPEs3cVPR/ayGF4Lj1
+/6Vd568nmCdUYGf4JwpPELyzgMcCoAAACgGZFLziFb6aNQ4SRHeLlmawkYwI1k9/BVRg2z
+WwNac8NVbHN2ZAd1mmL9nwBdes/q0aYJcqGjq23rMfCION36vACeox64Z7PTw36wwRF8Fc
+M9yXztHcCHOI0MIemVpe6BLo70vZrN87L3ZiWIOX9yFPNg3EdrZ4LZEmxk0IGGkr2T8yuy
+bibtg/rMKIYOrK5+z3DNOTrcWs3pZiu77FbnpQ==
+-----END OPENSSH PRIVATE KEY-----
+";
+    const SHORT_SCALAR_CHACHA: &str = "-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAAHWNoYWNoYTIwLXBvbHkxMzA1QG9wZW5zc2guY29tAAAABm
+JjcnlwdAAAABgAAAAQnDudaw5DxR8Vu65tVb920QAAAAIAAAABAAAAaAAAABNlY2RzYS1z
+aGEyLW5pc3RwMjU2AAAACG5pc3RwMjU2AAAAQQT7cZnwD2ZHupUkgZz6fGzjnhK/eoFrk+
+Bo8PZ9QGDxLN3FT0f2shheC49f+lXeevJ5gnVGBn+CcKTxC8s4DHAqAAAAoO9hChkRJ5br
+xI7kgxOARBpnY4B6xAHwyvgVeY0/t6mNx6tRz6t8N5TcTQ8VmxS98ZY05Bpg4fhY0R/bUV
+dQnPaBvrF2znk64+1b2HUQ/Muyop4NchkTWUcQ+rstWc34fEW6jt76hKiotGJUjMfShaeT
+voxi+nT/5duuFMQCTpFqzmHtQbuQYwCk2ZcDJUWOrbEiRX52hcRBEqe/762QnSSdo4f2V1
++H7dbBJfrZ4r6n
+-----END OPENSSH PRIVATE KEY-----
+";
+    const PASSPHRASE: &str = "correct horse battery";
+
+    #[tokio::test]
+    async fn a_p256_key_whose_scalar_openssh_wrote_short_opens_and_signs() {
+        use russh::keys::signature::Verifier;
+
+        let dir = tempfile::tempdir().unwrap();
+        let expected = PublicKey::from_openssh(SHORT_SCALAR_PUBLIC).unwrap();
+        for (name, text, passphrase) in [
+            ("plain", SHORT_SCALAR_PLAIN, None),
+            ("aes256-ctr", SHORT_SCALAR_AES, Some(PASSPHRASE)),
+            ("chacha20-poly1305", SHORT_SCALAR_CHACHA, Some(PASSPHRASE)),
+        ] {
+            let refused = russh::keys::decode_secret_key(text, passphrase).unwrap_err();
+            assert!(short_scalar::is_refusal(&refused), "{name}: {refused}");
+            let path = dir.path().join(name);
+            std::fs::write(&path, text).unwrap();
+            let (prompts, prompter) = prompts(Vec::new());
+            let mut stored = passphrase.map(SecretString::from);
+
+            let key = load(&path, true, &mut stored, &prompts).await.unwrap().unwrap();
+
+            assert_eq!(key.public_key().key_data(), expected.key_data(), "{name}");
+            assert!(prompter.requests().is_empty(), "{name}");
+            let signature = sign(&key, None, b"session").unwrap();
+            expected.key_data().verify(b"session", &signature).unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn a_wrong_passphrase_does_not_open_a_key_with_a_short_scalar() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("id_ecdsa");
+        std::fs::write(&path, SHORT_SCALAR_AES).unwrap();
+        let (prompts, prompter) = prompts(vec![typed(PASSPHRASE)]);
+        let mut stored = Some(SecretString::from("wrong"));
+
+        let key = load(&path, true, &mut stored, &prompts).await.unwrap().unwrap();
+
+        assert_eq!(
+            key.public_key().key_data(),
+            PublicKey::from_openssh(SHORT_SCALAR_PUBLIC).unwrap().key_data()
+        );
+        assert_eq!(
+            prompter.requests()[0].purpose,
+            PromptPurpose::SshPassphrase {
+                path: path.clone(),
+                reason: PromptReason::Rejected,
+            }
+        );
     }
 }

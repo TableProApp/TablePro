@@ -41,12 +41,13 @@ The fast job in `.github/workflows/build-linux.yml` runs these steps in this ord
 
 ```bash
 localedef -i en_US -f UTF-8 en_US.UTF-8   # as root, once: the catalogue test needs a real locale
+cargo install --locked cargo-nextest      # before setup: the unit suite runs through it when Meson finds it
 meson setup _build -Dprofile=development
 cargo fmt --all -- --check
 meson devenv -C _build cargo clippy --locked --workspace --all-targets -- -D warnings
 meson devenv -C _build cargo clippy --locked --workspace --all-targets --no-default-features -- -D warnings
 meson compile -C _build
-xvfb-run -a dbus-run-session -- meson test -C _build --print-errorlogs
+(ulimit -Sn 1024 && xvfb-run -a dbus-run-session -- meson test -C _build --print-errorlogs)   # the package builds' open-file limit
 dbus-run-session -- bash -c "gnome-keyring-daemon --components=secrets --daemonize --unlock <<< ci \
   && meson devenv -C _build cargo test --locked -p tablepro-linux-platform --test secret_service -- --ignored"
 build-aux/packaging/make-dist.sh _build/dist

@@ -647,12 +647,42 @@ impl SessionWindow {
         // A Cancel or Retry left as the default would take Enter on a
         // page that no longer shows it.
         self.set_default_widget(None::<&gtk::Widget>);
+        // Unparented with the focus inside, GTK 4.22 keeps the focus on the detached widget and never frees the page.
+        let refocus = self.content().is_some_and(|page| crate::ui::a11y::holds_focus(&page));
+        if refocus {
+            GtkWindowExt::set_focus(self, None::<&gtk::Widget>);
+        }
         self.set_content(child.as_ref());
+        if refocus {
+            self.focus_first_control_after_paint();
+        }
         match shown {
             ShownPage::Connecting(page, name) => page.show(&name),
             ShownPage::Failed(page) => page.show(),
             ShownPage::Other => {}
         }
+    }
+
+    // Where GTK moves the focus of a removed page once the window paints, unless something took it first.
+    fn focus_first_control_after_paint(&self) {
+        let Some(clock) = self.frame_clock() else {
+            return;
+        };
+        let window = self.downgrade();
+        let handler: Rc<std::cell::Cell<Option<glib::SignalHandlerId>>> = Rc::default();
+        let connected = handler.clone();
+        let id = clock.connect_after_paint(move |clock| {
+            if let Some(id) = connected.take() {
+                clock.disconnect(id);
+            }
+            if let Some(window) = window.upgrade()
+                && GtkWindowExt::focus(&window).is_none()
+            {
+                window.child_focus(gtk::DirectionType::TabForward);
+            }
+        });
+        handler.set(Some(id));
+        clock.request_phase(gtk::gdk::FrameClockPhase::AFTER_PAINT);
     }
 
     /// Each action is enabled where it means something, and the Safe

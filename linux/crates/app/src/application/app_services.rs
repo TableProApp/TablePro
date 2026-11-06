@@ -75,6 +75,7 @@ pub struct AppServices {
     account_tokens: Option<Arc<dyn RefreshTokenVault>>,
     account: RefCell<AccountService>,
     telemetry: Telemetry,
+    app_opened: RefCell<Option<AppOpenedChecks>>,
 }
 
 // The usage data follows the account, which a sign-out, a removed device or a refused sign-in leaves
@@ -151,6 +152,7 @@ impl AppServices {
             account_tokens: None,
             account: RefCell::new(AccountService::signed_out()),
             telemetry: Telemetry::default(),
+            app_opened: RefCell::default(),
         }
     }
 
@@ -284,10 +286,11 @@ impl AppServices {
                 }
             },
         );
-        check_app_opened(APP_OPENED_DELAY, APP_OPENED_CHECK, move || {
+        let checks = check_app_opened(APP_OPENED_DELAY, APP_OPENED_CHECK, move || {
             opened();
             glib::ControlFlow::Continue
         });
+        *self.app_opened.borrow_mut() = Some(checks);
     }
 
     /// The database migrates and prunes on open, which is too slow to
@@ -417,14 +420,49 @@ impl AppServices {
 const APP_OPENED_DELAY: Duration = Duration::from_secs(10);
 const APP_OPENED_CHECK: Duration = Duration::from_secs(60 * 60);
 
+// The check's source, removed when the services go, so it never holds the usage data and the sessions past them.
+struct AppOpenedChecks(Rc<RefCell<Option<glib::SourceId>>>);
+
+impl Drop for AppOpenedChecks {
+    fn drop(&mut self) {
+        if let Some(source) = self.0.take() {
+            source.remove();
+        }
+    }
+}
+
 // Restored sessions open first, as on macOS. The day is checked again each interval, so an app left open
 // sends on each day it runs.
-fn check_app_opened(delay: Duration, interval: Duration, mut check: impl FnMut() -> glib::ControlFlow + 'static) {
-    glib::timeout_add_local_once(delay, move || {
-        if check() == glib::ControlFlow::Continue {
-            glib::timeout_add_local(interval, check);
+fn check_app_opened(
+    delay: Duration,
+    interval: Duration,
+    mut check: impl FnMut() -> glib::ControlFlow + 'static,
+) -> AppOpenedChecks {
+    let source = Rc::new(RefCell::new(None));
+    let slot = Rc::downgrade(&source);
+    let first = glib::timeout_add_local_once(delay, move || {
+        let Some(slot) = slot.upgrade() else {
+            return;
+        };
+        // GLib removes a source that ran once itself.
+        *slot.borrow_mut() = None;
+        if check() == glib::ControlFlow::Break {
+            return;
         }
+        let ending = Rc::downgrade(&slot);
+        let next = glib::timeout_add_local(interval, move || {
+            let flow = check();
+            if flow == glib::ControlFlow::Break
+                && let Some(slot) = ending.upgrade()
+            {
+                *slot.borrow_mut() = None;
+            }
+            flow
+        });
+        *slot.borrow_mut() = Some(next);
     });
+    *source.borrow_mut() = Some(first);
+    AppOpenedChecks(source)
 }
 
 // clients.md counts the connections open, as macOS's heartbeat did.
@@ -697,7 +735,7 @@ mod tests {
         let started = Instant::now();
         let checks = Rc::new(RefCell::new(Vec::new()));
         let kept = checks.clone();
-        check_app_opened(Duration::from_millis(300), Duration::from_millis(100), move || {
+        let _checks = check_app_opened(Duration::from_millis(300), Duration::from_millis(100), move || {
             kept.borrow_mut().push(started.elapsed());
             match kept.borrow().len() {
                 3 => glib::ControlFlow::Break,
@@ -721,6 +759,24 @@ mod tests {
             checks[2] - checks[1] + slack >= Duration::from_millis(100),
             "{checks:?}"
         );
+    }
+
+    #[gtk4::test]
+    fn dropped_checks_stop_and_let_go_of_what_they_read() {
+        let read = Rc::new(std::cell::Cell::new(0));
+        let reading = read.clone();
+        let checks = check_app_opened(Duration::from_millis(50), Duration::from_millis(50), move || {
+            reading.set(reading.get() + 1);
+            glib::ControlFlow::Continue
+        });
+        wait_until(WAIT, || read.get() >= 2).expect("the checks to repeat");
+
+        drop(checks);
+        let ran = read.get();
+        let later = wait_until(Duration::from_millis(300), || read.get() > ran);
+
+        assert!(later.is_err(), "a check ran after the checks were dropped");
+        assert_eq!(Rc::strong_count(&read), 1, "the checks still hold what they read");
     }
 
     #[test]

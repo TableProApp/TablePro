@@ -416,6 +416,55 @@ fn a_connected_window_shows_the_workspace_and_claims_its_key() {
     );
 }
 
+#[gtk4::test]
+fn the_picker_left_from_a_focused_row_goes_with_its_window() {
+    let test = TestWindow::picker("PickerFreed");
+    focus_the_row(&test);
+    let (picker, welcome) = {
+        let imp = test.window.imp();
+        let welcome = imp.welcome.borrow().as_ref().expect("the connection list").downgrade();
+        (imp.picker.get().expect("the picker page").downgrade(), welcome)
+    };
+    connect_from_the_picker(&test);
+
+    drop(test);
+    drain_main_context();
+
+    assert!(welcome.upgrade().is_none(), "the connection list outlived its window");
+    assert!(picker.upgrade().is_none(), "the picker page outlived its window");
+}
+
+#[gtk4::test]
+fn the_focus_on_a_page_left_moves_into_the_next_one() {
+    let test = TestWindow::picker("FocusMovesOn");
+    focus_the_row(&test);
+
+    connect_from_the_picker(&test);
+    crate::test_support::after_next_frame(&test.window);
+
+    let shell = test.window.shell().expect("the workspace");
+    assert!(
+        crate::ui::a11y::holds_focus(&shell),
+        "the focus is {:?}",
+        GtkWindowExt::focus(&test.window).map(|widget| widget.type_().name())
+    );
+}
+
+fn focus_the_row(test: &TestWindow) {
+    let picker = test.window.imp().picker.get().cloned().expect("the picker page");
+    let row = descendants(&picker)
+        .into_iter()
+        .find_map(|widget| widget.downcast::<gtk4::TreeExpander>().ok())
+        .expect("the saved connection's row");
+    assert!(row.grab_focus(), "the row took no focus");
+}
+
+fn connect_from_the_picker(test: &TestWindow) {
+    test.window
+        .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+    test.wait_for_page("workspace");
+}
+
 fn stored_level(test: &TestWindow) -> Option<tablepro_core::SafeModeLevel> {
     match test.services.storage.connections().snapshot().state {
         tablepro_storage::ConnectionListState::Ready(list) => list

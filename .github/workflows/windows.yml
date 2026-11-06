@@ -106,7 +106,7 @@ jobs:
         run: |
           . windows/ci/desktop.ps1
           Clear-FirstLogon
-          Start-WslWatch "$env:GITHUB_WORKSPACE/windows/tests/TablePro.App.UITests/TestResults/wsl-watch.log"
+          Block-Wsl
           Set-Display 1920 1080
           Set-DragFullWindows
       # A native crash can end the app before its managed exception handler writes crash.log.

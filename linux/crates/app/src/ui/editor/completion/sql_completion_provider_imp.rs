@@ -54,11 +54,16 @@ impl CompletionProviderImpl for SqlCompletionProvider {
         let provider = self.obj().clone();
         let context = context.clone();
         Box::pin(async move {
-            let (Some(buffer), Some((begin, _))) = (context.buffer(), context.bounds()) else {
+            // sourceview5 polls this on a later turn of the main loop, and the context holds its view
+            // weakly, so the view can be gone by now.
+            let Some(view) = context.view() else {
+                return Ok(provider.empty());
+            };
+            let Some((begin, _)) = context.bounds() else {
                 return Ok(provider.empty());
             };
             let word = context.word();
-            Ok(provider.proposals(buffer.upcast_ref(), begin.offset(), &word).await)
+            Ok(provider.proposals(&view.buffer(), begin.offset(), &word).await)
         })
     }
 
