@@ -1569,6 +1569,7 @@ fn the_socket_switch_trades_the_host_for_the_socket_and_back() {
     let harness = dialog();
     select(&harness.dialog, "mysql");
     fill_network(&harness.dialog);
+    select_mode(&harness.dialog, TlsMode::Require);
     let imp = harness.dialog.imp();
     assert!(imp.socket_row.is_visible());
     assert!(imp.tls_section.is_visible() && imp.ssh_section.is_visible());
@@ -1593,7 +1594,7 @@ fn the_socket_switch_trades_the_host_for_the_socket_and_back() {
     assert!(imp.port_row.is_visible() && imp.tls_section.is_visible() && imp.ssh_section.is_visible());
     assert_eq!(
         imp.tls_section.form_state().mode,
-        TlsMode::VerifyFull,
+        TlsMode::Require,
         "the network's TLS came back"
     );
 }
@@ -1614,9 +1615,10 @@ fn a_path_typed_as_the_host_is_a_socket_folder() {
     imp.host_row.set_text("db.example.com");
     assert_eq!(
         imp.tls_section.form_state().mode,
-        TlsMode::VerifyFull,
+        TlsMode::Prefer,
         "a host typed over the socket kept the socket's TLS off"
     );
+    select_mode(&harness.dialog, TlsMode::VerifyFull);
     imp.host_row.set_text("/var/run/postgresql");
 
     select(&harness.dialog, "mongodb");

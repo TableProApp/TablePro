@@ -2219,76 +2219,82 @@ mod tests {
         drop(window);
     }
 
-    #[gtk4::test]
-    #[ignore = "requires a tablepro-cloud stack"]
-    fn the_page_signs_in_through_the_browser_shows_the_account_and_signs_out() {
-        let read =
-            |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("{name} is not set; see linux/docs/testing.md"));
-        let email = format!(
-            "linux-page-{}@{}",
-            &uuid::Uuid::new_v4().simple().to_string()[..8],
-            read("TABLEPRO_CLOUD_EMAIL_DOMAIN")
-        );
-        let harness = Harness::new(None);
-        let endpoints = Endpoints::new(&read("TABLEPRO_CLOUD_ACCOUNT_URL"), &read("TABLEPRO_CLOUD_API_URL"))
-            .expect("the endpoints");
-        let keys =
-            tablepro_account::EntitlementKeys::from_public_keys([read("TABLEPRO_CLOUD_ENTITLEMENT_KEY").as_str()])
-                .expect("the stack's key");
-        let machine = MachineId::derive(&format!("{}\n", uuid::Uuid::new_v4().simple())).expect("a machine ID");
-        let browser = Arc::new(StackBrowser {
-            email: email.clone(),
-            profile: tempfile::tempdir().expect("a browser profile"),
-        });
-        harness.ready_with(endpoints, keys, machine, browser);
-        let collector = crate::test_support::PostHogCollector::start();
-        harness.share_usage_data(&collector);
-        let window = OwnedWindow::presented(adw::Window::builder().default_width(900).default_height(900).build());
-        window.set_content(Some(&harness.page));
-        let shows = |title: &str| {
-            harness.settle();
-            descendants(&harness.page)
-                .into_iter()
-                .filter_map(|widget| widget.downcast::<adw::ActionRow>().ok())
-                .any(|row| row.title() == title)
-        };
+    // nextest leaves `::cloud_stack::` out of every run: CI cannot reach the private backend.
+    mod cloud_stack {
+        use super::*;
 
-        harness.button(&harness.page, "Sign In…").emit_clicked();
-        wait_until(Duration::from_secs(120), || shows("Starter") && shows("Ada's laptop"))
-            .expect("signed in, with the plan and this computer");
+        #[gtk4::test]
+        #[ignore = "requires a tablepro-cloud stack"]
+        fn the_page_signs_in_through_the_browser_shows_the_account_and_signs_out() {
+            let read = |name: &str| {
+                std::env::var(name).unwrap_or_else(|_| panic!("{name} is not set; see linux/docs/testing.md"))
+            };
+            let email = format!(
+                "linux-page-{}@{}",
+                &uuid::Uuid::new_v4().simple().to_string()[..8],
+                read("TABLEPRO_CLOUD_EMAIL_DOMAIN")
+            );
+            let harness = Harness::new(None);
+            let endpoints = Endpoints::new(&read("TABLEPRO_CLOUD_ACCOUNT_URL"), &read("TABLEPRO_CLOUD_API_URL"))
+                .expect("the endpoints");
+            let keys =
+                tablepro_account::EntitlementKeys::from_public_keys([read("TABLEPRO_CLOUD_ENTITLEMENT_KEY").as_str()])
+                    .expect("the stack's key");
+            let machine = MachineId::derive(&format!("{}\n", uuid::Uuid::new_v4().simple())).expect("a machine ID");
+            let browser = Arc::new(StackBrowser {
+                email: email.clone(),
+                profile: tempfile::tempdir().expect("a browser profile"),
+            });
+            harness.ready_with(endpoints, keys, machine, browser);
+            let collector = crate::test_support::PostHogCollector::start();
+            harness.share_usage_data(&collector);
+            let window = OwnedWindow::presented(adw::Window::builder().default_width(900).default_height(900).build());
+            window.set_content(Some(&harness.page));
+            let shows = |title: &str| {
+                harness.settle();
+                descendants(&harness.page)
+                    .into_iter()
+                    .filter_map(|widget| widget.downcast::<adw::ActionRow>().ok())
+                    .any(|row| row.title() == title)
+            };
 
-        let imp = harness.page.imp();
-        assert_eq!(harness.titles(&imp.account_group), [email.as_str(), "Manage Account"]);
-        assert!(
-            harness
-                .row("Ada's laptop")
-                .subtitle()
-                .is_some_and(|text| text.starts_with("This computer"))
-        );
-        // An admin's grant, as the browser step writes it: no cycle and no Billing….
-        assert_eq!(harness.row("Starter").subtitle().as_deref(), Some("Personal · Active"));
-        assert!(
-            descendants(&harness.row("Starter"))
-                .iter()
-                .all(|widget| !widget.is::<gtk4::Button>())
-        );
-        assert!(
-            harness
-                .titles(&imp.offline_group)
-                .iter()
-                .any(|title| title.starts_with("Verified"))
-        );
+            harness.button(&harness.page, "Sign In…").emit_clicked();
+            wait_until(Duration::from_secs(120), || shows("Starter") && shows("Ada's laptop"))
+                .expect("signed in, with the plan and this computer");
 
-        harness.button(&imp.account_group.get(), "Sign Out").emit_clicked();
-        wait_until(WAIT, || shows("Sign In to TablePro")).expect("signed out");
-        wait_until(WAIT, || !collector.named("signed_out").is_empty()).expect("the sign-out sent");
-        let identify = collector.named("$identify");
-        assert_eq!(identify.len(), 1);
-        let account = identify[0]["distinct_id"].as_str().unwrap_or_default().to_owned();
-        assert!(account.starts_with("acct_"), "{account}");
-        assert_eq!(collector.named("signed_in")[0]["distinct_id"], account.as_str());
-        assert_eq!(collector.named("signed_in")[0]["properties"]["method"], "interactive");
-        assert_eq!(collector.named("signed_out")[0]["distinct_id"], account.as_str());
-        drop(window);
+            let imp = harness.page.imp();
+            assert_eq!(harness.titles(&imp.account_group), [email.as_str(), "Manage Account"]);
+            assert!(
+                harness
+                    .row("Ada's laptop")
+                    .subtitle()
+                    .is_some_and(|text| text.starts_with("This computer"))
+            );
+            // An admin's grant, as the browser step writes it: no cycle and no Billing….
+            assert_eq!(harness.row("Starter").subtitle().as_deref(), Some("Personal · Active"));
+            assert!(
+                descendants(&harness.row("Starter"))
+                    .iter()
+                    .all(|widget| !widget.is::<gtk4::Button>())
+            );
+            assert!(
+                harness
+                    .titles(&imp.offline_group)
+                    .iter()
+                    .any(|title| title.starts_with("Verified"))
+            );
+
+            harness.button(&imp.account_group.get(), "Sign Out").emit_clicked();
+            wait_until(WAIT, || shows("Sign In to TablePro")).expect("signed out");
+            wait_until(WAIT, || !collector.named("signed_out").is_empty()).expect("the sign-out sent");
+            let identify = collector.named("$identify");
+            assert_eq!(identify.len(), 1);
+            let account = identify[0]["distinct_id"].as_str().unwrap_or_default().to_owned();
+            assert!(account.starts_with("acct_"), "{account}");
+            assert_eq!(collector.named("signed_in")[0]["distinct_id"], account.as_str());
+            assert_eq!(collector.named("signed_in")[0]["properties"]["method"], "interactive");
+            assert_eq!(collector.named("signed_out")[0]["distinct_id"], account.as_str());
+            drop(window);
+        }
     }
 }
