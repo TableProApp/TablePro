@@ -28,6 +28,12 @@ TablePro supports the server releases their vendors still support. CI runs each 
 - MySQL 8.0 reached end of life on 2026-04-30, but Amazon RDS keeps 8.0 instances under paid Extended Support until 2029-07-31, so it stays tested.
 - MariaDB 11.8, PostgreSQL 16 and Cassandra 4.1 are supported between the tested releases, which bound them.
 
+Redshift, CockroachDB, TiDB, OceanBase and Databend are untested on Linux. PostgreSQL or MySQL protocol compatibility, or importing a connection from another app, does not establish support. Add a product here only after connect, catalog, read and write tests against that product pass on Linux.
+
+## Known limits
+
+The [Linux connection guide, Limits](https://docs.tablepro.app/linux/connect#limits) covers read-only cell types and entering time and timestamp values. The supported-server table above lists deployment limits, including Redis Cluster and Sentinel.
+
 ## Install
 
 TablePro runs on amd64 and arm64. A release such as 0.1.0 goes to the stable repositories and a beta such as 0.1.0-beta.1 to the beta ones, and both go to [GitHub Releases](https://github.com/TableProApp/TablePro/releases), a beta as a pre-release. Until 0.1.0 is out, only betas have packages.
@@ -237,9 +243,8 @@ flatpak-builder --user --install-deps-from=flathub --install --force-clean \
 flatpak run app.tablepro.TablePro.Devel
 ```
 
-Lint the manifest with Flathub's linter. Its two expected findings are
-listed in `build-aux/flatpak/lint-exceptions.json`, and the file only
-counts when `--exceptions` is passed too:
+Lint the manifest with Flathub's linter. The local exceptions file keeps
+older linter versions usable; it does not grant Flathub permission approval:
 
 ```bash
 flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
@@ -251,7 +256,8 @@ The sandbox gets the network, the display, the home folder and the mount
 points of removable drives, the SSH agent and the Kerberos KCM socket. The
 Secret Service, file choosers, notifications and links go through portals.
 [ADR 0008](docs/decisions/0008-flatpak-sandbox-permissions.md) gives the
-reason for each grant.
+reason for each grant. [ADR 0041, Context](docs/decisions/0041-beta-repositories-and-release-packages.md#context)
+records the later change from lint exceptions to permission review.
 
 `build-aux/flatpak/app.tablepro.TablePro.json` builds what a release
 publishes: the release profile under the real app ID, offline from the two
@@ -273,6 +279,9 @@ throwaway key on `127.0.0.1`, install, and update.
 Neither manifest is for Flathub. Flathub's policy refuses manifests and
 submissions written with AI tools, so maintainers write and submit that one
 by hand ([ADR 0041](docs/decisions/0041-beta-repositories-and-release-packages.md)).
+An install from our repository does not move to Flathub on its own. See
+[releasing.md, A future Flathub submission](docs/releasing.md#a-future-flathub-submission)
+for the review and migration checks.
 
 ### Screenshots
 

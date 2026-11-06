@@ -4,7 +4,7 @@ What to check when TablePro for Linux does not behave, and what to send with a b
 
 ## Passwords
 
-TablePro keeps saved passwords in the Secret Service, the desktop keyring that GNOME Keyring, KWallet and KeePassXC provide. It never writes them to a file.
+Native packages keep saved passwords in the Secret Service, the desktop keyring that GNOME Keyring, KWallet and KeePassXC provide. Flatpak uses the Secret portal to unlock an encrypted keyring file inside the sandbox. Neither stores passwords in plain text. For the bundle, start with [Flatpak connections](#flatpak-connections).
 
 ### TablePro asks for the password at every connect
 
@@ -28,6 +28,14 @@ The keyring is locked. The desktop asks to unlock it when TablePro reads a passw
 
 Saved passwords are listed in Seahorse as `TablePro database password for …`, `TablePro SSH password for …` and `TablePro SSH key passphrase for …`.
 
+### MCP and AI keys cannot be saved or loaded
+
+**Preferences > MCP > Enable MCP Server** needs a saved access token. **Preferences > AI** needs the saved API key for a provider that requires one. Entering a database password at each connect does not restore either feature.
+
+- If no keyring service is available, set one up as above. Inside Flatpak, check the [Secret portal](#flatpak-connections). Quit and reopen TablePro after fixing the service.
+- If the keyring is locked, unlock it in the desktop's keyring manager. Retry the setting and accept the unlock prompt. A dismissed prompt does not mean the key was deleted.
+- Retry enabling MCP. If its token changed, copy the new token into each MCP client's settings. For AI, select the provider again and save its API key if it was not stored. Quit and reopen TablePro to check that it was kept.
+
 ## TablePro account
 
 Preferences > Account signs in to a TablePro account, which lists your plan, devices and teams. The paid features it names are in TablePro for macOS for now; everything in TablePro for Linux works without an account.
@@ -45,7 +53,7 @@ The PPA and COPR packages share usage data by default, as TablePro for macOS doe
 
 ## SSH tunnels
 
-TablePro runs the system `ssh` and reads `~/.ssh/config`, `~/.ssh/known_hosts` and the SSH agent the same way a terminal does. When a tunnel fails, try the same hop in a terminal first:
+Native packages run the system `ssh` and read `~/.ssh/config`, `~/.ssh/known_hosts` and the SSH agent the same way a terminal does. The bundle has [Flatpak connection limits](#flatpak-connections). When a native tunnel fails, try the same hop in a terminal first:
 
 ```sh
 ssh -v -J jump.example.com user@bastion.example.com true
@@ -58,7 +66,7 @@ ssh -v -J jump.example.com user@bastion.example.com true
 
 ## SQL Server with Kerberos
 
-Windows (Kerberos) sign-in uses the ticket `klist` shows, so get one first. `kinit` and `klist` come in `krb5-user` on Ubuntu and `krb5-workstation` on Fedora.
+For native packages, Windows (Kerberos) sign-in uses the ticket `klist` shows, so get one first. `kinit` and `klist` come in `krb5-user` on Ubuntu and `krb5-workstation` on Fedora. For the bundle, see [Flatpak connections](#flatpak-connections).
 
 ```sh
 kinit you@EXAMPLE.COM
@@ -67,6 +75,17 @@ klist
 
 - **`KRB5KDC_ERR_S_PRINCIPAL_UNKNOWN`**: the server's service principal, `MSSQLSvc/<host>:<port>`, is built from the host and port you typed, and looked up in the default realm only (`default_realm` in `/etc/krb5.conf`). Type the host name the SPN is registered for, not an IP address or a CNAME. A server in another realm works only when your KDC answers with a referral, as Active Directory does inside a forest.
 - **No ticket, or an expired one**: run `kinit` again, then Retry.
+
+## Flatpak connections
+
+The bundle uses the runtime's tools and configuration. A working host connection may need changes:
+
+- **Secret portal**: install the distribution's `xdg-desktop-portal` and the backend for your desktop. Check that the session provides `org.freedesktop.portal.Secret`; having the FileChooser portal alone is not enough. Unlock the desktop keyring, accept its prompt and retry. If a portal is missing, repair the desktop's portal packages and log out and in before reopening TablePro. See [ADR 0004, Consequences](decisions/0004-libsecret-secret-storage.md#consequences) for secret storage.
+- **Kerberos**: the bundle selects `/app/etc/krb5.conf`, with DNS realm and KDC lookup and the host's KCM cache. It cannot use the host's `/etc/krb5.conf` or a ticket stored only in a file. With KCM configured on the host, obtain and check a ticket there with `kinit -c KCM: you@EXAMPLE.COM` and `klist -c KCM:`. Ask the domain administrator about DNS or realm setup if that fails.
+- **SSH**: `~/.ssh/config`, keys and `known_hosts` are available, but the host's `/etc/ssh` is not. `ProxyCommand` and `Match exec` cannot run host-only helpers. Use a setup the runtime supports, or a native package. A FIDO key file cannot sign inside the sandbox; load the key into the host SSH agent and choose **SSH agent**.
+- **Private CA**: a CA installed only on the host may be absent from the runtime's trust store. Choose its PEM file in **CA certificate** and keep **Verify full**.
+
+[ADR 0008, Rationale](decisions/0008-flatpak-sandbox-permissions.md#rationale) explains these grants. [ADR 0035](decisions/0035-flatpak-local-database-sockets.md) covers local PostgreSQL and MySQL sockets.
 
 ## Logs
 
@@ -82,17 +101,24 @@ For a more detailed log, quit TablePro (a second launch hands over to the runnin
 RUST_LOG=debug tablepro 2> tablepro.log
 ```
 
-Read the log before you attach it. It names your hosts, databases and tables. It never holds passwords.
+Read and redact the log before you attach it. It names your hosts, databases and tables. Error messages can also contain SQL, values or paths.
 
 ## Crash reports
 
-When TablePro stops on an error of its own, it writes a report to `~/.local/state/tablepro/crashes/`. Attach the newest one to the bug report, with the log from the same time.
+TablePro writes a text report for a Rust panic on its main GTK thread, if it can write to the [crash folder](#where-tablepro-keeps-its-files). Worker-thread panics, segmentation faults, native aborts and out-of-memory kills do not produce that report.
 
-A crash in a system library leaves no report there. On a system with systemd-coredump, list it with:
+Read the newest report before attaching it with the log from the same time. Its panic message is copied verbatim and may contain SQL, values, paths or other private data. Redact those details from the copy you share.
+
+For a native crash on a system with systemd-coredump, list captured crashes, then inspect the matching PID from that list:
 
 ```sh
 coredumpctl list tablepro
+coredumpctl info <PID>
 ```
+
+Send redacted metadata first, including the time, signal and app version. A raw core dump contains process memory and may hold passwords and query results. Do not attach one publicly. If a maintainer needs it, email hello@tablepro.app to arrange private transfer first.
+
+If no core was captured, include the [journal log](#logs) from the same time. On distributions without systemd-coredump, use their crash reporter, such as Ubuntu's Apport, or system logs. Say when neither captured the failure; a missing dump is not proof that the app did not crash. [coredumpctl's manual](https://www.freedesktop.org/software/systemd/man/261/coredumpctl.html) explains its stored-core states.
 
 The Flatpak's line tables, which turn a backtrace's addresses into files and lines, are its `.Debug` extension, from the repository it came from: `flatpak install tablepro app.tablepro.TablePro.Debug//stable`, or `tablepro-beta` and `//beta` for the beta. With flatpak-builder and the GNOME 51 SDK installed, `flatpak-coredumpctl app.tablepro.TablePro` then opens a crash's core dump in gdb with them.
 

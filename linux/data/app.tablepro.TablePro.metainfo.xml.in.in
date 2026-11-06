@@ -29,7 +29,7 @@
   <url type="homepage">https://tablepro.app</url>
   <url type="bugtracker">https://github.com/TableProApp/TablePro/issues</url>
   <url type="vcs-browser">https://github.com/TableProApp/TablePro</url>
-  <url type="help">https://docs.tablepro.app</url>
+  <url type="help">https://docs.tablepro.app/linux/install</url>
   <url type="translate">https://github.com/TableProApp/TablePro/blob/linux-v@version@/linux/po/README.md</url>
   <url type="contribute">https://github.com/TableProApp/TablePro/blob/linux-v@version@/linux/CONTRIBUTING.md</url>
   <translation type="gettext">@gettext-package@</translation>
