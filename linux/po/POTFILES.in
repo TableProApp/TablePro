@@ -134,6 +134,7 @@ crates/app/src/services/tracker_delta.rs
 crates/app/src/services/tracker_edit.rs
 crates/app/src/services/undo_op.rs
 crates/app/src/storage.rs
+crates/app/src/test_support/accept_loop.rs
 crates/app/src/test_support/access_keys.rs
 crates/app/src/test_support/accessible_label.rs
 crates/app/src/test_support/account_fakes.rs

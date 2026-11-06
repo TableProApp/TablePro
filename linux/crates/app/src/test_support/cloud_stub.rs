@@ -2,28 +2,32 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 
+use super::accept_loop::AcceptLoop;
+
 type Answer = dyn Fn(&str, &str) -> (u16, String) + Send + Sync;
 
 // Stands in for tablepro-cloud: `answer` gives the status and JSON body for a method and path.
 pub(crate) struct CloudStub {
     pub(crate) url: String,
     requests: Arc<Mutex<Vec<String>>>,
+    _accepting: AcceptLoop,
 }
 
 impl CloudStub {
     pub(crate) fn start(answer: impl Fn(&str, &str) -> (u16, String) + Send + Sync + 'static) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").expect("a free port");
-        let url = format!("http://{}", listener.local_addr().expect("its address"));
         let requests = Arc::new(Mutex::new(Vec::new()));
         let kept = requests.clone();
         let answer: Arc<Answer> = Arc::new(answer);
-        std::thread::spawn(move || {
-            for stream in listener.incoming().flatten() {
-                let (kept, answer) = (kept.clone(), answer.clone());
-                std::thread::spawn(move || serve(stream, &kept, &*answer));
-            }
+        let accepting = AcceptLoop::start(listener, move |stream| {
+            let (kept, answer) = (kept.clone(), answer.clone());
+            std::thread::spawn(move || serve(stream, &kept, &*answer));
         });
-        Self { url, requests }
+        Self {
+            url: accepting.url(),
+            requests,
+            _accepting: accepting,
+        }
     }
 
     // "METHOD /path" for each request, in the order they came.

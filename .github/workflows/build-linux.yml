@@ -221,7 +221,10 @@ jobs:
       - name: Build
         run: meson compile -C _build
       - name: Tests
-        run: xvfb-run -a dbus-run-session -- meson test -C _build --print-errorlogs
+        # The package builds run the tests under a soft limit of 1024 open files, and the gtk suite is one process.
+        run: |
+          ulimit -Sn 1024
+          xvfb-run -a dbus-run-session -- meson test -C _build --print-errorlogs
       # Meson prints only the last 100 lines of a failed suite, which leaves
       # out the names of the tests that failed.
       - name: Keep the Meson test log
