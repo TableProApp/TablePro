@@ -11,7 +11,11 @@ Driver id `postgres`, crate `core/crates/drivers/postgres`. It runs on tokio-pos
 | One connection per editor tab | `EditorSession` | When the tab first runs SQL |
 | One stream per stop | The cancel request | For that request |
 
-Every connection logs in with `Config::connect_raw` over a stream from the transport, so a direct route and an SSH forward behave the same. The startup message carries the user, the database and `application_name = TablePro`, plus the `client_encoding = UTF8` that tokio-postgres always adds. The password goes in the authentication exchange, with channel binding set to prefer. The login runs under the 15 s login timeout. Startup options are never used: a transaction pooler refuses parameters it does not track.
+Every connection logs in with `Config::connect_raw` over a stream from the transport, so a direct route, an SSH forward and a local socket behave the same. The startup message carries the user, the database and `application_name = TablePro`, plus the `client_encoding = UTF8` that tokio-postgres always adds. The password goes in the authentication exchange, with channel binding set to prefer. The login runs under the 15 s login timeout. Startup options are never used: a transaction pooler refuses parameters it does not track.
+
+## Local socket
+
+A host that is an absolute path is the folder of a server on this computer, as libpq reads one: the transport opens `<folder>/.s.PGSQL.<port>` (`NetworkOption::LocalSocket`, Unix only). Peer and trust logins work there, since the server then asks for no password. The server answers an SSLRequest on a socket with `N`, so a socket takes no TLS (`ConfigError::TlsOverLocalSocket`) and no SSH tunnel (`ConfigError::LocalSocketOverSsh`). The connect dialog starts on the first of `/run/postgresql`, `/var/run/postgresql` and `/tmp` that holds the port's socket.
 
 ## TLS
 

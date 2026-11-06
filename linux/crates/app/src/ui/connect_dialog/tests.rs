@@ -1408,3 +1408,211 @@ fn connect_waits_while_a_tag_made_from_the_dialog_is_written() {
     harness.dialog.refresh();
     assert!(imp.connect_button.is_sensitive());
 }
+
+fn paste_url(dialog: &ConnectDialog, url: &str) {
+    let row = &dialog.imp().url_row;
+    row.set_text(url);
+    row.emit_by_name::<()>("apply", &[]);
+}
+
+#[gtk4::test]
+fn a_pasted_url_fills_the_form_and_leaves_no_password_in_its_row() {
+    let harness = dialog();
+    let imp = harness.dialog.imp();
+    imp.name_row.set_text("Billing");
+
+    paste_url(
+        &harness.dialog,
+        "mysql://ada:p%40ss@db.example.com:3307/shop?ssl-mode=REQUIRED",
+    );
+
+    let form = harness.dialog.form();
+    assert_eq!(form.driver_id, "mysql");
+    assert_eq!((form.host.as_str(), form.port), ("db.example.com", 3307));
+    assert_eq!((form.database.as_str(), form.username.as_str()), ("shop", "ada"));
+    assert_eq!(imp.password_row.text(), "p@ss");
+    assert_eq!(form.tls.mode, TlsMode::Require);
+    assert_eq!(form.name, "Billing", "the URL replaced a name it does not carry");
+    assert_eq!(imp.url_row.text(), "", "the URL, password and all, stayed in its row");
+    assert!(!imp.url_row.has_css_class("error"));
+    assert!(imp.connect_button.is_sensitive());
+}
+
+#[gtk4::test]
+fn a_url_the_parser_refuses_marks_its_row_and_says_why_without_echoing_it() {
+    let harness = dialog();
+    let imp = harness.dialog.imp();
+
+    paste_url(&harness.dialog, "ftp://ada:hunter2@example.com");
+
+    assert!(imp.url_row.has_css_class("error"));
+    assert!(gtk4::test_accessible_has_state(
+        imp.url_row.upcast_ref::<gtk4::Widget>(),
+        AccessibleState::Invalid
+    ));
+    let toasts = imp.toasts.borrow().clone();
+    assert_eq!(toasts, ["No driver opens ftp URLs."]);
+    assert!(!toasts[0].contains("hunter2"));
+    assert_eq!(
+        harness.dialog.form().driver_id,
+        "postgres",
+        "a refused URL changed the driver"
+    );
+
+    imp.url_row.set_text("postgresql://db.example.com/shop");
+    assert!(
+        !imp.url_row.has_css_class("error"),
+        "the mark outlived the text it was for"
+    );
+}
+
+#[gtk4::test]
+fn a_url_says_which_of_its_parameters_it_did_not_use() {
+    let harness = dialog();
+
+    paste_url(
+        &harness.dialog,
+        "postgresql://ada@db.example.com/shop?schema=reporting&connect_timeout=5",
+    );
+
+    assert_eq!(harness.dialog.form().host, "db.example.com");
+    assert_eq!(
+        harness.dialog.imp().toasts.borrow().as_slice(),
+        ["Not used from the URL: schema"]
+    );
+}
+
+#[gtk4::test]
+fn the_url_row_is_offered_only_for_a_new_connection() {
+    let harness = dialog();
+    assert!(harness.dialog.imp().url_group.is_visible());
+    assert!(
+        !harness.dialog.imp().url_row.activates_default(),
+        "Enter would connect instead of reading the URL"
+    );
+
+    let saved = shop();
+    let editing = open(Options {
+        saved: vec![saved.clone()],
+        mode: ConnectDialogMode::Edit(Box::new(saved)),
+        ..Options::default()
+    });
+    assert!(!editing.dialog.imp().url_group.is_visible());
+}
+
+#[gtk4::test]
+fn a_mongodb_url_with_several_hosts_fills_the_replica_set_rows() {
+    let harness = dialog();
+    let imp = harness.dialog.imp();
+
+    paste_url(
+        &harness.dialog,
+        "mongodb://ada:pw@mongo1.example.com:27017,mongo2.example.com:27018/shop?replicaSet=rs0&authSource=admin",
+    );
+
+    assert_eq!(harness.dialog.form().driver_id, "mongodb");
+    assert_eq!(imp.host_row.text(), "mongo1.example.com");
+    assert_eq!(imp.more_hosts_row.text(), "mongo2.example.com:27018");
+    assert_eq!(imp.replica_set_row.text(), "rs0");
+    assert_eq!(imp.auth_database_row.text(), "admin");
+    assert!(imp.more_hosts_row.is_visible() && imp.replica_set_row.is_visible());
+    let options = harness.dialog.form().offered_options(caps_of("mongodb"));
+    assert_eq!(options.more_hosts, ["mongo2.example.com:27018"]);
+    assert!(imp.connect_button.is_sensitive());
+
+    imp.seed_list_row.set_active(true);
+    assert!(!imp.more_hosts_row.is_visible(), "a seed list names the hosts itself");
+}
+
+#[gtk4::test]
+fn the_socket_switch_trades_the_host_for_the_socket_and_back() {
+    let harness = dialog();
+    select(&harness.dialog, "mysql");
+    fill_network(&harness.dialog);
+    let imp = harness.dialog.imp();
+    assert!(imp.socket_row.is_visible());
+    assert!(imp.tls_section.is_visible() && imp.ssh_section.is_visible());
+
+    imp.socket_row.set_active(true);
+
+    assert!(imp.host_row.text().starts_with('/'), "{}", imp.host_row.text());
+    assert_eq!(imp.host_row.title(), "Socket File");
+    assert!(!imp.port_row.is_visible(), "a socket file takes no port");
+    assert!(!imp.ssh_section.is_visible());
+    assert!(imp.tls_section.is_visible(), "MySQL speaks TLS over its socket");
+    assert_eq!(imp.tls_section.form_state().mode, TlsMode::Disable);
+    assert!(imp.connect_button.is_sensitive());
+    let form = harness.dialog.form();
+    let valid = form.validate(caps_of("mysql")).expect("a socket connection");
+    assert_eq!(valid.target.transport_class(), Some(TransportClass::LocalSocket));
+
+    imp.socket_row.set_active(false);
+
+    assert_eq!(imp.host_row.text(), "db.example.com");
+    assert_eq!(imp.host_row.title(), "Host");
+    assert!(imp.port_row.is_visible() && imp.tls_section.is_visible() && imp.ssh_section.is_visible());
+    assert_eq!(
+        imp.tls_section.form_state().mode,
+        TlsMode::VerifyFull,
+        "the network's TLS came back"
+    );
+}
+
+#[gtk4::test]
+fn a_path_typed_as_the_host_is_a_socket_folder() {
+    let harness = dialog();
+    fill_network(&harness.dialog);
+    let imp = harness.dialog.imp();
+
+    imp.host_row.set_text("/var/run/postgresql");
+
+    assert!(imp.socket_row.is_active());
+    assert_eq!(imp.host_row.title(), "Socket Folder");
+    assert!(imp.port_row.is_visible(), "the port names the socket in the folder");
+    assert!(!imp.tls_section.is_visible(), "PostgreSQL takes no TLS on a socket");
+
+    imp.host_row.set_text("db.example.com");
+    assert_eq!(
+        imp.tls_section.form_state().mode,
+        TlsMode::VerifyFull,
+        "a host typed over the socket kept the socket's TLS off"
+    );
+    imp.host_row.set_text("/var/run/postgresql");
+
+    select(&harness.dialog, "mongodb");
+
+    assert!(!imp.socket_row.is_visible());
+    assert!(!imp.host_row.text().starts_with('/'), "MongoDB was left a socket path");
+    assert_eq!(
+        imp.tls_section.form_state().mode,
+        TlsMode::VerifyFull,
+        "MongoDB kept the socket's TLS off"
+    );
+}
+
+#[gtk4::test]
+fn a_socket_the_url_names_is_kept_and_no_user_is_the_desktop_user() {
+    let harness = dialog();
+    let imp = harness.dialog.imp();
+
+    paste_url(
+        &harness.dialog,
+        "mysql://root@localhost/shop?socket=%2Fsrv%2Fmysql%2Fmy.sock",
+    );
+    crate::test_support::drain_main_context();
+
+    assert_eq!(
+        imp.host_row.text(),
+        "/srv/mysql/my.sock",
+        "a found default replaced the URL's socket"
+    );
+    assert_eq!(imp.username_row.text(), "root");
+    assert!(imp.socket_row.is_active());
+
+    paste_url(&harness.dialog, "postgresql:///shop");
+
+    assert!(imp.host_row.text().starts_with('/'));
+    let user = glib::user_name();
+    assert_eq!(imp.username_row.text(), user.to_string_lossy().as_ref());
+    assert!(imp.connect_button.is_sensitive());
+}

@@ -21,6 +21,8 @@
         "--filesystem=/run/media",
         "--filesystem=/mnt",
         "--filesystem=/run/.heim_org.h5l.kcm-socket",
+        "--filesystem=/run/postgresql:ro",
+        "--filesystem=/run/mysqld:ro",
         "--env=KRB5_CONFIG=/app/etc/krb5.conf"
     ],
     "build-options": {

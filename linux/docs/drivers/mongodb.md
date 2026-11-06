@@ -11,10 +11,11 @@ What the connection names decides how the crate reaches it:
 | Route | What the crate dials | TLS |
 |---|---|---|
 | A host, directly | That one host, with `directConnection`, as mongosh does with one host: a replica set member is used as named, never swapped for the names the set gives its members, which the app may not be able to reach | The crate's, from files the driver writes (below) |
+| Other hosts or a replica set | The host and the other hosts as seeds, with the replica set's name and the set's discovery, as mongosh does with a host list | The crate's |
 | DNS Seed List on | The servers the host's SRV records name, with the options its TXT record sets (`replicaSet`, `authSource`, `loadBalanced`), and the set's discovery | The crate's |
 | SSH | A private socket the driver listens on (`tablepro_net::PrivateListener`: a Unix socket, or on Windows a loopback port that serves only this process); each connection the crate opens there is a new `Transport::open()` stream through the forward, one host, `directConnection` | The driver's, around each stream |
 
-A seed list is a DNS lookup the forward cannot carry, so DNS Seed List over SSH is refused before anything is opened (`ConfigError::SeedListOverSsh`). The session's reachability check does not wait on a seed list's host, which may have no address of its own. The seed list's port is the records' to give, so the connect dialog hides the Port row while DNS Seed List is on.
+A seed list is a DNS lookup the forward cannot carry, so DNS Seed List over SSH is refused before anything is opened (`ConfigError::SeedListOverSsh`). Discovery swaps the seeds for the names the members give themselves, which a forward does not reach, so other hosts or a replica set over SSH are refused too (`ConfigError::HostListOverSsh`). A replica set named with a seed list wins over the one its TXT record gives. The session's reachability check does not wait on a seed list's host, which may have no address of its own, nor on one member of a replica set. The seed list's port is the records' to give, so the connect dialog hides the Port row while DNS Seed List is on.
 
 On Unix the relay socket sits in a private directory under `$XDG_RUNTIME_DIR` (the system temporary directory without one), mode 0700, and is removed with the connection. A stream the forward fails to open closes the crate's connection, and the transport's own error (the SSH master exited, the destination refused) is what the call reports.
 

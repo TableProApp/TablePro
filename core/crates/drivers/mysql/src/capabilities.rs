@@ -3,6 +3,8 @@ use tablepro_core::{
     AuthMode, CommitResolutionSupport, DriverCapabilities, EndpointKind, EstimateQuality, ReadOnlyEnforcement,
     ScriptExecution, ServerNameOverride, StatementStop, TlsCapabilities, TlsMode, WriteAtomicity,
 };
+#[cfg(unix)]
+use tablepro_core::{LocalSocket, NetworkOption};
 
 pub(crate) const DEFAULT_PORT: u16 = 3306;
 
@@ -40,7 +42,18 @@ pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
         ObjectKind::Trigger,
     ],
     database_required: true,
-    network_options: &[],
+    network_options: &[
+        // Where MySQL's and MariaDB's packages put the server's socket: Debian, Ubuntu and Arch, then Fedora and RHEL, then upstream.
+        #[cfg(unix)]
+        NetworkOption::LocalSocket(LocalSocket::File {
+            defaults: &[
+                "/run/mysqld/mysqld.sock",
+                "/var/run/mysqld/mysqld.sock",
+                "/var/lib/mysql/mysql.sock",
+                "/tmp/mysql.sock",
+            ],
+        }),
+    ],
     statement_stop: StatementStop::Server,
 };
 
@@ -65,5 +78,6 @@ mod tests {
         assert_eq!(CAPABILITIES.row_count_estimate, EstimateQuality::Statistics);
         assert_eq!(CAPABILITIES.object_kinds.len(), 6);
         assert!(CAPABILITIES.database_required);
+        assert_eq!(CAPABILITIES.local_socket().is_some(), cfg!(unix));
     }
 }

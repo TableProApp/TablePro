@@ -158,6 +158,11 @@ public sealed class ConnectionDraft
         {
             TlsMode = mode;
         }
+
+        CaFile = url.CaFile ?? CaFile;
+        ClientCertificate = url.ClientCertificate ?? ClientCertificate;
+        ClientKey = url.ClientKey ?? ClientKey;
+        ServerName = url.ServerName ?? ServerName;
     }
 
     public IReadOnlyList<FieldError> Validate()

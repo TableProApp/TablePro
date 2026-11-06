@@ -34,7 +34,11 @@ pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
     row_count_estimate: EstimateQuality::Statistics,
     object_kinds: &[ObjectKind::Table, ObjectKind::View],
     database_required: false,
-    network_options: &[NetworkOption::DnsSeedList, NetworkOption::AuthDatabase],
+    network_options: &[
+        NetworkOption::DnsSeedList,
+        NetworkOption::AuthDatabase,
+        NetworkOption::HostList,
+    ],
     // A stop sends killSessions for the session the call runs on.
     statement_stop: StatementStop::Server,
 };
@@ -58,6 +62,7 @@ mod tests {
         assert_eq!(CAPABILITIES.script_execution, ScriptExecution::SingleStatement);
         assert!(CAPABILITIES.offers(NetworkOption::DnsSeedList));
         assert!(CAPABILITIES.offers(NetworkOption::AuthDatabase));
+        assert!(CAPABILITIES.offers(NetworkOption::HostList));
         assert!(!CAPABILITIES.database_required);
     }
 }

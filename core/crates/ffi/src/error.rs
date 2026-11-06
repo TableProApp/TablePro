@@ -189,8 +189,10 @@ fn driver_codes(error: &DriverError, codes: &mut Vec<String>) {
     match error {
         DriverError::Transport(transport) => {
             codes.push(transport.code().to_owned());
-            if let TransportError::Ssh(failure) = transport {
-                codes.push(failure.code().to_owned());
+            match transport {
+                TransportError::Ssh(failure) => codes.push(failure.code().to_owned()),
+                TransportError::LocalSocket { problem, .. } => codes.push(problem.code().to_owned()),
+                _ => {}
             }
         }
         DriverError::Config(config) => codes.push(config.code().to_owned()),

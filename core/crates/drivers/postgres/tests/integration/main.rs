@@ -18,6 +18,8 @@ mod filter;
 mod flight;
 mod identity_insert;
 mod liveness;
+#[cfg(unix)]
+mod local_socket;
 mod metadata;
 mod paging;
 mod pgbouncer;

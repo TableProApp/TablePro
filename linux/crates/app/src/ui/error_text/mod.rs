@@ -6,6 +6,7 @@
 //! variant only adds detail.
 
 mod account;
+mod connection_url;
 mod ddl;
 mod driver;
 mod edit;
@@ -26,6 +27,7 @@ mod transfer;
 mod unsupported;
 
 pub use account::{account_error_message, offline_file_message};
+pub use connection_url::connection_url_message;
 pub use ddl::{build_error_text, refusal_text, save_blocker_text};
 pub use driver::{config_message, driver_message};
 pub use edit::{edit_parse_message, row_error_message};

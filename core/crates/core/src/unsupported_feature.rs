@@ -63,6 +63,8 @@ pub enum UnsupportedFeature {
     EditorCommand {
         command: &'static str,
     },
+    // A login whose account uses a client plugin the driver does not speak, such as MariaDB's ed25519.
+    AuthPlugin,
     /// A whole database written as one SQL file.
     SqlDump,
 }
@@ -97,6 +99,7 @@ impl fmt::Display for UnsupportedFeature {
             Self::ClrRoutine => f.write_str("the SQL of a CLR routine"),
             Self::EncryptedDefinition => f.write_str("the SQL of an encrypted module"),
             Self::EditorCommand { command } => write!(f, "{command} in the editor"),
+            Self::AuthPlugin => f.write_str("this account's authentication plugin"),
             Self::SqlDump => f.write_str("a SQL dump"),
         }
     }

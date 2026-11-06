@@ -379,6 +379,7 @@ crates/app/src/ui/editor/transaction_dirty.rs
 crates/app/src/ui/editor/vim_mode.rs
 crates/app/src/ui/editor_font_provider.rs
 crates/app/src/ui/error_text/account.rs
+crates/app/src/ui/error_text/connection_url.rs
 crates/app/src/ui/error_text/ddl.rs
 crates/app/src/ui/error_text/driver.rs
 crates/app/src/ui/error_text/edit.rs

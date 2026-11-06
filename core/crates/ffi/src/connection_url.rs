@@ -1,5 +1,8 @@
-use percent_encoding::percent_decode_str;
-use url::Url;
+use std::path::Path;
+
+use secrecy::ExposeSecret;
+use tablepro_core::connection_url::{self, ConnectionUrl};
+use tablepro_core::{TlsMode, is_local_socket_host};
 
 use crate::error::CoreError;
 use crate::library::TlsModeTag;
@@ -14,109 +17,69 @@ pub struct ParsedConnectionUrl {
     // The database name, or for a file engine the file's path.
     pub database: String,
     pub tls_mode: Option<TlsModeTag>,
+    pub ca_file: Option<String>,
+    pub client_certificate: Option<String>,
+    pub client_key: Option<String>,
+    pub server_name: Option<String>,
 }
 
 #[uniffi::export]
 pub fn parse_connection_url(url: String) -> Result<ParsedConnectionUrl, CoreError> {
-    let trimmed = url.trim();
-    let parsed = Url::parse(trimmed).map_err(|error| CoreError::failed("url.invalid", error.to_string()))?;
-    let scheme = parsed.scheme().to_ascii_lowercase();
-    let Some(driver_id) = driver_for(&scheme) else {
+    let parsed = connection_url::parse(&url).map_err(|error| CoreError::failed(error.code(), error.to_string()))?;
+    if let Some(setting) = unkept_setting(&parsed) {
         return Err(CoreError::failed(
-            "url.unknown_scheme",
-            format!("no engine reads {scheme} URLs"),
+            "url.settings_unsupported",
+            format!("a saved connection here cannot keep {setting}"),
         ));
-    };
-    if matches!(driver_id, "sqlite" | "duckdb") {
-        return Ok(ParsedConnectionUrl {
-            driver_id: driver_id.to_owned(),
-            host: String::new(),
-            port: None,
-            username: String::new(),
-            password: None,
-            database: file_path(&parsed),
-            tls_mode: None,
-        });
     }
-    let host = parsed
-        .host_str()
-        .map(|host| host.trim_start_matches('[').trim_end_matches(']').to_owned())
-        .filter(|host| !host.is_empty())
-        .ok_or_else(|| CoreError::failed("url.no_host", "the URL names no host"))?;
-    let database = decoded(parsed.path().trim_start_matches('/'));
+    let tls = &parsed.tls;
+    let path = |path: Option<&Path>| path.map(|path| path.display().to_string());
     Ok(ParsedConnectionUrl {
-        driver_id: driver_id.to_owned(),
-        host,
-        port: parsed.port(),
-        username: decoded(parsed.username()),
-        password: parsed.password().map(decoded),
-        database,
-        tls_mode: tls_mode(&scheme, &parsed),
+        driver_id: parsed.driver_id.to_owned(),
+        tls_mode: tls.mode.map(|mode| match mode {
+            TlsMode::Disable => TlsModeTag::Disable,
+            TlsMode::Require => TlsModeTag::Require,
+            TlsMode::VerifyFull => TlsModeTag::VerifyFull,
+            TlsMode::Strict => TlsModeTag::Strict,
+        }),
+        ca_file: path(tls.ca_file.as_deref()),
+        client_certificate: path(tls.client_certificate.as_deref()),
+        client_key: path(tls.client_key.as_deref()),
+        server_name: tls.server_name.clone(),
+        host: parsed.host,
+        port: parsed.port,
+        username: parsed.username,
+        password: parsed.password.map(|secret| secret.expose_secret().to_owned()),
+        database: parsed.database,
     })
 }
 
-fn driver_for(scheme: &str) -> Option<&'static str> {
-    Some(match scheme {
-        "postgres" | "postgresql" => "postgres",
-        "mysql" | "mariadb" => "mysql",
-        "sqlserver" | "mssql" => "mssql",
-        "mongodb" | "mongodb+srv" => "mongodb",
-        "redis" | "rediss" => "redis",
-        "clickhouse" => "clickhouse",
-        "cassandra" => "cassandra",
-        "sqlite" | "sqlite3" => "sqlite",
-        "duckdb" => "duckdb",
-        _ => return None,
-    })
-}
-
-fn decoded(text: &str) -> String {
-    percent_decode_str(text).decode_utf8_lossy().into_owned()
-}
-
-// `sqlite:///C:/data/app.db` keeps the drive letter, and `sqlite://app.db` reads as a relative name.
-fn file_path(parsed: &Url) -> String {
-    let path = decoded(parsed.path());
-    let host = parsed.host_str().unwrap_or_default();
-    if !host.is_empty() {
-        return format!("{host}{path}");
+// What the host's connection record has no field for: refused rather than dropped, since the connection would fail without it.
+fn unkept_setting(parsed: &ConnectionUrl) -> Option<&'static str> {
+    let network = !matches!(parsed.driver_id, "sqlite" | "duckdb");
+    if network && (parsed.host.is_empty() || is_local_socket_host(&parsed.host)) {
+        return Some("a local socket");
     }
-    let bytes = path.as_bytes();
-    if bytes.len() >= 3 && bytes[0] == b'/' && bytes[1].is_ascii_alphabetic() && bytes[2] == b':' {
-        return path[1..].to_owned();
+    if parsed.options.dns_seed_list {
+        return Some("a DNS seed list");
     }
-    path
-}
-
-fn tls_mode(scheme: &str, parsed: &Url) -> Option<TlsModeTag> {
-    if scheme == "rediss" {
-        return Some(TlsModeTag::VerifyFull);
+    if parsed.options.uses_host_list() {
+        return Some("a replica set");
     }
-    let mut mode = None;
-    for (key, value) in parsed.query_pairs() {
-        let value = value.to_ascii_lowercase();
-        match key.to_ascii_lowercase().as_str() {
-            "sslmode" | "ssl-mode" => {
-                mode = match value.as_str() {
-                    "disable" | "disabled" | "allow" | "prefer" | "preferred" => Some(TlsModeTag::Disable),
-                    "require" | "required" => Some(TlsModeTag::Require),
-                    "verify-ca" | "verify-full" | "verify_ca" | "verify_identity" => Some(TlsModeTag::VerifyFull),
-                    _ => mode,
-                };
-            }
-            "ssl" | "tls" | "encrypt" => {
-                mode = match value.as_str() {
-                    // SQL Server's Encrypt=strict, TDS 8.0.
-                    "strict" if key.eq_ignore_ascii_case("encrypt") => Some(TlsModeTag::Strict),
-                    "true" | "1" | "yes" | "strict" => Some(TlsModeTag::VerifyFull),
-                    "false" | "0" | "no" => Some(TlsModeTag::Disable),
-                    _ => mode,
-                };
-            }
-            _ => {}
-        }
+    if parsed.options.channel_binding {
+        return Some("required channel binding");
     }
-    mode
+    if parsed.read_only {
+        return Some("read-only access");
+    }
+    // Without one the driver checks the login in the database, else in admin: the same database needs no field.
+    let derived = Some(parsed.database.trim())
+        .filter(|name| !name.is_empty())
+        .unwrap_or("admin");
+    if parsed.options.auth_database().is_some_and(|source| source != derived) {
+        return Some("an authentication database");
+    }
+    None
 }
 
 #[cfg(test)]
@@ -125,6 +88,10 @@ mod tests {
 
     fn parse(url: &str) -> ParsedConnectionUrl {
         parse_connection_url(url.to_owned()).unwrap()
+    }
+
+    fn refusal(url: &str) -> String {
+        parse_connection_url(url.to_owned()).unwrap_err().code().to_owned()
     }
 
     #[test]
@@ -141,53 +108,69 @@ mod tests {
     }
 
     #[test]
-    fn a_url_without_a_port_leaves_the_engine_s_default() {
-        let parsed = parse("mysql://root@localhost/app");
-
-        assert_eq!(parsed.driver_id, "mysql");
-        assert_eq!(parsed.port, None);
-        assert_eq!(parsed.password, None);
-        assert_eq!(parsed.tls_mode, None);
-    }
-
-    #[test]
-    fn an_ipv6_host_loses_its_brackets() {
-        assert_eq!(parse("redis://[::1]:6380/2").host, "::1");
-    }
-
-    #[test]
-    fn sql_servers_encrypt_strict_is_strict_tls() {
+    fn tls_modes_cross_as_tags() {
+        assert_eq!(parse("mysql://root@localhost/app").tls_mode, None);
         assert_eq!(
             parse("sqlserver://db.example.com/sales?encrypt=strict").tls_mode,
             Some(TlsModeTag::Strict)
         );
         assert_eq!(
-            parse("sqlserver://db.example.com/sales?encrypt=true").tls_mode,
-            Some(TlsModeTag::VerifyFull)
+            parse("postgresql://db/x?sslmode=require").tls_mode,
+            Some(TlsModeTag::Require)
         );
-    }
-
-    #[test]
-    fn rediss_means_tls() {
         assert_eq!(
             parse("rediss://cache.example.com").tls_mode,
             Some(TlsModeTag::VerifyFull)
         );
+        assert_eq!(
+            parse("postgresql://db/x?sslmode=disable").tls_mode,
+            Some(TlsModeTag::Disable)
+        );
     }
 
     #[test]
-    fn a_file_url_keeps_a_windows_drive_and_a_unix_path() {
+    fn a_file_url_keeps_its_path() {
         assert_eq!(parse("sqlite:///C:/data/app.db").database, "C:/data/app.db");
-        assert_eq!(parse("sqlite:///home/ada/app.db").database, "/home/ada/app.db");
         assert_eq!(parse("duckdb:///tmp/a%20b.duckdb").driver_id, "duckdb");
     }
 
     #[test]
-    fn an_unknown_scheme_and_a_missing_host_are_refused_by_code() {
-        let unknown = parse_connection_url("ftp://example.com".to_owned()).unwrap_err();
-        let invalid = parse_connection_url("not a url".to_owned()).unwrap_err();
+    fn settings_the_record_cannot_keep_are_refused_by_code() {
+        for url in [
+            "postgresql:///shop?host=/var/run/postgresql",
+            "mysql://root@/shop",
+            "mongodb+srv://u:p@cluster0.example.net/",
+            "mongodb://h1,h2/db?replicaSet=rs0",
+            "mongodb://h1/db?authSource=admin",
+            "postgresql://u:p@ep-x.neon.tech/db?sslmode=require&channel_binding=require",
+        ] {
+            assert_eq!(refusal(url), "url.settings_unsupported", "{url}");
+        }
+    }
 
-        assert_eq!(unknown.code(), "url.unknown_scheme");
-        assert_eq!(invalid.code(), "url.invalid");
+    #[test]
+    fn certificate_settings_and_a_matching_auth_database_cross() {
+        let named = parse("sqlserver://db/s?encrypt=true&hostNameInCertificate=sql.internal");
+        assert_eq!(named.server_name.as_deref(), Some("sql.internal"));
+        assert_eq!(named.tls_mode, Some(TlsModeTag::VerifyFull));
+
+        let ca = if cfg!(windows) {
+            "C:/certs/rds.pem"
+        } else {
+            "/certs/rds.pem"
+        };
+        let rooted = parse(&format!("postgresql://db/x?sslmode=require&sslrootcert={ca}"));
+        assert_eq!(rooted.tls_mode, Some(TlsModeTag::VerifyFull));
+        assert_eq!(rooted.ca_file.as_deref().map(Path::new), Some(Path::new(ca)));
+
+        assert_eq!(parse("mongodb://h/?authSource=admin").driver_id, "mongodb");
+        assert_eq!(parse("mongodb://h/shop?authSource=shop").database, "shop");
+    }
+
+    #[test]
+    fn an_unknown_scheme_and_a_missing_host_are_refused_by_code() {
+        assert_eq!(refusal("ftp://example.com"), "url.unknown_scheme");
+        assert_eq!(refusal("not a url"), "url.invalid");
+        assert_eq!(refusal("redis:///0"), "url.no_host");
     }
 }

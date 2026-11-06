@@ -58,6 +58,9 @@ pub(super) fn unsupported_message(feature: UnsupportedFeature) -> String {
             "{command} cannot run in the editor: it turns the connection into a stream the editor cannot show.",
             &[("command", command)],
         ),
+        UnsupportedFeature::AuthPlugin => gettext(
+            "This account logs in with an authentication plugin TablePro does not support, such as ed25519. Log in with an account that uses a password or the socket.",
+        ),
         UnsupportedFeature::SqlDump => gettext("This database cannot be exported as a SQL file."),
     }
 }
@@ -98,6 +101,7 @@ mod tests {
             UnsupportedFeature::ClrRoutine,
             UnsupportedFeature::EncryptedDefinition,
             UnsupportedFeature::EditorCommand { command: "MONITOR" },
+            UnsupportedFeature::AuthPlugin,
             UnsupportedFeature::SqlDump,
         ];
 
