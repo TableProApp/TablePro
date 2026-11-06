@@ -960,6 +960,9 @@
   <data name="Error_driver_not_a_database" xml:space="preserve">
     <value>This file isn't a database TablePro can open.</value>
   </data>
+  <data name="Error_driver_database_not_found" xml:space="preserve">
+    <value>This database doesn't exist on the server:</value>
+  </data>
   <data name="Error_driver_auth" xml:space="preserve">
     <value>The server refused the user name or password.</value>
   </data>

@@ -163,6 +163,8 @@ impl WorkspaceModel {
                 let message = cause.sentence(&self.tab_name(tab));
                 self.send_to_structure_tab(tab, structure_tab::SaveInput::SaveOutcomeUnknown(message));
             }
+            // A database is created or dropped from the sidebar, never by a tab's save.
+            (WriteKind::DatabaseChanges, _) => {}
         }
         // The close prompt waited for the save in front of the user, and
         // goes on to close the tab or asks about it again.

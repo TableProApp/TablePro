@@ -10,6 +10,7 @@ use tablepro_core::{
 /// Codes the app acts on. Everything else is the server's own answer,
 /// passed through with its message.
 pub(crate) mod code {
+    pub(crate) const UNKNOWN_DATABASE: i32 = 81;
     pub(crate) const TIMEOUT_EXCEEDED: i32 = 159;
     pub(crate) const READONLY: i32 = 164;
     pub(crate) const UNKNOWN_USER: i32 = 192;
@@ -80,6 +81,18 @@ pub(crate) fn map_error_in(error: &ClickHouseError, context: ErrorContext) -> Dr
         },
         ClickHouseError::Network(_) | ClickHouseError::Other(_) => network_error(error, context),
         other => DriverError::Protocol(other.to_string()),
+    }
+}
+
+/// The login's answer when `database` is the one it named. Only the
+/// login reads code 81 so: a statement's 81 is about a database the
+/// statement names.
+pub(crate) fn missing_at_login(error: DriverError, database: Option<&str>) -> DriverError {
+    match database {
+        Some(database) if server_code(&error) == Some(code::UNKNOWN_DATABASE) => DriverError::DatabaseNotFound {
+            database: database.to_owned(),
+        },
+        _ => error,
     }
 }
 
@@ -209,6 +222,30 @@ mod tests {
             DriverError::Auth { .. }
         ));
         assert_eq!(map_error(&denied).category(), ErrorCategory::Server);
+    }
+
+    #[test]
+    fn an_unknown_database_is_missing_only_for_the_login() {
+        let login = |message: &str| {
+            map_error_in(
+                &ClickHouseError::BadResponse(message.to_owned()),
+                ErrorContext::Login { tls_requested: false },
+            )
+        };
+        let unknown = "Code: 81. DB::Exception: Database shop does not exist. (UNKNOWN_DATABASE)";
+
+        assert_eq!(
+            missing_at_login(login(unknown), Some("shop")),
+            DriverError::DatabaseNotFound {
+                database: "shop".to_owned()
+            }
+        );
+        assert!(matches!(missing_at_login(login(unknown), None), DriverError::Server(_)));
+        assert!(matches!(bad_response(unknown), DriverError::Server(_)));
+        assert!(matches!(
+            missing_at_login(login("Code: 516. DB::Exception: Authentication failed"), Some("shop")),
+            DriverError::Auth { .. }
+        ));
     }
 
     #[test]

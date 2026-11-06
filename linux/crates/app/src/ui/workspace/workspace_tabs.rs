@@ -270,13 +270,24 @@ impl WorkspaceModel {
     /// Tear down a tab without prompting. Internal helper called once
     /// the close-with-pending dialog (if any) has resolved.
     pub(super) fn finish_close_workspace_tab(&mut self, id: Uuid, tab_view: &adw::TabView) {
+        self.tear_down_tab(id, tab_view, true);
+    }
+
+    /// Tear down a tab whose table, schema or database is gone, so Reopen
+    /// Closed Tab never offers it.
+    pub(super) fn forget_workspace_tab(&mut self, id: Uuid, tab_view: &adw::TabView) {
+        self.tear_down_tab(id, tab_view, false);
+    }
+
+    fn tear_down_tab(&mut self, id: Uuid, tab_view: &adw::TabView, remember: bool) {
         let removed = self.workspace_tabs.borrow_mut().remove(&id);
         let Some(removed) = removed else {
             return;
         };
         // Before the teardown, while the tab still has its page, sort
         // and query.
-        if let Some(descriptor) = describe_closed_tab(&removed)
+        if remember
+            && let Some(descriptor) = describe_closed_tab(&removed)
             && let (Some(shell), Some(this)) = (self.shell.upgrade(), self.this.upgrade())
         {
             shell.remember_closed_tab(&this, descriptor);

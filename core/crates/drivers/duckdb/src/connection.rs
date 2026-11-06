@@ -444,7 +444,7 @@ impl Connection for DuckDbConnection {
         // by the statement timeout would only roll back.
         let options = match batch.kind {
             WriteKind::RowChanges => self.statement_bounded(options),
-            WriteKind::SchemaChanges => options,
+            WriteKind::SchemaChanges | WriteKind::DatabaseChanges => options,
         };
         let ledger = Arc::new(WriteLedger::new(WriteAtomicity::Transactional));
         let recorded = ledger.clone();

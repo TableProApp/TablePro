@@ -37,6 +37,7 @@ Errors are typed enums, built with `thiserror` wherever they cross a crate bound
 | `Busy(BusyReason)` | Something was busy: `NoFreeConnection` (the server has no room for another connection, or the pool had no free slot in time) or `FileLocked` (another connection held the database file's lock past the lock timeout). |
 | `EditorSessionBusy` | The tab's session is already running a statement. |
 | `Config(ConfigError)` | The settings cannot be used: a bad host, port, path, TLS option, auth mode or missing database name. |
+| `DatabaseNotFound { database }` | The server has no database by the name the connection opens, as after a drop. A driver maps it at login only; a statement that names a missing database stays `Server`. |
 | `Decode { column, detail }` | The driver could not read a value. A bug on our side, not the server's. The detail is for the log. |
 | `Protocol(String)` | The server or the client library said something the driver did not expect. The text is for the log. |
 | `Unsupported { feature }` | The engine has no such feature. `UnsupportedFeature` names it, and the app writes the sentence. |
@@ -54,7 +55,7 @@ Rules:
 
 | Category | Variants | What the app does |
 |---|---|---|
-| `Configuration` | `Config`, `Unsupported`; SSH setup failures | Names the setting to change. The session stops retrying until the user changes something. |
+| `Configuration` | `Config`, `Unsupported`, `DatabaseNotFound`; SSH setup failures | Names the setting to change. The session stops retrying until the user changes something. |
 | `Network` | `Transport` (resolution, refused, unreachable); an SSH forward that was rejected or could not open, or an SSH master that exited | Names the host and port. A session retries on a backoff. |
 | `Tls` | `Tls` | One sentence per `TlsFailure`, with a remedy button where one exists. The session stops retrying. |
 | `Authentication` | `Auth`, `LoginRefused`, `IntegratedAuth`; SSH auth and host-key failures, and a cancelled SSH prompt | Says the login or the host key was refused, with the server's reason. Never echoes what was typed. The session stops retrying. |

@@ -1,14 +1,17 @@
 //! Structure changes planned through the connection's own DDL dialect
 //! and run as the structure tab runs them, then read back through
-//! `fetch_table_definition`.
+//! `fetch_table_definition`. Emptying a table and creating and dropping
+//! a schema or database go through the plans the sidebar uses.
 
 use tablepro_core::column::ColumnDefault;
 use tablepro_core::ddl::{
-    BuildDdlError, ColumnDefinition, DdlDialect, DdlOperation, DdlPlan, DraftColumn, DraftType, DropTableOptions,
-    Permission, RefusalReason, TableDefinition, TableDraft, diff_table,
+    BuildDdlError, ColumnDefinition, DatabaseDraft, DdlDialect, DdlOperation, DdlPlan, DraftColumn, DraftType,
+    DropDatabaseOptions, DropSchemaOptions, DropTableOptions, KeyspaceReplication, Permission, RefusalReason,
+    SchemaDraft, TableDefinition, TableDraft, TruncateTableOptions, catalog_capabilities, diff_table,
+    plan_create_database, plan_create_schema, plan_drop_database, plan_drop_schema, plan_truncate_table,
 };
 use tablepro_core::dialect::SqlDialect;
-use tablepro_core::meta::{IndexInfo, IndexKey, ObjectKind, ObjectScope};
+use tablepro_core::meta::{IndexInfo, IndexKey, ObjectKind, ObjectScope, SchemaInfo};
 use tablepro_core::value::Value;
 use tablepro_core::{
     Connection, DriverError, ForeignKeyInfo, ForeignKeyMode, RowLimit, TableRef, WriteAtomicity, WriteBatch, WriteKind,
@@ -16,7 +19,8 @@ use tablepro_core::{
 };
 
 use crate::conformance::support::{
-    CALL_DEADLINE, apply, connect, count, expect, insert_sql, statement, unexpected, unique, within, writable,
+    CALL_DEADLINE, apply, connect, count, create_scratch_table, expect, insert_sql, statement, unexpected, unique,
+    within, writable,
 };
 use crate::conformance::{ConformanceDdlEngine, ConformanceFailure};
 
@@ -25,6 +29,9 @@ const FAILED_CASE: &str = "failed_ddl_batch_outcome_matches_ddl_atomicity";
 const SCRIPT_CASE: &str = "create_table_script_recreates_the_table";
 const ROWS_CASE: &str = "structure_changes_keep_rows_and_indexes";
 const INDEX_CASE: &str = "index_statement_recreates_the_index";
+const TRUNCATE_CASE: &str = "truncate_empties_the_table_and_keeps_it";
+const SCHEMA_CASE: &str = "created_schema_is_listed_until_dropped";
+const DATABASE_CASE: &str = "created_database_is_listed_until_dropped";
 
 /// Case 1: each structure change the engine offers applies and reads
 /// back as drafted, and each one it refuses is refused by the plan
@@ -367,6 +374,166 @@ pub async fn index_statement_recreates_the_index<E: ConformanceDdlEngine>(engine
     drop_table(case, connection.as_ref(), ddl, &parent).await?;
     connection.close().await?;
     Ok(())
+}
+
+/// Case 6: a truncate with no options empties a table and leaves it with
+/// its columns. An engine that offers none has to refuse the plan.
+pub async fn truncate_empties_the_table_and_keeps_it<E: ConformanceDdlEngine>(
+    engine: E,
+) -> Result<(), ConformanceFailure> {
+    let case = TRUNCATE_CASE;
+    let connection = connect(case, &engine, writable()).await?;
+    let dialect = connection.dialect();
+    let ddl = ddl_of(case, dialect.as_ref())?;
+    let options = TruncateTableOptions::default();
+    if !catalog_capabilities(dialect.as_ref()).truncate_table {
+        let table = engine.scratch_table(&unique("ddl_truncate"));
+        refused(
+            case,
+            "truncate",
+            plan_truncate_table(dialect.as_ref(), &table, &options),
+        )?;
+        connection.close().await?;
+        return Ok(());
+    }
+    let table = create_scratch_table(&engine, connection.as_ref(), "ddl_truncate").await?;
+    let inserts = (1..)
+        .zip(["first", "second", "third"])
+        .map(|(id, label)| insert_sql(dialect.as_ref(), &table, id, label))
+        .collect();
+    apply(connection.as_ref(), &table, WriteKind::RowChanges, inserts).await?;
+    let before = definition(connection.as_ref(), &table).await?;
+    let rows = count(connection.as_ref(), &table).await?;
+    expect(case, rows == 3, || format!("{rows} rows were written of 3"))?;
+
+    let plan =
+        plan_truncate_table(dialect.as_ref(), &table, &options).map_err(|error| planned(case, "truncate", error))?;
+    run(connection.as_ref(), &table, plan).await?;
+
+    let rows = count(connection.as_ref(), &table).await?;
+    expect(case, rows == 0, || format!("{rows} rows are left after the truncate"))?;
+    let after = definition(connection.as_ref(), &table).await?;
+    let names = |table: &TableDefinition| -> Vec<String> {
+        table.columns.iter().map(|column| column.name().to_owned()).collect()
+    };
+    expect(case, names(&before) == names(&after), || {
+        format!("the columns were {:?} and are {:?}", names(&before), names(&after))
+    })?;
+    drop_table(case, connection.as_ref(), ddl, &table).await?;
+    connection.close().await?;
+    Ok(())
+}
+
+/// Case 7: a new schema is listed, and once dropped it is not. Where the
+/// engine offers either step alone, the other has to be refused.
+pub async fn created_schema_is_listed_until_dropped<E: ConformanceDdlEngine>(
+    engine: E,
+) -> Result<(), ConformanceFailure> {
+    let case = SCHEMA_CASE;
+    let connection = connect(case, &engine, writable()).await?;
+    let dialect = connection.dialect();
+    let capabilities = catalog_capabilities(dialect.as_ref());
+    let name = unique("ddl_schema");
+    let draft = SchemaDraft {
+        name: name.clone(),
+        ..SchemaDraft::default()
+    };
+    let create = plan_create_schema(dialect.as_ref(), &draft);
+    let drop = plan_drop_schema(dialect.as_ref(), &name, DropSchemaOptions::default());
+    if !capabilities.create_schema || !capabilities.drop_schema {
+        if !capabilities.create_schema {
+            refused(case, "create schema", create)?;
+        }
+        if !capabilities.drop_schema {
+            refused(case, "drop schema", drop)?;
+        }
+        connection.close().await?;
+        return Ok(());
+    }
+    let catalog = TableRef::new(Some(name.clone()), "");
+
+    let create = create.map_err(|error| planned(case, "create schema", error))?;
+    run(connection.as_ref(), &catalog, create).await?;
+    let schemas = connection.list_schemas(within(CALL_DEADLINE)).await?;
+    expect(case, lists(&schemas, &name), || {
+        format!("{name} is not listed after the create: {schemas:?}")
+    })?;
+
+    let drop = drop.map_err(|error| planned(case, "drop schema", error))?;
+    run(connection.as_ref(), &catalog, drop).await?;
+    let schemas = connection.list_schemas(within(CALL_DEADLINE)).await?;
+    expect(case, !lists(&schemas, &name), || {
+        format!("{name} is still listed after the drop")
+    })?;
+    connection.close().await?;
+    Ok(())
+}
+
+/// Case 8: a new database is listed, and once dropped it is not. A
+/// keyspace gets a replication factor of one, with ScyllaDB's tablets
+/// off, which SimpleStrategy needs. An engine whose new database needs a
+/// first collection (MongoDB) is left to its own tests.
+pub async fn created_database_is_listed_until_dropped<E: ConformanceDdlEngine>(
+    engine: E,
+) -> Result<(), ConformanceFailure> {
+    let case = DATABASE_CASE;
+    let connection = connect(case, &engine, writable()).await?;
+    let dialect = connection.dialect();
+    let capabilities = catalog_capabilities(dialect.as_ref());
+    let fields = capabilities.database_fields;
+    let name = unique("ddl_db");
+    let mut draft = DatabaseDraft::named(name.clone());
+    if fields.replication {
+        draft.replication = Some(KeyspaceReplication::Simple { factor: 1 });
+    }
+    if fields.tablets {
+        draft.tablets = Some(false);
+    }
+    let create = plan_create_database(dialect.as_ref(), &draft);
+    let drop = plan_drop_database(dialect.as_ref(), &name, &DropDatabaseOptions::default());
+    if !capabilities.create_database || !capabilities.drop_database || fields.first_collection {
+        if !capabilities.create_database {
+            refused(case, "create database", create)?;
+        }
+        if !capabilities.drop_database {
+            refused(case, "drop database", drop)?;
+        }
+        connection.close().await?;
+        return Ok(());
+    }
+    let catalog = TableRef::new(Some(name.clone()), "");
+
+    let create = create.map_err(|error| planned(case, "create database", error))?;
+    run(connection.as_ref(), &catalog, create).await?;
+    let databases = connection.list_databases(within(CALL_DEADLINE)).await?;
+    expect(case, lists(&databases, &name), || {
+        format!("{name} is not listed after the create: {databases:?}")
+    })?;
+
+    let drop = drop.map_err(|error| planned(case, "drop database", error))?;
+    run(connection.as_ref(), &catalog, drop).await?;
+    let databases = connection.list_databases(within(CALL_DEADLINE)).await?;
+    expect(case, !lists(&databases, &name), || {
+        format!("{name} is still listed after the drop")
+    })?;
+    connection.close().await?;
+    Ok(())
+}
+
+/// What the capabilities leave out has to be refused by its plan, never
+/// sent.
+fn refused(case: &'static str, step: &str, outcome: Result<DdlPlan, BuildDdlError>) -> Result<(), ConformanceFailure> {
+    match outcome {
+        Err(BuildDdlError::Unsupported(_)) => Ok(()),
+        outcome => Err(unexpected(
+            case,
+            format!("{step} is not offered and the plan answered {outcome:?}"),
+        )),
+    }
+}
+
+fn lists(schemas: &[SchemaInfo], name: &str) -> bool {
+    schemas.iter().any(|schema| schema.name == name)
 }
 
 fn named_index(case: &'static str, table: &TableDefinition, name: &str) -> Result<IndexInfo, ConformanceFailure> {

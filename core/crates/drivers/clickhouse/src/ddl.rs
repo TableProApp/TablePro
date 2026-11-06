@@ -1,13 +1,17 @@
 use tablepro_core::column::ColumnType;
 use tablepro_core::ddl::ddl_sql::default_sql;
 use tablepro_core::ddl::{
-    BuildDdlError, ColumnCapabilities, ColumnDefinition, DdlCapabilities, DdlDialect, DdlPlan, DraftColumn, Permission,
-    RefusalReason, TableChanges, TableDefinition, TableDraft,
+    BuildDdlError, CatalogCapabilities, CatalogOption, ColumnCapabilities, ColumnDefinition, DatabaseDraft,
+    DdlCapabilities, DdlDialect, DdlPlan, DraftColumn, DropDatabaseOptions, Permission, RefusalReason, TableChanges,
+    TableDefinition, TableDraft, TruncateTableOptions, catalog_name, check_database_draft, named, refuse_drop_options,
+    refuse_options,
 };
 use tablepro_core::dialect::SqlDialect;
+use tablepro_core::meta::TableRef;
 use tablepro_core::value::Value;
 
 use crate::dialect::ClickHouseDialect;
+use crate::metadata::SYSTEM_DATABASES;
 
 static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     // A table needs an engine and a sorting key the draft has no place
@@ -194,9 +198,65 @@ impl DdlDialect for ClickHouseDialect {
             .map(|source| DdlPlan::from_sql([source.create_statement.clone()]))
             .ok_or(BuildDdlError::NoTableSource)
     }
+
+    /// A database is the only namespace, so there are no schemas. The
+    /// engine stays the server's default.
+    fn catalog_capabilities(&self) -> CatalogCapabilities {
+        CatalogCapabilities {
+            truncate_table: true,
+            create_database: true,
+            drop_database: true,
+            on_cluster: true,
+            ..CatalogCapabilities::default()
+        }
+    }
+
+    /// The server lets a login drop these, and a drop of `system` stops
+    /// half way. `default` is where a login lands when it names none.
+    fn protects_database(&self, name: &str) -> bool {
+        SYSTEM_DATABASES.contains(&name) || name == "default"
+    }
+
+    fn plan_truncate_table(&self, table: &TableRef, options: &TruncateTableOptions) -> Result<DdlPlan, BuildDdlError> {
+        refuse_options(&self.catalog_capabilities(), options)?;
+        Ok(DdlPlan::from_sql([format!(
+            "TRUNCATE TABLE {}{}",
+            self.qualify(table),
+            self.on_cluster(options.cluster.as_deref())?
+        )]))
+    }
+
+    fn plan_create_database(&self, draft: &DatabaseDraft) -> Result<DdlPlan, BuildDdlError> {
+        let capabilities = self.catalog_capabilities();
+        check_database_draft(&capabilities, draft)?;
+        Ok(DdlPlan::for_databases([format!(
+            "CREATE DATABASE {}{}",
+            self.quote_identifier(named(&capabilities, CatalogOption::Name, &draft.name)?),
+            self.on_cluster(draft.cluster.as_deref())?
+        )]))
+    }
+
+    fn plan_drop_database(&self, database: &str, options: &DropDatabaseOptions) -> Result<DdlPlan, BuildDdlError> {
+        refuse_drop_options(&self.catalog_capabilities(), options)?;
+        Ok(DdlPlan::for_databases([format!(
+            "DROP DATABASE {}{}",
+            self.quote_identifier(catalog_name(CatalogOption::Name, database)?),
+            self.on_cluster(options.cluster.as_deref())?
+        )]))
+    }
 }
 
 impl ClickHouseDialect {
+    fn on_cluster(&self, cluster: Option<&str>) -> Result<String, BuildDdlError> {
+        match cluster {
+            Some(cluster) => Ok(format!(
+                " ON CLUSTER {}",
+                self.quote_identifier(catalog_name(CatalogOption::Cluster, cluster)?)
+            )),
+            None => Ok(String::new()),
+        }
+    }
+
     fn column_definition(&self, column: &DraftColumn) -> Result<String, BuildDdlError> {
         let resolved = column.column_type.resolve(self, &column.name)?;
         let mut parts = vec![
@@ -246,12 +306,13 @@ fn wrapped<'a>(declaration: &'a str, wrapper: &str) -> Option<&'a str> {
 
 #[cfg(test)]
 mod tests {
-    use tablepro_core::ServerInfo;
     use tablepro_core::column::{ColumnDefault, ColumnInfo};
     use tablepro_core::ddl::{
-        ColumnAttributes, ColumnKeyRoles, DdlOperation, DraftType, DropTableOptions, TableSource, diff_table,
+        ColumnAttributes, ColumnKeyRoles, DdlOperation, DraftType, DropSchemaOptions, DropTableOptions, SchemaDraft,
+        TableSource, catalog_capabilities, diff_table, plan_create_database, plan_create_schema, plan_drop_database,
+        plan_drop_schema, plan_truncate_table, protects_database,
     };
-    use tablepro_core::meta::TableRef;
+    use tablepro_core::{ServerInfo, WriteKind};
 
     use super::*;
 
@@ -534,5 +595,218 @@ mod tests {
             assert!(dialect.parse_type(suggestion).is_ok(), "{suggestion}");
         }
         assert!(dialect.parse_type(dialect.default_column_type()).is_ok());
+    }
+
+    fn cluster(name: Option<&str>) -> Option<String> {
+        name.map(str::to_owned)
+    }
+
+    #[test]
+    fn a_truncate_runs_here_or_on_the_cluster_named() {
+        let table = TableRef::new(Some("analytics".to_owned()), "ev`ents");
+        let truncate = |on: Option<&str>| {
+            let options = TruncateTableOptions {
+                cluster: cluster(on),
+                ..TruncateTableOptions::default()
+            };
+            dialect().plan_truncate_table(&table, &options)
+        };
+
+        let here = truncate(None).expect("a plan");
+        let everywhere = truncate(Some("main")).expect("a plan");
+
+        assert_eq!(here.sql(), ["TRUNCATE TABLE `analytics`.`ev\\`ents`"]);
+        assert_eq!(here.kind, WriteKind::SchemaChanges);
+        assert_eq!(
+            everywhere.sql(),
+            ["TRUNCATE TABLE `analytics`.`ev\\`ents` ON CLUSTER `main`"]
+        );
+        let cascade = TruncateTableOptions {
+            cascade: true,
+            ..TruncateTableOptions::default()
+        };
+        assert_eq!(
+            dialect().plan_truncate_table(&table, &cascade),
+            Err(BuildDdlError::Unsupported(DdlOperation::TruncateTableCascade))
+        );
+        assert!(matches!(
+            truncate(Some(" ")),
+            Err(BuildDdlError::InvalidOption {
+                option: CatalogOption::Cluster,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn a_database_is_created_and_dropped_here_or_on_the_cluster_named() {
+        let created = |on: Option<&str>| {
+            let draft = DatabaseDraft {
+                cluster: cluster(on),
+                ..DatabaseDraft::named("sh`op")
+            };
+            dialect().plan_create_database(&draft).expect("a plan")
+        };
+        let dropped = |on: Option<&str>| {
+            let options = DropDatabaseOptions {
+                force: false,
+                cluster: cluster(on),
+            };
+            dialect().plan_drop_database("sh`op", &options).expect("a plan")
+        };
+
+        assert_eq!(created(None).sql(), ["CREATE DATABASE `sh\\`op`"]);
+        assert_eq!(
+            created(Some("main")).sql(),
+            ["CREATE DATABASE `sh\\`op` ON CLUSTER `main`"]
+        );
+        assert_eq!(dropped(None).sql(), ["DROP DATABASE `sh\\`op`"]);
+        assert_eq!(
+            dropped(Some("main")).sql(),
+            ["DROP DATABASE `sh\\`op` ON CLUSTER `main`"]
+        );
+        for plan in [
+            created(None),
+            created(Some("main")),
+            dropped(None),
+            dropped(Some("main")),
+        ] {
+            assert_eq!(plan.kind, WriteKind::DatabaseChanges);
+        }
+    }
+
+    #[test]
+    fn a_database_option_clickhouse_has_no_place_for_is_refused() {
+        let forced = DropDatabaseOptions {
+            force: true,
+            cluster: None,
+        };
+        let collated = DatabaseDraft {
+            collation: Some("utf8mb4_bin".to_owned()),
+            ..DatabaseDraft::named("shop")
+        };
+
+        assert_eq!(
+            dialect().plan_drop_database("shop", &forced),
+            Err(BuildDdlError::Unsupported(DdlOperation::DropDatabaseForce))
+        );
+        assert!(matches!(
+            dialect().plan_create_database(&collated),
+            Err(BuildDdlError::InvalidOption {
+                option: CatalogOption::Collation,
+                ..
+            })
+        ));
+        assert!(matches!(
+            dialect().plan_create_database(&DatabaseDraft::named("")),
+            Err(BuildDdlError::InvalidOption {
+                option: CatalogOption::Name,
+                ..
+            })
+        ));
+    }
+
+    /// Without the capability a cluster is refused before any SQL, so a
+    /// caller that skipped the dialog never sends an ON CLUSTER the
+    /// server cannot run.
+    #[test]
+    fn a_cluster_is_refused_where_the_engine_has_none() {
+        let without = CatalogCapabilities {
+            on_cluster: false,
+            ..dialect().catalog_capabilities()
+        };
+        let options = TruncateTableOptions {
+            cluster: cluster(Some("main")),
+            ..TruncateTableOptions::default()
+        };
+        let draft = DatabaseDraft {
+            cluster: cluster(Some("main")),
+            ..DatabaseDraft::named("shop")
+        };
+        let dropped = DropDatabaseOptions {
+            force: false,
+            cluster: cluster(Some("main")),
+        };
+
+        assert_eq!(
+            refuse_options(&without, &options),
+            Err(BuildDdlError::Unsupported(DdlOperation::OnCluster))
+        );
+        assert_eq!(
+            check_database_draft(&without, &draft),
+            Err(BuildDdlError::Unsupported(DdlOperation::OnCluster))
+        );
+        assert_eq!(
+            refuse_drop_options(&without, &dropped),
+            Err(BuildDdlError::Unsupported(DdlOperation::OnCluster))
+        );
+        assert!(dialect().catalog_capabilities().on_cluster);
+    }
+
+    #[test]
+    fn the_servers_own_databases_and_default_are_protected() {
+        for name in ["system", "INFORMATION_SCHEMA", "information_schema", "default"] {
+            assert!(protects_database(&dialect(), name), "{name}");
+        }
+        assert!(!protects_database(&dialect(), "analytics"));
+        assert!(!protects_database(&dialect(), "Default"));
+    }
+
+    /// The sidebar offers what the capabilities say, so each one must
+    /// plan, and each one left out must not.
+    #[test]
+    fn every_catalog_operation_offered_plans_and_no_other_does() {
+        let dialect = dialect();
+        let offered = catalog_capabilities(&dialect);
+        let table = TableRef::new(Some("analytics".to_owned()), "events");
+        let schema = SchemaDraft {
+            name: "analytics".to_owned(),
+            owner: None,
+        };
+        let on = offered.on_cluster.then(|| "main".to_owned());
+        let options = TruncateTableOptions {
+            cluster: on.clone(),
+            ..TruncateTableOptions::default()
+        };
+        let draft = DatabaseDraft {
+            cluster: on.clone(),
+            ..DatabaseDraft::named("shop")
+        };
+        let dropped = DropDatabaseOptions {
+            force: offered.drop_database_force,
+            cluster: on,
+        };
+        let plans = [
+            (
+                "truncate",
+                offered.truncate_table,
+                plan_truncate_table(&dialect, &table, &options),
+            ),
+            (
+                "create schema",
+                offered.create_schema,
+                plan_create_schema(&dialect, &schema),
+            ),
+            (
+                "drop schema",
+                offered.drop_schema,
+                plan_drop_schema(&dialect, "analytics", DropSchemaOptions::default()),
+            ),
+            (
+                "create database",
+                offered.create_database,
+                plan_create_database(&dialect, &draft),
+            ),
+            (
+                "drop database",
+                offered.drop_database,
+                plan_drop_database(&dialect, "shop", &dropped),
+            ),
+        ];
+
+        for (operation, offered, plan) in plans {
+            assert_eq!(offered, plan.is_ok(), "{operation}: {plan:?}");
+        }
+        assert!(offered.truncate_table && offered.create_database && offered.drop_database);
     }
 }

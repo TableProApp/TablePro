@@ -154,9 +154,10 @@ impl SqlEditor {
             .or_else(|| self.imp().listed_own_database.borrow().clone())
     }
 
-    /// Ask the server for its databases, for the bar's menu. A server
-    /// that cannot list them leaves the bar a label.
-    pub(super) fn list_databases(&self) {
+    /// Ask the server for its databases, for the bar's menu: when the tab
+    /// opens, and after a database is created or dropped anywhere in the
+    /// window. A server that cannot list them leaves the bar a label.
+    pub(crate) fn list_databases(&self) {
         let Some((session, tasks)) = self
             .deps()
             .and_then(|deps| deps.session.get().map(|session| (session, deps.tasks.clone())))

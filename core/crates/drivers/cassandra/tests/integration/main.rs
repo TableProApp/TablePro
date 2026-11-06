@@ -6,6 +6,7 @@
     reason = "the setup helpers fail a test the way the test functions themselves do"
 )]
 
+mod catalog_operations;
 mod conformance_engine;
 mod editor;
 mod metadata;

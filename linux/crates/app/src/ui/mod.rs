@@ -23,6 +23,7 @@ mod file_read;
 pub(crate) mod file_reveal;
 mod file_write;
 mod filter_strip;
+mod form_dialog;
 mod format;
 mod handler_guard;
 mod history_dialog;

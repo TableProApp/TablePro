@@ -11,8 +11,8 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::IndexInfo;
 
-use super::form_dialog::{FormDialog, give_state, mark_invalid};
 use super::index_draft::{DraftKey, IndexDraft, IndexDraftError};
+use crate::ui::form_dialog::{FormDialog, give_state, mark_invalid};
 use crate::ui::menu_label;
 
 /// The dialog, which owns the form's state (`give_state`).
@@ -304,9 +304,9 @@ fn edit_later(inner: &Weak<Inner>, edit: impl FnOnce(&mut IndexDraft)) {
 mod tests {
     use std::time::Duration;
 
-    use super::super::form_dialog::tests::{WAIT, press_enter, window};
     use super::*;
     use crate::test_support::{drain_main_context, wait_until};
+    use crate::ui::form_dialog::tests::{WAIT, press_enter, window};
 
     fn dialog(added: &Rc<RefCell<Vec<IndexInfo>>>) -> IndexDialog {
         dialog_sorting(added, true)

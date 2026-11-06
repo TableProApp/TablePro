@@ -1,4 +1,5 @@
 mod assistant;
+mod catalog_ops;
 mod close_tab;
 mod definitions;
 mod diagram;
