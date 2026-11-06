@@ -1,15 +1,11 @@
-use super::ColumnType;
+use super::{ColumnOrigin, ColumnType};
 
-/// A column of a result set, which is all a driver can say about an
-/// arbitrary query's output.
-///
-/// Browse uses `ColumnInfo` from `fetch_columns`, which knows about
-/// keys and defaults. A result column knows only its name and type,
-/// because that is all a `SELECT` over an expression has.
+// Browse reads keys and defaults from `ColumnInfo`; an arbitrary query's output has only a name, a type and maybe an origin.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResultColumn {
     pub name: String,
     pub column_type: ColumnType,
+    pub origin: Option<ColumnOrigin>,
 }
 
 impl ResultColumn {
@@ -17,6 +13,12 @@ impl ResultColumn {
         Self {
             name: name.into(),
             column_type,
+            origin: None,
         }
+    }
+
+    pub fn with_origin(mut self, origin: Option<ColumnOrigin>) -> Self {
+        self.origin = origin;
+        self
     }
 }

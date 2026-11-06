@@ -46,7 +46,7 @@ pub fn refusal_text(reason: &RefusalReason) -> String {
         RefusalReason::InsertedByPosition(triggers) => crate::i18n::ngettext_f(
             "Trigger {triggers} inserts into this table without naming its columns, so adding or removing a column would break it.",
             "Triggers {triggers} insert into this table without naming its columns, so adding or removing a column would break them.",
-            u32::try_from(triggers.len()).unwrap_or(u32::MAX),
+            triggers.len(),
             &[("triggers", &triggers.join(", "))],
         ),
         RefusalReason::ColumnsConverted => {

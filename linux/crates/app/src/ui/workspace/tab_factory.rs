@@ -189,6 +189,7 @@ impl TabFactory {
         if let Some(database) = database {
             editor.move_to_database(&database);
         }
+        editor.attach_row_tracker(parts.change_trackers.register(id));
         connect_editor(&editor, id, &parts.input, &parts.toasts);
         // It moved before the workspace heard it, which follows it once
         // the tab is in.
@@ -519,6 +520,12 @@ pub(super) fn connect_editor(
     editor.connect_transaction_changed(move |_, _| transaction.deliver(WorkspaceInput::EditorTransactionChanged));
     let toast = input.clone();
     editor.connect_toast(move |_, text| toast.deliver(WorkspaceInput::ShowToast(text)));
+    let save = input.clone();
+    editor.connect_save_rows(move |_| save.deliver(WorkspaceInput::SaveRows(tab_id)));
+    let stop = input.clone();
+    editor.connect_stop_saving_rows(move |_| stop.deliver(WorkspaceInput::StopSaving(tab_id)));
+    let dirty = input.clone();
+    editor.connect_rows_dirty_changed(move |_| dirty.deliver(WorkspaceInput::TabDirtyChanged));
     let close = input.clone();
     editor.connect_close_requested(move |_| close.deliver(WorkspaceInput::CloseWorkspaceTab(tab_id)));
     let assistant = input.clone();

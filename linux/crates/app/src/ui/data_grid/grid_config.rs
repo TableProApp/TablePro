@@ -7,7 +7,7 @@ use tablepro_linux_platform::AppSettings;
 use tablepro_session::runtime::Tasks;
 
 use super::{KeysHandle, LayoutBinding};
-use crate::services::grid::{EditPolicy, GridColumn};
+use crate::services::grid::{EditPolicy, GridColumn, ResultRefusal};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 
 /// How a grid's headers sort its rows.
@@ -45,6 +45,8 @@ pub struct GridConfig {
     pub rules: Option<EditRules>,
     /// Where edits go. `None` for a grid that only shows rows.
     pub tracker: Option<TabTrackerHandle>,
+    // Why a query result's rows can't be edited, shown where a cell would open.
+    pub result_lock: Option<ResultRefusal>,
     /// Read when it is needed, so a change in Preferences reaches open
     /// grids.
     pub settings: Rc<AppSettings>,

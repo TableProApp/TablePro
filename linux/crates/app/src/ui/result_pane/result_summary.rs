@@ -1,7 +1,7 @@
 use tablepro_core::Truncation;
 
 use crate::i18n::{gettext_f, ngettext_f};
-use crate::ui::format::{format_thousands, plural_count};
+use crate::ui::format::format_thousands;
 
 /// How much of a result set an editor run kept, as the driver reported
 /// it when the set ended.
@@ -50,7 +50,7 @@ impl ResultSummary {
                 retained => ngettext_f(
                     "Showing the first {shown} row; a run keeps at most {limit} rows across its results",
                     "Showing the first {shown} rows; a run keeps at most {limit} rows across its results",
-                    plural_count(retained),
+                    retained,
                     &[("shown", &shown), ("limit", &limit)],
                 ),
             });
@@ -60,13 +60,13 @@ impl ResultSummary {
             (Truncation::ReadPastLimit, Some(total)) => Some(ngettext_f(
                 "Showing {shown} of {total} row",
                 "Showing {shown} of {total} rows",
-                plural_count(total),
+                total,
                 &[("shown", &shown), ("total", &format(total))],
             )),
             (Truncation::ReadPastLimit, None) => Some(ngettext_f(
                 "Showing the first {shown} row",
                 "Showing the first {shown} rows",
-                plural_count(self.retained),
+                self.retained,
                 &[("shown", &shown)],
             )),
             // A SELECT that calls a function per row did that for these
@@ -74,7 +74,7 @@ impl ResultSummary {
             (Truncation::ServerStopped, _) => Some(ngettext_f(
                 "Stopped after the first {shown} row: the statement did not run past it",
                 "Stopped after the first {shown} rows: the statement did not run past them",
-                plural_count(self.retained),
+                self.retained,
                 &[("shown", &shown)],
             )),
         }

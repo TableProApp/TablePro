@@ -56,6 +56,7 @@ mod style_scheme_grid;
 mod style_scheme_resolver;
 mod tab_load;
 mod tags;
+pub(crate) mod text_view_teardown;
 mod welcome_view;
 mod window_geometry;
 mod workspace;
@@ -65,6 +66,6 @@ pub(crate) use menu_label::menu_label;
 pub(crate) use plain_toast::plain_toast;
 pub(crate) use preferences_dialog::PreferencesDialog;
 pub(crate) use session_window::{
-    LaunchNotice, LibraryEdit, MovedTab, SessionWindow, SessionWindowInit, SessionWindowInput,
+    LaunchNotice, LibraryEdit, MovedTab, ScriptInput, SessionWindow, SessionWindowInit, SessionWindowInput,
 };
 pub(crate) use structure_tab::review_dialog;

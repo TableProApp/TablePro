@@ -102,6 +102,9 @@ pub struct SessionWindow {
     /// The window opened for a file and has shown nothing else yet, so
     /// it closes again when another window already has that file.
     pub(super) opened_for_file: Cell<bool>,
+    // Read while no relational session was in front; the next one the
+    // window adopts opens them.
+    pub(super) waiting_scripts: RefCell<Vec<(gio::File, String)>>,
     /// Reads which filesystem a database file is on. `None` reads the
     /// real one; a test stands in for a network share.
     pub(super) classify_location: Cell<Option<LocationClassifier>>,

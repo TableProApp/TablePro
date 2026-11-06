@@ -4,13 +4,18 @@
 
 use std::time::Duration;
 
+use secrecy::SecretString;
+use tablepro_core::column::ColumnOrigin;
 use tablepro_core::{
-    DriverError, EditorSessionState, ResultEvent, RowLimit, RunEnd, RunOptions, TransactionState, Truncation, Value,
+    Credentials, DriverError, EditorSessionState, ResultEvent, RowLimit, RunEnd, RunOptions, TableRef, TlsConfig,
+    TransactionState, Truncation, Value, WorkspaceSettings,
 };
+use tablepro_test_support::conformance::test_liveness;
 use tokio_util::sync::CancellationToken;
 
 use crate::support::{
-    CALL, EventSink, Events, connect, run, run_ok, run_with, scalar, session, setup, start, text, within,
+    CALL, EventSink, Events, connect, connect_with, direct, options_over, run, run_ok, run_with, scalar, session,
+    setup, start, text, within,
 };
 
 fn limited(rows: u64) -> RunOptions {
@@ -569,4 +574,196 @@ async fn a_session_opened_in_another_database_runs_there() {
         "a live session moved: {moved:?}"
     );
     elsewhere.close().await;
+}
+
+const TRACED_TABLES: &[&str] = &[
+    "CREATE TYPE mood AS ENUM ('sad', 'happy')",
+    "CREATE TABLE t (id int PRIMARY KEY, a text, b int, feeling mood)",
+    "INSERT INTO t VALUES (1, 'x', 2, 'happy')",
+    "CREATE TABLE u (id int PRIMARY KEY, t_id int, c text)",
+    "CREATE VIEW v AS SELECT id, a FROM t",
+    "CREATE SCHEMA other",
+    "CREATE TABLE other.w (id int PRIMARY KEY, label text)",
+    "CREATE TABLE \"MixedCase\" (\"Id\" int PRIMARY KEY)",
+];
+
+fn origins(events: &Events) -> Vec<Option<ColumnOrigin>> {
+    events
+        .all()
+        .into_iter()
+        .find_map(|event| match event {
+            ResultEvent::ResultSetStarted { columns } => {
+                Some(columns.iter().map(|column| column.origin.clone()).collect())
+            }
+            _ => None,
+        })
+        .expect("a result set")
+}
+
+fn origin(schema: &str, table: &str, column: &str) -> Option<ColumnOrigin> {
+    Some(ColumnOrigin::new(TableRef::new(Some(schema.to_owned()), table), column))
+}
+
+fn of_t(columns: &[&str]) -> Vec<Option<ColumnOrigin>> {
+    columns.iter().map(|column| origin("public", "t", column)).collect()
+}
+
+// The lookup projects built-in types only, so the enum column makes tokio-postgres prepare nothing under a name.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_whole_table_traces_every_column_and_prepares_nothing() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(connection.as_ref(), TRACED_TABLES).await;
+    let session = session(connection.as_ref()).await;
+
+    let (summary, whole) = run(session.as_ref(), "SELECT * FROM t").await;
+    let prepared = run_ok(session.as_ref(), "SELECT name FROM pg_prepared_statements").await;
+
+    assert_eq!(summary.end, RunEnd::Completed);
+    assert_eq!(summary.transaction_state, TransactionState::Idle);
+    assert_eq!(origins(&whole), of_t(&["id", "a", "b", "feeling"]));
+    assert_eq!(texts(&whole), ["1", "x", "2", "happy"]);
+    assert!(prepared.rows().is_empty(), "{:?}", prepared.rows());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_renamed_column_traces_to_the_column_it_reads() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(connection.as_ref(), TRACED_TABLES).await;
+    let session = session(connection.as_ref()).await;
+
+    let renamed = run_ok(session.as_ref(), "SELECT a AS x, id, b + 1 AS bumped, 'k' AS k FROM t").await;
+    let swapped = run_ok(session.as_ref(), "SELECT id AS a, a AS id FROM t").await;
+    let qualified = run_ok(session.as_ref(), "SELECT t.b, public.t.id FROM public.t").await;
+
+    assert_eq!(
+        origins(&renamed),
+        vec![origin("public", "t", "a"), origin("public", "t", "id"), None, None]
+    );
+    assert_eq!(origins(&swapped), of_t(&["id", "a"]));
+    assert_eq!(origins(&qualified), of_t(&["b", "id"]));
+}
+
+// A join is refused by the statement's shape before any lookup, so its columns carry no origin either.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn views_temporary_tables_joins_and_catalogs_are_not_traced() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(connection.as_ref(), TRACED_TABLES).await;
+    let session = session(connection.as_ref()).await;
+    run_ok(session.as_ref(), "CREATE TEMP TABLE scratch (id int PRIMARY KEY)").await;
+
+    let view = run_ok(session.as_ref(), "SELECT * FROM v").await;
+    let temporary = run_ok(session.as_ref(), "SELECT * FROM scratch").await;
+    let joined = run_ok(session.as_ref(), "SELECT t.id, u.c FROM t JOIN u ON u.t_id = t.id").await;
+    let catalog = run_ok(
+        session.as_ref(),
+        "SELECT oid, relname FROM pg_catalog.pg_class WHERE relname = 'pg_class'",
+    )
+    .await;
+    run_ok(session.as_ref(), "CREATE TEMP TABLE t (id int PRIMARY KEY)").await;
+    let shadowed = run_ok(session.as_ref(), "SELECT * FROM t").await;
+
+    assert_eq!(origins(&view), vec![None, None]);
+    assert_eq!(origins(&temporary), vec![None]);
+    assert_eq!(origins(&joined), vec![None, None]);
+    assert_eq!(origins(&catalog), vec![None, None]);
+    assert_eq!(origins(&shadowed), vec![None]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_table_in_another_schema_traces_qualified() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(connection.as_ref(), TRACED_TABLES).await;
+    let session = session(connection.as_ref()).await;
+
+    let named = run_ok(session.as_ref(), "SELECT * FROM other.w").await;
+    let mixed = run_ok(session.as_ref(), "SELECT * FROM \"MixedCase\"").await;
+    run_ok(session.as_ref(), "SET search_path TO other, public").await;
+    let found = run_ok(session.as_ref(), "SELECT label FROM w").await;
+
+    assert_eq!(
+        origins(&named),
+        vec![origin("other", "w", "id"), origin("other", "w", "label")]
+    );
+    assert_eq!(origins(&mixed), vec![origin("public", "MixedCase", "Id")]);
+    assert_eq!(origins(&found), vec![origin("other", "w", "label")]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_select_inside_the_users_transaction_is_not_traced() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(connection.as_ref(), TRACED_TABLES).await;
+    let session = session(connection.as_ref()).await;
+
+    let (summary, events) = run(session.as_ref(), "BEGIN; SELECT * FROM t").await;
+
+    assert_eq!(summary.end, RunEnd::Completed);
+    assert_eq!(summary.transaction_state, TransactionState::InTransaction);
+    assert_eq!(origins(&events), vec![None; 4]);
+    run_ok(session.as_ref(), "ROLLBACK").await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_read_only_connection_traces_its_reads() {
+    let fixture = start().await;
+    setup(connect(&fixture, false).await.as_ref(), TRACED_TABLES).await;
+    let reader = connect(&fixture, true).await;
+    let session = session(reader.as_ref()).await;
+
+    let (summary, events) = run(session.as_ref(), "SELECT id, a FROM t").await;
+
+    assert_eq!(summary.end, RunEnd::Completed);
+    assert_eq!(summary.transaction_state, TransactionState::Idle);
+    assert_eq!(origins(&events), of_t(&["id", "a"]));
+}
+
+// A role that cannot read pg_locks fails the lookup inside the driver's own transaction.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_failed_lookup_leaves_the_rows_and_the_session_as_they_were() {
+    let fixture = start().await;
+    let admin = connect(&fixture, false).await;
+    setup(admin.as_ref(), TRACED_TABLES).await;
+    let granting = session(admin.as_ref()).await;
+    run_ok(
+        granting.as_ref(),
+        "CREATE ROLE reader LOGIN PASSWORD 'reader'; GRANT SELECT ON t TO reader; \
+         REVOKE SELECT ON pg_catalog.pg_locks FROM PUBLIC",
+    )
+    .await;
+    let liveness = test_liveness();
+    let reader = connect_with(options_over(
+        direct(fixture.host(), fixture.port(), &liveness),
+        Credentials::Password {
+            username: "reader".to_owned(),
+            password: SecretString::from("reader".to_owned()),
+        },
+        fixture.database(),
+        TlsConfig::disabled(),
+        WorkspaceSettings::workspace(false),
+        liveness,
+    ))
+    .await;
+    let session = session(reader.as_ref()).await;
+
+    let (denied, _) = run(session.as_ref(), "SELECT 1 FROM pg_catalog.pg_locks").await;
+    let (summary, events) = run(session.as_ref(), "SELECT id, a FROM t").await;
+    let after = run_ok(session.as_ref(), "SELECT 1").await;
+
+    assert!(matches!(denied.end, RunEnd::Failed(_)), "{:?}", denied.end);
+    assert_eq!(summary.end, RunEnd::Completed);
+    assert_eq!(summary.transaction_state, TransactionState::Idle);
+    assert_eq!(origins(&events), vec![None, None]);
+    assert_eq!(texts(&events), ["1", "x"]);
+    assert_eq!(texts(&after), ["1"]);
 }

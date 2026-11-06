@@ -147,7 +147,9 @@ async fn start_saves(
     tabs: &[Uuid],
 ) -> (Vec<(Uuid, SaveRejection)>, bool) {
     let mut refused = Vec::new();
-    for tab in tabs {
+    let mut started = HashSet::new();
+    // A query tab is listed once for its rows and once for its file, and one save takes both.
+    for tab in tabs.iter().filter(|tab| started.insert(**tab)) {
         for start in handle.save(parent, &[*tab]).await {
             match start {
                 SaveStart::Rejected(SaveRejection::ReviewDeclined) => return (refused, true),

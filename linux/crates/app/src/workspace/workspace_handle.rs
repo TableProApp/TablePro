@@ -182,6 +182,23 @@ impl WorkspaceHandle {
         starts
     }
 
+    pub async fn save_rows_of(&self, parent: &gtk::Widget, tab: Uuid) -> SaveStart {
+        let Some(tracker) = self.0.deps.rows.get(tab) else {
+            return SaveStart::NothingToSave;
+        };
+        self.save_tracked_rows(parent, tab, &tracker).await
+    }
+
+    async fn save_tracked_rows(&self, parent: &gtk::Widget, tab: Uuid, tracker: &TabTrackerHandle) -> SaveStart {
+        let Some(_claim) = ReviewClaim::take(&self.0.reviewing, tab) else {
+            return SaveStart::Rejected(SaveRejection::InReview);
+        };
+        if let Err(start) = self.confirm_rows(parent, tracker).await {
+            return start;
+        }
+        self.save_rows(tab, tracker)
+    }
+
     /// Stop the saves `scope` covers. Each settles when its driver
     /// answers the cancel, as rolled back or with an unknown outcome.
     pub fn stop_saves(&self, scope: CloseScope) {
@@ -221,7 +238,9 @@ impl WorkspaceHandle {
                     PendingState::Clean if entry.open_transaction => Some(DirtyKind::OpenTransaction),
                     PendingState::Clean => None,
                 };
-                let file = entry.unsaved_file.then_some(DirtyKind::UnsavedFile);
+                // A query tab's changed rows and its file are saved and discarded together, so they are one choice.
+                let rows = matches!(pending, Some(DirtyKind::Unsaved | DirtyKind::OutcomeUnknown(_)));
+                let file = (entry.unsaved_file && !rows).then_some(DirtyKind::UnsavedFile);
                 [pending, file].into_iter().flatten().map(move |kind| DirtyTab {
                     id: entry.id,
                     title: entry.title.clone(),
@@ -270,14 +289,34 @@ impl WorkspaceHandle {
     }
 
     async fn save_tab(&self, parent: &gtk::Widget, tab: Uuid) -> SaveStart {
-        if let Some(tracker) = self.0.deps.rows.get(tab) {
-            let Some(_claim) = ReviewClaim::take(&self.0.reviewing, tab) else {
-                return SaveStart::Rejected(SaveRejection::InReview);
-            };
-            if let Err(start) = self.confirm_rows(parent, &tracker).await {
+        // An editor tab holds a row tracker beside its file; a clean one leaves the save to the file.
+        let rows =
+            self.0.deps.rows.get(tab).filter(|tracker| {
+                tracker.pending_state() != PendingState::Clean || !self.0.deps.directory.has_file(tab)
+            });
+        if let Some(tracker) = rows {
+            let start = self.save_tracked_rows(parent, tab, &tracker).await;
+            if !matches!(
+                start,
+                SaveStart::Started(_) | SaveStart::Saved | SaveStart::NothingToSave
+            ) {
                 return start;
             }
-            return self.save_rows(tab, &tracker);
+            // A file the text has not moved from stays as it is on disk, edits made elsewhere included.
+            let unsaved = self
+                .0
+                .deps
+                .directory
+                .tabs()
+                .iter()
+                .any(|entry| entry.id == tab && entry.unsaved_file);
+            return match self.0.deps.directory.save_file(tab).filter(|_| unsaved) {
+                Some(saving) => match saving.await {
+                    Ok(()) => start,
+                    Err(message) => SaveStart::Rejected(SaveRejection::FileNotSaved(message)),
+                },
+                None => start,
+            };
         }
         if let Some(tracker) = self.0.deps.structures.get(tab) {
             // A close that saves its tabs can ask again while the review is
@@ -737,6 +776,21 @@ mod tests {
             }));
         script.resolve_commit.always(FakeReply::Ready(resolution));
         script
+    }
+
+    #[gtk4::test]
+    fn changed_rows_and_an_unsaved_file_of_one_tab_are_one_choice() {
+        let workspace = Workspace::open(ConnectionScript::default());
+        workspace.tabs.0.borrow_mut()[0].unsaved_file = true;
+
+        let dirty = workspace.handle.dirty_tabs();
+
+        assert_eq!(dirty.len(), 1, "{dirty:?}");
+        assert_eq!(dirty[0].kind, DirtyKind::Unsaved);
+        let _ = workspace.tracker.discard();
+        let dirty = workspace.handle.dirty_tabs();
+        assert_eq!(dirty.len(), 1);
+        assert_eq!(dirty[0].kind, DirtyKind::UnsavedFile);
     }
 
     #[gtk4::test]

@@ -4,12 +4,13 @@ use tablepro_session::SessionKey;
 
 use super::{TableProApplication, WindowLaunch};
 use crate::services::file_resolution::{FileTarget, ResolvedFile, resolve_file_blocking};
-use crate::ui::{SessionWindow, SessionWindowInput};
+use crate::ui::{ScriptInput, SessionWindow, SessionWindowInput};
 
 impl TableProApplication {
-    /// Open each file the file manager or the command line hands over:
-    /// in the window that has it open already, in the active window
-    /// while it only shows the picker, or in a new window.
+    /// Open each file the file manager or the command line hands over.
+    /// A database opens in the window that has it open already, in the
+    /// active window while it only shows the picker, or in a new window.
+    /// A SQL script opens in the last window used, or in a new one.
     pub fn open_files(&self, files: &[gio::File]) {
         for file in files {
             self.open_file(file.clone());
@@ -35,9 +36,15 @@ impl TableProApplication {
         let hold = self.hold();
         let app = self.downgrade();
         glib::spawn_future_local(async move {
-            let key = resolving.await.ok().and_then(|resolved| session_key(&resolved));
+            let resolved = resolving.await.ok();
             if let Some(app) = app.upgrade() {
-                app.place_file(file, key);
+                match resolved {
+                    Some(ResolvedFile {
+                        uri,
+                        target: Ok(FileTarget::Script),
+                    }) => app.place_script(gio::File::for_uri(&uri)),
+                    resolved => app.place_file(file, resolved.as_ref().and_then(session_key)),
+                }
             }
             drop(hold);
         });
@@ -63,6 +70,41 @@ impl TableProApplication {
             }
         }
     }
+
+    // A second tab on one file would have two editors saving over each
+    // other, so a tab already bound to it comes forward instead.
+    fn place_script(&self, file: gio::File) {
+        // GTK lists the windows most recently focused first.
+        let windows: Vec<SessionWindow> = self
+            .windows()
+            .into_iter()
+            .filter_map(|window| window.downcast::<SessionWindow>().ok())
+            .collect();
+        if SessionWindow::focus_tab_bound_to(self, &file) {
+            return;
+        }
+        // While any window settles, a tab bound to the file may still appear, so a picker asks rather
+        // than opening a second one beside it.
+        if windows.iter().any(SessionWindow::settling) {
+            let idle = windows.into_iter().next().filter(SessionWindow::is_idle);
+            return self.route_script(idle.into_iter().collect(), file);
+        }
+        self.route_script(windows, file);
+    }
+
+    fn route_script(&self, windows: Vec<SessionWindow>, file: gio::File) {
+        let window = match windows.into_iter().next() {
+            Some(window) => Some(window),
+            None => self.open_window(WindowLaunch::Picker).and_downcast::<SessionWindow>(),
+        };
+        match window {
+            Some(window) => {
+                window.send(SessionWindowInput::Script(ScriptInput::Open(file)));
+                window.present();
+            }
+            None => tracing::warn!("no window to open a SQL file in"),
+        }
+    }
 }
 
 /// The session a resolved file opens, so its window can be found.
@@ -70,6 +112,6 @@ fn session_key(resolved: &ResolvedFile) -> Option<SessionKey> {
     match &resolved.target {
         Ok(FileTarget::Saved(saved)) => Some(SessionKey::Saved(saved.id)),
         Ok(FileTarget::File(identity)) => Some(SessionKey::File(identity.uri.clone())),
-        Err(_) => None,
+        Ok(FileTarget::Script) | Err(_) => None,
     }
 }

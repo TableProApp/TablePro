@@ -56,7 +56,6 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use relm4::{ComponentController, Controller};
 
 use tablepro_core::meta::SchemaInfo;
 use tablepro_core::{DataModel, EditorSession};
@@ -69,6 +68,7 @@ use self::session_watches::SessionWatches;
 use self::tab_title::ConnectionLabel;
 pub(crate) use self::workspace_actions::show_transfer_actions;
 pub(crate) use self::workspace_shell::WorkspaceShell;
+pub(crate) use self::workspace_tab_view::page_position;
 use super::browse_tab::BrowseTab;
 use super::editor::SqlEditor;
 use super::export::{ExportLedger, ExportLedgerInit, ExportOffer, ExportReporter};
@@ -179,13 +179,15 @@ pub(crate) struct WorkspaceModel {
     /// The CSV imports running into this workspace's tables.
     imports: Rc<import_ledger::ImportLedger>,
     history_dialog: Option<HistoryDialog>,
-    saved_queries_dialog: Option<Controller<super::saved_queries_dialog::SavedQueriesDialog>>,
-    import_dialog: Option<Controller<super::import_dialog::ImportCsvDialog>>,
+    saved_queries_dialog: Option<super::saved_queries_dialog::SavedQueriesDialog>,
+    import_dialog: Option<super::import_dialog::ImportCsvDialog>,
     driver_id: String,
     /// The driver as the user knows it, for the header's subtitle.
     driver_name: String,
     /// Writes the tab list a moment after the last change.
     workspace: Rc<workspace_persistence::WorkspacePersistence>,
+    // Until the saved tabs are back, a script waits, so a restored tab bound to its file can take it.
+    loading_scripts: Option<Vec<(gio::File, String)>>,
     _watches: SessionWatches,
     /// Tells the user once when editor drafts start failing to land.
     _draft_failures: tablepro_session::runtime::WatchForwarder,
@@ -586,6 +588,8 @@ pub(crate) enum WorkspaceInput {
     /// workspace is saved.
     WorkspaceTabsChanged,
     SaveTab(Uuid),
+    // A query tab's changed rows alone, never its SQL file.
+    SaveRows(Uuid),
     StopSaving(Uuid),
     /// A save started or settled, or tabs' changes were dropped.
     Workspace(crate::workspace::WorkspaceEvent),
@@ -623,6 +627,11 @@ pub(crate) enum WorkspaceInput {
     OpenInEditor {
         sql: String,
         database: Option<String>,
+    },
+    /// A SQL file handed to TablePro, in a new editor tab bound to it.
+    OpenScript {
+        file: gio::File,
+        text: String,
     },
     DropTablePrompt {
         schema: Option<String>,
@@ -888,6 +897,7 @@ impl Workspace {
             saved_queries_dialog: None,
             import_dialog: None,
             workspace: persistence,
+            loading_scripts: Some(Vec::new()),
             _watches: watches,
             _draft_failures: draft_failures,
         };
@@ -933,6 +943,17 @@ impl Workspace {
     /// tab open.
     pub(crate) fn data_model(&self) -> Option<DataModel> {
         self.imp().data_model.get().copied()
+    }
+
+    /// The editor tab bound to `file`. `None` while the workspace is
+    /// handling input.
+    // Until then a script waits in the workspace, and its saved tabs may hold the file.
+    pub(crate) fn tabs_loading(&self) -> bool {
+        self.read(|model| model.loading_scripts.is_some()).unwrap_or(false)
+    }
+
+    pub(crate) fn editor_tab_for(&self, file: &gio::File) -> Option<Uuid> {
+        self.read(|model| model.editor_tab_for(file)).flatten()
     }
 
     /// The tab `page` shows, when it is one of this session's. Read from
@@ -1007,6 +1028,9 @@ impl Workspace {
     pub(crate) fn commit_cell_edits(&self) {
         for browse in self.read(|model| model.browse_tabs(None)).unwrap_or_default() {
             browse.commit_cell_edit();
+        }
+        for editor in self.read(|model| model.editor_tabs()).unwrap_or_default() {
+            editor.commit_result_edit();
         }
     }
 
@@ -1242,10 +1266,10 @@ impl WorkspaceModel {
             close_if_presented(dialog.upcast_ref());
         }
         if let Some(dialog) = self.saved_queries_dialog.take() {
-            close_if_presented(dialog.model().dialog());
+            close_if_presented(dialog.upcast_ref());
         }
         if let Some(dialog) = self.import_dialog.take() {
-            close_if_presented(dialog.model().dialog());
+            close_if_presented(dialog.upcast_ref());
         }
         let pages = if close_pages { self.index.pages() } else { Vec::new() };
         self.close_tabs();
@@ -1317,6 +1341,7 @@ impl WorkspaceModel {
             } => self.dispatch_select_table(schema, name, open_mode),
             WorkspaceInput::WorkspaceTabsChanged => self.on_workspace_tabs_changed(),
             WorkspaceInput::SaveTab(id) => self.request_save(id),
+            WorkspaceInput::SaveRows(id) => self.request_save_rows(id),
             WorkspaceInput::StopSaving(id) => self.stop_saving(id),
             WorkspaceInput::Workspace(event) => self.on_workspace_event(event),
             WorkspaceInput::SavesInFlightChanged(count) => self.on_saves_in_flight_changed(count),
@@ -1335,6 +1360,7 @@ impl WorkspaceModel {
             WorkspaceInput::EditStructureTab { schema, table } => self.on_edit_structure_tab(schema, table),
             WorkspaceInput::ShowCreateTableForExisting { schema, table } => self.on_show_create_table(schema, table),
             WorkspaceInput::OpenInEditor { sql, database } => self.open_sql_in_editor(sql, database),
+            WorkspaceInput::OpenScript { file, text } => self.open_script(&file, text),
             WorkspaceInput::DropTablePrompt { schema, table } => self.on_drop_table_prompt(schema, table),
             WorkspaceInput::DropTableChecked { table, referencing } => self.on_drop_table_checked(table, &referencing),
             WorkspaceInput::DropTableConfirmed { schema, table } => self.on_drop_table_confirmed(schema, table),

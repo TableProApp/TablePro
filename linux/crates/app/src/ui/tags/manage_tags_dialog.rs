@@ -214,12 +214,7 @@ fn used_by(count: usize) -> String {
     if count == 0 {
         return crate::i18n::gettext("No connections");
     }
-    crate::i18n::ngettext_f(
-        "{n} connection",
-        "{n} connections",
-        u32::try_from(count).unwrap_or(u32::MAX),
-        &[("n", &count.to_string())],
-    )
+    crate::i18n::ngettext_f("{n} connection", "{n} connections", count, &[("n", &count.to_string())])
 }
 
 pub(super) fn delete_alert(tag: &ConnectionTag, count: usize) -> adw::AlertDialog {
@@ -227,7 +222,7 @@ pub(super) fn delete_alert(tag: &ConnectionTag, count: usize) -> adw::AlertDialo
         crate::i18n::ngettext_f(
             "It comes off {n} connection, which stays saved.",
             "It comes off {n} connections, which stay saved.",
-            u32::try_from(count).unwrap_or(u32::MAX),
+            count,
             &[("n", &count.to_string())],
         )
     });

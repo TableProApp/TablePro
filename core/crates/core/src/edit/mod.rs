@@ -11,6 +11,7 @@ mod is_unchanged;
 mod new_draft_cell;
 mod parse_edit_text;
 mod parse_literal_text;
+mod result_target;
 mod temporal_parts;
 
 pub use cell_expression::{CellExpression, MomentKind, cell_expressions, typed_cell_expression};
@@ -24,5 +25,8 @@ pub use new_draft_cell::new_draft_cell;
 pub use parse_edit_text::parse_edit_text;
 pub use parse_literal_text::{
     parse_filter_text, parse_literal_text, parse_time_with_offset, parse_timestamp_with_offset,
+};
+pub use result_target::{
+    ResultLock, ResultSource, ResultTarget, parsed_origins, result_source, result_target, value_for_column,
 };
 pub use temporal_parts::{TemporalParts, temporal_parts};

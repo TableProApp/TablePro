@@ -91,6 +91,10 @@ struct Opening {
 }
 
 impl OtherDatabases {
+    pub(super) fn is_opening(&self) -> bool {
+        !self.opening.is_empty()
+    }
+
     /// The databases open or opening, by name.
     pub(super) fn names(&self) -> Vec<String> {
         let open = self.open.iter().filter_map(|open| match open.claim.key() {

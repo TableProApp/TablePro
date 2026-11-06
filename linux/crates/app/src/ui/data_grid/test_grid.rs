@@ -186,6 +186,7 @@ impl Grid {
                 policy: spec.policy.unwrap_or_else(|| edit_policy(false, has_key, true)),
             }),
             tracker: spec.editable.then(|| tracker.clone()),
+            result_lock: None,
             settings: settings.get().clone(),
             layout: spec.layout,
             references: spec.references,
