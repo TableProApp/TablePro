@@ -613,6 +613,7 @@ fn a_completion_whose_view_is_gone_asks_it_nothing() {
 
     let gone = view.downgrade();
     window.destroy();
+    drop(window);
     crate::ui::text_view_teardown::release(&view);
     drop(view);
     assert!(gone.upgrade().is_none(), "the view outlived its window");
