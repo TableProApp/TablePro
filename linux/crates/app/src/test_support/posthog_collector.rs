@@ -4,12 +4,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use super::accept_loop::AcceptLoop;
+
 // Stands in for PostHog: answers every request and keeps each body.
 pub(crate) struct PostHogCollector {
     pub(crate) url: String,
     connections: Arc<Mutex<usize>>,
     bodies: Arc<Mutex<Vec<String>>>,
     held: Arc<AtomicBool>,
+    _accepting: AcceptLoop,
 }
 
 impl PostHogCollector {
@@ -19,23 +22,21 @@ impl PostHogCollector {
 
     pub(crate) fn answering(status: u16) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").expect("a free port");
-        let url = format!("http://{}", listener.local_addr().expect("its address"));
         let connections = Arc::new(Mutex::new(0));
         let bodies = Arc::new(Mutex::new(Vec::new()));
         let held = Arc::new(AtomicBool::new(false));
         let (counted, kept, holding) = (connections.clone(), bodies.clone(), held.clone());
-        std::thread::spawn(move || {
-            for stream in listener.incoming().flatten() {
-                *counted.lock().expect("the count") += 1;
-                let (kept, holding) = (kept.clone(), holding.clone());
-                std::thread::spawn(move || answer(stream, &kept, status, &holding));
-            }
+        let accepting = AcceptLoop::start(listener, move |stream| {
+            *counted.lock().expect("the count") += 1;
+            let (kept, holding) = (kept.clone(), holding.clone());
+            std::thread::spawn(move || answer(stream, &kept, status, &holding));
         });
         Self {
-            url,
+            url: accepting.url(),
             connections,
             bodies,
             held,
+            _accepting: accepting,
         }
     }
 
