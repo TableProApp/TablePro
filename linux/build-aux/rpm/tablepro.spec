@@ -20,7 +20,7 @@
 %bcond check 1
 
 Name:           tablepro
-Version:        0.1.0
+Version:        0.1.0~beta.1
 Release:        1%{?dist}
 Summary:        Work with your databases
 # build-aux/update-third-party-licenses.sh writes this tag from the
@@ -226,5 +226,5 @@ export CARGO_BUILD_JOBS=%{_smp_build_ncpus}
 %{_metainfodir}/app.tablepro.TablePro.metainfo.xml
 
 %changelog
-* Wed Oct 14 2026 TablePro Authors <hello@tablepro.app> - 0.1.0-1
-- First package
+* Fri Nov 06 2026 TablePro Authors <hello@tablepro.app> - 0.1.0~beta.1-1
+- First beta
