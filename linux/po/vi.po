@@ -10214,6 +10214,77 @@ msgstr "Thay đổi các cột và chỉ mục của bảng"
 msgid "Connect through an SSH tunnel"
 msgstr "Kết nối qua đường hầm SSH"
 
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "TablePro account"
+msgstr "Tài khoản TablePro"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid ""
+"Signed in to a TablePro account, TablePro reaches account.tablepro.app and "
+"api.tablepro.app to keep the sign-in, to register this computer as a device "
+"with its host name, the TablePro and system versions and a machine ID hashed "
+"from /etc/machine-id, to check the plan at launch and once a day, and to "
+"list teams and devices while Preferences shows the account."
+msgstr ""
+"Khi đã đăng nhập tài khoản TablePro, TablePro kết nối tới account.tablepro.app "
+"và api.tablepro.app để duy trì phiên đăng nhập, để đăng ký máy tính này làm "
+"một thiết bị cùng tên máy, phiên bản TablePro và hệ thống và một mã máy được "
+"băm từ /etc/machine-id, để kiểm tra gói khi khởi động và mỗi ngày một lần, và "
+"để liệt kê nhóm và thiết bị khi Tùy chỉnh đang hiển thị tài khoản."
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Usage data"
+msgstr "Dữ liệu sử dụng"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid ""
+"Unless you turn it off in Preferences > General > Privacy, a daily launch "
+"with the kinds and number of open connections, the first connection and "
+"query, sign-in and sign-out, and upgrade clicks go to PostHog at "
+"eu.i.posthog.com, with a random installation ID, or the account's ID with "
+"the TablePro and system versions, processor type and language once signed "
+"in. Never a host name, a password, a query or a row."
+msgstr ""
+"Trừ khi bạn tắt trong Tùy chỉnh > Tổng quát > Quyền riêng tư, mỗi ngày một "
+"lần khởi động kèm loại và số kết nối đang mở, kết nối và truy vấn đầu tiên, "
+"việc đăng nhập và đăng xuất, và các lượt nhấn nâng cấp được gửi tới PostHog "
+"tại eu.i.posthog.com, kèm một mã cài đặt ngẫu nhiên, hoặc mã tài khoản cùng "
+"phiên bản TablePro và hệ thống, loại bộ xử lý và ngôn ngữ khi đã đăng nhập. "
+"Không bao giờ gửi tên máy chủ, mật khẩu, truy vấn hay dòng dữ liệu."
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "The first beta of TablePro for Linux."
+msgstr "Bản beta đầu tiên của TablePro cho Linux."
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid ""
+"Connect to PostgreSQL, MySQL, MariaDB, SQLite, DuckDB, SQL Server, "
+"ClickHouse, Cassandra, ScyllaDB, Redis and MongoDB, directly or through "
+"an SSH tunnel"
+msgstr ""
+"Kết nối tới PostgreSQL, MySQL, MariaDB, SQLite, DuckDB, SQL Server, "
+"ClickHouse, Cassandra, ScyllaDB, Redis và MongoDB, trực tiếp hoặc qua "
+"đường hầm SSH"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Browse tables and edit rows in place, with undo until you save"
+msgstr "Duyệt bảng và sửa dòng tại chỗ, có thể hoàn tác cho tới khi bạn lưu"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid ""
+"Run SQL with completion, find and replace, and a searchable query history"
+msgstr ""
+"Chạy SQL với gợi ý hoàn thành, tìm và thay thế, và lịch sử truy vấn có "
+"thể tìm kiếm"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Change a table's columns, indexes and foreign keys"
+msgstr "Thay đổi các cột, chỉ mục và khóa ngoại của bảng"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Export results and tables to CSV, JSON, SQL and other formats"
+msgstr "Xuất kết quả và bảng sang CSV, JSON, SQL và các định dạng khác"
+
 #: data/resources/gtk/menus.ui
 msgid "_New Connection…"
 msgstr "_Kết nối mới…"
@@ -11743,30 +11814,6 @@ msgstr "Chưa liệt kê hết các khóa. Hãy tìm kiếm để thu hẹp danh
 
 #~ msgid "The first release of TablePro for Linux."
 #~ msgstr "Bản phát hành đầu tiên của TablePro cho Linux."
-
-#~ msgid ""
-#~ "Connect to PostgreSQL, MySQL, MariaDB, SQLite, DuckDB, SQL Server, "
-#~ "ClickHouse, Cassandra, ScyllaDB, Redis and MongoDB, directly or through "
-#~ "an SSH tunnel"
-#~ msgstr ""
-#~ "Kết nối tới PostgreSQL, MySQL, MariaDB, SQLite, DuckDB, SQL Server, "
-#~ "ClickHouse, Cassandra, ScyllaDB, Redis và MongoDB, trực tiếp hoặc qua "
-#~ "đường hầm SSH"
-
-#~ msgid "Browse tables and edit rows in place, with undo until you save"
-#~ msgstr "Duyệt bảng và sửa dòng tại chỗ, có thể hoàn tác cho tới khi bạn lưu"
-
-#~ msgid ""
-#~ "Run SQL with completion, find and replace, and a searchable query history"
-#~ msgstr ""
-#~ "Chạy SQL với gợi ý hoàn thành, tìm và thay thế, và lịch sử truy vấn có "
-#~ "thể tìm kiếm"
-
-#~ msgid "Change a table's columns, indexes and foreign keys"
-#~ msgstr "Thay đổi các cột, chỉ mục và khóa ngoại của bảng"
-
-#~ msgid "Export results and tables to CSV, JSON, SQL and other formats"
-#~ msgstr "Xuất kết quả và bảng sang CSV, JSON, SQL và các định dạng khác"
 
 #~ msgid "Edit a Cell or Toggle a Check Box"
 #~ msgstr "Sửa ô hoặc bật/tắt ô đánh dấu"
