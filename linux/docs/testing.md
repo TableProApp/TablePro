@@ -40,7 +40,11 @@ meson setup _build -Dprofile=development
 dbus-run-session -- meson test -C _build --print-errorlogs
 ```
 
-Five suites: `unit` is `cargo test --workspace --exclude tablepro --exclude tablepro-ffi --exclude tablepro-bindgen`. `gtk`
+Five suites: `unit` tests the workspace without `tablepro`, `tablepro-ffi` and `tablepro-bindgen`. When Meson
+finds `cargo-nextest`, as in the fast job and the Flatpak Devel build, it runs `cargo nextest run --profile ci`,
+which kills a test past five minutes and names it, and then the doc tests through `cargo test --doc`. Without
+nextest, as on the package builders, it runs `cargo test`, where a hung test holds the suite until Meson's two hour
+timeout. Install nextest before `meson setup`, which looks for it. `gtk`
 is `cargo test -p tablepro` with `GSK_RENDERER=cairo`, `GTK_A11Y=test`,
 `GDK_BACKEND=x11` and the build tree's schema directory, under a
 `dbus-run-session` of its own when one is installed, so its bus names
@@ -191,7 +195,7 @@ The PostgreSQL, MySQL, SQL Server, ClickHouse, Cassandra, SQLite and DuckDB targ
 
 The peak is the whole process's, so the case needs a process to itself. The PostgreSQL, MySQL, MariaDB, SQL Server, ClickHouse, Cassandra and ScyllaDB targets pass `docker: true` and run under cargo-nextest, which gives each test a process of its own. The `ci` nextest profile prints its times and memory for a passing run, so the job log keeps what the bounds are set from.
 
-SQLite and DuckDB pass `docker: false`, so the case runs in the unit suite, where `cargo test` runs the tests of one binary in one process. It is a test target of its own, as `core/crates/drivers/sqlite/tests/large_table.rs`, which holds nothing else and includes the adapter from `tests/integration/sqlite_engine.rs`. A passing run there prints nothing; `cargo test -p tablepro-driver-sqlite --test large_table -- --nocapture` shows the numbers.
+SQLite and DuckDB pass `docker: false`, so the case runs in the unit suite, where `cargo test`, the package builders' runner, runs the tests of one binary in one process. It is a test target of its own, as `core/crates/drivers/sqlite/tests/large_table.rs`, which holds nothing else and includes the adapter from `tests/integration/sqlite_engine.rs`. A passing run there prints nothing; `cargo test -p tablepro-driver-sqlite --test large_table -- --nocapture` shows the numbers.
 
 ### Large-catalog case
 

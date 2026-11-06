@@ -48,6 +48,26 @@ if profile != 'development'
   test_env.set('CARGO_PROFILE_RELEASE_LTO', 'off')
 endif
 
+# windows.yml tests tablepro-ffi, whose binaries each link every engine and filled a package builder's disk.
+# tablepro-bindgen is the macOS build's generator, and uniffi's CLI changes the build dependencies'
+# features, so the gtk suite then built DuckDB's C++ again.
+workspace_packages = [
+  '--workspace',
+  '--exclude', 'tablepro',
+  '--exclude', 'tablepro-ffi',
+  '--exclude', 'tablepro-bindgen',
+]
+
+# nextest's ci profile kills a test that hangs and names it within
+# minutes. Under cargo test a hung test holds the suite until Meson's
+# timeout and names nothing. The package builders have no nextest.
+nextest = find_program('cargo-nextest', required: false)
+if nextest.found()
+  workspace_args = ['nextest', 'run', '--profile', 'ci'] + cargo_options + workspace_packages
+else
+  workspace_args = ['test'] + cargo_options + workspace_packages
+endif
+
 # The workspace suite excludes the app, whose tests need a display and
 # the GTK test accessibility backend. A package build compiles its tests in
 # the release profile, DuckDB's C++ a second time among them, which took
@@ -55,20 +75,25 @@ endif
 test(
   'workspace',
   cargo,
-  # windows.yml tests tablepro-ffi, whose binaries each link every engine and filled a package builder's disk.
-  # tablepro-bindgen is the macOS build's generator, and uniffi's CLI changes the build dependencies'
-  # features, so the gtk suite then built DuckDB's C++ again.
-  args: ['test'] + cargo_options + [
-    '--workspace',
-    '--exclude', 'tablepro',
-    '--exclude', 'tablepro-ffi',
-    '--exclude', 'tablepro-bindgen',
-  ],
+  args: workspace_args,
   env: test_env,
   suite: 'unit',
   is_parallel: false,
   timeout: 7200,
 )
+
+# nextest runs no doc tests.
+if nextest.found()
+  test(
+    'workspace-doc',
+    cargo,
+    args: ['test', '--doc'] + cargo_options + workspace_packages,
+    env: test_env,
+    suite: 'unit',
+    is_parallel: false,
+    timeout: 3600,
+  )
+endif
 
 gtk_env = app_env
 if profile != 'development'

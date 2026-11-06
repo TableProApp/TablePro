@@ -29,6 +29,7 @@ permissions:
 env:
   CARGO_ABOUT_VERSION: 0.9.2
   CARGO_DENY_VERSION: 0.20.2
+  # The Flatpak Devel manifest pins the same release.
   CARGO_NEXTEST_VERSION: 0.9.144
   CARGO_SHEAR_VERSION: 1.13.4
   LYCHEE_VERSION: 0.24.2
@@ -128,6 +129,11 @@ jobs:
         with:
           toolchain: "1.98"
           components: rustfmt, clippy
+      # Before Configure: Meson runs the workspace suite through nextest
+      # when it finds it, so a hung test fails with its name.
+      - uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68 # v2.88.1
+        with:
+          tool: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
       # Meson points Cargo at _build/cargo-home and _build/cargo-target,
       # so those are what the cache keeps. The workspace is the top of the
       # repository.
