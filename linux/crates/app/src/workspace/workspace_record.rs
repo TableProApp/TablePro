@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use tablepro_storage::document::{Upgrade, VersionedDocument};
+use tablepro_storage::document::VersionedDocument;
 
 use super::TabRecord;
 
@@ -17,15 +16,7 @@ pub struct WorkspaceRecord {
 
 impl VersionedDocument for WorkspaceRecord {
     const KIND: &'static str = "workspace";
-    const VERSION: u32 = 2;
-    const UPGRADES: &'static [Upgrade] = &[diagram_tabs];
-}
-
-/// Version 2 adds the diagram tab. Every version 1 tab reads as it was,
-/// and a build that knows only version 1 says a version 2 file is from a
-/// newer build rather than calling it unreadable.
-fn diagram_tabs(document: Value) -> Result<Value, String> {
-    Ok(document)
+    const VERSION: u32 = 1;
 }
 
 impl WorkspaceRecord {
@@ -142,72 +133,15 @@ mod tests {
 
         assert_eq!(decoded, record);
         let text = String::from_utf8_lossy(&bytes);
-        assert!(text.contains("\"version\": 2"), "{text}");
+        assert!(text.contains("\"version\": 1"), "{text}");
         assert!(!text.contains("SELECT"), "an editor record carries text: {text}");
     }
 
-    /// A version 1 workspace file, the format 0.1.0 ships. Never edit the
-    /// fixture: a format change adds an upgrade step and updates the
-    /// model here.
+    /// A version 1 workspace file. Never edit the fixture: a format change
+    /// adds an upgrade step and updates the model here.
     #[test]
     fn a_version_1_workspace_reads_as_it_was_written() {
         let bytes = include_bytes!("../../tests/fixtures/workspace-v1.json");
-        let draft = uuid::Uuid::parse_str("7d0c5b1e-9a3f-4e2d-8b6c-1f0e9d8c7b6a").expect("a uuid");
-
-        let decoded: WorkspaceRecord = decode_document(Path::new("/tmp/w.json"), bytes).expect("decode");
-
-        assert_eq!(
-            decoded,
-            WorkspaceRecord {
-                active_tab: Some(2),
-                tabs: vec![
-                    TabRecord::Table {
-                        schema: Some("public".to_owned()),
-                        table: "orders".to_owned(),
-                        offset: 5_000,
-                        page_size: 5_000,
-                        filter: None,
-                        sort: Some(SortRecord {
-                            column: 2,
-                            ascending: false,
-                        }),
-                    },
-                    TabRecord::Table {
-                        schema: None,
-                        table: "events".to_owned(),
-                        offset: 0,
-                        page_size: 1_000,
-                        filter: None,
-                        sort: None,
-                    },
-                    TabRecord::Editor {
-                        draft: DraftId::from_uuid(draft),
-                        file: None,
-                        database: None,
-                    },
-                    TabRecord::Structure {
-                        schema: Some("sales".to_owned()),
-                        table: "customers".to_owned(),
-                    },
-                    TabRecord::Structure {
-                        schema: None,
-                        table: "users".to_owned(),
-                    },
-                ],
-            }
-        );
-        assert_eq!(
-            decoded.clone().clamped(),
-            decoded,
-            "the fixture holds only tabs a window can open"
-        );
-    }
-
-    /// A version 2 workspace file, the first with diagram tabs. Never edit
-    /// the fixture.
-    #[test]
-    fn a_version_2_workspace_reads_as_it_was_written() {
-        let bytes = include_bytes!("../../tests/fixtures/workspace-v2.json");
         let draft = uuid::Uuid::parse_str("7d0c5b1e-9a3f-4e2d-8b6c-1f0e9d8c7b6a").expect("a uuid");
         let place = |table: &str, x, y| crate::workspace::DiagramPlace {
             table: table.to_owned(),

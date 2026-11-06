@@ -7,6 +7,7 @@ use deadpool::managed::{PoolError, TimeoutType};
 use tablepro_core::column::ColumnInfo;
 use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
+use tablepro_core::dump::{DumpCatalog, DumpScope};
 use tablepro_core::meta::{
     IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
 };
@@ -22,6 +23,7 @@ use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 
 use crate::cancel::{MssqlStop, StopProgress};
 use crate::dialect::MssqlDialect;
+use crate::dump;
 use crate::editor_session::MssqlEditorSession;
 use crate::endpoint::MssqlEndpoint;
 use crate::errors::map_pool_error;
@@ -284,6 +286,18 @@ impl Connection for MssqlConnection {
             options,
             read_op(move |client, watch| {
                 Box::pin(async move { metadata::fetch_object_definition(client, watch, &dialect, &object).await })
+            }),
+        )
+        .await
+    }
+
+    async fn read_dump_catalog(&self, scope: &DumpScope, options: CallOptions) -> Result<DumpCatalog, DriverError> {
+        let scope = scope.clone();
+        let dialect = *self.dialect;
+        self.read(
+            options,
+            read_op(move |client, watch| {
+                Box::pin(async move { dump::read_dump_catalog(client, watch, &dialect, &scope).await })
             }),
         )
         .await

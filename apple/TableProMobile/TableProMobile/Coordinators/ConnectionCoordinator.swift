@@ -285,7 +285,7 @@ final class ConnectionCoordinator {
     // failing cannot put the prompt up again and again. That retry dials with the new credentials
     // rather than join a dial another window started without them.
     private func connectFresh(token: UUID, allowSignIn: Bool = true) async {
-        IOSAnalyticsProvider.shared.markConnectionAttempted()
+        Telemetry.shared.connectionAttempted(databaseType: connection.type.rawValue)
 
         do {
             let outcome = try await appState.sessionRedialer.redial(
@@ -313,7 +313,7 @@ final class ConnectionCoordinator {
             guard attemptToken == token else { return }
             phase = .connected
             appState.libraryPreferences.recordConnected(connection.id)
-            IOSAnalyticsProvider.shared.markConnectionSucceeded()
+            Telemetry.shared.connectionSucceeded(databaseType: connection.type.rawValue)
             navigateToPendingTable()
             reportDroppedTransaction(unsettledLoss)
         } catch {

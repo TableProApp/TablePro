@@ -3,7 +3,7 @@
         { "series": "resolute", "version": "26.04" },
         { "series": "stonking", "version": "26.10" }
     ],
-    "fedora": ["44"],
+    "fedora": ["44", "45"],
     "architectures": [
         { "runner": "ubuntu-24.04", "deb": "amd64", "rpm": "x86_64", "flatpak": "x86_64" },
         { "runner": "ubuntu-24.04-arm", "deb": "arm64", "rpm": "aarch64", "flatpak": "aarch64" }

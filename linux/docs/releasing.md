@@ -1,6 +1,6 @@
 # Releasing
 
-`.github/workflows/release-linux.yml` publishes a release or a beta. This page is what a maintainer does around it. [ADR 0018](decisions/0018-ppa-copr-and-flathub-later.md) says why the channels are a Launchpad PPA and a COPR project, and [ADR 0033](decisions/0033-beta-repositories-and-release-packages.md) why betas have their own, why every other distribution gets a Flatpak repository of ours, and what every GitHub release carries.
+`.github/workflows/release-linux.yml` publishes a release or a beta. This page is what a maintainer does around it. [ADR 0018](decisions/0018-ppa-copr-and-flathub-later.md) says why the channels are a Launchpad PPA and a COPR project, and [ADR 0041](decisions/0041-beta-repositories-and-release-packages.md) why betas have their own, why every other distribution gets a Flatpak repository of ours, and what every GitHub release carries.
 
 ## Setup before the first release
 

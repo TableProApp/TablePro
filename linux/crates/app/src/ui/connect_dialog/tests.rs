@@ -82,7 +82,7 @@ fn open(options: Options) -> Harness {
         tags: &'a [tablepro_storage::ConnectionTag],
     }
     let seeded = Seeded {
-        version: 2,
+        version: 1,
         connections: &options.saved,
         tags: &options.tags,
     };

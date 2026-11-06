@@ -1,22 +1,11 @@
 {
   "version": 1,
-  "active_tab": 2,
+  "active_tab": 3,
   "tabs": [
     {
       "kind": "table",
       "schema": "public",
       "table": "orders",
-      "offset": 5000,
-      "page_size": 5000,
-      "sort": {
-        "column": 2,
-        "ascending": false
-      }
-    },
-    {
-      "kind": "table",
-      "schema": null,
-      "table": "events",
       "offset": 0,
       "page_size": 1000,
       "sort": null
@@ -31,9 +20,27 @@
       "table": "customers"
     },
     {
-      "kind": "structure",
-      "schema": null,
-      "table": "users"
+      "kind": "diagram",
+      "schema": "sales",
+      "places": [
+        {
+          "table": "customers",
+          "x": -120,
+          "y": 40
+        },
+        {
+          "table": "orders",
+          "x": 336,
+          "y": 0
+        }
+      ]
+    },
+    {
+      "kind": "diagram"
+    },
+    {
+      "kind": "key",
+      "key": "user:1"
     }
   ]
 }

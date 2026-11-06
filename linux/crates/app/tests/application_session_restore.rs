@@ -158,13 +158,14 @@ impl Sandbox {
             .join("open-sessions.json")
     }
 
-    /// Write the files as the sessions open at the last quit.
+    /// Write the files as the sessions open at the last quit, each in a
+    /// window of its own.
     fn record(&self, uris: &[&str]) -> Result<(), String> {
-        let sessions: Vec<String> = uris
+        let windows: Vec<String> = uris
             .iter()
-            .map(|uri| format!(r#"{{"kind":"file","uri":{}}}"#, serde_json::Value::from(*uri)))
+            .map(|uri| format!(r#"[{{"kind":"file","uri":{}}}]"#, serde_json::Value::from(*uri)))
             .collect();
-        let record = format!(r#"{{"version":1,"sessions":[{}]}}"#, sessions.join(","));
+        let record = format!(r#"{{"version":1,"windows":[{}]}}"#, windows.join(","));
         let path = self.record_path();
         let parent = path.parent().ok_or("the record has no directory")?;
         std::fs::create_dir_all(parent).map_err(|error| format!("could not create {}: {error}", parent.display()))?;

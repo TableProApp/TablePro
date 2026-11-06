@@ -1,7 +1,7 @@
 name: Release Linux
 
 # A linux-vX.Y.Z tag publishes a release and a linux-vX.Y.Z-beta.N tag a beta
-# (linux/docs/decisions/0033-beta-repositories-and-release-packages.md). Both
+# (linux/docs/decisions/0041-beta-repositories-and-release-packages.md). Both
 # publish on GitHub Releases, a beta as a pre-release: the source and vendor
 # tarballs, the translation template, the .deb for each Ubuntu series and the
 # .rpm for each Fedora release, each built offline, tested and installed in a

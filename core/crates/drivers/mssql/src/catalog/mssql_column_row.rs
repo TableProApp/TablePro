@@ -1,4 +1,5 @@
 use tablepro_core::DriverError;
+use tablepro_core::ddl::IdentitySeed;
 use tablepro_core::value::Value;
 
 use super::cells::Cells;
@@ -11,8 +12,9 @@ use super::sql_server_type::{CatalogFacts, SqlServerType};
 /// name. A collation is reported only where it differs from the
 /// database's, which is the default a column takes, and the column after
 /// it says whether its code page differs too. The last is the function
-/// of the column's data mask, if it has one, and the one after whether
-/// the server writes it as a system-versioned table's period column.
+/// of the column's data mask, if it has one, the one after whether the
+/// server writes it as a system-versioned table's period column, and the
+/// last two an identity's seed and increment.
 pub(crate) const COLUMNS_SQL: &str = "SELECT \
         c.name, \
         t.name, \
@@ -42,11 +44,14 @@ pub(crate) const COLUMNS_SQL: &str = "SELECT \
                   <> COLLATIONPROPERTY(CAST(DATABASEPROPERTYEX(DB_NAME(), 'Collation') AS nvarchar(128)), 'CodePage') \
              THEN 1 ELSE 0 END AS int), \
         mc.masking_function, \
-        CAST(CASE WHEN c.generated_always_type <> 0 THEN 1 ELSE 0 END AS int) \
+        CAST(CASE WHEN c.generated_always_type <> 0 THEN 1 ELSE 0 END AS int), \
+        CAST(ic.seed_value AS nvarchar(64)), \
+        CAST(ic.increment_value AS nvarchar(64)) \
     FROM sys.columns c \
     JOIN sys.types t ON t.user_type_id = c.user_type_id \
     LEFT JOIN sys.default_constraints dc ON dc.object_id = c.default_object_id \
     LEFT JOIN sys.computed_columns cc ON cc.object_id = c.object_id AND cc.column_id = c.column_id \
+    LEFT JOIN sys.identity_columns ic ON ic.object_id = c.object_id AND ic.column_id = c.column_id \
     LEFT JOIN sys.masked_columns mc ON mc.object_id = c.object_id AND mc.column_id = c.column_id \
         AND mc.is_masked = 1 \
     LEFT JOIN ( \
@@ -80,6 +85,7 @@ pub(crate) struct MssqlColumnRow {
     pub(crate) masking_function: Option<String>,
     /// `GENERATED ALWAYS AS ROW START` or `END`, or a ledger column.
     pub(crate) server_generated: bool,
+    pub(crate) identity_seed: Option<IdentitySeed>,
 }
 
 impl MssqlColumnRow {
@@ -116,6 +122,10 @@ impl MssqlColumnRow {
             persisted: cells.flag(20),
             masking_function: cells.text(22),
             server_generated: cells.flag(23),
+            identity_seed: cells
+                .text(24)
+                .zip(cells.text(25))
+                .and_then(|(seed, increment)| IdentitySeed::new(&seed, &increment)),
         })
     }
 }

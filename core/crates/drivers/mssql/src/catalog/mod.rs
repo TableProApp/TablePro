@@ -19,7 +19,7 @@ use tiberius::{Column, ColumnType as TdsType};
 
 pub(crate) use cells::Cells;
 pub(crate) use mssql_column_row::{COLUMNS_SQL, MssqlColumnRow};
-pub(crate) use sql_server_type::SqlServerType;
+pub(crate) use sql_server_type::{CatalogFacts, SqlServerType};
 pub(crate) use table_definition::{INBOUND_FOREIGN_KEYS_SQL, PRIMARY_KEY_SQL, inbound_foreign_keys, primary_key};
 
 /// A column as browse and the insert form see it.
@@ -71,6 +71,7 @@ pub(crate) fn column_definition(row: &MssqlColumnRow) -> ColumnDefinition {
             true => IdentityStyle::MssqlIdentity,
             false => IdentityStyle::None,
         },
+        identity_seed: row.identity_seed.clone(),
         default_constraint_name: row.default_constraint.clone(),
         ..ColumnAttributes::default()
     };

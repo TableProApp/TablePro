@@ -98,7 +98,7 @@ Installing the newer version again brings all of it back, unless it was reset. C
 | Path | What |
 |---|---|
 | `~/.config/tablepro/connections.json` | Saved connections, without passwords |
-| `~/.config/tablepro/column_widths.json`, `filter_settings.json` | Column widths and filters per table |
+| `~/.config/tablepro/column_layouts.json`, `filter_settings.json` | Column layouts and filters per table |
 | `~/.local/state/tablepro/history.db` | Query history and saved queries |
 | `~/.local/state/tablepro/workspaces/` | Each connection's tabs, and the connections open at the last quit |
 | `~/.local/share/tablepro/drafts/` | The text of each SQL editor tab |

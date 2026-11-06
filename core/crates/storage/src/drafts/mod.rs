@@ -1,8 +1,5 @@
-//! Editor text, kept in its own file per tab.
-//!
-//! The workspace file used to carry the query text inline and truncate
-//! it at 256 KiB, which silently cut a long migration script in half.
-//! A draft is written whole, beside the workspace that references it.
+//! Editor text, kept in its own file per tab and written whole, beside
+//! the workspace that references it, so a script of any length survives.
 
 mod draft_id;
 mod draft_scope;

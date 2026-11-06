@@ -4,11 +4,12 @@ name: Linux packages
 # The Debian source package is built once for each Ubuntu series the PPA
 # builds for, and its binaries are built from it the way Launchpad builds
 # them: offline, in a fresh container with only the declared build
-# dependencies, then checked with lintian. The .rpm is built in a fresh
-# container of each Fedora release, with only its BuildRequires. Each package
-# is then installed in another fresh container of its release with only its
-# runtime dependencies and started. release-matrix.json names the series and
-# releases.
+# dependencies, then checked with lintian. The .rpm is built in Mock, as
+# COPR builds it, for each Fedora release COPR builds for: the BuildRequires
+# go into a fresh chroot, then the build runs there with no network, then
+# rpmlint. Each package is then installed in another fresh container of its
+# release with only its runtime dependencies and started.
+# release-matrix.json names the series and releases.
 # The Flatpak is built offline from the same tarballs with the release
 # manifest, with every Meson suite, on the nightly and when asked for. It is
 # signed with a throwaway key into repositories laid out as
@@ -37,6 +38,7 @@ on:
       - "linux/po/meson.build"
       - "linux/po/LINGUAS"
       - ".github/workflows/linux-packages.yml"
+      - ".github/actions/linux-package-disk/**"
   # Nightly on main, so a failure only one distribution's build shows turns
   # up before tag time. Three hours after build-linux.yml's nightly, so the
   # two do not share the account's 20 concurrent jobs.
@@ -203,6 +205,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/linux-package-disk
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: linux-source-package
@@ -248,24 +251,30 @@ jobs:
       fail-fast: false
       matrix:
         runner: ${{ fromJSON(inputs.rpm-runners || (inputs.arm64 && '["ubuntu-24.04", "ubuntu-24.04-arm"]') || '["ubuntu-24.04"]') }}
+        # Every Fedora release the COPR project builds for, from release-matrix.json.
         fedora: ${{ fromJSON(needs.matrix.outputs.fedora) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 300
-    container:
-      image: fedora:${{ matrix.fedora }}
+    # On the runner itself, so the build's container can go on the larger
+    # disk. It is privileged, since Mock mounts the chroot's filesystems and
+    # build-rpm.sh unshares the network for the build.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/linux-package-disk
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: linux-sources
           path: _packages/sources
       - name: Build, test and lint the package
+        env:
+          FEDORA: ${{ matrix.fedora }}
         run: |
           dist="$(find _packages/sources -name 'tablepro-*.tar.xz' ! -name '*-vendor.tar.xz')"
           vendor="$(find _packages/sources -name 'tablepro-*-vendor.tar.xz')"
-          linux/build-aux/packaging/build-rpm.sh "$dist" "$vendor" _packages/rpm
+          docker run --rm --privileged -v "$PWD:$PWD" -w "$PWD" "fedora:$FEDORA" \
+            linux/build-aux/packaging/build-rpm.sh "$dist" "$vendor" _packages/rpm
       - name: Keep the RPM failure logs
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -273,6 +282,7 @@ jobs:
           name: linux-rpm-testlog-${{ matrix.fedora }}-${{ runner.arch }}
           path: |
             _packages/rpm/testlog.txt
+            _packages/rpm/build.log
             _packages/rpm/disk-usage.tsv
             _packages/rpm/disk-usage.txt
           if-no-files-found: ignore
@@ -290,6 +300,7 @@ jobs:
       fail-fast: false
       matrix:
         runner: ${{ fromJSON(inputs.rpm-runners || (inputs.arm64 && '["ubuntu-24.04", "ubuntu-24.04-arm"]') || '["ubuntu-24.04"]') }}
+        # Every Fedora release the COPR project builds for, from release-matrix.json.
         fedora: ${{ fromJSON(needs.matrix.outputs.fedora) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
