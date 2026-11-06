@@ -90,6 +90,7 @@ crates/app/src/services/grid/grid_column.rs
 crates/app/src/services/grid/grid_row_id.rs
 crates/app/src/services/grid/hex_dump.rs
 crates/app/src/services/grid/mod.rs
+crates/app/src/services/grid/result_refusal.rs
 crates/app/src/services/grid/row_key_builder.rs
 crates/app/src/services/grid/row_snapshot.rs
 crates/app/src/services/grid/selection_summary.rs
@@ -350,6 +351,7 @@ crates/app/src/ui/editor/format_plan.rs
 crates/app/src/ui/editor/imp.rs
 crates/app/src/ui/editor/inline_suggestion.rs
 crates/app/src/ui/editor/mod.rs
+crates/app/src/ui/editor/result_editing.rs
 crates/app/src/ui/editor/result_item.rs
 crates/app/src/ui/editor/result_widgets.rs
 crates/app/src/ui/editor/results_pane.rs

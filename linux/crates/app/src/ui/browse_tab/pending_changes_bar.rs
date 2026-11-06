@@ -12,7 +12,7 @@ use crate::ui::a11y::announce_key_shortcuts;
 
 /// What a click in the bar asks the tab for, one signal each.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum PendingChangesRequest {
+pub(crate) enum PendingChangesRequest {
     Save,
     Discard,
     StopSaving,
@@ -102,7 +102,7 @@ impl Default for PendingChangesBar {
 }
 
 impl PendingChangesBar {
-    pub(super) fn connect_request<F: Fn(&Self) + 'static>(
+    pub(crate) fn connect_request<F: Fn(&Self) + 'static>(
         &self,
         request: PendingChangesRequest,
         f: F,
@@ -110,11 +110,11 @@ impl PendingChangesBar {
         self.connect_closure(request.signal(), false, glib::closure_local!(move |bar: &Self| f(bar)))
     }
 
-    pub(super) fn announce_save_keys(&self, group: &str, save: &gio::SimpleAction) {
+    pub(crate) fn announce_save_keys(&self, group: &str, save: &gio::SimpleAction) {
         announce_key_shortcuts(&self.imp().save_button.get(), &format!("{group}.{}", save.name()));
     }
 
-    pub(super) fn show_pending(&self, count: usize) {
+    pub(crate) fn show_pending(&self, count: usize) {
         let imp = self.imp();
         let visible = count > 0;
         if visible {
@@ -136,7 +136,7 @@ impl PendingChangesBar {
     /// While a save runs, Save and Discard are off, so a double click
     /// cannot send two, and Stop Saving takes their place, the focus
     /// with it.
-    pub(super) fn show_saving(&self, saving: bool) {
+    pub(crate) fn show_saving(&self, saving: bool) {
         let imp = self.imp();
         let save = imp.save_button.get();
         let stop = imp.stop_button.get();

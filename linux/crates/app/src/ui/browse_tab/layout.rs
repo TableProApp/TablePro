@@ -137,6 +137,7 @@ pub(super) fn grid(tab: &BrowseTab, init: GridInit) -> DataGrid {
         sorting: init.sorting,
         rules: None,
         tracker: Some(init.tracker),
+        result_lock: None,
         settings: init.settings,
         layout,
         references: Some(init.keys),
