@@ -5,7 +5,7 @@ use super::results_pane::ResultPage;
 use super::run_log::{EntryKind, RunLogEntry};
 use crate::ui::export::ExportSource;
 use crate::ui::icons;
-use crate::ui::result_pane::{ResultGridDeps, result_set_page};
+use crate::ui::result_pane::{ResultGrid, ResultGridDeps, result_set_page};
 
 /// What a page's buttons reach in the editor.
 pub struct PageActions<G, E, F> {
@@ -33,6 +33,7 @@ pub(crate) fn entry_widget<G, E, F>(
     index: usize,
     entry: &RunLogEntry,
     grid_deps: &ResultGridDeps,
+    shown: Option<ResultGrid>,
     actions: PageActions<G, E, F>,
 ) -> ResultPage
 where
@@ -47,7 +48,9 @@ where
     } = actions;
     let widget = match &entry.kind {
         EntryKind::ResultSet(result) => {
-            let (widget, grid) = result_set_page(result, &result.summary.tab_label(index), grid_deps, export_all);
+            let shown = shown.unwrap_or_else(|| ResultGrid::read_only(result, None));
+            let (widget, grid) =
+                result_set_page(result, shown, &result.summary.tab_label(index), grid_deps, export_all);
             return ResultPage {
                 widget,
                 grid: Some(grid),
@@ -219,7 +222,7 @@ mod tests {
 
         let deps = grid_deps();
 
-        let page = entry_widget(1, &entry, &deps.deps, actions(|_| {}));
+        let page = entry_widget(1, &entry, &deps.deps, None, actions(|_| {}));
 
         let grid = page.grid.expect("the grid");
         assert!(grid.is_ancestor(&page.widget));
@@ -241,7 +244,7 @@ mod tests {
             preview: String::new(),
         };
 
-        let page = entry_widget(0, &entry, &grid_deps().deps, actions(|_| {}));
+        let page = entry_widget(0, &entry, &grid_deps().deps, None, actions(|_| {}));
 
         assert!(page.grid.is_none());
         let page = page.widget.downcast::<adw::StatusPage>().expect("a status page");
@@ -268,6 +271,7 @@ mod tests {
             0,
             &entry,
             &grid_deps().deps,
+            None,
             actions(move |position| seen.set(Some(position))),
         );
         let page = page.widget.downcast::<adw::StatusPage>().expect("a status page");
@@ -295,6 +299,7 @@ mod tests {
             0,
             &entry,
             &grid_deps().deps,
+            None,
             PageActions {
                 go_to_error: |_| {},
                 export_all: |_| {},

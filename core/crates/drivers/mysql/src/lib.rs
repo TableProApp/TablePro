@@ -9,6 +9,7 @@
 mod cancel;
 mod capabilities;
 mod catalog;
+mod column_origins;
 mod connection;
 mod ddl;
 mod decode;

@@ -30,6 +30,7 @@ mod line_reader;
 mod lingering_query;
 mod metadata;
 mod param_value;
+mod result_origin;
 mod result_reader;
 mod row_seed;
 mod session_status;
