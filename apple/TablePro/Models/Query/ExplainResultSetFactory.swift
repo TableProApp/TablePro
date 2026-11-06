@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 @MainActor
 enum ExplainResultSetFactory {
@@ -16,7 +17,8 @@ enum ExplainResultSetFactory {
         sql: String?,
         executionTime: TimeInterval?,
         anchor: StatementAnchor? = nil,
-        planContext: QueryPlanContext? = nil
+        planContext: QueryPlanContext? = nil,
+        serverOutput: PluginServerOutput = .none
     ) -> ResultSet {
         let resultSet = ResultSet(label: String(localized: "Plan"))
         resultSet.explainRawText = rawText
@@ -25,6 +27,7 @@ enum ExplainResultSetFactory {
         resultSet.executionTime = executionTime
         resultSet.statementAnchor = anchor
         resultSet.explainPlanContext = planContext
+        resultSet.serverOutput = serverOutput
         return resultSet
     }
 }

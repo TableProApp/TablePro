@@ -309,6 +309,7 @@ final class PaginationCoordinator: ObservableObject {
         let lease = DriverLeaseOwner()
         let isTableTab = parent.tabManager.tabs[idx].tabType == .table
         let lengthColumns = isTableTab ? parent.unloadedValueLengthColumns(for: parent.tabManager.tabs[idx]) : []
+        let failureOutput = ServerOutputBox()
 
         let startedAt = ContinuousClock.Instant.now
         // Both releases cover the whole task: a cancelled bare return left a finished fetch installed, which `installQueryTask` then ended.
@@ -327,11 +328,20 @@ final class PaginationCoordinator: ObservableObject {
                     isTableTab: isTableTab,
                     lease: lease
                 ) { driver in
-                    let result = try await driver.executeUserQuery(
-                        query: baseQuery,
-                        rowCap: nil,
-                        parameters: storedParamValues.map { $0.map { $0 as Any? } }
-                    )
+                    let rerun = {
+                        try await driver.executeUserQuery(
+                            query: baseQuery,
+                            rowCap: nil,
+                            parameters: storedParamValues.map { $0.map { $0 as Any? } }
+                        )
+                    }
+                    let result: QueryResult
+                    if isTableTab {
+                        // A table tab's own reads print nothing, as on its first page.
+                        result = try await rerun()
+                    } else {
+                        result = try await ServerOutputCapture.running(on: driver, failureOutput: failureOutput, rerun)
+                    }
                     return result.foldingUnloadedValues(lengthColumns: lengthColumns)
                 }
                 let fetchTime = CFAbsoluteTimeGetCurrent() - start
@@ -371,6 +381,7 @@ final class PaginationCoordinator: ObservableObject {
                         tab.schemaVersion += 1
                         tab.pagination.resetLoadMore()
                         tab.display.activeResultSet?.isTruncated = false
+                        tab.display.replaceActiveServerOutput(result.serverOutput)
                     }
                     parent.toolbarState.recordQueryTiming(result.resolvedTiming, for: tabId)
 
@@ -392,7 +403,10 @@ final class PaginationCoordinator: ObservableObject {
                     parent.tabManager.mutate(tabId: tabId) { tab in
                         tab.pagination.isLoadingMore = false
                         guard !isStale, !isCancelled else { return }
-                        tab.execution.errorMessage = DatabaseWriteRejectionDiagnosis.formatted(error)
+                        tab.execution.errorMessage = ServerOutputCapture.failureMessage(
+                            DatabaseWriteRejectionDiagnosis.formatted(error),
+                            output: failureOutput.output
+                        )
                     }
                     MainContentCoordinator.logger.error("Fetch all failed: \(error.publicLogShape, privacy: .public)")
                     guard !isStale, !isCancelled else { return }

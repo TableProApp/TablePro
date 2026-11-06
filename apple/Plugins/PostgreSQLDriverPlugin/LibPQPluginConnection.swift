@@ -1049,7 +1049,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         /// and the connection is drained instead.
         let cancelsOutput = cancelsAbandonedOutput(conn)
         let suppressCancel = !cancelsOutput
-        _ = finishPendingResults(conn, cancellingOutput: cancelsOutput)
+        finishAbandonedResults(conn, cancellingOutput: cancelsOutput)
         if let ended = sessionEndedBeforeSending(conn) { throw ended }
 
         let localQuery = String(query)
@@ -1366,7 +1366,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 /// Read before the query goes out: once it is in flight the status is
                 /// PQTRANS_ACTIVE, and the transaction this guard exists for is invisible.
                 let cancelsOutput = cancelsAbandonedOutput(conn)
-                _ = finishPendingResults(conn, cancellingOutput: cancelsOutput)
+                finishAbandonedResults(conn, cancellingOutput: cancelsOutput)
                 if let ended = sessionEndedBeforeSending(conn) {
                     continuation.finish(throwing: ended)
                     return
@@ -1600,6 +1600,20 @@ extension LibPQPluginConnection {
     func observeServerNotices(_ observer: (@Sendable (LibPQServerNotice) -> Void)?) {
         let sink = stateLock.withLock { serverMessages?.takeUnretainedValue() }
         sink?.observeNotices(observer)
+    }
+
+    func takeServerOutput() -> PluginServerOutput {
+        guard let sink = stateLock.withLock({ serverMessages?.takeUnretainedValue() }) else { return .none }
+        return sink.takeOutput()
+    }
+
+    // Notices from a result an earlier statement left unread would otherwise show as this statement's output.
+    private func finishAbandonedResults(_ conn: OpaquePointer, cancellingOutput: Bool) {
+        guard let sink = stateLock.withLock({ serverMessages?.takeUnretainedValue() }) else {
+            _ = finishPendingResults(conn, cancellingOutput: cancellingOutput)
+            return
+        }
+        sink.discardingOutput { _ = finishPendingResults(conn, cancellingOutput: cancellingOutput) }
     }
 
     // A debug session runs with no statement timeout, so a call blocked on a server that stopped answering would

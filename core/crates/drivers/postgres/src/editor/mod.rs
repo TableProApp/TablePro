@@ -5,6 +5,7 @@ mod actor;
 mod cursor_flight;
 mod editor_dispatch;
 mod editor_session;
+mod notice_queue;
 mod result_origin;
 mod run;
 mod session_core;

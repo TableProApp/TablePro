@@ -511,9 +511,10 @@ impl ResultSink for RowsSink {
                     _ => SinkFlow::ConsumerGone,
                 }
             }
-            ResultEvent::RowLimitReached { .. } | ResultEvent::CommandCompleted { .. } | ResultEvent::Notice(_) => {
-                SinkFlow::Continue
-            }
+            ResultEvent::RowLimitReached { .. }
+            | ResultEvent::CommandCompleted { .. }
+            | ResultEvent::Notice(_)
+            | ResultEvent::NoticeLimitReached { .. } => SinkFlow::Continue,
         }
     }
 }

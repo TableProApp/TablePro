@@ -291,6 +291,18 @@
   <data name="ResultsGrid.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Results</value>
   </data>
+  <data name="ResultsViews.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Results or messages</value>
+  </data>
+  <data name="ResultsViewItem.Text" xml:space="preserve">
+    <value>Results</value>
+  </data>
+  <data name="MessagesViewItem.Text" xml:space="preserve">
+    <value>Messages</value>
+  </data>
+  <data name="ResultsMessages.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Messages</value>
+  </data>
   <data name="HomeTitle.Text" xml:space="preserve">
     <value>Connections</value>
   </data>
@@ -749,6 +761,9 @@
   </data>
   <data name="ResultsNoRows" xml:space="preserve">
     <value>The statement returned no rows</value>
+  </data>
+  <data name="MessagesCutShort" xml:space="preserve">
+    <value>The output was cut short.</value>
   </data>
   <data name="StatusSortedHeld" xml:space="preserve">
     <value>Rows: {0:N0} · sorted the rows shown</value>

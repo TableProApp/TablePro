@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import TableProPluginKit
 import TableProUtilities
 
 enum QueryPlanViewMode: String, CaseIterable, Identifiable {
@@ -13,6 +14,7 @@ enum QueryPlanViewMode: String, CaseIterable, Identifiable {
     case tree
     case raw
     case compare
+    case output
 
     var id: String { rawValue }
 
@@ -22,7 +24,29 @@ enum QueryPlanViewMode: String, CaseIterable, Identifiable {
         case .tree: return String(localized: "Tree")
         case .raw: return String(localized: "Raw")
         case .compare: return String(localized: "Compare")
+        case .output: return String(localized: "Output")
         }
+    }
+
+    // Compare needs a readable plan from a known run; Output needs only printed lines, so an unreadable plan has it too.
+    static func available(
+        for presentation: QueryPlanPresentation.Kind,
+        canCompare: Bool,
+        hasOutput: Bool
+    ) -> [QueryPlanViewMode] {
+        let planModes: [QueryPlanViewMode]
+        switch presentation {
+        case .parsed:
+            planModes = canCompare ? [.diagram, .tree, .raw, .compare] : [.diagram, .tree, .raw]
+        case .rawOnly, .empty:
+            planModes = [.raw]
+        }
+        return hasOutput ? planModes + [.output] : planModes
+    }
+
+    // The chosen mode belongs to the editor tab and outlives the plan it was chosen on.
+    static func effective(_ chosen: QueryPlanViewMode, among available: [QueryPlanViewMode]) -> QueryPlanViewMode {
+        available.contains(chosen) ? chosen : available.first ?? .raw
     }
 }
 
@@ -69,6 +93,7 @@ struct QueryPlanResultView: View {
     let executionTime: TimeInterval?
     let plan: QueryPlan?
     let planContext: QueryPlanContext?
+    let serverOutput: PluginServerOutput
 
     @AppStorage(PreferenceKeys.queryPlanRawFontSize.name) private var fontSize: Double = 13
     @AppStorage(PreferenceKeys.queryPlanBarMetric.name) private var storedBarMetric: String = ""
@@ -90,6 +115,7 @@ struct QueryPlanResultView: View {
         executionTime: TimeInterval?,
         plan: QueryPlan?,
         planContext: QueryPlanContext? = nil,
+        serverOutput: PluginServerOutput = .none,
         tabState: QueryPlanTabState,
         planState: QueryPlanViewState
     ) {
@@ -97,17 +123,26 @@ struct QueryPlanResultView: View {
         self.executionTime = executionTime
         self.plan = plan
         self.planContext = planContext
+        self.serverOutput = serverOutput
         self.tabState = tabState
         self.planState = planState
         _comparison = ObservedObject(wrappedValue: tabState.comparison)
     }
 
-    /// Compare is offered only when there is something to compare: a plan the app could read, and a
-    /// run it knows the identity of.
     private var availableModes: [QueryPlanViewMode] {
-        planContext == nil
-            ? QueryPlanViewMode.allCases.filter { $0 != .compare }
-            : QueryPlanViewMode.allCases
+        QueryPlanViewMode.available(
+            for: presentation.kind,
+            canCompare: planContext != nil,
+            hasOutput: !serverOutput.isEmpty
+        )
+    }
+
+    private var shownMode: QueryPlanViewMode {
+        QueryPlanViewMode.effective(tabState.viewMode, among: availableModes)
+    }
+
+    private var modeSelection: Binding<QueryPlanViewMode> {
+        Binding(get: { shownMode }, set: { tabState.viewMode = $0 })
     }
 
     var body: some View {
@@ -123,16 +158,15 @@ struct QueryPlanResultView: View {
         .task(id: plan?.rootNode.id) {
             availableMetrics = plan.map(QueryPlanMetricIndex.availableMetrics) ?? []
         }
-        .onChange(of: availableModes) { modes in
-            guard !modes.contains(tabState.viewMode) else { return }
-            tabState.viewMode = .diagram
-        }
     }
 
     @ViewBuilder
     private var content: some View {
-        switch presentation {
-        case .empty:
+        switch (shownMode, presentation) {
+        case (.output, _):
+            ServerOutputView(output: serverOutput)
+
+        case (_, .empty):
             EmptyStateView(
                 icon: "chart.bar.doc.horizontal",
                 title: String(localized: "No Plan Available"),
@@ -140,23 +174,20 @@ struct QueryPlanResultView: View {
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-        case .rawOnly(let text):
+        case (_, .rawOnly(let text)):
             VStack(spacing: 0) {
                 unparsedBanner
                 DDLTextView(ddl: text, fontSize: $fontSize)
             }
 
-        case .parsed(let plan):
-            switch tabState.viewMode {
-            case .diagram:
-                QueryPlanDiagramView(plan: plan, selectedNodeId: $planState.selectedNodeId, viewport: planState.viewport)
-            case .tree:
-                QueryPlanTreeView(plan: plan, metric: barMetric, selectedNodeId: $planState.selectedNodeId)
-            case .raw:
-                DDLTextView(ddl: rawText, fontSize: $fontSize)
-            case .compare:
-                QueryPlanComparisonView(model: comparison)
-            }
+        case (.diagram, .parsed(let plan)):
+            QueryPlanDiagramView(plan: plan, selectedNodeId: $planState.selectedNodeId, viewport: planState.viewport)
+        case (.tree, .parsed(let plan)):
+            QueryPlanTreeView(plan: plan, metric: barMetric, selectedNodeId: $planState.selectedNodeId)
+        case (.raw, .parsed):
+            DDLTextView(ddl: rawText, fontSize: $fontSize)
+        case (.compare, .parsed):
+            QueryPlanComparisonView(model: comparison)
         }
     }
 
@@ -178,8 +209,8 @@ struct QueryPlanResultView: View {
 
     private var toolbar: some View {
         HStack(spacing: 12) {
-            if presentation.plan != nil {
-                Picker(String(localized: "View Mode"), selection: $tabState.viewMode) {
+            if availableModes.count > 1 {
+                Picker(String(localized: "View Mode"), selection: modeSelection) {
                     ForEach(availableModes) { mode in
                         Text(mode.title).tag(mode)
                     }
@@ -190,19 +221,19 @@ struct QueryPlanResultView: View {
                 .accessibilityIdentifier("query-plan-mode-picker")
             }
 
-            if tabState.viewMode == .compare {
+            if shownMode == .compare {
                 baselinePicker
             }
 
-            if tabState.viewMode == .tree {
+            if shownMode == .tree {
                 metricPicker
             }
 
-            if tabState.viewMode == .raw || presentation.plan == nil {
+            if shownMode == .raw {
                 fontSizeStepper
             }
 
-            if tabState.viewMode != .compare {
+            if shownMode != .compare {
                 timings
             }
 

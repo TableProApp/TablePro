@@ -911,6 +911,9 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     {
         switch (Workspace?.ActiveTab)
         {
+            case { MessagesTarget: { } messages }:
+                messages.CopySelectionToClipboard();
+                break;
             case { GridIsTarget: true } tab:
                 await tab.Grid.CopySelectionAsync();
                 break;
@@ -932,6 +935,13 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private void OnSelectAll(object sender, RoutedEventArgs e)
     {
+        if (Workspace?.ActiveTab?.MessagesTarget is { } messages)
+        {
+            messages.SelectAll();
+            messages.Focus(FocusState.Programmatic);
+            return;
+        }
+
         if (Workspace?.ActiveTab is { GridIsTarget: true } tab)
         {
             tab.Grid.SelectAll();

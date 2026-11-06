@@ -27,6 +27,7 @@ public sealed partial class TableTabView : UserControl, ITabContent
 
     // The size this tab was given, as macOS keeps one per table tab; without one, Settings decides.
     private int? _chosenSize;
+    private bool _messagesIsTarget;
     private (long Milliseconds, bool Truncated)? _finished;
     private CancellationTokenSource? _counting;
 
@@ -49,6 +50,8 @@ public sealed partial class TableTabView : UserControl, ITabContent
             return RowsStatus()!;
         };
         Results.SortRequested += OnSortRequested;
+        Results.GridView.GotFocus += (_, _) => _messagesIsTarget = false;
+        Results.MessagesBox.GotFocus += (_, _) => _messagesIsTarget = true;
         UpdatePager();
     }
 
@@ -66,6 +69,9 @@ public sealed partial class TableTabView : UserControl, ITabContent
     public DataGridView Grid => Results.GridView;
 
     public bool GridIsTarget => true;
+
+    public TextBox? MessagesTarget =>
+        _messagesIsTarget && Results.MessagesBox.Visibility == Visibility.Visible ? Results.MessagesBox : null;
 
     private int PageSize => _chosenSize ?? _workbench.Settings.PageSize;
 

@@ -19,7 +19,8 @@ struct BatchStatementRunTests {
         statements: [String] = Self.statements,
         commitPoints: Set<String> = [],
         failing: String? = nil,
-        stopsAfter: Int = .max
+        stopsAfter: Int = .max,
+        commitOutput: ServerOutputBox = ServerOutputBox()
     ) async -> BatchStatementOutcome<QueryResult> {
         let claims = probe ?? ClaimProbe()
         return await BatchStatementRun.run(
@@ -30,7 +31,8 @@ struct BatchStatementRunTests {
             connectionId: claims.connectionId,
             gate: claims.gate,
             failureSQL: { $0 },
-            isCommitPoint: { commitPoints.contains($0) }
+            isCommitPoint: { commitPoints.contains($0) },
+            commitOutput: commitOutput
         ) { statement in
             if claims.recordExecution() == stopsAfter { claims.stop() }
             if statement == failing { throw TestError.refused }
@@ -318,6 +320,66 @@ struct BatchStatementRunTests {
         #expect(failure == .commitOutcomeUnknown)
     }
 
+    // MARK: - What the commit printed
+
+    private static let printedAtCommit = PluginServerOutput(lines: ["NOTICE:  checked 1"], isTruncated: false)
+    private static let rollbackWarning = PluginServerOutput(
+        lines: ["WARNING:  there is no transaction in progress"], isTruncated: false
+    )
+
+    // A deferred constraint trigger fires at the app's COMMIT, after the last statement's output was read.
+    @Test("What the app's own commit printed is read once the commit is answered")
+    func commitOutputIsRead() async {
+        let driver = TransactionRecordingDriver()
+        driver.serverOutputs = [Self.printedAtCommit]
+        let commitOutput = ServerOutputBox()
+
+        let outcome = await Self.run(plan: .appTransaction, driver: driver, commitOutput: commitOutput)
+
+        #expect(commitOutput.output == Self.printedAtCommit)
+        #expect(driver.outputReads == [[.begin(mode: .readWrite), .commit]])
+        guard case .completed = outcome else {
+            Issue.record("expected a completed run, got \(outcome)")
+            return
+        }
+    }
+
+    @Test("A refused commit has its output read before the rollback, whose own warning is not the user's")
+    func refusedCommitOutputIsReadBeforeTheRollback() async {
+        let driver = TransactionRecordingDriver(failsCommit: true)
+        driver.serverOutputs = [Self.printedAtCommit, Self.rollbackWarning]
+        let commitOutput = ServerOutputBox()
+
+        let outcome = await Self.run(plan: .appTransaction, driver: driver, commitOutput: commitOutput)
+
+        #expect(commitOutput.output == Self.printedAtCommit)
+        #expect(driver.outputReads == [[.begin(mode: .readWrite), .commit]])
+        #expect(driver.events == [.begin(mode: .readWrite), .commit, .rollback])
+        guard case .failed(_, let failure, _) = outcome else {
+            Issue.record("expected a failed run, got \(outcome)")
+            return
+        }
+        #expect(failure == .commit)
+    }
+
+    @Test("A completed run shows what the commit printed after its last statement's output")
+    func commitOutputJoinsTheLastResult() {
+        var last = QueryResult.empty
+        last.serverOutput = PluginServerOutput(lines: ["step 2"], isTruncated: false)
+
+        let outcome = BatchStatementOutcome<QueryResult>.completed(results: [.empty, last])
+            .appendingCommitOutput(Self.printedAtCommit)
+
+        guard case .completed(let results) = outcome else {
+            Issue.record("expected a completed run, got \(outcome)")
+            return
+        }
+        #expect(results.map { $0.serverOutput } == [
+            .none,
+            PluginServerOutput(lines: ["step 2", "NOTICE:  checked 1"], isTruncated: false)
+        ])
+    }
+
     // MARK: - A script's own commit
 
     @Test("A script's own COMMIT goes through the commit point, and the batch is stoppable again")
@@ -602,6 +664,9 @@ private final class TransactionRecordingDriver: DatabaseDriver, @unchecked Senda
     var hasLostConnection = false
 
     private(set) var events: [TransactionEvent] = []
+    // The calls made before each output read, which places the read among them.
+    private(set) var outputReads: [[TransactionEvent]] = []
+    var serverOutputs: [PluginServerOutput] = []
     private(set) var cancelCount = 0
     private(set) var commitSawCancellation = false
     private(set) var rollbackSawCancellation = false
@@ -650,6 +715,11 @@ private final class TransactionRecordingDriver: DatabaseDriver, @unchecked Senda
 
     func cancelQuery() throws {
         cancelCount += 1
+    }
+
+    func fetchServerOutput() async throws -> PluginServerOutput {
+        outputReads.append(events)
+        return serverOutputs.isEmpty ? .none : serverOutputs.removeFirst()
     }
 
     func execute(query: String) async throws -> QueryResult {

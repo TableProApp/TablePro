@@ -320,6 +320,11 @@ final class LibPQDriverCore: @unchecked Sendable {
         libpqConnection?.observeServerNotices(observer)
     }
 
+    func fetchServerOutput() -> PluginServerOutput {
+        guard let connection = libpqConnection else { return .none }
+        return connection.takeServerOutput()
+    }
+
     func nextNotifications(waitMicroseconds: Int64) async throws -> [LibPQNotification] {
         guard let connection = libpqConnection else { throw LibPQPluginError.notConnected }
         return try await connection.nextNotifications(waitMicroseconds: waitMicroseconds)
@@ -546,6 +551,10 @@ extension LibPQBackedDriver {
 
     func sessionTransactionState() async -> PluginSessionTransactionState {
         await core.sessionTransactionState()
+    }
+
+    func fetchServerOutput() async throws -> PluginServerOutput {
+        core.fetchServerOutput()
     }
 
     func switchSchema(to schema: String) async throws {

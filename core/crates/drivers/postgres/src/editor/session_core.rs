@@ -3,13 +3,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::Poll;
 use std::time::Duration;
 
-use tablepro_core::{ResultSink, RunOptions, RunSummary, UserSql};
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tablepro_core::{ResultSink, RunOptions, RunSummary, ServerCode, ServerNotice, UserSql};
 use tokio::time::Instant;
 use tokio_postgres::error::DbError;
 use tokio_postgres::{AsyncMessage, CancelToken, Client};
 use tokio_util::sync::CancellationToken;
 
+use super::notice_queue::{NoticeQueue, NoticeSender};
 use super::run::Run;
 use super::stop_watch::StopWatch;
 use super::transaction_tracker::TransactionTracker;
@@ -27,7 +27,7 @@ pub(crate) struct SessionCore {
     pub(crate) tracker: TransactionTracker,
     pub(crate) read_only: bool,
     pub(crate) conforming: Arc<AtomicBool>,
-    notices: UnboundedReceiver<DbError>,
+    notices: NoticeQueue<ServerNotice>,
     statement_timeout: Option<Duration>,
     grace: Duration,
 }
@@ -38,7 +38,7 @@ impl SessionCore {
         endpoint: Arc<PgEndpoint>,
         read_only: bool,
         statement_timeout: Option<Duration>,
-        notices: UnboundedReceiver<DbError>,
+        notices: NoticeQueue<ServerNotice>,
         conforming: Arc<AtomicBool>,
     ) -> Self {
         let cancel_token = client.cancel_token();
@@ -60,12 +60,16 @@ impl SessionCore {
         self.statement_timeout
     }
 
-    pub(crate) fn next_notice(&mut self) -> Option<DbError> {
-        self.notices.try_recv().ok()
+    pub(crate) fn next_notice(&mut self) -> Option<ServerNotice> {
+        self.notices.next()
     }
 
     pub(crate) fn discard_notices(&mut self) {
-        while self.notices.try_recv().is_ok() {}
+        self.notices.discard();
+    }
+
+    pub(crate) fn notices_dropped(&self) -> bool {
+        self.notices.dropped()
     }
 
     pub(crate) async fn run(
@@ -76,6 +80,7 @@ impl SessionCore {
         shutdown: &CancellationToken,
     ) -> Result<RunSummary, Lost> {
         let started = Instant::now();
+        self.notices.start_run();
         let deadline = options.deadline.map(|deadline| started + deadline);
         let watch = StopWatch::new(options.cancel, shutdown.clone(), deadline, self.grace);
         let mut run = Run::new(self, sink, watch, options.row_limit);
@@ -100,7 +105,7 @@ impl SessionCore {
 /// split. Resolves when the connection ends.
 pub(crate) async fn drive(
     mut connection: PgRawConnection,
-    notices: UnboundedSender<DbError>,
+    notices: NoticeSender<ServerNotice>,
     conforming: Arc<AtomicBool>,
 ) {
     std::future::poll_fn(|cx| {
@@ -112,13 +117,52 @@ pub(crate) async fn drive(
             );
             match polled {
                 Poll::Pending => return Poll::Pending,
-                Poll::Ready(Some(Ok(AsyncMessage::Notice(notice)))) => {
-                    let _ = notices.send(notice);
-                }
+                Poll::Ready(Some(Ok(AsyncMessage::Notice(notice)))) => notices.send(kept_notice(&notice)),
                 Poll::Ready(Some(Ok(_))) => {}
                 Poll::Ready(Some(Err(_)) | None) => return Poll::Ready(()),
             }
         }
     })
     .await;
+}
+
+/// The longest notice message a run keeps, in bytes: a run holds up to
+/// `NOTICES_PER_RUN` of them until it reads them.
+const NOTICE_MESSAGE_BYTES: usize = 32_767;
+
+fn kept_notice(notice: &DbError) -> ServerNotice {
+    ServerNotice {
+        severity: notice.severity().to_owned(),
+        message: clipped(notice.message()),
+        code: Some(ServerCode::SqlState(notice.code().code().to_owned())),
+    }
+}
+
+fn clipped(message: &str) -> String {
+    if message.len() <= NOTICE_MESSAGE_BYTES {
+        return message.to_owned();
+    }
+    let mut end = NOTICE_MESSAGE_BYTES;
+    while !message.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}\u{2026}", &message[..end])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_message_within_the_limit_is_kept_whole() {
+        let message = "x".repeat(NOTICE_MESSAGE_BYTES);
+        assert_eq!(clipped(&message), message);
+    }
+
+    #[test]
+    fn a_longer_message_is_cut_on_a_character_boundary() {
+        let message = format!("{}\u{e9}tail", "x".repeat(NOTICE_MESSAGE_BYTES - 1));
+        let kept = clipped(&message);
+        assert_eq!(kept, format!("{}\u{2026}", "x".repeat(NOTICE_MESSAGE_BYTES - 1)));
+    }
 }

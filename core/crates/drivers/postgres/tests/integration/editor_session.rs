@@ -500,6 +500,114 @@ async fn notices_reach_the_sink() {
     );
 }
 
+fn notices(events: &Events) -> Vec<String> {
+    events
+        .all()
+        .into_iter()
+        .filter_map(|event| match event {
+            ResultEvent::Notice(notice) => Some(notice.message),
+            _ => None,
+        })
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn notices_past_the_run_limit_end_in_one_limit_event_and_the_next_run_starts_afresh() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    let session = session(connection.as_ref()).await;
+
+    let flood = run_ok(
+        session.as_ref(),
+        "DO $$ BEGIN FOR i IN 1..10005 LOOP RAISE NOTICE 'row %', i; END LOOP; END $$",
+    )
+    .await;
+    let next = run_ok(session.as_ref(), "DO $$ BEGIN RAISE NOTICE 'after'; END $$").await;
+
+    let all = flood.all();
+    let is_limit = |event: &ResultEvent| matches!(event, ResultEvent::NoticeLimitReached { .. });
+    let limit = all.iter().position(is_limit).expect("the limit event");
+    assert_eq!(all[limit], ResultEvent::NoticeLimitReached { retained: 10_000 });
+    assert_eq!(all.iter().filter(|event| is_limit(event)).count(), 1);
+    assert!(
+        !all[limit..].iter().any(|event| matches!(event, ResultEvent::Notice(_))),
+        "a notice came after the limit"
+    );
+    assert_eq!(notices(&flood).len(), 10_000);
+    assert_eq!(notices(&flood).last().map(String::as_str), Some("row 10000"));
+    assert_eq!(notices(&next), ["after"]);
+    assert!(!next.all().iter().any(is_limit));
+}
+
+/// A parse-time warning arrives on the cursor's DECLARE, not on the FETCH.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_row_limited_select_keeps_the_warning_its_declare_raised() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    let session = session(connection.as_ref()).await;
+    run_ok(session.as_ref(), "SET standard_conforming_strings = off").await;
+
+    let events = run_ok(session.as_ref(), "SELECT 'a\\\\b' AS x").await;
+
+    let all = events.all();
+    let warning = all
+        .iter()
+        .position(|event| matches!(event, ResultEvent::Notice(notice) if notice.message.starts_with("nonstandard use of \\\\")))
+        .unwrap_or_else(|| panic!("no warning: {all:?}"));
+    let started = all
+        .iter()
+        .position(|event| matches!(event, ResultEvent::ResultSetStarted { .. }))
+        .expect("the result");
+    assert!(warning < started, "{all:?}");
+    assert_eq!(notices(&events).len(), 1, "{all:?}");
+    assert_eq!(texts(&events), ["a\\b"]);
+}
+
+/// SELECT INTO cannot be a cursor, so it goes again as a plain statement,
+/// which raises its warning a second time.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_statement_that_falls_back_from_the_cursor_reports_its_warning_once() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    let session = session(connection.as_ref()).await;
+    run_ok(session.as_ref(), "SET standard_conforming_strings = off").await;
+
+    let events = run_ok(session.as_ref(), "SELECT 'a\\\\b' AS x INTO copied").await;
+
+    assert_eq!(notices(&events).len(), 1, "{:?}", events.all());
+}
+
+/// A deferred constraint trigger fires at the COMMIT that ends the
+/// cursor's own transaction, for the statement that wrote the row.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_notice_raised_at_the_cursors_commit_reaches_the_sink() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE checked (id int)",
+            "CREATE FUNCTION check_row() RETURNS trigger LANGUAGE plpgsql AS \
+             $$ BEGIN RAISE NOTICE 'checked %', NEW.id; RETURN NULL; END $$",
+            "CREATE CONSTRAINT TRIGGER check_at_commit AFTER INSERT ON checked \
+             DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION check_row()",
+            "CREATE FUNCTION add_row(n int) RETURNS int LANGUAGE sql AS \
+             $$ INSERT INTO checked VALUES (n) RETURNING id $$",
+        ],
+    )
+    .await;
+    let session = session(connection.as_ref()).await;
+
+    let events = run_ok(session.as_ref(), "SELECT add_row(7)").await;
+
+    assert_eq!(texts(&events), ["7"]);
+    assert_eq!(notices(&events), ["checked 7"], "{:?}", events.all());
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
 async fn standard_conforming_strings_off_splits_with_backslash_escapes() {

@@ -24,7 +24,7 @@ private struct BoundParameterValues: @unchecked Sendable {
 /// the lease, where the driver can say what the session is already holding. Only the second answer
 /// ran, so the failure banner and the status line are written from it.
 private struct MultiStatementRun {
-    let outcome: BatchStatementOutcome<QueryResult>
+    var outcome: BatchStatementOutcome<QueryResult>
     let plan: BatchTransactionPlan
     let sessionState: PluginSessionTransactionState
     let startState: PluginSessionTransactionState
@@ -510,6 +510,7 @@ extension QueryExecutionCoordinator {
         lease: DriverLeaseOwner
     ) async -> MultiStatementRun {
         let failureOutput = ServerOutputBox()
+        let commitOutput = ServerOutputBox()
         let databaseType = parent.connection.type
         do {
             var run = try await DatabaseManager.shared.withScopedDriver(
@@ -535,7 +536,8 @@ extension QueryExecutionCoordinator {
                                 for: databaseType, session: driver.sessionLexicalState
                             ).execution
                         )
-                    }
+                    },
+                    commitOutput: commitOutput
                 ) { statement in
                     try await ServerOutputCapture.running(on: driver, failureOutput: failureOutput) {
                         try await self.executeStatement(
@@ -567,7 +569,11 @@ extension QueryExecutionCoordinator {
                     endState: sessionState
                 )
             }
-            run.failureOutput = failureOutput.output
+            if run.outcome.isCompleted {
+                run.outcome = run.outcome.appendingCommitOutput(commitOutput.output)
+            } else {
+                run.failureOutput = failureOutput.output.appending(commitOutput.output)
+            }
             return run
         } catch {
             if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled {

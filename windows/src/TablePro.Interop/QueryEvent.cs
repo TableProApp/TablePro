@@ -42,6 +42,9 @@ public abstract record QueryEvent
     // Something the server said that is not an error.
     public sealed record Notice(string Severity, string Message, string? Code) : QueryEvent;
 
+    // The run raised more notices than it keeps: Retained came before this, the rest are gone.
+    public sealed record NoticeLimitReached(long Retained) : QueryEvent;
+
     // Transaction: the state the editor's connection is left in.
     public sealed record Finished(QueryOutcome Outcome, TransactionState Transaction = TransactionState.Unknown)
         : QueryEvent;

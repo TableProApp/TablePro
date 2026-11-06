@@ -221,7 +221,8 @@ extension QueryExecutionCoordinator {
                 connection: conn,
                 queryParameterValues: queryParameterValues,
                 anchor: anchor,
-                timing: timing
+                timing: timing,
+                serverOutput: serverOutput
             )
             return
         }
@@ -390,7 +391,8 @@ extension QueryExecutionCoordinator {
         connection conn: DatabaseConnection,
         queryParameterValues: [QueryParameter]?,
         anchor: StatementAnchor? = nil,
-        timing: PluginQueryTiming? = nil
+        timing: PluginQueryTiming? = nil,
+        serverOutput: PluginServerOutput
     ) {
         let databaseName = historyDatabaseName(tabId: tabId)
         let schemaName = historySchemaName(tabId: tabId)
@@ -425,7 +427,8 @@ extension QueryExecutionCoordinator {
                     sql: sql,
                     executionTime: executionTime,
                     anchor: anchor,
-                    planContext: captured.context
+                    planContext: captured.context,
+                    serverOutput: serverOutput
                 )]
             )
             if tab.display.isResultsCollapsed {

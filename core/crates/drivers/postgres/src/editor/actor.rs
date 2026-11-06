@@ -1,11 +1,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use tablepro_core::{DriverError, LossPhase, ResultSink, RunOptions, RunSummary, UserSql};
+use tablepro_core::{DriverError, LossPhase, ResultSink, RunOptions, RunSummary, ServerNotice, UserSql};
 use tokio::sync::{mpsc, oneshot};
-use tokio_postgres::error::DbError;
 use tokio_util::sync::CancellationToken;
 
+use super::notice_queue::NoticeSender;
 use super::session_core::{SessionCore, drive};
 use super::session_status::SessionStatus;
 use crate::physical::PgRawConnection;
@@ -28,7 +28,7 @@ pub(crate) enum Command {
 pub(crate) async fn session_actor(
     mut core: SessionCore,
     connection: PgRawConnection,
-    notices: mpsc::UnboundedSender<DbError>,
+    notices: NoticeSender<ServerNotice>,
     mut commands: mpsc::Receiver<Command>,
     status: Arc<SessionStatus>,
     shutdown: CancellationToken,

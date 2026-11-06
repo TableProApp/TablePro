@@ -22,6 +22,7 @@ public sealed partial class QueryTabView : UserControl, ITabContent
     private string? _statement;
     private GridSort _sort = GridSort.None;
     private bool _sorting;
+    private EditTarget _target;
 
     internal QueryTabView(Workbench workbench, SessionShare share, string title, string? sql)
     {
@@ -36,8 +37,9 @@ public sealed partial class QueryTabView : UserControl, ITabContent
         AutomationProperties.SetName(SqlText, Strings.Format("EditorName", title));
         Results.StatusChanged += (_, status) => StatusText.Text = status;
         Results.SortRequested += OnSortRequested;
-        SqlText.GotFocus += (_, _) => GridIsTarget = false;
-        Results.GridView.GotFocus += (_, _) => GridIsTarget = true;
+        SqlText.GotFocus += (_, _) => _target = EditTarget.Editor;
+        Results.GridView.GotFocus += (_, _) => _target = EditTarget.Grid;
+        Results.MessagesBox.GotFocus += (_, _) => _target = EditTarget.Messages;
     }
 
     public event EventHandler? StateChanged;
@@ -52,7 +54,10 @@ public sealed partial class QueryTabView : UserControl, ITabContent
 
     public DataGridView Grid => Results.GridView;
 
-    public bool GridIsTarget { get; private set; }
+    public bool GridIsTarget => _target == EditTarget.Grid;
+
+    public TextBox? MessagesTarget =>
+        _target == EditTarget.Messages && Results.MessagesBox.Visibility == Visibility.Visible ? Results.MessagesBox : null;
 
     public async void Run() => await RunAsync().ConfigureAwait(true);
 
@@ -293,4 +298,11 @@ public sealed partial class QueryTabView : UserControl, ITabContent
     private void OnRun(object sender, RoutedEventArgs e) => Run();
 
     private void OnStop(object sender, RoutedEventArgs e) => Stop();
+
+    private enum EditTarget
+    {
+        Editor,
+        Grid,
+        Messages,
+    }
 }

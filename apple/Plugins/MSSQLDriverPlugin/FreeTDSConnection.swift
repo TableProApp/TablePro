@@ -101,6 +101,14 @@ nonisolated private func freetdsDiagnostics(for dbproc: UnsafeMutablePointer<DBP
     return freetdsErrors.withLock { $0.perConnection[key] ?? FreeTDSDiagnostics() }
 }
 
+nonisolated private func freetdsRestoreDiagnostics(
+    _ diagnostics: FreeTDSDiagnostics,
+    for dbproc: UnsafeMutablePointer<DBPROCESS>
+) {
+    let key = freetdsConnectionKey(dbproc)
+    freetdsErrors.withLock { $0.perConnection[key] = diagnostics }
+}
+
 /// The output of the connection's latest request, handed over once.
 nonisolated private func freetdsTakeOutput(
     for dbproc: UnsafeMutablePointer<DBPROCESS>
@@ -585,7 +593,9 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
             answer = .failure(error)
         }
 
-        guard dbproc != nil else { return try answer.get() }
+        guard let proc = dbproc else { return try answer.get() }
+        // The reset clears the session's messages, and the statement's PRINT output is what the next read takes.
+        let statementDiagnostics = freetdsDiagnostics(for: proc)
         // Numbered after the statement, so a Stop that ended it does not skip the reset.
         let resetCall = requestGate.enqueue()
         do {
@@ -597,6 +607,7 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
             disconnect()
             throw MSSQLCoreError.queryFailed(MSSQLShowplan.resetFailedMessage)
         }
+        freetdsRestoreDiagnostics(statementDiagnostics, for: proc)
         return try answer.get()
     }
 
