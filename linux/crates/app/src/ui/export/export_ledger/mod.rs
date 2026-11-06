@@ -22,7 +22,6 @@ use super::{
     ExportSinkParts, ExportSource, ExportStreamFailure, FinishError, ReplaceFileWriter,
 };
 use crate::i18n::{gettext, ngettext_f};
-use crate::ui::format::plural_count;
 use crate::workspace::{CloseBlockPrompt, CloseBlocker, InhibitReason, WindowInhibitor, WorkOutcome};
 
 /// Chunks in flight between the encoder and the file. Few, so a slow
@@ -288,7 +287,7 @@ impl CloseBlocker for ExportLedger {
             body: ngettext_f(
                 "{n} export is still running. Stopping it leaves the file unfinished.",
                 "{n} exports are still running. Stopping them leaves the files unfinished.",
-                plural_count(running as u64),
+                running,
                 &[("n", &running.to_string())],
             ),
             keep_label: gettext("_Keep Exporting"),

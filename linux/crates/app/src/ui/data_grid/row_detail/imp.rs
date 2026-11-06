@@ -128,6 +128,7 @@ impl ObjectSubclass for RowDetailPane {
 
 impl ObjectImpl for RowDetailPane {
     fn dispose(&self) {
+        crate::ui::text_view_teardown::release(&self.value_view.get());
         if let Some(load) = self.picture_load.take() {
             load.stop();
         }

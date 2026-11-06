@@ -124,7 +124,7 @@ impl PendingChangesBar {
                 crate::i18n::ngettext_f(
                     "{n} unsaved change",
                     "{n} unsaved changes",
-                    u32::try_from(count).unwrap_or(u32::MAX),
+                    count,
                     &[("n", &count.to_string())],
                 )
             };

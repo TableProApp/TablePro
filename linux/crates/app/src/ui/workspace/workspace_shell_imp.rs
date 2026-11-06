@@ -1,4 +1,4 @@
-use std::cell::{OnceCell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::VecDeque;
 
 use gtk4 as gtk;
@@ -26,6 +26,12 @@ pub(super) struct HeldSession {
 pub(super) struct ClosedTab {
     pub(super) session: glib::WeakRef<Workspace>,
     pub(super) tab: ClosedTabDescriptor,
+}
+
+/// Where a tab stood when a drag took it out of the view.
+pub(super) struct Departure {
+    pub(super) page: glib::WeakRef<adw::TabPage>,
+    pub(super) position: i32,
 }
 
 #[derive(Default, gtk::CompositeTemplate, glib::Properties)]
@@ -127,6 +133,11 @@ pub struct WorkspaceShell {
     pub(super) watches: RefCell<Vec<gtk::ExpressionWatch>>,
     /// The overview's new tab, connected to the front's tab factory.
     pub(super) create_tab: RefCell<Option<glib::SignalHandlerId>>,
+    /// The tab of this window a drag has out of the view.
+    pub(super) departure: RefCell<Option<Departure>>,
+    /// Set from `create-window` until libadwaita attaches the tab it
+    /// declined to put in a new window.
+    pub(super) declined_tear_out: Cell<bool>,
 }
 
 #[glib::object_subclass]

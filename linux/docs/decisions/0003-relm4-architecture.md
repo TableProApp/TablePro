@@ -1,6 +1,6 @@
 # 0003: Relm4 for app architecture
 
-- **Status**: Accepted; superseded by [0012](0012-window-per-session.md) except for the saved-queries and CSV import dialogs, which are still Relm4 components
+- **Status**: Superseded by [0012](0012-window-per-session.md)
 - **Date**: 2026-04-26
 
 ## Context

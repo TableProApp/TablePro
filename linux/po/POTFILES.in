@@ -442,7 +442,10 @@ crates/app/src/ui/history_dialog/tests.rs
 crates/app/src/ui/host_key_failure.rs
 crates/app/src/ui/host_key_review.rs
 crates/app/src/ui/icons.rs
-crates/app/src/ui/import_dialog.rs
+crates/app/src/ui/import_dialog/imp.rs
+crates/app/src/ui/import_dialog/mod.rs
+crates/app/src/ui/import_dialog/preview_text.rs
+crates/app/src/ui/import_dialog/tests.rs
 crates/app/src/ui/import_from_app/imp.rs
 crates/app/src/ui/import_from_app/mod.rs
 crates/app/src/ui/import_from_app/tests.rs
@@ -479,7 +482,13 @@ crates/app/src/ui/result_pane/result_limit_banner.rs
 crates/app/src/ui/result_pane/result_set_view.rs
 crates/app/src/ui/result_pane/result_summary.rs
 crates/app/src/ui/safe_mode.rs
-crates/app/src/ui/saved_queries_dialog.rs
+crates/app/src/ui/saved_queries_dialog/imp.rs
+crates/app/src/ui/saved_queries_dialog/mod.rs
+crates/app/src/ui/saved_queries_dialog/saved_query_listing.rs
+crates/app/src/ui/saved_queries_dialog/saved_query_object.rs
+crates/app/src/ui/saved_queries_dialog/saved_query_object_imp.rs
+crates/app/src/ui/saved_queries_dialog/saved_query_row.rs
+crates/app/src/ui/saved_queries_dialog/tests.rs
 crates/app/src/ui/session_target.rs
 crates/app/src/ui/session_window/application_notification_sink.rs
 crates/app/src/ui/session_window/connect_failed_page.rs
@@ -573,6 +582,7 @@ crates/app/src/ui/tab_load/stale_banner.rs
 crates/app/src/ui/tags/manage_tags_dialog.rs
 crates/app/src/ui/tags/mod.rs
 crates/app/src/ui/tags/tag_dialog.rs
+crates/app/src/ui/text_view_teardown.rs
 crates/app/src/ui/welcome_view.rs
 crates/app/src/ui/window_geometry.rs
 crates/app/src/ui/workspace/assistant.rs
@@ -725,6 +735,7 @@ data/resources/ui/filter-strip.ui
 data/resources/ui/find-bar.ui
 data/resources/ui/history-dialog.ui
 data/resources/ui/history-row.ui
+data/resources/ui/import-csv-dialog.ui
 data/resources/ui/import-from-app-dialog.ui
 data/resources/ui/pager-bar.ui
 data/resources/ui/pending-changes-bar.ui
@@ -738,6 +749,8 @@ data/resources/ui/preferences-history-group.ui
 data/resources/ui/preferences-mcp-page.ui
 data/resources/ui/results-pane.ui
 data/resources/ui/row-detail-pane.ui
+data/resources/ui/saved-queries-dialog.ui
+data/resources/ui/saved-query-row.ui
 data/resources/ui/session-window.ui
 data/resources/ui/sql-editor.ui
 data/resources/ui/ssh-section.ui

@@ -8,8 +8,8 @@ use crate::test_support::{
 };
 use crate::ui::{
     PreferencesDialog, SessionWindow, browse_tab, connect_dialog, data_grid, diagram, editor, export, filter_strip,
-    history_dialog, import_from_app, preferences_dialog, session_window, ssh_section, structure_tab, welcome_view,
-    workspace,
+    history_dialog, import_dialog, import_from_app, preferences_dialog, saved_queries_dialog, session_window,
+    ssh_section, structure_tab, welcome_view, workspace,
 };
 
 /// Every class the app's templates build. A template whose class is
@@ -31,6 +31,7 @@ fn template_classes() -> Vec<glib::Type> {
         filter_strip::FilterStrip::static_type(),
         history_dialog::HistoryDialog::static_type(),
         history_dialog::HistoryRow::static_type(),
+        import_dialog::ImportCsvDialog::static_type(),
         import_from_app::ImportFromAppDialog::static_type(),
         session_window::ConnectFailedPage::static_type(),
         session_window::ConnectingPage::static_type(),
@@ -40,6 +41,8 @@ fn template_classes() -> Vec<glib::Type> {
         preferences_dialog::EditorPage::static_type(),
         preferences_dialog::GeneralPage::static_type(),
         preferences_dialog::HistoryGroup::static_type(),
+        saved_queries_dialog::SavedQueriesDialog::static_type(),
+        saved_queries_dialog::SavedQueryRow::static_type(),
         SessionWindow::static_type(),
         ssh_section::SshSection::static_type(),
         structure_tab::StructureTab::static_type(),

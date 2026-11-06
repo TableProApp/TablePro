@@ -86,10 +86,11 @@ pub(crate) enum SessionWindowInput {
     RefreshIn(SessionKey),
     /// Another session came to the front of the shell.
     FrontChanged,
-    /// A tab of another window's session was dropped on this window's
-    /// tab bar. Weak and sendable, since the window's input also
-    /// crosses to the runtime.
-    ReturnForeignTab(glib::SendWeakRef<adw::TabPage>),
+    /// A tab landed in this window's view where it does not belong: on
+    /// its bar from another window, or back from a drop outside every
+    /// window. Weak and sendable, since the window's input also crosses
+    /// to the runtime.
+    ReturnTab(glib::SendWeakRef<adw::TabPage>),
     /// The main menu's Safe Mode level for the session that was in front
     /// when the user picked it.
     SetSafeMode {

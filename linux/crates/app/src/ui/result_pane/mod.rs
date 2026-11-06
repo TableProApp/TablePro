@@ -23,7 +23,7 @@ use crate::services::grid::{GridColumn, ResultRefusal, grid_columns};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::ui::data_grid::{DataGrid, DialectSource, EditRules, GridConfig, GridSorting, RowData};
 use crate::ui::export::ExportSource;
-use crate::ui::format::{format_thousands, plural_count};
+use crate::ui::format::format_thousands;
 
 /// What a result grid reads from the tab that shows it.
 #[derive(Clone)]
@@ -116,7 +116,7 @@ fn row_count_footer(shown: u64) -> gtk::Label {
         .label(ngettext_f(
             "{n} row",
             "{n} rows",
-            plural_count(shown),
+            shown,
             &[("n", &format_thousands(shown))],
         ))
         .xalign(0.0)

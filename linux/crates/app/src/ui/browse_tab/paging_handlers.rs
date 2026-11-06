@@ -127,7 +127,7 @@ impl BrowseModel {
                 .set_tooltip_text(Some(&crate::i18n::ngettext_f(
                     "{n} Filter Rule Active",
                     "{n} Filter Rules Active",
-                    u32::try_from(n).unwrap_or(u32::MAX),
+                    n,
                     &[("n", &n.to_string())],
                 )));
         }

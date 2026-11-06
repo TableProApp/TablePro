@@ -26,7 +26,7 @@ pub fn saved_connection_error_message(error: &SavedConnectionError) -> String {
         SavedConnectionError::Storage(StorageError::GroupTooDeep { max }) => crate::i18n::ngettext_f(
             "Groups can be nested only {max} level deep.",
             "Groups can be nested only {max} levels deep.",
-            u32::try_from(*max).unwrap_or(u32::MAX),
+            *max,
             &[("max", &max.to_string())],
         ),
         SavedConnectionError::Storage(StorageError::GroupExists { .. }) => {

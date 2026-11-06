@@ -67,8 +67,7 @@ impl BrowseModel {
             None => Vec::new(),
         };
         let policy = self.edit_policy();
-        let selected = u32::try_from(rows.len()).unwrap_or(u32::MAX);
-        let hint = selection_hint(selected, policy.delete);
+        let hint = selection_hint(rows.len(), policy.delete);
         let label = &self.widgets.selection_label;
         label.set_label(hint.as_deref().unwrap_or_default());
         label.set_visible(hint.is_some());

@@ -70,7 +70,7 @@ pub fn edit_policy(read_only: bool, has_primary_key: bool, has_columns: bool) ->
 
 /// The count shown once several rows are selected. It names the Delete
 /// key only where Delete would act (inventory D12).
-pub fn selection_hint(selected: u32, delete: Result<(), EditRefusal>) -> Option<String> {
+pub fn selection_hint(selected: usize, delete: Result<(), EditRefusal>) -> Option<String> {
     if selected <= 1 {
         return None;
     }

@@ -101,7 +101,7 @@ impl EditController {
         let title = ngettext_f(
             "Delete {n} Row?",
             "Delete {n} Rows?",
-            u32::try_from(count).unwrap_or(u32::MAX),
+            count,
             &[("n", &count.to_string())],
         );
         let dialog = adw::AlertDialog::new(Some(&title), Some(&deletion.confirmation_body()));

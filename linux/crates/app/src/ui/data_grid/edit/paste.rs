@@ -11,7 +11,7 @@ use crate::i18n::{gettext, gettext_f, ngettext_f};
 use crate::services::grid::{cell_presets, parse_cell_text};
 use crate::ui::data_grid::{DataGrid, PinnedRow};
 use crate::ui::error_text::{edit_parse_message, row_error_message};
-use crate::ui::format::{format_thousands, plural_count};
+use crate::ui::format::format_thousands;
 
 /// A paste of more rows asks first: each becomes a pending row, and
 /// Import CSV is the tool for a lot of data.
@@ -174,7 +174,7 @@ impl EditController {
         grid.toast(ngettext_f(
             "Pasted {n} row",
             "Pasted {n} rows",
-            plural_count(n),
+            n,
             &[("n", &format_thousands(n))],
         ));
         if skipped > 0 {
@@ -182,7 +182,7 @@ impl EditController {
             grid.toast(ngettext_f(
                 "Left out {n} value no column could take",
                 "Left out {n} values no column could take",
-                plural_count(n),
+                n,
                 &[("n", &format_thousands(n))],
             ));
         }
@@ -193,7 +193,7 @@ impl EditController {
         let title = ngettext_f(
             "Paste {n} Row?",
             "Paste {n} Rows?",
-            plural_count(count),
+            count,
             &[("n", &format_thousands(count))],
         );
         let body = gettext(

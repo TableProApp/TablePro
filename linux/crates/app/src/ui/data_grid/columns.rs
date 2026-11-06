@@ -198,8 +198,8 @@ impl DataGrid {
             let Some(cell) = item.downcast_ref::<gtk::ColumnViewCell>() else {
                 return;
             };
-            // Set through the property: under GTK 4.12 and later gtk-rs maps
-            // `set_focusable` to the GtkListItem field the cell never reads.
+            // Set through the property: gtk-rs maps `set_focusable` to the GtkListItem field the cell never
+            // reads (docs/toolkit-workarounds.md, "ColumnViewCell.set_focusable in gtk-rs").
             cell.set_property("focusable", true);
             let grid_cell = GridCell::new(setup_paint.clone());
             grid_cell.attach(cell);

@@ -357,7 +357,7 @@ pub fn entry_title(index: usize, entry: &RunLogEntry) -> (String, &'static str) 
             crate::i18n::ngettext_f(
                 "{n} Row Affected",
                 "{n} Rows Affected",
-                u32::try_from(*rows).unwrap_or(u32::MAX),
+                *rows,
                 &[("n", &rows.to_string())],
             ),
             icons::SUCCESS,
