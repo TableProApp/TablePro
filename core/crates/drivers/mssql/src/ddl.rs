@@ -1,15 +1,16 @@
 use tablepro_core::column::{ColumnDefault, ColumnKind};
 use tablepro_core::ddl::ddl_sql::{column_list, create_index_sql, default_sql, foreign_key_sql, parenthesized};
 use tablepro_core::ddl::{
-    BuildDdlError, ColumnAlteration, ColumnAttributes, ColumnCapabilities, ColumnDefinition, DdlCapabilities,
-    DdlDialect, DdlOperation, DdlPlan, DraftColumn, DraftType, GeneratedStorage, IdentityStyle, Permission,
-    ReferentialAction, RefusalReason, ResolvedType, TableChanges, TableDefinition, TableDraft,
+    BuildDdlError, CatalogCapabilities, CatalogOption, ColumnAlteration, ColumnAttributes, ColumnCapabilities,
+    ColumnDefinition, DatabaseDraft, DatabaseFields, DdlCapabilities, DdlDialect, DdlOperation, DdlPlan, DraftColumn,
+    DraftType, GeneratedStorage, IdentitySeed, IdentityStyle, NameLimit, Permission, ReferentialAction, RefusalReason,
+    ResolvedType, TableChanges, TableDefinition, TableDraft, bare_word, check_database_draft, named,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{IndexInfo, TableRef};
 
 use crate::catalog::SqlServerType;
-use crate::dialect::{MssqlDialect, national_literal};
+use crate::dialect::{MssqlDialect, national_literal, quote};
 use crate::index_statements::disabling;
 
 static CAPABILITIES: DdlCapabilities = DdlCapabilities {
@@ -41,6 +42,27 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     column_collations: false,
     table_options: false,
 };
+
+/// The databases the server keeps for itself and refuses to drop.
+const SYSTEM_DATABASES: [&str; 4] = ["master", "model", "msdb", "tempdb"];
+
+/// The schemas every database has: four the server refuses to drop, and
+/// those of the fixed database roles.
+const FIXED_SCHEMAS: [&str; 13] = [
+    "dbo",
+    "guest",
+    "sys",
+    "INFORMATION_SCHEMA",
+    "db_owner",
+    "db_accessadmin",
+    "db_securityadmin",
+    "db_ddladmin",
+    "db_backupoperator",
+    "db_datareader",
+    "db_datawriter",
+    "db_denydatareader",
+    "db_denydatawriter",
+];
 
 fn alter_table(dialect: &MssqlDialect, table: &TableRef, action: &str) -> String {
     format!("ALTER TABLE {} {action}", dialect.qualify(table))
@@ -124,39 +146,15 @@ impl DdlDialect for MssqlDialect {
     }
 
     fn plan_create_table(&self, draft: &TableDraft) -> Result<DdlPlan, BuildDdlError> {
-        self.create_table(draft, "")
+        Ok(DdlPlan::from_sql(
+            self.create_table(draft, &CreateTableFacts::default(), false)?
+                .into_statements(),
+        ))
     }
 
     fn create_table_script(&self, definition: &TableDefinition) -> Result<DdlPlan, BuildDdlError> {
-        let mut draft = TableDraft::from_definition(definition);
-        let (stated, written): (Vec<IndexInfo>, Vec<IndexInfo>) =
-            draft.indexes.into_iter().partition(|index| index.definition.is_some());
-        draft.indexes = written;
-        let stated: Vec<(&str, &str)> = stated
-            .iter()
-            .filter_map(|index| Some((index.name.as_str(), index.definition.as_deref()?)))
-            .collect();
-        // A table has one clustered index, so a stated one leaves the key nonclustered.
-        let clustered = stated
-            .iter()
-            .any(|(_, sql)| sql.starts_with("CREATE CLUSTERED ") || sql.starts_with("CREATE UNIQUE CLUSTERED "));
-        let mut plan = self.create_table(&draft, if clustered { " NONCLUSTERED" } else { "" })?;
-        let relation = self.qualify(&definition.table);
-        let (mut created, mut disabled) = (Vec::new(), Vec::new());
-        // A disabled clustered index refuses every index made after it.
-        for (name, sql) in stated {
-            let disable = disabling(name, &relation);
-            match sql.strip_suffix(&format!(";\n\n{disable}")) {
-                Some(create) => {
-                    created.push(create.to_owned());
-                    disabled.push(disable);
-                }
-                None => created.push(sql.to_owned()),
-            }
-        }
-        plan.statements
-            .extend(DdlPlan::from_sql(created.into_iter().chain(disabled)).statements);
-        Ok(plan)
+        let script = self.table_script(definition, &CreateTableFacts::default())?;
+        Ok(DdlPlan::from_sql(script.into_statements()))
     }
 
     fn plan_alter_table(&self, original: &TableDefinition, changes: &TableChanges) -> Result<DdlPlan, BuildDdlError> {
@@ -203,7 +201,7 @@ impl DdlDialect for MssqlDialect {
             self.alter_column(&table, alteration, &mut statements)?;
         }
         for column in &changes.added_columns {
-            statements.push(alter(format!("ADD {}", self.column_definition(column)?)));
+            statements.push(alter(format!("ADD {}", self.column_definition(column, None)?)));
             if let Some(comment) = column.comment_text() {
                 statements.push(column_comment(&table, &column.name, false, Some(comment)));
             }
@@ -229,41 +227,203 @@ impl DdlDialect for MssqlDialect {
         }
         DdlPlan::for_changes(changes, statements)
     }
+
+    /// TRUNCATE always starts the identity again at its seed, and runs
+    /// inside the write's transaction. A database is made or dropped
+    /// outside one, as SQL Server requires. No drop closes the other
+    /// sessions first: SINGLE_USER set before a drop that is stopped or
+    /// loses its link stays set, as no CATCH runs then, so the server's
+    /// refusal of a database in use stands.
+    fn catalog_capabilities(&self) -> CatalogCapabilities {
+        CatalogCapabilities {
+            truncate_table: true,
+            // Even a key set to NOCHECK, and whatever rows the tables hold.
+            truncate_refused_when_referenced: true,
+            create_schema: true,
+            drop_schema: true,
+            schema_owner: true,
+            create_database: true,
+            drop_database: true,
+            database_fields: DatabaseFields {
+                collation: true,
+                ..DatabaseFields::default()
+            },
+            name_limit: Some(NameLimit::Chars(128)),
+            ..CatalogCapabilities::default()
+        }
+    }
+
+    fn protects_database(&self, name: &str) -> bool {
+        SYSTEM_DATABASES.iter().any(|system| system.eq_ignore_ascii_case(name))
+    }
+
+    fn protects_schema(&self, name: &str) -> bool {
+        FIXED_SCHEMAS.iter().any(|fixed| fixed.eq_ignore_ascii_case(name))
+    }
+
+    fn plan_create_database(&self, draft: &DatabaseDraft) -> Result<DdlPlan, BuildDdlError> {
+        let capabilities = self.catalog_capabilities();
+        check_database_draft(&capabilities, draft)?;
+        let mut sql = format!(
+            "CREATE DATABASE {}",
+            self.quote_identifier(named(&capabilities, CatalogOption::Name, &draft.name)?)
+        );
+        // T-SQL takes a collation only as a bare name.
+        if let Some(collation) = &draft.collation {
+            sql.push_str(" COLLATE ");
+            sql.push_str(bare_word(CatalogOption::Collation, collation)?);
+        }
+        Ok(DdlPlan::for_databases([sql]))
+    }
+}
+
+/// What a dump's CREATE TABLE states that the structure model does not
+/// carry. Left at its default, the script is the model's.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct CreateTableFacts {
+    pub(crate) key: Option<KeyClause>,
+    pub(crate) identity: Option<IdentitySeed>,
+}
+
+/// The primary key as its constraint and index have it. The model keeps
+/// the key's columns in column order and no name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct KeyClause {
+    pub(crate) name: String,
+    pub(crate) clustered: bool,
+    /// The keys in key order, each with its direction.
+    pub(crate) keys: String,
+}
+
+impl KeyClause {
+    fn sql(&self) -> String {
+        let kind = match self.clustered {
+            true => "CLUSTERED",
+            false => "NONCLUSTERED",
+        };
+        format!("CONSTRAINT {} PRIMARY KEY {kind} ({})", quote(&self.name), self.keys)
+    }
+}
+
+fn identity_clause(seed: &IdentitySeed) -> String {
+    format!("IDENTITY({},{})", seed.seed(), seed.increment())
+}
+
+/// An integer as the catalogue prints one, the only text a counter's
+/// value is spliced into a statement as.
+pub(crate) fn whole_number(text: &str) -> bool {
+    let digits = text.strip_prefix('-').unwrap_or(text);
+    !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+/// A table's script in the parts a dump places apart.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TableScript {
+    pub(crate) create: String,
+    pub(crate) indexes: Vec<String>,
+    pub(crate) comments: Vec<String>,
+    /// The indexes the server's catalogue states, then the ones disabled.
+    pub(crate) stated: Vec<String>,
+}
+
+impl TableScript {
+    fn into_statements(self) -> Vec<String> {
+        let mut statements = vec![self.create];
+        statements.extend(self.indexes);
+        statements.extend(self.comments);
+        statements.extend(self.stated);
+        statements
+    }
 }
 
 impl MssqlDialect {
-    // `key_kind` is " NONCLUSTERED" where another index of the table is the clustered one.
-    fn create_table(&self, draft: &TableDraft, key_kind: &str) -> Result<DdlPlan, BuildDdlError> {
+    pub(crate) fn table_script(
+        &self,
+        definition: &TableDefinition,
+        facts: &CreateTableFacts,
+    ) -> Result<TableScript, BuildDdlError> {
+        let mut draft = TableDraft::from_definition(definition);
+        let (stated, written): (Vec<IndexInfo>, Vec<IndexInfo>) =
+            draft.indexes.into_iter().partition(|index| index.definition.is_some());
+        draft.indexes = written;
+        let stated: Vec<(&str, &str)> = stated
+            .iter()
+            .filter_map(|index| Some((index.name.as_str(), index.definition.as_deref()?)))
+            .collect();
+        // A table has one clustered index, so a stated one leaves the key nonclustered.
+        let clustered = stated
+            .iter()
+            .any(|(_, sql)| sql.starts_with("CREATE CLUSTERED ") || sql.starts_with("CREATE UNIQUE CLUSTERED "));
+        let mut script = self.create_table(&draft, facts, clustered)?;
+        let relation = self.qualify(&definition.table);
+        let mut disabled = Vec::new();
+        // A disabled clustered index refuses every index made after it.
+        for (name, sql) in stated {
+            let disable = disabling(name, &relation);
+            match sql.strip_suffix(&format!(";\n\n{disable}")) {
+                Some(create) => {
+                    script.stated.push(create.to_owned());
+                    disabled.push(disable);
+                }
+                None => script.stated.push(sql.to_owned()),
+            }
+        }
+        script.stated.extend(disabled);
+        Ok(script)
+    }
+
+    fn create_table(
+        &self,
+        draft: &TableDraft,
+        facts: &CreateTableFacts,
+        nonclustered_key: bool,
+    ) -> Result<TableScript, BuildDdlError> {
         draft.check_create(self)?;
         let table = TableRef::new(draft.table.schema.clone(), draft.table.name.trim());
         let mut definitions = draft
             .columns
             .iter()
-            .map(|column| self.column_definition(column))
+            .map(|column| self.column_definition(column, facts.identity.as_ref()))
             .collect::<Result<Vec<_>, _>>()?;
         let key: Vec<String> = draft.primary_key().into_iter().map(str::to_owned).collect();
-        if !key.is_empty() {
-            definitions.push(format!("PRIMARY KEY{key_kind} ({})", column_list(self, &key)));
+        match &facts.key {
+            Some(clause) => definitions.push(clause.sql()),
+            None if !key.is_empty() => {
+                let kind = if nonclustered_key { " NONCLUSTERED" } else { "" };
+                definitions.push(format!("PRIMARY KEY{kind} ({})", column_list(self, &key)));
+            }
+            None => {}
         }
         definitions.extend(draft.foreign_keys.iter().map(|key| foreign_key_sql(self, &table, key)));
-        let mut statements = vec![format!(
+        let create = format!(
             "CREATE TABLE {} (\n  {}\n)",
             self.qualify(&table),
             definitions.join(",\n  ")
-        )];
-        statements.extend(
-            draft
-                .indexes
-                .iter()
-                .filter(|index| !index.primary)
-                .map(|index| create_index_sql(self, &table, index)),
         );
-        for column in &draft.columns {
-            if let Some(comment) = column.comment_text() {
-                statements.push(column_comment(&table, &column.name, false, Some(comment)));
-            }
-        }
-        Ok(DdlPlan::from_sql(statements))
+        let indexes = draft
+            .indexes
+            .iter()
+            .filter(|index| !index.primary)
+            .map(|index| create_index_sql(self, &table, index))
+            .collect();
+        let comments = draft
+            .columns
+            .iter()
+            .filter_map(|column| {
+                Some(column_comment(
+                    &table,
+                    &column.name,
+                    false,
+                    Some(column.comment_text()?),
+                ))
+            })
+            .collect();
+        Ok(TableScript {
+            create,
+            indexes,
+            comments,
+            stated: Vec::new(),
+        })
     }
 
     /// A column bound to a default cannot change type, so its default
@@ -359,10 +519,11 @@ impl MssqlDialect {
         Ok(())
     }
 
-    /// `name type [COLLATE c] [SPARSE] [MASKED WITH (..)] [IDENTITY(1,1)]
+    /// `name type [COLLATE c] [SPARSE] [MASKED WITH (..)] [IDENTITY(s,i)]
     /// NULL|NOT NULL [DEFAULT (..)]`, or a computed column read from the
-    /// catalogue as `name AS (..)`.
-    fn column_definition(&self, column: &DraftColumn) -> Result<String, BuildDdlError> {
+    /// catalogue as `name AS (..)`. A new column with no seed of its own
+    /// is `IDENTITY(1,1)`.
+    fn column_definition(&self, column: &DraftColumn, seed: Option<&IdentitySeed>) -> Result<String, BuildDdlError> {
         let name = self.quote_identifier(&column.name);
         let attributes = column.original.as_ref().map(|original| &original.attributes);
         if let Some(generated) = attributes.and_then(|attributes| attributes.generated.as_ref()) {
@@ -392,7 +553,8 @@ impl MssqlDialect {
         let identity = column.auto_increment
             || attributes.is_some_and(|attributes| attributes.identity == IdentityStyle::MssqlIdentity);
         if identity {
-            parts.push("IDENTITY(1,1)".to_owned());
+            let seed = seed.or_else(|| attributes.and_then(|attributes| attributes.identity_seed.as_ref()));
+            parts.push(seed.map_or_else(|| "IDENTITY(1,1)".to_owned(), identity_clause));
         }
         // SQL Server refuses an identity on a nullable column (error 8147).
         parts.push(
@@ -552,8 +714,12 @@ fn column_comment(table: &TableRef, column: &str, had_comment: bool, comment: Op
 
 #[cfg(test)]
 mod tests {
+    use tablepro_core::WriteKind;
     use tablepro_core::column::{ColumnInfo, SqlExpression};
-    use tablepro_core::ddl::{CollationName, DropTableOptions, InboundForeignKey, PrimaryKeyConstraint, diff_table};
+    use tablepro_core::ddl::{
+        self as catalog, CollationName, DropDatabaseOptions, DropSchemaOptions, DropTableOptions, InboundForeignKey,
+        PrimaryKeyConstraint, SchemaDraft, TruncateTableOptions, diff_table,
+    };
     use tablepro_core::value::Value;
 
     use super::*;
@@ -709,6 +875,47 @@ mod tests {
                  PRIMARY KEY ([id])\n)"
             ]
         );
+    }
+
+    #[test]
+    fn a_dumped_table_states_its_seed_and_its_key_as_the_catalogue_has_them() {
+        let mut table = orders();
+        table.columns[0].attributes.identity = IdentityStyle::MssqlIdentity;
+        table.columns[0].info.is_auto_increment = true;
+        table.columns[2].info.comment = Some("why".to_owned());
+        let facts = CreateTableFacts {
+            key: Some(KeyClause {
+                name: "PK_orders".to_owned(),
+                clustered: false,
+                keys: "[id] DESC".to_owned(),
+            }),
+            identity: IdentitySeed::new("1000", "-5"),
+        };
+
+        let script = dialect().table_script(&table, &facts).expect("the script");
+
+        assert_eq!(
+            script.create,
+            "CREATE TABLE [dbo].[orders] (\n  [id] int IDENTITY(1000,-5) NOT NULL,\n  [status] int NULL DEFAULT ((0)),\n  \
+             [note] nvarchar(20) NULL,\n  CONSTRAINT [PK_orders] PRIMARY KEY NONCLUSTERED ([id] DESC)\n)"
+        );
+        assert_eq!(script.comments.len(), 1);
+        assert!(script.indexes.is_empty() && script.stated.is_empty());
+        let shown = sql(dialect().create_table_script(&table));
+        assert!(shown[0].contains("[id] int IDENTITY(1,1) NOT NULL"), "{}", shown[0]);
+        assert!(shown[0].ends_with("PRIMARY KEY ([id])\n)"), "{}", shown[0]);
+    }
+
+    #[test]
+    fn show_create_table_keeps_the_seed_the_catalogue_read() {
+        let mut table = orders();
+        table.columns[0].attributes.identity = IdentityStyle::MssqlIdentity;
+        table.columns[0].attributes.identity_seed = IdentitySeed::new("100", "5");
+        table.columns[0].info.is_auto_increment = true;
+
+        let shown = sql(dialect().create_table_script(&table));
+
+        assert!(shown[0].contains("[id] int IDENTITY(100,5) NOT NULL"), "{}", shown[0]);
     }
 
     #[test]
@@ -1171,6 +1378,214 @@ mod tests {
             )),
             ["DROP TABLE IF EXISTS [dbo].[orders]"]
         );
+    }
+
+    #[test]
+    fn a_truncate_names_the_table_and_takes_no_option() {
+        let table = TableRef::new(Some("dbo".to_owned()), "or]ders");
+
+        let plan = dialect()
+            .plan_truncate_table(&table, &TruncateTableOptions::default())
+            .expect("a plan");
+
+        assert_eq!(plan.sql(), ["TRUNCATE TABLE [dbo].[or]]ders]"]);
+        assert_eq!(plan.kind, WriteKind::SchemaChanges);
+        let cascade = TruncateTableOptions {
+            cascade: true,
+            ..TruncateTableOptions::default()
+        };
+        assert_eq!(
+            dialect().plan_truncate_table(&table, &cascade),
+            Err(BuildDdlError::Unsupported(DdlOperation::TruncateTableCascade))
+        );
+        let restart = TruncateTableOptions {
+            restart_identity: true,
+            ..TruncateTableOptions::default()
+        };
+        assert_eq!(
+            dialect().plan_truncate_table(&table, &restart),
+            Err(BuildDdlError::Unsupported(DdlOperation::TruncateRestartIdentity))
+        );
+    }
+
+    #[test]
+    fn a_schema_is_created_with_its_owner_and_dropped_without_cascade() {
+        let draft = SchemaDraft {
+            name: "sa]les".to_owned(),
+            owner: Some("ann".to_owned()),
+        };
+
+        let created = dialect().plan_create_schema(&draft);
+        let dropped = dialect().plan_drop_schema("sales", DropSchemaOptions::default());
+
+        assert_eq!(sql(created), ["CREATE SCHEMA [sa]]les] AUTHORIZATION [ann]"]);
+        assert_eq!(sql(dropped), ["DROP SCHEMA [sales]"]);
+        assert_eq!(
+            dialect().plan_drop_schema("sales", DropSchemaOptions { cascade: true }),
+            Err(BuildDdlError::Unsupported(DdlOperation::DropSchemaCascade))
+        );
+    }
+
+    #[test]
+    fn a_database_is_created_outside_a_transaction_with_a_bare_collation() {
+        let mut draft = DatabaseDraft::named("sh]op");
+        draft.collation = Some("Latin1_General_100_CI_AS_SC_UTF8".to_owned());
+
+        let plan = dialect().plan_create_database(&draft).expect("a plan");
+
+        assert_eq!(
+            plan.sql(),
+            ["CREATE DATABASE [sh]]op] COLLATE Latin1_General_100_CI_AS_SC_UTF8"]
+        );
+        assert_eq!(plan.kind, WriteKind::DatabaseChanges);
+        assert_eq!(
+            sql(dialect().plan_create_database(&DatabaseDraft::named("shop"))),
+            ["CREATE DATABASE [shop]"]
+        );
+        draft.collation = Some("Latin1_General_CI_AS; DROP DATABASE x".to_owned());
+        assert!(matches!(
+            dialect().plan_create_database(&draft),
+            Err(BuildDdlError::InvalidOption {
+                option: CatalogOption::Collation,
+                ..
+            })
+        ));
+        let mut owned = DatabaseDraft::named("shop");
+        owned.owner = Some("ann".to_owned());
+        assert_eq!(
+            dialect().plan_create_database(&owned),
+            Err(BuildDdlError::Unsupported(DdlOperation::CatalogOwner))
+        );
+        let mut encoded = DatabaseDraft::named("shop");
+        encoded.encoding = Some("UTF8".to_owned());
+        assert!(matches!(
+            dialect().plan_create_database(&encoded),
+            Err(BuildDdlError::InvalidOption {
+                option: CatalogOption::Encoding,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn a_database_is_dropped_outside_a_transaction_and_never_forced() {
+        let dropped = dialect()
+            .plan_drop_database("sh]op", &DropDatabaseOptions::default())
+            .expect("a plan");
+
+        assert_eq!(dropped.sql(), ["DROP DATABASE [sh]]op]"]);
+        assert_eq!(dropped.kind, WriteKind::DatabaseChanges);
+        let force = DropDatabaseOptions {
+            force: true,
+            cluster: None,
+        };
+        assert_eq!(
+            dialect().plan_drop_database("shop", &force),
+            Err(BuildDdlError::Unsupported(DdlOperation::DropDatabaseForce))
+        );
+        let clustered = DropDatabaseOptions {
+            force: false,
+            cluster: Some("main".to_owned()),
+        };
+        assert_eq!(
+            dialect().plan_drop_database("shop", &clustered),
+            Err(BuildDdlError::Unsupported(DdlOperation::OnCluster))
+        );
+    }
+
+    #[test]
+    fn a_name_longer_than_a_sysname_is_refused() {
+        let longest = SchemaDraft {
+            name: "é".repeat(128),
+            owner: None,
+        };
+        let longer = "d".repeat(129);
+
+        assert!(dialect().plan_create_schema(&longest).is_ok());
+        assert!(
+            dialect()
+                .plan_create_database(&DatabaseDraft::named("d".repeat(128)))
+                .is_ok()
+        );
+        assert!(matches!(
+            dialect().plan_create_database(&DatabaseDraft::named(longer.clone())),
+            Err(BuildDdlError::InvalidOption {
+                option: CatalogOption::Name,
+                ..
+            })
+        ));
+        assert!(matches!(
+            dialect().plan_create_schema(&SchemaDraft {
+                name: longer,
+                owner: None
+            }),
+            Err(BuildDdlError::InvalidOption {
+                option: CatalogOption::Name,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn the_servers_own_databases_and_schemas_are_protected() {
+        let dialect = dialect();
+
+        for name in ["master", "MODEL", "msdb", "tempdb"] {
+            assert!(dialect.protects_database(name), "{name}");
+        }
+        assert!(!dialect.protects_database("shop"));
+        for name in [
+            "dbo",
+            "guest",
+            "sys",
+            "INFORMATION_SCHEMA",
+            "db_owner",
+            "db_denydatawriter",
+        ] {
+            assert!(dialect.protects_schema(name), "{name}");
+        }
+        assert!(!dialect.protects_schema("sales"));
+        assert!(!dialect.protects_schema("db_sales"));
+    }
+
+    /// The sidebar offers what the capabilities say, so each one has to
+    /// plan, with every option it offers.
+    #[test]
+    fn every_offered_catalog_operation_plans() {
+        let dialect = dialect();
+        let offered = catalog::catalog_capabilities(&dialect);
+        let table = TableRef::new(Some("dbo".to_owned()), "orders");
+        let truncate = TruncateTableOptions {
+            cascade: offered.truncate_cascade,
+            restart_identity: offered.truncate_restart_identity,
+            cluster: None,
+        };
+        let schema = SchemaDraft {
+            name: "sales".to_owned(),
+            owner: offered.schema_owner.then(|| "ann".to_owned()),
+        };
+        let mut database = DatabaseDraft::named("shop");
+        database.collation = offered
+            .database_fields
+            .collation
+            .then(|| "Latin1_General_CI_AS".to_owned());
+        let drop_schema = DropSchemaOptions {
+            cascade: offered.drop_schema_cascade,
+        };
+        let drop_database = DropDatabaseOptions {
+            force: offered.drop_database_force,
+            cluster: None,
+        };
+
+        assert!(offered.truncate_table && offered.truncate_refused_when_referenced);
+        assert!(offered.create_schema && offered.drop_schema && offered.schema_owner);
+        assert!(offered.create_database && offered.drop_database && !offered.drop_database_force);
+        assert!(!offered.on_cluster && !offered.drop_schema_cascade);
+        assert!(catalog::plan_truncate_table(&dialect, &table, &truncate).is_ok());
+        assert!(catalog::plan_create_schema(&dialect, &schema).is_ok());
+        assert!(catalog::plan_drop_schema(&dialect, "sales", drop_schema).is_ok());
+        assert!(catalog::plan_create_database(&dialect, &database).is_ok());
+        assert!(catalog::plan_drop_database(&dialect, "shop", &drop_database).is_ok());
     }
 
     #[test]

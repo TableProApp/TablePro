@@ -7,15 +7,19 @@
 )]
 
 mod cancellation;
+mod catalog_ddl;
 mod conformance_engine;
 mod csv_import;
 mod ddl;
 mod decode;
+mod dump;
 mod editor_session;
 mod filter;
 mod flight;
 mod identity_insert;
 mod liveness;
+#[cfg(unix)]
+mod local_socket;
 mod metadata;
 mod paging;
 mod pgbouncer;

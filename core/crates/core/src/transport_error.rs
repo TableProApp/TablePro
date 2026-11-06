@@ -1,6 +1,8 @@
+use std::path::PathBuf;
+
 use thiserror::Error;
 
-use crate::{ErrorCategory, NetworkEndpoint, SshFailure, TimeoutPhase};
+use crate::{ErrorCategory, LocalSocketProblem, NetworkEndpoint, SshFailure, TimeoutPhase};
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 #[non_exhaustive]
@@ -17,6 +19,9 @@ pub enum TransportError {
     #[error("timed out during {phase}")]
     Timeout { phase: TimeoutPhase },
 
+    #[error("could not connect to the socket {}: {problem}", .path.display())]
+    LocalSocket { path: PathBuf, problem: LocalSocketProblem },
+
     #[error(transparent)]
     Ssh(#[from] SshFailure),
 }
@@ -30,6 +35,7 @@ impl TransportError {
             Self::Refused { .. } => "transport.refused",
             Self::Unreachable { .. } => "transport.unreachable",
             Self::Timeout { .. } => "transport.timeout",
+            Self::LocalSocket { .. } => "transport.local_socket",
             Self::Ssh(..) => "transport.ssh",
         }
     }
@@ -38,7 +44,10 @@ impl TransportError {
 impl TransportError {
     pub fn category(&self) -> ErrorCategory {
         match self {
-            Self::NameResolution { .. } | Self::Refused { .. } | Self::Unreachable { .. } => ErrorCategory::Network,
+            Self::NameResolution { .. }
+            | Self::Refused { .. }
+            | Self::Unreachable { .. }
+            | Self::LocalSocket { .. } => ErrorCategory::Network,
             Self::Timeout { .. } => ErrorCategory::Timeout,
             Self::Ssh(failure) => failure.category(),
         }

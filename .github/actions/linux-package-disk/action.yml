@@ -1,0 +1,32 @@
+name: Disk for a Linux package build
+description: Removes the preinstalled toolchains a package build never uses, and moves Docker to the larger disk.
+
+runs:
+  using: composite
+  steps:
+    - name: Make room for the package build
+      shell: bash
+      # A package build peaks at about 46 GB, its tests building the workspace and DuckDB a second time,
+      # and some hosted runners have less left on the root disk beside the toolchains removed here.
+      run: |
+        set -euo pipefail
+        df -h / /mnt 2> /dev/null || true
+        sudo docker image prune --all --force > /dev/null
+        sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/share/swift \
+          /opt/hostedtoolcache /usr/local/share/boost /usr/local/share/powershell /usr/local/share/chromium \
+          /usr/lib/jvm /opt/microsoft /opt/google /opt/az
+        available() { df -Pk "$1" | awk 'NR == 2 { print $4 }'; }
+        if [ -d /mnt ] && [ "$(available /mnt)" -gt "$(available /)" ]; then
+          sudo systemctl stop docker.socket docker.service
+          sudo mkdir -p /mnt/docker /etc/docker
+          if [ -s /etc/docker/daemon.json ]; then
+            jq '. + {"data-root": "/mnt/docker"}' /etc/docker/daemon.json > "$RUNNER_TEMP/daemon.json"
+          else
+            echo '{"data-root": "/mnt/docker"}' > "$RUNNER_TEMP/daemon.json"
+          fi
+          sudo cp "$RUNNER_TEMP/daemon.json" /etc/docker/daemon.json
+          sudo systemctl start docker.service
+          echo "Docker keeps its data on /mnt"
+        fi
+        df -h / /mnt 2> /dev/null || true
+        docker info --format 'Docker root: {{.DockerRootDir}}'

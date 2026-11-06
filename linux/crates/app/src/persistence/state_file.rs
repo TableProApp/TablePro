@@ -2,7 +2,7 @@ use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 
 use tablepro_session::runtime::{LatestWinsWriter, Tasks};
-use tablepro_storage::document::{VersionedDocument, decode_document, encode_document};
+use tablepro_storage::document::{VersionedDocument, decode_document, write_document_blocking};
 use tablepro_storage::{DocumentProblem, DocumentProblemKind};
 
 /// A small versioned JSON file the app keeps in memory and writes back
@@ -12,6 +12,7 @@ use tablepro_storage::{DocumentProblem, DocumentProblemKind};
 /// go through a latest-wins writer on a blocking thread, so a burst
 /// costs two writes rather than one per event.
 pub struct StateFile<D> {
+    path: PathBuf,
     value: RefCell<D>,
     persistence: Cell<Persistence>,
     writer: LatestWinsWriter<D>,
@@ -39,10 +40,15 @@ where
         let path_for_writes = path.clone();
         let writer = LatestWinsWriter::spawn(tasks, move |document: &D| write(&path_for_writes, document));
         Self {
+            path,
             value: RefCell::new(value),
             persistence: Cell::new(persistence),
             writer,
         }
+    }
+
+    pub fn path(&self) -> &std::path::Path {
+        &self.path
     }
 
     pub fn read<R>(&self, with: impl FnOnce(&D) -> R) -> R {
@@ -117,14 +123,7 @@ fn start_over<D: Default>(path: &std::path::Path, problem: DocumentProblem) -> (
 }
 
 fn write<D: VersionedDocument>(path: &std::path::Path, document: &D) {
-    let bytes = match encode_document(document) {
-        Ok(bytes) => bytes,
-        Err(error) => {
-            tracing::warn!(%error, kind = D::KIND, "could not serialise state");
-            return;
-        }
-    };
-    if let Err(error) = tablepro_storage::fs::write_private_blocking(path, &bytes) {
+    if let Err(error) = write_document_blocking(path, document) {
         tracing::warn!(%error, kind = D::KIND, "could not save state");
     }
 }
@@ -250,6 +249,44 @@ mod tests {
         file.flush().await;
 
         assert!(!path.exists(), "a no-op update still wrote the file");
+    }
+
+    #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+    struct Upgraded {
+        items: Vec<String>,
+    }
+
+    fn same_shape(document: serde_json::Value) -> Result<serde_json::Value, String> {
+        Ok(document)
+    }
+
+    impl VersionedDocument for Upgraded {
+        const KIND: &'static str = "upgraded";
+        const VERSION: u32 = 2;
+        const UPGRADES: &'static [tablepro_storage::document::Upgrade] = &[same_shape];
+    }
+
+    #[tokio::test]
+    async fn an_older_file_is_copied_aside_before_its_first_write() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let original = r#"{"version": 1, "items": ["old"]}"#;
+        let path = seed(&root, original);
+        let file = StateFile::<Upgraded>::load(path.clone(), &paused_tasks());
+        assert_eq!(file.read(|upgraded| upgraded.items.clone()), vec!["old".to_owned()]);
+        let copies = || tablepro_storage::upgrade_copies::copies_blocking(&path).expect("copies");
+        assert!(copies().is_empty(), "a read made a copy");
+
+        file.update(|upgraded| {
+            upgraded.items.push("new".to_owned());
+            true
+        });
+        file.flush().await;
+
+        let kept = copies();
+        assert_eq!(kept.len(), 1, "{kept:?}");
+        assert_eq!(std::fs::read_to_string(&kept[0].path).expect("read"), original);
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(written.contains("\"version\": 2"), "{written}");
     }
 
     #[tokio::test]

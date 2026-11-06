@@ -10,7 +10,8 @@ use mongodb::options::{ClientOptions, Credential, DriverInfo, ServerAddress};
 use secrecy::ExposeSecret;
 use tablepro_core::{
     APPLICATION_NAME, ConfigError, ConnectEnvironment, Credentials, DriverError, LivenessPolicy, LossPhase,
-    NetworkEndpoint, NetworkTarget, ServerInfo, TimeoutPhase, TlsFailure, Transport, TransportRoute,
+    NetworkEndpoint, NetworkOptions, NetworkTarget, ServerInfo, TimeoutPhase, TlsFailure, TlsMode, Transport,
+    TransportRoute,
 };
 use tablepro_net::tls::TlsSetupError;
 
@@ -62,6 +63,8 @@ pub(crate) struct MongoEndpoint {
     route: Route,
     liveness: LivenessPolicy,
     database: Option<String>,
+    // A seed list's host is no server, so only one host reached in the clear is asked for TLS.
+    plaintext_server: Option<String>,
 }
 
 impl MongoEndpoint {
@@ -79,6 +82,12 @@ impl MongoEndpoint {
             (true, TransportRoute::UnixSocket(_) | TransportRoute::InProcess) => {
                 return Err(ConfigError::SeedListOverSsh.into());
             }
+            (false, TransportRoute::Tcp(endpoint)) if target.options.uses_host_list() => {
+                replica_set(&endpoint, &target.options)?
+            }
+            (false, TransportRoute::UnixSocket(_) | TransportRoute::InProcess) if target.options.uses_host_list() => {
+                return Err(ConfigError::HostListOverSsh.into());
+            }
             (false, TransportRoute::Tcp(endpoint)) => single_host(ServerAddress::Tcp {
                 host: endpoint.host().to_owned(),
                 port: Some(endpoint.port()),
@@ -89,6 +98,10 @@ impl MongoEndpoint {
                 port: Some(service.port()),
             }),
         };
+        // A replica set the URL names wins over the one a seed list's TXT record gives.
+        if let Some(name) = target.options.replica_set() {
+            template.repl_set_name = Some(name.to_owned());
+        }
         // A seed list's TXT record may name the authentication database.
         let listed_source = template.credential.take().and_then(|listed| listed.source);
         template.credential = credential(target)?.map(|mut credential| {
@@ -125,6 +138,8 @@ impl MongoEndpoint {
                 Route::Relayed(relay)
             }
         };
+        let plaintext_server = (!target.options.dns_seed_list && target.tls.mode == TlsMode::Disable)
+            .then(|| target.tls_server_name().to_owned());
         Ok(Self {
             transport: target.transport.clone(),
             service,
@@ -132,6 +147,7 @@ impl MongoEndpoint {
             route,
             liveness,
             database,
+            plaintext_server,
         })
     }
 
@@ -174,7 +190,8 @@ impl MongoEndpoint {
                 Ok(Ok(_)) => Ok(client),
                 Ok(Err(error)) => {
                     client.shutdown().immediate(true).await;
-                    Err(self.explain(&error, LossPhase::Connect).await)
+                    let failed = self.explain(&error, LossPhase::Connect).await;
+                    Err(self.refused_in_the_clear(failed).await)
                 }
                 Err(_) => {
                     client.shutdown().immediate(true).await;
@@ -188,6 +205,24 @@ impl MongoEndpoint {
                 }
             }
         })
+    }
+
+    // A server that takes only TLS drops a connect in the clear unanswered, which a handshake of its own tells apart.
+    async fn refused_in_the_clear(&self, failed: DriverError) -> DriverError {
+        let Some(server_name) = &self.plaintext_server else {
+            return failed;
+        };
+        if !matches!(failed, DriverError::ConnectionLost { .. }) {
+            return failed;
+        }
+        let within = self.liveness.login_timeout;
+        if !tablepro_net::tls::serves_tls(self.transport.as_ref(), server_name, within).await {
+            return failed;
+        }
+        DriverError::Tls {
+            failure: TlsFailure::ServerRequiresTls,
+            detail: failed.to_string(),
+        }
     }
 
     /// Build the client where the library reads its TLS files, which live
@@ -282,6 +317,22 @@ fn single_host(address: ServerAddress) -> ClientOptions {
     // reachable from here.
     options.direct_connection = Some(true);
     options
+}
+
+// The members named are seeds: the client finds the set from them, as mongosh does with a host list.
+fn replica_set(first: &NetworkEndpoint, options: &NetworkOptions) -> Result<ClientOptions, DriverError> {
+    let mut seeds = vec![first.clone()];
+    seeds.extend(options.more_hosts(crate::capabilities::DEFAULT_PORT)?);
+    let mut client = ClientOptions::default();
+    client.hosts = seeds
+        .into_iter()
+        .map(|seed| ServerAddress::Tcp {
+            host: seed.host().to_owned(),
+            port: Some(seed.port()),
+        })
+        .collect();
+    client.direct_connection = Some(false);
+    Ok(client)
 }
 
 /// The servers the host's SRV records name, with the options its TXT
@@ -535,6 +586,48 @@ mod tests {
         assert!(matches!(
             refused,
             Err(DriverError::Config(ConfigError::SeedListOverSsh))
+        ));
+    }
+
+    fn replica_set_options() -> NetworkOptions {
+        NetworkOptions {
+            replica_set: Some("rs0".to_owned()),
+            more_hosts: vec!["db2.example.com:27018".to_owned(), "db3.example.com".to_owned()],
+            ..NetworkOptions::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn a_host_list_seeds_the_replica_set() {
+        let endpoint = MongoEndpoint::new(
+            &target("ann", Some("shop"), replica_set_options()),
+            LivenessPolicy::DESKTOP,
+            &ConnectEnvironment::new("test"),
+        )
+        .await
+        .expect("an endpoint");
+
+        let hosts: Vec<String> = endpoint.template.hosts.iter().map(ToString::to_string).collect();
+        assert_eq!(
+            hosts,
+            ["db.example.com:27017", "db2.example.com:27018", "db3.example.com:27017"]
+        );
+        assert_eq!(endpoint.template.repl_set_name.as_deref(), Some("rs0"));
+        assert_eq!(endpoint.template.direct_connection, Some(false));
+    }
+
+    #[tokio::test]
+    async fn a_host_list_is_refused_over_an_in_process_route() {
+        let refused = MongoEndpoint::new(
+            &tunnelled(replica_set_options()),
+            LivenessPolicy::DESKTOP,
+            &ConnectEnvironment::new("test"),
+        )
+        .await;
+
+        assert!(matches!(
+            refused,
+            Err(DriverError::Config(ConfigError::HostListOverSsh))
         ));
     }
 

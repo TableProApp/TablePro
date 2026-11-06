@@ -71,7 +71,7 @@ fn too_long(max: usize) -> String {
     ngettext_f(
         "Use at most {max} character.",
         "Use at most {max} characters.",
-        u32::try_from(max).unwrap_or(u32::MAX),
+        max,
         &[("max", &max.to_string())],
     )
 }

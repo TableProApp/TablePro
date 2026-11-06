@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use tablepro_core::ddl::{CharacterSet, InboundForeignKey, OutboundForeignKey, TableDefinition};
+use tablepro_core::ddl::{CharacterSet, DatabaseChoices, InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::keyspace::{KeyListing, KeyPage, KeyScan, KeyWindow};
 use tablepro_core::meta::{ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate};
@@ -341,6 +341,19 @@ impl Connection for FakeConnection {
         .await
     }
 
+    async fn fetch_database_choices(&self, options: CallOptions) -> Result<DatabaseChoices, DriverError> {
+        let counter = &self.counters.fetch_database_choices;
+        self.answer(
+            "fetch_database_choices",
+            counter,
+            |s| &mut s.fetch_database_choices,
+            None,
+            &options,
+            TimeoutPhase::Statement,
+        )
+        .await
+    }
+
     async fn fetch_object_definition(
         &self,
         object: &ObjectInfo,
@@ -632,6 +645,25 @@ mod tests {
         assert_eq!(CallCounters::get(&counters.probe), 1);
         assert_eq!(CallCounters::get(&counters.close), 1);
         assert_eq!(CallCounters::get(&counters.query_bound), 0);
+    }
+
+    #[tokio::test]
+    async fn database_choices_come_from_the_script() {
+        let choices = DatabaseChoices {
+            encodings: vec!["UTF8".to_owned()],
+            ..DatabaseChoices::default()
+        };
+        let mut script = ConnectionScript::default();
+        script.fetch_database_choices.once(FakeReply::ok(choices.clone()));
+        let connection = FakeConnection::new(script);
+        let counters = connection.counters();
+
+        assert_eq!(connection.fetch_database_choices(unbounded()).await.unwrap(), choices);
+        assert!(matches!(
+            connection.fetch_database_choices(unbounded()).await,
+            Err(DriverError::Protocol(_))
+        ));
+        assert_eq!(CallCounters::get(&counters.fetch_database_choices), 2);
     }
 
     #[tokio::test(start_paused = true)]

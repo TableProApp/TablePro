@@ -13,7 +13,9 @@ and reaches servers behind an SSH bastion through the system OpenSSH client.
 .PP
 Each
 .I FILE
-is a SQLite or DuckDB database, opened in its own window.
+is a SQLite or DuckDB database, opened in its own window,
+or a SQL file, opened in an editor tab of the connection in front.
+A SQL file never runs by itself; with no connection open, the window asks for one.
 A running TablePro opens the files itself and the new launch exits.
 .SH OPTIONS
 .TP

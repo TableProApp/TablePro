@@ -213,7 +213,7 @@ impl HistoryGroup {
                     Ok(Ok(removed)) => crate::i18n::ngettext_f(
                         "{count} query cleared",
                         "{count} queries cleared",
-                        removed as u32,
+                        removed,
                         &[("count", &removed.to_string())],
                     ),
                     Ok(Err(error)) => {

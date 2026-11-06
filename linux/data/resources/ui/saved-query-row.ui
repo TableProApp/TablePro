@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <template class="TableProSavedQueryRow" parent="GtkBox">
+    <property name="spacing">12</property>
+    <property name="margin-top">6</property>
+    <property name="margin-bottom">6</property>
+    <property name="margin-start">6</property>
+    <property name="margin-end">6</property>
+    <child>
+      <object class="GtkBox">
+        <property name="orientation">vertical</property>
+        <property name="spacing">2</property>
+        <property name="hexpand">true</property>
+        <property name="valign">center</property>
+        <child>
+          <object class="GtkLabel" id="name_label">
+            <property name="xalign">0</property>
+            <property name="wrap">true</property>
+            <property name="wrap-mode">word-char</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkLabel" id="summary_label">
+            <property name="xalign">0</property>
+            <property name="ellipsize">end</property>
+            <property name="single-line-mode">true</property>
+            <style>
+              <class name="dim-label"/>
+              <class name="caption"/>
+            </style>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="GtkMenuButton" id="menu_button">
+        <property name="icon-name">view-more-symbolic</property>
+        <property name="valign">center</property>
+        <property name="tooltip-text" translatable="yes">Saved Query Options</property>
+        <accessibility>
+          <property name="label" translatable="yes">Saved Query Options</property>
+          <relation name="described-by">name_label</relation>
+        </accessibility>
+        <style>
+          <class name="flat"/>
+        </style>
+      </object>
+    </child>
+  </template>
+</interface>

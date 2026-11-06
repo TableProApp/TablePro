@@ -11,12 +11,22 @@ use uuid::Uuid;
 // needs the name back to build the group.
 static NAMES: LazyLock<Mutex<HashMap<Uuid, String>>> = LazyLock::new(Mutex::default);
 
-/// The top-level group `name`, with the id a list from before group ids
-/// gives it.
+/// The top-level group `name`, with the same id every time it is named.
 fn group_named(name: &str) -> ConnectionGroup {
-    let group = ConnectionGroup::legacy(ConnectionGroupName::new(name).expect("a group name"));
-    NAMES.lock().expect("the group names").insert(group.id, name.to_owned());
-    group
+    let mut names = NAMES.lock().expect("the group names");
+    let id = names
+        .iter()
+        .find_map(|(id, held)| (held == name).then_some(*id))
+        .unwrap_or_else(Uuid::new_v4);
+    names.insert(id, name.to_owned());
+    top_level(id, name)
+}
+
+fn top_level(id: Uuid, name: &str) -> ConnectionGroup {
+    ConnectionGroup {
+        id,
+        ..ConnectionGroup::new(ConnectionGroupName::new(name).expect("a group name"), None)
+    }
 }
 
 pub(crate) fn group_id(name: &str) -> Uuid {
@@ -32,9 +42,7 @@ pub(crate) fn groups_of(connections: &[SavedConnection]) -> Vec<ConnectionGroup>
             continue;
         }
         let name = names.get(&id).expect("a group made by group_id");
-        found.push(ConnectionGroup::legacy(
-            ConnectionGroupName::new(name).expect("a group name"),
-        ));
+        found.push(top_level(id, name));
     }
     found
 }
@@ -56,7 +64,7 @@ pub(crate) fn save_filed(store: &ConnectionStore, connection: SavedConnection) {
     store.upsert_blocking(connection).expect("the save");
 }
 
-// Through the file, since only a list from before group ids can hold two groups whose names differ only in case.
+// Through the file, since the store refuses two groups whose names differ only in case and a file can hold them.
 pub(crate) fn seed_library(paths: &StoragePaths, connections: &[SavedConnection]) {
     write_library(paths, connections, &groups_of(connections), &[]);
 }
@@ -159,7 +167,7 @@ fn write_library(
     }
 
     let document = Library {
-        version: 3,
+        version: 1,
         connections,
         groups,
         favorites,

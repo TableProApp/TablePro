@@ -37,8 +37,6 @@ const DRIVER_IDS: &[(&str, &str)] = &[
     ("MongoDB", "mongodb"),
 ];
 
-const TLS_STRENGTH: [TlsMode; 3] = [TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull];
-
 #[derive(Debug, Clone)]
 pub struct ImportedSecret {
     pub kind: SecretKind,
@@ -152,6 +150,7 @@ pub(super) fn map(
         options: NetworkOptions {
             dns_seed_list: seed_list,
             auth_database,
+            ..NetworkOptions::default()
         },
     };
     let secrets = secrets(&connection, caps, settings, credentials);
@@ -224,13 +223,20 @@ fn color(color: ForeignColor) -> ConnectionColor {
 fn natural_mode(mode: ForeignSslMode) -> TlsMode {
     match mode {
         ForeignSslMode::Disabled => TlsMode::Disable,
-        ForeignSslMode::Preferred | ForeignSslMode::Required => TlsMode::Require,
+        ForeignSslMode::Preferred => TlsMode::Prefer,
+        ForeignSslMode::Required => TlsMode::Require,
         ForeignSslMode::VerifyCa | ForeignSslMode::VerifyIdentity => TlsMode::VerifyFull,
     }
 }
 
-fn strength(mode: TlsMode) -> usize {
-    TLS_STRENGTH.iter().position(|known| *known == mode).unwrap_or(0)
+fn strength(mode: TlsMode) -> u8 {
+    match mode {
+        TlsMode::Disable => 0,
+        TlsMode::Prefer => 1,
+        TlsMode::Require => 2,
+        TlsMode::VerifyFull => 3,
+        TlsMode::Strict => 4,
+    }
 }
 
 // The weakest mode at least as strong as the one wanted, or the strongest below it when none is.
@@ -271,7 +277,7 @@ fn map_tls(
         }
         return TlsConfig::disabled();
     };
-    if mode != wanted || matches!(from, ForeignSslMode::Preferred | ForeignSslMode::VerifyCa) {
+    if mode != wanted || from == ForeignSslMode::VerifyCa {
         notes.push(RowNote::TlsModeChanged { from, to: mode });
     }
     let mut config = TlsConfig {

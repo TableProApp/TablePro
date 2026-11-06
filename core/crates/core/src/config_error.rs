@@ -65,6 +65,21 @@ pub enum ConfigError {
 
     #[error("this connection option is not supported by the driver")]
     NetworkOptionUnsupported,
+
+    #[error("a replica set's members cannot be reached through an SSH tunnel")]
+    HostListOverSsh,
+
+    #[error("a DNS seed list names the servers, so it takes no other hosts")]
+    HostListWithSeedList,
+
+    #[error("this driver does not connect through a local socket")]
+    LocalSocketUnsupported,
+
+    #[error("a local socket is on this computer, so an SSH tunnel cannot reach it")]
+    LocalSocketOverSsh,
+
+    #[error("TLS is not used over a local socket")]
+    TlsOverLocalSocket,
 }
 
 impl ConfigError {
@@ -89,6 +104,11 @@ impl ConfigError {
             Self::DatabaseNumber => "config.database_number",
             Self::SeedListOverSsh => "config.seed_list_over_ssh",
             Self::NetworkOptionUnsupported => "config.network_option_unsupported",
+            Self::HostListOverSsh => "config.host_list_over_ssh",
+            Self::HostListWithSeedList => "config.host_list_with_seed_list",
+            Self::LocalSocketUnsupported => "config.local_socket_unsupported",
+            Self::LocalSocketOverSsh => "config.local_socket_over_ssh",
+            Self::TlsOverLocalSocket => "config.tls_over_local_socket",
         }
     }
 }

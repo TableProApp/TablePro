@@ -15,4 +15,8 @@ pub trait TabDirectory {
     fn save_file(&self, _tab: Uuid) -> Option<LocalBoxFuture<'static, Result<(), String>>> {
         None
     }
+
+    fn has_file(&self, _tab: Uuid) -> bool {
+        false
+    }
 }

@@ -2,14 +2,17 @@
 
 use std::time::Duration;
 
+use tablepro_core::column::ColumnOrigin;
+use tablepro_core::meta::TableRef;
 use tablepro_core::{
-    BusyReason, CallOptions, DriverError, EditorSessionOptions, EditorSessionState, ErrorCategory, ReadStatement,
-    ResultEvent, RowLimit, RunEnd, RunOptions, TransactionState, Truncation, UserSql, Value, WorkspaceSettings,
-    WriteKind,
+    BusyReason, CallOptions, DriverError, EditorSession, EditorSessionOptions, EditorSessionState, ErrorCategory,
+    ReadStatement, ResultEvent, RowLimit, RunEnd, RunOptions, TransactionState, Truncation, UserSql, Value,
+    WorkspaceSettings, WriteKind,
 };
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
+use crate::sqlite_engine::create_database;
 use crate::support::{Collected, TestFile, apply, batch, call, connect, query, run, run_with, statement};
 
 const UNBOUNDED: &str = "WITH RECURSIVE r(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM r) SELECT count(*) FROM r";
@@ -524,6 +527,126 @@ async fn a_statement_holding_a_nul_is_refused_at_once() {
     assert!(collected.rows().is_empty());
     assert!(matches!(summary.end, RunEnd::Failed(_)), "{:?}", summary.end);
     assert!(ran.rows().is_empty(), "a statement before the NUL ran");
+    session.close().await;
+    connection.close().await.unwrap();
+}
+
+fn traced(schema: Option<&str>, table: &str, column: &str) -> Option<ColumnOrigin> {
+    Some(ColumnOrigin::new(
+        TableRef::new(schema.map(str::to_owned), table),
+        column,
+    ))
+}
+
+async fn origins(session: &dyn EditorSession, sql: &str) -> Vec<Option<ColumnOrigin>> {
+    let (summary, collected) = run(session, sql).await;
+    assert_eq!(summary.end, RunEnd::Completed, "{sql}");
+    collected
+        .events()
+        .into_iter()
+        .find_map(|event| match event {
+            ResultEvent::ResultSetStarted { columns } => {
+                Some(columns.iter().map(|column| column.origin.clone()).collect())
+            }
+            _ => None,
+        })
+        .unwrap()
+}
+
+#[tokio::test]
+async fn only_a_plain_read_of_a_permanent_table_traces_its_columns() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    let session = connection
+        .open_editor_session(EditorSessionOptions::default(), CancellationToken::new())
+        .await
+        .unwrap();
+    let other = file.directory().join("other.sqlite3");
+    create_database(&other).await.unwrap();
+    let other = other.display().to_string().replace('\'', "''");
+    let setup = format!(
+        "CREATE TABLE t (id INTEGER PRIMARY KEY, a TEXT, b INTEGER); INSERT INTO t VALUES (1, 'x', 2); \
+         CREATE VIEW v AS SELECT * FROM t; CREATE TABLE \"a.b\" (id INTEGER PRIMARY KEY); \
+         CREATE TEMP TABLE tt (id INTEGER PRIMARY KEY); \
+         CREATE TABLE s (id INTEGER PRIMARY KEY); CREATE TEMP VIEW s AS SELECT * FROM main.s; \
+         ATTACH DATABASE '{other}' AS other; CREATE TABLE other.w (id INTEGER PRIMARY KEY, c INTEGER)"
+    );
+    let (made, _) = run(session.as_ref(), &setup).await;
+    assert_eq!(made.end, RunEnd::Completed);
+    let table = |column: &str| traced(None, "t", column);
+    let session = session.as_ref();
+
+    assert_eq!(
+        origins(session, "SELECT * FROM t").await,
+        [table("id"), table("a"), table("b")]
+    );
+    assert_eq!(
+        origins(session, "SELECT * FROM main.t").await,
+        [table("id"), table("a"), table("b")]
+    );
+    assert_eq!(
+        origins(session, "SELECT a AS x, id FROM t").await,
+        [table("a"), table("id")]
+    );
+    assert_eq!(
+        origins(session, "SELECT id, b + 1 AS c FROM t").await,
+        [table("id"), None]
+    );
+    assert_eq!(origins(session, "SELECT * FROM v").await, [None, None, None]);
+    assert_eq!(origins(session, "SELECT * FROM tt").await, [None]);
+    assert_eq!(
+        origins(session, "SELECT * FROM s").await,
+        [None],
+        "a temp view over main.s"
+    );
+    assert_eq!(
+        origins(session, "SELECT * FROM main.s").await,
+        [traced(None, "s", "id")]
+    );
+    assert_eq!(
+        origins(session, "SELECT * FROM \"a.b\"").await,
+        [traced(None, "a.b", "id")]
+    );
+    assert_eq!(
+        origins(session, "SELECT * FROM other.w").await,
+        [traced(Some("other"), "w", "id"), traced(Some("other"), "w", "c")]
+    );
+    assert_eq!(
+        origins(session, "SELECT id, a FROM t UNION ALL SELECT id, c FROM other.w").await,
+        [None, None]
+    );
+    assert_eq!(
+        origins(session, "SELECT (SELECT a FROM t) AS s, id FROM t").await,
+        [None, None]
+    );
+    session.close().await;
+    connection.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_read_inside_a_transaction_traces_nothing() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &["CREATE TABLE t (id INTEGER PRIMARY KEY, a TEXT)"],
+    )
+    .await
+    .unwrap();
+    let session = connection
+        .open_editor_session(EditorSessionOptions::default(), CancellationToken::new())
+        .await
+        .unwrap();
+
+    let (begun, _) = run(session.as_ref(), "BEGIN").await;
+    let inside = origins(session.as_ref(), "SELECT * FROM t").await;
+    let (committed, _) = run(session.as_ref(), "COMMIT").await;
+    let after = origins(session.as_ref(), "SELECT * FROM t").await;
+
+    assert_eq!(begun.transaction_state, TransactionState::InTransaction);
+    assert_eq!(inside, [None, None]);
+    assert_eq!(committed.transaction_state, TransactionState::Idle);
+    assert_eq!(after, [traced(None, "t", "id"), traced(None, "t", "a")]);
     session.close().await;
     connection.close().await.unwrap();
 }

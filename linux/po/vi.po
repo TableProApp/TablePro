@@ -4786,7 +4786,7 @@ msgid "New Query"
 msgstr "Truy vấn mới"
 
 #: crates/app/src/ui/workspace/sidebar/tree_menu.rs
-msgid "_New Query"
+msgid "New _Query"
 msgstr "_Truy vấn mới"
 
 #: crates/app/src/ui/workspace/shell.rs
@@ -5328,19 +5328,19 @@ msgstr "Trình khách cơ sở dữ liệu"
 
 #: data/app.tablepro.TablePro.desktop.in.in
 msgid ""
-"Browse and edit PostgreSQL, MySQL, SQLite, DuckDB, SQL Server, ClickHouse, "
-"Cassandra, ScyllaDB, Redis and MongoDB databases"
+"Browse and edit PostgreSQL, MySQL, MariaDB, SQLite, DuckDB, SQL Server, "
+"ClickHouse, Cassandra, ScyllaDB, Redis and MongoDB databases"
 msgstr ""
-"Duyệt và sửa cơ sở dữ liệu PostgreSQL, MySQL, SQLite, DuckDB, SQL Server, "
-"ClickHouse, Cassandra, ScyllaDB, Redis và MongoDB"
+"Duyệt và sửa cơ sở dữ liệu PostgreSQL, MySQL, MariaDB, SQLite, DuckDB, SQL "
+"Server, ClickHouse, Cassandra, ScyllaDB, Redis và MongoDB"
 
 #: data/app.tablepro.TablePro.desktop.in.in
 msgid ""
-"SQL;Database;PostgreSQL;MySQL;SQLite;DuckDB;SQL "
-"Server;ClickHouse;Cassandra;ScyllaDB;CQL;Redis;MongoDB;"
+"SQL;Database;PostgreSQL;Postgres;MySQL;MariaDB;SQLite;DuckDB;SQL "
+"Server;MSSQL;ClickHouse;Cassandra;ScyllaDB;CQL;Redis;MongoDB;"
 msgstr ""
-"SQL;Cơ sở dữ liệu;CSDL;Database;PostgreSQL;MySQL;SQLite;DuckDB;SQL "
-"Server;ClickHouse;Cassandra;ScyllaDB;CQL;Redis;MongoDB;"
+"SQL;Cơ sở dữ liệu;CSDL;Database;PostgreSQL;Postgres;MySQL;MariaDB;SQLite;"
+"DuckDB;SQL Server;MSSQL;ClickHouse;Cassandra;ScyllaDB;CQL;Redis;MongoDB;"
 
 #: data/app.tablepro.TablePro.desktop.in.in data/resources/gtk/menus.ui
 #: data/resources/shortcuts-dialog.ui
@@ -5570,12 +5570,12 @@ msgstr "Làm việc với cơ sở dữ liệu của bạn"
 
 #: data/app.tablepro.TablePro.metainfo.xml.in.in
 msgid ""
-"TablePro connects to PostgreSQL, MySQL, SQLite, DuckDB, SQL Server, "
+"TablePro connects to PostgreSQL, MySQL, MariaDB, SQLite, DuckDB, SQL Server, "
 "ClickHouse, Cassandra, ScyllaDB, Redis and MongoDB. Browse tables, edit rows "
 "in place, run SQL with syntax highlighting, and reach servers behind an SSH "
 "bastion."
 msgstr ""
-"TablePro kết nối tới PostgreSQL, MySQL, SQLite, DuckDB, SQL Server, "
+"TablePro kết nối tới PostgreSQL, MySQL, MariaDB, SQLite, DuckDB, SQL Server, "
 "ClickHouse, Cassandra, ScyllaDB, Redis và MongoDB. Duyệt bảng, sửa dòng tại chỗ, chạy "
 "SQL với tô sáng cú pháp, và truy cập các máy chủ phía sau một bastion SSH."
 
@@ -5628,11 +5628,13 @@ msgstr "Bản phát hành đầu tiên của TablePro cho Linux."
 
 #: data/app.tablepro.TablePro.metainfo.xml.in.in
 msgid ""
-"Connect to PostgreSQL, MySQL, SQLite, DuckDB, SQL Server, ClickHouse, "
-"Cassandra, ScyllaDB, Redis and MongoDB, directly or through an SSH tunnel"
+"Connect to PostgreSQL, MySQL, MariaDB, SQLite, DuckDB, SQL Server, "
+"ClickHouse, Cassandra, ScyllaDB, Redis and MongoDB, directly or through an "
+"SSH tunnel"
 msgstr ""
-"Kết nối tới PostgreSQL, MySQL, SQLite, DuckDB, SQL Server, ClickHouse, "
-"Cassandra, ScyllaDB, Redis và MongoDB, trực tiếp hoặc qua đường hầm SSH"
+"Kết nối tới PostgreSQL, MySQL, MariaDB, SQLite, DuckDB, SQL Server, "
+"ClickHouse, Cassandra, ScyllaDB, Redis và MongoDB, trực tiếp hoặc qua đường "
+"hầm SSH"
 
 #: data/app.tablepro.TablePro.metainfo.xml.in.in
 msgid "Browse tables and edit rows in place, with undo until you save"

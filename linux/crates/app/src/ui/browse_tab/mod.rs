@@ -68,6 +68,7 @@ pub(crate) use self::browse_request_kind::BrowseRequestKind;
 pub(crate) use self::browse_tab_input::BrowseTabInput;
 use self::browse_tab_widgets::BrowseTabWidgets;
 use self::column_recheck::ColumnRecheck;
+pub(super) use self::columns_fetch::{ColumnFreshness, load_columns};
 pub(crate) use self::data_input::DataInput;
 use self::grid_input::GridInput;
 pub(crate) use self::page_reply::PageReply;
@@ -75,8 +76,7 @@ use self::page_state::PageState;
 #[cfg(test)]
 pub(super) use self::pager_bar::PagerBar;
 pub(crate) use self::paging_input::PagingInput;
-#[cfg(test)]
-pub(super) use self::pending_changes_bar::PendingChangesBar;
+pub(super) use self::pending_changes_bar::{PendingChangesBar, PendingChangesRequest};
 pub(crate) use self::row_total::RowTotal;
 pub(crate) use self::save_input::SaveInput;
 pub(crate) use self::table_filter::TableFilter;
@@ -106,7 +106,7 @@ pub struct BrowseTabInit {
     pub initial_offset: u64,
     pub initial_sort: Option<(usize, bool)>,
     pub filter: TableFilter,
-    pub column_widths: crate::persistence::ColumnWidthStore,
+    pub column_layouts: crate::persistence::ColumnLayoutStore,
     pub filter_settings: crate::persistence::FilterSettingsStore,
     /// The session the tab reads through. The tab belongs to it and is
     /// closed before it shuts down.
@@ -158,7 +158,7 @@ impl BrowseTab {
                 sorting: grid_sorting(dialect.as_deref(), initial_sort),
                 tracker: init.tracker.clone(),
                 settings: init.settings,
-                layouts: init.column_widths.layouts().clone(),
+                layouts: init.column_layouts.clone(),
                 keys: keys.clone(),
                 session: Arc::downgrade(&init.session),
                 tasks: init.tasks.clone(),
@@ -514,8 +514,8 @@ pub(crate) struct BrowseModel {
     grid: DataGrid,
     /// The grid's actions are on the tab, for its buttons and menu.
     grid_actions_shown: bool,
-    /// Last-emitted dirty state, so App hears only real transitions and
-    /// not every count change (2 → 3).
+    /// Last-emitted dirty state, so the workspace hears only real
+    /// transitions and not every count change (2 → 3).
     was_dirty: Cell<bool>,
     filter_strip: FilterStrip,
     actions: BrowseActions,

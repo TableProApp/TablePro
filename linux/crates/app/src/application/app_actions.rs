@@ -22,13 +22,17 @@ pub fn install_app_actions(app: &TableProApplication) {
     let about = gio::ActionEntry::builder("about")
         .activate(|app: &TableProApplication, _, _| present_about(app))
         .build();
+    // The license ask's Buy a License.
+    let buy_license = gio::ActionEntry::builder("buy-license")
+        .activate(|app: &TableProApplication, _, _| open_pricing(app))
+        .build();
     // A notification's default action, with the window and the tab it
     // is about.
     let focus_tab = gio::ActionEntry::builder("focus-tab")
         .parameter_type(Some(&<(u32, String)>::static_variant_type()))
         .activate(|app: &TableProApplication, _, target| focus_tab(app, target))
         .build();
-    app.add_action_entries([new_window, quit, preferences, about, focus_tab]);
+    app.add_action_entries([new_window, quit, preferences, about, buy_license, focus_tab]);
 }
 
 /// Bring the tab forward in its window. A notification can outlive both,
@@ -66,8 +70,27 @@ fn present_preferences(app: &TableProApplication) {
         services.file_revealer.clone(),
         services.mcp(),
         services.ai.clone(),
+        services.account(),
+        services.telemetry(),
     )
     .present(app.active_window().as_ref());
+}
+
+fn open_pricing(app: &TableProApplication) {
+    if let Some(services) = app.services() {
+        let telemetry = services.telemetry();
+        telemetry.support_ask_answered("buy");
+        telemetry.upgrade_clicked("app-ask");
+    }
+    gtk4::UriLauncher::new(super::license_ask_prompt::PRICING).launch(
+        app.active_window().as_ref(),
+        gio::Cancellable::NONE,
+        |launched| {
+            if let Err(error) = launched {
+                tracing::warn!(%error, "the pricing page was not opened");
+            }
+        },
+    );
 }
 
 fn present_about(app: &TableProApplication) {

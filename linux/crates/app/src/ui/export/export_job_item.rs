@@ -24,6 +24,8 @@ mod imp {
         /// The file is made whole before it is written, so it has no rows
         /// to count.
         pub whole: Cell<bool>,
+        /// A database export's tables written, and how many it has.
+        pub tables: Cell<Option<(usize, usize)>>,
     }
 
     #[glib::object_subclass]
@@ -60,12 +62,25 @@ impl ExportJobItem {
         self.imp().whole.get()
     }
 
+    /// A database export, which counts its tables. The rows that follow
+    /// tell the popover to show them.
+    pub(crate) fn set_tables(&self, done: usize, total: usize) {
+        self.imp().tables.set(Some((done, total)));
+    }
+
+    pub(crate) fn tables(&self) -> Option<(usize, usize)> {
+        self.imp().tables.get()
+    }
+
     pub(crate) fn expected(&self) -> Option<ExpectedRows> {
         self.imp().expected.get()
     }
 
     /// The share of the rows written, while the total is known.
     pub(crate) fn fraction(&self) -> Option<f64> {
+        if let Some((done, total)) = self.tables() {
+            return (total > 0).then(|| (done as f64 / total as f64).min(1.0));
+        }
         let total = self.expected()?.total();
         (total > 0).then(|| (self.rows() as f64 / total as f64).min(1.0))
     }

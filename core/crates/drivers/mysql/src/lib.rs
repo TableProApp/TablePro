@@ -9,11 +9,13 @@
 mod cancel;
 mod capabilities;
 mod catalog;
+mod column_origins;
 mod connection;
 mod ddl;
 mod decode;
 mod dialect;
 mod driver;
+mod dump;
 mod editor_run;
 mod editor_session;
 mod encode;

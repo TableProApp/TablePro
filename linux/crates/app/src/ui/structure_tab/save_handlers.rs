@@ -209,7 +209,7 @@ impl StructureModel {
             let label = crate::i18n::ngettext_f(
                 "{n} unsaved change",
                 "{n} unsaved changes",
-                u32::try_from(pending_count).unwrap_or(u32::MAX),
+                pending_count,
                 &[("n", &pending_count.to_string())],
             );
             crate::ui::a11y::show_status(&self.widgets.pending_label, &label);

@@ -3,12 +3,14 @@ crates/app/src/application/accelerator.rs
 crates/app/src/application/accelerator_scope.rs
 crates/app/src/application/accelerators.rs
 crates/app/src/application/app_actions.rs
+crates/app/src/application/app_activity.rs
 crates/app/src/application/app_services.rs
 crates/app/src/application/app_window_host.rs
 crates/app/src/application/debug_info.rs
 crates/app/src/application/imp.rs
 crates/app/src/application/launch_notice.rs
 crates/app/src/application/legal_section.rs
+crates/app/src/application/license_ask_prompt.rs
 crates/app/src/application/mcp_bridge.rs
 crates/app/src/application/metainfo_release.rs
 crates/app/src/application/mod.rs
@@ -31,8 +33,7 @@ crates/app/src/lib.rs
 crates/app/src/logging.rs
 crates/app/src/main.rs
 crates/app/src/persistence/column_layout_store.rs
-crates/app/src/persistence/column_width_store.rs
-crates/app/src/persistence/column_widths_document.rs
+crates/app/src/persistence/column_layouts_document.rs
 crates/app/src/persistence/filter_settings_document.rs
 crates/app/src/persistence/filter_settings_store.rs
 crates/app/src/persistence/mod.rs
@@ -57,6 +58,7 @@ crates/app/src/runtime/request_ticket.rs
 crates/app/src/runtime/resume_detector.rs
 crates/app/src/runtime/stamped.rs
 crates/app/src/runtime/system_clocks.rs
+crates/app/src/services/account_service.rs
 crates/app/src/services/active_session.rs
 crates/app/src/services/ai_service.rs
 crates/app/src/services/cell_overlay.rs
@@ -91,6 +93,7 @@ crates/app/src/services/grid/grid_column.rs
 crates/app/src/services/grid/grid_row_id.rs
 crates/app/src/services/grid/hex_dump.rs
 crates/app/src/services/grid/mod.rs
+crates/app/src/services/grid/result_refusal.rs
 crates/app/src/services/grid/row_key_builder.rs
 crates/app/src/services/grid/row_snapshot.rs
 crates/app/src/services/grid/selection_summary.rs
@@ -98,7 +101,9 @@ crates/app/src/services/grid/test_columns.rs
 crates/app/src/services/history_availability.rs
 crates/app/src/services/history_preferences.rs
 crates/app/src/services/history_service.rs
+crates/app/src/services/import_file.rs
 crates/app/src/services/library_outline.rs
+crates/app/src/services/license_ask.rs
 crates/app/src/services/mcp_service.rs
 crates/app/src/services/mcp_status.rs
 crates/app/src/services/mod.rs
@@ -122,6 +127,8 @@ crates/app/src/services/structure_tracker_handle.rs
 crates/app/src/services/structure_tracker_registry.rs
 crates/app/src/services/tab_registry.rs
 crates/app/src/services/tab_tracker_handle.rs
+crates/app/src/services/telemetry.rs
+crates/app/src/services/telemetry_connector.rs
 crates/app/src/services/touch.rs
 crates/app/src/services/tracker_delta.rs
 crates/app/src/services/tracker_edit.rs
@@ -129,8 +136,10 @@ crates/app/src/services/undo_op.rs
 crates/app/src/storage.rs
 crates/app/src/test_support/access_keys.rs
 crates/app/src/test_support/accessible_label.rs
+crates/app/src/test_support/account_fakes.rs
 crates/app/src/test_support/alert_response.rs
 crates/app/src/test_support/application_end.rs
+crates/app/src/test_support/cloud_stub.rs
 crates/app/src/test_support/connection_groups.rs
 crates/app/src/test_support/fake_clocks.rs
 crates/app/src/test_support/fake_reachability.rs
@@ -144,6 +153,7 @@ crates/app/src/test_support/main_loop.rs
 crates/app/src/test_support/memory_settings.rs
 crates/app/src/test_support/mod.rs
 crates/app/src/test_support/owned_window.rs
+crates/app/src/test_support/posthog_collector.rs
 crates/app/src/test_support/shortcut_keys.rs
 crates/app/src/test_support/signal_log.rs
 crates/app/src/test_support/stall_probe.rs
@@ -319,6 +329,7 @@ crates/app/src/ui/diagram/tab_imp.rs
 crates/app/src/ui/diagram/tests.rs
 crates/app/src/ui/diagram/zoom.rs
 crates/app/src/ui/discard_alert.rs
+crates/app/src/ui/dump_dialog.rs
 crates/app/src/ui/editor/assistant_actions.rs
 crates/app/src/ui/editor/buffer_edit.rs
 crates/app/src/ui/editor/completion/catalog_read.rs
@@ -349,6 +360,7 @@ crates/app/src/ui/editor/format_plan.rs
 crates/app/src/ui/editor/imp.rs
 crates/app/src/ui/editor/inline_suggestion.rs
 crates/app/src/ui/editor/mod.rs
+crates/app/src/ui/editor/result_editing.rs
 crates/app/src/ui/editor/result_item.rs
 crates/app/src/ui/editor/result_widgets.rs
 crates/app/src/ui/editor/results_pane.rs
@@ -366,6 +378,8 @@ crates/app/src/ui/editor/tests.rs
 crates/app/src/ui/editor/transaction_dirty.rs
 crates/app/src/ui/editor/vim_mode.rs
 crates/app/src/ui/editor_font_provider.rs
+crates/app/src/ui/error_text/account.rs
+crates/app/src/ui/error_text/connection_url.rs
 crates/app/src/ui/error_text/ddl.rs
 crates/app/src/ui/error_text/driver.rs
 crates/app/src/ui/error_text/edit.rs
@@ -382,9 +396,11 @@ crates/app/src/ui/error_text/syntax.rs
 crates/app/src/ui/error_text/tests.rs
 crates/app/src/ui/error_text/tls.rs
 crates/app/src/ui/error_text/tls_remedy.rs
+crates/app/src/ui/error_text/transfer.rs
 crates/app/src/ui/error_text/unsupported.rs
 crates/app/src/ui/export/dialog.rs
 crates/app/src/ui/export/document_sink.rs
+crates/app/src/ui/export/dump_job.rs
 crates/app/src/ui/export/encoding_sink.rs
 crates/app/src/ui/export/export_failure_text.rs
 crates/app/src/ui/export/export_format.rs
@@ -418,6 +434,7 @@ crates/app/src/ui/filter_strip/rule_operators.rs
 crates/app/src/ui/filter_strip/rule_row.rs
 crates/app/src/ui/filter_strip/rule_value_editor.rs
 crates/app/src/ui/filter_strip/tests.rs
+crates/app/src/ui/form_dialog.rs
 crates/app/src/ui/format/mod.rs
 crates/app/src/ui/format/thousands.rs
 crates/app/src/ui/handler_guard.rs
@@ -437,7 +454,10 @@ crates/app/src/ui/history_dialog/tests.rs
 crates/app/src/ui/host_key_failure.rs
 crates/app/src/ui/host_key_review.rs
 crates/app/src/ui/icons.rs
-crates/app/src/ui/import_dialog.rs
+crates/app/src/ui/import_dialog/imp.rs
+crates/app/src/ui/import_dialog/mod.rs
+crates/app/src/ui/import_dialog/preview_text.rs
+crates/app/src/ui/import_dialog/tests.rs
 crates/app/src/ui/import_from_app/imp.rs
 crates/app/src/ui/import_from_app/mod.rs
 crates/app/src/ui/import_from_app/tests.rs
@@ -461,8 +481,11 @@ crates/app/src/ui/picker/picker_actions.rs
 crates/app/src/ui/picker/rename_group_dialog.rs
 crates/app/src/ui/picker/tests.rs
 crates/app/src/ui/plain_toast.rs
+crates/app/src/ui/preferences_dialog/account_page.rs
+crates/app/src/ui/preferences_dialog/account_view.rs
 crates/app/src/ui/preferences_dialog/ai_page.rs
 crates/app/src/ui/preferences_dialog/data_browser_group.rs
+crates/app/src/ui/preferences_dialog/device_limit_dialog.rs
 crates/app/src/ui/preferences_dialog/editor_page.rs
 crates/app/src/ui/preferences_dialog/general_page.rs
 crates/app/src/ui/preferences_dialog/history_group.rs
@@ -474,7 +497,13 @@ crates/app/src/ui/result_pane/result_limit_banner.rs
 crates/app/src/ui/result_pane/result_set_view.rs
 crates/app/src/ui/result_pane/result_summary.rs
 crates/app/src/ui/safe_mode.rs
-crates/app/src/ui/saved_queries_dialog.rs
+crates/app/src/ui/saved_queries_dialog/imp.rs
+crates/app/src/ui/saved_queries_dialog/mod.rs
+crates/app/src/ui/saved_queries_dialog/saved_query_listing.rs
+crates/app/src/ui/saved_queries_dialog/saved_query_object.rs
+crates/app/src/ui/saved_queries_dialog/saved_query_object_imp.rs
+crates/app/src/ui/saved_queries_dialog/saved_query_row.rs
+crates/app/src/ui/saved_queries_dialog/tests.rs
 crates/app/src/ui/session_target.rs
 crates/app/src/ui/session_window/application_notification_sink.rs
 crates/app/src/ui/session_window/connect_failed_page.rs
@@ -511,6 +540,7 @@ crates/app/src/ui/session_window/work_notifier.rs
 crates/app/src/ui/shell/mod.rs
 crates/app/src/ui/shell/primary_menu_button.rs
 crates/app/src/ui/source_dialog.rs
+crates/app/src/ui/sql_import_dialog.rs
 crates/app/src/ui/ssh_inputs.rs
 crates/app/src/ui/ssh_section.rs
 crates/app/src/ui/store_sync.rs
@@ -528,7 +558,6 @@ crates/app/src/ui/structure_tab/foreign_key_draft.rs
 crates/app/src/ui/structure_tab/foreign_key_handlers.rs
 crates/app/src/ui/structure_tab/foreign_key_object.rs
 crates/app/src/ui/structure_tab/foreign_keys_input.rs
-crates/app/src/ui/structure_tab/form_dialog.rs
 crates/app/src/ui/structure_tab/imp.rs
 crates/app/src/ui/structure_tab/index_dialog.rs
 crates/app/src/ui/structure_tab/index_draft.rs
@@ -567,10 +596,14 @@ crates/app/src/ui/tab_load/stale_banner.rs
 crates/app/src/ui/tags/manage_tags_dialog.rs
 crates/app/src/ui/tags/mod.rs
 crates/app/src/ui/tags/tag_dialog.rs
+crates/app/src/ui/text_view_teardown.rs
 crates/app/src/ui/welcome_view.rs
 crates/app/src/ui/window_geometry.rs
 crates/app/src/ui/workspace/assistant.rs
+crates/app/src/ui/workspace/catalog_dialogs.rs
+crates/app/src/ui/workspace/catalog_ops.rs
 crates/app/src/ui/workspace/close_flow.rs
+crates/app/src/ui/workspace/database_transfer.rs
 crates/app/src/ui/workspace/definitions.rs
 crates/app/src/ui/workspace/diagram.rs
 crates/app/src/ui/workspace/editor_label.rs
@@ -614,6 +647,7 @@ crates/app/src/ui/workspace/tab_spec.rs
 crates/app/src/ui/workspace/tab_title.rs
 crates/app/src/ui/workspace/table_naming.rs
 crates/app/src/ui/workspace/tests/assistant.rs
+crates/app/src/ui/workspace/tests/catalog_ops.rs
 crates/app/src/ui/workspace/tests/close_tab.rs
 crates/app/src/ui/workspace/tests/definitions.rs
 crates/app/src/ui/workspace/tests/diagram.rs
@@ -652,7 +686,6 @@ crates/app/src/workspace/draft_writer.rs
 crates/app/src/workspace/editor_file_record.rs
 crates/app/src/workspace/engine_profile.rs
 crates/app/src/workspace/inhibit_reason.rs
-crates/app/src/workspace/legacy_tab_file.rs
 crates/app/src/workspace/mod.rs
 crates/app/src/workspace/open_sessions.rs
 crates/app/src/workspace/open_sessions_load.rs
@@ -719,10 +752,12 @@ data/resources/ui/filter-strip.ui
 data/resources/ui/find-bar.ui
 data/resources/ui/history-dialog.ui
 data/resources/ui/history-row.ui
+data/resources/ui/import-csv-dialog.ui
 data/resources/ui/import-from-app-dialog.ui
 data/resources/ui/pager-bar.ui
 data/resources/ui/pending-changes-bar.ui
 data/resources/ui/picker-page.ui
+data/resources/ui/preferences-account-page.ui
 data/resources/ui/preferences-ai-page.ui
 data/resources/ui/preferences-data-browser-group.ui
 data/resources/ui/preferences-dialog.ui
@@ -732,6 +767,8 @@ data/resources/ui/preferences-history-group.ui
 data/resources/ui/preferences-mcp-page.ui
 data/resources/ui/results-pane.ui
 data/resources/ui/row-detail-pane.ui
+data/resources/ui/saved-queries-dialog.ui
+data/resources/ui/saved-query-row.ui
 data/resources/ui/session-window.ui
 data/resources/ui/sql-editor.ui
 data/resources/ui/ssh-section.ui

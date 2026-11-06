@@ -25,7 +25,7 @@ pub(super) fn source_subtitle(app: ForeignApp, available: bool, inventory: Inven
     let connections = ngettext_f(
         "{n} connection found",
         "{n} connections found",
-        count(inventory.connections),
+        inventory.connections,
         &[("n", &inventory.connections.to_string())],
     );
     if inventory.saved_queries == 0 {
@@ -34,7 +34,7 @@ pub(super) fn source_subtitle(app: ForeignApp, available: bool, inventory: Inven
     let queries = ngettext_f(
         "{n} saved query",
         "{n} saved queries",
-        count(inventory.saved_queries),
+        inventory.saved_queries,
         &[("n", &inventory.saved_queries.to_string())],
     );
     format!("{connections} · {queries}")
@@ -137,10 +137,6 @@ pub(super) fn resolution_title(resolution: Resolution) -> String {
         Resolution::Replace(_) => gettext("Replace"),
         Resolution::KeepExisting(_) => gettext("Keep Existing, Add Queries"),
     }
-}
-
-fn count(n: usize) -> u32 {
-    u32::try_from(n).unwrap_or(u32::MAX)
 }
 
 // Where the connection goes, where it lands, what it matches and what it loses, one line each.

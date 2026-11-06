@@ -1,26 +1,49 @@
 name: Release Linux
 
-# A linux-vX.Y.Z tag publishes the Linux release: the source and vendor
-# tarballs and the translation template on GitHub Releases, the signed Debian source package for each
-# Ubuntu series to the Launchpad PPA, which builds and publishes the .deb,
-# and the tag to the COPR project's custom webhook, which builds the
-# Fedora packages from the release (linux/build-aux/rpm/copr-sources.sh).
-# A pre-release tag such as linux-v0.2.0-rc.1 publishes a GitHub
-# pre-release and skips the PPA and COPR.
+# A linux-vX.Y.Z tag publishes a release and a linux-vX.Y.Z-beta.N tag a beta
+# (linux/docs/decisions/0041-beta-repositories-and-release-packages.md). Both
+# publish on GitHub Releases, a beta as a pre-release: the source and vendor
+# tarballs, the translation template, the .deb for each Ubuntu series and the
+# .rpm for each Fedora release, each built offline, tested and installed in a
+# fresh container, a Flatpak bundle, all for amd64 and arm64, and SHA256SUMS.
+# The Flatpak is signed into the repository https://flatpak.tablepro.app
+# serves, which a bundle names for its updates; CI installed and updated it
+# on Ubuntu 22.04, 24.04 and 26.04 first. Then a release uploads that
+# repository's new commits, uploads the signed Debian source package for each
+# Ubuntu series to the stable PPA, which builds and publishes the .deb, and
+# posts the tag to the stable COPR project's custom webhook, which builds the
+# Fedora packages from the release (linux/build-aux/rpm/copr-sources.sh). A
+# beta goes to the beta Flatpak repository, PPA and COPR project instead.
 #
-# Run by hand on a branch, it uploads a published release to the PPA again
-# as X.Y.Z-0ppaN, from that release's tarballs with the branch's .deb
-# packaging: a packaging fix that needs no new version. linux/docs/releasing.md
-# has the steps.
+# Run by hand with dry-run, it builds, tests and gathers everything a tag of
+# the branch's version would publish, as the linux-release artifact, signs
+# the Flatpak with a throwaway key, and publishes nothing.
+#
+# Run by hand on a branch with a tag and a revision, it uploads a published
+# release to the stable PPA again as X.Y.Z-0ppaN, from that release's
+# tarballs with the branch's .deb packaging: a packaging fix that needs no
+# new version. linux/docs/releasing.md has the steps.
 #
 # Environment linux-release, limited to linux-v* tags and the branch a
-# packaging fix runs on, with a required reviewer, holds two secrets.
+# packaging fix runs on, with a required reviewer, holds six secrets. A step
+# whose secret or variable is unset fails and publishes nothing.
 # LINUX_PPA_SIGNING_KEY: the ASCII-armored OpenPGP secret key, with no
 # passphrase, that signs the uploads. Its public key is registered on a
-# Launchpad account that may upload to the PPA.
-# LINUX_COPR_WEBHOOK: the custom webhook URL from the COPR project's
-# Integrations page, ending in the package name: .../<uuid>/tablepro/.
-# Variable LINUX_PPA: the PPA, as owner/name.
+# Launchpad account that may upload to both PPAs.
+# LINUX_COPR_WEBHOOK and LINUX_COPR_WEBHOOK_BETA: the custom webhook URL
+# from the Integrations page of the stable and of the beta COPR project,
+# ending in the package name: .../<uuid>/tablepro/.
+# LINUX_FLATPAK_GPG_KEY: the ASCII-armored OpenPGP secret key, with no
+# passphrase, that signs the Flatpak repositories, and nothing else.
+# LINUX_FLATPAK_R2_ACCESS_KEY_ID and LINUX_FLATPAK_R2_SECRET_ACCESS_KEY: an R2
+# API token that may read and write the tablepro-flatpak bucket.
+# Variables LINUX_PPA and LINUX_PPA_BETA: the stable and the beta PPA, as
+# owner/name.
+# Variable LINUX_FLATPAK_R2_ENDPOINT: https://<account id>.r2.cloudflarestorage.com.
+# Variable POSTHOG_PROJECT_KEY: the PostHog project key the macOS release
+# (release.yml) builds with too, public by design, which make-sources.sh puts
+# in the vendor tarball. The packages send usage data to it unless the user
+# turns it off. A packaging fix reuses the release's tarballs, and so its key.
 # Variable LINUX_BRANCH: the branch a release tag must be on, main when unset.
 
 on:
@@ -28,37 +51,55 @@ on:
     tags: ["linux-v*"]
   workflow_dispatch:
     inputs:
+      dry-run:
+        description: Build, test and gather what a tag of this branch would publish, and publish nothing
+        type: boolean
+        default: false
       tag:
-        description: The published release to upload again, such as linux-v0.1.0
-        required: true
+        description: The published release to upload to the PPA again, such as linux-v0.1.0
         type: string
+        default: ""
       revision:
         description: The PPA upload number, 2 or more (X.Y.Z-0ppaN)
-        required: true
         type: string
+        default: ""
 
 permissions:
   contents: read
 
+# Tags run one at a time, so two releases never pull and publish one Flatpak
+# repository together; flatpak-publish.sh also refuses a repository that
+# changed since its run pulled it. A third tag cancels the one waiting.
 concurrency:
-  group: release-linux-${{ github.ref }}
+  group: release-linux-${{ github.event_name == 'push' && 'tags' || github.ref }}
   cancel-in-progress: false
 
 jobs:
   verify:
     name: Tag, version and release notes
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || inputs.dry-run
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     container:
       image: ubuntu:26.04
     outputs:
       prerelease: ${{ steps.check.outputs.prerelease }}
+      version: ${{ steps.check.outputs.version }}
+      flatpak-branch: ${{ steps.check.outputs.flatpak-branch }}
     steps:
-      - name: Install git and meson
+      - name: The PostHog key is set
+        env:
+          POSTHOG_KEY: ${{ vars.POSTHOG_PROJECT_KEY }}
+        run: |
+          if [ -z "$POSTHOG_KEY" ]; then
+            echo "::error::Set the POSTHOG_PROJECT_KEY repository variable, the PostHog project key the packages send usage data to"
+            exit 1
+          fi
+      # meson introspect detects the project's compilers, C and Rust, before it reads the version.
+      - name: Install git, meson and the compilers
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates git meson python3
+          apt-get install -y --no-install-recommends ca-certificates git meson python3 gcc libc6-dev rustc
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -67,23 +108,34 @@ jobs:
         id: check
         working-directory: linux
         env:
+          EVENT: ${{ github.event_name }}
           TAG: ${{ github.ref_name }}
           LINUX_BRANCH: ${{ vars.LINUX_BRANCH || 'main' }}
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          if ! git merge-base --is-ancestor HEAD "origin/$LINUX_BRANCH"; then
-            echo "::error::$GITHUB_SHA is not on $LINUX_BRANCH"
-            exit 1
-          fi
           version="$(meson introspect --projectinfo meson.build \
             | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])')"
-          tag_date="$(TZ=UTC git log -1 --date=format-local:%Y-%m-%d --format=%cd)"
-          python3 build-aux/packaging/check_packaging.py --source-root . \
-            --version "$version" --tag "$TAG" --tag-date "$tag_date"
+          if [ "$EVENT" = push ]; then
+            if ! git merge-base --is-ancestor HEAD "origin/$LINUX_BRANCH"; then
+              echo "::error::$GITHUB_SHA is not on $LINUX_BRANCH"
+              exit 1
+            fi
+            tag_date="$(TZ=UTC git log -1 --date=format-local:%Y-%m-%d --format=%cd)"
+            python3 build-aux/packaging/check_packaging.py --source-root . \
+              --version "$version" --tag "$TAG" --tag-date "$tag_date"
+          else
+            # A dry run has no tag; it checks the branch as the release-metadata test does.
+            python3 build-aux/packaging/check_packaging.py --source-root . --version "$version"
+          fi
           case "$version" in
-            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
-            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+            *-*) prerelease=true branch=beta ;;
+            *) prerelease=false branch=stable ;;
           esac
+          {
+            echo "prerelease=$prerelease"
+            echo "version=$version"
+            echo "flatpak-branch=$branch"
+          } >> "$GITHUB_OUTPUT"
 
   packages:
     name: Packages
@@ -92,6 +144,9 @@ jobs:
     with:
       deb-runners: '["ubuntu-24.04", "ubuntu-24.04-arm"]'
       rpm-runners: '["ubuntu-24.04", "ubuntu-24.04-arm"]'
+      posthog-key: ${{ vars.POSTHOG_PROJECT_KEY }}
+      flatpak: true
+      flatpak-branch: ${{ needs.verify.outputs.flatpak-branch }}
 
   # The release carries the template translators start from, made with
   # gettext 1.0 as build-linux.yml's Translations job makes it.
@@ -124,20 +179,98 @@ jobs:
         run: |
           meson setup _build --fatal-meson-warnings
           meson compile -C _build tablepro-pot
+      # A language in po/LINGUAS ships complete (po/README.md).
+      - name: Every shipped catalogue is complete
+        run: po/check-complete.sh >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-pot
           path: linux/po/tablepro.pot
           if-no-files-found: error
 
-  github-release:
-    name: GitHub release
-    needs: [verify, packages, template]
+  # The published repository, pulled from R2, takes the new commits and their
+  # deltas; the bundles are made from it, so an installed bundle updates from
+  # it. A dry run starts an empty repository and signs it with a throwaway key.
+  flatpak-repo:
+    name: Flatpak repository
+    needs: [verify, packages]
     runs-on: ubuntu-24.04
-    environment: linux-release
+    environment: ${{ github.event_name == 'push' && 'linux-release' || '' }}
+    timeout-minutes: 60
+    container:
+      image: ubuntu:26.04
+    steps:
+      - name: Install Flatpak, OSTree, GnuPG and curl
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl unzip flatpak ostree gnupg
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: linux-flatpak-repo-*
+          path: _packages/flatpak-repo
+          merge-multiple: true
+      - name: Sign the new commits into the repository and bundle them
+        env:
+          EVENT: ${{ github.event_name }}
+          BRANCH: ${{ needs.verify.outputs.flatpak-branch }}
+          GPG_KEY: ${{ secrets.LINUX_FLATPAK_GPG_KEY }}
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.LINUX_FLATPAK_R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.LINUX_FLATPAK_R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ vars.LINUX_FLATPAK_R2_ENDPOINT }}
+          RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+        run: |
+          case "$BRANCH" in
+            beta) dir=beta-repo ;;
+            *) dir=repo ;;
+          esac
+          GNUPGHOME="$(mktemp -d)"
+          export GNUPGHOME
+          trap 'gpgconf --kill all; rm -rf "$GNUPGHOME"' EXIT
+          if [ "$EVENT" = push ]; then
+            if [ -z "$GPG_KEY" ] || [ -z "$RCLONE_CONFIG_R2_ACCESS_KEY_ID" ] || \
+              [ -z "$RCLONE_CONFIG_R2_SECRET_ACCESS_KEY" ] || [ -z "$RCLONE_CONFIG_R2_ENDPOINT" ]; then
+              echo "::error::Set the LINUX_FLATPAK_GPG_KEY, LINUX_FLATPAK_R2_ACCESS_KEY_ID and LINUX_FLATPAK_R2_SECRET_ACCESS_KEY secrets and the LINUX_FLATPAK_R2_ENDPOINT variable to publish the Flatpak"
+              exit 1
+            fi
+            printf '%s\n' "$GPG_KEY" | gpg --batch --import
+            linux/build-aux/packaging/flatpak-publish.sh install-rclone
+            linux/build-aux/packaging/flatpak-publish.sh pull "$dir" "_packages/site/$dir"
+          else
+            gpg --batch --passphrase '' --quick-generate-key 'TablePro dry run <ci@tablepro.invalid>' rsa4096 sign never
+          fi
+          key="$(gpg --batch --with-colons --list-secret-keys | awk -F: '$1 == "fpr" { print $10; exit }')"
+          for tarball in _packages/flatpak-repo/*.tar; do
+            mkdir -p "${tarball%.tar}"
+            tar -C "${tarball%.tar}" -xf "$tarball"
+            linux/build-aux/packaging/flatpak-repo.sh import "${tarball%.tar}/repo" "_packages/site/$dir" "$key"
+          done
+          url="https://flatpak.tablepro.app/$dir/"
+          linux/build-aux/packaging/flatpak-repo.sh update "_packages/site/$dir" "$BRANCH" "$key" "$url"
+          linux/build-aux/packaging/flatpak-repo.sh bundle "_packages/site/$dir" "$BRANCH" "$key" "$url" _packages/bundles
+          tar -C _packages -cf _packages/flatpak-site.tar site
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-flatpak-bundles
+          path: _packages/bundles
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-flatpak-site
+          path: _packages/flatpak-site.tar
+          if-no-files-found: error
+
+  # GitHub turns the '~' of a package version into '.' in an asset name, so
+  # release_assets.py names each package after the tag's version.
+  assets:
+    name: Release assets
+    needs: [verify, packages, template, flatpak-repo]
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -145,12 +278,62 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: linux-sources
-          path: release
+          path: _artifacts/linux-sources
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: linux-pot
+          path: _artifacts/linux-pot
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: linux-deb-*
+          path: _artifacts
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: linux-rpm-*
+          path: _artifacts
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-flatpak-bundles
+          path: _artifacts/linux-flatpak-bundles
+      # Exactly what release-matrix.json declares, each package naming itself as its file does.
+      - name: Gather the assets and SHA256SUMS, and check them
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          python3 linux/build-aux/packaging/release_assets.py gather --version "$VERSION" _artifacts release
+          sudo apt-get update -q && sudo apt-get install -y --no-install-recommends rpm
+          python3 linux/build-aux/packaging/release_assets.py verify --version "$VERSION" release
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-release
           path: release
-      # A pre-release has no CHANGELOG.md section; its notes are a draft of the fragments at the tag.
+          if-no-files-found: error
+
+  github-release:
+    name: GitHub release
+    needs: [verify, assets]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    environment: linux-release
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-release
+          path: release
+      # gh attestation verify checks a downloaded file against this provenance (README.md, Install).
+      - name: Attest the assets
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: release/*
+      # A beta has no CHANGELOG.md section; its notes are a draft of the fragments at the tag.
       - name: Install towncrier
         if: needs.verify.outputs.prerelease == 'true'
         run: |
@@ -161,27 +344,67 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.verify.outputs.version }}
           PRERELEASE: ${{ needs.verify.outputs.prerelease }}
         run: |
-          version="${TAG#linux-v}"
-          (cd release && sha256sum -- * > SHA256SUMS)
           if [ "$PRERELEASE" = true ]; then
-            python3 linux/build-aux/packaging/check_packaging.py --source-root linux \
-              --version "$version" --tag "$TAG"
-            "$RUNNER_TEMP/release-venv/bin/towncrier" build --draft --dir linux --version "$version" > draft.md
+            "$RUNNER_TEMP/release-venv/bin/towncrier" build --draft --dir linux --version "$VERSION" > draft.md
             sed 1d draft.md > notes.md
             set -- --prerelease
           else
             python3 linux/build-aux/packaging/check_packaging.py --source-root linux \
-              --version "$version" --tag "$TAG" --notes notes.md
+              --version "$VERSION" --tag "$TAG" --notes notes.md
           fi
           # The repository's latest release stays the macOS one.
           gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false \
-            --title "TablePro for Linux $version" --notes-file notes.md "$@"
+            --title "TablePro for Linux $VERSION" --notes-file notes.md "$@"
+      - name: Check what the release serves
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir published
+          sudo apt-get update -q && sudo apt-get install -y --no-install-recommends rpm
+          python3 linux/build-aux/packaging/release_assets.py verify --version "$VERSION" published
+
+  # Objects first and summaries last (flatpak-publish.sh), after the GitHub
+  # release, whose bundles update from this repository.
+  flatpak-publish:
+    name: Publish the Flatpak repository
+    needs: [verify, flatpak-repo, github-release]
+    runs-on: ubuntu-24.04
+    environment: linux-release
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-flatpak-site
+          path: _packages
+      - name: Upload to R2
+        env:
+          BRANCH: ${{ needs.verify.outputs.flatpak-branch }}
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.LINUX_FLATPAK_R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.LINUX_FLATPAK_R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ vars.LINUX_FLATPAK_R2_ENDPOINT }}
+          RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+        run: |
+          case "$BRANCH" in
+            beta) dir=beta-repo ;;
+            *) dir=repo ;;
+          esac
+          tar -C _packages -xf _packages/flatpak-site.tar
+          sudo linux/build-aux/packaging/flatpak-publish.sh install-rclone
+          linux/build-aux/packaging/flatpak-publish.sh push "_packages/site/$dir" "$dir"
 
   revision:
     name: Release and revision to upload again
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && !inputs.dry-run
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -194,7 +417,7 @@ jobs:
           version="${TAG#linux-v}"
           case "$version" in
             "$TAG" | "" | *[!0-9.]*)
-              echo "::error::$TAG is not the tag of a Linux release; a pre-release is not on the PPA"
+              echo "::error::$TAG is not the tag of a Linux release; a beta's fix is the next beta"
               exit 1
               ;;
           esac
@@ -219,13 +442,12 @@ jobs:
       release-tag: ${{ inputs.tag }}
       revision: ${{ inputs.revision }}
 
+  # After the GitHub release, so a failed publish uploads nothing anywhere.
   ppa:
     name: Upload to the Launchpad PPA
-    needs: [verify, packages, revision-packages]
+    needs: [verify, github-release, revision-packages]
     if: >-
-      !cancelled() && (
-        (needs.packages.result == 'success' && needs.verify.outputs.prerelease == 'false') ||
-        needs.revision-packages.result == 'success')
+      !cancelled() && (needs.github-release.result == 'success' || needs.revision-packages.result == 'success')
     runs-on: ubuntu-24.04
     environment: linux-release
     timeout-minutes: 30
@@ -241,10 +463,20 @@ jobs:
       - name: Sign the source packages and upload them
         env:
           SIGNING_KEY: ${{ secrets.LINUX_PPA_SIGNING_KEY }}
-          PPA: ${{ vars.LINUX_PPA }}
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+          STABLE_PPA: ${{ vars.LINUX_PPA }}
+          BETA_PPA: ${{ vars.LINUX_PPA_BETA }}
         run: |
-          if [ -z "$SIGNING_KEY" ] || [ -z "$PPA" ]; then
-            echo "::error::Set the LINUX_PPA_SIGNING_KEY secret and the LINUX_PPA variable to upload to the PPA"
+          # A packaging fix uploads a release again, so only a tag is ever a beta.
+          if [ "$PRERELEASE" = true ]; then
+            ppa="$BETA_PPA"
+            variable=LINUX_PPA_BETA
+          else
+            ppa="$STABLE_PPA"
+            variable=LINUX_PPA
+          fi
+          if [ -z "$SIGNING_KEY" ] || [ -z "$ppa" ]; then
+            echo "::error::Set the LINUX_PPA_SIGNING_KEY secret and the $variable variable to upload to the PPA"
             exit 1
           fi
           apt-get update
@@ -259,13 +491,12 @@ jobs:
           echo "$key:6:" | gpg --batch --import-ownertrust
           for changes in source/*_source.changes; do
             debsign -k"$key" "$changes"
-            dput "ppa:$PPA" "$changes"
+            dput "ppa:$ppa" "$changes"
           done
 
   copr:
     name: Start the COPR build
     needs: [verify, github-release]
-    if: needs.verify.outputs.prerelease == 'false'
     runs-on: ubuntu-24.04
     environment: linux-release
     timeout-minutes: 5
@@ -274,13 +505,22 @@ jobs:
       # project's secret, which lasts until a maintainer regenerates it.
       - name: Post the tag to the COPR webhook
         env:
-          WEBHOOK: ${{ secrets.LINUX_COPR_WEBHOOK }}
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+          STABLE_WEBHOOK: ${{ secrets.LINUX_COPR_WEBHOOK }}
+          BETA_WEBHOOK: ${{ secrets.LINUX_COPR_WEBHOOK_BETA }}
           TAG: ${{ github.ref_name }}
         run: |
-          if [ -z "$WEBHOOK" ]; then
-            echo "::error::Set the LINUX_COPR_WEBHOOK secret to build the Fedora packages"
+          if [ "$PRERELEASE" = true ]; then
+            webhook="$BETA_WEBHOOK"
+            secret=LINUX_COPR_WEBHOOK_BETA
+          else
+            webhook="$STABLE_WEBHOOK"
+            secret=LINUX_COPR_WEBHOOK
+          fi
+          if [ -z "$webhook" ]; then
+            echo "::error::Set the $secret secret to build the Fedora packages"
             exit 1
           fi
           build="$(curl --fail-with-body --silent --show-error --proto '=https' --request POST \
-            --header 'Content-Type: text/plain' --data-raw "$TAG" "$WEBHOOK")"
+            --header 'Content-Type: text/plain' --data-raw "$TAG" "$webhook")"
           echo "COPR build $build: https://copr.fedorainfracloud.org/coprs/build/$build/"

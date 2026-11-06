@@ -7,6 +7,24 @@
     "A document field could not be read" : {
 
     },
+    "A random identifier for this install" : {
+
+    },
+    "Help decide what to improve next. Nothing is sent unless you choose Share Usage Data." : {
+
+    },
+    "Off until you turn it on. Sent to PostHog with a random ID: app and iOS versions, device model, screen size, language, time zone, network type, database types, connection count, and first connection and query. PostHog derives an approximate location from your IP address. Never hostnames, credentials, queries, or rows." : {
+
+    },
+    "PostHog derives an approximate location from your IP address. Nothing sent contains a hostname, username, password, query, or any data from your databases. You can change this in Settings." : {
+
+    },
+    "Sent to PostHog:" : {
+
+    },
+    "The app and iOS versions, device model, screen size, language, time zone, and network type" : {
+
+    },
     "The result has no stored documents" : {
 
     },
@@ -248,6 +266,9 @@
     "the SSH host, user or port of “%@” is not one TablePro allows" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "When you first connect and first run a query" : {
+
     },
     "“%@” has an open transaction. Deleting the connection rolls it back and discards its uncommitted changes." : {
 

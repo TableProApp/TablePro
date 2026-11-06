@@ -135,3 +135,30 @@ async fn each_ai_key_is_its_own_item_and_outlives_a_connection_delete() -> TestR
     store.delete_ai_key("anthropic").await?;
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "requires a Secret Service"]
+async fn the_account_token_is_rotated_in_place_and_outlives_a_connection_delete() -> TestResult {
+    let store = store();
+    let id = Uuid::new_v4();
+    store
+        .store(id, SecretKind::DatabasePassword, &SecretString::from("pw"), "l")
+        .await?;
+
+    let before = store.load_account_token().await?;
+    store
+        .store_account_token(&SecretString::from("rt_first"), "sign-in")
+        .await?;
+    store
+        .store_account_token(&SecretString::from("rt_second"), "sign-in")
+        .await?;
+    store.delete_connection(id).await?;
+    let rotated = store.load_account_token().await?;
+    store.delete_account_token().await?;
+    let after = store.load_account_token().await?;
+
+    assert!(before.is_none());
+    assert_eq!(rotated.as_ref().map(|token| token.expose_secret()), Some("rt_second"));
+    assert!(after.is_none());
+    Ok(())
+}

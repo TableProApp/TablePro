@@ -9,9 +9,17 @@ pub(crate) enum SidebarEvent {
     EditStructure(TableRef),
     ShowCreateTable(TableRef),
     ImportCsv(TableRef),
+    /// Empty the table, or a document engine's collection, and keep it.
+    TruncateTable(TableRef),
     DropTable(TableRef),
     /// A new table in this schema, or the default one.
     NewTable(Option<String>),
+    NewSchema,
+    /// A schema the list still offered to drop.
+    DropSchema(String),
+    /// A database the engine lists as a schema, which the list still
+    /// offered to drop.
+    DropDatabase(String),
     /// This schema's ER diagram, or the default one's.
     ShowDiagram(Option<String>),
     ShowDefinition(ObjectInfo),

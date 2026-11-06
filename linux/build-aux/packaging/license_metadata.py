@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
-# Writes build-aux/debian/copyright and the RPM spec's License tag from
-# cargo-about's data/licenses/third-party.json: the license expression each
-# crate declares, and the text of the license TablePro uses it under.
-# cargo-about templates cannot indent a license text into a deb822 field,
-# hence a script.
+# Writes build-aux/debian/copyright and the RPM spec's License tag and
+# bundled Provides. The copyright file describes the source package: every
+# file of both release tarballs, from source_inventory.py. The spec
+# describes the binary package: the License tag comes from cargo-about's
+# data/licenses/third-party.json, the crates linked into the binaries, and
+# the Provides from the native libraries build-aux/about/bundled lists.
 
 import argparse
 import json
 import re
 import sys
-import textwrap
+import tomllib
 import xml.etree.ElementTree as ElementTree
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import source_inventory  # noqa: E402
 
 DEP5_FORMAT = "https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/"
 UPSTREAM_LICENSE = "AGPL-3.0-or-later"
@@ -29,17 +34,50 @@ APACHE_POINTER = [
     "On Debian systems, the complete text of the Apache License, Version 2.0",
     'can be found in "/usr/share/common-licenses/Apache-2.0".',
 ]
-# The same holds for the GPL 2 terms, whose FSF address lintian also
-# reports as out of date. The cut runs to the end of its appendix, which
-# carries the address too.
-GPL2_TITLE = re.compile(r"^\s*GNU GENERAL PUBLIC LICENSE\s*$")
-GPL2_VERSION = re.compile(r"^\s*Version 2, June 1991\s*$")
-GPL2_LAST = "Public License instead of this License."
-GPL2_POINTER = [
-    "On Debian systems, the complete text of the GNU General Public License",
-    'version 2 can be found in "/usr/share/common-licenses/GPL-2".',
+# The same holds for the GNU licenses, whose FSF address in the GPL 2 and
+# LGPL 2.1 lintian also reports as out of date. The cut runs to the end of
+# the appendix, which carries the address too: title, version line, last
+# line, common-licenses file and name.
+GNU_TEXTS = [
+    (
+        re.compile(r"^\s*GNU GENERAL PUBLIC LICENSE\s*$"),
+        re.compile(r"^\s*Version 2, June 1991\s*$"),
+        "Public License instead of this License.",
+        "GPL-2",
+        ["GNU General Public License", "version 2"],
+    ),
+    (
+        re.compile(r"^\s*GNU GENERAL PUBLIC LICENSE\s*$"),
+        re.compile(r"^\s*Version 3, 29 June 2007\s*$"),
+        "why-not-lgpl.html>.",
+        "GPL-3",
+        ["GNU General Public License", "version 3"],
+    ),
+    (
+        re.compile(r"^\s*GNU LESSER GENERAL PUBLIC LICENSE\s*$"),
+        re.compile(r"^\s*Version 2\.1, February 1999\s*$"),
+        "That's all there is to it!",
+        "LGPL-2.1",
+        ["GNU Lesser General Public License", "version 2.1"],
+    ),
 ]
-COMMON_LICENSES = {"CC0-1.0": "CC0 1.0 Universal license"}
+# The license texts every Debian system has in /usr/share/common-licenses,
+# by DEP-5 short name without its "+".
+COMMON_LICENSES = {
+    "Apache-2.0": "Apache License, Version 2.0",
+    "CC0-1.0": "CC0 1.0 Universal license",
+    "GFDL-1.2": "GNU Free Documentation License version 1.2",
+    "GFDL-1.3": "GNU Free Documentation License version 1.3",
+    "GPL-2": "GNU General Public License version 2",
+    "GPL-3": "GNU General Public License version 3",
+    "LGPL-2": "GNU Library General Public License version 2",
+    "LGPL-2.1": "GNU Lesser General Public License version 2.1",
+    "LGPL-3": "GNU Lesser General Public License version 3",
+    "MPL-2.0": "Mozilla Public License, Version 2.0",
+}
+# DEP-5 names the GNU licenses by their major version, "GPL-2+" for SPDX's
+# GPL-2.0-or-later, and LGPL-2.1 by its own.
+GNU_LICENSE = re.compile(r"^(A?GPL|LGPL|GFDL)-(\d+)\.(\d+)(-only|-or-later|\+)?$")
 
 NOTICE = re.compile(r"^(?:copyright\b|©|\(c\)\s*\d)", re.IGNORECASE)
 NOTICE_PREFIX = re.compile(r"^(?:copyright\b\s*:?\s*)?(?:\(c\)|©)?\s*", re.IGNORECASE)
@@ -75,6 +113,10 @@ EXPAT = re.compile(
 X11_CLAUSE = re.compile(r"shall\s+not\s+be\s+used\s+in\s+advertising", re.IGNORECASE)
 
 SPEC_LICENSE = re.compile(r"^License:([ \t]+)(?:%\{shrink:\n(?:[^\n]*\n)*?\}|[^\n]*)$", re.MULTILINE)
+PROVIDES_COMMENT = "# build-aux/update-third-party-licenses.sh writes these from build-aux/about/bundled."
+# RPM adds bundled(crate(...)) itself from %cargo_vendor_manifest.
+SPEC_PROVIDES = re.compile("^" + re.escape(PROVIDES_COMMENT) + r"\n(?:Provides:[ \t]+bundled\([^\n]*\n)*", re.MULTILINE)
+VENDOR_CRATE = re.compile(r"^vendor/([^/]+)/\*$")
 EXPRESSION_TOKEN = re.compile(r"\(|\)|[^\s()]+")
 LICENSE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+-]*$")
 
@@ -175,6 +217,11 @@ def is_expat(text):
 def dep5_id(license_id, expat):
     if license_id == "MIT" and expat:
         return "Expat"
+    gnu = GNU_LICENSE.match(license_id)
+    if gnu:
+        family, major, minor, suffix = gnu.groups()
+        version = major if minor == "0" else f"{major}.{minor}"
+        return f"{family}-{version}{'+' if suffix in ('-or-later', '+') else ''}"
     for suffix, replacement in (("-or-later", "+"), ("-only", "")):
         if license_id.endswith(suffix):
             return license_id.removesuffix(suffix) + replacement
@@ -186,7 +233,7 @@ def dep5(node, expat=False):
         return dep5_id(node[1], expat)
     if node[0] == "with":
         # DEP-5 writes an exception as "<license> with <name> exception".
-        return f"{dep5_id(node[1], expat)} with {node[2].removesuffix('-exception')} exception"
+        return f"{dep5_id(node[1], expat)} with {node[2].replace('-exception', '')} exception"
     if node[0] == "or":
         for term in node[1]:
             if term[0] == "and" and any(part[0] == "or" for part in term[1]):
@@ -210,49 +257,42 @@ def metainfo_license(path):
     return found.strip()
 
 
-def crate_texts(licenses, crates):
-    texts = {(crate["name"], crate["version"]): [] for crate in crates}
-    for index, license in enumerate(licenses):
-        for used_by in license["used_by"]:
-            key = (used_by["crate"]["name"], used_by["crate"]["version"])
-            if key not in texts:
-                raise MetadataError(f"{key[0]} {key[1]} has a license text but no license expression")
-            if index not in texts[key]:
-                texts[key].append(index)
-    for (name, version), indices in texts.items():
-        if not indices:
-            raise MetadataError(f"{name} {version} has a license expression but no license text")
-    return texts
-
-
 def debian_text(text):
-    return without_gpl2(without_apache(text.split("\n")))
+    lines = without_apache(text.split("\n"))
+    for gnu in GNU_TEXTS:
+        lines = without_gnu(lines, gnu)
+    return lines
 
 
 def without_apache(lines):
-    terms = next((i for i, line in enumerate(lines) if APACHE_TERMS in line), None)
+    # Some crates ship the terms as Markdown, with headings in mixed case.
+    terms = next((i for i, line in enumerate(lines) if APACHE_TERMS in line.upper()), None)
     if terms is None:
         return lines
     titles = [i for i in range(terms) if APACHE_TITLE.match(lines[i])]
-    ends = [i for i in range(terms, len(lines)) if APACHE_END in lines[i]]
-    if not titles or not ends:
-        raise MetadataError("an Apache 2.0 text has no title or end line to cut at")
-    return lines[: titles[-1]] + APACHE_POINTER + lines[ends[0] + 1 :]
+    ends = [i for i in range(terms, len(lines)) if APACHE_END in lines[i].upper()]
+    if not ends:
+        raise MetadataError("an Apache 2.0 text has no end line to cut at")
+    return lines[: titles[-1] if titles else terms] + APACHE_POINTER + lines[ends[0] + 1 :]
 
 
-def without_gpl2(lines):
-    # The LGPL's title differs, so its text stays.
+def without_gnu(lines, gnu):
+    title, version, last, common, (name, numbered) = gnu
     content = [i for i, line in enumerate(lines) if line.strip()]
     start = next(
-        (i for i, n in zip(content, content[1:]) if GPL2_TITLE.match(lines[i]) and GPL2_VERSION.match(lines[n])),
+        (i for i, n in zip(content, content[1:]) if title.match(lines[i]) and version.match(lines[n])),
         None,
     )
     if start is None:
         return lines
-    end = next((i for i in range(start, len(lines)) if GPL2_LAST in lines[i]), None)
+    end = next((i for i in range(start, len(lines)) if last in lines[i]), None)
     if end is None:
-        raise MetadataError("a GPL 2 text has no last line to cut at")
-    return lines[:start] + GPL2_POINTER + lines[end + 1 :]
+        raise MetadataError(f"a {common} text has no last line to cut at")
+    pointer = [
+        f"On Debian systems, the complete text of the {name}",
+        f'{numbered} can be found in "/usr/share/common-licenses/{common}".',
+    ]
+    return lines[:start] + pointer + lines[end + 1 :]
 
 
 def notices(texts):
@@ -266,11 +306,6 @@ def notices(texts):
             if notice and notice not in found:
                 found.append(notice)
     return found
-
-
-def unnamed_holders(crates):
-    names = ", ".join(dict.fromkeys(name for name, _ in crates))
-    return textwrap.wrap(f"the authors of {names}", width=72, break_on_hyphens=False)
 
 
 def field(name, lines):
@@ -296,14 +331,53 @@ def text_block(texts):
     return lines
 
 
-def common_license_pointer(license_id):
+def common_license_pointer(short_name):
+    base = short_name.removesuffix("+")
     return [
-        f"On Debian systems, the complete text of the {COMMON_LICENSES[license_id]}",
-        f'can be found in "/usr/share/common-licenses/{license_id}".',
+        f"On Debian systems, the complete text of the {COMMON_LICENSES[base]}",
+        f'can be found in "/usr/share/common-licenses/{base}".',
     ]
 
 
-def render_copyright(licenses, crates, upstream_text, metadata_license):
+def license_ids(node):
+    if node[0] == "license":
+        return [node[1]]
+    if node[0] == "with":
+        raise MetadataError(f"{spdx(node)} has no text to point at; ship the file that carries it")
+    return [found for term in node[1] for found in license_ids(term)]
+
+
+def unit_expat(texts):
+    # With no text of its own, an MIT unit points at the Expat paragraph.
+    if not texts:
+        return True
+    return any(is_expat(text) for text in texts) and not any(X11_CLAUSE.search(text) for text in texts)
+
+
+def unit_holders(unit, texts):
+    # The cut license texts hold the FSF's notice, not a holder's.
+    found = list(dict.fromkeys(list(unit.get("copyright", [])) + notices(["\n".join(debian_text(t)) for t in texts])))
+    if found:
+        return found
+    if unit.get("authors"):
+        return unit["authors"]
+    raise MetadataError(f"{', '.join(unit['files'])} names no copyright holder; add one to build-aux/about/source.json")
+
+
+def files_paragraph(files, holders, synopsis, texts):
+    return field("Files", files) + field("Copyright", holders) + field("License", [synopsis] + text_block(texts))
+
+
+def standalone_paragraph(short_name, license_id, texts_root):
+    if short_name.removesuffix("+") in COMMON_LICENSES:
+        return field("License", [short_name] + common_license_pointer(short_name))
+    path = Path(texts_root) / f"{license_id}.txt"
+    if not path.is_file():
+        raise MetadataError(f"no text for {short_name}, which a file without a license file of its own is under; add {path}")
+    return field("License", [short_name] + text_block([path.read_text(encoding="utf-8")]))
+
+
+def render_copyright(dist, crates, nested, upstream_text, metadata_license, texts_root):
     paragraphs = [
         field("Format", [DEP5_FORMAT])
         + field("Upstream-Name", ["TablePro"])
@@ -312,11 +386,12 @@ def render_copyright(licenses, crates, upstream_text, metadata_license):
         + field(
             "Comment",
             [
-                "linux/build-aux/packaging/license_metadata.py writes this file from",
-                "linux/data/licenses/third-party.json. The vendor/ paragraphs cover the crates",
-                "linked into tablepro and tablepro-askpass. Each names every license",
-                "the crate offers and holds the text of the one TablePro uses, as the",
-                "crate ships it.",
+                "linux/build-aux/packaging/license_metadata.py writes this file. The",
+                "vendor/ paragraphs cover every crate of the vendor component tarball,",
+                "which holds all of Cargo.lock, whatever the target or dependency kind,",
+                "with the license files each crate ships. The code a crate carries from",
+                "another project follows, from linux/build-aux/about/source.json and",
+                "linux/build-aux/about/bundled.",
             ],
         ),
         field("Files", ["*"])
@@ -332,28 +407,66 @@ def render_copyright(licenses, crates, upstream_text, metadata_license):
             + field("License", [dep5_id(metadata_license, False)] + common_license_pointer(metadata_license))
         )
 
-    expressions = {(crate["name"], crate["version"]): crate["license"] for crate in crates}
-    groups = {}
-    for crate, indices in crate_texts(licenses, crates).items():
-        texts = []
-        for index in indices:
-            if licenses[index]["text"] not in texts:
-                texts.append(licenses[index]["text"])
-        mit = [licenses[index]["text"] for index in indices if licenses[index]["id"] == "MIT"]
-        expat = bool(mit) and all(is_expat(text) for text in mit)
-        synopsis = dep5(parse_expression(expressions[crate]), expat)
-        groups.setdefault((synopsis, tuple(texts)), []).append(crate)
+    standalone = {}
 
-    for (synopsis, texts), group in sorted(groups.items(), key=lambda item: sorted(item[1])[0]):
-        group = sorted(group)
-        paragraphs.append(
-            field("Files", [f"vendor/{name}-{version}/*" for name, version in group])
-            # The cut license texts hold the FSF's notice, not a holder's.
-            + field("Copyright", notices(["\n".join(debian_text(text)) for text in texts]) or unnamed_holders(group))
-            + field("License", [synopsis] + text_block(texts))
-        )
+    def described(unit):
+        texts = list(dict.fromkeys(unit["texts"]))
+        node = parse_expression(unit["expression"])
+        expat = unit_expat(texts)
+        if not texts:
+            for license_id in license_ids(node):
+                standalone.setdefault(dep5_id(license_id, expat), license_id)
+        return dep5(node, expat), tuple(texts), tuple(unit_holders(unit, texts))
+
+    for unit in dist:
+        synopsis, texts, holders = described(unit)
+        paragraphs.append(files_paragraph(unit["files"], holders, synopsis, texts))
+
+    groups = {}
+    for unit in crates:
+        groups.setdefault(described(unit), []).extend(unit["files"])
+    for (synopsis, texts, holders), files in sorted(groups.items(), key=lambda item: sorted(item[1])[0]):
+        paragraphs.append(files_paragraph(sorted(files), holders, synopsis, texts))
+
+    for unit in nested:
+        synopsis, texts, holders = described(unit)
+        paragraphs.append(files_paragraph(unit["files"], holders, synopsis, texts))
+
+    for short_name, license_id in sorted(standalone.items(), key=lambda item: item[0].lower()):
+        paragraphs.append(standalone_paragraph(short_name, license_id, texts_root))
 
     return "\n\n".join("\n".join(paragraph) for paragraph in paragraphs) + "\n"
+
+
+def covered_crates(copyright_text):
+    found = set()
+    for block in copyright_text.split("\n\n"):
+        lines = block.split("\n")
+        if not lines[0].startswith("Files: "):
+            continue
+        patterns = [lines[0].removeprefix("Files: ")]
+        for line in lines[1:]:
+            if not line.startswith(" "):
+                break
+            patterns.append(line.strip())
+        for pattern in patterns:
+            crate = VENDOR_CRATE.match(pattern)
+            if crate:
+                found.add(crate.group(1))
+    return found
+
+
+def check_coverage(copyright_text, lock_text):
+    locked = {f"{name}-{version}" for name, version in source_inventory.lock_packages(lock_text)}
+    covered = covered_crates(copyright_text)
+    problems = []
+    missing = sorted(locked - covered)
+    if missing:
+        problems.append(f"no vendor/ paragraph for these crates of Cargo.lock: {', '.join(missing)}")
+    stale = sorted(covered - locked)
+    if stale:
+        problems.append(f"vendor/ paragraphs for crates Cargo.lock no longer has: {', '.join(stale)}")
+    return problems
 
 
 def rpm_license(crates, metadata_license):
@@ -377,36 +490,112 @@ def apply_spec_license(spec, terms):
     return SPEC_LICENSE.sub(lambda match: f"License:{match.group(1)}{block}", spec)
 
 
-def expected(args):
-    licenses, crates = load(args.licenses)
-    upstream = Path(args.license_file).read_text(encoding="utf-8")
-    # LICENSE sits at the source root, beside data/.
-    metadata_license = metainfo_license(Path(args.license_file).parent / METAINFO)
+def rpm_provides(crates, bundles):
+    linked = {(crate["name"], crate["version"]) for crate in crates}
+    provides = []
+    for (name, version), bundle in sorted(bundles.items()):
+        if (name, version) not in linked:
+            raise MetadataError(f"build-aux/about/bundled/{name} is for {name} {version}, which the binaries do not link")
+        for component in bundle["components"]:
+            if "provides" not in component:
+                continue
+            provide = f"bundled({component['provides']})"
+            if "version" in component:
+                provide += f" = {component['version']}"
+            if provide not in provides:
+                provides.append(provide)
+    return provides
+
+
+def apply_spec_provides(spec, provides):
+    if len(SPEC_PROVIDES.findall(spec)) != 1:
+        raise MetadataError("the spec must have exactly one block of bundled() Provides")
+    block = PROVIDES_COMMENT + "\n" + "".join(f"Provides:       {provide}\n" for provide in provides)
+    return SPEC_PROVIDES.sub(lambda match: block, spec)
+
+
+# A clarify entry's license corrects the expression the crate declares; a
+# git entry means the crate's own files carry no usable text, so the one
+# cargo-about fetched into third-party.json stands in for them.
+def clarifications(about_path, licenses):
+    with open(about_path, "rb") as handle:
+        about = tomllib.load(handle)
+    entries = {name: table["clarify"] for name, table in about.items() if isinstance(table, dict) and "clarify" in table}
+    expressions = {name: entry["license"] for name, entry in entries.items() if "license" in entry}
+    fetched = {}
+    for license in licenses:
+        if "component" in license:
+            continue
+        for used_by in license["used_by"]:
+            key = (used_by["crate"]["name"], used_by["crate"]["version"])
+            if "git" in entries.get(key[0], {}) and license["text"] not in fetched.setdefault(key, []):
+                fetched[key].append(license["text"])
+    return expressions, fetched
+
+
+def spec_outputs(args, metadata_license):
+    _, crates = load(args.licenses)
+    bundles = source_inventory.load_bundles(args.bundled)
     spec = Path(args.spec).read_text(encoding="utf-8")
-    return {
-        Path(args.copyright): render_copyright(licenses, crates, upstream, metadata_license),
-        Path(args.spec): apply_spec_license(spec, rpm_license(crates, metadata_license)),
-    }
+    spec = apply_spec_license(spec, rpm_license(crates, metadata_license))
+    return apply_spec_provides(spec, rpm_provides(crates, bundles))
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Write, or check, the package license metadata generated from third-party.json."
+        description="Write, or check, the package license metadata: the Debian copyright file and the RPM spec."
     )
     parser.add_argument("command", choices=["write", "check"])
-    parser.add_argument("--licenses", required=True)
+    parser.add_argument("--licenses", required=True, help="cargo-about's third-party.json, the linked crates")
     parser.add_argument("--license-file", required=True)
     parser.add_argument("--copyright", required=True)
     parser.add_argument("--spec", required=True)
+    parser.add_argument("--lock", required=True, help="the workspace's Cargo.lock, which cargo vendor copies")
+    parser.add_argument("--bundled", required=True, help="build-aux/about/bundled")
+    parser.add_argument("--metadata", help="cargo metadata of the workspace, for write")
+    parser.add_argument("--about", help="about.toml, whose clarify entries correct a crate's expression, for write")
+    parser.add_argument("--source", help="build-aux/about/source.json, for write")
+    parser.add_argument("--texts", help="build-aux/about/licenses, for write")
     args = parser.parse_args(argv)
+    if args.command == "write" and not all((args.metadata, args.about, args.source, args.texts)):
+        parser.error("write needs --metadata, --about, --source and --texts")
 
     try:
-        outputs = expected(args)
-    except (OSError, KeyError, ValueError, ElementTree.ParseError, MetadataError) as error:
+        # LICENSE sits at the source root, beside data/.
+        source_root = Path(args.license_file).resolve().parent.parent
+        metadata_license = metainfo_license(Path(args.license_file).parent / METAINFO)
+        outputs = {Path(args.spec): spec_outputs(args, metadata_license)}
+        if args.command == "write":
+            metadata = json.loads(Path(args.metadata).read_text(encoding="utf-8"))
+            expressions, fetched = clarifications(args.about, load(args.licenses)[0])
+            dist, crates, nested = source_inventory.inventory(
+                metadata,
+                expressions,
+                fetched,
+                args.source,
+                args.bundled,
+                source_root,
+            )
+            upstream = Path(args.license_file).read_text(encoding="utf-8")
+            outputs[Path(args.copyright)] = render_copyright(
+                dist, crates, nested, upstream, metadata_license, args.texts
+            )
+            problems = []
+        else:
+            problems = check_coverage(
+                Path(args.copyright).read_text(encoding="utf-8"), Path(args.lock).read_text(encoding="utf-8")
+            )
+    except (
+        OSError,
+        KeyError,
+        ValueError,
+        ElementTree.ParseError,
+        MetadataError,
+        source_inventory.InventoryError,
+    ) as error:
         print(f"license_metadata.py: {error}", file=sys.stderr)
         return 1
 
-    stale = []
     for path, content in outputs.items():
         current = path.read_text(encoding="utf-8") if path.exists() else None
         if current == content:
@@ -414,15 +603,11 @@ def main(argv=None):
         if args.command == "write":
             path.write_text(content, encoding="utf-8")
         else:
-            stale.append(path)
+            problems.append(f"{path} does not match data/licenses")
 
-    for path in stale:
-        print(
-            f"license_metadata.py: {path} does not match data/licenses; "
-            "run build-aux/update-third-party-licenses.sh",
-            file=sys.stderr,
-        )
-    return 1 if stale else 0
+    for problem in problems:
+        print(f"license_metadata.py: {problem}; run build-aux/update-third-party-licenses.sh", file=sys.stderr)
+    return 1 if problems else 0
 
 
 if __name__ == "__main__":

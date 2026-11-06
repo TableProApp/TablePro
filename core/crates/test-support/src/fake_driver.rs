@@ -35,6 +35,8 @@ impl FakeDriver {
         username_required: true,
         tls: Some(TlsCapabilities {
             modes: &[TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull],
+            default_mode: TlsMode::VerifyFull,
+            tls_ports: &[],
             ca_file: true,
             client_identity: true,
             server_name_override: ServerNameOverride::AnyRoute,

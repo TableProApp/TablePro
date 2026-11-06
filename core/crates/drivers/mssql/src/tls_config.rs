@@ -52,6 +52,9 @@ pub(crate) struct TlsPlan {
 
 impl TlsPlan {
     pub(crate) fn new(tls: &TlsConfig) -> Result<Self, DriverError> {
+        if tls.mode == TlsMode::Prefer {
+            return Err(DriverError::Config(ConfigError::UnsupportedTlsMode));
+        }
         if tls.client_identity.is_some() {
             return Err(DriverError::Config(ConfigError::ClientIdentityUnsupported));
         }
@@ -69,7 +72,7 @@ impl TlsPlan {
     pub(crate) fn apply(&self, config: &mut Config) {
         match self.mode {
             TlsMode::Disable => config.encryption(EncryptionLevel::NotSupported),
-            TlsMode::Require => {
+            TlsMode::Prefer | TlsMode::Require => {
                 config.encryption(EncryptionLevel::Required);
                 config.trust_cert();
             }
@@ -139,7 +142,7 @@ impl TlsPlan {
     fn handshake_failure(&self, failure: TlsFailure) -> TlsFailure {
         match self.mode {
             TlsMode::Disable => TlsFailure::ServerRequiresTls,
-            TlsMode::Require | TlsMode::VerifyFull | TlsMode::Strict => failure,
+            TlsMode::Prefer | TlsMode::Require | TlsMode::VerifyFull | TlsMode::Strict => failure,
         }
     }
 
@@ -149,7 +152,9 @@ impl TlsPlan {
     pub(crate) fn opening_refused(&self, detail: String) -> DriverError {
         let failure = match self.mode {
             TlsMode::Strict => TlsFailure::ServerRefusedStrict,
-            TlsMode::Disable | TlsMode::Require | TlsMode::VerifyFull => TlsFailure::ServerRequiresStrict,
+            TlsMode::Disable | TlsMode::Prefer | TlsMode::Require | TlsMode::VerifyFull => {
+                TlsFailure::ServerRequiresStrict
+            }
         };
         DriverError::Tls { failure, detail }
     }

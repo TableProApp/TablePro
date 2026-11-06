@@ -14,6 +14,7 @@ use crate::call_client::whole_seconds;
 use crate::cancel::{acknowledges_stop, kill_query, wait_until_ended};
 use crate::errors::{code, server_code};
 use crate::lingering_query::LingeringQuery;
+use crate::result_origin::{TracedTable, source, traced_table, with_origins};
 use crate::result_reader::{ReadEvent, ResultReader};
 
 /// Rows per `ResultEvent::Rows`. The sink is awaited per batch, so a slow
@@ -43,11 +44,8 @@ pub(crate) struct EditorRun {
 pub(crate) type RunOutcome = Result<RunSummary, DriverError>;
 
 impl EditorRun {
-    /// Send the statement and stream what comes back.
-    ///
-    /// A stop sends KILL QUERY for this run's query id and keeps reading,
-    /// because the server answers the KILL by ending the response; only
-    /// a server that has not answered within the grace is cut off.
+    // A stop sends KILL QUERY and keeps reading, because the server answers the KILL by ending the response; only a
+    // server that has not answered within the grace is cut off.
     pub(crate) async fn run(self, sql: UserSql, options: RunOptions, sink: Box<dyn ResultSink>) -> RunOutcome {
         let started = Instant::now();
         if sql.is_empty() {
@@ -69,6 +67,10 @@ impl EditorRun {
                 return Ok(summary(started, unsent(interrupt)));
             }
         }
+        let traced = match self.trace(&sql, &mut stop).await {
+            Ok(traced) => traced,
+            Err(interrupt) => return Ok(summary(started, unsent(interrupt))),
+        };
         let query_id = Uuid::new_v4();
         let mut reader = match self.open(&sql, query_id, bound) {
             Ok(reader) => reader,
@@ -88,7 +90,7 @@ impl EditorRun {
                 }
             };
             match event {
-                Ok(ReadEvent::Columns(columns)) => emitter.start(columns).await,
+                Ok(ReadEvent::Columns(columns)) => emitter.start(with_origins(traced.as_ref(), columns)).await,
                 Ok(ReadEvent::Row(row)) => {
                     if emitter.row(row).await {
                         emitter.limit_reached().await;
@@ -171,6 +173,22 @@ impl EditorRun {
             }
         }
         None
+    }
+
+    // A lookup the stop cuts short may still hold the session, so the next run waits for it as for a stopped statement.
+    async fn trace(&self, sql: &UserSql, stop: &mut Stop) -> Result<Option<TracedTable>, Interrupt> {
+        let Some(statement) = source(sql.as_str()) else {
+            return Ok(None);
+        };
+        let lookup_id = Uuid::new_v4();
+        tokio::select! {
+            biased;
+            interrupt = stop.triggered() => {
+                self.fire(stop, interrupt, lookup_id);
+                Err(interrupt)
+            }
+            traced = traced_table(&self.session, statement, lookup_id) => Ok(traced),
+        }
     }
 
     /// Send `sql` as `query_id`, which the server ends at `bound`.

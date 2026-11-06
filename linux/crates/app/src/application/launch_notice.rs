@@ -91,7 +91,7 @@ impl TableProApplication {
     }
 
     // The windows of a restored session may still be on their way, so the first one to open says it.
-    fn announce(&self, notice: LaunchNotice) {
+    pub(super) fn announce(&self, notice: LaunchNotice) {
         match self.front_session_window() {
             Some(window) => window.announce(notice),
             None => self.imp().launch_notices.borrow_mut().push(notice),

@@ -29,7 +29,7 @@ pub fn cell_editability(
         return Err(CellLock::Unaddressable);
     }
     let Some(catalog) = column.catalog.as_ref() else {
-        return Err(CellLock::ResultRow);
+        return Err(CellLock::NotTableColumn);
     };
     if catalog.is_generated {
         return Err(CellLock::Generated);
@@ -178,7 +178,7 @@ mod tests {
                 false,
                 false
             ),
-            Err(CellLock::ResultRow),
+            Err(CellLock::NotTableColumn),
             "a column the catalogue does not know"
         );
         assert!(cell_editability(&dotted, &GridRowId::Draft(0), &identity, false, false).is_err());

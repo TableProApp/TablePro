@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use futures_util::TryStreamExt;
 use tablepro_core::statement::{RowGuard, Statement};
-use tablepro_core::{DriverError, ReadOnlyRefusal, SessionFate, StopRequest, WriteBatch, WriteLedger, WriteReport};
+use tablepro_core::{
+    DriverError, ReadOnlyRefusal, SessionFate, StopRequest, WriteAtomicity, WriteBatch, WriteKind, WriteLedger,
+    WriteReport,
+};
 use tiberius::{Command, CommandItem};
 use tokio::time::Instant;
 
@@ -23,6 +26,23 @@ pub(crate) fn precheck(batch: &WriteBatch, read_only: bool) -> Result<(), Driver
     batch.foreign_keys.require_enforced()
 }
 
+/// Whether the batch runs inside one transaction. SQL Server refuses
+/// CREATE and DROP DATABASE inside one, so each of those statements runs
+/// on its own, and nothing takes back one that landed.
+pub(crate) fn in_transaction(kind: WriteKind) -> bool {
+    match kind {
+        WriteKind::RowChanges | WriteKind::SchemaChanges => true,
+        WriteKind::DatabaseChanges => false,
+    }
+}
+
+pub(crate) fn atomicity(kind: WriteKind) -> WriteAtomicity {
+    match in_transaction(kind) {
+        true => WriteAtomicity::Transactional,
+        false => WriteAtomicity::StatementByStatement,
+    }
+}
+
 /// Everything one write needs once its task holds a connection.
 pub(crate) struct WritePlan {
     pub(crate) batch: WriteBatch,
@@ -30,8 +50,9 @@ pub(crate) struct WritePlan {
     pub(crate) policy: StopPolicy,
 }
 
-/// Run the batch in one transaction, recording each step in the ledger
-/// so a lost connection reports what is really in the database.
+/// Run the batch in one transaction, or a database change one statement
+/// at a time, recording each step in the ledger so a lost connection
+/// reports what is really in the database.
 pub(crate) async fn perform(
     pooled: &mut MssqlPooled,
     plan: &WritePlan,
@@ -64,7 +85,8 @@ struct Write<'a> {
 
 impl Write<'_> {
     async fn run(&mut self, batch: &WriteBatch) -> Result<WriteReport, DriverError> {
-        if let Err(interrupt) = self.batch("BEGIN TRANSACTION").await {
+        let transaction = in_transaction(batch.kind);
+        if transaction && let Err(interrupt) = self.batch("BEGIN TRANSACTION").await {
             return Err(self.failed(0, interrupt).await);
         }
         let mut report = Vec::with_capacity(batch.steps.len());
@@ -93,7 +115,9 @@ impl Write<'_> {
             }
             report.push(Some(affected));
         }
-        self.commit(batch.steps.len()).await?;
+        if transaction {
+            self.commit(batch.steps.len()).await?;
+        }
         Ok(WriteReport::new(report))
     }
 
@@ -243,7 +267,7 @@ impl Write<'_> {
 #[cfg(test)]
 mod tests {
     use tablepro_core::meta::TableRef;
-    use tablepro_core::{ForeignKeyCheck, ForeignKeyMode, UnsupportedFeature, WriteKind};
+    use tablepro_core::{ForeignKeyCheck, ForeignKeyMode, UnsupportedFeature};
 
     use super::*;
 
@@ -269,6 +293,18 @@ mod tests {
             })
         ));
         assert!(precheck(&batch(ForeignKeyMode::Enforced), false).is_ok());
+    }
+
+    #[test]
+    fn only_a_database_change_runs_outside_a_transaction() {
+        assert!(in_transaction(WriteKind::RowChanges));
+        assert!(in_transaction(WriteKind::SchemaChanges));
+        assert!(!in_transaction(WriteKind::DatabaseChanges));
+        assert_eq!(atomicity(WriteKind::SchemaChanges), WriteAtomicity::Transactional);
+        assert_eq!(
+            atomicity(WriteKind::DatabaseChanges),
+            WriteAtomicity::StatementByStatement
+        );
     }
 
     #[test]

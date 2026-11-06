@@ -53,7 +53,7 @@ pub(super) fn certificate_problem_text(problem: &CertificateFileProblem) -> Stri
         CertificateFileProblem::MultipleCertificates { count } => ngettext_f(
             "it holds {count} certificate, and only one is allowed",
             "it holds {count} certificates, and only one is allowed",
-            u32::try_from(*count).unwrap_or(u32::MAX),
+            *count,
             &[("count", &count.to_string())],
         ),
         CertificateFileProblem::NoPrivateKey => gettext("it holds no private key"),

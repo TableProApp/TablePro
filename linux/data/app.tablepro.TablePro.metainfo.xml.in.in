@@ -8,10 +8,10 @@
   <summary>Work with your databases</summary>
   <description>
     <p>
-      TablePro connects to PostgreSQL, MySQL, SQLite, DuckDB, SQL Server,
-      ClickHouse, Cassandra, ScyllaDB, Redis and MongoDB. Browse tables, edit
-      rows in place, run SQL with syntax highlighting, and reach servers behind
-      an SSH bastion.
+      TablePro connects to PostgreSQL, MySQL, MariaDB, SQLite, DuckDB, SQL
+      Server, ClickHouse, Cassandra, ScyllaDB, Redis and MongoDB. Browse tables,
+      edit rows in place, run SQL with syntax highlighting, and reach servers
+      behind an SSH bastion.
     </p>
     <p>It can:</p>
     <ul>
@@ -55,7 +55,37 @@
       <caption>Connect through an SSH tunnel</caption>
     </screenshot>
   </screenshots>
-  <content_rating type="oars-1.1" />
+  <agreement type="privacy" version_id="2026-11-05">
+    <agreement_section id="account">
+      <name>TablePro account</name>
+      <description>
+        <p>
+          Signed in to a TablePro account, TablePro reaches account.tablepro.app and api.tablepro.app to keep
+          the sign-in, to register this computer as a device with its host name, the TablePro and system
+          versions and a machine ID hashed from /etc/machine-id, to check the plan at launch and once a day,
+          and to list teams and devices while Preferences shows the account.
+        </p>
+      </description>
+    </agreement_section>
+    <agreement_section id="usage-data">
+      <name>Usage data</name>
+      <description>
+        <p>
+          Unless you turn it off in Preferences > General > Privacy, a daily launch with the kinds and number
+          of open connections, the first connection and query, sign-in and sign-out, and upgrade clicks go to
+          PostHog at eu.i.posthog.com, with a random installation ID, or the account's ID with the TablePro and
+          system versions, processor type and language once signed in. Never a host name, a password, a query
+          or a row.
+        </p>
+      </description>
+    </agreement_section>
+  </agreement>
+  <!-- A signed-in account reaches TablePro's account service, usage data goes to PostHog once the user
+       chooses to share it, and a toast asks about buying a license. -->
+  <content_rating type="oars-1.1">
+    <content_attribute id="social-info">moderate</content_attribute>
+    <content_attribute id="money-purchasing">mild</content_attribute>
+  </content_rating>
   <recommends>
     <control>keyboard</control>
     <control>pointing</control>
@@ -72,7 +102,7 @@
       <description>
         <p>The first release of TablePro for Linux.</p>
         <ul>
-          <li>Connect to PostgreSQL, MySQL, SQLite, DuckDB, SQL Server, ClickHouse, Cassandra, ScyllaDB, Redis and MongoDB, directly or through an SSH tunnel</li>
+          <li>Connect to PostgreSQL, MySQL, MariaDB, SQLite, DuckDB, SQL Server, ClickHouse, Cassandra, ScyllaDB, Redis and MongoDB, directly or through an SSH tunnel</li>
           <li>Browse tables and edit rows in place, with undo until you save</li>
           <li>Run SQL with completion, find and replace, and a searchable query history</li>
           <li>Change a table's columns, indexes and foreign keys</li>

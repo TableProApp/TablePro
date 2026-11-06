@@ -9,7 +9,7 @@ use sourceview5::prelude::*;
 use tablepro_linux_platform::AppSettings;
 
 use crate::ui::clipboard::ClipboardPayload;
-use crate::ui::format::{format_thousands, plural_count};
+use crate::ui::format::format_thousands;
 use crate::ui::handler_guard::HandlerGuard;
 
 const FALLBACK_SCHEME: &str = "Adwaita";
@@ -91,10 +91,8 @@ pub(crate) fn source_dialog(text: SourceText, settings: Option<&Rc<AppSettings>>
     let shown_in = view.downgrade();
     dialog.connect_closed(move |_| {
         guards.borrow_mut().clear();
-        // GtkSourceView before 5.21 never frees a view that has drawn its
-        // line numbers, so the closed dialog takes the text back.
         if let Some(view) = shown_in.upgrade() {
-            view.set_buffer(Some(&sourceview5::Buffer::new(None)));
+            crate::ui::text_view_teardown::release(&view);
         }
     });
     SourceDialog { dialog, header }
@@ -143,7 +141,7 @@ pub(crate) fn more_bytes(more: u64) -> String {
     crate::i18n::ngettext_f(
         "… ({count} more byte)",
         "… ({count} more bytes)",
-        plural_count(more),
+        more,
         &[("count", &format_thousands(more))],
     )
 }
@@ -212,6 +210,20 @@ mod tests {
 
         shown.dialog.force_close();
         adw::StyleManager::default().set_color_scheme(adw::ColorScheme::Default);
+    }
+
+    #[gtk4::test]
+    fn a_closed_dialog_lets_go_of_its_text_and_input_method() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let window = OwnedWindow::presented(adw::Window::new());
+        let shown = source_dialog(text("SELECT secret FROM vault"), None);
+        shown.dialog.present(Some(&*window));
+        let view = first_descendant_of_type::<sourceview5::View>(&shown.dialog).expect("the text");
+
+        shown.dialog.force_close();
+
+        assert_eq!(view.buffer().char_count(), 0);
+        assert_eq!(view.im_module().as_deref(), Some("gtk-im-context-none"));
     }
 
     #[test]

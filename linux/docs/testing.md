@@ -9,6 +9,7 @@ Three layers, three tools. Each crate's test policy follows from its position in
 | `net` | TLS setup | Unit tests, a TLS handshake test against a local server | Yes |
 | `ssh` | OpenSSH transport | Unit tests, `testcontainers-rs` tests against an OpenSSH server | Yes |
 | `test-fixtures` | Containers for the other crates' tests | `testcontainers-rs` tests of the fixtures themselves | Yes |
+| `account` | Sign-in, tokens, device, entitlement, gate | Unit tests, among them tablepro-cloud's entitlement vectors and the loopback listener over real sockets, plus tests against a local tablepro-cloud through a headless browser | Yes, the unit tests |
 | `session` | Sessions, connect, health | Unit tests over the fakes in `tablepro-test-support` and `tablepro_session::fakes`, plus `testcontainers-rs` tests | Yes |
 | `drivers/<engine>` | Real engines | Unit tests, the conformance suites, `testcontainers-rs` integration tests | Yes |
 | `app` | GTK 4 widgets | `#[gtk4::test]` widget tests; pure logic is unit-tested | Yes |
@@ -39,7 +40,7 @@ meson setup _build -Dprofile=development
 dbus-run-session -- meson test -C _build --print-errorlogs
 ```
 
-Five suites: `unit` is `cargo test --workspace --exclude tablepro --exclude tablepro-ffi`. `gtk`
+Five suites: `unit` is `cargo test --workspace --exclude tablepro --exclude tablepro-ffi --exclude tablepro-bindgen`. `gtk`
 is `cargo test -p tablepro` with `GSK_RENDERER=cairo`, `GTK_A11Y=test`,
 `GDK_BACKEND=x11` and the build tree's schema directory, under a
 `dbus-run-session` of its own when one is installed, so its bus names
@@ -173,9 +174,12 @@ Every case but the last plans through `connection.dialect().ddl()` and runs the 
 - `create_table_script_recreates_the_table` drops a table and runs its `create_table_script`, which has to bring back the same column definitions and index keys.
 - `structure_changes_keep_rows_and_indexes` fills an indexed table, then changes a default and a nullability. The rows and the index have to come through, which on SQLite means through the table rebuild.
 - `index_statement_recreates_the_index` drops an index and runs the CREATE INDEX statement it was read with, which has to make the same index again.
+- `truncate_empties_the_table_and_keeps_it` fills a table and truncates it with no options: no rows are left and the columns stay.
+- `created_schema_is_listed_until_dropped` and `created_database_is_listed_until_dropped` create a schema or database, which `list_schemas` or `list_databases` has to list, then drop it, after which it is gone. A keyspace gets SimpleStrategy with a factor of 1 and, on ScyllaDB, tablets off. An engine that needs a first collection (MongoDB) is left to its own tests.
+- Each of these three runs only what `ddl::catalog_capabilities` offers. What it leaves out has to be refused by its plan.
 - `builtin_snippets_run_as_written` takes the SQL editor's built-in snippets for the connection's grammar, fills their table, index, column and value stops, with the row's `id` too on CQL, which finds a row only by its key, and keeps the rest as written (`tablepro_test_support::expand_snippet`), and runs each one through an editor session as the editor splits it: one statement each, all completing.
 
-The PostgreSQL, MySQL, SQL Server, ClickHouse, SQLite and DuckDB targets run it, and the MySQL target runs it on MariaDB as well. SQLite and DuckDB pass `docker: false`, so their cases run in the unit suite.
+The PostgreSQL, MySQL, SQL Server, ClickHouse, Cassandra, SQLite and DuckDB targets run it, the MySQL target on MariaDB as well and the Cassandra target on ScyllaDB. SQLite and DuckDB pass `docker: false`, so their cases run in the unit suite.
 
 ### Large-table conformance
 
@@ -275,7 +279,7 @@ tablepro_test_support::tls_conformance_suite! {
 }
 ```
 
-The adapter (`TlsConformanceEngine`) gives the issuing and the unrelated CA file, the name on the server certificate and the error category a plaintext connect gets. The cases: Verify full with the issuing CA connects; with an unrelated CA it reports `UnknownIssuer`; with the wrong server name it reports `NameMismatch`; Require connects without a CA, and a CA file with Require is refused as a `ConfigError::CaFileUnsupported` before anything is sent; Disable against the TLS-only server is refused; against the same server started with a self-signed certificate (`start_self_signed`), Verify full on the system store alone reports `UnknownIssuer`, and trusting the server's own certificate (`server_certificate_file`) as the CA file connects. `client_identity: true` adds a case where the server requires the client certificate, through `ClientIdentityEngine`; SQL Server passes `false`. An engine whose server asks every client for a certificate or none names a second engine for that case with `identity_engine:`, as the Cassandra driver does, so the other cases run against a server that asks for none. MongoDB runs the suite twice, on a direct route, where the client library does TLS, and on a forward, where the driver's relay does. SQL Server adds its strict (TDS 8.0) cases in `tests/integration/strict.rs`: Strict reaches TDS 8.0 on 2025 and is refused as `ServerRefusedStrict` by 2017, 2019 and 2022, which on Linux closes a strict login, it checks the issuer, the name and a self-signed certificate as Verify full does, and against a 2025 server that requires it a TDS 7.4 login is `ServerRequiresStrict`. Every case needs Docker, and `tls_suite_flags_match_driver_capabilities` checks the flag against the driver's TLS capabilities without it.
+The adapter (`TlsConformanceEngine`) gives the issuing and the unrelated CA file, the name on the server certificate and the error category a plaintext connect gets. The cases: Verify full with the issuing CA connects; with an unrelated CA it reports `UnknownIssuer`; with the wrong server name it reports `NameMismatch`; Require connects without a CA, and a CA file with Require is refused as a `ConfigError::CaFileUnsupported` before anything is sent; Disable against the TLS-only server is refused, as `ServerRequiresTls` where the engine reports it as a TLS failure; against the same server started with a self-signed certificate (`start_self_signed`), Verify full on the system store alone reports `UnknownIssuer`, and trusting the server's own certificate (`server_certificate_file`) as the CA file connects. `client_identity: true` adds a case where the server requires the client certificate, through `ClientIdentityEngine`; SQL Server passes `false`. An engine whose server asks every client for a certificate or none names a second engine for that case with `identity_engine:`, as the Cassandra driver does, so the other cases run against a server that asks for none. MongoDB runs the suite twice, on a direct route, where the client library does TLS, and on a forward, where the driver's relay does. SQL Server adds its strict (TDS 8.0) cases in `tests/integration/strict.rs`: Strict reaches TDS 8.0 on 2025 and is refused as `ServerRefusedStrict` by 2017, 2019 and 2022, which on Linux closes a strict login, it checks the issuer, the name and a self-signed certificate as Verify full does, and against a 2025 server that requires it a TDS 7.4 login is `ServerRequiresStrict`. Every case needs Docker, and `tls_suite_flags_match_driver_capabilities` checks the flag against the driver's TLS capabilities without it.
 
 ### Ignore reasons
 
@@ -284,6 +288,7 @@ Three reasons are allowed:
 - `#[ignore = "requires docker"]` for testcontainers suites.
 - `#[ignore = "requires a Secret Service"]` for tests that talk to a keyring.
 - `#[ignore = "requires a SQL Server on this Windows machine"]` for the SQL Server driver's integrated login through SSPI (`tests/integration/windows_server.rs`). SQL Server installs on x64 Windows only, so `core.yml`'s `sql-server-windows` job runs them on `windows-2025`: `tests/windows/sql-server.ps1 -Install` sets up SQL Server 2022 Express with a self-signed certificate, the `sspi` tests sign in over TDS 7.4 and strict TLS, `-ForceStrict` turns on Force Strict Encryption, and the `force_strict` test checks that a TDS 7.4 login is refused and a strict one gets in. The runner is in no domain, so SSPI signs in with NTLM.
+- `#[ignore = "requires a tablepro-cloud stack"]` for the account's tests against a running backend ([below](#tablepro-cloud-stack)).
 
 The workspace denies `clippy::ignore_without_reason`, so a bare `#[ignore]` fails the build.
 
@@ -311,13 +316,71 @@ meson and distro builds use cargo test, which works too:
 cargo test -p tablepro-driver-postgres -- --ignored --test-threads=1
 ```
 
+### Files from tablepro-cloud
+
+`core/crates/account` keeps copies of two tablepro-cloud files: `openapi/v2.openapi-3.0.json`, the `/v2` document `build.rs` generates the client from, and `tests/data/entitlement_vectors.json`, the vectors the entitlement checks run against. tablepro-cloud is private and CI cannot reach it, so they are copies, never links. From `linux/`, refresh both from a tablepro-cloud checkout:
+
+```bash
+build-aux/update-cloud-api.sh ~/src/tablepro-cloud   # without an argument, the checkout beside this repository
+```
+
+It prints the tablepro-cloud commit, for the commit message. Then build and run `tablepro-account`'s tests, and the stack tests below against a stack of that commit.
+
+### tablepro-cloud stack
+
+`core/crates/account/tests/cloud_stack.rs` runs the account against a running tablepro-cloud, such as the stack its `web/e2e` suite starts, through the real OAuth flow. Its browser steps, `core/crates/account/tests/browser/portal.cjs`, are Puppeteer driving a headless Chrome: it signs in to the portal with the code the stack's fake Resend keeps, then does one step:
+
+- `approve`: gives the account a Starter license the way the e2e seed does when asked, and licensed devices of its own with `TABLEPRO_CLOUD_SEED_DEVICES`, the first with an offline file valid 30 days; then approves the app's sign-in on the confirmation screen. The redirect reaches the account's loopback listener as from a desktop browser, or, with `TABLEPRO_CLOUD_CALLBACK_FILE`, is written to that file for the test to send itself.
+- `remove-device`: removes the machine from the portal's Devices page.
+- `offline-file`: makes an offline file for `TABLEPRO_CLOUD_MACHINE_ID` through the portal's API, as its Devices page does, into `TABLEPRO_CLOUD_OUTPUT`.
+
+The cases cover a licensed sign-in with a restart, a refresh and a sign-out whose token the server then refuses; a free account without a keyring; a fourth machine told `device_limit_reached` with the three that hold the license; a machine over the limit that removes a holder in place and gets the license, while the holder with an offline file, which `device_limit_reached` names with its `offline_until`, is refused with `offline_file_active`; a second sign-in, which revokes the first one's token; a device removed in the portal, which signs the account out at its next refresh; and the profile and devices of an account, with an offline file the portal made unlocking a machine that never signed in, without opening its keyring.
+
+They read the stack from the environment:
+
+| Variable | Value |
+|---|---|
+| `TABLEPRO_CLOUD_ACCOUNT_URL`, `TABLEPRO_CLOUD_API_URL` | The issuer and the `/v2` base, such as `http://account.localhost:5284` and `http://api.localhost:5284/v2` |
+| `TABLEPRO_CLOUD_ENTITLEMENT_KEY` | The `x` of the stack's entitlement signing key, base64url |
+| `TABLEPRO_CLOUD_EMAIL_DOMAIN` | The domain of the accounts the tests make, so runs never share one |
+| `TABLEPRO_CLOUD_MAIL_URL` | The fake Resend that keeps the sign-in emails |
+| `TABLEPRO_CLOUD_DATABASE_URL` | The stack's database, for the license grant and the seeded devices |
+| `TABLEPRO_CLOUD_CHROME` | A Chrome or chrome-headless-shell binary |
+| `NODE_PATH` | Where `puppeteer` and `pg` are installed |
+
+```bash
+cargo test -p tablepro-account --test cloud_stack -- --ignored --test-threads=1
+```
+
+The app has one case of its own, in `crates/app/src/ui/preferences_dialog/account_page.rs`: Sign In on Preferences > Account, through the page's own code, against the same stack, until the page shows the plan and this computer, then Sign Out. It needs the gtk suite's variables and a display, and the browser step hands back the redirect, so Chrome and the app need not share a loopback:
+
+```bash
+GSK_RENDERER=cairo GTK_A11Y=test GDK_BACKEND=x11 xvfb-run -a dbus-run-session -- \
+  meson devenv -C _build cargo test -p tablepro --lib -- --ignored the_page_signs_in
+```
+
+No CI job runs them. They never point at a production host.
+
+### The app against a local stack
+
+A development build signs in to a local tablepro-cloud when Meson is given its addresses and the public key it signs entitlements with:
+
+```bash
+meson setup _build -Dprofile=development \
+  -Ddev_account_url=http://account.localhost:5284 \
+  -Ddev_api_url=http://api.localhost:5284/v2 \
+  -Ddev_entitlement_keys="$(openssl pkey -in web/e2e/.stack/keys/entitlement -pubout -outform DER | tail -c 32 | base64 | tr '+/' '-_' | tr -d '=')"
+```
+
+The key comes from the tablepro-cloud checkout, with an OpenSSL that knows Ed25519. Portal links then open the local account pages. `meson setup` refuses these options outside the development profile, and a release build signs in to `account.tablepro.app` whatever it was built with ([ADR 0038](decisions/0038-account-page-and-license-ask.md)). An address without the other, or a key that does not parse, keeps the account from starting, which Preferences > Account says.
+
 ### Server releases
 
 A fixture starts its engine's default release unless the engine's variable names another:
 
 | Variable | Releases | Default |
 |---|---|---|
-| `TABLEPRO_TEST_POSTGRES` | 13, 14, 17, 18 | 17 |
+| `TABLEPRO_TEST_POSTGRES` | 13, 14, 15, 17, 18 | 17 |
 | `TABLEPRO_TEST_MYSQL` | 8.0, 8.4, 9.7 | 8.4 |
 | `TABLEPRO_TEST_MARIADB` | 10.11, 11.4, 12.3 | 11.4 |
 | `TABLEPRO_TEST_MSSQL` | 2017, 2019, 2022, 2025 | 2022 |
@@ -330,7 +393,7 @@ A fixture starts its engine's default release unless the engine's variable names
 
 `core/crates/test-fixtures/src/fixture_image.rs` pins each release's image, and each engine's version type (`PostgresVersion`, `MysqlVersion`, `MariadbVersion`, `MssqlVersion`, `ClickHouseVersion`, `CassandraVersion`, `ScyllaVersion`, `RedisVersion`, `MongoVersion`, `OpenSshVersion`) reads its variable through `ServerVersion::selected`. An empty value picks the default; a release the fixtures do not pin fails the fixture with the ones they do. PostgreSQL 13 is past end of life and stays only for the catalogue test of the driver's query for servers before 14.
 
-The `integration` job runs each driver's suite on the defaults, then once more for each entry with a `release`: PostgreSQL 14 and 18, MySQL 8.0 with MariaDB 10.11, MySQL 9.7 with MariaDB 12.3, SQL Server 2017, 2019 and 2025, ClickHouse 26.3, Cassandra 4.0 with ScyllaDB 2025.1, Redis 7.4, MongoDB 7.0, and OpenSSH 9.9 for `tablepro-ssh`. The README's [supported servers](../README.md#supported-servers) table says why those releases and not others. A test that checks the server's version reads it from the fixture (`PostgresFixture::version`, `MysqlFixture::server_version`, `MssqlFixture::version`, `ClickHouseFixture::version`, `CassandraFixture::server_version`, `RedisFixture::version`, `MongoFixture::version`, `OpenSshFixture::version`), never from a literal, so it holds on every release.
+The `integration` job runs each driver's suite on the defaults, then once more for each entry with a `release`: PostgreSQL 14, 15 and 18, MySQL 8.0 with MariaDB 10.11, MySQL 9.7 with MariaDB 12.3, SQL Server 2017, 2019 and 2025, ClickHouse 26.3, Cassandra 4.0 with ScyllaDB 2025.1, Redis 7.4, MongoDB 7.0, and OpenSSH 9.9 for `tablepro-ssh`. The README's [supported servers](../README.md#supported-servers) table says why those releases and not others. A test that checks the server's version reads it from the fixture (`PostgresFixture::version`, `MysqlFixture::server_version`, `MssqlFixture::version`, `ClickHouseFixture::version`, `CassandraFixture::server_version`, `RedisFixture::version`, `MongoFixture::version`, `OpenSshFixture::version`), never from a literal, so it holds on every release.
 
 Locally, set the variables for the run:
 
@@ -517,7 +580,7 @@ Left for a machine with a GPU and a HiDPI screen: the GL and Vulkan renderers on
 
 ## CI
 
-`.github/workflows/build-linux.yml` builds and tests the app, `.github/workflows/linux-packages.yml` builds, installs and starts the .deb and .rpm, and `.github/workflows/release-linux.yml` publishes a `linux-v*` tag. Each workflow's `on:` and each job's `if:` say when it runs; its steps say what it runs. To run the same checks locally: the [fast-job commands](../CONTRIBUTING.md#fast-job-commands) and `build-aux/packaging/build-packages.sh`.
+`.github/workflows/build-linux.yml` builds and tests the app, `.github/workflows/linux-packages.yml` builds, installs and starts the .deb and the .rpm, and installs and updates the Flatpak from a test repository, and `.github/workflows/release-linux.yml` publishes a `linux-v*` tag. Each workflow's `on:` and each job's `if:` say when it runs; its steps say what it runs. To run the same checks locally: the [fast-job commands](../CONTRIBUTING.md#fast-job-commands) and `build-aux/packaging/build-packages.sh`.
 
 `.github/workflows/core.yml` builds the core crates for Windows x64 and Arm64 and macOS, runs the unit tests of `tablepro-core` and the SQL Server driver there, with the driver's `kerberos` feature on macOS, where it links the system's GSS framework, and runs the SSPI login tests above.
 

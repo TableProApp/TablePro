@@ -139,7 +139,7 @@ private struct UsageDataPage: View {
         OnboardingPageLayout {
             OnboardingHeader(
                 title: "Share Usage Data?",
-                message: "Help decide what to improve next by sending one small report a day.",
+                message: "Help decide what to improve next. Nothing is sent unless you choose Share Usage Data.",
                 image: .symbol("chart.bar.xaxis")
             )
         } content: {
@@ -161,16 +161,16 @@ private struct UsageDataPage: View {
 struct UsageDataDisclosure: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("The report contains:")
+            Text("Sent to PostHog:")
                 .font(.subheadline.weight(.semibold))
             VStack(alignment: .leading, spacing: 6) {
-                Label("A hashed identifier for this device", systemImage: "number")
-                Label("The app and iOS versions, and your language", systemImage: "info.circle")
+                Label("A random identifier for this install", systemImage: "number")
+                Label("The app and iOS versions, device model, screen size, language, time zone, and network type", systemImage: "info.circle")
                 Label("Which database types you connect to, and how many connections are open", systemImage: "cylinder")
-                Label("When you first connected and first ran a query", systemImage: "calendar")
+                Label("When you first connect and first run a query", systemImage: "calendar")
             }
             .font(.subheadline)
-            Text("It never contains a hostname, username, password, query, or any data from your databases. You can change this in Settings.")
+            Text("PostHog derives an approximate location from your IP address. Nothing sent contains a hostname, username, password, query, or any data from your databases. You can change this in Settings.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }

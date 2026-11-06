@@ -8,6 +8,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection as SqlxConnection, Sql
 use sqlx::{Connection as _, Executor as _};
 use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
+use tablepro_core::dump::{DumpCatalog, DumpScope};
 use tablepro_core::meta::{
     IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
 };
@@ -342,6 +343,14 @@ impl Connection for SqliteConnection {
         .await
     }
 
+    async fn read_dump_catalog(&self, scope: &DumpScope, options: CallOptions) -> Result<DumpCatalog, DriverError> {
+        let scope = scope.clone();
+        self.read(options, move |connection| {
+            Box::pin(async move { crate::dump::read_dump_catalog(connection, &scope).await })
+        })
+        .await
+    }
+
     async fn fetch_columns(&self, table: &TableRef, options: CallOptions) -> Result<Vec<ColumnInfo>, DriverError> {
         let table = table.clone();
         self.read(options, move |connection| {
@@ -498,7 +507,7 @@ impl Connection for SqliteConnection {
         // halfway by the statement timeout would only roll back.
         let options = match batch.kind {
             WriteKind::RowChanges => self.statement_bounded(options),
-            WriteKind::SchemaChanges => options,
+            WriteKind::SchemaChanges | WriteKind::DatabaseChanges => options,
         };
         let pooled = self.acquire(&options).await?;
         let ledger = Arc::new(WriteLedger::new(WriteAtomicity::Transactional));

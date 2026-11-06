@@ -15,13 +15,13 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+use super::dump_job::{DumpJob, start_dump_producer};
 use super::export_producer::{start_query_producer, start_rows_producer};
 use super::{
     ExportFailure, ExportJob, ExportJobId, ExportJobItem, ExportMessage, ExportOutcome, ExportQuery, ExportReporter,
     ExportSinkParts, ExportSource, ExportStreamFailure, FinishError, ReplaceFileWriter,
 };
 use crate::i18n::{gettext, ngettext_f};
-use crate::ui::format::plural_count;
 use crate::workspace::{CloseBlockPrompt, CloseBlocker, InhibitReason, WindowInhibitor, WorkOutcome};
 
 /// Chunks in flight between the encoder and the file. Few, so a slow
@@ -130,6 +130,19 @@ impl ExportLedger {
         let running = item.clone();
         self.start(item, cancel.clone(), destination, tab, async move {
             run(&tasks, job, &cancel, &running).await
+        })
+    }
+
+    /// Start writing a whole database or schema to one SQL file, listed
+    /// with its tables' progress and Stop.
+    pub(crate) fn begin_dump(self: &Rc<Self>, job: DumpJob) -> Option<ExportJobHandle> {
+        let cancel = CancellationToken::new();
+        let item = ExportJobItem::new(&file_name(&job.destination), None, cancel.clone());
+        let destination = job.destination.clone();
+        let tasks = self.tasks.clone();
+        let running = item.clone();
+        self.start(item, cancel.clone(), destination, None, async move {
+            run_dump(&tasks, job, &cancel, &running).await
         })
     }
 
@@ -274,7 +287,7 @@ impl CloseBlocker for ExportLedger {
             body: ngettext_f(
                 "{n} export is still running. Stopping it leaves the file unfinished.",
                 "{n} exports are still running. Stopping them leaves the files unfinished.",
-                plural_count(running as u64),
+                running,
                 &[("n", &running.to_string())],
             ),
             keep_label: gettext("_Keep Exporting"),
@@ -355,6 +368,7 @@ async fn run(tasks: &Tasks, job: ExportJob, cancel: &CancellationToken, item: &E
                 item.set_rows(rows);
             }
             Some(ExportMessage::Progress { rows }) => item.set_rows(rows),
+            Some(ExportMessage::Tables { .. }) => {}
             Some(ExportMessage::Failed(failure)) => {
                 cancel.cancel();
                 return failed(writer, failure.into()).await;
@@ -397,6 +411,65 @@ async fn run(tasks: &Tasks, job: ExportJob, cancel: &CancellationToken, item: &E
                 return failed(writer, failure).await;
             }
         }
+    }
+}
+
+/// Write a database dump: the producer reads the catalog and every
+/// table, and the file takes its bytes as they come.
+async fn run_dump(tasks: &Tasks, job: DumpJob, cancel: &CancellationToken, item: &ExportJobItem) -> ExportOutcome {
+    let writer = match ReplaceFileWriter::open(&job.destination).await {
+        Ok(writer) => writer,
+        Err(error) => {
+            return ExportOutcome::Failed {
+                failure: error.into(),
+                file: None,
+            };
+        }
+    };
+    show_display_name(&job.destination, item).await;
+    if cancel.is_cancelled() {
+        return ExportOutcome::Stopped(writer.abort().await);
+    }
+    let (messages, mut received) = mpsc::channel(CHANNEL_CHUNKS);
+    let producer = start_dump_producer(tasks, &job, messages, cancel.clone());
+    loop {
+        let Some(next) = until_cancelled(cancel, received.recv()).await else {
+            return ExportOutcome::Stopped(writer.abort().await);
+        };
+        match next {
+            Some(ExportMessage::Chunk { bytes, rows }) => {
+                if let Err(error) = writer.write(bytes).await {
+                    cancel.cancel();
+                    return failed(writer, error.into()).await;
+                }
+                item.set_rows(rows);
+            }
+            Some(ExportMessage::Tables { done, total, rows }) => {
+                item.set_tables(done, total);
+                item.set_rows(rows);
+            }
+            Some(ExportMessage::Progress { .. } | ExportMessage::Finished { .. } | ExportMessage::Failed(_)) => {}
+            None => break,
+        }
+    }
+    let Some(ended) = until_cancelled(cancel, producer).await else {
+        return ExportOutcome::Stopped(writer.abort().await);
+    };
+    if cancel.is_cancelled() {
+        return ExportOutcome::Stopped(writer.abort().await);
+    }
+    let report = match ended {
+        Ok(Ok(Ok(report))) => report,
+        Ok(Ok(Err(error))) => return failed(writer, ExportFailure::Dump(error)).await,
+        Ok(Err(error)) => return failed(writer, ExportFailure::DumpSession(error)).await,
+        Err(failure) => return failed(writer, failure.into()).await,
+    };
+    match writer.finish().await {
+        Ok(()) => ExportOutcome::Dumped(Box::new(report)),
+        Err(FinishError { error, file }) => ExportOutcome::Failed {
+            failure: error.into(),
+            file: Some(file),
+        },
     }
 }
 

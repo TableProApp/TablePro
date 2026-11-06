@@ -36,7 +36,9 @@ pub(crate) fn precheck(batch: &WriteBatch, read_only: bool) -> Result<(), Driver
 /// Everything one write needs once its task runs.
 pub(crate) struct WritePlan {
     pub(crate) batch: WriteBatch,
-    /// The batch's table, qualified, for the commit token.
+    /// The batch's table, qualified, for the commit token. A database
+    /// batch names none, which is harmless: only a lost ALTER's
+    /// resolution reads it.
     pub(crate) table: TableRef,
     pub(crate) ledger: Arc<WriteLedger>,
     /// Reads that may be stopped, for the probes.
@@ -91,14 +93,22 @@ pub(crate) async fn perform(
             }
             Err(error) => {
                 let mapped = map_error(&error);
-                return Err(match classify(&error) {
-                    WriteErrorClass::MayHaveApplied => ledger.interrupted(mapped, SessionFate::Discarded),
-                    WriteErrorClass::Refused => ledger.failed(index, mapped, SessionFate::RolledBack),
+                return Err(match (classify(&error), on_cluster(&step.statement)) {
+                    (WriteErrorClass::Refused, false) => ledger.failed(index, mapped, SessionFate::RolledBack),
+                    _ => ledger.interrupted(mapped, SessionFate::Discarded),
                 });
             }
         }
     }
     Ok(WriteReport::new(report))
+}
+
+/// Whether the statement runs on every server of a cluster. One server
+/// can refuse it after others applied it, so a refusal leaves its
+/// outcome open. A name that holds the words only makes a refusal read
+/// as open, never the other way round.
+fn on_cluster(statement: &Statement) -> bool {
+    statement.sql().contains(" ON CLUSTER ")
 }
 
 /// Count the rows step `index` would change, and refuse the step unless
@@ -220,5 +230,17 @@ mod tests {
             precheck(&batch(Vec::new(), ForeignKeyMode::Enforced), true),
             Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard))
         ));
+    }
+
+    #[test]
+    fn a_statement_on_a_cluster_is_known_by_its_clause() {
+        let sql = |text: &str| {
+            let mut builder = tablepro_core::statement::StatementBuilder::new();
+            builder.push_sql(text);
+            builder.finish()
+        };
+
+        assert!(on_cluster(&sql("TRUNCATE TABLE `d`.`t` ON CLUSTER `main`")));
+        assert!(!on_cluster(&sql("TRUNCATE TABLE `d`.`t`")));
     }
 }

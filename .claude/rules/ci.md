@@ -38,7 +38,7 @@ paths:
 - `nightly.yml` is the one schedule, at 19:17 UTC: every suite in full on main, with core's Arm64 SSH tunnel tests, and the Release Build job, which builds and packages the app and every registry plugin as a tag does, unsigned, on `xcode-27`. No tag waits for it. GitHub mails a red run to whoever last edited the schedule.
 - macOS Tests runs the Unit and UI plans in full, with no shard, parallel, iteration or retry flag.
 - `core.yml` runs the core on Windows x64 and Arm64 and on macOS, where the same job builds and tests the Swift bindings, and SQL Server's integrated login on Windows x64. The SSH tunnel tests through Windows' OpenSSH Server run on x64; Arm64, whose image installs the server in about 20 minutes, runs them nightly.
-- A `v*` tag runs only `release.yml`, a `linux-v*` tag only `release-linux.yml`, a `windows-v*` tag only `release-windows.yml`, which also runs by dispatch and publishes nothing then (`windows/RELEASING.md`).
+- A `v*` tag runs only `release.yml`, a `linux-v*` tag only `release-linux.yml`, a `windows-v*` tag only `release-windows.yml`. The last two also run by dispatch: `release-windows.yml` then publishes nothing (`windows/RELEASING.md`), and `release-linux.yml` publishes nothing with `dry-run` and otherwise uploads a packaging fix (`linux/docs/releasing.md`).
 - `windows-grid-gate.yml` runs only by dispatch: the Windows data grid's timing and behavior gate on `windows-2025` and `windows-11-arm`, whose numbers vary too much between hosted runners to gate a merge (`windows/docs/decisions/0003-data-grid-control.md`, Gate). `windows.yml` runs the grid's tests on every change.
 
 ## Change detector

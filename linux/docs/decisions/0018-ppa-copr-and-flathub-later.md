@@ -1,6 +1,6 @@
 # 0018: A PPA and COPR first, Flathub later
 
-- **Status**: Accepted; the source tarball amended by core 0001 (`core/docs/decisions/0001-shared-core.md`)
+- **Status**: Accepted; the source tarball amended by core 0001 (`core/docs/decisions/0001-shared-core.md`), pre-releases, the GitHub release's contents, the Flatpak manifests, other distributions' install and the Snap alternative superseded by 0041, the source of `debian/copyright` superseded by 0040
 - **Date**: 2026-10-15
 
 ## Context

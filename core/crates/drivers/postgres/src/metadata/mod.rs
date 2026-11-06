@@ -2,6 +2,7 @@
 //! tab. Every statement projects built-in types only, so none of them
 //! makes tokio-postgres look a type up with a named statement.
 
+mod database_choices;
 mod definitions;
 mod estimate;
 mod foreign_keys;
@@ -9,11 +10,12 @@ mod identity;
 mod indexes;
 mod objects;
 
+pub(crate) use database_choices::database_choices;
 pub(crate) use definitions::fetch_object_definition;
 pub(crate) use estimate::table_estimate;
 pub(crate) use foreign_keys::{fetch_foreign_keys, fetch_outbound_foreign_keys};
 pub(crate) use identity::row_identity;
-pub(crate) use indexes::fetch_indexes;
+pub(crate) use indexes::{fetch_indexes, in_tablespace, without_only};
 pub(crate) use objects::{list_databases, list_objects, list_schemas};
 
 use futures_util::TryStreamExt;
@@ -129,11 +131,12 @@ pub(crate) async fn fetch_table_definition(
 mod tests {
     use super::*;
     use crate::catalog::COLUMNS_SQL_BEFORE_14;
+    use crate::dump::catalog_sql as dump;
 
     /// Words that take a parenthesis without calling a function by name.
-    const SYNTAX: [&str; 14] = [
+    const SYNTAX: [&str; 16] = [
         "AS", "ARRAY", "COALESCE", "EXISTS", "FROM", "IN", "ANY", "NULLIF", "GREATEST", "ON", "AND", "OR", "NOT",
-        "OPERATOR",
+        "OPERATOR", "LATERAL", "SELECT",
     ];
 
     /// Names called without `pg_catalog.` in front, which the session's
@@ -180,6 +183,10 @@ mod tests {
             ("schemas", objects::SCHEMAS_SQL.to_owned()),
             ("objects", objects::OBJECTS_SQL.to_owned()),
             ("databases", objects::DATABASES_SQL.to_owned()),
+            ("owners", database_choices::OWNERS_SQL.to_owned()),
+            ("templates", database_choices::TEMPLATES_SQL.to_owned()),
+            ("locales", database_choices::LOCALES_SQL.to_owned()),
+            ("database defaults", database_choices::DEFAULTS_SQL.to_owned()),
             ("function definitions", definitions::FUNCTIONS_SQL.to_owned()),
             ("sequence definition", definitions::SEQUENCE_SQL.to_owned()),
             ("trigger definition", definitions::TRIGGER_SQL.to_owned()),
@@ -192,6 +199,19 @@ mod tests {
             ("primary key", PRIMARY_KEY_NAME_SQL.to_owned()),
             ("columns", crate::catalog::COLUMNS_SQL.to_owned()),
             ("columns before 14", COLUMNS_SQL_BEFORE_14.to_owned()),
+            ("dump schemas", dump::SCHEMAS_SQL.to_owned()),
+            ("dump extensions", dump::EXTENSIONS_SQL.to_owned()),
+            ("dump types", dump::TYPES_SQL.to_owned()),
+            ("dump domain checks", dump::DOMAIN_CHECKS_SQL.to_owned()),
+            ("dump functions", dump::FUNCTIONS_SQL.to_owned()),
+            ("dump functions before 14", dump::FUNCTIONS_SQL_BEFORE_14.to_owned()),
+            ("dump sequences", dump::SEQUENCES_SQL.to_owned()),
+            ("dump tables", dump::TABLES_SQL.to_owned()),
+            ("dump columns", dump::COLUMNS_SQL.to_owned()),
+            ("dump constraints", dump::CONSTRAINTS_SQL.to_owned()),
+            ("dump indexes", dump::INDEXES_SQL.to_owned()),
+            ("dump views", dump::VIEWS_SQL.to_owned()),
+            ("dump triggers", dump::TRIGGERS_SQL.to_owned()),
         ] {
             assert_eq!(bare_calls(&sql), Vec::<String>::new(), "{name}");
         }

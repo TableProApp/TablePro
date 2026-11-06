@@ -307,7 +307,7 @@ impl Layouts {
     fn new() -> Self {
         let root = tempfile::tempdir().expect("tempdir");
         let runtime = crate::test_support::test_runtime();
-        let store = ColumnLayoutStore::load(root.path().join("column_widths.json"), &runtime.tasks());
+        let store = ColumnLayoutStore::load(root.path().join("column_layouts.json"), &runtime.tasks());
         Self {
             store,
             connection_id: Uuid::new_v4(),

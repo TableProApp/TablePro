@@ -76,7 +76,8 @@ jobs:
         run: |
           cargo check --locked --target "$TARGET" --features "$FEATURES" --features "$IN_PROCESS_SSH" \
             -p tablepro-core -p tablepro-net -p tablepro-storage -p tablepro-ssh -p tablepro-session \
-            -p tablepro-foreign-import -p tablepro-ai -p tablepro-mcp -p tablepro-test-support -p tablepro-test-fixtures \
+            -p tablepro-foreign-import -p tablepro-ai -p tablepro-mcp -p tablepro-account \
+            -p tablepro-test-support -p tablepro-test-fixtures \
             -p tablepro-driver-cassandra -p tablepro-driver-clickhouse -p tablepro-driver-duckdb \
             -p tablepro-driver-mongodb -p tablepro-driver-mssql -p tablepro-driver-mysql \
             -p tablepro-driver-postgres -p tablepro-driver-redis -p tablepro-driver-sqlite
@@ -91,6 +92,9 @@ jobs:
           # The rest of net's tests read how Linux handles a full listen backlog.
           cargo test --locked --target "$TARGET" -p tablepro-net --lib -- loopback private_
           cargo test --locked --target "$TARGET" --features tablepro-ssh/in-process -p tablepro-ssh --lib in_process
+      # The sign-in's loopback listener and the token's file on each platform.
+      - name: Account unit tests
+        run: cargo test --locked --target "$TARGET" -p tablepro-account --lib
       # The Arm64 image has no OpenSSH Server, and installing it takes about 20 minutes, so Arm64 runs these nightly.
       - name: Start Windows' OpenSSH Server
         id: sshd

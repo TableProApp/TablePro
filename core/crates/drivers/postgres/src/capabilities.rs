@@ -1,7 +1,9 @@
+#[cfg(unix)]
+use tablepro_core::LocalSocket;
 use tablepro_core::meta::ObjectKind;
 use tablepro_core::{
-    AuthMode, CommitResolutionSupport, DriverCapabilities, EndpointKind, EstimateQuality, ReadOnlyEnforcement,
-    ScriptExecution, ServerNameOverride, StatementStop, TlsCapabilities, TlsMode, WriteAtomicity,
+    AuthMode, CommitResolutionSupport, DriverCapabilities, EndpointKind, EstimateQuality, NetworkOption,
+    ReadOnlyEnforcement, ScriptExecution, ServerNameOverride, StatementStop, TlsCapabilities, TlsMode, WriteAtomicity,
 };
 
 pub(crate) const DEFAULT_PORT: u16 = 5432;
@@ -14,7 +16,9 @@ pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
     auth_modes: &[AuthMode::Password],
     username_required: true,
     tls: Some(TlsCapabilities {
-        modes: &[TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull],
+        modes: &[TlsMode::Disable, TlsMode::Prefer, TlsMode::Require, TlsMode::VerifyFull],
+        default_mode: TlsMode::Prefer,
+        tls_ports: &[],
         ca_file: true,
         client_identity: true,
         server_name_override: ServerNameOverride::AnyRoute,
@@ -39,7 +43,15 @@ pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
         ObjectKind::Trigger,
     ],
     database_required: false,
-    network_options: &[],
+    network_options: &[
+        NetworkOption::ChannelBinding,
+        // libpq's naming. Debian, Ubuntu and Fedora build libpq for /var/run/postgresql, Arch for /run/postgresql, upstream for /tmp.
+        #[cfg(unix)]
+        NetworkOption::LocalSocket(LocalSocket::Folder {
+            file_prefix: ".s.PGSQL.",
+            defaults: &["/run/postgresql", "/var/run/postgresql", "/tmp"],
+        }),
+    ],
     statement_stop: StatementStop::Server,
 };
 
@@ -53,7 +65,11 @@ mod tests {
         assert!(CAPABILITIES.supports(AuthMode::Password));
         assert!(!CAPABILITIES.supports(AuthMode::Kerberos));
         let tls = CAPABILITIES.tls.expect("PostgreSQL offers TLS");
-        assert_eq!(tls.modes.len(), 3);
+        assert_eq!(
+            tls.modes,
+            [TlsMode::Disable, TlsMode::Prefer, TlsMode::Require, TlsMode::VerifyFull]
+        );
+        assert_eq!(tls.default_mode, TlsMode::Prefer);
         assert!(tls.ca_file && tls.client_identity);
         assert_eq!(tls.server_name_override, ServerNameOverride::AnyRoute);
         assert_eq!(CAPABILITIES.read_only, ReadOnlyEnforcement::SessionDefault);
@@ -65,5 +81,7 @@ mod tests {
         );
         assert_eq!(CAPABILITIES.object_kinds.len(), 9);
         assert!(!CAPABILITIES.database_required);
+        assert_eq!(CAPABILITIES.local_socket().is_some(), cfg!(unix));
+        assert!(CAPABILITIES.offers(NetworkOption::ChannelBinding));
     }
 }

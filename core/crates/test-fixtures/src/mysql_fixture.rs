@@ -1,4 +1,4 @@
-use testcontainers::core::IntoContainerPort;
+use testcontainers::core::{IntoContainerPort, Mount};
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
 
 use crate::container_file::with_files;
@@ -27,6 +27,8 @@ pub struct MysqlFixture {
 
 impl MysqlFixture {
     pub const TLS_DIR: &'static str = "/etc/mysql/tls";
+    // Both images link /var/run to /run, where MySQL and MariaDB put mysqld.sock.
+    pub const SOCKET_DIR: &'static str = "/run/mysqld";
     pub const NETWORK_ROLE: &'static str = "mysql";
     pub const CONTAINER_PORT: u16 = 3306;
 
@@ -72,6 +74,9 @@ impl MysqlFixture {
                 .with_cmd(Self::server_arguments(&options));
             if let (Some(network), Some(alias)) = (network, &network_alias) {
                 request = request.with_network(network.name()).with_container_name(alias);
+            }
+            if let Some(dir) = &options.socket_dir {
+                request = request.with_mount(Mount::bind_mount(dir.display().to_string(), Self::SOCKET_DIR));
             }
             with_files(request, files.clone())
         })
@@ -123,6 +128,11 @@ impl MysqlFixture {
         principals.push_str(&format!(
             "CREATE USER '{client}'@'%' IDENTIFIED BY '{certificate_password}' REQUIRE X509;\n\
              GRANT ALL PRIVILEGES ON {DATABASE}.* TO '{client}'@'%';\n"
+        ));
+        // The DDL conformance case creates and drops databases named
+        // tp_ddl_db_*, which the login otherwise has no right to.
+        principals.push_str(&format!(
+            "GRANT ALL PRIVILEGES ON `tp\\_ddl\\_db\\_%`.* TO '{PASSWORD_USER}'@'%';\n"
         ));
         Ok(vec![
             ContainerFile::readable(format!("{tls}/ca.pem"), pki.read(PkiFile::Ca)?),

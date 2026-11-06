@@ -121,9 +121,10 @@ impl TlsConformanceEngine for MongoTlsEngine {
     }
 
     /// The server reads the plaintext hello as a broken handshake and
-    /// closes the connection without a reply.
+    /// closes the connection without a reply, then completes the
+    /// driver's own TLS handshake.
     fn plaintext_rejection_category(&self) -> ErrorCategory {
-        ErrorCategory::ConnectionLost
+        ErrorCategory::Tls
     }
 
     /// The client library checks each server under its own name, so the
@@ -258,7 +259,7 @@ impl TlsConformanceEngine for MongoForwardTlsEngine {
     }
 
     fn plaintext_rejection_category(&self) -> ErrorCategory {
-        ErrorCategory::ConnectionLost
+        ErrorCategory::Tls
     }
 }
 

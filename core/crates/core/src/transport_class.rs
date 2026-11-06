@@ -4,6 +4,7 @@ use std::fmt;
 pub enum TransportClass {
     DirectTcp,
     SshForward,
+    LocalSocket,
 }
 
 impl fmt::Display for TransportClass {
@@ -11,6 +12,7 @@ impl fmt::Display for TransportClass {
         f.write_str(match self {
             Self::DirectTcp => "direct TCP",
             Self::SshForward => "an SSH forward",
+            Self::LocalSocket => "a local socket",
         })
     }
 }
