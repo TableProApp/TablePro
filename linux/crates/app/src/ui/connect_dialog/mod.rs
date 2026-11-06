@@ -27,8 +27,9 @@ use libadwaita::prelude::*;
 use secrecy::SecretString;
 use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::{
-    AiPolicy, AuthMode, ConfigError, DatabaseDriver, DriverCapabilities, DriverRegistry, ExternalAccess, NetworkOption,
-    NetworkOptions, QueryTimeout, SafeModeLevel, TlsConfig, TransportClass, WorkspaceSettings,
+    AiPolicy, AuthMode, ConfigError, DatabaseDriver, DriverCapabilities, DriverRegistry, ExternalAccess, LocalSocket,
+    NetworkOption, NetworkOptions, QueryTimeout, SafeModeLevel, TlsConfig, TlsMode, TransportClass, WorkspaceSettings,
+    is_local_socket_host,
 };
 use tablepro_session::runtime::{ProcessHold, Tasks};
 use tablepro_session::{ConnectError, ConnectRequest, ConnectionMetadata, Connector, CredentialSource, PendingSave};
@@ -36,8 +37,8 @@ use tablepro_storage::{ConnectionTag, CredentialDemand, SavedConnection};
 use uuid::Uuid;
 
 pub use self::connect_dialog_mode::ConnectDialogMode;
-use self::connect_form::ValidatedForm;
 pub use self::connect_form::{ConnectForm, driver_shows_server_name};
+use self::connect_form::{TlsFormState, ValidatedForm};
 pub use self::connect_submission::ConnectSubmission;
 pub(crate) use self::database_file_row::{DatabaseFiles, database_file_dialog};
 pub use self::form_errors::FormErrors;
@@ -246,6 +247,8 @@ impl ConnectDialog {
         if mode.editing().is_none() {
             return;
         }
+        // A URL describes a new connection, as on macOS and Windows.
+        imp.url_group.set_visible(false);
         imp.connect_button.set_label(&crate::i18n::gettext("Save"));
         imp.auth_group.set_description(Some(&crate::i18n::gettext(
             "Leave password fields empty to keep the saved passwords.",
@@ -268,6 +271,7 @@ impl ConnectDialog {
                 FormField::AuthMode => imp.auth_mode_row.get().upcast(),
                 FormField::Username => imp.username_row.get().upcast(),
                 FormField::DnsSeedList => imp.seed_list_row.get().upcast(),
+                FormField::MoreHosts => imp.more_hosts_row.get().upcast(),
                 FormField::AuthDatabase => imp.auth_database_row.get().upcast(),
                 _ => imp.host_row.get().upcast(),
             };
@@ -313,6 +317,212 @@ impl ConnectDialog {
         });
     }
 
+    fn connect_text_rows(&self) {
+        let imp = self.imp();
+        let entries: [&adw::EntryRow; 6] = [
+            &imp.name_row,
+            &imp.database_row,
+            &imp.username_row,
+            &imp.auth_database_row,
+            &imp.more_hosts_row,
+            &imp.replica_set_row,
+        ];
+        for row in entries {
+            let weak = self.downgrade();
+            row.connect_changed(move |_| {
+                if let Some(dialog) = weak.upgrade() {
+                    dialog.refresh();
+                }
+            });
+        }
+    }
+
+    fn connect_url_row(&self) {
+        let imp = self.imp();
+        let weak = self.downgrade();
+        imp.url_row.connect_apply(move |_| {
+            if let Some(dialog) = weak.upgrade() {
+                dialog.apply_url();
+            }
+        });
+        imp.url_row.connect_changed(|row| show_problem(row, None));
+    }
+
+    fn connect_socket_rows(&self) {
+        let imp = self.imp();
+        let weak = self.downgrade();
+        imp.socket_row.connect_active_notify(move |row| {
+            if let Some(dialog) = weak.upgrade()
+                && !dialog.imp().updating.get()
+            {
+                dialog.flip_socket(row.is_active());
+            }
+        });
+        let weak = self.downgrade();
+        imp.host_row.connect_changed(move |_| {
+            if let Some(dialog) = weak.upgrade()
+                && !dialog.imp().updating.get()
+            {
+                // Typing a path in, or a host over one, changes the transport as the switch does.
+                let socket = dialog.socket_host();
+                if dialog.imp().shown_socket.get().is_some() != socket {
+                    dialog.swap_tls(socket);
+                }
+                dialog.show_socket_rows();
+                // A socket takes no certificate files, so their check no longer stands.
+                dialog.recheck_files();
+                dialog.refresh();
+            }
+        });
+    }
+
+    /// Fill the form from the URL in the URL row, then clear the row so
+    /// a password in it stays only in the Password row.
+    fn apply_url(&self) {
+        let imp = self.imp();
+        let text = imp.url_row.text();
+        if text.trim().is_empty() {
+            return;
+        }
+        match self.fill_from_url(&text) {
+            Ok(()) => {
+                imp.url_row.set_text("");
+                show_problem(&*imp.url_row, None);
+            }
+            Err(message) => {
+                show_problem(&*imp.url_row, Some(message.as_str()));
+                self.show_toast(&message, None);
+            }
+        }
+    }
+
+    fn fill_from_url(&self, text: &str) -> Result<(), String> {
+        let url = tablepro_core::connection_url::parse(text)
+            .map_err(|error| crate::ui::error_text::connection_url_message(&error))?;
+        let index = self
+            .imp()
+            .drivers
+            .borrow()
+            .iter()
+            .position(|entry| entry.id == url.driver_id)
+            .ok_or_else(|| crate::i18n::gettext("No driver in this build opens that kind of URL."))?;
+        let entry = self
+            .entry_at(index)
+            .ok_or_else(|| crate::i18n::gettext("No driver selected"))?;
+        // No host is the client's default socket, found on this computer; a path the URL names is kept.
+        let default_socket = url.host.is_empty();
+        let unread = url.unread.join(", ");
+        let mut form = ConnectForm::from_url(url, entry.capabilities(), &self.form())
+            .map_err(|error| crate::ui::error_text::config_message(&error))?;
+        // libpq and the mysql client log in to a socket as the desktop user when no user is named.
+        if form.username.is_empty() && is_local_socket_host(&form.host) {
+            form.username = glib::user_name().to_string_lossy().into_owned();
+        }
+        let imp = self.imp();
+        imp.other_host.replace(String::new());
+        // A look still out for an earlier default must not land on what the URL names.
+        imp.socket_lookups.set(imp.socket_lookups.get().wrapping_add(1));
+        imp.updating.set(true);
+        imp.driver_row.set_selected(index as u32);
+        imp.updating.set(false);
+        self.show_driver(index, &form);
+        if default_socket && self.socket_host() {
+            self.look_up_default_socket();
+        }
+        self.recheck_files();
+        self.refresh();
+        if !unread.is_empty() {
+            self.show_toast(
+                &crate::i18n::gettext_f("Not used from the URL: {parameters}", &[("parameters", &unread)]),
+                None,
+            );
+        }
+        Ok(())
+    }
+
+    /// Turn the Unix Socket switch: the Host row trades its text with
+    /// what it held the other way, or starts on the engine's usual place.
+    fn flip_socket(&self, on: bool) {
+        let imp = self.imp();
+        let Some(socket) = self.current_socket() else {
+            return;
+        };
+        let current = imp.host_row.text().to_string();
+        let kept = imp.other_host.replace(current);
+        // Only a path the dialog picked itself is replaced by one found listening.
+        let picked = on && !is_local_socket_host(kept.trim());
+        let next = match (on, is_local_socket_host(kept.trim())) {
+            (true, true) | (false, false) => kept,
+            (true, false) => socket
+                .defaults()
+                .first()
+                .map(|path| (*path).to_owned())
+                .unwrap_or_default(),
+            (false, true) => String::new(),
+        };
+        imp.updating.set(true);
+        imp.host_row.set_text(&next);
+        imp.updating.set(false);
+        if picked {
+            self.look_up_default_socket();
+        }
+        self.swap_tls(on);
+        self.show_socket_rows();
+        self.recheck_files();
+        self.refresh();
+    }
+
+    /// What the Security rows held over the network comes back with it. A
+    /// socket starts with TLS off, which MySQL turns into TLS when the
+    /// server offers it; a connection opened on one starts the network on
+    /// the default.
+    fn swap_tls(&self, socket: bool) {
+        let imp = self.imp();
+        let entry = self.current_entry();
+        let tls = entry.as_ref().and_then(|entry| entry.capabilities().tls.as_ref());
+        let next = match socket {
+            true => {
+                imp.network_tls.replace(Some(imp.tls_section.form_state()));
+                TlsFormState {
+                    mode: TlsMode::Disable,
+                    ..TlsFormState::new(tls)
+                }
+            }
+            false => imp.network_tls.take().unwrap_or_else(|| TlsFormState::new(tls)),
+        };
+        imp.tls_section.apply(tls, TransportClass::DirectTcp, &next);
+    }
+
+    /// Put the first place a server listens in the Host row, unless the
+    /// user changed the row meanwhile. The look stats the disk, so it
+    /// runs on the blocking pool.
+    fn look_up_default_socket(&self) {
+        let (Some(socket), Some(services)) = (self.current_socket(), self.services()) else {
+            return;
+        };
+        let imp = self.imp();
+        let lookup = imp.socket_lookups.get().wrapping_add(1);
+        imp.socket_lookups.set(lookup);
+        let shown = imp.host_row.text().to_string();
+        let port = imp.port_row.value() as u16;
+        let found = services.tasks.spawn_blocking_task(move || socket.find_default(port));
+        let weak = self.downgrade();
+        glib::spawn_future_local(async move {
+            let Ok(Some(found)) = found.await else {
+                return;
+            };
+            let Some(dialog) = weak.upgrade() else {
+                return;
+            };
+            let imp = dialog.imp();
+            let moved_on = imp.host_row.text() != shown || imp.port_row.value() as u16 != port;
+            if imp.socket_lookups.get() != lookup || moved_on {
+                return;
+            }
+            imp.host_row.set_text(&found.display().to_string());
+        });
+    }
+
     fn connect_handlers(&self) {
         let imp = self.imp();
         let weak = self.downgrade();
@@ -352,21 +562,9 @@ impl ConnectDialog {
             }
         });
         self.connect_seed_list_row();
-        let entries: [&adw::EntryRow; 5] = [
-            &imp.name_row,
-            &imp.host_row,
-            &imp.database_row,
-            &imp.username_row,
-            &imp.auth_database_row,
-        ];
-        for row in entries {
-            let weak = self.downgrade();
-            row.connect_changed(move |_| {
-                if let Some(dialog) = weak.upgrade() {
-                    dialog.refresh();
-                }
-            });
-        }
+        self.connect_url_row();
+        self.connect_socket_rows();
+        self.connect_text_rows();
         let weak = self.downgrade();
         imp.password_row.connect_changed(move |_| {
             if let Some(dialog) = weak.upgrade() {
@@ -447,13 +645,26 @@ impl ConnectDialog {
                 .query_timeout_row
                 .enables_expansion()
                 .then(|| imp.query_timeout_seconds_row.value() as u32),
-            ssh: (!caps.is_file_based()).then(|| imp.ssh_section.form_state()).flatten(),
+            // A socket is on this computer, so the hidden SSH section is not sent.
+            ssh: (!caps.is_file_based() && !self.socket_host())
+                .then(|| imp.ssh_section.form_state())
+                .flatten(),
             file: imp.file_row.endpoint(),
             tags: self.picked_tags(),
             icon: self.picked_icon(),
             options: NetworkOptions {
                 dns_seed_list: imp.seed_list_row.is_active(),
                 auth_database: Some(imp.auth_database_row.text().to_string()).filter(|name| !name.trim().is_empty()),
+                replica_set: Some(imp.replica_set_row.text().to_string()).filter(|name| !name.trim().is_empty()),
+                more_hosts: imp
+                    .more_hosts_row
+                    .text()
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|host| !host.is_empty())
+                    .map(str::to_owned)
+                    .collect(),
+                channel_binding: imp.binding_row.is_active(),
             },
         }
     }
@@ -464,11 +675,27 @@ impl ConnectDialog {
     }
 
     fn route(&self) -> TransportClass {
-        if self.imp().ssh_section.is_enabled() {
+        if self.socket_host() {
+            TransportClass::LocalSocket
+        } else if self.imp().ssh_section.is_enabled() {
             TransportClass::SshForward
         } else {
             TransportClass::DirectTcp
         }
+    }
+
+    // The Host row holds a socket's path for an engine that reads one, as libpq takes a folder there.
+    fn socket_host(&self) -> bool {
+        self.current_socket().is_some() && is_local_socket_host(self.imp().host_row.text().trim())
+    }
+
+    fn socket_without_tls(&self) -> bool {
+        self.socket_host() && !self.current_socket().is_some_and(|socket| socket.takes_tls())
+    }
+
+    fn current_socket(&self) -> Option<LocalSocket> {
+        let entry = self.current_entry()?;
+        entry.capabilities().local_socket()
     }
 
     fn switch_driver(&self) {
@@ -478,8 +705,35 @@ impl ConnectDialog {
             return;
         };
         let mut form = self.form();
+        let socket_before = imp.shown_socket.get();
+        let socket_after = entry.capabilities().local_socket();
         form.switch_driver(&entry.id, entry.capabilities());
+        // A folder is not a socket file, and an engine without sockets takes a host name.
+        let moved = socket_before.is_some() && socket_before != socket_after;
+        if moved {
+            form.host = match socket_after {
+                Some(socket) => socket
+                    .defaults()
+                    .first()
+                    .map(|path| (*path).to_owned())
+                    .unwrap_or_default(),
+                None => imp.other_host.take(),
+            };
+            // The engine takes a network host, so the TLS it had over the network comes back too.
+            if socket_after.is_none() {
+                let tls = entry.capabilities().tls.as_ref();
+                form.tls = imp.network_tls.take().unwrap_or_else(|| TlsFormState::new(tls));
+                if let Some(tls) = tls
+                    && !tls.modes.contains(&form.tls.mode)
+                {
+                    form.tls = TlsFormState::new(Some(tls));
+                }
+            }
+        }
         self.show_driver(index, &form);
+        if moved && socket_after.is_some() {
+            self.look_up_default_socket();
+        }
         self.recheck_files();
         self.refresh();
     }
@@ -502,6 +756,10 @@ impl ConnectDialog {
         imp.database_row.set_text(&form.database);
         imp.username_row.set_text(&form.username);
         imp.seed_list_row.set_active(form.options.dns_seed_list);
+        imp.replica_set_row
+            .set_text(form.options.replica_set.as_deref().unwrap_or_default());
+        imp.more_hosts_row.set_text(&form.options.more_hosts.join(", "));
+        imp.binding_row.set_active(form.options.channel_binding);
         imp.auth_database_row
             .set_text(form.options.auth_database.as_deref().unwrap_or_default());
         if imp.password_row.text() != secrecy::ExposeSecret::expose_secret(&form.password) {
@@ -571,6 +829,7 @@ impl ConnectDialog {
         self.show_ai_policy_subtitle();
         self.show_auth_rows();
         self.show_seed_list_rows();
+        self.show_socket_rows();
         self.set_title(&if imp.mode.borrow().editing().is_some() {
             crate::i18n::gettext("Edit Connection")
         } else {
@@ -613,6 +872,8 @@ impl ConnectDialog {
         let caps = entry.as_ref().map_or(&NO_DRIVER, DriverEntry::capabilities);
         imp.auth_database_row
             .set_visible(password && caps.offers(NetworkOption::AuthDatabase));
+        imp.binding_row
+            .set_visible(password && caps.offers(NetworkOption::ChannelBinding));
     }
 
     /// A seed list's SRV records give the ports, so the port row goes
@@ -622,7 +883,44 @@ impl ConnectDialog {
         let entry = self.current_entry();
         let caps = entry.as_ref().map_or(&NO_DRIVER, DriverEntry::capabilities);
         let seed_list = imp.seed_list_row.is_visible() && imp.seed_list_row.is_active();
-        imp.port_row.set_visible(!caps.is_file_based() && !seed_list);
+        // A socket file is the whole address; a folder takes the port to name the file in it.
+        let socket_file = self.socket_host() && self.current_socket().is_some_and(|socket| !socket.reads_port());
+        imp.port_row
+            .set_visible(!caps.is_file_based() && !seed_list && !socket_file);
+        let host_list = !caps.is_file_based() && caps.offers(NetworkOption::HostList);
+        imp.replica_set_row.set_visible(host_list);
+        imp.more_hosts_row.set_visible(host_list && !seed_list);
+    }
+
+    /// The Unix Socket switch follows the Host row: a path there is a
+    /// socket. A socket takes no tunnel and no TLS.
+    fn show_socket_rows(&self) {
+        let imp = self.imp();
+        let entry = self.current_entry();
+        let caps = entry.as_ref().map_or(&NO_DRIVER, DriverEntry::capabilities);
+        let socket = self.current_socket();
+        let on = self.socket_host();
+        imp.shown_socket.set(socket.filter(|_| on));
+        imp.socket_row.set_visible(!caps.is_file_based() && socket.is_some());
+        if imp.socket_row.is_active() != on {
+            imp.updating.set(true);
+            imp.socket_row.set_active(on);
+            imp.updating.set(false);
+        }
+        imp.host_row.set_title(&match socket.filter(|_| on) {
+            Some(LocalSocket::Folder { .. }) => crate::i18n::gettext("Socket Folder"),
+            Some(LocalSocket::File { .. }) => crate::i18n::gettext("Socket File"),
+            None => crate::i18n::gettext("Host"),
+        });
+        imp.ssh_section.set_visible(!caps.is_file_based() && !on);
+        if on && !socket.is_some_and(|socket| socket.takes_tls()) {
+            imp.tls_section.set_visible(false);
+        } else if !caps.is_file_based() && caps.tls.is_some() && !imp.tls_section.is_visible() {
+            imp.tls_section
+                .apply(caps.tls.as_ref(), self.route(), &imp.tls_section.form_state());
+        }
+        imp.tls_section.set_route(self.route());
+        self.show_seed_list_rows();
     }
 
     /// A seed list or a port that serves only TLS starts TLS on, so the
@@ -647,7 +945,7 @@ impl ConnectDialog {
             return TlsConfig::disabled();
         };
         match entry.capabilities().tls.as_ref() {
-            Some(caps) if !entry.capabilities().is_file_based() => {
+            Some(caps) if !entry.capabilities().is_file_based() && !self.socket_without_tls() => {
                 self.imp().tls_section.form_state().config(caps, self.route())
             }
             _ => TlsConfig::disabled(),
@@ -723,6 +1021,7 @@ impl ConnectDialog {
         show_problem(&*imp.auth_mode_row, shown(FormField::AuthMode));
         show_problem(&*imp.username_row, shown(FormField::Username));
         show_problem(&*imp.seed_list_row, shown(FormField::DnsSeedList));
+        show_problem(&*imp.more_hosts_row, shown(FormField::MoreHosts));
         show_problem(&*imp.auth_database_row, shown(FormField::AuthDatabase));
         let pem = imp.pem.state();
         let file_problem = match &pem {

@@ -10,6 +10,7 @@ use scylla::client::execution_profile::ExecutionProfile;
 use scylla::client::session::Session;
 use scylla::client::session_builder::SessionBuilder;
 use scylla::client::{PoolSize, SelfIdentity};
+use scylla::errors::{DbError, NewSessionError, RequestAttemptError, UseKeyspaceError};
 use scylla::policies::retry::FallthroughRetryPolicy;
 use scylla::response::query_result::QueryResult;
 use scylla::response::{PagingState, PagingStateResponse};
@@ -148,6 +149,11 @@ impl CqlEndpoint {
                     .await);
             }
             Ok(Err(error)) => {
+                if let Some(keyspace) = keyspace.filter(|_| keyspace_missing(&error)) {
+                    return Err(DriverError::DatabaseNotFound {
+                        database: keyspace.to_owned(),
+                    });
+                }
                 let failed = self.explain(&relay, new_session_error(error)).await;
                 return Err(tokio::select! {
                     () = cancel.cancelled() => DriverError::Cancelled,
@@ -432,6 +438,20 @@ impl CqlLink {
     }
 }
 
+/// Whether the server refused USE of the session's keyspace as one it
+/// does not have, which no retry mends. Cassandra and ScyllaDB both
+/// answer Invalid with "Keyspace '<name>' does not exist"; another
+/// Invalid answer keeps its own words.
+fn keyspace_missing(error: &NewSessionError) -> bool {
+    match error {
+        NewSessionError::UseKeyspaceError(UseKeyspaceError::RequestError(RequestAttemptError::DbError(
+            DbError::Invalid,
+            message,
+        ))) => message.starts_with("Keyspace ") && message.ends_with(" does not exist"),
+        _ => false,
+    }
+}
+
 /// The values of `statement` as the markers of `prepared` take them.
 fn bound_values(prepared: &PreparedStatement, statement: &Statement) -> Result<Vec<Option<CqlValue>>, DriverError> {
     let specs = prepared.get_variable_col_specs();
@@ -467,6 +487,30 @@ fn version_numbers(version: &str) -> [u32; 3] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_keyspace_the_server_lacks_is_told_from_other_failures() {
+        let refused = |error: DbError, message: &str| {
+            NewSessionError::UseKeyspaceError(UseKeyspaceError::RequestError(RequestAttemptError::DbError(
+                error,
+                message.to_owned(),
+            )))
+        };
+
+        assert!(keyspace_missing(&refused(
+            DbError::Invalid,
+            "Keyspace 'gone' does not exist"
+        )));
+        assert!(!keyspace_missing(&refused(
+            DbError::Unauthorized,
+            "Keyspace 'gone' does not exist"
+        )));
+        assert!(!keyspace_missing(&refused(
+            DbError::Invalid,
+            "Keyspace 'kept' is being dropped"
+        )));
+        assert!(!keyspace_missing(&NewSessionError::EmptyKnownNodesList));
+    }
 
     #[test]
     fn versions_read_their_leading_numbers() {

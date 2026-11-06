@@ -34,6 +34,11 @@ impl SqliteDialect {
 }
 
 impl SqlDialect for SqliteDialect {
+    /// main's objects are listed with no schema.
+    fn unqualified_default_schema(&self) -> bool {
+        true
+    }
+
     fn capabilities(&self) -> DialectCapabilities {
         DialectCapabilities {
             exact_row_counts: true,

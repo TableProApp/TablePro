@@ -12,6 +12,7 @@ mod ddl;
 mod dump;
 mod keys_and_decimals;
 mod metadata;
+mod result_origins;
 mod round_trip;
 mod sessions;
 mod support;

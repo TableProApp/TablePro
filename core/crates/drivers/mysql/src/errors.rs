@@ -5,7 +5,7 @@ use deadpool::managed::{PoolError, TimeoutType};
 use sqlx::mysql::MySqlDatabaseError;
 use tablepro_core::{
     BusyReason, DriverError, LossPhase, NetworkEndpoint, ReadOnlyRefusal, ServerCode, ServerDiagnostics, TimeoutPhase,
-    TlsFailure, TransportError,
+    TlsFailure, TransportError, UnsupportedFeature,
 };
 
 use crate::flavour::MySqlFlavour;
@@ -33,6 +33,9 @@ pub(crate) const MARIADB_STATEMENT_TIMEOUT: u16 = 1969;
 /// ER_SECURE_TRANSPORT_REQUIRED under `require_secure_transport`, which
 /// MariaDB took over with MySQL's number.
 pub(crate) const SECURE_TRANSPORT_REQUIRED: u16 = 3159;
+/// ER_BAD_DB_ERROR: the database a login or a statement names is not
+/// there.
+const UNKNOWN_DATABASE: u16 = 1049;
 /// ER_SERVER_SHUTDOWN.
 const SERVER_SHUTDOWN: u16 = 1053;
 /// MariaDB's ER_CONNECTION_KILLED.
@@ -61,18 +64,41 @@ pub(crate) fn map_error(error: &sqlx::Error, flavour: MySqlFlavour) -> DriverErr
 }
 
 /// What a failed connect means. The flavour is not known before the
-/// login, so the numbers either server uses are both read.
-pub(crate) fn map_connect_error(error: &sqlx::Error, endpoint: &NetworkEndpoint) -> DriverError {
+/// login, so the numbers either server uses are both read. `database`
+/// is the one the login names.
+pub(crate) fn map_connect_error(
+    error: &sqlx::Error,
+    endpoint: &NetworkEndpoint,
+    database: Option<&str>,
+) -> DriverError {
     match error {
         sqlx::Error::Io(io) => match tablepro_net::tls::classify(io) {
             Some((failure, detail)) => DriverError::Tls { failure, detail },
             None => connect_io_error(io, endpoint),
         },
-        other => match map_with(other, None) {
-            DriverError::ConnectionLost { .. } => DriverError::ConnectionLost {
-                during: LossPhase::Connect,
+        // sqlx speaks four client plugins and names any other this way, as on MariaDB's ed25519 and parsec.
+        sqlx::Error::Protocol(message) if message.starts_with("unknown authentication plugin") => {
+            DriverError::Unsupported {
+                feature: UnsupportedFeature::AuthPlugin,
+            }
+        }
+        other => during_login(map_with(other, None), database),
+    }
+}
+
+/// An error read during the login. Only here does 1049 mean the
+/// connection itself cannot open: a statement's 1049 is about a database
+/// the statement names.
+fn during_login(mapped: DriverError, database: Option<&str>) -> DriverError {
+    match mapped {
+        DriverError::ConnectionLost { .. } => DriverError::ConnectionLost {
+            during: LossPhase::Connect,
+        },
+        mapped => match database {
+            Some(database) if server_number(&mapped) == Some(UNKNOWN_DATABASE) => DriverError::DatabaseNotFound {
+                database: database.to_owned(),
             },
-            mapped => mapped,
+            _ => mapped,
         },
     }
 }
@@ -257,6 +283,24 @@ mod tests {
     }
 
     #[test]
+    fn an_account_on_a_plugin_sqlx_lacks_is_an_unsupported_login() {
+        let endpoint = NetworkEndpoint::new("db.example.com", 3306).unwrap();
+        let ed25519 = sqlx::Error::Protocol("unknown authentication plugin: client_ed25519".to_owned());
+        let other = sqlx::Error::Protocol("unexpected packet".to_owned());
+
+        assert_eq!(
+            map_connect_error(&ed25519, &endpoint, None),
+            DriverError::Unsupported {
+                feature: UnsupportedFeature::AuthPlugin
+            }
+        );
+        assert!(matches!(
+            map_connect_error(&other, &endpoint, None),
+            DriverError::Protocol(_)
+        ));
+    }
+
+    #[test]
     fn code_table_per_flavour() {
         for flavour in [Some(MySqlFlavour::MySql), Some(MySqlFlavour::MariaDb), None] {
             let classify = |number| classify_number(numbered(number), flavour);
@@ -318,8 +362,32 @@ mod tests {
         let error = sqlx::Error::Io(io::Error::from(io::ErrorKind::ConnectionRefused));
 
         assert_eq!(
-            map_connect_error(&error, &endpoint),
+            map_connect_error(&error, &endpoint, Some("shop")),
             DriverError::Transport(TransportError::Refused { endpoint })
+        );
+    }
+
+    #[test]
+    fn an_unknown_database_is_missing_only_for_the_login() {
+        let unknown = || classify_number(numbered(UNKNOWN_DATABASE), None);
+
+        assert!(matches!(unknown(), DriverError::Server(_)));
+        assert_eq!(
+            during_login(unknown(), Some("shop")),
+            DriverError::DatabaseNotFound {
+                database: "shop".to_owned()
+            }
+        );
+        assert!(matches!(during_login(unknown(), None), DriverError::Server(_)));
+        assert!(matches!(
+            during_login(classify_number(numbered(ACCESS_DENIED), None), Some("shop")),
+            DriverError::Auth { .. }
+        ));
+        assert_eq!(
+            during_login(classify_number(numbered(SERVER_SHUTDOWN), None), Some("shop")),
+            DriverError::ConnectionLost {
+                during: LossPhase::Connect
+            }
         );
     }
 

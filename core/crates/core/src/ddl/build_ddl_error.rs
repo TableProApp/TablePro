@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use super::{DdlOperation, DraftProblem, ReferentialAction, RefusalReason};
+use super::{CatalogOption, DdlOperation, DraftProblem, ReferentialAction, RefusalReason};
 use crate::dialect::LiteralError;
 use crate::sql_syntax::TypeSyntaxError;
 
@@ -39,4 +39,9 @@ pub enum BuildDdlError {
     /// reviewed, because the draft or the connection changed meanwhile.
     #[error("the statements to run are not the ones reviewed")]
     NotAsReviewed,
+    /// A schema or database option the statement cannot carry: an empty
+    /// name, or a value the engine only takes bare that holds more than
+    /// letters, digits and underscores.
+    #[error("{value:?} is not a {option} this engine takes")]
+    InvalidOption { option: CatalogOption, value: String },
 }

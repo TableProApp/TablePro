@@ -1,7 +1,9 @@
 mod access_keys;
 mod accessible_label;
+mod account_fakes;
 mod alert_response;
 mod application_end;
+mod cloud_stub;
 mod connection_groups;
 mod fake_clocks;
 mod fake_reachability;
@@ -14,6 +16,7 @@ mod log_lines;
 mod main_loop;
 mod memory_settings;
 mod owned_window;
+mod posthog_collector;
 #[path = "../../tests/support/settings_schema.rs"]
 pub(crate) mod settings_schema;
 pub(crate) mod shortcut_keys;
@@ -26,8 +29,10 @@ mod widget_lookup;
 
 pub(crate) use access_keys::{access_key_problems, assert_access_keys, menu_pages};
 pub(crate) use accessible_label::{assert_labelled, test_backend_records_properties};
+pub(crate) use account_fakes::{Approving, MemoryKeyring, deliver};
 pub(crate) use alert_response::{click_response, respond};
 pub(crate) use application_end::end_application;
+pub(crate) use cloud_stub::CloudStub;
 pub(crate) use connection_groups::{NestedLibrary, group_id, library, save_filed, saved_connection, seed_library};
 pub(crate) use fake_clocks::FakeClocks;
 pub(crate) use fake_reachability::{Attached, FakeProbe, attach_remote};
@@ -42,6 +47,7 @@ pub(crate) use log_lines::LogLines;
 pub(crate) use main_loop::{after_next_frame, drain_main_context, finish_on_main, wait_until};
 pub(crate) use memory_settings::MemorySettings;
 pub(crate) use owned_window::{OwnedWindow, drop_focus};
+pub(crate) use posthog_collector::PostHogCollector;
 pub(crate) use signal_log::SignalLog;
 pub(crate) use stall_probe::StallProbe;
 pub(crate) use unlabelled_widget::UnlabelledWidget;

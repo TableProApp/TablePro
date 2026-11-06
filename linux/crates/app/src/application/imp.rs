@@ -9,6 +9,7 @@ use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
 
+use super::app_activity::Activity;
 use super::session_signals::SessionSignals;
 use super::{AppServices, WindowRegistry, install_app_actions, install_application_accelerators};
 use crate::workspace::CloseDecision;
@@ -37,6 +38,9 @@ pub struct TableProApplication {
     pub(super) launch_notices: RefCell<Vec<crate::ui::LaunchNotice>>,
     /// Answers the MCP server's questions about windows and sessions.
     pub(super) mcp_requests: RefCell<Option<glib::JoinHandle<()>>>,
+    pub(super) activity: Cell<Activity>,
+    // Set at the primary instance's startup; the license ask counts its quiet period from it.
+    pub(super) launched_at: Cell<Option<std::time::Instant>>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -87,8 +91,10 @@ impl ApplicationImpl for TableProApplication {
         let app = self.obj();
         install_app_actions(&app);
         install_application_accelerators(&*app);
+        app.follow_activity();
         if let Some(services) = self.services.get() {
             services.start();
+            app.start_license_ask();
             app.start_mcp();
             app.look_for_crash_report();
             app.note_launch_version();
@@ -154,6 +160,8 @@ impl ApplicationImpl for TableProApplication {
         // them, so the next launch still reopens their sessions.
         if let Some(services) = self.services.get() {
             services.open_sessions().freeze_for_quit();
+            // Bounded by the request timeout; without a PostHog key there is nothing to flush.
+            services.telemetry().flush();
         }
         self.obj().stop_mcp();
         self.windows.clear();

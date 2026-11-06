@@ -1,6 +1,6 @@
 # Troubleshooting
 
-What to check when TablePro for Linux does not behave, and what to send with a bug report. Paths are for the PPA and COPR packages.
+What to check when TablePro for Linux does not behave, and what to send with a bug report. Paths are for the .deb and .rpm packages; the Flatpak's are in [Where TablePro keeps its files](#where-tablepro-keeps-its-files).
 
 ## Passwords
 
@@ -27,6 +27,21 @@ The packages recommend one of these, so a normal install has one. A minimal inst
 The keyring is locked. The desktop asks to unlock it when TablePro reads a password; if that prompt is dismissed, TablePro asks for the password instead. A keyring that never unlocks at login usually has a different password from the account, after a password change or with automatic login. Seahorse (Passwords and Keys) or KWallet Manager can change the keyring password to the login password.
 
 Saved passwords are listed in Seahorse as `TablePro database password for …`, `TablePro SSH password for …` and `TablePro SSH key passphrase for …`.
+
+## TablePro account
+
+Preferences > Account signs in to a TablePro account, which lists your plan, devices and teams. The paid features it names are in TablePro for macOS for now; everything in TablePro for Linux works without an account.
+
+- **Sign In opens no browser**: TablePro asks the desktop to open the sign-in page in the default browser, through the OpenURI portal inside Flatpak. Check that one is set, under Settings > Default Apps on GNOME.
+- **The browser says the sign-in finished, but TablePro still waits**: the page sends the browser back to `http://127.0.0.1` on a port TablePro picked for this sign-in. A browser that cannot reach this computer's loopback address, such as one in a container or on another machine, or a proxy setting that sends `127.0.0.1` elsewhere, never brings it back. Cancel, fix the browser, and sign in again. TablePro stops waiting after 10 minutes.
+- **Signed out at every launch**: no keyring took the sign-in, so it lasts until TablePro quits; the Account page says "Sign-In Not Saved". Set up a Secret Service as for [passwords](#tablepro-asks-for-the-password-at-every-connect). The item is `TablePro account sign-in` in Seahorse.
+- **Accounts Unavailable**: TablePro could not read `/etc/machine-id`, or `/var/lib/dbus/machine-id` in its place, which it hashes into the ID this computer has on your account. `systemd-machine-id-setup` makes one on a system that has none.
+- **Your plan is in use on 3 other devices**: remove one from the list Preferences > Account offers, or under Devices in your account.
+- **A computer with no internet**: make an offline file for the Machine ID the Account page shows, in your account, then use Import Offline File.
+
+## Usage data
+
+The PPA and COPR packages share usage data by default, as TablePro for macOS does; a build from source sends none. What it sends, to whom and when: [README](../README.md#privacy). To stop it, turn off **Preferences > General > Privacy > Share Usage Data**, or run `gsettings set app.tablepro.TablePro share-usage-data false`; events still waiting are dropped. The anonymous ID PostHog knows this computer by is in `~/.local/state/tablepro/telemetry.json`; removing that file gives a new one.
 
 ## SSH tunnels
 
@@ -71,25 +86,66 @@ Read the log before you attach it. It names your hosts, databases and tables. It
 
 ## Crash reports
 
-TablePro writes a report of each crash to `~/.local/state/tablepro/crashes/`. Attach the newest one to the bug report, with the log from the same time.
+When TablePro stops on an error of its own, it writes a report to `~/.local/state/tablepro/crashes/`. Attach the newest one to the bug report, with the log from the same time.
+
+A crash in a system library leaves no report there. On a system with systemd-coredump, list it with:
+
+```sh
+coredumpctl list tablepro
+```
+
+The Flatpak's line tables, which turn a backtrace's addresses into files and lines, are its `.Debug` extension, from the repository it came from: `flatpak install tablepro app.tablepro.TablePro.Debug//stable`, or `tablepro-beta` and `//beta` for the beta. With flatpak-builder and the GNOME 51 SDK installed, `flatpak-coredumpctl app.tablepro.TablePro` then opens a crash's core dump in gdb with them.
 
 ## Reporting a bug
 
 Open an issue at https://github.com/TableProApp/TablePro/issues with:
 
 - The text from About TablePro > Troubleshooting > Debugging Information. Copy Text puts it on the clipboard. It holds the versions and no connection details.
-- Where TablePro came from (the PPA, COPR or a source build), the distribution and version, and the desktop and session (`echo $XDG_CURRENT_DESKTOP $XDG_SESSION_TYPE`).
+- Where TablePro came from (the PPA, COPR, the Flatpak repository, a .deb, .rpm or Flatpak bundle from GitHub Releases, or a source build), the distribution and version, and the desktop and session (`echo $XDG_CURRENT_DESKTOP $XDG_SESSION_TYPE`).
 - The log and crash report above, when there is one.
 
 ## After a downgrade
 
-An older version never changes a file a newer one wrote. It refuses the file instead, until the newer version is installed again or you reset it:
+Each file TablePro keeps carries the version of its format. A build refuses a file in a format newer than it knows, and never writes over it. A format does not change with every release, so an older release still reads and changes a file a newer one wrote in the same format. The refusals look like this:
 
 - The connection list shows "Saved connections were created by a newer version of TablePro". Reset… moves the file aside, under a name the toast shows, and starts an empty list.
 - A connection's saved tabs do not reopen, and a toast says "Saved tabs could not be read" with Reset.
-- The query history says it could not be read.
+- The query history and saved queries say "The query history was written by a newer version of TablePro".
+- Column widths and filters saved in the newer format are left as they are, and the older release does not save its own.
 
-Installing the newer version again brings all of it back, unless it was reset. Column widths and filters saved by the newer version are left as they are, and the older version does not save its own.
+Installing the newer release again brings all of it back, unless it was reset.
+
+### Going back to what the older release saved
+
+Before a release writes a file in a newer format for the first time, it keeps a copy of the file as it was, in the same folder, named after the file, the format version it holds and the time in seconds, such as `connections.json.v1-1762300000`. It keeps the newest three copies of each file. A copy never keeps what you deleted since: a connection, query history or saved queries you delete, and history the retention setting drops, leave the copies too.
+
+To give the older release its files back:
+
+1. Quit TablePro. A second launch hands over to the running one, so check that no `tablepro` process is left.
+2. List the copies, newest last, in the folders from [Where TablePro keeps its files](#where-tablepro-keeps-its-files):
+
+   ```sh
+   ls -ltr ~/.config/tablepro/ ~/.local/state/tablepro/ ~/.local/state/tablepro/workspaces/
+   ```
+
+3. Move the current file aside rather than deleting it. It holds what the newer release saved, and the newer release reads it again. For the history, move its `-wal` and `-shm` files with it, if they are there:
+
+   ```sh
+   cd ~/.local/state/tablepro
+   mv history.db history.db.newer
+   mv history.db-wal history.db-wal.newer
+   mv history.db-shm history.db-shm.newer
+   ```
+
+4. Copy the newest copy back under the file's own name. For the connection list:
+
+   ```sh
+   cp ~/.config/tablepro/connections.json.v1-1762300000 ~/.config/tablepro/connections.json
+   ```
+
+5. Start the older release.
+
+What was saved after the copy was made, such as a connection added in the newer release, is only in the file you moved aside. The Flatpak keeps the same files under `~/.var/app/app.tablepro.TablePro/`, in `config/tablepro/` and `.local/state/tablepro/`.
 
 ## Where TablePro keeps its files
 
@@ -101,5 +157,8 @@ Installing the newer version again brings all of it back, unless it was reset. C
 | `~/.local/state/tablepro/workspaces/` | Each connection's tabs, and the connections open at the last quit |
 | `~/.local/share/tablepro/drafts/` | The text of each SQL editor tab |
 | `~/.local/state/tablepro/crashes/` | Crash reports |
+| `<file>.v<version>-<seconds>` beside a file above | A copy kept before an upgrade changed the file's format ([After a downgrade](#after-a-downgrade)) |
 
 Preferences are in GSettings: `gsettings list-recursively app.tablepro.TablePro` lists them. `man tablepro` has the same list.
+
+The Flatpak keeps the same files under `~/.var/app/app.tablepro.TablePro/`: `config/tablepro/`, `.local/state/tablepro/` and `data/tablepro/` in place of `~/.config/tablepro/`, `~/.local/state/tablepro/` and `~/.local/share/tablepro/`. Its preferences are listed by `flatpak run --command=gsettings app.tablepro.TablePro list-recursively app.tablepro.TablePro`, and a detailed log comes from `flatpak run --env=RUST_LOG=debug app.tablepro.TablePro 2> tablepro.log`.

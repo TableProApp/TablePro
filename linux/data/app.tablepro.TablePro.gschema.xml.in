@@ -127,6 +127,32 @@
       <description>The newest TablePro release that has run, so the first launch of a later one can point to its release notes. Empty before the first launch.</description>
     </key>
 
+    <key name="share-usage-data" type="b">
+      <default>true</default>
+      <summary>Share usage data</summary>
+      <description>Whether TablePro sends usage events, such as an app launch, a connection attempt or a sign-in, to PostHog. On unless you turn it off; a build made without a PostHog key sends none.</description>
+    </key>
+
+
+    <key name="usage-days" type="u">
+      <default>0</default>
+      <summary>Days of use</summary>
+      <description>How many distinct local days TablePro was in use, which decides when it first asks about a license. It never leaves this computer.</description>
+    </key>
+
+    <key name="last-usage-day" type="s">
+      <default>''</default>
+      <summary>Last day of use</summary>
+      <description>The last local day counted in usage-days, as YYYY-MM-DD. Empty before the first launch.</description>
+    </key>
+
+    <key name="license-ask-day" type="s">
+      <default>''</default>
+      <summary>Day of the last license ask</summary>
+      <description>The local day TablePro last asked whether you would buy a license, as YYYY-MM-DD. Empty when it never asked.</description>
+    </key>
+
+
     <key name="mcp-server-enabled" type="b">
       <default>false</default>
       <summary>Run the MCP server</summary>

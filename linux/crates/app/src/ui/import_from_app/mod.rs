@@ -616,7 +616,7 @@ impl ImportFromAppDialog {
         let mut summary = ngettext_f(
             "{selected} of {n} connection selected",
             "{selected} of {n} connections selected",
-            u32::try_from(connections.len()).unwrap_or(u32::MAX),
+            connections.len(),
             &[
                 ("selected", &selected.to_string()),
                 ("n", &connections.len().to_string()),
@@ -632,7 +632,7 @@ impl ImportFromAppDialog {
             summary.push_str(&ngettext_f(
                 "{included} of {n} saved query selected",
                 "{included} of {n} saved queries selected",
-                u32::try_from(reviewing.queries.len()).unwrap_or(u32::MAX),
+                reviewing.queries.len(),
                 &[
                     ("included", &included.to_string()),
                     ("n", &reviewing.queries.len().to_string()),

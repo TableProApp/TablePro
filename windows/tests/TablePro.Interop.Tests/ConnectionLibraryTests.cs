@@ -177,6 +177,13 @@ public sealed class ConnectionLibraryTests : IDisposable
         Assert.Equal(
             "url.unknown_scheme",
             Assert.Throws<TableProException>(() => TableProCore.ParseConnectionUrl("ftp://example.com")).Code);
+        var ca = OperatingSystem.IsWindows() ? "C:/certs/rds.pem" : "/certs/rds.pem";
+        var rooted = TableProCore.ParseConnectionUrl($"postgresql://db.example.com/shop?sslmode=require&sslrootcert={ca}");
+        Assert.Equal(TlsMode.VerifyFull, rooted.TlsMode);
+        Assert.Equal(ca, rooted.CaFile);
+        Assert.Equal(
+            "url.settings_unsupported",
+            Assert.Throws<TableProException>(() => TableProCore.ParseConnectionUrl("mongodb+srv://u:p@cluster0.example.net/")).Code);
     }
 
     [Fact]

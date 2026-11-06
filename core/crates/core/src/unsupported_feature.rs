@@ -50,6 +50,8 @@ pub enum UnsupportedFeature {
     CharacterSets,
     /// Another of the server's databases for a query tab.
     DatabaseSwitching,
+    /// The options a new database can take.
+    DatabaseOptions,
     /// The SQL that defines a routine, a sequence or a trigger.
     ObjectDefinitions,
     /// The SQL of a SQL Server routine whose code is a .NET assembly.
@@ -61,6 +63,8 @@ pub enum UnsupportedFeature {
     EditorCommand {
         command: &'static str,
     },
+    // A login whose account uses a client plugin the driver does not speak, such as MariaDB's ed25519.
+    AuthPlugin,
     /// A whole database written as one SQL file.
     SqlDump,
 }
@@ -90,10 +94,12 @@ impl fmt::Display for UnsupportedFeature {
             Self::Keys => f.write_str("keys"),
             Self::CharacterSets => f.write_str("character sets"),
             Self::DatabaseSwitching => f.write_str("database switching"),
+            Self::DatabaseOptions => f.write_str("options for a new database"),
             Self::ObjectDefinitions => f.write_str("object definitions"),
             Self::ClrRoutine => f.write_str("the SQL of a CLR routine"),
             Self::EncryptedDefinition => f.write_str("the SQL of an encrypted module"),
             Self::EditorCommand { command } => write!(f, "{command} in the editor"),
+            Self::AuthPlugin => f.write_str("this account's authentication plugin"),
             Self::SqlDump => f.write_str("a SQL dump"),
         }
     }

@@ -1,11 +1,12 @@
 use std::path::{Path, PathBuf};
 
 use secrecy::{ExposeSecret, SecretString};
+use tablepro_core::connection_url::ConnectionUrl;
 use tablepro_core::credentials::{SecretKind, SecretSave};
 use tablepro_core::{
     AiPolicy, AuthMode, ClientIdentity, ConfigError, Credentials, DriverCapabilities, ExternalAccess, FileEndpoint,
     NetworkEndpoint, NetworkOption, NetworkOptions, SafeModeLevel, ServerNameOverride, TlsCapabilities, TlsConfig,
-    TlsMode, TransportClass,
+    TlsMode, TransportClass, is_local_socket_host,
 };
 use tablepro_session::RequestTarget;
 use tablepro_storage::{ConnectionIcon, SavedConnection, SavedSshAuth, SavedSshConfig};
@@ -91,7 +92,7 @@ impl TlsFormState {
 pub fn shows_server_name(caps: &TlsCapabilities, route: TransportClass) -> bool {
     match caps.server_name_override {
         ServerNameOverride::AnyRoute => true,
-        ServerNameOverride::SshForwardOnly => route == TransportClass::SshForward,
+        ServerNameOverride::SshForwardOnly => matches!(route, TransportClass::SshForward | TransportClass::LocalSocket),
         ServerNameOverride::Unsupported => false,
     }
 }
@@ -254,18 +255,7 @@ impl ConnectForm {
             };
         }
 
-        let endpoint = match NetworkEndpoint::new(&self.host, self.port) {
-            Ok(endpoint) => Some(endpoint),
-            Err(error) => {
-                let (field, missing) = match error {
-                    ConfigError::InvalidPort => (FormField::Port, false),
-                    ConfigError::EmptyHost => (FormField::Host, true),
-                    _ => (FormField::Host, false),
-                };
-                errors.push(field, config_message(&error), missing);
-                None
-            }
-        };
+        let endpoint = self.checked_endpoint(&mut errors);
 
         if !caps.supports(self.auth) {
             errors.push(
@@ -302,26 +292,23 @@ impl ConnectForm {
                 None
             }
         };
-        let route = if self.ssh.is_some() {
-            TransportClass::SshForward
-        } else {
-            TransportClass::DirectTcp
+        let route = match (self.ssh.is_some(), is_local_socket_host(self.host.trim())) {
+            (true, _) => TransportClass::SshForward,
+            (false, true) => TransportClass::LocalSocket,
+            (false, false) => TransportClass::DirectTcp,
         };
-
-        let tls = match caps.tls.as_ref() {
-            Some(tls_caps) => {
-                let config = self.tls.config(tls_caps, route);
-                if let Err(error) = config.validate(tls_caps, route) {
-                    errors.push(tls_field(&error, &config), config_message(&error), false);
-                }
-                config
-            }
-            None => TlsConfig::disabled(),
-        };
+        let tls = self.checked_tls(caps, route, &mut errors);
+        if let Err(error) = caps.check_socket_host(&self.host, self.ssh.is_some(), tls.mode) {
+            errors.push(FormField::Host, config_message(&error), false);
+        }
 
         let options = self.offered_options(caps);
         if let Err(error) = options.validate(caps, route) {
-            errors.push(FormField::DnsSeedList, config_message(&error), false);
+            let field = match error {
+                ConfigError::SeedListOverSsh | ConfigError::NetworkOptionUnsupported => FormField::DnsSeedList,
+                _ => FormField::MoreHosts,
+            };
+            errors.push(field, config_message(&error), false);
         }
 
         let Some(endpoint) = endpoint.filter(|_| errors.is_empty()) else {
@@ -344,16 +331,136 @@ impl ConnectForm {
         })
     }
 
+    fn checked_endpoint(&self, errors: &mut FormErrors) -> Option<NetworkEndpoint> {
+        match NetworkEndpoint::new(&self.host, self.port) {
+            Ok(endpoint) => Some(endpoint),
+            Err(error) => {
+                let (field, missing) = match error {
+                    ConfigError::InvalidPort => (FormField::Port, false),
+                    ConfigError::EmptyHost => (FormField::Host, true),
+                    _ => (FormField::Host, false),
+                };
+                errors.push(field, config_message(&error), missing);
+                None
+            }
+        }
+    }
+
+    fn checked_tls(&self, caps: &DriverCapabilities, route: TransportClass, errors: &mut FormErrors) -> TlsConfig {
+        match caps.tls.as_ref() {
+            // The Security rows are hidden for a socket that takes no TLS.
+            Some(_)
+                if route == TransportClass::LocalSocket
+                    && !caps.local_socket().is_some_and(|socket| socket.takes_tls()) =>
+            {
+                TlsConfig::disabled()
+            }
+            Some(tls_caps) => {
+                let config = self.tls.config(tls_caps, route);
+                if let Err(error) = config.validate(tls_caps, route) {
+                    errors.push(tls_field(&error, &config), config_message(&error), false);
+                }
+                config
+            }
+            None => TlsConfig::disabled(),
+        }
+    }
+
     /// The options this driver reads, with the rest left at their
     /// defaults so a look at another engine sends nothing it would refuse.
     pub fn offered_options(&self, caps: &DriverCapabilities) -> NetworkOptions {
+        let dns_seed_list = self.options.dns_seed_list && caps.offers(NetworkOption::DnsSeedList);
+        let host_list = caps.offers(NetworkOption::HostList);
         NetworkOptions {
-            dns_seed_list: self.options.dns_seed_list && caps.offers(NetworkOption::DnsSeedList),
+            dns_seed_list,
             auth_database: caps
                 .offers(NetworkOption::AuthDatabase)
                 .then(|| self.options.auth_database().map(str::to_owned))
                 .flatten(),
+            replica_set: host_list
+                .then(|| self.options.replica_set().map(str::to_owned))
+                .flatten(),
+            // A seed list names the servers itself, and its row hides this one.
+            more_hosts: match host_list && !dns_seed_list {
+                true => self.options.more_hosts.clone(),
+                false => Vec::new(),
+            },
+            channel_binding: self.options.channel_binding
+                && self.auth == AuthMode::Password
+                && caps.offers(NetworkOption::ChannelBinding),
         }
+    }
+
+    /// The form a pasted URL fills. What a URL does not say, such as the
+    /// name, Safe Mode, the tags and the tunnel, stays as `current` has it.
+    pub fn from_url(url: ConnectionUrl, caps: &DriverCapabilities, current: &Self) -> Result<Self, ConfigError> {
+        let mut form = Self::new(url.driver_id, caps);
+        form.name.clone_from(&current.name);
+        form.safe_mode = current.safe_mode;
+        form.external_access = current.external_access;
+        form.ai_policy = current.ai_policy;
+        form.query_timeout_secs = current.query_timeout_secs;
+        form.tags.clone_from(&current.tags);
+        form.icon = current.icon;
+        form.remember_password = current.remember_password;
+        // A file the URL opens read-only is held to it by Safe Mode, which the engine enforces for a file.
+        if url.read_only {
+            form.safe_mode = SafeModeLevel::ReadOnly;
+        }
+        if caps.is_file_based() {
+            form.file = Some(FileEndpoint::open_existing(PathBuf::from(&url.database))?);
+            return Ok(form);
+        }
+        // No host is the client's default socket, as libpq and the mysql client read one.
+        form.host = match url.host.as_str() {
+            "" => caps
+                .local_socket()
+                .and_then(|socket| socket.defaults().first())
+                .map(|path| (*path).to_owned())
+                .unwrap_or_default(),
+            host => host.to_owned(),
+        };
+        if !is_local_socket_host(&form.host) {
+            form.ssh.clone_from(&current.ssh);
+        }
+        if let Some(port) = url.port {
+            form.port = port;
+            form.port_edited = caps.default_port() != Some(port);
+        }
+        form.database = url.database;
+        form.username = url.username;
+        form.password = url.password.unwrap_or_else(|| SecretString::from(String::new()));
+        if let Some(tls_caps) = caps.tls.as_ref() {
+            // A socket starts with TLS off, as a network connection starts on the default, unless the
+            // URL gives a client certificate, which only TLS carries.
+            if is_local_socket_host(&form.host) {
+                form.tls.mode = match url.tls.client_certificate.is_some() || url.tls.client_key.is_some() {
+                    true => TlsMode::Require,
+                    false => TlsMode::Disable,
+                };
+            }
+            if let Some(mode) = url.tls.mode.filter(|mode| tls_caps.modes.contains(mode)) {
+                form.tls.mode = mode;
+                form.tls.mode_chosen = true;
+            }
+            form.tls.ca_file = url.tls.ca_file;
+            form.tls.client_certificate = url.tls.client_certificate;
+            form.tls.client_key = url.tls.client_key;
+            // A name the engine cannot check on this route would be dropped, and the host checked instead.
+            if url.tls.server_name.is_some() {
+                let route = match (form.ssh.is_some(), is_local_socket_host(&form.host)) {
+                    (true, _) => TransportClass::SshForward,
+                    (false, true) => TransportClass::LocalSocket,
+                    (false, false) => TransportClass::DirectTcp,
+                };
+                if !shows_server_name(tls_caps, route) {
+                    return Err(ConfigError::ServerNameOverrideUnsupported { route });
+                }
+            }
+            form.tls.server_name = url.tls.server_name.unwrap_or_default();
+        }
+        form.options = url.options;
+        Ok(form)
     }
 
     /// How the entry is named in the connection list: the name typed,
@@ -862,6 +969,7 @@ mod tests {
             options: NetworkOptions {
                 dns_seed_list: true,
                 auth_database: Some(" admin ".to_owned()),
+                ..NetworkOptions::default()
             },
             ..filled("mongodb", mongodb())
         };
@@ -1065,6 +1173,7 @@ mod tests {
     fn the_server_name_row_shows_where_the_driver_can_check_another_name() {
         assert!(!driver_shows_server_name(Some(mysql()), TransportClass::DirectTcp));
         assert!(driver_shows_server_name(Some(mysql()), TransportClass::SshForward));
+        assert!(driver_shows_server_name(Some(mysql()), TransportClass::LocalSocket));
         assert!(driver_shows_server_name(Some(postgres()), TransportClass::DirectTcp));
         assert!(!driver_shows_server_name(Some(sqlite()), TransportClass::DirectTcp));
         assert!(!driver_shows_server_name(None, TransportClass::SshForward));
@@ -1396,5 +1505,216 @@ mod tests {
         );
         let untunnelled = filled("postgres", postgres());
         assert!(is_remove(&changes(&untunnelled, &original, postgres()).ssh_passphrase));
+    }
+
+    fn from_url(url: &str, caps: &DriverCapabilities, current: &ConnectForm) -> Result<ConnectForm, ConfigError> {
+        let parsed = tablepro_core::connection_url::parse(url).expect("a URL");
+        ConnectForm::from_url(parsed, caps, current)
+    }
+
+    #[test]
+    fn a_url_fills_where_and_how_to_log_in_and_keeps_the_rest() {
+        let current = ConnectForm {
+            name: "Billing".to_owned(),
+            safe_mode: SafeModeLevel::ReadOnly,
+            tags: vec![Uuid::new_v4()],
+            ..filled("mysql", mysql())
+        };
+
+        let form = from_url(
+            "postgresql://ada:p%40ss@db.neon.tech:6543/shop?sslmode=require",
+            postgres(),
+            &current,
+        )
+        .expect("a form");
+
+        assert_eq!(form.driver_id, "postgres");
+        assert_eq!(
+            (form.host.as_str(), form.port, form.port_edited),
+            ("db.neon.tech", 6543, true)
+        );
+        assert_eq!((form.database.as_str(), form.username.as_str()), ("shop", "ada"));
+        assert_eq!(form.password.expose_secret(), "p@ss");
+        assert_eq!(form.tls.mode, TlsMode::Require);
+        assert_eq!(form.name, "Billing");
+        assert_eq!(form.safe_mode, SafeModeLevel::ReadOnly);
+        assert_eq!(form.tags, current.tags);
+
+        let defaulted = from_url(
+            "postgres://ada@db.example.com/shop?sslmode=prefer",
+            postgres(),
+            &current,
+        )
+        .expect("a form");
+        assert_eq!((defaulted.port, defaulted.port_edited), (5432, false));
+        assert_eq!(defaulted.tls.mode, ConnectForm::new("postgres", postgres()).tls.mode);
+        assert!(defaulted.password.expose_secret().is_empty());
+    }
+
+    #[test]
+    fn a_mysql_socket_url_with_a_ca_file_keeps_the_certificate_check() {
+        let form = from_url(
+            "mysql://app:secret@localhost/db?socket=%2Ftmp%2Fmysql.sock&ssl-ca=%2Fetc%2Fdb-ca.pem",
+            mysql(),
+            &ConnectForm::new("mysql", mysql()),
+        )
+        .expect("a form");
+
+        let valid = form
+            .validate(mysql())
+            .expect("a socket connection that checks its certificate");
+        let (endpoint, _, _, tls) = network(&valid.target);
+        assert_eq!(endpoint.host(), "/tmp/mysql.sock");
+        assert_eq!(tls.mode, TlsMode::VerifyFull);
+        assert_eq!(tls.ca_file.as_deref(), Some(Path::new("/etc/db-ca.pem")));
+    }
+
+    #[test]
+    fn a_url_that_requires_channel_binding_keeps_it_for_postgresql_only() {
+        let form = from_url(
+            "postgresql://alex:pw@ep-cool.neon.tech/db?sslmode=require&channel_binding=require",
+            postgres(),
+            &ConnectForm::new("postgres", postgres()),
+        )
+        .expect("a form");
+
+        let valid = form.validate(postgres()).expect("a valid form");
+        assert!(options_of(&valid.target).channel_binding);
+        let saved = form.saved_connection(postgres(), &valid, Uuid::new_v4(), None);
+        assert!(ConnectForm::from_saved(&saved, postgres()).options.channel_binding);
+        let elsewhere = form.validate(mysql()).expect("MySQL has no channel binding");
+        assert!(!options_of(&elsewhere.target).channel_binding);
+    }
+
+    #[test]
+    fn a_url_password_goes_to_the_keyring_and_never_into_the_saved_entry() {
+        let form = from_url(
+            "postgresql://ada:Url-Secret-42@db.example.com/shop",
+            postgres(),
+            &ConnectForm::new("postgres", postgres()),
+        )
+        .expect("a form");
+
+        let valid = form.validate(postgres()).expect("a valid form");
+        let saved = form.saved_connection(postgres(), &valid, Uuid::new_v4(), None);
+        let secrets = form.secrets_to_store(&valid, &saved);
+
+        let written = serde_json::to_string(&saved).expect("the entry");
+        assert!(!written.contains("Url-Secret-42"), "{written}");
+        assert_eq!(secrets.len(), 1);
+        assert_eq!(secrets[0].kind, SecretKind::DatabasePassword);
+        assert_eq!(secrets[0].secret.expose_secret(), "Url-Secret-42");
+    }
+
+    #[test]
+    fn a_read_only_file_url_opens_read_only_and_a_name_mysql_cannot_check_is_refused() {
+        let blank = ConnectForm::new("sqlite", sqlite());
+        let form = from_url("sqlite:///home/ada/app.db?mode=ro", sqlite(), &blank).expect("a form");
+        assert_eq!(form.safe_mode, SafeModeLevel::ReadOnly);
+
+        let refused = from_url(
+            "mysql://u:p@db.example.com/app?ssl-mode=VERIFY_IDENTITY&hostNameInCertificate=db.internal",
+            mysql(),
+            &ConnectForm::new("mysql", mysql()),
+        );
+        assert_eq!(
+            refused.err(),
+            Some(ConfigError::ServerNameOverrideUnsupported {
+                route: TransportClass::DirectTcp
+            })
+        );
+        let named = from_url(
+            "postgresql://u:p@db.example.com/app?sslmode=verify-full&hostNameInCertificate=db.internal",
+            postgres(),
+            &ConnectForm::new("postgres", postgres()),
+        )
+        .expect("PostgreSQL checks any name");
+        assert_eq!(named.tls.server_name, "db.internal");
+    }
+
+    #[test]
+    fn a_file_url_opens_the_file_and_a_relative_one_is_refused() {
+        let blank = ConnectForm::new("sqlite", sqlite());
+        let form = from_url("sqlite:///home/ada/app.db", sqlite(), &blank).expect("a form");
+        assert_eq!(
+            form.file.as_ref().map(FileEndpoint::path),
+            Some(Path::new("/home/ada/app.db"))
+        );
+        assert_eq!(
+            from_url("sqlite://app.db", sqlite(), &blank).err(),
+            Some(ConfigError::RelativePath)
+        );
+    }
+
+    #[test]
+    fn a_url_with_no_host_is_the_default_socket() {
+        let blank = ConnectForm::new("postgres", postgres());
+        let form = from_url("postgresql:///shop", postgres(), &blank).expect("a form");
+
+        assert_eq!(form.host, "/run/postgresql");
+        let mysql_form = from_url("mysql://root@/shop", mysql(), &blank).expect("a form");
+        assert_eq!(mysql_form.host, "/run/mysqld/mysqld.sock");
+    }
+
+    #[test]
+    fn a_socket_host_connects_without_tls_or_a_tunnel() {
+        let form = ConnectForm {
+            host: "/run/postgresql".to_owned(),
+            ..filled("postgres", postgres())
+        };
+
+        let valid = form.validate(postgres()).expect("a socket connection");
+        let (endpoint, _, _, tls) = network(&valid.target);
+        assert_eq!(endpoint.host(), "/run/postgresql");
+        assert_eq!(tls, &TlsConfig::disabled());
+        assert_eq!(valid.target.transport_class(), Some(TransportClass::LocalSocket));
+
+        let tunnelled_socket = ConnectForm {
+            host: "/run/postgresql".to_owned(),
+            ..tunnelled(SshAuthChoice::Agent, "", "")
+        };
+        let errors = tunnelled_socket
+            .validate(postgres())
+            .err()
+            .expect("no tunnel to a socket");
+        assert_eq!(
+            errors.shown_on(FormField::Host).map(|problem| problem.message.clone()),
+            Some(config_message(&ConfigError::LocalSocketOverSsh))
+        );
+        let mongo_socket = ConnectForm {
+            host: "/run/mongodb".to_owned(),
+            ..filled("mongodb", mongodb())
+        };
+        let errors = mongo_socket.validate(mongodb()).err().expect("no socket for MongoDB");
+        assert!(errors.has(FormField::Host), "{errors:?}");
+    }
+
+    #[test]
+    fn a_replica_set_is_sent_saved_and_refused_through_a_tunnel() {
+        let form = from_url(
+            "mongodb://ada:pw@mongo1.example.com,mongo2.example.com:27018/shop?replicaSet=rs0",
+            mongodb(),
+            &ConnectForm::new("mongodb", mongodb()),
+        )
+        .expect("a form");
+
+        let valid = form.validate(mongodb()).expect("a replica set");
+        let saved = form.saved_connection(mongodb(), &valid, Uuid::new_v4(), None);
+        let restored = ConnectForm::from_saved(&saved, mongodb());
+        let sent = options_of(&valid.target);
+        assert_eq!(sent.replica_set.as_deref(), Some("rs0"));
+        assert_eq!(sent.more_hosts, ["mongo2.example.com:27018"]);
+        assert_eq!(&restored.options, sent);
+        assert!(options_of(&form.validate(postgres()).expect("PostgreSQL ignores it").target).is_default());
+
+        let through_ssh = ConnectForm {
+            ssh: tunnelled(SshAuthChoice::Agent, "", "").ssh,
+            ..form
+        };
+        let errors = through_ssh
+            .validate(mongodb())
+            .err()
+            .expect("no host list through a tunnel");
+        assert!(errors.has(FormField::MoreHosts), "{errors:?}");
     }
 }

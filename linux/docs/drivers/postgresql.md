@@ -11,7 +11,11 @@ Driver id `postgres`, crate `core/crates/drivers/postgres`. It runs on tokio-pos
 | One connection per editor tab | `EditorSession` | When the tab first runs SQL |
 | One stream per stop | The cancel request | For that request |
 
-Every connection logs in with `Config::connect_raw` over a stream from the transport, so a direct route and an SSH forward behave the same. The startup message carries the user, the database and `application_name = TablePro`, plus the `client_encoding = UTF8` that tokio-postgres always adds. The password goes in the authentication exchange, with channel binding set to prefer. The login runs under the 15 s login timeout. Startup options are never used: a transaction pooler refuses parameters it does not track.
+Every connection logs in with `Config::connect_raw` over a stream from the transport, so a direct route, an SSH forward and a local socket behave the same. The startup message carries the user, the database and `application_name = TablePro`, plus the `client_encoding = UTF8` that tokio-postgres always adds. The password goes in the authentication exchange, with channel binding set to prefer. The login runs under the 15 s login timeout. Startup options are never used: a transaction pooler refuses parameters it does not track.
+
+## Local socket
+
+A host that is an absolute path is the folder of a server on this computer, as libpq reads one: the transport opens `<folder>/.s.PGSQL.<port>` (`NetworkOption::LocalSocket`, Unix only). Peer and trust logins work there, since the server then asks for no password. The server answers an SSLRequest on a socket with `N`, so a socket takes no TLS (`ConfigError::TlsOverLocalSocket`) and no SSH tunnel (`ConfigError::LocalSocketOverSsh`). The connect dialog starts on the first of `/run/postgresql`, `/var/run/postgresql` and `/tmp` that holds the port's socket.
 
 ## TLS
 
@@ -82,6 +86,8 @@ A call that timed out or lost its connection is checked before the link is decla
 2. Each step: its probe, if any; then the statement with `execute_typed`; then the affected-row check.
 3. The transaction id, `pg_current_xact_id()` (or `txid_current()` before PostgreSQL 13), read before COMMIT.
 4. `COMMIT`.
+
+A database change (`WriteKind::DatabaseChanges`) runs outside any transaction, because CREATE and DROP DATABASE refuse one. It is `StatementByStatement`: each statement goes out alone as a simple query, with no parameters, row guards or `SET LOCAL` bounds, and the call's deadline and cancel still stop it.
 
 A COMMIT the server answers with an error (a deferred constraint, a serialization failure) rolled back. A COMMIT that gets no answer is `CommitOutcomeUnknown` with `CommitToken::PostgresXid`, and `resolve_commit` asks `pg_xact_status` (or `txid_status`):
 

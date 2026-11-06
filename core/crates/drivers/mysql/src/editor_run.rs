@@ -12,10 +12,12 @@ use futures_util::TryStreamExt;
 use sqlx::mysql::{MySqlConnection, MySqlRow};
 use sqlx::{AssertSqlSafe, Either, Executor as _, Row as _};
 use tablepro_core::column::ResultColumn;
+use tablepro_core::sql_syntax::{SourceTable, SqlGrammar, source_table};
 use tablepro_core::{DriverError, ResultEvent, ResultSink, RowLimit, SinkFlow, Truncation, Value};
 use tokio_util::sync::CancellationToken;
 
 use crate::catalog::result_column;
+use crate::column_origins::TracedSet;
 use crate::decode::decode_row;
 use crate::errors::map_error;
 use crate::flavour::MySqlFlavour;
@@ -26,19 +28,15 @@ use crate::script_split;
 /// How many rows travel in one `Rows` event.
 const ROWS_PER_EVENT: usize = 256;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct RunOutcome {
-    /// The sink stopped reading, so the run was cut short.
     pub consumer_gone: bool,
-    /// A stop came between two statements, so the rest was not sent.
+    // A stop came between two statements, so the rest was not sent.
     pub halted: bool,
+    pub traced: Option<TracedSet>,
 }
 
-/// Run the script one text per round trip (`script_split`), sending the
-/// next only while `halt` says no stop has come. When the sink stops
-/// reading, `stopped` is cancelled so the caller can stop the server.
-/// The text already sent is still read to its end, unshown, since only
-/// that frees the connection.
+// A sink that stops reading cancels `stopped`; the text already sent is still read to its end, unshown, since only that frees the connection.
 pub(crate) async fn run_script(
     connection: &mut MySqlConnection,
     flavour: MySqlFlavour,
@@ -48,15 +46,23 @@ pub(crate) async fn run_script(
     stopped: &CancellationToken,
     halt: impl Fn() -> bool,
 ) -> Result<RunOutcome, DriverError> {
+    let texts = script_split::texts(sql);
+    // The table is looked up once the run is over, when only a run of one statement still has what that statement read.
+    let trace = match texts.as_slice() {
+        [text] => source_table(text, SqlGrammar::MySql).ok(),
+        _ => None,
+    };
     let mut emitter = Emitter {
         sink,
         limit: limit.get(),
         open: None,
         sets: 0,
         gone: false,
+        trace,
+        traced: None,
     };
     let mut halted = false;
-    for text in script_split::texts(sql) {
+    for text in texts {
         if emitter.gone {
             break;
         }
@@ -79,6 +85,7 @@ pub(crate) async fn run_script(
     Ok(RunOutcome {
         consumer_gone: emitter.gone,
         halted,
+        traced: emitter.traced,
     })
 }
 
@@ -94,6 +101,8 @@ struct Emitter<'a> {
     open: Option<OpenSet>,
     sets: usize,
     gone: bool,
+    trace: Option<SourceTable>,
+    traced: Option<TracedSet>,
 }
 
 impl Emitter<'_> {
@@ -107,6 +116,12 @@ impl Emitter<'_> {
                 .iter()
                 .map(|column| result_column(column, MySqlTimestampMode::SessionLocal))
                 .collect();
+            // Taken at the first set, so a second one leaves none.
+            let set_index = self.sets;
+            self.traced = self
+                .trace
+                .take()
+                .map(|statement| TracedSet::new(set_index, columns.clone(), row, statement));
             self.sets += 1;
             self.open = Some(OpenSet {
                 batch: Vec::new(),

@@ -15,6 +15,7 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::cancel::ControlLink;
+use crate::column_origins::{TracedSet, resolved_columns};
 use crate::decode::decode_row;
 use crate::dialect::quote;
 use crate::editor_run::{RunOutcome, run_script};
@@ -113,8 +114,7 @@ impl Shared {
         }
     }
 
-    /// One run on the connection `guard` holds, which it gives up when
-    /// the connection cannot take another.
+    // The connection `guard` holds is given up when it cannot take another run.
     async fn run_held(
         &self,
         mut guard: OwnedMutexGuard<Option<Held>>,
@@ -131,7 +131,8 @@ impl Shared {
         };
         let started = Instant::now();
         self.running.store(true, Ordering::SeqCst);
-        let supervised = self.supervise(held, &sql, &options, sink.as_mut()).await;
+        let mut traced = None;
+        let supervised = self.supervise(held, &sql, &options, sink.as_mut(), &mut traced).await;
         // A session in a database nothing knows would run the next script
         // in the wrong one, so it ends instead.
         let placed = match &supervised {
@@ -149,9 +150,16 @@ impl Shared {
             }
             _ => TransactionState::Unknown,
         };
+        let settled = match (&supervised, placed, traced) {
+            (Ok((RunEnd::Completed, true)), true, Some(set)) => {
+                self.trace(&mut held.connection, set, transaction_state, sink.as_mut())
+                    .await
+            }
+            _ => true,
+        };
         self.running.store(false, Ordering::SeqCst);
         let end = match supervised {
-            Ok((end, true)) if placed => end,
+            Ok((end, true)) if placed && settled => end,
             Ok((end, _)) => {
                 self.lost.store(true, Ordering::SeqCst);
                 *guard = None;
@@ -185,16 +193,14 @@ impl Shared {
         true
     }
 
-    /// Run the script, stopping it on a cancel, at the deadline, when
-    /// the session closes or when the sink stops reading. A stop is KILL
-    /// QUERY on a connection of the session's own; the statement then
-    /// has the cancel grace to end, and nothing after it is sent.
+    // A stop is KILL QUERY on a connection of the session's own; the statement then has the cancel grace to end, and nothing after it is sent.
     async fn supervise(
         &self,
         held: &mut Held,
         sql: &UserSql,
         options: &RunOptions,
         sink: &mut dyn ResultSink,
+        traced: &mut Option<TracedSet>,
     ) -> Result<(RunEnd, bool), DriverError> {
         let limit = options.row_limit;
         let deadline = options.deadline.map(|limit| Instant::now() + limit);
@@ -216,7 +222,10 @@ impl Shared {
                         let stop = self.stop_due(options, deadline).unwrap_or(Stop::Cancelled);
                         Ok((stopped_end(stop, false), true))
                     }
-                    outcome => finished(outcome).map(|end| (end, true)),
+                    mut outcome => {
+                        *traced = outcome.as_mut().ok().and_then(|outcome| outcome.traced.take());
+                        finished(outcome).map(|end| (end, true))
+                    }
                 };
             }
             () = options.cancel.cancelled() => Stop::Cancelled,
@@ -243,6 +252,33 @@ impl Shared {
             // its answer coming and cannot take another run.
             None => Ok((end, false)),
         }
+    }
+
+    // Only a session known to be outside a transaction is traced, since the host edits no other. False when the lookup
+    // did not finish: its answer may still be due on the connection, which then takes no other statement.
+    async fn trace(
+        &self,
+        connection: &mut MySqlConnection,
+        set: TracedSet,
+        state: TransactionState,
+        sink: &mut dyn ResultSink,
+    ) -> bool {
+        if state != TransactionState::Idle {
+            return true;
+        }
+        let resolving = tokio::time::timeout(self.liveness.cancel_grace, resolved_columns(connection, set));
+        let resolved = tokio::select! {
+            biased;
+            () = self.closing.cancelled() => return false,
+            resolved = resolving => match resolved {
+                Ok(resolved) => resolved,
+                Err(_) => return false,
+            },
+        };
+        if let Some(event) = resolved {
+            sink.accept(event).await;
+        }
+        true
     }
 
     fn stop_due(&self, options: &RunOptions, deadline: Option<Instant>) -> Option<Stop> {

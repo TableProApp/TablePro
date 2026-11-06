@@ -18,6 +18,7 @@ mod find_matches;
 mod grid_column;
 mod grid_row_id;
 mod hex_dump;
+mod result_refusal;
 mod row_key_builder;
 mod row_snapshot;
 mod selection_summary;
@@ -40,11 +41,12 @@ pub use self::edit_navigation::{EditDirection, next_edit_target};
 pub use self::edit_parse::{
     CommitResult, EditStart, commit_edit, commit_input, edit_context, empty_placeholder, opening_text, parse_cell_text,
 };
-pub use self::edit_policy::{EditPolicy, EditRefusal, edit_policy, selection_hint};
+pub use self::edit_policy::{EditPolicy, EditRefusal, edit_policy, saving_policy, selection_hint};
 pub use self::find_matches::{FindMatch, find_matches};
 pub use self::grid_column::{CellDisplay, GridColumn, grid_columns};
 pub use self::grid_row_id::GridRowId;
 pub use self::hex_dump::hex_dump;
+pub use self::result_refusal::ResultRefusal;
 pub use self::row_key_builder::RowKeyBuilder;
 pub use self::row_snapshot::RowSnapshot;
 pub use self::selection_summary::{SelectionSummary, SummaryRule, summarize};

@@ -44,7 +44,7 @@ mod imp {
             self.confirm_row.set_subtitle(&crate::i18n::ngettext_f(
                 "Ask before deleting {n} or more rows at once",
                 "Ask before deleting {n} or more rows at once",
-                u32::try_from(threshold).unwrap_or(u32::MAX),
+                threshold,
                 &[("n", &threshold.to_string())],
             ));
         }

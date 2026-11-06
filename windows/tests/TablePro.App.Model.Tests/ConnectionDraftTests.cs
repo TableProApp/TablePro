@@ -321,4 +321,19 @@ public sealed class ConnectionDraftTests
         Assert.Equal("shop", draft.Database);
         Assert.Equal(TlsMode.Require, draft.TlsMode);
     }
+
+    [Fact]
+    public void AUrlCarriesItsCertificateSettings()
+    {
+        var draft = ConnectionDraft.New(Postgres);
+
+        draft.Apply(
+            new ParsedConnectionUrl("postgres", "db.example.com", null, "app", null, "shop", TlsMode.VerifyFull, CaFile: @"C:\certs\rds.pem", ServerName: "db.internal"),
+            Postgres);
+
+        Assert.Equal(TlsMode.VerifyFull, draft.TlsMode);
+        Assert.Equal(@"C:\certs\rds.pem", draft.CaFile);
+        Assert.Equal("db.internal", draft.ServerName);
+        Assert.Equal(string.Empty, draft.ClientCertificate);
+    }
 }

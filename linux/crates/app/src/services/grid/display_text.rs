@@ -63,7 +63,7 @@ pub fn display_text<'a>(value: &'a Value, column: &ColumnType, scratch: &'a mut 
             *scratch = crate::i18n::ngettext_f(
                 "<{count} byte>",
                 "<{count} bytes>",
-                plural_count(count),
+                count,
                 &[("count", &count.to_string())],
             );
             DisplayText::placeholder(scratch)
@@ -173,7 +173,7 @@ pub fn more_bytes(count: usize) -> String {
     crate::i18n::ngettext_f(
         "… ({count} more byte)",
         "… ({count} more bytes)",
-        plural_count(count),
+        count,
         &[("count", &count.to_string())],
     )
 }
@@ -198,10 +198,6 @@ fn push_without_nul(scratch: &mut String, text: &str) {
         scratch.push('\u{2400}');
         scratch.push_str(part);
     }
-}
-
-fn plural_count(count: usize) -> u32 {
-    u32::try_from(count).unwrap_or(u32::MAX)
 }
 
 #[cfg(test)]

@@ -6,12 +6,14 @@ mod accelerator;
 mod accelerator_scope;
 mod accelerators;
 mod app_actions;
+mod app_activity;
 mod app_services;
 mod app_window_host;
 mod debug_info;
 mod imp;
 mod launch_notice;
 mod legal_section;
+mod license_ask_prompt;
 mod mcp_bridge;
 #[cfg(test)]
 mod metainfo_release;

@@ -18,9 +18,9 @@ use tablepro_session::runtime::{TaskFailure, Tasks};
 use tablepro_session::{OperationError, Session};
 
 use super::foreign_key_draft::{ForeignKeyDraft, ForeignKeyDraftError};
-use super::form_dialog::{FormDialog, give_state, mark_invalid};
 use super::referential_action_label::{action_at, action_labels};
 use super::table_choice_object::{TableChoiceObject, table_choices};
+use crate::ui::form_dialog::{FormDialog, give_state, mark_invalid};
 
 pub(super) struct ForeignKeyDialogInit {
     /// The draft's columns, in table order.
@@ -512,9 +512,9 @@ mod tests {
     use tablepro_core::{ColumnInfo, DriverError};
     use tablepro_test_support::{ConnectionScript, FakeReply};
 
-    use super::super::form_dialog::tests::{WAIT, window};
     use super::*;
     use crate::test_support::{FakeSession, OwnedWindow, drain_main_context, wait_until};
+    use crate::ui::form_dialog::tests::{WAIT, window};
 
     struct Harness {
         dialog: Option<ForeignKeyDialog>,

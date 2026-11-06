@@ -1,5 +1,7 @@
 mod dial;
 mod direct_tcp;
+#[cfg(unix)]
+mod local_socket;
 mod loopback_listener;
 mod loopback_owner;
 mod private_dir;
@@ -8,6 +10,8 @@ mod socket_options;
 pub mod tls;
 
 pub use direct_tcp::DirectTcpTransport;
+#[cfg(unix)]
+pub use local_socket::LocalSocketTransport;
 pub use loopback_listener::LoopbackListener;
 pub use loopback_owner::loopback_peer_is_ours;
 pub use private_dir::private_dir;

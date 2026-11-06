@@ -383,6 +383,27 @@ impl RunLog {
         &self.entries
     }
 
+    pub fn result(&self, index: usize) -> Option<&ResultSetView> {
+        match &self.entries.get(index)?.kind {
+            EntryKind::ResultSet(result) => Some(result),
+            _ => None,
+        }
+    }
+
+    pub fn result_mut(&mut self, index: usize) -> Option<&mut ResultSetView> {
+        match &mut self.entries.get_mut(index)?.kind {
+            EntryKind::ResultSet(result) => Some(result),
+            _ => None,
+        }
+    }
+
+    pub fn first_result(self) -> Option<ResultSetView> {
+        self.entries.into_iter().find_map(|entry| match entry.kind {
+            EntryKind::ResultSet(result) => Some(result),
+            _ => None,
+        })
+    }
+
     pub fn transaction(&self) -> Option<TransactionState> {
         self.transaction
     }
@@ -481,18 +502,13 @@ impl RunLog {
         let results = crate::i18n::ngettext_f(
             "{n} result in {ms} ms",
             "{n} results in {ms} ms",
-            u32::try_from(shown).unwrap_or(u32::MAX),
+            shown,
             &[("n", &shown.to_string()), ("ms", &ms)],
         );
         if failures == 0 {
             return results;
         }
-        let failed = crate::i18n::ngettext_f(
-            "{n} failed",
-            "{n} failed",
-            u32::try_from(failures).unwrap_or(u32::MAX),
-            &[("n", &failures.to_string())],
-        );
+        let failed = crate::i18n::ngettext_f("{n} failed", "{n} failed", failures, &[("n", &failures.to_string())]);
         format!("{results} · {failed}")
     }
 }

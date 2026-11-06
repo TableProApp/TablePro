@@ -6634,7 +6634,11 @@ internal record ParsedConnectionUrl (
     string Username, 
     string? Password, 
     string Database, 
-    TlsModeTag? TlsMode
+    TlsModeTag? TlsMode, 
+    string? CaFile, 
+    string? ClientCertificate, 
+    string? ClientKey, 
+    string? ServerName
 ) {
 }
 
@@ -6649,7 +6653,11 @@ class FfiConverterTypeParsedConnectionUrl: FfiConverterRustBuffer<ParsedConnecti
             Username: FfiConverterString.INSTANCE.Read(stream),
             Password: FfiConverterOptionalString.INSTANCE.Read(stream),
             Database: FfiConverterString.INSTANCE.Read(stream),
-            TlsMode: FfiConverterOptionalTypeTlsModeTag.INSTANCE.Read(stream)
+            TlsMode: FfiConverterOptionalTypeTlsModeTag.INSTANCE.Read(stream),
+            CaFile: FfiConverterOptionalString.INSTANCE.Read(stream),
+            ClientCertificate: FfiConverterOptionalString.INSTANCE.Read(stream),
+            ClientKey: FfiConverterOptionalString.INSTANCE.Read(stream),
+            ServerName: FfiConverterOptionalString.INSTANCE.Read(stream)
         );
     }
 
@@ -6661,7 +6669,11 @@ class FfiConverterTypeParsedConnectionUrl: FfiConverterRustBuffer<ParsedConnecti
             + FfiConverterString.INSTANCE.AllocationSize(value.Username)
             + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Password)
             + FfiConverterString.INSTANCE.AllocationSize(value.Database)
-            + FfiConverterOptionalTypeTlsModeTag.INSTANCE.AllocationSize(value.TlsMode);
+            + FfiConverterOptionalTypeTlsModeTag.INSTANCE.AllocationSize(value.TlsMode)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.CaFile)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.ClientCertificate)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.ClientKey)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.ServerName);
     }
 
     public override void Write(ParsedConnectionUrl value, BigEndianStream stream) {
@@ -6672,6 +6684,10 @@ class FfiConverterTypeParsedConnectionUrl: FfiConverterRustBuffer<ParsedConnecti
             FfiConverterOptionalString.INSTANCE.Write(value.Password, stream);
             FfiConverterString.INSTANCE.Write(value.Database, stream);
             FfiConverterOptionalTypeTlsModeTag.INSTANCE.Write(value.TlsMode, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.CaFile, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.ClientCertificate, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.ClientKey, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.ServerName, stream);
     }
 }
 

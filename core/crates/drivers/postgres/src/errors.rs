@@ -45,14 +45,25 @@ pub(crate) fn map_error(error: &tokio_postgres::Error) -> DriverError {
     DriverError::Protocol(describe(error))
 }
 
-/// An error from opening a connection, where a TLS failure before the
-/// handshake began means the server never agreed to TLS at all.
+/// invalid_catalog_name: at login, the database the connection names
+/// does not exist.
+const INVALID_CATALOG_NAME: &str = "3D000";
+
+/// An error from opening a connection to `database`, where a TLS failure
+/// before the handshake began means the server never agreed to TLS at
+/// all. A missing database is told apart only here: retrying the login
+/// cannot help, while the same SQLSTATE from a statement is that
+/// statement's own answer.
 pub(crate) fn map_connect_error(
     error: &tokio_postgres::Error,
+    database: &str,
     tls_required: bool,
     handshake_started: bool,
 ) -> DriverError {
-    let mapped = map_error(error);
+    connect_error(map_error(error), database, tls_required, handshake_started)
+}
+
+fn connect_error(mapped: DriverError, database: &str, tls_required: bool, handshake_started: bool) -> DriverError {
     match mapped {
         DriverError::Tls { detail, .. } if tls_required && !handshake_started => DriverError::Tls {
             failure: TlsFailure::ServerRefusedTls,
@@ -61,6 +72,11 @@ pub(crate) fn map_connect_error(
         DriverError::ConnectionLost { .. } => DriverError::ConnectionLost {
             during: LossPhase::Connect,
         },
+        DriverError::Server(diagnostics) if diagnostics.sqlstate() == Some(INVALID_CATALOG_NAME) => {
+            DriverError::DatabaseNotFound {
+                database: database.to_owned(),
+            }
+        }
         other => other,
     }
 }
@@ -276,6 +292,28 @@ mod tests {
         }
         let other = map_diagnostics(diagnostics("42P01", "relation does not exist"));
         assert_eq!(read_only_refusal(other.clone()), other);
+    }
+
+    #[test]
+    fn a_missing_database_at_login_names_the_database_and_a_statements_3d000_stays_the_servers() {
+        let missing = || map_diagnostics(diagnostics("3D000", "database \"shopp\" does not exist"));
+
+        assert_eq!(
+            connect_error(missing(), "shopp", false, false),
+            DriverError::DatabaseNotFound {
+                database: "shopp".to_owned()
+            }
+        );
+        assert!(
+            matches!(missing(), DriverError::Server(d) if d.sqlstate() == Some("3D000")),
+            "{:?}",
+            missing()
+        );
+        let refused = map_diagnostics(diagnostics("28P01", "password authentication failed"));
+        assert!(matches!(
+            connect_error(refused, "shopp", false, false),
+            DriverError::Auth { .. }
+        ));
     }
 
     #[test]

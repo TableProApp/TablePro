@@ -18,6 +18,7 @@ pub enum FormField {
     SshJumpHosts,
     SshKeyPath,
     DnsSeedList,
+    MoreHosts,
     AuthDatabase,
 }
 

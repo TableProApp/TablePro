@@ -15,6 +15,10 @@ pub struct MysqlOptions {
     /// Passed to the server after the TLS arguments, so a test can set a
     /// global such as `--sql-mode` before any session exists.
     pub server_arguments: Vec<String>,
+    /// A folder on this machine the server puts its socket in, for a
+    /// client that connects through it. It must be writable by the
+    /// container's mysql user.
+    pub socket_dir: Option<std::path::PathBuf>,
 }
 
 impl MysqlOptions {
@@ -24,6 +28,14 @@ impl MysqlOptions {
             require_secure_transport: true,
             trust_function_creators: false,
             server_arguments: Vec::new(),
+            socket_dir: None,
+        }
+    }
+
+    pub fn with_socket_dir(self, dir: &std::path::Path) -> Self {
+        Self {
+            socket_dir: Some(dir.to_path_buf()),
+            ..self
         }
     }
 

@@ -30,29 +30,90 @@ TablePro supports the server releases their vendors still support. CI runs each 
 
 ## Install
 
-These commands work from the first release, 0.1.0, on amd64 and arm64.
+TablePro runs on amd64 and arm64. A release such as 0.1.0 goes to the stable repositories and a beta such as 0.1.0-beta.1 to the beta ones, and both go to [GitHub Releases](https://github.com/TableProApp/TablePro/releases), a beta as a pre-release. Until 0.1.0 is out, only betas have packages.
 
-Ubuntu 26.04 and 26.10, from the Launchpad PPA:
+The .deb and .rpm need the GNOME 50 libraries of Ubuntu 26.04 and Fedora 44 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)). Ubuntu 22.04 and 24.04, Debian, Linux Mint, Pop!_OS and other distributions use the [Flatpak repository](#flatpak-repository).
+
+### Ubuntu 26.04 and 26.10
 
 ```bash
 sudo add-apt-repository ppa:tablepro/tablepro
 sudo apt install tablepro
 ```
 
-Fedora 44 and later, from COPR:
+### Fedora 44 and later
 
 ```bash
 sudo dnf copr enable @tablepro/tablepro
 sudo dnf install tablepro
 ```
 
-apt and dnf, and Software Updater and GNOME Software with them, install the updates. Other distributions build from source ([Quickstart](#quickstart)) until Flathub has the app.
+apt and dnf, and Software Updater and GNOME Software with them, install the updates.
+
+### Flatpak repository
+
+From TablePro's own Flatpak repository, signed, with the GNOME 51 runtime from Flathub:
+
+```bash
+flatpak install --from https://flatpak.tablepro.app/repo/app.tablepro.TablePro.flatpakref
+flatpak run app.tablepro.TablePro
+```
+
+Opening that link in a browser hands it to GNOME Software or KDE Discover. `flatpak update` and the software centre install the updates. TablePro is not on Flathub itself.
+
+### Betas
+
+Add the beta repository beside the stable one. apt and dnf install the highest version the two hold, so a release replaces its betas and the next beta replaces that release.
+
+```bash
+# Ubuntu
+sudo add-apt-repository ppa:tablepro/tablepro-beta
+sudo apt install tablepro
+
+# Fedora
+sudo dnf copr enable @tablepro/tablepro-beta
+sudo dnf install tablepro
+```
+
+Before 0.1.0, add the beta repository alone, then the stable one once 0.1.0 is out; without it the last beta stays installed until the next one. To stop testing, `sudo add-apt-repository --remove ppa:tablepro/tablepro-beta` or `sudo dnf copr disable @tablepro/tablepro-beta`. The installed beta stays until the stable repository has a newer version.
+
+The Flatpak beta is the branch `beta` of a second repository, and installs beside the release, as Flathub's beta does. The two branches share one set of settings and connections, and Flatpak never moves from one to the other by version: you choose which one the app's name starts.
+
+```bash
+flatpak install --from https://flatpak.tablepro.app/beta-repo/app.tablepro.TablePro.flatpakref
+flatpak run --branch=beta app.tablepro.TablePro
+flatpak make-current app.tablepro.TablePro beta     # the menu and `flatpak run` start the beta
+flatpak make-current app.tablepro.TablePro stable   # and the release again
+flatpak uninstall app.tablepro.TablePro//beta       # stop testing, after making the release current
+```
+
+A beta may store settings the release before it cannot read; [docs/troubleshooting.md](docs/troubleshooting.md#after-a-downgrade) says what that looks like.
+
+### From GitHub Releases
+
+Each release and beta on [GitHub Releases](https://github.com/TableProApp/TablePro/releases) carries the packages CI built and installed, the .deb and .rpm also tested, and their `SHA256SUMS`. The .deb and .rpm do not update themselves; an installed Flatpak bundle takes its updates from the [Flatpak repository](#flatpak-repository).
+
+| File | For |
+|---|---|
+| `tablepro-<version>-ubuntu-<series>-<arch>.deb` | Ubuntu 26.04 or 26.10, `amd64` or `arm64` |
+| `tablepro-<version>-fedora-<release>-<arch>.rpm` | The Fedora release it names, `x86_64` or `aarch64` |
+| `tablepro-<version>-<arch>.flatpak` | Any distribution with Flatpak, `x86_64` or `aarch64` |
+
+GitHub attests each file's build. Check a download against it, or against `SHA256SUMS`, before installing it:
+
+```bash
+gh attestation verify tablepro-0.1.0-x86_64.flatpak --repo TableProApp/TablePro
+sha256sum --check --ignore-missing SHA256SUMS
+sudo apt install ./tablepro-0.1.0-ubuntu-26.04-amd64.deb
+sudo dnf install ./tablepro-0.1.0-fedora-44-x86_64.rpm
+flatpak install ./tablepro-0.1.0-x86_64.flatpak
+```
 
 [docs/troubleshooting.md](docs/troubleshooting.md) covers saved passwords, SSH, Kerberos, logs, crash reports and bug reports.
 
 ## Privacy
 
-TablePro makes no network requests of its own: no telemetry, no update check and no crash upload. DuckDB fetches no extension unless your own SQL runs `INSTALL`. It connects to the database servers and SSH hosts you set up, and nothing else. With a provider chosen for the [AI assistant](#ai-assistant), it also sends what the assistant asks to that provider: Anthropic (`api.anthropic.com`), OpenAI (`api.openai.com`), or the Ollama or other server whose address you enter. That is your questions, your SQL, the structure of the tables involved and, for Fix with AI, the server's error message, and only from connections whose AI Assistant setting allows it; it reads no rows for it. With the [MCP server](#mcp-server) on, it also listens on `127.0.0.1` for MCP clients on this computer, which send what they read wherever their own settings say. Crash reports stay on your disk until you attach one to a bug report. Updates come from apt or dnf.
+Besides the usage data below, TablePro makes no network requests of its own until you sign in to a TablePro account: no update check and no crash upload. Signing in opens `account.tablepro.app` in your browser. From then on TablePro reaches `account.tablepro.app` and `api.tablepro.app` to keep the sign-in, to register this computer as one of the account's devices (its host name, the TablePro and system versions, and a machine ID made by hashing `/etc/machine-id` with a key of TablePro's own, never the ID itself), to check your plan at launch and once a day, or hourly while that fails, and, while Preferences > Account is open, to list your teams and devices. The packages from the PPA and COPR carry a PostHog key and share usage data by default, as TablePro for macOS does; **Preferences > General > Privacy > Share Usage Data** turns it off, and nothing more goes from then on. While it is on, the events [ADR 0039](docs/decisions/0039-usage-data.md) lists go to PostHog (`eu.i.posthog.com`): a launch once a day with the kinds and number of open connections, the first connection and the first query with the kind of database, a sign-in and sign-out, and clicks on Upgrade and Buy a License, with the license ask. Each carries a random ID for this installation and the system's name and version; signed in, your account's ID instead, with the TablePro and system versions, the processor type and the interface language. PostHog sees the network address they come from, which it uses for a rough location. Never a host name, a password, a query or a row. A build from source sends none, unless it was given a key with `-Dposthog_key`. The days you use TablePro, which decide when it asks about a license, are counted on this computer and never sent. DuckDB fetches no extension unless your own SQL runs `INSTALL`. It connects to the database servers and SSH hosts you set up, and nothing else. With a provider chosen for the [AI assistant](#ai-assistant), it also sends what the assistant asks to that provider: Anthropic (`api.anthropic.com`), OpenAI (`api.openai.com`), or the Ollama or other server whose address you enter. That is your questions, your SQL, the structure of the tables involved and, for Fix with AI, the server's error message, and only from connections whose AI Assistant setting allows it; it reads no rows for it. With the [MCP server](#mcp-server) on, it also listens on `127.0.0.1` for MCP clients on this computer, which send what they read wherever their own settings say. Crash reports stay on your disk until you attach one to a bug report. Updates come from apt, dnf or Flatpak, and the Flatpak ones from `flatpak.tablepro.app`.
 
 ## Stack
 
@@ -60,7 +121,7 @@ TablePro makes no network requests of its own: no telemetry, no update check and
 |---|---|
 | Language | Rust: 1.98 in `rust-toolchain.toml`, 1.97 the `rust-version` floor |
 | GUI toolkit | GTK 4, libadwaita, GtkSourceView and GLib at the GNOME 50 floor ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)) |
-| App architecture | gtk-rs subclasses with composite templates, one window per connection session ([ADR 0012](docs/decisions/0012-window-per-session.md)); the saved-queries and CSV import dialogs are still [Relm4](https://relm4.org) 0.11 components |
+| App architecture | gtk-rs subclasses with composite templates ([ADR 0012](docs/decisions/0012-window-per-session.md)), several connection sessions to a window ([ADR 0028](docs/decisions/0028-sessions-share-a-window.md)) |
 | Async | the app's tokio runtime (`AppRuntime`) for background work, results delivered to the GLib main loop |
 | Database drivers | tokio-postgres with deadpool-postgres (PostgreSQL), sqlx 0.9 (MySQL and MariaDB, SQLite), tiberius 0.13 (SQL Server), the official `clickhouse` crate, scylla 1.9 (Cassandra and ScyllaDB), redis 1.7 (Redis), mongodb 3.9 (MongoDB) and the `duckdb` crate with DuckDB compiled in, all from crates.io ([ADR 0016](docs/decisions/0016-driver-contract-v2.md)) |
 | SSH | the system OpenSSH client ([ADR 0013](docs/decisions/0013-openssh-client-transport.md)) |
@@ -68,7 +129,7 @@ TablePro makes no network requests of its own: no telemetry, no update check and
 | Secrets | oo7: the Secret portal inside Flatpak, the Secret Service over D-Bus on the host ([ADR 0004](docs/decisions/0004-libsecret-secret-storage.md)) |
 | Storage | GSettings for preferences and window state ([ADR 0007](docs/decisions/0007-gsettings-preferences.md)), JSON files for connections and workspace state, SQLite for query history ([docs/storage.md](docs/storage.md)) |
 | Build | Meson driving Cargo ([ADR 0006](docs/decisions/0006-meson-cargo-build.md)) |
-| Distribution | A Launchpad PPA for Ubuntu 26.04 and later and a COPR project for Fedora 44 and later, Flathub later ([ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md)) |
+| Distribution | A Launchpad PPA for Ubuntu 26.04 and later, a COPR project for Fedora 44 and later and a Flatpak repository of our own for every distribution, each with a beta one beside it, and the packages and a Flatpak bundle on GitHub Releases; Flathub later ([ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md), [ADR 0041](docs/decisions/0041-beta-repositories-and-release-packages.md)) |
 
 ## What this is not
 
@@ -192,9 +253,26 @@ Secret Service, file choosers, notifications and links go through portals.
 [ADR 0008](docs/decisions/0008-flatpak-sandbox-permissions.md) gives the
 reason for each grant.
 
-The repository keeps no Flathub manifest. Flathub's policy refuses
-manifests and submissions written with AI tools, so maintainers write and
-submit that one by hand ([ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md)).
+`build-aux/flatpak/app.tablepro.TablePro.json` builds what a release
+publishes: the release profile under the real app ID, offline from the two
+release tarballs. `build-flatpak.sh` writes the unsigned repository and a
+bundle to try. From `linux/`, with the version that `meson.build` names:
+
+```bash
+build-aux/packaging/make-sources.sh _packages/sources
+build-aux/packaging/build-flatpak.sh _packages/sources/tablepro-0.1.0.tar.xz \
+  _packages/sources/tablepro-0.1.0-vendor.tar.xz _packages/flatpak
+flatpak install --user _packages/flatpak/tablepro-x86_64.flatpak
+```
+
+`build-aux/packaging/flatpak-repo.sh` signs that repository's commits into
+the one `flatpak.tablepro.app` serves, and `flatpak-publish.sh` uploads it.
+`flatpak-test-site.sh` and `smoke-test-flatpak.sh` do the same with a
+throwaway key on `127.0.0.1`, install, and update.
+
+Neither manifest is for Flathub. Flathub's policy refuses manifests and
+submissions written with AI tools, so maintainers write and submit that one
+by hand ([ADR 0041](docs/decisions/0041-beta-repositories-and-release-packages.md)).
 
 ### Screenshots
 
@@ -208,13 +286,17 @@ captions in step with the metainfo.
 
 ## Packages
 
-A `linux-vX.Y.Z` tag publishes the source and vendor tarballs on GitHub
-Releases, uploads a source package for Ubuntu 26.04 and 26.10 to the
-Launchpad PPA, and starts a COPR build of the spec for Fedora 44 and
-later. Both build offline from those tarballs, Launchpad with the Ubuntu
-Rust team's `rustc-1.97` and COPR with Fedora's Rust, and apt, dnf and
-the software centres update the installed packages
-([ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md)).
+A `linux-vX.Y.Z` tag publishes the source and vendor tarballs, the
+packages and the Flatpak bundle on GitHub Releases, signs the Flatpak into
+the repository at `flatpak.tablepro.app`, uploads a source package for
+Ubuntu 26.04 and 26.10 to the Launchpad PPA, and starts a COPR build of
+the spec for Fedora 44 and later; a `linux-vX.Y.Z-beta.N` tag goes to the
+beta Flatpak repository, PPA and COPR project instead. Both build offline from
+those tarballs, Launchpad with the Ubuntu Rust team's `rustc-1.97` and
+COPR with Fedora's Rust, and apt, dnf and the software centres update the
+installed packages
+([ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md),
+[ADR 0041](docs/decisions/0041-beta-repositories-and-release-packages.md)).
 The packaging is `build-aux/debian` and `build-aux/rpm/tablepro.spec`, and
 [docs/releasing.md](docs/releasing.md) has the release steps.
 
@@ -236,25 +318,31 @@ privileged container, since Mock mounts filesystems. The source tarball
 archives `HEAD`, so commit first.
 
 After a change to `Cargo.lock`, `build-aux/update-third-party-licenses.sh`
-rewrites `debian/copyright` and the spec's `License` tag along with
-`data/licenses`.
+rewrites `debian/copyright` and the spec's `License` tag and `bundled()`
+Provides along with `data/licenses`.
 
-## Opening database files
+## Opening files
 
 Once installed, TablePro is in the file manager's **Open With** for
-SQLite databases (`application/vnd.sqlite3`). shared-mime-info has no
-type for DuckDB files, so a `.duckdb` file opens from the connect dialog
-or a terminal:
+SQLite databases (`application/vnd.sqlite3`) and SQL files
+(`application/sql`). shared-mime-info has no type for DuckDB files, so a
+`.duckdb` file opens from the connect dialog or a terminal:
 
 ```bash
-tablepro app.sqlite3 sales.duckdb
+tablepro app.sqlite3 sales.duckdb report.sql
 ```
 
 The file's own header picks the engine, whatever its name. A running
-TablePro opens each file in its own window and the new launch exits. A
-file already open brings its window forward. A database on a network or
-FUSE filesystem asks whether to open read-only first, because neither
-engine's locking can be trusted there.
+TablePro opens each database in its own window and the new launch exits.
+A database already open brings its window forward. A database on a
+network or FUSE filesystem asks whether to open read-only first, because
+neither engine's locking can be trusted there.
+
+A SQL file opens in a new editor tab of the connection in front of the
+last window you used, and Save writes back to it. It never runs by
+itself. With no SQL connection in front, or while a window is still
+connecting or reopening its tabs, a window asks you to choose one first.
+A file already open in a tab under the same path brings that tab forward.
 
 ## Vim keybindings
 
@@ -483,6 +571,14 @@ Read Only stops statements that write. A function the connection's login may cal
 A client works on a connection open in a TablePro window; its `connect` tool opens one there, and anything the connect needs, such as a password, is asked in that window. A read runs on a read-only connection. A write runs one statement per call, never under Safe Mode Read-Only, and only after you click **Run** in Safe Mode's dialog in the connection's window, whatever the Safe Mode level. What a client runs with `execute_query` goes into the query history as the editor's runs do.
 
 The tools are `list_connections`, `connect`, `list_schemas`, `list_tables`, `describe_table`, `get_table_ddl`, `browse_table`, `count_rows` and `execute_query`. An answer keeps at most 20 result sets of 1,000 rows each, and a statement stops at 300 seconds.
+
+## TablePro account
+
+TablePro for Linux is licensed as the macOS app is: the same plans and accounts, on up to 3 devices across Mac and Linux. The paid features are in TablePro for macOS for now, and everything in TablePro for Linux works without an account ([ADR 0038](docs/decisions/0038-account-page-and-license-ask.md)).
+
+**Preferences > Account > Sign In** opens `account.tablepro.app` in your browser, which sends you back to TablePro once you approve. The page lists your plan, the paid features, your devices with **Remove**, and your teams. A computer that never reaches the internet imports an offline file made for the Machine ID the page shows. What is sent, and when: [Privacy](#privacy).
+
+From the 30th day you use TablePro without a license, a toast asks whether you would buy one, with **Buy a License**, then at most every 90 days. Nothing changes whatever you do.
 
 ## Documentation index
 

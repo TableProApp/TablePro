@@ -101,7 +101,7 @@ pub use save_settled::SaveSettled;
 pub use save_snapshot::SaveSnapshot;
 pub use save_start::SaveStart;
 pub use save_ticket::SaveTicket;
-pub(crate) use schema_write::run_schema_plan;
+pub(crate) use schema_write::{CatalogChange, database_target, run_catalog_change};
 pub use session_key_record::SessionKeyRecord;
 pub use sort_record::SortRecord;
 pub use tab_directory::TabDirectory;

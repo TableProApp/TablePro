@@ -11,6 +11,11 @@ pub(crate) fn newest_release(xml: &str) -> Option<&str> {
     attribute(&tag[..tag.find('>')?], "version")
 }
 
+// The metainfo writes the beta 0.1.0-beta.1 as 0.1.0~beta.1, which git refuses in a tag.
+pub(crate) fn tag_version(release: &str) -> String {
+    release.replacen('~', "-", 1)
+}
+
 fn attribute<'a>(attributes: &'a str, name: &str) -> Option<&'a str> {
     let mut rest = attributes;
     loop {
@@ -54,6 +59,12 @@ mod tests {
             newest_release(r#"<release subversion="2" version="1.0.0">"#),
             Some("1.0.0")
         );
+    }
+
+    #[test]
+    fn a_beta_release_is_tagged_with_a_hyphen() {
+        assert_eq!(tag_version("0.1.0~beta.1"), "0.1.0-beta.1");
+        assert_eq!(tag_version("0.1.0"), "0.1.0");
     }
 
     #[test]

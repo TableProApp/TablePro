@@ -4,8 +4,8 @@
 
 use tablepro_core::column::ColumnDefault;
 use tablepro_core::ddl::{
-    BuildDdlError, DdlOperation, DraftColumn, DraftType, DropTableOptions, ReferentialAction, RefusalReason,
-    SchemaObjectKind, TableDefinition, TableDraft, diff_table,
+    self as catalog, BuildDdlError, DdlOperation, DraftColumn, DraftType, DropTableOptions, ReferentialAction,
+    RefusalReason, SchemaObjectKind, TableDefinition, TableDraft, TruncateTableOptions, diff_table,
 };
 use tablepro_core::meta::{IndexKey, TableRef};
 use tablepro_core::statement::GuardedStatement;
@@ -1526,5 +1526,91 @@ async fn an_integer_column_holding_nulls_is_not_made_the_rowid() {
         rows.rows,
         [vec![Value::Null, text("x")], vec![Value::Int(5), text("y")]]
     );
+    connection.close().await.unwrap();
+}
+
+/// Truncate Table as the workspace plans and runs it.
+async fn truncate(connection: &dyn Connection, table: &TableRef) -> Result<WriteReport, DriverError> {
+    let dialect = connection.dialect();
+    let plan = catalog::plan_truncate_table(dialect.as_ref(), table, &TruncateTableOptions::default()).unwrap();
+    connection
+        .write_batch(&plan.into_write_batch(table.clone()), call())
+        .await
+}
+
+/// SQLite has no TRUNCATE, so the plan deletes every row: the table
+/// and its AUTOINCREMENT counter stay, and a key of the table on itself
+/// does not hold it.
+#[tokio::test]
+async fn a_truncate_empties_the_table_and_keeps_its_counter() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE customers (id INTEGER PRIMARY KEY AUTOINCREMENT, referrer INTEGER REFERENCES customers)",
+            "INSERT INTO customers (referrer) VALUES (NULL), (1)",
+        ],
+    )
+    .await
+    .unwrap();
+
+    truncate(
+        connection.as_ref(),
+        &TableRef::new(Some("main".to_owned()), "customers"),
+    )
+    .await
+    .unwrap();
+    apply(connection.as_ref(), &["INSERT INTO customers (referrer) VALUES (NULL)"])
+        .await
+        .unwrap();
+
+    let left = query(
+        connection.as_ref(),
+        "SELECT (SELECT group_concat(id) FROM customers), \
+         (SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = 'customers')",
+    )
+    .await;
+    assert_eq!(left.rows, [vec![text("3"), Value::Int(1)]]);
+    connection.close().await.unwrap();
+}
+
+/// The DELETE would run these keys' ON DELETE actions, deleting the
+/// order and clearing the note's key, so the plan's probe refuses the
+/// table before anything runs.
+#[tokio::test]
+async fn a_table_another_tables_key_points_at_is_not_truncated() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE customers (id INTEGER PRIMARY KEY)",
+            "CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER REFERENCES Customers ON DELETE CASCADE)",
+            "CREATE TABLE notes (id INTEGER PRIMARY KEY, customer_id INTEGER REFERENCES customers ON DELETE SET NULL)",
+            "INSERT INTO customers VALUES (1)",
+            "INSERT INTO orders VALUES (10, 1)",
+            "INSERT INTO notes VALUES (20, 1)",
+        ],
+    )
+    .await
+    .unwrap();
+
+    let outcome = truncate(connection.as_ref(), &named("customers")).await;
+
+    assert_eq!(
+        outcome,
+        Err(DriverError::RowGuardFailed {
+            statement_index: 0,
+            expected: 0,
+            actual: 2
+        })
+    );
+    let left = query(
+        connection.as_ref(),
+        "SELECT (SELECT count(*) FROM customers), (SELECT customer_id FROM orders), (SELECT customer_id FROM notes)",
+    )
+    .await;
+    assert_eq!(left.rows, [vec![Value::Int(1), Value::Int(1), Value::Int(1)]]);
     connection.close().await.unwrap();
 }

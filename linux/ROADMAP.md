@@ -15,9 +15,11 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Tags and icons | Several named tags per connection, each with a colour, from the row's menu or the connect dialog, shown after the name and read with the row's description; Manage Tags renames, recolours and deletes them. An icon from a fixed set shows in the row and beside the window title |
 | Search | The connection list's search (Ctrl+F, or start typing) matches the name, host, database, user, driver, the names on the group's path and tag names |
 | Import and export | A JSON file with no secrets in it, tags and icons included. On import, an entry with the same id and the same settings updates its name, colour, group, tags and icon; any other is added as a new connection. Tags are matched by id, then by name, so a second import adds none |
+| Connection URLs | A URL pasted at the top of a new connection fills the form: the engine, host, port, user, database and TLS mode, the authentication database, a DNS seed list and a replica set's hosts, and the password, kept in the Secret Service with Remember Password on. libpq, MySQL, MongoDB, Redis and Valkey, ClickHouse and Cassandra URLs, SQL Server's JDBC form and SQLite and DuckDB file URLs are read ([core `connection_url`](../core/crates/core/src/connection_url/mod.rs)) |
+| Unix sockets | PostgreSQL, MySQL and MariaDB on this computer through the server's socket, for peer, `auth_socket` and `unix_socket` logins: a folder for PostgreSQL, the socket file for MySQL, found in the distribution's usual place. The Flatpak sees the sockets under `/run/postgresql` and `/run/mysqld` ([ADR 0035](docs/decisions/0035-flatpak-local-database-sockets.md)) |
 | Test before saving | Test connects once and reports, then disconnects |
 | Passwords | Kept in the Secret Service; a prompt asks when one is missing or refused, with Remember Password |
-| Safe Mode | A level per connection, set in the connect dialog or the main menu while connected and saved back to the connection. Off asks before DROP, TRUNCATE, and DELETE or UPDATE without WHERE. Confirm Writes also asks before every other write from the editor, a grid save, a structure save, a CSV import, a SQL file import or Drop Table, showing the SQL, or the file, and the connection, with Cancel the default. Read-Only refuses every editor statement that does not read, and opens the connection read-only: SQLite, DuckDB and ClickHouse refuse writes at the engine, PostgreSQL and MySQL run in read-only transactions, SQL Server relies on the login, with the app's own reads in a rolled-back transaction, and Cassandra and ScyllaDB rely on the login. A statement is a read only when its engine's grammar shows it reads, each statement of a script on its own. Moving to or from Read-Only reconnects the window |
+| Safe Mode | A level per connection, set in the connect dialog or the main menu while connected and saved back to the connection. Off asks before DROP, TRUNCATE, and DELETE or UPDATE without WHERE. Confirm Writes also asks before every other write from the editor, a grid save, a structure save, a CSV import, a SQL file import, or a drop, truncate or create from the sidebar, showing the SQL, or the file, and the connection, with Cancel the default. Read-Only refuses every editor statement that does not read, and opens the connection read-only: SQLite, DuckDB and ClickHouse refuse writes at the engine, PostgreSQL and MySQL run in read-only transactions, SQL Server relies on the login, with the app's own reads in a rolled-back transaction, and Cassandra and ScyllaDB rely on the login. A statement is a read only when its engine's grammar shows it reads, each statement of a script on its own. Moving to or from Read-Only reconnects the window |
 | Query timeout per connection | Custom Query Timeout in the connect dialog sets the editor's timeout for that connection in place of the one in Preferences, from the next connect; 0 turns it off. The app's own calls keep their fixed limits: 15 seconds for metadata, 60 for a page or a count, 120 for a row save or a CSV import, none for a schema change or an export, and on the server 60 for a table-tab statement and 10 for a lock wait |
 | Database files | SQLite and DuckDB: choose a file, create a new one, open one from Files or a terminal, where the file's header picks the engine, find a moved one with Locate, and choose read-only or read-write for one on a network or FUSE filesystem |
 | Kerberos for SQL Server | From the ticket cache, in the Flatpak through the KCM socket |
@@ -48,7 +50,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Data grid | A virtualized `GtkColumnView` with keyboard-focusable cells, pages of 100 to 10,000 rows, and a pager with an exact or estimated row count; a table of about 100,000 rows or fewer is counted on its own, a larger one offers Count Rows |
 | Filters | Per-column operators, a raw WHERE fragment checked as one expression, match any or all; binary columns compare to `0x` hex. Kept per table, and per tab across a restart or a reopen. On Cassandra and ScyllaDB only the operators the server evaluates, matched all, with `ALLOW FILTERING` |
 | Sorting | A header click sorts tables on the server and query results in the grid, one column at a time. A Cassandra or ScyllaDB table keeps the server's order, and pages by its paging state |
-| Cell editing | Editors by column kind: inline text, a multi-line editor, a calendar for dates, a toggle for booleans, JSON checked before saving; values are edited from their exact text, never from what the cell displays. Table tabs only, on tables with a primary key; key, generated and auto-increment columns, and binary, spatial, array and composite values, are read-only |
+| Cell editing | Editors by column kind: inline text, a multi-line editor, a calendar for dates, a toggle for booleans, JSON checked before saving; values are edited from their exact text, never from what the cell displays. Tables with a primary key, in a table tab or as a query result that reads one table with its whole key ([ADR 0036](docs/decisions/0036-editing-query-results.md)); key, generated and auto-increment columns, and binary, spatial, array and composite values, are read-only |
 | Rows | Insert, duplicate and delete; Paste (Ctrl+V) adds tab-separated rows from the clipboard, filling the columns from the focused one or by a header's names, or edits the focused cell with one value, and asks first above 1,000 rows, up to 100,000; Set NULL and Empty, and DEFAULT on a new row; undo and redo; save or discard pending changes, and stop a save. On ClickHouse, Cassandra and ScyllaDB a save is not atomic, and Stop takes effect between statements |
 | Server-computed values | A date, time or timestamp cell takes the engine's own `NOW()`, `CURRENT_TIMESTAMP`, `CURRENT_DATE` and the like, typed in any letter case or picked from the cell menu, and a saved row's cell takes DEFAULT where the engine has `SET c = DEFAULT` (PostgreSQL, MySQL and MariaDB, SQL Server, DuckDB). Only each engine's own list is offered, which on DuckDB is `now()` alone, since the bundled build has no ICU extension; the save writes the expression into the statement, so the Confirm Writes review and the history show it as written |
 | Bulk delete | Deleting 10 rows or more asks first, unless Confirm Before Deleting Rows is off in Preferences |
@@ -56,7 +58,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Foreign keys | Open Referenced Row (Ctrl+J) on a key cell opens the table it points at in a new tab, filtered on every column of the key; Show Referencing Rows on a saved row opens a table whose key points at it. A tab already showing those rows comes to the front |
 | Column layout | Order, hidden columns and widths kept per table; a column added since goes last and a dropped one keeps its place. A header drag, or Move Column Left and Move Column Right in the cell menu (Alt+Left and Alt+Right), reorders them; Widen Column and Narrow Column (Shift+Alt+Right and Shift+Alt+Left) resize them; Reset Columns in the Columns dialog goes back to the table's own order |
 | CSV import | Into an existing table, with a column mapping, in one write batch (one transaction where the engine has them), up to 64 MiB |
-| Sidebar | Tables (partitioned ones included), views, materialized views and foreign tables by schema, with search and Refresh, read again after the editor runs DDL, Open in New Tab and Show CREATE TABLE; Edit Structure, Import CSV and Drop Table for tables |
+| Sidebar | Tables (partitioned ones included), views, materialized views and foreign tables by schema, with search and Refresh, read again after the editor runs DDL, Open in New Tab and Show CREATE TABLE; Edit Structure, Import CSV, Truncate Table and Drop Table for tables, Delete All Documents for collections; New and Drop Schema, and New and Drop Database (Keyspace on Cassandra), on every engine that has them, never offered for a system object or the session's own database; empty schemas listed |
 | Routines and triggers | Functions, procedures and sequences in the sidebar after each schema's tables, and triggers with the table each fires on, on every engine that has them. Opening one shows its definition read-only, with Copy and Open in Editor; every overload of a PostgreSQL function name is shown |
 | ER diagram | Show ER Diagram in a table's menu or on a schema's heading opens the schema's tables as cards and their foreign keys as lines in crow's foot notation, read two tables at a time with Stop. Pan, zoom, Best Fit, drag tables, Reset Layout, and PNG and SVG export. Each table is a list item the keyboard and a screen reader reach: Tab and the arrow keys move between tables, Enter opens one, Alt+arrows move it, and its description names its columns and the tables it joins |
 
@@ -82,7 +84,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 
 | Capability | Detail |
 |---|---|
-| Connecting | A MongoDB connection reaches one host directly, a replica set or cluster through its DNS seed list (`mongodb+srv://`), or one host through SSH, with an optional authentication database |
+| Connecting | A MongoDB connection reaches one host directly, a replica set from its hosts and name, a replica set or cluster through its DNS seed list (`mongodb+srv://`), or one host through SSH, with an optional authentication database |
 | Collections | Databases list their collections and views. A collection opens in a table tab: its top-level fields as columns, `_id` first, nested documents and arrays as JSON. Paging, filters, the raw filter as a query document, sorting, editing a field, inserting and deleting run as mongosh calls with bound values, shown in the history and the Safe Mode review ([mongodb.md](docs/drivers/mongodb.md)) |
 | Statements | The editor takes mongosh statements (`find`, `aggregate`, the writes, `runCommand`, `use`, `show`) and shows documents one per row. A running statement stops with `killSessions`. Read-Only refuses every statement that is not a read, `$out` and `$merge` included, before it is sent |
 
@@ -157,12 +159,21 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | External Clients | A level per connection: Blocked hides it, Read Only (the default) lets clients read, Read & Write lets them write after the user approves each statement in Safe Mode's dialog. Safe Mode Read-Only refuses every client write |
 | Tools | List connections, open one in a window, list schemas and tables, describe a table and show its DDL, browse and count rows with filters, and run one statement; runs go into the query history |
 
+### TablePro account
+
+| Capability | Detail |
+|---|---|
+| Sign-in | Preferences > Account signs in to a TablePro account through the browser, as on macOS; the sign-in is kept in the keyring ([ADR 0038](docs/decisions/0038-account-page-and-license-ask.md)) |
+| Plan, devices and teams | The plan and its status, the ten paid features (all in TablePro for macOS for now, so nothing is gated), the account's devices with Remove, the device limit dialog, teams, and offline files for a computer with no internet |
+| License ask | From the 30th day of use without a license, a toast asks whether you would buy one, then at most every 90 days |
+| Usage data | On by default, as on macOS: the clients.md events go to PostHog until Preferences > General > Privacy turns it off ([ADR 0039](docs/decisions/0039-usage-data.md)) |
+
 ### Packaging and platform
 
 | Capability | Detail |
 |---|---|
-| Flatpak | The Devel manifest builds on GNOME 51 for x86_64 and aarch64 with every Meson suite in the sandbox, and is linted, in the nightly Linux run |
-| .deb and .rpm | Ubuntu 26.04 and 26.10 and Fedora 44 and 45, built offline in CI the way Launchpad and COPR build them, linted, then installed and started in fresh containers; a `linux-v*` tag uploads to the PPA and starts the COPR build ([ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md)) |
+| Flatpak | The Devel manifest builds on GNOME 51 for x86_64 and aarch64 with every Meson suite in the sandbox, and is linted, in the nightly Linux run; the release manifest builds the Flatpak a release signs into `flatpak.tablepro.app` and bundles for GitHub, offline from the release tarballs; CI tests it, signs it into test repositories, then installs, starts, updates and switches branches on Ubuntu 22.04, 24.04 and 26.04 ([ADR 0041](docs/decisions/0041-beta-repositories-and-release-packages.md)) |
+| .deb and .rpm | Ubuntu 26.04 and 26.10 and Fedora 44 and 45, built offline in CI the way Launchpad and COPR build them, linted, then installed and started in fresh containers; a `linux-v*` tag publishes them on GitHub Releases, uploads to the PPA and starts the COPR build, a beta tag to the beta ones ([ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md), [ADR 0041](docs/decisions/0041-beta-repositories-and-release-packages.md)) |
 | Desktop integration | Desktop file with Open With for SQLite files, D-Bus activation, a man page, metainfo with screenshots, and SVG icons |
 | Translations | Vietnamese ships. The app's own strings go through gettext, and CI fails when `POTFILES.in` is stale or a translation loses a placeholder. CI builds the template with gettext 1.0 and publishes it from main and with each release; translators send pull requests against `po/*.po` ([po/README.md](po/README.md#where-translators-work)) |
 | Logs | stderr, which the session journals, with JSON lines on request. A panic also writes a crash report under `$XDG_STATE_HOME`, offered with Show Report on the next launch |
@@ -184,7 +195,7 @@ Not built yet, in no order.
 
 ### Release and project
 
-- Before the first tag, the release setup [ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md#consequences) lists: the PPA, the COPR project, and the secrets and variable `release-linux.yml` names in its header.
+- Before the first tag, the release setup in [docs/releasing.md](docs/releasing.md#setup-before-the-first-release): the Launchpad team and both PPAs, the COPR group and both projects, the R2 bucket, domain, token and key of the Flatpak repository, and the secrets and variables `release-linux.yml` names in its header.
 - Write the Flathub manifest and the exception request by hand, and submit them.
 - An AUR PKGBUILD, kept by the community.
 - More languages: French, Korean, Turkish, and Simplified and Traditional Chinese, which the macOS app ships.
@@ -205,7 +216,7 @@ Microsoft's mssql-tds is checked again each release as a SQL Server client. Toda
 
 ### Ideas
 
-Not committed: server monitoring (sessions, locks, slow queries), maintenance commands, backup and restore through the engines' own tools (`pg_dump`, `mysqldump`), replication status, comparing result sets, schema diff and data sync between connections, drawn query plans, scheduled queries, and opt-in usage telemetry.
+Not committed: server monitoring (sessions, locks, slow queries), maintenance commands, backup and restore through the engines' own tools (`pg_dump`, `mysqldump`), replication status, comparing result sets, schema diff and data sync between connections, drawn query plans and scheduled queries.
 
 ## Release criteria
 

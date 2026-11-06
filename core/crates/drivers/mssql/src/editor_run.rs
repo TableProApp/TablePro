@@ -15,6 +15,7 @@ use crate::decode::decode_row;
 use crate::errors::{ends_connection, map_error};
 use crate::in_band_request::{Interrupt, StopPolicy, Watch, conclude, cut_short};
 use crate::physical::MssqlClient;
+use crate::result_origin::describe;
 use crate::transport_io::ReadTally;
 
 /// Rows per `ResultEvent::Rows`. The sink is awaited per batch, so a slow
@@ -118,6 +119,7 @@ impl EditorRun<'_> {
 
     async fn batch(&mut self, watch: &Watch, text: &str) -> Result<BatchEnd, Interrupt> {
         let limit = self.limit.get();
+        let mut origins = describe(self.client, watch, text).await?;
         let sink = &mut *self.sink;
         let mut stream = watch.start(self.client.simple_query(text)).await?;
         let mut open: Option<OpenSet> = None;
@@ -145,7 +147,12 @@ impl EditorRun<'_> {
                         return Ok(BatchEnd::ConsumerGone);
                     }
                     open = Some(OpenSet::default());
-                    let columns: Arc<[ResultColumn]> = metadata.columns().iter().map(result_column).collect();
+                    let columns: Vec<ResultColumn> = metadata.columns().iter().map(result_column).collect();
+                    let columns: Arc<[ResultColumn]> = match origins.take() {
+                        Some(origins) => origins.attach(columns),
+                        None => columns,
+                    }
+                    .into();
                     sink.accept(ResultEvent::ResultSetStarted { columns }).await
                 }
                 QueryItem::Row(row) => match open.as_mut() {

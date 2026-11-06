@@ -5,6 +5,7 @@
 //! `SqlGrammar::Mongo`. Each builder writes one mongosh call, and every
 //! value the user gave is bound as `$n`, never written into the text.
 
+mod document_catalog;
 mod document_filter;
 mod document_read;
 mod document_write;
@@ -15,6 +16,7 @@ mod shell_params;
 mod tests;
 mod value_order;
 
+pub(crate) use document_catalog::{create_database, delete_all_documents, drop_database};
 pub(crate) use document_filter::{filter_document, typed_document};
 pub(crate) use document_read::{count, export, page};
 pub(crate) use document_write::{delete, insert, insert_many, key_probe, update};

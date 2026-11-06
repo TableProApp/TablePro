@@ -1,7 +1,8 @@
-//! The frame the Add Index and Add Foreign Key forms share: an
-//! `adw::Dialog` with Cancel and the suggested submit in its header bar
-//! and the fields on a preferences page, as in GNOME Settings' Add
-//! dialogs. The HIG keeps AlertDialog for confirmations.
+//! The frame the Add Index, Add Foreign Key, New Schema and New
+//! Database forms share: an `adw::Dialog` with Cancel and the suggested
+//! submit in its header bar and the fields on a preferences page, as in
+//! GNOME Settings' Add dialogs. The HIG keeps AlertDialog for
+//! confirmations.
 //!
 //! The form is checked on every change. Submit is on only while it is
 //! valid, so Enter, which reaches it as the default widget, does
@@ -16,7 +17,7 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 
-pub(super) struct FormDialog {
+pub(crate) struct FormDialog {
     /// Weak, since the dialog owns the state the form lives in
     /// (`give_state`), and a strong reference back would keep both.
     dialog: glib::WeakRef<adw::Dialog>,
@@ -28,7 +29,7 @@ pub(super) struct FormDialog {
 impl FormDialog {
     /// The form, and the dialog it is drawn in, which nothing else holds
     /// until it is presented.
-    pub(super) fn new(title: &str, submit_label: &str) -> (Self, adw::Dialog) {
+    pub(crate) fn new(title: &str, submit_label: &str) -> (Self, adw::Dialog) {
         let dialog = adw::Dialog::builder()
             .title(title)
             .content_width(420)
@@ -84,7 +85,7 @@ impl FormDialog {
 
     /// An entry row that submits the form on Enter. A name typed into it
     /// is never markup.
-    pub(super) fn entry_row(title: &str) -> adw::EntryRow {
+    pub(crate) fn entry_row(title: &str) -> adw::EntryRow {
         adw::EntryRow::builder()
             .title(title)
             .use_markup(false)
@@ -95,7 +96,7 @@ impl FormDialog {
     /// Submit on only for a valid form, and `problem` under the fields.
     /// A new problem is said: Enter does nothing until it is fixed, and
     /// the caption sits below the field that has the focus.
-    pub(super) fn show_state(&self, valid: bool, problem: Option<String>) {
+    pub(crate) fn show_state(&self, valid: bool, problem: Option<String>) {
         self.submit.set_sensitive(valid);
         match problem {
             Some(problem) => {
@@ -111,11 +112,11 @@ impl FormDialog {
     }
 
     #[cfg(test)]
-    pub(super) fn caption(&self) -> Option<String> {
+    pub(crate) fn caption(&self) -> Option<String> {
         self.caption.is_visible().then(|| self.caption.label().to_string())
     }
 
-    pub(super) fn close(&self) {
+    pub(crate) fn close(&self) {
         if let Some(dialog) = self.dialog.upgrade() {
             dialog.close();
         }
@@ -126,14 +127,14 @@ impl FormDialog {
 /// or with its window. The form's handlers hold the state weakly, and
 /// the row that opens a form keeps nothing, so without this every
 /// control would stop answering as soon as the form opened.
-pub(super) fn give_state<T: 'static>(dialog: &adw::Dialog, state: Rc<T>) {
+pub(crate) fn give_state<T: 'static>(dialog: &adw::Dialog, state: Rc<T>) {
     // Never disconnected: it runs once, as the dialog is disposed.
     let _owner = dialog.add_weak_ref_notify_local(move || drop(state));
 }
 
 /// The `error` style on a field the problem shown is about, and the
 /// problem on the field a screen reader is on.
-pub(super) fn mark_invalid(widget: &impl IsA<gtk::Widget>, problem: Option<&str>) {
+pub(crate) fn mark_invalid(widget: &impl IsA<gtk::Widget>, problem: Option<&str>) {
     match problem {
         Some(_) => widget.add_css_class("error"),
         None => widget.remove_css_class("error"),
@@ -142,7 +143,7 @@ pub(super) fn mark_invalid(widget: &impl IsA<gtk::Widget>, problem: Option<&str>
 }
 
 #[cfg(test)]
-pub(super) mod tests {
+pub(crate) mod tests {
     use std::time::Duration;
 
     use super::*;

@@ -22,7 +22,9 @@ use super::connection_tree::{Pane, TreeInner, Which};
 use super::object_key::ObjectKey;
 use super::object_target::ObjectTarget;
 use super::sidebar_event::SidebarEvent;
+use super::sidebar_menu::{object_menu, schema_menu};
 use super::sidebar_object::SidebarObject;
+use super::sidebar_view::Holds;
 use super::tree_node::TreeNode;
 use super::tree_row::TreeRow;
 use super::*;
@@ -114,6 +116,24 @@ fn every_affordance() -> SidebarAffordances {
         can_edit_structure: true,
         speaks_sql: true,
         opens_databases: true,
+        ..SidebarAffordances::default()
+    }
+}
+
+/// `every_affordance`, on an engine that also empties tables and makes
+/// and drops schemas and databases, as PostgreSQL does.
+fn catalog_affordance() -> SidebarAffordances {
+    SidebarAffordances {
+        catalog: tablepro_core::ddl::CatalogCapabilities {
+            truncate_table: true,
+            create_schema: true,
+            drop_schema: true,
+            create_database: true,
+            drop_database: true,
+            ..tablepro_core::ddl::CatalogCapabilities::default()
+        },
+        own_database_droppable: true,
+        ..every_affordance()
     }
 }
 
@@ -149,16 +169,32 @@ fn connection(name: &str, group: Option<&str>) -> SavedConnection {
 
 /// A session's sidebar listing `objects`, with what it sent.
 fn session(objects: &[ObjectInfo], affordances: SidebarAffordances) -> (SidebarView, Events) {
-    let events = Events::default();
-    let sink = events.clone();
-    let view = SidebarView::new(move |event| sink.borrow_mut().push(event), affordances, None);
-    view.show(SidebarIndex::build(objects, &public()));
-    (view, events)
+    session_of(objects, &["public"], affordances)
 }
 
 fn tables(view: &SidebarView, names: &[&str]) {
     let objects: Vec<ObjectInfo> = names.iter().map(|name| object("public", name)).collect();
     view.show(SidebarIndex::build(&objects, &public()));
+}
+
+/// Show a list of no object under no schema at all.
+fn nothing(view: &SidebarView) {
+    view.show(SidebarIndex::build(&[], &[]));
+}
+
+/// A session's sidebar listing `objects` under `schemas`, the first the
+/// default, with what it sent.
+fn session_of(objects: &[ObjectInfo], schemas: &[&str], affordances: SidebarAffordances) -> (SidebarView, Events) {
+    let events = Events::default();
+    let sink = events.clone();
+    let view = SidebarView::new(move |event| sink.borrow_mut().push(event), affordances, None);
+    let listed: Vec<SchemaInfo> = schemas
+        .iter()
+        .enumerate()
+        .map(|(at, name)| schema(name, at == 0))
+        .collect();
+    view.show(SidebarIndex::build(objects, &listed));
+    (view, events)
 }
 
 /// The tree in a window of its own, over a store of saved connections,
@@ -213,6 +249,8 @@ impl Shown {
             "stop-connecting",
             "new-query-in",
             "refresh-in",
+            "new-database-in",
+            "drop-database-in",
             "show-connect-failure",
             "forget-connect-failure",
         ] {
@@ -492,6 +530,34 @@ fn menu_items(menu: &gio::MenuModel) -> Vec<(String, Option<glib::Variant>)> {
         }
     }
     found
+}
+
+/// Each menu item's label, sections and submenus flattened.
+fn menu_labels(menu: &gio::MenuModel) -> Vec<String> {
+    let mut found = Vec::new();
+    for index in 0..menu.n_items() {
+        if let Some(label) = menu
+            .item_attribute_value(index, "label", None)
+            .and_then(|value| value.get::<String>())
+        {
+            found.push(label);
+        }
+        for link in ["section", "submenu"] {
+            if let Some(linked) = menu.item_link(index, link) {
+                found.extend(menu_labels(&linked));
+            }
+        }
+    }
+    found
+}
+
+/// Each schema's title, in the order the session's sidebar lists them.
+fn schema_titles(view: &SidebarView) -> Vec<String> {
+    let schemas = view.schemas();
+    (0..schemas.n_items())
+        .filter_map(|at| schemas.item(at).and_downcast::<TreeNode>())
+        .map(|node| node.title())
+        .collect()
 }
 
 fn menu_actions(popover: &gtk::PopoverMenu) -> Vec<String> {
@@ -1084,6 +1150,7 @@ fn an_open_connection_with_nothing_to_list_says_so() {
     let alpha = connection("Alpha", None);
     let shown = Shown::new(std::slice::from_ref(&alpha));
     let (view, _) = session(&[], every_affordance());
+    nothing(&view);
 
     shown.open(&alpha, &view);
 
@@ -1125,7 +1192,7 @@ fn clearing_a_search_over_an_emptied_list_says_there_are_no_tables() {
 
     shown.search("alp");
     assert_eq!(shown.rows(), ["Alpha"]);
-    tables(&view, &[]);
+    nothing(&view);
     shown.search("");
 
     assert_eq!(shown.rows(), ["Alpha", "No Tables"]);
@@ -1139,7 +1206,7 @@ fn a_list_of_collections_or_keys_says_so_when_it_is_empty() {
     collections.hold_collections();
     let (listing, _) = session(&[], every_affordance());
     listing.hold_keys(|| {});
-    tables(&collections, &[]);
+    nothing(&collections);
     listing.show_keys(SidebarIndex::keys(&[], "Database 0".to_owned()), false);
 
     shown.open(&documents, &collections);
@@ -1517,7 +1584,7 @@ fn a_closed_session_lists_nothing_and_leaves_the_others_open() {
 fn a_file_no_saved_connection_names_has_a_row_of_its_own() {
     let shown = Shown::new(&[connection("Alpha", None)]);
     let key = SessionKey::File("file:///home/me/sales.db".to_owned());
-    let (view, _) = session(&[object("main", "orders")], every_affordance());
+    let (view, _) = session_of(&[object("main", "orders")], &["main"], every_affordance());
 
     shown.tree.add_session(&key, "sales.db", &view);
 
@@ -2256,4 +2323,373 @@ fn a_reconnect_names_tabs_by_its_schemas_when_the_list_fails() {
     wait_until(WAIT, || naming() == Some(TableNaming::SchemaQualified))
         .expect("the reconnect's schemas never named the tabs");
     assert_eq!(shown_tables(&workspace), Some(1), "the failure emptied the list");
+}
+
+#[gtk4::test]
+fn an_empty_schema_has_its_row_and_a_menu_that_works() {
+    let alpha = connection("Alpha", None);
+    let shown = Shown::new(std::slice::from_ref(&alpha));
+    let (view, events) = session_of(
+        &[object("public", "orders")],
+        &["public", "sales"],
+        catalog_affordance(),
+    );
+    shown.open(&alpha, &view);
+    let popover = shown.popover();
+
+    assert_eq!(shown.rows(), ["Alpha", "public", "sales"]);
+    shown.menu("sales");
+    assert_eq!(
+        menu_actions(&popover),
+        [
+            "sidebar.new-table",
+            "sidebar.new-schema",
+            "sidebar.show-schema-diagram",
+            "sidebar.drop-schema"
+        ]
+    );
+    WidgetExt::activate_action(&popover, "sidebar.new-table", Some(&Some("sales").to_variant()))
+        .expect("sidebar.new-table");
+    WidgetExt::activate_action(&popover, "sidebar.new-schema", None).expect("sidebar.new-schema");
+    WidgetExt::activate_action(&popover, "sidebar.drop-schema", Some(&"sales".to_variant()))
+        .expect("sidebar.drop-schema");
+    popover.popdown();
+    assert_eq!(
+        events.take(),
+        [
+            SidebarEvent::NewTable(Some("sales".to_owned())),
+            SidebarEvent::NewSchema,
+            SidebarEvent::DropSchema("sales".to_owned()),
+        ]
+    );
+
+    shown.menu("public");
+    let offered = menu_actions(&popover);
+    popover.popdown();
+    assert!(
+        !offered.contains(&"sidebar.drop-schema".to_owned()),
+        "the default schema: {offered:?}"
+    );
+}
+
+#[gtk4::test]
+fn a_database_listed_as_a_schema_is_dropped_as_a_database_but_never_the_sessions_own() {
+    let alpha = connection("Alpha", None);
+    let shown = Shown::new(std::slice::from_ref(&alpha));
+    let databases = SidebarAffordances {
+        opens_databases: false,
+        lists_databases: true,
+        ..catalog_affordance()
+    };
+    let (view, events) = session_of(&[object("shop", "orders")], &["shop", "archive"], databases);
+    shown.open(&alpha, &view);
+    let popover = shown.popover();
+
+    shown.menu("archive");
+    let offered = menu_actions(&popover);
+    let labels = popover.menu_model().map(|menu| menu_labels(&menu)).unwrap_or_default();
+    WidgetExt::activate_action(&popover, "sidebar.drop-database", Some(&"archive".to_variant()))
+        .expect("sidebar.drop-database");
+    popover.popdown();
+    shown.menu("shop");
+    let own = menu_actions(&popover);
+    popover.popdown();
+    view.actions()
+        .activate_action("drop-schema", Some(&"archive".to_variant()));
+
+    assert_eq!(
+        offered,
+        [
+            "sidebar.new-table",
+            "sidebar.show-schema-diagram",
+            "sidebar.drop-database"
+        ]
+    );
+    assert!(labels.contains(&"Drop Data_base…".to_owned()), "{labels:?}");
+    assert!(!own.contains(&"sidebar.drop-database".to_owned()), "{own:?}");
+    assert_eq!(events.take(), [SidebarEvent::DropDatabase("archive".to_owned())]);
+}
+
+/// The menu was built for a list the session has since read again: a
+/// drop or a new schema it no longer offers does nothing, as a stale
+/// table menu does.
+#[gtk4::test]
+fn a_stale_schema_menu_does_nothing() {
+    let (view, events) = session_of(
+        &[object("public", "orders")],
+        &["public", "sales"],
+        catalog_affordance(),
+    );
+    assert!(view.droppable("sales"));
+
+    view.show(SidebarIndex::build(&[object("public", "orders")], &public()));
+    let actions = view.actions();
+    actions.activate_action("drop-schema", Some(&"sales".to_variant()));
+    actions.activate_action("drop-schema", Some(&String::new().to_variant()));
+    actions.activate_action("drop-schema", Some(&"public".to_variant()));
+    actions.activate_action("drop-database", Some(&"public".to_variant()));
+    view.show(SidebarIndex::build(
+        &[],
+        &[schema("public", true), schema("sales", false)],
+    ));
+    view.set_affordances(SidebarAffordances {
+        read_only: true,
+        ..catalog_affordance()
+    });
+    actions.activate_action("drop-schema", Some(&"sales".to_variant()));
+    actions.activate_action("new-schema", None);
+
+    assert!(events.take().is_empty());
+}
+
+#[gtk4::test]
+fn truncate_reaches_the_workspace_for_a_table_never_a_view_or_a_read_only_connection() {
+    let active = ObjectInfo {
+        kind: ObjectKind::View,
+        ..object("public", "active")
+    };
+    let (view, events) = session(&[object("public", "orders"), active], catalog_affordance());
+    let truncate = |name: &str| {
+        view.actions()
+            .activate_action("truncate-table", Some(&ObjectKey::rows(table(name)).to_variant()));
+    };
+
+    truncate("orders");
+    truncate("active");
+    truncate("gone");
+    view.set_affordances(SidebarAffordances {
+        read_only: true,
+        ..catalog_affordance()
+    });
+    truncate("orders");
+
+    assert_eq!(events.take(), [SidebarEvent::TruncateTable(table("orders"))]);
+}
+
+#[gtk4::test]
+fn a_collection_is_emptied_by_deleting_its_documents() {
+    let docs = connection("Docs", None);
+    let shown = Shown::new(std::slice::from_ref(&docs));
+    let mongo = SidebarAffordances::of(false, Some(&tablepro_driver_mongodb::MongoDialect), Some("shop"));
+    let (collections, events) = session_of(&[object("shop", "orders")], &["shop"], mongo);
+    collections.hold_collections();
+    shown.open(&docs, &collections);
+    let popover = shown.popover();
+
+    shown.menu("orders");
+    let labels = popover.menu_model().map(|menu| menu_labels(&menu)).unwrap_or_default();
+    WidgetExt::activate_action(&popover, "sidebar.truncate-table", Some(&rows_target("shop", "orders")))
+        .expect("sidebar.truncate-table");
+    popover.popdown();
+
+    assert!(labels.contains(&"Delete All _Documents…".to_owned()), "{labels:?}");
+    assert!(!labels.contains(&"Tr_uncate Table…".to_owned()), "{labels:?}");
+    assert_eq!(
+        events.take(),
+        [SidebarEvent::TruncateTable(TableRef::new(
+            Some("shop".to_owned()),
+            "orders"
+        ))]
+    );
+}
+
+/// The menus and the actions they name are kept apart by hand, so every
+/// item a menu can offer must name an action the view installed, with
+/// the target that action takes.
+#[gtk4::test]
+fn every_item_a_sidebar_menu_offers_names_an_action_of_the_view() {
+    let (view, _) = session_of(
+        &[object("public", "orders")],
+        &["public", "sales"],
+        catalog_affordance(),
+    );
+    let databases = SidebarAffordances {
+        lists_databases: true,
+        ..catalog_affordance()
+    };
+    let key = ObjectKey::rows(table("orders"));
+    let mut menus = vec![object_menu(
+        &key,
+        ObjectKind::Table,
+        catalog_affordance(),
+        Holds::Tables,
+    )];
+    menus.extend(schema_menu(Some("sales"), true, catalog_affordance(), Holds::Tables));
+    menus.extend(schema_menu(Some("sales"), true, databases, Holds::Tables));
+
+    for menu in menus {
+        for (action, target) in menu_items(menu.upcast_ref()) {
+            let name = action.strip_prefix("sidebar.").unwrap_or_else(|| panic!("{action}"));
+            let installed = view
+                .actions()
+                .lookup_action(name)
+                .unwrap_or_else(|| panic!("{action} is not installed"));
+            assert_eq!(
+                installed.parameter_type().as_deref(),
+                target.as_ref().map(glib::Variant::type_),
+                "{action}"
+            );
+        }
+    }
+}
+
+#[gtk4::test]
+fn a_search_finds_tables_under_their_schema_past_an_empty_one() {
+    let alpha = connection("Alpha", None);
+    let shown = Shown::new(std::slice::from_ref(&alpha));
+    let (view, _) = session_of(
+        &[object("public", "users"), object("sales", "leads")],
+        &["public", "archive", "sales"],
+        every_affordance(),
+    );
+    shown.open(&alpha, &view);
+    assert_eq!(shown.rows(), ["Alpha", "public", "archive", "sales"]);
+
+    shown.search("lead");
+
+    wait_until(WAIT, || shown.rows() == ["leads"]).expect("only the table it finds");
+    wait_until(WAIT, || shown.headings() == ["sales (Alpha)"]).expect("the table's own schema");
+}
+
+#[gtk4::test]
+fn a_connections_row_makes_and_drops_databases_and_a_databases_row_drops_its_own() {
+    let alpha = connection("Alpha", None);
+    let shown = Shown::new(std::slice::from_ref(&alpha));
+    let (view, _) = session(&[object("public", "orders")], catalog_affordance());
+    let key = shown.open(&alpha, &view);
+    let (beside, _) = session(&[object("public", "carts")], catalog_affordance());
+    let sibling = SessionKey::SavedIn {
+        id: alpha.id,
+        database: "shop".to_owned(),
+    };
+    shown.tree.add_session(&sibling, "Alpha · shop", &beside);
+    let popover = shown.popover();
+    let offered = |name: &str| {
+        shown.menu(name);
+        let items = popover.menu_model().map(|menu| menu_items(&menu)).unwrap_or_default();
+        popover.popdown();
+        items
+            .into_iter()
+            .filter(|(action, _)| ["win.new-database-in", "win.drop-database-in"].contains(&action.as_str()))
+            .map(|(action, target)| (action, target.and_then(|target| target.get::<String>())))
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(
+        offered("Alpha"),
+        [
+            ("win.new-database-in".to_owned(), target(&key)),
+            ("win.drop-database-in".to_owned(), target(&key)),
+        ]
+    );
+    assert_eq!(
+        offered("Alpha · shop"),
+        [
+            ("win.new-database-in".to_owned(), target(&sibling)),
+            ("win.drop-database-in".to_owned(), target(&sibling)),
+        ]
+    );
+    view.set_affordances(SidebarAffordances {
+        read_only: true,
+        ..catalog_affordance()
+    });
+    assert!(offered("Alpha").is_empty(), "a read-only connection");
+}
+
+/// Whether the sidebar withholds a drop, as `list_catalog` asks of each
+/// schema it lists.
+#[test]
+fn a_drop_is_withheld_for_the_sessions_own_database_and_what_the_engine_keeps() {
+    let mongo = tablepro_driver_mongodb::MongoDialect;
+
+    assert!(kept(Some(&mongo), Some("shop"), "shop"), "the session's own database");
+    assert!(kept(Some(&mongo), Some("shop"), "admin"), "the server keeps it");
+    assert!(!kept(Some(&mongo), Some("shop"), "archive"));
+    assert!(kept(None, Some("shop"), "archive"), "no connection, no drop");
+    let clickhouse = tablepro_driver_clickhouse::ClickHouseDialect::new(&tablepro_core::ServerInfo::new(
+        "ClickHouse",
+        "25.8",
+        25,
+        8,
+        0,
+    ));
+    assert!(
+        kept(Some(&clickhouse), Some("default"), "default"),
+        "a server whose databases are its schemas keeps the session's own"
+    );
+    assert!(!kept(Some(&clickhouse), Some("default"), "sales"));
+    let mut index = SidebarIndex::build(
+        &[],
+        &[
+            SchemaInfo {
+                name: "shop".to_owned(),
+                is_default: false,
+                is_system: false,
+            },
+            schema("admin", false),
+            schema("archive", false),
+            SchemaInfo {
+                name: "local".to_owned(),
+                is_default: false,
+                is_system: true,
+            },
+        ],
+    );
+    index.withhold_drops(|name| kept(Some(&mongo), Some("shop"), name));
+    let offered: Vec<&str> = ["shop", "admin", "archive", "local"]
+        .into_iter()
+        .filter(|name| index.droppable(name))
+        .collect();
+    assert_eq!(offered, ["archive"]);
+}
+
+/// A schema is not a database where each database holds schemas of its
+/// own, so neither the database's name nor a database the server keeps
+/// withholds a schema of that name.
+#[test]
+fn a_schema_named_like_a_database_is_dropped_where_schemas_are_not_databases() {
+    let postgres =
+        tablepro_driver_postgres::PgDialect::new(&tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0));
+
+    assert!(!kept(Some(&postgres), Some("shop"), "shop"), "named like its database");
+    assert!(
+        !kept(Some(&postgres), Some("shop"), "template1"),
+        "named like a database the server keeps"
+    );
+    let mut index = SidebarIndex::build(
+        &[],
+        &[
+            schema("public", true),
+            schema("shop", false),
+            schema("template1", false),
+        ],
+    );
+    index.withhold_drops(|name| kept(Some(&postgres), Some("shop"), name));
+    assert!(index.droppable("shop") && index.droppable("template1"));
+    assert!(!index.droppable("public"), "the default schema");
+}
+
+#[gtk4::test]
+fn a_new_schema_shows_once_the_schemas_are_read_again() {
+    let test = TestWindow::connected_with("SidebarSchemaShape", |script| {
+        // The connect lists none of these: the first is what
+        // catalog_shape_changed reads, the second what Refresh reads.
+        script
+            .list_schemas
+            .once(FakeReply::ok(vec![schema("public", true), schema("sales", false)]));
+        script.list_schemas.once(FakeReply::ok(vec![schema("public", true)]));
+        script
+            .list_objects
+            .always(FakeReply::ok(vec![object("public", "users")]));
+    });
+    let workspace = test.workspace();
+    let titles = || workspace.read(|model| schema_titles(&model.sidebar));
+    wait_until(WAIT, || titles() == Some(vec!["public".to_owned()])).expect("the connect's schema");
+
+    workspace.with_model(|model| model.catalog_shape_changed());
+
+    wait_until(WAIT, || titles() == Some(vec!["public".to_owned(), "sales".to_owned()]))
+        .expect("the new schema, which holds nothing yet");
+    WidgetExt::activate_action(&test.window, "win.refresh-tables", None).expect("win.refresh-tables");
+    wait_until(WAIT, || titles() == Some(vec!["public".to_owned()])).expect("the dropped schema gone on Refresh");
 }

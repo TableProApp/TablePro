@@ -13,6 +13,7 @@ csv.workspace = true
 flate2.workspace = true
 futures.workspace = true
 num-bigint.workspace = true
+percent-encoding.workspace = true
 rust_xlsxwriter.workspace = true
 rustls-pki-types.workspace = true
 secrecy.workspace = true

@@ -1,8 +1,9 @@
 #!/bin/sh
-# Writes data/licenses from Cargo.lock with cargo-about, then the Debian
-# copyright file and the RPM spec's License tag from data/licenses. CI runs
-# it and fails when the committed files differ, so run it after every
-# change to Cargo.lock and commit what it writes.
+# Writes data/licenses from Cargo.lock with cargo-about, the RPM spec's
+# License tag and bundled Provides from data/licenses, and the Debian
+# copyright file from every crate cargo vendor ships. CI runs it and fails
+# when the committed files differ, so run it after every change to
+# Cargo.lock and commit what it writes.
 set -eu
 
 expected_version="cargo-about 0.9.2"
@@ -34,13 +35,16 @@ generate() {
 
 # A crate with no license file cargo-about can read gets the SPDX template
 # text, which names no copyright holder, and --fail lets that through.
+# MPL-2.0's text has no holder to name, so its SPDX text is the license as
+# the crate ships it. progenitor-client packages no LICENSE, and cargo-about
+# 0.9.2 cannot fetch its repository's: the manifest's URL ends in .git.
 fallbacks="$(mktemp)"
 metadata="$(mktemp)"
 trap 'rm -f "$fallbacks" "$metadata"' EXIT
 generate "$root/build-aux/about/fallbacks.hbs" "$fallbacks"
-if grep -q '[^[:space:]]' "$fallbacks"; then
+if grep -v ': MPL-2.0$' "$fallbacks" | grep -q '[^[:space:]]'; then
     echo "update-third-party-licenses.sh: no license file read for these crates; add or fix their [<crate>.clarify] entry in about.toml:" >&2
-    cat "$fallbacks" >&2
+    grep -v ': MPL-2.0$' "$fallbacks" >&2
     exit 1
 fi
 
@@ -67,4 +71,10 @@ python3 "$root/build-aux/packaging/license_metadata.py" write \
     --licenses "$root/data/licenses/third-party.json" \
     --license-file "$root/LICENSE" \
     --copyright "$root/build-aux/debian/copyright" \
-    --spec "$root/build-aux/rpm/tablepro.spec"
+    --spec "$root/build-aux/rpm/tablepro.spec" \
+    --lock "$workspace/Cargo.lock" \
+    --bundled "$root/build-aux/about/bundled" \
+    --metadata "$metadata" \
+    --about "$root/about.toml" \
+    --source "$root/build-aux/about/source.json" \
+    --texts "$root/build-aux/about/licenses"

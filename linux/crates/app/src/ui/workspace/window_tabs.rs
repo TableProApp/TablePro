@@ -68,4 +68,8 @@ impl TabDirectory for WindowTabs {
         slot.editor.file()?;
         Some(Box::pin(slot.editor.save_to_file()))
     }
+
+    fn has_file(&self, tab: Uuid) -> bool {
+        matches!(self.tabs.borrow().get(&tab), Some(WorkspaceTab::Editor(slot)) if slot.editor.file().is_some())
+    }
 }

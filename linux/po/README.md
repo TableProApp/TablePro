@@ -52,8 +52,10 @@ Start from the template CI builds, so you do not need gettext 1.0:
    msginit --locale=xx --input=po/tablepro.pot --output=po/xx.po
    ```
 
-3. Add the code on its own line to [`LINGUAS`](LINGUAS) once the
-   translation is complete enough to ship. From then on:
+3. Add the code on its own line to [`LINGUAS`](LINGUAS) once every entry
+   is translated and none is fuzzy, since a release refuses anything less
+   ([Keeping a catalogue complete](#keeping-a-catalogue-complete)). From
+   then on:
 
    - the `po` Meson suite runs `msgfmt --check` on it. With gettext 0.26
      or newer, as in CI's Translations job, that fails an entry whose
@@ -77,6 +79,30 @@ Start from the template CI builds, so you do not need gettext 1.0:
 
    glibc loads no catalogue at all under `C` or `C.UTF-8`, so testing a
    translation needs a real locale generated on the machine.
+
+## Keeping a catalogue complete
+
+A language in `LINGUAS` ships complete: every entry of the current
+template translated, each plural form included, none fuzzy. `po/check-complete.sh` checks it. From
+`linux/`, after generating the template:
+
+```sh
+meson compile -C _build tablepro-pot
+po/check-complete.sh
+```
+
+It merges each catalogue with the template as `msgmerge` would, without
+fuzzy matching, prints a table of translated, fuzzy and untranslated
+entries per language, and lists the missing ones on stderr. It exits 1
+when a catalogue is incomplete.
+
+- **Pull requests and `main`**: the Translations job of Build Linux
+  reports the table in its summary and warns, and never fails. As in other
+  GNOME apps, strings change freely until the string freeze before a
+  release, and the translation run after the freeze fills the catalogues.
+- **A `linux-v*` tag**: the release's Translation template job fails on an
+  incomplete catalogue, so nothing is published. Translate the gap, or take
+  the language out of `LINGUAS` for that release.
 
 ## POTFILES.in
 

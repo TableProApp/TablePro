@@ -17,5 +17,8 @@
     <child>
       <object class="TableProMcpPage" id="mcp_page"/>
     </child>
+    <child>
+      <object class="TableProAccountPage" id="account_page"/>
+    </child>
   </template>
 </interface>

@@ -40,7 +40,7 @@ fn transaction_banner(held: &[HeldTransaction]) -> Option<TransactionBanner> {
         several => crate::i18n::ngettext_f(
             "{n} editor tab has an open transaction",
             "{n} editor tabs have open transactions",
-            u32::try_from(several.len()).unwrap_or(u32::MAX),
+            several.len(),
             &[("n", &several.len().to_string())],
         ),
     };

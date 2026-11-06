@@ -150,6 +150,7 @@ pub(super) fn map(
         options: NetworkOptions {
             dns_seed_list: seed_list,
             auth_database,
+            ..NetworkOptions::default()
         },
     };
     let secrets = secrets(&connection, caps, settings, credentials);

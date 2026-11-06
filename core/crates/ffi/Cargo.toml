@@ -42,14 +42,12 @@ tablepro-storage.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 futures.workspace = true
-percent-encoding.workspace = true
 secrecy.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 tokio-util.workspace = true
 tracing.workspace = true
 uniffi.workspace = true
-url.workspace = true
 uuid.workspace = true
 
 [target.'cfg(windows)'.dependencies]
