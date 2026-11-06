@@ -138,9 +138,19 @@ pub async fn disable_against_tls_only_server_is_refused<E: TlsConformanceEngine>
 ) -> Result<(), ConformanceFailure> {
     let expected = engine.plaintext_rejection_category();
     let outcome = open::<E>(DISABLE_CASE, engine.connect_options(TlsConfig::disabled())).await?;
-    let refused = matches!(&outcome, Err(error) if error.category() == expected);
+    // Of the TLS failures, only this one tells the app that turning TLS on fixes the connect.
+    let (refused, wanted) = match expected {
+        ErrorCategory::Tls => (
+            tls_failure(&outcome) == Some(TlsFailure::ServerRequiresTls),
+            format!("{:?}", TlsFailure::ServerRequiresTls),
+        ),
+        _ => (
+            matches!(&outcome, Err(error) if error.category() == expected),
+            format!("{expected:?}"),
+        ),
+    };
     expect(DISABLE_CASE, refused, || {
-        format!("a plaintext connect gave {}, not {expected:?}", describe(&outcome))
+        format!("a plaintext connect gave {}, not {wanted}", describe(&outcome))
     })
 }
 

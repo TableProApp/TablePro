@@ -407,6 +407,8 @@ mod tests {
     const SOCKET_WITH_TLS: DriverCapabilities = DriverCapabilities {
         tls: Some(tablepro_core::TlsCapabilities {
             modes: &[TlsMode::Disable, TlsMode::VerifyFull],
+            default_mode: TlsMode::Disable,
+            tls_ports: &[],
             ca_file: false,
             client_identity: false,
             server_name_override: tablepro_core::ServerNameOverride::Unsupported,

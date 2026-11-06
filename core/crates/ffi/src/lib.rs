@@ -26,7 +26,7 @@ pub use catalog::{ColumnEntry, ObjectEntry, ObjectKindTag, ObjectScopeArg, Schem
 pub use cloud::{CloudConnectionFields, CloudGroupFields, CloudLibraryPull, CloudLibraryRecords};
 pub use connection_url::{ParsedConnectionUrl, parse_connection_url};
 pub use core_handle::{Core, FileOpenRequest};
-pub use drivers::{DataModelTag, DriverInfo, EndpointInfo, EngineCategoryTag};
+pub use drivers::{DataModelTag, DriverInfo, EndpointInfo, EngineCategoryTag, ServerNameOverrideTag};
 pub use editor::{QueryEditor, RunSettings};
 pub use error::{BoxedErrorInfo, CoreError, ErrorInfo, HostKeyFailure, ServerMessage, TlsFailureTag};
 pub use host::{HostConfig, HostSecretError, HostSecretStore, HostSecrets, SecretItemTag, SecretKindTag};

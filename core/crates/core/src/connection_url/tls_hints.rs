@@ -134,7 +134,7 @@ impl TlsHints {
         self.weakened = Some(true);
     }
 
-    // No mode leaves it to the form: the URL said nothing, or asked for prefer, which the core does not have.
+    // No mode leaves it to the form, whose default for the engine stands.
     pub(super) fn resolve(self) -> UrlTls {
         let mut wanted = self.mode.or(self.switch).or(self.by_scheme);
         if self.verify_server && matches!(wanted, None | Some(Wanted::Prefer | Wanted::Require)) {
@@ -147,12 +147,12 @@ impl TlsHints {
         if self.weakened == Some(true) && wanted == Some(Wanted::VerifyFull) {
             wanted = Some(Wanted::Require);
         }
-        let mode = wanted.and_then(|wanted| match wanted {
-            Wanted::Disable => Some(TlsMode::Disable),
-            Wanted::Prefer => None,
-            Wanted::Require => Some(TlsMode::Require),
-            Wanted::VerifyFull => Some(TlsMode::VerifyFull),
-            Wanted::Strict => Some(TlsMode::Strict),
+        let mode = wanted.map(|wanted| match wanted {
+            Wanted::Disable => TlsMode::Disable,
+            Wanted::Prefer => TlsMode::Prefer,
+            Wanted::Require => TlsMode::Require,
+            Wanted::VerifyFull => TlsMode::VerifyFull,
+            Wanted::Strict => TlsMode::Strict,
         });
         if mode == Some(TlsMode::Disable) {
             return UrlTls {

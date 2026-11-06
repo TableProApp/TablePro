@@ -1,5 +1,6 @@
 use std::io;
 use std::sync::Arc;
+use std::time::Duration;
 
 use redis::aio::MultiplexedConnection;
 use redis::{AsyncConnectionConfig, RedisConnectionInfo, Value};
@@ -10,6 +11,7 @@ use tablepro_core::{
     NetworkTarget, ServerInfo, TimeoutPhase, TlsFailure, Transport, TransportError, TransportStream,
 };
 use tablepro_net::tls::{TlsSetupError, build_client_config};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_rustls::TlsConnector;
 
 use crate::errors::{map_error, server_error};
@@ -23,6 +25,7 @@ use crate::tls_watch::{TlsFailureSlot, TlsWatch};
 pub(crate) struct RedisEndpoint {
     transport: Arc<dyn Transport>,
     tls: Option<TlsSetup>,
+    tls_server_name: String,
     login: RedisConnectionInfo,
     liveness: LivenessPolicy,
 }
@@ -54,6 +57,7 @@ impl RedisEndpoint {
         Ok(Self {
             transport: target.transport.clone(),
             tls,
+            tls_server_name: target.tls_server_name().to_owned(),
             login,
             liveness,
         })
@@ -72,7 +76,22 @@ impl RedisEndpoint {
             (Err(DriverError::ConnectionLost { .. }), Some((failure, detail))) => {
                 Err(DriverError::Tls { failure, detail })
             }
+            (Err(lost @ DriverError::ConnectionLost { .. }), None) if self.tls.is_none() => {
+                Err(self.refused_in_the_clear(lost).await)
+            }
             (opened, _) => opened,
+        }
+    }
+
+    // A server that takes only TLS drops a login in the clear unanswered, which a handshake of its own tells apart.
+    async fn refused_in_the_clear(&self, lost: DriverError) -> DriverError {
+        let within = self.liveness.login_timeout;
+        if !tablepro_net::tls::serves_tls(self.transport.as_ref(), &self.tls_server_name, within).await {
+            return lost;
+        }
+        DriverError::Tls {
+            failure: TlsFailure::ServerRequiresTls,
+            detail: lost.to_string(),
         }
     }
 
@@ -148,9 +167,16 @@ impl RedisEndpoint {
         };
         let handshake = tls.connector.connect(tls.server_name.clone(), stream);
         match tokio::time::timeout(bound, handshake).await {
-            Err(_) => Err(DriverError::Timeout {
-                phase: TimeoutPhase::Connect,
-                server_cancelled: false,
+            // A server without TLS reads the hello as a command and waits for its newline.
+            Err(_) => Err(match answers_in_the_clear(self.transport.as_ref(), bound).await {
+                true => DriverError::Tls {
+                    failure: TlsFailure::ServerRefusedTls,
+                    detail: "the server answered a plain PING".to_owned(),
+                },
+                false => DriverError::Timeout {
+                    phase: TimeoutPhase::Connect,
+                    server_cancelled: false,
+                },
             }),
             Ok(Err(error)) => Err(self.explain(handshake_error(&error)).await),
             Ok(Ok(stream)) => Ok(Box::new(TlsWatch::new(stream, slot.clone()))),
@@ -195,6 +221,19 @@ async fn identify(link: &Link) -> Result<Option<u64>, DriverError> {
         Some(Value::Int(id)) => u64::try_from(*id).ok(),
         _ => None,
     })
+}
+
+/// Whether the server answers a plain `PING` with a RESP reply, on a
+/// stream of its own that carries nothing else.
+async fn answers_in_the_clear(transport: &dyn Transport, within: Duration) -> bool {
+    let asking = async {
+        let mut stream = transport.open().await.ok()?;
+        stream.write_all(b"PING\r\n").await.ok()?;
+        let mut first = [0_u8; 1];
+        stream.read_exact(&mut first).await.ok()?;
+        Some(matches!(first[0], b'+' | b'-'))
+    };
+    matches!(tokio::time::timeout(within, asking).await, Ok(Some(true)))
 }
 
 fn handshake_error(error: &io::Error) -> DriverError {

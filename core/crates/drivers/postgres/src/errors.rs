@@ -57,15 +57,15 @@ const INVALID_CATALOG_NAME: &str = "3D000";
 pub(crate) fn map_connect_error(
     error: &tokio_postgres::Error,
     database: &str,
-    tls_requested: bool,
+    tls_required: bool,
     handshake_started: bool,
 ) -> DriverError {
-    connect_error(map_error(error), database, tls_requested, handshake_started)
+    connect_error(map_error(error), database, tls_required, handshake_started)
 }
 
-fn connect_error(mapped: DriverError, database: &str, tls_requested: bool, handshake_started: bool) -> DriverError {
+fn connect_error(mapped: DriverError, database: &str, tls_required: bool, handshake_started: bool) -> DriverError {
     match mapped {
-        DriverError::Tls { detail, .. } if tls_requested && !handshake_started => DriverError::Tls {
+        DriverError::Tls { detail, .. } if tls_required && !handshake_started => DriverError::Tls {
             failure: TlsFailure::ServerRefusedTls,
             detail,
         },

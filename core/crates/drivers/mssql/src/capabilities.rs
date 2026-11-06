@@ -24,6 +24,8 @@ pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
     // are not authenticated by one, so there is nothing for it to prove.
     tls: Some(TlsCapabilities {
         modes: &[TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull, TlsMode::Strict],
+        default_mode: TlsMode::VerifyFull,
+        tls_ports: &[],
         ca_file: true,
         client_identity: false,
         server_name_override: ServerNameOverride::AnyRoute,

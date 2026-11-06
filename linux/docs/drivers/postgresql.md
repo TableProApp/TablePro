@@ -19,10 +19,11 @@ A host that is an absolute path is the folder of a server on this computer, as l
 
 ## TLS
 
-- `Disable` sends no SSLRequest. `Require` and `VerifyFull` both send it and refuse to continue in plaintext; they differ only in the certificate check.
+- A new connection starts on `Prefer`, as libpq's `sslmode=prefer` does ([core ADR 0014](../../../core/docs/decisions/0014-tls-mode-of-a-new-connection.md)).
+- `Disable` sends no SSLRequest. `Prefer` sends it, goes on in plaintext when the server answers `N`, and checks no certificate (tokio-postgres's `SslMode::Prefer`). Unlike libpq, it does not retry in plaintext after a handshake that fails. `Require` and `VerifyFull` both send it and refuse to continue in plaintext; they differ only in the certificate check.
 - `VerifyFull` trusts the system store plus the connection's CA file ([Trust](../../../core/ARCHITECTURE.md#trust)), and checks the name from `NetworkTarget::tls_server_name()`.
 - A client certificate is offered when one is set, for `cert` authentication in `pg_hba.conf`.
-- A server that answers the SSLRequest with `N` is reported as `ServerRefusedTls`, never as a certificate problem: the TLS connector records whether the handshake started.
+- Under `Require` or `VerifyFull`, a server that answers the SSLRequest with `N` is reported as `ServerRefusedTls`, never as a certificate problem: the TLS connector records whether the handshake started.
 - SCRAM channel binding (`tls-server-end-point`) is preferred, never required. It is used when the server's certificate is signed with RSA (SHA-1 to SHA-512) or ECDSA with SHA-256 or SHA-384. With any other signature, such as Ed25519 or ECDSA with SHA-512, tokio-postgres-rustls has no hash to bind with, and the login goes ahead without binding.
 
 ## Workspace calls

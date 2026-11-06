@@ -100,9 +100,10 @@ impl<S: Server, const IDENTITY: bool> TlsConformanceEngine for CqlTlsEngine<S, I
     }
 
     /// A plaintext STARTUP fails the node's handshake, which closes the
-    /// connection without a CQL answer.
+    /// connection without a CQL answer, then completes the driver's own
+    /// TLS handshake.
     fn plaintext_rejection_category(&self) -> ErrorCategory {
-        ErrorCategory::ConnectionLost
+        ErrorCategory::Tls
     }
 }
 

@@ -34,6 +34,8 @@ const ALL_MODES: &[TlsMode] = &[TlsMode::Disable, TlsMode::Require, TlsMode::Ver
 
 const FULL_TLS: TlsCapabilities = TlsCapabilities {
     modes: ALL_MODES,
+    default_mode: TlsMode::Disable,
+    tls_ports: &[],
     ca_file: true,
     client_identity: true,
     server_name_override: ServerNameOverride::AnyRoute,
@@ -77,7 +79,15 @@ const fn file(suffix: &'static [&'static str]) -> DriverCapabilities {
 }
 
 static MYSQL: DriverCapabilities = network(3306, DataModel::Relational, Some(FULL_TLS));
-static POSTGRES: DriverCapabilities = network(5432, DataModel::Relational, Some(FULL_TLS));
+static POSTGRES: DriverCapabilities = network(
+    5432,
+    DataModel::Relational,
+    Some(TlsCapabilities {
+        modes: &[TlsMode::Disable, TlsMode::Prefer, TlsMode::Require, TlsMode::VerifyFull],
+        default_mode: TlsMode::Prefer,
+        ..FULL_TLS
+    }),
+);
 static MSSQL: DriverCapabilities = network(
     1433,
     DataModel::Relational,
@@ -100,6 +110,7 @@ static VERIFY_ONLY: DriverCapabilities = network(
     DataModel::Relational,
     Some(TlsCapabilities {
         modes: &[TlsMode::VerifyFull],
+        default_mode: TlsMode::VerifyFull,
         ca_file: false,
         ..FULL_TLS
     }),
@@ -838,7 +849,7 @@ fn each_tls_mode_maps_to_the_core_mode_and_a_change_is_noted() {
     let cases = [
         (None, TlsMode::Disable, false),
         (Some(ForeignSslMode::Disabled), TlsMode::Disable, false),
-        (Some(ForeignSslMode::Preferred), TlsMode::Require, true),
+        (Some(ForeignSslMode::Preferred), TlsMode::Prefer, false),
         (Some(ForeignSslMode::Required), TlsMode::Require, false),
         (Some(ForeignSslMode::VerifyCa), TlsMode::VerifyFull, true),
         (Some(ForeignSslMode::VerifyIdentity), TlsMode::VerifyFull, false),
@@ -865,6 +876,7 @@ fn a_mode_the_driver_lacks_becomes_the_nearest_it_has_and_never_weaker_when_a_st
         (&VERIFY_ONLY, ForeignSslMode::Required, TlsMode::VerifyFull),
         (&VERIFY_ONLY, ForeignSslMode::Disabled, TlsMode::VerifyFull),
         (&NO_VERIFY, ForeignSslMode::VerifyIdentity, TlsMode::Require),
+        (&REDIS, ForeignSslMode::Preferred, TlsMode::Require),
     ];
     for (capabilities, from, to) in cases {
         let row = review_with(
@@ -1943,20 +1955,14 @@ fn tls_the_other_app_used_with_its_ssl_setting_off_is_noted_and_keeps_the_row_ch
     let preferred = only_row(defaulted(ForeignSslMode::Preferred));
     assert_eq!(
         preferred.notes,
-        [
-            RowNote::TlsFromDriverDefault {
-                mode: ForeignSslMode::Preferred
-            },
-            RowNote::TlsModeChanged {
-                from: ForeignSslMode::Preferred,
-                to: TlsMode::Require
-            },
-        ]
+        [RowNote::TlsFromDriverDefault {
+            mode: ForeignSslMode::Preferred
+        }]
     );
     assert!(preferred.selected_by_default);
     assert_eq!(
         preferred.connection.expect("a supported engine").tls.mode,
-        TlsMode::Require
+        TlsMode::Prefer
     );
 
     let verified = only_row(defaulted(ForeignSslMode::VerifyIdentity));

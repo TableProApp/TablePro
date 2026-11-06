@@ -76,7 +76,13 @@ A key tab exports the rows it shows. An editor result's All Rows runs its comman
 
 ## Trust
 
+A new connection starts on `Disable`, as redis-cli does without `--tls` ([core ADR 0014](../../../core/docs/decisions/0014-tls-mode-of-a-new-connection.md)).
+
 TLS is rustls with aws-lc-rs from `tablepro_net::tls::build_client_config`, wrapped around the transport's stream with tokio-rustls, so an SSH forward carries it too. The certificate is checked against `tls_server_name()`, which the server name override can set on any route. A client certificate is presented when given; Redis does not map one to a user, and a server with `tls-auth-clients yes` refuses a client without one. Under TLS 1.3 that refusal arrives as an alert on the first read after the handshake, and the driver reports it as the TLS failure it is, not as a lost connection.
+
+With TLS off, a login the server drops is checked with a TLS handshake of its own, which sends no credential, and is reported as `TlsFailure::ServerRequiresTls` when the server completes it.
+
+A server without TLS reads the TLS hello as a command and waits for its newline, so with TLS on the handshake times out. The driver then sends a plain `PING` on a stream of its own, and a RESP answer is reported as `TlsFailure::ServerRefusedTls`.
 
 ## Server codes
 

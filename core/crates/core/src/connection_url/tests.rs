@@ -121,10 +121,11 @@ fn plus_is_a_plus_and_bad_utf8_is_refused() {
 }
 
 #[test]
-fn libpq_modes_map_and_prefer_leaves_the_default() {
+fn libpq_modes_map_to_the_core_modes() {
     assert_eq!(mode("postgresql://db/x?sslmode=disable"), Some(TlsMode::Disable));
-    assert_eq!(mode("postgresql://db/x?sslmode=prefer"), None);
-    assert_eq!(mode("postgresql://db/x?sslmode=allow"), None);
+    assert_eq!(mode("postgresql://db/x?sslmode=prefer"), Some(TlsMode::Prefer));
+    assert_eq!(mode("postgresql://db/x?sslmode=allow"), Some(TlsMode::Prefer));
+    assert_eq!(mode("postgresql://db/x?tlsmode=1"), Some(TlsMode::Prefer));
     assert_eq!(mode("postgresql://db/x?sslmode=require"), Some(TlsMode::Require));
     assert_eq!(mode("postgresql://db/x?SSLMODE=VERIFY_CA"), Some(TlsMode::VerifyFull));
     assert_eq!(mode("postgresql://db/x?tlsmode=2"), Some(TlsMode::Require));
@@ -250,7 +251,7 @@ fn a_mysql_socket_is_read_only_for_this_machine() {
 #[test]
 fn mysql_tls_spellings_and_the_x_protocol_port() {
     assert_eq!(mode("mysql://h/db?ssl-mode=DISABLED"), Some(TlsMode::Disable));
-    assert_eq!(mode("mysql://h/db?ssl-mode=PREFERRED"), None);
+    assert_eq!(mode("mysql://h/db?ssl-mode=PREFERRED"), Some(TlsMode::Prefer));
     assert_eq!(mode("mysql://h/db?ssl-mode=VERIFY_IDENTITY"), Some(TlsMode::VerifyFull));
     assert_eq!(
         mode("mysql://h/db?ssl=%7B%22rejectUnauthorized%22%3Atrue%7D"),

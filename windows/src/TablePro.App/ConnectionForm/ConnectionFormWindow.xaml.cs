@@ -31,6 +31,8 @@ public sealed partial class ConnectionFormWindow : Window
     private readonly Guid? _groupToSelect;
     private CancellationTokenSource? _testing;
     private bool _busy;
+    private bool _fillingTls;
+    private TlsRemedy? _remedy;
 
     internal ConnectionFormWindow(Workbench workbench, Window owner, SavedConnection? existing)
     {
@@ -338,7 +340,8 @@ public sealed partial class ConnectionFormWindow : Window
 
     private void SetStatus(string text, bool? success)
     {
-        ChangeEncryptionButton.Visibility = Visibility.Collapsed;
+        _remedy = null;
+        TlsRemedyButton.Visibility = Visibility.Collapsed;
         StatusText.Text = text;
         StatusText.Style = (Style)Root.Resources[success switch
         {
@@ -355,18 +358,28 @@ public sealed partial class ConnectionFormWindow : Window
             ? Strings.Get("TlsFailure_" + failure)
             : string.Empty;
         SetStatus(string.IsNullOrEmpty(message) ? Strings.Error(error) : message, false);
-        ChangeEncryptionButton.Visibility = error.TlsFailure is TlsFailure.ServerRequiresStrict
-            or TlsFailure.ServerRefusedStrict or TlsFailure.ServerRequiresTls
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        _remedy = error.TlsFailure is { } tlsFailure
+            ? TlsRemedies.For(tlsFailure, _engine?.ShowsServerName(SshSwitch.IsOn) == true)
+            : null;
+        if (_remedy is { } remedy)
+        {
+            TlsRemedyButton.Content = Strings.Get("TlsRemedy_" + remedy);
+            TlsRemedyButton.Visibility = Visibility.Visible;
+        }
     }
 
-    private void OnChangeEncryption(object sender, RoutedEventArgs e)
+    private void OnTlsRemedy(object sender, RoutedEventArgs e)
     {
         TlsExpander.IsExpanded = true;
-        TlsModeBox.StartBringIntoView();
-        TlsModeBox.Focus(FocusState.Programmatic);
-        TlsModeBox.IsDropDownOpen = true;
+        Control target = _remedy switch
+        {
+            TlsRemedy.ChooseCaCertificate => CaFileBox,
+            TlsRemedy.SetServerName => ServerNameBox,
+            _ => TlsModeBox,
+        };
+        target.StartBringIntoView();
+        target.Focus(FocusState.Programmatic);
+        TlsModeBox.IsDropDownOpen = _remedy is TlsRemedy.ChangeEncryption;
     }
 
     private void SetBusy(bool busy)
@@ -384,6 +397,7 @@ public sealed partial class ConnectionFormWindow : Window
 
     private void FillTlsModes(DatabaseEngine engine, TlsMode selected)
     {
+        _fillingTls = true;
         TlsModeBox.Items.Clear();
         foreach (var mode in engine.SupportedTlsModes)
         {
@@ -399,6 +413,25 @@ public sealed partial class ConnectionFormWindow : Window
         {
             TlsModeBox.SelectedIndex = 0;
         }
+
+        _fillingTls = false;
+    }
+
+    private void OnPortChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_draft is null || _engine is null || _fillingTls)
+        {
+            return;
+        }
+
+        _draft.Port = PortBox.Text;
+        _draft.FollowTlsDefault(_engine);
+        if (SelectedTlsMode != _draft.TlsMode)
+        {
+            FillTlsModes(_engine, _draft.TlsMode);
+            UpdateTls();
+            UpdateSummaries();
+        }
     }
 
     private void UpdateAuthentication()
@@ -412,7 +445,8 @@ public sealed partial class ConnectionFormWindow : Window
     {
         var verifies = SelectedTlsMode is TlsMode.VerifyFull or TlsMode.Strict;
         CaFileCard.Visibility = verifies ? Visibility.Visible : Visibility.Collapsed;
-        ServerNameCard.Visibility = verifies ? Visibility.Visible : Visibility.Collapsed;
+        var serverName = verifies && _engine?.ShowsServerName(SshSwitch.IsOn) == true;
+        ServerNameCard.Visibility = serverName ? Visibility.Visible : Visibility.Collapsed;
         var clientIdentity = _engine?.SupportsClientIdentity == true && SelectedTlsMode != TlsMode.Disable;
         ClientCertificateCard.Visibility = clientIdentity ? Visibility.Visible : Visibility.Collapsed;
         ClientKeyCard.Visibility = clientIdentity ? Visibility.Visible : Visibility.Collapsed;
@@ -424,6 +458,13 @@ public sealed partial class ConnectionFormWindow : Window
     {
         if (_draft is not null)
         {
+            // A fill selects the draft's own mode, so only a different one is the user's pick.
+            if (!_fillingTls && SelectedTlsMode != _draft.TlsMode)
+            {
+                _draft.TlsMode = SelectedTlsMode;
+                _draft.TlsModeChosen = true;
+            }
+
             UpdateTls();
             UpdateSummaries();
         }
@@ -462,6 +503,7 @@ public sealed partial class ConnectionFormWindow : Window
 
     private void OnSshToggled(object sender, RoutedEventArgs e)
     {
+        UpdateTls();
         UpdateSummaries();
         if (SshSwitch.IsOn)
         {

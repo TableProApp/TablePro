@@ -188,9 +188,12 @@ The Windows app runs SSH in process on russh ([ADR 0009](docs/decisions/0009-in-
 A connection's `TlsConfig` holds the `TlsMode`, an optional CA file, an optional client certificate and key, and an optional server name:
 
 - `Disable`: no TLS.
+- `Prefer`: TLS when the server offers it, otherwise plain, and the certificate is not checked, as libpq's `prefer` and the mysql client's `PREFERRED` do. Only PostgreSQL and MySQL offer it, since only their protocols ask for TLS before going on without it.
 - `Require`: encrypted, and the certificate is not checked.
 - `VerifyFull`: the certificate must chain to a trusted root and carry the server name.
 - `Strict`: TLS before the first protocol byte, checked as `VerifyFull`. Only SQL Server offers it (TDS 8.0); Microsoft's drivers refuse to combine strict encryption with an unchecked certificate, so there is no unchecked variant.
+
+A new connection starts on the mode the engine's own client starts on, which `DriverCapabilities::new_connection_tls` gives from the driver's `TlsCapabilities::default_mode` and `tls_ports`, the port and the network options ([ADR 0014](docs/decisions/0014-tls-mode-of-a-new-connection.md) has the table). An app keeps a new connection's mode on that default until the user picks one; a saved connection keeps its own.
 
 A CA file goes only with the modes that check the certificate, `VerifyFull` and `Strict`. libpq and the mysql client verify against a CA file given with their require mode, so taking one with `Require` and ignoring it would leave a user who expects a check with none. `validate` refuses the pair, so a saved or imported connection that holds it fails to connect instead of connecting unchecked, and the connect dialog shows the CA row only for the modes that check.
 

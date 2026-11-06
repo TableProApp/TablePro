@@ -321,6 +321,7 @@ fn tls_setup_failed(error: tablepro_net::tls::TlsSetupError, failure: tablepro_c
 fn ssl_mode(mode: TlsMode) -> Result<MySqlSslMode, DriverError> {
     match mode {
         TlsMode::Disable => Ok(MySqlSslMode::Disabled),
+        TlsMode::Prefer => Ok(MySqlSslMode::Preferred),
         TlsMode::Require => Ok(MySqlSslMode::Required),
         TlsMode::VerifyFull => Ok(MySqlSslMode::VerifyIdentity),
         TlsMode::Strict => Err(DriverError::Config(ConfigError::UnsupportedTlsMode)),
@@ -630,5 +631,22 @@ mod tests {
             matches!(error, DriverError::Transport(TransportError::Refused { .. })),
             "{error:?}"
         );
+    }
+
+    #[test]
+    fn each_mode_asks_sqlx_for_what_the_mysql_client_does() {
+        let modes = [
+            (TlsMode::Disable, MySqlSslMode::Disabled),
+            (TlsMode::Prefer, MySqlSslMode::Preferred),
+            (TlsMode::Require, MySqlSslMode::Required),
+            (TlsMode::VerifyFull, MySqlSslMode::VerifyIdentity),
+        ];
+        for (mode, expected) in modes {
+            assert!(
+                matches!(ssl_mode(mode), Ok(asked) if std::mem::discriminant(&asked) == std::mem::discriminant(&expected)),
+                "{mode:?}"
+            );
+        }
+        assert!(ssl_mode(TlsMode::Strict).is_err());
     }
 }

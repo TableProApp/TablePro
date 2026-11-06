@@ -17,6 +17,7 @@ socket2.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["net", "rt"] }
+tokio-rustls.workspace = true
 tracing.workspace = true
 
 [target.'cfg(unix)'.dependencies]
@@ -31,7 +32,6 @@ hyper-rustls.workspace = true
 hyper-util.workspace = true
 rcgen.workspace = true
 tokio = { workspace = true, features = ["io-util"] }
-tokio-rustls.workspace = true
 tower-service.workspace = true
 
 [lints]

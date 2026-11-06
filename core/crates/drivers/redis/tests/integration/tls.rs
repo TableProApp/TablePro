@@ -6,13 +6,15 @@ use std::sync::Arc;
 
 use secrecy::SecretString;
 use tablepro_core::{
-    ClientIdentity, ConnectOptions, Credentials, DatabaseDriver, ErrorCategory, TlsConfig, WorkspaceSettings,
+    ClientIdentity, ConnectOptions, Credentials, DatabaseDriver, DriverError, ErrorCategory, TlsConfig, TlsFailure,
+    TlsMode, WorkspaceSettings,
 };
 use tablepro_driver_redis::RedisDriver;
 use tablepro_test_fixtures::{PkiFile, RedisFixture, TestPki};
 use tablepro_test_support::conformance::{
     ClientIdentityEngine, ConformanceFailure, TlsConformanceEngine, test_liveness,
 };
+use tokio_util::sync::CancellationToken;
 
 use crate::support::{direct, options_over, password};
 
@@ -90,9 +92,10 @@ impl TlsConformanceEngine for RedisTlsEngine {
     }
 
     /// The server reads the plaintext login as a broken handshake and
-    /// closes the connection without a reply.
+    /// closes the connection without a reply, then completes the
+    /// driver's own TLS handshake.
     fn plaintext_rejection_category(&self) -> ErrorCategory {
-        ErrorCategory::ConnectionLost
+        ErrorCategory::Tls
     }
 }
 
@@ -114,6 +117,40 @@ impl ClientIdentityEngine for RedisTlsEngine {
         };
         self.options(port, credentials, tls)
     }
+}
+
+/// A plain Redis reads the TLS hello as a command and waits for its
+/// newline, so the handshake times out; a plain PING tells why.
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn require_against_a_server_without_tls_is_refused_tls() {
+    let fixture = crate::support::start().await;
+    let liveness = test_liveness();
+    let options = options_over(
+        direct(fixture.host(), fixture.port(), &liveness),
+        password(&fixture.password_credentials()),
+        None,
+        TlsConfig {
+            mode: TlsMode::Require,
+            ..TlsConfig::disabled()
+        },
+        WorkspaceSettings::workspace(false),
+        liveness,
+    );
+
+    let outcome = RedisDriver.connect(options, CancellationToken::new()).await;
+
+    assert!(
+        matches!(
+            outcome,
+            Err(DriverError::Tls {
+                failure: TlsFailure::ServerRefusedTls,
+                ..
+            })
+        ),
+        "{:?}",
+        outcome.err()
+    );
 }
 
 mod suite {

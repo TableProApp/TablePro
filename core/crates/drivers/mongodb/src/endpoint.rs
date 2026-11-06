@@ -10,7 +10,8 @@ use mongodb::options::{ClientOptions, Credential, DriverInfo, ServerAddress};
 use secrecy::ExposeSecret;
 use tablepro_core::{
     APPLICATION_NAME, ConfigError, ConnectEnvironment, Credentials, DriverError, LivenessPolicy, LossPhase,
-    NetworkEndpoint, NetworkOptions, NetworkTarget, ServerInfo, TimeoutPhase, TlsFailure, Transport, TransportRoute,
+    NetworkEndpoint, NetworkOptions, NetworkTarget, ServerInfo, TimeoutPhase, TlsFailure, TlsMode, Transport,
+    TransportRoute,
 };
 use tablepro_net::tls::TlsSetupError;
 
@@ -62,6 +63,8 @@ pub(crate) struct MongoEndpoint {
     route: Route,
     liveness: LivenessPolicy,
     database: Option<String>,
+    // A seed list's host is no server, so only one host reached in the clear is asked for TLS.
+    plaintext_server: Option<String>,
 }
 
 impl MongoEndpoint {
@@ -135,6 +138,8 @@ impl MongoEndpoint {
                 Route::Relayed(relay)
             }
         };
+        let plaintext_server = (!target.options.dns_seed_list && target.tls.mode == TlsMode::Disable)
+            .then(|| target.tls_server_name().to_owned());
         Ok(Self {
             transport: target.transport.clone(),
             service,
@@ -142,6 +147,7 @@ impl MongoEndpoint {
             route,
             liveness,
             database,
+            plaintext_server,
         })
     }
 
@@ -184,7 +190,8 @@ impl MongoEndpoint {
                 Ok(Ok(_)) => Ok(client),
                 Ok(Err(error)) => {
                     client.shutdown().immediate(true).await;
-                    Err(self.explain(&error, LossPhase::Connect).await)
+                    let failed = self.explain(&error, LossPhase::Connect).await;
+                    Err(self.refused_in_the_clear(failed).await)
                 }
                 Err(_) => {
                     client.shutdown().immediate(true).await;
@@ -198,6 +205,24 @@ impl MongoEndpoint {
                 }
             }
         })
+    }
+
+    // A server that takes only TLS drops a connect in the clear unanswered, which a handshake of its own tells apart.
+    async fn refused_in_the_clear(&self, failed: DriverError) -> DriverError {
+        let Some(server_name) = &self.plaintext_server else {
+            return failed;
+        };
+        if !matches!(failed, DriverError::ConnectionLost { .. }) {
+            return failed;
+        }
+        let within = self.liveness.login_timeout;
+        if !tablepro_net::tls::serves_tls(self.transport.as_ref(), server_name, within).await {
+            return failed;
+        }
+        DriverError::Tls {
+            failure: TlsFailure::ServerRequiresTls,
+            detail: failed.to_string(),
+        }
     }
 
     /// Build the client where the library reads its TLS files, which live

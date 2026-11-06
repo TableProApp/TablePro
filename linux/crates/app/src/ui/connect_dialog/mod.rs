@@ -298,6 +298,20 @@ impl ConnectDialog {
                 && !dialog.imp().updating.get()
             {
                 dialog.show_seed_list_rows();
+                dialog.follow_tls_default();
+                dialog.refresh();
+            }
+        });
+    }
+
+    fn connect_port_row(&self) {
+        let weak = self.downgrade();
+        self.imp().port_row.connect_value_notify(move |_| {
+            if let Some(dialog) = weak.upgrade()
+                && !dialog.imp().updating.get()
+            {
+                dialog.imp().port_edited.set(true);
+                dialog.follow_tls_default();
                 dialog.refresh();
             }
         });
@@ -519,15 +533,7 @@ impl ConnectDialog {
                 dialog.switch_driver();
             }
         });
-        let weak = self.downgrade();
-        imp.port_row.connect_value_notify(move |_| {
-            if let Some(dialog) = weak.upgrade()
-                && !dialog.imp().updating.get()
-            {
-                dialog.imp().port_edited.set(true);
-                dialog.refresh();
-            }
-        });
+        self.connect_port_row();
         let weak = self.downgrade();
         imp.safe_mode_row.connect_selected_notify(move |_| {
             if let Some(dialog) = weak.upgrade() {
@@ -915,6 +921,22 @@ impl ConnectDialog {
         }
         imp.tls_section.set_route(self.route());
         self.show_seed_list_rows();
+    }
+
+    /// A seed list or a port that serves only TLS starts TLS on, so the
+    /// mode moves with them until the user picks one.
+    fn follow_tls_default(&self) {
+        let Some(entry) = self.current_entry() else {
+            return;
+        };
+        let caps = entry.capabilities();
+        let mut form = self.form();
+        let before = form.tls.mode;
+        form.follow_tls_default(caps);
+        if form.tls.mode != before {
+            self.imp().tls_section.apply(caps.tls.as_ref(), self.route(), &form.tls);
+            self.recheck_files();
+        }
     }
 
     /// The TLS settings the request would carry, for the file check.

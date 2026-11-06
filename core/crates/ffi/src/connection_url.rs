@@ -2,7 +2,7 @@ use std::path::Path;
 
 use secrecy::ExposeSecret;
 use tablepro_core::connection_url::{self, ConnectionUrl};
-use tablepro_core::{TlsMode, is_local_socket_host};
+use tablepro_core::is_local_socket_host;
 
 use crate::error::CoreError;
 use crate::library::TlsModeTag;
@@ -36,12 +36,7 @@ pub fn parse_connection_url(url: String) -> Result<ParsedConnectionUrl, CoreErro
     let path = |path: Option<&Path>| path.map(|path| path.display().to_string());
     Ok(ParsedConnectionUrl {
         driver_id: parsed.driver_id.to_owned(),
-        tls_mode: tls.mode.map(|mode| match mode {
-            TlsMode::Disable => TlsModeTag::Disable,
-            TlsMode::Require => TlsModeTag::Require,
-            TlsMode::VerifyFull => TlsModeTag::VerifyFull,
-            TlsMode::Strict => TlsModeTag::Strict,
-        }),
+        tls_mode: tls.mode.map(TlsModeTag::from),
         ca_file: path(tls.ca_file.as_deref()),
         client_certificate: path(tls.client_certificate.as_deref()),
         client_key: path(tls.client_key.as_deref()),
@@ -125,6 +120,10 @@ mod tests {
         assert_eq!(
             parse("postgresql://db/x?sslmode=disable").tls_mode,
             Some(TlsModeTag::Disable)
+        );
+        assert_eq!(
+            parse("postgresql://db/x?sslmode=prefer").tls_mode,
+            Some(TlsModeTag::Prefer)
         );
     }
 

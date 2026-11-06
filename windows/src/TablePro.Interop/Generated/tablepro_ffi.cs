@@ -6185,6 +6185,9 @@ internal record DriverInfo (
     EngineCategoryTag Category, 
     EndpointInfo Endpoint, 
     TlsModeTag[] SupportedTlsModes, 
+    TlsModeTag DefaultTlsMode, 
+    ushort[] TlsPorts, 
+    ServerNameOverrideTag ServerNameOverride, 
     bool SupportsIntegratedAuth, 
     bool SupportsClientIdentity
 ) {
@@ -6201,6 +6204,9 @@ class FfiConverterTypeDriverInfo: FfiConverterRustBuffer<DriverInfo> {
             Category: FfiConverterTypeEngineCategoryTag.INSTANCE.Read(stream),
             Endpoint: FfiConverterTypeEndpointInfo.INSTANCE.Read(stream),
             SupportedTlsModes: FfiConverterSequenceTypeTlsModeTag.INSTANCE.Read(stream),
+            DefaultTlsMode: FfiConverterTypeTlsModeTag.INSTANCE.Read(stream),
+            TlsPorts: FfiConverterSequenceUInt16.INSTANCE.Read(stream),
+            ServerNameOverride: FfiConverterTypeServerNameOverrideTag.INSTANCE.Read(stream),
             SupportsIntegratedAuth: FfiConverterBoolean.INSTANCE.Read(stream),
             SupportsClientIdentity: FfiConverterBoolean.INSTANCE.Read(stream)
         );
@@ -6214,6 +6220,9 @@ class FfiConverterTypeDriverInfo: FfiConverterRustBuffer<DriverInfo> {
             + FfiConverterTypeEngineCategoryTag.INSTANCE.AllocationSize(value.Category)
             + FfiConverterTypeEndpointInfo.INSTANCE.AllocationSize(value.Endpoint)
             + FfiConverterSequenceTypeTlsModeTag.INSTANCE.AllocationSize(value.SupportedTlsModes)
+            + FfiConverterTypeTlsModeTag.INSTANCE.AllocationSize(value.DefaultTlsMode)
+            + FfiConverterSequenceUInt16.INSTANCE.AllocationSize(value.TlsPorts)
+            + FfiConverterTypeServerNameOverrideTag.INSTANCE.AllocationSize(value.ServerNameOverride)
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.SupportsIntegratedAuth)
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.SupportsClientIdentity);
     }
@@ -6225,6 +6234,9 @@ class FfiConverterTypeDriverInfo: FfiConverterRustBuffer<DriverInfo> {
             FfiConverterTypeEngineCategoryTag.INSTANCE.Write(value.Category, stream);
             FfiConverterTypeEndpointInfo.INSTANCE.Write(value.Endpoint, stream);
             FfiConverterSequenceTypeTlsModeTag.INSTANCE.Write(value.SupportedTlsModes, stream);
+            FfiConverterTypeTlsModeTag.INSTANCE.Write(value.DefaultTlsMode, stream);
+            FfiConverterSequenceUInt16.INSTANCE.Write(value.TlsPorts, stream);
+            FfiConverterTypeServerNameOverrideTag.INSTANCE.Write(value.ServerNameOverride, stream);
             FfiConverterBoolean.INSTANCE.Write(value.SupportsIntegratedAuth, stream);
             FfiConverterBoolean.INSTANCE.Write(value.SupportsClientIdentity, stream);
     }
@@ -8362,6 +8374,48 @@ class FfiConverterTypeSecretKindTag: FfiConverterRustBuffer<SecretKindTag> {
 
 
 
+/// <summary>
+/// Where the certificate can be checked against a name other than the host.
+/// </summary>
+internal enum ServerNameOverrideTag: int {
+    AnyRoute,
+    SshForwardOnly,
+    Unsupported
+}
+
+class FfiConverterTypeServerNameOverrideTag: FfiConverterRustBuffer<ServerNameOverrideTag> {
+    public static FfiConverterTypeServerNameOverrideTag INSTANCE = new FfiConverterTypeServerNameOverrideTag();
+
+    public override ServerNameOverrideTag Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1: return ServerNameOverrideTag.AnyRoute;
+            case 2: return ServerNameOverrideTag.SshForwardOnly;
+            case 3: return ServerNameOverrideTag.Unsupported;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeServerNameOverrideTag.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(ServerNameOverrideTag value) {
+        return 4;
+    }
+
+    public override void Write(ServerNameOverrideTag value, BigEndianStream stream) {
+        switch (value) {
+            case ServerNameOverrideTag.AnyRoute: stream.WriteInt(1); break;
+            case ServerNameOverrideTag.SshForwardOnly: stream.WriteInt(2); break;
+            case ServerNameOverrideTag.Unsupported: stream.WriteInt(3); break;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeServerNameOverrideTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
 internal record SessionHealthTag {
     
     public record Online: SessionHealthTag {}
@@ -8617,6 +8671,7 @@ class FfiConverterTypeTlsFailureTag: FfiConverterRustBuffer<TlsFailureTag> {
 
 internal enum TlsModeTag: int {
     Disable,
+    Prefer,
     Require,
     VerifyFull,
     Strict
@@ -8629,9 +8684,10 @@ class FfiConverterTypeTlsModeTag: FfiConverterRustBuffer<TlsModeTag> {
         var value = stream.ReadInt();
         switch (value) {
             case 1: return TlsModeTag.Disable;
-            case 2: return TlsModeTag.Require;
-            case 3: return TlsModeTag.VerifyFull;
-            case 4: return TlsModeTag.Strict;
+            case 2: return TlsModeTag.Prefer;
+            case 3: return TlsModeTag.Require;
+            case 4: return TlsModeTag.VerifyFull;
+            case 5: return TlsModeTag.Strict;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeTlsModeTag.Read()", value));
         }
     }
@@ -8643,9 +8699,10 @@ class FfiConverterTypeTlsModeTag: FfiConverterRustBuffer<TlsModeTag> {
     public override void Write(TlsModeTag value, BigEndianStream stream) {
         switch (value) {
             case TlsModeTag.Disable: stream.WriteInt(1); break;
-            case TlsModeTag.Require: stream.WriteInt(2); break;
-            case TlsModeTag.VerifyFull: stream.WriteInt(3); break;
-            case TlsModeTag.Strict: stream.WriteInt(4); break;
+            case TlsModeTag.Prefer: stream.WriteInt(2); break;
+            case TlsModeTag.Require: stream.WriteInt(3); break;
+            case TlsModeTag.VerifyFull: stream.WriteInt(4); break;
+            case TlsModeTag.Strict: stream.WriteInt(5); break;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeTlsModeTag.Write()", value));
         }
     }
@@ -10026,6 +10083,52 @@ class FfiConverterOptionalTypeBoxedErrorInfo: FfiConverterRustBuffer<BoxedErrorI
             stream.WriteByte(1);
             FfiConverterTypeBoxedErrorInfo.INSTANCE.Write((BoxedErrorInfo)value, stream);
         }
+    }
+}
+
+
+
+
+class FfiConverterSequenceUInt16: FfiConverterRustBuffer<ushort[]> {
+    public static FfiConverterSequenceUInt16 INSTANCE = new FfiConverterSequenceUInt16();
+
+    public override ushort[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new ushort[length];
+        var readFn = FfiConverterUInt16.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(ushort[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterUInt16.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(ushort[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterUInt16.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
     }
 }
 

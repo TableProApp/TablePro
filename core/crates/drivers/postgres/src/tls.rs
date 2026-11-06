@@ -4,7 +4,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tablepro_core::{DriverError, TlsConfig, TlsFailure};
+use tablepro_core::{DriverError, TlsConfig, TlsFailure, TlsMode};
 use tablepro_net::tls::{TlsSetupError, build_client_config};
 use tokio_postgres::config::SslMode;
 use tokio_postgres::tls::{MakeTlsConnect, TlsConnect};
@@ -22,6 +22,7 @@ type RustlsConnect = <MakeRustlsConnect as MakeTlsConnect<TransportIo>>::TlsConn
 #[derive(Clone)]
 pub(crate) struct PgTlsSetup {
     connector: Option<MakeRustlsConnect>,
+    mode: TlsMode,
     server_name: String,
 }
 
@@ -30,19 +31,23 @@ impl PgTlsSetup {
         let config = build_client_config(tls).map_err(setup_error)?;
         Ok(Self {
             connector: config.map(|config| MakeRustlsConnect::new((*config).clone())),
+            mode: tls.mode,
             server_name: server_name.to_owned(),
         })
     }
 
     pub(crate) fn ssl_mode(&self) -> SslMode {
-        match self.connector {
-            Some(_) => SslMode::Require,
-            None => SslMode::Disable,
+        match (&self.connector, self.mode) {
+            (None, _) => SslMode::Disable,
+            (Some(_), TlsMode::Prefer) => SslMode::Prefer,
+            (Some(_), _) => SslMode::Require,
         }
     }
 
-    pub(crate) fn requested(&self) -> bool {
-        self.connector.is_some()
+    /// Whether a server that answers the SSLRequest with 'N' fails the
+    /// connect. Prefer goes on in the clear, as libpq's `prefer` does.
+    pub(crate) fn required(&self) -> bool {
+        self.connector.is_some() && self.mode.requires_tls()
     }
 
     /// A connector for one physical connection, and the flag it raises
@@ -115,7 +120,19 @@ mod tests {
         let setup = PgTlsSetup::new(&TlsConfig::disabled(), "db.example.com").expect("a setup");
 
         assert!(matches!(setup.ssl_mode(), SslMode::Disable));
-        assert!(!setup.requested());
+        assert!(!setup.required());
+    }
+
+    #[test]
+    fn a_preferred_setup_asks_for_tls_and_takes_a_refusal() {
+        let tls = TlsConfig {
+            mode: TlsMode::Prefer,
+            ..TlsConfig::disabled()
+        };
+        let setup = PgTlsSetup::new(&tls, "db.example.com").expect("a setup");
+
+        assert!(matches!(setup.ssl_mode(), SslMode::Prefer));
+        assert!(!setup.required());
     }
 
     #[test]
@@ -149,7 +166,7 @@ mod tests {
     #[test]
     fn a_required_setup_asks_for_tls_and_records_nothing_until_used() {
         let tls = TlsConfig {
-            mode: tablepro_core::TlsMode::Require,
+            mode: TlsMode::Require,
             ..TlsConfig::disabled()
         };
         let setup = PgTlsSetup::new(&tls, "db.example.com").expect("a setup");
@@ -157,6 +174,7 @@ mod tests {
         let (_connector, started) = setup.connector();
 
         assert!(matches!(setup.ssl_mode(), SslMode::Require));
+        assert!(setup.required());
         assert!(!started.load(Ordering::SeqCst));
     }
 }
