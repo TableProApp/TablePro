@@ -11,6 +11,7 @@ mod conformance_engine;
 mod csv_import;
 mod ddl;
 mod decode;
+mod dump;
 mod editor_session;
 mod filter;
 mod flight;

@@ -106,7 +106,7 @@ pub struct BrowseTabInit {
     pub initial_offset: u64,
     pub initial_sort: Option<(usize, bool)>,
     pub filter: TableFilter,
-    pub column_widths: crate::persistence::ColumnWidthStore,
+    pub column_layouts: crate::persistence::ColumnLayoutStore,
     pub filter_settings: crate::persistence::FilterSettingsStore,
     /// The session the tab reads through. The tab belongs to it and is
     /// closed before it shuts down.
@@ -158,7 +158,7 @@ impl BrowseTab {
                 sorting: grid_sorting(dialect.as_deref(), initial_sort),
                 tracker: init.tracker.clone(),
                 settings: init.settings,
-                layouts: init.column_widths.layouts().clone(),
+                layouts: init.column_layouts.clone(),
                 keys: keys.clone(),
                 session: Arc::downgrade(&init.session),
                 tasks: init.tasks.clone(),
@@ -514,8 +514,8 @@ pub(crate) struct BrowseModel {
     grid: DataGrid,
     /// The grid's actions are on the tab, for its buttons and menu.
     grid_actions_shown: bool,
-    /// Last-emitted dirty state, so App hears only real transitions and
-    /// not every count change (2 → 3).
+    /// Last-emitted dirty state, so the workspace hears only real
+    /// transitions and not every count change (2 → 3).
     was_dirty: Cell<bool>,
     filter_strip: FilterStrip,
     actions: BrowseActions,

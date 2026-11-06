@@ -7,6 +7,7 @@ use tablepro_core::dialect::{
     BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection,
     LikeCase, LikeForm, LiteralError, Placeholder, SqlDialect,
 };
+use tablepro_core::dump::DumpDialect;
 use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{
@@ -17,6 +18,7 @@ use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::{Temporal, Value};
 
 use crate::catalog::SqlServerType;
+use crate::dump::MssqlDump;
 use crate::encode::MAX_NUMERIC_DIGITS;
 
 /// A string literal in the national character set. Without the `N`, the
@@ -257,6 +259,10 @@ impl SqlDialect for MssqlDialect {
 
     fn ddl(&self) -> Option<&dyn DdlDialect> {
         Some(self)
+    }
+
+    fn dump(&self) -> Option<&dyn DumpDialect> {
+        Some(&MssqlDump)
     }
 
     /// A type the driver cannot decode is read as the server's text, and

@@ -124,7 +124,6 @@ paths:
   - "apple/Packages/TableProCore/Sources/TableProConnectionLibrary/RecentConnectionsLedger.swift"
   - "apple/Packages/TableProCore/Sources/TableProSnowflakeCore/SnowflakeAccount.swift"
   - "apple/Packages/TableProCore/Sources/TableProSnowflakeCore/SnowflakeTokenCache.swift"
-  - "apple/Packages/TableProCore/Sources/TableProAnalytics/AnalyticsHeartbeatService.swift"
   - "apple/Packages/TableProCore/Sources/TableProTheme/ThemeFileFormat.swift"
   - "apple/Packages/TableProCore/Sources/TableProTheme/ThemeDefinition.swift"
   - "apple/Packages/TableProCore/Sources/TableProTheme/ThemeSlot.swift"

@@ -33,10 +33,26 @@ impl ScriptPlan {
         reading: ServerReading,
     ) -> ScriptPlan {
         match rules_for(grammar) {
-            Some(rules) => Builder::new(text, rules, settings, reading).run(),
+            Some(rules) => Builder::new(text, rules, settings, reading, ";").run().0,
             None if grammar == SqlGrammar::Mongo => crate::sql_syntax::mongo::plan(text),
             None => crate::sql_syntax::redis::plan(text),
         }
+    }
+
+    /// `text` read on from a point where `delimiter` is in effect, as a
+    /// client reads a file a piece at a time. Gives back where the last
+    /// statement, batch or directive line that is known to be whole ends,
+    /// and the delimiter in effect there. `None` for a grammar that is not
+    /// SQL.
+    pub(crate) fn build_continuing(
+        text: &str,
+        grammar: SqlGrammar,
+        settings: LexicalSettings,
+        delimiter: &str,
+    ) -> Option<(ScriptPlan, Settled)> {
+        let rules = rules_for(grammar)?;
+        let (plan, settled) = Builder::new(text, rules, settings, ServerReading::Client, delimiter).run();
+        Some((plan, settled))
     }
 
     pub(crate) fn from_parts(
@@ -117,6 +133,13 @@ impl ScriptPlan {
     }
 }
 
+/// Where a plan of a piece of a script stops being sure of itself.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Settled {
+    pub offset: usize,
+    pub delimiter: String,
+}
+
 struct Builder<'a> {
     text: &'a str,
     rules: &'static ScriptRules,
@@ -129,26 +152,36 @@ struct Builder<'a> {
     statements: Vec<ScriptStatement>,
     batches: Vec<ScriptBatch>,
     diagnostics: Vec<ScriptDiagnostic>,
+    settled: usize,
+    settled_delimiter: &'a str,
 }
 
 impl<'a> Builder<'a> {
-    fn new(text: &'a str, rules: &'static ScriptRules, settings: LexicalSettings, reading: ServerReading) -> Self {
+    fn new(
+        text: &'a str,
+        rules: &'static ScriptRules,
+        settings: LexicalSettings,
+        reading: ServerReading,
+        delimiter: &'a str,
+    ) -> Self {
         Self {
             text,
             rules,
             lexer: Lexer::new(text, &rules.syntax, settings, reading),
             reads_directives: reading.reads_directives(),
             tracker: CompoundTracker::new(rules.compound, rules.parens_hold_semicolons),
-            delimiter: ";",
+            delimiter,
             open: None,
             tokens: Vec::new(),
             statements: Vec::new(),
             batches: Vec::new(),
             diagnostics: Vec::new(),
+            settled: 0,
+            settled_delimiter: delimiter,
         }
     }
 
-    fn run(mut self) -> ScriptPlan {
+    fn run(mut self) -> (ScriptPlan, Settled) {
         while self.lexer.position() < self.text.len() {
             if self.reads_directives && self.lexer.at_line_start() && self.accept_directive() {
                 continue;
@@ -167,15 +200,20 @@ impl<'a> Builder<'a> {
                 start,
             });
         }
+        let settled = Settled {
+            offset: self.settled,
+            delimiter: self.settled_delimiter.to_owned(),
+        };
         self.finish_statement(None, NonZeroU32::MIN);
         self.extend_extents();
-        ScriptPlan {
+        let plan = ScriptPlan {
             tokens: self.tokens,
             statements: self.statements,
             batches: self.batches,
             diagnostics: self.diagnostics,
             batch_error: self.rules.batch_error,
-        }
+        };
+        (plan, settled)
     }
 
     fn accept_directive(&mut self) -> bool {
@@ -187,6 +225,7 @@ impl<'a> Builder<'a> {
                 };
                 self.push_directive(line_start, line.start, line.end);
                 self.finish_statement(None, line.repeat);
+                self.settle(line.end);
                 true
             }
             Boundary::DelimiterDirectives if self.open.is_none() => {
@@ -197,6 +236,7 @@ impl<'a> Builder<'a> {
                 if let Some(delimiter) = line.delimiter {
                     self.delimiter = delimiter;
                 }
+                self.settle(line.end);
                 true
             }
             Boundary::DelimiterDirectives | Boundary::Semicolon => false,
@@ -225,6 +265,7 @@ impl<'a> Builder<'a> {
                 && self.tracker.semicolon_ends_statement();
             if terminates {
                 self.finish_statement(Some(range.end), NonZeroU32::MIN);
+                self.settle(range.end);
             } else {
                 if kind != ScriptTokenKind::Semicolon {
                     self.tracker.observe(kind, &self.text[range.clone()]);
@@ -236,6 +277,14 @@ impl<'a> Builder<'a> {
             }
         }
         self.push_token(kind, range);
+    }
+
+    /// Nothing open before `offset` can change with more text.
+    fn settle(&mut self, offset: usize) {
+        if self.open.is_none() {
+            self.settled = offset;
+            self.settled_delimiter = self.delimiter;
+        }
     }
 
     fn push_token(&mut self, kind: ScriptTokenKind, range: Range<usize>) {

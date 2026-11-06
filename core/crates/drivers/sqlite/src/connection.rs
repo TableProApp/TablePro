@@ -8,6 +8,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection as SqlxConnection, Sql
 use sqlx::{Connection as _, Executor as _};
 use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
+use tablepro_core::dump::{DumpCatalog, DumpScope};
 use tablepro_core::meta::{
     IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
 };
@@ -338,6 +339,14 @@ impl Connection for SqliteConnection {
         let object = object.clone();
         self.read(options, move |connection| {
             Box::pin(async move { metadata::fetch_object_definition(connection, &object).await })
+        })
+        .await
+    }
+
+    async fn read_dump_catalog(&self, scope: &DumpScope, options: CallOptions) -> Result<DumpCatalog, DriverError> {
+        let scope = scope.clone();
+        self.read(options, move |connection| {
+            Box::pin(async move { crate::dump::read_dump_catalog(connection, &scope).await })
         })
         .await
     }

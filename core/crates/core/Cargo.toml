@@ -10,6 +10,7 @@ async-trait.workspace = true
 chrono.workspace = true
 comfy-table.workspace = true
 csv.workspace = true
+flate2.workspace = true
 futures.workspace = true
 num-bigint.workspace = true
 percent-encoding.workspace = true

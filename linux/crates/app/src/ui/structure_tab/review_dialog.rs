@@ -175,8 +175,7 @@ pub(crate) fn sql_view(sql: &str, dialog: &adw::AlertDialog) -> gtk::ScrolledWin
     view.set_bottom_margin(8);
     view.set_left_margin(8);
     view.set_right_margin(8);
-    view.upcast_ref::<gtk::Widget>()
-        .update_property(&[gtk::accessible::Property::Label(&crate::i18n::gettext("SQL to run"))]);
+    view.update_property(&[gtk::accessible::Property::Label(&crate::i18n::gettext("SQL to run"))]);
     gtk::ScrolledWindow::builder()
         .child(&view)
         .has_frame(true)

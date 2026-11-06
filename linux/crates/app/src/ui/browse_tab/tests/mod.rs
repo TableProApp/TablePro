@@ -379,7 +379,7 @@ pub(super) fn table_tab(
         initial_offset: 0,
         initial_sort: None,
         filter,
-        column_widths: crate::persistence::ColumnWidthStore::load(root.join("column-widths.json"), &tasks),
+        column_layouts: crate::persistence::ColumnLayoutStore::load(root.join("column_layouts.json"), &tasks),
         filter_settings,
         session: session.clone(),
         tasks,

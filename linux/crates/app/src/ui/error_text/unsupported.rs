@@ -60,6 +60,7 @@ pub(super) fn unsupported_message(feature: UnsupportedFeature) -> String {
         UnsupportedFeature::AuthPlugin => gettext(
             "This account logs in with an authentication plugin TablePro does not support, such as ed25519. Log in with an account that uses a password or the socket.",
         ),
+        UnsupportedFeature::SqlDump => gettext("This database cannot be exported as a SQL file."),
     }
 }
 
@@ -99,6 +100,7 @@ mod tests {
             UnsupportedFeature::EncryptedDefinition,
             UnsupportedFeature::EditorCommand { command: "MONITOR" },
             UnsupportedFeature::AuthPlugin,
+            UnsupportedFeature::SqlDump,
         ];
 
         let messages: Vec<String> = features.iter().map(|feature| unsupported_message(*feature)).collect();
