@@ -49,7 +49,7 @@ use libadwaita as adw;
 use libadwaita::prelude::AdwApplicationWindowExt;
 use tokio_util::sync::CancellationToken;
 
-use tablepro_core::{DatabaseDriver, DriverError, SafeModeLevel, TransportClass};
+use tablepro_core::{DataModel, DatabaseDriver, DriverError, SafeModeLevel, TransportClass};
 use tablepro_session::connect::StoreConnectionWrites;
 use tablepro_session::registry::FileIdentity;
 use tablepro_session::runtime::ProcessHold;
@@ -68,7 +68,7 @@ pub(super) use self::picker_page::PickerPage;
 use self::resolve_file_identity::{FileResolveError, FileTarget, ResolvedFile, resolve_file_blocking};
 use self::session_page::{FailedConnect, OpenSession, PendingConnect, SessionPage, TakenFailure, source_key};
 use self::session_window_command::{AttemptError, ConnectFailure, Connected, SessionWindowCommand};
-pub(crate) use self::session_window_input::{LibraryEdit, MovedTab, SessionWindowInput};
+pub(crate) use self::session_window_input::{LibraryEdit, MovedTab, ScriptInput, SessionWindowInput};
 use crate::application::{AppServices, WindowHost, WindowLaunch};
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::session_context::SessionContext;
@@ -169,6 +169,10 @@ impl SessionWindow {
         picker
             .banner()
             .connect_button_clicked(move |_| reset_input.deliver(SessionWindowInput::ResetConnectionList));
+        let drop_input = input.clone();
+        picker
+            .script_banner()
+            .connect_button_clicked(move |_| drop_input.deliver(SessionWindowInput::Script(ScriptInput::DropWaiting)));
         let window = self.downgrade();
         imp.list_observer.set(Some(list.connect_state_changed(move |_| {
             if let Some(window) = window.upgrade() {
@@ -437,6 +441,7 @@ impl SessionWindow {
             SessionWindowInput::OpenSaved(saved) => self.on_open_saved(*saved),
             SessionWindowInput::OpenFile(file) => self.on_open_file(file),
             SessionWindowInput::FileResolved(resolved) => self.on_file_resolved(*resolved),
+            SessionWindowInput::Script(input) => self.on_script_input(input),
             SessionWindowInput::Restore(key) => self.on_restore(key),
             SessionWindowInput::RestoreSaved { id, saved } => self.on_restore_saved(id, saved.map(|saved| *saved)),
             SessionWindowInput::RestoreUnread(key) => self.end_restore(&key),
@@ -832,6 +837,10 @@ impl SessionWindow {
         self.render();
         shell.add_session(&workspace);
         workspace.start();
+        // The picker that asked is gone from view, so a session that runs no SQL hands the question on.
+        let waiting = self.imp().waiting_scripts.take();
+        self.show_waiting_scripts();
+        self.open_scripts_in(&workspace, waiting);
         self.sync_actions();
         for warning in warnings {
             self.show_toast(&warning);
@@ -884,7 +893,11 @@ impl SessionWindow {
                 // A window that stayed to say the owner could not be
                 // shown is the user's picker from then on.
                 let opened_for_file = self.imp().opened_for_file.replace(false);
-                if self.present_owner(window_id, &key) && opened_for_file {
+                let presented = self.present_owner(window_id, &key);
+                if presented {
+                    self.hand_waiting_scripts_to(window_id, &key);
+                }
+                if presented && opened_for_file {
                     self.close();
                 }
                 None
@@ -1086,6 +1099,10 @@ impl SessionWindow {
                 }
                 self.connect(ConnectSource::File(identity), CredentialDemand::default());
             }
+            Ok(FileTarget::Script) => {
+                self.forget_unclaimed(&arrived);
+                self.on_open_script(gio::File::for_uri(&uri));
+            }
             Err(error) => {
                 tracing::warn!(%error, %uri, "could not open the file");
                 self.forget_unclaimed(&arrived);
@@ -1105,6 +1122,240 @@ impl SessionWindow {
                 });
             }
         }
+    }
+
+    // Sessions still to restore, connecting, or reading their saved tabs may hold a script in a tab
+    // that is not there yet.
+    pub(crate) fn settling(&self) -> bool {
+        let imp = self.imp();
+        !imp.restoring.try_borrow().is_ok_and(|restoring| restoring.is_empty())
+            || !imp.connects.try_borrow().is_ok_and(|connects| connects.is_empty())
+            || !imp
+                .sessions
+                .try_borrow()
+                .is_ok_and(|sessions| sessions.iter().all(|open| !open.databases.is_opening()))
+            || self.workspaces().iter().any(Workspace::tabs_loading)
+    }
+
+    // Every window: while a script waited, a tab bound to its file may have come back in another one.
+    fn focus_bound_tab(&self, file: &gio::File) -> bool {
+        self.application()
+            .is_some_and(|app| Self::focus_tab_bound_to(&app, file))
+    }
+
+    // A workspace handling input answers no lookup, so the caller checks its own tabs itself.
+    pub(crate) fn focus_tab_bound_to(app: &impl IsA<gtk::Application>, file: &gio::File) -> bool {
+        let found = app
+            .windows()
+            .into_iter()
+            .filter_map(|window| window.downcast::<SessionWindow>().ok())
+            .find_map(|window| window.script_tab(file).map(|tab| (window, tab)));
+        let Some((window, tab)) = found else {
+            return false;
+        };
+        window.send(SessionWindowInput::FocusTab(tab));
+        window.present();
+        true
+    }
+
+    pub(crate) fn script_tab(&self, file: &gio::File) -> Option<uuid::Uuid> {
+        self.workspaces()
+            .iter()
+            .find_map(|workspace| workspace.editor_tab_for(file))
+    }
+
+    // Read the way Open SQL File reads, with the same limit and messages.
+    fn on_script_input(&self, input: ScriptInput) {
+        match input {
+            ScriptInput::Open(file) => self.on_open_script(file),
+            ScriptInput::Loaded { file, text, target } => self.on_script_loaded(file, text, target),
+            ScriptInput::For { key, scripts } => self.on_scripts_for(key, scripts),
+            ScriptInput::DropWaiting => {
+                self.imp().waiting_scripts.borrow_mut().clear();
+                self.show_waiting_scripts();
+            }
+        }
+    }
+
+    // The session in front now is the one it goes to, even if another comes forward during a slow read.
+    fn on_open_script(&self, file: gio::File) {
+        let Some(input) = self.input() else {
+            return;
+        };
+        let target = self
+            .workspace()
+            .filter(|workspace| workspace.data_model() == Some(DataModel::Relational))
+            .and_then(|workspace| workspace.key());
+        glib::spawn_future_local(async move {
+            let text = crate::ui::editor::load_text(&file).await;
+            input.deliver(SessionWindowInput::Script(ScriptInput::Loaded { file, text, target }));
+        });
+    }
+
+    // A script opens in the relational session in front and is never run.
+    fn on_script_loaded(&self, file: gio::File, text: Result<String, String>, target: Option<SessionKey>) {
+        let text = match text {
+            Ok(text) => text,
+            Err(reason) => {
+                let name = file.parse_name().to_string();
+                self.show_toast(&crate::i18n::gettext_f(
+                    "{file} could not be opened. {reason}",
+                    &[("file", &name), ("reason", &reason)],
+                ));
+                return;
+            }
+        };
+        if self.focus_bound_tab(&file) {
+            return;
+        }
+        let chosen = target.and_then(|key| {
+            self.workspaces()
+                .into_iter()
+                .find(|workspace| workspace.key().as_ref() == Some(&key))
+        });
+        let front = chosen
+            .or_else(|| self.workspace())
+            .filter(|workspace| workspace.data_model() == Some(DataModel::Relational))
+            .and_then(|workspace| workspace.sender());
+        match front {
+            Some(input) => input.deliver(WorkspaceInput::OpenScript { file, text }),
+            None if self.page() != SessionPage::Shell => self.wait_for_session(file, text),
+            None => self.ask_elsewhere(vec![(file, text)]),
+        }
+    }
+
+    fn wait_for_session(&self, file: gio::File, text: String) {
+        {
+            let mut waiting = self.imp().waiting_scripts.borrow_mut();
+            waiting.retain(|(kept, _)| !kept.equal(&file));
+            waiting.push((file, text));
+        }
+        self.show_waiting_scripts();
+    }
+
+    // A session that holds keys or documents runs no SQL, so the script
+    // asks for a connection in a window of its own.
+    fn ask_elsewhere(&self, scripts: Vec<(gio::File, String)>) {
+        if scripts.is_empty() {
+            return;
+        }
+        let window = self
+            .application()
+            .and_downcast::<crate::application::TableProApplication>()
+            .and_then(|app| app.open_window(WindowLaunch::Picker))
+            .and_downcast::<SessionWindow>();
+        let Some(window) = window else {
+            tracing::warn!("no window to open a SQL file in");
+            return;
+        };
+        for (file, text) in scripts {
+            window.send(SessionWindowInput::Script(ScriptInput::Loaded {
+                file,
+                text: Ok(text),
+                target: None,
+            }));
+        }
+    }
+
+    // Only to a session that has joined there: one still connecting could fail or be cancelled, and
+    // the scripts would no longer be asked for anywhere.
+    fn hand_waiting_scripts_to(&self, window_id: u32, key: &SessionKey) {
+        let Some(owner) = self
+            .application()
+            .and_then(|app| app.window_by_id(window_id))
+            .and_downcast::<SessionWindow>()
+        else {
+            return;
+        };
+        if self.imp().waiting_scripts.borrow().is_empty() {
+            return;
+        }
+        if !owner
+            .workspaces()
+            .iter()
+            .any(|workspace| workspace.key().as_ref() == Some(key))
+        {
+            self.show_toast(&crate::i18n::gettext(
+                "That connection is still connecting in another window. Choose it again once it is open.",
+            ));
+            return;
+        }
+        let scripts = self.imp().waiting_scripts.take();
+        owner.send(SessionWindowInput::Script(ScriptInput::For {
+            key: key.clone(),
+            scripts,
+        }));
+        self.show_waiting_scripts();
+    }
+
+    // The session left between the hand-over and now: they wait here instead, behind the picker's banner.
+    fn on_scripts_for(&self, key: SessionKey, scripts: Vec<(gio::File, String)>) {
+        match self
+            .workspaces()
+            .into_iter()
+            .find(|workspace| workspace.key().as_ref() == Some(&key))
+        {
+            Some(workspace) => self.open_scripts_in(&workspace, scripts),
+            None => {
+                for (file, text) in scripts {
+                    self.wait_for_session(file, text);
+                }
+            }
+        }
+    }
+
+    // A session that runs no SQL leaves them waiting for one that does.
+    fn open_scripts_in(&self, workspace: &Workspace, scripts: Vec<(gio::File, String)>) {
+        let scripts: Vec<(gio::File, String)> = scripts
+            .into_iter()
+            .filter(|(file, _)| !self.focus_bound_tab(file))
+            .collect();
+        let input = workspace
+            .sender()
+            .filter(|_| workspace.data_model() == Some(DataModel::Relational));
+        match input {
+            Some(input) => {
+                for (file, text) in scripts {
+                    input.deliver(WorkspaceInput::OpenScript { file, text });
+                }
+            }
+            None => self.ask_elsewhere(scripts),
+        }
+    }
+
+    fn show_waiting_scripts(&self) {
+        let Some(picker) = self.imp().picker.get() else {
+            return;
+        };
+        let banner = picker.script_banner();
+        let title = match self.imp().waiting_scripts.borrow().as_slice() {
+            [] => None,
+            [(file, _)] => Some(crate::i18n::gettext_f(
+                "Choose a connection to open “{name}”",
+                &[("name", &file_display_name(&file.uri()))],
+            )),
+            waiting => {
+                let count = waiting.len();
+                Some(crate::i18n::ngettext_f(
+                    "Choose a connection to open {n} SQL file",
+                    "Choose a connection to open {n} SQL files",
+                    u32::try_from(count).unwrap_or(u32::MAX),
+                    &[("n", &count.to_string())],
+                ))
+            }
+        };
+        match title {
+            Some(title) => {
+                banner.set_title(&title);
+                banner.set_revealed(true);
+            }
+            None => banner.set_revealed(false),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn script_banner(&self) -> Option<adw::Banner> {
+        self.imp().picker.get().map(PickerPage::script_banner)
     }
 
     /// The dialog may be editing a connection the window shows or already

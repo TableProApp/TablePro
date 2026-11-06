@@ -88,6 +88,9 @@ impl WorkspaceModel {
         self.workspace
             .attach(key, &self.tab_view, self.workspace_tabs.clone(), self.index.clone());
         self.persist_workspace_state();
+        for (file, text) in self.loading_scripts.take().unwrap_or_default() {
+            self.open_script(&file, text);
+        }
     }
 
     /// Delete the session's drafts that neither the saved tabs nor an
@@ -206,6 +209,43 @@ impl WorkspaceModel {
             file: None,
             database: database.filter(|database| own.as_deref() != Some(database.as_str())),
         });
+    }
+
+    pub(super) fn open_script(&mut self, file: &gio::File, text: String) {
+        if let Some(waiting) = self.loading_scripts.as_mut() {
+            waiting.push((file.clone(), text));
+            return;
+        }
+        if let Some(id) = self.editor_tab_for(file) {
+            self.focus_tab(id);
+            return;
+        }
+        // Released after the saved tabs came back, by which time another window may hold the file.
+        let elsewhere = self
+            .window
+            .upgrade()
+            .and_then(|window| window.application())
+            .is_some_and(|app| crate::ui::SessionWindow::focus_tab_bound_to(&app, file));
+        if elsewhere {
+            return;
+        }
+        self.open_editor(TabSpec::Editor {
+            initial_query: Some(text),
+            draft: None,
+            file: Some(EditorFileRecord {
+                uri: file.uri().to_string(),
+                modified: false,
+            }),
+            database: None,
+        });
+    }
+
+    // By location only: the GTK thread reads no file system, so a tab bound through another path is not found.
+    pub(super) fn editor_tab_for(&self, file: &gio::File) -> Option<Uuid> {
+        self.workspace_tabs.borrow().iter().find_map(|(id, tab)| match tab {
+            WorkspaceTab::Editor(slot) if slot.editor.file().is_some_and(|bound| bound.equal(file)) => Some(*id),
+            _ => None,
+        })
     }
 
     // AdwTabView moves the focus to the page it selects only from the page

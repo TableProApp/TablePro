@@ -183,6 +183,8 @@ pub(crate) struct WorkspaceModel {
     driver_name: String,
     /// Writes the tab list a moment after the last change.
     workspace: Rc<workspace_persistence::WorkspacePersistence>,
+    // Until the saved tabs are back, a script waits, so a restored tab bound to its file can take it.
+    loading_scripts: Option<Vec<(gio::File, String)>>,
     _watches: SessionWatches,
     /// Tells the user once when editor drafts start failing to land.
     _draft_failures: tablepro_session::runtime::WatchForwarder,
@@ -623,6 +625,11 @@ pub(crate) enum WorkspaceInput {
         sql: String,
         database: Option<String>,
     },
+    /// A SQL file handed to TablePro, in a new editor tab bound to it.
+    OpenScript {
+        file: gio::File,
+        text: String,
+    },
     DropTablePrompt {
         schema: Option<String>,
         table: String,
@@ -865,6 +872,7 @@ impl Workspace {
             saved_queries_dialog: None,
             import_dialog: None,
             workspace: persistence,
+            loading_scripts: Some(Vec::new()),
             _watches: watches,
             _draft_failures: draft_failures,
         };
@@ -910,6 +918,17 @@ impl Workspace {
     /// tab open.
     pub(crate) fn data_model(&self) -> Option<DataModel> {
         self.imp().data_model.get().copied()
+    }
+
+    /// The editor tab bound to `file`. `None` while the workspace is
+    /// handling input.
+    // Until then a script waits in the workspace, and its saved tabs may hold the file.
+    pub(crate) fn tabs_loading(&self) -> bool {
+        self.read(|model| model.loading_scripts.is_some()).unwrap_or(false)
+    }
+
+    pub(crate) fn editor_tab_for(&self, file: &gio::File) -> Option<Uuid> {
+        self.read(|model| model.editor_tab_for(file)).flatten()
     }
 
     /// The tab `page` shows, when it is one of this session's. Read from
@@ -1299,6 +1318,7 @@ impl WorkspaceModel {
             WorkspaceInput::EditStructureTab { schema, table } => self.on_edit_structure_tab(schema, table),
             WorkspaceInput::ShowCreateTableForExisting { schema, table } => self.on_show_create_table(schema, table),
             WorkspaceInput::OpenInEditor { sql, database } => self.open_sql_in_editor(sql, database),
+            WorkspaceInput::OpenScript { file, text } => self.open_script(&file, text),
             WorkspaceInput::DropTablePrompt { schema, table } => self.on_drop_table_prompt(schema, table),
             WorkspaceInput::DropTableChecked { table, referencing } => self.on_drop_table_checked(table, &referencing),
             WorkspaceInput::DropTableConfirmed { schema, table } => self.on_drop_table_confirmed(schema, table),

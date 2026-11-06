@@ -814,6 +814,11 @@ impl ConnectionStore {
         // A connection saved with a tag deleted meanwhile drops it here.
         document.tidy();
         let bytes = crate::document::encode_document(&document)?;
+        crate::upgrade_copies::keep_before_write_blocking::<ConnectionsDocument>(&self.inner.path)?;
+        // Before the list itself, so a deleted connection is never gone from the list but kept in a
+        // copy, and a failed trim leaves both as they were for the next write to try again.
+        let kept = document.connections.iter().map(|saved| saved.id.to_string()).collect();
+        crate::upgrade_copies::trim_connection_copies_blocking(&self.inner.path, &kept)?;
         crate::fs::write_private_blocking(&self.inner.path, &bytes)?;
         *state = StoreState::Ready(document);
         self.publish(state);

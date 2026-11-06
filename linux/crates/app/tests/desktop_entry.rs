@@ -1,5 +1,5 @@
-//! The desktop entry offers TablePro for SQLite files and hands them
-//! over the way the application expects.
+//! The desktop entry offers TablePro for SQLite files and SQL scripts
+//! and hands them over the way the application expects.
 
 use std::path::Path;
 
@@ -30,6 +30,18 @@ fn sqlite_files_are_offered_to_tablepro() {
     assert!(
         types.contains(&"application/vnd.sqlite3".to_owned()),
         "the entry does not take SQLite files: {types:?}"
+    );
+}
+
+#[test]
+fn sql_scripts_are_offered_to_tablepro() {
+    let entry = entry().expect("the desktop entry parses");
+
+    let types = list(&entry, MAIN, "MimeType").expect("a MimeType list");
+
+    assert!(
+        types.contains(&"application/sql".to_owned()),
+        "the entry does not take SQL scripts: {types:?}"
     );
 }
 

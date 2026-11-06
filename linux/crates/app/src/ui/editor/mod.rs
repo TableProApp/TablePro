@@ -59,6 +59,7 @@ use self::results_pane::ResultPage;
 use self::run_log::{EntryKind, RunEvent, RunLog};
 use self::run_scope::ScopedText;
 use self::script_runner::{RUN_ROW_LIMIT, RunBatch, ScriptRun, plan_batches, run_in_tab};
+pub(crate) use self::sql_file::load_text;
 pub(crate) use self::transaction_dirty::OpenTransaction;
 use super::data_grid::{DialectSource, GridRequest};
 use super::export::{ExportOffer, ExportOrigin, ExportQuery, ExportSource};

@@ -21,6 +21,7 @@ pub mod query_history;
 pub mod saved_queries;
 mod tag_name_error;
 mod unix_time;
+pub mod upgrade_copies;
 
 pub use connection_color::ConnectionColor;
 pub use connection_group::ConnectionGroup;
