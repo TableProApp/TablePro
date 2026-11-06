@@ -1,6 +1,6 @@
 # State management
 
-The `app` crate's application, windows, workspace and tabs are gtk-rs subclasses ([decisions/0012-window-per-session.md](decisions/0012-window-per-session.md)). A few views are still [Relm4](https://relm4.org) components ([decisions/0003-relm4-architecture.md](decisions/0003-relm4-architecture.md)): the saved-queries and CSV import dialogs. New views are subclasses. This page covers where state lives, the rules every view follows, and the patterns for each kind.
+The `app` crate's application, windows, workspace, tabs and dialogs are gtk-rs subclasses ([decisions/0012-window-per-session.md](decisions/0012-window-per-session.md)). This page covers where state lives, the rules every view follows, and the patterns for each kind.
 
 ## Where state lives
 
@@ -21,9 +21,9 @@ Windows share nothing but `AppServices`. CI fails on a `thread_local!` under `cr
 
 ## Rules for every view
 
-**Background work goes through `Tasks`.** Use `crate::runtime::spawn_and_deliver` to run work on the app runtime and get its result on the GTK thread, and `spawn_held` for work that has to finish even if its window goes, such as saving a named query or importing a connection list. A table or structure save goes through `WorkspaceHandle::save`, whose `SaveLedger` holds the process. `crates/app/clippy.toml` bans `tokio::spawn`, `Handle::current`, `relm4::spawn` and their siblings, so nothing reaches for whichever runtime happens to be ambient.
+**Background work goes through `Tasks`.** Use `crate::runtime::spawn_and_deliver` to run work on the app runtime and get its result on the GTK thread, and `spawn_held` for work that has to finish even if its window goes, such as saving a named query or importing a connection list. A table or structure save goes through `WorkspaceHandle::save`, whose `SaveLedger` holds the process. `crates/app/clippy.toml` bans `tokio::spawn`, `Handle::current` and their siblings, so nothing reaches for whichever runtime happens to be ambient.
 
-**Input goes through `DeliverInput::deliver`.** It works on an input queue's sender, a `relm4::Sender`, a `ComponentSender` and a `FactorySender`. A message to a view that has shut down is dropped and logged at debug under the `component` target, so a read or a save that comes back after its window closed changes nothing. `ComponentSender::input` and `FactorySender::input` are banned: relm4 0.11 calls `expect` on a closed channel, which would take every window down. Use `try_deliver` when the caller must act on a dropped message, as `QuitSequence` does when a window is already gone.
+**Input goes through `DeliverInput::deliver`.** It works on an input queue's sender. A message to a view that has shut down is dropped and logged at debug under the `component` target, so a read or a save that comes back after its window closed changes nothing. Use `try_deliver` when the caller must act on a dropped message, as `QuitSequence` does when a window is already gone.
 
 **A watch loop is a `WatchForwarder`.** The session publishes its health (`Session::health`), its link generation (`link_changes`) and each scope's objects (`subscribe_objects`) on `tokio::sync::watch` channels. A view keeps a `WatchForwarder` in a field: it delivers the current value, then every change, on the GTK thread, and stops when the field drops. A value published after the view went away is never delivered.
 
@@ -78,6 +78,14 @@ The closure holds only the sender, so a window that closed before the read ends 
 ## Tabs
 
 A browse or structure tab is a subclass whose model sits in its `imp` struct. `send` hands the model one input and handles it at once; an input a widget signal sets off while another is being handled waits in the tab's queue until that one finishes. The model's update returns effects: more inputs for the queue, and outputs the tab emits as signals. The workspace connects those signals, tags them with the tab's id and queues them as `WorkspaceInput`, so the tabs never call each other.
+
+A tab belongs to its session, and a session to one window ([decisions/0028-sessions-share-a-window.md](decisions/0028-sessions-share-a-window.md)). libadwaita 1.9 lets every tab bar of the process take a dragged tab, so the shell holds a tab to that while the drag moves it:
+
+- When a drag takes a tab out of the view, the shell of its session's window records the position it left (`Departure`, from `page-detached`).
+- Dropped on its own bar, it stays where it was dropped.
+- Dropped on another window's bar, that window sends it back (`SessionWindowInput::ReturnTab`), into its session's view at the position it left.
+- Dropped outside every window, `create-window` declines a new window and the tab goes back to that position ([toolkit-workarounds.md](toolkit-workarounds.md#a-tab-dropped-outside-every-window)).
+- `ReturnTab` runs from the window's queue, after libadwaita finishes attaching the page. A tab whose session closed while it was out closes where it is; the session's close already asked about it, and its view no longer holds the page to close it.
 
 ## The SQL editor
 
@@ -141,31 +149,22 @@ The tab emits `transaction-changed` when that flips, and the workspace reads `Wo
 - Pinning moves the row to where the history now lists it without reading again. A row that now sorts past the pages read comes back with its page.
 - Delete happens at once and offers Undo ([storage.md](storage.md#deleting-and-restoring)).
 
-## Relm4 components
-
-The components that remain follow these conventions until a rewrite turns them into subclasses:
-
-- Input reaches them through `deliver`. Their output reaches the subclass that hosts them through `connect_receiver`, whose closure delivers it to that subclass's queue.
-- Their commands (`sender.command`, `oneshot_command`) run on Relm4's own runtime, not on `Tasks`. The saved-queries dialog still loads that way; new work goes through `spawn_and_deliver`.
-- They present their dialogs on the window they belong to. `ComponentBuilder::transient_for` is banned, because Relm4 applies it only from `relm4::RelmApp`, which this app does not use.
-
 ## Naming
 
 - `<Thing>Input`: every message a view handles, as an enum (`SessionWindowInput`, `WorkspaceInput`, `BrowseTabInput`).
 - A view with many inputs groups them by the state each one changes, one enum per group (`BrowseTabInput::Paging(PagingInput)`, `StructureTabInput::Save(SaveInput)`), and handles each group in its own `*_handlers` module. Senders pass the group's enum; `send` takes anything that converts into the view's input.
 - `<Thing>Output`: only the messages a parent should react to.
-- `<Thing>Cmd`: a Relm4 command's result.
 - `<Thing>Init`: what the parent hands a view when it builds it (`SessionWindowInit`, `WorkspaceInit`).
 
 ## Alert dialogs
 
 - `AdwAlertDialog` closes itself before it emits `response`. A response handler that calls `close()` again finds the dialog gone, and libadwaita logs a critical when animations are off.
 - That close emits `closed` before the `response` the click chose. A `closed` handler that answers at once turns every click into the close response. `workspace::respond` defers its close response to an idle callback, so the click's response comes first.
-- To wait for an answer, use `workspace::respond`, which also answers when the dialog goes without a response. `choose_future` is not used: its callback aborts the process in that case.
+- To wait for an answer, use `workspace::respond`, which also answers when the dialog goes without a response, its window destroyed under it included. `choose_future` is not used: it never resolves in that case, and its callback aborts the process when the call is cancelled ([toolkit-workarounds.md](toolkit-workarounds.md#adwalertdialogchoose)).
 
 ## Anti-patterns to flag in review
 
-- `tokio::spawn`, `relm4::spawn` or `Handle::current` in app code. Use `Tasks`.
+- `tokio::spawn` or `Handle::current` in app code. Use `Tasks`.
 - `ComponentSender::input` or `FactorySender::input`. Use `deliver`.
 - A hand-written loop over a watch channel. Use `WatchForwarder`.
 - A view that keeps a `Connection`, or a dialect past a link change.

@@ -52,8 +52,8 @@ shift 3
 
 upstream="$(basename "$dist" .tar.xz)"
 upstream="${upstream#tablepro-}"
-# Debian sorts a pre-release below its release through a tilde, so
-# 0.2.0-rc.1 becomes 0.2.0~rc.1.
+# Debian sorts a beta below its release through a tilde, so
+# 0.2.0-beta.1 becomes 0.2.0~beta.1.
 debian_upstream="$(printf '%s\n' "$upstream" | sed 's/-/~/')"
 
 work="$(mktemp -d)"
@@ -70,7 +70,7 @@ tar -xf "$vendor" -C "$src"
 cp -R "${debian:-$src/linux/build-aux/debian}" "$src/debian"
 maintainer="$(sed -n 's/^Maintainer: //p' "$src/debian/control")"
 if [ "$revision" = 1 ]; then
-    message="New upstream release. Notes: https://github.com/TableProApp/TablePro/blob/linux-v$upstream/linux/CHANGELOG.md"
+    message="New upstream release. Notes: https://github.com/TableProApp/TablePro/releases/tag/linux-v$upstream"
 else
     message="Packaging update of the linux-v$upstream release, upload $revision."
 fi

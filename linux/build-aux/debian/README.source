@@ -29,8 +29,7 @@ uploads of one upstream version. The series version keeps each series'
 version unique and sorts a later series higher. It leaves out the word
 ubuntu, which dpkg-source reads as an Ubuntu upload by a non-Ubuntu
 maintainer, and a third dotted part, which lintian reads as a binary NMU.
-An upstream pre-release such as 0.2.0-rc.1 becomes 0.2.0~rc.1, which sorts
-below 0.2.0.
+A beta such as 0.2.0-beta.1 becomes 0.2.0~beta.1, which sorts below 0.2.0.
 
 debian/copyright covers both tarballs: a paragraph for each crate in
 vendor/, from its own license files, and for the code some crates carry

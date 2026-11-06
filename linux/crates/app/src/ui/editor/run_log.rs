@@ -481,18 +481,13 @@ impl RunLog {
         let results = crate::i18n::ngettext_f(
             "{n} result in {ms} ms",
             "{n} results in {ms} ms",
-            u32::try_from(shown).unwrap_or(u32::MAX),
+            shown,
             &[("n", &shown.to_string()), ("ms", &ms)],
         );
         if failures == 0 {
             return results;
         }
-        let failed = crate::i18n::ngettext_f(
-            "{n} failed",
-            "{n} failed",
-            u32::try_from(failures).unwrap_or(u32::MAX),
-            &[("n", &failures.to_string())],
-        );
+        let failed = crate::i18n::ngettext_f("{n} failed", "{n} failed", failures, &[("n", &failures.to_string())]);
         format!("{results} · {failed}")
     }
 }

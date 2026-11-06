@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProSavedQueriesDialog" parent="AdwDialog">
+    <property name="title" translatable="yes">Saved Queries</property>
+    <property name="content-width">560</property>
+    <property name="content-height">600</property>
+    <property name="child">
+      <object class="AdwToastOverlay" id="toast_overlay">
+        <property name="child">
+          <object class="AdwToolbarView">
+            <child type="top">
+              <object class="AdwHeaderBar"/>
+            </child>
+            <child type="top">
+              <object class="GtkBox">
+                <property name="margin-start">12</property>
+                <property name="margin-end">12</property>
+                <property name="margin-top">6</property>
+                <property name="margin-bottom">6</property>
+                <child>
+                  <object class="GtkSearchEntry" id="search_entry">
+                    <property name="placeholder-text" translatable="yes">Search saved queries</property>
+                    <property name="hexpand">true</property>
+                    <!-- A placeholder is gone once text is typed, so it names nothing. -->
+                    <accessibility>
+                      <property name="label" translatable="yes">Search saved queries</property>
+                    </accessibility>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <property name="content">
+              <object class="GtkStack" id="stack">
+                <property name="vexpand">true</property>
+                <child>
+                  <object class="GtkStackPage">
+                    <property name="name">empty</property>
+                    <property name="child">
+                      <object class="AdwStatusPage" id="status_page">
+                        <property name="icon-name">document-open-recent-symbolic</property>
+                        <property name="title" translatable="yes">No Saved Queries</property>
+                        <property name="description" translatable="yes">Save a query from the editor and it will be listed here.</property>
+                      </object>
+                    </property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkStackPage">
+                    <property name="name">list</property>
+                    <property name="child">
+                      <object class="GtkScrolledWindow">
+                        <property name="hscrollbar-policy">never</property>
+                        <property name="child">
+                          <object class="GtkListView" id="list_view">
+                            <property name="show-separators">true</property>
+                            <property name="single-click-activate">true</property>
+                            <accessibility>
+                              <property name="label" translatable="yes">Saved Queries</property>
+                            </accessibility>
+                            <style>
+                              <class name="rich-list"/>
+                            </style>
+                          </object>
+                        </property>
+                      </object>
+                    </property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkStackPage">
+                    <property name="name">error</property>
+                    <property name="child">
+                      <object class="AdwStatusPage" id="error_page">
+                        <property name="icon-name">dialog-error-symbolic</property>
+                        <property name="title" translatable="yes">Could Not Read Saved Queries</property>
+                        <property name="child">
+                          <object class="GtkButton" id="retry_button">
+                            <property name="label" translatable="yes">Try Again</property>
+                            <property name="halign">center</property>
+                            <style>
+                              <class name="pill"/>
+                            </style>
+                          </object>
+                        </property>
+                      </object>
+                    </property>
+                  </object>
+                </child>
+              </object>
+            </property>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+</interface>

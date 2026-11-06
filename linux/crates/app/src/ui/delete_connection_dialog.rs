@@ -52,7 +52,7 @@ impl DeleteConnectionDialog {
         self.history.set_subtitle(&crate::i18n::ngettext_f(
             "Removes {n} query run on this connection",
             "Removes {n} queries run on this connection",
-            u32::try_from(count).unwrap_or(u32::MAX),
+            count,
             &[("n", &count.to_string())],
         ));
     }

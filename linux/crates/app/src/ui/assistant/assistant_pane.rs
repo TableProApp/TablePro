@@ -111,6 +111,7 @@ mod imp {
         }
 
         fn dispose(&self) {
+            crate::ui::text_view_teardown::release(&self.composer.get());
             self.obj().stop_work();
             self.settings_watch.take();
             self.hooks.take();
@@ -614,7 +615,7 @@ impl AssistantPane {
             crate::i18n::ngettext_f(
                 "{n} token",
                 "{n} tokens",
-                crate::ui::format::plural_count(tokens),
+                tokens,
                 &[("n", &crate::ui::format::format_thousands(tokens))],
             )
         });

@@ -76,7 +76,7 @@ pub(super) fn imported_message(
         parts.push(ngettext_f(
             "Imported {n} connection.",
             "Imported {n} connections.",
-            count(connections),
+            connections,
             &[("n", &connections.to_string())],
         ));
     }
@@ -85,7 +85,7 @@ pub(super) fn imported_message(
             parts.push(ngettext_f(
                 "Added {n} saved query.",
                 "Added {n} saved queries.",
-                count(queries.added),
+                queries.added,
                 &[("n", &queries.added.to_string())],
             ));
         }
@@ -93,7 +93,7 @@ pub(super) fn imported_message(
             parts.push(ngettext_f(
                 "{n} saved query could not be added.",
                 "{n} saved queries could not be added.",
-                count(queries.failed),
+                queries.failed,
                 &[("n", &queries.failed.to_string())],
             ));
         }
@@ -106,7 +106,7 @@ pub(super) fn imported_message(
         parts.push(ngettext_f(
             "{n} password could not be kept in the keyring.",
             "{n} passwords could not be kept in the keyring.",
-            count(imported.secrets_not_kept),
+            imported.secrets_not_kept,
             &[("n", &imported.secrets_not_kept.to_string())],
         ));
     }
@@ -114,8 +114,4 @@ pub(super) fn imported_message(
         return gettext("Nothing was imported.");
     }
     parts.join(" ")
-}
-
-fn count(n: usize) -> u32 {
-    u32::try_from(n).unwrap_or(u32::MAX)
 }

@@ -852,7 +852,7 @@ impl SessionWindow {
                 Ok(Ok(report)) => crate::i18n::ngettext_f(
                     "Imported {n} connection.",
                     "Imported {n} connections.",
-                    u32::try_from(report.total()).unwrap_or(u32::MAX),
+                    report.total(),
                     &[("n", &report.total().to_string())],
                 ),
                 Ok(Err(tablepro_storage::StorageError::ImportOutdated)) => crate::i18n::gettext(

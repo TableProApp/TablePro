@@ -24,7 +24,6 @@ TablePro is licensed under the GNU Affero General Public License, version 3 or l
 Used by:
 
 - flagset 0.4.7
-- fragile 2.1.0
 
 ~~~~text
 
@@ -9622,8 +9621,6 @@ Used by:
 - quote 1.0.47
 - ref-cast-impl 1.0.27
 - ref-cast 1.0.27
-- relm4-macros 0.11.0
-- relm4 0.11.0
 - rustix 1.1.4
 - rustversion 1.0.23
 - semver 1.0.28

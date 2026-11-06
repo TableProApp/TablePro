@@ -54,7 +54,7 @@ License:        %{shrink:
     Zlib
 }
 URL:            https://tablepro.app
-# A pre-release packages as 0.2.0~rc.1 and is tagged linux-v0.2.0-rc.1.
+# A beta packages as 0.2.0~beta.1 and is tagged linux-v0.2.0-beta.1.
 Source0:        https://github.com/TableProApp/TablePro/releases/download/linux-v%{version_no_tilde}/%{name}-%{version_no_tilde}.tar.xz
 Source1:        https://github.com/TableProApp/TablePro/releases/download/linux-v%{version_no_tilde}/%{name}-%{version_no_tilde}-vendor.tar.xz
 
