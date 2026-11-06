@@ -147,9 +147,10 @@ mod tests {
 
         let mut client = TcpStream::connect(relay.address()).await.unwrap();
         let mut byte = [0_u8; 1];
-        let read = tokio::time::timeout(Duration::from_secs(5), client.read(&mut byte))
-            .await
-            .unwrap();
+        // Windows retries a refused connect for about two seconds, longer on a busy runner, so
+        // the wait is the transport's own connect timeout plus room to close the stream.
+        let within = LivenessPolicy::DESKTOP.connect_timeout + Duration::from_secs(5);
+        let read = tokio::time::timeout(within, client.read(&mut byte)).await.unwrap();
 
         assert!(
             matches!(read, Ok(0) | Err(_)),
