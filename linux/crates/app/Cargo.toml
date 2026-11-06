@@ -110,7 +110,7 @@ icu_locale_core = { version = "2.3", features = ["alloc"] }
 indexmap = "2.14"
 # A selection's sum and average, exact past what i128 holds.
 num-bigint.workspace = true
-# Usage data (docs/decisions/0035-usage-data.md): the blocking client, whose worker is a thread of
+# Usage data (docs/decisions/0039-usage-data.md): the blocking client, whose worker is a thread of
 # its own. Error tracking stays off: crash reports stay on disk.
 posthog-rs = { version = "0.27.0", default-features = false }
 # The assistant's replies are Markdown; the HTML writer stays off.

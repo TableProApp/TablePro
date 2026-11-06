@@ -65,7 +65,7 @@ sqlx takes MySQL CA certificates only as PEM bytes and has no hook for a rustls 
 
 ### TablePro account glue (`tablepro-account`)
 
-`oauth2`, progenitor's generated client and `jsonwebtoken` do the protocol work ([core ADR 0011](../../../core/docs/decisions/0011-tablepro-accounts.md)). Three pieces around them are written here:
+`oauth2`, progenitor's generated client and `jsonwebtoken` do the protocol work ([core ADR 0016](../../../core/docs/decisions/0016-tablepro-accounts.md)). Three pieces around them are written here:
 
 1. **Loopback redirect listener** (`loopback.rs`): oauth2 5.0.0 builds the authorization URL and exchanges the code, and leaves receiving the redirect to the app. The listener is hyper, which the MCP server already brings, and answers every request until one carries the sign-in's `state` (RFC 8252 section 7.3). `the_listener_keeps_waiting_past_other_requests_for_its_state` runs it over real sockets.
 2. **Token revocation** (`oauth.rs`): oauth2 5.0.0's `revoke_token` refuses a revocation URL that is not https (`ConfigurationError::InsecureUrl`), and the local tablepro-cloud the stack tests run against serves http. It is one RFC 7009 form POST.

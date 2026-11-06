@@ -357,7 +357,7 @@ impl AppServices {
                 self.storage.connections().clone(),
                 self.tasks.clone(),
             )),
-            column_widths: self.storage.column_widths().clone(),
+            column_layouts: self.storage.column_layouts().clone(),
             filters: self.storage.filter_settings().clone(),
             workspaces: self.storage.workspaces().clone(),
             history,

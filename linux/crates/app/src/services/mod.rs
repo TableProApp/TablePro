@@ -19,6 +19,7 @@ pub mod grid;
 pub mod history_availability;
 pub mod history_preferences;
 pub mod history_service;
+pub mod import_file;
 pub(crate) mod library_outline;
 pub(crate) mod license_ask;
 pub mod mcp_service;

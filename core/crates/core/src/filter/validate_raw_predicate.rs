@@ -8,8 +8,8 @@ use crate::sql_syntax::{ExpressionSyntaxError, MAX_EXPRESSION_LEN, parse_express
 /// comment would swallow the clauses after it. The engine's own grammar
 /// has to read the whole text as one expression with nothing left over.
 /// The filter strip checks before saving a fragment, and every builder
-/// checks again, so a fragment saved before this check is refused when
-/// it is replayed.
+/// checks again, so a fragment edited into a saved filter file is refused
+/// when it is replayed.
 pub fn validate_raw_predicate(dialect: &dyn SqlDialect, text: &str) -> Result<(), ExpressionSyntaxError> {
     if crate::document::speaks_shell(dialect) {
         return crate::document::typed_document(text)

@@ -26,6 +26,8 @@ mod ddl_conformance_engine;
 mod ddl_suite_macro;
 mod document_engine;
 mod document_suite_macro;
+mod dump_engine;
+mod dump_suite_macro;
 mod editor_transaction_engine;
 #[cfg(test)]
 mod fake_engine;
@@ -56,6 +58,7 @@ pub use connection_suite_flags::ConnectionSuiteFlags;
 pub use corpus_column::{CorpusColumn, CorpusValue};
 pub use ddl_conformance_engine::ConformanceDdlEngine;
 pub use document_engine::DocumentEngine;
+pub use dump_engine::{DumpEngine, NativeDump};
 pub use editor_transaction_engine::EditorTransactionEngine;
 pub use keyspace_engine::KeyspaceEngine;
 pub use large_table_engine::LargeTableEngine;

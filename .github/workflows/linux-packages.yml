@@ -4,9 +4,11 @@ name: Linux packages
 # The Debian source package is built once for each Ubuntu series the PPA
 # builds for, and its binaries are built from it the way Launchpad builds
 # them: offline, in a fresh container with only the declared build
-# dependencies, then checked with lintian. The .rpm is built in a fresh
-# fedora:44 with only its BuildRequires. Each package is then installed in
-# another fresh container with only its runtime dependencies and started.
+# dependencies, then checked with lintian. The .rpm is built in Mock, as
+# COPR builds it, for each Fedora release COPR builds for: the BuildRequires
+# go into a fresh chroot, then the build runs there with no network, then
+# rpmlint. Each package is then installed in another fresh container of its
+# release with only its runtime dependencies and started.
 # release-linux.yml calls this workflow and uploads the source packages.
 # A run by hand can add arm64, which the nightly and pull requests leave out.
 # Given a release tag, it packages that release's tarballs instead, with
@@ -30,6 +32,7 @@ on:
       - "linux/po/meson.build"
       - "linux/po/LINGUAS"
       - ".github/workflows/linux-packages.yml"
+      - ".github/actions/linux-package-disk/**"
   # Nightly on main, so a failure only one distribution's build shows turns
   # up before tag time. Three hours after build-linux.yml's nightly, so the
   # two do not share the account's 20 concurrent jobs.
@@ -167,6 +170,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/linux-package-disk
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: linux-source-package
@@ -205,65 +209,74 @@ jobs:
           if-no-files-found: error
 
   rpm:
-    name: RPM package (${{ matrix.runner }})
+    name: RPM package (Fedora ${{ matrix.fedora }}, ${{ matrix.runner }})
     needs: sources
     if: inputs.release-tag == ''
     strategy:
       fail-fast: false
       matrix:
         runner: ${{ fromJSON(inputs.rpm-runners || (inputs.arm64 && '["ubuntu-24.04", "ubuntu-24.04-arm"]') || '["ubuntu-24.04"]') }}
+        # Every Fedora release the COPR project builds for.
+        fedora: ["44", "45"]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 300
-    container:
-      image: fedora:44
+    # On the runner itself, so the build's container can go on the larger
+    # disk. It is privileged, since Mock mounts the chroot's filesystems and
+    # build-rpm.sh unshares the network for the build.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/linux-package-disk
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: linux-sources
           path: _packages/sources
       - name: Build, test and lint the package
+        env:
+          FEDORA: ${{ matrix.fedora }}
         run: |
           dist="$(find _packages/sources -name 'tablepro-*.tar.xz' ! -name '*-vendor.tar.xz')"
           vendor="$(find _packages/sources -name 'tablepro-*-vendor.tar.xz')"
-          linux/build-aux/packaging/build-rpm.sh "$dist" "$vendor" _packages/rpm
+          docker run --rm --privileged -v "$PWD:$PWD" -w "$PWD" "fedora:$FEDORA" \
+            linux/build-aux/packaging/build-rpm.sh "$dist" "$vendor" _packages/rpm
       - name: Keep the RPM failure logs
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: linux-rpm-testlog-${{ runner.arch }}
+          name: linux-rpm-testlog-${{ matrix.fedora }}-${{ runner.arch }}
           path: |
             _packages/rpm/testlog.txt
+            _packages/rpm/build.log
             _packages/rpm/disk-usage.tsv
             _packages/rpm/disk-usage.txt
           if-no-files-found: ignore
           retention-days: 7
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: linux-rpm-${{ runner.arch }}
+          name: linux-rpm-${{ matrix.fedora }}-${{ runner.arch }}
           path: _packages/rpm
           if-no-files-found: error
 
   rpm-install:
-    name: Install the RPM package (${{ matrix.runner }})
+    name: Install the RPM package (Fedora ${{ matrix.fedora }}, ${{ matrix.runner }})
     needs: rpm
     strategy:
       fail-fast: false
       matrix:
         runner: ${{ fromJSON(inputs.rpm-runners || (inputs.arm64 && '["ubuntu-24.04", "ubuntu-24.04-arm"]') || '["ubuntu-24.04"]') }}
+        fedora: ["44", "45"]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     container:
-      image: fedora:44
+      image: fedora:${{ matrix.fedora }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: linux-rpm-${{ runner.arch }}
+          name: linux-rpm-${{ matrix.fedora }}-${{ runner.arch }}
           path: _packages/rpm
       - name: Install, start and validate
         run: |

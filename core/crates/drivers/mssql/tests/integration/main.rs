@@ -13,6 +13,7 @@ mod conformance_engine;
 mod csv_import;
 mod ddl;
 mod decode;
+mod dump;
 mod filter;
 mod identity_insert;
 mod metadata;

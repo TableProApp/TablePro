@@ -32,6 +32,11 @@ export CARGO_PROFILE_RELEASE_DEBUG = line-tables-only
 # what DuckDB's C++ build writes and the memory each of its translation
 # units takes; rustc links without -flto, so their GIMPLE half goes unused.
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all optimize=-lto
+# DuckDB's C++ builds once for the package and once for its tests, and
+# with full DWARF its objects and archives filled the builder's disk. -g1
+# keeps the line tables the dbgsym package needs, as the .rpm does.
+export DEB_CFLAGS_MAINT_APPEND = -g1
+export DEB_CXXFLAGS_MAINT_APPEND = -g1
 
 # The tarball holds the repository's layout: the Meson project is linux/,
 # and the Cargo workspace and vendor/ are at the top.

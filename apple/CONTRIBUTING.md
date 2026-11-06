@@ -130,7 +130,7 @@ The architecture is in the area rules under `.claude/rules/`, and its invariants
 | TableProOracle | `Packages/`, wraps a pinned fork of OracleNIO | Oracle wire protocol |
 | Sparkle | SPM | Updates, EdDSA-signed |
 | Yams | SPM | YAML for project folder import |
-| posthog-ios | SPM | Usage data, `Core/Services/Telemetry`; a build sends nothing unless `POSTHOG_PROJECT_KEY` is set |
+| posthog-ios | SPM | Usage data in both apps: `TablePro/Core/Services/Telemetry` and `TableProMobile/TableProMobile/Platform/Telemetry.swift`; only a Release build with `POSTHOG_PROJECT_KEY` set sends anything |
 | swift-nio, swift-nio-ssl, zstd | SPM | The Kafka plugin's transport, TLS and zstd codec |
 | swift-openapi-generator, swift-openapi-runtime, swift-openapi-urlsession | SPM, through `Packages/TableProMacCore` | `TableProCloudAPI`, the client generated from tablepro-cloud's `api/v2.json`, sending over `URLSession`; `scripts/update-cloud-api.sh` refreshes its copy and the entitlement test vectors |
 

@@ -7719,6 +7719,7 @@ dependencies = [
  "chrono",
  "comfy-table",
  "csv",
+ "flate2",
  "futures",
  "num-bigint 0.4.8",
  "proptest",
