@@ -62,8 +62,8 @@ test_env.set('TABLEPRO_POSTHOG_KEY', '')
 # windows.yml tests tablepro-ffi, whose binaries each link every engine and filled a package builder's disk.
 # tablepro-bindgen is the macOS build's generator, and uniffi's CLI changes the build dependencies'
 # features, so the gtk suite then built DuckDB's C++ again.
-# Each suite selects all of these packages: Cargo unifies features over the selected packages, and the app's
-# own selection built 244 crates again on a package builder. A target runner picks each suite's tests instead.
+# Every suite selects the same packages: Cargo unifies features over the selected packages, and a
+# selection of the app alone built 244 crates again on a package builder.
 test_packages = [
   '--workspace',
   '--exclude', 'tablepro-ffi',
@@ -90,53 +90,42 @@ cargo_tests = custom_target(
   ] + cargo_options + test_packages,
 )
 
-# The host's own triple, since a triple's runner takes precedence over a
-# cfg() one, and --config over the environment.
-host_triple = ''
-foreach line : run_command(meson.get_compiler('rust').cmd_array(), '-vV', check: true).stdout().split('\n')
-  if line.startswith('host: ')
-    host_triple = line.substring(6).strip()
-  endif
-endforeach
-if host_triple == ''
-  error('rustc -vV names no host')
-endif
-test_runner = meson.project_source_root() / 'build-aux' / 'cargo-test-runner.sh'
-skip_app = ['--config', 'target.@0@.runner = ["@1@", "skip", "tablepro"]'.format(host_triple, test_runner)]
-only_app = ['--config', 'target.@0@.runner = ["@1@", "only", "tablepro"]'.format(host_triple, test_runner)]
+# The code that measures and places things, which the scale suite runs
+# again.
+scale_modules = [
+  'ui::data_grid::',
+  'ui::diagram::',
+  'ui::editor::editor_view::',
+  'ui::window_geometry::',
+]
 
 # nextest's ci profile kills a test that hangs and names it within
 # minutes. Under cargo test a hung test holds the suite until Meson's
 # timeout and names nothing. The package builders have no nextest.
 nextest = find_program('cargo-nextest', required: false)
+nextest_run = ['nextest', 'run', '--profile', 'ci'] + cargo_options + test_packages
 if nextest.found()
-  workspace_args = ['nextest', 'run', '--profile', 'ci'] + cargo_options + test_packages + ['-E', 'not package(tablepro)']
+  workspace_args = nextest_run
+  scale_filter = []
+  foreach module : scale_modules
+    scale_filter += 'test(' + module + ')'
+  endforeach
+  scale_args = nextest_run + ['-E', 'package(tablepro) & kind(lib) & (' + ' | '.join(scale_filter) + ')']
 else
-  workspace_args = skip_app + ['test'] + cargo_options + test_packages
+  workspace_args = ['test'] + cargo_options + test_packages
+  # Only the app has ui modules.
+  scale_args = ['test'] + cargo_options + test_packages + ['--lib', '--'] + scale_modules
 endif
 
-# The workspace suite leaves out the app, whose tests need a display and
-# the GTK test accessibility backend.
-test(
-  'workspace',
-  cargo,
-  args: workspace_args,
-  env: test_env,
-  depends: cargo_tests,
-  suite: 'unit',
-  is_parallel: false,
-  timeout: 7200,
-)
-
-# nextest runs no doc tests.
+# nextest runs no doc tests, which need no display.
 if nextest.found()
   test(
     'workspace-doc',
     cargo,
-    args: skip_app + ['test', '--doc'] + cargo_options + test_packages,
+    args: ['test', '--doc'] + cargo_options + test_packages,
     env: test_env,
     depends: cargo_tests,
-    suite: 'unit',
+    suite: 'cargo',
     is_parallel: false,
     timeout: 3600,
   )
@@ -159,45 +148,40 @@ gtk_env.set('GNOTIFICATION_BACKEND', 'freedesktop')
 # reach the desktop it runs on, and a build sandbox without a bus still
 # has one. A build that skips the tests need not install dbus.
 gtk_program = cargo
-gtk_args = only_app + ['test'] + cargo_options + test_packages
+gtk_wrapper = []
 dbus_run_session = find_program('dbus-run-session', required: false)
 if dbus_run_session.found()
   gtk_program = dbus_run_session
-  gtk_args = ['--', cargo.full_path()] + gtk_args
+  gtk_wrapper = ['--', cargo.full_path()]
 endif
 
-# The workspace suite runs the doc tests, of which the app has none.
+# The app's tests need a display, the GTK test accessibility backend and
+# a bus; the core's tests run the same under them. The runs take three to
+# five minutes, the hour leaves room for the slowest builder.
 test(
-  'app',
+  'workspace',
   gtk_program,
-  args: gtk_args + ['--lib', '--bins', '--tests'],
+  args: gtk_wrapper + workspace_args,
   env: gtk_env,
   depends: [compiled_schemas, metainfo_file, cargo_tests],
-  suite: 'gtk',
+  suite: 'cargo',
   is_parallel: false,
   timeout: 3600,
 )
 
-# The code that measures and places things, again at the scale a 200%
-# display gives GDK, so a size worked out in device pixels rather than
-# logical ones fails here and not only on a HiDPI screen.
+# Again at the scale a 200% display gives GDK, so a size worked out in
+# device pixels rather than logical ones fails here and not only on a
+# HiDPI screen.
 gtk_scale_env = gtk_env
 gtk_scale_env.set('GDK_SCALE', '2')
 
 test(
   'app-scale-2',
   gtk_program,
-  args: gtk_args + [
-    '--lib',
-    '--',
-    'ui::data_grid::',
-    'ui::diagram::',
-    'ui::editor::editor_view::',
-    'ui::window_geometry::',
-  ],
+  args: gtk_wrapper + scale_args,
   env: gtk_scale_env,
   depends: [compiled_schemas, metainfo_file, cargo_tests],
-  suite: 'gtk',
+  suite: 'cargo',
   is_parallel: false,
   timeout: 3600,
 )

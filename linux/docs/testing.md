@@ -40,33 +40,30 @@ meson setup _build -Dprofile=development
 dbus-run-session -- meson test -C _build --print-errorlogs
 ```
 
-Five suites: `unit` tests the workspace without `tablepro`, `tablepro-ffi` and `tablepro-bindgen`. When Meson
-finds `cargo-nextest`, as in the fast job and the Flatpak Devel build, it runs `cargo nextest run --profile ci`,
-which kills a test past five minutes and names it, and then the doc tests through `cargo test --doc`. Without
-nextest, as on the package builders, it runs `cargo test`, where a hung test holds the suite until Meson's two hour
-timeout. Install nextest before `meson setup`, which looks for it. `gtk`
-runs the tests of `tablepro` with `GSK_RENDERER=cairo`, `GTK_A11Y=test`,
-`GDK_BACKEND=x11` and the build tree's schema directory, under a
-`dbus-run-session` of its own when one is installed, so its bus names
-and notifications never reach the desktop it runs on. It sets
-`GNOTIFICATION_BACKEND=freedesktop`, since GLib picks the portal inside
-Flatpak and the notification test answers with a freedesktop server on
-that bus. `data` runs `desktop-file-validate` and `appstreamcli
+Four suites: `cargo` tests the workspace without `tablepro-ffi` and `tablepro-bindgen` (`workspace`), then the
+app's code that measures and places things again at `GDK_SCALE=2` (`app-scale-2`). It runs them with
+`GSK_RENDERER=cairo`, `GTK_A11Y=test`, `GDK_BACKEND=x11` and the build tree's schema directory, which the app's
+tests need and the core's do not mind, under a `dbus-run-session` of its own when one is installed, so its bus
+names and notifications never reach the desktop it runs on. It sets `GNOTIFICATION_BACKEND=freedesktop`, since
+GLib picks the portal inside Flatpak and the notification test answers with a freedesktop server on that bus. When
+Meson finds `cargo-nextest`, as in the fast job and the Flatpak Devel build, the suite runs `cargo nextest run
+--profile ci`, which kills a test past five minutes and names it, picks the scale tests with a filterset, and then
+runs the doc tests through `cargo test --doc` (`workspace-doc`). Without nextest, as on the package builders, it
+runs `cargo test`, where a hung test holds the suite until Meson's one hour timeout, and libtest's name filter
+picks the scale tests. Install nextest before `meson setup`, which looks for it. `data` runs `desktop-file-validate` and `appstreamcli
 validate`; the schema compiles with `--strict` as part of the build.
 `packaging` runs the unit tests in `build-aux/tests` and checks that
 `debian/copyright`, the RPM spec and the metainfo agree with `data/licenses`
 and the version Meson builds. `po` runs `msgfmt --check` on each catalogue
 in `po/LINGUAS`; gettext 0.26 and newer also check its `{name}`
 placeholders. In a `-Dprofile=default` build, which the
-packages run, the unit and gtk suites build with `--release` but without
-its fat LTO, which would cost gigabytes and minutes per test binary.
-Both suites run on one build of the tests, `cargo test --no-run` on the
-workspace without `tablepro-ffi` and `tablepro-bindgen`, which `meson test`
-makes before the first suite starts, so a suite's timeout covers only its
-run. Each suite selects all of those packages, since Cargo resolves
-features over the selected packages and a selection of its own would
-build most crates again; `build-aux/cargo-test-runner.sh`, Cargo's target
-runner, then runs only the suite's own tests.
+packages run, the cargo suite builds with `--release` but without its
+fat LTO, which would cost gigabytes and minutes per test binary.
+Its tests run on one build, `cargo test --no-run` on the same packages,
+which `meson test` makes before the first test starts, so a test's
+timeout covers only its run. Every test selects the same packages, since
+Cargo resolves features over the selected packages and a selection of
+the app alone would build most crates again.
 Tests that need Docker or a Secret Service are ignored. Without a display
 (SSH, containers), prefix with xvfb the way the CI fast job does:
 
@@ -75,7 +72,7 @@ xvfb-run -a dbus-run-session -- meson test -C _build --print-errorlogs
 ```
 
 For a single crate, `meson devenv -C _build cargo test -p <crate>` runs
-Cargo on the same build tree. It does not set the gtk suite's variables,
+Cargo on the same build tree. It does not set the cargo suite's variables,
 so for the app pass them:
 
 ```bash
@@ -163,7 +160,7 @@ Each flag adds cases and needs its engine trait:
 | `unsupported_types: true` | an unsupported type never decodes as NULL | `TypedConformanceEngine` |
 | `bounded_ddl: true` | a schema-change batch is not cut off by the statement timeout | `BoundedDdlEngine` |
 
-A flag that is off emits no test. `suite_flags_match_driver_capabilities` is always emitted and never ignored: it fails when `endpoint`, `server_stop` or `editor_transactions` disagrees with the driver's `DriverCapabilities` (`statement_stop` for `server_stop`), so those cases cannot be skipped by declaring less. `pool`, `unsupported_types` and `bounded_ddl` have no capability behind them: they describe the server, and MySQL and MariaDB differ on `bounded_ddl` under one driver, so the adapter states them and review checks them. `docker: true` marks every other case `#[ignore = "requires docker"]`; SQLite and DuckDB pass `docker: false` and `endpoint: file`, so their suites run in the unit suite.
+A flag that is off emits no test. `suite_flags_match_driver_capabilities` is always emitted and never ignored: it fails when `endpoint`, `server_stop` or `editor_transactions` disagrees with the driver's `DriverCapabilities` (`statement_stop` for `server_stop`), so those cases cannot be skipped by declaring less. `pool`, `unsupported_types` and `bounded_ddl` have no capability behind them: they describe the server, and MySQL and MariaDB differ on `bounded_ddl` under one driver, so the adapter states them and review checks them. `docker: true` marks every other case `#[ignore = "requires docker"]`; SQLite and DuckDB pass `docker: false` and `endpoint: file`, so their suites run in the cargo suite.
 
 Each case starts its own engine, then has two minutes (`CASE_LIMIT`) to finish, four for the large-table case (`LARGE_TABLE_CASE_LIMIT`). A driver that ignores a deadline or a cancel fails the case with its name instead of holding the test run.
 
@@ -190,7 +187,7 @@ Every case but the last plans through `connection.dialect().ddl()` and runs the 
 - Each of these three runs only what `ddl::catalog_capabilities` offers. What it leaves out has to be refused by its plan.
 - `builtin_snippets_run_as_written` takes the SQL editor's built-in snippets for the connection's grammar, fills their table, index, column and value stops, with the row's `id` too on CQL, which finds a row only by its key, and keeps the rest as written (`tablepro_test_support::expand_snippet`), and runs each one through an editor session as the editor splits it: one statement each, all completing.
 
-The PostgreSQL, MySQL, SQL Server, ClickHouse, Cassandra, SQLite and DuckDB targets run it, the MySQL target on MariaDB as well and the Cassandra target on ScyllaDB. SQLite and DuckDB pass `docker: false`, so their cases run in the unit suite.
+The PostgreSQL, MySQL, SQL Server, ClickHouse, Cassandra, SQLite and DuckDB targets run it, the MySQL target on MariaDB as well and the Cassandra target on ScyllaDB. SQLite and DuckDB pass `docker: false`, so their cases run in the cargo suite.
 
 ### Large-table conformance
 
@@ -202,7 +199,7 @@ The PostgreSQL, MySQL, SQL Server, ClickHouse, Cassandra, SQLite and DuckDB targ
 
 The peak is the whole process's, so the case needs a process to itself. The PostgreSQL, MySQL, MariaDB, SQL Server, ClickHouse, Cassandra and ScyllaDB targets pass `docker: true` and run under cargo-nextest, which gives each test a process of its own. The `ci` nextest profile prints its times and memory for a passing run, so the job log keeps what the bounds are set from.
 
-SQLite and DuckDB pass `docker: false`, so the case runs in the unit suite, where `cargo test`, the package builders' runner, runs the tests of one binary in one process. It is a test target of its own, as `core/crates/drivers/sqlite/tests/large_table.rs`, which holds nothing else and includes the adapter from `tests/integration/sqlite_engine.rs`. A passing run there prints nothing; `cargo test -p tablepro-driver-sqlite --test large_table -- --nocapture` shows the numbers.
+SQLite and DuckDB pass `docker: false`, so the case runs in the cargo suite, where `cargo test`, the package builders' runner, runs the tests of one binary in one process. It is a test target of its own, as `core/crates/drivers/sqlite/tests/large_table.rs`, which holds nothing else and includes the adapter from `tests/integration/sqlite_engine.rs`. A passing run there prints nothing; `cargo test -p tablepro-driver-sqlite --test large_table -- --nocapture` shows the numbers.
 
 ### Large-catalog case
 
@@ -214,7 +211,7 @@ SQLite and DuckDB pass `docker: false`, so the case runs in the unit suite, wher
 
 The report gives each step's time, its stall and the CPU time the GTK thread spent on it: on a loaded machine the stall stretches and the CPU time does not, which tells a slow step from a busy machine. MySQL creates a table in milliseconds, so its fill takes minutes, and the `ci` profile gives these cases 15 minutes rather than five.
 
-The cases are `#[gtk4::test]`s in the app's library, so they need a display. CI runs them in the `integration-app` job under `xvfb-run` with the gtk suite's environment, and the `ci` nextest profile prints their numbers for a passing run. Locally:
+The cases are `#[gtk4::test]`s in the app's library, so they need a display. CI runs them in the `integration-app` job under `xvfb-run` with the cargo suite's environment, and the `ci` nextest profile prints their numbers for a passing run. Locally:
 
 ```bash
 GSK_RENDERER=cairo GTK_A11Y=test GDK_BACKEND=x11 xvfb-run -a dbus-run-session -- \
@@ -234,7 +231,7 @@ tablepro_test_support::value_corpus_suite! {
 
 The corpus is a list of `CorpusColumn`s: a column clause, values of it written as SQL, and the text each one shows, or NULL. It covers the engine's dates and times at their extremes and in other zones, high-precision and negative decimals at their scale, JSON, UUIDs, Unicode text, binary values and the engine's other common types. `value_corpus_reads_as_the_grid_shows` adds each column to a scratch table, inserts its values, and reads them back three times: through `read_page`, as a table tab reads a page, through `build_export` and `stream_read` behind a `DeclaredPrecisionSink`, as Export All reads one, and through an editor run of a plain SELECT. The export has to show what the page shows. Each value's text is `value_text` on the type of the column it came back in, the text the grid draws, `<unreadable type>` for a value the driver could not read, and every value that differs is listed in one failure, with a column the server refused. Where the two paths differ on purpose, the value says what each shows (`CorpusColumn::shows_apart`): a MySQL TIMESTAMP is an instant in a table tab and the server's wall time in the editor, and a PostgreSQL run shows the server's own text, as psql does. A value that shows the wrong text is a decoder bug: fix the decoder, never the corpus.
 
-Every target runs it, the MySQL target on MariaDB as well, and SQLite's and DuckDB's run in the unit suite.
+Every target runs it, the MySQL target on MariaDB as well, and SQLite's and DuckDB's run in the cargo suite.
 
 ### Export round trip
 
@@ -253,7 +250,7 @@ tablepro_test_support::round_trip_suite! {
 - `tsv_copy_pastes_back_as_the_same_rows` writes each corpus column's rows as the grid's Copy does, as tab-separated text and as the cells it offers beside the text (`CellsEncoder`), reads each as a paste does (`PastedTable`) and saves the rows into an empty copy as a table tab saves new ones (`plan_save`). Rows are compared in `id` order without the `id`, since a paste leaves an id the server numbers, such as SQLite's row id, to the server: by text for the text, and by text and kind for the cells, which keep how each value was stored. The columns and values the CSV case skips are skipped here too.
 - `csv_export_near_the_import_limit_imports_back`, with `near_limit: true`, fills a table through `LargeTableEngine` so its CSV under the export defaults lands within 1 MiB under `MAX_CSV_FILE_BYTES`, imports it into an empty copy, and compares a hash of every row. ClickHouse passes `false`: its import sends values in the request URL, 8 KiB a statement, so such a file takes some 8,000 statements and longer than a case may run.
 
-Each case has four minutes (`ROUND_TRIP_CASE_LIMIT`). Every target runs the suite, the MySQL target on MariaDB as well, and SQLite's and DuckDB's run in the unit suite.
+Each case has four minutes (`ROUND_TRIP_CASE_LIMIT`). Every target runs the suite, the MySQL target on MariaDB as well, and SQLite's and DuckDB's run in the cargo suite.
 
 ### Keyspace conformance
 
@@ -363,7 +360,7 @@ They read the stack from the environment:
 cargo test -p tablepro-account --test cloud_stack -- --ignored --test-threads=1
 ```
 
-The app has one case of its own, in `crates/app/src/ui/preferences_dialog/account_page.rs`: Sign In on Preferences > Account, through the page's own code, against the same stack, until the page shows the plan and this computer, then Sign Out. It needs the gtk suite's variables and a display, and the browser step hands back the redirect, so Chrome and the app need not share a loopback:
+The app has one case of its own, in `crates/app/src/ui/preferences_dialog/account_page.rs`: Sign In on Preferences > Account, through the page's own code, against the same stack, until the page shows the plan and this computer, then Sign Out. It needs the cargo suite's variables and a display, and the browser step hands back the redirect, so Chrome and the app need not share a loopback:
 
 ```bash
 GSK_RENDERER=cairo GTK_A11Y=test GDK_BACKEND=x11 xvfb-run -a dbus-run-session -- \
@@ -447,12 +444,12 @@ Helpers live in `crates/app/src/test_support`, compiled only for tests:
 
 - `drain_main_context()` runs pending main-loop sources. `wait_until(timeout, condition)` iterates the main loop until the condition holds or the timeout passes, so a missing signal fails the test instead of hanging it. `finish_on_main(timeout, future)` runs a future on the main context and gives it up at the timeout.
 - `SignalLog::connect(object, signal, extract)` records emissions and disconnects when dropped.
-- `OwnedWindow` holds a window a test presents, and on drop clears its focus, destroys it and drains the main context. GTK keeps every window, and whatever its widgets hold, until it is destroyed, and GTK 4.22 leaks a focused widget that is hidden and then unparented. The `cargo test` run of the gtk suite is one process, which package builds start with a limit of 1024 open files, so a leaked window's runtime and SQLite pool add up across tests. The fast job runs the suites under the same limit.
+- `OwnedWindow` holds a window a test presents, and on drop clears its focus, destroys it and drains the main context. GTK keeps every window, and whatever its widgets hold, until it is destroyed, and GTK 4.22 leaks a focused widget that is hidden and then unparented. The app's library tests are one process under `cargo test`, which package builds start with a limit of 1024 open files, so a leaked window's runtime and SQLite pool add up across tests. The fast job runs the suites under the same limit.
 - `end_application(app)` ends an application a test registered the way `g_application_run` ends one: `shutdown`, then leaving the session bus. GtkApplication holds itself from startup until shutdown, so a registered application a test only drops leaks with every service it owns. `TestWindow` and the application tests' `TestApp` call it when dropped.
 - `descendants`, `find_by_action_name` and `first_descendant_of_type` walk a widget tree.
 - `MemorySettings` compiles the schema into a `TempDir` behind the memory backend, so a test never touches the developer's dconf database.
 - `FakeSession` is a session over a fake connection; `FakeClocks` and `FakeProbe` stand in for the suspend clocks and the reachability check.
-- `KeyInjector` presses real keys through XTEST, so a test meets every capture, class and bubble handler in the order GTK runs them. It needs an X11 display, which is why the gtk suite sets `GDK_BACKEND=x11`; `focus_only` first closes any window an earlier test left open. Such a test goes in a `real_keys` module, which nextest runs with no other test beside it, since a window another test presents takes the keyboard focus.
+- `KeyInjector` presses real keys through XTEST, so a test meets every capture, class and bubble handler in the order GTK runs them. It needs an X11 display, which is why the cargo suite sets `GDK_BACKEND=x11`; `focus_only` first closes any window an earlier test left open. Such a test goes in a `real_keys` module, which nextest runs with no other test beside it, since a window another test presents takes the keyboard focus.
 - `FocusThief` takes the focus from a test's window with a window of its own, as another application does, then hands it back without running the main loop, so the focus-in reaches the window before its next frame. It needs the same X11 display.
 - `shortcut_keys` reads the keys a controller or a widget class binds, for the accelerator table's collision tests.
 - `assert_labelled(widget)` checks that a screen reader can name a control:
@@ -462,7 +459,7 @@ Helpers live in `crates/app/src/test_support`, compiled only for tests:
   - any other widget, such as an icon-only button or a bare entry, needs an accessible label or a labelled-by relation.
 - `unlabelled_icon_buttons(root)` lists the icon-only buttons under `root` that a screen reader reaches and cannot name, and `tooltips_with_keys(root)` the tooltips that spell out a key, which belongs on the accessible node. `ui::a11y::tests` walks every template in the GResource: an icon-only button the template does not label needs an id, and a label once its class is built, which is where `describe_icon_button` gives it one.
 
-The gtk suite sets `GTK_A11Y=test`, so results never depend on an AT-SPI bus. With `GTK_A11Y=none`, GTK records no accessible properties and `assert_labelled` returns `TestBackendMissing` instead of a wrong verdict.
+The cargo suite sets `GTK_A11Y=test`, so results never depend on an AT-SPI bus. With `GTK_A11Y=none`, GTK records no accessible properties and `assert_labelled` returns `TestBackendMissing` instead of a wrong verdict.
 
 The suite's `app-scale-2` test runs the grid, ER diagram, editor view and window geometry tests again with `GDK_SCALE=2`, the scale a 200% display gives GDK, so a size worked out in device pixels rather than logical ones fails on CI and not only on a HiDPI screen. Fractional scales are left to the [display scale pass](#display-scales), since Xvfb has none.
 
