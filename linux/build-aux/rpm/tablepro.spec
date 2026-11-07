@@ -226,5 +226,5 @@ export CARGO_BUILD_JOBS=%{_smp_build_ncpus}
 %{_metainfodir}/app.tablepro.TablePro.metainfo.xml
 
 %changelog
-* Fri Nov 06 2026 TablePro Authors <hello@tablepro.app> - 0.1.0~beta.1-1
+* Sat Nov 07 2026 TablePro Authors <hello@tablepro.app> - 0.1.0~beta.1-1
 - First beta

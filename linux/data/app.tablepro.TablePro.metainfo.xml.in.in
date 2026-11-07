@@ -97,7 +97,7 @@
     <binary>tablepro</binary>
   </provides>
   <releases>
-    <release version="0.1.0~beta.1" type="development" date="2026-11-06">
+    <release version="0.1.0~beta.1" type="development" date="2026-11-07">
       <url type="details">https://github.com/TableProApp/TablePro/releases/tag/linux-v0.1.0-beta.1</url>
       <description>
         <p>The first beta of TablePro for Linux.</p>
