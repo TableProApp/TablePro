@@ -1,7 +1,7 @@
 project(
   'tablepro',
   'rust',
-  version: '0.1.0-beta.2',
+  version: '0.1.0-beta.3',
   meson_version: '>= 1.7',
   license: 'AGPL-3.0-or-later',
   license_files: 'LICENSE',

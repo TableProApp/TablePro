@@ -10233,6 +10233,14 @@ msgstr ""
 "Không bao giờ gửi tên máy chủ, mật khẩu, truy vấn hay dòng dữ liệu."
 
 #: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "The third beta of TablePro for Linux."
+msgstr "Bản beta thứ ba của TablePro cho Linux."
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Fedora packages are available for every supported version and architecture"
+msgstr "Có gói Fedora cho mọi phiên bản và kiến trúc được hỗ trợ"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
 msgid "The second beta of TablePro for Linux."
 msgstr "Bản beta thứ hai của TablePro cho Linux."
 
