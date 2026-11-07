@@ -87,6 +87,10 @@ The bundle uses the runtime's tools and configuration. A working host connection
 
 [ADR 0008, Rationale](decisions/0008-flatpak-sandbox-permissions.md#rationale) explains these grants. [ADR 0035](decisions/0035-flatpak-local-database-sockets.md) covers local PostgreSQL and MySQL sockets.
 
+### First Flatpak app
+
+When TablePro is the first Flatpak app on the computer, choosing it in the app menu can do nothing until you log out and in once. The desktop starts TablePro over D-Bus, and the session bus reads Flatpak's D-Bus services only from folders that existed when you logged in; installing the first app creates them. `flatpak run app.tablepro.TablePro` works meanwhile. Later installs and updates need nothing.
+
 ## Logs
 
 Started from the desktop, TablePro writes its log to the journal:

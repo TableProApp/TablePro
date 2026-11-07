@@ -65,7 +65,7 @@ flatpak install --from https://flatpak.tablepro.app/repo/app.tablepro.TablePro.f
 flatpak run app.tablepro.TablePro
 ```
 
-Opening that link in a browser hands it to GNOME Software or KDE Discover. `flatpak update` and the software centre install the updates. TablePro is not on Flathub itself.
+Opening that link in a browser hands it to GNOME Software or KDE Discover. `flatpak update` and the software centre install the updates. TablePro is not on Flathub itself. If it is your first Flatpak app and the app menu does not open it, see [Troubleshooting, First Flatpak app](docs/troubleshooting.md#first-flatpak-app).
 
 ### Betas
 
