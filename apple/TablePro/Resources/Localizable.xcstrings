@@ -52822,6 +52822,10 @@
         }
       }
     },
+    "Could not build the HydraDB filter." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Could not build the query that matches rows" : {
 
     },
@@ -53056,7 +53060,8 @@
       "generatesSymbol" : false
     },
     "Could not connect to the database: %@" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Could not create %@." : {
       "localizations" : {
@@ -90789,6 +90794,26 @@
         }
       }
     },
+    "HydraDB cannot sort this graph identity column." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "HydraDB does not expose index metadata over Bolt." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "HydraDB does not expose schema DDL over Bolt." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "HydraDB does not expose views over Bolt." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "HydraDB transactions are not supported by this driver." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "hyphen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -97313,6 +97338,10 @@
           }
         }
       }
+    },
+    "Invalid sort column." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Invalid URL: %@" : {
       "extractionState" : "manual",
@@ -122796,6 +122825,10 @@
         }
       }
     },
+    "Not connected to the database." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Not connected to the Kafka cluster." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -139327,6 +139360,10 @@
           }
         }
       }
+    },
+    "Properties changed during export. Retry the export." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Propose indexes for a slow query" : {
       "localizations" : {
@@ -199001,6 +199038,14 @@
           }
         }
       }
+    },
+    "This filter is not supported by HydraDB." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "This filter or sort is not supported by HydraDB." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This folder is already linked" : {
       "comment" : "Alert title when trying to add a folder that is already linked.",

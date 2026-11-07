@@ -25,9 +25,9 @@ enum Neo4jError: Error, LocalizedError, Sendable {
     var errorDescription: String? {
         switch self {
         case .notConnected:
-            return String(localized: "Not connected to Neo4j.")
+            return String(localized: "Not connected to the database.")
         case .connectionFailed(let detail):
-            return String(format: String(localized: "Could not connect to Neo4j: %@"), detail)
+            return String(format: String(localized: "Could not connect to the database: %@"), detail)
         case .server(_, let message):
             return message
         case .cancelled:

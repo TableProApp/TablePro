@@ -1225,6 +1225,27 @@ targets:
       - package: swift-nio-ssl
         product: NIOSSL
 
+  HydraDBDriverPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: HydraDBDriverPlugin
+      principalClass: HydraDBPlugin
+    sources:
+      - Plugins/SharedNIO
+      - path: Plugins/Neo4jDriverPlugin
+        excludes:
+          - Info.plist
+          - Neo4jPlugin.swift
+    dependencies:
+      - package: TableProCore
+        product: TableProNeo4jCore
+      - package: swift-nio
+        product: NIOCore
+      - package: swift-nio
+        product: NIOPosix
+      - package: swift-nio-ssl
+        product: NIOSSL
+
   OracleDriver:
     templates: [DriverPlugin]
     templateAttributes:
@@ -1396,6 +1417,7 @@ aggregateTargets:
       - MSSQLDriver
       - MongoDBDriver
       - Neo4jDriverPlugin
+      - HydraDBDriverPlugin
       - OracleDriver
       - ParquetExport
       - QdrantDriverPlugin
