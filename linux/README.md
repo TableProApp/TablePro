@@ -4,7 +4,7 @@ Native Linux database client, the Linux sibling of the macOS TablePro app. It bu
 
 ## Status
 
-It connects to nine engines: PostgreSQL, MySQL and MariaDB, SQL Server, ClickHouse, Cassandra and ScyllaDB, SQLite, DuckDB, Redis and MongoDB. A window holds several connection sessions side by side in one tab view. Nothing is released yet: no `linux-v*` tag exists. [ROADMAP.md](ROADMAP.md) lists what is built, what is not, and the release criteria.
+The public beta is available as [0.1.0-beta.3](https://github.com/TableProApp/TablePro/releases/tag/linux-v0.1.0-beta.3). It connects to 11 engines: PostgreSQL, MySQL, MariaDB, SQL Server, ClickHouse, Cassandra, ScyllaDB, SQLite, DuckDB, Redis and MongoDB. [Supported servers](#supported-servers) lists the tested versions and limits. A window holds several connection sessions side by side in one tab view. Follow the [install guide](https://docs.tablepro.app/linux/install) for the beta PPA, COPR and Flatpak channels. [ROADMAP.md](ROADMAP.md) lists what is built, what is not, and the release criteria.
 
 ## Supported servers
 

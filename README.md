@@ -5,19 +5,19 @@
 <h1 align="center">TablePro</h1>
 
 <p align="center">
-  A fast, native database client for developers.<br>
+  Native database apps for macOS, iPhone, iPad and Linux.<br>
   Free and open source.
 </p>
 
 <p align="center">
   <a href="https://tablepro.app">Website</a> ·
   <a href="https://docs.tablepro.app">Docs</a> ·
-  <a href="https://github.com/TableProApp/TablePro/releases/latest">Download</a> ·
+  <a href="https://github.com/TableProApp/TablePro/releases">Download</a> ·
   <a href="https://discord.gg/hCNmUUbnD4">Discord</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/TableProApp/TablePro/releases/latest"><img src="https://img.shields.io/github/v/release/TableProApp/TablePro" alt="Release"></a>
+  <a href="https://github.com/TableProApp/TablePro/releases"><img src="https://img.shields.io/github/v/release/TableProApp/TablePro" alt="Release"></a>
   <a href="https://www.gnu.org/licenses/agpl-3.0"><img src="https://img.shields.io/badge/License-AGPL_v3-blue.svg" alt="License: AGPL v3"></a>
 </p>
 
@@ -43,108 +43,69 @@
 
 ## About
 
-TablePro is what I wanted TablePlus to be: native, fast, open source.
+TablePro is a free, open-source database client with a native app for each platform. Browse data, write queries and edit rows in SQL and NoSQL databases.
 
-Built with native frameworks on every platform. No Electron, no JDBC, no JavaScript runtime. Connects to all major SQL and NoSQL databases through native drivers.
+Apple apps use Swift and native frameworks. Linux uses Rust, GTK 4 and libadwaita. Windows uses C# and WinUI 3 and is in development. Linux and Windows build on the shared Rust core; the Swift app does not use it yet.
 
-AI is built in: chat, inline suggestions, and an MCP server that lets Cursor, Raycast, or Claude Desktop talk to your databases. Bring your own API key, pick your own provider, or run local with Ollama.
+## Platforms and installation
 
-## Why TablePro
+| Platform | Status | Install |
+|---|---|---|
+| macOS 13+ | Stable | `brew install --cask tablepro` or [GitHub Releases](https://github.com/TableProApp/TablePro/releases) |
+| iPhone / iPad, iOS / iPadOS 18+ | Stable | [iPhone and iPad guide](https://docs.tablepro.app/ios) |
+| Linux, amd64 / arm64 | Public beta | [Ubuntu beta PPA, Fedora beta COPR or beta Flatpak repository](https://docs.tablepro.app/linux/install) |
+| Windows | In development | [Source and build guide](windows/AGENTS.md#commands) |
 
-Native macOS database clients today fall into three groups:
+Linux native packages need GNOME 50 libraries: Ubuntu 26.04 / 26.10 uses `ppa:tablepro/tablepro-beta`, and Fedora 44 / 45 uses `@tablepro/tablepro-beta`. Other distributions use the beta Flatpak repository. Follow the [Linux install guide](https://docs.tablepro.app/linux/install) for setup and updates. Packages are also on [GitHub Releases](https://github.com/TableProApp/TablePro/releases).
 
-- **Single-database, open source**: Sequel Ace (MySQL only), Postico (PostgreSQL only). Great if you live in one engine.
-- **Multi-database, closed source**: TablePlus. Polished and native, but proprietary.
-- **Multi-database, not native**: DBeaver (JVM), Beekeeper Studio and DBGate (Electron). Cross-platform, but slow to start and heavy on memory.
+## Supported databases
 
-TablePro is the missing fourth: native, multi-database, and open source.
+Support differs by platform. The linked guides own the full lists and limits.
 
-## Platforms
+| Platform | Databases |
+|---|---|
+| macOS | PostgreSQL, MySQL, MariaDB, SQLite, Redis, MongoDB, SQL Server and more. Built-in drivers and signed plugins; see the [database catalog](https://tablepro.app/databases) and [plugin guide](https://docs.tablepro.app/features/plugins). |
+| iPhone / iPad | Includes PostgreSQL, MySQL, MariaDB, SQLite, DuckDB, Redis, MongoDB and SQL Server. Drivers ship with the app; see [mobile database support](https://docs.tablepro.app/ios#supported-databases). |
+| Linux | 11 engines: PostgreSQL, MySQL, MariaDB, SQL Server, ClickHouse, Cassandra, ScyllaDB, SQLite, DuckDB, Redis and MongoDB. See [supported servers and versions](linux/README.md#supported-servers). |
+| Windows | In development over the [shared core's drivers](core/ARCHITECTURE.md#crate-layout). No released app yet. |
 
-| Platform | Status |
-|----------|--------|
-| macOS 13+ | Stable |
-| iOS / iPadOS 18+ | Stable |
-| Linux (GNOME 50+) | In development in [`linux/`](linux/README.md), not released yet |
-| Windows | No |
+## Features
 
-## Supported Databases
+- Query editors, data browsing and row editing.
+- SSH tunnels and SSL/TLS connections.
+- Saved queries and query history.
+- On Mac and Linux: autocomplete, multi-cursor editing and Vim mode.
+- On Mac: split panes and driver plugins.
+- On Mac and Linux: AI assistance with your own provider or Ollama, and an MCP server for local clients.
+- On iPhone and iPad: browse and edit data, with optional iCloud sync for connections and saved queries.
 
-Built-in drivers ship with the app. Plugin drivers install on demand from the [plugin registry](https://docs.tablepro.app/features/plugins). [tablepro.app/databases](https://tablepro.app/databases) has the current list and what each engine supports.
-
-## What's inside
-
-- SQL editor with autocomplete, multi-cursor, Vim mode, syntax themes
-- Data grid with inline editing, sort, filter, undo/redo
-- Native window tabs, multi-window, split panes
-- SSH tunnels with password and key authentication, SSL/TLS
-- Query history with full-text search
-- AI chat, inline suggestions, and Explain/Optimize
-- MCP server and URL scheme for Raycast, Cursor, Claude Desktop
-- Plugin system, write your own database driver in Swift
+See the [Mac feature guide](https://docs.tablepro.app/features/overview), [Linux guide](linux/README.md) and [iPhone and iPad guide](https://docs.tablepro.app/ios) for what each app supports.
 
 ## Free and paid
 
-Everything above is free on every database, with no trial period or time limit. A license adds these to the Mac app:
+The database tools above are free on every supported database, with no trial period or time limit. Pro and Team add paid features on the Mac. Linux uses the same plans and account; a license covers up to 3 computers, Mac or Linux. Features differ by platform: see [plans and prices](https://tablepro.app/pricing) and [Linux accounts](linux/README.md#tablepro-account). The iPhone and iPad app needs no license.
 
-| Plan | Adds |
-|------|------|
-| Pro | iCloud Sync, Encrypted Export, Environment Variables, Linked Folders, Query Insights, Result Charts, Compare & Sync, Data Rewind |
-| Team | Everything in Pro, plus Team Catalog and Team Library |
+## Build and contribute
 
-Plans and prices are on [tablepro.app/pricing](https://tablepro.app/pricing). The iPhone and iPad app needs no license.
+Each platform keeps its setup, build and test instructions beside its source:
 
-## Install
+- [macOS and iOS](apple/CONTRIBUTING.md).
+- [Linux](linux/README.md#quickstart).
+- [Windows](windows/AGENTS.md#commands), with [packaging and release instructions](windows/RELEASING.md).
+- [Shared Rust core](core/AGENTS.md#commands) and [architecture](core/ARCHITECTURE.md).
 
-```bash
-brew install --cask tablepro
-```
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
-Or download from [GitHub Releases](https://github.com/TableProApp/TablePro/releases/latest).
+## Docs and community
 
-## How to Build
-
-These steps build the macOS and iOS apps; the Linux app builds with Meson and Cargo ([`linux/README.md`](linux/README.md)).
-
-Building TablePro requires Xcode 26 or later and
-[XcodeGen](https://github.com/yonaskolb/XcodeGen).
-
-The macOS and iOS apps live in `apple/`. Run the first-time setup, and every command below, from there:
-
-```bash
-brew install xcodegen
-cd apple
-scripts/download-libs.sh
-scripts/generate-project.sh
-```
-
-`TablePro.xcodeproj` is generated from `project.yml` and is not in git. Re-run
-`scripts/generate-project.sh` after changing `project.yml` or `Configs/`, or after adding a
-source file.
-
-Build a Debug app without code signing:
-
-```bash
-xcodebuild \
-  -project TablePro.xcodeproj \
-  -scheme TablePro \
-  -configuration Debug \
-  -skipPackagePluginValidation \
-  CODE_SIGNING_ALLOWED=NO \
-  build
-```
-
-The app is written to `~/Library/Developer/Xcode/DerivedData/TablePro-*/Build/Products/Debug/TablePro.app`.
-
-To build and run a signed app, put your Apple team and a unique bundle identifier in `apple/Configs/Secrets.xcconfig`. See [Building with a personal Apple team](apple/CONTRIBUTING.md#building-with-a-personal-apple-team).
-
-## Documentation
-
-Full docs at [docs.tablepro.app](https://docs.tablepro.app).
+- [Documentation](https://docs.tablepro.app) for setup and daily use.
+- [GitHub Discussions](https://github.com/TableProApp/TablePro/discussions) or [Discord](https://discord.gg/hCNmUUbnD4) for questions and ideas.
+- [Issues](https://github.com/TableProApp/TablePro/issues) for bugs. Include the platform, app version and Linux install source when relevant.
+- [Security policy](SECURITY.md) for private vulnerability reports, and [Code of Conduct](CODE_OF_CONDUCT.md) for community standards.
 
 ## Support development
 
-The app is free under AGPLv3. If you use TablePro at work, please buy a [license](https://tablepro.app/pricing). It adds the paid features, and every purchase funds the next release. If you can't afford one, just use the free version. That's why it's free.
+Buying a [license](https://tablepro.app/pricing) or [sponsoring the project](https://tablepro.app/sponsors) funds development. You can keep using the free version without buying either.
 
 ## Sponsors
 
@@ -182,5 +143,4 @@ Want to join them? Read [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-This project is licensed under the [GNU Affero General Public License v3.0 (AGPLv3)](LICENSE). The TablePro name and icon are not part of that license: [TRADEMARKS.md](TRADEMARKS.md) says how you can use them.
-
+This project is licensed under the [GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later)](LICENSE). The TablePro name and icon are covered separately by [TRADEMARKS.md](TRADEMARKS.md).

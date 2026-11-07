@@ -78,7 +78,7 @@ body:
       description: Which TablePro app this is about.
       options:
         - macOS
-        - iOS
+        - iPhone / iPad (iOS / iPadOS)
         - Linux
         - Windows
     validations:

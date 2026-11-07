@@ -34,7 +34,7 @@ body:
       description: Which TablePro app this is for.
       options:
         - macOS
-        - iOS
+        - iPhone / iPad (iOS / iPadOS)
         - Linux
         - Windows
         - All
