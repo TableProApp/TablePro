@@ -27,6 +27,9 @@ permissions:
   contents: read
 
 env:
+  # Line tables still give a backtrace its files and lines. Full debug info made each Rust cache about 45% larger,
+  # and with core.yml's and windows.yml's they share the repository's 10 GB, which evicted those.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
   CARGO_ABOUT_VERSION: 0.9.2
   CARGO_DENY_VERSION: 0.20.2
   # The Flatpak Devel manifest pins the same release.
@@ -489,17 +492,18 @@ jobs:
       fail-fast: false
       # GitHub Free runs 20 jobs at once across the account.
       max-parallel: 3
+      # Longest first: with three at a time, a long suite started last ran on alone.
       matrix:
         package:
-          - tablepro-driver-postgres
           - tablepro-driver-mysql
-          - tablepro-driver-mssql
-          - tablepro-driver-clickhouse
           - tablepro-driver-cassandra
-          - tablepro-driver-redis
+          - tablepro-driver-mssql
+          - tablepro-driver-postgres
+          - tablepro-driver-clickhouse
+          - tablepro-test-fixtures
           - tablepro-driver-mongodb
           - tablepro-ssh
-          - tablepro-test-fixtures
+          - tablepro-driver-redis
         include:
           - package: tablepro-ssh
             apt: openssh-client
@@ -527,11 +531,13 @@ jobs:
         with:
           toolchain: "1.98"
       # Saved from main only: a pull request's cache serves that pull request alone and pushes main's out.
+      # Without the job's id, the nightly's other server releases reuse each package's cache rather than keep a copy.
       - &docker-cache
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: .
           key: ${{ matrix.package }}
+          add-job-id-key: false
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - &docker-nextest
         uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68 # v2.88.1

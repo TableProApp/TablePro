@@ -61,7 +61,7 @@ paths:
 ## Caches
 
 - `~/.spm-cache`, keyed on the app's `Package.resolved`. macOS Tests saves it on a push or nightly miss; Release and the Release Build job only restore it. `~/.spm-cache-ios`, keyed on the iOS project's, is the same for iOS and Package Tests.
-- `build-linux.yml`, `core.yml` and `windows.yml` cache Cargo through `Swatinem/rust-cache`, saved from main only (pushes and the nightly), since a pull request's cache serves that pull request alone and evicts main's. `windows.yml` also caches the pinned uniffi-bindgen-cs. `release-windows.yml` restores no cache. No libs or DerivedData cache: the libs download takes about 16 seconds.
+- `build-linux.yml`, `core.yml` and `windows.yml` cache Cargo through `Swatinem/rust-cache`, saved from main only (pushes and the nightly), since a pull request's cache serves that pull request alone and evicts main's. They build with line tables only (`CARGO_PROFILE_DEV_DEBUG`), about 30% less cache than full debug info, since every cache shares the repository's 10 GB and the least recently used goes first. A Docker suite's cache is the package's, whichever server release the job runs. `windows.yml` also caches the pinned uniffi-bindgen-cs. `release-windows.yml` restores no cache. No libs or DerivedData cache: the libs download takes about 16 seconds.
 
 ## Writing workflow and lint code
 
