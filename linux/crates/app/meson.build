@@ -44,8 +44,13 @@ test_env = cargo_env
 if profile != 'development'
   # With --release every test binary goes through the release profile's
   # fat LTO, which takes gigabytes and minutes per binary and runs a
-  # package build out of memory. The installed binaries keep it.
+  # package build out of memory. With its one codegen unit LLVM spends 16
+  # minutes on the app crate's unit tests at over 7 GB, beside the
+  # library's rustc and the test links, which ran a 16 GB arm64 builder
+  # out of memory. Cargo's release default of 16 compiles the crate three
+  # times as fast. The installed binaries keep both.
   test_env.set('CARGO_PROFILE_RELEASE_LTO', 'off')
+  test_env.set('CARGO_PROFILE_RELEASE_CODEGEN_UNITS', '16')
 endif
 
 # windows.yml tests tablepro-ffi, whose binaries each link every engine and filled a package builder's disk.
@@ -98,6 +103,7 @@ endif
 gtk_env = app_env
 if profile != 'development'
   gtk_env.set('CARGO_PROFILE_RELEASE_LTO', 'off')
+  gtk_env.set('CARGO_PROFILE_RELEASE_CODEGEN_UNITS', '16')
 endif
 # Tests never reach PostHog. The integration tests and the binary they
 # start are not built with cfg(test), so they get no key from here.
