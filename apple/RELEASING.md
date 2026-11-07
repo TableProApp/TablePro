@@ -112,7 +112,7 @@ Once a stable or patch publishes, cherry-pick its release commit to `main`, and 
 git fetch origin && git switch -c forward/vX.Y.Z origin/main
 git cherry-pick -x <release commit> && git push -u origin HEAD
 gh pr create --base main --title "chore(release): vX.Y.Z" --body "Forward-port of #<PR>."
-gh pr merge --auto --squash
+gh pr merge --auto
 ```
 
 - A newer open line gets the same PR from `origin/release/<line>`, with `--base release/<line>`.
