@@ -44,9 +44,11 @@ test_env = cargo_env
 if profile != 'development'
   # With --release every test binary goes through the release profile's
   # fat LTO, which takes gigabytes and minutes per binary and runs a
-  # package build out of memory, and its one codegen unit, with which the
-  # app crate takes three times as long to compile as with Cargo's release
-  # default of 16. The installed binaries keep both.
+  # package build out of memory. With its one codegen unit LLVM spends 16
+  # minutes on the app crate's unit tests at over 7 GB, beside the
+  # library's rustc and the test links, which ran a 16 GB arm64 builder
+  # out of memory. Cargo's release default of 16 compiles the crate three
+  # times as fast. The installed binaries keep both.
   test_env.set('CARGO_PROFILE_RELEASE_LTO', 'off')
   test_env.set('CARGO_PROFILE_RELEASE_CODEGEN_UNITS', '16')
 endif
