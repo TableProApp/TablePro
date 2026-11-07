@@ -38,13 +38,13 @@ Saved passwords are listed in Seahorse as `TablePro database password for …`, 
 
 ## TablePro account
 
-Preferences > Account signs in to a TablePro account, which lists your plan, devices and teams. The paid features it names are in TablePro for macOS for now; everything in TablePro for Linux works without an account.
+Preferences > Account signs in to a TablePro account, which lists your plan, devices and teams. Signing in uses your plan on this computer; everything else works without an account.
 
 - **Sign In opens no browser**: TablePro asks the desktop to open the sign-in page in the default browser, through the OpenURI portal inside Flatpak. Check that one is set, under Settings > Default Apps on GNOME.
 - **The browser says the sign-in finished, but TablePro still waits**: the page sends the browser back to `http://127.0.0.1` on a port TablePro picked for this sign-in. A browser that cannot reach this computer's loopback address, such as one in a container or on another machine, or a proxy setting that sends `127.0.0.1` elsewhere, never brings it back. Cancel, fix the browser, and sign in again. TablePro stops waiting after 10 minutes.
 - **Signed out at every launch**: no keyring took the sign-in, so it lasts until TablePro quits; the Account page says "Sign-In Not Saved". Set up a Secret Service as for [passwords](#tablepro-asks-for-the-password-at-every-connect). The item is `TablePro account sign-in` in Seahorse.
 - **Accounts Unavailable**: TablePro could not read `/etc/machine-id`, or `/var/lib/dbus/machine-id` in its place, which it hashes into the ID this computer has on your account. `systemd-machine-id-setup` makes one on a system that has none.
-- **Your plan is in use on 3 other devices**: remove one from the list Preferences > Account offers, or under Devices in your account.
+- **Device Limit Reached**: your license is in use on 3 other devices. To use it on this computer, remove one from the list Preferences > Account offers, or under Devices in your account. TablePro keeps working here either way.
 - **A computer with no internet**: make an offline file for the Machine ID the Account page shows, in your account, then use Import Offline File.
 
 ## Usage data

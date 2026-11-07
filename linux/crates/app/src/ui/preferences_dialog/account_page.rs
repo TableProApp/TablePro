@@ -13,7 +13,9 @@ use tablepro_account::{AccountError, AccountStatus, Device, Profile, read_offlin
 use tablepro_session::runtime::Tasks;
 use tokio_util::sync::CancellationToken;
 
-use super::account_view::{self, Facts, Fetch, Listing, Mode, Notice, NoticeAction, Plan, PlanRow, Removal};
+use super::account_view::{
+    self, Facts, FeatureRow, Fetch, Listing, Mode, Notice, NoticeAction, Plan, PlanRow, Removal,
+};
 use super::device_limit_dialog::DeviceLimitDialog;
 use crate::i18n::{gettext, gettext_f};
 use crate::services::account_service::{AccountHandle, AccountStart};
@@ -43,6 +45,8 @@ mod imp {
         pub plan_group: TemplateChild<adw::PreferencesGroup>,
         #[template_child]
         pub features_group: TemplateChild<adw::PreferencesGroup>,
+        #[template_child]
+        pub license_group: TemplateChild<adw::PreferencesGroup>,
         #[template_child]
         pub devices_group: TemplateChild<adw::PreferencesGroup>,
         #[template_child]
@@ -316,7 +320,7 @@ impl AccountPage {
                 if let Some(page) = page.upgrade() {
                     page.toast(&match unverified {
                         None => gettext_f(
-                            "Removed {name}. The paid features work on this computer now.",
+                            "Removed {name}. This computer now uses your license.",
                             &[("name", name)],
                         ),
                         Some(error) => gettext_f(
@@ -497,14 +501,7 @@ impl AccountPage {
         if mode != Mode::SignedOut {
             self.render_plan(&facts);
         }
-        for feature in account_view::features(&facts) {
-            let row = adw::ActionRow::builder().title(&feature.title).build();
-            if let Some(subtitle) = &feature.subtitle {
-                row.set_subtitle(subtitle);
-            }
-            row.add_suffix(&included(feature.included));
-            self.add(&imp.features_group, &row);
-        }
+        self.render_features(&account_view::features(&facts));
         if mode == Mode::SignedOut {
             let buy = self.web_row(&gettext("Buy a License"), PRICING);
             let page = self.downgrade();
@@ -513,10 +510,10 @@ impl AccountPage {
                     page.upgrade_clicked();
                 }
             });
-            self.add(&imp.features_group, &buy);
+            self.add(&imp.license_group, &buy);
         }
         let guide = self.web_row(&gettext("Learn More About Licensing"), LICENSING_GUIDE);
-        self.add(&imp.features_group, &guide);
+        self.add(&imp.license_group, &guide);
         imp.devices_group.set_visible(mode == Mode::SignedIn);
         imp.teams_group.set_visible(mode == Mode::SignedIn);
         if mode == Mode::SignedIn {
@@ -524,6 +521,16 @@ impl AccountPage {
             self.render_teams(&profile);
         }
         self.render_offline(&facts, machine_id.as_deref());
+    }
+
+    fn render_features(&self, features: &[FeatureRow]) {
+        let group = self.imp().features_group.get();
+        group.set_visible(!features.is_empty());
+        for feature in features {
+            let row = adw::ActionRow::builder().title(&feature.title).build();
+            row.add_suffix(&included(feature.included));
+            self.add(&group, &row);
+        }
     }
 
     fn render_account(&self, facts: &Facts<'_>, mode: Mode) {
@@ -602,9 +609,7 @@ impl AccountPage {
             .title(gettext("Sign In to TablePro"))
             .subtitle(match signing_in {
                 true => gettext("Finish signing in in the web browser that opened."),
-                false => {
-                    gettext("Use your plan’s paid features on this computer. Everything else works without an account.")
-                }
+                false => gettext("Use your plan on this computer. Everything else works without an account."),
             })
             .build();
         if signing_in {
@@ -690,7 +695,7 @@ impl AccountPage {
                 let row = adw::ActionRow::builder()
                     .title(gettext("Free"))
                     .subtitle(gettext(
-                        "Starter or a seat in a team adds the paid features on 3 of your devices.",
+                        "Pro or a seat in a team gives you a license for 3 devices at a time.",
                     ))
                     .build();
                 let upgrade = gtk4::Button::builder()
@@ -1356,7 +1361,7 @@ mod tests {
     }
 
     #[gtk4::test]
-    fn signed_out_the_page_offers_sign_in_the_locked_features_and_the_offline_file() {
+    fn signed_out_the_page_offers_sign_in_a_license_and_the_offline_file() {
         let harness = Harness::new(None);
         let imp = harness.page.imp();
         assert!(
@@ -1368,17 +1373,23 @@ mod tests {
 
         assert!(harness.button(&harness.page, "Sign In…").is_sensitive());
         assert_eq!(harness.titles(&imp.account_group), ["Sign In to TablePro"]);
+        assert_eq!(
+            harness.row("Sign In to TablePro").subtitle().as_deref(),
+            Some("Use your plan on this computer. Everything else works without an account.")
+        );
         assert!(!imp.plan_group.is_visible());
+        assert!(!imp.features_group.is_visible());
         assert!(!imp.devices_group.is_visible());
         assert!(!imp.teams_group.is_visible());
-        let features = harness.titles(&imp.features_group);
-        assert_eq!(features.len(), 12);
-        assert_eq!(features[10..], ["Buy a License", "Learn More About Licensing"]);
+        assert_eq!(
+            harness.titles(&imp.license_group),
+            ["Buy a License", "Learn More About Licensing"]
+        );
         assert!(
-            descendants(&imp.features_group.get())
+            descendants(&harness.page)
                 .iter()
                 .filter_map(|widget| widget.downcast_ref::<gtk4::Label>())
-                .all(|label| label.label() != "Included")
+                .all(|label| label.label() != "In TablePro for macOS")
         );
         assert_eq!(
             harness.titles(&imp.offline_group),
@@ -1419,7 +1430,7 @@ mod tests {
     }
 
     #[gtk4::test]
-    fn a_starter_account_shows_its_plan_features_devices_and_no_team() {
+    fn a_pro_account_shows_its_plan_devices_and_no_team() {
         let harness = Harness::new(None);
         harness.ready();
         let imp = harness.page.imp();
@@ -1446,13 +1457,14 @@ mod tests {
             Some("ada@m17.example")
         );
         assert!(harness.button(&imp.account_group.get(), "Sign Out").is_sensitive());
-        assert_eq!(harness.titles(&imp.plan_group), ["Starter"]);
+        assert_eq!(harness.titles(&imp.plan_group), ["Pro"]);
+        assert_eq!(harness.row("Pro").subtitle().as_deref(), Some("Lifetime · Personal"));
+        harness.button(&harness.row("Pro"), "Billing…");
+        assert!(!harness.row("Pro").is_activatable());
         assert_eq!(
-            harness.row("Starter").subtitle().as_deref(),
-            Some("Lifetime · Personal")
+            imp.devices_group.description().as_deref(),
+            Some("A license covers 3 devices at a time, Mac or Linux.")
         );
-        harness.button(&harness.row("Starter"), "Billing…");
-        assert!(!harness.row("Starter").is_activatable());
         assert_eq!(harness.titles(&imp.devices_group), ["Ada's laptop", "Ada's Mac"]);
         assert!(
             harness
@@ -1472,24 +1484,68 @@ mod tests {
                 .titles(&imp.offline_group)
                 .contains(&"Verified 2 hours ago".to_owned())
         );
-        let included: Vec<String> = harness
-            .rows(&imp.features_group)
-            .iter()
-            .filter(|row| {
-                descendants(*row).iter().any(|widget| {
-                    widget
-                        .downcast_ref::<gtk4::Label>()
-                        .is_some_and(|label| label.label() == "Included")
-                })
-            })
-            .map(|row| row.title().to_string())
-            .collect();
-        assert_eq!(included, ["Environment Variable References"]);
-        assert!(
-            !harness
-                .titles(&imp.features_group)
-                .contains(&"Buy a License".to_owned())
+        assert_eq!(harness.titles(&imp.license_group), ["Learn More About Licensing"]);
+        harness.audit();
+    }
+
+    #[gtk4::test]
+    fn a_free_account_says_what_pro_or_a_team_seat_gives_and_offers_upgrade() {
+        let harness = Harness::new(None);
+        harness.ready();
+        let imp = harness.page.imp();
+
+        harness.send(signed_in(Vec::new(), &[]));
+        harness.page.show_details(
+            Fetch::Loaded(profile(Vec::new(), Vec::new())),
+            Fetch::Loaded(Vec::new()),
         );
+
+        assert_eq!(harness.titles(&imp.plan_group), ["Free"]);
+        assert_eq!(
+            harness.row("Free").subtitle().as_deref(),
+            Some("Pro or a seat in a team gives you a license for 3 devices at a time.")
+        );
+        harness.button(&harness.row("Free"), "Upgrade…");
+        assert_eq!(harness.titles(&imp.license_group), ["Learn More About Licensing"]);
+        harness.audit();
+    }
+
+    #[gtk4::test]
+    fn a_feature_linux_has_shows_under_features_with_whether_the_plan_includes_it() {
+        let harness = Harness::new(None);
+        harness.ready();
+        let imp = harness.page.imp();
+        let marked = |title: &str| {
+            let row = harness.row(title);
+            let included = descendants(&row).iter().any(|widget| {
+                widget
+                    .downcast_ref::<gtk4::Label>()
+                    .is_some_and(|label| label.label() == "Included")
+            });
+            let locked = descendants(&row).iter().any(|widget| {
+                widget
+                    .downcast_ref::<gtk4::Image>()
+                    .is_some_and(|icon| icon.tooltip_text().as_deref() == Some("Not included"))
+            });
+            (included, locked)
+        };
+
+        harness.page.render_features(&[
+            FeatureRow {
+                title: "Data Rewind".to_owned(),
+                included: true,
+            },
+            FeatureRow {
+                title: "Result Charts".to_owned(),
+                included: false,
+            },
+        ]);
+
+        assert!(imp.features_group.is_visible());
+        assert_eq!(imp.features_group.title(), "Features");
+        assert_eq!(harness.titles(&imp.features_group), ["Data Rewind", "Result Charts"]);
+        assert_eq!(marked("Data Rewind"), (true, false));
+        assert_eq!(marked("Result Charts"), (false, true));
         harness.audit();
     }
 
@@ -1557,11 +1613,11 @@ mod tests {
 
         assert_eq!(
             harness.titles(&harness.page.imp().plan_group),
-            ["Payment Problem", "Starter"]
+            ["Payment Problem", "Pro"]
         );
         harness.button(&harness.row("Payment Problem"), "Update Payment Method…");
         assert_eq!(
-            harness.row("Starter").subtitle().as_deref(),
+            harness.row("Pro").subtitle().as_deref(),
             Some("Monthly · Personal · Payment problem")
         );
         harness.audit();
@@ -1590,6 +1646,12 @@ mod tests {
             .emit_clicked();
         let dialog = harness.page.device_limit_dialog().expect("the device limit dialog");
 
+        assert_eq!(
+            dialog.description().as_deref(),
+            Some(
+                "A license covers 3 devices at a time. Remove one to use it on this computer, or keep using TablePro here without it."
+            )
+        );
         let rows = dialog.rows();
         let titles: Vec<String> = rows.iter().map(|row| row.title().to_string()).collect();
         assert_eq!(titles, ["Ada's Mac", "Lab machine", "Old laptop"]);
@@ -1722,7 +1784,7 @@ mod tests {
         assert!(
             toasts
                 .borrow()
-                .contains(&"Removed Ada's Mac. The paid features work on this computer now.".to_owned()),
+                .contains(&"Removed Ada's Mac. This computer now uses your license.".to_owned()),
             "{:?}",
             toasts.borrow()
         );
@@ -1903,7 +1965,7 @@ mod tests {
     }
 
     #[gtk4::test]
-    fn an_offline_file_unlocks_its_features_and_names_its_end() {
+    fn an_offline_file_shows_its_plan_and_names_its_end() {
         let harness = Harness::new(None);
         harness.ready();
         let mut claims = fakes::claims(Utc::now(), TimeDelta::days(30), &["data_rewind"]);
@@ -1916,6 +1978,7 @@ mod tests {
 
         let imp = harness.page.imp();
         assert!(imp.plan_group.is_visible());
+        assert_eq!(harness.titles(&imp.plan_group), ["Pro"]);
         assert!(!imp.devices_group.is_visible());
         assert!(
             harness
@@ -2259,7 +2322,7 @@ mod tests {
             };
 
             harness.button(&harness.page, "Sign In…").emit_clicked();
-            wait_until(Duration::from_secs(120), || shows("Starter") && shows("Ada's laptop"))
+            wait_until(Duration::from_secs(120), || shows("Pro") && shows("Ada's laptop"))
                 .expect("signed in, with the plan and this computer");
 
             let imp = harness.page.imp();
@@ -2271,9 +2334,9 @@ mod tests {
                     .is_some_and(|text| text.starts_with("This computer"))
             );
             // An admin's grant, as the browser step writes it: no cycle and no Billing….
-            assert_eq!(harness.row("Starter").subtitle().as_deref(), Some("Personal · Active"));
+            assert_eq!(harness.row("Pro").subtitle().as_deref(), Some("Personal · Active"));
             assert!(
-                descendants(&harness.row("Starter"))
+                descendants(&harness.row("Pro"))
                     .iter()
                     .all(|widget| !widget.is::<gtk4::Button>())
             );

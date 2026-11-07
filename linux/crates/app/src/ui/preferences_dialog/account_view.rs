@@ -101,7 +101,6 @@ pub(crate) struct PlanRow {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FeatureRow {
     pub title: String,
-    pub subtitle: Option<String>,
     pub included: bool,
 }
 
@@ -211,12 +210,17 @@ pub(crate) fn plan(facts: &Facts<'_>) -> Result<Plan, Listing<PlanRow>> {
 }
 
 pub(crate) fn features(facts: &Facts<'_>) -> Vec<FeatureRow> {
+    features_in(&FEATURES, facts)
+}
+
+// The page lists only the features this computer can use (ADR 0042).
+fn features_in(table: &[(&str, bool)], facts: &Facts<'_>) -> Vec<FeatureRow> {
     let current = facts.status.entitlement().filter(|it| it.is_current(facts.now));
-    FEATURES
+    table
         .iter()
-        .map(|(code, on_linux)| FeatureRow {
+        .filter(|(_, on_linux)| *on_linux)
+        .map(|(code, _)| FeatureRow {
             title: feature_name(code),
-            subtitle: (!on_linux).then(|| gettext("In TablePro for macOS")),
             included: current.is_some_and(|entitlement| entitlement.includes(code)),
         })
         .collect()
@@ -334,7 +338,7 @@ pub(crate) fn verification(facts: &Facts<'_>) -> Option<Verification> {
 
 pub(crate) fn plan_name(code: &str) -> String {
     match code {
-        "starter" => gettext("Starter"),
+        "starter" => gettext("Pro"),
         "team" => gettext("Team"),
         _ => gettext("License"),
     }
@@ -430,8 +434,8 @@ fn device_limit(others: usize) -> Notice {
     Notice {
         title: gettext("Device Limit Reached"),
         body: ngettext_f(
-            "Your license is in use on {n} other device. Remove one to use the paid features on this computer. Until then, TablePro works here with the free features.",
-            "Your license is in use on {n} other devices. Remove one to use the paid features on this computer. Until then, TablePro works here with the free features.",
+            "Your license is in use on {n} other device. Remove one to use it on this computer, or keep using TablePro here without it.",
+            "Your license is in use on {n} other devices. Remove one to use it on this computer, or keep using TablePro here without it.",
             count,
             &[("n", &count.to_string())],
         ),
@@ -442,15 +446,13 @@ fn device_limit(others: usize) -> Notice {
 fn paused(signed_in: &SignedIn) -> Notice {
     let body = match &signed_in.entitlement {
         Some(entitlement) => gettext_f(
-            "The last verification of your plan ran out on {date}, so the paid features are off until TablePro reaches the account service. Connect to the internet and refresh.",
+            "The last verification of your plan ran out on {date}. Connect to the internet and refresh.",
             &[("date", &day(entitlement.expires_at()))],
         ),
-        None => gettext(
-            "The last verification of your plan ran out, so the paid features are off until TablePro reaches the account service. Connect to the internet and refresh.",
-        ),
+        None => gettext("The last verification of your plan ran out. Connect to the internet and refresh."),
     };
     Notice {
-        title: gettext("Paid Features Paused"),
+        title: gettext("Could Not Verify Your Plan"),
         body,
         action: Some(NoticeAction::Refresh),
     }
@@ -468,15 +470,15 @@ fn license_notice(license: &LicenseClaim, billing: Billing, now: DateTime<Utc>) 
         "past_due" => {
             let body = match &billing {
                 Billing::Opens(_) => gettext_f(
-                    "Polar could not charge the card for {plan}. Its paid features keep working while Polar tries again. Update the payment method to keep them.",
+                    "Polar could not charge the card for {plan}. It stays active while Polar tries again. Update the payment method to keep it.",
                     &[("plan", &plan)],
                 ),
                 Billing::TeamOwnerOnly => gettext_f(
-                    "Polar could not charge the card for {plan}. Its paid features keep working while Polar tries again. Only the team’s owner can update the payment method.",
+                    "Polar could not charge the card for {plan}. It stays active while Polar tries again. Only the team’s owner can update the payment method.",
                     &[("plan", &plan)],
                 ),
                 Billing::Unavailable => gettext_f(
-                    "Polar could not charge the card for {plan}. Its paid features keep working while Polar tries again.",
+                    "Polar could not charge the card for {plan}. It stays active while Polar tries again.",
                     &[("plan", &plan)],
                 ),
             };
@@ -493,10 +495,7 @@ fn license_notice(license: &LicenseClaim, billing: Billing, now: DateTime<Utc>) 
             let ends = day(license.ends_at.filter(|at| *at > now)?);
             let values = [("plan", plan.as_str()), ("date", ends.as_str())];
             let body = match &billing {
-                Billing::Opens(_) => gettext_f(
-                    "{plan} is set to end on {date}. Resume it to keep its paid features.",
-                    &values,
-                ),
+                Billing::Opens(_) => gettext_f("{plan} is set to end on {date}. Resume it to keep it.", &values),
                 Billing::TeamOwnerOnly => gettext_f(
                     "{plan} is set to end on {date}. Only the team’s owner can resume it.",
                     &values,
@@ -535,7 +534,7 @@ fn expiring_soon(entitlement: &Entitlement, now: DateTime<Utc>) -> Option<Notice
     Some(Notice {
         title: gettext("Plan Not Verified Lately"),
         body: gettext_f(
-            "TablePro last verified your plan {when}. The paid features stop on {date} unless it reaches the account service again.",
+            "TablePro last verified your plan {when}. The verification runs out on {date} unless TablePro reaches the account service again.",
             &[("when", &ago(issued, now)), ("date", &day(expires))],
         ),
         action: Some(NoticeAction::Refresh),
@@ -634,7 +633,7 @@ fn feature_name(code: &str) -> String {
     match code {
         "icloud_sync" => gettext("iCloud Sync"),
         "encrypted_export" => gettext("Encrypted Export"),
-        "env_var_references" => gettext("Environment Variable References"),
+        "env_var_references" => gettext("Environment Variables"),
         "linked_folders" => gettext("Linked Folders"),
         "query_insights" => gettext("Query Insights"),
         "result_charts" => gettext("Result Charts"),
@@ -711,6 +710,16 @@ mod tests {
             machine_id: Some(MACHINE),
             now,
         }
+    }
+
+    #[test]
+    fn the_starter_tier_reads_pro_as_on_macos_and_the_website() {
+        assert_eq!(plan_name("starter"), "Pro");
+        assert_eq!(plan_name("team"), "Team");
+        assert_eq!(
+            license_row(&license("starter", "yearly", "active", None), Billing::Unavailable).title,
+            "Pro"
+        );
     }
 
     #[test]
@@ -854,10 +863,10 @@ mod tests {
             })
         );
         assert!(notices[0].body.contains("for Team for Acme."), "{}", notices[0].body);
-        assert!(notices[0].body.ends_with("Update the payment method to keep them."));
+        assert!(notices[0].body.ends_with("Update the payment method to keep it."));
         assert_eq!(notices[1].title, "Plan Ending");
         assert!(
-            notices[1].body.starts_with("Starter is set to end on "),
+            notices[1].body.starts_with("Pro is set to end on "),
             "{}",
             notices[1].body
         );
@@ -959,7 +968,10 @@ mod tests {
         let kept_verification = verification(&facts(&kept, &profile, &devices, now)).expect("a verification");
 
         assert_eq!(limited[0].title, "Device Limit Reached");
-        assert!(limited[0].body.contains("on 3 other devices"), "{}", limited[0].body);
+        assert_eq!(
+            limited[0].body,
+            "Your license is in use on 3 other devices. Remove one to use it on this computer, or keep using TablePro here without it."
+        );
         assert_eq!(limited[0].action, Some(NoticeAction::ChooseDevice));
         assert_eq!(failed[0].title, "Could Not Verify Your Plan");
         assert!(kept_notices.is_empty(), "{kept_notices:#?}");
@@ -1080,7 +1092,7 @@ mod tests {
     }
 
     #[test]
-    fn features_are_included_by_the_current_entitlement_only() {
+    fn only_the_features_linux_has_are_listed_and_only_a_current_entitlement_includes_them() {
         let now = Utc::now();
         let current = signed_in(Some(entitlement(now, TimeDelta::days(14), Vec::new())), None);
         let lapsed = signed_in(
@@ -1088,17 +1100,89 @@ mod tests {
             None,
         );
         let (profile, devices) = (Fetch::Idle, Fetch::Idle);
-
-        let included = |status: &AccountStatus| -> Vec<String> {
-            features(&facts(status, &profile, &devices, now))
-                .into_iter()
-                .filter(|row| row.included)
-                .map(|row| row.title)
-                .collect()
+        let table = [
+            ("env_var_references", true),
+            ("result_charts", true),
+            ("data_rewind", false),
+        ];
+        let row = |title: &str, included: bool| FeatureRow {
+            title: title.to_owned(),
+            included,
+        };
+        let listed = |table: &[(&str, bool)], status: &AccountStatus| {
+            features_in(table, &facts(status, &profile, &devices, now))
         };
 
-        assert_eq!(included(&current), ["Environment Variable References", "Data Rewind"]);
-        assert!(included(&lapsed).is_empty());
-        assert!(included(&AccountStatus::SignedOut).is_empty());
+        assert_eq!(
+            listed(&table, &current),
+            [row("Environment Variables", true), row("Result Charts", false)]
+        );
+        assert_eq!(
+            listed(&table, &lapsed),
+            [row("Environment Variables", false), row("Result Charts", false)]
+        );
+        assert_eq!(
+            listed(&table, &AccountStatus::SignedOut),
+            [row("Environment Variables", false), row("Result Charts", false)]
+        );
+        assert!(listed(&[("data_rewind", false), ("result_charts", false)], &current).is_empty());
+    }
+
+    #[test]
+    fn the_limit_and_verification_notices_speak_of_the_license_and_the_plan_for_free_and_pro_alike() {
+        let now = Utc::now();
+        let (profile, devices) = (Fetch::Idle, Fetch::Idle);
+        let notices_for = |status: &AccountStatus| notices(&facts(status, &profile, &devices, now));
+        let one_other = signed_in(
+            None,
+            Some(EntitlementProblem::DeviceLimitReached(vec![device("dev_a", "a", now)])),
+        );
+        let never_verified = signed_in(None, Some(EntitlementProblem::Expired));
+        let mut shown = notices_for(&one_other);
+        shown.extend(notices_for(&never_verified));
+
+        assert_eq!(
+            shown[0].body,
+            "Your license is in use on 1 other device. Remove one to use it on this computer, or keep using TablePro here without it."
+        );
+        assert_eq!(shown[1].title, "Could Not Verify Your Plan");
+        assert_eq!(
+            shown[1].body,
+            "The last verification of your plan ran out. Connect to the internet and refresh."
+        );
+        for licenses in [Vec::new(), vec![license("starter", "yearly", "active", None)]] {
+            let lapsed = entitlement(now - TimeDelta::days(20), TimeDelta::days(14), licenses.clone());
+            let stale = entitlement(now - TimeDelta::days(12), TimeDelta::days(14), licenses);
+            let (ran_out, runs_out) = (day(lapsed.expires_at()), day(stale.expires_at()));
+            let ran_out_notices = notices_for(&signed_in(Some(lapsed), None));
+            let stale_notices = notices_for(&signed_in(Some(stale), None));
+
+            assert_eq!(ran_out_notices.len(), 1, "{ran_out_notices:#?}");
+            assert_eq!(ran_out_notices[0].title, "Could Not Verify Your Plan");
+            assert_eq!(
+                ran_out_notices[0].body,
+                format!(
+                    "The last verification of your plan ran out on {ran_out}. Connect to the internet and refresh."
+                )
+            );
+            assert_eq!(stale_notices.len(), 1, "{stale_notices:#?}");
+            assert_eq!(stale_notices[0].title, "Plan Not Verified Lately");
+            assert_eq!(
+                stale_notices[0].body,
+                format!(
+                    "TablePro last verified your plan 12 days ago. The verification runs out on {runs_out} unless TablePro reaches the account service again."
+                )
+            );
+            shown.extend(ran_out_notices);
+            shown.extend(stale_notices);
+        }
+        for notice in &shown {
+            for text in [&notice.title, &notice.body] {
+                assert!(
+                    !text.contains("paid features") && !text.contains("free features"),
+                    "{text}"
+                );
+            }
+        }
     }
 }

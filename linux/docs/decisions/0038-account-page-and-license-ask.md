@@ -1,6 +1,6 @@
 # 0038: Preferences > Account, the device limit dialog, offline files and the license ask
 
-- **Status**: Accepted
+- **Status**: Accepted; the Features section superseded by 0042
 - **Date**: 2026-11-05
 
 ## Context

@@ -89,8 +89,8 @@ TablePro는 네 번째 선택지입니다. 네이티브이고 여러 데이터�
 
 | 플랜 | 추가 기능 |
 |------|----------|
-| Starter | iCloud Sync, Encrypted Export, Environment Variables, Linked Folders, Query Insights, Result Charts, Compare & Sync, Data Rewind |
-| Team | Starter의 모든 기능과 Team Catalog, Team Library |
+| Pro | iCloud Sync, Encrypted Export, Environment Variables, Linked Folders, Query Insights, Result Charts, Compare & Sync, Data Rewind |
+| Team | Pro의 모든 기능과 Team Catalog, Team Library |
 
 플랜과 가격은 [tablepro.app/pricing](https://tablepro.app/pricing)에서 확인할 수 있습니다. iPhone 및 iPad 앱은 라이선스가 필요하지 않습니다.
 

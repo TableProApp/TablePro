@@ -22,9 +22,14 @@
       </object>
     </child>
     <child>
+      <object class="AdwPreferencesGroup" id="license_group">
+        <property name="title" translatable="yes">License</property>
+      </object>
+    </child>
+    <child>
       <object class="AdwPreferencesGroup" id="devices_group">
         <property name="title" translatable="yes">Devices</property>
-        <property name="description" translatable="yes">Paid features work on 3 devices at a time, across Mac and Linux.</property>
+        <property name="description" translatable="yes">A license covers 3 devices at a time, Mac or Linux.</property>
         <property name="header-suffix">
           <object class="GtkButton" id="manage_devices_button">
             <property name="label" translatable="yes">Manage…</property>

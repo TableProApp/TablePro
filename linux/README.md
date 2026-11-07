@@ -583,9 +583,9 @@ The tools are `list_connections`, `connect`, `list_schemas`, `list_tables`, `des
 
 ## TablePro account
 
-TablePro for Linux is licensed as the macOS app is: the same plans and accounts, on up to 3 devices across Mac and Linux. The paid features are in TablePro for macOS for now, and everything in TablePro for Linux works without an account ([ADR 0038](docs/decisions/0038-account-page-and-license-ask.md)).
+TablePro for Linux is licensed as the macOS app is: the same plans and accounts, and a license covers 3 devices at a time, Mac or Linux. Signing in uses your plan on this computer; everything else works without an account ([ADR 0038](docs/decisions/0038-account-page-and-license-ask.md), [ADR 0042](docs/decisions/0042-account-page-lists-this-platforms-features.md)).
 
-**Preferences > Account > Sign In** opens `account.tablepro.app` in your browser, which sends you back to TablePro once you approve. The page lists your plan, the paid features, your devices with **Remove**, and your teams. A computer that never reaches the internet imports an offline file made for the Machine ID the page shows. What is sent, and when: [Privacy](#privacy).
+**Preferences > Account > Sign In** opens `account.tablepro.app` in your browser, which sends you back to TablePro once you approve. The page lists your plan, your devices with **Remove**, and your teams. A computer that never reaches the internet imports an offline file made for the Machine ID the page shows. What is sent, and when: [Privacy](#privacy).
 
 From the 30th day you use TablePro without a license, a toast asks whether you would buy one, with **Buy a License**, then at most every 90 days. Nothing changes whatever you do.
 
