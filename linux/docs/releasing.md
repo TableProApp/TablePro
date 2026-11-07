@@ -34,8 +34,13 @@ A repository admin does these once. The workflow's header names the same secrets
               --follow-fedora-branching on --appstream on
           copr-cli add-package-custom "@tablepro/$project" --name tablepro --webhook-rebuild on --timeout 36000 \
               --script linux/build-aux/rpm/copr-sources.sh --script-builddeps 'curl rpmdevtools'
+          for chroot in fedora-44-x86_64 fedora-44-aarch64 fedora-45-x86_64 fedora-45-aarch64; do
+              copr-cli edit-chroot "@tablepro/$project/$chroot" --rpmbuild-without check
+          done
       done
       ```
+
+      COPR builds without `%check`: the release dry run already runs it with this spec on the same Fedora versions and architectures. A chroot that Fedora branching adds needs the same `edit-chroot`.
 
    4. In each project's Settings, tell `tablepro-beta`'s users under Instructions to enable `@tablepro/tablepro` as well, and turn on build failure emails for the admins. Integrations shows the custom webhook URL; add the package name to it: `https://copr.fedorainfracloud.org/webhooks/custom/<id>/<uuid>/tablepro/`.
 4. **The Flatpak repository**, in the Cloudflare account that holds the `tablepro.app` zone:
