@@ -10,6 +10,8 @@ permissions:
 
 env:
   UNIFFI_BINDGEN_CS_TAG: v0.11.1+v0.31.0
+  # The caches share the repository's 10 GB; line tables keep them about 30% smaller (build-linux.yml).
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
 jobs:
   test:
