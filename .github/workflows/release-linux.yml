@@ -451,7 +451,7 @@ jobs:
       !cancelled() && (needs.github-release.result == 'success' || needs.revision-packages.result == 'success')
     runs-on: ubuntu-24.04
     environment: linux-release
-    timeout-minutes: 30
+    timeout-minutes: 60
     container:
       image: ubuntu:26.04
     steps:
@@ -490,9 +490,26 @@ jobs:
           # dput checks the signatures before it uploads, and reports one
           # from a key with no trust as an error.
           echo "$key:6:" | gpg --batch --import-ownertrust
+          # Launchpad's FTP server has refused the second upload of a job with 550
+          # "internal server error" before taking a file, then taken it a while
+          # later; it keeps nothing of a refused upload, so trying again is safe.
+          first=true
           for changes in source/*_source.changes; do
             debsign -k"$key" "$changes"
-            dput "ppa:$ppa" "$changes"
+            if [ "$first" = true ]; then waits="0 120 240 480"; else waits="120 240 480 960"; fi
+            first=false
+            uploaded=false
+            for wait in $waits; do
+              sleep "$wait"
+              if dput "ppa:$ppa" "$changes"; then
+                uploaded=true
+                break
+              fi
+            done
+            if [ "$uploaded" != true ]; then
+              echo "::error::Launchpad refused $changes four times"
+              exit 1
+            fi
           done
 
   copr:
