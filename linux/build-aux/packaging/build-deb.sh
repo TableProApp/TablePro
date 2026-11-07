@@ -33,6 +33,9 @@ download() {
 
 build() {
     apt-get install -y --no-install-recommends /build/debs/*.deb
+    # ccache links the compilers it finds when it is set up, and dpkg sets up
+    # the c++ and cc alternatives after it in the same install.
+    update-ccache-symlinks
     useradd --create-home builder
     mkdir /build/work /build/ccache
     chown builder /build/work /build/ccache
