@@ -103,6 +103,7 @@
         <p>The third beta of TablePro for Linux.</p>
         <ul>
           <li>Fedora packages are available for every supported version and architecture</li>
+          <li>Connecting with a saved password no longer hangs when the keyring is locked or its unlock prompt is dismissed</li>
         </ul>
       </description>
     </release>
