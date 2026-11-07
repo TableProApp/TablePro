@@ -231,8 +231,9 @@ jobs:
             --jq '.workflow_runs | sort_by(.id) | reverse | .[] | "\(.id) \(.run_attempt)"')"
           while read -r id attempt; do
             [ -n "$id" ] || continue
-            artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/artifacts?per_page=100" \
-              --jq '[.artifacts[] | select(.expired | not)] | group_by(.name) | map(max_by([.created_at, .id]) | {name, id})')"
+            artifacts="$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$id/artifacts?per_page=100" \
+              --jq '.artifacts[] | select(.expired | not) | {name, id, created_at}' \
+              | jq -sc 'group_by(.name) | map(max_by([.created_at, .id]) | {name, id})')"
             missing="$(jq -c '["linux-release", "linux-sources", "linux-source-package", "linux-pot"] - map(.name)' <<< "$artifacts")"
             # A rerun started since the list was read may have replaced some.
             state="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id" --jq '"\(.run_attempt) \(.status) \(.conclusion)"')"
