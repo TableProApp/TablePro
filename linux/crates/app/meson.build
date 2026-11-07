@@ -40,9 +40,9 @@ custom_target(
   install_dir: [bindir, libexecdir],
 )
 
-# One build of the tests serves every cargo suite, so they share one
-# build environment: a variable a build script or option_env! reads, set
-# differently, would rebuild the crate. The suites differ only at run time.
+# One build of the tests serves both cargo tests, so they share one build
+# environment: a variable a build script or option_env! reads, set
+# differently, would rebuild the crate. The tests differ only at run time.
 test_env = app_env
 if profile != 'development'
   # With --release every test binary goes through the release profile's
@@ -61,8 +61,8 @@ test_env.set('TABLEPRO_POSTHOG_KEY', '')
 
 # windows.yml tests tablepro-ffi, whose binaries each link every engine and filled a package builder's disk.
 # tablepro-bindgen is the macOS build's generator, and uniffi's CLI changes the build dependencies'
-# features, so the gtk suite then built DuckDB's C++ again.
-# Every suite selects the same packages: Cargo unifies features over the selected packages, and a
+# features, so the tests then built DuckDB's C++ again.
+# Both tests select the same packages: Cargo unifies features over the selected packages, and a
 # selection of the app alone built 244 crates again on a package builder.
 test_packages = [
   '--workspace',
@@ -90,47 +90,6 @@ cargo_tests = custom_target(
   ] + cargo_options + test_packages,
 )
 
-# The code that measures and places things, which the scale suite runs
-# again.
-scale_modules = [
-  'ui::data_grid::',
-  'ui::diagram::',
-  'ui::editor::editor_view::',
-  'ui::window_geometry::',
-]
-
-# nextest's ci profile kills a test that hangs and names it within
-# minutes. Under cargo test a hung test holds the suite until Meson's
-# timeout and names nothing. The package builders have no nextest.
-nextest = find_program('cargo-nextest', required: false)
-nextest_run = ['nextest', 'run', '--profile', 'ci'] + cargo_options + test_packages
-if nextest.found()
-  workspace_args = nextest_run
-  scale_filter = []
-  foreach module : scale_modules
-    scale_filter += 'test(' + module + ')'
-  endforeach
-  scale_args = nextest_run + ['-E', 'package(tablepro) & kind(lib) & (' + ' | '.join(scale_filter) + ')']
-else
-  workspace_args = ['test'] + cargo_options + test_packages
-  # Only the app has ui modules.
-  scale_args = ['test'] + cargo_options + test_packages + ['--lib', '--'] + scale_modules
-endif
-
-# nextest runs no doc tests, which need no display.
-if nextest.found()
-  test(
-    'workspace-doc',
-    cargo,
-    args: ['test', '--doc'] + cargo_options + test_packages,
-    env: test_env,
-    depends: cargo_tests,
-    suite: 'cargo',
-    is_parallel: false,
-    timeout: 3600,
-  )
-endif
-
 gtk_env = test_env
 gtk_env.set('GSK_RENDERER', 'cairo')
 gtk_env.set('GTK_A11Y', 'test')
@@ -147,21 +106,24 @@ gtk_env.set('GNOTIFICATION_BACKEND', 'freedesktop')
 # A session bus of the suite's own, so its names and notifications never
 # reach the desktop it runs on, and a build sandbox without a bus still
 # has one. A build that skips the tests need not install dbus.
-gtk_program = cargo
-gtk_wrapper = []
+test_program = cargo
+test_args = ['test'] + cargo_options + test_packages
 dbus_run_session = find_program('dbus-run-session', required: false)
 if dbus_run_session.found()
-  gtk_program = dbus_run_session
-  gtk_wrapper = ['--', cargo.full_path()]
+  test_program = dbus_run_session
+  test_args = ['--', cargo.full_path()] + test_args
 endif
 
-# The app's tests need a display, the GTK test accessibility backend and
-# a bus; the core's tests run the same under them. The runs take three to
-# five minutes, the hour leaves room for the slowest builder.
+# The app's tests need a display, the GTK test accessibility backend and a
+# bus; the core's run the same under them. cargo test runs the app's
+# library tests in one process, which they need: under nextest's process
+# per test, windows on the shared display take each other's focus. A hung
+# test holds the suite until its timeout. The runs took 3 to 5 minutes on
+# the GitHub runners, and COPR's aarch64 builders are about 4.5 times as slow.
 test(
   'workspace',
-  gtk_program,
-  args: gtk_wrapper + workspace_args,
+  test_program,
+  args: test_args,
   env: gtk_env,
   depends: [compiled_schemas, metainfo_file, cargo_tests],
   suite: 'cargo',
@@ -169,19 +131,27 @@ test(
   timeout: 3600,
 )
 
-# Again at the scale a 200% display gives GDK, so a size worked out in
-# device pixels rather than logical ones fails here and not only on a
-# HiDPI screen.
+# The code that measures and places things, again at the scale a 200%
+# display gives GDK, so a size worked out in device pixels rather than
+# logical ones fails here and not only on a HiDPI screen. Only the app has
+# ui modules. The run took under 30 seconds on the GitHub runners.
 gtk_scale_env = gtk_env
 gtk_scale_env.set('GDK_SCALE', '2')
 
 test(
   'app-scale-2',
-  gtk_program,
-  args: gtk_wrapper + scale_args,
+  test_program,
+  args: test_args + [
+    '--lib',
+    '--',
+    'ui::data_grid::',
+    'ui::diagram::',
+    'ui::editor::editor_view::',
+    'ui::window_geometry::',
+  ],
   env: gtk_scale_env,
   depends: [compiled_schemas, metainfo_file, cargo_tests],
   suite: 'cargo',
   is_parallel: false,
-  timeout: 3600,
+  timeout: 600,
 )

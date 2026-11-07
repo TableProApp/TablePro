@@ -51,36 +51,6 @@
     ],
     "modules": [
         {
-            "name": "cargo-nextest",
-            "buildsystem": "simple",
-            "build-commands": [
-                "install -Dm755 cargo-nextest -t /app/bin"
-            ],
-            "cleanup": [
-                "/bin/cargo-nextest"
-            ],
-            "sources": [
-                {
-                    "type": "archive",
-                    "only-arches": [
-                        "x86_64"
-                    ],
-                    "url": "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.144/cargo-nextest-0.9.144-x86_64-unknown-linux-gnu.tar.gz",
-                    "sha256": "8a4f726272b0a1c499bd87ca3978bfbb1a8c20bb08ccf075b9996e2081bd1e1e",
-                    "strip-components": 0
-                },
-                {
-                    "type": "archive",
-                    "only-arches": [
-                        "aarch64"
-                    ],
-                    "url": "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.144/cargo-nextest-0.9.144-aarch64-unknown-linux-gnu.tar.gz",
-                    "sha256": "7fecfd431b810c05c589d800524286b8f80ce2fe9fb1fef05caf16d095cea407",
-                    "strip-components": 0
-                }
-            ]
-        },
-        {
             "name": "tablepro",
             "buildsystem": "meson",
             "subdir": "linux",
@@ -117,11 +87,6 @@
                 {
                     "type": "file",
                     "path": "../../../Cargo.lock"
-                },
-                {
-                    "type": "file",
-                    "path": "../../../.config/nextest.toml",
-                    "dest": ".config"
                 }
             ]
         }

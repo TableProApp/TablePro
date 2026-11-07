@@ -40,17 +40,15 @@ meson setup _build -Dprofile=development
 dbus-run-session -- meson test -C _build --print-errorlogs
 ```
 
-Four suites: `cargo` tests the workspace without `tablepro-ffi` and `tablepro-bindgen` (`workspace`), then the
-app's code that measures and places things again at `GDK_SCALE=2` (`app-scale-2`). It runs them with
-`GSK_RENDERER=cairo`, `GTK_A11Y=test`, `GDK_BACKEND=x11` and the build tree's schema directory, which the app's
-tests need and the core's do not mind, under a `dbus-run-session` of its own when one is installed, so its bus
-names and notifications never reach the desktop it runs on. It sets `GNOTIFICATION_BACKEND=freedesktop`, since
-GLib picks the portal inside Flatpak and the notification test answers with a freedesktop server on that bus. When
-Meson finds `cargo-nextest`, as in the fast job and the Flatpak Devel build, the suite runs `cargo nextest run
---profile ci`, which kills a test past five minutes and names it, picks the scale tests with a filterset, and then
-runs the doc tests through `cargo test --doc` (`workspace-doc`). Without nextest, as on the package builders, it
-runs `cargo test`, where a hung test holds the suite until Meson's one hour timeout, and libtest's name filter
-picks the scale tests. Install nextest before `meson setup`, which looks for it. `data` runs `desktop-file-validate` and `appstreamcli
+Four suites: `cargo` runs `cargo test` on the workspace without `tablepro-ffi` and `tablepro-bindgen`
+(`workspace`), then the app's code that measures and places things again at `GDK_SCALE=2` (`app-scale-2`, picked
+by libtest's name filter). It runs them with `GSK_RENDERER=cairo`, `GTK_A11Y=test`, `GDK_BACKEND=x11` and the
+build tree's schema directory, which the app's tests need and the core's do not mind, under a `dbus-run-session`
+of its own when one is installed, so its bus names and notifications never reach the desktop it runs on. It sets
+`GNOTIFICATION_BACKEND=freedesktop`, since GLib picks the portal inside Flatpak and the notification test answers
+with a freedesktop server on that bus. The fast job, the Flatpak builds and the packages all run it this way. A
+hung test surfaces as the test's Meson timeout, one hour for `workspace` and ten minutes for `app-scale-2`, with
+no test named; the runs take three to five minutes. `data` runs `desktop-file-validate` and `appstreamcli
 validate`; the schema compiles with `--strict` as part of the build.
 `packaging` runs the unit tests in `build-aux/tests` and checks that
 `debian/copyright`, the RPM spec and the metainfo agree with `data/licenses`
@@ -492,7 +490,7 @@ crate::test_support::drain_main_context();
 glib::log_set_always_fatal(previous);
 ```
 
-A critical then aborts the process with the message, for example libadwaita's "Trying to close AdwAlertDialog ... that's not presented". cargo-nextest runs each test in a process of its own, so it reports that one test as failed. `cargo test`, which the Meson `gtk` suite runs, has every test of the `tablepro` library in one process: the abort ends the whole binary and the tests after it never run.
+A critical then aborts the process with the message, for example libadwaita's "Trying to close AdwAlertDialog ... that's not presented". cargo-nextest runs each test in a process of its own, so it reports that one test as failed. `cargo test`, which the Meson `cargo` suite runs, has every test of the `tablepro` library in one process: the abort ends the whole binary and the tests after it never run.
 
 ### Fakes
 
