@@ -43,9 +43,21 @@
 
 ## 关于
 
+TablePro 是我心目中的 TablePlus:原生、快速、开源。
+
 TablePro 是免费的开源数据库客户端，每个平台都有原生应用。可以浏览数据、编写查询，以及编辑 SQL 和 NoSQL 数据库中的行。
 
 Apple 应用使用 Swift 和原生框架。Linux 使用 Rust、GTK 4 和 libadwaita。Windows 使用 C# 和 WinUI 3，目前正在开发。Linux 和 Windows 基于共享的 Rust 核心；Swift 应用尚未使用该核心。
+
+## 为什么选 TablePro
+
+目前数据库客户端可分三类:
+
+- **单数据库,开源**:Sequel Ace(仅 MySQL)、Postico(仅 PostgreSQL)。只用一种引擎的话很合适。
+- **多数据库,闭源**:TablePlus。流畅且原生,但是专有软件。
+- **多数据库,非原生**:DBeaver(JVM)、Beekeeper Studio 和 DBGate(Electron)。跨平台,但启动慢且占内存。
+
+TablePro 补上缺失的第四类:每个平台都原生、多数据库、开源。
 
 ## 平台与安装
 

@@ -43,9 +43,21 @@
 
 ## About
 
+TablePro is what I wanted TablePlus to be: native, fast, open source.
+
 TablePro is a free, open-source database client with a native app for each platform. Browse data, write queries and edit rows in SQL and NoSQL databases.
 
 Apple apps use Swift and native frameworks. Linux uses Rust, GTK 4 and libadwaita. Windows uses C# and WinUI 3 and is in development. Linux and Windows build on the shared Rust core; the Swift app does not use it yet.
+
+## Why TablePro
+
+Database clients today fall into three groups:
+
+- **Single-database, open source**: Sequel Ace (MySQL only), Postico (PostgreSQL only). Great if you live in one engine.
+- **Multi-database, closed source**: TablePlus. Polished and native, but proprietary.
+- **Multi-database, not native**: DBeaver (JVM), Beekeeper Studio and DBGate (Electron). Cross-platform, but slow to start and heavy on memory.
+
+TablePro is the missing fourth: native on every platform, multi-database, and open source.
 
 ## Platforms and installation
 

@@ -43,9 +43,21 @@
 
 ## 소개
 
+TablePro는 제가 바라던 TablePlus의 모습입니다. 네이티브이고 빠르며 오픈 소스입니다.
+
 TablePro는 플랫폼마다 네이티브 앱을 제공하는 무료 오픈 소스 데이터베이스 클라이언트입니다. SQL과 NoSQL 데이터베이스에서 데이터를 탐색하고, 쿼리를 작성하고, 행을 편집할 수 있습니다.
 
 Apple 앱은 Swift와 네이티브 프레임워크를 사용합니다. Linux는 Rust, GTK 4, libadwaita를 사용합니다. Windows는 C#과 WinUI 3를 사용하며 개발 중입니다. Linux와 Windows는 공유 Rust 코어를 기반으로 하며, Swift 앱은 아직 이 코어를 사용하지 않습니다.
+
+## TablePro를 선택하는 이유
+
+현재 데이터베이스 클라이언트는 세 가지 유형으로 나뉩니다.
+
+- **단일 데이터베이스, 오픈 소스**: Sequel Ace(MySQL 전용), Postico(PostgreSQL 전용). 하나의 엔진만 사용한다면 훌륭한 선택입니다.
+- **다중 데이터베이스, 비공개 소스**: TablePlus. 완성도 높은 네이티브 앱이지만 독점 소프트웨어입니다.
+- **다중 데이터베이스, 비네이티브**: DBeaver(JVM), Beekeeper Studio와 DBGate(Electron). 여러 플랫폼에서 실행되지만 시작이 느리고 메모리를 많이 사용합니다.
+
+TablePro는 네 번째 선택지입니다. 모든 플랫폼에서 네이티브이고 여러 데이터베이스를 지원하며 오픈 소스입니다.
 
 ## 플랫폼과 설치
 

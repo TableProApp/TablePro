@@ -43,9 +43,21 @@
 
 ## Giới thiệu
 
+TablePro là TablePlus mà tôi luôn muốn có: native, nhanh, mã nguồn mở.
+
 TablePro là ứng dụng quản lý cơ sở dữ liệu miễn phí, mã nguồn mở, với giao diện native riêng cho từng nền tảng. Duyệt dữ liệu, viết truy vấn và sửa hàng trong cơ sở dữ liệu SQL và NoSQL.
 
 Ứng dụng Apple dùng Swift và framework native. Linux dùng Rust, GTK 4 và libadwaita. Windows dùng C# và WinUI 3, hiện đang phát triển. Linux và Windows dùng lõi Rust chung; ứng dụng Swift chưa dùng lõi này.
+
+## Vì sao chọn TablePro
+
+Database client hiện chia làm ba nhóm:
+
+- **Một database, mã nguồn mở**: Sequel Ace (chỉ MySQL), Postico (chỉ PostgreSQL). Hợp nếu bạn chỉ làm một engine.
+- **Đa database, đóng nguồn**: TablePlus. Mượt và native, nhưng proprietary.
+- **Đa database, không native**: DBeaver (JVM), Beekeeper Studio và DBGate (Electron). Chạy được trên mọi OS, nhưng khởi động chậm và ngốn RAM.
+
+TablePro là mảnh thứ tư còn thiếu: native trên từng nền tảng, đa database, và mã nguồn mở.
 
 ## Nền tảng và cài đặt
 
