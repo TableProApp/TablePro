@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Report it privately through [Report a vulnerability](https://github.com/TableProApp/TablePro/security/advisories/new), or email **hello@tablepro.app**. Do not open a public issue, discussion or pull request for a vulnerability.
+Report it privately through [Report a vulnerability](https://github.com/TableProApp/TablePro/security/advisories/new), or email **security@tablepro.app**. Do not open a public issue, discussion or pull request for a vulnerability.
 
 Include:
 
