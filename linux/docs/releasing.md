@@ -32,7 +32,7 @@ A repository admin does these once. The workflow's header names the same secrets
               --chroot fedora-44-x86_64 --chroot fedora-44-aarch64 \
               --chroot fedora-45-x86_64 --chroot fedora-45-aarch64 \
               --follow-fedora-branching on --appstream on
-          copr-cli add-package-custom "@tablepro/$project" --name tablepro --webhook-rebuild on \
+          copr-cli add-package-custom "@tablepro/$project" --name tablepro --webhook-rebuild on --timeout 36000 \
               --script linux/build-aux/rpm/copr-sources.sh --script-builddeps 'curl rpmdevtools'
       done
       ```

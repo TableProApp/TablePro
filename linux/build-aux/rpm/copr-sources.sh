@@ -6,7 +6,7 @@
 # and COPR hands the body over as ./hook_payload.
 #
 # COPR runs its own copy of this file. After a change, a maintainer runs:
-#   copr-cli edit-package-custom <owner>/tablepro --name tablepro \
+#   copr-cli edit-package-custom <owner>/tablepro --name tablepro --timeout 36000 \
 #       --script linux/build-aux/rpm/copr-sources.sh \
 #       --script-builddeps 'curl rpmdevtools'
 set -eu

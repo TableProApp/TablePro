@@ -18,7 +18,7 @@ Build-Depends:
  libseccomp-dev,
  libsqlite3-dev (>= 3.46),
  libxml2-utils,
- meson (>= 1.4),
+ meson (>= 1.7),
  pkgconf,
  rustc-1.97,
  adwaita-icon-theme <!nocheck>,

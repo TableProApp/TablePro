@@ -40,7 +40,10 @@ custom_target(
   install_dir: [bindir, libexecdir],
 )
 
-test_env = cargo_env
+# One build of the tests serves every cargo suite, so they share one
+# build environment: a variable a build script or option_env! reads, set
+# differently, would rebuild the crate. The suites differ only at run time.
+test_env = app_env
 if profile != 'development'
   # With --release every test binary goes through the release profile's
   # fat LTO, which takes gigabytes and minutes per binary and runs a
@@ -52,36 +55,74 @@ if profile != 'development'
   test_env.set('CARGO_PROFILE_RELEASE_LTO', 'off')
   test_env.set('CARGO_PROFILE_RELEASE_CODEGEN_UNITS', '16')
 endif
+# Tests never reach PostHog. The integration tests and the binary they
+# start are not built with cfg(test), so they get no key from here.
+test_env.set('TABLEPRO_POSTHOG_KEY', '')
 
 # windows.yml tests tablepro-ffi, whose binaries each link every engine and filled a package builder's disk.
 # tablepro-bindgen is the macOS build's generator, and uniffi's CLI changes the build dependencies'
 # features, so the gtk suite then built DuckDB's C++ again.
-workspace_packages = [
+# Each suite selects all of these packages: Cargo unifies features over the selected packages, and the app's
+# own selection built 244 crates again on a package builder. A target runner picks each suite's tests instead.
+test_packages = [
   '--workspace',
-  '--exclude', 'tablepro',
   '--exclude', 'tablepro-ffi',
   '--exclude', 'tablepro-bindgen',
 ]
+
+# A test's timeout runs from the start of its command, and a package build
+# compiles the tests in the release profile: more than an hour on a
+# builder, against minutes for the run. meson test and ninja test first
+# build a test's depends, with no timeout.
+cargo_tests = custom_target(
+  'cargo-tests',
+  build_always_stale: true,
+  build_by_default: false,
+  console: true,
+  output: 'cargo-tests.stamp',
+  env: test_env,
+  depends: metainfo_file,
+  command: [
+    find_program(meson.project_source_root() / 'build-aux' / 'cargo-test-build.sh'),
+    '@OUTPUT@',
+    '--',
+    cargo, 'test', '--no-run',
+  ] + cargo_options + test_packages,
+)
+
+# The host's own triple, since a triple's runner takes precedence over a
+# cfg() one, and --config over the environment.
+host_triple = ''
+foreach line : run_command(meson.get_compiler('rust').cmd_array(), '-vV', check: true).stdout().split('\n')
+  if line.startswith('host: ')
+    host_triple = line.substring(6).strip()
+  endif
+endforeach
+if host_triple == ''
+  error('rustc -vV names no host')
+endif
+test_runner = meson.project_source_root() / 'build-aux' / 'cargo-test-runner.sh'
+skip_app = ['--config', 'target.@0@.runner = ["@1@", "skip", "tablepro"]'.format(host_triple, test_runner)]
+only_app = ['--config', 'target.@0@.runner = ["@1@", "only", "tablepro"]'.format(host_triple, test_runner)]
 
 # nextest's ci profile kills a test that hangs and names it within
 # minutes. Under cargo test a hung test holds the suite until Meson's
 # timeout and names nothing. The package builders have no nextest.
 nextest = find_program('cargo-nextest', required: false)
 if nextest.found()
-  workspace_args = ['nextest', 'run', '--profile', 'ci'] + cargo_options + workspace_packages
+  workspace_args = ['nextest', 'run', '--profile', 'ci'] + cargo_options + test_packages + ['-E', 'not package(tablepro)']
 else
-  workspace_args = ['test'] + cargo_options + workspace_packages
+  workspace_args = skip_app + ['test'] + cargo_options + test_packages
 endif
 
-# The workspace suite excludes the app, whose tests need a display and
-# the GTK test accessibility backend. A package build compiles its tests in
-# the release profile, DuckDB's C++ a second time among them, which took
-# more than an hour on a 4-core builder with DuckDB 2.0.
+# The workspace suite leaves out the app, whose tests need a display and
+# the GTK test accessibility backend.
 test(
   'workspace',
   cargo,
   args: workspace_args,
   env: test_env,
+  depends: cargo_tests,
   suite: 'unit',
   is_parallel: false,
   timeout: 7200,
@@ -92,22 +133,16 @@ if nextest.found()
   test(
     'workspace-doc',
     cargo,
-    args: ['test', '--doc'] + cargo_options + workspace_packages,
+    args: skip_app + ['test', '--doc'] + cargo_options + test_packages,
     env: test_env,
+    depends: cargo_tests,
     suite: 'unit',
     is_parallel: false,
     timeout: 3600,
   )
 endif
 
-gtk_env = app_env
-if profile != 'development'
-  gtk_env.set('CARGO_PROFILE_RELEASE_LTO', 'off')
-  gtk_env.set('CARGO_PROFILE_RELEASE_CODEGEN_UNITS', '16')
-endif
-# Tests never reach PostHog. The integration tests and the binary they
-# start are not built with cfg(test), so they get no key from here.
-gtk_env.set('TABLEPRO_POSTHOG_KEY', '')
+gtk_env = test_env
 gtk_env.set('GSK_RENDERER', 'cairo')
 gtk_env.set('GTK_A11Y', 'test')
 # The key tests press real keys through XTEST, which only an X11 display
@@ -124,19 +159,20 @@ gtk_env.set('GNOTIFICATION_BACKEND', 'freedesktop')
 # reach the desktop it runs on, and a build sandbox without a bus still
 # has one. A build that skips the tests need not install dbus.
 gtk_program = cargo
-gtk_args = ['test'] + cargo_options + ['-p', 'tablepro']
+gtk_args = only_app + ['test'] + cargo_options + test_packages
 dbus_run_session = find_program('dbus-run-session', required: false)
 if dbus_run_session.found()
   gtk_program = dbus_run_session
   gtk_args = ['--', cargo.full_path()] + gtk_args
 endif
 
+# The workspace suite runs the doc tests, of which the app has none.
 test(
   'app',
   gtk_program,
-  args: gtk_args,
+  args: gtk_args + ['--lib', '--bins', '--tests'],
   env: gtk_env,
-  depends: [compiled_schemas, metainfo_file],
+  depends: [compiled_schemas, metainfo_file, cargo_tests],
   suite: 'gtk',
   is_parallel: false,
   timeout: 3600,
@@ -160,7 +196,7 @@ test(
     'ui::window_geometry::',
   ],
   env: gtk_scale_env,
-  depends: [compiled_schemas, metainfo_file],
+  depends: [compiled_schemas, metainfo_file, cargo_tests],
   suite: 'gtk',
   is_parallel: false,
   timeout: 3600,

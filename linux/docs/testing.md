@@ -45,7 +45,7 @@ finds `cargo-nextest`, as in the fast job and the Flatpak Devel build, it runs `
 which kills a test past five minutes and names it, and then the doc tests through `cargo test --doc`. Without
 nextest, as on the package builders, it runs `cargo test`, where a hung test holds the suite until Meson's two hour
 timeout. Install nextest before `meson setup`, which looks for it. `gtk`
-is `cargo test -p tablepro` with `GSK_RENDERER=cairo`, `GTK_A11Y=test`,
+runs the tests of `tablepro` with `GSK_RENDERER=cairo`, `GTK_A11Y=test`,
 `GDK_BACKEND=x11` and the build tree's schema directory, under a
 `dbus-run-session` of its own when one is installed, so its bus names
 and notifications never reach the desktop it runs on. It sets
@@ -60,6 +60,13 @@ in `po/LINGUAS`; gettext 0.26 and newer also check its `{name}`
 placeholders. In a `-Dprofile=default` build, which the
 packages run, the unit and gtk suites build with `--release` but without
 its fat LTO, which would cost gigabytes and minutes per test binary.
+Both suites run on one build of the tests, `cargo test --no-run` on the
+workspace without `tablepro-ffi` and `tablepro-bindgen`, which `meson test`
+makes before the first suite starts, so a suite's timeout covers only its
+run. Each suite selects all of those packages, since Cargo resolves
+features over the selected packages and a selection of its own would
+build most crates again; `build-aux/cargo-test-runner.sh`, Cargo's target
+runner, then runs only the suite's own tests.
 Tests that need Docker or a Secret Service are ignored. Without a display
 (SSH, containers), prefix with xvfb the way the CI fast job does:
 
