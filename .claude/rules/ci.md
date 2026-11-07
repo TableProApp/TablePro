@@ -16,7 +16,7 @@ paths:
 
 ## Required checks
 
-- main requires `CI`, the last job of `ci.yml`, and merges through GitHub's merge queue, which builds up to five pull requests at once, each on top of those ahead of it, and squashes. Strict is off. Admins can bypass in pull_request mode.
+- main requires `CI`, the last job of `ci.yml`, and merges through GitHub's merge queue, one pull request at a time, squashed. Strict is off. Admins can bypass in pull_request mode.
 - `release/*` requires `CI` and `PR title` (ruleset 25435242). `release/0.82` was cut before `ci.yml`: it keeps its own workflow files and the old per-workflow checks (ruleset 23957966).
 - `PR title` (`pr-title.yml`) is advisory on main: the reviewer reads the squash subject. It also runs the changelog check, since a title edit starts no CI run; on main the merge group's Lint job runs it again with the current title.
 - `CI` fails when a job it needs failed or was cancelled, or when the plan selected a job that did not succeed. A job the plan left out is skipped, which passes.
