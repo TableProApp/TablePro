@@ -19,6 +19,15 @@ name: Release Linux
 # the branch's version would publish, as the linux-release artifact, signs
 # the Flatpak with a throwaway key, and publishes nothing.
 #
+# A tag builds none of it. It takes what the green dry run of its commit
+# built and tested, signs the Flatpak again with the release key into the
+# published repository, so only the bundles are new, checks every other file
+# against the dry run's SHA256SUMS, and publishes. With no such dry run it
+# fails before it publishes anything
+# (linux/docs/decisions/0043-a-tag-publishes-its-dry-run.md). A dry run sets
+# retention-days on what a tag takes, so the repository's default retention
+# never decides whether a tag still finds it.
+#
 # Run by hand on a branch with a tag and a revision, it uploads a published
 # release to the stable PPA again as X.Y.Z-0ppaN, from that release's
 # tarballs with the branch's .deb packaging: a packaging fix that needs no
@@ -141,6 +150,7 @@ jobs:
   packages:
     name: Packages
     needs: verify
+    if: inputs.dry-run
     uses: ./.github/workflows/linux-packages.yml
     with:
       deb-runners: '["ubuntu-24.04", "ubuntu-24.04-arm"]'
@@ -148,12 +158,15 @@ jobs:
       posthog-key: ${{ vars.POSTHOG_PROJECT_KEY }}
       flatpak: true
       flatpak-branch: ${{ needs.verify.outputs.flatpak-branch }}
+      # The tag of this commit publishes these, whatever the repository's default retention.
+      retention-days: 30
 
   # The release carries the template translators start from, made with
   # gettext 1.0 as build-linux.yml's Translations job makes it.
   template:
     name: Translation template
     needs: verify
+    if: inputs.dry-run
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     container:
@@ -188,23 +201,114 @@ jobs:
           name: linux-pot
           path: linux/po/tablepro.pot
           if-no-files-found: error
+          retention-days: 30
+
+  # A dry run gathers linux-release and a packaging fix does not, so the
+  # newest green dispatch of this commit that still has it is its dry run.
+  # Only a first attempt counts, since a rerun leaves an earlier attempt's
+  # artifacts in the run, which deleting a later one would bring back. Its
+  # artifacts are taken by id, so a rerun started after this cannot swap any.
+  dry-run:
+    name: The dry run of the tagged commit
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+    outputs:
+      run-id: ${{ steps.find.outputs.run-id }}
+      artifacts: ${{ steps.find.outputs.artifacts }}
+      sums: ${{ steps.sums.outputs.sums }}
+    steps:
+      - name: Find the green dry run of this commit
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release-linux.yml/runs?head_sha=$GITHUB_SHA&event=workflow_dispatch&status=success&per_page=100" \
+            --jq '.workflow_runs | map(select(.run_attempt == 1)) | sort_by(.id) | reverse | .[].id')"
+          for id in $runs; do
+            artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/artifacts?per_page=100" \
+              --jq '[.artifacts[] | select(.expired | not) | {name, id}]')"
+            missing="$(jq -c '["linux-release", "linux-sources", "linux-source-package", "linux-pot"] - map(.name)' <<< "$artifacts")"
+            # A rerun started since the list was read may have replaced some.
+            state="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id" --jq '"\(.run_attempt) \(.status) \(.conclusion)"')"
+            if [ "$missing" != '[]' ] || [ "$state" != "1 completed success" ]; then
+              continue
+            fi
+            {
+              echo "run-id=$id"
+              echo "release-id=$(jq '.[] | select(.name == "linux-release") | .id' <<< "$artifacts")"
+              echo "artifacts=$(jq -c 'map(select(.name | test("^linux-(sources|source-package|pot|deb-[^-]+-[^-]+|rpm-[^-]+-[^-]+|flatpak-repo-[^-]+)$")))' <<< "$artifacts")"
+            } >> "$GITHUB_OUTPUT"
+            echo "Publishing what dry run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$id built." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          done
+          echo "::error::No dry run of $GITHUB_SHA passed on its first attempt and still has its artifacts. Run gh workflow run release-linux.yml --ref $TAG -f dry-run=true, and once it passes, gh run rerun $GITHUB_RUN_ID --failed"
+          exit 1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ steps.find.outputs.release-id }}
+          path: dry-run-release
+          run-id: ${{ steps.find.outputs.run-id }}
+          github-token: ${{ github.token }}
+      - name: Keep its SHA256SUMS
+        id: sums
+        run: |
+          {
+            echo 'sums<<SHA256SUMS_END'
+            cat dry-run-release/SHA256SUMS
+            echo SHA256SUMS_END
+          } >> "$GITHUB_OUTPUT"
+
+  # Each under its own name, so the jobs after it read this run's artifacts
+  # as they would after building them.
+  promote:
+    name: Take ${{ matrix.artifact.name }} from the dry run
+    needs: [verify, dry-run]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      actions: read
+    strategy:
+      matrix:
+        artifact: ${{ fromJSON(needs.dry-run.outputs.artifacts) }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ matrix.artifact.id }}
+          path: artifact
+          run-id: ${{ needs.dry-run.outputs.run-id }}
+          github-token: ${{ github.token }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.artifact.name }}
+          path: artifact
+          if-no-files-found: error
+          retention-days: 30
 
   # The published repository, pulled from R2, takes the new commits and their
   # deltas; the bundles are made from it, so an installed bundle updates from
   # it. A dry run starts an empty repository and signs it with a throwaway key.
+  # A tag run skips packages and a dry run skips promote, and a skipped job
+  # skips every job after it whose condition does not name the results.
   flatpak-repo:
     name: Flatpak repository
-    needs: [verify, packages]
+    needs: [verify, packages, promote]
+    if: >-
+      !cancelled() && needs.verify.result == 'success' &&
+      (needs.packages.result == 'success' || needs.promote.result == 'success')
     runs-on: ubuntu-24.04
     environment: ${{ github.event_name == 'push' && 'linux-release' || '' }}
     timeout-minutes: 60
     container:
       image: ubuntu:26.04
     steps:
-      - name: Install Flatpak, OSTree, GnuPG and curl
+      - name: Install Flatpak, OSTree, GnuPG, curl and jq
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates curl unzip flatpak ostree gnupg
+          apt-get install -y --no-install-recommends ca-certificates curl unzip flatpak ostree gnupg jq
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -213,6 +317,16 @@ jobs:
           pattern: linux-flatpak-repo-*
           path: _packages/flatpak-repo
           merge-multiple: true
+      # A bundle is made for every architecture the published repository
+      # holds, so one with no new build would ship the last release's commit.
+      - name: Every architecture has its build
+        run: |
+          for arch in $(jq -r '.architectures[].flatpak' linux/build-aux/packaging/release-matrix.json); do
+            if [ ! -f "_packages/flatpak-repo/flatpak-repo-$arch.tar" ]; then
+              echo "::error::No Flatpak build for $arch"
+              exit 1
+            fi
+          done
       - name: Sign the new commits into the repository and bundle them
         env:
           EVENT: ${{ github.event_name }}
@@ -269,7 +383,10 @@ jobs:
   # release_assets.py names each package after the tag's version.
   assets:
     name: Release assets
-    needs: [verify, packages, template, flatpak-repo]
+    needs: [verify, packages, template, dry-run, promote, flatpak-repo]
+    if: >-
+      !cancelled() && needs.flatpak-repo.result == 'success' &&
+      (needs.template.result == 'success' || needs.promote.result == 'success')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -304,16 +421,29 @@ jobs:
           python3 linux/build-aux/packaging/release_assets.py gather --version "$VERSION" _artifacts release
           sudo apt-get update -q && sudo apt-get install -y --no-install-recommends rpm
           python3 linux/build-aux/packaging/release_assets.py verify --version "$VERSION" release
+      - name: Every file but the Flatpak bundles is the dry run's
+        if: github.event_name == 'push'
+        env:
+          DRY_RUN_SUMS: ${{ needs.dry-run.outputs.sums }}
+        run: |
+          printf '%s\n' "$DRY_RUN_SUMS" | grep -v -e '\.flatpak$' -e '^$' > "$RUNNER_TEMP/dry-run.sums"
+          grep -v -e '\.flatpak$' -e '^$' release/SHA256SUMS > "$RUNNER_TEMP/release.sums"
+          if ! diff -u "$RUNNER_TEMP/dry-run.sums" "$RUNNER_TEMP/release.sums"; then
+            echo "::error::These files differ from what the dry run built and tested"
+            exit 1
+          fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-release
           path: release
           if-no-files-found: error
+          retention-days: 30
 
   github-release:
     name: GitHub release
     needs: [verify, assets]
-    if: github.event_name == 'push'
+    if: >-
+      !cancelled() && github.event_name == 'push' && needs.assets.result == 'success'
     runs-on: ubuntu-24.04
     environment: linux-release
     timeout-minutes: 15
@@ -374,6 +504,8 @@ jobs:
   flatpak-publish:
     name: Publish the Flatpak repository
     needs: [verify, flatpak-repo, github-release]
+    if: >-
+      !cancelled() && needs.github-release.result == 'success'
     runs-on: ubuntu-24.04
     environment: linux-release
     timeout-minutes: 30
@@ -515,6 +647,8 @@ jobs:
   copr:
     name: Start the COPR build
     needs: [verify, github-release]
+    if: >-
+      !cancelled() && needs.github-release.result == 'success'
     runs-on: ubuntu-24.04
     environment: linux-release
     timeout-minutes: 5

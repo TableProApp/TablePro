@@ -1,6 +1,6 @@
 # 0041: Beta repositories, a Flatpak repository of our own, and packages on every GitHub release
 
-- **Status**: Accepted
+- **Status**: Accepted; the run that builds a tag's packages amended by 0043
 - **Date**: 2026-11-05
 
 ## Context

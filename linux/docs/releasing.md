@@ -73,13 +73,15 @@ Until these exist, a tag still builds and checks everything, and each publishing
 
 ## A dry run
 
-Before a tag, run the workflow by hand on the branch it will be on:
+Before a tag, run the workflow by hand on the release commit, from the branch while it is still at that commit:
 
 ```sh
 gh workflow run release-linux.yml --ref main -f dry-run=true
 ```
 
 It checks the version's metadata as the `release-metadata` test does, and builds, tests and installs both packages and the Flatpak on amd64 and arm64. It signs the Flatpak with a throwaway key into both repositories, served on `127.0.0.1`, and on Ubuntu 22.04, 24.04 and 26.04 installs it from there and from a bundle, updates both, and switches between the release and the beta. It keeps every file a tag would publish, `SHA256SUMS` among them, as the run's `linux-release` artifact, checked against `build-aux/packaging/release-matrix.json`. It publishes nothing and needs no reviewer. A new Ubuntu series or Fedora release joins that file, and CI builds it from then on.
+
+The tag publishes what this run built and tested, and builds none of it again ([ADR 0043](decisions/0043-a-tag-publishes-its-dry-run.md)). It takes the newest dry run of the tag's commit that passed on its first attempt, while that run's artifacts last, the `retention-days` the workflow sets on them. A dry run made green by rerunning a job does not count, since the run still holds the failed attempt's artifacts: start a new one. When the tag's run finds none, because the branch had moved past the release commit, the dry run needed a rerun or its artifacts expired, it fails and publishes nothing: run the dry run on the tag, `--ref linux-vX.Y.Z`, then rerun the tag's run as its error says.
 
 ### Source archives
 
@@ -97,8 +99,8 @@ It checks the version's metadata as the `release-metadata` test does, and builds
    - The `.TH` line of `data/tablepro.1`: the date and `TablePro` with the version as `meson.build` has it.
 
    The pull request changes only these files and `changelog.d/`. The `release-metadata` Meson test checks that they agree from the commit that sets a beta's version, or adds a release's changelog heading, so the pull request fails before the tag does.
-2. **The tag**: `linux-vX.Y.Z` or `linux-vX.Y.Z-beta.N` on the merged commit, pushed the same UTC day. The workflow compares the metainfo date with the commit date. Tags run one at a time, and a tag pushed while another waits cancels that one, so push a tag when no other release run is waiting.
-3. **The workflow** checks the tag, builds, tests and installs the packages and the Flatpak as the [dry run](#a-dry-run) does, pulls the published Flatpak repository from R2, signs the new commits into it and bundles them. It attests every file, publishes the packages and bundles on GitHub with the tarballs, the translation template `tablepro.pot`, `SHA256SUMS`, and the version's changelog section as notes, a beta as a pre-release, and checks what the release then serves against `SHA256SUMS`. Then it uploads the Flatpak repository to R2, the signed source package to the PPA, and posts the tag to the COPR project: the stable ones for a release, the beta ones for a beta. A reviewer approves each step that uses the environment.
+2. **The tag**: `linux-vX.Y.Z` or `linux-vX.Y.Z-beta.N` on the merged commit, after its green dry run, pushed the same UTC day. The workflow compares the metainfo date with the commit date. Tags run one at a time, and a tag pushed while another waits cancels that one, so push a tag when no other release run is waiting.
+3. **The workflow** checks the tag and takes the tarballs, template, source packages, packages and unsigned Flatpak repositories from the [dry run](#a-dry-run) of its commit, or fails before it publishes anything when there is none. It pulls the published Flatpak repository from R2, signs the new commits into it and bundles them, and checks that every file but the bundles matches the dry run's `SHA256SUMS`. It attests every file, publishes the packages and bundles on GitHub with the tarballs, the translation template `tablepro.pot`, `SHA256SUMS`, and the version's changelog section as notes, a beta as a pre-release, and checks what the release then serves against `SHA256SUMS`. Then it uploads the Flatpak repository to R2, the signed source package to the PPA, and posts the tag to the COPR project: the stable ones for a release, the beta ones for a beta. A reviewer approves each step that uses the environment.
 4. **Afterwards**: watch the Launchpad build page of each series and the COPR build the workflow prints. A failed build there does not fail the workflow. `flatpak remote-info` on the TablePro remote shows the new Flatpak commit.
 
 ### Installed-bundle smoke pass
