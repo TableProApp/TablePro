@@ -10241,6 +10241,10 @@ msgid "Fedora packages are available for every supported version and architectur
 msgstr "Có gói Fedora cho mọi phiên bản và kiến trúc được hỗ trợ"
 
 #: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Connecting with a saved password no longer hangs when the keyring is locked or its unlock prompt is dismissed"
+msgstr "Kết nối bằng mật khẩu đã lưu không còn bị treo khi keyring bị khoá hoặc hộp thoại mở khoá bị đóng"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
 msgid "The second beta of TablePro for Linux."
 msgstr "Bản beta thứ hai của TablePro cho Linux."
 
