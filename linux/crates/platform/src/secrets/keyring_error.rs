@@ -1,3 +1,4 @@
+use oo7::ashpd::desktop::ResponseError;
 use tablepro_core::credentials::SecretError;
 
 /// Where in the flow the failure happened. Opening the keyring and using
@@ -24,7 +25,13 @@ pub(super) fn map_error(error: oo7::Error, stage: Stage) -> SecretError {
         ) if stage == Stage::Open => SecretError::ServiceUnavailable {
             detail: error.to_string(),
         },
-        // Under Flatpak, Keyring::new asks the Secret portal first, so a
+        // The portal's backend shows the unlock prompt inside the request. Its Response carries no reason,
+        // and GNOME Keyring answers 2 both for a dismissed prompt and for a missing login keyring.
+        oo7::Error::File(oo7::file::Error::Portal(oo7::ashpd::Error::Response(response))) => match response {
+            ResponseError::Cancelled => SecretError::UnlockDismissed,
+            ResponseError::Other => SecretError::Locked,
+        },
+        // Inside a sandbox the store asks the Secret portal first, so a
         // missing portal surfaces here rather than as a D-Bus failure.
         oo7::Error::File(error @ oo7::file::Error::Portal(_)) => SecretError::PortalUnavailable {
             detail: error.to_string(),
@@ -186,6 +193,39 @@ mod tests {
             .expect("a valid interface name");
         let mapped = map_error(
             oo7::file::Error::Portal(oo7::ashpd::Error::PortalNotFound(portal)).into(),
+            Stage::Open,
+        );
+
+        assert!(matches!(mapped, SecretError::PortalUnavailable { .. }), "{mapped:?}");
+    }
+
+    #[test]
+    fn a_dismissed_portal_request_is_unlock_dismissed() {
+        let mapped = map_error(
+            oo7::file::Error::Portal(oo7::ashpd::Error::Response(ResponseError::Cancelled)).into(),
+            Stage::Open,
+        );
+
+        assert_eq!(mapped, SecretError::UnlockDismissed);
+    }
+
+    // GNOME Keyring's answer when its unlock prompt is cancelled.
+    #[test]
+    fn a_refused_portal_request_is_locked() {
+        let mapped = map_error(
+            oo7::file::Error::Portal(oo7::ashpd::Error::Response(ResponseError::Other)).into(),
+            Stage::Open,
+        );
+
+        assert_eq!(mapped, SecretError::Locked);
+        assert!(mapped.is_retryable());
+    }
+
+    #[test]
+    fn a_portal_that_never_answers_is_portal_unavailable() {
+        let timed_out = std::io::Error::new(std::io::ErrorKind::TimedOut, "the Secret portal did not answer");
+        let mapped = map_error(
+            oo7::file::Error::Portal(oo7::ashpd::Error::IO(timed_out)).into(),
             Stage::Open,
         );
 
