@@ -74,7 +74,8 @@ Linux 原生安装包需要 GNOME 50 库：Ubuntu 26.04 / 26.10 使用 `ppa:tabl
 - 查询编辑器、数据浏览和行编辑。
 - SSH 隧道和 SSL/TLS 连接。
 - 保存查询和查询历史。
-- Mac：自动补全、多光标编辑、Vim 模式、分栏和驱动插件。
+- Mac 和 Linux：自动补全、多光标编辑和 Vim 模式。
+- Mac：分栏和驱动插件。
 - Mac 和 Linux：使用自选服务商或 Ollama 的 AI 助手，以及供本机客户端使用的 MCP 服务器。
 - iPhone 和 iPad：浏览和编辑数据，可选用 iCloud 同步连接和已保存的查询。
 

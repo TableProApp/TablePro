@@ -74,7 +74,8 @@ Support differs by platform. The linked guides own the full lists and limits.
 - Query editors, data browsing and row editing.
 - SSH tunnels and SSL/TLS connections.
 - Saved queries and query history.
-- On Mac: autocomplete, multi-cursor editing, Vim mode, split panes and driver plugins.
+- On Mac and Linux: autocomplete, multi-cursor editing and Vim mode.
+- On Mac: split panes and driver plugins.
 - On Mac and Linux: AI assistance with your own provider or Ollama, and an MCP server for local clients.
 - On iPhone and iPad: browse and edit data, with optional iCloud sync for connections and saved queries.
 

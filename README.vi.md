@@ -74,7 +74,8 @@ Mỗi nền tảng hỗ trợ khác nhau. Danh sách đầy đủ và giới h�
 - Trình soạn truy vấn, duyệt dữ liệu và sửa hàng.
 - SSH tunnel và kết nối SSL/TLS.
 - Truy vấn đã lưu và lịch sử truy vấn.
-- Trên Mac: tự hoàn thành, sửa với nhiều con trỏ, chế độ Vim, chia khung và plugin driver.
+- Trên Mac và Linux: tự hoàn thành, sửa với nhiều con trỏ và chế độ Vim.
+- Trên Mac: chia khung và plugin driver.
 - Trên Mac và Linux: trợ lý AI dùng nhà cung cấp bạn chọn hoặc Ollama, và MCP server cho ứng dụng trên máy.
 - Trên iPhone và iPad: duyệt và sửa dữ liệu, tùy chọn đồng bộ kết nối và truy vấn đã lưu qua iCloud.
 
