@@ -205,9 +205,10 @@ jobs:
 
   # A dry run gathers linux-release and a packaging fix does not, so the
   # newest green dispatch of this commit that still has it is its dry run.
-  # Only a first attempt counts, since a rerun leaves an earlier attempt's
-  # artifacts in the run, which deleting a later one would bring back. Its
-  # artifacts are taken by id, so a rerun started after this cannot swap any.
+  # A rerun keeps the failed attempt's artifacts beside the new ones, and the
+  # API names no attempt, so the newest of each name is taken. That trusts
+  # whoever holds Actions write, only maintainers, not to delete the passing
+  # attempt's. Artifacts are taken by id, so a rerun started later swaps none.
   dry-run:
     name: The dry run of the tagged commit
     if: github.event_name == 'push'
@@ -227,14 +228,15 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release-linux.yml/runs?head_sha=$GITHUB_SHA&event=workflow_dispatch&status=success&per_page=100" \
-            --jq '.workflow_runs | map(select(.run_attempt == 1)) | sort_by(.id) | reverse | .[].id')"
-          for id in $runs; do
+            --jq '.workflow_runs | sort_by(.id) | reverse | .[] | "\(.id) \(.run_attempt)"')"
+          while read -r id attempt; do
+            [ -n "$id" ] || continue
             artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/artifacts?per_page=100" \
-              --jq '[.artifacts[] | select(.expired | not) | {name, id}]')"
+              --jq '[.artifacts[] | select(.expired | not)] | group_by(.name) | map(max_by([.created_at, .id]) | {name, id})')"
             missing="$(jq -c '["linux-release", "linux-sources", "linux-source-package", "linux-pot"] - map(.name)' <<< "$artifacts")"
             # A rerun started since the list was read may have replaced some.
             state="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id" --jq '"\(.run_attempt) \(.status) \(.conclusion)"')"
-            if [ "$missing" != '[]' ] || [ "$state" != "1 completed success" ]; then
+            if [ "$missing" != '[]' ] || [ "$state" != "$attempt completed success" ]; then
               continue
             fi
             {
@@ -242,10 +244,10 @@ jobs:
               echo "release-id=$(jq '.[] | select(.name == "linux-release") | .id' <<< "$artifacts")"
               echo "artifacts=$(jq -c 'map(select(.name | test("^linux-(sources|source-package|pot|deb-[^-]+-[^-]+|rpm-[^-]+-[^-]+|flatpak-repo-[^-]+)$")))' <<< "$artifacts")"
             } >> "$GITHUB_OUTPUT"
-            echo "Publishing what dry run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$id built." >> "$GITHUB_STEP_SUMMARY"
+            echo "Publishing what dry run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$id (attempt $attempt) built." >> "$GITHUB_STEP_SUMMARY"
             exit 0
-          done
-          echo "::error::No dry run of $GITHUB_SHA passed on its first attempt and still has its artifacts. Run gh workflow run release-linux.yml --ref $TAG -f dry-run=true, and once it passes, gh run rerun $GITHUB_RUN_ID --failed"
+          done <<< "$runs"
+          echo "::error::No green dry run of $GITHUB_SHA still has its artifacts. Run gh workflow run release-linux.yml --ref $TAG -f dry-run=true, and once it passes, gh run rerun $GITHUB_RUN_ID --failed"
           exit 1
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:

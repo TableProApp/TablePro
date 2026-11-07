@@ -39,10 +39,13 @@ and publishes them after its own tag, version and date checks.
 
 - A tag with no green dry run of its commit fails before it publishes
   anything. Its error names the dry run to start on the tag and the rerun.
-- Only a dry run green on its first attempt counts. A rerun leaves the
-  failed attempt's artifacts in the run, where deleting the passing
-  attempt's would bring them back, so a dry run that needed one is run
-  again. The tag's run takes the artifacts by id.
+- A dry run made green by a rerun counts. The run keeps the failed
+  attempt's artifacts too and the API names no attempt, so the tag takes the
+  newest of each name. This trusts those with Actions write, only
+  maintainers, not to delete the passing attempt's: the Flatpak a failed
+  attempt left would come back, and the `SHA256SUMS` comparison does not
+  cover it. Checking the Flatpak's OSTree tree against the dry run's bundles
+  would remove that trust.
 - What a tag takes from a dry run has an explicit retention
   (`release-linux.yml`, header). A tag after that needs a new dry run.
 - The tag's run still signs the Flatpak commits with the release key into
