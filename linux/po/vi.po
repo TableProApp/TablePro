@@ -10233,6 +10233,18 @@ msgstr ""
 "Không bao giờ gửi tên máy chủ, mật khẩu, truy vấn hay dòng dữ liệu."
 
 #: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "The second beta of TablePro for Linux."
+msgstr "Bản beta thứ hai của TablePro cho Linux."
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "The app icon is TablePro's logo instead of a placeholder"
+msgstr "Biểu tượng ứng dụng là logo TablePro thay cho hình tạm"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Preferences > Account names the Pro plan correctly"
+msgstr "Tùy chỉnh > Tài khoản ghi đúng tên gói Pro"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
 msgid "The first beta of TablePro for Linux."
 msgstr "Bản beta đầu tiên của TablePro cho Linux."
 

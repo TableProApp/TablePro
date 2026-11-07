@@ -97,6 +97,16 @@
     <binary>tablepro</binary>
   </provides>
   <releases>
+    <release version="0.1.0~beta.2" type="development" date="2026-11-07">
+      <url type="details">https://github.com/TableProApp/TablePro/releases/tag/linux-v0.1.0-beta.2</url>
+      <description>
+        <p>The second beta of TablePro for Linux.</p>
+        <ul>
+          <li>The app icon is TablePro's logo instead of a placeholder</li>
+          <li>Preferences > Account names the Pro plan correctly</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.0~beta.1" type="development" date="2026-11-07">
       <url type="details">https://github.com/TableProApp/TablePro/releases/tag/linux-v0.1.0-beta.1</url>
       <description>
