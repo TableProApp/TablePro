@@ -62,7 +62,7 @@ Source1:        https://github.com/TableProApp/TablePro/releases/download/linux-
 BuildRequires:  cargo >= 1.97
 BuildRequires:  rust >= 1.97
 BuildRequires:  cargo-rpm-macros >= 26
-BuildRequires:  meson >= 1.4
+BuildRequires:  meson >= 1.7
 BuildRequires:  gcc
 # DuckDB is C++, compiled from the duckdb crate's own sources.
 BuildRequires:  gcc-c++
@@ -175,8 +175,7 @@ find vendor -type f -name '*.rs' -perm /111 -exec chmod a-x {} +
 %constrain_build -m 4096
 export CARGO_BUILD_JOBS=%{_smp_build_ncpus}
 # Fedora's rustc runs out of 8 GB in the release profile's fat LTO link of
-# this binary; thin LTO fits a builder. %%check repeats it, since meson
-# test rebuilds the binary first.
+# this binary; thin LTO fits a builder.
 export CARGO_PROFILE_RELEASE_LTO=thin
 # A release's vendor tarball carries the PostHog key; without it the app
 # sends no usage data.
@@ -201,9 +200,9 @@ cut -d: -f1 LICENSE.dependencies | LC_ALL=C sort -u
 desktop-file-validate %{buildroot}%{_datadir}/applications/app.tablepro.TablePro.desktop
 appstreamcli validate --no-net %{buildroot}%{_metainfodir}/app.tablepro.TablePro.metainfo.xml
 %if %{with check}
-# The same RUSTFLAGS and LTO as %%build, or cargo rebuilds every crate.
+# The tests build with the compiler flags of %%build. Since Meson 1.7,
+# meson test builds only what the tests depend on, not the binary.
 %set_build_flags
-export CARGO_PROFILE_RELEASE_LTO=thin
 export CARGO_BUILD_JOBS=%{_smp_build_ncpus}
 # %%meson_test expands to lines of its own; shrink joins them to this one.
 # Fedora's xvfb-run screen is 640x480, which the app-scale-2 test halves
