@@ -5,19 +5,19 @@
 <h1 align="center">TablePro</h1>
 
 <p align="center">
-  Database client nhanh, native cho lập trình viên.<br>
+  Ứng dụng cơ sở dữ liệu native cho macOS, iPhone, iPad và Linux.<br>
   Miễn phí và mã nguồn mở.
 </p>
 
 <p align="center">
   <a href="https://tablepro.app">Website</a> ·
   <a href="https://docs.tablepro.app">Tài liệu</a> ·
-  <a href="https://github.com/TableProApp/TablePro/releases/latest">Tải xuống</a> ·
+  <a href="https://github.com/TableProApp/TablePro/releases">Tải xuống</a> ·
   <a href="https://discord.gg/hCNmUUbnD4">Discord</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/TableProApp/TablePro/releases/latest"><img src="https://img.shields.io/github/v/release/TableProApp/TablePro" alt="Release"></a>
+  <a href="https://github.com/TableProApp/TablePro/releases"><img src="https://img.shields.io/github/v/release/TableProApp/TablePro" alt="Release"></a>
   <a href="https://www.gnu.org/licenses/agpl-3.0"><img src="https://img.shields.io/badge/License-AGPL_v3-blue.svg" alt="License: AGPL v3"></a>
 </p>
 
@@ -37,82 +37,78 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/app-dark.png">
     <source media="(prefers-color-scheme: light)" srcset=".github/assets/app-light.png">
-    <img alt="TablePro database client native với SQL editor và data grid" src=".github/assets/app-light.png" width="800">
+    <img alt="TablePro với trình soạn SQL và bảng dữ liệu" src=".github/assets/app-light.png" width="800">
   </picture>
 </p>
 
 ## Giới thiệu
 
-TablePro là TablePlus mà tôi luôn muốn có: native, nhanh, mã nguồn mở.
+TablePro là ứng dụng quản lý cơ sở dữ liệu miễn phí, mã nguồn mở, với giao diện native riêng cho từng nền tảng. Duyệt dữ liệu, viết truy vấn và sửa hàng trong cơ sở dữ liệu SQL và NoSQL.
 
-Viết bằng framework native cho từng nền tảng. Không Electron, không JDBC, không JavaScript runtime. Kết nối tới hầu hết các database SQL và NoSQL qua driver native.
+Ứng dụng Apple dùng Swift và framework native. Linux dùng Rust, GTK 4 và libadwaita. Windows dùng C# và WinUI 3, hiện đang phát triển. Linux và Windows dùng lõi Rust chung; ứng dụng Swift chưa dùng lõi này.
 
-AI tích hợp sẵn: chat, gợi ý inline, và MCP server để Cursor, Raycast hay Claude Desktop nói chuyện trực tiếp với database của bạn. API key bạn tự cấp, provider bạn tự chọn, hoặc chạy local với Ollama.
+## Nền tảng và cài đặt
 
-## Vì sao chọn TablePro
+| Nền tảng | Trạng thái | Cài đặt |
+|---|---|---|
+| macOS 13+ | Ổn định | `brew install --cask tablepro` hoặc [GitHub Releases](https://github.com/TableProApp/TablePro/releases) |
+| iPhone / iPad, iOS / iPadOS 18+ | Ổn định | [Hướng dẫn iPhone và iPad](https://docs.tablepro.app/ios) |
+| Linux, amd64 / arm64 | Beta công khai | [PPA beta cho Ubuntu, COPR beta cho Fedora hoặc kho Flatpak beta](https://docs.tablepro.app/linux/install) |
+| Windows | Đang phát triển | [Mã nguồn và hướng dẫn build](windows/AGENTS.md#commands) |
 
-Database client native trên macOS hiện chia làm ba nhóm:
+Gói native trên Linux cần thư viện GNOME 50: Ubuntu 26.04 / 26.10 dùng `ppa:tablepro/tablepro-beta`, Fedora 44 / 45 dùng `@tablepro/tablepro-beta`. Các bản phân phối khác dùng kho Flatpak beta. Xem [hướng dẫn cài Linux](https://docs.tablepro.app/linux/install) để cài đặt và cập nhật. Các gói cũng có trên [GitHub Releases](https://github.com/TableProApp/TablePro/releases).
 
-- **Một database, mã nguồn mở**: Sequel Ace (chỉ MySQL), Postico (chỉ PostgreSQL). Hợp nếu bạn chỉ làm một engine.
-- **Đa database, đóng nguồn**: TablePlus. Mượt và native, nhưng proprietary.
-- **Đa database, không native**: DBeaver (JVM), Beekeeper Studio và DBGate (Electron). Chạy được trên mọi OS, nhưng khởi động chậm và ngốn RAM.
+## Cơ sở dữ liệu hỗ trợ
 
-TablePro là mảnh thứ tư còn thiếu: native, đa database, và mã nguồn mở.
+Mỗi nền tảng hỗ trợ khác nhau. Danh sách đầy đủ và giới hạn nằm trong các hướng dẫn được liên kết.
 
-## Nền tảng
+| Nền tảng | Cơ sở dữ liệu |
+|---|---|
+| macOS | PostgreSQL, MySQL, MariaDB, SQLite, Redis, MongoDB, SQL Server và nhiều loại khác. Driver tích hợp và plugin có chữ ký; xem [danh sách cơ sở dữ liệu](https://tablepro.app/databases) và [hướng dẫn plugin](https://docs.tablepro.app/features/plugins). |
+| iPhone / iPad | Có PostgreSQL, MySQL, MariaDB, SQLite, DuckDB, Redis, MongoDB và SQL Server. Driver đi kèm ứng dụng; xem [hỗ trợ trên di động](https://docs.tablepro.app/ios#supported-databases). |
+| Linux | 11 hệ quản trị: PostgreSQL, MySQL, MariaDB, SQL Server, ClickHouse, Cassandra, ScyllaDB, SQLite, DuckDB, Redis và MongoDB. Xem [máy chủ và phiên bản được hỗ trợ](linux/README.md#supported-servers). |
+| Windows | Đang phát triển trên [driver của lõi chung](core/ARCHITECTURE.md#crate-layout). Chưa phát hành ứng dụng. |
 
-| Nền tảng | Trạng thái |
-|----------|-----------|
-| macOS 13+ | Ổn định |
-| iOS / iPadOS 18+ | Ổn định |
-| Linux (GNOME 50+) | Đang phát triển trong [`linux/`](linux/README.md), chưa phát hành |
-| Windows | Không |
+## Tính năng
 
-## Database hỗ trợ
+- Trình soạn truy vấn, duyệt dữ liệu và sửa hàng.
+- SSH tunnel và kết nối SSL/TLS.
+- Truy vấn đã lưu và lịch sử truy vấn.
+- Trên Mac: tự hoàn thành, sửa với nhiều con trỏ, chế độ Vim, chia khung và plugin driver.
+- Trên Mac và Linux: trợ lý AI dùng nhà cung cấp bạn chọn hoặc Ollama, và MCP server cho ứng dụng trên máy.
+- Trên iPhone và iPad: duyệt và sửa dữ liệu, tùy chọn đồng bộ kết nối và truy vấn đã lưu qua iCloud.
 
-Driver tích hợp sẵn đi kèm app. Driver dạng plugin cài thêm khi cần từ [plugin registry](https://docs.tablepro.app/features/plugins). Danh sách hiện tại và những gì từng engine hỗ trợ có tại [tablepro.app/databases](https://tablepro.app/databases).
-
-## Bên trong có gì
-
-- SQL editor với autocomplete, multi-cursor, Vim mode, theme cú pháp
-- Data grid sửa inline, sort, filter, undo/redo
-- Tab native trong cửa sổ, đa cửa sổ, split pane
-- SSH tunnel (password và key), SSL/TLS
-- Lịch sử query tìm kiếm full-text
-- AI chat, gợi ý inline, Explain/Optimize
-- MCP server và URL scheme cho Raycast, Cursor, Claude Desktop
-- Hệ thống plugin, tự viết driver database bằng Swift
+Xem [tính năng trên Mac](https://docs.tablepro.app/features/overview), [hướng dẫn Linux](linux/README.md) và [hướng dẫn iPhone và iPad](https://docs.tablepro.app/ios) để biết từng ứng dụng hỗ trợ gì.
 
 ## Miễn phí và trả phí
 
-Mọi thứ ở trên đều miễn phí với mọi database, không phải bản dùng thử và không giới hạn thời gian. License bổ sung các tính năng sau cho app Mac:
+Các công cụ cơ sở dữ liệu ở trên miễn phí với mọi cơ sở dữ liệu được hỗ trợ, không có thời hạn dùng thử hay giới hạn thời gian. Pro và Team thêm tính năng trả phí trên Mac. Linux dùng cùng gói và tài khoản; một giấy phép dùng được trên tối đa 3 máy tính, Mac hoặc Linux. Tính năng khác nhau theo nền tảng: xem [gói và giá](https://tablepro.app/pricing) và [tài khoản trên Linux](linux/README.md#tablepro-account). Ứng dụng iPhone và iPad không cần giấy phép.
 
-| Gói | Bổ sung |
-|-----|---------|
-| Pro | iCloud Sync, Encrypted Export, Environment Variables, Linked Folders, Query Insights, Result Charts, Compare & Sync, Data Rewind |
-| Team | Mọi thứ trong Pro, thêm Team Catalog và Team Library |
+## Build và đóng góp
 
-Các gói và giá có tại [tablepro.app/pricing](https://tablepro.app/pricing). App cho iPhone và iPad không cần license.
+Mỗi nền tảng giữ hướng dẫn thiết lập, build và kiểm thử cạnh mã nguồn:
 
-## Cài đặt
+- [macOS và iOS](apple/CONTRIBUTING.md).
+- [Linux](linux/README.md#quickstart).
+- [Windows](windows/AGENTS.md#commands), cùng [hướng dẫn đóng gói và phát hành](windows/RELEASING.md).
+- [Lõi Rust chung](core/AGENTS.md#commands) và [kiến trúc](core/ARCHITECTURE.md).
 
-```bash
-brew install --cask tablepro
-```
+Đọc [CONTRIBUTING.md](CONTRIBUTING.md) trước khi mở pull request.
 
-Hoặc tải về từ [GitHub Releases](https://github.com/TableProApp/TablePro/releases/latest).
+## Tài liệu và cộng đồng
 
-## Tài liệu
-
-Tài liệu đầy đủ tại [docs.tablepro.app](https://docs.tablepro.app).
+- [Tài liệu](https://docs.tablepro.app) về thiết lập và sử dụng hằng ngày.
+- [GitHub Discussions](https://github.com/TableProApp/TablePro/discussions) hoặc [Discord](https://discord.gg/hCNmUUbnD4) để hỏi và chia sẻ ý tưởng.
+- [Issues](https://github.com/TableProApp/TablePro/issues) để báo lỗi. Ghi nền tảng, phiên bản ứng dụng và nguồn cài Linux nếu có.
+- [Chính sách bảo mật](SECURITY.md) để báo lỗ hổng riêng tư, và [quy tắc ứng xử](CODE_OF_CONDUCT.md) cho cộng đồng.
 
 ## Ủng hộ phát triển
 
-App miễn phí theo AGPLv3. Nếu bạn dùng TablePro cho công việc, hãy mua [license](https://tablepro.app/pricing). License bổ sung các tính năng trả phí, và mỗi giao dịch đều giúp duy trì bản release tiếp theo. Nếu chưa có điều kiện, cứ dùng bản miễn phí. Bản miễn phí có sẵn cho bạn.
+Mua [giấy phép](https://tablepro.app/pricing) hoặc [tài trợ dự án](https://tablepro.app/sponsors) giúp duy trì phát triển. Bạn vẫn có thể dùng bản miễn phí mà không cần mua hay tài trợ.
 
 ## Nhà tài trợ
 
-TablePro được duy trì nhờ người dùng và các nhà tài trợ dưới đây. [Trở thành nhà tài trợ](https://tablepro.app/vi/sponsors).
+TablePro được người dùng và các nhà tài trợ sau hỗ trợ kinh phí. [Trở thành nhà tài trợ](https://tablepro.app/sponsors).
 
 <p>
   <a href="https://coderabbit.link/tablepro"><img src=".github/assets/sponsors/coderabbit.svg" height="44" alt="CodeRabbit"></a>
@@ -129,7 +125,7 @@ Nhà tài trợ cá nhân: [朱文锦](https://github.com/zhuwjin)
 Cảm ơn tất cả những người đã đóng góp cho TablePro:
 
 <a href="https://github.com/TableProApp/TablePro/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=TableProApp/TablePro" alt="Những người đóng góp cho TablePro" />
+  <img src="https://contrib.rocks/image?repo=TableProApp/TablePro" alt="TablePro contributors" />
 </a>
 
 Muốn tham gia? Đọc [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -144,7 +140,6 @@ Muốn tham gia? Đọc [CONTRIBUTING.md](CONTRIBUTING.md).
  </picture>
 </a>
 
-## Bản quyền
+## Giấy phép
 
-Dự án này cấp phép theo [GNU Affero General Public License v3.0 (AGPLv3)](LICENSE). Tên và biểu tượng TablePro không thuộc giấy phép đó: cách dùng được ghi trong [TRADEMARKS.md](TRADEMARKS.md).
-
+Dự án được cấp phép theo [GNU Affero General Public License v3.0 hoặc mới hơn (AGPL-3.0-or-later)](LICENSE). Tên và biểu tượng TablePro có quy định riêng tại [TRADEMARKS.md](TRADEMARKS.md).
