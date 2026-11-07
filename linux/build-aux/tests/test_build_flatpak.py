@@ -11,6 +11,7 @@ SCRIPT = Path(__file__).resolve().parent.parent / "packaging" / "build-flatpak.s
 
 # flatpak-builder keeps the manifest it was given, and flatpak makes the bundle.
 FLATPAK_BUILDER = """#!/bin/sh
+printf '%s\\n' "$@" > "$ARGUMENTS_SEEN"
 for last; do :; done
 cp "$last" "$MANIFEST_SEEN"
 """
@@ -51,7 +52,13 @@ class BuildFlatpakTest(unittest.TestCase):
                     entry.size = len(data)
                     archive.addfile(entry, io.BytesIO(data))
             seen = work / "seen.json"
-            environment = dict(os.environ, PATH=f"{tools}:{os.environ['PATH']}", MANIFEST_SEEN=str(seen))
+            arguments = work / "arguments"
+            environment = dict(
+                os.environ,
+                PATH=f"{tools}:{os.environ['PATH']}",
+                MANIFEST_SEEN=str(seen),
+                ARGUMENTS_SEEN=str(arguments),
+            )
             result = subprocess.run(
                 ["sh", str(SCRIPT), str(dist), str(vendor), str(work / "out")],
                 env=environment,
@@ -60,6 +67,7 @@ class BuildFlatpakTest(unittest.TestCase):
                 check=False,
             )
             manifest = json.loads(seen.read_text()) if seen.exists() else None
+            self.arguments = arguments.read_text().splitlines() if arguments.exists() else None
             return result, manifest
 
     def test_the_key_a_release_vendor_tarball_carries_goes_to_meson(self):
@@ -75,6 +83,12 @@ class BuildFlatpakTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(config_opts(manifest), ["-Dprofile=default", "-Dflatpak=true"])
+
+    def test_the_compilers_run_through_ccache(self):
+        result, _ = self.build(None)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--ccache", self.arguments)
 
     def test_a_key_that_is_not_one_is_refused_before_anything_builds(self):
         for key in ["", "key", "phc_", "phc_abc def", "phc_abc$(id)", 'phc_abc"', "phc_a|b"]:

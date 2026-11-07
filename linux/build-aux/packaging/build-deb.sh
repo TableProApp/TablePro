@@ -10,6 +10,11 @@
 #    every Meson suite inside dpkg-buildpackage, as a user that is not root;
 # 3. it runs lintian, which fails on a warning.
 #
+# Unlike Launchpad, the build runs the C and C++ compilers through ccache,
+# which nothing in the package declares. The tests build every crate again
+# in another Cargo profile, and ccache hands back DuckDB's objects from the
+# package's build instead of compiling its C++ a second time.
+#
 # The steps share a container volume that is removed at the end, so the
 # build never writes into a container's own layer.
 # Usage: build-deb.sh <tablepro_V.dsc> <output dir>
@@ -23,21 +28,24 @@ download() {
     "$here/add-rust-toolchain-ppa.sh" "${rust#rustc-}"
     mkdir -p /build/debs/partial
     apt-get build-dep -y --download-only -o Dir::Cache::Archives=/build/debs "$1"
+    apt-get install -y --download-only --no-install-recommends -o Dir::Cache::Archives=/build/debs ccache
 }
 
 build() {
     apt-get install -y --no-install-recommends /build/debs/*.deb
     useradd --create-home builder
-    mkdir /build/work
-    chown builder /build/work
+    mkdir /build/work /build/ccache
+    chown builder /build/work /build/ccache
     # runuser opens a PAM session, which gives the build the limits of a
     # login that is not root, 1024 open files among them. Launchpad passes
     # the builder's CPU count the same way as here.
     status=0
     # shellcheck disable=SC2016 # the inner sh expands $1
     runuser -u builder -- env HOME=/home/builder DEB_BUILD_OPTIONS="parallel=$(nproc)" \
+        PATH="/usr/lib/ccache:$PATH" CCACHE_DIR=/build/ccache \
         sh -euc 'cd /build/work && dpkg-source -x "$1" src && cd src && dpkg-buildpackage -b -us -uc' sh "$1" ||
         status=$?
+    runuser -u builder -- env CCACHE_DIR=/build/ccache ccache --show-stats || true
     # Meson prints only the end of a failed suite's log, so the whole log
     # is kept beside the packages.
     if [ "$status" -ne 0 ]; then

@@ -81,10 +81,21 @@ tar -xOf "$1" "$name/linux/build-aux/rpm/tablepro.spec" > "$spec"
 rpmbuild --define "_topdir $top" -bs "$spec"
 srpm="$(find "$top/SRPMS" -name '*.src.rpm')"
 
+# Unlike COPR, the build runs gcc and g++ through ccache. %check builds
+# every crate again in another Cargo profile, and ccache hands back
+# DuckDB's objects from %build instead of compiling its C++ a second time.
+# Mock's plugin installs ccache and mounts its cache; the PATH is ours.
+config="$top/mock.cfg"
+cat > "$config" <<EOF
+include('fedora-$(rpm -E %fedora)-$(uname -m).cfg')
+config_opts['plugin_conf']['ccache_enable'] = True
+config_opts['plugin_conf']['ccache_opts']['show_stats'] = True
+config_opts['environment']['PATH'] = '/usr/lib64/ccache:' + config_opts['environment']['PATH']
+EOF
+
 # A container runs neither systemd-nspawn nor the podman that would pull
 # Mock's bootstrap image, so Mock isolates with chroot alone.
-chroot="fedora-$(rpm -E %fedora)-$(uname -m)"
-set -- -r "$chroot" --isolation=simple --no-bootstrap-image
+set -- -r "$config" --isolation=simple --no-bootstrap-image
 
 # The BuildRequires come from Fedora's repositories first.
 mock "$@" --init

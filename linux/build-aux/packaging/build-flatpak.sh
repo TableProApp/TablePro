@@ -67,7 +67,10 @@ fi
 
 flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 rm -rf "$out/repo"
-flatpak-builder --user --install-deps-from=flathub --disable-rofiles-fuse --force-clean \
+# The tests build every crate again in another Cargo profile; ccache hands
+# back DuckDB's objects from the app's build instead of compiling its C++ a
+# second time. Its cache lives in the state directory, removed at the end.
+flatpak-builder --user --install-deps-from=flathub --disable-rofiles-fuse --force-clean --ccache \
     --default-branch="$branch" --state-dir="$work/state" --repo="$out/repo" \
     "$work/build" "$work/app.tablepro.TablePro.json"
 arch="$(flatpak --default-arch)"
