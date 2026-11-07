@@ -191,7 +191,7 @@ winapi-util = "0.1"
 tempfile = "3"
 testcontainers = { version = "0.27", default-features = false, features = ["aws-lc-rs"] }
 testcontainers-modules = { version = "0.15", default-features = false, features = ["aws-lc-rs"] }
-oo7 = { version = "0.6", default-features = false, features = ["tokio", "native_crypto"] }
+oo7 = { version = "0.6", default-features = false, features = ["tokio", "native_crypto", "unstable"] }
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
