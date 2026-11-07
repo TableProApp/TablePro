@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# Writes the MSIX logos in src/TablePro.App/Assets from the app icon, at every scale and target size the
-# Windows icon guidance lists. Run it after the icon changes. Needs rsvg-convert (librsvg) and Pillow.
+# Writes the MSIX logos and the window icon in src/TablePro.App/Assets from the app icon, at every scale and
+# target size the Windows icon guidance lists. Run it after the icon changes. Needs rsvg-convert (librsvg) and Pillow.
 
 import io
 import pathlib
@@ -16,6 +16,7 @@ SCALES = (100, 125, 150, 200, 400)
 TARGET_SIZES = (16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 256)
 # The icon's plate fills its own bounds, so the plated, dark and light variants are one image.
 TARGET_FORMS = ("", "_altform-unplated", "_altform-lightunplated")
+ICO_SIZES = (16, 24, 32, 48, 64, 128, 256)
 
 # Manifest logo, base size, and the share of the asset's height the plate takes.
 LOGOS = (
@@ -28,9 +29,9 @@ LOGOS = (
     ("SplashScreen", (620, 300), 0.7067),
 )
 
-# The plate spans 8 to 120 of the icon's 128 unit view box.
+# The plate spans 12 to 116 of the icon's 128 unit view box.
 ICON_VIEW_BOX = 'viewBox="0 0 128 128"'
-PLATE_VIEW_BOX = 'viewBox="8 8 112 112"'
+PLATE_VIEW_BOX = 'viewBox="12 12 104 104"'
 
 
 def plate(size: int) -> Image.Image:
@@ -60,8 +61,7 @@ def save(image: Image.Image, name: str) -> None:
 
 def main() -> None:
     for old in ASSETS.glob("*.png"):
-        if old.name != "AppIcon.png":
-            old.unlink()
+        old.unlink()
     for name, (width, height), share in LOGOS:
         for scale in SCALES:
             save(compose(round(width * scale / 100), round(height * scale / 100), share), f"{name}.scale-{scale}.png")
@@ -69,6 +69,9 @@ def main() -> None:
         image = compose(size, size, 1.0)
         for form in TARGET_FORMS:
             save(image, f"Square44x44Logo.targetsize-{size}{form}.png")
+    save(compose(64, 64, 1.0), "AppIcon.png")
+    icons = [compose(size, size, 1.0) for size in ICO_SIZES]
+    icons[-1].save(ASSETS / "AppIcon.ico", format="ICO", sizes=[(s, s) for s in ICO_SIZES], append_images=icons[:-1])
 
 
 if __name__ == "__main__":

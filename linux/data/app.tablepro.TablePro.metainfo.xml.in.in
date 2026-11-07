@@ -34,8 +34,8 @@
   <url type="contribute">https://github.com/TableProApp/TablePro/blob/linux-v@version@/linux/CONTRIBUTING.md</url>
   <translation type="gettext">@gettext-package@</translation>
   <branding>
-    <color type="primary" scheme_preference="light">#99c1f1</color>
-    <color type="primary" scheme_preference="dark">#0d2a52</color>
+    <color type="primary" scheme_preference="light">#ffd9a8</color>
+    <color type="primary" scheme_preference="dark">#4d2e0f</color>
   </branding>
   <screenshots>
     <screenshot type="default">
