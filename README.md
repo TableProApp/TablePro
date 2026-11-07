@@ -89,8 +89,8 @@ Everything above is free on every database, with no trial period or time limit. 
 
 | Plan | Adds |
 |------|------|
-| Starter | iCloud Sync, Encrypted Export, Environment Variables, Linked Folders, Query Insights, Result Charts, Compare & Sync, Data Rewind |
-| Team | Everything in Starter, plus Team Catalog and Team Library |
+| Pro | iCloud Sync, Encrypted Export, Environment Variables, Linked Folders, Query Insights, Result Charts, Compare & Sync, Data Rewind |
+| Team | Everything in Pro, plus Team Catalog and Team Library |
 
 Plans and prices are on [tablepro.app/pricing](https://tablepro.app/pricing). The iPhone and iPad app needs no license.
 

@@ -6434,8 +6434,8 @@ msgstr "Chưa nhập tệp ngoại tuyến. {reason}"
 
 #: crates/app/src/ui/preferences_dialog/account_page.rs
 #, rust-format
-msgid "Removed {name}. The paid features work on this computer now."
-msgstr "Đã gỡ {name}. Các tính năng trả phí đã dùng được trên máy tính này."
+msgid "Removed {name}. This computer now uses your license."
+msgstr "Đã gỡ {name}. Máy tính này giờ dùng giấy phép của bạn."
 
 #: crates/app/src/ui/preferences_dialog/account_page.rs
 #, rust-format
@@ -6504,11 +6504,10 @@ msgstr "Đăng nhập vào TablePro"
 
 #: crates/app/src/ui/preferences_dialog/account_page.rs
 msgid ""
-"Use your plan’s paid features on this computer. Everything else works "
-"without an account."
+"Use your plan on this computer. Everything else works without an account."
 msgstr ""
-"Dùng các tính năng trả phí trong gói của bạn trên máy tính này. Các tính "
-"năng khác không cần tài khoản."
+"Dùng gói của bạn trên máy tính này. Mọi thứ khác đều dùng được mà không cần "
+"tài khoản."
 
 #: crates/app/src/ui/preferences_dialog/account_page.rs
 msgid "Sign Out"
@@ -6523,11 +6522,10 @@ msgid "Free"
 msgstr "Miễn phí"
 
 #: crates/app/src/ui/preferences_dialog/account_page.rs
-msgid ""
-"Starter or a seat in a team adds the paid features on 3 of your devices."
+msgid "Pro or a seat in a team gives you a license for 3 devices at a time."
 msgstr ""
-"Starter hoặc một suất trong nhóm cung cấp các tính năng trả phí trên 3 thiết"
-" bị của bạn."
+"Pro hoặc một suất trong nhóm cho bạn một giấy phép dùng trên 3 thiết bị cùng"
+" lúc."
 
 #: crates/app/src/ui/preferences_dialog/account_page.rs
 msgid "Upgrade…"
@@ -6650,10 +6648,6 @@ msgstr ""
 "vào lần khởi động sau."
 
 #: crates/app/src/ui/preferences_dialog/account_view.rs
-msgid "In TablePro for macOS"
-msgstr "Trong TablePro cho macOS"
-
-#: crates/app/src/ui/preferences_dialog/account_view.rs
 msgid "This computer"
 msgstr "Máy tính này"
 
@@ -6684,14 +6678,15 @@ msgid "Verified {when}"
 msgstr "Đã xác minh {when}"
 
 #: crates/app/src/ui/preferences_dialog/account_view.rs
-msgid "Starter"
-msgstr "Starter"
+msgid "Pro"
+msgstr "Pro"
 
 #: crates/app/src/ui/preferences_dialog/account_view.rs
 msgid "Team"
 msgstr "Team"
 
 #: crates/app/src/ui/preferences_dialog/account_view.rs
+#: data/resources/ui/preferences-account-page.ui
 msgid "License"
 msgstr "Giấy phép"
 
@@ -6759,42 +6754,31 @@ msgstr "Đã đạt giới hạn thiết bị"
 #: crates/app/src/ui/preferences_dialog/account_view.rs
 #, rust-format
 msgid ""
-"Your license is in use on {n} other device. Remove one to use the paid "
-"features on this computer. Until then, TablePro works here with the free "
-"features."
+"Your license is in use on {n} other device. Remove one to use it on this "
+"computer, or keep using TablePro here without it."
 msgid_plural ""
-"Your license is in use on {n} other devices. Remove one to use the paid "
-"features on this computer. Until then, TablePro works here with the free "
-"features."
+"Your license is in use on {n} other devices. Remove one to use it on this "
+"computer, or keep using TablePro here without it."
 msgstr[0] ""
 "Giấy phép của bạn đang được dùng trên {n} thiết bị khác. Hãy gỡ một thiết bị"
-" để dùng tính năng trả phí trên máy tính này. Trong thời gian đó, TablePro "
-"vẫn dùng được với các tính năng miễn phí."
+" để dùng giấy phép trên máy tính này, hoặc tiếp tục dùng TablePro ở đây mà "
+"không cần giấy phép."
 
 #: crates/app/src/ui/preferences_dialog/account_view.rs
 #, rust-format
 msgid ""
-"The last verification of your plan ran out on {date}, so the paid features "
-"are off until TablePro reaches the account service. Connect to the internet "
-"and refresh."
+"The last verification of your plan ran out on {date}. Connect to the "
+"internet and refresh."
 msgstr ""
-"Lần xác minh gói gần nhất đã hết hiệu lực vào {date} nên các tính năng trả "
-"phí bị tắt cho đến khi TablePro kết nối được với dịch vụ tài khoản. Hãy kết "
-"nối internet rồi làm mới."
+"Lần xác minh gói gần nhất đã hết hiệu lực vào {date}. Hãy kết nối internet "
+"rồi làm mới."
 
 #: crates/app/src/ui/preferences_dialog/account_view.rs
 msgid ""
-"The last verification of your plan ran out, so the paid features are off "
-"until TablePro reaches the account service. Connect to the internet and "
+"The last verification of your plan ran out. Connect to the internet and "
 "refresh."
 msgstr ""
-"Lần xác minh gói gần nhất đã hết hiệu lực nên các tính năng trả phí bị tắt "
-"cho đến khi TablePro kết nối được với dịch vụ tài khoản. Hãy kết nối "
-"internet rồi làm mới."
-
-#: crates/app/src/ui/preferences_dialog/account_view.rs
-msgid "Paid Features Paused"
-msgstr "Tính năng trả phí tạm dừng"
+"Lần xác minh gói gần nhất đã hết hiệu lực. Hãy kết nối internet rồi làm mới."
 
 #: crates/app/src/ui/preferences_dialog/account_view.rs
 #, rust-format
@@ -6804,32 +6788,30 @@ msgstr "{plan} cho {team}"
 #: crates/app/src/ui/preferences_dialog/account_view.rs
 #, rust-format
 msgid ""
-"Polar could not charge the card for {plan}. Its paid features keep working "
-"while Polar tries again. Update the payment method to keep them."
+"Polar could not charge the card for {plan}. It stays active while Polar "
+"tries again. Update the payment method to keep it."
 msgstr ""
-"Polar không thu được tiền từ thẻ cho {plan}. Các tính năng trả phí vẫn hoạt "
-"động trong khi Polar thử lại. Hãy cập nhật phương thức thanh toán để tiếp "
-"tục sử dụng."
+"Polar không thu được tiền từ thẻ cho {plan}. Gói vẫn hoạt động trong khi "
+"Polar thử lại. Hãy cập nhật phương thức thanh toán để giữ gói."
 
 #: crates/app/src/ui/preferences_dialog/account_view.rs
 #, rust-format
 msgid ""
-"Polar could not charge the card for {plan}. Its paid features keep working "
-"while Polar tries again. Only the team’s owner can update the payment "
-"method."
+"Polar could not charge the card for {plan}. It stays active while Polar "
+"tries again. Only the team’s owner can update the payment method."
 msgstr ""
-"Polar không thu được tiền từ thẻ cho {plan}. Các tính năng trả phí vẫn hoạt "
-"động trong khi Polar thử lại. Chỉ chủ sở hữu nhóm mới có thể cập nhật phương"
-" thức thanh toán."
+"Polar không thu được tiền từ thẻ cho {plan}. Gói vẫn hoạt động trong khi "
+"Polar thử lại. Chỉ chủ sở hữu nhóm mới có thể cập nhật phương thức thanh "
+"toán."
 
 #: crates/app/src/ui/preferences_dialog/account_view.rs
 #, rust-format
 msgid ""
-"Polar could not charge the card for {plan}. Its paid features keep working "
-"while Polar tries again."
+"Polar could not charge the card for {plan}. It stays active while Polar "
+"tries again."
 msgstr ""
-"Polar không thu được tiền từ thẻ cho {plan}. Các tính năng trả phí vẫn hoạt "
-"động trong khi Polar thử lại."
+"Polar không thu được tiền từ thẻ cho {plan}. Gói vẫn hoạt động trong khi "
+"Polar thử lại."
 
 #: crates/app/src/ui/preferences_dialog/account_view.rs
 msgid "Payment Problem"
@@ -6841,10 +6823,8 @@ msgstr "Cập nhật phương thức thanh toán…"
 
 #: crates/app/src/ui/preferences_dialog/account_view.rs
 #, rust-format
-msgid "{plan} is set to end on {date}. Resume it to keep its paid features."
-msgstr ""
-"{plan} sẽ kết thúc vào {date}. Hãy tiếp tục gói để giữ các tính năng trả "
-"phí."
+msgid "{plan} is set to end on {date}. Resume it to keep it."
+msgstr "{plan} sẽ kết thúc vào {date}. Hãy tiếp tục gói để giữ gói."
 
 #: crates/app/src/ui/preferences_dialog/account_view.rs
 #, rust-format
@@ -6868,11 +6848,11 @@ msgstr "Gần đây chưa xác minh gói"
 #: crates/app/src/ui/preferences_dialog/account_view.rs
 #, rust-format
 msgid ""
-"TablePro last verified your plan {when}. The paid features stop on {date} "
-"unless it reaches the account service again."
+"TablePro last verified your plan {when}. The verification runs out on {date}"
+" unless TablePro reaches the account service again."
 msgstr ""
-"TablePro xác minh gói của bạn lần cuối {when}. Các tính năng trả phí sẽ dừng"
-" vào {date} nếu không kết nối lại được với dịch vụ tài khoản."
+"TablePro xác minh gói của bạn lần cuối {when}. Lần xác minh này hết hiệu lực"
+" vào {date} nếu TablePro không kết nối lại được với dịch vụ tài khoản."
 
 #: crates/app/src/ui/preferences_dialog/account_view.rs
 msgid "Personal"
@@ -6912,8 +6892,8 @@ msgid "Encrypted Export"
 msgstr "Xuất mã hóa"
 
 #: crates/app/src/ui/preferences_dialog/account_view.rs
-msgid "Environment Variable References"
-msgstr "Tham chiếu biến môi trường"
+msgid "Environment Variables"
+msgstr "Biến môi trường"
 
 #: crates/app/src/ui/preferences_dialog/account_view.rs
 msgid "Linked Folders"
@@ -7004,12 +6984,12 @@ msgstr "Thiết bị đang dùng giấy phép"
 
 #: crates/app/src/ui/preferences_dialog/device_limit_dialog.rs
 msgid ""
-"Paid features work on 3 devices at a time. Remove one to use them on this "
-"computer. Until then, TablePro works here with the free features."
+"A license covers 3 devices at a time. Remove one to use it on this computer,"
+" or keep using TablePro here without it."
 msgstr ""
-"Tính năng trả phí dùng được trên 3 thiết bị cùng lúc. Hãy gỡ một thiết bị để"
-" dùng trên máy tính này. Trong thời gian đó, TablePro vẫn dùng được với các "
-"tính năng miễn phí."
+"Một giấy phép dùng được trên 3 thiết bị cùng lúc. Hãy gỡ một thiết bị để "
+"dùng giấy phép trên máy tính này, hoặc tiếp tục dùng TablePro ở đây mà không"
+" cần giấy phép."
 
 #: crates/app/src/ui/preferences_dialog/device_limit_dialog.rs
 msgid ""
@@ -11179,9 +11159,8 @@ msgid "Devices"
 msgstr "Thiết bị"
 
 #: data/resources/ui/preferences-account-page.ui
-msgid "Paid features work on 3 devices at a time, across Mac and Linux."
-msgstr ""
-"Tính năng trả phí dùng được trên 3 thiết bị cùng lúc, trên cả Mac và Linux."
+msgid "A license covers 3 devices at a time, Mac or Linux."
+msgstr "Một giấy phép dùng được trên 3 thiết bị cùng lúc, Mac hoặc Linux."
 
 #: data/resources/ui/preferences-account-page.ui
 msgid "Manage…"

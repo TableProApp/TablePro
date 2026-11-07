@@ -89,8 +89,8 @@ TablePro 补上缺失的第四类:原生、多数据库、开源。
 
 | 方案 | 增加的功能 |
 |------|-----------|
-| Starter | iCloud Sync、Encrypted Export、Environment Variables、Linked Folders、Query Insights、Result Charts、Compare & Sync、Data Rewind |
-| Team | Starter 的全部功能,另加 Team Catalog 和 Team Library |
+| Pro | iCloud Sync、Encrypted Export、Environment Variables、Linked Folders、Query Insights、Result Charts、Compare & Sync、Data Rewind |
+| Team | Pro 的全部功能,另加 Team Catalog 和 Team Library |
 
 方案和价格见 [tablepro.app/pricing](https://tablepro.app/pricing)。iPhone 和 iPad 应用不需要许可证。
 

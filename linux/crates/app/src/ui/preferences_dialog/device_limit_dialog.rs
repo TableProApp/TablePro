@@ -45,7 +45,7 @@ impl DeviceLimitDialog {
         let group = adw::PreferencesGroup::builder()
             .title(gettext("Devices Using the License"))
             .description(gettext(
-                "Paid features work on 3 devices at a time. Remove one to use them on this computer. Until then, TablePro works here with the free features.",
+                "A license covers 3 devices at a time. Remove one to use it on this computer, or keep using TablePro here without it.",
             ))
             .build();
         let page = adw::PreferencesPage::new();
@@ -91,6 +91,11 @@ impl DeviceLimitDialog {
     #[cfg(test)]
     pub(crate) fn rows(&self) -> Vec<adw::ActionRow> {
         self.rows.borrow().clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn description(&self) -> Option<String> {
+        self.group.description().map(String::from)
     }
 
     #[cfg(test)]

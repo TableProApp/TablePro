@@ -89,8 +89,8 @@ Mọi thứ ở trên đều miễn phí với mọi database, không phải b�
 
 | Gói | Bổ sung |
 |-----|---------|
-| Starter | iCloud Sync, Encrypted Export, Environment Variables, Linked Folders, Query Insights, Result Charts, Compare & Sync, Data Rewind |
-| Team | Mọi thứ trong Starter, thêm Team Catalog và Team Library |
+| Pro | iCloud Sync, Encrypted Export, Environment Variables, Linked Folders, Query Insights, Result Charts, Compare & Sync, Data Rewind |
+| Team | Mọi thứ trong Pro, thêm Team Catalog và Team Library |
 
 Các gói và giá có tại [tablepro.app/pricing](https://tablepro.app/pricing). App cho iPhone và iPad không cần license.
 

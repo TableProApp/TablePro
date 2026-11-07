@@ -334,7 +334,7 @@ It prints the tablepro-cloud commit, for the commit message. Then build and run 
 
 `core/crates/account/tests/cloud_stack.rs` runs the account against a running tablepro-cloud, such as the stack its `web/e2e` suite starts, through the real OAuth flow. Its browser steps, `core/crates/account/tests/browser/portal.cjs`, are Puppeteer driving a headless Chrome: it signs in to the portal with the code the stack's fake Resend keeps, then does one step:
 
-- `approve`: gives the account a Starter license the way the e2e seed does when asked, and licensed devices of its own with `TABLEPRO_CLOUD_SEED_DEVICES`, the first with an offline file valid 30 days; then approves the app's sign-in on the confirmation screen. The redirect reaches the account's loopback listener as from a desktop browser, or, with `TABLEPRO_CLOUD_CALLBACK_FILE`, is written to that file for the test to send itself.
+- `approve`: gives the account a Pro license (tier `starter`) the way the e2e seed does when asked, and licensed devices of its own with `TABLEPRO_CLOUD_SEED_DEVICES`, the first with an offline file valid 30 days; then approves the app's sign-in on the confirmation screen. The redirect reaches the account's loopback listener as from a desktop browser, or, with `TABLEPRO_CLOUD_CALLBACK_FILE`, is written to that file for the test to send itself.
 - `remove-device`: removes the machine from the portal's Devices page.
 - `offline-file`: makes an offline file for `TABLEPRO_CLOUD_MACHINE_ID` through the portal's API, as its Devices page does, into `TABLEPRO_CLOUD_OUTPUT`.
 
