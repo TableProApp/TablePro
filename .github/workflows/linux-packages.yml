@@ -17,7 +17,8 @@ name: Linux packages
 # .flatpakref and from a bundle, updated, and switched between the release
 # and beta branches, in fresh Ubuntu 22.04, 24.04 and 26.04 containers that
 # have only their own Flatpak.
-# release-linux.yml calls this workflow and uploads the source packages.
+# release-linux.yml calls this workflow in a dry run, and the tag of that
+# commit publishes what it built, the source packages to the PPA.
 # ci.yml calls it when a change touches what the packages declare or how they
 # build (the packages suite), x86_64 only. nightly.yml calls it with the
 # Flatpak every night, and with arm64 on Sundays. A run by hand can add both.
@@ -68,6 +69,10 @@ on:
         description: The PostHog project key the vendor tarball carries for the .deb, the .rpm and the Flatpak. Public by design.
         type: string
         default: ""
+      retention-days:
+        description: Days the tarballs, source packages, packages and Flatpak repositories are kept, 0 for the repository's default.
+        type: number
+        default: 0
 
 permissions:
   contents: read
@@ -128,6 +133,7 @@ jobs:
           name: linux-sources
           path: _packages/sources
           if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}
 
   source-package:
     name: Debian source packages
@@ -173,6 +179,7 @@ jobs:
           name: linux-source-package
           path: _packages/source
           if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}
 
   # On the runner itself rather than in a job container, so build-deb.sh
   # can start the containers it builds in, the build one with no network.
@@ -227,6 +234,7 @@ jobs:
           name: linux-deb-${{ matrix.series }}-${{ runner.arch }}
           path: _packages/deb
           if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}
 
   rpm:
     name: RPM package (Fedora ${{ matrix.fedora }}, ${{ matrix.runner }})
@@ -277,6 +285,7 @@ jobs:
           name: linux-rpm-${{ matrix.fedora }}-${{ runner.arch }}
           path: _packages/rpm
           if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}
 
   rpm-install:
     name: Install the RPM package (Fedora ${{ matrix.fedora }}, ${{ matrix.runner }})
@@ -342,6 +351,7 @@ jobs:
           name: linux-flatpak-repo-${{ runner.arch }}
           path: _packages/flatpak-repo-*.tar
           if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}
       - name: Lint the manifest
         if: runner.arch == 'X64'
         run: |
