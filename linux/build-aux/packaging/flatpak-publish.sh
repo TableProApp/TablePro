@@ -110,6 +110,11 @@ pull() {
     summary="$(published_summary "$1")" || fail "not pulling $1"
     if [ "$summary" != none ]; then
         rclone copy --fast-list "$bucket/$1" "$2"
+        # The bucket keeps no empty directories, and ostree refs fails
+        # without refs/remotes; these are the ones ostree init makes.
+        for dir in extensions objects refs/heads refs/mirrors refs/remotes state tmp; do
+            mkdir -p "$2/$dir"
+        done
     fi
     echo "$summary" > "$2.published-summary"
 }
