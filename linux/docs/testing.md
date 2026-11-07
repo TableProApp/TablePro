@@ -513,7 +513,7 @@ The tests in `crates/app/tests` that start TablePro run without the test harness
 They need a display and a session bus, so run them the way CI does:
 
 ```bash
-xvfb-run -a dbus-run-session -- meson test -C _build --suite gtk --print-errorlogs
+xvfb-run -a dbus-run-session -- meson test -C _build --suite cargo --print-errorlogs
 ```
 
 or one at a time, `xvfb-run -a dbus-run-session -- meson devenv -C _build cargo test -p tablepro --test application_lifecycle`. `startup` needs the build Meson configures, so it fails under plain Cargo. cargo-nextest asks each test binary to list its tests, which a harness-free binary does not do, so run these with `cargo test`.
