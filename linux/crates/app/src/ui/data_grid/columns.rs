@@ -195,6 +195,7 @@ impl DataGrid {
         self.size_unsized_columns();
         self.watch_layout_changes();
         self.wire_sorting(sorting);
+        self.apply_display_settings();
     }
 
     fn build_column(&self, paint: &Rc<ColumnPaint>, sorting: GridSorting) -> gtk::ColumnViewColumn {
