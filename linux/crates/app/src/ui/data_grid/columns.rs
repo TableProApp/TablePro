@@ -353,7 +353,10 @@ impl DataGrid {
             };
             let header = header_width(&context, header_text(column)) + indicator;
             let preferences = paint.preferences.snapshot();
-            let null = super::grid_cell::null_text(&preferences.null_display, paint.tracked.tracks_changes());
+            let null = crate::services::grid::display_text::null_text(
+                &preferences.null_display,
+                paint.tracked.tracks_changes(),
+            );
             let placeholder = match values.iter().any(|value| value.is_null()) {
                 true => drawn_width(&context, &font, &null),
                 false => 0,

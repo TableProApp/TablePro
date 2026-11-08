@@ -546,7 +546,7 @@ fn null_text_reaches_every_grid_and_stays_with_its_settings() {
     settings.set_null_display("missing").expect("store placeholder");
     drain_main_context();
 
-    assert_eq!(Grid::display_text(&editable_cell), "<missing>");
+    assert_eq!(Grid::display_text(&editable_cell), "missing");
     assert_eq!(Grid::display_text(&readonly_cell), "missing");
     assert_eq!(Grid::display_text(&isolated.cell_at(0, 1)), "NULL");
     assert!(described(&editable_cell));

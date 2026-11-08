@@ -10,7 +10,7 @@ use super::columns::ColumnPaint;
 use super::tracked_values::cell_description;
 use super::{DataGrid, GridRow, ServerValue};
 use crate::services::change_tracker::CellState;
-use crate::services::grid::display_text::{DisplayText, auto_filled_sentinel, display_text, editable_null_sentinel};
+use crate::services::grid::display_text::{DisplayText, auto_filled_sentinel, display_text, null_text};
 use crate::services::grid::{CellLock, GridColumn};
 
 /// Enough for any number, date or short text.
@@ -36,7 +36,6 @@ pub struct TextAttributes {
     deleted: pango::AttrList,
     deleted_placeholder: pango::AttrList,
     placeholder: pango::AttrList,
-    /// The stand-in texts, translated once rather than on every bind.
     auto_filled: String,
 }
 
@@ -347,14 +346,6 @@ fn shown_text<'a>(
             DisplayText::placeholder(scratch)
         }
         (None, value) => display_text(value, &paint.column.column_type, scratch),
-    }
-}
-
-pub(super) fn null_text(text: &str, editable: bool) -> String {
-    match (editable, text) {
-        (true, "NULL") => editable_null_sentinel(),
-        (true, _) => format!("<{text}>"),
-        (false, _) => text.to_owned(),
     }
 }
 
