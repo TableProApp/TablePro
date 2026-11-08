@@ -30,9 +30,22 @@ impl<'a> DisplayText<'a> {
     }
 }
 
-/// The brackets keep it apart from a literal `NULL` text value.
+/// The brackets keep it apart from a literal `NULL` text value. A text the
+/// user chose for NULL is shown as it is, since they picked it.
 pub fn editable_null_sentinel() -> String {
-    crate::i18n::gettext("<NULL>")
+    // Spelled once, since every bind of a NULL cell asks.
+    EDITABLE_NULL.with(|slot| {
+        slot.borrow_mut()
+            .get_or_insert_with(|| {
+                let text = null_display();
+                if text == READONLY_NULL {
+                    crate::i18n::gettext("<NULL>")
+                } else {
+                    text
+                }
+            })
+            .clone()
+    })
 }
 
 /// A read-only cell dims its NULL instead, so it needs no brackets.
@@ -41,6 +54,7 @@ const READONLY_NULL: &str = "NULL";
 
 thread_local! {
     static NULL_DISPLAY: std::cell::RefCell<String> = std::cell::RefCell::new(READONLY_NULL.to_owned());
+    static EDITABLE_NULL: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
 }
 
 /// The text a cell shows for NULL, which Preferences set.
@@ -50,6 +64,7 @@ pub fn null_display() -> String {
 
 pub fn set_null_display(text: &str) {
     NULL_DISPLAY.with(|slot| *slot.borrow_mut() = text.to_owned());
+    EDITABLE_NULL.with(|slot| *slot.borrow_mut() = None);
 }
 
 /// For a column the server fills in on INSERT, so a new draft row does
@@ -222,7 +237,7 @@ mod tests {
     use tablepro_core::column::{BoolStorage, ColumnKind, ColumnType};
     use tablepro_core::value::{JsonText, OffsetTimestamp, SqlTime, Temporal, UndecodableReason, UndecodedValue};
 
-    use super::{DISPLAY_MAX_CHARS, DisplayText, display_text};
+    use super::{DISPLAY_MAX_CHARS, DisplayText, display_text, editable_null_sentinel, set_null_display};
 
     fn text_column() -> ColumnType {
         ColumnType::untyped_text("text")
@@ -231,6 +246,18 @@ mod tests {
     fn shown(value: &Value) -> String {
         let mut scratch = String::new();
         display_text(value, &text_column(), &mut scratch).text.to_owned()
+    }
+
+    #[test]
+    fn a_chosen_null_text_reaches_editable_cells_and_the_default_keeps_its_brackets() {
+        assert_eq!(editable_null_sentinel(), "<NULL>");
+
+        set_null_display("(none)");
+        assert_eq!(editable_null_sentinel(), "(none)");
+        assert_eq!(shown(&Value::Null), "(none)");
+
+        set_null_display("NULL");
+        assert_eq!(editable_null_sentinel(), "<NULL>");
     }
 
     #[test]
