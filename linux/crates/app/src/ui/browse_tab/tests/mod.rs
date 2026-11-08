@@ -1543,7 +1543,7 @@ fn the_bottom_bar_offers_the_column_chooser() {
     use libadwaita::prelude::*;
 
     let mut script = serving_table();
-    script.run.always(FakeReply::ok(rows(&["Ada"])));
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
     let harness = Harness::open(script, []);
     let tab = harness.tab();
     let window = crate::test_support::OwnedWindow::presented(
