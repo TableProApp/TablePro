@@ -201,6 +201,9 @@ impl RowDetailPane {
             move |_| pane.refilter_fields()
         ));
         imp.field_search.set_key_capture_widget(Some(&imp.field_list.get()));
+        imp.field_search.connect_search_started(|entry| {
+            entry.grab_focus();
+        });
         imp.field_search.connect_stop_search(glib::clone!(
             #[weak(rename_to = pane)]
             self,

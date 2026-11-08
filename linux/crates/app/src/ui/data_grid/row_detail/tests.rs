@@ -1655,6 +1655,10 @@ fn search_keys_and_tab_order_reach_the_filter_list_and_value() {
     keys.press(gdk::Key::n, gdk::ModifierType::empty())
         .expect("type to search");
     wait_until(WAIT, || pane.imp().field_search.text() == "n").expect("typing in the list searches");
+    assert!(crate::ui::a11y::holds_focus(&pane.imp().field_search.get()));
+    keys.press(gdk::Key::space, gdk::ModifierType::empty())
+        .expect("a space in the query");
+    wait_until(WAIT, || pane.imp().field_search.text() == "n ").expect("the entry keeps spaces in the query");
     keys.press(gdk::Key::Escape, gdk::ModifierType::empty())
         .expect("Escape");
     wait_until(WAIT, || pane.imp().field_search.text().is_empty()).expect("Escape clears");
