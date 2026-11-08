@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use tablepro_foreign_import::{
     ForeignApp, ForeignAppDirs, ForeignColor, ForeignImportError, ForeignImporter, ForeignPlatform, ForeignSshAuth,
-    ForeignSslMode, ImportRequest, Inventory, PasswordOutcome, PasswordSource, PlainHost,
+    ForeignSslMode, ImportRequest, Inventory, PasswordOutcome, PasswordSource, PlainHost, TLS_SETTINGS_UNREAD,
 };
 use tempfile::TempDir;
 use tokio_util::sync::CancellationToken;
@@ -225,4 +225,50 @@ fn no_store_means_the_app_is_not_there() {
         error,
         ForeignImportError::FileNotFound { app: ForeignApp::Dbx }
     ));
+}
+
+const TLS_STORE: &str = r#"
+CREATE TABLE connections (id TEXT PRIMARY KEY, config_json TEXT NOT NULL);
+INSERT INTO connections VALUES ('t1', '{"id":"t1","name":"Mode only","db_type":"postgres","host":"h","ssl":false,"url_params":"sslmode=require&application_name=x"}');
+INSERT INTO connections VALUES ('t2', '{"id":"t2","name":"Verified","db_type":"postgres","host":"h","ssl":true,"ca_cert_path":"/certs/ca.pem","url_params":"?sslmode=verify-full"}');
+INSERT INTO connections VALUES ('t3', '{"id":"t3","name":"Off","db_type":"postgres","host":"h","ssl":false,"url_params":"sslmode=disable"}');
+INSERT INTO connections VALUES ('t4', '{"id":"t4","name":"Unknown mode","db_type":"postgres","host":"h","ssl":false,"url_params":"sslmode=surprise"}');
+INSERT INTO connections VALUES ('t5', '{"id":"t5","name":"Other driver key","db_type":"mysql","host":"h","ssl":false,"url_params":"ssl-mode=VERIFY_IDENTITY"}');
+INSERT INTO connections VALUES ('t6', '{"id":"t6","name":"Plain","db_type":"postgres","host":"h","ssl":false,"url_params":"application_name=x"}');
+"#;
+
+#[test]
+fn a_tls_mode_in_the_driver_parameters_is_not_dropped_or_weakened() {
+    let (_home, importer) = Home::with_store(ForeignPlatform::Linux, TLS_STORE);
+
+    let collected = collect(&importer, &CONNECTIONS_ONLY);
+
+    let by_name = |name: &str| {
+        collected
+            .connections
+            .iter()
+            .find(|connection| connection.settings.name == name)
+            .map(|connection| &connection.settings)
+            .expect("the connection")
+    };
+    assert_eq!(
+        by_name("Mode only").ssl.as_ref().map(|ssl| ssl.mode),
+        Some(ForeignSslMode::Required)
+    );
+    let verified = by_name("Verified").ssl.as_ref().expect("TLS");
+    assert_eq!(
+        verified.mode,
+        ForeignSslMode::VerifyIdentity,
+        "ssl on must not weaken the mode named"
+    );
+    assert_eq!(verified.ca_certificate_path.as_deref(), Some("/certs/ca.pem"));
+    assert!(by_name("Off").ssl.is_none());
+    assert!(by_name("Plain").ssl.is_none());
+    for unread in ["Unknown mode", "Other driver key"] {
+        assert!(
+            by_name(unread).additional_fields.contains_key(TLS_SETTINGS_UNREAD),
+            "{unread} was imported with its TLS setting as though it had none"
+        );
+    }
+    assert!(!by_name("Mode only").additional_fields.contains_key(TLS_SETTINGS_UNREAD));
 }

@@ -11,6 +11,7 @@ use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
 use crate::app::{AppReader, check_cancel};
+use crate::apps::jdbc;
 use crate::apps::sqlite::Database;
 use crate::collect::assemble;
 use crate::engine::{self, LocalFilePathField};
@@ -114,6 +115,9 @@ struct Config {
     database: Option<String>,
     color: Option<String>,
     ssl: bool,
+    // The driver parameters of the connection, `sslmode=verify-full&...`: the app has no TLS mode
+    // field of its own, so the mode rides here.
+    url_params: Option<String>,
     ca_cert_path: Option<String>,
     client_cert_path: Option<String>,
     client_key_path: Option<String>,
@@ -186,6 +190,7 @@ fn record(config: &Config, engine: String) -> ForeignConnectionRecord {
         Layer::Ssh(ssh) if ssh.enabled != Some(false) && !ssh.host.is_empty() => Some(ssh_of(ssh)),
         _ => None,
     });
+    let ssl = ssl_of(config, &mut additional_fields);
     let settings = ForeignConnection {
         name: if config.name.is_empty() {
             "Untitled".to_owned()
@@ -198,7 +203,7 @@ fn record(config: &Config, engine: String) -> ForeignConnectionRecord {
         username: config.username.clone(),
         engine,
         ssh,
-        ssl: config.ssl.then(|| ssl_of(config)),
+        ssl,
         color: map_color(config.color.as_deref()),
         additional_fields,
     };
@@ -229,21 +234,48 @@ fn ssh_of(layer: &SshLayer) -> ForeignSsh {
     }
 }
 
-// The app has no TLS mode of its own: the mode rides in `url_params`, which an import leaves to
-// the user. With certificate files the server is checked, and without them TLS is asked for.
-fn ssl_of(config: &Config) -> ForeignSsl {
+// The app has no TLS mode field: `ssl` turns TLS on, a CA file makes it check the server, and a
+// `sslmode` driver parameter can name any mode, even with `ssl` off. The parameter wins when it names
+// one, so a verified connection is not imported as an unverified one, and TLS set in a way this does
+// not read marks the record, so the review asks instead of importing the connection off.
+fn ssl_of(config: &Config, fields: &mut BTreeMap<String, String>) -> Option<ForeignSsl> {
     let named = |path: &Option<String>| path.clone().filter(|path| !path.is_empty());
-    let ca = named(&config.ca_cert_path);
-    ForeignSsl {
-        mode: if ca.is_some() {
-            ForeignSslMode::VerifyCa
-        } else {
-            ForeignSslMode::Required
-        },
+    let params = config
+        .url_params
+        .as_deref()
+        .unwrap_or_default()
+        .trim()
+        .trim_start_matches('?');
+    let from_params = if params.is_empty() {
+        None
+    } else {
+        let sets_other_tls = params
+            .split(['&', ';'])
+            .filter_map(|pair| pair.split_once('='))
+            .map(|(key, _)| key.trim().to_lowercase())
+            .any(|key| key != "sslmode" && jdbc::is_tls_parameter(&key));
+        if sets_other_tls {
+            fields.insert(crate::TLS_SETTINGS_UNREAD.to_owned(), "true".to_owned());
+        }
+        jdbc::url_ssl_or_mark(&format!("dbx://host/?{params}"), fields)
+    };
+    let (ca, cert, key) = (
+        named(&config.ca_cert_path),
+        named(&config.client_cert_path),
+        named(&config.client_key_path),
+    );
+    let mode = match (from_params, config.ssl) {
+        (Some(from_params), _) => from_params.mode,
+        (None, true) if ca.is_some() => ForeignSslMode::VerifyCa,
+        (None, true) => ForeignSslMode::Required,
+        (None, false) => return None,
+    };
+    Some(ForeignSsl {
+        mode,
         ca_certificate_path: ca,
-        client_certificate_path: named(&config.client_cert_path),
-        client_key_path: named(&config.client_key_path),
-    }
+        client_certificate_path: cert,
+        client_key_path: key,
+    })
 }
 
 fn map_color(raw: Option<&str>) -> Option<ForeignColor> {
