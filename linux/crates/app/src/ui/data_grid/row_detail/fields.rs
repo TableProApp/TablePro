@@ -6,6 +6,7 @@ use gtk4::{self as gtk, glib, pango};
 use tablepro_core::Value;
 
 use super::RowDetailPane;
+use crate::i18n::gettext;
 use crate::services::change_tracker::CellState;
 use crate::services::grid::{GridColumn, auto_filled_sentinel, display_text};
 use crate::ui::data_grid::tracked_values::cell_description;
@@ -63,40 +64,58 @@ pub fn field_value(tracked: &TrackedValues, row: &GridRow, column: &GridColumn) 
     }
 }
 
-/// A field's row: its name and type on one line, its value on the next.
-/// One field: its name with a key for a primary key column, a pencil
-/// while it holds an edit and the type as a badge, over its value.
+fn is_primary_key(column: &GridColumn) -> bool {
+    column.catalog.as_ref().is_some_and(|catalog| catalog.primary_key)
+}
+
+// The key has no role of its own, so the label is where a screen reader hears it.
+pub(super) fn field_label(column: &GridColumn) -> String {
+    let mut parts = vec![column.name.clone()];
+    let type_name = &column.value_type().name;
+    if !type_name.is_empty() {
+        parts.push(type_name.clone());
+    }
+    if is_primary_key(column) {
+        parts.push(gettext("primary key"));
+    }
+    parts.join(", ")
+}
+
+fn marker(icon: &str) -> gtk::Image {
+    let image = gtk::Image::builder().icon_name(icon).visible(false).build();
+    image.set_accessible_role(gtk::AccessibleRole::Presentation);
+    image
+}
+
 fn field_row() -> gtk::Box {
-    let key = gtk::Image::builder()
-        .icon_name(icons::DIALOG_PASSWORD)
-        .pixel_size(12)
-        .visible(false)
-        .build();
-    key.add_css_class("warning");
-    key.set_accessible_role(gtk::AccessibleRole::Presentation);
+    let key = marker(icons::PRIMARY_KEY);
+    // Dimmed as a libadwaita property row's title, so the eye lands on the value.
     let name = gtk::Label::builder()
         .xalign(0.0)
         .hexpand(true)
         .ellipsize(pango::EllipsizeMode::Middle)
         .build();
     name.add_css_class("dimmed");
-    let edited = gtk::Image::builder()
-        .icon_name(icons::DOCUMENT_EDIT)
-        .pixel_size(12)
-        .visible(false)
-        .build();
-    edited.add_css_class("accent");
-    edited.set_accessible_role(gtk::AccessibleRole::Presentation);
+    let edited = marker(icons::DOCUMENT_EDIT);
+    // Match the pending value beneath the marker.
+    edited.add_css_class("warning");
     let kind = gtk::Label::builder()
-        .xalign(0.5)
+        .xalign(1.0)
         .ellipsize(pango::EllipsizeMode::End)
         .build();
-    kind.add_css_class("field-type");
+    kind.add_css_class("caption");
+    kind.add_css_class("dimmed");
+    let type_icon = marker(icons::TEXT_X_GENERIC);
+    type_icon.set_visible(true);
+    type_icon.add_css_class("dimmed");
+    let type_box = gtk::Box::new(gtk::Orientation::Horizontal, 3);
+    type_box.append(&type_icon);
+    type_box.append(&kind);
     let top = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     top.append(&key);
     top.append(&name);
     top.append(&edited);
-    top.append(&kind);
+    top.append(&type_box);
     let value = gtk::Inscription::builder()
         .hexpand(true)
         .min_chars(1)
@@ -104,9 +123,9 @@ fn field_row() -> gtk::Box {
         .build();
     let row = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
-        .spacing(3)
-        .margin_top(7)
-        .margin_bottom(7)
+        .spacing(2)
+        .margin_top(6)
+        .margin_bottom(6)
         .margin_start(12)
         .margin_end(12)
         .build();
@@ -115,7 +134,6 @@ fn field_row() -> gtk::Box {
     row
 }
 
-/// The widgets of a field row, in the order `field_row` makes them.
 struct FieldParts {
     key: gtk::Image,
     name: gtk::Label,
@@ -129,7 +147,7 @@ fn field_parts(row: &gtk::Widget) -> Option<FieldParts> {
     let key = top.first_child()?;
     let name = key.next_sibling()?;
     let edited = name.next_sibling()?;
-    let kind = edited.next_sibling()?;
+    let kind = edited.next_sibling()?.last_child()?;
     Some(FieldParts {
         key: key.downcast().ok()?,
         name: name.downcast().ok()?,
@@ -245,22 +263,20 @@ impl RowDetailPane {
         else {
             return;
         };
-        // A primary key shows a key, and a column that only points at another
-        // table an arrow; a key that is also a foreign key shows the key.
-        let primary = column.catalog.as_ref().is_some_and(|catalog| catalog.primary_key);
+        let primary = is_primary_key(&column);
         let foreign = grid.is_foreign_key_column(&column.name);
         key.set_visible(primary || foreign);
-        key.set_icon_name(Some(if primary { icons::DIALOG_PASSWORD } else { icons::GO_UP }));
-        set_class(&key, "warning", primary);
+        key.set_icon_name(Some(if primary { icons::PRIMARY_KEY } else { icons::GO_UP }));
         key.set_tooltip_text(Some(&if primary {
-            crate::i18n::gettext("Primary key")
+            gettext("Primary key")
         } else {
-            crate::i18n::gettext("Foreign key")
+            gettext("Foreign key")
         }));
         name.set_label(&column.name);
         kind.set_label(&column.value_type().name);
-        item.set_accessible_label(&column.name);
+        item.set_accessible_label(&field_label(&column));
         let Some(row) = self.current_row() else {
+            edited.set_visible(false);
             shown.set_text(None);
             return;
         };

@@ -14,7 +14,7 @@ use tablepro_core::{ColumnInfo, Value};
 use super::RowDetailPane;
 use super::calendar::{day_of, day_start_offset, with_day};
 use super::clock::{ClockField, time_of, with_time};
-use super::fields::field_order;
+use super::fields::{field_label, field_order};
 use super::value_editor::value_content;
 use crate::services::change_tracker::RowKey;
 use crate::services::grid::{CellLock, GridColumn, GridRowId, grid_columns};
@@ -1425,21 +1425,40 @@ fn a_page_that_takes_the_row_closes_its_clock_and_writes_nothing() {
     assert!(!pane.imp().clock_popover.is_visible());
 }
 
-/// A primary key column's field carries a key, and a field holding an
-/// edit a pencil, so each reads without opening the field.
+fn drawn_field(pane: &RowDetailPane, column: usize) -> gtk::ListItem {
+    pane.imp()
+        .bound
+        .borrow()
+        .iter()
+        .find(|item| {
+            item.item()
+                .and_downcast::<gtk4::glib::BoxedAnyObject>()
+                .is_some_and(|boxed| *boxed.borrow::<usize>() == column)
+        })
+        .cloned()
+        .expect("the field is drawn")
+}
+
+fn marks(pane: &RowDetailPane, column: usize, icon: &str) -> bool {
+    let row = drawn_field(pane, column).child().expect("the field's row");
+    descendants(&row)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Image>().ok())
+        .any(|image| image.is_visible() && image.icon_name().as_deref() == Some(icon))
+}
+
 #[gtk4::test]
-fn the_fields_mark_the_primary_key_and_a_pending_edit() {
+fn a_field_marks_its_primary_key_and_a_pending_edit() {
     let (grid, pane) = opened(two_text_columns(), two_text_values());
     grid.focus(0, 1);
-    let marked = |icon: &str| {
-        descendants(&pane.imp().field_list.get())
-            .into_iter()
-            .filter_map(|widget| widget.downcast::<gtk::Image>().ok())
-            .filter(|image| image.is_visible() && image.icon_name().as_deref() == Some(icon))
-            .count()
-    };
-    assert_eq!(marked(crate::ui::icons::DIALOG_PASSWORD), 1, "the id column is the key");
-    assert_eq!(marked(crate::ui::icons::DOCUMENT_EDIT), 0);
+    drain_main_context();
+    let key_mark = crate::ui::icons::PRIMARY_KEY;
+    let edit_mark = crate::ui::icons::DOCUMENT_EDIT;
+    assert!(marks(&pane, 0, key_mark));
+    assert!(!marks(&pane, 1, key_mark));
+    assert!(!marks(&pane, 1, edit_mark));
+    assert!(marks(&pane, 0, crate::ui::icons::TEXT_X_GENERIC));
+    assert!(marks(&pane, 1, crate::ui::icons::TEXT_X_GENERIC));
 
     let delta = grid.tracker.apply(TrackerEdit::Cell {
         row_key: key(1),
@@ -1449,8 +1468,35 @@ fn the_fields_mark_the_primary_key_and_a_pending_edit() {
     });
     grid.grid.apply_delta(&delta);
     drain_main_context();
+    assert!(marks(&pane, 1, edit_mark));
+    assert!(!marks(&pane, 0, edit_mark));
+    assert_eq!(
+        drawn_field(&pane, 1).accessible_description().as_str(),
+        "changed, Modified"
+    );
 
-    assert_eq!(marked(crate::ui::icons::DOCUMENT_EDIT), 1);
+    grid.grid.undo();
+    drain_main_context();
+    assert!(!marks(&pane, 1, edit_mark), "the pencil outlived the undo");
+    assert_eq!(drawn_field(&pane, 1).accessible_description().as_str(), "A");
+}
+
+#[gtk4::test]
+fn a_field_names_its_type_and_its_key_to_a_screen_reader() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    grid.focus(0, 1);
+    drain_main_context();
+
+    assert_eq!(
+        drawn_field(&pane, 0).accessible_label().as_str(),
+        "id, integer, primary key"
+    );
+    assert_eq!(drawn_field(&pane, 1).accessible_label().as_str(), "name, text");
+    let result_column = GridColumn {
+        catalog: None,
+        ..column_of(named("id", "integer", true))
+    };
+    assert_eq!(field_label(&result_column), "id, integer");
 }
 
 /// A column that points at another table shows an arrow, and a primary key
@@ -1504,6 +1550,6 @@ fn a_foreign_key_field_carries_an_arrow_and_a_primary_key_a_key() {
             .filter(|image| image.is_visible() && image.icon_name().as_deref() == Some(icon))
             .count()
     };
-    assert_eq!(marks(crate::ui::icons::DIALOG_PASSWORD), 1, "the primary key");
+    assert_eq!(marks(crate::ui::icons::PRIMARY_KEY), 1, "the primary key");
     assert_eq!(marks(crate::ui::icons::GO_UP), 1, "the foreign key");
 }

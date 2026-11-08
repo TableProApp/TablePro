@@ -219,12 +219,3 @@ tp-diagram-canvas > .tp-diagram-border {
 tp-diagram-canvas > .tp-diagram-accent {
   color: var(--accent-color);
 }
-
-/* A field's type in the row details, as a badge beside its name. */
-.field-type {
-  font-size: smaller;
-  padding: 1px 6px;
-  border-radius: 6px;
-  background-color: color-mix(in srgb, currentColor 10%, transparent);
-  opacity: 0.8;
-}
