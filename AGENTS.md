@@ -9,6 +9,7 @@ Native database clients with a native UI per platform: `apple/` holds the macOS 
 - `core/`: the shared Rust core's crates, its architecture and its cross-platform decisions. `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `rustfmt.toml`, `clippy.toml`, `deny.toml` and `.config/nextest.toml` at the top are its Cargo workspace, which also holds the Linux app's crates.
 - `.github/`: workflows, actions, the PR template and `plugin-registry.json`.
 - `.claude/`: the path-scoped rules and the `fix-issue` and `release` skills, which Codex sees through `.agents/skills/`.
+- `docs/feature-parity/`: which user-visible features each app has, in `features.yml` with the table generated from it by `scripts/parity/render.py`. A pull request that adds or finishes a feature updates its row.
 - `scripts/`: `banned-words.txt` with `check-banned-words.sh`, the PR title and changed-path checks in `scripts/ci`, and the towncrier pin in `scripts/release`.
 - `appcast.xml`: the legacy feed apps up to 0.81 read from `main` (`apple/RELEASING.md`, Channels).
 - `.oss-scanner/`: the build image and threat model for Anthropic's OSS Scanner. Renaming a TableProCore target that `.oss-scanner/swift/Package.swift` lists updates it there too.

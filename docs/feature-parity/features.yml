@@ -1,0 +1,262 @@
+# The one home of which user-visible features each app has. README.md in this
+# folder is generated from it: python3 scripts/parity/render.py
+#
+# A platform's value is a status, or a mapping with `status` and optionally
+# `pr` (a pull request number) and `note`.
+#   yes      shipped
+#   pending  built and in an open pull request, not shipped yet (give `pr`)
+#   partial  some of it ships (say what in `note`)
+#   no       not built
+#   na       does not apply to this platform
+#   unknown  nobody has checked
+# macOS is the reference: the other two follow its behavior (see each app's AGENTS.md).
+
+areas:
+  - name: Connections
+    features:
+      - id: saved-connections
+        name: Saved connections, groups, favourites and tags
+        macos: yes
+        linux: yes
+        windows: unknown
+      - id: ssh-tunnel
+        name: SSH tunnels with jump hosts
+        macos: yes
+        linux: yes
+        windows: unknown
+      - id: safe-mode
+        name: Safe Mode per connection (off, confirm writes, read only)
+        macos: yes
+        linux: yes
+        windows: unknown
+      - id: import-from-apps
+        name: Import connections from other apps
+        macos: yes
+        linux: yes
+        windows: unknown
+      - id: open-database-beside
+        name: Open another database of a server beside the connection
+        macos: yes
+        linux: yes
+        windows: unknown
+
+  - name: Sidebar
+    features:
+      - id: tables-tree
+        name: Schemas and tables, with search
+        macos: yes
+        linux: yes
+        windows: unknown
+      - id: favorites-scope
+        name: Tables and Favorites scope switch
+        macos: yes
+        linux: {status: pending, pr: 4114}
+        windows: unknown
+        notes: Linux lists the saved queries of the front connection, and renames and deletes them (4115).
+      - id: favorites-folders
+        name: Favorite folders and keywords
+        macos: yes
+        linux: {status: pending, pr: 4116, note: "storage only; the sidebar does not use it yet"}
+        windows: unknown
+        notes: "Shared storage and the decision are core ADR 0017."
+      - id: favorite-tables-databases
+        name: Favorite tables and databases, with environments
+        macos: yes
+        linux: {status: pending, pr: 4116, note: "storage only; no UI yet"}
+        windows: unknown
+      - id: quick-switcher
+        name: Open Quickly (find a table by name)
+        macos: yes
+        linux: {status: pending, pr: 4121, note: "tables and views; not databases, routines or queries"}
+        windows: unknown
+      - id: sidebar-toggle
+        name: Sidebar toggle in the window header
+        macos: yes
+        linux: {status: pending, pr: 4117}
+        windows: unknown
+
+  - name: Data grid
+    features:
+      - id: virtual-grid
+        name: Virtualized grid with paging and an exact or estimated count
+        macos: yes
+        linux: yes
+        windows: unknown
+      - id: grid-alternate-rows
+        name: Alternate row shading
+        macos: yes
+        linux: yes
+        windows: unknown
+      - id: grid-monospace
+        name: Values in the monospace font
+        macos: yes
+        linux: yes
+        windows: unknown
+      - id: pinned-row-numbers
+        name: Row numbers stay in view while scrolling sideways
+        macos: yes
+        linux: {status: pending, pr: 4110}
+        windows: unknown
+      - id: cell-editing
+        name: Inline cell editing with pending changes, undo and redo
+        macos: yes
+        linux: yes
+        windows: unknown
+      - id: filters
+        name: Filters per column and as a WHERE fragment
+        macos: yes
+        linux: yes
+        windows: unknown
+      - id: foreign-key-navigation
+        name: Open a referenced row and the rows that reference one
+        macos: yes
+        linux: yes
+        windows: unknown
+      - id: highlight-rules
+        name: Highlight rules (colour rows by a condition)
+        macos: yes
+        linux: no
+        windows: unknown
+
+  - name: Bottom bar
+    features:
+      - id: bar-columns
+        name: Columns button
+        macos: yes
+        linux: {status: pending, pr: 4118}
+        windows: unknown
+      - id: bar-timing
+        name: Time a page or a query took
+        macos: yes
+        linux: {status: partial, pr: 4119, note: "query results show it; table pages in the pull request"}
+        windows: unknown
+      - id: bar-structure
+        name: Data and Structure in one tab
+        macos: yes
+        linux: {status: pending, pr: 4108, note: "one bar for it in 4111"}
+        windows: unknown
+      - id: bar-json
+        name: JSON view of the rows
+        macos: yes
+        linux: {status: pending, pr: 4122, note: "table tabs; not query results"}
+        windows: unknown
+      - id: bar-chart
+        name: Chart view of a result
+        macos: yes
+        linux: no
+        windows: unknown
+      - id: bar-map
+        name: Map view of a result
+        macos: yes
+        linux: no
+        windows: unknown
+
+  - name: Row details
+    features:
+      - id: row-details-pane
+        name: Row details pane with an editor for the focused field
+        macos: yes
+        linux: yes
+        windows: unknown
+      - id: row-details-look
+        name: Field rows with type badge, key and edit marks
+        macos: yes
+        linux: {status: pending, pr: 4112}
+        windows: unknown
+      - id: row-details-search
+        name: Field search and edited-only filter
+        macos: yes
+        linux: {status: pending, pr: 4113}
+        windows: unknown
+      - id: row-details-inline
+        name: An editor inside each field row
+        macos: yes
+        linux: no
+        windows: unknown
+      - id: row-json
+        name: A row as JSON
+        macos: yes
+        linux: {status: partial, note: "a dialog from the grid menu, not a pane view"}
+        windows: unknown
+
+  - name: SQL editor
+    features:
+      - id: editor-basics
+        name: Highlighting, completion, snippets and formatting
+        macos: yes
+        linux: yes
+        windows: unknown
+      - id: editor-database-switch
+        name: Move a query tab to another database
+        macos: yes
+        linux: yes
+        windows: unknown
+      - id: editor-scheme
+        name: The chosen colour scheme is drawn as chosen
+        macos: yes
+        linux: {status: pending, pr: 4109}
+        windows: unknown
+      - id: editor-divider
+        name: Dragging the results up keeps the query in view
+        macos: yes
+        linux: {status: pending, pr: 4120}
+        windows: unknown
+      - id: vim-mode
+        name: Vim keybindings
+        macos: yes
+        linux: yes
+        windows: unknown
+
+  - name: Structure and schema
+    features:
+      - id: structure-editor
+        name: Structure editor with a reviewed ALTER
+        macos: yes
+        linux: yes
+        windows: unknown
+      - id: er-diagram
+        name: ER diagram
+        macos: yes
+        linux: yes
+        windows: unknown
+
+  - name: History, import and export
+    features:
+      - id: query-history
+        name: Query history with search, pins and export
+        macos: yes
+        linux: yes
+        windows: unknown
+      - id: saved-queries
+        name: Saved queries
+        macos: yes
+        linux: yes
+        windows: unknown
+      - id: export-results
+        name: Export results (CSV, JSON, Markdown, HTML, XML, Excel, SQL)
+        macos: yes
+        linux: yes
+        windows: unknown
+      - id: sql-dump
+        name: Export a database as SQL and import a SQL file
+        macos: yes
+        linux: yes
+        windows: unknown
+
+  - name: Assistant, MCP and account
+    features:
+      - id: ai-assistant
+        name: AI assistant
+        macos: yes
+        linux: yes
+        windows: unknown
+      - id: mcp-server
+        name: MCP server for outside clients
+        macos: yes
+        linux: yes
+        windows: unknown
+      - id: account
+        name: TablePro account and entitlement
+        macos: yes
+        linux: yes
+        windows: unknown
