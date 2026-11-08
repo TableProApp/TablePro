@@ -395,6 +395,25 @@ fn primary_menu_has_no_quit() {
 }
 
 #[gtk4::test]
+fn the_application_exposes_a_menu_bar_with_quit() {
+    let test = TestWindow::picker("MenuBar");
+
+    let bar = test.app.menubar().expect("the application's menu bar");
+
+    let mut actions = Vec::new();
+    collect_actions(&bar, &mut actions);
+    for expected in [
+        "win.new-connection",
+        "app.quit",
+        "app.preferences",
+        "app.shortcuts",
+        "app.about",
+    ] {
+        assert!(actions.iter().any(|action| action == expected), "{expected} is missing");
+    }
+}
+
+#[gtk4::test]
 fn f9_toggles_sidebar() {
     let test = TestWindow::picker("F9");
 
@@ -562,4 +581,21 @@ fn the_main_menu_adds_a_connection_with_none_open() {
     );
 
     choose_new_connection(&test, &test.window.content().expect("the picker"));
+}
+
+/// Every action a menu names, through its sections and submenus.
+fn collect_actions(menu: &gio::MenuModel, actions: &mut Vec<String>) {
+    for item in 0..menu.n_items() {
+        if let Some(action) = menu
+            .item_attribute_value(item, "action", None)
+            .and_then(|value| value.get::<String>())
+        {
+            actions.push(action);
+        }
+        for link in ["section", "submenu"] {
+            if let Some(inner) = menu.item_link(item, link) {
+                collect_actions(&inner, actions);
+            }
+        }
+    }
 }

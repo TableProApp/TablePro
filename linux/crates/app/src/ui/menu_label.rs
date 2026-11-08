@@ -70,7 +70,13 @@ mod tests {
             }
         }
 
-        for id in ["primary_menu", "tab_overview_menu", "editor_menu", "options_menu"] {
+        for id in [
+            "primary_menu",
+            "menubar",
+            "tab_overview_menu",
+            "editor_menu",
+            "options_menu",
+        ] {
             assert!(checked.iter().any(|read| read == id), "{id} was not read: {checked:?}");
         }
     }
