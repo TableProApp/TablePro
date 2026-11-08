@@ -173,8 +173,6 @@ fn show_tabs_opens_and_closes_the_overview_while_a_tab_is_open() {
     assert!(enabled("switch-recent-tab"));
 }
 
-/// The toggle is always in the header, beside a sidebar in view too, as
-/// the macOS window's is, so the sidebar collapses from it.
 #[gtk4::test]
 fn the_sidebar_toggle_is_always_in_the_header() {
     let test = TestWindow::connected("SidebarToggle");
@@ -182,19 +180,30 @@ fn the_sidebar_toggle_is_always_in_the_header() {
     let shell = shell_of(&workspace);
     let imp = shell.imp();
     let (split, toggle) = (imp.split_view.get(), imp.sidebar_toggle.get());
-    split.set_collapsed(false);
-    split.set_show_sidebar(true);
-    assert!(toggle.is_visible(), "missing beside a sidebar in view");
-    assert!(toggle.is_active(), "it does not show the sidebar is in view");
-
-    split.set_show_sidebar(false);
-    assert!(toggle.is_visible(), "hidden with the sidebar hidden");
-    assert!(!toggle.is_active());
-
-    split.set_show_sidebar(true);
-    split.set_collapsed(true);
-    assert!(toggle.is_visible(), "hidden with the sidebar collapsed");
+    crate::test_support::assert_labelled(&toggle).expect("the sidebar toggle is named");
+    assert_eq!(toggle.tooltip_text().as_deref(), Some("Show Sidebar"));
     assert_eq!(toggle.action_name().as_deref(), Some("win.show-sidebar"));
+
+    for collapsed in [false, true] {
+        split.set_collapsed(collapsed);
+        split.set_show_sidebar(true);
+        assert!(toggle.is_visible());
+        assert!(toggle.is_active());
+
+        toggle.emit_clicked();
+        assert!(!split.shows_sidebar());
+        assert!(!toggle.is_active());
+        assert!(toggle.is_visible());
+
+        toggle.emit_clicked();
+        assert!(split.shows_sidebar());
+        assert!(toggle.is_active());
+
+        WidgetExt::activate_action(&test.window, "win.show-sidebar", None).expect("win.show-sidebar");
+        assert!(!split.shows_sidebar());
+        assert!(!toggle.is_active());
+        assert!(toggle.is_visible());
+    }
 }
 
 #[gtk4::test]
