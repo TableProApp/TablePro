@@ -451,8 +451,6 @@ impl DataGrid {
         self.imp().columns.borrow_mut().handlers.extend(handlers);
     }
 
-    /// A column moved, went or came back: the layout keeps it, and a
-    /// search counts only the columns on screen, in their order.
     fn columns_moved(&self) {
         self.keep_filler_last();
         self.keep_numbers_first();
@@ -893,8 +891,7 @@ fn same_names(layout: &ColumnLayout, columns: &[GridColumn]) -> bool {
     names.len() == columns.len() && names.iter().zip(columns).all(|(name, column)| *name == column.name)
 }
 
-/// The font a cell draws its value in: libadwaita's `monospace` class
-/// sets only the family and size of the desktop's monospace font.
+// Libadwaita's monospace class overrides only family and size.
 pub(super) fn value_font(context: &pango::Context) -> pango::FontDescription {
     let mut monospace = pango::FontDescription::from_string(&adw::StyleManager::default().monospace_font_name());
     monospace.unset_fields(!(pango::FontMask::FAMILY | pango::FontMask::SIZE));

@@ -381,17 +381,43 @@ fn gutter_and_data_clicks_share_the_selection_anchor() {
     grid.focus(1, 1);
     sideways(&grid);
     let input = KeyInjector::connect().expect("X11 input");
-    input
-        .click(&pinned_number(&grid, "2"), (4.0, 4.0), 1)
-        .expect("row selection");
-    wait_until(WAIT, || grid.grid.selection().is_selected(1)).expect("second row selected");
-    let shift = input.hold(gtk::gdk::Key::Shift_L).expect("Shift");
-    input
-        .click(&pinned_number(&grid, "5"), (4.0, 4.0), 1)
-        .expect("range selection");
-    wait_until(WAIT, || grid.grid.selection().selection().size() == 4).expect("native selection range");
-    drop(shift);
-    assert!((1..=4).all(|position| grid.grid.selection().is_selected(position)));
+    let data = |position: u32| {
+        let view = grid.grid.column_view();
+        descendants(&view)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<GridCell>().ok())
+            .find(|cell| {
+                cell.position() == Some(position)
+                    && cell.compute_bounds(&view).is_some_and(|bounds| {
+                        bounds.x() > projection(&grid).width() as f32
+                            && bounds.x() + bounds.width() < view.width() as f32
+                    })
+            })
+            .expect("a fully visible data cell")
+            .upcast::<gtk::Widget>()
+    };
+    for reverse in [false, true] {
+        let start = if reverse {
+            pinned_number(&grid, "2").upcast::<gtk::Widget>()
+        } else {
+            data(1)
+        };
+        input.click(&start, (4.0, 4.0), 1).expect("row selection");
+        wait_until(WAIT, || {
+            grid.grid.selection().selection().size() == 1 && grid.grid.selection().is_selected(1)
+        })
+        .expect("second row selected");
+        let shift = input.hold(gtk::gdk::Key::Shift_L).expect("Shift");
+        let end = if reverse {
+            data(4)
+        } else {
+            pinned_number(&grid, "5").upcast::<gtk::Widget>()
+        };
+        input.click(&end, (4.0, 4.0), 1).expect("range selection");
+        wait_until(WAIT, || grid.grid.selection().selection().size() == 4).expect("native selection range");
+        drop(shift);
+        assert!((1..=4).all(|position| grid.grid.selection().is_selected(position)));
+    }
     input
         .press(gtk::gdk::Key::Down, gtk::gdk::ModifierType::empty())
         .expect("keyboard navigation");

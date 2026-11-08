@@ -344,7 +344,6 @@ impl GridCell {
         }
     }
 
-    /// Lay `editor` over the cell's text until `close_editor`.
     pub(crate) fn open_editor(&self, editor: &impl IsA<gtk::Widget>) {
         self.close_editor();
         if let Some(closed) = self.imp().closed.take() {
@@ -365,10 +364,8 @@ impl GridCell {
         }
     }
 
-    /// The editor goes and the text shows again. GTK 4.22 loops forever
-    /// ending a focus change from a widget that lost its parent, so an
-    /// editor that still holds the focus is only hidden until the next
-    /// edit.
+    // GTK 4.22 loops when focus leaves a widget that lost its parent.
+    // Keep an editor that holds focus parented until the next edit.
     pub(crate) fn close_editor(&self) {
         if let Some(editor) = self.imp().editor.take() {
             if let Some(row) = self.bound_row() {

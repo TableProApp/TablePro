@@ -89,9 +89,6 @@ impl KeyInjector {
         Ok(())
     }
 
-    /// Click the primary button `count` times at `at` in `widget`'s own
-    /// coordinates, in the window that has the keyboard. A widget not laid
-    /// out yet sits at the window's corner, so it is refused.
     pub(crate) fn click(
         &self,
         widget: &impl IsA<gtk4::Widget>,
