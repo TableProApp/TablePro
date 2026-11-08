@@ -380,3 +380,29 @@ fn folder_and_query_menus_use_distinct_ids_and_hidden_targets_do_nothing() {
         .expect("folder menu button");
     assert_eq!(crate::test_support::assert_labelled(&button), Ok(()));
 }
+
+#[gtk4::test]
+fn reopening_an_expanded_subtree_keeps_a_selected_root_siblings_position() {
+    let pane = FavoritesPane::new(|_| {}, || {});
+    let mut snapshot = nested_snapshot("Filed query");
+    snapshot.queries.push(saved(2, "Root query"));
+    pane.show(snapshot);
+    tree_row(&pane, Key::Folder(1)).set_expanded(true);
+    tree_row(&pane, Key::Folder(2)).set_expanded(true);
+    let selected = Key::Query(2);
+    pane.selection
+        .set_selected(position_of(&pane.tree, selected).expect("root query"));
+    tree_row(&pane, Key::Folder(1)).set_expanded(false);
+    assert_eq!(pane.selection.selected(), 1);
+    tree_row(&pane, Key::Folder(1)).set_expanded(true);
+    assert!(tree_row(&pane, Key::Folder(2)).is_expanded());
+    assert_eq!(
+        pane.selection.selected(),
+        position_of(&pane.tree, selected).expect("selected query")
+    );
+    assert_eq!(pane.selection.selected(), 3);
+    assert_eq!(
+        pane.tree.row(pane.selection.selected()).as_ref().and_then(key_of),
+        Some(selected)
+    );
+}

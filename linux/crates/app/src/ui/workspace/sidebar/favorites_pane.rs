@@ -71,6 +71,14 @@ impl FavoritesPane {
             }
         });
         let expansion = Rc::new(Expansion::default());
+
+        let selection = gtk::SingleSelection::builder()
+            .model(&tree)
+            .autoselect(false)
+            .can_unselect(true)
+            .build();
+        let list = gtk::ListView::new(Some(selection.clone()), Some(rows::factory(index.clone())));
+        // Selection and view must process an insertion before restoring expansion emits nested insertions.
         tree.connect_items_changed({
             let expansion = Rc::downgrade(&expansion);
             move |tree, _, _, _| {
@@ -79,12 +87,6 @@ impl FavoritesPane {
                 }
             }
         });
-        let selection = gtk::SingleSelection::builder()
-            .model(&tree)
-            .autoselect(false)
-            .can_unselect(true)
-            .build();
-        let list = gtk::ListView::new(Some(selection.clone()), Some(rows::factory(index.clone())));
         list.add_css_class("navigation-sidebar");
         list.set_single_click_activate(true);
         list.update_property(&[gtk::accessible::Property::Label(&gettext("Favorites"))]);
@@ -351,6 +353,10 @@ impl Expansion {
             }
             let weak = Rc::downgrade(self);
             let watch = row.connect_expanded_notify(move |row| {
+                // Collapsing an ancestor detaches its rows and emits false without changing the user's choice.
+                if !row.is_expandable() {
+                    return;
+                }
                 let Some(state) = weak.upgrade().filter(|state| !state.updating.get()) else {
                     return;
                 };
