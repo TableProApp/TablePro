@@ -8,6 +8,7 @@ use super::BrowseCommand;
 pub(crate) enum DataInput {
     /// The tab is built: read the columns, then the page and the count.
     Start,
+    Renamed(String),
     /// A reply to one of the tab's reads.
     Command(BrowseCommand),
     /// A reconnect replaced the session's connection.
