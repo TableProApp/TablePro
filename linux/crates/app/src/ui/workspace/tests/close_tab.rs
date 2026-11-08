@@ -364,12 +364,28 @@ fn header_save_commits_the_first_inline_edit_and_follows_the_running_save() {
     assert_eq!(changes.pending_count(), 0);
     wait_until(WAIT, || button.is_sensitive()).expect("Save Changes for the first inline edit");
 
+    let requested = std::rc::Rc::new(std::cell::Cell::new(0));
+    let requests = requested.clone();
+    tab.connect_save_requested(move |_| requests.set(requests.get() + 1));
     button.emit_clicked();
 
+    assert_eq!(requested.get(), 1, "the header activates the tab's save action");
+    assert!(!cell.is_editing(), "the save commits the open cell");
+    assert_eq!(changes.pending_count(), 1, "the typed value reaches the tracker");
+    assert!(changes.preview_save().expect("the edit can be saved").is_some());
     let connection = test.connection();
-    wait_until(WAIT, || CallCounters::get(&connection.counters().write_batch) == 1)
-        .expect("the header starts the write");
-    assert!(!cell.is_editing());
+    wait_until(WAIT, || CallCounters::get(&connection.counters().write_batch) == 1).unwrap_or_else(|error| {
+        panic!(
+            "the header starts the write: {error:?}; state: {:?}; alert: {:?}; writes: {:?}",
+            changes.pending_state(),
+            visible_alert(&test.window).map(|alert| (alert.heading(), alert.body())),
+            test.connector
+                .connections()
+                .iter()
+                .map(|connection| CallCounters::get(&connection.counters().write_batch))
+                .collect::<Vec<_>>()
+        )
+    });
     assert!(!button.is_sensitive(), "Save stays disabled during its write");
     assert!(
         connection
@@ -428,7 +444,11 @@ fn header_save_follows_sidebar_selection_and_drops_the_previous_tabs_state() {
 fn header_save_uses_the_structure_tabs_save_action() {
     use crate::ui::structure_tab::{ColumnsInput, SaveInput, StructureTab};
 
-    let test = TestWindow::connected("HeaderStructureSave");
+    let test = TestWindow::connected_with("HeaderStructureSave", |script| {
+        script.dialect = std::sync::Arc::new(tablepro_driver_postgres::PgDialect::new(
+            &tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0),
+        ));
+    });
     let workspace = test.workspace();
     let shell = shell_of(&workspace);
     workspace
