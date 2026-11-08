@@ -299,6 +299,7 @@ fn a_tab_moved_where_the_catalog_lists_every_database_opens_nothing() {
     );
     assert_eq!(test.connector.calls().len(), 1, "a session opened for the database");
     assert_eq!(tabs[0].followed_catalog(), None);
+    assert_eq!(selected_session(&test), Some(test.key()));
 }
 
 fn postgres() -> std::sync::Arc<dyn tablepro_core::dialect::SqlDialect> {
@@ -524,4 +525,146 @@ fn a_drop_offers_neither_the_connections_database_nor_the_servers_own() {
         super::super::other_databases::droppable(&databases, Some("analytics"), |name| name.starts_with("template"));
 
     assert_eq!(offered, ["shop"]);
+}
+
+fn selected_session(test: &TestWindow) -> Option<SessionKey> {
+    test.window.shell()?.tree()?.selected_session()
+}
+
+fn query_in(test: &TestWindow, key: &SessionKey) -> (libadwaita::TabPage, crate::ui::editor::SqlEditor) {
+    let shell = test.window.shell().expect("the shell");
+    let count = shell.tab_view().n_pages();
+    WidgetExt::activate_action(
+        &test.window,
+        "win.new-query-in",
+        Some(&crate::ui::session_target::to_variant(key)),
+    )
+    .expect("new query");
+    wait_until(WAIT, || shell.tab_view().n_pages() == count + 1).expect("the query tab");
+    let page = shell.tab_view().selected_page().expect("the selected page");
+    let editor = crate::test_support::descendants(&page.child())
+        .into_iter()
+        .chain([page.child()])
+        .find_map(|widget| widget.downcast::<crate::ui::editor::SqlEditor>().ok())
+        .expect("the editor");
+    (page, editor)
+}
+
+#[gtk4::test]
+fn the_sidebar_selects_a_moved_query_tabs_database_when_its_tab_is_selected() {
+    let test = on_engine("SidebarMovedTab", postgres());
+    connect(&test);
+    let (moved_page, moved) = query_in(&test, &test.key());
+    let (home_page, _) = query_in(&test, &test.key());
+    moved.move_to_database(ANALYTICS);
+    wait_until(WAIT, || moved.followed_catalog().as_deref() == Some(ANALYTICS)).expect("the sibling catalog");
+    assert_eq!(
+        selected_session(&test),
+        Some(test.key()),
+        "a background move stole selection"
+    );
+    let view = test.window.shell().expect("the shell").tab_view();
+    view.set_selected_page(&moved_page);
+    wait_until(WAIT, || selected_session(&test) == Some(analytics(&test))).expect("the database row");
+    view.set_selected_page(&home_page);
+    wait_until(WAIT, || selected_session(&test) == Some(test.key())).expect("the owner row");
+    view.set_selected_page(&moved_page);
+    wait_until(WAIT, || selected_session(&test) == Some(analytics(&test))).expect("the database row again");
+    moved.move_to_database(&test.saved.database);
+    wait_until(WAIT, || selected_session(&test) == Some(test.key())).expect("a return home without switching tabs");
+}
+
+#[gtk4::test]
+fn the_sidebar_follows_a_sibling_owned_query_to_another_database_and_home() {
+    let test = on_engine("SidebarSiblingTab", postgres());
+    connect(&test);
+    test.window.open_database(test.saved.id, ANALYTICS.to_owned());
+    wait_until(WAIT, || test.window.held_session(&analytics(&test)).is_some()).expect("the sibling");
+    let (_, editor) = query_in(&test, &analytics(&test));
+    let reports = SessionKey::SavedIn {
+        id: test.saved.id,
+        database: "reports".to_owned(),
+    };
+    editor.move_to_database("reports");
+    wait_until(WAIT, || selected_session(&test) == Some(reports.clone())).expect("another database's row");
+    wait_until(WAIT, || editor.followed_catalog().as_deref() == Some("reports")).expect("its catalog");
+    editor.move_to_database(&test.saved.database);
+    wait_until(WAIT, || selected_session(&test) == Some(test.key())).expect("the root connection's row");
+    wait_until(WAIT, || {
+        editor.followed_catalog().as_deref() == Some(test.saved.database.as_str())
+    })
+    .expect("the root catalog");
+    editor.move_to_database(ANALYTICS);
+    wait_until(WAIT, || selected_session(&test) == Some(analytics(&test))).expect("the owner's row");
+    assert_eq!(editor.followed_catalog(), None, "the owner's catalog needs no override");
+}
+
+#[gtk4::test]
+fn the_sidebar_follows_a_moved_tab_after_its_database_opens_late() {
+    let mut script = answering_script();
+    script.dialect = postgres();
+    let test = network_window_with(
+        "SidebarLateDatabase",
+        Script {
+            establish: vec![
+                FakeEstablish::Connect(script.clone()),
+                FakeEstablish::Late {
+                    after: Duration::from_millis(250),
+                    script: script.clone(),
+                },
+            ],
+            connection: script,
+            ..Script::default()
+        },
+    );
+    connect(&test);
+    let (_, editor) = query_in(&test, &test.key());
+    editor.move_to_database(ANALYTICS);
+    wait_until(WAIT, || selected_session(&test) == Some(analytics(&test))).expect("the late database row");
+}
+
+#[gtk4::test]
+fn a_failed_database_open_keeps_the_moved_tabs_owner_selected() {
+    let mut script = answering_script();
+    script.dialect = postgres();
+    let test = network_window_with(
+        "SidebarFailedDatabase",
+        Script {
+            establish: vec![
+                FakeEstablish::Connect(script.clone()),
+                FakeEstablish::Fail(tablepro_session::ConnectError::Driver(
+                    tablepro_core::DriverError::Protocol("unavailable".to_owned()),
+                )),
+            ],
+            connection: script,
+            ..Script::default()
+        },
+    );
+    connect(&test);
+    let (_, editor) = query_in(&test, &test.key());
+    editor.move_to_database(ANALYTICS);
+    wait_until(WAIT, || {
+        test.connector.calls().len() == 2 && test.services.sessions.window_for(&analytics(&test)).is_none()
+    })
+    .expect("the failed open to release its claim");
+    assert_eq!(selected_session(&test), Some(test.key()));
+}
+
+#[gtk4::test]
+fn closing_and_reopening_a_moved_tabs_database_refreshes_the_selected_row() {
+    let test = on_engine("SidebarClosedDatabase", postgres());
+    connect(&test);
+    let (page, editor) = query_in(&test, &test.key());
+    editor.move_to_database(ANALYTICS);
+    wait_until(WAIT, || selected_session(&test) == Some(analytics(&test))).expect("the database row");
+    test.window
+        .send(SessionWindowInput::DisconnectSession(analytics(&test)));
+    wait_until(WAIT, || test.window.held_session(&analytics(&test)).is_none()).expect("the sibling closed");
+    assert_eq!(
+        test.window.shell().expect("the shell").tab_view().selected_page(),
+        Some(page)
+    );
+    assert_eq!(selected_session(&test), Some(test.key()));
+    test.window.open_database(test.saved.id, ANALYTICS.to_owned());
+    wait_until(WAIT, || selected_session(&test) == Some(analytics(&test))).expect("the reopened database row");
 }

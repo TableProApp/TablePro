@@ -498,35 +498,63 @@ impl WorkspaceModel {
         self.report_tabs_changed();
     }
 
-    /// While the session is in front, the tree selects the table or key
-    /// its tab shows, or its connection for any other tab. With no tab
-    /// open no row stays selected: one would say a tab shows it.
     pub(super) fn select_in_tree(&self) {
         if !self.is_front() {
             return;
         }
-        let Some(tree) = self.shell.upgrade().and_then(|shell| shell.tree()) else {
+        let Some(shell) = self.shell.upgrade() else {
+            return;
+        };
+        let Some(tree) = shell.tree() else {
             return;
         };
         match self.selected_workspace_tab_id() {
             Some(id) => {
-                let tabs = self.workspace_tabs.borrow();
-                let tab = tabs.get(&id);
-                let shown = tab.and_then(WorkspaceTab::sidebar_object);
-                // A query tab moved to another database shows that database's
-                // row, as the macOS window follows the tab (0030).
-                let moved = match tab {
-                    Some(WorkspaceTab::Editor(slot)) => slot.editor.tab_database(),
-                    _ => None,
+                let (shown, database) = {
+                    let tabs = self.workspace_tabs.borrow();
+                    let tab = tabs.get(&id);
+                    (
+                        tab.and_then(WorkspaceTab::sidebar_object),
+                        tab.and_then(WorkspaceTab::moved_to),
+                    )
                 };
-                let row = match (&self.key, moved) {
-                    (SessionKey::Saved(id), Some(database)) => SessionKey::SavedIn { id: *id, database },
-                    _ => self.key.clone(),
-                };
+                let row = database
+                    .and_then(|database| self.sidebar_database_session(&shell, &database))
+                    .unwrap_or_else(|| self.key.clone());
                 tree.select(Some(&row), shown.as_ref());
             }
             None => tree.select(None, None),
         }
+    }
+
+    fn sidebar_database_session(&self, shell: &super::WorkspaceShell, database: &str) -> Option<SessionKey> {
+        let (SessionKey::Saved(id) | SessionKey::SavedIn { id, .. }) = &self.key else {
+            return None;
+        };
+        // Engines that list databases as schemas have no sibling session row.
+        if self.context.active.get()?.current_dialect()?.database_layout()
+            != tablepro_core::dialect::DatabaseLayout::WithSchemas
+        {
+            return None;
+        }
+        // A database that is still opening, or failed to open, has no row yet.
+        shell.sessions().into_iter().find_map(|workspace| {
+            let key = workspace.key()?;
+            let matches = match &key {
+                SessionKey::Saved(of) if of == id => workspace
+                    .read(|model| {
+                        model
+                            .context
+                            .active
+                            .get()
+                            .is_some_and(|session| session.database() == Some(database))
+                    })
+                    .unwrap_or(false),
+                SessionKey::SavedIn { id: of, database: name } => of == id && name == database,
+                _ => false,
+            };
+            matches.then_some(key)
+        })
     }
 
     pub(super) fn selected_workspace_tab_id(&self) -> Option<Uuid> {
@@ -622,12 +650,11 @@ impl WorkspaceModel {
         self.persist_workspace_state();
     }
 
-    /// A tab that moved to another database is restored there and names
-    /// it in its title.
     pub(super) fn on_editor_tab_database_changed(&self, id: Uuid) {
         self.retitle_tab(id);
         self.persist_workspace_state();
         self.follow_editor_database(id);
+        self.select_in_tree();
     }
 
     /// Ask the window for the session of the database tab `tab_id` moved
@@ -652,14 +679,13 @@ impl WorkspaceModel {
         }
     }
 
-    /// Another database of the connection opened: each editor tab in it
-    /// reads its catalog.
     pub(super) fn on_database_opened(&self, session: &Arc<Session>) {
         for tab in self.workspace_tabs.borrow().values() {
             if let WorkspaceTab::Editor(slot) = tab {
                 slot.editor.follow_catalog(Some(session.clone()));
             }
         }
+        self.select_in_tree();
     }
 
     pub(super) fn on_editor_tab_run_state_changed(&self, id: Uuid, running: bool) {

@@ -349,27 +349,23 @@ impl SessionWindow {
         }
     }
 
-    /// Editor tab `tab_id` of the session under `key` moved to
-    /// `database`, `None` for the connection's own. Its completion reads
-    /// the session the window holds for that database, opened beside
-    /// the connection where a connection's catalog holds one database.
     fn follow_database(&self, key: &SessionKey, tab_id: Uuid, database: Option<String>) {
-        // A tab of another database's own workspace keeps that catalog:
-        // the connection's session may not know the name of its own.
-        let SessionKey::Saved(id) = *key else {
+        let Some(id) = connection_of(key) else {
+            return;
+        };
+        let Some(database) = database else {
+            self.deliver_to(key, WorkspaceInput::FollowCatalog { tab_id, session: None });
             return;
         };
         if !self.opens_databases(id) {
             return;
         }
-        let session = match self.holding(id, database.as_deref()) {
+        let session = match self.holding(id, Some(&database)) {
             // The tab's own workspace reads that catalog already.
             Some((held, _)) if &held == key => None,
             Some((_, session)) => Some(session),
             None => {
-                if let Some(database) = database {
-                    self.open_database(id, database);
-                }
+                self.open_database(id, database);
                 return;
             }
         };
