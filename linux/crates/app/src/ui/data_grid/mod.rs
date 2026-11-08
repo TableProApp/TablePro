@@ -23,6 +23,7 @@ mod reversed_list;
 mod row_detail;
 mod row_json_dialog;
 mod row_number_column;
+mod scheme_colors;
 mod selection;
 mod selection_summary;
 mod server_sorter;
@@ -89,6 +90,9 @@ impl DataGrid {
         find_bar::install(&grid);
         imp.detail_pane.attach(&grid);
         grid.set_columns(columns, sorting, rules);
+        if let Some(settings) = grid.config().map(|config| config.settings.clone()) {
+            scheme_colors::follow(&settings);
+        }
         grid.watch_fonts();
         grid.watch_stripes();
         grid
