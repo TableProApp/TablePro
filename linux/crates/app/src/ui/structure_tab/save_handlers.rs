@@ -112,7 +112,11 @@ impl StructureModel {
     }
 
     fn request_refresh(&mut self, fx: &mut StructureEffects) {
-        if self.saving || self.tracker.is_saving() {
+        if self.saving || self.tracker.is_saving() || self.load.is_running() {
+            return;
+        }
+        if self.refetching {
+            fx.input(SaveInput::Reload);
             return;
         }
         let unknown = matches!(
@@ -151,6 +155,10 @@ impl StructureModel {
     }
 
     fn save(&self, fx: &mut StructureEffects) {
+        if self.edits_locked() {
+            self.refuse_edit(&SaveInput::Save.into(), fx);
+            return;
+        }
         let pending = self.pending();
         match SaveGate::of(&pending) {
             SaveGate::Enabled => {}
@@ -197,15 +205,13 @@ impl StructureModel {
         self.sync_editable();
     }
 
-    /// The draft holds still from the moment a save takes it until the
-    /// table is read again after a commit. That read replaces the draft,
-    /// so an edit made before it would be lost without a prompt.
     pub(super) fn edits_locked(&self) -> bool {
-        self.saving || self.refetching || self.tracker.is_saving()
+        // Every definition read replaces the draft, including refreshes that did not follow a save.
+        self.saving || self.refetching || self.tracker.is_saving() || self.load.is_running()
     }
 
     pub(super) fn sync_editable(&self) {
-        let editable = !self.saving && !self.refetching;
+        let editable = !self.edits_locked();
         for widget in [
             self.widgets.name_row.upcast_ref::<gtk::Widget>(),
             self.widgets.columns_box.upcast_ref(),
@@ -231,11 +237,12 @@ impl StructureModel {
         // The save landed and the read after it failed, so only Retry
         // unlocks the draft.
         let read_failed = self.refetching && !self.saving && !self.tracker.is_saving() && !self.load.is_running();
-        let text = match read_failed {
-            true => {
-                crate::i18n::gettext("The table couldn't be read after the save. Retry, then make the change again.")
-            }
-            false => crate::i18n::gettext("Wait for the save to finish, then make the change again."),
+        let text = if read_failed {
+            crate::i18n::gettext("The table couldn't be read after the save. Retry, then make the change again.")
+        } else if self.load.is_running() {
+            crate::i18n::gettext("Wait for the table structure to load, then make the change again.")
+        } else {
+            crate::i18n::gettext("Wait for the save to finish, then make the change again.")
         };
         fx.output(StructureTabOutput::ShowToast(text));
     }
@@ -270,7 +277,7 @@ impl StructureModel {
     }
 
     pub(super) fn refresh_buttons(&self, pending_count: usize, defaults_parsed: bool) {
-        let has_pending = pending_count > 0 && !self.saving;
+        let has_pending = pending_count > 0 && !self.edits_locked();
         self.widgets.save_button.set_sensitive(has_pending && defaults_parsed);
         self.widgets.discard_button.set_sensitive(has_pending);
         if has_pending {

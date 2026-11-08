@@ -406,6 +406,157 @@ fn banner_tooltip(harness: &Harness) -> String {
 }
 
 #[gtk4::test]
+fn replacing_structure_reads_lock_edits_and_save_until_the_definition_lands() {
+    let triggers: [StructureTabInput; 3] = [
+        SaveInput::RequestRefresh.into(),
+        LoadInput::SchemaChanged.into(),
+        LoadInput::Retry.into(),
+    ];
+    for trigger in triggers {
+        let release = tokio_util::sync::CancellationToken::new();
+        let mut script = postgres_script();
+        script
+            .fetch_table_definition
+            .once(FakeReply::ok(definition("id")))
+            .always(FakeReply::UntilReleased {
+                release: release.clone(),
+                outcome: Ok(definition("server_id")),
+            });
+        let harness = Harness::open(StructureMode::Edit, script, []);
+        harness.wait_for_structure();
+        let saves = Rc::new(std::cell::Cell::new(0));
+        let sink = saves.clone();
+        harness.tab().connect_save_requested(move |_| sink.set(sink.get() + 1));
+        let notices = toasts(harness.tab());
+
+        harness.tab().send(trigger);
+        wait_until(WAIT, || {
+            CallCounters::get(&harness.fake.connection.counters().fetch_table_definition) == 2
+        })
+        .expect("the replacement read is waiting");
+        let imp = harness.tab().imp();
+        assert!(harness.tab().is_loading());
+        assert!(!imp.columns_box.is_sensitive());
+        assert!(!imp.save_button.is_sensitive());
+        harness.tab().send(ColumnsInput::ColumnEdited {
+            column: harness.column(0),
+            field: ColumnField::Comment(Some("would be lost".to_owned())),
+        });
+        harness.tab().send(ColumnsInput::AddColumn);
+        harness.tab().send(SaveInput::Save);
+
+        assert_eq!(harness.column_names(), ["id"]);
+        assert_eq!(harness.comments(), [None]);
+        assert_eq!(saves.get(), 0);
+        assert_eq!(harness.tracker().pending_state(), crate::workspace::PendingState::Clean);
+        assert_eq!(notices.borrow().len(), 3);
+        assert!(
+            notices
+                .borrow()
+                .iter()
+                .all(|text| text.contains("table structure to load"))
+        );
+
+        release.cancel();
+        wait_until(WAIT, || {
+            harness.column_names() == ["server_id"] && imp.columns_box.is_sensitive()
+        })
+        .expect("the loaded definition unlocks editing");
+        harness.tab().send(ColumnsInput::ColumnEdited {
+            column: harness.column(0),
+            field: ColumnField::Comment(Some("new draft".to_owned())),
+        });
+        assert_eq!(harness.comments(), [Some("new draft".to_owned())]);
+        assert!(imp.save_button.is_sensitive());
+    }
+}
+
+#[gtk4::test]
+fn retrying_a_failed_structure_refresh_asks_before_replacing_a_new_draft() {
+    let mut script = postgres_script();
+    script
+        .fetch_table_definition
+        .once(FakeReply::ok(definition("id")))
+        .once(FakeReply::err(DriverError::server("denied")))
+        .always(FakeReply::ok(definition("server_id")));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    harness.wait_for_structure();
+    let window = in_window(&harness);
+    harness.tab().request_refresh();
+    wait_until(WAIT, || banner(&harness).is_revealed()).expect("the failed refresh");
+    assert!(harness.tab().imp().columns_box.is_sensitive());
+    harness.tab().send(ColumnsInput::ColumnEdited {
+        column: harness.column(0),
+        field: ColumnField::Comment(Some("new draft".to_owned())),
+    });
+
+    banner(&harness).emit_by_name::<()>("button-clicked", &[]);
+    answer_discard(&window, "cancel");
+
+    assert_eq!(harness.comments(), [Some("new draft".to_owned())]);
+    assert_eq!(
+        CallCounters::get(&harness.fake.connection.counters().fetch_table_definition),
+        2
+    );
+    banner(&harness).emit_by_name::<()>("button-clicked", &[]);
+    answer_discard(&window, "discard");
+    wait_until(WAIT, || harness.column_names() == ["server_id"]).expect("the confirmed replacement definition");
+    assert_eq!(harness.tracker().pending_state(), crate::workspace::PendingState::Clean);
+}
+
+#[gtk4::test]
+fn reconnect_keeps_edits_made_after_a_failed_structure_refresh() {
+    let mut first = postgres_script();
+    first
+        .fetch_table_definition
+        .once(FakeReply::ok(definition("id")))
+        .always(FakeReply::err(DriverError::server("denied")));
+    let mut second = postgres_script();
+    second
+        .fetch_table_definition
+        .always(FakeReply::ok(definition("server_id")));
+    let harness = Harness::open(StructureMode::Edit, first, [FakeEstablish::Connect(second)]);
+    harness.wait_for_structure();
+    let window = in_window(&harness);
+    harness.tab().request_refresh();
+    wait_until(WAIT, || banner(&harness).is_revealed()).expect("the failed refresh");
+    harness.tab().send(ColumnsInput::ColumnEdited {
+        column: harness.column(0),
+        field: ColumnField::Comment(Some("new draft".to_owned())),
+    });
+
+    harness.fake.connection.mark_lost();
+    wait_until(WAIT, || {
+        harness
+            .tab()
+            .imp()
+            .model
+            .borrow()
+            .as_ref()
+            .is_some_and(|model| model.link_generation.get() == 1)
+    })
+    .expect("the tab heard the reconnect");
+
+    assert_eq!(harness.comments(), [Some("new draft".to_owned())]);
+    assert_eq!(
+        harness.tracker().pending_state(),
+        crate::workspace::PendingState::Unsaved
+    );
+    assert_eq!(
+        CallCounters::get(&harness.fake.replacement().counters().fetch_table_definition),
+        0
+    );
+
+    harness.tab().send(SaveInput::ConfirmDiscard);
+    answer_discard(&window, "discard");
+    wait_until(WAIT, || harness.column_names() == ["server_id"]).expect("discard reads the replacement connection");
+    assert_eq!(
+        CallCounters::get(&harness.fake.replacement().counters().fetch_table_definition),
+        1
+    );
+}
+
+#[gtk4::test]
 fn structure_refresh_failure_keeps_editor_and_shows_banner() {
     let harness = Harness::open(StructureMode::Edit, readable_once(), []);
     wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
