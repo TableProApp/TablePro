@@ -170,7 +170,6 @@ impl FavoritesPane {
         stack.set_vexpand(true);
 
         let new_folder = gtk::Button::builder()
-            .label(gettext("New Folder"))
             .icon_name("folder-new-symbolic")
             .halign(gtk::Align::Start)
             .margin_top(6)
@@ -178,6 +177,8 @@ impl FavoritesPane {
             .margin_start(6)
             .build();
         new_folder.add_css_class("flat");
+        new_folder.set_tooltip_text(Some(&gettext("New Folder")));
+        new_folder.update_property(&[gtk::accessible::Property::Label(&gettext("New Folder"))]);
         new_folder.connect_clicked({
             let asked = asked.clone();
             move |_| asked(FavoriteAction::NewFolder(None))
