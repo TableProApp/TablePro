@@ -5,18 +5,18 @@
   <menu id="structure_menu">
     <section>
       <item>
-        <attribute name="label" translatable="yes">Discard Changes…</attribute>
+        <attribute name="label" translatable="yes">_Discard Changes…</attribute>
         <attribute name="action">structure.discard</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Stop Saving</attribute>
+        <attribute name="label" translatable="yes">_Stop Saving</attribute>
         <attribute name="action">structure.stop</attribute>
         <attribute name="hidden-when">action-disabled</attribute>
       </item>
     </section>
     <section>
       <item>
-        <attribute name="label" translatable="yes">Drop Table…</attribute>
+        <attribute name="label" translatable="yes">Drop _Table…</attribute>
         <attribute name="action">structure.drop</attribute>
         <attribute name="hidden-when">action-disabled</attribute>
       </item>
