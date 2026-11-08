@@ -222,7 +222,6 @@ mod tests {
     use tablepro_core::Value;
     use tablepro_core::column::{BoolStorage, ColumnKind, ColumnType};
     use tablepro_core::value::{JsonText, OffsetTimestamp, SqlTime, Temporal, UndecodableReason, UndecodedValue};
-    use tablepro_linux_platform::settings::DateFormat;
 
     use super::{DISPLAY_MAX_CHARS, DisplayText, display_text, null_text};
 

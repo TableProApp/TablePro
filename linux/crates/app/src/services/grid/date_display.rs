@@ -191,6 +191,38 @@ mod tests {
     }
 
     #[test]
+    fn leap_seconds_keep_the_fraction_for_naive_and_offset_timestamps() {
+        let leap = NaiveDate::from_ymd_opt(2016, 12, 31)
+            .expect("a day")
+            .and_hms_nano_opt(23, 59, 59, 1_123_000_000)
+            .expect("a leap second");
+        let offset = FixedOffset::east_opt(5 * 3600 + 30 * 60).expect("offset");
+        let with_offset = OffsetTimestamp::from_datetime(leap.and_local_timezone(offset).single().expect("an instant"));
+        for (value, column, offset) in [
+            (Value::Timestamp(Temporal::Finite(leap)), stamp(Some(6)), ""),
+            (
+                Value::TimestampTz(Temporal::Finite(with_offset)),
+                column(ColumnKind::Timestamp {
+                    fractional_digits: Some(6),
+                    zone: TemporalZone::Offset,
+                }),
+                "+05:30",
+            ),
+        ] {
+            for (format, expected) in [
+                (DateFormat::Iso, format!("2016-12-31 23:59:60.123000{offset}")),
+                (DateFormat::UsLong, format!("12/31/2016 11:59:60.123000 PM{offset}")),
+                (DateFormat::EuLong, format!("31/12/2016 23:59:60.123000{offset}")),
+                (DateFormat::IsoDate, "2016-12-31".to_owned()),
+                (DateFormat::UsShort, "12/31/2016".to_owned()),
+                (DateFormat::EuShort, "31/12/2016".to_owned()),
+            ] {
+                assert_eq!(shown(&value, &column, format), expected);
+            }
+        }
+    }
+
+    #[test]
     fn bc_years_and_years_past_four_digits_keep_their_era() {
         for (year, expected) in [(0, "01/01/0001 BC"), (-43, "01/01/0044 BC"), (10_000, "01/01/10000")] {
             let day = NaiveDate::from_ymd_opt(year, 1, 1).expect("a day");
