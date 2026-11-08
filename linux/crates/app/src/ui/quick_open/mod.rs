@@ -19,6 +19,7 @@ use tablepro_session::{ObjectListSnapshot, Session};
 
 use crate::i18n::{gettext, gettext_f};
 use crate::runtime::{RequestSequencer, spawn_and_deliver};
+use crate::ui::handler_guard::HandlerGuard;
 use crate::ui::icons;
 pub(crate) use search_index::Target;
 use search_index::{Candidate, SearchIndex};
@@ -73,6 +74,7 @@ mod imp {
         pub(super) rendered: RefCell<Option<String>>,
         pub(super) pending_pick: Cell<Option<bool>>,
         pub(super) pending_steps: RefCell<Vec<i32>>,
+        pub(super) scroll_layout: RefCell<Option<HandlerGuard>>,
     }
 
     #[glib::object_subclass]
@@ -178,6 +180,7 @@ impl QuickOpen {
         self.set_child(Some(&view));
         self.set_focus(Some(&entry));
         self.connect_controls(&entry, &list, &banner, &view);
+        self.connect_scroll_layout(&list);
         let _ = self.imp().widgets.set(Widgets {
             entry,
             store,
@@ -261,6 +264,70 @@ impl QuickOpen {
         view.add_controller(keys);
     }
 
+    fn connect_scroll_layout(&self, list: &gtk::ListView) {
+        list.connect_map(glib::clone!(
+            #[weak(rename_to=dialog)]
+            self,
+            move |_| dialog.scroll_selection_after_layout()
+        ));
+        list.connect_unmap(glib::clone!(
+            #[weak(rename_to=dialog)]
+            self,
+            move |_| {
+                dialog.imp().scroll_layout.borrow_mut().take();
+            }
+        ));
+    }
+
+    fn scroll_selection_after_layout(&self) {
+        let imp = self.imp();
+        if imp.context.borrow().is_none() || imp.scroll_layout.borrow().is_some() {
+            return;
+        }
+        let Some(widgets) = imp.widgets.get().filter(|widgets| widgets.list.is_mapped()) else {
+            return;
+        };
+        let Some(surface) = widgets.list.native().and_then(|native| native.surface()) else {
+            return;
+        };
+        // GtkNative's earlier layout handler allocates rows before scrolling reads their geometry.
+        let handler = surface.connect_layout(glib::clone!(
+            #[weak(rename_to=dialog)]
+            self,
+            move |_, _, _| dialog.scroll_allocated_selection()
+        ));
+        imp.scroll_layout.replace(Some(HandlerGuard::new(&surface, handler)));
+        widgets.list.queue_allocate();
+        surface.request_layout();
+    }
+
+    fn scroll_allocated_selection(&self) {
+        let imp = self.imp();
+        let Some(widgets) = imp.widgets.get() else {
+            return;
+        };
+        if imp.context.borrow().is_none() || !widgets.list.is_mapped() || !self.current() {
+            imp.scroll_layout.borrow_mut().take();
+            return;
+        }
+        let allocated = widgets
+            .list
+            .hadjustment()
+            .is_some_and(|adjustment| adjustment.page_size() > 0.0)
+            && widgets
+                .list
+                .vadjustment()
+                .is_some_and(|adjustment| adjustment.page_size() > 0.0);
+        if !allocated {
+            return;
+        }
+        imp.scroll_layout.borrow_mut().take();
+        let selected = widgets.selection.selected();
+        if selected < widgets.store.n_items() {
+            widgets.list.scroll_to(selected, gtk::ListScrollFlags::NONE, None);
+        }
+    }
+
     fn key(&self, key: gdk::Key, modifiers: gdk::ModifierType) -> glib::Propagation {
         let matches = |action| crate::application::component_matches(action, key, modifiers);
         if matches("quick-open.structure") {
@@ -290,6 +357,7 @@ impl QuickOpen {
     }
 
     fn stop(&self) {
+        self.imp().scroll_layout.borrow_mut().take();
         self.imp().context.borrow_mut().take();
         self.imp().watches.borrow_mut().clear();
         self.imp().requests.borrow_mut().cancel_all();
@@ -466,9 +534,7 @@ impl QuickOpen {
             .set_visible_child_name(if items.is_empty() { "status" } else { "list" });
         imp.rendered.replace(Some(text));
         if !items.is_empty() {
-            widgets
-                .list
-                .scroll_to(widgets.selection.selected(), gtk::ListScrollFlags::NONE, None);
+            self.scroll_selection_after_layout();
         }
         let steps = std::mem::take(&mut *imp.pending_steps.borrow_mut());
         for by in steps {
@@ -541,7 +607,7 @@ impl QuickOpen {
         let next = (current + i64::from(by)).clamp(0, i64::from(count) - 1);
         let position = u32::try_from(next).unwrap_or(0);
         widgets.selection.set_selected(position);
-        widgets.list.scroll_to(position, gtk::ListScrollFlags::NONE, None);
+        self.scroll_selection_after_layout();
     }
 }
 
