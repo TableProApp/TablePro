@@ -25,6 +25,7 @@ use crate::ui::data_grid::{DataGrid, GridCell, GridRequest};
 use crate::ui::export::ExportSource;
 
 const BEFORE: &str = "nothing copied yet";
+const TWO_TEXT_ROWS_JSON: &str = "[\n{\"id\":1,\"name\":\"A\"},\n{\"id\":2,\"name\":\"B\"}\n]";
 
 /// What a copy test drives: a grid and the requests it made.
 trait Copies {
@@ -747,10 +748,7 @@ fn copy_writes_several_rows_in_the_preferred_format() {
             RowCopyFormat::Csv => assert_eq!(text, "1,A\n2,B\n"),
             RowCopyFormat::CsvWithHeaders => assert_eq!(text, "id,name\n1,A\n2,B\n"),
             RowCopyFormat::Markdown => assert_eq!(text, "| id | name |\n| --- | --- |\n| 1 | A |\n| 2 | B |"),
-            RowCopyFormat::Json => assert_eq!(
-                serde_json::from_str::<serde_json::Value>(&text).expect("JSON rows"),
-                serde_json::json!([{"id": 1, "name": "A"}, {"id": 2, "name": "B"}]),
-            ),
+            RowCopyFormat::Json => assert_eq!(text, TWO_TEXT_ROWS_JSON),
         }
     }
 }
@@ -775,8 +773,5 @@ fn preferred_row_format_preserves_single_cell_copy_and_explicit_formats() {
         "id,name\n1,A\n2,B\n"
     );
     let text = copied(&grid, || activate(&grid.grid, "copy"));
-    assert_eq!(
-        serde_json::from_str::<serde_json::Value>(&text).expect("JSON rows"),
-        serde_json::json!([{"id": 1, "name": "A"}, {"id": 2, "name": "B"}]),
-    );
+    assert_eq!(text, TWO_TEXT_ROWS_JSON);
 }
