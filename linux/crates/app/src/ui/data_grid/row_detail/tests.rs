@@ -1646,7 +1646,21 @@ fn search_keys_and_tab_order_reach_the_filter_list_and_value() {
         value: text("changed"),
     });
     grid.grid.apply_delta(&delta);
-    pane.imp().field_search.grab_focus();
+    // GTK orders Tab stops by their allocation, which follows the pane opening.
+    wait_until(WAIT, || {
+        pane.imp().field_search.is_mapped()
+            && pane.imp().field_search.width() > 0
+            && pane.imp().field_search.height() > 0
+            && pane.imp().edited_toggle.is_mapped()
+            && pane.imp().edited_toggle.width() > 0
+            && pane.imp().edited_toggle.height() > 0
+            && pane.imp().field_list.width() > 0
+    })
+    .expect("the search controls are laid out");
+    crate::test_support::after_next_frame(&grid.window);
+    assert!(pane.imp().edited_toggle.is_sensitive());
+    assert!(pane.imp().field_search.grab_focus());
+    assert!(crate::ui::a11y::holds_focus(&pane.imp().field_search.get()));
     let keys = crate::test_support::KeyInjector::connect().expect("an X11 display");
     keys.press(gdk::Key::Tab, gdk::ModifierType::empty()).expect("Tab");
     wait_until(WAIT, || crate::ui::a11y::holds_focus(&pane.imp().edited_toggle.get())).expect("Tab to the filter");
