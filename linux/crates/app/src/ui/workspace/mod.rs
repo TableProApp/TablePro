@@ -179,6 +179,7 @@ pub(crate) struct WorkspaceModel {
     /// The CSV imports running into this workspace's tables.
     imports: Rc<import_ledger::ImportLedger>,
     history_dialog: Option<HistoryDialog>,
+    quick_open_dialog: Option<super::quick_open::QuickOpen>,
     saved_queries_dialog: Option<super::saved_queries_dialog::SavedQueriesDialog>,
     import_dialog: Option<super::import_dialog::ImportCsvDialog>,
     driver_id: String,
@@ -896,6 +897,7 @@ impl Workspace {
             exports: exports.clone(),
             imports: imports.clone(),
             history_dialog: None,
+            quick_open_dialog: None,
             saved_queries_dialog: None,
             import_dialog: None,
             workspace: persistence,
@@ -1263,6 +1265,7 @@ impl WorkspaceModel {
             keys.stop_listing();
         }
         self.sidebar.shutdown();
+        self.close_quick_open();
         // Their entries name this session's tables and queries.
         if let Some(dialog) = self.history_dialog.take() {
             close_if_presented(dialog.upcast_ref());
