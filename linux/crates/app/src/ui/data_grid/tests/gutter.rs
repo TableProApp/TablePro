@@ -264,7 +264,12 @@ fn pinned_number(grid: &Grid, value: &str) -> gtk::Inscription {
     descendants(&grid.grid.column_view())
         .into_iter()
         .filter_map(|widget| widget.downcast::<gtk::Inscription>().ok())
-        .find(|number| number.text().as_deref() == Some(value))
+        .find(|number| {
+            number.text().as_deref() == Some(value)
+                && number
+                    .parent()
+                    .is_some_and(|content| content.has_css_class("row-number-cell"))
+        })
         .expect("the pinned row number")
 }
 
@@ -519,6 +524,9 @@ fn the_pinned_gutter_shows_pending_states_and_stripes() {
     assert_eq!(icon.tooltip_text().as_deref(), Some("Modified"));
     let second = pinned_number(&grid, "2");
     assert!(second.parent().expect("content").has_css_class("tp-stripe"));
+    grid.grid.selection().select_item(1, false);
+    after_next_frame(&grid.window);
+    assert_pinned_pixels(&grid);
     grid.grid.discard();
     assert!(!icon.is_visible());
     after_next_frame(&grid.window);
@@ -662,6 +670,7 @@ fn rtl_gutter_menus_and_focus_follow_its_actual_edge() {
     let view = grid.grid.column_view();
     let gutter = projection(&grid).compute_bounds(&view).expect("gutter");
     assert!(gutter.x() > view.width() as f32 / 2.0);
+    assert_pinned_pixels(&grid);
     let input = KeyInjector::connect().expect("X11 input");
     input.button(&view, pinned_point(&grid, "2"), 3, 1).expect("row menu");
     let menus = grid.grid.imp().menus.get().expect("menus");

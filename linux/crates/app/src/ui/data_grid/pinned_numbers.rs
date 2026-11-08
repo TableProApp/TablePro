@@ -4,6 +4,7 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, glib};
 use libadwaita as adw;
+use libadwaita::prelude::BinExt;
 use libadwaita::subclass::prelude::*;
 
 use super::{DataGrid, GridCell};

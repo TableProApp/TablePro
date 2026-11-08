@@ -135,15 +135,6 @@ impl ObjectImpl for DataGrid {
             menus.unparent();
         }
         self.columns.borrow_mut().release();
-        while let Some(column) = self
-            .gutter_view
-            .columns()
-            .item(0)
-            .and_downcast::<gtk4::ColumnViewColumn>()
-        {
-            column.set_factory(None::<&gtk4::ListItemFactory>);
-            self.gutter_view.remove_column(&column);
-        }
         self.store.clear();
     }
 }
