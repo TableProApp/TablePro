@@ -32,7 +32,7 @@ pub fn build(grid: &DataGrid) -> gtk::ColumnViewColumn {
         number.add_css_class("dimmed");
         let content = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         // Pending icons must not change the virtual lists' row-height estimates.
-        content.set_size_request(-1, 16);
+        content.add_css_class("row-number-cell");
         content.append(&icon);
         content.append(&number);
         cell.set_child(Some(&content));

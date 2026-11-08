@@ -74,9 +74,18 @@ fn focus_on_click(grid: &DataGrid) -> gtk::GestureClick {
             gesture.set_state(gtk::EventSequenceState::Claimed);
             return;
         }
-        if let Hit::Cell(cell) = hit_at(&grid, x, y)
-            && let Some(focusable) = cell.parent()
-        {
+        let cell = match hit_at(&grid, x, y) {
+            Hit::Cell(cell) => Some(cell),
+            Hit::Row(_, position) => {
+                let column = grid
+                    .focused_cell()
+                    .map(|cell| cell.column())
+                    .or_else(|| grid.shown_columns().first().copied());
+                column.and_then(|column| grid.focus_cell(position, column))
+            }
+            _ => None,
+        };
+        if let Some(focusable) = cell.and_then(|cell| cell.parent()) {
             focusable.grab_focus();
         }
     });

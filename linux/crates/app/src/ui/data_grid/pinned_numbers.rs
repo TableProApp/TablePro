@@ -137,11 +137,19 @@ pub(super) fn sync(grid: &DataGrid) {
         gutter.set_width_request(column.fixed_width());
     }
     gutter.set_visible(imp.scrolled.hadjustment().value() > 0.0);
+    grid.edit().queue_editor_allocate();
+}
+
+pub(super) fn bounds(grid: &DataGrid) -> Option<gtk::graphene::Rect> {
+    let gutter = &grid.imp().gutter_view;
+    gutter
+        .is_visible()
+        .then(|| gutter.compute_bounds(&grid.column_view()))
+        .flatten()
 }
 
 pub(super) fn covers(grid: &DataGrid, x: f64) -> bool {
-    let gutter = &grid.imp().gutter_view;
-    gutter.is_visible() && x >= 0.0 && x < f64::from(gutter.width())
+    bounds(grid).is_some_and(|rect| x >= f64::from(rect.x()) && x < f64::from(rect.x() + rect.width()))
 }
 
 pub(super) fn reveal_focus(grid: &DataGrid) {
@@ -161,10 +169,16 @@ pub(super) fn reveal_focus(grid: &DataGrid) {
             let Some(bounds) = cell.compute_bounds(&grid.column_view()) else {
                 return;
             };
-            let width = grid.row_numbers_column().map_or(0, |column| column.fixed_width());
-            if bounds.x() < width as f32 {
+            let Some(gutter) = self::bounds(&grid) else {
+                return;
+            };
+            let covered = match grid.column_view().direction() {
+                gtk::TextDirection::Rtl => bounds.x() + bounds.width() - gutter.x(),
+                _ => gutter.x() + gutter.width() - bounds.x(),
+            };
+            if covered > 0.0 {
                 let adjustment = grid.imp().scrolled.hadjustment();
-                adjustment.set_value(adjustment.value() + f64::from(bounds.x()) - f64::from(width));
+                adjustment.set_value(adjustment.value() - f64::from(covered));
             }
         }
     ));

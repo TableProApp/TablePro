@@ -33,6 +33,10 @@ columnview.row-gutter {
   background-color: var(--view-bg-color);
 }
 
+columnview.data-table > listview > row > cell > .row-number-cell {
+  min-height: 16px;
+}
+
 columnview.data-table > listview > row > cell > * {
   padding: 2px 6px;
 }

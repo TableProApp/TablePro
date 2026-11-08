@@ -107,7 +107,6 @@ mod imp {
         type ParentType = gtk::Widget;
 
         fn class_init(klass: &mut Self::Class) {
-            klass.set_layout_manager_type::<gtk::BinLayout>();
             klass.set_css_name("tp-grid-cell");
         }
     }
@@ -125,17 +124,40 @@ mod imp {
     }
 
     impl WidgetImpl for GridCell {
-        fn contains(&self, x: f64, y: f64) -> bool {
-            let cell = self.obj();
-            if let Some(grid) = cell.grid()
-                && let Some(point) =
-                    cell.compute_point(&grid.column_view(), &gtk::graphene::Point::new(x as f32, y as f32))
-                && super::super::pinned_numbers::covers(&grid, f64::from(point.x()))
-            {
-                // An editor below the passive gutter must not take its pointer gestures.
-                return false;
+        fn measure(&self, orientation: gtk::Orientation, for_size: i32) -> (i32, i32, i32, i32) {
+            let mut size = (0, 0, -1, -1);
+            let mut child = self.obj().first_child();
+            while let Some(widget) = child {
+                if widget.should_layout() {
+                    let measured = widget.measure(orientation, for_size);
+                    size = (
+                        size.0.max(measured.0),
+                        size.1.max(measured.1),
+                        size.2.max(measured.2),
+                        size.3.max(measured.3),
+                    );
+                }
+                child = widget.next_sibling();
             }
-            self.parent_contains(x, y)
+            size
+        }
+
+        fn size_allocate(&self, width: i32, height: i32, baseline: i32) {
+            let cell = self.obj();
+            let mut child = cell.first_child();
+            while let Some(widget) = child {
+                if widget.should_layout() {
+                    let (offset, available) = if self.editor.borrow().as_ref() == Some(&widget) {
+                        cell.editor_space(width)
+                    } else {
+                        (0, width)
+                    };
+                    let transform =
+                        gtk::gsk::Transform::new().translate(&gtk::graphene::Point::new(offset as f32, 0.0));
+                    widget.allocate(available, height, baseline, Some(transform));
+                }
+                child = widget.next_sibling();
+            }
         }
 
         fn unroot(&self) {
@@ -160,6 +182,7 @@ glib::wrapper! {
 impl GridCell {
     pub fn new(paint: Rc<ColumnPaint>) -> Self {
         let cell: Self = glib::Object::new();
+        cell.set_overflow(gtk::Overflow::Hidden);
         let display = gtk::Inscription::new(None);
         display.set_hexpand(true);
         // An ellipsized Inscription draws from its top edge, so it is kept
@@ -173,6 +196,27 @@ impl GridCell {
         let _ = cell.imp().display.set(display);
         let _ = cell.imp().paint.set(paint);
         cell
+    }
+
+    fn editor_space(&self, width: i32) -> (i32, i32) {
+        let Some(grid) = self.grid() else {
+            return (0, width);
+        };
+        let Some(gutter) = super::pinned_numbers::bounds(&grid) else {
+            return (0, width);
+        };
+        let Some(origin) = self.compute_point(&grid.column_view(), &gtk::graphene::Point::new(0.0, 0.0)) else {
+            return (0, width);
+        };
+        // GTK picks descendants before their parent's contains method. Allocate
+        // the editor in the uncovered part so its native gestures cannot reach the gutter.
+        match grid.column_view().direction() {
+            gtk::TextDirection::Rtl => (0, ((gutter.x() - origin.x()).floor() as i32).clamp(0, width)),
+            _ => {
+                let offset = ((gutter.x() + gutter.width() - origin.x()).ceil() as i32).clamp(0, width);
+                (offset, width - offset)
+            }
+        }
     }
 
     pub fn attach(&self, list_item: &gtk::ColumnViewCell) {

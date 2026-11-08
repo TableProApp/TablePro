@@ -466,9 +466,19 @@ fn a_covered_editor_cannot_take_a_gutter_click() {
     assert!(grid.grid.edit().edit_cell(&grid.cell_of(1, 1)));
     let input = KeyInjector::connect().expect("X11 input");
     sideways(&grid);
-    let number = pinned_number(&grid, "3");
+    let number = pinned_number(&grid, "1");
+    let point = number
+        .compute_point(&grid.grid.column_view(), &gtk::graphene::Point::new(4.0, 4.0))
+        .expect("point");
+    let picked = grid
+        .grid
+        .column_view()
+        .pick(f64::from(point.x()), f64::from(point.y()), gtk::PickFlags::DEFAULT)
+        .expect("gutter target");
+    assert!(!picked.is::<gtk::Text>(), "the covered editor took the gutter");
     input.click(&number, (4.0, 4.0), 1).expect("gutter click");
-    wait_until(WAIT, || grid.grid.selection().is_selected(2)).expect("the gutter selects its row");
+    wait_until(WAIT, || !grid.grid.edit().editor_has_focus()).expect("the gutter moved focus out of the editor");
+    assert!(grid.grid.selection().is_selected(0));
     assert!(!grid.grid.edit().editor_has_focus());
 }
 
@@ -547,4 +557,56 @@ fn dragging_the_pinned_header_does_not_move_a_data_column() {
         .expect("header drag");
     after_next_frame(&grid.window);
     assert_eq!(grid.grid.shown_columns(), before);
+}
+
+#[gtk4::test]
+fn rtl_gutter_menus_and_focus_follow_its_actual_edge() {
+    use crate::test_support::{KeyInjector, wait_until};
+    use crate::ui::data_grid::test_grid::WAIT;
+    use gtk::subclass::prelude::*;
+    struct Direction(gtk::TextDirection);
+    impl Drop for Direction {
+        fn drop(&mut self) {
+            gtk::Widget::set_default_direction(self.0);
+        }
+    }
+    let _direction = Direction(gtk::Widget::default_direction());
+    gtk::Widget::set_default_direction(gtk::TextDirection::Rtl);
+    let grid = wide_rows(20);
+    KeyInjector::focus_only(&grid.window);
+    sideways(&grid);
+    let view = grid.grid.column_view();
+    let gutter = projection(&grid).compute_bounds(&view).expect("gutter");
+    assert!(gutter.x() > view.width() as f32 / 2.0);
+    let input = KeyInjector::connect().expect("X11 input");
+    input
+        .button(&pinned_number(&grid, "2"), (4.0, 4.0), 3, 1)
+        .expect("row menu");
+    let menus = grid.grid.imp().menus.get().expect("menus");
+    wait_until(WAIT, || menus.cell.is_visible()).expect("row menu opened");
+    assert_eq!(grid.grid.target().expect("target").rows[0].key(), Some(key(2)));
+    menus.cell.popdown();
+    drain_main_context();
+    sideways(&grid);
+    input
+        .button(&projection(&grid), (10.0, 10.0), 3, 1)
+        .expect("header menu");
+    wait_until(WAIT, || menus.row_numbers.is_visible()).expect("header menu opened");
+    menus.row_numbers.popdown();
+    grid.focus(0, 10);
+    after_next_frame(&grid.window);
+    for column in (0..10).rev() {
+        input
+            .press(gtk::gdk::Key::Right, gtk::gdk::ModifierType::empty())
+            .expect("right");
+        wait_until(WAIT, || grid.focused_cell().is_some_and(|cell| cell.column() == column)).expect("focused column");
+        after_next_frame(&grid.window);
+        let cell = grid.focused_cell().expect("cell");
+        let bounds = cell.compute_bounds(&view).expect("bounds");
+        let width = grid.grid.row_numbers_column().expect("numbers").fixed_width() as f32;
+        assert!(
+            bounds.x() + bounds.width() <= view.width() as f32 - width + 1.0,
+            "column {column}: {bounds:?}"
+        );
+    }
 }

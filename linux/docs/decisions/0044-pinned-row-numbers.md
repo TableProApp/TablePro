@@ -22,8 +22,8 @@ share a height group; their documented header CSS node is located in the composi
 
 The projection cannot take input or focus and is hidden from accessibility. Pointer
 events reach the main native list, which keeps its selection anchor, drag gestures
-and keyboard navigation. Covered cells exclude that area from hit testing so an
-inline editor cannot take a gutter gesture. The grid resolves gutter clicks as rows
+and keyboard navigation. Inline editors are allocated only in the uncovered part of their cell so their
+native gestures cannot take a gutter gesture. The grid resolves gutter clicks as rows
 and uses its existing row and header menus. Keyboard focus scrolls clear of the gutter.
 
 ## Consequences
