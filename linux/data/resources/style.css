@@ -58,8 +58,18 @@ columnview.tp-striped > listview > row:not(:selected) > cell > .tp-stripe {
   background-color: color-mix(in srgb, var(--view-fg-color) 4%, transparent);
 }
 
+/* The pinned row numbers carry the same stripes, so a row reads as one
+   band across them. */
+.row-gutter.tp-striped listview > row:not(:selected) > .tp-stripe {
+  background-color: color-mix(in srgb, var(--view-fg-color) 4%, transparent);
+}
+
 @media (prefers-contrast: more) {
   columnview.tp-striped > listview > row:not(:selected) > cell > .tp-stripe {
+    background-color: color-mix(in srgb, var(--view-fg-color) 8%, transparent);
+  }
+
+  .row-gutter.tp-striped listview > row:not(:selected) > .tp-stripe {
     background-color: color-mix(in srgb, var(--view-fg-color) 8%, transparent);
   }
 }

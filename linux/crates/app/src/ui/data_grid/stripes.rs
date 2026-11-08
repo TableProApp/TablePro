@@ -35,12 +35,19 @@ impl DataGrid {
             glib::clone!(
                 #[weak]
                 view,
-                move |settings, key| set_class(&view, STRIPED, settings.boolean(key))
+                #[weak(rename_to = gutter)]
+                self.imp().row_gutter.get(),
+                move |settings, key| {
+                    let striped = settings.boolean(key);
+                    set_class(&view, STRIPED, striped);
+                    set_class(&gutter, STRIPED, striped);
+                }
             ),
         );
         self.imp()
             .stripes_watch
             .replace(Some(HandlerGuard::new(settings.gio(), handler)));
         set_class(&view, STRIPED, settings.show_alternate_rows());
+        set_class(&self.imp().row_gutter.get(), STRIPED, settings.show_alternate_rows());
     }
 }

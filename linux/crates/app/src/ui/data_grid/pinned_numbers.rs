@@ -133,6 +133,10 @@ fn show_item(grid: &DataGrid, item: &gtk::ListItem) {
     ) else {
         return;
     };
+    // The stripe of the row beside it, which the rows' own cells carry.
+    let position = item.position();
+    let odd = position != gtk::INVALID_LIST_POSITION && !position.is_multiple_of(2);
+    super::grid_cell::set_class(&content, "tp-stripe", odd);
     let state = grid.tracked().row_state(&row);
     icon.set_icon_name(state.icon());
     icon.set_visible(state.icon().is_some());

@@ -264,3 +264,46 @@ fn the_row_numbers_stay_in_view_when_the_columns_scroll_sideways() {
     drain_main_context();
     assert!(!gutter.is_visible());
 }
+
+/// The pinned numbers are striped like the rows beside them, and follow
+/// the preference.
+#[gtk4::test]
+fn the_pinned_row_numbers_carry_the_stripes_of_their_rows() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    use tablepro_core::Value;
+
+    let mut columns = vec![crate::ui::data_grid::test_grid::named("id", "integer", true)];
+    columns.extend((0..30).map(|n| crate::ui::data_grid::test_grid::named(&format!("column_{n}"), "text", false)));
+    let rows: Vec<Vec<Value>> = (1..=3)
+        .map(|id| {
+            std::iter::once(Value::Int(id))
+                .chain((0..30).map(|n| Value::Text(format!("value {id}-{n}"))))
+                .collect()
+        })
+        .collect();
+    let grid = Grid::open(columns, rows);
+    let imp = grid.grid.imp();
+    let striped = || imp.row_gutter.has_css_class("tp-striped");
+    assert!(striped(), "on by default, as the rows are");
+
+    imp.scrolled.hadjustment().set_value(imp.scrolled.hadjustment().upper());
+    drain_main_context();
+    let bands = || {
+        descendants(&imp.gutter_list.get())
+            .into_iter()
+            .filter(|widget| widget.has_css_class("row-gutter-cell"))
+            .filter(|widget| widget.has_css_class("tp-stripe"))
+            .count()
+    };
+    crate::test_support::wait_until(crate::ui::data_grid::test_grid::WAIT, || bands() == 1)
+        .expect("one of three rows is striped, the second");
+
+    grid.grid
+        .config()
+        .expect("a configured grid")
+        .settings
+        .set_show_alternate_rows(false)
+        .expect("store the flag");
+    drain_main_context();
+    assert!(!striped());
+}
