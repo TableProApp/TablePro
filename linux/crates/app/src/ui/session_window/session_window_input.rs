@@ -207,6 +207,7 @@ pub(crate) enum SessionWindowInput {
     ImportPreviewed(Box<tablepro_storage::ImportPreview>),
     ImportFromApp,
     ShowToast(String),
+    SecretSave(crate::services::secret_save_report::SecretSaveOutcome),
 }
 
 /// What an editor tab that moved to another database asks of the window

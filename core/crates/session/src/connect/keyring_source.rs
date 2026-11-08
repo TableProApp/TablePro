@@ -5,6 +5,7 @@ use tablepro_core::credentials::{CredentialInteraction, SecretError, SecretKind,
 use tablepro_ssh::SshAuth;
 use tablepro_storage::{CredentialDemand, KeyringCredentials, ResolvedSecret};
 
+use super::store_secrets::store_secrets;
 use super::{ConnectError, ConnectRequest, CredentialSource, RefreshedRequest, RequestTarget};
 
 /// Every secret the request logs in with is read from the keyring again,
@@ -64,15 +65,7 @@ impl CredentialSource for KeyringCredentials {
     fn remember(&self, saves: Vec<SecretSave>) -> BoxFuture<'static, Vec<(SecretKind, SecretError)>> {
         let secrets = self.secrets().clone();
         let id = self.connection_id();
-        Box::pin(async move {
-            let mut failed = Vec::new();
-            for save in saves {
-                if let Err(error) = secrets.store(id, save.kind, &save.secret, &save.label).await {
-                    failed.push((save.kind, error));
-                }
-            }
-            failed
-        })
+        Box::pin(async move { store_secrets(&*secrets, id, &saves).await })
     }
 }
 

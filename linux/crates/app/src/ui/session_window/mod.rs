@@ -54,8 +54,8 @@ use tablepro_session::connect::StoreConnectionWrites;
 use tablepro_session::registry::FileIdentity;
 use tablepro_session::runtime::ProcessHold;
 use tablepro_session::{
-    ClaimError, ConnectError, ConnectIntent, ConnectSource, MonitorSignal, PendingSession, RequestTarget, Session,
-    SessionClaim, SessionKey,
+    ClaimError, ConnectError, ConnectIntent, ConnectSource, CredentialSource, MonitorSignal, PendingSession,
+    RequestTarget, Session, SessionClaim, SessionKey,
 };
 use tablepro_storage::{CredentialDemand, SavedConnection};
 
@@ -71,6 +71,7 @@ use self::session_window_command::{AttemptError, ConnectFailure, Connected, Sess
 pub(crate) use self::session_window_input::{LibraryEdit, MovedTab, ScriptInput, SessionWindowInput};
 use crate::application::{AppServices, WindowHost, WindowLaunch};
 use crate::runtime::{DeliverInput, InputSender};
+use crate::services::secret_save_report::{ReportingCredentials, SecretSaveOutcome};
 use crate::services::session_context::SessionContext;
 use crate::ui::connect_dialog::{ConnectDialogMode, ConnectSubmission};
 use crate::ui::welcome_view::WelcomeView;
@@ -536,6 +537,7 @@ impl SessionWindow {
             SessionWindowInput::ImportPreviewed(preview) => self.on_import_previewed(*preview),
             SessionWindowInput::ImportFromApp => self.on_import_from_app(),
             SessionWindowInput::ShowToast(message) => self.show_toast(&message),
+            SessionWindowInput::SecretSave(outcome) => self.on_secret_save(outcome),
         }
     }
 
@@ -554,6 +556,17 @@ impl SessionWindow {
 
     fn show_toast(&self, message: &str) {
         self.add_toast(crate::ui::plain_toast(message));
+    }
+
+    // The refusal toast stays until dismissed, so a save the keyring took since takes it down.
+    fn on_secret_save(&self, outcome: SecretSaveOutcome) {
+        match outcome {
+            SecretSaveOutcome::Refused(report) => {
+                let toast = self.imp().unsaved_secrets.replace(report, self);
+                self.add_toast(toast);
+            }
+            SecretSaveOutcome::Kept => self.imp().unsaved_secrets.dismiss(),
+        }
     }
 
     /// On the page on screen: a toast for a page left behind would never
@@ -847,7 +860,7 @@ impl SessionWindow {
         let Connected {
             pending,
             saved,
-            warnings,
+            secrets,
             session_only,
         } = connected;
         let (Some(state), Some(_), Some(input)) = (self.state(), self.close_guards(), self.input()) else {
@@ -855,7 +868,11 @@ impl SessionWindow {
             return;
         };
         let key = claim.key().clone();
-        let credentials = state.context.session_credentials(saved.as_ref(), &session_only);
+        let refused = input.clone();
+        let credentials: Arc<dyn CredentialSource> = Arc::new(ReportingCredentials::new(
+            state.context.session_credentials(saved.as_ref(), &session_only),
+            move |outcome| refused.deliver(SessionWindowInput::SecretSave(outcome)),
+        ));
         let session = Session::start(pending, state.context.session_deps(credentials));
         claim.attach(&session);
         self.remember_session(&key, saved.as_ref());
@@ -884,8 +901,8 @@ impl SessionWindow {
         self.show_waiting_scripts();
         self.open_scripts_in(&workspace, waiting);
         self.sync_actions();
-        for warning in warnings {
-            self.show_toast(&warning);
+        if let Some(outcome) = secrets {
+            self.on_secret_save(outcome);
         }
         if let SessionKey::Saved(id) = key {
             self.touch_last_opened(id);
@@ -1917,11 +1934,7 @@ fn connect_saved(
             Ok(login) => Ok(Connected {
                 pending: login.pending,
                 saved: Some(saved),
-                warnings: login
-                    .refused
-                    .iter()
-                    .map(|(_, error)| crate::services::secret_save_report::not_saved_message(error))
-                    .collect(),
+                secrets: SecretSaveOutcome::of_connection(login.asked_to_keep, &login.refused),
                 session_only: login.session_only,
             }),
             Err(error) => Err(match attempt_error(&error, server_name_shown) {
@@ -1967,6 +1980,7 @@ fn connect_intent(
         }
         .boxed();
     };
+    let asked_to_keep = pending_save.secrets.len();
     let secrets = context.secrets.clone();
     let writes = StoreConnectionWrites::new(
         state.services.storage.connections().clone(),
@@ -1986,14 +2000,7 @@ fn connect_intent(
         match saving {
             Ok((pending, report)) => Ok(Connected {
                 pending,
-                // A keyring refusal must not be silent: the
-                // connection opened, but the password will be
-                // asked for next time.
-                warnings: report
-                    .secret_failures
-                    .iter()
-                    .map(|(_, error)| crate::services::secret_save_report::not_saved_message(error))
-                    .collect(),
+                secrets: SecretSaveOutcome::of_connection(asked_to_keep, &report.secret_failures),
                 session_only: report.secret_failures.iter().map(|(kind, _)| *kind).collect(),
                 saved: Some(report.saved),
             }),
@@ -2048,7 +2055,7 @@ fn unsaved(pending: PendingSession) -> Connected {
     Connected {
         pending,
         saved: None,
-        warnings: Vec::new(),
+        secrets: None,
         session_only: Vec::new(),
     }
 }

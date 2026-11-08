@@ -498,7 +498,7 @@ mod window_tests {
         wait_until(WAIT, || {
             toasts(&test.window)
                 .iter()
-                .any(|toast| toast.starts_with("The keyring stayed locked, so the password was not saved"))
+                .any(|toast| toast == "The keyring is locked, so the password was not saved")
         })
         .expect("the refused save to be reported");
     }

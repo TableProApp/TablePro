@@ -76,6 +76,7 @@ async fn unsave(secrets: &dyn SecretVault, writes: &dyn ConnectionWrites, id: Uu
 #[derive(Debug)]
 pub(super) struct SavedLogin {
     pub pending: PendingSession,
+    pub asked_to_keep: usize,
     /// Secrets the user asked to remember that the keyring refused.
     pub refused: Vec<(SecretKind, SecretError)>,
     /// Secrets typed for this login that the keyring does not hold,
@@ -119,6 +120,7 @@ pub(super) async fn connect_saved(
         .collect();
     Ok(SavedLogin {
         pending,
+        asked_to_keep: kept.len(),
         refused,
         session_only,
     })

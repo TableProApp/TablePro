@@ -93,6 +93,7 @@ pub struct SessionWindow {
     pub(super) dialog_opening: Cell<bool>,
     pub(super) shut_down: Cell<bool>,
     pub(super) launch_notices: RefCell<Vec<Said>>,
+    pub(super) unsaved_secrets: crate::ui::UnsavedSecretToasts,
     /// Every toast shown, which the overlay does not list.
     #[cfg(test)]
     pub(super) toasts: RefCell<Vec<adw::Toast>>,
