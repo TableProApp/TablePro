@@ -526,13 +526,29 @@ fn read_only_from_the_main_menu_saves_it_and_connects_again_read_only() {
     wait_until(WAIT, || ticked_level(&test).as_deref() == Some("read-only")).expect("Read-Only ticked");
 }
 
-/// The header's lock names the level of the connection in front, as the
-/// macOS toolbar's does, and is not there without one.
 #[gtk4::test]
 fn the_header_lock_follows_the_front_connections_level() {
     let test = TestWindow::connected("SafeModeButton");
     let button = test.window.shell().expect("the shell").imp().safe_mode_button.get();
 
+    crate::test_support::assert_labelled(&button).expect("the lock has an accessible name");
+    let menu = button.menu_model().expect("the level chooser");
+    assert_eq!(menu.n_items(), 3);
+    for (index, target) in ["off", "confirm-writes", "read-only"].into_iter().enumerate() {
+        let index = i32::try_from(index).expect("three levels");
+        assert_eq!(
+            menu.item_attribute_value(index, gio::MENU_ATTRIBUTE_ACTION, None)
+                .and_then(|value| value.get::<String>())
+                .as_deref(),
+            Some("win.safe-mode")
+        );
+        assert_eq!(
+            menu.item_attribute_value(index, gio::MENU_ATTRIBUTE_TARGET, None)
+                .and_then(|value| value.get::<String>())
+                .as_deref(),
+            Some(target)
+        );
+    }
     assert!(button.is_visible());
     assert_eq!(button.icon_name().as_deref(), Some("changes-allow-symbolic"));
     assert_eq!(button.tooltip_text().as_deref(), Some("Safe Mode: Off"));
@@ -543,6 +559,16 @@ fn the_header_lock_follows_the_front_connections_level() {
     })
     .expect("the lock to name the new level");
     assert_eq!(button.icon_name().as_deref(), Some("changes-prevent-symbolic"));
+
+    pick_level(&test, "read-only");
+    wait_until(WAIT, || ticked_level(&test).as_deref() == Some("read-only")).expect("Read-Only after reconnect");
+    let shell = test.window.shell().expect("the reopened shell");
+    let button = shell.imp().safe_mode_button.get();
+    assert_eq!(button.tooltip_text().as_deref(), Some("Safe Mode: Read-Only"));
+    assert_eq!(button.icon_name().as_deref(), Some("changes-prevent-symbolic"));
+    crate::test_support::assert_labelled(&button).expect("the reopened lock is named");
+    shell.show_safe_mode(None);
+    assert!(!button.is_visible());
 
     let picker = TestWindow::picker("SafeModeButtonPicker");
     assert!(

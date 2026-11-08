@@ -533,10 +533,6 @@ impl WorkspaceShell {
         self.notify_front();
     }
 
-    /// Show the front's banners and assistant, and name what follows its
-    /// data model after it. The expressions of `bind_front` do the rest.
-    /// The header's lock names the front connection's Safe Mode level and
-    /// opens the levels, or leaves with no session in front.
     pub(crate) fn show_safe_mode(&self, level: Option<tablepro_core::SafeModeLevel>) {
         let button = self.imp().safe_mode_button.get();
         button.set_visible(level.is_some());
@@ -550,8 +546,7 @@ impl WorkspaceShell {
             }
         });
         let said = gettext_f("Safe Mode: {level}", &[("level", &crate::ui::safe_mode::label(level))]);
-        button.set_tooltip_text(Some(&said));
-        button.update_property(&[gtk::accessible::Property::Label(&said)]);
+        describe_icon_button(&button, &said, None);
     }
 
     fn on_front_changed(&self) {
@@ -778,8 +773,6 @@ fn tab_menu() -> gio::Menu {
     menu
 }
 
-/// The main menu with the session's Safe Mode levels on top, as radio
-/// items of the window's stateful `safe-mode` action.
 fn safe_mode_levels() -> gio::Menu {
     let levels = gio::Menu::new();
     for level in tablepro_core::SafeModeLevel::ALL {
