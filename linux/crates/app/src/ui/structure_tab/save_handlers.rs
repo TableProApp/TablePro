@@ -1,5 +1,6 @@
 use gtk4 as gtk;
 use gtk4::prelude::*;
+use libadwaita::prelude::*;
 use tablepro_core::ddl::TableDraft;
 
 use super::save_gate::SaveGate;
@@ -15,15 +16,42 @@ impl StructureModel {
     pub(super) fn on_save(&mut self, input: SaveInput, fx: &mut StructureEffects) {
         match input {
             SaveInput::Save => self.save(fx),
+            SaveInput::RequestRefresh => self.request_refresh(fx),
+            SaveInput::DiscardAndReload { acknowledged_unknown } => {
+                if !acknowledged_unknown
+                    && matches!(
+                        self.tracker.pending_state(),
+                        crate::workspace::PendingState::OutcomeUnknown(_)
+                    )
+                {
+                    fx.input(SaveInput::RequestRefresh);
+                } else if !self.saving && !self.tracker.is_saving() {
+                    fx.input(SaveInput::Discard);
+                    fx.input(SaveInput::Reload);
+                }
+            }
             SaveInput::SaveStarted => self.show_saving(true),
             SaveInput::StopSaving => fx.output(StructureTabOutput::StopSaveRequested),
             SaveInput::ConfirmDiscard => {
                 let pending = self.pending().change_count();
-                if pending > 0 {
+                if pending > 0
+                    || matches!(
+                        self.tracker.pending_state(),
+                        crate::workspace::PendingState::OutcomeUnknown(_)
+                    )
+                {
                     let sender = StructureTabSender { tab: self.this.clone() };
-                    confirm_discard(&self.widgets.inner_stack, pending, move || {
-                        sender.input(SaveInput::Discard);
-                    });
+                    confirm_discard(
+                        &self.widgets.inner_stack,
+                        pending,
+                        {
+                            let tracker = self.tracker.clone();
+                            move || tracker.pending_state()
+                        },
+                        move || {
+                            sender.input(SaveInput::Discard);
+                        },
+                    );
                 }
             }
             SaveInput::Reload => {
@@ -34,6 +62,7 @@ impl StructureModel {
                     StructureMode::New => fx.input(SaveInput::Discard),
                 }
             }
+            SaveInput::Discard if self.tracker.is_saving() => {}
             SaveInput::Discard => {
                 // This also lets go of a save whose outcome was unknown.
                 self.tracker.clear();
@@ -80,6 +109,45 @@ impl StructureModel {
                 });
             }
         }
+    }
+
+    fn request_refresh(&mut self, fx: &mut StructureEffects) {
+        if self.saving || self.tracker.is_saving() {
+            return;
+        }
+        let unknown = matches!(
+            self.tracker.pending_state(),
+            crate::workspace::PendingState::OutcomeUnknown(_)
+        );
+        if !unknown && self.pending().change_count() == 0 {
+            fx.input(SaveInput::Reload);
+            return;
+        }
+        let body = if unknown {
+            crate::i18n::gettext(
+                "The last save may have changed the database. Reload to read its current structure and discard this draft.",
+            )
+        } else {
+            crate::i18n::gettext(
+                "Refreshing reloads the table structure from the database and discards its unsaved changes.",
+            )
+        };
+        let dialog =
+            libadwaita::AlertDialog::new(Some(&crate::i18n::gettext("Discard Structure Changes?")), Some(&body));
+        dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
+        dialog.add_response("discard", &crate::i18n::gettext("Discard and Refresh"));
+        dialog.set_response_appearance("discard", libadwaita::ResponseAppearance::Destructive);
+        dialog.set_default_response(Some("cancel"));
+        dialog.set_close_response("cancel");
+        let sender = StructureTabSender { tab: self.this.clone() };
+        dialog.connect_response(None, move |_, response| {
+            if response == "discard" {
+                sender.input(SaveInput::DiscardAndReload {
+                    acknowledged_unknown: unknown,
+                });
+            }
+        });
+        dialog.present(Some(&self.widgets.inner_stack));
     }
 
     fn save(&self, fx: &mut StructureEffects) {

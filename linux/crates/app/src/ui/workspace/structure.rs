@@ -70,7 +70,6 @@ impl WorkspaceModel {
         });
     }
 
-    /// Build a table tab's Structure view, the first time it opens.
     pub(super) fn on_show_table_structure(&self, id: Uuid) {
         let target = match self.workspace_tabs.borrow().get(&id) {
             Some(WorkspaceTab::Table(slot)) => Some((slot.schema.clone(), slot.table.clone())),
@@ -268,12 +267,12 @@ impl WorkspaceModel {
                         SaveKind::UpdateInPlace(slot.schema.clone(), slot.table.clone())
                     }
                 },
-                // The rows are read by the name the tab was built with,
-                // so a renamed table opens again under its new one.
-                Some(WorkspaceTab::Table(slot)) => match new_table_name.clone() {
-                    Some(name) => SaveKind::PromoteNewToTable(slot.schema.clone(), name),
-                    None => SaveKind::UpdateInPlace(slot.schema.clone(), slot.table.clone()),
-                },
+                Some(WorkspaceTab::Table(slot)) => {
+                    if let Some(name) = new_table_name.as_ref() {
+                        slot.table.clone_from(name);
+                    }
+                    SaveKind::UpdateInPlace(slot.schema.clone(), slot.table.clone())
+                }
                 _ => SaveKind::Skip,
             }
         };
@@ -295,8 +294,18 @@ impl WorkspaceModel {
                 });
             }
             SaveKind::UpdateInPlace(schema, table) => {
-                if new_table_name.is_some() {
+                if let Some(name) = new_table_name.as_ref() {
+                    let browse = self
+                        .workspace_tabs
+                        .borrow()
+                        .get(&tab_id)
+                        .and_then(|tab| tab.browse_tab())
+                        .cloned();
+                    if let Some(browse) = browse {
+                        browse.rename_table(name);
+                    }
                     self.retitle_tab(tab_id);
+                    self.persist_workspace_state();
                 }
                 self.send_to_structure_tab(tab_id, SaveInput::SaveCompleted { new_table_name });
                 self.input.deliver(WorkspaceInput::SchemaChanged {

@@ -1313,6 +1313,214 @@ fn a_discard_not_confirmed_keeps_every_change() {
     assert_eq!(imp.pending_label.label(), "1 unsaved change");
 }
 
+fn refreshable_structure() -> Harness {
+    let mut script = postgres_script();
+    script
+        .fetch_table_definition
+        .once(FakeReply::ok(definition("id")))
+        .always(FakeReply::ok(definition("server_id")));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    harness.wait_for_structure();
+    harness.tab().send(ColumnsInput::ColumnEdited {
+        column: harness.column(0),
+        field: ColumnField::Comment(Some("pending comment".to_owned())),
+    });
+    harness
+}
+
+#[gtk4::test]
+fn cancelling_structure_refresh_keeps_the_draft_and_does_not_read() {
+    let harness = refreshable_structure();
+    let window = in_window(&harness);
+
+    harness.tab().request_refresh();
+
+    let alert = shown_form(&window)
+        .downcast::<adw::AlertDialog>()
+        .expect("the refresh prompt");
+    assert_eq!(alert.default_response().as_deref(), Some("cancel"));
+    assert_eq!(alert.close_response(), "cancel");
+    answer_discard(&window, "cancel");
+    assert_eq!(harness.comments(), [Some("pending comment".to_owned())]);
+    assert_eq!(
+        harness.tracker().pending_state(),
+        crate::workspace::PendingState::Unsaved
+    );
+    assert_eq!(
+        CallCounters::get(&harness.fake.connection.counters().fetch_table_definition),
+        1
+    );
+}
+
+#[gtk4::test]
+fn confirming_structure_refresh_discards_the_draft_and_reads_the_server() {
+    let harness = refreshable_structure();
+    let window = in_window(&harness);
+
+    harness.tab().request_refresh();
+    answer_discard(&window, "discard");
+
+    wait_until(WAIT, || harness.column_names() == ["server_id"]).expect("the current server definition");
+    assert_eq!(harness.comments(), [None]);
+    assert_eq!(harness.tracker().pending_state(), crate::workspace::PendingState::Clean);
+    assert_eq!(
+        CallCounters::get(&harness.fake.connection.counters().fetch_table_definition),
+        2
+    );
+}
+
+#[gtk4::test]
+fn structure_refresh_warns_about_an_unknown_save_before_discarding_it() {
+    let harness = refreshable_structure();
+    let window = in_window(&harness);
+    let tracker = harness.tracker();
+    let _pending = tracker
+        .begin_save()
+        .expect("the draft can save")
+        .expect("a pending draft");
+    tracker.settle_save(&crate::workspace::SaveOutcome::Unknown(
+        crate::workspace::UnknownCause::Interrupted,
+    ));
+
+    harness.tab().request_refresh();
+
+    let alert = shown_form(&window)
+        .downcast::<adw::AlertDialog>()
+        .expect("the refresh prompt");
+    assert!(alert.body().contains("The last save may have changed the database."));
+    assert!(alert.body().contains("discard this draft"));
+    assert_eq!(alert.default_response().as_deref(), Some("cancel"));
+    answer_discard(&window, "cancel");
+    assert!(matches!(
+        tracker.pending_state(),
+        crate::workspace::PendingState::OutcomeUnknown(_)
+    ));
+    assert_eq!(harness.comments(), [Some("pending comment".to_owned())]);
+    assert_eq!(
+        CallCounters::get(&harness.fake.connection.counters().fetch_table_definition),
+        1
+    );
+
+    harness.tab().request_refresh();
+    answer_discard(&window, "discard");
+
+    wait_until(WAIT, || harness.column_names() == ["server_id"]).expect("the server definition after the unknown save");
+    assert_eq!(tracker.pending_state(), crate::workspace::PendingState::Clean);
+    assert_eq!(
+        CallCounters::get(&harness.fake.connection.counters().fetch_table_definition),
+        2
+    );
+}
+
+#[gtk4::test]
+fn structure_refresh_during_a_save_keeps_the_draft_without_a_read_or_prompt() {
+    let harness = refreshable_structure();
+    let window = in_window(&harness);
+    let tracker = harness.tracker();
+    let _pending = tracker
+        .begin_save()
+        .expect("the draft can save")
+        .expect("a pending draft");
+    harness.tab().send(SaveInput::SaveStarted);
+
+    harness.tab().request_refresh();
+    drain_main_context();
+
+    assert!(window.visible_dialog().is_none());
+    assert_eq!(harness.comments(), [Some("pending comment".to_owned())]);
+    assert_eq!(tracker.pending_state(), crate::workspace::PendingState::Saving);
+    assert_eq!(
+        CallCounters::get(&harness.fake.connection.counters().fetch_table_definition),
+        1
+    );
+}
+
+#[gtk4::test]
+fn a_refresh_prompt_cannot_discard_a_structure_save_started_since_it_opened() {
+    let harness = refreshable_structure();
+    let window = in_window(&harness);
+    harness.tab().request_refresh();
+    let _alert = shown_form(&window);
+    let tracker = harness.tracker();
+    let _pending = tracker
+        .begin_save()
+        .expect("the draft can save")
+        .expect("a pending draft");
+    harness.tab().send(SaveInput::SaveStarted);
+
+    answer_discard(&window, "discard");
+
+    assert_eq!(harness.comments(), [Some("pending comment".to_owned())]);
+    assert_eq!(tracker.pending_state(), crate::workspace::PendingState::Saving);
+    assert_eq!(
+        CallCounters::get(&harness.fake.connection.counters().fetch_table_definition),
+        1
+    );
+}
+
+#[gtk4::test]
+fn structure_discard_warns_that_an_unknown_save_is_not_undone() {
+    let harness = refreshable_structure();
+    let window = in_window(&harness);
+    let tracker = harness.tracker();
+    let _pending = tracker
+        .begin_save()
+        .expect("the draft can save")
+        .expect("a pending draft");
+    tracker.settle_save(&crate::workspace::SaveOutcome::Unknown(
+        crate::workspace::UnknownCause::Interrupted,
+    ));
+
+    harness.tab().send(SaveInput::ConfirmDiscard);
+
+    let alert = shown_form(&window)
+        .downcast::<adw::AlertDialog>()
+        .expect("the discard prompt");
+    assert!(alert.body().contains("may have changed the database"));
+    assert!(alert.body().contains("does not undo"));
+    assert_eq!(alert.default_response().as_deref(), Some("cancel"));
+    answer_discard(&window, "cancel");
+    assert!(matches!(
+        tracker.pending_state(),
+        crate::workspace::PendingState::OutcomeUnknown(_)
+    ));
+    assert_eq!(harness.comments(), [Some("pending comment".to_owned())]);
+
+    harness.tab().send(SaveInput::ConfirmDiscard);
+    answer_discard(&window, "discard");
+
+    assert_eq!(tracker.pending_state(), crate::workspace::PendingState::Clean);
+    assert_eq!(harness.column_names(), ["id"]);
+    assert_eq!(harness.comments(), [None]);
+    assert_eq!(
+        CallCounters::get(&harness.fake.connection.counters().fetch_table_definition),
+        1
+    );
+}
+
+#[gtk4::test]
+fn structure_discard_rechecks_the_tracker_before_the_save_notification_arrives() {
+    let harness = refreshable_structure();
+    let window = in_window(&harness);
+    harness.tab().send(SaveInput::ConfirmDiscard);
+    let _alert = shown_form(&window);
+    let tracker = harness.tracker();
+    let _pending = tracker
+        .begin_save()
+        .expect("the draft can save")
+        .expect("a pending draft");
+
+    answer_discard(&window, "discard");
+
+    assert_eq!(tracker.pending_state(), crate::workspace::PendingState::Saving);
+    assert!(tracker.has_pending());
+    assert_eq!(harness.comments(), [Some("pending comment".to_owned())]);
+    assert_eq!(
+        CallCounters::get(&harness.fake.connection.counters().fetch_table_definition),
+        1
+    );
+}
+
 /// Answer the alert Discard opens.
 fn answer_discard(window: &adw::Window, response: &str) {
     let alert = shown_form(window)

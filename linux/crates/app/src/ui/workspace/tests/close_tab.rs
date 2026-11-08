@@ -334,3 +334,181 @@ fn close_all_tabs_asks_before_closing_unsaved_work() {
     assert!(tab_is_open(&test, id), "the tab with unsaved changes closed");
     assert_eq!(crate::test_support::read_text_file(&path), "SELECT 1;");
 }
+
+#[gtk4::test]
+fn a_schema_rename_keeps_the_table_tab_and_its_pending_rows() {
+    let test = TestWindow::connected_with("RenameCombinedTable", serving_tables);
+    let workspace = test.workspace();
+    let (id, tab) = open_table(&test, "users");
+    type_a_name(&tab);
+    tab.commit_cell_edit();
+    let page = shell_of(&workspace)
+        .imp()
+        .tab_view
+        .selected_page()
+        .expect("the table page");
+    let tracker = super::row_tracker(&workspace, id).expect("row changes");
+    assert_eq!(tracker.pending_count(), 1);
+
+    workspace.with_model(|model| model.on_structure_save_completed(id, Some("people".to_owned())));
+    drain_main_context();
+
+    assert_eq!(workspace.selected_tab(), Some(id));
+    assert_eq!(shell_of(&workspace).imp().tab_view.selected_page(), Some(page.clone()));
+    assert_eq!(tab.table(), "people");
+    assert_eq!(tracker.pending_count(), 1);
+    assert_eq!(
+        super::row_tracker(&workspace, id)
+            .expect("the same tab's rows")
+            .pending_count(),
+        1
+    );
+    workspace.with_model(|model| {
+        let tabs = model.workspace_tabs.borrow();
+        let Some(super::super::WorkspaceTab::Table(slot)) = tabs.get(&id) else {
+            panic!("the renamed tab was replaced");
+        };
+        assert_eq!(slot.table, "people");
+        assert_eq!(slot.browse, tab);
+    });
+    assert!(page.title().contains("people"));
+}
+
+#[gtk4::test]
+fn refreshing_cannot_discard_rows_while_their_save_is_running() {
+    for refresh_first in [false, true] {
+        let test = TestWindow::connected_with("RefreshDuringSave", |script| {
+            serving_tables(script);
+            script
+                .write_batch
+                .always(FakeReply::StoppedWith(Err(tablepro_core::DriverError::RolledBack {
+                    statement_index: 0,
+                    source: Box::new(tablepro_core::DriverError::Cancelled),
+                })));
+        });
+        let workspace = test.workspace();
+        let (id, tab) = open_table(&test, "users");
+        type_a_name(&tab);
+        tab.commit_cell_edit();
+        let tracker = super::row_tracker(&workspace, id).expect("row changes");
+        if refresh_first {
+            workspace.with_model(|model| model.on_refresh_tab(id));
+            wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("the discard question");
+        }
+        workspace
+            .sender()
+            .expect("workspace input")
+            .deliver(WorkspaceInput::SaveRows(id));
+        wait_until(WAIT, || {
+            tracker.pending_state() == crate::workspace::PendingState::Saving
+        })
+        .expect("the row save starts");
+
+        if refresh_first {
+            assert!(answer(&test.window, "discard"));
+        } else {
+            workspace.with_model(|model| model.on_refresh_tab(id));
+            drain_main_context();
+            assert!(
+                visible_alert(&test.window).is_none(),
+                "refresh offered to discard an active save"
+            );
+        }
+        assert_eq!(tracker.pending_state(), crate::workspace::PendingState::Saving);
+        workspace.with_model(|model| model.workspace_handle.stop_saves(crate::workspace::CloseScope::Tab(id)));
+        wait_until(WAIT, || {
+            tracker.pending_state() == crate::workspace::PendingState::Unsaved
+        })
+        .expect("the cancelled save rolls back");
+        assert_eq!(tracker.pending_count(), 1, "refresh lost the rolled-back row draft");
+    }
+}
+
+#[gtk4::test]
+fn refreshing_unknown_rows_warns_that_the_save_may_have_changed_the_database() {
+    let test = TestWindow::connected_with("RefreshUnknownSave", serving_tables);
+    let workspace = test.workspace();
+    let (id, tab) = open_table(&test, "users");
+    type_a_name(&tab);
+    tab.commit_cell_edit();
+    let tracker = super::row_tracker(&workspace, id).expect("row changes");
+    let batch = tracker.begin_save().expect("a save").expect("the row draft");
+    let unknown = crate::workspace::SaveOutcome::Unknown(crate::workspace::UnknownCause::Interrupted);
+    let _ = tracker.settle_save(&unknown, batch.snapshot);
+
+    workspace.with_model(|model| model.on_refresh_tab(id));
+    wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("the refresh warning");
+    let dialog = visible_alert(&test.window).expect("the warning");
+    assert_eq!(
+        dialog.body(),
+        "The last save may have changed the database. Reload to read its current rows and discard these changes."
+    );
+    assert_eq!(dialog.default_response().as_deref(), Some("cancel"));
+    assert!(answer(&test.window, "cancel"));
+    assert!(matches!(
+        tracker.pending_state(),
+        crate::workspace::PendingState::OutcomeUnknown(_)
+    ));
+
+    workspace.with_model(|model| model.on_refresh_tab(id));
+    wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("the warning again");
+    assert!(answer(&test.window, "discard"));
+    wait_until(WAIT, || {
+        tracker.pending_state() == crate::workspace::PendingState::Clean
+    })
+    .expect("the confirmed reload discards the uncertain draft");
+}
+
+#[gtk4::test]
+fn workspace_refresh_commits_an_open_cell_before_asking_to_discard_it() {
+    let test = TestWindow::connected_with("RefreshOpenCell", serving_tables);
+    let workspace = test.workspace();
+    let (id, tab) = open_table(&test, "users");
+    let cell = type_a_name(&tab);
+    let tracker = super::row_tracker(&workspace, id).expect("row changes");
+    assert_eq!(tracker.pending_count(), 0);
+
+    workspace.with_model(|model| model.on_refresh_tab(id));
+
+    wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("the open edit needs confirmation");
+    assert_eq!(tracker.pending_count(), 1);
+    assert!(!cell.is_editing());
+    assert!(answer(&test.window, "cancel"));
+    assert_eq!(tracker.pending_count(), 1);
+}
+
+#[gtk4::test]
+fn a_refresh_answer_cannot_silently_discard_a_new_unknown_outcome() {
+    let test = TestWindow::connected_with("RefreshBecomesUnknown", serving_tables);
+    let workspace = test.workspace();
+    let (id, tab) = open_table(&test, "users");
+    type_a_name(&tab);
+    tab.commit_cell_edit();
+    let tracker = super::row_tracker(&workspace, id).expect("row changes");
+    workspace.with_model(|model| model.on_refresh_tab(id));
+    wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("the discard question");
+    let original = visible_alert(&test.window).expect("the ordinary discard question");
+    let batch = tracker.begin_save().expect("a save").expect("the row draft");
+    let _ = tracker.settle_save(
+        &crate::workspace::SaveOutcome::Unknown(crate::workspace::UnknownCause::Interrupted),
+        batch.snapshot,
+    );
+
+    assert!(answer(&test.window, "discard"));
+
+    wait_until(WAIT, || {
+        visible_alert(&test.window).is_some_and(|dialog| dialog != original)
+    })
+    .expect("a warning about the new unknown outcome");
+    assert!(
+        visible_alert(&test.window)
+            .expect("the warning")
+            .body()
+            .contains("may have changed the database")
+    );
+    assert!(matches!(
+        tracker.pending_state(),
+        crate::workspace::PendingState::OutcomeUnknown(_)
+    ));
+    assert!(answer(&test.window, "cancel"));
+}

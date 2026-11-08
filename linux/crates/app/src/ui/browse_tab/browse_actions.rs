@@ -62,7 +62,6 @@ pub(super) fn install_browse_actions(tab: &BrowseTab, page_size: u64) -> BrowseA
         }
     });
     group.add_action(&page_size);
-    add("refresh", || PagingInput::RequestRefresh.into());
     let previous = add("previous-page", || PagingInput::PrevPage.into());
     let next = add("next-page", || PagingInput::NextPage.into());
     tab.imp().pager_bar.follow_page_actions(ACTION_GROUP, &previous, &next);
@@ -76,8 +75,10 @@ pub(super) fn install_browse_actions(tab: &BrowseTab, page_size: u64) -> BrowseA
     for action in [&actions.save, &actions.undo, &actions.redo, &actions.count_rows] {
         action.set_enabled(false);
     }
-    tab.imp().pending_bar.announce_save_keys(ACTION_GROUP, &actions.save);
+    tab.imp().pending_bar.announce_save_keys("table", &actions.save);
     tab.insert_action_group(ACTION_GROUP, Some(&group));
+    let _ = tab.imp().browse_actions.set(group);
+    install_view_actions(tab);
     tab.add_controller(local_shortcut_controller(ShortcutOwner::BrowseTab));
     actions
 }
@@ -100,4 +101,22 @@ pub(super) fn describe_buttons(tab: &BrowseTab) {
     }
     announce_key_shortcuts(&imp.filter_button.get(), "browse.filter");
     announce_key_shortcuts(&imp.details_toggle.get(), "grid.show-details");
+}
+
+fn install_view_actions(tab: &BrowseTab) {
+    let group = gio::SimpleActionGroup::new();
+    for (name, callback) in [
+        ("save", BrowseTab::save_selected_view as fn(&BrowseTab)),
+        ("refresh", BrowseTab::refresh_selected_view),
+    ] {
+        let action = gio::SimpleAction::new(name, None);
+        let weak = tab.downgrade();
+        action.connect_activate(move |_, _| {
+            if let Some(tab) = weak.upgrade() {
+                callback(&tab);
+            }
+        });
+        group.add_action(&action);
+    }
+    tab.insert_action_group("table", Some(&group));
 }

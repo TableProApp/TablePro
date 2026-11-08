@@ -130,6 +130,35 @@ fn a_width_set_from_the_keyboard_comes_back_at_that_width() {
     wait_until(WAIT, || shown_width(&grid, 1) == saved).expect("the column drawn at its saved width");
 }
 
+#[gtk4::test]
+fn renaming_the_table_keeps_column_layout_under_the_new_name() {
+    let layouts = Layouts::new();
+    let grid = laid_out(Grid::build(
+        GridSpec {
+            layout: Some(layouts.binding("t")),
+            table: Some(tablepro_core::meta::TableRef::new(Some("public".to_owned()), "t")),
+            ..GridSpec::table(two_text_columns())
+        },
+        keyed(&[1, 2]),
+    ));
+    data_column(&grid, 1).set_fixed_width(200);
+    let old_layout = layouts.saved("t");
+
+    grid.grid.rename_table("members");
+
+    assert_eq!(layouts.saved("members"), old_layout);
+    data_column(&grid, 1).set_fixed_width(240);
+    assert_eq!(layouts.saved("members").widths.get("name"), Some(&240));
+    assert_eq!(layouts.saved("t"), old_layout);
+    grid.grid.set_columns(
+        grid.columns.clone(),
+        super::super::GridSorting::Server { initial: None },
+        None,
+    );
+    assert_eq!(data_column(&grid, 1).fixed_width(), 240);
+    assert_eq!(grid.grid.config().expect("configured grid").label, "public.members");
+}
+
 /// GtkColumnView's header drag sets the fixed width and nothing else, as
 /// this does.
 #[gtk4::test]

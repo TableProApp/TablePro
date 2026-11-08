@@ -17,7 +17,8 @@ use crate::ui::browse_tab::{BrowseTabInput, GridInput, PagingInput, SaveInput, T
 use crate::ui::editor::SqlEditor;
 use crate::ui::structure_tab::StructureMode;
 use crate::workspace::{
-    EditorFileRecord, RestoredDrafts, TabRecord, WorkspaceFileName, WorkspaceLoad, WorkspaceRecord, WorkspaceSaveError,
+    CloseScope, EditorFileRecord, PendingState, RestoredDrafts, TabRecord, WorkspaceFileName, WorkspaceLoad,
+    WorkspaceRecord, WorkspaceSaveError,
 };
 
 use super::editor_label::EditorLabel;
@@ -431,45 +432,87 @@ impl WorkspaceModel {
         let Some(id) = self.selected_workspace_tab_id() else {
             return;
         };
-        let key = match self.workspace_tabs.borrow().get(&id) {
-            Some(WorkspaceTab::Key(slot)) => Some(slot.tab.clone()),
-            _ => None,
+        let (key, table) = match self.workspace_tabs.borrow().get(&id) {
+            Some(WorkspaceTab::Key(slot)) => (Some(slot.tab.clone()), false),
+            Some(WorkspaceTab::Table(_) | WorkspaceTab::Structure(_)) => (None, true),
+            _ => (None, false),
         };
-        match key {
-            Some(tab) => tab.refresh(),
-            None => {
-                if let Some(id) = self.selected_browse_tab_id() {
-                    self.on_refresh_tab(id);
-                }
-            }
+        if let Some(tab) = key {
+            tab.refresh();
+        } else if table {
+            self.on_refresh_tab(id);
         }
     }
 
     pub(super) fn on_refresh_tab(&self, id: Uuid) {
-        let dirty = self
-            .change_trackers
-            .get(id)
-            .is_some_and(|tracker| tracker.pending_count() > 0);
-        if !dirty {
-            self.dispatch_to_tab(id, PagingInput::Refresh);
+        let (showing_structure, structure) =
+            self.workspace_tabs
+                .borrow()
+                .get(&id)
+                .map_or((false, None), |tab| match tab {
+                    WorkspaceTab::Table(slot) if slot.browse.shows_structure() => (true, slot.structure.clone()),
+                    WorkspaceTab::Structure(slot) => (true, Some(slot.structure.clone())),
+                    _ => (false, None),
+                });
+        if showing_structure {
+            if let Some(structure) = structure {
+                structure.request_refresh();
+            }
             return;
         }
-        // A refetch replaces the rows and with them every pending edit,
-        // so F5 mid-edit asks first, as closing a dirty tab does.
-        let dialog = adw::AlertDialog::new(
-            Some(&crate::i18n::gettext("Discard Pending Changes?")),
-            Some(&crate::i18n::gettext(
+        let browse = self
+            .workspace_tabs
+            .borrow()
+            .get(&id)
+            .and_then(|tab| tab.browse_tab())
+            .cloned();
+        let Some(browse) = browse else {
+            return;
+        };
+        browse.commit_cell_edit();
+        let state = self
+            .change_trackers
+            .get(id)
+            .map_or(PendingState::Clean, |tracker| tracker.pending_state());
+        if state == PendingState::Saving || self.workspace_handle.ledger().in_flight_in(CloseScope::Tab(id)) > 0 {
+            return;
+        }
+        if state == PendingState::Clean {
+            browse.send(PagingInput::Refresh);
+            return;
+        }
+        let unknown = matches!(state, PendingState::OutcomeUnknown(_));
+        let body = if unknown {
+            crate::i18n::gettext(
+                "The last save may have changed the database. Reload to read its current rows and discard these changes.",
+            )
+        } else {
+            crate::i18n::gettext(
                 "Refreshing reloads the table from the database and drops every unsaved edit on this tab.",
-            )),
-        );
+            )
+        };
+        let dialog = adw::AlertDialog::new(Some(&crate::i18n::gettext("Discard Pending Changes?")), Some(&body));
         dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
         dialog.add_response("discard", &crate::i18n::gettext("Discard and Refresh"));
         dialog.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
         dialog.set_default_response(Some("cancel"));
         dialog.set_close_response("cancel");
         let workspace_tabs = self.workspace_tabs.clone();
+        let trackers = self.change_trackers.clone();
+        let handle = self.workspace_handle.clone();
+        let input = self.input.clone();
         dialog.connect_response(None, move |_, response| {
             if response != "discard" {
+                return;
+            }
+            let state = trackers
+                .get(id)
+                .map_or(PendingState::Clean, |tracker| tracker.pending_state());
+            if state == PendingState::Saving || handle.ledger().in_flight_in(CloseScope::Tab(id)) > 0 {
+                return;
+            }
+            if !unknown && matches!(state, PendingState::OutcomeUnknown(_)) {
+                input.deliver(WorkspaceInput::RefreshTab(id));
                 return;
             }
             let browse = workspace_tabs
@@ -708,6 +751,9 @@ impl WorkspaceModel {
         match self.workspace_tabs.borrow().get(&id) {
             // A table tab says itself when it has nothing to export.
             Some(WorkspaceTab::Table(slot)) => {
+                if slot.browse.shows_structure() {
+                    return false;
+                }
                 slot.browse.send(GridInput::Export);
                 true
             }

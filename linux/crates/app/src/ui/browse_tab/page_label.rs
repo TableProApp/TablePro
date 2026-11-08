@@ -2,7 +2,6 @@ use super::page_state::PageState;
 use super::row_total::RowTotal;
 use crate::ui::format::format_thousands;
 
-/// The paginator's text for the page on screen.
 pub(super) fn page_range_label(page: &PageState, total: &RowTotal) -> String {
     label_with(page, total, format_thousands)
 }

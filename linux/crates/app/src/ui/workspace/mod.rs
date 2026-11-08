@@ -362,7 +362,6 @@ pub struct TableTabSlot {
     pub schema: Option<String>,
     pub table: String,
     pub browse: BrowseTab,
-    /// The Structure view, made the first time it is asked for.
     pub structure: Option<crate::ui::structure_tab::StructureTab>,
 }
 
@@ -398,8 +397,6 @@ impl WorkspaceTab {
         }
     }
 
-    /// The Structure-side controller: a `Structure` slot's, or the
-    /// Structure view of a `Table` slot that has opened it.
     pub fn structure_tab(&self) -> Option<&crate::ui::structure_tab::StructureTab> {
         match self {
             WorkspaceTab::Structure(s) => Some(&s.structure),
@@ -591,9 +588,7 @@ pub(crate) enum WorkspaceInput {
     /// workspace is saved.
     WorkspaceTabsChanged,
     SaveTab(Uuid),
-    /// Save a table tab's Structure view, whatever its rows hold.
     SaveStructure(Uuid),
-    /// A table tab's Structure view opened for the first time.
     ShowTableStructure(Uuid),
     // A query tab's changed rows alone, never its SQL file.
     SaveRows(Uuid),

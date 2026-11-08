@@ -267,7 +267,9 @@ impl TabFactory {
         }
         let tab_page = self.append(&browse, id, parent);
         let follow = follow_loading(&tab_page, browse.is_loading());
-        browse.connect_loading_changed(move |_, loading| follow(loading));
+        browse.connect_loading_changed(move |browse, loading| {
+            follow(loading || browse.structure_tab().is_some_and(|structure| structure.is_loading()));
+        });
         Some(WorkspaceTab::Table(TableTabSlot {
             id,
             page: tab_page,
@@ -308,8 +310,6 @@ impl TabFactory {
         }))
     }
 
-    /// The Structure view of the table tab `id`. It goes under the tab's
-    /// own id, so the tab's close and save prompts cover its edits.
     pub(super) fn table_structure(&self, id: Uuid, schema: Option<String>, table: String) -> Option<StructureTab> {
         let parts = &self.parts;
         let session = parts.context.active.get()?;
@@ -323,6 +323,13 @@ impl TabFactory {
             first_load: FirstLoad::Now,
         });
         connect_structure(&structure, id, &parts.input, WorkspaceInput::SaveStructure);
+        if let Some(WorkspaceTab::Table(slot)) = parts.tabs.borrow().get(&id) {
+            let follow = follow_loading(&slot.page, structure.is_loading() || slot.browse.is_loading());
+            let browse = slot.browse.downgrade();
+            structure.connect_loading_changed(move |_, loading| {
+                follow(loading || browse.upgrade().is_some_and(|browse| browse.is_loading()));
+            });
+        }
         Some(structure)
     }
 
@@ -507,7 +514,7 @@ fn connect_browse(browse: &BrowseTab, tab_id: Uuid, input: &WorkspaceSender) {
     let dirty = input.clone();
     browse.connect_dirty_changed(move |_, _| dirty.deliver(WorkspaceInput::TabDirtyChanged));
     let save = input.clone();
-    browse.connect_save_requested(move |_| save.deliver(WorkspaceInput::SaveTab(tab_id)));
+    browse.connect_save_requested(move |_| save.deliver(WorkspaceInput::SaveRows(tab_id)));
     let structure = input.clone();
     browse.connect_structure_requested(move |_| structure.deliver(WorkspaceInput::ShowTableStructure(tab_id)));
     let stop = input.clone();

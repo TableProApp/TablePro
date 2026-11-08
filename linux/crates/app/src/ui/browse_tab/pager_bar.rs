@@ -202,6 +202,10 @@ impl PagerBar {
         ]
     }
 
+    pub(super) fn set_count_enabled(&self, enabled: bool) {
+        self.turn(&[(self.imp().count_button.get(), enabled)]);
+    }
+
     /// The rows on the page, Count Rows and Last, which only an exact
     /// total enables.
     pub(super) fn show_total(&self, pager: &BrowsePager, shown: Option<&PageState>, total: &RowTotal) {

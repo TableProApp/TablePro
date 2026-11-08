@@ -1185,7 +1185,7 @@ fn refresh_asks_the_window_and_filter_opens_the_strip() {
 
     harness
         .tab()
-        .activate_action("browse.refresh", None)
+        .activate_action("table.refresh", None)
         .expect("the browse group");
     harness
         .tab()
@@ -1537,33 +1537,89 @@ fn a_dotted_field_of_a_document_neither_sorts_nor_takes_an_edit() {
     assert_eq!(harness.tracker.pending_count(), 0);
 }
 
-/// The Structure view is asked for once, the first time it is switched to,
-/// and the data view's controls leave the bottom bar for it.
 #[gtk4::test]
 fn the_bottom_bar_switches_between_data_and_structure() {
-    use gtk4::prelude::*;
     use gtk4::subclass::prelude::ObjectSubclassIsExt;
 
     let harness = Harness::open(serving_table(), []);
-    let tab = harness.tab().clone();
+    let tab = harness.tab();
+    let shown = Shown::new(tab);
     let asked = std::rc::Rc::new(std::cell::Cell::new(0));
     let counted = asked.clone();
     tab.connect_structure_requested(move |_| counted.set(counted.get() + 1));
     tab.offer_structure();
     let imp = tab.imp();
+    wait_until(WAIT, || shown.0.is_mapped()).expect("the window is mapped");
+    tab.send(PagingInput::ShowFilterStrip);
     assert!(imp.view_toggle.is_visible());
-
-    imp.view_toggle.set_active_name(Some("structure"));
+    assert!(imp.view_toggle.child_focus(gtk4::DirectionType::TabForward));
+    assert!(crate::ui::a11y::holds_focus(&imp.view_toggle.get()));
+    let tabs: Vec<_> = crate::test_support::descendants(&imp.view_toggle.get())
+        .into_iter()
+        .filter(|widget| widget.accessible_role() == gtk4::AccessibleRole::Tab)
+        .collect();
+    assert_eq!(tabs.len(), 2);
+    assert!(tabs[1].activate());
+    wait_until(WAIT, || tab.shows_structure()).expect("keyboard activation selects Structure");
     assert_eq!(asked.get(), 1);
-    assert_eq!(imp.view_stack.visible_child_name().as_deref(), Some("structure"));
     assert!(!imp.data_start.is_visible());
-
-    tab.set_structure(&gtk4::Label::new(None));
-    imp.view_toggle.set_active_name(Some("data"));
-    imp.view_toggle.set_active_name(Some("structure"));
-    assert_eq!(asked.get(), 1, "a view that is built is asked for again");
-
-    imp.view_toggle.set_active_name(Some("data"));
-    assert_eq!(imp.view_stack.visible_child_name().as_deref(), Some("data"));
+    wait_until(WAIT, || !imp.toolbar.is_mapped()).expect("the Data toolbar is hidden");
+    assert!(tab.activate_action("browse.filter", None).is_err());
+    imp.view_stack.set_visible_child_name("data");
+    imp.view_stack.set_visible_child_name("structure");
+    assert_eq!(asked.get(), 1, "lazy construction was requested twice before delivery");
+    imp.view_stack.set_visible_child_name("data");
+    wait_until(WAIT, || imp.toolbar.is_mapped()).expect("the Data toolbar returns");
     assert!(imp.data_start.is_visible());
+    assert!(tab.read(|model| model.filter_strip.revealed()).unwrap());
+    drop(shown);
+}
+
+#[gtk4::test]
+fn table_commands_follow_the_selected_view_from_the_switch_and_controls() {
+    use crate::ui::structure_tab::{ColumnsInput, StructureMode, StructureTab, StructureTabInit};
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+    let mut script = serving_table();
+    script.dialect = Arc::new(tablepro_driver_postgres::PgDialect::new(
+        &tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0),
+    ));
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    let tab = harness.tab();
+    let shown = Shown::new(tab);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the rows");
+    let delta = harness.tracker.apply(rename(0, "Ada", "Edited"));
+    harness.grid().apply_delta(&delta);
+    tab.send(GridInput::EditingChanged);
+    tab.offer_structure();
+    let structure = StructureTab::new(StructureTabInit {
+        tracker: crate::services::structure_tracker_handle::StructureTrackerHandle::default(),
+        schema: None,
+        table: "new_table".into(),
+        mode: StructureMode::New,
+        session: harness.session.clone(),
+        tasks: harness.runtime.as_ref().unwrap().tasks(),
+        first_load: crate::ui::tab_load::FirstLoad::Now,
+    });
+    structure.send(ColumnsInput::AddColumn);
+    tab.set_structure(&structure);
+    let row_saves = crate::test_support::SignalLog::connect(tab, "save-requested", |_| ());
+    let schema_saves = crate::test_support::SignalLog::connect(&structure, "save-requested", |_| ());
+    let row_refreshes = crate::test_support::SignalLog::connect(tab, "refresh-requested", |_| ());
+    tab.imp().view_stack.set_visible_child_name("structure");
+    assert!(tab.imp().view_toggle.child_focus(gtk4::DirectionType::TabForward));
+    tab.imp().view_toggle.activate_action("table.save", None).unwrap();
+    assert_eq!(schema_saves.count(), 1);
+    assert_eq!(row_saves.count(), 0);
+    assert!(tab.activate_action("grid.insert-row", None).is_err());
+    tab.imp().view_toggle.activate_action("table.refresh", None).unwrap();
+    assert_eq!(row_refreshes.count(), 0);
+    assert_eq!(harness.tracker.pending_count(), 1);
+    tab.imp().view_stack.set_visible_child_name("data");
+    tab.activate_action("table.save", None).unwrap();
+    assert_eq!(row_saves.count(), 1);
+    assert_eq!(schema_saves.count(), 1);
+    structure.shutdown();
+    drop(shown);
 }
