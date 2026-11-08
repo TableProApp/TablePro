@@ -526,6 +526,33 @@ fn read_only_from_the_main_menu_saves_it_and_connects_again_read_only() {
     wait_until(WAIT, || ticked_level(&test).as_deref() == Some("read-only")).expect("Read-Only ticked");
 }
 
+/// The header's lock names the level of the connection in front, as the
+/// macOS toolbar's does, and is not there without one.
+#[gtk4::test]
+fn the_header_lock_follows_the_front_connections_level() {
+    let test = TestWindow::connected("SafeModeButton");
+    let button = test.window.shell().expect("the shell").imp().safe_mode_button.get();
+
+    assert!(button.is_visible());
+    assert_eq!(button.icon_name().as_deref(), Some("changes-allow-symbolic"));
+    assert_eq!(button.tooltip_text().as_deref(), Some("Safe Mode: Off"));
+
+    pick_level(&test, "confirm-writes");
+    wait_until(WAIT, || {
+        button.tooltip_text().as_deref() == Some("Safe Mode: Confirm Writes")
+    })
+    .expect("the lock to name the new level");
+    assert_eq!(button.icon_name().as_deref(), Some("changes-prevent-symbolic"));
+
+    let picker = TestWindow::picker("SafeModeButtonPicker");
+    assert!(
+        picker
+            .window
+            .shell()
+            .is_none_or(|shell| !shell.imp().safe_mode_button.is_visible())
+    );
+}
+
 #[gtk4::test]
 fn the_levels_are_off_without_a_session() {
     let test = TestWindow::picker("SafeModePicker");

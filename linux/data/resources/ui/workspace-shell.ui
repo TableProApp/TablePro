@@ -151,6 +151,14 @@
                                   </object>
                                 </property>
                                 <child type="end">
+                                  <!-- The connection's Safe Mode level, as the macOS
+                                       toolbar's lock, shown while a session is in front. -->
+                                  <object class="GtkMenuButton" id="safe_mode_button">
+                                    <property name="icon-name">changes-allow-symbolic</property>
+                                    <property name="visible">false</property>
+                                  </object>
+                                </child>
+                                <child type="end">
                                   <object class="GtkToggleButton" id="assistant_toggle">
                                     <property name="icon-name">assistant-symbolic</property>
                                     <property name="action-name">win.show-assistant</property>
