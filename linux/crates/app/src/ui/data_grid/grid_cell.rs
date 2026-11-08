@@ -11,7 +11,7 @@ use super::tracked_values::cell_description;
 use super::{DataGrid, GridRow, ServerValue};
 use crate::services::change_tracker::CellState;
 use crate::services::grid::display_text::{DisplayText, auto_filled_sentinel, display_text, editable_null_sentinel};
-use crate::services::grid::{CellLock, GridColumn};
+use crate::services::grid::{CellLock, GridColumn, HighlightColor};
 
 /// Enough for any number, date or short text.
 const SCRATCH_KEPT_BYTES: usize = 256;
@@ -272,6 +272,10 @@ impl GridCell {
         });
         if self.imp().scratch.borrow().capacity() > SCRATCH_KEPT_BYTES {
             self.imp().scratch.replace(String::new());
+        }
+        let colour = self.grid().and_then(|grid| grid.highlight_of(&row, column));
+        for each in HighlightColor::ALL {
+            set_class(self, each.css_class(), colour == Some(each));
         }
         let numbers = paint.numbers.get();
         display.set_xalign(if numbers { 1.0 } else { 0.0 });

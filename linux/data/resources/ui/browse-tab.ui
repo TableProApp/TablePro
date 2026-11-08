@@ -13,6 +13,7 @@
         <condition>max-width: 680sp</condition>
         <setter object="export_button" property="visible">false</setter>
         <setter object="filter_button" property="visible">false</setter>
+        <setter object="highlight_button" property="visible">false</setter>
         <setter object="page_size_box" property="visible">false</setter>
         <setter object="more_button" property="visible">true</setter>
         <setter object="pager_bar" property="compact">true</setter>
@@ -193,6 +194,19 @@
                     </child>
                   </object>
                 </property>
+              </object>
+            </child>
+            <child type="end">
+              <!-- The rules that colour rows and cells, as the macOS bar's pencil. -->
+              <object class="GtkMenuButton" id="highlight_button">
+                <property name="icon-name">document-edit-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Highlight Rules</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+                <accessibility>
+                  <property name="label" translatable="yes">Highlight Rules</property>
+                </accessibility>
               </object>
             </child>
             <child type="end">

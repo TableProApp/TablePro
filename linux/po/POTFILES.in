@@ -92,6 +92,7 @@ crates/app/src/services/grid/find_matches.rs
 crates/app/src/services/grid/grid_column.rs
 crates/app/src/services/grid/grid_row_id.rs
 crates/app/src/services/grid/hex_dump.rs
+crates/app/src/services/grid/highlight.rs
 crates/app/src/services/grid/mod.rs
 crates/app/src/services/grid/result_refusal.rs
 crates/app/src/services/grid/row_key_builder.rs
@@ -271,6 +272,8 @@ crates/app/src/ui/data_grid/grid_menu.rs
 crates/app/src/ui/data_grid/grid_request.rs
 crates/app/src/ui/data_grid/grid_row.rs
 crates/app/src/ui/data_grid/grid_store.rs
+crates/app/src/ui/data_grid/highlight.rs
+crates/app/src/ui/data_grid/highlight_popover.rs
 crates/app/src/ui/data_grid/imp.rs
 crates/app/src/ui/data_grid/keys.rs
 crates/app/src/ui/data_grid/layout_binding.rs

@@ -54,6 +54,8 @@ mod imp {
         #[template_child]
         pub details_toggle: TemplateChild<gtk4::ToggleButton>,
         #[template_child]
+        pub highlight_button: TemplateChild<gtk4::MenuButton>,
+        #[template_child]
         pub transaction_bar: TemplateChild<gtk4::Box>,
         #[template_child]
         pub transaction_label: TemplateChild<gtk4::Label>,
@@ -307,6 +309,19 @@ impl ResultsPane {
         let actions = grid.map(DataGrid::actions);
         self.insert_action_group("grid", actions.as_ref());
         self.imp().details_toggle.set_visible(grid.is_some());
+        let highlight = self.imp().highlight_button.get();
+        highlight.set_visible(grid.is_some());
+        match grid {
+            Some(grid) => {
+                let weak = grid.downgrade();
+                highlight.set_create_popup_func(move |button| {
+                    if let Some(grid) = weak.upgrade() {
+                        button.set_popover(Some(&crate::ui::data_grid::highlight_rules_popover(&grid)));
+                    }
+                });
+            }
+            None => highlight.set_create_popup_func(|_| {}),
+        }
     }
 
     /// Put the page of line `index` first among the kept ones, building

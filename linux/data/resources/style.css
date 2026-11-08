@@ -219,3 +219,33 @@ tp-diagram-canvas > .tp-diagram-border {
 tp-diagram-canvas > .tp-diagram-accent {
   color: var(--accent-color);
 }
+
+/* Highlight rules: a cell, or every cell of a row, tinted by what the user
+   asked to see. A selected row keeps its accent, as it does for stripes. */
+columnview > listview > row:not(:selected) > cell > .tp-hl-red {
+  background-color: color-mix(in srgb, var(--red-3) 28%, transparent);
+}
+
+columnview > listview > row:not(:selected) > cell > .tp-hl-orange {
+  background-color: color-mix(in srgb, var(--orange-3) 28%, transparent);
+}
+
+columnview > listview > row:not(:selected) > cell > .tp-hl-yellow {
+  background-color: color-mix(in srgb, var(--yellow-3) 32%, transparent);
+}
+
+columnview > listview > row:not(:selected) > cell > .tp-hl-green {
+  background-color: color-mix(in srgb, var(--green-3) 28%, transparent);
+}
+
+columnview > listview > row:not(:selected) > cell > .tp-hl-blue {
+  background-color: color-mix(in srgb, var(--blue-3) 28%, transparent);
+}
+
+columnview > listview > row:not(:selected) > cell > .tp-hl-purple {
+  background-color: color-mix(in srgb, var(--purple-3) 28%, transparent);
+}
+
+columnview > listview > row:not(:selected) > cell > .tp-hl-gray {
+  background-color: color-mix(in srgb, var(--view-fg-color) 12%, transparent);
+}

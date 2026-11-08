@@ -501,3 +501,76 @@ fn cells_are_freed_with_the_grid() {
     let alive = freed.iter().filter(|cell| cell.upgrade().is_some()).count();
     assert_eq!(alive, 0, "cells outlived their grid");
 }
+
+/// A highlight rule tints the rows that meet it, and a cell rule only its
+/// own cell, as the macOS grid's Highlight Rules do.
+#[gtk4::test]
+fn highlight_rules_tint_the_rows_and_cells_that_meet_them() {
+    use crate::services::grid::{HighlightColor, HighlightRule, HighlightTarget};
+    use tablepro_core::filter::{FilterOp, FilterValue};
+
+    let grid = Grid::open(two_text_columns(), two_text_values());
+    let mut row_rule = HighlightRule::new("name");
+    row_rule.op = FilterOp::Eq;
+    row_rule.value = Some(FilterValue::Single("B".to_owned()));
+    row_rule.color = HighlightColor::Red;
+    let mut cell_rule = HighlightRule::new("id");
+    cell_rule.op = FilterOp::Eq;
+    cell_rule.value = Some(FilterValue::Single("1".to_owned()));
+    cell_rule.color = HighlightColor::Green;
+    cell_rule.target = HighlightTarget::Cell;
+
+    grid.grid.set_highlight_rules(vec![row_rule, cell_rule]);
+    drain_main_context();
+
+    let tint = |id: i64, column: usize| {
+        let cell = grid.cell_of(id, column);
+        HighlightColor::ALL
+            .into_iter()
+            .find(|color| cell.has_css_class(color.css_class()))
+    };
+    assert_eq!(tint(2, 0), Some(HighlightColor::Red), "the row that meets the rule");
+    assert_eq!(tint(2, 1), Some(HighlightColor::Red));
+    assert_eq!(
+        tint(1, 0),
+        Some(HighlightColor::Green),
+        "the cell that meets its own rule"
+    );
+    assert_eq!(tint(1, 1), None, "a cell rule leaves the row's other cells");
+
+    grid.grid.set_highlight_rules(Vec::new());
+    drain_main_context();
+    assert_eq!(tint(2, 1), None, "the tint outlived its rule");
+}
+
+/// The Highlight Rules popover adds a rule for the grid's first column,
+/// and what is typed in it reaches the grid's rules at once.
+#[gtk4::test]
+fn the_highlight_popover_edits_the_grids_rules() {
+    use tablepro_core::filter::FilterValue;
+
+    let grid = Grid::open(two_text_columns(), two_text_values());
+    let popover = crate::ui::data_grid::highlight_rules_popover(&grid.grid);
+    let content = popover.child().expect("the popover's content");
+    let add = descendants(&content)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+        .find(|button| button.label().as_deref() == Some("Add Rule"))
+        .expect("the Add Rule button");
+
+    add.emit_clicked();
+
+    let rules = grid.grid.highlight_rules();
+    assert_eq!(rules.len(), 1);
+    assert_eq!(rules[0].column, "id");
+    let value = descendants(&content)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Entry>().ok())
+        .next()
+        .expect("the rule's value entry");
+    value.set_text("1");
+    assert_eq!(
+        grid.grid.highlight_rules()[0].value,
+        Some(FilterValue::Single("1".to_owned()))
+    );
+}

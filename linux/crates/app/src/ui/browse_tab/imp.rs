@@ -56,6 +56,8 @@ pub struct BrowseTab {
     #[template_child]
     pub filter_button: TemplateChild<gtk::Button>,
     #[template_child]
+    pub highlight_button: TemplateChild<gtk::MenuButton>,
+    #[template_child]
     pub filter_badge: TemplateChild<gtk::Label>,
     #[template_child]
     pub page_size_dropdown: TemplateChild<gtk::DropDown>,
