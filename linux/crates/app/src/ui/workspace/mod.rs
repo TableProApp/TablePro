@@ -13,6 +13,7 @@ mod database_transfer;
 mod definitions;
 mod diagram;
 mod editor_label;
+mod favorite_folders;
 mod finished_work;
 mod health_banner;
 mod imp;

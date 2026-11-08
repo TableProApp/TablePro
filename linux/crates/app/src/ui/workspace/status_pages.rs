@@ -381,8 +381,6 @@ mod tests {
         wait_until(WAIT, || favorites.names().is_empty()).expect("the favorite to go");
     }
 
-    /// Favorites are filed in folders: a folder is made, a query moved into
-    /// it, and deleting the folder leaves the query.
     #[gtk4::test]
     fn favorites_are_filed_in_folders_and_a_deleted_folder_leaves_its_queries() {
         use gtk4::subclass::prelude::ObjectSubclassIsExt;
@@ -398,13 +396,29 @@ mod tests {
         wait_until(WAIT, || favorites.names() == ["Orders"]).expect("the saved query to be listed");
 
         shell.create_folder("Reports".to_owned(), None);
-        wait_until(WAIT, || favorites.folders().len() == 1).expect("the folder to be listed");
-        let folder = favorites.folders()[0].id;
-        shell.move_favorite(favorites.ids()[0], Some(folder));
-        wait_until(WAIT, || favorites.folder_of_first_query() == Some(folder)).expect("the query filed in it");
+        wait_until(WAIT, || favorites.folder_destinations().len() == 1).expect("the folder to be listed");
+        let folder = favorites.folder_destinations()[0].0;
+        let store = test.services.history().store().expect("history").saved_query_folders();
+        let owner = test.workspace().connection_id().expect("connection");
+        let work = test
+            .services
+            .tasks
+            .spawn_task(async move { store.create(owner, "Monthly", Some(folder)).await });
+        let child = finish_on_main(WAIT, work)
+            .expect("created")
+            .expect("task")
+            .expect("folder");
+        wait_until(WAIT, || favorites.folder_destinations().len() == 2).expect("external folder listed");
+        assert!(
+            favorites
+                .folder_destinations()
+                .contains(&(child, "/Reports/Monthly".to_owned()))
+        );
+        shell.move_favorite(favorites.ids()[0], Some(child));
+        wait_until(WAIT, || favorites.folder_of_first_query() == Some(child)).expect("the query filed in it");
 
         shell.delete_folder(folder);
-        wait_until(WAIT, || favorites.folders().is_empty()).expect("the folder to go");
+        wait_until(WAIT, || favorites.folder_destinations().is_empty()).expect("the folder to go");
         assert_eq!(favorites.names(), ["Orders"], "the query went with its folder");
         assert_eq!(favorites.folder_of_first_query(), None);
     }
