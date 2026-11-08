@@ -41,7 +41,7 @@ n/a does not apply. Unknown has not been checked.
 | Favorite keywords that expand in the editor | Yes | Partial ([#4116](https://github.com/TableProApp/TablePro/pull/4116)): storage only; the editor does not expand them yet | Unknown | Shared storage and the decision are core ADR 0017. |
 | Favorite tables and databases, with environments | Yes | In PR [#4116](https://github.com/TableProApp/TablePro/pull/4116): storage only; no UI yet | Unknown |  |
 | Open Quickly (find a table by name) | Yes | In PR [#4121](https://github.com/TableProApp/TablePro/pull/4121): tables and views, saved queries in 4133 and past queries in 4144; not databases, schemas, routines or other connections | Unknown |  |
-| Bottom bar with an Add menu and a schema picker | Yes | Partial ([#4146](https://github.com/TableProApp/TablePro/pull/4146)): the Add menu (table, schema, database); no schema picker | Unknown |  |
+| Bottom bar with an Add menu and a schema picker | Yes | Partial ([#4146](https://github.com/TableProApp/TablePro/pull/4146)): the Add menu (table, schema, database); a Schemas menu filters the list (4150), with no active schema | Unknown |  |
 | A row's menu is shown whole, not cut with a scrollbar | Yes | In PR [#4149](https://github.com/TableProApp/TablePro/pull/4149) | Unknown |  |
 | Sidebar toggle in the window header | Yes | In PR [#4117](https://github.com/TableProApp/TablePro/pull/4117) | Unknown |  |
 

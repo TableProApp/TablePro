@@ -83,7 +83,7 @@ areas:
       - id: sidebar-footer
         name: Bottom bar with an Add menu and a schema picker
         macos: yes
-        linux: {status: partial, pr: 4146, note: "the Add menu (table, schema, database); no schema picker"}
+        linux: {status: partial, pr: 4146, note: "the Add menu (table, schema, database); a Schemas menu filters the list (4150), with no active schema"}
         windows: unknown
       - id: sidebar-menu-size
         name: A row's menu is shown whole, not cut with a scrollbar
