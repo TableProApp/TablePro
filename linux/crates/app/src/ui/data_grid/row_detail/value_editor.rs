@@ -249,7 +249,7 @@ impl RowDetailPane {
         }
     }
 
-    fn is_editing_value(&self) -> bool {
+    pub(super) fn is_editing_value(&self) -> bool {
         self.imp().edit.borrow().is_some()
     }
 
