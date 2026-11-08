@@ -234,6 +234,8 @@ INSERT INTO connections VALUES ('t2', '{"id":"t2","name":"Verified","db_type":"p
 INSERT INTO connections VALUES ('t3', '{"id":"t3","name":"Off","db_type":"postgres","host":"h","ssl":false,"url_params":"sslmode=disable"}');
 INSERT INTO connections VALUES ('t4', '{"id":"t4","name":"Unknown mode","db_type":"postgres","host":"h","ssl":false,"url_params":"sslmode=surprise"}');
 INSERT INTO connections VALUES ('t5', '{"id":"t5","name":"Other driver key","db_type":"mysql","host":"h","ssl":false,"url_params":"ssl-mode=VERIFY_IDENTITY"}');
+INSERT INTO connections VALUES ('t7', '{"id":"t7","name":"CA and require","db_type":"postgres","host":"h","ssl":true,"ca_cert_path":"/certs/ca.pem","url_params":"sslmode=require"}');
+INSERT INTO connections VALUES ('t8', '{"id":"t8","name":"CA and prefer","db_type":"postgres","host":"h","ssl":true,"ca_cert_path":"/certs/ca.pem","url_params":"sslmode=prefer"}');
 INSERT INTO connections VALUES ('t6', '{"id":"t6","name":"Plain","db_type":"postgres","host":"h","ssl":false,"url_params":"application_name=x"}');
 "#;
 
@@ -262,6 +264,13 @@ fn a_tls_mode_in_the_driver_parameters_is_not_dropped_or_weakened() {
         "ssl on must not weaken the mode named"
     );
     assert_eq!(verified.ca_certificate_path.as_deref(), Some("/certs/ca.pem"));
+    for named in ["CA and require", "CA and prefer"] {
+        assert_eq!(
+            by_name(named).ssl.as_ref().map(|ssl| ssl.mode),
+            Some(ForeignSslMode::VerifyCa),
+            "{named}: a parameter must not lower what the CA file implies"
+        );
+    }
     assert!(by_name("Off").ssl.is_none());
     assert!(by_name("Plain").ssl.is_none());
     for unread in ["Unknown mode", "Other driver key"] {

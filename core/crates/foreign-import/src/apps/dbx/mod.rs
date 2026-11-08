@@ -264,11 +264,16 @@ fn ssl_of(config: &Config, fields: &mut BTreeMap<String, String>) -> Option<Fore
         named(&config.client_cert_path),
         named(&config.client_key_path),
     );
-    let mode = match (from_params, config.ssl) {
-        (Some(from_params), _) => from_params.mode,
-        (None, true) if ca.is_some() => ForeignSslMode::VerifyCa,
-        (None, true) => ForeignSslMode::Required,
-        (None, false) => return None,
+    // What `ssl` and the files imply, which a parameter may raise but never lower.
+    let implied = match (config.ssl, ca.is_some()) {
+        (true, true) => Some(ForeignSslMode::VerifyCa),
+        (true, false) => Some(ForeignSslMode::Required),
+        (false, _) => None,
+    };
+    let mode = match (from_params.map(|ssl| ssl.mode), implied) {
+        (Some(named), Some(implied)) => stricter(named, implied),
+        (Some(mode), None) | (None, Some(mode)) => mode,
+        (None, None) => return None,
     };
     Some(ForeignSsl {
         mode,
@@ -276,6 +281,17 @@ fn ssl_of(config: &Config, fields: &mut BTreeMap<String, String>) -> Option<Fore
         client_certificate_path: cert,
         client_key_path: key,
     })
+}
+
+fn stricter(a: ForeignSslMode, b: ForeignSslMode) -> ForeignSslMode {
+    let rank = |mode: ForeignSslMode| match mode {
+        ForeignSslMode::Disabled => 0,
+        ForeignSslMode::Preferred => 1,
+        ForeignSslMode::Required => 2,
+        ForeignSslMode::VerifyCa => 3,
+        ForeignSslMode::VerifyIdentity => 4,
+    };
+    if rank(b) > rank(a) { b } else { a }
 }
 
 fn map_color(raw: Option<&str>) -> Option<ForeignColor> {
