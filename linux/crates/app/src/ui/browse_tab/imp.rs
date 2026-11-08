@@ -33,11 +33,15 @@ pub struct BrowseTab {
     pub structure_host: TemplateChild<adw::Bin>,
     #[template_child]
     pub json_host: TemplateChild<adw::Bin>,
-    /// The JSON view, made the first time it is switched to.
-    pub json_view: RefCell<Option<sourceview5::View>>,
-    /// The tab reads the grid's rows again for the JSON view when they change.
-    pub json_watching: Cell<bool>,
-    pub json_refresh_queued: Cell<bool>,
+    pub(super) json_view: RefCell<Option<super::json_view::JsonView>>,
+    pub(super) json_actions: OnceCell<gtk::gio::SimpleActionGroup>,
+    pub(super) json_browse_actions: OnceCell<gtk::gio::SimpleActionGroup>,
+    #[template_child]
+    pub rows_start: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub json_end: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub json_more: TemplateChild<gtk::MenuButton>,
     #[template_child]
     pub view_toggle: TemplateChild<adw::InlineViewSwitcher>,
     #[template_child]
@@ -159,6 +163,9 @@ impl ObjectImpl for BrowseTab {
     /// finish it for nobody.
     fn dispose(&self) {
         self.link_watch.take();
+        if let Some(view) = self.json_view.borrow_mut().take() {
+            view.shutdown();
+        }
         if let Ok(mut model) = self.model.try_borrow_mut()
             && let Some(mut model) = model.take()
         {

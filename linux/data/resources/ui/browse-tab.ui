@@ -35,6 +35,7 @@
         <setter object="page_size_box" property="visible">false</setter>
         <setter object="more_button" property="visible">true</setter>
         <setter object="pager_bar" property="compact">true</setter>
+        <setter object="view_toggle" property="display-mode">icons</setter>
         <setter object="structure_details" property="visible">false</setter>
         <setter object="structure_secondary" property="visible">false</setter>
         <setter object="structure_more" property="visible">true</setter>
@@ -47,6 +48,7 @@
             <child>
               <object class="AdwViewStackPage">
                 <property name="name">data</property>
+                <property name="icon-name">view-grid-symbolic</property>
                 <property name="child">
                   <object class="AdwToolbarView" id="toolbar">
                     <property name="top-bar-style">flat</property>
@@ -131,6 +133,8 @@
             <child>
               <object class="AdwViewStackPage">
                 <property name="name">structure</property>
+                <property name="visible">false</property>
+                <property name="icon-name">view-list-symbolic</property>
                 <property name="child">
                   <object class="AdwBin" id="structure_host" />
                 </property>
@@ -140,6 +144,7 @@
             <child>
               <object class="AdwViewStackPage">
                 <property name="name">json</property>
+                <property name="icon-name">text-x-generic-symbolic</property>
                 <property name="title" translatable="yes">JSON</property>
                 <property name="child">
                   <object class="AdwBin" id="json_host"/>
@@ -152,7 +157,6 @@
           <object class="GtkActionBar" id="action_bar">
             <child type="start">
               <object class="AdwInlineViewSwitcher" id="view_toggle">
-                <property name="visible">false</property>
                 <property name="stack">view_stack</property>
                 <property name="display-mode">labels</property>
               </object>
@@ -194,9 +198,6 @@
                   </object>
                 </child>
                 <child>
-                  <object class="TableProPagerBar" id="pager_bar" />
-                </child>
-                <child>
                   <object class="GtkLabel" id="selection_label">
                     <property name="visible">false</property>
                     <property name="ellipsize">end</property>
@@ -206,6 +207,40 @@
                       <class name="accent" />
                       <class name="caption-heading" />
                     </style>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child type="start">
+              <object class="GtkBox" id="rows_start">
+                <child>
+                  <object class="TableProPagerBar" id="pager_bar" />
+                </child>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkBox" id="json_end">
+                <property name="visible">false</property>
+                <property name="spacing">6</property>
+                <child>
+                  <object class="GtkButton">
+                    <property name="icon-name">edit-copy-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Copy JSON Preview</property>
+                    <property name="action-name">json.copy</property>
+                    <accessibility>
+                      <property name="label" translatable="yes">Copy JSON Preview</property>
+                    </accessibility>
+                    <style><class name="flat"/></style>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkMenuButton" id="json_more">
+                    <property name="icon-name">view-more-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">More JSON Actions</property>
+                    <accessibility>
+                      <property name="label" translatable="yes">More JSON Actions</property>
+                    </accessibility>
+                    <style><class name="flat"/></style>
                   </object>
                 </child>
               </object>

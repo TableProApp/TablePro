@@ -26,6 +26,7 @@ mod fetch;
 mod grid_handlers;
 mod grid_input;
 mod imp;
+mod json_view;
 mod layout;
 mod page_label;
 mod page_reply;
@@ -52,7 +53,6 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
-use sourceview5::prelude::*;
 use tablepro_core::browse::RowReference;
 use tablepro_core::dialect::{SqlDialect, TablePaging};
 use tablepro_core::meta::{RowIdentity, TableRef};
@@ -265,6 +265,7 @@ impl BrowseTab {
             }
         }
         imp.dispatching.set(false);
+        self.refresh_json();
     }
 
     /// Stop every read the tab has running and stop following
@@ -273,6 +274,9 @@ impl BrowseTab {
     pub fn shutdown(&self) {
         let imp = self.imp();
         imp.link_watch.take();
+        if let Some(view) = imp.json_view.borrow().as_ref() {
+            view.shutdown();
+        }
         if let Ok(mut model) = imp.model.try_borrow_mut()
             && let Some(model) = model.as_mut()
         {
@@ -403,13 +407,7 @@ impl BrowseTab {
 
     pub fn offer_structure(&self) {
         let imp = self.imp();
-        imp.view_toggle.set_visible(true);
-        let tab = self.downgrade();
-        imp.view_stack.connect_visible_child_name_notify(move |_| {
-            if let Some(tab) = tab.upgrade() {
-                tab.follow_selected_view();
-            }
-        });
+        imp.view_stack.page(&*imp.structure_host).set_visible(true);
     }
 
     pub fn set_structure(&self, structure: &crate::ui::structure_tab::StructureTab) {
@@ -429,29 +427,44 @@ impl BrowseTab {
         self.imp().view_stack.visible_child_name().as_deref() == Some("structure")
     }
 
+    pub(super) fn shows_data(&self) -> bool {
+        self.imp().view_stack.visible_child_name().as_deref() == Some("data")
+    }
+
+    pub(super) fn shows_json(&self) -> bool {
+        self.imp().view_stack.visible_child_name().as_deref() == Some("json")
+    }
+
     fn follow_selected_view(&self) {
         let imp = self.imp();
         let structure = self.shows_structure();
-        if imp.view_stack.visible_child_name().as_deref() == Some("json") {
-            self.show_json();
-        }
         // Finish an open cell before hiding its editor, so close and Save see the draft.
-        if structure {
+        if !self.shows_data() {
             self.commit_cell_edit();
         }
         if structure && !imp.structure_requested.replace(true) {
             self.emit_by_name::<()>("structure-requested", &[]);
         }
-        imp.data_start.set_visible(!structure);
-        imp.data_end.set_visible(!structure);
+        imp.data_start.set_visible(self.shows_data());
+        imp.data_end.set_visible(self.shows_data());
+        imp.rows_start.set_visible(!structure);
+        imp.json_end.set_visible(self.shows_json());
         imp.structure_start.set_visible(structure);
         imp.structure_end.set_visible(structure);
         self.sync_structure_actions();
-        let actions = imp.browse_actions.get().filter(|_| !structure);
+        let actions = if self.shows_data() {
+            imp.browse_actions.get()
+        } else if self.shows_json() {
+            imp.json_browse_actions.get()
+        } else {
+            None
+        };
         self.insert_action_group("browse", actions);
+        self.insert_action_group("json", imp.json_actions.get().filter(|_| self.shows_json()));
         if let Some(model) = imp.model.borrow_mut().as_mut() {
             model.show_grid_actions();
         }
+        self.refresh_json();
     }
 
     fn sync_structure_actions(&self) {
@@ -464,7 +477,7 @@ impl BrowseTab {
             if let Some(structure) = self.structure_tab() {
                 let _ = structure.activate_action("structure.save", None);
             }
-        } else {
+        } else if self.shows_data() {
             let _ = self.activate_action("browse.save", None);
         }
     }
@@ -479,55 +492,33 @@ impl BrowseTab {
         }
     }
 
-    /// The JSON view: the rows on screen as an array of objects, read only,
-    /// as the macOS bar's JSON view shows the result.
-    fn show_json(&self) {
+    fn refresh_json(&self) {
+        if !self.shows_json() {
+            return;
+        }
         let imp = self.imp();
-        let Some(grid) = imp.grid.get().cloned() else {
+        let Some(grid) = imp.grid.get() else {
             return;
         };
         if imp.json_view.borrow().is_none() {
-            let buffer = sourceview5::Buffer::new(None);
-            buffer.set_language(sourceview5::LanguageManager::default().language("json").as_ref());
-            let view = sourceview5::View::with_buffer(&buffer);
-            view.set_editable(false);
-            view.set_cursor_visible(false);
-            view.set_monospace(true);
-            view.set_show_line_numbers(true);
-            view.set_top_margin(8);
-            view.set_bottom_margin(8);
-            view.set_left_margin(8);
-            view.update_property(&[gtk::accessible::Property::Label(&crate::i18n::gettext("Rows as JSON"))]);
-            if let Some(config) = grid.config() {
-                crate::ui::style_scheme_resolver::apply(&view, &config.settings.style_scheme());
-            }
-            let scrolled = gtk::ScrolledWindow::builder().child(&view).build();
-            libadwaita::prelude::BinExt::set_child(&*imp.json_host, Some(&scrolled));
+            let weak = self.downgrade();
+            let view = json_view::JsonView::new(grid, move || {
+                if let Some(tab) = weak.upgrade() {
+                    tab.send(PagingInput::RequestRefresh);
+                }
+            });
+            libadwaita::prelude::BinExt::set_child(&*imp.json_host, Some(view.widget()));
+            let group = gtk::gio::SimpleActionGroup::new();
+            group.add_action(view.copy_action());
+            let _ = imp.json_actions.set(group);
             imp.json_view.replace(Some(view));
         }
-        if !imp.json_watching.replace(true) {
-            // A page, a sort or a filter lands as one change of the rows.
-            let tab = self.downgrade();
-            grid.selection().connect_items_changed(move |_, _, _, _| {
-                let Some(tab) = tab.upgrade() else {
-                    return;
-                };
-                let imp = tab.imp();
-                if imp.view_stack.visible_child_name().as_deref() != Some("json") || imp.json_refresh_queued.replace(true) {
-                    return;
-                }
-                glib::idle_add_local_once(move || {
-                    tab.imp().json_refresh_queued.set(false);
-                    tab.show_json();
-                });
-            });
-        }
-        let text = match crate::ui::data_grid::rows_as_json(&grid, JSON_ROWS) {
-            Ok((text, _)) => text,
-            Err(_) => crate::i18n::gettext("A value in these rows could not be read, so they have no JSON to show."),
-        };
-        if let Some(view) = imp.json_view.borrow().as_ref() {
-            view.buffer().set_text(&text);
+        self.insert_action_group("json", imp.json_actions.get());
+        if let (Some(view), Some(presentation)) = (
+            imp.json_view.borrow().as_ref(),
+            self.read(|model| model.load.presentation()),
+        ) {
+            view.refresh(grid, presentation);
         }
     }
 
@@ -598,10 +589,6 @@ struct PageView {
     offset: u64,
     limit: u64,
 }
-
-/// The rows the JSON view holds, which keeps a large page from stalling
-/// the view that lays out every character.
-const JSON_ROWS: usize = 1_000;
 
 pub(crate) struct BrowseModel {
     this: glib::WeakRef<BrowseTab>,

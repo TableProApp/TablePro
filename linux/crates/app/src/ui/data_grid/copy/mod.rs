@@ -15,6 +15,10 @@ use crate::ui::clipboard::{CopyKind, CopyRequest, InClauseRows, InsertCopy, Inse
 use crate::ui::export::ExportSource;
 use crate::ui::filter_strip::FilterVocabulary;
 
+mod json_preview;
+
+pub(crate) use json_preview::{JsonPreview, JsonPreviewRequest, json_preview};
+
 #[cfg(test)]
 mod tests;
 
@@ -204,18 +208,6 @@ fn shown_rows(grid: &DataGrid, rows: &[GridRow]) -> (Arc<[ResultColumn]>, Vec<Ro
     let tracked = grid.tracked();
     let rows = rows.iter().map(|row| shown.project(tracked.snapshot(row))).collect();
     (shown.columns, rows)
-}
-
-/// The first `limit` rows as one JSON array of objects, under the columns
-/// on screen, and how many rows it holds.
-pub(crate) fn rows_as_json(
-    grid: &DataGrid,
-    limit: usize,
-) -> Result<(String, usize), tablepro_core::export::EncodeError> {
-    let rows: Vec<GridRow> = grid.store().rows().take(limit).collect();
-    let (columns, snapshots) = shown_rows(grid, &rows);
-    let values: Vec<Vec<Value>> = snapshots.iter().map(RowSnapshot::to_values).collect();
-    Ok((tablepro_core::export::render_json(&columns, &values)?, rows.len()))
 }
 
 fn copy_one_row(grid: &DataGrid) {

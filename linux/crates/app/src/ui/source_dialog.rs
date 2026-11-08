@@ -98,7 +98,7 @@ pub(crate) fn source_dialog(text: SourceText, settings: Option<&Rc<AppSettings>>
     SourceDialog { dialog, header }
 }
 
-fn follow_scheme(buffer: &sourceview5::Buffer, settings: Option<&Rc<AppSettings>>) -> Vec<HandlerGuard> {
+pub(crate) fn follow_scheme(buffer: &sourceview5::Buffer, settings: Option<&Rc<AppSettings>>) -> Vec<HandlerGuard> {
     let paint = {
         let buffer = buffer.downgrade();
         let settings = settings.map(Rc::downgrade);

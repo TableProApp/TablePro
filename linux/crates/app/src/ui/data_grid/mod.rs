@@ -44,7 +44,7 @@ use tablepro_core::dialect::SqlDialect;
 
 #[cfg(test)]
 pub(crate) use self::column_chooser::ColumnChooser;
-pub(crate) use self::copy::rows_as_json;
+pub(crate) use self::copy::{JsonPreview, JsonPreviewRequest, json_preview};
 pub(crate) use self::edit::BULK_DELETE_CONFIRM_THRESHOLD;
 pub(crate) use self::grid_cell::GridCell;
 pub(crate) use self::grid_config::{DialectSource, EditRules, GridConfig, GridSorting};

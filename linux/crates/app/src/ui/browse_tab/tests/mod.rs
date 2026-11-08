@@ -1,3 +1,4 @@
+mod json;
 mod load;
 mod references;
 mod rows;
@@ -1624,7 +1625,7 @@ fn the_bottom_bar_switches_between_data_and_structure() {
         .into_iter()
         .filter(|widget| widget.accessible_role() == gtk4::AccessibleRole::Tab)
         .collect();
-    assert_eq!(tabs.len(), 2);
+    assert_eq!(tabs.len(), 3);
     assert!(tabs[1].activate());
     wait_until(WAIT, || tab.shows_structure()).expect("keyboard activation selects Structure");
     assert_eq!(asked.get(), 1);
@@ -1791,33 +1792,4 @@ fn the_compact_structure_bar_fits_while_dirty_and_saving() {
     imp.view_stack.set_visible_child_name("data");
     assert!(imp.structure_more.activate_action("structure.discard", None).is_err());
     structure.shutdown();
-}
-
-/// The JSON view shows the rows on screen as an array of objects, and
-/// follows them when a page lands.
-#[gtk4::test]
-fn the_bottom_bar_shows_the_rows_as_json() {
-    use gtk4::prelude::*;
-    use gtk4::subclass::prelude::ObjectSubclassIsExt;
-
-    let mut script = serving_table();
-    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
-    let harness = Harness::open(script, []);
-    wait_until(WAIT, || harness.shown() == text(&["Ada", "Grace"])).expect("the page");
-    let tab = harness.tab().clone();
-    tab.offer_structure();
-    let imp = tab.imp();
-
-    imp.view_stack.set_visible_child_name("json");
-
-    assert_eq!(imp.view_stack.visible_child_name().as_deref(), Some("json"));
-    assert!(!imp.insert_button.is_visible(), "rows are read here, not added");
-    let view = imp.json_view.borrow().clone().expect("the JSON view");
-    let buffer = view.buffer();
-    let json = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
-    assert!(json.contains("\"Ada\"") && json.contains("\"Grace\""), "{json}");
-    assert!(!view.is_editable());
-
-    imp.view_stack.set_visible_child_name("data");
-    assert!(imp.insert_button.is_visible());
 }

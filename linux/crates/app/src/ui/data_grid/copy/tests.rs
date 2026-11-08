@@ -242,6 +242,18 @@ fn copies_and_exports_follow_a_moved_and_a_hidden_column() {
         _ => None,
     });
 
+    let preview = super::json_preview(&grid.grid).render().unwrap();
+    assert_eq!((preview.shown, preview.total, preview.deleted), (2, 2, 0));
+    let json: serde_json::Value = serde_json::from_str(&preview.text).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!([
+            {"name": "Ada", "id": 1},
+            {"name": "Grace Hopper", "id": 2},
+        ])
+    );
+    assert!(preview.text.find("name").unwrap() < preview.text.find("id").unwrap());
+
     assert_eq!(grid.grid.shown_columns(), [1, 0]);
     assert_eq!(rows, "name\tid\nAda\t1\nGrace Hopper\t2\n");
     let (columns, rows) = exported.expect("an export of the rows");
@@ -300,6 +312,11 @@ fn copy_after_a_sort_takes_the_row_on_screen() {
     });
 
     assert_eq!(text, "a");
+    let preview = super::json_preview(&grid.grid).render().unwrap();
+    let json: serde_json::Value = serde_json::from_str(&preview.text).unwrap();
+    assert_eq!(json[0]["id"], 1);
+    assert_eq!(json[1]["id"], 2);
+    assert_eq!(json[2]["id"], 3);
 }
 
 /// The rule names the value the cell holds, never the text it draws: a
@@ -746,4 +763,20 @@ fn the_text_copies_take_the_columns_on_screen() {
     );
     assert_eq!(lines, "{\"id\":1,\"name\":\"Ada\"}\n{\"id\":2,\"name\":\"Grace\"}\n");
     assert_eq!(one_row, "1, 'Ada', 2, 'Grace'");
+}
+
+#[gtk4::test]
+fn json_preview_names_rows_held_back_for_deletion() {
+    let values = people_rows();
+    let grid = Grid::open(people(), values.clone());
+    let delta = grid.tracker.apply(TrackerEdit::DeleteRows {
+        persisted: vec![(key(1), values[0].clone().into())],
+        drafts: Vec::new(),
+    });
+    grid.grid.apply_delta(&delta);
+    let preview = super::json_preview(&grid.grid).render().unwrap();
+    assert_eq!((preview.shown, preview.total, preview.deleted), (1, 1, 1));
+    let json: serde_json::Value = serde_json::from_str(&preview.text).unwrap();
+    assert_eq!(json[0]["name"], "Grace");
+    assert_eq!(json.as_array().unwrap().len(), 1);
 }
