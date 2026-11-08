@@ -34,6 +34,12 @@ areas:
         macos: yes
         linux: yes
         windows: unknown
+        notes: DBX is read on Linux and Windows through the shared core (4147); the macOS importers are Swift and do not list it.
+      - id: app-menu-bar
+        name: Application menu bar (File, Edit, View, Help) with Quit
+        macos: yes
+        linux: {status: pending, pr: 4139, note: "read by a global menu and assistive technology; GNOME draws none"}
+        windows: unknown
       - id: open-database-beside
         name: Open another database of a server beside the connection
         macos: yes
@@ -72,7 +78,17 @@ areas:
       - id: quick-switcher
         name: Open Quickly (find a table by name)
         macos: yes
-        linux: {status: pending, pr: 4121, note: "tables and views; not databases, routines or queries"}
+        linux: {status: pending, pr: 4121, note: "tables and views, saved queries in 4133 and past queries in 4144; not databases, schemas, routines or other connections"}
+        windows: unknown
+      - id: sidebar-footer
+        name: Bottom bar with an Add menu and a schema picker
+        macos: yes
+        linux: {status: partial, pr: 4146, note: "the Add menu (table, schema, database); no schema picker"}
+        windows: unknown
+      - id: sidebar-menu-size
+        name: A row's menu is shown whole, not cut with a scrollbar
+        macos: yes
+        linux: {status: pending, pr: 4149}
         windows: unknown
       - id: sidebar-toggle
         name: Sidebar toggle in the window header
@@ -126,6 +142,47 @@ areas:
         name: The grid draws in the editor scheme's colours
         macos: yes
         linux: {status: pending, pr: 4128}
+        windows: unknown
+
+      - id: grid-row-display
+        name: Show row numbers, row height and the text shown for NULL
+        macos: yes
+        linux: {status: pending, pr: 4134}
+        windows: unknown
+      - id: grid-cell-font
+        name: Font of the grid's cells
+        macos: yes
+        linux: {status: partial, pr: 4135, note: "family and size; no zoom"}
+        windows: unknown
+      - id: grid-date-format
+        name: Date format of the cells
+        macos: yes
+        linux: {status: pending, pr: 4142, note: "cells only; copy and export keep the database's text"}
+        windows: unknown
+      - id: grid-default-sort
+        name: Default sort of a table (none, primary key, first column)
+        macos: yes
+        linux: {status: pending, pr: 4140, note: "one column"}
+        windows: unknown
+      - id: grid-copy-format
+        name: The format Copy writes for several rows
+        macos: yes
+        linux: {status: pending, pr: 4137}
+        windows: unknown
+      - id: grid-auto-inspector
+        name: Open the row details when a row is selected
+        macos: yes
+        linux: {status: pending, pr: 4138}
+        windows: unknown
+      - id: grid-set-value
+        name: Set Empty, NULL or DEFAULT on every selected row
+        macos: yes
+        linux: {status: pending, pr: 4136, note: "not yet for expressions and UUIDs"}
+        windows: unknown
+      - id: grid-invisibles
+        name: Mark spaces, tabs and line breaks in the value editor
+        macos: yes
+        linux: {status: pending, pr: 4141}
         windows: unknown
 
   - name: Bottom bar

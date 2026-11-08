@@ -11,14 +11,14 @@ n/a does not apply. Unknown has not been checked.
 
 | | macOS | Linux | Windows |
 |---|---|---|---|
-| Yes | 53 | 26 | 0 |
-| In a PR | 0 | 18 | 0 |
-| Partial | 0 | 5 | 0 |
+| Yes | 64 | 26 | 0 |
+| In a PR | 0 | 27 | 0 |
+| Partial | 0 | 7 | 0 |
 | No | 0 | 3 | 0 |
 | n/a | 0 | 1 | 0 |
-| Unknown | 0 | 0 | 53 |
+| Unknown | 0 | 0 | 64 |
 
-53 features.
+64 features.
 
 ## Connections
 
@@ -27,7 +27,8 @@ n/a does not apply. Unknown has not been checked.
 | Saved connections, groups, favourites and tags | Yes | Yes | Unknown |  |
 | SSH tunnels with jump hosts | Yes | Yes | Unknown |  |
 | Safe Mode per connection (off, confirm writes, read only) | Yes | Yes | Unknown |  |
-| Import connections from other apps | Yes | Yes | Unknown |  |
+| Import connections from other apps | Yes | Yes | Unknown | DBX is read on Linux and Windows through the shared core (4147); the macOS importers are Swift and do not list it. |
+| Application menu bar (File, Edit, View, Help) with Quit | Yes | In PR [#4139](https://github.com/TableProApp/TablePro/pull/4139): read by a global menu and assistive technology; GNOME draws none | Unknown |  |
 | Open another database of a server beside the connection | Yes | Yes | Unknown |  |
 
 ## Sidebar
@@ -39,7 +40,9 @@ n/a does not apply. Unknown has not been checked.
 | Favorite folders | Yes | In PR [#4130](https://github.com/TableProApp/TablePro/pull/4130): on the storage of 4116 | Unknown |  |
 | Favorite keywords that expand in the editor | Yes | Partial ([#4116](https://github.com/TableProApp/TablePro/pull/4116)): storage only; the editor does not expand them yet | Unknown | Shared storage and the decision are core ADR 0017. |
 | Favorite tables and databases, with environments | Yes | In PR [#4116](https://github.com/TableProApp/TablePro/pull/4116): storage only; no UI yet | Unknown |  |
-| Open Quickly (find a table by name) | Yes | In PR [#4121](https://github.com/TableProApp/TablePro/pull/4121): tables and views; not databases, routines or queries | Unknown |  |
+| Open Quickly (find a table by name) | Yes | In PR [#4121](https://github.com/TableProApp/TablePro/pull/4121): tables and views, saved queries in 4133 and past queries in 4144; not databases, schemas, routines or other connections | Unknown |  |
+| Bottom bar with an Add menu and a schema picker | Yes | Partial ([#4146](https://github.com/TableProApp/TablePro/pull/4146)): the Add menu (table, schema, database); no schema picker | Unknown |  |
+| A row's menu is shown whole, not cut with a scrollbar | Yes | In PR [#4149](https://github.com/TableProApp/TablePro/pull/4149) | Unknown |  |
 | Sidebar toggle in the window header | Yes | In PR [#4117](https://github.com/TableProApp/TablePro/pull/4117) | Unknown |  |
 
 ## Data grid
@@ -55,6 +58,14 @@ n/a does not apply. Unknown has not been checked.
 | Open a referenced row and the rows that reference one | Yes | Yes | Unknown |  |
 | Highlight rules (colour rows by a condition) | Yes | In PR [#4127](https://github.com/TableProApp/TablePro/pull/4127): kept per table in 4129; not kept for a query result | Unknown |  |
 | The grid draws in the editor scheme's colours | Yes | In PR [#4128](https://github.com/TableProApp/TablePro/pull/4128) | Unknown |  |
+| Show row numbers, row height and the text shown for NULL | Yes | In PR [#4134](https://github.com/TableProApp/TablePro/pull/4134) | Unknown |  |
+| Font of the grid's cells | Yes | Partial ([#4135](https://github.com/TableProApp/TablePro/pull/4135)): family and size; no zoom | Unknown |  |
+| Date format of the cells | Yes | In PR [#4142](https://github.com/TableProApp/TablePro/pull/4142): cells only; copy and export keep the database's text | Unknown |  |
+| Default sort of a table (none, primary key, first column) | Yes | In PR [#4140](https://github.com/TableProApp/TablePro/pull/4140): one column | Unknown |  |
+| The format Copy writes for several rows | Yes | In PR [#4137](https://github.com/TableProApp/TablePro/pull/4137) | Unknown |  |
+| Open the row details when a row is selected | Yes | In PR [#4138](https://github.com/TableProApp/TablePro/pull/4138) | Unknown |  |
+| Set Empty, NULL or DEFAULT on every selected row | Yes | In PR [#4136](https://github.com/TableProApp/TablePro/pull/4136): not yet for expressions and UUIDs | Unknown |  |
+| Mark spaces, tabs and line breaks in the value editor | Yes | In PR [#4141](https://github.com/TableProApp/TablePro/pull/4141) | Unknown |  |
 
 ## Bottom bar
 
