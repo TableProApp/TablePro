@@ -97,7 +97,7 @@ fn field_row() -> gtk::Box {
         .build();
     name.add_css_class("dimmed");
     let edited = marker(icons::DOCUMENT_EDIT);
-    // The colour the grid and the value below give a pending value.
+    // Match the pending value beneath the marker.
     edited.add_css_class("warning");
     let kind = gtk::Label::builder()
         .xalign(1.0)
@@ -105,11 +105,17 @@ fn field_row() -> gtk::Box {
         .build();
     kind.add_css_class("caption");
     kind.add_css_class("dimmed");
+    let type_icon = marker(icons::TEXT_X_GENERIC);
+    type_icon.set_visible(true);
+    type_icon.add_css_class("dimmed");
+    let type_box = gtk::Box::new(gtk::Orientation::Horizontal, 3);
+    type_box.append(&type_icon);
+    type_box.append(&kind);
     let top = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     top.append(&key);
     top.append(&name);
     top.append(&edited);
-    top.append(&kind);
+    top.append(&type_box);
     let value = gtk::Inscription::builder()
         .hexpand(true)
         .min_chars(1)
@@ -141,7 +147,7 @@ fn field_parts(row: &gtk::Widget) -> Option<FieldParts> {
     let key = top.first_child()?;
     let name = key.next_sibling()?;
     let edited = name.next_sibling()?;
-    let kind = edited.next_sibling()?;
+    let kind = edited.next_sibling()?.last_child()?;
     Some(FieldParts {
         key: key.downcast().ok()?,
         name: name.downcast().ok()?,
