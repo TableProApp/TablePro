@@ -51,6 +51,14 @@ pub struct DataGrid {
     #[template_child]
     pub column_view: TemplateChild<gtk4::ColumnView>,
     #[template_child]
+    pub row_gutter: TemplateChild<gtk4::Box>,
+    #[template_child]
+    pub gutter_header: TemplateChild<gtk4::Label>,
+    #[template_child]
+    pub gutter_scroll: TemplateChild<gtk4::ScrolledWindow>,
+    #[template_child]
+    pub gutter_list: TemplateChild<gtk4::ListView>,
+    #[template_child]
     pub empty_page: TemplateChild<adw::StatusPage>,
     #[template_child]
     pub detail_pane: TemplateChild<RowDetailPane>,
@@ -86,6 +94,7 @@ pub struct DataGrid {
     pub editing: Cell<bool>,
     /// The window's focus handler, while the grid is in a window.
     pub focus_watch: RefCell<Option<(glib::WeakRef<gtk4::Window>, glib::SignalHandlerId)>>,
+    pub(super) pinned_numbers: std::rc::Rc<super::pinned_numbers::Pinned>,
     pub(super) font_watch: RefCell<Option<HandlerGuard>>,
     pub(super) stripes_watch: RefCell<Option<HandlerGuard>>,
 }

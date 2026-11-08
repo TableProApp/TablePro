@@ -103,6 +103,40 @@
                       </object>
                     </property>
                     <child type="overlay">
+                      <!-- GtkColumnView has no frozen column, so the row
+                           numbers are drawn again over its first column
+                           once the columns scroll sideways. -->
+                      <object class="GtkBox" id="row_gutter">
+                        <property name="orientation">vertical</property>
+                        <property name="halign">start</property>
+                        <property name="visible">false</property>
+                        <style>
+                          <class name="row-gutter"/>
+                        </style>
+                        <child>
+                          <object class="GtkLabel" id="gutter_header">
+                            <property name="xalign">1</property>
+                            <style>
+                              <class name="dimmed"/>
+                              <class name="caption-heading"/>
+                            </style>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkScrolledWindow" id="gutter_scroll">
+                            <property name="vexpand">true</property>
+                            <property name="hscrollbar-policy">never</property>
+                            <property name="vscrollbar-policy">external</property>
+                            <property name="child">
+                              <object class="GtkListView" id="gutter_list">
+                                <property name="can-focus">false</property>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child type="overlay">
                       <object class="AdwStatusPage" id="empty_page">
                         <property name="title" translatable="yes">No Rows</property>
                         <property name="visible">false</property>

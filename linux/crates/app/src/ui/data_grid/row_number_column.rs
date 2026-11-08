@@ -12,7 +12,7 @@ use super::{DataGrid, GridRow, grid_menu};
 const CHROME_PX: i32 = 16 + 4 + 13;
 
 /// The handlers a bound gutter cell or row keeps, dropped at unbind.
-type Watches = Rc<RefCell<HashMap<glib::Object, Vec<(glib::WeakRef<glib::Object>, glib::SignalHandlerId)>>>>;
+pub(super) type Watches = Rc<RefCell<HashMap<glib::Object, Vec<(glib::WeakRef<glib::Object>, glib::SignalHandlerId)>>>>;
 
 /// The first column: each row's number and the icon of its pending
 /// change. GtkColumnView has no row headers, so it is a column like the
@@ -116,7 +116,7 @@ fn show_cell(grid: &DataGrid, cell: &gtk::ColumnViewCell) {
 }
 
 /// A saved row's number counts from the first row read; a draft has none.
-fn row_number(grid: &DataGrid, row: &GridRow, position: u32) -> Option<u64> {
+pub(super) fn row_number(grid: &DataGrid, row: &GridRow, position: u32) -> Option<u64> {
     if row.draft_id().is_some() || position == gtk::INVALID_LIST_POSITION {
         return None;
     }
@@ -124,7 +124,7 @@ fn row_number(grid: &DataGrid, row: &GridRow, position: u32) -> Option<u64> {
     Some(grid.row_base() + u64::from(position.saturating_sub(drafts)) + 1)
 }
 
-fn unwatch(watches: &Watches, item: &glib::Object) {
+pub(super) fn unwatch(watches: &Watches, item: &glib::Object) {
     if let Some(handlers) = watches.borrow_mut().remove(item) {
         for (object, handler) in handlers {
             if let Some(object) = object.upgrade() {
@@ -146,6 +146,7 @@ pub fn fit(grid: &DataGrid) {
     let metrics = grid.column_view().create_pango_context().metrics(None, None);
     let digit_px = pango::units_to_double(metrics.approximate_digit_width());
     column.set_fixed_width((f64::from(digits.max(2)) * digit_px).ceil() as i32 + CHROME_PX);
+    super::pinned_numbers::sync(grid);
 }
 
 /// Each row names itself and its pending change to a screen reader, and

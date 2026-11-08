@@ -221,3 +221,46 @@ fn the_gutter_neither_sorts_nor_saves_its_width() {
         "a sort by the first data column named another"
     );
 }
+
+/// Columns scrolled sideways leave the first column behind, and the row
+/// numbers are drawn again where it was, at the rows' own height.
+#[gtk4::test]
+fn the_row_numbers_stay_in_view_when_the_columns_scroll_sideways() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    use tablepro_core::Value;
+
+    let mut columns = vec![crate::ui::data_grid::test_grid::named("id", "integer", true)];
+    columns.extend((0..30).map(|n| crate::ui::data_grid::test_grid::named(&format!("column_{n}"), "text", false)));
+    let rows: Vec<Vec<Value>> = (1..=3)
+        .map(|id| {
+            std::iter::once(Value::Int(id))
+                .chain((0..30).map(|n| Value::Text(format!("value {id}-{n}"))))
+                .collect()
+        })
+        .collect();
+    let grid = Grid::open(columns, rows);
+    let imp = grid.grid.imp();
+    let (gutter, columns) = (imp.row_gutter.get(), imp.scrolled.hadjustment());
+    assert!(
+        !gutter.is_visible(),
+        "the numbers were drawn twice with nothing scrolled"
+    );
+    assert!(columns.upper() > columns.page_size(), "the grid has nowhere to scroll");
+
+    columns.set_value(columns.upper());
+    drain_main_context();
+
+    assert!(gutter.is_visible());
+    let listed = || {
+        descendants(&imp.gutter_list.get())
+            .into_iter()
+            .filter(|widget| widget.css_name() == "row" && widget.height() > 0)
+            .count()
+    };
+    crate::test_support::wait_until(crate::ui::data_grid::test_grid::WAIT, || listed() == 3)
+        .expect("the gutter lists the rows");
+
+    columns.set_value(0.0);
+    drain_main_context();
+    assert!(!gutter.is_visible());
+}
