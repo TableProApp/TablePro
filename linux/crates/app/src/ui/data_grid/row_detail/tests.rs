@@ -1452,3 +1452,58 @@ fn the_fields_mark_the_primary_key_and_a_pending_edit() {
 
     assert_eq!(marked(crate::ui::icons::DOCUMENT_EDIT), 1);
 }
+
+/// A column that points at another table shows an arrow, and a primary key
+/// its key, so a field says what it is without opening it.
+#[gtk4::test]
+fn a_foreign_key_field_carries_an_arrow_and_a_primary_key_a_key() {
+    use tablepro_core::ForeignKeyInfo;
+    use tablepro_core::ddl::OutboundForeignKey;
+    use tablepro_core::meta::TableRef;
+
+    use crate::ui::data_grid::{KeysHandle, TableKeys};
+
+    let table = TableRef::unqualified("orders");
+    let handle = KeysHandle::new(table.clone());
+    handle.set(TableKeys {
+        table,
+        outbound: vec![OutboundForeignKey {
+            key: ForeignKeyInfo {
+                name: "customer_fkey".to_owned(),
+                columns: vec!["customer_id".to_owned()],
+                ref_schema: None,
+                ref_table: "customers".to_owned(),
+                ref_columns: vec!["id".to_owned()],
+                on_delete: None,
+                on_update: None,
+            },
+            parent_compares_alike: true,
+        }],
+        inbound: Vec::new(),
+    });
+    let grid = Grid::build(
+        GridSpec {
+            references: Some(handle),
+            ..GridSpec::table(vec![
+                named("id", "integer", true),
+                named("customer_id", "integer", false),
+                named("note", "text", false),
+            ])
+        },
+        persisted(&[vec![Value::Int(1), Value::Int(42), Value::Text("x".into())]]),
+    );
+    grid.activate("show-details");
+    let pane = pane_of(&grid);
+    grid.focus(0, 1);
+    drain_main_context();
+
+    let marks = |icon: &str| {
+        descendants(&pane.imp().field_list.get())
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk::Image>().ok())
+            .filter(|image| image.is_visible() && image.icon_name().as_deref() == Some(icon))
+            .count()
+    };
+    assert_eq!(marks(crate::ui::icons::DIALOG_PASSWORD), 1, "the primary key");
+    assert_eq!(marks(crate::ui::icons::GO_UP), 1, "the foreign key");
+}

@@ -201,6 +201,21 @@ fn add_choice(grid: &DataGrid, name: &str, act: impl Fn(&DataGrid, usize) + 'sta
     grid.actions().add_action(&action);
 }
 
+impl DataGrid {
+    /// Whether the column named `name` is part of a foreign key of the
+    /// table, under the keys read so far.
+    pub(crate) fn is_foreign_key_column(&self, name: &str) -> bool {
+        self.config()
+            .and_then(|config| config.references.as_ref())
+            .map(KeysHandle::get)
+            .is_some_and(|keys| {
+                keys.outbound
+                    .iter()
+                    .any(|outbound| outbound.key.columns.iter().any(|column| column == name))
+            })
+    }
+}
+
 /// What `row` offers from `column`, under the keys read so far. A grid
 /// that was given no keys offers nothing.
 fn offers(grid: &DataGrid, row: &GridRow, column: usize) -> Offers {

@@ -245,7 +245,18 @@ impl RowDetailPane {
         else {
             return;
         };
-        key.set_visible(column.catalog.as_ref().is_some_and(|catalog| catalog.primary_key));
+        // A primary key shows a key, and a column that only points at another
+        // table an arrow; a key that is also a foreign key shows the key.
+        let primary = column.catalog.as_ref().is_some_and(|catalog| catalog.primary_key);
+        let foreign = grid.is_foreign_key_column(&column.name);
+        key.set_visible(primary || foreign);
+        key.set_icon_name(Some(if primary { icons::DIALOG_PASSWORD } else { icons::GO_UP }));
+        set_class(&key, "warning", primary);
+        key.set_tooltip_text(Some(&if primary {
+            crate::i18n::gettext("Primary key")
+        } else {
+            crate::i18n::gettext("Foreign key")
+        }));
         name.set_label(&column.name);
         kind.set_label(&column.value_type().name);
         item.set_accessible_label(&column.name);
