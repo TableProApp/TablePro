@@ -81,6 +81,8 @@ pub struct WorkspaceShell {
     #[template_child]
     pub connection_icon: TemplateChild<gtk::Image>,
     #[template_child]
+    pub refresh_page_button: TemplateChild<gtk::Button>,
+    #[template_child]
     pub assistant_toggle: TemplateChild<gtk::ToggleButton>,
     #[template_child]
     pub tab_button: TemplateChild<adw::TabButton>,

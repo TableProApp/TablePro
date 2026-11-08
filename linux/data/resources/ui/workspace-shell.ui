@@ -134,6 +134,14 @@
                                     <property name="action-name">win.new-editor-tab</property>
                                   </object>
                                 </child>
+                                <child type="start">
+                                  <!-- Reads the tab in front again, as the macOS
+                                       toolbar's Refresh does. -->
+                                  <object class="GtkButton" id="refresh_page_button">
+                                    <property name="icon-name">view-refresh-symbolic</property>
+                                    <property name="action-name">win.refresh-page</property>
+                                  </object>
+                                </child>
                                 <property name="title-widget">
                                   <!-- The connection's icon, when it has one,
                                        beside the title that names it. -->

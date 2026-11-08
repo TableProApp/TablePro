@@ -23,7 +23,7 @@ type ActionInput = fn() -> WorkspaceInput;
 /// they are not left greyed out with no reason.
 const HISTORY_ACTIONS: [&str; 2] = ["show-history", "show-saved-queries"];
 
-const ENTRIES: [(&str, ActionInput); 9] = [
+const ENTRIES: [(&str, ActionInput); 10] = [
     ("new-editor-tab", || WorkspaceInput::NewEditorTab),
     (EXPORT_DATABASE, || {
         WorkspaceInput::Transfer(TransferInput::ExportDatabase)
@@ -32,6 +32,7 @@ const ENTRIES: [(&str, ActionInput); 9] = [
         WorkspaceInput::Transfer(TransferInput::ImportSqlFile)
     }),
     ("refresh-tables", || WorkspaceInput::RefreshCatalog),
+    ("refresh-page", || WorkspaceInput::RefreshPage),
     ("save-query", || WorkspaceInput::ActiveTab(ActiveTabCommand::SaveQuery)),
     ("export-results", || {
         WorkspaceInput::ActiveTab(ActiveTabCommand::ExportResults)

@@ -563,3 +563,22 @@ fn the_main_menu_adds_a_connection_with_none_open() {
 
     choose_new_connection(&test, &test.window.content().expect("the picker"));
 }
+
+/// The header's Refresh reaches the window's `refresh-page` action, which
+/// a connected window has and sends to the tab in front.
+#[gtk4::test]
+fn the_header_refresh_names_a_window_action_the_connection_adds() {
+    let test = TestWindow::connected("HeaderRefresh");
+    let workspace = test.workspace();
+    let shell = shell_of(&workspace);
+    let button = shell.imp().refresh_page_button.get();
+
+    assert_eq!(button.action_name().as_deref(), Some("win.refresh-page"));
+    assert!(
+        test.window
+            .lookup_action("refresh-page")
+            .is_some_and(|action| action.is_enabled()),
+        "the connected window has no refresh-page action"
+    );
+    assert!(button.is_sensitive());
+}

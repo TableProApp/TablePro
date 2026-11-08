@@ -52,6 +52,7 @@ pub(super) fn describe_buttons(shell: &WorkspaceShell) {
         &gettext("Show Sidebar"),
         Some("win.show-sidebar"),
     );
+    describe_icon_button(&imp.refresh_page_button.get(), &gettext("Refresh Tab"), None);
     describe_icon_button(
         &imp.new_tab_button.get(),
         &gettext("New Query"),
