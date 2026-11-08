@@ -47,6 +47,7 @@ const REOPEN_CLOSED_TAB: &str = "reopen-closed-tab";
 const CLOSE_ALL_TABS: &str = "close-all-tabs";
 const SWITCH_RECENT_TAB: &str = "switch-recent-tab";
 const SHOW_TABS: &str = "show-tabs";
+const SAVE_CHANGES: &str = "save-changes";
 
 /// Add the actions to the window's own action map, which GTK exports as
 /// `win`. Each sends its input to the session in front when activated;
@@ -83,6 +84,17 @@ pub(super) fn install(window: &adw::ApplicationWindow, shell: &WorkspaceShell) {
             }
         })
         .build()]);
+    let saving = shell.downgrade();
+    window.add_action_entries([gio::ActionEntry::<adw::ApplicationWindow>::builder(SAVE_CHANGES)
+        .activate(move |_, _, _| {
+            if let Some(shell) = saving.upgrade() {
+                shell.save_changes();
+            }
+        })
+        .build()]);
+    if let Some(action) = window.lookup_action(SAVE_CHANGES).and_downcast::<gio::SimpleAction>() {
+        action.set_enabled(false);
+    }
     let switching = shell.downgrade();
     window.add_action_entries([gio::ActionEntry::<adw::ApplicationWindow>::builder(SWITCH_RECENT_TAB)
         .activate(move |_, _, _| {

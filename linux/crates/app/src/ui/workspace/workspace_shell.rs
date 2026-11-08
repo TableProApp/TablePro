@@ -52,6 +52,7 @@ pub(super) fn describe_buttons(shell: &WorkspaceShell) {
         &gettext("Show Sidebar"),
         Some("win.show-sidebar"),
     );
+    describe_icon_button(&imp.save_changes_button.get(), &gettext("Save Changes"), None);
     describe_icon_button(
         &imp.new_tab_button.get(),
         &gettext("New Query"),
@@ -520,6 +521,32 @@ impl WorkspaceShell {
         self.note_shown_tab();
         if let Some((owner, _)) = self.owner_of(&page) {
             self.set_front(Some(&owner));
+        }
+        self.refresh_save_changes();
+    }
+
+    /// The header's Save Changes is on while the tab in front has edits.
+    pub(super) fn refresh_save_changes(&self) {
+        let enabled = self.front().and_then(|front| front.selected_unsaved_tab()).is_some();
+        if let Some(action) = self
+            .imp()
+            .window
+            .upgrade()
+            .and_then(|window| window.lookup_action("save-changes"))
+        {
+            if let Some(action) = action.downcast_ref::<gio::SimpleAction>() {
+                action.set_enabled(enabled);
+            }
+        }
+    }
+
+    /// Save the edits of the tab in front, as the header's Save Changes asks.
+    pub(super) fn save_changes(&self) {
+        let Some(front) = self.front() else {
+            return;
+        };
+        if let (Some(id), Some(input)) = (front.selected_unsaved_tab(), front.sender()) {
+            input.deliver(WorkspaceInput::SaveTab(id));
         }
     }
 
