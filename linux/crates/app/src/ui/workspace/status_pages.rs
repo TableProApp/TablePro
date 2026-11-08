@@ -72,6 +72,7 @@ impl WorkspaceModel {
             store: self.history.store().map(|history| history.saved_queries()),
             active_connection: self.context.active.metadata().map(|metadata| metadata.id),
             tasks: self.tasks.clone(),
+            hold: self.context.hold.clone(),
         });
         let input = self.input.clone();
         dialog.connect_query_chosen(move |_, destination, text| {
@@ -161,13 +162,8 @@ impl WorkspaceModel {
                 return;
             };
             let message = match store.save(new_query).await {
-                Ok(outcome) => {
-                    input.deliver(WorkspaceInput::SavedQueriesChanged);
-                    match outcome.replaced {
-                        true => crate::i18n::gettext_f("Replaced “{name}”.", &[("name", &name)]),
-                        false => crate::i18n::gettext_f("Saved “{name}”.", &[("name", &name)]),
-                    }
-                }
+                Ok(outcome) if outcome.replaced => crate::i18n::gettext_f("Replaced “{name}”.", &[("name", &name)]),
+                Ok(_) => crate::i18n::gettext_f("Saved “{name}”.", &[("name", &name)]),
                 Err(error) => {
                     tracing::warn!(%error, "could not save the query");
                     crate::i18n::gettext("Could not save that query.")
@@ -229,25 +225,60 @@ mod tests {
         );
     }
 
-    /// The Favorites scope lists the front connection's saved queries, and
-    /// reads them again when one is saved.
     #[gtk4::test]
     fn the_favorites_scope_lists_the_saved_queries_of_the_front_connection() {
         use gtk4::subclass::prelude::ObjectSubclassIsExt;
-
         let test = TestWindow::connected("FavoritesScope");
         let history = test.services.history();
         let availability = history.availability();
-        wait_until(WAIT, || availability.borrow().is_ready()).expect("the query database to open");
-        let shell = test.window.shell().expect("the shell");
-        let favorites = shell.imp().favorites.get().cloned().expect("the favorites pane");
-
+        wait_until(WAIT, || availability.borrow().is_ready()).expect("history ready");
+        let shell = test.window.shell().expect("shell");
+        let favorites = shell.imp().favorites.get().expect("favorites");
         shell.imp().scope_toggle.set_active_name(Some("favorites"));
-        assert!(favorites.names().is_empty(), "nothing is saved yet");
-
         test.workspace()
             .with_model(|model| model.on_save_query_named("Orders".to_owned(), "SELECT 1".to_owned()));
-        wait_until(WAIT, || favorites.names() == ["Orders"]).expect("the saved query to be listed");
+        wait_until(WAIT, || favorites.names() == ["Orders"]).expect("saved query listed");
+        let store = history.store().expect("history").saved_queries();
+        let work = test.services.tasks.spawn_task(async move {
+            let saved = store.list(None).await.expect("list");
+            store.rename(saved[0].id, "Renamed").await.expect("rename");
+        });
+        finish_on_main(WAIT, work).expect("rename finished").expect("task");
+        wait_until(WAIT, || favorites.names() == ["Renamed"]).expect("external rename listed");
+        let store = history.store().expect("history").saved_queries();
+        let work = test.services.tasks.spawn_task(async move {
+            let saved = store.list(None).await.expect("list");
+            store.delete(saved[0].id).await.expect("delete");
+        });
+        finish_on_main(WAIT, work).expect("delete finished").expect("task");
+        wait_until(WAIT, || favorites.names().is_empty()).expect("external deletion listed");
+    }
+
+    #[gtk4::test]
+    fn favorites_for_an_unsaved_file_survive_reopening_it() {
+        use gtk4::{gio, subclass::prelude::ObjectSubclassIsExt};
+        let test = TestWindow::picker("FileFavorites");
+        let root = tempfile::tempdir().expect("tempdir");
+        let path = root.path().join("favorites.db");
+        std::fs::write(&path, "").expect("database");
+        let file = gio::File::for_path(path);
+        test.window.send(crate::ui::SessionWindowInput::OpenFile(file.clone()));
+        test.wait_for_page("workspace");
+        let availability = test.services.history().availability();
+        wait_until(WAIT, || availability.borrow().is_ready()).expect("history ready");
+        let connection = test.workspace().connection_id();
+        test.workspace()
+            .with_model(|model| model.on_save_query_named("File query".to_owned(), "SELECT 2".to_owned()));
+        wait_until(WAIT, || test.hold.live() == 0).expect("save finished");
+        test.window.send(crate::ui::SessionWindowInput::Disconnect);
+        test.wait_for_page("picker");
+        test.window.send(crate::ui::SessionWindowInput::OpenFile(file));
+        test.wait_for_page("workspace");
+        assert_eq!(test.workspace().connection_id(), connection);
+        let shell = test.window.shell().expect("shell");
+        shell.imp().scope_toggle.set_active_name(Some("favorites"));
+        let favorites = shell.imp().favorites.get().expect("favorites");
+        wait_until(WAIT, || favorites.names() == ["File query"]).expect("file query listed after reopen");
     }
 
     #[gtk4::test]

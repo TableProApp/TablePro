@@ -546,8 +546,6 @@ pub(crate) enum WorkspaceInput {
     ShowHistory,
     ShowSavedQueries,
     ActiveTab(workspace_tabs::ActiveTabCommand),
-    /// A query was saved or replaced: the sidebar's favorites read again.
-    SavedQueriesChanged,
     SaveQueryNamed {
         name: String,
         query: String,
@@ -820,6 +818,7 @@ impl Workspace {
         let input = workspace.pump_inputs();
         let _ = imp.sender.set(input.clone());
         let _ = imp.key.set(key.clone());
+        let _ = imp.connection_id.set(session.metadata().id);
         let context = session_slot(&context, &session);
         let storage = services.storage.clone();
         let tasks = services.tasks.clone();
@@ -939,6 +938,10 @@ impl Workspace {
     /// The key the session is open under.
     pub(crate) fn key(&self) -> Option<SessionKey> {
         self.imp().key.get().cloned()
+    }
+
+    pub(crate) fn connection_id(&self) -> Option<Uuid> {
+        self.imp().connection_id.get().copied()
     }
 
     /// What the session's engine holds, which names the page with no
@@ -1408,11 +1411,6 @@ impl WorkspaceModel {
             WorkspaceInput::ImportCsvRun(import) => self.on_import_csv_run(*import),
             WorkspaceInput::ActiveTab(command) => self.on_active_tab_command(command),
             WorkspaceInput::SaveQueryNamed { name, query } => self.on_save_query_named(name, query),
-            WorkspaceInput::SavedQueriesChanged => {
-                if let Some(shell) = self.shell.upgrade() {
-                    shell.reload_favorites();
-                }
-            }
             WorkspaceInput::OpenHistoryQuery(text) => self.open_editor_tab(Some(text)),
             WorkspaceInput::ReplaceActiveTabQuery(text) => self.on_replace_active_tab_query(text),
             WorkspaceInput::RefreshPage => self.on_refresh_active_tab(),

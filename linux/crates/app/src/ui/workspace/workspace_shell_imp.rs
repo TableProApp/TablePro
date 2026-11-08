@@ -124,6 +124,10 @@ pub struct WorkspaceShell {
         crate::services::history_service::HistoryService,
         tablepro_session::runtime::Tasks,
     )>,
+    pub(super) favorites_generation: Cell<u64>,
+    pub(super) favorites_connection: Cell<Option<uuid::Uuid>>,
+    pub(super) favorites_watch: RefCell<Option<tablepro_session::runtime::WatchForwarder>>,
+    pub(super) favorites_availability: RefCell<Option<tablepro_session::runtime::WatchForwarder>>,
     /// The window the shell added its actions to.
     pub(super) window: glib::WeakRef<adw::ApplicationWindow>,
     pub(super) sender: OnceCell<InputSender<SessionWindowInput>>,

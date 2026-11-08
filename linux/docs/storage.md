@@ -266,6 +266,26 @@ can tell whether a re-pinned entry falls in the pages already read.
 - `connections_with_history` lists each connection the history holds
   under the name of its latest run, so a renamed connection shows once.
 
+### Following the saved queries
+
+`SavedQueries::changes` is a watch of a revision that every handle of one
+database shares. A save, a save of a new name, a rename, a delete and a
+connection's queries going move it on once they landed; a read, and a write
+that changed nothing, leave it. The sidebar's Favorites and the Saved Queries
+dialog read again on each revision, so a write from any window, an import or
+a deleted connection reaches every list. Each list rejects replies from an
+older read and keeps selection by saved-query id. Confirmed saves, renames
+and deletions hold the process until the write finishes.
+
+Saving under an existing name updates the same row id. The existence check
+and write share a transaction, so simultaneous saves report which one
+replaced the query. Renames update only the stored name and modification
+time, leaving newer SQL and the connection identity intact.
+
+Unsaved database files use a UUID derived from their canonical URI, so queries
+stay in the same scope after reopening the file. Queries saved by older builds
+with a temporary file identity remain available in the Saved Queries dialog.
+
 ### What goes into the history
 
 `HistoryService::record` is the one way in, for editor runs, saves and
