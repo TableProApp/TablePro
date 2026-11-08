@@ -1,8 +1,10 @@
 mod editor_font;
 mod error;
+mod grid_preferences;
 pub mod keys;
 mod window_geometry;
 
+use std::cell::OnceCell;
 use std::path::Path;
 use std::time::Duration;
 
@@ -12,6 +14,7 @@ use tablepro_core::export::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, 
 
 pub use editor_font::EditorFont;
 pub use error::SettingsError;
+pub use grid_preferences::{GridPreferenceValues, GridPreferences, GridRowHeight};
 pub use window_geometry::WindowGeometry;
 
 /// The provider setting's value while the assistant is off.
@@ -19,6 +22,7 @@ pub const AI_PROVIDER_NONE: &str = "none";
 
 pub struct AppSettings {
     settings: gio::Settings,
+    grid_preferences: OnceCell<GridPreferences>,
 }
 
 impl AppSettings {
@@ -33,6 +37,7 @@ impl AppSettings {
             .ok_or_else(|| SettingsError::SchemaNotFound(schema_id.to_owned()))?;
         Ok(Self {
             settings: gio::Settings::new_full(&schema, gio::SettingsBackend::NONE, None),
+            grid_preferences: OnceCell::new(),
         })
     }
 
@@ -55,12 +60,18 @@ impl AppSettings {
             .ok_or_else(|| SettingsError::SchemaNotFound(schema_id.to_owned()))?;
         Ok(Self {
             settings: gio::Settings::new_full(&schema, Some(backend), None),
+            grid_preferences: OnceCell::new(),
         })
     }
 
     /// The underlying settings, for `bind` on a preference row.
     pub fn gio(&self) -> &gio::Settings {
         &self.settings
+    }
+
+    pub fn grid_preferences(&self) -> &GridPreferences {
+        self.grid_preferences
+            .get_or_init(|| GridPreferences::new(&self.settings))
     }
 
     pub fn default_page_size(&self) -> u32 {
@@ -81,7 +92,7 @@ impl AppSettings {
     }
 
     pub fn show_alternate_rows(&self) -> bool {
-        self.settings.boolean(keys::SHOW_ALTERNATE_ROWS)
+        self.grid_preferences().snapshot().show_alternate_rows
     }
 
     pub fn set_show_alternate_rows(&self, show: bool) -> Result<(), SettingsError> {
@@ -89,25 +100,23 @@ impl AppSettings {
     }
 
     pub fn show_row_numbers(&self) -> bool {
-        self.settings.boolean(keys::SHOW_ROW_NUMBERS)
+        self.grid_preferences().snapshot().show_row_numbers
     }
 
     pub fn set_show_row_numbers(&self, show: bool) -> Result<(), SettingsError> {
         self.set_boolean(keys::SHOW_ROW_NUMBERS, show)
     }
 
-    /// The grid's row height: `compact`, `normal`, `comfortable` or `spacious`.
     pub fn grid_row_height(&self) -> String {
-        self.settings.string(keys::GRID_ROW_HEIGHT).into()
+        self.grid_preferences().snapshot().row_height.nick().to_owned()
     }
 
     pub fn set_grid_row_height(&self, height: &str) -> Result<(), SettingsError> {
         self.set_string(keys::GRID_ROW_HEIGHT, height)
     }
 
-    /// What a cell shows for NULL.
     pub fn null_display(&self) -> String {
-        self.settings.string(keys::NULL_DISPLAY).into()
+        self.grid_preferences().snapshot().null_display.clone()
     }
 
     pub fn set_null_display(&self, text: &str) -> Result<(), SettingsError> {
@@ -163,14 +172,8 @@ impl AppSettings {
         }
     }
 
-    /// The font of the data grid's cells, which follows the desktop unless
-    /// the user picked one.
     pub fn grid_font(&self) -> EditorFont {
-        if self.settings.boolean(keys::GRID_USE_SYSTEM_FONT) {
-            EditorFont::System
-        } else {
-            EditorFont::Custom(self.settings.string(keys::GRID_FONT).into())
-        }
+        self.grid_preferences().snapshot().font.clone()
     }
 
     pub fn set_grid_font(&self, font: &EditorFont) -> Result<(), SettingsError> {

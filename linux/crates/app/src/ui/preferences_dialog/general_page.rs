@@ -9,7 +9,6 @@ use tablepro_linux_platform::AppSettings;
 use tablepro_linux_platform::settings::keys;
 use tablepro_session::runtime::Tasks;
 
-use super::data_browser_group::DataBrowserGroup;
 use super::history_group::HistoryGroup;
 use crate::ui::file_reveal::FileRevealer;
 
@@ -23,8 +22,6 @@ mod imp {
     pub struct GeneralPage {
         #[template_child]
         pub restore_session_row: TemplateChild<adw::SwitchRow>,
-        #[template_child]
-        pub data_browser_group: TemplateChild<DataBrowserGroup>,
         #[template_child]
         pub history_group: TemplateChild<HistoryGroup>,
         #[template_child]
@@ -40,7 +37,6 @@ mod imp {
         type ParentType = adw::PreferencesPage;
 
         fn class_init(klass: &mut Self::Class) {
-            DataBrowserGroup::ensure_type();
             HistoryGroup::ensure_type();
             klass.bind_template();
         }
@@ -56,7 +52,6 @@ mod imp {
 }
 
 glib::wrapper! {
-    /// The General page: startup, the data browser and the query history.
     pub struct GeneralPage(ObjectSubclass<imp::GeneralPage>)
         @extends adw::PreferencesPage, gtk4::Widget,
         @implements gtk4::Accessible, gtk4::Buildable, gtk4::ConstraintTarget;
@@ -89,7 +84,6 @@ impl GeneralPage {
             .gio()
             .bind(keys::SHARE_USAGE_DATA, &imp.share_usage_data_row.get(), "active")
             .build();
-        imp.data_browser_group.bind(settings);
         imp.history_group.bind(settings, storage, history, tasks, revealer);
     }
 
@@ -136,7 +130,6 @@ mod tests {
         page
     }
 
-    /// The page's groups, in the order it shows them.
     fn groups(page: &GeneralPage) -> Vec<adw::PreferencesGroup> {
         crate::test_support::descendants(page)
             .into_iter()
@@ -178,11 +171,11 @@ mod tests {
         let page = bound_page(&settings, &storage, &root, &runtime.tasks());
 
         let titles: Vec<String> = groups(&page).iter().map(|group| group.title().to_string()).collect();
-        assert_eq!(titles, ["Startup", "Data Browser", "Query History"]);
+        assert_eq!(titles, ["Startup", "Query History"]);
     }
 
     #[gtk4::test]
-    fn general_page_contains_the_data_browser_and_history_groups() {
+    fn general_page_contains_startup_and_history_groups() {
         let settings = MemorySettings::new();
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
@@ -193,9 +186,8 @@ mod tests {
         let titles: Vec<String> = groups.iter().map(|group| group.title().to_string()).collect();
 
         assert_eq!(page.title(), "General");
-        assert_eq!(titles, ["Startup", "Data Browser", "Query History"]);
-        assert!(groups[1].is::<DataBrowserGroup>());
-        assert!(groups[2].is::<HistoryGroup>());
+        assert_eq!(titles, ["Startup", "Query History"]);
+        assert!(groups[1].is::<HistoryGroup>());
     }
 
     #[gtk4::test]
@@ -216,7 +208,7 @@ mod tests {
     }
 
     #[gtk4::test]
-    fn the_page_binds_both_of_its_groups() {
+    fn the_page_binds_its_history_group() {
         let settings = MemorySettings::new();
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
@@ -224,10 +216,8 @@ mod tests {
         let page = bound_page(&settings, &storage, &root, &runtime.tasks());
         let imp = page.imp();
 
-        imp.data_browser_group.imp().confirm_row.set_active(false);
         imp.history_group.imp().save_history_row.set_active(false);
 
-        assert!(!settings.get().confirm_bulk_delete());
         assert!(!settings.get().save_query_history());
     }
 }
