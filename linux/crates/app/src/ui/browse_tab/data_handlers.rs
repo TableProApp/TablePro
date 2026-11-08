@@ -31,7 +31,7 @@ impl BrowseModel {
                 self.begin_read(fx);
                 self.reload_from_columns(ColumnFreshness::Refetch);
             }
-            DataInput::Command(command) => self.on_command(command, fx),
+            DataInput::Command(command) => self.on_command(*command, fx),
             DataInput::LinkChanged(generation) => self.on_link_changed(generation, fx),
             DataInput::SchemaChanged => {
                 self.begin_read(fx);

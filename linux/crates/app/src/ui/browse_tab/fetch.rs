@@ -184,7 +184,7 @@ impl BrowseModel {
         let _delivery = crate::runtime::spawn_and_deliver(&self.tasks, work, move |joined| {
             let value = joined.unwrap_or_else(|failure| Err(failed(failure)));
             if let Some(tab) = tab.upgrade() {
-                tab.send(DataInput::Command(command(Stamped { stamp, value })));
+                tab.send(DataInput::Command(Box::new(command(Stamped { stamp, value }))));
             }
         });
     }
