@@ -493,7 +493,7 @@ fn ticked_level(test: &TestWindow) -> Option<String> {
 }
 
 #[gtk4::test]
-fn the_main_menu_moves_the_session_between_levels_that_write_and_saves_it() {
+fn the_safe_mode_action_moves_the_session_between_levels_that_write_and_saves_it() {
     let test = TestWindow::connected("SafeModeLive");
     assert_eq!(ticked_level(&test).as_deref(), Some("off"));
 
@@ -512,7 +512,7 @@ fn the_main_menu_moves_the_session_between_levels_that_write_and_saves_it() {
 }
 
 #[gtk4::test]
-fn read_only_from_the_main_menu_saves_it_and_connects_again_read_only() {
+fn read_only_from_the_safe_mode_action_saves_it_and_connects_again_read_only() {
     let test = TestWindow::connected("SafeModeReadOnly");
 
     pick_level(&test, "read-only");

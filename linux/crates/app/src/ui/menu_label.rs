@@ -72,7 +72,7 @@ mod tests {
 
         for id in [
             "primary_menu",
-            "menubar",
+            "session_menu",
             "tab_overview_menu",
             "editor_menu",
             "options_menu",

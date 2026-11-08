@@ -208,6 +208,11 @@ fn narrow_window_swaps_tab_bar_for_tab_button() {
     assert!(!imp.tab_bar.is_visible(), "the tab bar stayed");
     assert!(imp.tab_button.is_visible(), "no tab button took its place");
     assert!(imp.split_view.is_collapsed());
+    let button = session_menu_button(&test);
+    wait_until(WAIT, || button.is_mapped()).expect("Session Menu at the window floor");
+    assert!(imp.content_header.measure(gtk::Orientation::Horizontal, -1).0 <= 360);
+    button.popup();
+    wait_until(WAIT, || button.popover().is_some_and(|menu| menu.is_mapped())).expect("the narrow menu opens");
 }
 
 #[gtk4::test]
@@ -395,22 +400,103 @@ fn primary_menu_has_no_quit() {
 }
 
 #[gtk4::test]
-fn the_application_exposes_a_menu_bar_with_quit() {
-    let test = TestWindow::picker("MenuBar");
-
-    let bar = test.app.menubar().expect("the application's menu bar");
-
-    let mut actions = Vec::new();
-    collect_actions(&bar, &mut actions);
+fn application_and_session_commands_have_separate_native_menus() {
+    let test = TestWindow::connected("NativeMenus");
+    assert!(
+        test.app.menubar().is_none(),
+        "AdwApplicationWindow does not support a menu bar"
+    );
+    let primary = test.app.menu_by_id("primary_menu").expect("the primary menu");
+    let mut app_actions = Vec::new();
+    collect_actions(primary.upcast_ref(), &mut app_actions);
+    assert_eq!(app_actions.len(), 10);
+    let button = session_menu_button(&test);
+    assert!(!button.is_primary(), "F10 belongs to Main Menu");
+    crate::test_support::assert_labelled(&button).expect("the menu's accessible name");
+    let mut session_actions = Vec::new();
+    collect_actions(&button.menu_model().expect("the session menu"), &mut session_actions);
     for expected in [
-        "win.new-connection",
-        "app.quit",
-        "app.preferences",
-        "app.shortcuts",
-        "app.about",
+        "win.safe-mode",
+        "win.show-history",
+        "win.show-saved-queries",
+        "win.export-database",
+        "win.import-sql-file",
+        "win.disconnect",
     ] {
-        assert!(actions.iter().any(|action| action == expected), "{expected} is missing");
+        assert!(
+            session_actions.iter().any(|action| action == expected),
+            "{expected} is missing"
+        );
+        assert!(
+            !app_actions.iter().any(|action| action == expected),
+            "{expected} is duplicated"
+        );
     }
+    for action in &app_actions {
+        assert!(!session_actions.contains(action), "{action} belongs to Main Menu");
+    }
+}
+
+fn session_menu_button(test: &TestWindow) -> gtk::MenuButton {
+    let shell = test.window.shell().expect("the workspace shell");
+    descendants(&shell.imp().content_header.get())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::MenuButton>().ok())
+        .find(|button| button.tooltip_text().as_deref() == Some("Session Menu"))
+        .expect("Session Menu in the content header")
+}
+
+fn click_menu_item(menu: &gtk::Popover, label: &str) {
+    let mut found = None;
+    wait_until(WAIT, || {
+        found = descendants(menu).into_iter().find(|widget| {
+            widget.type_().name() == "GtkModelButton"
+                && widget.property::<Option<String>>("text").as_deref() == Some(label)
+                && widget.is_mapped()
+                && widget.is_sensitive()
+        });
+        found.is_some()
+    })
+    .unwrap_or_else(|_| panic!("no enabled menu item {label}"));
+    found.expect("the item").emit_by_name::<()>("clicked", &[]);
+}
+
+#[gtk4::test]
+fn the_session_menu_changes_safe_mode_through_its_radio_item() {
+    let test = TestWindow::connected("SessionMenuSafeMode");
+    let button = session_menu_button(&test);
+    button.popup();
+    let menu = button.popover().expect("the session menu");
+    click_menu_item(&menu, "Safe Mode");
+    click_menu_item(&menu, "Confirm Writes");
+    wait_until(WAIT, || {
+        test.window
+            .front_session()
+            .is_some_and(|(_, session)| session.safe_mode() == tablepro_core::SafeModeLevel::ConfirmWrites)
+    })
+    .expect("the selected level to reach the session");
+    assert_eq!(
+        test.window
+            .lookup_action("safe-mode")
+            .and_then(|action| action.state())
+            .and_then(|state| state.get::<String>()),
+        Some("confirm-writes".to_owned())
+    );
+}
+
+#[gtk4::test]
+fn the_session_menu_disconnects_the_session_in_front() {
+    let test = TestWindow::connected("SessionMenuDisconnect");
+    let button = session_menu_button(&test);
+    button.popup();
+    click_menu_item(&button.popover().expect("the menu"), "Disconnect");
+    test.wait_for_page("picker");
+    assert!(test.window.front_session().is_none());
+    assert!(!descendants(&test.window).iter().any(|widget| {
+        widget
+            .downcast_ref::<gtk::MenuButton>()
+            .is_some_and(|button| button.tooltip_text().as_deref() == Some("Session Menu"))
+    }));
 }
 
 #[gtk4::test]
@@ -583,7 +669,6 @@ fn the_main_menu_adds_a_connection_with_none_open() {
     choose_new_connection(&test, &test.window.content().expect("the picker"));
 }
 
-/// Every action a menu names, through its sections and submenus.
 fn collect_actions(menu: &gio::MenuModel, actions: &mut Vec<String>) {
     for item in 0..menu.n_items() {
         if let Some(action) = menu

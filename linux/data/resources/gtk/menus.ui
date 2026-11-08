@@ -18,37 +18,6 @@
       </item>
     </section>
     <section>
-      <!-- A workspace adds these; the picker has no session to show
-           history for. -->
-      <item>
-        <attribute name="label" translatable="yes">Query _History</attribute>
-        <attribute name="action">win.show-history</attribute>
-        <attribute name="hidden-when">action-missing</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">Saved _Queries</attribute>
-        <attribute name="action">win.show-saved-queries</attribute>
-        <attribute name="hidden-when">action-missing</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">E_xport Database…</attribute>
-        <attribute name="action">win.export-database</attribute>
-        <attribute name="hidden-when">action-missing</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">Import SQL _File…</attribute>
-        <attribute name="action">win.import-sql-file</attribute>
-        <attribute name="hidden-when">action-missing</attribute>
-      </item>
-      <!-- The window always has it, enabled only while it shows a
-           session. -->
-      <item>
-        <attribute name="label" translatable="yes">_Disconnect</attribute>
-        <attribute name="action">win.disconnect</attribute>
-        <attribute name="hidden-when">action-disabled</attribute>
-      </item>
-    </section>
-    <section>
       <item>
         <attribute name="label" translatable="yes">_Import Connections…</attribute>
         <attribute name="action">win.import-connections</attribute>
@@ -81,73 +50,7 @@
       </item>
     </section>
   </menu>
-  <!-- The menu bar GtkApplication picks up by its id. GNOME shows none,
-       but a desktop with a global menu and assistive technology read it. -->
-  <menu id="menubar">
-    <submenu>
-      <attribute name="label" translatable="yes">_File</attribute>
-    <section>
-      <item>
-        <attribute name="label" translatable="yes">_New Connection…</attribute>
-        <attribute name="action">win.new-connection</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">New _Group…</attribute>
-        <attribute name="action">win.new-group</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">New _Window</attribute>
-        <attribute name="action">app.new-window</attribute>
-      </item>
-    </section>
-    <section>
-      <item>
-        <attribute name="label" translatable="yes">E_xport Database…</attribute>
-        <attribute name="action">win.export-database</attribute>
-        <attribute name="hidden-when">action-missing</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">Import _SQL File…</attribute>
-        <attribute name="action">win.import-sql-file</attribute>
-        <attribute name="hidden-when">action-missing</attribute>
-      </item>
-    </section>
-    <section>
-      <item>
-        <attribute name="label" translatable="yes">_Import Connections…</attribute>
-        <attribute name="action">win.import-connections</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">Import f_rom Another App…</attribute>
-        <attribute name="action">win.import-from-app</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">_Export Connections…</attribute>
-        <attribute name="action">win.export-connections</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">_Manage Tags…</attribute>
-        <attribute name="action">win.manage-tags</attribute>
-      </item>
-    </section>
-    <section>
-      <item>
-        <attribute name="label" translatable="yes">_Disconnect</attribute>
-        <attribute name="action">win.disconnect</attribute>
-        <attribute name="hidden-when">action-disabled</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">_Close Tab</attribute>
-        <attribute name="action">win.close-current</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">_Quit</attribute>
-        <attribute name="action">app.quit</attribute>
-      </item>
-    </section>
-    </submenu>
-    <submenu>
-      <attribute name="label" translatable="yes">_View</attribute>
+  <menu id="session_menu">
     <section>
       <item>
         <attribute name="label" translatable="yes">Query _History</attribute>
@@ -159,42 +62,22 @@
         <attribute name="action">win.show-saved-queries</attribute>
         <attribute name="hidden-when">action-missing</attribute>
       </item>
-    </section>
-    <section>
       <item>
-        <attribute name="label" translatable="yes">_Reopen Closed Tab</attribute>
-        <attribute name="action">win.reopen-closed-tab</attribute>
+        <attribute name="label" translatable="yes">E_xport Database…</attribute>
+        <attribute name="action">win.export-database</attribute>
         <attribute name="hidden-when">action-missing</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Close _All Tabs</attribute>
-        <attribute name="action">win.close-all-tabs</attribute>
+        <attribute name="label" translatable="yes">Import SQL _File…</attribute>
+        <attribute name="action">win.import-sql-file</attribute>
         <attribute name="hidden-when">action-missing</attribute>
       </item>
-    </section>
-    </submenu>
-    <submenu>
-      <attribute name="label" translatable="yes">_Edit</attribute>
-    <section>
       <item>
-        <attribute name="label" translatable="yes">_Preferences</attribute>
-        <attribute name="action">app.preferences</attribute>
+        <attribute name="label" translatable="yes">_Disconnect</attribute>
+        <attribute name="action">win.disconnect</attribute>
+        <attribute name="hidden-when">action-disabled</attribute>
       </item>
     </section>
-    </submenu>
-    <submenu>
-      <attribute name="label" translatable="yes">_Help</attribute>
-    <section>
-      <item>
-        <attribute name="label" translatable="yes">_Keyboard Shortcuts</attribute>
-        <attribute name="action">app.shortcuts</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">_About TablePro</attribute>
-        <attribute name="action">app.about</attribute>
-      </item>
-    </section>
-    </submenu>
   </menu>
   <menu id="tab_overview_menu">
     <section>
