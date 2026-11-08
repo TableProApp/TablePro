@@ -224,3 +224,26 @@ fn a_deleted_saved_query_reports_an_error_without_opening_sql() {
     assert!(!widgets.banner.is_revealed());
     dialog.dismiss();
 }
+
+#[gtk4::test]
+fn an_empty_query_source_does_not_report_no_matches_while_the_catalog_loads() {
+    adw::init().unwrap();
+    let runtime = test_runtime();
+    let (_root, history, _store) = history(&runtime.tasks());
+    let release = tokio_util::sync::CancellationToken::new();
+    let mut script = ConnectionScript::default();
+    script.list_objects.always(FakeReply::UntilReleased {
+        release: release.clone(),
+        outcome: Ok(vec![]),
+    });
+    let fake = FakeSession::start(script, [], runtime.tasks());
+    let dialog = QuickOpen::new(fake.session, runtime.tasks(), |_| {});
+    dialog.include_saved_queries(history, Uuid::new_v4());
+    ready(&dialog);
+    let widgets = dialog.imp().widgets.get().unwrap();
+    assert_eq!(widgets.status.title(), "Loading Results");
+    release.cancel();
+    wait_until(WAIT, || dialog.imp().generation.get().is_some() && dialog.current()).unwrap();
+    assert_eq!(widgets.status.title(), "No Matches");
+    dialog.dismiss();
+}
