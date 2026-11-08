@@ -9,7 +9,7 @@ The macOS app ships a `tablepro` command: Swift, a hand-written parser, `query` 
 
 ## Decision
 
-`core/crates/cli` (`tablepro-cli`) is the command line of every app on the core: the parser, help, completion scripts, the MCP client, the output formats and the exit status. It depends on no GUI and no platform crate. The app passes a `Host` (its version, whether it runs, whether its MCP server is on, the port, whether the port's listener is its own, the token, which streams are terminals), asks `classify` whether argv is the command line's, and calls `run`.
+`core/crates/cli` (`tablepro-cli`) is the command line of every app on the core: the parser, help, completion scripts, the MCP client, the output formats and the exit status. It depends on no GUI and no platform crate. The app passes a `Host` (its version, whether it runs, whether its MCP server is on, the port, whether a connected peer is its own, the token, which streams are terminals), asks `classify` whether argv is the command line's, and calls `run`.
 
 | Command | Tool |
 | --- | --- |
@@ -27,7 +27,10 @@ Exit status, as the macOS command documents it: 0 done; 1 the database failed, T
 ## How it works
 
 - **Dispatch.** `classify` gives the command line argv whose first word is a subcommand other than `open`, `help`, `-h`, `--help` or `--version`, and `open` with `-h` or `--help`. Everything else goes back to the app with a leading `open` taken off. A bare word that is neither a URL with a scheme nor an existing path is refused with exit 2, so a mistyped or future command never opens as a file (clig.dev, "Don't have a catch-all subcommand").
-- **Reaching TablePro.** Nothing is sent until the app runs, its server is on, the host confirms the port's listener belongs to this user, and a token exists. Another user can bind the port before TablePro does, and the app still holds its bus name and the setting stays on, so naming the server after the handshake is too late. On Linux a probe connection's peer is looked up in `/proc/net/tcp`; this user is the boundary, since this user can read the token from the keyring anyway. The token is read last, so a refusal never asks the keyring to unlock, and `status` reads it only where a command would. The client is rmcp's over Streamable HTTP to `127.0.0.1:<port>/mcp`, with the bearer token, no proxy, and `clientInfo` `tablepro-cli`, titled Command Line. A server that does not name itself `tablepro` is refused.
+- **Reaching TablePro.** Nothing is sent until the app runs, its server is on, a token exists, and the host confirms the connected peer belongs to this user. On Linux the connection's addresses are looked up in `/proc/net/tcp`; this user is the boundary, since this user can read the token from the keyring anyway. A stopped app or disabled server never asks the keyring to unlock, and `status` reads the token only where a command would. The client is rmcp's over Streamable HTTP to `127.0.0.1:<port>/mcp`, with the bearer token, no proxy, and `clientInfo` `tablepro-cli`, titled Command Line. A server that does not name itself `tablepro` is refused.
+
+Reqwest's documented `ClientBuilder::connector_layer` seam uses Hyper's `Connection::connected` and `HttpInfo` to call `Host::verify_peer` on each new connection before HTTP can write, keeping rmcp's Streamable HTTP client and its verified keep-alive connections. Checking the stream that carries the token closes the port-rebinding gap left by a separate probe, and the layer refuses connections whose addresses are missing.
+
 - **Deadlines.** The handshake waits 15 s, a tool call 60 s, an export 60 s for each table, and `execute_query` its timeout (the server's 30 s by default) plus 120 s for the write question TablePro may ask first. Past a deadline the command tells the server to drop the call and exits 4, so a stalled server or app never holds a script. The wait for `connect` is bounded as a whole.
 - **One connection lookup.** `list_connections`, then the id, the exact name, the name in any case. A connection hidden from clients is unknown by name and by id alike; two that match list their ids.
 - **A closed connection.** `connect` opens a window in the app, so the command calls it only when standard error is a terminal, says so on one line, and polls for five minutes. A script gets exit 1. A tool that answers `not_connected` for a connection listed as open gets one `connect` and one retry, then its message and exit 1, since a database the window does not hold answers the same after `connect`. A statement is retried only with `--read-only`: the connection can drop after the server ran a write.
@@ -44,7 +47,7 @@ Exit status, as the macOS command documents it: 0 done; 1 the database failed, T
 ## Consequences
 
 - The Linux binary dispatches before any GUI setup, and its `--help` is the command line's, in English (Linux 0044).
-- Windows passes a `Host` over its Credential Manager once it has an MCP server, and adds PowerShell completion then. Its `verify_server` needs an owner check of its own: the core's Windows answer compares the listener's process with the caller's.
+- Windows passes a `Host` over its Credential Manager once it has an MCP server, and adds PowerShell completion then. Its `verify_peer` needs an owner check of its own: the core's Windows answer compares the listener's process with the caller's.
 - The macOS command keeps its own Swift code with the same surface, plus `pair` and `unpair`; a later slice can move it here.
 - `export` and `query` stop at the server's row cap, 1,000 per result on Linux, and say so on standard error.
 - The messages name the Linux menus, such as Preferences > MCP, until another app uses the crate.

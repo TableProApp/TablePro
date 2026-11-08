@@ -1,4 +1,5 @@
 use std::cell::OnceCell;
+use std::net::SocketAddr;
 
 use crate::client::McpClient;
 use crate::command_error::CommandError;
@@ -12,12 +13,12 @@ use crate::output::{Cell, Table};
 // Reports what a command would meet, and exits as that command would; it never starts or changes anything.
 pub(super) async fn run(
     arguments: &FormatArgs,
-    host: &dyn Host,
+    host: &(impl Host + Clone + Send + Sync + 'static),
     console: &mut Console<'_>,
 ) -> Result<Exit, CommandError> {
     let reading = Reading::of(host);
     let reached = match endpoint(&reading) {
-        Ok(reachable) => McpClient::connect_to(&reachable, &reading.version)
+        Ok(reachable) => McpClient::connect_to(&reachable, &reading.version, host)
             .await
             .map(|client| client.server_version()),
         Err(error) => Err(error),
@@ -99,8 +100,8 @@ impl Host for Reading<'_> {
         self.port.clone()
     }
 
-    fn verify_server(&self, port: u16) -> Result<(), HostError> {
-        self.host.verify_server(port)
+    fn verify_peer(&self, peer: SocketAddr, local: SocketAddr) -> Result<(), HostError> {
+        self.host.verify_peer(peer, local)
     }
 
     fn token(&self) -> Result<Option<String>, HostError> {

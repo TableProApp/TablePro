@@ -11,7 +11,7 @@ use crate::tool_arguments::{ConnectionArguments, ScopeArguments};
 // The name, id and type only, as on macOS: never a host, user or password.
 pub(super) async fn connections(
     arguments: &FormatArgs,
-    host: &dyn Host,
+    host: &(impl Host + Clone + Send + Sync + 'static),
     console: &mut Console<'_>,
 ) -> Result<(), CommandError> {
     let client = McpClient::connect(host).await?;
@@ -28,7 +28,7 @@ pub(super) async fn connections(
 
 pub(super) async fn databases(
     arguments: &DatabasesArgs,
-    host: &dyn Host,
+    host: &(impl Host + Clone + Send + Sync + 'static),
     console: &mut Console<'_>,
 ) -> Result<(), CommandError> {
     let client = McpClient::connect(host).await?;
@@ -46,7 +46,7 @@ pub(super) async fn databases(
 
 pub(super) async fn schemas(
     arguments: &SchemasArgs,
-    host: &dyn Host,
+    host: &(impl Host + Clone + Send + Sync + 'static),
     console: &mut Console<'_>,
 ) -> Result<(), CommandError> {
     let client = McpClient::connect(host).await?;
@@ -70,7 +70,7 @@ pub(super) async fn schemas(
 
 pub(super) async fn tables(
     arguments: &TablesArgs,
-    host: &dyn Host,
+    host: &(impl Host + Clone + Send + Sync + 'static),
     console: &mut Console<'_>,
 ) -> Result<(), CommandError> {
     let client = McpClient::connect(host).await?;

@@ -5,39 +5,71 @@
 
 ## Context
 
-`tablepro` was only the GTK application. GApplication read every word as a file, so `tablepro help` opened a window saying "help could not be found", and `--help` and `--version` needed the installed GSettings schema, the tokio runtime and every driver first. The macOS app has a command line over its MCP server, and the shared crate `tablepro-cli` ([core 0017](../../../core/docs/decisions/0017-command-line.md)) gives Linux the same commands over the server of [0022](0022-ai-assistant-and-mcp-server.md).
+The executable started only the GTK app. GApplication treated command names as files,
+and help needed the app's settings schema and startup work. Shell scripts had no way to
+query a saved connection through the running app.
 
-`tablepro postgresql://ada:secret@db/shop` reached file resolution, which logged the URL and showed it, password included, on the failure page. No scheme handler was registered. On a desktop with gvfs, GIO turns a URI of a scheme gvfs has no backend for into a mount spec that drops the password and every host of a MongoDB seed list but the first, before the application's `open` sees it.
+Connection URLs also reached file handling. A failure could display or log the URL,
+including a password. GIO could rewrite a URL before the app received it, dropping the
+password or hosts from a MongoDB seed list. The desktop registered no database schemes.
 
-Flatpak exports one command per application, the manifest's `command`.
+Flatpak exposes one default command. The shared [command crate](../../../core/docs/decisions/0017-command-line.md)
+and the existing [MCP server](0022-ai-assistant-and-mcp-server.md) supply the command surface
+and database access without another executable.
 
 ## Decision
 
-The one `tablepro` binary hands argv to `tablepro_cli::classify` in `main()`, before any of the GUI's setup, and runs a command there with `LinuxHost`; everything else reaches GApplication unchanged, with `open` taken off. The desktop entry claims `x-scheme-handler/<scheme>` for each scheme the core URL parser reads, every process registers those schemes with `g_vfs_register_uri_scheme` before `g_application_run`, and `open` routes a connection URL before file resolution: to the saved connection that goes where it goes after an `AdwAlertDialog`, or to the connect dialog filled from it. The command line reads the MCP token from the keyring and never makes one.
+Dispatch arguments in `main` before GUI setup. Pass recognized commands, help and version
+to `tablepro-cli` with a Linux host. Pass files, URLs and GUI options to GApplication.
+Strip an explicit `open` before that handoff. Reject a target that is neither an existing
+file nor a URL with exit status 2.
 
-## Rationale
+The Linux host checks the session bus with `NameHasOwner`, reads the MCP setting and port,
+and reads `SecretItem::McpToken` from the app's keyring. It never starts the app or creates
+a token. Before sending the token, it checks that the loopback listener belongs to the
+same user. This adds a reader of the token described in 0022, without changing its owner
+or lifetime. Flatpak runs the command inside the app's sandbox.
 
-- **Dispatch in `main()`.** A command then needs no display, no schema and no GResource, and starts no runtime, driver or crash handler, so a command's panic never becomes a report the next launch shows. `local_command_line` runs only after `run()`'s setup.
-- **Only a command word goes to the parser.** A subcommand, `help`, `-h`, `--help` or `--version` in argv[1] is the command line's. `-n`, `--gapplication-service`, `--help-all` and files stay GApplication's, so the D-Bus service and the desktop entry never meet clap.
-- **Running is asked of the bus.** `NameHasOwner(APP_ID)` never starts TablePro; a call to its own name would D-Bus-activate it, and a bare activation quits after GLib's 10 s inactivity timeout.
-- **The registered schemes keep the text.** The lookup returns the local VFS's file for the URI, which keeps it whole. GLib calls every registered parse-name function for every parse name, so each scheme registers one that answers only for its own links.
-- **The dialog is the consent.** A link can come from any web page. A saved connection opens only after Open, with Cancel the default and the close response. Any other link fills the connect dialog, which connects only on Connect and saves only after a connect works. The link's text is never logged or shown.
+A command may open a saved connection only when standard error is a terminal. The user
+answers the app's prompts, and the command waits up to five minutes. A script without that
+terminal requires an open connection. All calls pass through the MCP access checks,
+write approval and row limits. A database override selects only an already open database.
+
+Register each supported database URL scheme in the desktop entry and with GIO's VFS.
+The VFS callbacks preserve the original URL text. Accept `jdbc:` wrappers from the command
+line without registering them as desktop links.
+
+Route links before file resolution. Match saved connections by driver, host, port,
+database and user. Ask before opening a match, with Cancel as the default and close
+response. Otherwise fill the connect dialog and wait for Connect. Save only after a
+successful connection. Never log or display the full URL; put its password only in the
+password field. Local links require the same consent.
 
 ## Consequences
 
-- `tablepro --help` is the command line's, in English, since the core holds no catalog. GApplication's options, translated, are under `--help-all`, where `startup.rs` and the smoke tests now look.
-- A file named like a command opens with `tablepro open` or `./name`. A word that is neither a command nor an existing file exits 2.
-- `--new-window FILE` on a second launch opens the files in a window of their own. GOption collects the files, and the `open` hint `new-window` carries the choice to the running instance; before, the launch opened an empty window and dropped them.
-- The .deb and .rpm install bash, zsh and fish completions printed by the built binary. The Flatpak ships none and its commands run in the sandbox, `flatpak run app.tablepro.TablePro <command>`, where the token and settings are the app's own.
-- A command needs TablePro running with its MCP server on, and never starts it.
+- Help, version and completion run without a display, driver startup or settings schema.
+  Database commands need the running app, its settings and its keyring.
+- `--help` describes the shell commands. `--help-all` keeps GApplication's translated
+  options. The shared command help is English.
+- A file named like a command needs `open` or a path such as `./query`. With no arguments,
+  the executable still opens the GUI.
+- `--new-window` carries supplied files and URLs to a new window in the running app.
+- The .deb and .rpm packages install bash, zsh and fish completions generated by the built
+  executable. Flatpak installs none; its invocation is `flatpak run app.tablepro.TablePro`.
+- Native and Flatpak commands read their own installation's settings and token. There is
+  no pairing step, token copy in a shell config, or handshake file.
+- The command's output and exit statuses are shared with macOS where their behavior
+  matches. Linux keeps its own authentication, connection opening and MCP limits.
 
-## The token, amending 0022
+## Alternatives
 
-0022's server is unchanged: one token per user, made at the server's first start, off until the user turns it on. The command line of the same application id is a second reader of that token, through `SecretItem::McpToken`, and only reads it: a token it made would be one the running server never accepts. 0022's rejected stdio bridge stays rejected: there is no second binary and no handshake file, since the port is the GSettings key the server follows.
-
-## Alternatives considered
-
-- **`local_command_line` in the application.** GLib's hook for this, but it runs after the runtime, settings and drivers are built, and needs the schema.
-- **A separate command-line binary.** Flatpak would reach it only through `flatpak run --command=`, and packages would put a second name on `PATH`.
-- **Starting TablePro from a command.** `Activate` opens windows and races the session restore, and a bare activation quits.
-- **Always Allow for trusted links, as on macOS.** A list to keep and manage in Preferences, for a step the connect dialog already makes one click.
+- **Dispatch in `local_command_line`.** That hook runs after the app builds its runtime,
+  settings and drivers. Help would still depend on GUI startup.
+- **Ship another executable.** Packages would need another name, and Flatpak users would
+  need `--command` to select it.
+- **Start the app for database commands.** Activation opens windows and races session
+  restore. A bare activation also expires after the inactivity timeout.
+- **Read URLs through the default VFS handling.** Some schemes lose credentials or hosts
+  before the app can parse them.
+- **Remember trusted links.** That needs a stored grant and controls to remove it.
+  Keep explicit consent in the saved-connection prompt or connect dialog.

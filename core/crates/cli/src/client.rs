@@ -15,12 +15,12 @@ use serde::Serialize;
 
 use crate::command_error::CommandError;
 use crate::endpoint::{Endpoint, endpoint};
-use crate::host::Host;
+use crate::host::{Host, HostError};
+use crate::peer_verification::http_client;
 
 const CLIENT_NAME: &str = "tablepro-cli";
 const CLIENT_TITLE: &str = "Command Line";
 const SERVER_NAME: &str = "tablepro";
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 // core/crates/mcp/src/query_tools.rs, DEFAULT_TIMEOUT_SECONDS.
 const SERVER_STATEMENT_SECONDS: u32 = 30;
 // Past a deadline rmcp tells the server to drop the call; this bounds a server too stalled to take that.
@@ -61,27 +61,26 @@ pub(crate) struct McpClient {
 }
 
 impl McpClient {
-    pub(crate) async fn connect(host: &dyn Host) -> Result<Self, CommandError> {
-        Self::connect_to(&endpoint(host)?, &host.app_version()).await
+    pub(crate) async fn connect(host: &(impl Host + Clone + Send + Sync + 'static)) -> Result<Self, CommandError> {
+        Self::connect_to(&endpoint(host)?, &host.app_version(), host).await
     }
 
-    pub(crate) async fn connect_to(endpoint: &Endpoint, version: &str) -> Result<Self, CommandError> {
-        Self::connect_within(endpoint, version, Deadlines::TABLEPRO).await
+    pub(crate) async fn connect_to(
+        endpoint: &Endpoint,
+        version: &str,
+        host: &(impl Host + Clone + Send + Sync + 'static),
+    ) -> Result<Self, CommandError> {
+        Self::connect_within(endpoint, version, Deadlines::TABLEPRO, host).await
     }
 
     pub(crate) async fn connect_within(
         endpoint: &Endpoint,
         version: &str,
         deadlines: Deadlines,
+        host: &(impl Host + Clone + Send + Sync + 'static),
     ) -> Result<Self, CommandError> {
         let port = endpoint.port;
-        // A proxy from the environment would carry the token off this machine.
-        let http = reqwest::Client::builder()
-            .no_proxy()
-            .redirect(reqwest::redirect::Policy::none())
-            .connect_timeout(CONNECT_TIMEOUT)
-            .build()
-            .map_err(|error| CommandError::Transport(error.to_string()))?;
+        let http = http_client(host, port).map_err(|error| CommandError::Transport(error.to_string()))?;
         let config = StreamableHttpClientTransportConfig::with_uri(format!("http://127.0.0.1:{port}/mcp"))
             .auth_header(endpoint.token.clone());
         let transport = StreamableHttpClientTransport::with_client(http, config);
@@ -193,6 +192,9 @@ fn transport_failure(error: &(dyn Error + 'static), port: u16) -> CommandError {
         if current.is::<AuthRequiredError>() {
             return CommandError::TokenRefused { port };
         }
+        if let Some(host) = current.downcast_ref::<HostError>() {
+            return CommandError::Host(host.clone());
+        }
         if let Some(StreamableHttpError::Client(http)) = current.downcast_ref::<StreamableHttpError<reqwest::Error>>()
             && let Some(failure) = http_failure(http, port)
         {
@@ -209,6 +211,13 @@ fn transport_failure(error: &(dyn Error + 'static), port: u16) -> CommandError {
 }
 
 fn http_failure(error: &reqwest::Error, port: u16) -> Option<CommandError> {
+    let mut layer = error.source();
+    while let Some(current) = layer {
+        if let Some(host) = current.downcast_ref::<HostError>() {
+            return Some(CommandError::Host(host.clone()));
+        }
+        layer = current.source();
+    }
     if error.is_connect() {
         return Some(CommandError::NotAnswering { port });
     }
@@ -287,7 +296,7 @@ mod tests {
             }
         });
 
-        let refused = McpClient::connect_within(&endpoint_at(port), "1.0.0", SHORT)
+        let refused = McpClient::connect_within(&endpoint_at(port), "1.0.0", SHORT, &crate::runner::tests::STOPPED)
             .await
             .err();
 
@@ -311,9 +320,14 @@ mod tests {
         let server = McpServer::start(0, token, context, "0.0.0-test", &tasks)
             .await
             .expect("a listening server");
-        let client = McpClient::connect_within(&endpoint_at(server.address().port()), "1.0.0", SHORT)
-            .await
-            .expect("a handshake the server answers itself");
+        let client = McpClient::connect_within(
+            &endpoint_at(server.address().port()),
+            "1.0.0",
+            SHORT,
+            &crate::runner::tests::STOPPED,
+        )
+        .await
+        .expect("a handshake the server answers itself");
 
         let refused = tokio::time::timeout(
             Duration::from_secs(10),

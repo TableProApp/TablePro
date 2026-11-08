@@ -138,6 +138,38 @@ struct CLIPairTests {
             #expect(rig.log.calls == ["openServer", "pair"])
             let request = try #require(await rig.server.requests.first)
             #expect(String(data: request.body, encoding: .utf8) == "token=tp_stored")
+            #expect(!rig.console.errors.contains("previous token"))
+            #expect(rig.console.output == "Paired with TablePro.\n")
+        }
+    }
+
+    @Test("A failed revocation keeps the new pairing and warns about the old token", arguments: [503, 400])
+    func revocationFails(status: Int) async throws {
+        try await withRig { rig in
+            await rig.route([CLIServerClient.revocationPath: plainJson("{}", status: status)])
+            #expect(await rig.run(["pair"]) == .success)
+            #expect(rig.tokens.current == "tp_paired")
+            #expect(rig.console.output == "Paired with TablePro.\n")
+            #expect(rig.console.errors == """
+            tablepro: approve the tablepro command in TablePro to pair it.
+            tablepro: The previous token is still active. Revoke it under Settings > MCP.
+
+            """)
+        }
+    }
+
+    @Test("A thrown revocation keeps the new pairing and warns about the old token")
+    func revocationThrows() async throws {
+        try await withRig { rig in
+            await rig.server.stop()
+            #expect(await rig.run(["pair"]) == .success)
+            #expect(rig.tokens.current == "tp_paired")
+            #expect(rig.console.output == "Paired with TablePro.\n")
+            #expect(rig.console.errors == """
+            tablepro: approve the tablepro command in TablePro to pair it.
+            tablepro: The previous token is still active. Revoke it under Settings > MCP.
+
+            """)
         }
     }
 

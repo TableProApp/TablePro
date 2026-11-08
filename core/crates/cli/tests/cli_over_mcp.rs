@@ -296,7 +296,7 @@ impl Host for Machine {
     }
 
     // The port's owner is the host's to check, and the Linux host's own tests cover it.
-    fn verify_server(&self, _port: u16) -> Result<(), HostError> {
+    fn verify_peer(&self, _peer: std::net::SocketAddr, _local: std::net::SocketAddr) -> Result<(), HostError> {
         Ok(())
     }
 

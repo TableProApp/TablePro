@@ -9,6 +9,7 @@ mod endpoint;
 mod exit;
 mod host;
 mod output;
+mod peer_verification;
 mod runner;
 mod tool_arguments;
 

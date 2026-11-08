@@ -13,7 +13,11 @@ use crate::exit::Exit;
 use crate::host::Host;
 
 // One request at a time, so a runtime on this thread is all a run needs.
-pub(crate) fn execute(command: Command, host: &dyn Host, console: &mut Console<'_>) -> Exit {
+pub(crate) fn execute(
+    command: Command,
+    host: &(impl Host + Clone + Send + Sync + 'static),
+    console: &mut Console<'_>,
+) -> Exit {
     let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
         Ok(runtime) => runtime,
         Err(error) => return console.fail(&CommandError::Runtime(error.to_string())),
@@ -24,7 +28,11 @@ pub(crate) fn execute(command: Command, host: &dyn Host, console: &mut Console<'
     }
 }
 
-async fn dispatch(command: Command, host: &dyn Host, console: &mut Console<'_>) -> Result<Exit, CommandError> {
+async fn dispatch(
+    command: Command,
+    host: &(impl Host + Clone + Send + Sync + 'static),
+    console: &mut Console<'_>,
+) -> Result<Exit, CommandError> {
     let done = match command {
         Command::Status(arguments) => return status::run(&arguments, host, console).await,
         Command::Query(arguments) => query::run(&arguments, host, console).await,

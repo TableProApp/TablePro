@@ -85,7 +85,7 @@ A value or a trait the app passes in:
 | `SshTunnels` | `tablepro_ssh::SshServices`, the system OpenSSH client | `tablepro_ssh::InProcessSsh`, behind `tablepro-session`'s `in-process-ssh` feature ([ADR 0009](docs/decisions/0009-in-process-ssh-on-windows.md)) |
 | `ProcessHold` | `gio::Application::hold` | none |
 | `RefreshTokenVault`, `BrowserLauncher`, `MachineId` and `AppClient` (`tablepro-account`) | the keyring through `SecretStore`, `gtk::UriLauncher`, `MachineId::derive` of what `tablepro_linux_platform::read_machine_id` reads, `AppClient::LINUX` | none yet |
-| `Host` (`tablepro-cli`) | `LinuxHost` in the app crate: the port and switch from GSettings, the token read from the keyring, `NameHasOwner` for a running app, the port's listener checked as this user's through `tablepro_net::loopback_peer_is_ours` | none yet |
+| `Host` (`tablepro-cli`) | `LinuxHost` in the app crate: the port and switch from GSettings, the token read from the keyring, `NameHasOwner` for a running app, each connection's peer checked by `Host::verify_peer` through `tablepro_net::loopback_peer_is_ours` | none yet |
 | `ForeignAppDirs` and `ForeignHost` (`tablepro-foreign-import`) | `tablepro_linux_platform::foreign_app_dirs`, the host's XDG directories inside a Flatpak, and `PlainHost`: no other app's keychain | none yet |
 
 A `cfg` split inside a crate:

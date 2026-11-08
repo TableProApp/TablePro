@@ -10,7 +10,7 @@ use crate::tool_arguments::ExportArguments;
 
 pub(super) async fn run(
     arguments: &ExportArgs,
-    host: &dyn Host,
+    host: &(impl Host + Clone + Send + Sync + 'static),
     console: &mut Console<'_>,
 ) -> Result<(), CommandError> {
     let client = McpClient::connect(host).await?;

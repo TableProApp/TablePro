@@ -12,7 +12,7 @@ use crate::tool_arguments::TableArguments;
 
 pub(super) async fn run(
     arguments: &DescribeArgs,
-    host: &dyn Host,
+    host: &(impl Host + Clone + Send + Sync + 'static),
     console: &mut Console<'_>,
 ) -> Result<(), CommandError> {
     let client = McpClient::connect(host).await?;

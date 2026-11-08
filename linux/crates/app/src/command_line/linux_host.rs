@@ -1,6 +1,4 @@
-use std::io;
-use std::net::{Ipv4Addr, SocketAddr, TcpStream};
-use std::time::Duration;
+use std::net::SocketAddr;
 
 use gio::prelude::*;
 use secrecy::ExposeSecret;
@@ -12,10 +10,9 @@ use crate::config;
 
 // NameHasOwner is answered by the bus itself, so this only bounds a bus that hangs.
 const BUS_TIMEOUT_MS: i32 = 5_000;
-// A listener on loopback accepts at once, even before the app reads the connection.
-const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
 // Inside Flatpak this runs in the app's own sandbox, with its keyfile settings and portal-keyed keyring.
+#[derive(Clone)]
 pub struct LinuxHost;
 
 impl Host for LinuxHost {
@@ -53,20 +50,12 @@ impl Host for LinuxHost {
     }
 
     // This user's is enough: the same user can already read the token from the keyring.
-    fn verify_server(&self, port: u16) -> Result<(), HostError> {
-        let unverified = |error: io::Error| HostError::Unverified {
+    fn verify_peer(&self, peer: SocketAddr, local: SocketAddr) -> Result<(), HostError> {
+        let port = peer.port();
+        let ours = tablepro_net::loopback_peer_is_ours(peer, local).map_err(|error| HostError::Unverified {
             port,
             reason: error.to_string(),
-        };
-        let address = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
-        let probe = TcpStream::connect_timeout(&address, PROBE_TIMEOUT).map_err(|error| match error.kind() {
-            io::ErrorKind::ConnectionRefused => HostError::NotListening { port },
-            _ => unverified(error),
         })?;
-        let ours = probe
-            .peer_addr()
-            .and_then(|peer| tablepro_net::loopback_peer_is_ours(peer, probe.local_addr()?))
-            .map_err(unverified)?;
         match ours {
             true => Ok(()),
             false => Err(HostError::ForeignServer { port }),
@@ -109,24 +98,21 @@ fn read_token() -> Result<Option<String>, HostError> {
 
 #[cfg(test)]
 mod tests {
-    use std::net::TcpListener;
+    use std::net::{Ipv4Addr, TcpListener, TcpStream};
 
     use super::*;
 
     #[test]
     fn a_listener_this_process_owns_is_verified() {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("a free port");
-        let port = listener.local_addr().expect("an address").port();
+        let stream = TcpStream::connect(listener.local_addr().expect("an address")).expect("a connection");
 
-        assert_eq!(LinuxHost.verify_server(port), Ok(()));
-    }
-
-    #[test]
-    fn a_port_nothing_listens_on_is_reported_as_such() {
-        let free = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("a free port");
-        let port = free.local_addr().expect("an address").port();
-        drop(free);
-
-        assert_eq!(LinuxHost.verify_server(port), Err(HostError::NotListening { port }));
+        assert_eq!(
+            LinuxHost.verify_peer(
+                stream.peer_addr().expect("the peer"),
+                stream.local_addr().expect("the local address")
+            ),
+            Ok(())
+        );
     }
 }

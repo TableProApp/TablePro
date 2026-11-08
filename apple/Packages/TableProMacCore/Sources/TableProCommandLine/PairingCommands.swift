@@ -102,7 +102,10 @@ struct PairCommand: ParsableCommand, CLIRunnable {
         try environment.tokenStore.save(token)
         if let previous, previous != token {
             // The old token would otherwise stay listed and valid with no one holding it.
-            _ = try? await CLIServerClient.revoke(token: previous, socketPath: server.socketPath)
+            let outcome = try? await CLIServerClient.revoke(token: previous, socketPath: server.socketPath)
+            if outcome != .revoked {
+                session.writeError("tablepro: The previous token is still active. Revoke it under Settings > MCP.")
+            }
         }
         session.console.out("Paired with TablePro.\n")
     }

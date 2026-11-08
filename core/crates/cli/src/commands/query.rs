@@ -9,7 +9,11 @@ use crate::host::Host;
 use crate::output::{OutputFormat, Table};
 use crate::tool_arguments::QueryArguments;
 
-pub(super) async fn run(arguments: &QueryArgs, host: &dyn Host, console: &mut Console<'_>) -> Result<(), CommandError> {
+pub(super) async fn run(
+    arguments: &QueryArgs,
+    host: &(impl Host + Clone + Send + Sync + 'static),
+    console: &mut Console<'_>,
+) -> Result<(), CommandError> {
     // A usage error is reported before TablePro is asked anything.
     let sql = sql_source::read(arguments, console.terminal())?;
     let client = McpClient::connect(host).await?;

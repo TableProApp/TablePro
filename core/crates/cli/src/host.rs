@@ -1,4 +1,5 @@
 use std::io::IsTerminal;
+use std::net::SocketAddr;
 
 // Each app reads these its own way: Linux from GSettings, the keyring and the session bus.
 pub trait Host {
@@ -7,7 +8,7 @@ pub trait Host {
     fn server_enabled(&self) -> Result<bool, HostError>;
     fn server_port(&self) -> Result<u16, HostError>;
     // Another user can bind the port before TablePro does, so the token goes only to a listener this one confirms.
-    fn verify_server(&self, port: u16) -> Result<(), HostError>;
+    fn verify_peer(&self, peer: SocketAddr, local: SocketAddr) -> Result<(), HostError>;
     // Read only: a token made here would be one the running server never accepts.
     fn token(&self) -> Result<Option<String>, HostError>;
     fn terminal(&self) -> Terminal;
