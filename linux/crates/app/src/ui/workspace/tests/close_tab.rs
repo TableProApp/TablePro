@@ -3,7 +3,7 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita::prelude::*;
-use tablepro_core::column::{ColumnDefault, ColumnType};
+use tablepro_core::column::{ColumnDefault, ColumnType, ReadForm, classify_type_name};
 use tablepro_core::meta::{RowCountEstimate, RowIdentity, TableEstimate};
 use tablepro_core::{ColumnInfo, QueryResult, Value};
 use tablepro_test_support::{ConnectionScript, FakeReply};
@@ -18,10 +18,16 @@ use crate::ui::data_grid::GridCell;
 use crate::ui::session_window::tests::{TestWindow, WAIT};
 use crate::workspace::{answer, visible_alert};
 
-fn column(name: &str, primary_key: bool) -> ColumnInfo {
+fn column(name: &str, data_type: &str, primary_key: bool) -> ColumnInfo {
     ColumnInfo {
         name: name.to_owned(),
-        column_type: ColumnType::untyped_text("text"),
+        column_type: ColumnType {
+            name: data_type.to_owned(),
+            kind: classify_type_name(data_type),
+            catalog: None,
+            dynamic_storage: false,
+            read_form: ReadForm::Native,
+        },
         nullable: !primary_key,
         primary_key,
         is_auto_increment: false,
@@ -32,9 +38,8 @@ fn column(name: &str, primary_key: bool) -> ColumnInfo {
     }
 }
 
-/// Every table has the same two keyed rows.
 fn serving_tables(script: &mut ConnectionScript) {
-    let columns = [column("id", true), column("name", false)];
+    let columns = [column("id", "integer", true), column("name", "text", false)];
     script.fetch_columns.always(FakeReply::ok(columns.to_vec()));
     script.row_identity.always(FakeReply::ok(RowIdentity::UniqueKey {
         columns: vec!["id".to_owned()],
