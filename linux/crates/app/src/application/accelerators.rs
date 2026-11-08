@@ -422,7 +422,6 @@ pub const ACCELERATORS: &[Accelerator] = &[
     component(AssistantComposer, "assistant.send", &["Return"], Unlisted),
     local(
         StructureTab,
-        WorkspaceShell,
         BUBBLE,
         "structure.save",
         &["<Primary>s"],
