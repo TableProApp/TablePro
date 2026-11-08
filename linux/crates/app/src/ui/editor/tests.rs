@@ -3318,16 +3318,49 @@ mod result_edits {
     }
 }
 
-/// Dragging the results up stops at the editor's few lines: neither side
-/// of the divider shrinks below its minimum, so the query never goes.
 #[gtk4::test]
 fn the_divider_keeps_the_editor_in_view() {
     let harness = editor_with(Replies::default(), "SELECT 1");
+    let window = crate::test_support::OwnedWindow::presented(
+        gtk4::Window::builder()
+            .default_width(800)
+            .default_height(600)
+            .child(&harness.editor)
+            .build(),
+    );
     let paned = crate::test_support::descendants(&harness.editor)
         .into_iter()
         .find_map(|widget| widget.downcast::<gtk4::Paned>().ok())
         .expect("the divider between the query and its results");
+    let editor = paned.start_child().expect("the editor pane");
+    let results = paned.end_child().expect("the results pane");
+    wait_until(WAIT, || paned.height() > 0).expect("the editor is allocated");
 
-    assert!(!paned.shrinks_start_child(), "the editor can be dragged out of view");
-    assert!(!paned.shrinks_end_child(), "the results can be dragged out of view");
+    for text in ["SELECT 1".to_owned(), "SELECT 1;\n".repeat(300)] {
+        harness.editor.buffer().set_text(&text);
+        paned.set_position(0);
+        wait_until(WAIT, || paned.position() > 0).expect("the divider stops above the editor minimum");
+        let minimum = editor.measure(gtk4::Orientation::Vertical, paned.width()).0;
+        assert!(minimum >= 120);
+        assert!(editor.height() >= minimum);
+        assert!(harness.editor.imp().source_view.height() >= 120);
+
+        let bottom = paned.height();
+        paned.set_position(bottom);
+        wait_until(WAIT, || paned.position() < bottom).expect("the results retain their minimum");
+        assert!(results.height() >= results.measure(gtk4::Orientation::Vertical, paned.width()).0);
+        assert!(editor.height() >= minimum);
+
+        let middle = paned.height() / 2;
+        paned.set_position(middle);
+        wait_until(WAIT, || editor.height() > minimum && results.height() > 0)
+            .expect("the divider can still move between its limits");
+    }
+
+    window.set_default_size(800, 400);
+    wait_until(WAIT, || window.height() < 600).expect("the window becomes shorter");
+    paned.set_position(0);
+    wait_until(WAIT, || paned.position() > 0).expect("a short window keeps the editor visible");
+    assert!(harness.editor.imp().source_view.height() >= 120);
+    assert!(results.height() > 0);
 }

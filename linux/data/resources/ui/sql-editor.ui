@@ -199,9 +199,8 @@
             <property name="position">280</property>
             <property name="vexpand">true</property>
             <property name="hexpand">true</property>
-            <!-- Neither side shrinks below its minimum, so dragging the
-                 results up stops at the editor's few lines and does not
-                 hide the query. -->
+            <!-- GtkPaned otherwise allows the query to disappear below
+                 the scroller's minimum when the results are dragged up. -->
             <property name="shrink-start-child">false</property>
             <property name="shrink-end-child">false</property>
             <property name="start-child">
