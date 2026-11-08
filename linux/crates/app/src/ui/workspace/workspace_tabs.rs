@@ -940,6 +940,21 @@ fn saved_drafts(record: &WorkspaceRecord) -> impl Iterator<Item = DraftId> + '_ 
     })
 }
 
+enum RefreshTarget {
+    Table(crate::ui::browse_tab::BrowseTab),
+    Diagram(crate::ui::diagram::DiagramTab),
+    Key(crate::ui::key_tab::KeyTab),
+}
+
+fn refresh_target(tab: &WorkspaceTab) -> Option<RefreshTarget> {
+    match tab {
+        WorkspaceTab::Table(slot) => Some(RefreshTarget::Table(slot.browse.clone())),
+        WorkspaceTab::Diagram(slot) => Some(RefreshTarget::Diagram(slot.diagram.clone())),
+        WorkspaceTab::Key(slot) => Some(RefreshTarget::Key(slot.tab.clone())),
+        WorkspaceTab::Editor(_) | WorkspaceTab::Structure(_) => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use gtk4::subclass::prelude::*;
@@ -1121,20 +1136,5 @@ mod tests {
         view.set_selected_page(&view.nth_page(2));
 
         wait_until(WAIT, || column_reads() == 2).expect("the tab read its table once shown");
-    }
-}
-
-enum RefreshTarget {
-    Table(crate::ui::browse_tab::BrowseTab),
-    Diagram(crate::ui::diagram::DiagramTab),
-    Key(crate::ui::key_tab::KeyTab),
-}
-
-fn refresh_target(tab: &WorkspaceTab) -> Option<RefreshTarget> {
-    match tab {
-        WorkspaceTab::Table(slot) => Some(RefreshTarget::Table(slot.browse.clone())),
-        WorkspaceTab::Diagram(slot) => Some(RefreshTarget::Diagram(slot.diagram.clone())),
-        WorkspaceTab::Key(slot) => Some(RefreshTarget::Key(slot.tab.clone())),
-        WorkspaceTab::Editor(_) | WorkspaceTab::Structure(_) => None,
     }
 }
