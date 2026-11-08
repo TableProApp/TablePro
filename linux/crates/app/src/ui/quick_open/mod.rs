@@ -490,6 +490,7 @@ impl QuickOpen {
         });
         if items.is_empty() {
             let loading = imp.requests.borrow().is_pending(Request::Queries)
+                || imp.requests.borrow().is_pending(Request::Past)
                 || (imp.generation.get().is_none() && !imp.catalog_error.get());
             widgets.status.set_title(&if loading {
                 gettext("Loading Results")

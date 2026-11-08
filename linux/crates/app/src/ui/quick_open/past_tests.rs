@@ -153,3 +153,31 @@ fn repeated_executions_have_one_row_and_deleted_history_cannot_open() {
     assert!(chosen.borrow().is_empty());
     dialog.dismiss();
 }
+
+#[gtk4::test]
+fn an_empty_list_stays_loading_until_the_history_reply_arrives() {
+    adw::init().unwrap();
+    let runtime = test_runtime();
+    let mut script = ConnectionScript::default();
+    script.list_objects.always(FakeReply::ok(vec![]));
+    let fake = FakeSession::start(script, [], runtime.tasks());
+    let dialog = QuickOpen::new(fake.session, runtime.tasks(), |_| {});
+    wait_until(WAIT, || dialog.current()).unwrap();
+    let pending = dialog.imp().requests.borrow_mut().issue(Request::Past);
+    dialog.show_results(String::new(), vec![]);
+    let widgets = dialog.imp().widgets.get().unwrap();
+    assert_eq!(widgets.status.title(), "Loading Results");
+    assert!(widgets.status.description().is_none());
+    assert!(dialog.imp().requests.borrow_mut().accept(Request::Past, pending.stamp));
+    dialog.show_results(
+        String::new(),
+        vec![Candidate::PastQuery {
+            id: 1,
+            name: "SELECT 42".into(),
+            sql: Arc::from("SELECT 42"),
+        }],
+    );
+    assert_eq!(widgets.stack.visible_child_name().as_deref(), Some("list"));
+    assert_eq!(dialog.selected().unwrap().name(), "SELECT 42");
+    dialog.dismiss();
+}

@@ -46,7 +46,9 @@ fn save(tasks: &Tasks, history: &QueryHistory, connection: Uuid, name: &str, sql
 
 fn ready(dialog: &QuickOpen) {
     wait_until(WAIT, || {
-        !dialog.imp().requests.borrow().is_pending(Request::Queries) && dialog.current()
+        !dialog.imp().requests.borrow().is_pending(Request::Queries)
+            && !dialog.imp().requests.borrow().is_pending(Request::Past)
+            && dialog.current()
     })
     .unwrap();
 }
@@ -238,7 +240,7 @@ fn an_empty_query_source_does_not_report_no_matches_while_the_catalog_loads() {
     });
     let fake = FakeSession::start(script, [], runtime.tasks());
     let dialog = QuickOpen::new(fake.session, runtime.tasks(), |_| {});
-    dialog.include_saved_queries(history, Uuid::new_v4());
+    dialog.include_queries(history, Uuid::new_v4());
     ready(&dialog);
     let widgets = dialog.imp().widgets.get().unwrap();
     assert_eq!(widgets.status.title(), "Loading Results");
