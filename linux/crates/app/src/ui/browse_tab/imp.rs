@@ -34,6 +34,10 @@ pub struct BrowseTab {
     #[template_child]
     pub view_toggle: TemplateChild<adw::ToggleGroup>,
     #[template_child]
+    pub structure_start: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub structure_end: TemplateChild<gtk::Box>,
+    #[template_child]
     pub data_start: TemplateChild<gtk::Box>,
     #[template_child]
     pub data_end: TemplateChild<gtk::Box>,

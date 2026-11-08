@@ -410,9 +410,12 @@ impl BrowseTab {
         });
     }
 
-    /// Show `structure` as the tab's Structure view.
-    pub fn set_structure(&self, structure: &impl IsA<gtk::Widget>) {
-        libadwaita::prelude::BinExt::set_child(&*self.imp().structure_host, Some(structure));
+    /// Show `structure` as the tab's Structure view, with its Drop Table,
+    /// Discard and Save in this tab's bottom bar.
+    pub fn set_structure(&self, structure: &crate::ui::structure_tab::StructureTab) {
+        let imp = self.imp();
+        libadwaita::prelude::BinExt::set_child(&*imp.structure_host, Some(structure));
+        structure.dock_actions(&imp.structure_start, &imp.structure_end);
     }
 
     fn follow_view_toggle(&self) {
@@ -430,6 +433,8 @@ impl BrowseTab {
         imp.no_pk_banner.set_visible(!structure);
         imp.data_start.set_visible(!structure);
         imp.data_end.set_visible(!structure);
+        imp.structure_start.set_visible(structure);
+        imp.structure_end.set_visible(structure);
     }
 
     /// F5 asked the window to read the tab again.

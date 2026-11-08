@@ -375,6 +375,32 @@ impl StructureTab {
         )
     }
 
+    /// Move the bar's controls into `start` and `end` of a bar that holds
+    /// them beside others, so a Structure view inside a table tab has one
+    /// bar and not two, as the macOS window has. The controls stay the
+    /// same widgets, so what enables and shows them keeps working.
+    pub fn dock_actions(&self, start: &gtk::Box, end: &gtk::Box) {
+        let imp = self.imp();
+        imp.action_bar.set_visible(false);
+        let start_controls: [gtk::Widget; 3] = [
+            imp.pending_label.get().upcast(),
+            imp.saving_spinner.get().upcast(),
+            imp.drop_button.get().upcast(),
+        ];
+        // The bar packs its end from the edge inward; a box lists them left to right.
+        let end_controls: [gtk::Widget; 3] = [
+            imp.stop_button.get().upcast(),
+            imp.discard_button.get().upcast(),
+            imp.save_button.get().upcast(),
+        ];
+        for (controls, target) in [(start_controls, start), (end_controls, end)] {
+            for control in controls {
+                imp.action_bar.remove(&control);
+                target.append(&control);
+            }
+        }
+    }
+
     /// A read of the table's definition is running.
     pub fn is_loading(&self) -> bool {
         self.imp()

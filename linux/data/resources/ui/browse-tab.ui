@@ -135,6 +135,14 @@
               </object>
             </child>
             <child type="start">
+              <!-- The Structure view's Drop Table, Discard and Save, moved
+                   in while it shows. -->
+              <object class="GtkBox" id="structure_start">
+                <property name="visible">false</property>
+                <property name="spacing">6</property>
+              </object>
+            </child>
+            <child type="start">
               <object class="GtkBox" id="data_start">
                 <property name="spacing">6</property>
                 <child>
@@ -170,6 +178,12 @@
                     </style>
                   </object>
                 </child>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkBox" id="structure_end">
+                <property name="visible">false</property>
+                <property name="spacing">6</property>
               </object>
             </child>
             <child type="end">

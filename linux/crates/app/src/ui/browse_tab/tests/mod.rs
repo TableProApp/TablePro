@@ -1558,7 +1558,23 @@ fn the_bottom_bar_switches_between_data_and_structure() {
     assert_eq!(imp.view_stack.visible_child_name().as_deref(), Some("structure"));
     assert!(!imp.data_start.is_visible());
 
-    tab.set_structure(&gtk4::Label::new(None));
+    let structure = crate::ui::structure_tab::StructureTab::new(crate::ui::structure_tab::StructureTabInit {
+        tracker: crate::services::structure_tracker_registry::StructureTrackerRegistry::default()
+            .register(uuid::Uuid::new_v4()),
+        schema: None,
+        table: "users".to_owned(),
+        mode: crate::ui::structure_tab::StructureMode::Edit,
+        session: harness.session.clone(),
+        tasks: harness.runtime.as_ref().expect("a runtime").tasks(),
+        first_load: crate::ui::tab_load::FirstLoad::Now,
+    });
+    tab.set_structure(&structure);
+    assert_eq!(
+        structure.imp().save_button.parent().as_ref(),
+        Some(imp.structure_end.upcast_ref::<gtk4::Widget>()),
+        "the Structure view kept a bar of its own"
+    );
+    assert!(!structure.imp().action_bar.is_visible());
     imp.view_toggle.set_active_name(Some("data"));
     imp.view_toggle.set_active_name(Some("structure"));
     assert_eq!(asked.get(), 1, "a view that is built is asked for again");
@@ -1566,4 +1582,5 @@ fn the_bottom_bar_switches_between_data_and_structure() {
     imp.view_toggle.set_active_name(Some("data"));
     assert_eq!(imp.view_stack.visible_child_name().as_deref(), Some("data"));
     assert!(imp.data_start.is_visible());
+    assert!(!imp.structure_end.is_visible());
 }

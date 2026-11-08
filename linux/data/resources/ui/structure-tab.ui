@@ -376,7 +376,7 @@
           </object>
         </property>
         <child type="bottom">
-          <object class="GtkActionBar">
+          <object class="GtkActionBar" id="action_bar">
             <child type="start">
               <object class="GtkLabel" id="pending_label">
                 <property name="visible">false</property>
