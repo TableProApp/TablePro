@@ -124,9 +124,77 @@ fn keyboard_navigation_scrolls_and_keeps_search_focus() {
         .and_downcast::<gtk::ScrolledWindow>()
         .expect("scroller");
     wait_until(WAIT, || scrolled.vadjustment().value() > 0.0).expect("selected row scrolled into view");
+    wait_until(WAIT, || row_is_visible(&dialog, "table_060")).expect("selected row is visible");
     widgets.entry.emit_by_name::<()>("stop-search", &[]);
     wait_until(WAIT, || dialog.parent().is_none()).expect("Escape closes");
     assert!(dialog.imp().context.borrow().is_none());
+    window.destroy();
+}
+
+fn row_is_visible(dialog: &QuickOpen, name: &str) -> bool {
+    let list = &dialog.imp().widgets.get().unwrap().list;
+    crate::test_support::descendants(list)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+        .find(|label| label.text() == name)
+        .and_then(|label| label.compute_bounds(list))
+        .is_some_and(|bounds| {
+            bounds.height() > 0.0 && bounds.y() >= 0.0 && bounds.y() + bounds.height() <= list.height() as f32
+        })
+}
+
+#[gtk4::test]
+fn selection_before_presentation_scrolls_after_layout() {
+    let (_runtime, _fake, dialog, _) = setup(
+        (0..100)
+            .map(|i| object(&format!("table_{i:03}"), ObjectKind::Table))
+            .collect(),
+    );
+    ready(&dialog);
+    let widgets = dialog.imp().widgets.get().unwrap();
+    assert!(!widgets.list.is_mapped());
+    dialog.step(60);
+    let window = adw::Window::new();
+    window.set_default_size(800, 600);
+    window.present();
+    dialog.present(Some(&window));
+    dialog.step(-20);
+    assert_eq!(widgets.selection.selected(), 40);
+    wait_until(WAIT, || row_is_visible(&dialog, "table_040")).expect("latest selection visible after first layout");
+    assert!(dialog.entry_has_focus());
+
+    dialog.step(30);
+    assert!(dialog.imp().scroll_layout.borrow().is_some());
+    dialog.dismiss();
+    assert!(
+        dialog.imp().scroll_layout.borrow().is_none(),
+        "close cancels pending scrolling"
+    );
+    window.destroy();
+}
+
+#[gtk4::test]
+fn replaced_results_scroll_after_layout_without_a_viewport_resize() {
+    let objects: Vec<_> = (0..100)
+        .map(|i| object(&format!("table_{i:03}"), ObjectKind::Table))
+        .collect();
+    let (_runtime, _fake, dialog, _) = setup(objects);
+    let window = adw::Window::new();
+    window.set_default_size(800, 600);
+    window.present();
+    dialog.present(Some(&window));
+    ready(&dialog);
+    dialog.step(60);
+    wait_until(WAIT, || row_is_visible(&dialog, "table_060")).expect("initial selection visible");
+    let widgets = dialog.imp().widgets.get().unwrap();
+    let page_size = widgets.list.vadjustment().unwrap().page_size();
+    let found = dialog.imp().index.borrow().search("");
+    dialog.show_results(String::new(), found);
+    dialog.step(-40);
+    wait_until(WAIT, || row_is_visible(&dialog, "table_020")).expect("replacement selection visible");
+    assert_eq!(widgets.list.vadjustment().unwrap().page_size(), page_size);
+    assert!(dialog.entry_has_focus());
+    dialog.dismiss();
     window.destroy();
 }
 
