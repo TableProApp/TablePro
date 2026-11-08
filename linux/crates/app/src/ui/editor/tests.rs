@@ -3317,3 +3317,17 @@ mod result_edits {
         assert_eq!(tracker.pending_count(), 0);
     }
 }
+
+/// Dragging the results up stops at the editor's few lines: neither side
+/// of the divider shrinks below its minimum, so the query never goes.
+#[gtk4::test]
+fn the_divider_keeps_the_editor_in_view() {
+    let harness = editor_with(Replies::default(), "SELECT 1");
+    let paned = crate::test_support::descendants(&harness.editor)
+        .into_iter()
+        .find_map(|widget| widget.downcast::<gtk4::Paned>().ok())
+        .expect("the divider between the query and its results");
+
+    assert!(!paned.shrinks_start_child(), "the editor can be dragged out of view");
+    assert!(!paned.shrinks_end_child(), "the results can be dragged out of view");
+}
