@@ -12,8 +12,8 @@ use libadwaita as adw;
 use libadwaita::prelude::{AdwDialogExt, AlertDialogExt, BinExt, PreferencesGroupExt};
 use tablepro_core::DataModel;
 use tablepro_session::SessionKey;
-use tablepro_storage::SavedQueries;
-use tablepro_storage::saved_queries::SavedQuery;
+use tablepro_storage::QueryHistory;
+use tablepro_storage::saved_queries::{SavedQuery, SavedQueryFolder};
 use uuid::Uuid;
 
 use super::health_banner::REVIEW_HOST_KEY;
@@ -583,19 +583,21 @@ impl WorkspaceShell {
             SessionKey::File(_) => None,
         });
         let Some(connection) = connection else {
-            pane.show(Vec::new());
+            pane.show(Vec::new(), Vec::new());
             return;
         };
         let ready = history.ready_store();
         crate::runtime::spawn_and_deliver(
             tasks,
             async move {
-                let store = ready.await?.saved_queries();
-                store.list(Some(connection)).await.ok()
+                let history = ready.await?;
+                let queries = history.saved_queries().list(Some(connection)).await.ok()?;
+                let folders = history.saved_query_folders().list(connection).await.ok()?;
+                Some((queries, folders))
             },
             move |listed| {
-                if let Ok(Some(favorites)) = listed {
-                    pane.show(favorites);
+                if let Ok(Some((queries, folders))) = listed {
+                    pane.show(queries, folders);
                 }
             },
         );
@@ -612,6 +614,10 @@ impl WorkspaceShell {
             }
             FavoriteAction::Rename(favorite) => self.ask_favorite_name(favorite),
             FavoriteAction::Delete(favorite) => self.ask_favorite_deletion(favorite),
+            FavoriteAction::MoveTo(favorite) => self.ask_folder_for(favorite),
+            FavoriteAction::NewFolder(parent) => self.ask_folder_name(parent, None),
+            FavoriteAction::RenameFolder(folder) => self.ask_folder_name(None, Some(folder)),
+            FavoriteAction::DeleteFolder(folder) => self.ask_folder_deletion(folder),
         }
     }
 
@@ -662,21 +668,170 @@ impl WorkspaceShell {
 
     pub(crate) fn rename_favorite(&self, id: i64, name: String) {
         self.change_favorites(
-            async move |store| store.rename(id, &name).await,
+            async move |history| history.saved_queries().rename(id, &name).await,
             gettext("Could not rename that saved query."),
         );
     }
 
     pub(crate) fn delete_favorite(&self, id: i64) {
         self.change_favorites(
-            async move |store| store.delete(id).await,
+            async move |history| history.saved_queries().delete(id).await,
             gettext("Could not delete that saved query."),
         );
     }
 
-    /// Run `change` on the saved queries, then read the list again, or
-    /// say `failure`.
-    fn change_favorites<W>(&self, change: impl FnOnce(SavedQueries) -> W + Send + 'static, failure: String)
+    pub(crate) fn move_favorite(&self, id: i64, folder: Option<i64>) {
+        self.change_favorites(
+            async move |history| history.saved_queries().move_to_folder(id, folder, None).await,
+            gettext("Could not move that saved query."),
+        );
+    }
+
+    pub(crate) fn create_folder(&self, name: String, parent: Option<i64>) {
+        let Some(connection) = self.front_connection() else {
+            return;
+        };
+        self.change_favorites(
+            async move |history| {
+                history
+                    .saved_query_folders()
+                    .create(connection, &name, parent)
+                    .await
+                    .map(drop)
+            },
+            gettext("Could not make that folder."),
+        );
+    }
+
+    fn rename_folder(&self, id: i64, name: String) {
+        self.change_favorites(
+            async move |history| history.saved_query_folders().rename(id, &name).await,
+            gettext("Could not rename that folder."),
+        );
+    }
+
+    pub(crate) fn delete_folder(&self, id: i64) {
+        self.change_favorites(
+            async move |history| history.saved_query_folders().delete(id).await,
+            gettext("Could not delete that folder."),
+        );
+    }
+
+    /// The connection whose favorites the sidebar lists.
+    fn front_connection(&self) -> Option<uuid::Uuid> {
+        self.front().and_then(|front| front.key()).and_then(|key| match key {
+            SessionKey::Saved(id) | SessionKey::SavedIn { id, .. } => Some(id),
+            SessionKey::File(_) => None,
+        })
+    }
+
+    /// A name for a folder: a new one inside `parent`, or the new name of `rename`.
+    fn ask_folder_name(&self, parent: Option<SavedQueryFolder>, rename: Option<SavedQueryFolder>) {
+        let title = match (&rename, &parent) {
+            (Some(_), _) => gettext("Rename Folder"),
+            (None, Some(_)) => gettext("New Subfolder"),
+            (None, None) => gettext("New Folder"),
+        };
+        let verb = if rename.is_some() {
+            gettext("Rename")
+        } else {
+            gettext("Create")
+        };
+        let dialog = adw::AlertDialog::new(Some(&title), None);
+        let entry = adw::EntryRow::builder()
+            .title(gettext("Name"))
+            .activates_default(true)
+            .build();
+        if let Some(folder) = &rename {
+            entry.set_text(&folder.name);
+        }
+        let group = adw::PreferencesGroup::new();
+        group.add(&entry);
+        dialog.set_extra_child(Some(&group));
+        dialog.add_response("cancel", &gettext("Cancel"));
+        dialog.add_response("ok", &verb);
+        dialog.set_response_appearance("ok", adw::ResponseAppearance::Suggested);
+        dialog.set_default_response(Some("ok"));
+        dialog.set_close_response("cancel");
+        crate::ui::name_entry::require_name(&dialog, "ok", &entry);
+        let shell = self.downgrade();
+        dialog.connect_response(None, move |_, response| {
+            let name = entry.text().trim().to_owned();
+            let Some(shell) = shell.upgrade().filter(|_| response == "ok") else {
+                return;
+            };
+            match &rename {
+                Some(folder) if name != folder.name => shell.rename_folder(folder.id, name),
+                Some(_) => {}
+                None => shell.create_folder(name, parent.as_ref().map(|folder| folder.id)),
+            }
+        });
+        dialog.present(self.imp().window.upgrade().as_ref());
+    }
+
+    fn ask_folder_deletion(&self, folder: SavedQueryFolder) {
+        let dialog = adw::AlertDialog::new(
+            Some(&gettext_f("Delete “{name}”?", &[("name", &folder.name)])),
+            Some(&gettext(
+                "The folders in it are deleted too. The saved queries in them stay, at the top.",
+            )),
+        );
+        dialog.add_response("cancel", &gettext("Cancel"));
+        dialog.add_response("delete", &gettext("Delete"));
+        dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
+        dialog.set_default_response(Some("cancel"));
+        dialog.set_close_response("cancel");
+        let shell = self.downgrade();
+        dialog.connect_response(None, move |_, response| {
+            if let (true, Some(shell)) = (response == "delete", shell.upgrade()) {
+                shell.delete_folder(folder.id);
+            }
+        });
+        dialog.present(self.imp().window.upgrade().as_ref());
+    }
+
+    /// Pick the folder a query is filed in, or the top.
+    fn ask_folder_for(&self, favorite: SavedQuery) {
+        let Some(pane) = self.imp().favorites.get().cloned() else {
+            return;
+        };
+        let mut folders = pane.folders();
+        folders.sort_by_key(|folder| folder.name.to_lowercase());
+        let top = gettext("No Folder");
+        let names: Vec<&str> = std::iter::once(top.as_str())
+            .chain(folders.iter().map(|folder| folder.name.as_str()))
+            .collect();
+        let choice = gtk::DropDown::from_strings(&names);
+        choice.update_property(&[gtk::accessible::Property::Label(&gettext("Folder"))]);
+        let at = favorite
+            .folder_id
+            .and_then(|id| folders.iter().position(|folder| folder.id == id))
+            .map_or(0, |position| position + 1);
+        choice.set_selected(u32::try_from(at).unwrap_or(0));
+        let dialog = adw::AlertDialog::new(Some(&gettext_f("Move “{name}”", &[("name", &favorite.name)])), None);
+        dialog.set_extra_child(Some(&choice));
+        dialog.add_response("cancel", &gettext("Cancel"));
+        dialog.add_response("move", &gettext("Move"));
+        dialog.set_response_appearance("move", adw::ResponseAppearance::Suggested);
+        dialog.set_default_response(Some("move"));
+        dialog.set_close_response("cancel");
+        let shell = self.downgrade();
+        dialog.connect_response(None, move |_, response| {
+            let Some(shell) = shell.upgrade().filter(|_| response == "move") else {
+                return;
+            };
+            let folder = match choice.selected() {
+                0 => None,
+                at => folders.get(at as usize - 1).map(|folder| folder.id),
+            };
+            shell.move_favorite(favorite.id, folder);
+        });
+        dialog.present(self.imp().window.upgrade().as_ref());
+    }
+
+    /// Run `change` on the history database, then read the list again, or
+    /// say why it did not work.
+    fn change_favorites<W>(&self, change: impl FnOnce(QueryHistory) -> W + Send + 'static, failure: String)
     where
         W: std::future::Future<Output = Result<(), tablepro_storage::StorageError>> + Send + 'static,
     {
@@ -688,17 +843,21 @@ impl WorkspaceShell {
         crate::runtime::spawn_and_deliver(
             tasks,
             async move {
-                let store = ready.await?.saved_queries();
-                change(store).await.ok()
+                let history = ready.await.ok_or(tablepro_storage::StorageError::NotInitialised)?;
+                change(history).await
             },
             move |done| {
                 let Some(shell) = shell.upgrade() else {
                     return;
                 };
-                match done {
-                    Ok(Some(())) => shell.reload_favorites(),
-                    _ => shell.toast_overlay().add_toast(crate::ui::plain_toast(&failure)),
-                }
+                let message = match done {
+                    Ok(Ok(())) => return shell.reload_favorites(),
+                    Ok(Err(tablepro_storage::StorageError::FolderNameTaken)) => {
+                        gettext("A folder with that name is already there.")
+                    }
+                    _ => failure,
+                };
+                shell.toast_overlay().add_toast(crate::ui::plain_toast(&message));
             },
         );
     }
