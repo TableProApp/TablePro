@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import os
+import TableProProcess
 
 public enum MCPHandshakeAcquisitionError: Error, LocalizedError, Equatable {
     case launchFailed(String)
@@ -101,11 +102,9 @@ public struct MCPHandshakeAcquirer: Sendable {
     }
 
     static func launchConfiguration(environment: [String: String]) -> NSWorkspace.OpenConfiguration {
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = false
-        configuration.environment = environment
-        configuration.environment[BackgroundLaunchFlag.variable] = BackgroundLaunchFlag.value
-        return configuration
+        var environment = environment
+        environment[BackgroundLaunchFlag.variable] = BackgroundLaunchFlag.value
+        return ProcessLauncher.openConfiguration(environment: environment, activates: false)
     }
 
     private func pollForTrustedHandshake(launchRequestedAt: Date?) async throws -> MCPHandshakePayload {

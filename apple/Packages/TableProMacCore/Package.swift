@@ -73,6 +73,7 @@ let package = Package(
                 "TableProMCP",
                 "TableProUtilities",
                 .product(name: "TableProCoreTypes", package: "TableProCore"),
+                .product(name: "TableProProcess", package: "TableProCore"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
             path: "Sources/TableProCommandLine",

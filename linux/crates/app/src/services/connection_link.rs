@@ -42,29 +42,44 @@ pub fn link_text(file: &gio::File) -> Option<String> {
     is_link(&uri).then(|| uri.to_string())
 }
 
+// A failed gvfs daemon probe can release the local singleton, so the link callbacks own their backend.
+fn link_vfs() -> Result<gio::Vfs, glib::BoolError> {
+    let _default = gio::Vfs::default();
+    let extension = gio::IOExtensionPoint::lookup(gio::VFS_EXTENSION_POINT_NAME)
+        .and_then(|point| point.extension_by_name("local"))
+        .ok_or_else(|| glib::bool_error!("GIO has no local VFS implementation"))?;
+    glib::Object::with_type(extension.type_())
+        .downcast::<gio::Vfs>()
+        .map_err(|_| glib::bool_error!("GIO's local implementation is not a VFS"))
+}
+
 // gvfs reads these into a mount spec that drops the password and all but one MongoDB host.
-pub fn register_link_schemes() {
-    // Local VFS construction registers a scheme, so it must finish before lookup takes the scheme lock.
-    let _local = gio::Vfs::local();
-    let vfs = gio::Vfs::default();
-    for scheme in LINK_SCHEMES.into_iter().chain([JDBC_SCHEME]) {
-        // False once registered, as in a test process that starts several applications.
-        let _ = vfs.register_uri_scheme(scheme, Some(Box::new(link_file)), Some(Box::new(link_parse_name)));
-    }
-}
-
-// GLocalVfs keeps a URI it has no backend for as text. Asked of itself, it falls back to that.
-fn link_file(vfs: &gio::Vfs, uri: &str) -> Option<gio::File> {
-    let local = gio::Vfs::local();
-    (*vfs != local).then(|| local.file_for_uri(uri))
-}
-
-// GLib calls this for every parse name, whatever its scheme, and calls a missing one as a null pointer.
-fn link_parse_name(vfs: &gio::Vfs, name: &str) -> Option<gio::File> {
-    if !is_link(name) {
-        return None;
-    }
-    link_file(vfs, name)
+pub fn register_link_schemes() -> Result<(), glib::BoolError> {
+    static REGISTERED: std::sync::OnceLock<Result<(), glib::BoolError>> = std::sync::OnceLock::new();
+    REGISTERED
+        .get_or_init(|| {
+            let vfs = gio::Vfs::default();
+            // Backend construction registers a scheme and cannot run under a lookup callback's scheme lock.
+            let local = link_vfs()?;
+            for scheme in LINK_SCHEMES.into_iter().chain([JDBC_SCHEME]) {
+                let uri_vfs = local.clone();
+                let parse_vfs = local.clone();
+                let registered = vfs.register_uri_scheme(
+                    scheme,
+                    Some(Box::new(move |_, uri| Some(uri_vfs.file_for_uri(uri)))),
+                    Some(Box::new(move |_, name| {
+                        is_link(name).then(|| parse_vfs.file_for_uri(name))
+                    })),
+                );
+                if !registered {
+                    return Err(glib::bool_error!(
+                        "GIO already has a handler for a connection link scheme"
+                    ));
+                }
+            }
+            Ok(())
+        })
+        .clone()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -288,7 +303,7 @@ mod tests {
 
     #[test]
     fn a_registered_link_keeps_its_password_and_every_host() {
-        register_link_schemes();
+        register_link_schemes().expect("register the connection links");
 
         for link in [
             "postgresql://ada:s3cr%40t@db.example.com:5432/app?sslmode=require",
@@ -301,8 +316,28 @@ mod tests {
     }
 
     #[test]
+    fn registered_links_keep_their_text_on_other_threads() {
+        register_link_schemes().expect("register the connection links");
+        let workers: Vec<_> = (0..4)
+            .map(|_| {
+                std::thread::spawn(|| {
+                    register_link_schemes().expect("reuse the connection links");
+                    for scheme in LINK_SCHEMES.into_iter().chain([JDBC_SCHEME]) {
+                        let link = format!("{scheme}://ada:p%40ss@first:1234,second:5678/shop?key=value");
+                        assert_eq!(gio::File::for_uri(&link).uri().as_str(), link);
+                        assert_eq!(gio::File::for_parse_name(&link).uri().as_str(), link);
+                    }
+                })
+            })
+            .collect();
+        for worker in workers {
+            worker.join().expect("link lookups on a worker");
+        }
+    }
+
+    #[test]
     fn parse_names_still_work_once_the_links_are_registered() {
-        register_link_schemes();
+        register_link_schemes().expect("register the connection links");
 
         let file = gio::File::for_parse_name("/home/ada/shop.db");
 

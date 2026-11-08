@@ -36,6 +36,8 @@ pub enum StartupError {
     Runtime(#[source] std::io::Error),
     #[error("could not register the embedded resources: {0}")]
     Resources(#[source] glib::Error),
+    #[error("could not register connection links: {0}")]
+    ConnectionLinks(#[source] glib::BoolError),
     #[error("could not open the settings schema: {0}")]
     Settings(#[from] tablepro_linux_platform::SettingsError),
 }
@@ -59,7 +61,7 @@ pub fn run(args: Vec<OsString>) -> Result<glib::ExitCode, StartupError> {
     let drivers = build_registry();
     tracing::info!(drivers = drivers.len(), "starting tablepro");
 
-    services::connection_link::register_link_schemes();
+    services::connection_link::register_link_schemes().map_err(StartupError::ConnectionLinks)?;
     let application = TableProApplication::new(AppServices::production(drivers, settings, paths, runtime.tasks()));
     let code = gio::prelude::ApplicationExtManual::run_with_args_os(&application, &args);
     drop(application);

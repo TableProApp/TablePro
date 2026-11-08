@@ -2,6 +2,7 @@ import AppKit
 import Darwin
 import Foundation
 import TableProMCP
+import TableProProcess
 import TableProUtilities
 
 public extension CLIEnvironment {
@@ -127,9 +128,7 @@ enum CLILive {
     }
 
     static func launchConfiguration(environment: [String: String]) -> NSWorkspace.OpenConfiguration {
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.environment = environment
-        return configuration
+        ProcessLauncher.openConfiguration(environment: environment)
     }
 
     private static func verified(_ handshake: MCPHandshakePayload, logger: any MCPBridgeLogger) async throws -> CLIServerEndpoint {

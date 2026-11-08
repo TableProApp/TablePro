@@ -1524,9 +1524,9 @@ mod links {
         (saved, format!("sqlite://{}", path.display()))
     }
 
-    // GLocalVfs keeps the link's text, as the registered schemes do under gvfs.
     fn link(text: &str) -> gio::File {
-        gio::prelude::VfsExt::file_for_uri(&gio::Vfs::local(), text)
+        crate::services::connection_link::register_link_schemes().expect("register the connection links");
+        gio::File::for_uri(text)
     }
 
     #[gtk4::test]
