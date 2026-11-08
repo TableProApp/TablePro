@@ -112,7 +112,7 @@
                                     <property name="can-focus">false</property>
                                     <property name="visible">false</property>
                                     <style>
-                                      <class name="row-gutter"/>
+                                      <class name="view"/>
                                     </style>
                                   </object>
                                 </child>

@@ -28,11 +28,6 @@ columnview.data-table > listview > row > cell {
   padding: 0;
 }
 
-/* The passive gutter covers horizontally scrolled cells. */
-.row-gutter {
-  background-color: var(--view-bg-color);
-}
-
 columnview.data-table > listview > row > cell > .row-number-cell {
   min-height: 16px;
 }

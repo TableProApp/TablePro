@@ -3,8 +3,8 @@ use gtk4::prelude::*;
 use gtk4::{gdk, graphene};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{
-    BUTTON_PRESS_EVENT, BUTTON_RELEASE_EVENT, ConnectionExt as _, KEY_PRESS_EVENT, KEY_RELEASE_EVENT,
-    MOTION_NOTIFY_EVENT,
+    BUTTON_PRESS_EVENT, BUTTON_RELEASE_EVENT, ConnectionExt as _, CreateWindowAux, KEY_PRESS_EVENT, KEY_RELEASE_EVENT,
+    MOTION_NOTIFY_EVENT, Window, WindowClass,
 };
 use x11rb::protocol::xtest::ConnectionExt as _;
 use x11rb::rust_connection::RustConnection;
@@ -147,6 +147,42 @@ impl KeyInjector {
         Ok(())
     }
 
+    pub(crate) fn cover_pointer(&self) -> Result<PointerCover<'_>, KeyInjectionError> {
+        let root = self
+            .connection
+            .setup()
+            .roots
+            .first()
+            .map(|screen| screen.root)
+            .ok_or(KeyInjectionError::NotShown)?;
+        let pointer = self.connection.query_pointer(root)?.reply()?;
+        let window = self.connection.generate_id()?;
+        // A native cover triggers crossing events without pointer motion or a keyboard grab.
+        self.connection
+            .create_window(
+                0,
+                window,
+                root,
+                pointer.root_x.saturating_sub(8),
+                pointer.root_y.saturating_sub(8),
+                16,
+                16,
+                0,
+                WindowClass::INPUT_ONLY,
+                0,
+                &CreateWindowAux::new().override_redirect(1),
+            )?
+            .check()?;
+        let cover = PointerCover { keys: self, window };
+        self.connection.map_window(window)?.check()?;
+        Ok(cover)
+    }
+
+    fn uncover_pointer(&self, window: Window) -> Result<(), KeyInjectionError> {
+        self.connection.destroy_window(window)?.check()?;
+        Ok(())
+    }
+
     fn move_pointer(&self, widget: &impl IsA<gtk4::Widget>, at: (f32, f32)) -> Result<(), KeyInjectionError> {
         let widget = widget.as_ref();
         if !widget.is_mapped() || widget.width() <= 0 {
@@ -199,6 +235,19 @@ impl KeyInjector {
         self.connection
             .xtest_fake_input(kind, keycode, x11rb::CURRENT_TIME, x11rb::NONE, 0, 0, 0)?;
         Ok(())
+    }
+}
+
+pub(crate) struct PointerCover<'a> {
+    keys: &'a KeyInjector,
+    window: Window,
+}
+
+impl Drop for PointerCover<'_> {
+    fn drop(&mut self) {
+        if let Err(error) = self.keys.uncover_pointer(self.window) {
+            tracing::error!(%error, "a pointer cover was not removed");
+        }
     }
 }
 

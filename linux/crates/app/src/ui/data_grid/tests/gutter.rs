@@ -775,14 +775,10 @@ fn the_pinned_header_keeps_hover_and_never_offers_a_hidden_resize_handle() {
     after_next_frame(&grid.window);
     assert!(numbers.state_flags().contains(gtk::StateFlags::PRELIGHT));
     assert!(!second_data.state_flags().contains(gtk::StateFlags::PRELIGHT));
-    let overlay = view.parent().and_downcast::<gtk::Overlay>().expect("viewport overlay");
-    let cover = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    overlay.add_overlay(&cover);
-    after_next_frame(&grid.window);
-    wait_until(WAIT, || cover.state_flags().contains(gtk::StateFlags::PRELIGHT))
+    let cover = input.cover_pointer().expect("native pointer cover");
+    wait_until(WAIT, || !numbers.state_flags().contains(gtk::StateFlags::PRELIGHT))
         .expect("cover took the stationary pointer");
-    overlay.remove_overlay(&cover);
-    after_next_frame(&grid.window);
+    drop(cover);
     wait_until(WAIT, || numbers.state_flags().contains(gtk::StateFlags::PRELIGHT))
         .expect("header entered without motion");
     assert!(
