@@ -502,14 +502,7 @@ impl SessionWindow {
             SessionWindowInput::CloseCurrent => self.on_close_current(),
             SessionWindowInput::Reconnect => self.on_reconnect(),
             SessionWindowInput::ResetWorkspaceLayout => self.on_reset_workspace_layout(),
-            SessionWindowInput::CloseRequested(CloseReason::Quit(reply)) => {
-                if let Some(guards) = self.close_guards() {
-                    guards.request_window_close(self, move |decision: CloseDecision| {
-                        // A quit that went away no longer needs the answer.
-                        let _ = reply.send(decision);
-                    });
-                }
-            }
+            SessionWindowInput::CloseRequested(reason) => self.on_close_requested(reason),
             SessionWindowInput::DirtyChanged | SessionWindowInput::SavesInFlightChanged => self.refresh_dirty(),
             SessionWindowInput::WorkCompleted(work) => self.on_work_completed(work),
             SessionWindowInput::TabsChanged => self.on_tabs_changed(),
@@ -550,6 +543,16 @@ impl SessionWindow {
     fn on_reconnect(&self) {
         if let Some((_, session)) = self.front_session() {
             session.signal(MonitorSignal::RetryNow);
+        }
+    }
+
+    fn on_close_requested(&self, reason: CloseReason) {
+        let CloseReason::Quit(reply) = reason;
+        if let Some(guards) = self.close_guards() {
+            guards.request_window_close(self, move |decision: CloseDecision| {
+                // A quit that went away no longer needs the answer.
+                let _ = reply.send(decision);
+            });
         }
     }
 
