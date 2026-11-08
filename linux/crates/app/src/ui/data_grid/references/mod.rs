@@ -90,10 +90,9 @@ pub fn refresh_actions(grid: &DataGrid, target: Option<&Resolved>) {
 }
 
 impl DataGrid {
-    /// The table's foreign keys were read: Ctrl+J follows what they
-    /// offer now.
     pub(crate) fn keys_changed(&self) {
         self.refresh_actions();
+        self.imp().detail_pane.redraw_fields();
     }
 
     /// Fill the cell menu's key items for `cell` as the menu opens; a row
@@ -202,8 +201,6 @@ fn add_choice(grid: &DataGrid, name: &str, act: impl Fn(&DataGrid, usize) + 'sta
 }
 
 impl DataGrid {
-    /// Whether the column named `name` is part of a foreign key of the
-    /// table, under the keys read so far.
     pub(crate) fn is_foreign_key_column(&self, name: &str) -> bool {
         self.config()
             .and_then(|config| config.references.as_ref())
