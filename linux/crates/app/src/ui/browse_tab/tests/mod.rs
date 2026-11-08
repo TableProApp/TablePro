@@ -1678,6 +1678,26 @@ fn table_commands_follow_the_selected_view_from_the_switch_and_controls() {
     tab.imp().view_toggle.activate_action("table.save", None).unwrap();
     assert_eq!(schema_saves.count(), 1);
     assert_eq!(row_saves.count(), 0);
+    let save = structure.imp().save_button.get();
+    assert_eq!(save.parent(), Some(tab.imp().structure_primary.get().upcast()));
+    assert!(!structure.imp().action_bar.is_visible());
+    wait_until(WAIT, || save.is_mapped()).expect("the docked Save control");
+    assert!(save.grab_focus());
+    assert!(crate::ui::a11y::holds_focus(&save));
+    use crate::application::ShortcutOwner;
+    use crate::test_support::shortcut_keys::{keystroke, owner_controller, shortcuts, trigger_keys};
+    let ctrl_s = shortcuts(&owner_controller(tab, ShortcutOwner::BrowseTab).expect("the table's keys"))
+        .into_iter()
+        .find(|shortcut| {
+            shortcut
+                .trigger()
+                .is_some_and(|trigger| trigger_keys(&trigger).contains(&keystroke("<Primary>s")))
+        })
+        .and_then(|shortcut| shortcut.action())
+        .expect("Ctrl+S is bound");
+    assert!(ctrl_s.activate(gtk4::ShortcutActionFlags::empty(), &save, None));
+    assert_eq!(schema_saves.count(), 2);
+    assert_eq!(row_saves.count(), 0);
     assert!(tab.activate_action("grid.insert-row", None).is_err());
     tab.imp().view_toggle.activate_action("table.refresh", None).unwrap();
     assert_eq!(row_refreshes.count(), 0);
@@ -1685,7 +1705,90 @@ fn table_commands_follow_the_selected_view_from_the_switch_and_controls() {
     tab.imp().view_stack.set_visible_child_name("data");
     tab.activate_action("table.save", None).unwrap();
     assert_eq!(row_saves.count(), 1);
-    assert_eq!(schema_saves.count(), 1);
+    assert_eq!(schema_saves.count(), 2);
+    assert!(tab.activate_action("structure.save", None).is_err());
     structure.shutdown();
     drop(shown);
+}
+
+#[gtk4::test]
+fn the_compact_structure_bar_fits_while_dirty_and_saving() {
+    use crate::ui::structure_tab::{
+        ColumnsInput, SaveInput as StructureSave, StructureMode, StructureTab, StructureTabInit,
+    };
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    use libadwaita::prelude::{AdwDialogExt, AdwWindowExt};
+
+    let mut script = serving_table();
+    script.dialect = Arc::new(tablepro_driver_postgres::PgDialect::new(
+        &tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0),
+    ));
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    let tab = harness.tab();
+    let window = crate::test_support::OwnedWindow::presented(
+        libadwaita::Window::builder()
+            .default_width(360)
+            .default_height(400)
+            .content(tab)
+            .build(),
+    );
+    tab.offer_structure();
+    let tracker = crate::services::structure_tracker_handle::StructureTrackerHandle::default();
+    let structure = StructureTab::new(StructureTabInit {
+        tracker: tracker.clone(),
+        schema: None,
+        table: "new_table".into(),
+        mode: StructureMode::New,
+        session: harness.session.clone(),
+        tasks: harness.runtime.as_ref().unwrap().tasks(),
+        first_load: crate::ui::tab_load::FirstLoad::Now,
+    });
+    structure.send(ColumnsInput::AddColumn);
+    tab.set_structure(&structure);
+    let imp = tab.imp();
+    imp.view_stack.set_visible_child_name("structure");
+    wait_until(WAIT, || imp.structure_more.is_mapped()).expect("the compact Structure bar");
+    let actions = structure.command_actions().expect("Structure commands");
+    assert!(actions.is_action_enabled("save") && actions.is_action_enabled("discard"));
+    assert!(!actions.is_action_enabled("drop") && !actions.is_action_enabled("stop"));
+    assert!(!imp.structure_details.is_visible() && !imp.structure_secondary.is_visible());
+    assert!(structure.imp().save_button.is_mapped());
+    let (dirty_width, ..) = imp.action_bar.measure(gtk4::Orientation::Horizontal, -1);
+    assert!(dirty_width <= 360, "the dirty bar needs {dirty_width}px");
+    let stops = crate::test_support::SignalLog::connect(&structure, "stop-save-requested", |_| ());
+    structure.send(StructureSave::SaveStarted);
+    crate::test_support::after_next_frame(&*window);
+    assert!(!actions.is_action_enabled("save") && !actions.is_action_enabled("discard"));
+    assert!(actions.is_action_enabled("stop"));
+    assert!(structure.imp().saving_spinner.is_mapped());
+    let (saving_width, ..) = imp.action_bar.measure(gtk4::Orientation::Horizontal, -1);
+    assert!(saving_width <= 360, "the saving bar needs {saving_width}px");
+    imp.structure_more.activate_action("structure.stop", None).unwrap();
+    assert_eq!(stops.count(), 1);
+    structure.send(StructureSave::SaveFailed("rolled back".into()));
+    assert!(actions.is_action_enabled("save") && actions.is_action_enabled("discard"));
+    assert!(!actions.is_action_enabled("stop"));
+    imp.structure_more.activate_action("structure.discard", None).unwrap();
+    wait_until(WAIT, || window.visible_dialog().is_some()).expect("Discard asks first");
+    let dialog = window
+        .visible_dialog()
+        .unwrap()
+        .downcast::<libadwaita::AlertDialog>()
+        .unwrap();
+    assert!(tracker.has_pending());
+    dialog.emit_by_name::<()>("response", &[&"discard"]);
+    dialog.force_close();
+    wait_until(WAIT, || !tracker.has_pending()).expect("Discard clears the Structure draft");
+    assert!(!actions.is_action_enabled("save") && !actions.is_action_enabled("discard"));
+    window.set_size_request(1_000, 400);
+    wait_until(WAIT, || {
+        imp.structure_secondary.is_mapped() && !imp.structure_more.is_mapped()
+    })
+    .expect("the wide Structure controls return");
+    assert!(imp.structure_details.is_mapped());
+    assert!(structure.imp().discard_button.is_mapped());
+    imp.view_stack.set_visible_child_name("data");
+    assert!(imp.structure_more.activate_action("structure.discard", None).is_err());
+    structure.shutdown();
 }

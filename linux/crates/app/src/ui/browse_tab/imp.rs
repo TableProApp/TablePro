@@ -38,6 +38,14 @@ pub struct BrowseTab {
     #[template_child]
     pub structure_end: TemplateChild<gtk::Box>,
     #[template_child]
+    pub structure_details: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub structure_secondary: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub structure_primary: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub structure_more: TemplateChild<gtk::MenuButton>,
+    #[template_child]
     pub data_start: TemplateChild<gtk::Box>,
     #[template_child]
     pub data_end: TemplateChild<gtk::Box>,

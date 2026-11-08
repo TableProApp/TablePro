@@ -961,6 +961,14 @@ fn stop_saving_shows_only_while_a_save_runs() {
     });
     let imp = harness.tab().imp();
     let (stop, save) = (imp.stop_button.get(), imp.save_button.get());
+    assert!(imp.action_bar.is_visible());
+    assert!(
+        save.is_ancestor(&imp.action_bar.get()),
+        "standalone Save left its own bar"
+    );
+    let actions = harness.tab().command_actions().expect("Structure commands");
+    assert!(actions.is_action_enabled("drop"));
+    assert!(!actions.is_action_enabled("stop"));
     assert!(!stop.is_visible());
     assert!(save.is_sensitive());
 
