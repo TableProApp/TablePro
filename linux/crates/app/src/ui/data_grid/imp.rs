@@ -53,7 +53,7 @@ pub struct DataGrid {
     #[template_child]
     pub viewport: TemplateChild<super::pinned_numbers::PinnedNumbers>,
     #[template_child]
-    pub gutter_view: TemplateChild<gtk4::ColumnView>,
+    pub gutter_backing: TemplateChild<gtk4::Box>,
     #[template_child]
     pub empty_page: TemplateChild<adw::StatusPage>,
     #[template_child]

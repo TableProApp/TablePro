@@ -1,4 +1,4 @@
-use std::cell::{Cell, OnceCell, RefCell};
+use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 
 use gtk4::glib;
@@ -64,7 +64,6 @@ mod imp {
         /// Moves only when the slot is given another row, so anything that
         /// captured the row (a menu, an editor) can tell it is gone.
         pub generation: Cell<u64>,
-        pub height: OnceCell<gtk4::SizeGroup>,
     }
 
     impl Default for GridRow {
@@ -73,7 +72,6 @@ mod imp {
                 data: RefCell::new(RowData::result(Arc::from([]))),
                 revision: Cell::new(0),
                 generation: Cell::new(0),
-                height: OnceCell::new(),
             }
         }
     }
@@ -96,19 +94,6 @@ glib::wrapper! {
 }
 
 impl GridRow {
-    pub(super) fn align_height(&self, widget: &impl IsA<gtk4::Widget>) {
-        self.imp()
-            .height
-            .get_or_init(|| gtk4::SizeGroup::new(gtk4::SizeGroupMode::Vertical))
-            .add_widget(widget);
-    }
-
-    pub(super) fn release_height(&self, widget: &impl IsA<gtk4::Widget>) {
-        if let Some(group) = self.imp().height.get() {
-            group.remove_widget(widget);
-        }
-    }
-
     pub fn new(data: RowData) -> Self {
         let row: Self = glib::Object::new();
         row.imp().data.replace(data);

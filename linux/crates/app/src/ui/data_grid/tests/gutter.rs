@@ -250,9 +250,9 @@ fn wide_rows(count: i64) -> Grid {
     Grid::open(columns, rows)
 }
 
-fn projection(grid: &Grid) -> gtk::ColumnView {
+fn projection(grid: &Grid) -> gtk::Box {
     use gtk::subclass::prelude::*;
-    grid.grid.imp().gutter_view.get()
+    grid.grid.imp().gutter_backing.get()
 }
 
 fn scroll(grid: &Grid) -> gtk::ScrolledWindow {
@@ -261,11 +261,20 @@ fn scroll(grid: &Grid) -> gtk::ScrolledWindow {
 }
 
 fn pinned_number(grid: &Grid, value: &str) -> gtk::Inscription {
-    descendants(&projection(grid))
+    descendants(&grid.grid.column_view())
         .into_iter()
         .filter_map(|widget| widget.downcast::<gtk::Inscription>().ok())
         .find(|number| number.text().as_deref() == Some(value))
         .expect("the pinned row number")
+}
+
+fn pinned_point(grid: &Grid, value: &str) -> (f32, f32) {
+    let number = pinned_number(grid, value);
+    let source = number.compute_bounds(&grid.grid.column_view()).expect("number bounds");
+    let target = projection(grid)
+        .compute_bounds(&grid.grid.column_view())
+        .expect("gutter bounds");
+    (target.x() + 10.0, source.y() + 4.0)
 }
 
 fn assert_aligned(grid: &Grid) {
@@ -293,6 +302,50 @@ fn assert_aligned(grid: &Grid) {
     }
 }
 
+fn gutter_pixels(grid: &Grid) -> Vec<u8> {
+    use gtk::subclass::prelude::*;
+    let viewport = grid.grid.imp().viewport.get();
+    let parent = viewport.parent().expect("viewport parent");
+    let snapshot = gtk::Snapshot::new();
+    parent.snapshot_child(&viewport, &snapshot);
+    let node = snapshot.to_node().expect("rendered grid");
+    let bounds = viewport.compute_bounds(&parent).expect("viewport bounds");
+    let width = grid.grid.row_numbers_column().expect("number column").fixed_width() as f32;
+    let x = if viewport.direction() == gtk::TextDirection::Rtl {
+        bounds.x() + bounds.width() - width
+    } else {
+        bounds.x()
+    };
+    let area = gtk::graphene::Rect::new(x, bounds.y(), width, bounds.height());
+    let texture = grid
+        .window
+        .renderer()
+        .expect("renderer")
+        .render_texture(&node, Some(&area));
+    gtk::gdk::TextureDownloader::new(&texture)
+        .download_bytes()
+        .0
+        .as_ref()
+        .to_vec()
+}
+
+fn assert_pinned_pixels(grid: &Grid) {
+    let adjustment = scroll(grid).hadjustment();
+    let value = adjustment.value();
+    adjustment.set_value(0.0);
+    after_next_frame(&grid.window);
+    let native = gutter_pixels(grid);
+    adjustment.set_value(value);
+    after_next_frame(&grid.window);
+    let pinned = gutter_pixels(grid);
+    assert_eq!(native.len(), pinned.len());
+    assert_eq!(
+        native.iter().zip(&pinned).filter(|(a, b)| a != b).count(),
+        0,
+        "the pinned gutter differs from the native row-number column"
+    );
+}
+
 fn sideways(grid: &Grid) {
     let adjustment = scroll(grid).hadjustment();
     adjustment.set_value(300.0);
@@ -309,13 +362,20 @@ fn the_row_numbers_stay_in_view_when_the_columns_scroll_sideways() {
     assert!(!projection(&grid).can_target());
     assert!(!projection(&grid).can_focus());
     assert_eq!(projection(&grid).height(), grid.grid.column_view().height());
-    assert_eq!(projection(&grid).vadjustment(), grid.grid.column_view().vadjustment());
-    assert_eq!(projection(&grid).model(), grid.grid.column_view().model());
+    assert_eq!(
+        descendants(&grid.grid)
+            .iter()
+            .filter(|widget| widget.is::<gtk::ColumnView>())
+            .count(),
+        1,
+        "the gutter must not introduce a second row layout or accessibility tree"
+    );
     for fraction in [0.0, 0.5, 1.0] {
         let adjustment = scroll(&grid).vadjustment();
         adjustment.set_value(fraction * (adjustment.upper() - adjustment.page_size()));
         after_next_frame(&grid.window);
         assert_aligned(&grid);
+        assert_pinned_pixels(&grid);
     }
     scroll(&grid).hadjustment().set_value(0.0);
     drain_main_context();
@@ -353,8 +413,9 @@ fn the_pinned_gutter_keeps_row_and_header_menus() {
     KeyInjector::focus_only(&grid.window);
     sideways(&grid);
     let input = KeyInjector::connect().expect("X11 input");
-    let number = pinned_number(&grid, "2");
-    input.button(&number, (4.0, 4.0), 3, 1).expect("row menu click");
+    input
+        .button(&grid.grid.column_view(), pinned_point(&grid, "2"), 3, 1)
+        .expect("row menu click");
     let menus = grid.grid.imp().menus.get().expect("menus");
     wait_until(WAIT, || menus.cell.is_visible()).expect("row menu opened");
     let target = grid.grid.target().expect("menu target");
@@ -394,26 +455,20 @@ fn gutter_and_data_clicks_share_the_selection_anchor() {
                     })
             })
             .expect("a fully visible data cell")
-            .upcast::<gtk::Widget>()
+            .compute_point(&view, &gtk::graphene::Point::new(4.0, 4.0))
+            .map(|point| (point.x(), point.y()))
+            .expect("data point")
     };
     for reverse in [false, true] {
-        let start = if reverse {
-            pinned_number(&grid, "2").upcast::<gtk::Widget>()
-        } else {
-            data(1)
-        };
-        input.click(&start, (4.0, 4.0), 1).expect("row selection");
+        let start = if reverse { pinned_point(&grid, "2") } else { data(1) };
+        input.click(&grid.grid.column_view(), start, 1).expect("row selection");
         wait_until(WAIT, || {
             grid.grid.selection().selection().size() == 1 && grid.grid.selection().is_selected(1)
         })
         .expect("second row selected");
         let shift = input.hold(gtk::gdk::Key::Shift_L).expect("Shift");
-        let end = if reverse {
-            data(4)
-        } else {
-            pinned_number(&grid, "5").upcast::<gtk::Widget>()
-        };
-        input.click(&end, (4.0, 4.0), 1).expect("range selection");
+        let end = if reverse { data(4) } else { pinned_point(&grid, "5") };
+        input.click(&grid.grid.column_view(), end, 1).expect("range selection");
         wait_until(WAIT, || grid.grid.selection().selection().size() == 4).expect("native selection range");
         drop(shift);
         assert!((1..=4).all(|position| grid.grid.selection().is_selected(position)));
@@ -440,6 +495,7 @@ fn the_gutter_matches_font_and_density_changes() {
         adjustment.set_value(fraction * (adjustment.upper() - adjustment.page_size()));
         after_next_frame(&grid.window);
         assert_aligned(&grid);
+        assert_pinned_pixels(&grid);
     }
     drop(style);
     after_next_frame(&grid.window);
@@ -458,11 +514,15 @@ fn the_pinned_gutter_shows_pending_states_and_stripes() {
         .and_downcast::<gtk::Image>()
         .expect("icon");
     assert_eq!(icon.icon_name().as_deref(), Some(icons::DOCUMENT_EDIT));
+    after_next_frame(&grid.window);
+    assert_pinned_pixels(&grid);
     assert_eq!(icon.tooltip_text().as_deref(), Some("Modified"));
     let second = pinned_number(&grid, "2");
     assert!(second.parent().expect("content").has_css_class("tp-stripe"));
     grid.grid.discard();
     assert!(!icon.is_visible());
+    after_next_frame(&grid.window);
+    assert_pinned_pixels(&grid);
 }
 
 #[gtk4::test]
@@ -481,6 +541,7 @@ fn small_fonts_and_an_offscreen_editor_keep_the_gutter_aligned() {
         adjustment.set_value(fraction * (adjustment.upper() - adjustment.page_size()));
         after_next_frame(&grid.window);
         assert_aligned(&grid);
+        assert_pinned_pixels(&grid);
     }
 }
 
@@ -494,18 +555,18 @@ fn a_covered_editor_cannot_take_a_gutter_click() {
     assert!(grid.grid.edit().edit_cell(&grid.cell_of(1, 1)));
     let input = KeyInjector::connect().expect("X11 input");
     sideways(&grid);
-    let number = pinned_number(&grid, "1");
-    let point = number
-        .compute_point(&grid.grid.column_view(), &gtk::graphene::Point::new(4.0, 4.0))
-        .expect("point");
+    let point = pinned_point(&grid, "1");
     let picked = grid
         .grid
         .column_view()
-        .pick(f64::from(point.x()), f64::from(point.y()), gtk::PickFlags::DEFAULT)
+        .pick(f64::from(point.0), f64::from(point.1), gtk::PickFlags::DEFAULT)
         .expect("gutter target");
     assert!(!picked.is::<gtk::Text>(), "the covered editor took the gutter");
-    input.click(&number, (4.0, 4.0), 1).expect("gutter click");
-    wait_until(WAIT, || !grid.grid.edit().editor_has_focus()).expect("the gutter moved focus out of the editor");
+    input.click(&grid.grid.column_view(), point, 1).expect("gutter click");
+    wait_until(WAIT, || {
+        !grid.grid.edit().editor_has_focus() && grid.grid.selection().is_selected(0)
+    })
+    .expect("the gutter selected the row and moved focus out of the editor");
     assert!(grid.grid.selection().is_selected(0));
     assert!(!grid.grid.edit().editor_has_focus());
 }
@@ -554,20 +615,15 @@ fn dragging_across_the_gutter_uses_one_rubberband() {
     sideways(&grid);
     let input = KeyInjector::connect().expect("X11 input");
     let view = grid.grid.column_view();
-    let point = |value: &str| {
-        pinned_number(&grid, value)
-            .compute_point(&view, &gtk::graphene::Point::new(4.0, 4.0))
-            .expect("point")
-    };
-    let from = point("2");
-    let to = point("6");
+    let from = pinned_point(&grid, "2");
+    let to = pinned_point(&grid, "6");
     input
-        .drag(&view, (10.0, from.y()), (160.0, to.y()))
+        .drag(&view, (10.0, from.1), (160.0, to.1))
         .expect("drag from gutter into data");
     wait_until(WAIT, || grid.grid.selection().selection().size() >= 4).expect("one native rubberband selected rows");
     grid.grid.selection().unselect_all();
     input
-        .drag(&view, (160.0, to.y()), (10.0, from.y()))
+        .drag(&view, (160.0, to.1), (10.0, from.1))
         .expect("drag from data into gutter");
     wait_until(WAIT, || grid.grid.selection().selection().size() >= 4).expect("the reverse drag selected rows");
 }
@@ -607,9 +663,7 @@ fn rtl_gutter_menus_and_focus_follow_its_actual_edge() {
     let gutter = projection(&grid).compute_bounds(&view).expect("gutter");
     assert!(gutter.x() > view.width() as f32 / 2.0);
     let input = KeyInjector::connect().expect("X11 input");
-    input
-        .button(&pinned_number(&grid, "2"), (4.0, 4.0), 3, 1)
-        .expect("row menu");
+    input.button(&view, pinned_point(&grid, "2"), 3, 1).expect("row menu");
     let menus = grid.grid.imp().menus.get().expect("menus");
     wait_until(WAIT, || menus.cell.is_visible()).expect("row menu opened");
     assert_eq!(grid.grid.target().expect("target").rows[0].key(), Some(key(2)));
@@ -626,12 +680,9 @@ fn rtl_gutter_menus_and_focus_follow_its_actual_edge() {
     sideways(&grid);
     grid.window.set_default_size(740, 430);
     after_next_frame(&grid.window);
-    let number = pinned_number(&grid, "1");
-    let point = number
-        .compute_point(&view, &gtk::graphene::Point::new(4.0, 4.0))
-        .expect("point");
+    let point = pinned_point(&grid, "1");
     let picked = view
-        .pick(f64::from(point.x()), f64::from(point.y()), gtk::PickFlags::DEFAULT)
+        .pick(f64::from(point.0), f64::from(point.1), gtk::PickFlags::DEFAULT)
         .expect("target");
     assert!(
         !picked.is::<gtk::Text>(),

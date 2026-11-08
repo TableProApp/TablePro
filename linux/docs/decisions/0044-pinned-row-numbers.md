@@ -7,37 +7,41 @@
 ## Context
 
 GTK 4.22 has no frozen column or row-header widget API. Its ColumnView moves all
-columns by the horizontal adjustment. Two interactive lists would have separate
-selection anchors, rubberbands and focus even with the same MultiSelection.
+columns by the horizontal adjustment. Two lists would have separate selection
+anchors and row-height estimates even with the same model and adjustment.
 
 ## Decision
 
-Keep the main ColumnView as the only input and accessibility surface. A passive
-ColumnView projects its row numbers over the left edge when scrolled horizontally.
-Both use the same selection model and vertical adjustment inside one GtkScrollable
-container and one ScrolledWindow. Numbers use the data font and reserve pending-icon height, so ordinary rows have
-the same height. Per-row SizeGroups pair the number cells and active editor without
-copying an allocated height or grouping every data cell. Native header widgets
-share a height group; their documented header CSS node is located in the composite.
+Keep one ColumnView as the only row layout, input and accessibility surface.
+After its normal snapshot, the scrollable container draws the native row-number
+cells and header again at the fixed edge. It snapshots each native row through
+its actual parent into a fresh, untransformed snapshot, then clips and translates
+the resulting node. A passive themed background covers the underlying data.
 
-The projection cannot take input or focus and is hidden from accessibility. Pointer
-events reach the main native list, which keeps its selection anchor, drag gestures
-and keyboard navigation. Inline editors are allocated only in the uncovered part of their cell so their
-native gestures cannot take a gutter gesture. The grid resolves gutter clicks as rows
-and uses its existing row and header menus. Keyboard focus scrolls clear of the gutter.
+This preserves the actual row height, selection background, pending icons, stripes
+and CSS without another row model or copied measurements. Descendant redraws
+invalidate the container, so both drawings use the same frame. The documented
+header and row CSS hierarchy identifies the source widgets.
+
+Pointer events reach the main native list, which keeps its selection anchor,
+rubberband and keyboard navigation. Inline editors are allocated only in the
+uncovered part of their cell. The grid resolves gutter clicks as rows and uses
+its existing row and header menus. Keyboard focus is revealed after allocation,
+when the new horizontal geometry is available.
 
 ## Consequences
 
 The row-number column stays first. Existing saved data-column order remains usable;
-loading a layout does not write storage. Numbering, pending icons and stripes use
-the same factory in both views. The gutter adds one column's visible row widgets.
+loading a layout does not write storage. There is no second list, adjustment,
+height group or accessibility tree to synchronize.
 
-The geometry and gesture probes live in
-`crates/app/src/ui/data_grid/tests/gutter.rs`. A toolkit upgrade must keep them
-passing. If GTK adds a native frozen-column API, use it and remove the projection.
+Pixel and gesture tests live in `crates/app/src/ui/data_grid/tests/gutter.rs`.
+A toolkit upgrade must keep them passing. If GTK adds a native frozen-column API,
+use it and remove the extra snapshot.
 
 ## Sources
 
 - [GTK 4.22 column API](https://github.com/GNOME/gtk/blob/4.22.0/gtk/gtkcolumnviewcolumn.h)
 - [GTK 4.22 column allocation](https://github.com/GNOME/gtk/blob/4.22.0/gtk/gtkcolumnview.c)
-- [GTK 4.22 list input and scrolling](https://github.com/GNOME/gtk/blob/4.22.0/gtk/gtklistbase.c)
+- [GTK snapshot_child contract](https://docs.gtk.org/gtk4/method.Widget.snapshot_child.html)
+- [GTK 4.22 child snapshots and redraw propagation](https://github.com/GNOME/gtk/blob/4.22.0/gtk/gtkwidget.c)

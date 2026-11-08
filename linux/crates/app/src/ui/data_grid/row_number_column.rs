@@ -31,7 +31,7 @@ pub fn build(grid: &DataGrid) -> gtk::ColumnViewColumn {
         number.add_css_class("monospace");
         number.add_css_class("dimmed");
         let content = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-        // Pending icons must not change the virtual lists' row-height estimates.
+        // Pending icons should not change the row height.
         content.add_css_class("row-number-cell");
         content.append(&icon);
         content.append(&number);
@@ -53,11 +53,6 @@ pub fn build(grid: &DataGrid) -> gtk::ColumnViewColumn {
         });
     }
     factory.connect_unbind(move |_, item| {
-        if let Some(cell) = item.downcast_ref::<gtk::ColumnViewCell>()
-            && let (Some(row), Some(child)) = (cell.item().and_downcast::<GridRow>(), cell.child())
-        {
-            row.release_height(&child);
-        }
         unwatch(&watches, item.upcast_ref());
     });
     let column = gtk::ColumnViewColumn::builder()
@@ -71,9 +66,6 @@ pub fn build(grid: &DataGrid) -> gtk::ColumnViewColumn {
 }
 
 fn bind_cell(grid: &DataGrid, cell: &gtk::ColumnViewCell, row: &GridRow, watches: &Watches) {
-    if let Some(child) = cell.child() {
-        row.align_height(&child);
-    }
     let show = {
         let (grid, cell) = (grid.downgrade(), cell.downgrade());
         move || {

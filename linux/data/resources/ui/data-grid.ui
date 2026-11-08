@@ -106,15 +106,12 @@
                                 </property>
                                 <child type="overlay">
                                   <!-- Input stays with the main view, including its selection anchor. -->
-                                  <object class="GtkColumnView" id="gutter_view">
+                                  <object class="GtkBox" id="gutter_backing">
                                     <property name="halign">start</property>
                                     <property name="can-target">false</property>
                                     <property name="can-focus">false</property>
                                     <property name="visible">false</property>
-                                    <property name="show-row-separators">true</property>
-                                    <property name="show-column-separators">true</property>
                                     <style>
-                                      <class name="data-table"/>
                                       <class name="row-gutter"/>
                                     </style>
                                   </object>

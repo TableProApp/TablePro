@@ -29,7 +29,7 @@ columnview.data-table > listview > row > cell {
 }
 
 /* The passive gutter covers horizontally scrolled cells. */
-columnview.row-gutter {
+.row-gutter {
   background-color: var(--view-bg-color);
 }
 

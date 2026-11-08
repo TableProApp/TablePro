@@ -359,18 +359,12 @@ impl GridCell {
         viewport.set_scroll_to_focus(true);
         viewport.set_parent(self);
         self.imp().editor.replace(Some(viewport.upcast()));
-        if let Some(row) = self.bound_row() {
-            row.align_height(self);
-        }
     }
 
     // GTK 4.22 loops when focus leaves a widget that lost its parent.
     // Keep an editor that holds focus parented until the next edit.
     pub(crate) fn close_editor(&self) {
         if let Some(editor) = self.imp().editor.take() {
-            if let Some(row) = self.bound_row() {
-                row.release_height(self);
-            }
             match holds_window_focus(&editor) {
                 true => {
                     editor.set_visible(false);
