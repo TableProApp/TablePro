@@ -65,6 +65,7 @@ use uuid::Uuid;
 pub(crate) use self::catalog_ops::DatabaseDrop;
 pub(crate) use self::database_transfer::TransferInput;
 use self::session_watches::SessionWatches;
+pub(crate) use self::status_pages::SearchInput;
 use self::tab_title::ConnectionLabel;
 pub(crate) use self::workspace_actions::show_transfer_actions;
 pub(crate) use self::workspace_shell::WorkspaceShell;
@@ -544,12 +545,7 @@ pub(crate) enum WorkspaceInput {
     WorkspaceLayoutReset(Result<Option<std::path::PathBuf>, crate::workspace::WorkspaceSaveError>),
     /// An editor draft failed to land after the last one did.
     DraftsNotSaved,
-    ShowHistory,
-    ShowSavedQueries,
-    /// Open Quickly: search the connection's tables and views.
-    ShowQuickOpen,
-    CloseQuickOpen,
-    QuickOpenChosen(super::quick_open::Pick),
+    Search(SearchInput),
     ActiveTab(workspace_tabs::ActiveTabCommand),
     SaveQueryNamed {
         name: String,
@@ -1400,11 +1396,7 @@ impl WorkspaceModel {
             WorkspaceInput::SavedConnectionsChanged => self.on_saved_connections_changed(),
             WorkspaceInput::WorkspaceLayoutReset(outcome) => self.on_workspace_layout_reset(outcome),
             WorkspaceInput::DraftsNotSaved => self.on_drafts_not_saved(),
-            WorkspaceInput::ShowHistory => self.on_show_history(),
-            WorkspaceInput::ShowSavedQueries => self.on_show_saved_queries(),
-            WorkspaceInput::ShowQuickOpen => self.on_show_quick_open(),
-            WorkspaceInput::CloseQuickOpen => self.close_quick_open(),
-            WorkspaceInput::QuickOpenChosen(pick) => self.on_quick_open_chosen(pick),
+            WorkspaceInput::Search(input) => self.on_search(input),
             WorkspaceInput::ImportCsvRequested { schema, table } => self.on_import_csv_requested(schema, table),
             WorkspaceInput::Transfer(input) => self.on_transfer(input),
             WorkspaceInput::ImportCsvReady {

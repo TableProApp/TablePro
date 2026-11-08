@@ -36,9 +36,11 @@ const ENTRIES: [(&str, ActionInput); 10] = [
     ("export-results", || {
         WorkspaceInput::ActiveTab(ActiveTabCommand::ExportResults)
     }),
-    ("show-history", || WorkspaceInput::ShowHistory),
-    ("show-saved-queries", || WorkspaceInput::ShowSavedQueries),
-    ("quick-open", || WorkspaceInput::ShowQuickOpen),
+    ("show-history", || WorkspaceInput::Search(super::SearchInput::History)),
+    ("show-saved-queries", || {
+        WorkspaceInput::Search(super::SearchInput::SavedQueries)
+    }),
+    ("quick-open", || WorkspaceInput::Search(super::SearchInput::QuickOpen)),
     (super::health_banner::REVIEW_HOST_KEY, || WorkspaceInput::ReviewHostKey),
 ];
 
