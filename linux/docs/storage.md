@@ -192,7 +192,8 @@ at compile time with `sqlx::migrate!` and run by `QueryHistory::open`.
 `20260914000000_create_history.sql` creates the `history` table with
 `query_folded`, the trigram index `history_search` over it,
 `history_page_idx` on `(pinned DESC, executed_at DESC, id DESC)` for
-paging, and the `saved_queries` table.
+paging, and the `saved_queries` table. Favorites metadata, ordering, coherent reads
+and mutation notifications follow [core ADR 0017](../../core/docs/decisions/0017-favourites.md).
 
 **An applied migration is never edited.** Each change is a new timestamped
 file with its own fixture test. Editing one in place changes its checksum,
