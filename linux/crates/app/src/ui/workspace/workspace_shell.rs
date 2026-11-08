@@ -533,7 +533,7 @@ impl WorkspaceShell {
             && previous.with_model(|model| model.close_quick_open()).is_none()
             && let Some(input) = previous.sender()
         {
-            input.deliver(WorkspaceInput::CloseQuickOpen);
+            input.deliver(WorkspaceInput::Search(super::SearchInput::CloseQuickOpen));
         }
         imp.front.replace(workspace.cloned());
         self.notify_front();
