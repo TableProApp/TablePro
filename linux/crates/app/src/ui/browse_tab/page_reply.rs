@@ -4,23 +4,17 @@ use tablepro_core::meta::PagePosition;
 
 use super::browse_pager::PageEdges;
 
-/// A page as the server returned it, the row identity cells still after
-/// the visible ones.
 #[derive(Debug, Clone)]
 pub(crate) struct PageReply {
     pub position: PagePosition,
     pub result: QueryResult,
     pub layout: PageLayout,
     pub edges: PageEdges,
-    /// The table pages by key or heap address, so its last page reads
-    /// back from its end.
     pub seeks: bool,
-    /// How long the read took, from asking the session to its answer.
     pub elapsed: std::time::Duration,
 }
 
 impl PageReply {
-    /// `None` when the page starts at a key or at the table's end.
     pub fn offset(&self) -> Option<u64> {
         match self.position {
             PagePosition::First => Some(0),
@@ -32,10 +26,8 @@ impl PageReply {
             | PagePosition::Resume(_) => None,
         }
     }
-}
 
-impl From<PageRead> for PageReply {
-    fn from(read: PageRead) -> Self {
+    pub fn new(read: PageRead, elapsed: std::time::Duration) -> Self {
         Self {
             position: read.position,
             result: read.result,
@@ -46,7 +38,7 @@ impl From<PageRead> for PageReply {
                 next: read.next,
             },
             seeks: matches!(read.mode, PagingMode::Keyset | PagingMode::CtidWindow),
-            elapsed: std::time::Duration::ZERO,
+            elapsed,
         }
     }
 }

@@ -210,7 +210,7 @@ impl BrowseModel {
             row_count,
             start_ordinal: offset,
             filtered: !self.current_filter.is_empty(),
-            elapsed: Some(elapsed),
+            elapsed,
         });
         self.shown_view = Some(self.page_view());
         self.show_page(rows, offset, fx);

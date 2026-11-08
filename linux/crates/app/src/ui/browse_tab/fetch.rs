@@ -160,10 +160,7 @@ impl BrowseModel {
                     }
                 })
                 .await
-                .map(|read| PageReply {
-                    elapsed: started.elapsed(),
-                    ..PageReply::from(read)
-                })
+                .map(|read| PageReply::new(read, started.elapsed()))
         };
         self.deliver(ticket, work, BrowseCommand::Page, OperationError::from);
     }
