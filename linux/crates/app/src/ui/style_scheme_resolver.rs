@@ -4,17 +4,21 @@ use sourceview5::prelude::*;
 const LIGHT_FALLBACK: &str = "Adwaita";
 const DARK_FALLBACK: &str = "Adwaita-dark";
 
-/// GtkSourceView ships light and dark schemes as separate ids linked by
-/// `dark-variant` and `light-variant` metadata. The user picks one id;
-/// this follows the link so the editor tracks the desktop theme instead
-/// of staying light on a dark desktop.
+/// The scheme the editor draws. What the user picked is drawn as it is,
+/// dark or light, as the macOS theme picker does. Only the default,
+/// Adwaita, follows the desktop's style through its `dark-variant` link,
+/// so an install that never chose still tracks it. Following the link
+/// for every pick replaced a dark scheme chosen on a light desktop with
+/// its light twin.
 pub(crate) fn resolve_id(manager: &sourceview5::StyleSchemeManager, preferred: &str, dark: bool) -> String {
     let fallback = if dark { DARK_FALLBACK } else { LIGHT_FALLBACK };
     let Some(scheme) = manager.scheme(preferred) else {
         return fallback.to_owned();
     };
-    let key = if dark { "dark-variant" } else { "light-variant" };
-    match scheme.metadata(key) {
+    if preferred != LIGHT_FALLBACK {
+        return preferred.to_owned();
+    }
+    match scheme.metadata("dark-variant").filter(|_| dark) {
         Some(variant) if manager.scheme(&variant).is_some() => variant.into(),
         _ => preferred.to_owned(),
     }
@@ -49,6 +53,14 @@ mod tests {
 
         assert_eq!(dark, DARK_FALLBACK);
         assert_eq!(light, LIGHT_FALLBACK);
+    }
+
+    #[gtk4::test]
+    fn a_picked_scheme_is_drawn_as_picked_whatever_the_desktop() {
+        let manager = sourceview5::StyleSchemeManager::default();
+
+        assert_eq!(resolve_id(&manager, DARK_FALLBACK, false), DARK_FALLBACK);
+        assert_eq!(resolve_id(&manager, DARK_FALLBACK, true), DARK_FALLBACK);
     }
 
     #[gtk4::test]
