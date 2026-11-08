@@ -1,152 +1,207 @@
-//! The data grid draws in the colours of the editor's style scheme, as the
-//! macOS grid takes its theme's colours: the scheme's background and text,
-//! and its selection. The default scheme, Adwaita, leaves the grid in the
-//! window's own colours, which it already matches.
-
-use std::cell::RefCell;
-use std::rc::Rc;
-
-use gtk4::gdk;
 use gtk4::prelude::*;
-use tablepro_linux_platform::AppSettings;
+use gtk4::subclass::prelude::*;
+use gtk4::{self as gtk, gdk, glib};
+use libadwaita as adw;
 use tablepro_linux_platform::settings::keys;
 
-/// The colours a scheme gives the grid. Each is a CSS colour the scheme
-/// names, or none where it says nothing.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub(super) struct SchemeColors {
-    pub background: Option<String>,
-    pub text: Option<String>,
-    pub selection_background: Option<String>,
-    pub selection_text: Option<String>,
+use super::DataGrid;
+use crate::ui::handler_guard::HandlerGuard;
+use crate::ui::style_scheme_resolver;
+
+#[derive(Debug, Clone)]
+struct SelectionColors {
+    background: gdk::RGBA,
+    foreground: gdk::RGBA,
 }
 
-/// The rules for `colors`, empty when the scheme says nothing.
-pub(super) fn css(colors: &SchemeColors) -> String {
-    let mut rules = String::new();
-    if colors.background.is_some() || colors.text.is_some() {
-        rules.push_str("columnview.data-table, columnview.data-table > listview {\n");
-        if let Some(background) = &colors.background {
-            rules.push_str(&format!("  background-color: {background};\n"));
+impl SelectionColors {
+    fn from_style(style: Option<sourceview5::Style>, background: gdk::RGBA, foreground: gdk::RGBA) -> Self {
+        let (selected_background, selected_foreground) = colors(style);
+        let Some(mut selected_background) = selected_background else {
+            return Self {
+                background: foreground,
+                foreground: background,
+            };
+        };
+        // GtkSourceView's fix_broken_selection keeps unchanged text readable
+        // over a selection that supplies only an opaque background.
+        if selected_foreground.is_none() && selected_background.alpha() >= 1.0 {
+            selected_background.set_alpha(0.3);
         }
-        if let Some(text) = &colors.text {
-            rules.push_str(&format!("  color: {text};\n"));
+        Self {
+            background: selected_background,
+            foreground: selected_foreground.unwrap_or(foreground),
         }
-        rules.push_str("}\n");
-    }
-    if colors.selection_background.is_some() || colors.selection_text.is_some() {
-        rules.push_str("columnview.data-table > listview > row:selected {\n");
-        if let Some(background) = &colors.selection_background {
-            rules.push_str(&format!("  background-color: {background};\n"));
-        }
-        if let Some(text) = &colors.selection_text {
-            rules.push_str(&format!("  color: {text};\n"));
-        }
-        rules.push_str("}\n");
-    }
-    rules
-}
-
-fn colors_of(scheme: &sourceview5::StyleScheme) -> SchemeColors {
-    let style = |name: &str| scheme.style(name);
-    let background = |name: &str| {
-        style(name)
-            .filter(|style| style.is_background_set())
-            .and_then(|style| style.background())
-            .map(|color| color.to_string())
-    };
-    let foreground = |name: &str| {
-        style(name)
-            .filter(|style| style.is_foreground_set())
-            .and_then(|style| style.foreground())
-            .map(|color| color.to_string())
-    };
-    SchemeColors {
-        background: background("text"),
-        text: foreground("text"),
-        selection_background: background("selection"),
-        selection_text: foreground("selection"),
     }
 }
 
-/// The CSS for the scheme `preferred` names in the desktop's style.
-fn css_for(preferred: &str) -> String {
-    if preferred == "Adwaita" {
-        return String::new();
+#[derive(Debug, Clone)]
+struct Palette {
+    background: gdk::RGBA,
+    foreground: gdk::RGBA,
+    selection: SelectionColors,
+    unfocused_selection: SelectionColors,
+}
+
+impl Palette {
+    fn from_scheme(scheme: &sourceview5::StyleScheme) -> Option<Self> {
+        let (background, foreground) = colors(scheme.style("text"));
+        // A partial pair could put scheme text on the opposite desktop color.
+        let (background, foreground) = (background?, foreground?);
+        let selection = scheme.style("selection");
+        let unfocused = scheme.style("selection-unfocused").or_else(|| selection.clone());
+        Some(Self {
+            background,
+            foreground,
+            selection: SelectionColors::from_style(selection, background, foreground),
+            unfocused_selection: SelectionColors::from_style(unfocused, background, foreground),
+        })
     }
-    crate::ui::style_scheme_resolver::scheme(preferred)
-        .map(|scheme| css(&colors_of(&scheme)))
-        .unwrap_or_default()
+
+    fn css(&self, class: &str) -> String {
+        let Self {
+            background,
+            foreground,
+            selection,
+            unfocused_selection,
+        } = self;
+        let (selected_background, selected_foreground) = (&selection.background, &selection.foreground);
+        let (unfocused_background, unfocused_foreground) =
+            (&unfocused_selection.background, &unfocused_selection.foreground);
+        // Native high-contrast styling takes precedence over a saved palette.
+        format!(
+            "@media (prefers-contrast: no-preference) {{
+                .{class} {{
+                    --view-bg-color: {background};
+                    --view-fg-color: {foreground};
+                    --accent-color: currentColor;
+                    color: var(--view-fg-color);
+                }}
+                columnview.{class} {{ background-color: var(--view-bg-color); }}
+                columnview.{class} > listview > row:selected {{
+                    background-color: {selected_background};
+                    color: {selected_foreground};
+                }}
+                columnview.{class}:not(:focus-within) > listview > row:selected {{
+                    background-color: {unfocused_background};
+                    color: {unfocused_foreground};
+                }}
+                columnview.{class} inscription.warning {{ color: inherit; }}
+                columnview.{class} tp-grid-cell > text {{
+                    background-color: var(--view-bg-color);
+                    color: var(--view-fg-color);
+                }}
+                columnview.{class} tp-grid-cell > text selection {{
+                    background-color: {selected_background};
+                    color: {selected_foreground};
+                }}
+                columnview.{class} tp-grid-cell > text:not(:focus) selection {{
+                    background-color: {unfocused_background};
+                    color: {unfocused_foreground};
+                }}
+                columnview.{class} tp-grid-cell > text.error {{
+                    background-color: var(--error-bg-color);
+                    color: var(--error-fg-color);
+                }}
+                columnview.{class} tp-grid-cell > text.error selection {{
+                    background-color: var(--error-fg-color);
+                    color: var(--error-bg-color);
+                }}
+            }}"
+        )
+    }
 }
 
-thread_local! {
-    static PROVIDER: RefCell<Option<gtk4::CssProvider>> = const { RefCell::new(None) };
+fn colors(style: Option<sourceview5::Style>) -> (Option<gdk::RGBA>, Option<gdk::RGBA>) {
+    let tag = gtk::TextTag::new(None);
+    if let Some(style) = style {
+        style.apply(&tag);
+    }
+    // Transparent selection foregrounds tell GtkSourceView to keep syntax
+    // colors; CSS text needs an actual foreground instead.
+    let visible = |color: &gdk::RGBA| color.alpha() > 0.0;
+    (
+        tag.background_rgba().filter(visible),
+        tag.foreground_rgba().filter(visible),
+    )
 }
 
-/// Make the grids follow the scheme `settings` names, now and when it or
-/// the desktop's light or dark style changes. Once per process.
-pub(super) fn follow(settings: &Rc<AppSettings>) {
-    if PROVIDER.with(|provider| provider.borrow().is_some()) {
+pub(super) struct SchemeStyle {
+    display: gdk::Display,
+    provider: gtk::CssProvider,
+    class: String,
+    _handlers: Vec<HandlerGuard>,
+}
+
+impl Drop for SchemeStyle {
+    fn drop(&mut self) {
+        gtk::style_context_remove_provider_for_display(&self.display, &self.provider);
+    }
+}
+
+pub(super) fn follow(grid: &DataGrid) {
+    let Some(settings) = grid.config().map(|config| config.settings.clone()) else {
         return;
-    }
-    let Some(display) = gdk::Display::default() else {
+    };
+    let display = grid.display();
+    let provider = gtk::CssProvider::new();
+    let class = format!("tp-grid-scheme-{}", uuid::Uuid::new_v4().simple());
+    grid.column_view().add_css_class(&class);
+    grid.imp().empty_page.add_css_class(&class);
+    gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 1);
+
+    // GSettings emits changes only after a read while a handler is connected.
+    let setting_handler = settings.gio().connect_changed(
+        Some(keys::STYLE_SCHEME),
+        glib::clone!(
+            #[weak]
+            grid,
+            move |_, _| refresh(&grid)
+        ),
+    );
+    let style = adw::StyleManager::default();
+    let dark_handler = style.connect_dark_notify(glib::clone!(
+        #[weak]
+        grid,
+        move |_| refresh(&grid)
+    ));
+    let contrast_handler = style.connect_high_contrast_notify(glib::clone!(
+        #[weak]
+        grid,
+        move |_| refresh(&grid)
+    ));
+    grid.imp().scheme_style.replace(Some(SchemeStyle {
+        display,
+        provider,
+        class,
+        _handlers: vec![
+            HandlerGuard::new(settings.gio(), setting_handler),
+            HandlerGuard::new(&style, dark_handler),
+            HandlerGuard::new(&style, contrast_handler),
+        ],
+    }));
+    refresh(grid);
+}
+
+fn refresh(grid: &DataGrid) {
+    let binding = grid.imp().scheme_style.borrow();
+    let (Some(binding), Some(config)) = (binding.as_ref(), grid.config()) else {
         return;
     };
-    let provider = gtk4::CssProvider::new();
-    // Above the app's own sheet, which sets the same selectors' colours.
-    gtk4::style_context_add_provider_for_display(&display, &provider, gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION + 1);
-    PROVIDER.with(|slot| slot.replace(Some(provider.clone())));
-    let refresh = {
-        let (settings, provider) = (settings.clone(), provider.clone());
-        move || provider.load_from_string(&css_for(&settings.style_scheme()))
-    };
-    refresh();
-    // Connected before any read, so GSettings reports the key's changes.
-    let again = refresh.clone();
-    settings
-        .gio()
-        .connect_changed(Some(keys::STYLE_SCHEME), move |_, _| again());
-    let style = libadwaita::StyleManager::default();
-    let again = refresh;
-    style.connect_dark_notify(move |_| again());
+    binding
+        .provider
+        .set_prefers_contrast(if adw::StyleManager::default().is_high_contrast() {
+            gtk::InterfaceContrast::More
+        } else {
+            gtk::InterfaceContrast::NoPreference
+        });
+    let css = style_scheme_resolver::scheme(&config.settings.style_scheme())
+        .as_ref()
+        .and_then(Palette::from_scheme)
+        .map(|palette| palette.css(&binding.class))
+        .unwrap_or_default();
+    binding.provider.load_from_string(&css);
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_scheme_gives_the_grid_its_background_text_and_selection() {
-        let colors = SchemeColors {
-            background: Some("#1e1e1e".to_owned()),
-            text: Some("#d4d4d4".to_owned()),
-            selection_background: Some("#264f78".to_owned()),
-            selection_text: None,
-        };
-
-        let rules = css(&colors);
-
-        assert!(rules.contains("background-color: #1e1e1e;"));
-        assert!(rules.contains("color: #d4d4d4;"));
-        assert!(rules.contains("row:selected {\n  background-color: #264f78;"));
-        assert!(!rules.contains("row:selected {\n  background-color: #264f78;\n  color"));
-    }
-
-    #[test]
-    fn a_scheme_that_says_nothing_leaves_the_grid_as_it_is() {
-        assert_eq!(css(&SchemeColors::default()), "");
-    }
-
-    #[gtk4::test]
-    fn the_default_scheme_changes_nothing_and_another_takes_the_grid() {
-        libadwaita::init().expect("libadwaita initialises under the test backend");
-        assert_eq!(css_for("Adwaita"), "");
-
-        let rules = css_for("Adwaita-dark");
-
-        assert!(
-            rules.contains("columnview.data-table"),
-            "no rules for a dark scheme: {rules:?}"
-        );
-    }
-}
+mod tests;

@@ -90,9 +90,7 @@ impl DataGrid {
         find_bar::install(&grid);
         imp.detail_pane.attach(&grid);
         grid.set_columns(columns, sorting, rules);
-        if let Some(settings) = grid.config().map(|config| config.settings.clone()) {
-            scheme_colors::follow(&settings);
-        }
+        scheme_colors::follow(&grid);
         grid.watch_fonts();
         grid.watch_stripes();
         grid
