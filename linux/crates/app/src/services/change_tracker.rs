@@ -1798,7 +1798,7 @@ mod tests {
         let draft_id = insert(&mut t, vec![Value::Null, Value::Text("hi".into())]);
         // Edit the draft so undo stack has a CellEdit on top of Insert.
         t.apply(TrackerEdit::DraftCell {
-            draft_id: draft_id,
+            draft_id,
             col: 1,
             input: CellInput::Value(Value::Text("edited".into())),
         });
@@ -1842,7 +1842,7 @@ mod tests {
         let rows = (0..tablepro_core::import::MAX_PASTED_ROWS)
             .map(|row| vec![CellInput::Value(Value::Int(row as i64))])
             .collect();
-        let drafts = t.apply(TrackerEdit::InsertDrafts { rows: rows }).inserted_drafts;
+        let drafts = t.apply(TrackerEdit::InsertDrafts { rows }).inserted_drafts;
 
         let started = std::time::Instant::now();
         let read = drafts
