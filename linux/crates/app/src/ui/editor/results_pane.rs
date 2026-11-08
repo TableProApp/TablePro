@@ -54,7 +54,7 @@ mod imp {
         #[template_child]
         pub details_toggle: TemplateChild<gtk4::ToggleButton>,
         #[template_child]
-        pub highlight_button: TemplateChild<gtk4::MenuButton>,
+        pub highlight_button: TemplateChild<gtk4::Button>,
         #[template_child]
         pub transaction_bar: TemplateChild<gtk4::Box>,
         #[template_child]
@@ -77,6 +77,7 @@ mod imp {
         pub page_builder: RefCell<Option<PageBuilder>>,
         /// The lines whose page is built, most recently shown first.
         pub(super) built: RefCell<VecDeque<KeptPage>>,
+        pub(super) highlights: RefCell<std::collections::HashMap<u32, Vec<crate::services::grid::HighlightRule>>>,
     }
 
     #[glib::object_subclass]
@@ -172,6 +173,7 @@ impl ResultsPane {
                 imp.stack.remove(&page);
             }
         }
+        imp.highlights.borrow_mut().clear();
         imp.stack.set_visible_child_name("empty");
         self.show_grid(None);
         imp.sidebar.set(SidebarState::default());
@@ -199,6 +201,7 @@ impl ResultsPane {
             forgotten
         };
         for page in forgotten {
+            self.remember_highlights(&page);
             if let Some(widget) = imp.stack.child_by_name(&page_name(page.index)) {
                 imp.stack.remove(&widget);
             }
@@ -309,23 +312,19 @@ impl ResultsPane {
         let actions = grid.map(DataGrid::actions);
         self.insert_action_group("grid", actions.as_ref());
         self.imp().details_toggle.set_visible(grid.is_some());
-        let highlight = self.imp().highlight_button.get();
-        highlight.set_visible(grid.is_some());
-        match grid {
-            Some(grid) => {
-                let weak = grid.downgrade();
-                highlight.set_create_popup_func(move |button| {
-                    if let Some(grid) = weak.upgrade() {
-                        button.set_popover(Some(&crate::ui::data_grid::highlight_rules_popover(&grid)));
-                    }
-                });
-            }
-            None => highlight.set_create_popup_func(|_| {}),
+        self.imp().highlight_button.set_visible(grid.is_some());
+    }
+
+    fn remember_highlights(&self, page: &KeptPage) {
+        let rules = page.grid.as_ref().map(DataGrid::highlight_rules).unwrap_or_default();
+        let mut saved = self.imp().highlights.borrow_mut();
+        if rules.is_empty() {
+            saved.remove(&page.index);
+        } else {
+            saved.insert(page.index, rules);
         }
     }
 
-    /// Put the page of line `index` first among the kept ones, building
-    /// it when it is not kept.
     fn keep_page(&self, index: u32) -> bool {
         let imp = self.imp();
         {
@@ -341,6 +340,10 @@ impl ResultsPane {
         let Some(ResultPage { widget, grid }) = page else {
             return false;
         };
+        if let Some(grid) = &grid {
+            let rules = imp.highlights.borrow_mut().remove(&index).unwrap_or_default();
+            grid.set_highlight_rules(rules);
+        }
         imp.stack.add_named(&widget, Some(&page_name(index)));
         let evicted: Vec<KeptPage> = {
             let mut built = imp.built.borrow_mut();
@@ -349,6 +352,7 @@ impl ResultsPane {
             built.drain(keep..).collect()
         };
         for oldest in evicted {
+            self.remember_highlights(&oldest);
             if let Some(page) = imp.stack.child_by_name(&page_name(oldest.index)) {
                 imp.stack.remove(&page);
             }
@@ -637,6 +641,46 @@ mod tests {
         pane.forget_pages(|index| index == 0);
         assert_eq!(built_pages(&pane), 1, "a forgotten page stayed");
         assert_eq!(pane.imp().stack.visible_child_name().as_deref(), Some("entry-1"));
+    }
+
+    #[gtk4::test]
+    fn highlight_rules_survive_result_eviction_and_rebuild_but_not_a_new_run() {
+        use crate::services::grid::HighlightRule;
+        use crate::ui::data_grid::test_grid::{Grid, GridSpec, named, results};
+        use tablepro_core::Value;
+
+        let pane = pane();
+        pane.set_page_builder(|_| {
+            let fixture = Grid::build(
+                GridSpec::results(vec![named("status", "text", false)]),
+                results(&[vec![Value::Text("open".to_owned())]]),
+            );
+            fixture.window.set_child(None::<&gtk4::Widget>);
+            let grid = fixture.grid.clone();
+            Some(ResultPage {
+                widget: grid.clone().upcast(),
+                grid: Some(grid),
+            })
+        });
+        pane.append(&vec![command(); 10]);
+        let rule = HighlightRule::new("status");
+        pane.kept_grid(0)
+            .expect("first result")
+            .set_highlight_rules(vec![rule.clone()]);
+        for index in 1..10 {
+            pane.select(index);
+        }
+        assert!(pane.kept_grid(0).is_none());
+        pane.select(0);
+        assert_eq!(
+            pane.kept_grid(0).expect("restored result").highlight_rules(),
+            [rule.clone()]
+        );
+        pane.rebuild_page(0);
+        assert_eq!(pane.kept_grid(0).expect("rebuilt result").highlight_rules(), [rule]);
+        pane.clear();
+        pane.append(&[command()]);
+        assert!(pane.kept_grid(0).expect("new run").highlight_rules().is_empty());
     }
 
     #[gtk4::test]

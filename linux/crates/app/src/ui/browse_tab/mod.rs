@@ -164,14 +164,6 @@ impl BrowseTab {
                 tasks: init.tasks.clone(),
             },
         );
-        {
-            let weak = grid.downgrade();
-            tab.imp().highlight_button.set_create_popup_func(move |button| {
-                if let Some(grid) = weak.upgrade() {
-                    button.set_popover(Some(&crate::ui::data_grid::highlight_rules_popover(&grid)));
-                }
-            });
-        }
         let link_changes = init.session.link_changes();
         let model = BrowseModel {
             this: tab.downgrade(),

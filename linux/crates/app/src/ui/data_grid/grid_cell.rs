@@ -280,12 +280,23 @@ impl GridCell {
         let numbers = paint.numbers.get();
         display.set_xalign(if numbers { 1.0 } else { 0.0 });
         set_class(display, "numeric", numbers);
-        // Adwaita's own warning colour, beside the bold, so a changed value
-        // reads apart from the rest without a tint of the app's own.
-        set_class(display, "warning", text_mark == TextMark::Modified);
+        // Tinted backgrounds need full-opacity text; italic, bold and strikeout keep their meaning.
+        if colour.is_some() {
+            display.remove_css_class("dimmed");
+        }
+        // Warning text loses contrast over some highlights; bold still marks the edit.
+        set_class(display, "warning", text_mark == TextMark::Modified && colour.is_none());
         // On the cell, since GtkColumnViewCell passes on no accessible
         // property of its own.
-        match cell_description(mark.state, null) {
+        let description = match (cell_description(mark.state, null), colour) {
+            (Some(state), Some(colour)) => Some(crate::i18n::gettext_f(
+                "{state}. {highlight}",
+                &[("state", &state), ("highlight", &highlight_description(colour))],
+            )),
+            (None, Some(colour)) => Some(highlight_description(colour)),
+            (state, None) => state,
+        };
+        match description {
             Some(description) => self.update_property(&[gtk::accessible::Property::Description(&description)]),
             None => self.reset_property(gtk::AccessibleProperty::Description),
         }
@@ -366,4 +377,17 @@ pub(crate) fn holds_window_focus(widget: &gtk::Widget) -> bool {
         .and_downcast::<gtk::Window>()
         .and_then(|window| gtk::prelude::GtkWindowExt::focus(&window))
         .is_some_and(|focus| focus == *widget || focus.is_ancestor(widget))
+}
+
+fn highlight_description(colour: HighlightColor) -> String {
+    use crate::i18n::gettext;
+    match colour {
+        HighlightColor::Red => gettext("Highlighted red"),
+        HighlightColor::Orange => gettext("Highlighted orange"),
+        HighlightColor::Yellow => gettext("Highlighted yellow"),
+        HighlightColor::Green => gettext("Highlighted green"),
+        HighlightColor::Blue => gettext("Highlighted blue"),
+        HighlightColor::Purple => gettext("Highlighted purple"),
+        HighlightColor::Gray => gettext("Highlighted gray"),
+    }
 }

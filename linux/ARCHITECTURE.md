@@ -115,6 +115,13 @@ Every surface that shows rows, the table tab, the SQL editor's results and the k
 - **Keys.** Two controllers on the column view, from the accelerator table: the `GridCell` owner in the capture phase for the keys GtkListFactoryWidget binds itself (Return, Space, Menu), and the `Grid` owner in the bubble phase, after a focused editor had its turn. A disabled action lets its key go on. Return and a double click reach the grid as the view's `activate`: an editable cell opens its editor, any other cell its value in the detail pane. Typed text opens the editor and the key is forwarded to it, so its input method sees the first key.
 - **What a host hears.** The grid asks its host only for what it cannot do itself, through its `request` signal: a server sort, an export, a foreign key to follow, a filter rule from a cell, a toast, and "pending changes changed". It also says when its selection and its editing state change, so the table tab's Save stays on while a value is being typed.
 
+### Highlight rules
+
+Table and query-result grids share the Highlight Rules dialog through `grid.highlight-rules`.
+The grid owns the ordered rules; the dialog changes them by UUID. Each rule names a column and its occurrence, so duplicate result names stay distinct. Missing columns keep their rules until that column returns or the user changes it.
+
+The pure evaluator in `services/grid/highlight.rs` reads the full current values, including pending edits. The first matching row rule sets the row colour; the first cell rule for a column takes precedence over it. NULL and unavailable values stay distinct from text. Colours use libadwaita variables, and selection keeps the theme accent. The cell description announces a highlight; pending edits keep their bold text.
+
 ## Driver layer
 
 The contract, the transports, the trust each engine builds, the liveness bounds and the session's health are the core's: `../core/ARCHITECTURE.md`, Driver layer. What the Linux app adds follows.

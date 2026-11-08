@@ -220,9 +220,7 @@ tp-diagram-canvas > .tp-diagram-accent {
   color: var(--accent-color);
 }
 
-/* Highlight rules: a cell, or every cell of a row, tinted by what the user
-   asked to see. A selected row keeps its accent, as it does for stripes, and
-   the selector is as specific as the stripes' so a highlight wins on a shaded row. */
+/* Selection stays distinct from rules, and rule colours take precedence over stripes. */
 columnview.data-table > listview > row:not(:selected) > cell > .tp-hl-red {
   background-color: color-mix(in srgb, var(--red-3) 28%, transparent);
 }

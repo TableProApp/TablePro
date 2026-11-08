@@ -72,6 +72,7 @@ pub fn install(grid: &DataGrid) {
         }
     });
     add(grid, "columns", column_chooser::present);
+    add(grid, "highlight-rules", super::highlight_dialog::present);
     grid.edit().install_actions(grid);
     copy::install_actions(grid);
     references::install_actions(grid);

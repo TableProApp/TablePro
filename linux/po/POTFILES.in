@@ -273,7 +273,7 @@ crates/app/src/ui/data_grid/grid_request.rs
 crates/app/src/ui/data_grid/grid_row.rs
 crates/app/src/ui/data_grid/grid_store.rs
 crates/app/src/ui/data_grid/highlight.rs
-crates/app/src/ui/data_grid/highlight_popover.rs
+crates/app/src/ui/data_grid/highlight_dialog.rs
 crates/app/src/ui/data_grid/imp.rs
 crates/app/src/ui/data_grid/keys.rs
 crates/app/src/ui/data_grid/layout_binding.rs

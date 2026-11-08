@@ -15,7 +15,7 @@ mod grid_request;
 mod grid_row;
 mod grid_store;
 mod highlight;
-mod highlight_popover;
+mod highlight_dialog;
 mod imp;
 mod keys;
 mod layout_binding;
@@ -52,7 +52,6 @@ pub(crate) use self::grid_config::{DialectSource, EditRules, GridConfig, GridSor
 pub(crate) use self::grid_request::GridRequest;
 pub(crate) use self::grid_row::{GridRow, PinnedRow, RowData};
 pub(crate) use self::grid_store::GridStore;
-pub(crate) use self::highlight_popover::build as highlight_rules_popover;
 pub(crate) use self::layout_binding::LayoutBinding;
 use self::reversed_list::ReversedList;
 #[cfg(test)]
