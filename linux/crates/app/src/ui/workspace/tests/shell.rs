@@ -173,8 +173,10 @@ fn show_tabs_opens_and_closes_the_overview_while_a_tab_is_open() {
     assert!(enabled("switch-recent-tab"));
 }
 
+/// The toggle is always in the header, beside a sidebar in view too, as
+/// the macOS window's is, so the sidebar collapses from it.
 #[gtk4::test]
-fn sidebar_toggle_visible_only_when_collapsed_or_hidden() {
+fn the_sidebar_toggle_is_always_in_the_header() {
     let test = TestWindow::connected("SidebarToggle");
     let workspace = test.workspace();
     let shell = shell_of(&workspace);
@@ -182,10 +184,12 @@ fn sidebar_toggle_visible_only_when_collapsed_or_hidden() {
     let (split, toggle) = (imp.split_view.get(), imp.sidebar_toggle.get());
     split.set_collapsed(false);
     split.set_show_sidebar(true);
-    assert!(!toggle.is_visible(), "shown beside a sidebar in view");
+    assert!(toggle.is_visible(), "missing beside a sidebar in view");
+    assert!(toggle.is_active(), "it does not show the sidebar is in view");
 
     split.set_show_sidebar(false);
     assert!(toggle.is_visible(), "hidden with the sidebar hidden");
+    assert!(!toggle.is_active());
 
     split.set_show_sidebar(true);
     split.set_collapsed(true);

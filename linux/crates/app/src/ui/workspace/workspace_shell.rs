@@ -110,7 +110,6 @@ impl WorkspaceShell {
             &imp.split_view.get(),
             "show-sidebar",
         ));
-        follow_sidebar(&imp.split_view, &imp.sidebar_toggle);
         window.add_action(&assistant_action(&shell));
         imp.walk_hooks.replace(Some(shell.hook_recent_walk(window)));
 
@@ -776,27 +775,6 @@ fn with_safe_mode(menu: &gio::MenuModel) -> gio::Menu {
     whole.append_section(None, &section);
     whole.append_section(None, menu);
     whole
-}
-
-/// The toggle shows only while the sidebar is out of view: collapsed
-/// into an overlay, or hidden. Beside a shown sidebar it would only hide
-/// the list the user is looking at.
-fn follow_sidebar(split_view: &adw::OverlaySplitView, toggle: &gtk::ToggleButton) -> gtk::ExpressionWatch {
-    let collapsed = gtk::PropertyExpression::new(
-        adw::OverlaySplitView::static_type(),
-        None::<&gtk::Expression>,
-        "collapsed",
-    );
-    let shown = gtk::PropertyExpression::new(
-        adw::OverlaySplitView::static_type(),
-        None::<&gtk::Expression>,
-        "show-sidebar",
-    );
-    let visible = gtk::ClosureExpression::new::<bool>(
-        [collapsed, shown],
-        glib::closure!(|_: Option<glib::Object>, collapsed: bool, shown: bool| collapsed || !shown),
-    );
-    visible.bind(toggle, "visible", Some(split_view))
 }
 
 #[cfg(test)]
