@@ -301,6 +301,9 @@ fn a_row_shows_its_name_and_summary_as_written() {
         query: "\n  SELECT 1 & 2\nFROM t".to_owned(),
         connection_id: Uuid::nil(),
         connection_name: "local".to_owned(),
+        keyword: None,
+        folder_id: None,
+        order: 0,
         created_at: SystemTime::UNIX_EPOCH,
         updated_at: SystemTime::UNIX_EPOCH,
     };

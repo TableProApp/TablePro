@@ -101,6 +101,16 @@ impl QueryHistory {
         crate::saved_queries::SavedQueries::new(self.pool.clone(), self.path.clone())
     }
 
+    /// The folders saved queries are filed in, in the same database.
+    pub fn saved_query_folders(&self) -> crate::saved_queries::SavedQueryFolders {
+        crate::saved_queries::SavedQueryFolders::new(self.pool.clone())
+    }
+
+    /// The favourite tables and databases, in the same database.
+    pub fn favourites(&self) -> crate::favourites::Favourites {
+        crate::favourites::Favourites::new(self.pool.clone())
+    }
+
     pub async fn record(&self, entry: NewEntry) -> Result<i64, StorageError> {
         if entry.query.len() > MAX_QUERY_BYTES {
             return Err(StorageError::TooLarge {
@@ -709,7 +719,56 @@ mod tests {
             .fetch_one(&history.pool)
             .await
             .expect("count migrations");
-        assert_eq!(applied, 1);
+        assert_eq!(applied, 2);
+    }
+
+    /// A database an earlier build wrote, with its saved queries, is kept
+    /// as a copy before the favourites' migration and then reads as it did,
+    /// with no keyword and no folder.
+    #[tokio::test]
+    async fn a_database_from_before_the_favourites_keeps_its_saved_queries() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let paths = paths(&root);
+        let path = paths.history_database();
+        crate::fs::create_private_file_if_missing(&path).expect("the file");
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                SqliteConnectOptions::new()
+                    .filename(&path)
+                    .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal),
+            )
+            .await
+            .expect("a pool");
+        sqlx::migrate::Migrator::with_migrations(schema::MIGRATOR.iter().take(1).cloned().collect())
+            .run(&pool)
+            .await
+            .expect("the first migration");
+        let connection = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO saved_queries (name, query, connection_id, connection_name, created_at, updated_at) \
+             VALUES ('daily', 'SELECT 1', ?, 'local', 1, 1)",
+        )
+        .bind(connection.to_string())
+        .execute(&pool)
+        .await
+        .expect("a saved query");
+        pool.close().await;
+
+        let history = QueryHistory::open(&paths).await.expect("open");
+
+        let saved = history.saved_queries().list(Some(connection)).await.expect("list");
+        assert_eq!(saved.len(), 1);
+        assert_eq!(
+            (saved[0].keyword.as_deref(), saved[0].folder_id, saved[0].order),
+            (None, None, 0)
+        );
+        assert!(
+            !crate::upgrade_copies::copies_blocking(&path)
+                .expect("copies")
+                .is_empty(),
+            "no copy was kept before the migration"
+        );
     }
 
     #[tokio::test]
@@ -854,7 +913,7 @@ mod tests {
     /// means a change went into a file that has already run somewhere.
     #[test]
     fn migrator_embeds_every_migration() {
-        assert_eq!(schema::MIGRATOR.iter().count(), 1);
+        assert_eq!(schema::MIGRATOR.iter().count(), 2);
     }
 
     #[tokio::test]
