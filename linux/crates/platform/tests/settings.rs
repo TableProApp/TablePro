@@ -330,3 +330,210 @@ fn nonexistent_dir_is_schema_directory() -> TestResult {
     assert!(matches!(error, SettingsError::SchemaDirectory { path, .. } if path == missing));
     Ok(())
 }
+
+#[test]
+fn grid_preferences_start_from_schema_and_keep_one_model() -> TestResult {
+    use tablepro_linux_platform::settings::{GridPreferenceValues, GridPreferences};
+
+    let fixture = Fixture::new()?;
+    let preferences = fixture.settings.grid_preferences();
+    assert_eq!(preferences.snapshot().as_ref(), &GridPreferenceValues::default());
+    assert_eq!(preferences, fixture.settings.grid_preferences());
+    assert_eq!(GridPreferences::default().snapshot(), preferences.snapshot());
+    Ok(())
+}
+
+#[test]
+fn every_grid_preference_observer_reads_the_updated_snapshot() -> TestResult {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use tablepro_linux_platform::settings::GridRowHeight;
+
+    let fixture = Fixture::new()?;
+    let preferences = fixture.settings.grid_preferences();
+    let original = preferences.snapshot();
+    let first = Rc::new(RefCell::new(Vec::new()));
+    let second = Rc::new(RefCell::new(Vec::new()));
+    for observed in [&first, &second] {
+        let observed = observed.clone();
+        preferences.connect_changed(move |preferences| observed.borrow_mut().push(preferences.snapshot()));
+    }
+
+    fixture.settings.set_show_row_numbers(false)?;
+    fixture.settings.set_show_alternate_rows(false)?;
+    fixture.settings.set_grid_row_height("spacious")?;
+    fixture.settings.set_null_display("Missing")?;
+
+    assert_eq!(first.borrow().len(), 4);
+    assert_eq!(*first.borrow(), *second.borrow());
+    let current = preferences.snapshot();
+    assert!(!current.show_row_numbers);
+    assert!(!current.show_alternate_rows);
+    assert_eq!(current.row_height, GridRowHeight::Spacious);
+    assert_eq!(current.null_display, "Missing");
+    assert!(original.show_row_numbers);
+    assert_eq!(original.null_display, "NULL");
+    Ok(())
+}
+
+#[test]
+fn grid_preference_backends_stay_independent() -> TestResult {
+    let first = Fixture::new()?;
+    let second = Fixture::new()?;
+    let first_preferences = first.settings.grid_preferences();
+    let second_preferences = second.settings.grid_preferences();
+
+    first.settings.set_null_display("Missing")?;
+    second.settings.set_grid_row_height("compact")?;
+
+    assert_eq!(first_preferences.snapshot().null_display, "Missing");
+    assert_eq!(second_preferences.snapshot().null_display, "NULL");
+    assert_eq!(first_preferences.snapshot().row_height.nick(), "normal");
+    assert_eq!(second_preferences.snapshot().row_height.nick(), "compact");
+    Ok(())
+}
+
+#[test]
+fn null_display_is_bounded_even_for_external_settings_writes() -> TestResult {
+    use gio::prelude::SettingsExt;
+
+    let fixture = Fixture::new()?;
+    let preferences = fixture.settings.grid_preferences();
+    fixture.settings.gio().set_string(keys::NULL_DISPLAY, "\n\t\r")?;
+    assert_eq!(preferences.snapshot().null_display, "NULL");
+    fixture.settings.gio().set_string(keys::NULL_DISPLAY, "  ")?;
+    assert_eq!(preferences.snapshot().null_display, "NULL");
+    fixture.settings.gio().set_string(keys::NULL_DISPLAY, "no\nvalue\t")?;
+    assert_eq!(preferences.snapshot().null_display, "novalue");
+    fixture
+        .settings
+        .gio()
+        .set_string(keys::NULL_DISPLAY, &"界".repeat(25))?;
+    assert_eq!(preferences.snapshot().null_display, "界".repeat(20));
+    Ok(())
+}
+
+#[test]
+fn grid_preference_changes_ignore_unrelated_and_equivalent_values() -> TestResult {
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    let fixture = Fixture::new()?;
+    let calls = Rc::new(Cell::new(0));
+    let observed = calls.clone();
+    fixture
+        .settings
+        .grid_preferences()
+        .connect_changed(move |_| observed.set(observed.get() + 1));
+
+    fixture.settings.set_default_page_size(500)?;
+    fixture.settings.set_null_display("")?;
+    fixture.settings.set_null_display("NULL")?;
+
+    assert_eq!(calls.get(), 0);
+    assert!(fixture.settings.set_grid_row_height("unknown").is_err());
+    assert_eq!(fixture.settings.grid_row_height(), "normal");
+    Ok(())
+}
+
+#[test]
+fn dropping_grid_preferences_disconnects_the_settings_handler() -> TestResult {
+    use gio::prelude::*;
+
+    let fixture = Fixture::new()?;
+    let settings = fixture.settings.gio().clone();
+    let preferences = fixture.settings.grid_preferences().downgrade();
+    let changed = glib::subclass::SignalId::lookup("changed", gio::Settings::static_type()).expect("changed signal");
+    assert!(glib::signal::signal_has_handler_pending(
+        &settings, changed, None, false
+    ));
+
+    drop(fixture);
+
+    assert!(preferences.upgrade().is_none());
+    assert!(!glib::signal::signal_has_handler_pending(
+        &settings, changed, None, false
+    ));
+    settings.set_boolean(keys::SHOW_ROW_NUMBERS, false)?;
+    Ok(())
+}
+
+#[test]
+fn grid_font_uses_the_shared_snapshot_and_preserves_the_editor_font() -> TestResult {
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    let fixture = Fixture::new()?;
+    let preferences = fixture.settings.grid_preferences();
+    let calls = Rc::new(Cell::new(0));
+    let observed = calls.clone();
+    preferences.connect_changed(move |_| observed.set(observed.get() + 1));
+    let editor_font = fixture.settings.editor_font();
+    let custom = EditorFont::Custom("Sans Bold Italic 15".into());
+
+    fixture.settings.set_grid_font(&custom)?;
+    assert_eq!(preferences.snapshot().font, custom);
+    assert_eq!(fixture.settings.grid_font(), custom);
+    assert_eq!(calls.get(), 1);
+    assert_eq!(fixture.settings.editor_font(), editor_font);
+
+    fixture.settings.set_grid_font(&EditorFont::System)?;
+    assert_eq!(preferences.snapshot().font, EditorFont::System);
+    assert_eq!(calls.get(), 2);
+    fixture.settings.set_grid_font(&custom)?;
+    assert_eq!(preferences.snapshot().font, custom);
+    assert_eq!(calls.get(), 3);
+    Ok(())
+}
+
+#[test]
+fn row_copy_format_publishes_every_format_through_the_shared_model() -> TestResult {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    use tablepro_linux_platform::settings::RowCopyFormat;
+
+    let fixture = Fixture::new()?;
+    let preferences = fixture.settings.grid_preferences();
+    let original = preferences.snapshot();
+    let observed = Rc::new(RefCell::new(Vec::new()));
+    let updates = observed.clone();
+    preferences.connect_changed(move |preferences| updates.borrow_mut().push(preferences.snapshot().row_copy_format));
+
+    assert_eq!(fixture.settings.row_copy_format(), RowCopyFormat::Rows);
+    for format in RowCopyFormat::ALL {
+        fixture.settings.set_row_copy_format(format.nick())?;
+        assert_eq!(fixture.settings.row_copy_format(), format);
+        assert_eq!(preferences.snapshot().row_copy_format, format);
+        assert_eq!(RowCopyFormat::from_nick(format.nick()), format);
+    }
+    assert_eq!(observed.borrow().as_slice(), &RowCopyFormat::ALL[1..]);
+    assert_eq!(original.row_copy_format, RowCopyFormat::Rows);
+    assert_eq!(RowCopyFormat::from_nick("unknown"), RowCopyFormat::Rows);
+    Ok(())
+}
+
+#[test]
+fn automatic_details_preference_is_published_in_the_shared_snapshot() -> TestResult {
+    use gio::prelude::SettingsExt;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    let fixture = Fixture::new()?;
+    let preferences = fixture.settings.grid_preferences();
+    let original = preferences.snapshot();
+    let observed = Rc::new(RefCell::new(Vec::new()));
+    let changes = observed.clone();
+    preferences.connect_changed(move |preferences| {
+        changes.borrow_mut().push(preferences.snapshot().auto_show_inspector);
+    });
+    assert!(!fixture.settings.auto_show_inspector());
+
+    fixture.settings.set_auto_show_inspector(true)?;
+    assert!(fixture.settings.auto_show_inspector());
+    fixture.settings.gio().set_boolean(keys::AUTO_SHOW_INSPECTOR, false)?;
+    assert!(!fixture.settings.auto_show_inspector());
+    assert_eq!(observed.borrow().as_slice(), &[true, false]);
+    assert!(!original.auto_show_inspector);
+    Ok(())
+}

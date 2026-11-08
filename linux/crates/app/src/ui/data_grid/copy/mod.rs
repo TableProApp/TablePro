@@ -5,6 +5,7 @@ use gtk4::{self as gtk, glib};
 use tablepro_core::column::{ColumnInfo, ResultColumn};
 use tablepro_core::edit::CellInput;
 use tablepro_core::{FilterRule, Value};
+use tablepro_linux_platform::settings::RowCopyFormat;
 
 use super::grid_actions::{add, add_for_column, enable};
 use super::selection::Resolved;
@@ -165,7 +166,6 @@ impl ShownColumns {
     }
 }
 
-/// Copy: the target cell's value when one row is in play, else the rows.
 fn copy(grid: &DataGrid) {
     let Some(target) = grid.target() else {
         return;
@@ -177,20 +177,18 @@ fn copy(grid: &DataGrid) {
     }
 }
 
-/// What Copy writes for rows: the format Preferences name, TSV when the
-/// word is none this build knows.
 fn preferred_format(grid: &DataGrid) -> CopyKind {
-    let word = grid
+    match grid
         .config()
         .map(|config| config.settings.row_copy_format())
-        .unwrap_or_default();
-    match word.as_str() {
-        "rows-headers" => CopyKind::RowsWithHeaders,
-        "json" => CopyKind::Json,
-        "csv" => CopyKind::Csv,
-        "csv-headers" => CopyKind::CsvWithHeaders,
-        "markdown" => CopyKind::Markdown,
-        _ => CopyKind::Rows,
+        .unwrap_or_default()
+    {
+        RowCopyFormat::Rows => CopyKind::Rows,
+        RowCopyFormat::RowsWithHeaders => CopyKind::RowsWithHeaders,
+        RowCopyFormat::Json => CopyKind::Json,
+        RowCopyFormat::Csv => CopyKind::Csv,
+        RowCopyFormat::CsvWithHeaders => CopyKind::CsvWithHeaders,
+        RowCopyFormat::Markdown => CopyKind::Markdown,
     }
 }
 
