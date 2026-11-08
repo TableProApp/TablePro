@@ -461,9 +461,11 @@ fn a_preset_skips_cells_in_a_running_save() {
     super::type_into(&grid, &grid.cell_of(1, 1), "saving").emit_activate();
     let batch = grid.tracker.begin_save().expect("a save").expect("changes");
     grid.grid.redraw();
-    select_all_from(&grid, 1, 1);
+    select_all_from(&grid, 0, 1);
     grid.take_requests();
 
+    assert!(grid.is_enabled("set-null"));
+    assert!(!grid.is_enabled("edit"));
     grid.activate("set-null");
 
     assert_eq!(pending(&grid, 1, 1), Some(name("saving")));
@@ -482,4 +484,45 @@ fn a_preset_skips_cells_in_a_running_save() {
     grid.grid.undo();
     assert_eq!(pending(&grid, 1, 1), Some(name("saving")));
     assert_eq!(pending(&grid, 2, 1), None);
+}
+
+#[gtk4::test]
+fn a_saved_focus_does_not_hide_default_for_a_selected_draft() {
+    use tablepro_core::column::ColumnDefault;
+    let mut value = named("value", "integer", false);
+    value.default = ColumnDefault::Literal(Value::Int(0));
+    let grid = Grid::open(
+        vec![named("id", "integer", true), value],
+        vec![vec![Value::Int(1), Value::Int(5)]],
+    );
+    let draft = grid.insert_draft();
+    select_all_from(&grid, 1, 1);
+
+    assert!(grid.is_enabled("set-default"));
+    grid.activate("set-default");
+
+    assert_eq!(grid.tracker.draft_input(draft, 1), Some(CellInput::Default));
+    assert_eq!(pending(&grid, 1, 1), None);
+    assert!(!grid.is_enabled("toggle"));
+}
+
+#[gtk4::test]
+fn a_deleted_focus_does_not_disable_presets_for_other_selected_rows() {
+    use crate::services::tracker_edit::TrackerEdit;
+    let grid = two_text_rows();
+    let delta = grid.tracker.apply(TrackerEdit::DeleteRows {
+        persisted: vec![(key(1), Arc::from([Value::Int(1), Value::Text("A".into())]))],
+        drafts: vec![],
+    });
+    grid.grid.apply_delta(&delta);
+    select_all_from(&grid, 0, 1);
+
+    assert!(grid.is_enabled("set-null"));
+    assert!(grid.is_enabled("set-empty"));
+    assert!(!grid.is_enabled("edit"));
+    grid.activate("set-null");
+
+    assert_eq!(pending(&grid, 1, 1), None);
+    assert_eq!(pending(&grid, 2, 1), Some(CellInput::Value(Value::Null)));
+    assert_eq!(grid.tracker.row_state(&key(1)), RowState::PendingDelete);
 }
