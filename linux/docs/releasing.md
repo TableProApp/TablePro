@@ -166,7 +166,7 @@ If the notice offers an earlier tested version, link its exact release and packa
 
 The app's own files also need a maintainer before the submission:
 
-- **Translations.** Flathub refuses machine-generated translations (Requirements, Localisation policy). A person reviews each catalogue in `po/LINGUAS`, or it leaves the list.
+- **Translations.** The AI disclosure names each catalogue in `po/LINGUAS` that an agent translated (Requirements, Generative AI policy). The Localisation policy's bar on machine-generated translations is about the English localisation.
 - **Screenshots.** Retake any whose window changed since `data/screenshots` was taken (MetaInfo guidelines, Quality guidelines, Screenshots, Up to date; [README.md](../README.md#screenshots)).
 - **Licensing.** The metainfo description's last paragraph states what a license gives and when the app asks for one. A change to either changes it in the same release (Requirements, Monetisation policy).
 - **Verification.** Flathub verifies the app through `tablepro.app` once it is listed (Quality guidelines, Managed by app author).
