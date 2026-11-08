@@ -140,6 +140,13 @@ impl KeyInjector {
         Ok(())
     }
 
+    pub(crate) fn hover(&self, widget: &impl IsA<gtk4::Widget>, at: (f32, f32)) -> Result<(), KeyInjectionError> {
+        self.move_pointer(widget, at)?;
+        self.connection.flush()?;
+        self.connection.get_input_focus()?.reply()?;
+        Ok(())
+    }
+
     fn move_pointer(&self, widget: &impl IsA<gtk4::Widget>, at: (f32, f32)) -> Result<(), KeyInjectionError> {
         let widget = widget.as_ref();
         if !widget.is_mapped() || widget.width() <= 0 {

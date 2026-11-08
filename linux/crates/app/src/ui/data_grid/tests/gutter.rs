@@ -737,3 +737,61 @@ fn a_newer_horizontal_scroll_cancels_an_older_focus_reveal() {
     assert_eq!(adjustment.value(), 300.0, "a stale focus request undid the scroll");
     assert!(projection(&grid).is_visible());
 }
+
+#[gtk4::test]
+fn the_pinned_header_keeps_hover_and_never_offers_a_hidden_resize_handle() {
+    use crate::test_support::{KeyInjector, wait_until};
+    use crate::ui::data_grid::test_grid::WAIT;
+    let grid = wide_rows(20);
+    KeyInjector::focus_only(&grid.window);
+    let view = grid.grid.column_view();
+    let header = descendants(&view)
+        .into_iter()
+        .find(|widget| widget.css_name() == "header")
+        .expect("header");
+    let numbers = header.first_child().expect("number title");
+    let first_data = numbers.next_sibling().expect("first data title");
+    let second_data = first_data.next_sibling().expect("second data title");
+    let edge = first_data.compute_bounds(&view).expect("title bounds");
+    scroll(&grid)
+        .hadjustment()
+        .set_value(f64::from(edge.x() + edge.width() - 12.0));
+    after_next_frame(&grid.window);
+    let input = KeyInjector::connect().expect("X11 input");
+    input.hover(&view, (12.0, 10.0)).expect("hidden divider hover");
+    wait_until(WAIT, || numbers.state_flags().contains(gtk::StateFlags::PRELIGHT)).expect("number header hover");
+    after_next_frame(&grid.window);
+    assert_ne!(
+        header.cursor().and_then(|cursor| cursor.name()).as_deref(),
+        Some("col-resize")
+    );
+    input.hover(&view, (25.0, 10.0)).expect("covered title hover");
+    after_next_frame(&grid.window);
+    assert!(numbers.state_flags().contains(gtk::StateFlags::PRELIGHT));
+    assert!(!second_data.state_flags().contains(gtk::StateFlags::PRELIGHT));
+    let outside = projection(&grid).width() as f32 + 4.0;
+    let second = second_data.compute_bounds(&view).expect("second title bounds");
+    assert!(
+        outside < second.x() + second.width(),
+        "both points must be in the same native title"
+    );
+    input
+        .hover(&view, (outside, 10.0))
+        .expect("uncovered part of same title");
+    wait_until(WAIT, || second_data.state_flags().contains(gtk::StateFlags::PRELIGHT))
+        .expect("data header hover restored");
+    assert!(!numbers.state_flags().contains(gtk::StateFlags::PRELIGHT));
+    input.hover(&view, (25.0, 10.0)).expect("number header hover again");
+    after_next_frame(&grid.window);
+    scroll(&grid).hadjustment().set_value(0.0);
+    after_next_frame(&grid.window);
+    assert!(numbers.state_flags().contains(gtk::StateFlags::PRELIGHT));
+    scroll(&grid).hadjustment().set_value(300.0);
+    after_next_frame(&grid.window);
+    assert!(
+        numbers.state_flags().contains(gtk::StateFlags::PRELIGHT),
+        "scrolling lost stationary header hover"
+    );
+    input.hover(&view, (25.0, 100.0)).expect("leave the header");
+    wait_until(WAIT, || !numbers.state_flags().contains(gtk::StateFlags::PRELIGHT)).expect("header hover cleared");
+}

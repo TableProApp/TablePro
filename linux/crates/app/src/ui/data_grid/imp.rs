@@ -90,6 +90,8 @@ pub struct DataGrid {
     pub editing: Cell<bool>,
     /// The window's focus handler, while the grid is in a window.
     pub focus_watch: RefCell<Option<(glib::WeakRef<gtk4::Window>, glib::SignalHandlerId)>>,
+    pub(super) pointer_position: Cell<Option<(f64, f64)>>,
+    pub(super) header_hover: RefCell<Option<glib::WeakRef<gtk4::Widget>>>,
     pub(super) font_watch: RefCell<Option<HandlerGuard>>,
     pub(super) stripes_watch: RefCell<Option<HandlerGuard>>,
 }

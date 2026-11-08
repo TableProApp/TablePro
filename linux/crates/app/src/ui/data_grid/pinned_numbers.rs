@@ -80,6 +80,10 @@ mod imp {
             {
                 child.allocate(width, height, baseline, None);
             }
+            if let Some(grid) = self.grid.upgrade() {
+                // Scrolling can move a header under a stationary pointer.
+                super::super::pointer::sync_header_hover(&grid);
+            }
         }
 
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
