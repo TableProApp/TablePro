@@ -119,6 +119,7 @@ impl ObjectImpl for DataGrid {
                     .build(),
                 Signal::builder("selection-changed").build(),
                 Signal::builder("editing-changed").build(),
+                Signal::builder("highlight-rules-changed").build(),
             ]
         })
     }

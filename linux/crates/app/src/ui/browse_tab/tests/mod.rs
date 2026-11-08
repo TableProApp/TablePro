@@ -381,6 +381,7 @@ pub(super) fn table_tab(
         filter,
         column_layouts: crate::persistence::ColumnLayoutStore::load(root.join("column_layouts.json"), &tasks),
         filter_settings,
+        highlight_rules: crate::persistence::HighlightRulesStore::load(root.join("highlight_rules.json"), &tasks),
         session: session.clone(),
         tasks,
         deadlines: Arc::new(tablepro_session::operation::DefaultDeadlines::new(

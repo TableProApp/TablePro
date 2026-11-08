@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use super::deletion_error::DeletionError;
 use super::deletion_report::{DeletionReport, PurgeFailure};
-use crate::persistence::{ColumnLayoutStore, FilterSettingsStore};
+use crate::persistence::{ColumnLayoutStore, FilterSettingsStore, HighlightRulesStore};
 use crate::workspace::{WorkspaceSaveError, WorkspaceStore};
 
 /// What the user chose in the delete dialog.
@@ -31,6 +31,7 @@ pub struct ConnectionDeletion {
     pub connections: Arc<dyn ConnectionWrites>,
     pub column_layouts: ColumnLayoutStore,
     pub filters: FilterSettingsStore,
+    pub highlight_rules: HighlightRulesStore,
     pub workspaces: WorkspaceStore,
     /// `None` when the history database did not open.
     pub history: Option<QueryHistory>,
@@ -54,13 +55,19 @@ impl ConnectionDeletion {
         let mut report = DeletionReport::default();
         self.column_layouts.forget_connection(id);
         self.filters.forget_connection(id);
+        self.highlight_rules.forget_connection(id);
         // Awaited inside the delete's hold, so a quit right after it
         // cannot leave them on disk.
         self.column_layouts.flush().await;
         self.filters.flush().await;
+        self.highlight_rules.flush().await;
         // Copies kept before an upgrade hold the connection's tables and filter values, and are not
         // worth keeping without them.
-        let files = [self.column_layouts.path().to_owned(), self.filters.path().to_owned()];
+        let files = [
+            self.column_layouts.path().to_owned(),
+            self.filters.path().to_owned(),
+            self.highlight_rules.path().to_owned(),
+        ];
         let copies = self
             .spawner
             .spawn_blocking_task(move || {
@@ -179,6 +186,7 @@ mod tests {
         vault: Arc<FakeSecretVault>,
         layouts: ColumnLayoutStore,
         filters: FilterSettingsStore,
+        highlight_rules: HighlightRulesStore,
         workspaces: WorkspaceStore,
         drafts: DraftStore,
         history: QueryHistory,
@@ -251,6 +259,10 @@ mod tests {
         let vault = Arc::new(FakeSecretVault::new());
         let layouts = ColumnLayoutStore::load(paths.column_layouts_file(), &tasks);
         let filters = FilterSettingsStore::load(paths.filter_settings_file(), &tasks);
+        let highlight_rules = HighlightRulesStore::load(
+            paths.filter_settings_file().with_file_name("highlight_rules.json"),
+            &tasks,
+        );
         let drafts = DraftStore::new(paths.drafts_dir());
         let workspaces = WorkspaceStore::start(paths.workspaces_dir(), drafts.clone(), &tasks);
         let history = QueryHistory::open(&paths).await.expect("the history");
@@ -309,6 +321,7 @@ mod tests {
             vault,
             layouts,
             filters,
+            highlight_rules,
             workspaces,
             drafts,
             history,
@@ -330,6 +343,7 @@ mod tests {
                 }),
                 column_layouts: self.layouts.clone(),
                 filters: self.filters.clone(),
+                highlight_rules: self.highlight_rules.clone(),
                 workspaces: self.workspaces.clone(),
                 history: Some(self.history.clone()),
                 spawner: paused_tasks(),

@@ -254,6 +254,7 @@ impl TabFactory {
             filter,
             column_layouts: parts.storage.column_layouts().clone(),
             filter_settings: parts.storage.filter_settings().clone(),
+            highlight_rules: parts.storage.highlight_rules().clone(),
             session,
             tasks: parts.context.tasks.clone(),
             deadlines: parts.context.deadlines.clone(),

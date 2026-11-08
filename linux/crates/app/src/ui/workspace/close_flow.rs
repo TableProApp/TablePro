@@ -41,6 +41,7 @@ impl WorkspaceModel {
         let hold = self.context.hold.acquire();
         let column_layouts = self.storage.column_layouts().flush();
         let filter_settings = self.storage.filter_settings().flush();
+        let highlight_rules = self.storage.highlight_rules().flush();
         // The key is free once the window lets go of it, which is before
         // these land; a delete of the connection waits for them.
         let drafts_landing = self.storage.workspaces().writes_in_flight(&self.key);
@@ -50,6 +51,7 @@ impl WorkspaceModel {
         glib::spawn_future_local(async move {
             column_layouts.await;
             filter_settings.await;
+            highlight_rules.await;
             for failure in editor_drafts.await {
                 tracing::warn!(failure, "an editor draft was not saved");
             }

@@ -36,6 +36,8 @@ crates/app/src/persistence/column_layout_store.rs
 crates/app/src/persistence/column_layouts_document.rs
 crates/app/src/persistence/filter_settings_document.rs
 crates/app/src/persistence/filter_settings_store.rs
+crates/app/src/persistence/highlight_rules_document.rs
+crates/app/src/persistence/highlight_rules_store.rs
 crates/app/src/persistence/mod.rs
 crates/app/src/persistence/state_file.rs
 crates/app/src/runtime/app_runtime.rs

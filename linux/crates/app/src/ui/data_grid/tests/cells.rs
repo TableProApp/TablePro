@@ -574,3 +574,22 @@ fn the_highlight_popover_edits_the_grids_rules() {
         Some(FilterValue::Single("1".to_owned()))
     );
 }
+
+/// A host that keeps the rules hears of each change, and only of changes.
+#[gtk4::test]
+fn the_grid_tells_its_host_when_the_highlight_rules_change() {
+    use crate::services::grid::HighlightRule;
+
+    let grid = Grid::open(two_text_columns(), two_text_values());
+    let heard = Rc::new(Cell::new(0));
+    let count = heard.clone();
+    grid.grid
+        .connect_highlight_rules_changed(move |_| count.set(count.get() + 1));
+
+    grid.grid.set_highlight_rules(vec![HighlightRule::new("name")]);
+    assert_eq!(heard.get(), 1);
+    assert_eq!(grid.grid.highlight_rules().len(), 1);
+
+    grid.grid.set_highlight_rules(Vec::new());
+    assert_eq!(heard.get(), 2);
+}

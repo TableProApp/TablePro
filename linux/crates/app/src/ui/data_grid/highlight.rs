@@ -4,6 +4,8 @@
 
 use std::rc::Rc;
 
+use gtk4::glib;
+use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 
 use super::{DataGrid, GridRow};
@@ -16,6 +18,16 @@ impl DataGrid {
         self.imp().highlight_source.replace(rules);
         self.compile_highlights();
         self.redraw();
+        self.emit_by_name::<()>("highlight-rules-changed", &[]);
+    }
+
+    /// The rules changed, as the popover or a load sets them, for a host that keeps them.
+    pub fn connect_highlight_rules_changed<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "highlight-rules-changed",
+            false,
+            glib::closure_local!(move |grid: &Self| f(grid)),
+        )
     }
 
     pub fn highlight_rules(&self) -> Vec<HighlightRule> {

@@ -108,6 +108,7 @@ pub struct BrowseTabInit {
     pub filter: TableFilter,
     pub column_layouts: crate::persistence::ColumnLayoutStore,
     pub filter_settings: crate::persistence::FilterSettingsStore,
+    pub highlight_rules: crate::persistence::HighlightRulesStore,
     /// The session the tab reads through. The tab belongs to it and is
     /// closed before it shuts down.
     pub session: Arc<Session>,
@@ -170,6 +171,19 @@ impl BrowseTab {
                 if let Some(grid) = weak.upgrade() {
                     button.set_popover(Some(&crate::ui::data_grid::highlight_rules_popover(&grid)));
                 }
+            });
+        }
+        // The rules the table was left with, kept again as they change.
+        if let Some(connection_id) = init.connection_id {
+            let rules = init
+                .highlight_rules
+                .rules(connection_id, init.schema.as_deref(), &init.table);
+            if !rules.is_empty() {
+                grid.set_highlight_rules(rules);
+            }
+            let (store, schema, table) = (init.highlight_rules.clone(), init.schema.clone(), init.table.clone());
+            grid.connect_highlight_rules_changed(move |grid| {
+                store.set_rules(connection_id, schema.as_deref(), &table, grid.highlight_rules());
             });
         }
         let link_changes = init.session.link_changes();
