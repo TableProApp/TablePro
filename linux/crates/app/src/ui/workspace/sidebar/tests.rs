@@ -1664,6 +1664,14 @@ fn the_selection_follows_the_tab_and_survives_a_new_list() {
 }
 
 #[gtk4::test]
+fn the_menu_opens_beside_its_row_so_a_long_one_is_not_cut() {
+    let alpha = connection("Alpha", None);
+    let shown = Shown::new(std::slice::from_ref(&alpha));
+
+    assert_eq!(shown.popover().position(), gtk::PositionType::Right);
+}
+
+#[gtk4::test]
 fn secondary_press_selects_the_row_and_opens_its_menu() {
     let alpha = connection("Alpha", None);
     let shown = Shown::new(std::slice::from_ref(&alpha));
