@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gtk4::gsk::prelude::*;
 use tablepro_core::Value;
 
 use super::*;
