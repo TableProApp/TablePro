@@ -124,7 +124,26 @@ impl RowDetailPane {
         let imp = self.imp();
         imp.selection.set_autoselect(false);
         imp.selection.set_can_unselect(true);
-        imp.selection.set_model(Some(&imp.fields.0));
+        imp.filtered.set_model(Some(&imp.fields.0));
+        imp.filtered.set_filter(Some(&imp.field_filter));
+        imp.selection.set_model(Some(&imp.filtered));
+        imp.field_filter.set_filter_func(glib::clone!(
+            #[weak(rename_to = pane)]
+            self,
+            #[upgrade_or]
+            true,
+            move |item| pane.field_shown(field_of(Some(item.clone())))
+        ));
+        imp.field_search.connect_search_changed(glib::clone!(
+            #[weak(rename_to = pane)]
+            self,
+            move |_| pane.refilter_fields()
+        ));
+        imp.edited_toggle.connect_toggled(glib::clone!(
+            #[weak(rename_to = pane)]
+            self,
+            move |_| pane.refilter_fields()
+        ));
         imp.field_list.set_model(Some(&imp.selection));
         imp.field_list.set_factory(Some(&self.field_factory()));
         imp.selection.connect_selected_notify(glib::clone!(
@@ -180,6 +199,35 @@ impl RowDetailPane {
         for item in &bound {
             self.draw_field(item);
         }
+        // An edit made or undone changes which fields are edited.
+        if self.imp().edited_toggle.is_active() {
+            self.refilter_fields();
+        }
+    }
+
+    fn refilter_fields(&self) {
+        self.imp().field_filter.changed(gtk::FilterChange::Different);
+    }
+
+    /// Whether the search and the edited-only toggle leave `column`'s
+    /// field in the list.
+    fn field_shown(&self, column: Option<usize>) -> bool {
+        let imp = self.imp();
+        let (Some(grid), Some(column)) = (self.grid(), column) else {
+            return true;
+        };
+        let Some(column) = grid.grid_columns().get(column).cloned() else {
+            return true;
+        };
+        let wanted = imp.field_search.text().to_lowercase();
+        if !wanted.is_empty() && !column.name.to_lowercase().contains(&wanted) {
+            return false;
+        }
+        if !imp.edited_toggle.is_active() {
+            return true;
+        }
+        self.current_row()
+            .is_some_and(|row| field_value(&grid.tracked(), &row, &column).modified)
     }
 
     fn draw_field(&self, item: &gtk::ListItem) {
@@ -262,9 +310,10 @@ impl RowDetailPane {
 
     pub(super) fn select_in_list(&self, column: Option<usize>) {
         let imp = self.imp();
-        let store = &imp.fields.0;
+        // The list as shown, which the search may have narrowed.
+        let shown = &imp.selection;
         let position = column
-            .and_then(|column| (0..store.n_items()).find(|position| field_of(store.item(*position)) == Some(column)))
+            .and_then(|column| (0..shown.n_items()).find(|position| field_of(shown.item(*position)) == Some(column)))
             .unwrap_or(gtk::INVALID_LIST_POSITION);
         if imp.selection.selected() == position {
             return;

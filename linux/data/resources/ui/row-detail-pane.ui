@@ -128,16 +128,50 @@
                         <property name="shrink-start-child">false</property>
                         <property name="shrink-end-child">false</property>
                         <property name="start-child">
-                          <object class="GtkScrolledWindow">
-                            <property name="hscrollbar-policy">never</property>
-                            <property name="min-content-height">120</property>
-                            <property name="child">
-                              <object class="GtkListView" id="field_list">
-                                <accessibility>
-                                  <property name="label" translatable="yes">Fields</property>
-                                </accessibility>
+                          <object class="GtkBox">
+                            <property name="orientation">vertical</property>
+                            <!-- On a row of two hundred columns, the only way to a field. -->
+                            <child>
+                              <object class="GtkBox">
+                                <property name="spacing">6</property>
+                                <property name="margin-top">6</property>
+                                <property name="margin-bottom">6</property>
+                                <property name="margin-start">12</property>
+                                <property name="margin-end">12</property>
+                                <child>
+                                  <object class="GtkSearchEntry" id="field_search">
+                                    <property name="hexpand">true</property>
+                                    <property name="placeholder-text" translatable="yes">Search fields</property>
+                                    <accessibility>
+                                      <property name="label" translatable="yes">Search fields</property>
+                                    </accessibility>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkToggleButton" id="edited_toggle">
+                                    <property name="icon-name">document-edit-symbolic</property>
+                                    <property name="tooltip-text" translatable="yes">Show edited fields only</property>
+                                    <accessibility>
+                                      <property name="label" translatable="yes">Show edited fields only</property>
+                                    </accessibility>
+                                  </object>
+                                </child>
                               </object>
-                            </property>
+                            </child>
+                            <child>
+                              <object class="GtkScrolledWindow">
+                                <property name="vexpand">true</property>
+                                <property name="hscrollbar-policy">never</property>
+                                <property name="min-content-height">120</property>
+                                <property name="child">
+                                  <object class="GtkListView" id="field_list">
+                                    <accessibility>
+                                      <property name="label" translatable="yes">Fields</property>
+                                    </accessibility>
+                                  </object>
+                                </property>
+                              </object>
+                            </child>
                           </object>
                         </property>
                         <property name="end-child">

@@ -1424,3 +1424,34 @@ fn a_page_that_takes_the_row_closes_its_clock_and_writes_nothing() {
     );
     assert!(!pane.imp().clock_popover.is_visible());
 }
+
+/// The search narrows the fields to the names it matches, and the toggle
+/// to the ones holding an edit.
+#[gtk4::test]
+fn the_field_search_and_the_edited_toggle_narrow_the_list() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    grid.focus(0, 1);
+    let imp = pane.imp();
+    let listed = || imp.selection.n_items();
+    assert_eq!(listed(), 2);
+
+    // The entry reports a search after its own short delay.
+    imp.field_search.set_text("NAM");
+    wait_until(WAIT, || listed() == 1).expect("a search matches a name in any case");
+
+    imp.field_search.set_text("");
+    wait_until(WAIT, || listed() == 2).expect("the fields come back");
+    imp.edited_toggle.set_active(true);
+    drain_main_context();
+    assert_eq!(listed(), 0, "nothing is edited yet");
+
+    let delta = grid.tracker.apply(TrackerEdit::Cell {
+        row_key: key(1),
+        col: 1,
+        original: Value::Text("A".into()),
+        value: CellInput::Value(Value::Text("changed".into())),
+    });
+    grid.grid.apply_delta(&delta);
+    drain_main_context();
+    assert_eq!(listed(), 1, "the edited field joins the list");
+}
