@@ -5,13 +5,13 @@ use std::ptr::{self, NonNull};
 
 use libsqlite3_sys as ffi;
 
-pub(super) struct Database {
+pub(crate) struct Database {
     raw: NonNull<ffi::sqlite3>,
 }
 
 impl Database {
     // Read-only, so no journal file appears in another app's data directory.
-    pub(super) fn open_read_only(path: &Path) -> Option<Self> {
+    pub(crate) fn open_read_only(path: &Path) -> Option<Self> {
         let path = c_path(path)?;
         let mut raw = ptr::null_mut();
         let flags = ffi::SQLITE_OPEN_READONLY | ffi::SQLITE_OPEN_NOMUTEX;
@@ -24,7 +24,7 @@ impl Database {
         (code == ffi::SQLITE_OK).then_some(database)
     }
 
-    pub(super) fn prepare(&self, sql: &str) -> Option<Statement<'_>> {
+    pub(crate) fn prepare(&self, sql: &str) -> Option<Statement<'_>> {
         let sql = CString::new(sql).ok()?;
         let mut raw = ptr::null_mut();
         // SAFETY: the connection is open while `self` lives, `sql` is NUL-terminated, `raw` is a valid out pointer.
@@ -44,18 +44,18 @@ impl Drop for Database {
     }
 }
 
-pub(super) struct Statement<'db> {
+pub(crate) struct Statement<'db> {
     raw: NonNull<ffi::sqlite3_stmt>,
     _database: PhantomData<&'db Database>,
 }
 
 impl Statement<'_> {
-    pub(super) fn bind_int64(&mut self, index: c_int, value: i64) -> bool {
+    pub(crate) fn bind_int64(&mut self, index: c_int, value: i64) -> bool {
         // SAFETY: the statement is live until drop, and no row borrows it while it binds.
         unsafe { ffi::sqlite3_bind_int64(self.raw.as_ptr(), index, value) == ffi::SQLITE_OK }
     }
 
-    pub(super) fn bind_text(&mut self, index: c_int, value: &str) -> bool {
+    pub(crate) fn bind_text(&mut self, index: c_int, value: &str) -> bool {
         let Ok(length) = c_int::try_from(value.len()) else {
             return false;
         };
@@ -73,7 +73,7 @@ impl Statement<'_> {
     }
 
     // Columns are read through the row, so none is read once the statement is done.
-    pub(super) fn next_row(&mut self) -> Option<Row<'_>> {
+    pub(crate) fn next_row(&mut self) -> Option<Row<'_>> {
         // SAFETY: the statement is live until drop, and a row borrows it mutably, so no column is read mid-step.
         let code = unsafe { ffi::sqlite3_step(self.raw.as_ptr()) };
         (code == ffi::SQLITE_ROW).then_some(Row {
@@ -90,28 +90,28 @@ impl Drop for Statement<'_> {
     }
 }
 
-pub(super) struct Row<'stmt> {
+pub(crate) struct Row<'stmt> {
     statement: NonNull<ffi::sqlite3_stmt>,
     _statement: PhantomData<&'stmt ()>,
 }
 
 impl Row<'_> {
-    pub(super) fn is_null(&self, column: c_int) -> bool {
+    pub(crate) fn is_null(&self, column: c_int) -> bool {
         // SAFETY: the borrow keeps the statement on this row; SQLite answers NULL for a column out of range.
         unsafe { ffi::sqlite3_column_type(self.statement.as_ptr(), column) == ffi::SQLITE_NULL }
     }
 
-    pub(super) fn int64(&self, column: c_int) -> i64 {
+    pub(crate) fn int64(&self, column: c_int) -> i64 {
         // SAFETY: as in `is_null`.
         unsafe { ffi::sqlite3_column_int64(self.statement.as_ptr(), column) }
     }
 
-    pub(super) fn optional_int64(&self, column: c_int) -> Option<i64> {
+    pub(crate) fn optional_int64(&self, column: c_int) -> Option<i64> {
         (!self.is_null(column)).then(|| self.int64(column))
     }
 
     // Stops at the first NUL, as the macOS app reads it.
-    pub(super) fn text(&self, column: c_int) -> Option<String> {
+    pub(crate) fn text(&self, column: c_int) -> Option<String> {
         // SAFETY: as in `is_null`.
         let text = unsafe { ffi::sqlite3_column_text(self.statement.as_ptr(), column) };
         if text.is_null() {

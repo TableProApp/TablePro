@@ -1,10 +1,12 @@
 pub(crate) mod beekeeper;
 pub(crate) mod datagrip;
 pub(crate) mod dbeaver;
+pub(crate) mod dbx;
 pub(crate) mod jdbc;
 pub(crate) mod jetbrains;
 pub(crate) mod navicat;
 pub(crate) mod sequel_ace;
+pub(crate) mod sqlite;
 pub(crate) mod tableplus;
 
 // A key path the app saved as a bare file name lives in `~/.ssh`, as ssh reads it.

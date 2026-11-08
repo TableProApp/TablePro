@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use tokio_util::sync::CancellationToken;
 
-use super::sqlite::Database;
 use crate::app::check_cancel;
+use crate::apps::sqlite::Database;
 use crate::{ForeignImportError, ForeignSavedQuery, SavedQueryContent};
 
 // Every install seeds this example, so importing it would add noise to every library.
