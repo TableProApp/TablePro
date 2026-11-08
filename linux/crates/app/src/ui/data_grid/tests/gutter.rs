@@ -247,15 +247,7 @@ fn wide_rows(count: i64) -> Grid {
                 .collect()
         })
         .collect();
-    let grid = Grid::open(columns, rows);
-    let display = gtk::prelude::WidgetExt::display(&grid.window);
-    let surface = grid.window.surface().expect("shown grid surface");
-    let area = display.monitor_at_surface(&surface).expect("test monitor").geometry();
-    // XTEST clamps off-screen clicks; leave room for decorations at either display scale.
-    grid.window
-        .set_default_size(800.min(area.width() * 3 / 4), 500.min(area.height() * 3 / 4));
-    after_next_frame(&grid.window);
-    grid
+    Grid::open(columns, rows)
 }
 
 fn projection(grid: &Grid) -> gtk::Box {
@@ -343,6 +335,16 @@ fn gutter_image(grid: &Grid) -> gtk::gdk::Texture {
 }
 
 fn assert_pinned_pixels(grid: &Grid) {
+    struct Animations(gtk::Settings, bool);
+    impl Drop for Animations {
+        fn drop(&mut self) {
+            self.0.set_gtk_enable_animations(self.1);
+        }
+    }
+    let settings = gtk::prelude::WidgetExt::settings(&grid.window);
+    let _animations = Animations(settings.clone(), settings.is_gtk_enable_animations());
+    // Freeze theme transitions while comparing snapshots from different frames.
+    settings.set_gtk_enable_animations(false);
     let adjustment = scroll(grid).hadjustment();
     let value = adjustment.value();
     adjustment.set_value(0.0);

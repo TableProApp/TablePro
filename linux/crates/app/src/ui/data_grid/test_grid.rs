@@ -209,6 +209,8 @@ impl Grid {
         let log = requests.clone();
         grid.connect_request(move |_, request| log.borrow_mut().push(request));
         let window = gtk::Window::new();
+        // Without a window manager, RTL TopStart gravity grows the surface off the screen.
+        window.set_gravity(gtk::WindowGravity::TopLeft);
         window.set_default_size(800, 500);
         window.set_child(Some(&grid));
         window.present();
