@@ -52,6 +52,7 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
+use sourceview5::prelude::*;
 use tablepro_core::browse::RowReference;
 use tablepro_core::dialect::{SqlDialect, TablePaging};
 use tablepro_core::meta::{RowIdentity, TableRef};
@@ -420,12 +421,23 @@ impl BrowseTab {
 
     fn follow_view_toggle(&self) {
         let imp = self.imp();
-        let structure = imp.view_toggle.active_name().as_deref() == Some("structure");
+        let active = imp.view_toggle.active_name();
+        let structure = active.as_deref() == Some("structure");
+        let json = active.as_deref() == Some("json");
         if structure && libadwaita::prelude::BinExt::child(&*imp.structure_host).is_none() {
             self.emit_by_name::<()>("structure-requested", &[]);
         }
-        imp.view_stack
-            .set_visible_child_name(if structure { "structure" } else { "data" });
+        if json {
+            self.show_json();
+        }
+        imp.view_stack.set_visible_child_name(match (structure, json) {
+            (true, _) => "structure",
+            (_, true) => "json",
+            _ => "data",
+        });
+        // Rows are read in the JSON, not edited in it.
+        imp.insert_button.set_visible(!json);
+        imp.delete_button.set_visible(!json);
         // Each says something about the rows, and is hidden rather than
         // unrevealed because the data view decides whether it is revealed.
         imp.stale_banner.set_visible(!structure);
@@ -435,6 +447,58 @@ impl BrowseTab {
         imp.data_end.set_visible(!structure);
         imp.structure_start.set_visible(structure);
         imp.structure_end.set_visible(structure);
+    }
+
+    /// The JSON view: the rows on screen as an array of objects, read only,
+    /// as the macOS bar's JSON view shows the result.
+    fn show_json(&self) {
+        let imp = self.imp();
+        let Some(grid) = imp.grid.get().cloned() else {
+            return;
+        };
+        if imp.json_view.borrow().is_none() {
+            let buffer = sourceview5::Buffer::new(None);
+            buffer.set_language(sourceview5::LanguageManager::default().language("json").as_ref());
+            let view = sourceview5::View::with_buffer(&buffer);
+            view.set_editable(false);
+            view.set_cursor_visible(false);
+            view.set_monospace(true);
+            view.set_show_line_numbers(true);
+            view.set_top_margin(8);
+            view.set_bottom_margin(8);
+            view.set_left_margin(8);
+            view.update_property(&[gtk::accessible::Property::Label(&crate::i18n::gettext("Rows as JSON"))]);
+            if let Some(config) = grid.config() {
+                crate::ui::style_scheme_resolver::apply(&view, &config.settings.style_scheme());
+            }
+            let scrolled = gtk::ScrolledWindow::builder().child(&view).build();
+            libadwaita::prelude::BinExt::set_child(&*imp.json_host, Some(&scrolled));
+            imp.json_view.replace(Some(view));
+        }
+        if !imp.json_watching.replace(true) {
+            // A page, a sort or a filter lands as one change of the rows.
+            let tab = self.downgrade();
+            grid.selection().connect_items_changed(move |_, _, _, _| {
+                let Some(tab) = tab.upgrade() else {
+                    return;
+                };
+                let imp = tab.imp();
+                if imp.view_toggle.active_name().as_deref() != Some("json") || imp.json_refresh_queued.replace(true) {
+                    return;
+                }
+                glib::idle_add_local_once(move || {
+                    tab.imp().json_refresh_queued.set(false);
+                    tab.show_json();
+                });
+            });
+        }
+        let text = match crate::ui::data_grid::rows_as_json(&grid, JSON_ROWS) {
+            Ok((text, _)) => text,
+            Err(_) => crate::i18n::gettext("A value in these rows could not be read, so they have no JSON to show."),
+        };
+        if let Some(view) = imp.json_view.borrow().as_ref() {
+            view.buffer().set_text(&text);
+        }
     }
 
     /// F5 asked the window to read the tab again.
@@ -504,6 +568,10 @@ struct PageView {
     offset: u64,
     limit: u64,
 }
+
+/// The rows the JSON view holds, which keeps a large page from stalling
+/// the view that lays out every character.
+const JSON_ROWS: usize = 1_000;
 
 pub(crate) struct BrowseModel {
     this: glib::WeakRef<BrowseTab>,

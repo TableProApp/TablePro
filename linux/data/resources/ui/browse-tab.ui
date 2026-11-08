@@ -112,6 +112,14 @@
                 </property>
               </object>
             </child>
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">json</property>
+                <property name="child">
+                  <object class="AdwBin" id="json_host"/>
+                </property>
+              </object>
+            </child>
           </object>
         </property>
         <child type="bottom">
@@ -130,6 +138,12 @@
                   <object class="AdwToggle">
                     <property name="name">structure</property>
                     <property name="label" translatable="yes">Structure</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwToggle">
+                    <property name="name">json</property>
+                    <property name="label" translatable="yes">JSON</property>
                   </object>
                 </child>
               </object>

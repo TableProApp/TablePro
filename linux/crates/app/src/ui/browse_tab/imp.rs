@@ -32,6 +32,13 @@ pub struct BrowseTab {
     #[template_child]
     pub structure_host: TemplateChild<adw::Bin>,
     #[template_child]
+    pub json_host: TemplateChild<adw::Bin>,
+    /// The JSON view, made the first time it is switched to.
+    pub json_view: RefCell<Option<sourceview5::View>>,
+    /// The tab reads the grid's rows again for the JSON view when they change.
+    pub json_watching: Cell<bool>,
+    pub json_refresh_queued: Cell<bool>,
+    #[template_child]
     pub view_toggle: TemplateChild<adw::ToggleGroup>,
     #[template_child]
     pub structure_start: TemplateChild<gtk::Box>,

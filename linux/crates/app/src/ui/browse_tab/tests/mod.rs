@@ -1584,3 +1584,32 @@ fn the_bottom_bar_switches_between_data_and_structure() {
     assert!(imp.data_start.is_visible());
     assert!(!imp.structure_end.is_visible());
 }
+
+/// The JSON view shows the rows on screen as an array of objects, and
+/// follows them when a page lands.
+#[gtk4::test]
+fn the_bottom_bar_shows_the_rows_as_json() {
+    use gtk4::prelude::*;
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown() == text(&["Ada", "Grace"])).expect("the page");
+    let tab = harness.tab().clone();
+    tab.offer_structure();
+    let imp = tab.imp();
+
+    imp.view_toggle.set_active_name(Some("json"));
+
+    assert_eq!(imp.view_stack.visible_child_name().as_deref(), Some("json"));
+    assert!(!imp.insert_button.is_visible(), "rows are read here, not added");
+    let view = imp.json_view.borrow().clone().expect("the JSON view");
+    let buffer = view.buffer();
+    let json = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
+    assert!(json.contains("\"Ada\"") && json.contains("\"Grace\""), "{json}");
+    assert!(!view.is_editable());
+
+    imp.view_toggle.set_active_name(Some("data"));
+    assert!(imp.insert_button.is_visible());
+}

@@ -206,6 +206,18 @@ fn shown_rows(grid: &DataGrid, rows: &[GridRow]) -> (Arc<[ResultColumn]>, Vec<Ro
     (shown.columns, rows)
 }
 
+/// The first `limit` rows as one JSON array of objects, under the columns
+/// on screen, and how many rows it holds.
+pub(crate) fn rows_as_json(
+    grid: &DataGrid,
+    limit: usize,
+) -> Result<(String, usize), tablepro_core::export::EncodeError> {
+    let rows: Vec<GridRow> = grid.store().rows().take(limit).collect();
+    let (columns, snapshots) = shown_rows(grid, &rows);
+    let values: Vec<Vec<Value>> = snapshots.iter().map(RowSnapshot::to_values).collect();
+    Ok((tablepro_core::export::render_json(&columns, &values)?, rows.len()))
+}
+
 fn copy_one_row(grid: &DataGrid) {
     let Some(target) = grid.target().filter(|target| !target.rows.is_empty()) else {
         return;
