@@ -1471,14 +1471,14 @@ fn a_field_marks_its_primary_key_and_a_pending_edit() {
     assert!(marks(&pane, 1, edit_mark));
     assert!(!marks(&pane, 0, edit_mark));
     assert_eq!(
-        drawn_field(&pane, 1).accessible_description().as_deref(),
-        Some("changed, Modified")
+        drawn_field(&pane, 1).accessible_description().as_str(),
+        "changed, Modified"
     );
 
     grid.grid.undo();
     drain_main_context();
     assert!(!marks(&pane, 1, edit_mark), "the pencil outlived the undo");
-    assert_eq!(drawn_field(&pane, 1).accessible_description().as_deref(), Some("A"));
+    assert_eq!(drawn_field(&pane, 1).accessible_description().as_str(), "A");
 }
 
 #[gtk4::test]
@@ -1488,10 +1488,10 @@ fn a_field_names_its_type_and_its_key_to_a_screen_reader() {
     drain_main_context();
 
     assert_eq!(
-        drawn_field(&pane, 0).accessible_label().as_deref(),
-        Some("id, integer, primary key")
+        drawn_field(&pane, 0).accessible_label().as_str(),
+        "id, integer, primary key"
     );
-    assert_eq!(drawn_field(&pane, 1).accessible_label().as_deref(), Some("name, text"));
+    assert_eq!(drawn_field(&pane, 1).accessible_label().as_str(), "name, text");
     let result_column = GridColumn {
         catalog: None,
         ..column_of(named("id", "integer", true))
