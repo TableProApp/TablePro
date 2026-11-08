@@ -161,8 +161,13 @@ impl WorkspaceModel {
                 return;
             };
             let message = match store.save(new_query).await {
-                Ok(outcome) if outcome.replaced => crate::i18n::gettext_f("Replaced “{name}”.", &[("name", &name)]),
-                Ok(_) => crate::i18n::gettext_f("Saved “{name}”.", &[("name", &name)]),
+                Ok(outcome) => {
+                    input.deliver(WorkspaceInput::SavedQueriesChanged);
+                    match outcome.replaced {
+                        true => crate::i18n::gettext_f("Replaced “{name}”.", &[("name", &name)]),
+                        false => crate::i18n::gettext_f("Saved “{name}”.", &[("name", &name)]),
+                    }
+                }
                 Err(error) => {
                     tracing::warn!(%error, "could not save the query");
                     crate::i18n::gettext("Could not save that query.")
@@ -222,6 +227,28 @@ mod tests {
             saved.iter().any(|query| query.name == "Orders"),
             "the hold ended before the save"
         );
+    }
+
+    /// The Favorites scope lists the front connection's saved queries, and
+    /// reads them again when one is saved.
+    #[gtk4::test]
+    fn the_favorites_scope_lists_the_saved_queries_of_the_front_connection() {
+        use gtk4::prelude::*;
+        use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+        let test = TestWindow::connected("FavoritesScope");
+        let history = test.services.history();
+        let availability = history.availability();
+        wait_until(WAIT, || availability.borrow().is_ready()).expect("the query database to open");
+        let shell = test.window.shell().expect("the shell");
+        let favorites = shell.imp().favorites.get().cloned().expect("the favorites pane");
+
+        shell.imp().scope_toggle.set_active_name(Some("favorites"));
+        assert!(favorites.names().is_empty(), "nothing is saved yet");
+
+        test.workspace()
+            .with_model(|model| model.on_save_query_named("Orders".to_owned(), "SELECT 1".to_owned()));
+        wait_until(WAIT, || favorites.names() == ["Orders"]).expect("the saved query to be listed");
     }
 
     #[gtk4::test]

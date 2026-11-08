@@ -546,6 +546,8 @@ pub(crate) enum WorkspaceInput {
     ShowHistory,
     ShowSavedQueries,
     ActiveTab(workspace_tabs::ActiveTabCommand),
+    /// A query was saved or replaced: the sidebar's favorites read again.
+    SavedQueriesChanged,
     SaveQueryNamed {
         name: String,
         query: String,
@@ -1406,6 +1408,11 @@ impl WorkspaceModel {
             WorkspaceInput::ImportCsvRun(import) => self.on_import_csv_run(*import),
             WorkspaceInput::ActiveTab(command) => self.on_active_tab_command(command),
             WorkspaceInput::SaveQueryNamed { name, query } => self.on_save_query_named(name, query),
+            WorkspaceInput::SavedQueriesChanged => {
+                if let Some(shell) = self.shell.upgrade() {
+                    shell.reload_favorites();
+                }
+            }
             WorkspaceInput::OpenHistoryQuery(text) => self.open_editor_tab(Some(text)),
             WorkspaceInput::ReplaceActiveTabQuery(text) => self.on_replace_active_tab_query(text),
             WorkspaceInput::RefreshPage => self.on_refresh_active_tab(),

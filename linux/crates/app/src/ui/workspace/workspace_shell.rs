@@ -11,6 +11,7 @@ use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::BinExt;
 use tablepro_core::DataModel;
+use tablepro_session::SessionKey;
 use uuid::Uuid;
 
 use super::health_banner::REVIEW_HOST_KEY;
@@ -27,6 +28,10 @@ use crate::ui::shell::{PRIMARY_MENU, TAB_OVERVIEW_MENU, app_menu, primary_menu_b
 /// The window action that shows and hides the sidebar, as GNOME Files
 /// names it.
 pub(super) const SHOW_SIDEBAR: &str = "show-sidebar";
+
+/// The sidebar's two lists, which its scope switch names.
+const TABLES: &str = "tables";
+const FAVORITES: &str = "favorites";
 
 /// The window action that shows and hides the assistant's column.
 pub(super) const SHOW_ASSISTANT: &str = "show-assistant";
@@ -86,7 +91,23 @@ impl WorkspaceShell {
         let imp = shell.imp();
         imp.window.set(Some(window));
         let tree = ConnectionTree::new(services.saved_connections.clone());
-        imp.sidebar_slot.set_child(Some(&tree.widget()));
+        let sidebar = gtk::Stack::new();
+        sidebar.add_named(&tree.widget(), Some(TABLES));
+        let favorites = super::sidebar::FavoritesPane::new(glib::clone!(
+            #[weak]
+            shell,
+            move |sql| shell.open_favorite(sql)
+        ));
+        sidebar.add_named(&favorites.widget(), Some(FAVORITES));
+        imp.sidebar_slot.set_child(Some(&sidebar));
+        let _ = imp.sidebar_stack.set(sidebar);
+        let _ = imp.favorites.set(favorites);
+        let _ = imp.favorites_source.set((services.history(), services.tasks.clone()));
+        imp.scope_toggle.connect_active_name_notify(glib::clone!(
+            #[weak]
+            shell,
+            move |_| shell.on_scope_changed()
+        ));
         tree.follow_search(&imp.table_search);
         let _ = imp.tree.set(tree);
         crate::ui::picker::install_picker_actions(&shell, services.saved_connections.clone(), sender.clone());
@@ -534,6 +555,57 @@ impl WorkspaceShell {
 
     /// Show the front's banners and assistant, and name what follows its
     /// data model after it. The expressions of `bind_front` do the rest.
+    /// The sidebar shows its tables or its favorites.
+    fn on_scope_changed(&self) {
+        let imp = self.imp();
+        let favorites = imp.scope_toggle.active_name().as_deref() == Some(FAVORITES);
+        if let Some(stack) = imp.sidebar_stack.get() {
+            stack.set_visible_child_name(if favorites { FAVORITES } else { TABLES });
+        }
+        // The search reads connections and tables, which this scope does not list.
+        imp.table_search_toggle.set_visible(!favorites);
+        self.reload_favorites();
+    }
+
+    /// Read the front session's favorites again, while they are shown.
+    pub(crate) fn reload_favorites(&self) {
+        let imp = self.imp();
+        if imp.scope_toggle.active_name().as_deref() != Some(FAVORITES) {
+            return;
+        }
+        let (Some(pane), Some((history, tasks))) = (imp.favorites.get().cloned(), imp.favorites_source.get()) else {
+            return;
+        };
+        let connection = self.front().and_then(|front| front.key()).and_then(|key| match key {
+            SessionKey::Saved(id) | SessionKey::SavedIn { id, .. } => Some(id),
+            SessionKey::File(_) => None,
+        });
+        let Some(connection) = connection else {
+            pane.show(Vec::new());
+            return;
+        };
+        let ready = history.ready_store();
+        crate::runtime::spawn_and_deliver(
+            tasks,
+            async move {
+                let store = ready.await?.saved_queries();
+                store.list(Some(connection)).await.ok()
+            },
+            move |listed| {
+                if let Ok(Some(favorites)) = listed {
+                    pane.show(favorites);
+                }
+            },
+        );
+    }
+
+    /// A favorite was picked: its SQL opens in a new query tab of the front session.
+    fn open_favorite(&self, sql: String) {
+        if let Some(sender) = self.front().and_then(|front| front.sender()) {
+            sender.deliver(super::WorkspaceInput::OpenHistoryQuery(sql));
+        }
+    }
+
     fn on_front_changed(&self) {
         let imp = self.imp();
         if let Some(front) = self.front() {
@@ -551,6 +623,7 @@ impl WorkspaceShell {
             }
         }
         self.describe_front();
+        self.reload_favorites();
         self.sync_assistant_column();
         self.follow_front_for_new_tabs();
         // A front with a tab selected says which row it shows itself.

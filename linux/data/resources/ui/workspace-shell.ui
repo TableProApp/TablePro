@@ -86,6 +86,30 @@
                           </object>
                         </child>
                         <child type="top">
+                          <!-- Which list the sidebar shows, over the list it
+                               switches, as the macOS sidebar has it. -->
+                          <object class="AdwToggleGroup" id="scope_toggle">
+                            <property name="active-name">tables</property>
+                            <property name="homogeneous">true</property>
+                            <property name="margin-start">12</property>
+                            <property name="margin-end">12</property>
+                            <property name="margin-top">6</property>
+                            <property name="margin-bottom">6</property>
+                            <child>
+                              <object class="AdwToggle">
+                                <property name="name">tables</property>
+                                <property name="label" translatable="yes">Tables</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="AdwToggle">
+                                <property name="name">favorites</property>
+                                <property name="label" translatable="yes">Favorites</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child type="top">
                           <!-- The banners about the list of the session in
                                front. -->
                           <object class="GtkStack" id="list_banners">
