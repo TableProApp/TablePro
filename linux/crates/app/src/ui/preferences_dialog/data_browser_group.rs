@@ -1,13 +1,10 @@
-use gio::prelude::{SettingsExt, SettingsExtManual};
+use gio::prelude::SettingsExtManual;
 use gtk4::glib;
+use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
-use libadwaita::prelude::ComboRowExt;
 use tablepro_linux_platform::AppSettings;
-use tablepro_linux_platform::settings::keys;
-
-/// The words the row height setting holds, in the combo's order.
-const ROW_HEIGHTS: [&str; 4] = ["compact", "normal", "comfortable", "spacious"];
+use tablepro_linux_platform::settings::{GridRowHeight, keys};
 
 mod imp {
     use libadwaita::prelude::*;
@@ -64,8 +61,6 @@ mod imp {
 }
 
 glib::wrapper! {
-    /// The General page's rows for the row paginator and the delete
-    /// confirmation.
     pub struct DataBrowserGroup(ObjectSubclass<imp::DataBrowserGroup>)
         @extends adw::PreferencesGroup, gtk4::Widget,
         @implements gtk4::Accessible, gtk4::Buildable, gtk4::ConstraintTarget;
@@ -96,21 +91,20 @@ impl DataBrowserGroup {
         gio_settings
             .bind(keys::NULL_DISPLAY, &imp.null_display_row.get(), "text")
             .build();
-        // The combo holds a position and the setting a word.
-        let row = imp.row_height_row.get();
-        let current = settings.grid_row_height();
-        row.set_selected(
-            ROW_HEIGHTS
-                .iter()
-                .position(|height| *height == current)
-                .map_or(1, |at| at as u32),
-        );
-        let stored = gio_settings.clone();
-        row.connect_selected_notify(move |row| {
-            if let Some(height) = ROW_HEIGHTS.get(row.selected() as usize) {
-                let _ = stored.set_string(keys::GRID_ROW_HEIGHT, height);
-            }
-        });
+        gio_settings
+            .bind(keys::GRID_ROW_HEIGHT, &imp.row_height_row.get(), "selected")
+            .mapping(|variant, _| {
+                let height = variant.str()?;
+                let index = GridRowHeight::ALL
+                    .iter()
+                    .position(|candidate| candidate.nick() == height)?;
+                Some((index as u32).to_value())
+            })
+            .set_mapping(|value, _| {
+                let index = value.get::<u32>().ok()?;
+                Some(GridRowHeight::ALL.get(index as usize)?.nick().to_variant())
+            })
+            .build();
     }
 }
 
@@ -172,5 +166,46 @@ mod tests {
             group.imp().confirm_row.subtitle().as_deref(),
             Some("Ask before deleting 10 or more rows at once")
         );
+    }
+
+    #[gtk4::test]
+    fn display_preferences_follow_changes_from_another_window() {
+        let settings = MemorySettings::new();
+        let first = bound_group(&settings);
+        let second = bound_group(&settings);
+
+        first.imp().row_height_row.set_selected(3);
+        first.imp().row_numbers_row.set_active(false);
+        first.imp().null_display_row.set_text("empty");
+
+        assert_eq!(settings.get().grid_row_height(), "spacious");
+        assert_eq!(second.imp().row_height_row.selected(), 3);
+        assert!(!second.imp().row_numbers_row.is_active());
+        assert_eq!(second.imp().null_display_row.text(), "empty");
+
+        settings.get().set_grid_row_height("compact").expect("store the height");
+        settings.get().set_show_row_numbers(true).expect("store the flag");
+        settings.get().set_null_display("missing").expect("store the text");
+
+        for group in [&first, &second] {
+            assert_eq!(group.imp().row_height_row.selected(), 0);
+            assert!(group.imp().row_numbers_row.is_active());
+            assert_eq!(group.imp().null_display_row.text(), "missing");
+        }
+        second.imp().row_height_row.set_selected(1);
+        assert_eq!(first.imp().row_height_row.selected(), 1);
+        assert_eq!(settings.get().grid_row_height(), "normal");
+    }
+
+    #[gtk4::test]
+    fn null_text_entry_limits_characters_without_cutting_unicode() {
+        let settings = MemorySettings::new();
+        let group = bound_group(&settings);
+        let text = "界".repeat(21);
+
+        group.imp().null_display_row.set_text(&text);
+
+        assert_eq!(group.imp().null_display_row.text(), "界".repeat(20));
+        assert_eq!(settings.get().null_display(), "界".repeat(20));
     }
 }

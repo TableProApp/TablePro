@@ -91,7 +91,6 @@ impl DataGrid {
         imp.detail_pane.attach(&grid);
         grid.set_columns(columns, sorting, rules);
         grid.watch_fonts();
-        grid.watch_stripes();
         grid.watch_display_settings();
         grid
     }

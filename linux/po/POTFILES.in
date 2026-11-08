@@ -490,6 +490,7 @@ crates/app/src/ui/preferences_dialog/data_browser_group.rs
 crates/app/src/ui/preferences_dialog/device_limit_dialog.rs
 crates/app/src/ui/preferences_dialog/editor_page.rs
 crates/app/src/ui/preferences_dialog/general_page.rs
+crates/app/src/ui/preferences_dialog/grid_page.rs
 crates/app/src/ui/preferences_dialog/history_group.rs
 crates/app/src/ui/preferences_dialog/imp.rs
 crates/app/src/ui/preferences_dialog/mcp_page.rs
@@ -766,6 +767,7 @@ data/resources/ui/preferences-data-browser-group.ui
 data/resources/ui/preferences-dialog.ui
 data/resources/ui/preferences-editor-page.ui
 data/resources/ui/preferences-general-page.ui
+data/resources/ui/preferences-grid-page.ui
 data/resources/ui/preferences-history-group.ui
 data/resources/ui/preferences-mcp-page.ui
 data/resources/ui/results-pane.ui

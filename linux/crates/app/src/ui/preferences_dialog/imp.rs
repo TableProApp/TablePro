@@ -12,6 +12,7 @@ use super::account_page::AccountPage;
 use super::ai_page::AiPage;
 use super::editor_page::EditorPage;
 use super::general_page::GeneralPage;
+use super::grid_page::GridPage;
 use super::mcp_page::McpPage;
 
 #[derive(Default, gtk4::CompositeTemplate)]
@@ -19,6 +20,8 @@ use super::mcp_page::McpPage;
 pub struct PreferencesDialog {
     #[template_child]
     pub general_page: TemplateChild<GeneralPage>,
+    #[template_child]
+    pub grid_page: TemplateChild<GridPage>,
     #[template_child]
     pub editor_page: TemplateChild<EditorPage>,
     #[template_child]
@@ -38,6 +41,7 @@ impl ObjectSubclass for PreferencesDialog {
 
     fn class_init(klass: &mut Self::Class) {
         GeneralPage::ensure_type();
+        GridPage::ensure_type();
         EditorPage::ensure_type();
         McpPage::ensure_type();
         AiPage::ensure_type();

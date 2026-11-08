@@ -11,12 +11,12 @@ use tablepro_core::Value;
 use super::grid_cell::{GridCell, TextAttributes};
 use super::server_sorter::ServerSorter;
 use super::{DataGrid, GridRow, GridSorting, TrackedValues, client_sorter, grid_menu, row_number_column};
-use crate::services::grid::display_text::editable_null_sentinel;
 use crate::services::grid::{
     CellDisplay, ColumnLayout, GridColumn, LayoutSlot, Placement, default_width_chars, header_text, merge_order,
     number_width_chars, sampled_texts, typical_texts, typical_width_chars,
 };
 use crate::ui::handler_guard::HandlerGuard;
+use tablepro_linux_platform::settings::GridPreferences;
 
 /// Rows sampled for a column's opening width.
 const WIDTH_SAMPLE: usize = 200;
@@ -49,6 +49,7 @@ pub struct ColumnPaint {
     pub column: GridColumn,
     pub tracked: TrackedValues,
     pub attributes: Rc<TextAttributes>,
+    pub preferences: GridPreferences,
     /// The column lines its values up on the last digit. An untyped column
     /// does once every value it holds is a number.
     pub numbers: Cell<bool>,
@@ -159,6 +160,10 @@ impl DataGrid {
                 column: column.clone(),
                 tracked: tracked.clone(),
                 attributes: attributes.clone(),
+                preferences: self
+                    .config()
+                    .map(|config| config.settings.grid_preferences().clone())
+                    .unwrap_or_default(),
                 numbers: Cell::new(column.display() == CellDisplay::Number),
             });
             built.view_columns.push(self.build_column(&paint, sorting));
@@ -303,7 +308,6 @@ impl DataGrid {
         let font = value_font(&context);
         let metrics = context.metrics(Some(&font), None);
         let char_px = pango::units_to_double(metrics.approximate_char_width());
-        let null = editable_null_sentinel();
         let mut widths = Vec::new();
         for (paint, view_column) in set.paints.iter().zip(&set.view_columns) {
             let index = paint.column.index;
@@ -348,9 +352,9 @@ impl DataGrid {
                 None => 0,
             };
             let header = header_width(&context, header_text(column)) + indicator;
-            // A NULL the user can replace draws as `<NULL>`, wider than the
-            // fewest cells a column takes.
-            let placeholder = match paint.tracked.tracks_changes() && values.iter().any(|value| value.is_null()) {
+            let preferences = paint.preferences.snapshot();
+            let null = super::grid_cell::null_text(&preferences.null_display, paint.tracked.tracks_changes());
+            let placeholder = match values.iter().any(|value| value.is_null()) {
                 true => drawn_width(&context, &font, &null),
                 false => 0,
             };
