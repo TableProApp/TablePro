@@ -202,7 +202,7 @@ impl GridCell {
         let Some(grid) = self.grid() else {
             return (0, width);
         };
-        let Some(gutter) = super::pinned_numbers::bounds(&grid) else {
+        let Some(edge) = super::pinned_numbers::covered_edge(&grid) else {
             return (0, width);
         };
         let Some(origin) = self.compute_point(&grid.column_view(), &gtk::graphene::Point::new(0.0, 0.0)) else {
@@ -211,9 +211,9 @@ impl GridCell {
         // GTK picks descendants before their parent's contains method. Allocate
         // the editor in the uncovered part so its native gestures cannot reach the gutter.
         match grid.column_view().direction() {
-            gtk::TextDirection::Rtl => (0, ((gutter.x() - origin.x()).floor() as i32).clamp(0, width)),
+            gtk::TextDirection::Rtl => (0, ((edge - origin.x()).floor() as i32).clamp(0, width)),
             _ => {
-                let offset = ((gutter.x() + gutter.width() - origin.x()).ceil() as i32).clamp(0, width);
+                let offset = ((edge - origin.x()).ceil() as i32).clamp(0, width);
                 (offset, width - offset)
             }
         }
@@ -353,8 +353,13 @@ impl GridCell {
         if let Some(display) = self.display() {
             display.set_visible(false);
         }
-        editor.as_ref().set_parent(self);
-        self.imp().editor.replace(Some(editor.as_ref().clone()));
+        // A viewport clips a fully covered editor without allocating GtkText
+        // below its minimum size or changing its text and cursor state.
+        let viewport = gtk::Viewport::new(None::<&gtk::Adjustment>, None::<&gtk::Adjustment>);
+        viewport.set_child(Some(editor));
+        viewport.set_scroll_to_focus(true);
+        viewport.set_parent(self);
+        self.imp().editor.replace(Some(viewport.upcast()));
         if let Some(row) = self.bound_row() {
             row.align_height(self);
         }

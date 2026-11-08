@@ -148,6 +148,20 @@ pub(super) fn bounds(grid: &DataGrid) -> Option<gtk::graphene::Rect> {
         .flatten()
 }
 
+pub(super) fn covered_edge(grid: &DataGrid) -> Option<f32> {
+    if !grid.imp().gutter_view.is_visible() {
+        return None;
+    }
+    let width = grid.row_numbers_column()?.fixed_width() as f32;
+    let view = grid.column_view();
+    // The main view is allocated before its overlay, whose bounds are still
+    // from the previous frame. Its fixed width and the current view are known.
+    Some(match view.direction() {
+        gtk::TextDirection::Rtl => view.width() as f32 - width,
+        _ => width,
+    })
+}
+
 pub(super) fn covers(grid: &DataGrid, x: f64) -> bool {
     bounds(grid).is_some_and(|rect| x >= f64::from(rect.x()) && x < f64::from(rect.x() + rect.width()))
 }

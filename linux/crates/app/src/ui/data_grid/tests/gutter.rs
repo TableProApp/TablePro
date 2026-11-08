@@ -302,11 +302,13 @@ fn sideways(grid: &Grid) {
 #[gtk4::test]
 fn the_row_numbers_stay_in_view_when_the_columns_scroll_sideways() {
     let grid = wide_rows(1000);
+    scroll(&grid).set_overlay_scrolling(false);
     assert!(!projection(&grid).is_visible());
     sideways(&grid);
     assert!(projection(&grid).is_visible());
     assert!(!projection(&grid).can_target());
     assert!(!projection(&grid).can_focus());
+    assert_eq!(projection(&grid).height(), grid.grid.column_view().height());
     assert_eq!(projection(&grid).vadjustment(), grid.grid.column_view().vadjustment());
     assert_eq!(projection(&grid).model(), grid.grid.column_view().model());
     for fraction in [0.0, 0.5, 1.0] {
@@ -593,6 +595,23 @@ fn rtl_gutter_menus_and_focus_follow_its_actual_edge() {
         .expect("header menu");
     wait_until(WAIT, || menus.row_numbers.is_visible()).expect("header menu opened");
     menus.row_numbers.popdown();
+    grid.focus(0, 1);
+    assert!(grid.grid.edit().edit_cell(&grid.cell_of(1, 1)));
+    sideways(&grid);
+    grid.window.set_default_size(740, 430);
+    after_next_frame(&grid.window);
+    let number = pinned_number(&grid, "1");
+    let point = number
+        .compute_point(&view, &gtk::graphene::Point::new(4.0, 4.0))
+        .expect("point");
+    let picked = view
+        .pick(f64::from(point.x()), f64::from(point.y()), gtk::PickFlags::DEFAULT)
+        .expect("target");
+    assert!(
+        !picked.is::<gtk::Text>(),
+        "RTL resize exposed the editor under the gutter"
+    );
+    grid.grid.edit().cancel_open_edit();
     grid.focus(0, 10);
     after_next_frame(&grid.window);
     for column in (0..10).rev() {
