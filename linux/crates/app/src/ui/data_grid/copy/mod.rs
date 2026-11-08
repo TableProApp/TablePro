@@ -173,7 +173,24 @@ fn copy(grid: &DataGrid) {
     let column = target.cell.as_ref().map(|(_, column)| *column);
     match (copy_scope(target.rows.len(), column), &target.cell) {
         (CopyScope::Value(column), Some((row, _))) => copy_value(grid, row, column),
-        _ => copy_rows(grid, &target.rows, CopyKind::Rows),
+        _ => copy_rows(grid, &target.rows, preferred_format(grid)),
+    }
+}
+
+/// What Copy writes for rows: the format Preferences name, TSV when the
+/// word is none this build knows.
+fn preferred_format(grid: &DataGrid) -> CopyKind {
+    let word = grid
+        .config()
+        .map(|config| config.settings.row_copy_format())
+        .unwrap_or_default();
+    match word.as_str() {
+        "rows-headers" => CopyKind::RowsWithHeaders,
+        "json" => CopyKind::Json,
+        "csv" => CopyKind::Csv,
+        "csv-headers" => CopyKind::CsvWithHeaders,
+        "markdown" => CopyKind::Markdown,
+        _ => CopyKind::Rows,
     }
 }
 

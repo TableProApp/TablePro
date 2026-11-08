@@ -105,6 +105,15 @@ impl AppSettings {
         self.set_string(keys::GRID_ROW_HEIGHT, height)
     }
 
+    /// The format Copy writes for several rows, as a word the schema lists.
+    pub fn row_copy_format(&self) -> String {
+        self.settings.string(keys::ROW_COPY_FORMAT).into()
+    }
+
+    pub fn set_row_copy_format(&self, format: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::ROW_COPY_FORMAT, format)
+    }
+
     /// What a cell shows for NULL.
     pub fn null_display(&self) -> String {
         self.settings.string(keys::NULL_DISPLAY).into()

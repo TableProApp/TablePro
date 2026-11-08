@@ -89,6 +89,20 @@
       <description>How much room a data grid row takes around its text.</description>
     </key>
 
+    <key name="row-copy-format" type="s">
+      <choices>
+        <choice value="rows"/>
+        <choice value="rows-headers"/>
+        <choice value="json"/>
+        <choice value="csv"/>
+        <choice value="csv-headers"/>
+        <choice value="markdown"/>
+      </choices>
+      <default>"rows"</default>
+      <summary>Format of copied rows</summary>
+      <description>The format Copy writes when several rows are selected.</description>
+    </key>
+
     <key name="null-display" type="s">
       <default>"NULL"</default>
       <summary>Text for a NULL value</summary>

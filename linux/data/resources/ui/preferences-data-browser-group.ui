@@ -44,6 +44,24 @@
       </object>
     </child>
     <child>
+      <object class="AdwComboRow" id="row_copy_format_row">
+        <property name="title" translatable="yes">Copy Rows As</property>
+        <property name="subtitle" translatable="yes">The format Copy writes when several rows are selected</property>
+        <property name="model">
+          <object class="GtkStringList">
+            <items>
+              <item translatable="yes">TSV</item>
+              <item translatable="yes">TSV with Headers</item>
+              <item translatable="yes">JSON</item>
+              <item translatable="yes">CSV</item>
+              <item translatable="yes">CSV with Headers</item>
+              <item translatable="yes">Markdown</item>
+            </items>
+          </object>
+        </property>
+      </object>
+    </child>
+    <child>
       <object class="AdwEntryRow" id="null_display_row">
         <property name="title" translatable="yes">Text for NULL</property>
       </object>

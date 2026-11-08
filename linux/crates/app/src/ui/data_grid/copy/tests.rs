@@ -728,3 +728,20 @@ fn the_text_copies_take_the_columns_on_screen() {
     assert_eq!(lines, "{\"id\":1,\"name\":\"Ada\"}\n{\"id\":2,\"name\":\"Grace\"}\n");
     assert_eq!(one_row, "1, 'Ada', 2, 'Grace'");
 }
+
+#[gtk4::test]
+fn copy_writes_several_rows_in_the_preferred_format() {
+    let grid = Grid::open(people(), people_rows());
+    grid.focus(0, 1);
+    select_all(&grid);
+    grid.grid
+        .config()
+        .expect("a configured grid")
+        .settings
+        .set_row_copy_format("markdown")
+        .expect("store the format");
+
+    let text = copied(&grid, || activate(&grid.grid, "copy"));
+
+    assert!(text.starts_with('|') && text.contains("---"), "{text}");
+}

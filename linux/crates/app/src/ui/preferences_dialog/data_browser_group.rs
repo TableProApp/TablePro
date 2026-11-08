@@ -11,6 +11,9 @@ use tablepro_linux_platform::settings::keys;
 /// The words the row height setting holds, in the combo's order.
 const ROW_HEIGHTS: [&str; 4] = ["compact", "normal", "comfortable", "spacious"];
 
+/// The words the copy format setting holds, in the combo's order.
+const ROW_COPY_FORMATS: [&str; 6] = ["rows", "rows-headers", "json", "csv", "csv-headers", "markdown"];
+
 mod imp {
     use libadwaita::prelude::*;
     use libadwaita::subclass::prelude::*;
@@ -34,6 +37,8 @@ mod imp {
         pub grid_font_button: TemplateChild<gtk4::FontDialogButton>,
         #[template_child]
         pub row_numbers_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub row_copy_format_row: TemplateChild<adw::ComboRow>,
         #[template_child]
         pub row_height_row: TemplateChild<adw::ComboRow>,
         #[template_child]
@@ -123,22 +128,45 @@ impl DataBrowserGroup {
                 Some(description.to_str().to_variant())
             })
             .build();
-        // The combo holds a position and the setting a word.
-        let row = imp.row_height_row.get();
-        let current = settings.grid_row_height();
-        row.set_selected(
-            ROW_HEIGHTS
-                .iter()
-                .position(|height| *height == current)
-                .map_or(1, |at| at as u32),
+        bind_choice(
+            &imp.row_height_row.get(),
+            gio_settings,
+            keys::GRID_ROW_HEIGHT,
+            &ROW_HEIGHTS,
+            1,
         );
-        let stored = gio_settings.clone();
-        row.connect_selected_notify(move |row| {
-            if let Some(height) = ROW_HEIGHTS.get(row.selected() as usize) {
-                let _ = stored.set_string(keys::GRID_ROW_HEIGHT, height);
-            }
-        });
+        bind_choice(
+            &imp.row_copy_format_row.get(),
+            gio_settings,
+            keys::ROW_COPY_FORMAT,
+            &ROW_COPY_FORMATS,
+            0,
+        );
     }
+}
+
+/// A combo holds a position and the setting a word, so each change of
+/// one is written to the other.
+fn bind_choice(
+    row: &adw::ComboRow,
+    settings: &gio::Settings,
+    key: &'static str,
+    words: &'static [&'static str],
+    fallback: u32,
+) {
+    let current = settings.string(key);
+    row.set_selected(
+        words
+            .iter()
+            .position(|word| *word == current)
+            .map_or(fallback, |at| at as u32),
+    );
+    let stored = settings.clone();
+    row.connect_selected_notify(move |row| {
+        if let Some(word) = words.get(row.selected() as usize) {
+            let _ = stored.set_string(key, word);
+        }
+    });
 }
 
 #[cfg(test)]
