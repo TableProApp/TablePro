@@ -11,6 +11,9 @@ use tablepro_linux_platform::settings::keys;
 /// The words the row height setting holds, in the combo's order.
 const ROW_HEIGHTS: [&str; 4] = ["compact", "normal", "comfortable", "spacious"];
 
+/// The words the default sort setting holds, in the combo's order.
+const DEFAULT_SORTS: [&str; 3] = ["none", "primary-key", "first-column"];
+
 /// The words the copy format setting holds, in the combo's order.
 const ROW_COPY_FORMATS: [&str; 6] = ["rows", "rows-headers", "json", "csv", "csv-headers", "markdown"];
 
@@ -39,6 +42,10 @@ mod imp {
         pub row_numbers_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
         pub auto_inspector_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub default_sort_row: TemplateChild<adw::ComboRow>,
+        #[template_child]
+        pub default_sort_direction_row: TemplateChild<adw::ComboRow>,
         #[template_child]
         pub row_copy_format_row: TemplateChild<adw::ComboRow>,
         #[template_child]
@@ -139,6 +146,20 @@ impl DataBrowserGroup {
             keys::GRID_ROW_HEIGHT,
             &ROW_HEIGHTS,
             1,
+        );
+        bind_choice(
+            &imp.default_sort_row.get(),
+            gio_settings,
+            keys::DEFAULT_SORT,
+            &DEFAULT_SORTS,
+            0,
+        );
+        bind_choice(
+            &imp.default_sort_direction_row.get(),
+            gio_settings,
+            keys::DEFAULT_SORT_DIRECTION,
+            &["ascending", "descending"],
+            0,
         );
         bind_choice(
             &imp.row_copy_format_row.get(),

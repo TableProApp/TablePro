@@ -113,6 +113,25 @@ impl AppSettings {
         self.set_boolean(keys::AUTO_SHOW_INSPECTOR, show)
     }
 
+    /// Which column a table opens sorted by: `none`, `primary-key` or
+    /// `first-column`.
+    pub fn default_sort(&self) -> String {
+        self.settings.string(keys::DEFAULT_SORT).into()
+    }
+
+    pub fn set_default_sort(&self, behavior: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::DEFAULT_SORT, behavior)
+    }
+
+    /// `ascending` or `descending`.
+    pub fn default_sort_direction(&self) -> String {
+        self.settings.string(keys::DEFAULT_SORT_DIRECTION).into()
+    }
+
+    pub fn set_default_sort_direction(&self, direction: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::DEFAULT_SORT_DIRECTION, direction)
+    }
+
     /// The format Copy writes for several rows, as a word the schema lists.
     pub fn row_copy_format(&self) -> String {
         self.settings.string(keys::ROW_COPY_FORMAT).into()

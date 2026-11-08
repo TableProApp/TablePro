@@ -193,6 +193,7 @@ crates/app/src/ui/browse_tab/count_failure_text.rs
 crates/app/src/ui/browse_tab/count_policy.rs
 crates/app/src/ui/browse_tab/data_handlers.rs
 crates/app/src/ui/browse_tab/data_input.rs
+crates/app/src/ui/browse_tab/default_sort.rs
 crates/app/src/ui/browse_tab/fetch.rs
 crates/app/src/ui/browse_tab/grid_handlers.rs
 crates/app/src/ui/browse_tab/grid_input.rs

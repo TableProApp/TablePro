@@ -22,6 +22,7 @@ mod count_failure_text;
 mod count_policy;
 mod data_handlers;
 mod data_input;
+mod default_sort;
 mod fetch;
 mod grid_handlers;
 mod grid_input;
@@ -148,6 +149,15 @@ impl BrowseTab {
         // A sort saved with the tab cannot reach an engine that reads
         // in its own order.
         let initial_sort = init.initial_sort.filter(|_| sorts_rows(dialect.as_deref()));
+        // A tab with a sort of its own, or reopened past its first page,
+        // keeps what it had; a new one takes the sort Preferences ask for.
+        let default_sort =
+            (initial_sort.is_none() && init.initial_offset == 0 && sorts_rows(dialect.as_deref())).then(|| {
+                (
+                    init.settings.default_sort(),
+                    init.settings.default_sort_direction() == "descending",
+                )
+            });
         let keys = KeysHandle::new(table.clone());
         let grid = layout::grid(
             &tab,
@@ -187,6 +197,7 @@ impl BrowseTab {
             pager: BrowsePager::new(init.page_size, init.initial_offset),
             deadlines: init.deadlines,
             current_sort: initial_sort,
+            default_sort,
             current_filter: initial_filter,
             current_columns: Vec::new(),
             page: None,
@@ -492,6 +503,9 @@ pub(crate) struct BrowseModel {
     pager: BrowsePager,
     deadlines: Arc<dyn DeadlinePolicy>,
     current_sort: Option<(usize, bool)>,
+    /// What Preferences asked for when the tab opened, until the columns
+    /// say which column that is.
+    default_sort: Option<(String, bool)>,
     /// The WHERE every page and count reads under, kept per connection,
     /// schema and table.
     current_filter: tablepro_core::FilterSet,

@@ -109,6 +109,27 @@
       <description>Whether selecting a row in a data grid opens its row details pane.</description>
     </key>
 
+    <key name="default-sort" type="s">
+      <choices>
+        <choice value="none"/>
+        <choice value="primary-key"/>
+        <choice value="first-column"/>
+      </choices>
+      <default>"none"</default>
+      <summary>Default sort of a table</summary>
+      <description>The column a table tab sorts by when it opens, until the user picks another.</description>
+    </key>
+
+    <key name="default-sort-direction" type="s">
+      <choices>
+        <choice value="ascending"/>
+        <choice value="descending"/>
+      </choices>
+      <default>"ascending"</default>
+      <summary>Direction of the default sort</summary>
+      <description>Which way a table tab sorts by its default column.</description>
+    </key>
+
     <key name="null-display" type="s">
       <default>"NULL"</default>
       <summary>Text for a NULL value</summary>

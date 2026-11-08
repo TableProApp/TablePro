@@ -150,6 +150,9 @@ impl BrowseModel {
     }
 
     pub(super) fn on_columns_loaded(&mut self, columns: Vec<ColumnInfo>, fx: &mut Effects) {
+        if let Some((behavior, descending)) = self.default_sort.take() {
+            self.current_sort = super::default_sort::resolve(&behavior, descending, &columns);
+        }
         if self.current_columns != columns {
             self.page = None;
             self.shown_view = None;

@@ -50,6 +50,34 @@
       </object>
     </child>
     <child>
+      <object class="AdwComboRow" id="default_sort_row">
+        <property name="title" translatable="yes">Default Sort</property>
+        <property name="subtitle" translatable="yes">How a table is ordered when it opens</property>
+        <property name="model">
+          <object class="GtkStringList">
+            <items>
+              <item translatable="yes">No sorting (server order)</item>
+              <item translatable="yes">Primary key</item>
+              <item translatable="yes">First column</item>
+            </items>
+          </object>
+        </property>
+      </object>
+    </child>
+    <child>
+      <object class="AdwComboRow" id="default_sort_direction_row">
+        <property name="title" translatable="yes">Default Sort Direction</property>
+        <property name="model">
+          <object class="GtkStringList">
+            <items>
+              <item translatable="yes">Ascending</item>
+              <item translatable="yes">Descending</item>
+            </items>
+          </object>
+        </property>
+      </object>
+    </child>
+    <child>
       <object class="AdwComboRow" id="row_copy_format_row">
         <property name="title" translatable="yes">Copy Rows As</property>
         <property name="subtitle" translatable="yes">The format Copy writes when several rows are selected</property>

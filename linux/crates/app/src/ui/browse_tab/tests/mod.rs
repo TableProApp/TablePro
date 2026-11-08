@@ -1536,3 +1536,25 @@ fn a_dotted_field_of_a_document_neither_sorts_nor_takes_an_edit() {
     assert!(!grid.edit().edit_cell(&cell), "the dotted field opened for editing");
     assert_eq!(harness.tracker.pending_count(), 0);
 }
+
+/// A table opens sorted by its primary key when Preferences ask, the way
+/// they ask, and shows it on the header.
+#[gtk4::test]
+fn a_new_tab_opens_sorted_by_the_default_sort() {
+    let mut script = serving_table();
+    script.count_rows.always(FakeReply::ok(1_000));
+    script.query_bound.always(FakeReply::ok(full_page(0)));
+    let mut harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
+    assert_eq!(harness.tab().current_sort(), None, "no default sort until asked");
+
+    let settings = harness.stores.settings.get().clone();
+    settings.set_default_sort("primary-key").expect("store the sort");
+    settings
+        .set_default_sort_direction("descending")
+        .expect("store the direction");
+    let another = harness.open_another();
+    wait_until(WAIT, || another.current_sort().is_some()).expect("the default sort");
+
+    assert_eq!(another.current_sort(), Some((0, false)));
+}
