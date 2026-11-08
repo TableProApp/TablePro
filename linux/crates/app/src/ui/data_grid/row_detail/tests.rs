@@ -182,11 +182,8 @@ fn assert_value_scheme(pane: &RowDetailPane, id: &str) {
 #[gtk4::test]
 fn value_scheme_and_placeholders_keep_the_exact_pick_across_desktop_changes() {
     let (grid, pane) = opened(
-        two_text_columns(),
-        vec![
-            vec![Value::Int(1), Value::Null],
-            vec![Value::Int(2), Value::Text("value".into())],
-        ],
+        vec![named("id", "integer", true), named("quantity", "integer", false)],
+        vec![vec![Value::Int(1), Value::Null], vec![Value::Int(2), Value::Int(7)]],
     );
     let settings = &grid.grid.config().expect("grid settings").settings;
     let style = libadwaita::StyleManager::default();
@@ -200,13 +197,13 @@ fn value_scheme_and_placeholders_keep_the_exact_pick_across_desktop_changes() {
             assert_eq!(pane.imp().placeholder_label.text(), "NULL");
             assert_value_scheme(&pane, id);
             grid.focus(1, 1);
-            assert_eq!(pane.typed_text(), "value");
+            assert_eq!(pane.typed_text(), "7");
             assert!(!pane.imp().placeholder_label.is_visible());
             assert_value_scheme(&pane, id);
             type_value(&pane, "");
             assert!(pane.imp().placeholder_label.is_visible());
             assert_value_scheme(&pane, id);
-            type_value(&pane, "value");
+            type_value(&pane, "7");
         }
     }
     style.set_color_scheme(previous);

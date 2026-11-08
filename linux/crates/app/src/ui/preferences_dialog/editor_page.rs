@@ -37,7 +37,7 @@ mod imp {
         pub style_scheme_box: TemplateChild<gtk4::FlowBox>,
         #[template_child]
         pub system_style_row: TemplateChild<adw::SwitchRow>,
-        pub scheme_handler: RefCell<Option<HandlerGuard>>,
+        pub(super) scheme_handler: RefCell<Option<HandlerGuard>>,
         #[template_child]
         pub vim_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
