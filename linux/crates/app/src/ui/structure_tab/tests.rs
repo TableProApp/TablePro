@@ -21,7 +21,7 @@ use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
 
 use super::*;
 use crate::test_support::{
-    FakeSession, OwnedWindow, descendants, drain_main_context, first_descendant_of_type, wait_until,
+    FakeSession, OwnedWindow, after_next_frame, descendants, drain_main_context, first_descendant_of_type, wait_until,
 };
 
 const WAIT: Duration = Duration::from_secs(10);
@@ -1581,7 +1581,7 @@ fn structure_refresh_during_a_save_keeps_the_draft_without_a_read_or_prompt() {
     harness.tab().send(SaveInput::SaveStarted);
 
     harness.tab().request_refresh();
-    drain_main_context();
+    after_next_frame(&window);
 
     assert!(window.visible_dialog().is_none());
     assert_eq!(harness.comments(), [Some("pending comment".to_owned())]);
@@ -1686,7 +1686,8 @@ fn answer_discard(window: &adw::Window, response: &str) {
     assert_eq!(alert.close_response(), "cancel");
     alert.emit_by_name::<()>("response", &[&response]);
     alert.force_close();
-    drain_main_context();
+    // A pending save animates continuously, so the context need not become idle.
+    after_next_frame(window);
 }
 
 #[gtk4::test]
