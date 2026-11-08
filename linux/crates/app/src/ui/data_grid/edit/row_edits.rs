@@ -38,43 +38,47 @@ impl EditController {
         }
     }
 
-    /// Set to Empty, NULL or DEFAULT on the focused cell's column, in
-    /// every selected row as macOS does. The menu offers only what the
-    /// focused cell takes; a row that refuses the value is left out, and a
-    /// column that refuses it everywhere says why, as committing an empty
-    /// cell would.
     pub(super) fn set_preset(&self, grid: &DataGrid, preset: CellPreset) {
+        grid.commit_editors();
         let Some(target) = grid.target() else {
             return;
         };
-        let Some((focused, column)) = target.cell.clone() else {
+        let Some((_, column)) = target.cell else {
             return;
         };
-        let rows = if target.rows.len() > 1 && target.rows.iter().any(|row| row.id() == focused.id()) {
-            target.rows.clone()
-        } else {
-            vec![focused]
-        };
-        let mut writes = Vec::new();
+        let tracked = self.tracked();
+        let mut edits = Vec::new();
+        let mut skipped = 0;
         let mut refusal = None;
-        for row in &rows {
-            match self.preset_input(grid, row, column, preset) {
-                Ok(Some((grid_column, input))) => writes.push((row.clone(), grid_column, input)),
-                Ok(None) => {}
-                Err(message) => refusal = refusal.or(Some(message)),
+        for row in &target.rows {
+            let outcome = match self.preset_input(grid, row, column, preset) {
+                Ok(Some((grid_column, input))) => {
+                    let start = edit_start(&tracked, row, column);
+                    match commit_input(&grid_column, &start, input) {
+                        CommitResult::Edit(edit) => {
+                            edits.push(edit);
+                            Ok(())
+                        }
+                        CommitResult::Unchanged => Ok(()),
+                        CommitResult::Rejected(error) => Err(Some(edit_parse_message(&error))),
+                    }
+                }
+                Ok(None) => Err(None),
+                Err(message) => Err(Some(message)),
+            };
+            if let Err(message) = outcome {
+                skipped += 1;
+                refusal = refusal.or(message);
             }
         }
-        if writes.is_empty() {
-            if let Some(message) = refusal {
-                grid.toast(message);
-            }
+        if !edits.is_empty() {
+            self.apply_edits(grid, edits);
+        }
+        if skipped == target.rows.len()
+            && let Some(message) = refusal
+        {
+            grid.toast(message);
             return;
-        }
-        grid.commit_editors();
-        let skipped = rows.len() - writes.len();
-        for (row, grid_column, input) in writes {
-            let start = edit_start(&self.tracked(), &row, column);
-            self.commit_input(grid, &grid_column, &start, input);
         }
         if skipped > 0 {
             grid.toast(ngettext_f(
@@ -86,8 +90,6 @@ impl EditController {
         }
     }
 
-    /// What `preset` writes into one row's cell. `Ok(None)` for a cell
-    /// that is locked, `Err` for one whose column refuses the value.
     fn preset_input(
         &self,
         grid: &DataGrid,
