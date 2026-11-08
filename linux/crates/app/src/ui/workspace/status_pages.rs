@@ -143,11 +143,40 @@ impl WorkspaceModel {
             return;
         };
         let new_query = tablepro_storage::saved_queries::NewSavedQuery {
-            name: name.clone(),
+            name,
             query,
             connection_id: metadata.id,
             connection_name: metadata.name,
         };
+        self.save_named_query(new_query, false);
+    }
+
+    pub(super) fn confirm_replace_saved_query(&self, query: tablepro_storage::saved_queries::NewSavedQuery) {
+        let dialog = adw::AlertDialog::new(
+            Some(&crate::i18n::gettext_f(
+                "Replace “{name}”?",
+                &[("name", query.name.trim())],
+            )),
+            Some(&crate::i18n::gettext(
+                "A saved query already uses this name. Replacing it will overwrite its SQL.",
+            )),
+        );
+        dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
+        dialog.add_response("replace", &crate::i18n::gettext("Replace"));
+        dialog.set_response_appearance("replace", adw::ResponseAppearance::Destructive);
+        dialog.set_default_response(Some("cancel"));
+        dialog.set_close_response("cancel");
+        let input = self.input.clone();
+        dialog.connect_response(None, move |_, response| {
+            if response == "replace" {
+                input.deliver(WorkspaceInput::ReplaceSavedQuery(query.clone()));
+            }
+        });
+        dialog.present(self.dialog_parent().as_ref());
+    }
+
+    pub(super) fn save_named_query(&self, new_query: tablepro_storage::saved_queries::NewSavedQuery, replace: bool) {
+        let name = new_query.name.clone();
         // The save lands even when the workspace is gone by then; only
         // its toast is dropped. A database still opening is waited for.
         let input = self.input.clone();
@@ -161,9 +190,21 @@ impl WorkspaceModel {
                 });
                 return;
             };
-            let message = match store.save(new_query).await {
-                Ok(outcome) if outcome.replaced => crate::i18n::gettext_f("Replaced “{name}”.", &[("name", &name)]),
-                Ok(_) => crate::i18n::gettext_f("Saved “{name}”.", &[("name", &name)]),
+            let saved = if replace {
+                store.save(new_query).await.map(|outcome| outcome.replaced)
+            } else {
+                match store.save_if_new(new_query.clone()).await {
+                    Ok(Some(_)) => Ok(false),
+                    Ok(None) => {
+                        input.deliver(WorkspaceInput::ConfirmReplaceSavedQuery(new_query));
+                        return;
+                    }
+                    Err(error) => Err(error),
+                }
+            };
+            let message = match saved {
+                Ok(true) => crate::i18n::gettext_f("Replaced “{name}”.", &[("name", &name)]),
+                Ok(false) => crate::i18n::gettext_f("Saved “{name}”.", &[("name", &name)]),
                 Err(error) => {
                     tracing::warn!(%error, "could not save the query");
                     crate::i18n::gettext("Could not save that query.")
@@ -223,6 +264,39 @@ mod tests {
             saved.iter().any(|query| query.name == "Orders"),
             "the hold ended before the save"
         );
+    }
+
+    #[gtk4::test]
+    fn replacing_a_saved_query_needs_confirmation_and_keeps_its_id() {
+        use crate::workspace::{answer, visible_alert};
+        let test = TestWindow::connected("ConfirmSavedQuery");
+        let availability = test.services.history().availability();
+        wait_until(WAIT, || availability.borrow().is_ready()).expect("history ready");
+        let save = |sql: &str| {
+            test.workspace()
+                .with_model(|model| model.on_save_query_named("Orders".to_owned(), sql.to_owned()));
+            wait_until(WAIT, || test.hold.live() == 0).expect("save complete");
+        };
+        let read = || {
+            let store = test.services.history().store().expect("history").saved_queries();
+            let reading = test.services.tasks.spawn_task(async move { store.list(None).await });
+            finish_on_main(WAIT, reading)
+                .expect("read complete")
+                .expect("task")
+                .expect("list")
+                .remove(0)
+        };
+        save("SELECT 1");
+        let original = read();
+        save("SELECT 2");
+        wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("replace prompt");
+        answer(&test.window, "cancel");
+        assert_eq!(read().query, "SELECT 1");
+        save("SELECT 3");
+        wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("replace prompt");
+        answer(&test.window, "replace");
+        wait_until(WAIT, || read().query == "SELECT 3").expect("replacement");
+        assert_eq!(read().id, original.id);
     }
 
     #[gtk4::test]

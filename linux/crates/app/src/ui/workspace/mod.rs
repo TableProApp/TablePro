@@ -546,6 +546,8 @@ pub(crate) enum WorkspaceInput {
     ShowHistory,
     ShowSavedQueries,
     ActiveTab(workspace_tabs::ActiveTabCommand),
+    ConfirmReplaceSavedQuery(tablepro_storage::saved_queries::NewSavedQuery),
+    ReplaceSavedQuery(tablepro_storage::saved_queries::NewSavedQuery),
     SaveQueryNamed {
         name: String,
         query: String,
@@ -1411,6 +1413,8 @@ impl WorkspaceModel {
             WorkspaceInput::ImportCsvRun(import) => self.on_import_csv_run(*import),
             WorkspaceInput::ActiveTab(command) => self.on_active_tab_command(command),
             WorkspaceInput::SaveQueryNamed { name, query } => self.on_save_query_named(name, query),
+            WorkspaceInput::ConfirmReplaceSavedQuery(query) => self.confirm_replace_saved_query(query),
+            WorkspaceInput::ReplaceSavedQuery(query) => self.save_named_query(query, true),
             WorkspaceInput::OpenHistoryQuery(text) => self.open_editor_tab(Some(text)),
             WorkspaceInput::ReplaceActiveTabQuery(text) => self.on_replace_active_tab_query(text),
             WorkspaceInput::RefreshPage => self.on_refresh_active_tab(),

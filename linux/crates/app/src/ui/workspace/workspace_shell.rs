@@ -28,7 +28,6 @@ use crate::ui::shell::{PRIMARY_MENU, TAB_OVERVIEW_MENU, app_menu, primary_menu_b
 /// names it.
 pub(super) const SHOW_SIDEBAR: &str = "show-sidebar";
 
-/// The sidebar's two lists, which its scope switch names.
 const TABLES: &str = "tables";
 const FAVORITES: &str = "favorites";
 
@@ -639,9 +638,7 @@ impl WorkspaceShell {
         crate::runtime::spawn_and_deliver(
             tasks,
             async move {
-                let Some(history) = ready.await else {
-                    return None;
-                };
+                let history = ready.await?;
                 Some(history.saved_queries().list(Some(connection)).await)
             },
             glib::clone!(

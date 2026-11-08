@@ -277,7 +277,8 @@ a deleted connection reaches every list. Each list rejects replies from an
 older read and keeps selection by saved-query id. Confirmed saves, renames
 and deletions hold the process until the write finishes.
 
-Saving under an existing name updates the same row id. The existence check
+The editor first inserts without replacement and asks for confirmation if the
+name is taken. Confirmed replacement updates the same row id. The existence check
 and write share a transaction, so simultaneous saves report which one
 replaced the query. Renames update only the stored name and modification
 time, leaving newer SQL and the connection identity intact.

@@ -56,7 +56,7 @@ pub struct Workspace {
     pub(super) assistant_available: Cell<bool>,
 
     pub(super) key: OnceCell<SessionKey>,
-    // The connection id its saved queries are kept under, which the editor's Save Query writes with.
+    // File sessions and saved connections must use the editor save's identity.
     pub(super) connection_id: OnceCell<uuid::Uuid>,
     pub(super) data_model: OnceCell<DataModel>,
     /// Which tab each of the session's pages shows, shared with the

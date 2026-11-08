@@ -353,6 +353,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn concurrent_new_saves_never_overwrite_the_winner() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let store = store(&root).await;
+        let connection = Uuid::new_v4();
+        let (first, second) = tokio::join!(
+            store.save_if_new(new_query("daily", "SELECT 1", connection)),
+            store.save_if_new(new_query("daily", "SELECT 2", connection)),
+        );
+        let first = first.expect("first save");
+        let second = second.expect("second save");
+        assert_ne!(first.is_some(), second.is_some());
+        let saved = store.list(Some(connection)).await.expect("list");
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].query, if first.is_some() { "SELECT 1" } else { "SELECT 2" });
+    }
+
+    #[tokio::test]
     async fn concurrent_saves_report_exactly_one_replacement_and_keep_the_id() {
         let root = tempfile::tempdir().expect("tempdir");
         let store = store(&root).await;
