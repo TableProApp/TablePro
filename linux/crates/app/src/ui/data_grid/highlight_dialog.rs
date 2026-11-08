@@ -794,8 +794,13 @@ mod tests {
         build(&grid.grid).downcast().expect("highlight dialog")
     }
 
+    fn controls(dialog: &HighlightDialog) -> Vec<gtk::Widget> {
+        // Until presentation, AdwDialog keeps its content outside its widget tree.
+        descendants(&dialog.child().expect("dialog content"))
+    }
+
     fn entry_named(dialog: &HighlightDialog, title: &str) -> adw::EntryRow {
-        descendants(dialog)
+        controls(dialog)
             .into_iter()
             .filter_map(|widget| widget.downcast::<adw::EntryRow>().ok())
             .find(|row| row.title() == title)
@@ -803,7 +808,7 @@ mod tests {
     }
 
     fn combo_named(dialog: &HighlightDialog, title: &str) -> adw::ComboRow {
-        descendants(dialog)
+        controls(dialog)
             .into_iter()
             .filter_map(|widget| widget.downcast::<adw::ComboRow>().ok())
             .find(|row| row.title() == title)
