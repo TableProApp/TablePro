@@ -4,6 +4,7 @@ mod past_source;
 mod past_tests;
 mod query_source;
 #[cfg(test)]
+#[path = "tests/queries.rs"]
 mod query_tests;
 mod search_index;
 #[cfg(test)]
