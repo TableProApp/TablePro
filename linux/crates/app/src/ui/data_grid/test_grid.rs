@@ -105,6 +105,7 @@ pub(crate) fn text(value: &str) -> CellInput {
 /// How a test grid is built: an editing table grid by default.
 pub(crate) struct GridSpec {
     pub columns: Vec<ColumnInfo>,
+    pub settings: Option<Rc<tablepro_linux_platform::AppSettings>>,
     pub editable: bool,
     pub sorting: GridSorting,
     pub layout: Option<LayoutBinding>,
@@ -123,6 +124,7 @@ impl GridSpec {
     pub(crate) fn table(columns: Vec<ColumnInfo>) -> Self {
         Self {
             columns,
+            settings: None,
             editable: true,
             sorting: GridSorting::Server { initial: None },
             layout: None,
@@ -147,7 +149,6 @@ impl GridSpec {
     }
 }
 
-/// A grid in a shown window, with the requests it made.
 pub(crate) struct Grid {
     pub window: gtk::Window,
     pub grid: DataGrid,
@@ -156,6 +157,28 @@ pub(crate) struct Grid {
     requests: Rc<RefCell<Vec<GridRequest>>>,
     _settings: MemorySettings,
     _runtime: AppRuntime,
+    _style: GridStyle,
+}
+
+struct GridStyle {
+    display: gtk::gdk::Display,
+    provider: gtk::CssProvider,
+}
+
+impl GridStyle {
+    fn new() -> Self {
+        let display = gtk::gdk::Display::default().expect("test display");
+        let provider = gtk::CssProvider::new();
+        provider.load_from_resource(&format!("{}/style.css", crate::config::RESOURCE_BASE_PATH));
+        gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+        Self { display, provider }
+    }
+}
+
+impl Drop for GridStyle {
+    fn drop(&mut self) {
+        gtk::style_context_remove_provider_for_display(&self.display, &self.provider);
+    }
 }
 
 impl Grid {
@@ -166,9 +189,9 @@ impl Grid {
 
     pub(crate) fn build(spec: GridSpec, rows: Vec<RowData>) -> Self {
         crate::register_test_resources();
-        // The stylesheet the app draws the grid with, cell padding and the
-        // monospace font included.
         libadwaita::init().expect("libadwaita initialises under the test backend");
+        // This fixture has no AdwApplication startup to load its resource stylesheet.
+        let style = GridStyle::new();
         let runtime = crate::test_support::test_runtime();
         let settings = MemorySettings::new();
         let tracker = TabTrackerHandle::default();
@@ -187,7 +210,7 @@ impl Grid {
             }),
             tracker: spec.editable.then(|| tracker.clone()),
             result_lock: None,
-            settings: settings.get().clone(),
+            settings: spec.settings.unwrap_or_else(|| settings.get().clone()),
             layout: spec.layout,
             references: spec.references,
             dialect: spec.dialect,
@@ -215,6 +238,7 @@ impl Grid {
             requests,
             _settings: settings,
             _runtime: runtime,
+            _style: style,
         };
         // A saved layout can hide columns, which draw no cells.
         let width = opened.grid.shown_columns().len();

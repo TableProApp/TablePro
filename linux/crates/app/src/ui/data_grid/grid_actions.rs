@@ -152,14 +152,12 @@ impl DataGrid {
         self.target()?.cell.map(|(_, column)| column)
     }
 
-    /// A row was selected and Preferences ask for the pane to open on
-    /// one, as macOS's auto-show inspector does. A pane the user closed
-    /// stays closed until the next selection.
     pub(super) fn open_details_for_selection(&self) {
         let wanted = self
             .config()
             .is_some_and(|config| config.settings.auto_show_inspector());
-        let selected = self.target().is_some_and(|target| !target.rows.is_empty());
+        // Action targets include a focused row after Escape clears the selection.
+        let selected = !self.selection().selection().is_empty();
         if wanted
             && selected
             && let Some(details) = self.imp().actions.lookup_action("show-details")

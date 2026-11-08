@@ -150,8 +150,11 @@ impl BrowseModel {
     }
 
     pub(super) fn on_columns_loaded(&mut self, columns: Vec<ColumnInfo>, fx: &mut Effects) {
-        if let Some((behavior, descending)) = self.default_sort.take() {
-            self.current_sort = super::default_sort::resolve(&behavior, descending, &columns);
+        if let Some((behavior, direction)) = self.default_sort.take() {
+            let result: Vec<ResultColumn> = columns.iter().map(ColumnInfo::result_column).collect();
+            let sortable = self.grid_columns_for_catalog(&result, &columns);
+            self.current_sort =
+                super::default_sort::resolve(behavior, direction, &sortable).filter(|_| self.sorts_rows());
         }
         if self.current_columns != columns {
             self.page = None;
@@ -230,13 +233,15 @@ impl BrowseModel {
     /// its place. A document's field whose name a filter, a sort or an
     /// update cannot spell takes none of them (ADR 0026).
     fn grid_columns_for(&self, result: &[ResultColumn]) -> Arc<[GridColumn]> {
+        self.grid_columns_for_catalog(result, &self.current_columns)
+    }
+
+    fn grid_columns_for_catalog(&self, result: &[ResultColumn], catalog: &[ColumnInfo]) -> Arc<[GridColumn]> {
         let documents = self
             .dialect
             .as_ref()
             .is_some_and(|dialect| dialect.grammar() == SqlGrammar::Mongo);
-        grid_columns(result, &self.current_columns, |name| {
-            !documents || is_addressable_field(name)
-        })
+        grid_columns(result, catalog, |name| !documents || is_addressable_field(name))
     }
 
     /// Give the grid `columns` when it shows others. Its rows go with the

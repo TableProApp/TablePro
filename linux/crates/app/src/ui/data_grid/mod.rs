@@ -1,6 +1,7 @@
 //! The data grid every surface shows rows in: the table tab, the SQL
 //! editor's results and a key-value engine's key tab.
 
+mod cell_font;
 mod client_sorter;
 mod column_chooser;
 mod columns;
@@ -89,10 +90,9 @@ impl DataGrid {
         row_number_column::install_row_factory(&grid);
         find_bar::install(&grid);
         imp.detail_pane.attach(&grid);
+        grid.watch_display_settings();
         grid.set_columns(columns, sorting, rules);
         grid.watch_fonts();
-        grid.watch_stripes();
-        grid.watch_display_settings();
         grid
     }
 
@@ -187,15 +187,12 @@ impl DataGrid {
         self.imp().columns.borrow().columns()
     }
 
-    /// Build the columns for another column set, with what may change in
-    /// its rows. The rows go, since they were read under the old columns.
     pub fn set_columns(&self, columns: Arc<[GridColumn]>, sorting: GridSorting, rules: Option<EditRules>) {
         self.commit_editors();
         self.store().clear();
         self.imp().summary.forget_column();
         self.edit().set_rules(self, rules);
         self.rebuild_columns(columns, sorting);
-        self.apply_display_settings();
         self.show_rows_or_empty();
         self.refresh_actions();
     }

@@ -104,6 +104,8 @@
     <child>
       <object class="AdwEntryRow" id="null_display_row">
         <property name="title" translatable="yes">Text for NULL</property>
+        <property name="max-length">20</property>
+        <property name="tooltip-text" translatable="yes">Up to 20 characters. Empty text uses NULL.</property>
       </object>
     </child>
     <child>
@@ -113,9 +115,13 @@
     </child>
     <child>
       <object class="AdwActionRow" id="grid_font_row">
-        <property name="title" translatable="yes">Cell font</property>
+        <property name="title" translatable="yes">Cell Font</property>
+        <property name="activatable-widget">grid_font_button</property>
         <child type="suffix">
           <object class="GtkFontDialogButton" id="grid_font_button">
+            <accessibility>
+              <property name="label" translatable="yes">Cell Font</property>
+            </accessibility>
             <property name="valign">center</property>
             <property name="dialog">
               <object class="GtkFontDialog"/>

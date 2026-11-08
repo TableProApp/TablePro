@@ -1433,7 +1433,18 @@ fn the_value_editor_marks_whitespace_only_when_preferences_ask() {
     let settings = grid.grid.config().expect("a configured grid").settings.clone();
     let drawer = pane.imp().value_view.space_drawer();
 
-    assert!(drawer.enables_matrix(), "marks are on by default, as on macOS");
+    assert!(drawer.enables_matrix(), "marks are on by default");
+    let types = sourceview5::SpaceTypeFlags::SPACE
+        | sourceview5::SpaceTypeFlags::TAB
+        | sourceview5::SpaceTypeFlags::NEWLINE
+        | sourceview5::SpaceTypeFlags::NBSP;
+    for location in [
+        sourceview5::SpaceLocationFlags::LEADING,
+        sourceview5::SpaceLocationFlags::INSIDE_TEXT,
+        sourceview5::SpaceLocationFlags::TRAILING,
+    ] {
+        assert_eq!(drawer.types_for_locations(location), types);
+    }
 
     settings.set_show_invisible_characters(false).expect("store the flag");
     drain_main_context();
@@ -1442,4 +1453,143 @@ fn the_value_editor_marks_whitespace_only_when_preferences_ask() {
     settings.set_show_invisible_characters(true).expect("store the flag");
     drain_main_context();
     assert!(drawer.enables_matrix());
+}
+
+#[gtk4::test]
+fn null_preferences_update_details_without_replacing_a_draft() {
+    let (grid, pane) = opened(two_text_columns(), vec![vec![Value::Int(1), Value::Null]]);
+    grid.focus(0, 1);
+    let settings = grid.grid.config().expect("configured grid").settings.clone();
+    settings.set_null_display("missing").expect("store placeholder");
+    drain_main_context();
+
+    assert_eq!(pane.imp().placeholder_label.label(), "missing");
+    let shown: Vec<String> = descendants(&pane.imp().field_list.get())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Inscription>().ok())
+        .filter_map(|inscription| inscription.text().map(|text| text.to_string()))
+        .collect();
+    assert!(shown.contains(&"missing".to_owned()), "field list showed {shown:?}");
+
+    edit_field(&grid, &pane, 0, 1);
+    type_value(&pane, "unfinished");
+    assert!(grid.grid.is_editing());
+    settings
+        .set_null_display("absent")
+        .expect("change placeholder while editing");
+    drain_main_context();
+
+    assert_eq!(pane.typed_text(), "unfinished");
+    assert!(grid.grid.is_editing());
+    assert_eq!(pending(&grid, 1, 1), None);
+}
+
+#[gtk4::test]
+fn changing_automatic_details_opening_keeps_an_active_value_draft() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    edit_field(&grid, &pane, 0, 1);
+    type_value(&pane, "unfinished");
+    let settings = grid.grid.config().expect("a configured grid").settings.clone();
+
+    settings
+        .set_auto_show_inspector(true)
+        .expect("enable automatic opening");
+    settings
+        .set_auto_show_inspector(false)
+        .expect("disable automatic opening");
+    drain_main_context();
+
+    assert!(pane.is_open());
+    assert!(pane.is_editing_value());
+    assert_eq!(pane.typed_text(), "unfinished");
+    assert_eq!(pending(&grid, 1, 1), None);
+}
+
+#[gtk4::test]
+fn whitespace_preferences_reach_closed_panes_and_keep_settings_isolated() {
+    use sourceview5::prelude::*;
+
+    let settings = crate::test_support::MemorySettings::new();
+    settings
+        .get()
+        .set_show_invisible_characters(false)
+        .expect("start without marks");
+    let shared_grid = || {
+        Grid::build(
+            GridSpec {
+                settings: Some(settings.get().clone()),
+                ..GridSpec::table(two_text_columns())
+            },
+            page(1..3),
+        )
+    };
+    let first = shared_grid();
+    let second = shared_grid();
+    let isolated = Grid::open(two_text_columns(), two_text_values());
+    let first_pane = pane_of(&first);
+    let second_pane = pane_of(&second);
+    let isolated_pane = pane_of(&isolated);
+    let first_drawer = first_pane.imp().value_view.space_drawer();
+    let second_drawer = second_pane.imp().value_view.space_drawer();
+    assert!(!first_pane.is_open());
+    assert!(!second_pane.is_open());
+    assert!(!first_drawer.enables_matrix());
+    assert!(!second_drawer.enables_matrix());
+    assert!(isolated_pane.imp().value_view.space_drawer().enables_matrix());
+
+    settings
+        .get()
+        .set_show_invisible_characters(true)
+        .expect("show marks in both grids");
+    drain_main_context();
+    assert!(first_drawer.enables_matrix());
+    assert!(second_drawer.enables_matrix());
+    assert!(!first_pane.is_open());
+    assert!(!second_pane.is_open());
+
+    settings
+        .get()
+        .set_show_invisible_characters(false)
+        .expect("hide marks in both grids");
+    first.activate("show-details");
+    second.activate("show-details");
+    assert!(!first_drawer.enables_matrix());
+    assert!(!second_drawer.enables_matrix());
+    assert!(isolated_pane.imp().value_view.space_drawer().enables_matrix());
+}
+
+#[gtk4::test]
+fn whitespace_marks_leave_the_value_draft_and_text_selection_unchanged() {
+    use sourceview5::prelude::*;
+
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    edit_field(&grid, &pane, 0, 1);
+    let typed = " leading\tinside\ntrailing ";
+    type_value(&pane, typed);
+    let buffer = pane.imp().value_buffer.get();
+    buffer.select_range(&buffer.iter_at_offset(2), &buffer.iter_at_offset(9));
+    let selection = || {
+        buffer
+            .selection_bounds()
+            .map(|(start, end)| (start.offset(), end.offset()))
+    };
+    assert_eq!(selection(), Some((2, 9)));
+    let settings = grid.grid.config().expect("configured grid").settings.clone();
+    let drawer = pane.imp().value_view.space_drawer();
+    let row = pane.current_row().expect("shown row");
+    let revision = row.revision();
+
+    for show in [false, true] {
+        settings
+            .set_show_invisible_characters(show)
+            .expect("change whitespace marks");
+        drain_main_context();
+        assert_eq!(drawer.enables_matrix(), show);
+        assert_eq!(pane.typed_text(), typed);
+        assert_eq!(selection(), Some((2, 9)));
+        assert!(pane.is_editing_value());
+        assert!(grid.grid.is_editing());
+        assert_eq!(pending(&grid, 1, 1), None);
+        assert_eq!(row.revision(), revision, "drawing marks does not replace row values");
+    }
 }

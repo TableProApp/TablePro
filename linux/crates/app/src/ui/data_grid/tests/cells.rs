@@ -29,6 +29,7 @@ fn paint() -> Rc<ColumnPaint> {
         column: columns[0].clone(),
         tracked: TrackedValues::untracked(),
         attributes: Rc::new(TextAttributes::new()),
+        preferences: Default::default(),
         numbers: Cell::new(false),
     })
 }
@@ -222,7 +223,6 @@ fn open_grids_follow_the_display_preferences() {
     drain_main_context();
     assert!(numbers.is_visible());
     assert!(view.has_css_class("row-spacious") && !view.has_css_class("row-compact"));
-    crate::services::grid::display_text::set_null_display("NULL");
 }
 
 #[gtk4::test]
@@ -521,4 +521,89 @@ fn cells_are_freed_with_the_grid() {
 
     let alive = freed.iter().filter(|cell| cell.upgrade().is_some()).count();
     assert_eq!(alive, 0, "cells outlived their grid");
+}
+
+#[gtk4::test]
+fn null_text_reaches_every_grid_and_stays_with_its_settings() {
+    let editable = Grid::open(two_text_columns(), vec![vec![Value::Int(1), Value::Null]]);
+    let settings = editable.grid.config().expect("configured grid").settings.clone();
+    let readonly = Grid::build(
+        GridSpec {
+            settings: Some(settings.clone()),
+            ..GridSpec::results(two_text_columns())
+        },
+        results(&[vec![Value::Int(1), Value::Null]]),
+    );
+    let isolated = Grid::build(
+        GridSpec::results(two_text_columns()),
+        results(&[vec![Value::Int(1), Value::Null]]),
+    );
+    let editable_cell = editable.cell_of(1, 1);
+    let readonly_cell = readonly.cell_at(0, 1);
+    assert_eq!(Grid::display_text(&editable_cell), editable_null_sentinel());
+    assert_eq!(Grid::display_text(&readonly_cell), "NULL");
+
+    settings.set_null_display("missing").expect("store placeholder");
+    drain_main_context();
+
+    assert_eq!(Grid::display_text(&editable_cell), "missing");
+    assert_eq!(Grid::display_text(&readonly_cell), "missing");
+    assert_eq!(Grid::display_text(&isolated.cell_at(0, 1)), "NULL");
+    assert!(described(&editable_cell));
+    assert!(described(&readonly_cell));
+    let reopened = Grid::build(
+        GridSpec {
+            settings: Some(settings),
+            ..GridSpec::results(two_text_columns())
+        },
+        results(&[vec![Value::Int(1), Value::Null]]),
+    );
+    assert_eq!(Grid::display_text(&reopened.cell_at(0, 1)), "missing");
+}
+
+#[gtk4::test]
+fn display_preferences_preserve_the_inline_draft_and_selected_rows() {
+    let grid = two_text_rows();
+    let cell = grid.focus(0, 1);
+    grid.grid.selection().select_range(0, 2, true);
+    assert!(grid.grid.edit().edit_cell(&cell));
+    let editor = grid.grid.edit().open_text().expect("inline editor");
+    editor.set_text("unfinished");
+    let selected = super::selected_ids(&grid);
+    let settings = grid.grid.config().expect("configured grid").settings.clone();
+
+    settings.set_null_display("missing").expect("store placeholder");
+    settings.set_grid_row_height("spacious").expect("store height");
+    settings.set_show_row_numbers(false).expect("hide numbers");
+    drain_main_context();
+
+    assert_eq!(grid.grid.edit().open_text().as_ref(), Some(&editor));
+    assert_eq!(editor.text(), "unfinished");
+    assert_eq!(grid.grid.edit().editing_cell(), Some(cell));
+    assert_eq!(super::selected_ids(&grid), selected);
+    assert_eq!(grid.tracker.cell_overlay(&key(1), 1).pending, None);
+}
+
+#[gtk4::test]
+fn row_height_preferences_change_the_allocated_row_height() {
+    let grid = two_text_rows();
+    let settings = grid.grid.config().expect("configured grid").settings.clone();
+    let cell = grid.cell_of(1, 1);
+    crate::test_support::after_next_frame(&grid.grid);
+    let row = row_widget(&cell);
+    wait_until(WAIT, || row.height() > 0).expect("row laid out");
+    let normal = row.height();
+
+    settings.set_grid_row_height("compact").expect("compact height");
+    wait_until(WAIT, || row.height() < normal).expect("compact rows allocate less height than normal rows");
+    let compact = row.height();
+
+    settings.set_grid_row_height("spacious").expect("spacious height");
+    wait_until(WAIT, || row.height() > normal).expect("spacious rows allocate more height than normal rows");
+    assert!(row.height() > compact);
+
+    settings.set_grid_row_height("normal").expect("normal height");
+    wait_until(WAIT, || row.height() == normal).expect("normal rows restore their original height");
+    assert_eq!(row_widget(&cell), row);
+    assert_eq!(grid.cell_of(1, 1), cell);
 }
