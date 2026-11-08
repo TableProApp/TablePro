@@ -24,6 +24,31 @@
       </object>
     </child>
     <child>
+      <object class="AdwSwitchRow" id="row_numbers_row">
+        <property name="title" translatable="yes">Show Row Numbers</property>
+      </object>
+    </child>
+    <child>
+      <object class="AdwComboRow" id="row_height_row">
+        <property name="title" translatable="yes">Row Height</property>
+        <property name="model">
+          <object class="GtkStringList">
+            <items>
+              <item translatable="yes">Compact</item>
+              <item translatable="yes">Normal</item>
+              <item translatable="yes">Comfortable</item>
+              <item translatable="yes">Spacious</item>
+            </items>
+          </object>
+        </property>
+      </object>
+    </child>
+    <child>
+      <object class="AdwEntryRow" id="null_display_row">
+        <property name="title" translatable="yes">Text for NULL</property>
+      </object>
+    </child>
+    <child>
       <object class="AdwSwitchRow" id="confirm_row">
         <property name="title" translatable="yes">Confirm Before Deleting Rows</property>
       </object>

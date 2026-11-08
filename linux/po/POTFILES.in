@@ -250,6 +250,7 @@ crates/app/src/ui/data_grid/column_chooser.rs
 crates/app/src/ui/data_grid/columns.rs
 crates/app/src/ui/data_grid/copy/mod.rs
 crates/app/src/ui/data_grid/copy/tests.rs
+crates/app/src/ui/data_grid/display_settings.rs
 crates/app/src/ui/data_grid/edit/actions.rs
 crates/app/src/ui/data_grid/edit/cell_editor.rs
 crates/app/src/ui/data_grid/edit/choice_menu.rs

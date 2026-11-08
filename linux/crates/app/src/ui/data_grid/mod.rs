@@ -5,6 +5,7 @@ mod client_sorter;
 mod column_chooser;
 mod columns;
 mod copy;
+mod display_settings;
 mod edit;
 mod find_bar;
 mod grid_actions;
@@ -91,6 +92,7 @@ impl DataGrid {
         grid.set_columns(columns, sorting, rules);
         grid.watch_fonts();
         grid.watch_stripes();
+        grid.watch_display_settings();
         grid
     }
 
@@ -193,6 +195,7 @@ impl DataGrid {
         self.imp().summary.forget_column();
         self.edit().set_rules(self, rules);
         self.rebuild_columns(columns, sorting);
+        self.apply_display_settings();
         self.show_rows_or_empty();
         self.refresh_actions();
     }

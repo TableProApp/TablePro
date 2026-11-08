@@ -88,6 +88,32 @@ impl AppSettings {
         self.set_boolean(keys::SHOW_ALTERNATE_ROWS, show)
     }
 
+    pub fn show_row_numbers(&self) -> bool {
+        self.settings.boolean(keys::SHOW_ROW_NUMBERS)
+    }
+
+    pub fn set_show_row_numbers(&self, show: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::SHOW_ROW_NUMBERS, show)
+    }
+
+    /// The grid's row height: `compact`, `normal`, `comfortable` or `spacious`.
+    pub fn grid_row_height(&self) -> String {
+        self.settings.string(keys::GRID_ROW_HEIGHT).into()
+    }
+
+    pub fn set_grid_row_height(&self, height: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::GRID_ROW_HEIGHT, height)
+    }
+
+    /// What a cell shows for NULL.
+    pub fn null_display(&self) -> String {
+        self.settings.string(keys::NULL_DISPLAY).into()
+    }
+
+    pub fn set_null_display(&self, text: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::NULL_DISPLAY, text)
+    }
+
     /// Whether runs go into the query history. Off records nothing and
     /// leaves the entries already there.
     pub fn save_query_history(&self) -> bool {

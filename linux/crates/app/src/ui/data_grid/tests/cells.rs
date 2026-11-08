@@ -205,6 +205,27 @@ fn open_grids_follow_the_stripes_preference() {
 }
 
 #[gtk4::test]
+fn open_grids_follow_the_display_preferences() {
+    let grid = two_text_rows();
+    let settings = grid.grid.config().expect("a configured grid").settings.clone();
+    let view = grid.grid.column_view();
+    let numbers = grid.grid.row_numbers_column().expect("a row number column");
+
+    settings.set_show_row_numbers(false).expect("store the flag");
+    settings.set_grid_row_height("compact").expect("store the height");
+    drain_main_context();
+    assert!(!numbers.is_visible());
+    assert!(view.has_css_class("row-compact"));
+
+    settings.set_grid_row_height("spacious").expect("store the height");
+    settings.set_show_row_numbers(true).expect("store the flag");
+    drain_main_context();
+    assert!(numbers.is_visible());
+    assert!(view.has_css_class("row-spacious") && !view.has_css_class("row-compact"));
+    crate::services::grid::display_text::set_null_display("NULL");
+}
+
+#[gtk4::test]
 fn column_view_carries_data_table_class() {
     let grid = two_text_rows();
 

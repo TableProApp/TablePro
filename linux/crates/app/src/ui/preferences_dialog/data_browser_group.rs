@@ -1,9 +1,13 @@
-use gio::prelude::SettingsExtManual;
+use gio::prelude::{SettingsExt, SettingsExtManual};
 use gtk4::glib;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
+use libadwaita::prelude::ComboRowExt;
 use tablepro_linux_platform::AppSettings;
 use tablepro_linux_platform::settings::keys;
+
+/// The words the row height setting holds, in the combo's order.
+const ROW_HEIGHTS: [&str; 4] = ["compact", "normal", "comfortable", "spacious"];
 
 mod imp {
     use libadwaita::prelude::*;
@@ -20,6 +24,12 @@ mod imp {
         pub alternate_rows_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
         pub confirm_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub row_numbers_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub row_height_row: TemplateChild<adw::ComboRow>,
+        #[template_child]
+        pub null_display_row: TemplateChild<adw::EntryRow>,
     }
 
     #[glib::object_subclass]
@@ -80,6 +90,27 @@ impl DataBrowserGroup {
         gio_settings
             .bind(keys::CONFIRM_BULK_DELETE, &imp.confirm_row.get(), "active")
             .build();
+        gio_settings
+            .bind(keys::SHOW_ROW_NUMBERS, &imp.row_numbers_row.get(), "active")
+            .build();
+        gio_settings
+            .bind(keys::NULL_DISPLAY, &imp.null_display_row.get(), "text")
+            .build();
+        // The combo holds a position and the setting a word.
+        let row = imp.row_height_row.get();
+        let current = settings.grid_row_height();
+        row.set_selected(
+            ROW_HEIGHTS
+                .iter()
+                .position(|height| *height == current)
+                .map_or(1, |at| at as u32),
+        );
+        let stored = gio_settings.clone();
+        row.connect_selected_notify(move |row| {
+            if let Some(height) = ROW_HEIGHTS.get(row.selected() as usize) {
+                let _ = stored.set_string(keys::GRID_ROW_HEIGHT, height);
+            }
+        });
     }
 }
 

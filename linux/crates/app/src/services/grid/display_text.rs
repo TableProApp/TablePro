@@ -39,6 +39,19 @@ pub fn editable_null_sentinel() -> String {
 /// A technical term, so it is not translated.
 const READONLY_NULL: &str = "NULL";
 
+thread_local! {
+    static NULL_DISPLAY: std::cell::RefCell<String> = std::cell::RefCell::new(READONLY_NULL.to_owned());
+}
+
+/// The text a cell shows for NULL, which Preferences set.
+pub fn null_display() -> String {
+    NULL_DISPLAY.with(|text| text.borrow().clone())
+}
+
+pub fn set_null_display(text: &str) {
+    NULL_DISPLAY.with(|slot| *slot.borrow_mut() = text.to_owned());
+}
+
 /// For a column the server fills in on INSERT, so a new draft row does
 /// not read as if its id were stored as NULL.
 pub fn auto_filled_sentinel() -> String {
@@ -51,7 +64,10 @@ pub fn auto_filled_sentinel() -> String {
 pub fn display_text<'a>(value: &'a Value, column: &ColumnType, scratch: &'a mut String) -> DisplayText<'a> {
     scratch.clear();
     match value {
-        Value::Null => DisplayText::placeholder(READONLY_NULL),
+        Value::Null => {
+            scratch.push_str(&null_display());
+            DisplayText::placeholder(scratch.as_str())
+        }
         Value::Text(text) => shown(text, scratch),
         // The server's own text, never parsed and written out again.
         Value::Json(json) => shown(json.as_str(), scratch),
