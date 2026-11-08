@@ -28,6 +28,16 @@ pub struct BrowseTab {
     #[template_child]
     pub no_pk_banner: TemplateChild<adw::Banner>,
     #[template_child]
+    pub view_stack: TemplateChild<gtk::Stack>,
+    #[template_child]
+    pub structure_host: TemplateChild<adw::Bin>,
+    #[template_child]
+    pub view_toggle: TemplateChild<adw::ToggleGroup>,
+    #[template_child]
+    pub data_start: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub data_end: TemplateChild<gtk::Box>,
+    #[template_child]
     pub inner_stack: TemplateChild<gtk::Stack>,
     #[template_child]
     pub loading_page: TemplateChild<adw::StatusPage>,
@@ -111,6 +121,7 @@ impl ObjectImpl for BrowseTab {
                     .param_types([bool::static_type()])
                     .build(),
                 Signal::builder("save-requested").build(),
+                Signal::builder("structure-requested").build(),
                 Signal::builder("loading-changed")
                     .param_types([bool::static_type()])
                     .build(),

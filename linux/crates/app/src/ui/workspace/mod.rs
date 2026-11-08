@@ -362,6 +362,8 @@ pub struct TableTabSlot {
     pub schema: Option<String>,
     pub table: String,
     pub browse: BrowseTab,
+    /// The Structure view, made the first time it is asked for.
+    pub structure: Option<crate::ui::structure_tab::StructureTab>,
 }
 
 /// A tab showing one key of a key-value engine.
@@ -396,11 +398,12 @@ impl WorkspaceTab {
         }
     }
 
-    /// The Structure-side controller. Only `Structure` slots carry
-    /// one.
+    /// The Structure-side controller: a `Structure` slot's, or the
+    /// Structure view of a `Table` slot that has opened it.
     pub fn structure_tab(&self) -> Option<&crate::ui::structure_tab::StructureTab> {
         match self {
             WorkspaceTab::Structure(s) => Some(&s.structure),
+            WorkspaceTab::Table(s) => s.structure.as_ref(),
             _ => None,
         }
     }
@@ -588,6 +591,10 @@ pub(crate) enum WorkspaceInput {
     /// workspace is saved.
     WorkspaceTabsChanged,
     SaveTab(Uuid),
+    /// Save a table tab's Structure view, whatever its rows hold.
+    SaveStructure(Uuid),
+    /// A table tab's Structure view opened for the first time.
+    ShowTableStructure(Uuid),
     // A query tab's changed rows alone, never its SQL file.
     SaveRows(Uuid),
     StopSaving(Uuid),
@@ -1342,6 +1349,8 @@ impl WorkspaceModel {
             WorkspaceInput::WorkspaceTabsChanged => self.on_workspace_tabs_changed(),
             WorkspaceInput::SaveTab(id) => self.request_save(id),
             WorkspaceInput::SaveRows(id) => self.request_save_rows(id),
+            WorkspaceInput::SaveStructure(id) => self.request_save_structure(id),
+            WorkspaceInput::ShowTableStructure(id) => self.on_show_table_structure(id),
             WorkspaceInput::StopSaving(id) => self.stop_saving(id),
             WorkspaceInput::Workspace(event) => self.on_workspace_event(event),
             WorkspaceInput::SavesInFlightChanged(count) => self.on_saves_in_flight_changed(count),

@@ -199,6 +199,15 @@ impl WorkspaceHandle {
         self.save_rows(tab, tracker)
     }
 
+    /// Save the Structure view's edits of a table tab, whose rows may
+    /// have edits of their own.
+    pub async fn save_structure_of(&self, parent: &gtk::Widget, tab: Uuid) -> SaveStart {
+        let Some(tracker) = self.0.deps.structures.get(tab) else {
+            return SaveStart::NothingToSave;
+        };
+        self.save_tracked_structure(parent, tab, &tracker).await
+    }
+
     /// Stop the saves `scope` covers. Each settles when its driver
     /// answers the cancel, as rolled back or with an unknown outcome.
     pub fn stop_saves(&self, scope: CloseScope) {
@@ -274,9 +283,16 @@ impl WorkspaceHandle {
     }
 
     fn pending_state(&self, tab: Uuid) -> PendingState {
-        if let Some(tracker) = self.0.deps.rows.get(tab) {
-            return tracker.pending_state();
+        let rows = self.0.deps.rows.get(tab).map(|tracker| tracker.pending_state());
+        match rows {
+            // A table tab holds both, with its Structure view's edits
+            // waiting behind clean rows.
+            Some(state) if state != PendingState::Clean => state,
+            _ => self.structure_state(tab),
         }
+    }
+
+    fn structure_state(&self, tab: Uuid) -> PendingState {
         self.0
             .deps
             .structures
@@ -290,10 +306,14 @@ impl WorkspaceHandle {
 
     async fn save_tab(&self, parent: &gtk::Widget, tab: Uuid) -> SaveStart {
         // An editor tab holds a row tracker beside its file; a clean one leaves the save to the file.
-        let rows =
-            self.0.deps.rows.get(tab).filter(|tracker| {
-                tracker.pending_state() != PendingState::Clean || !self.0.deps.directory.has_file(tab)
-            });
+        // Neither does a table tab whose only edits are its Structure view's.
+        let rows_are_all = !self.0.deps.directory.has_file(tab) && self.structure_state(tab) == PendingState::Clean;
+        let rows = self
+            .0
+            .deps
+            .rows
+            .get(tab)
+            .filter(|tracker| tracker.pending_state() != PendingState::Clean || rows_are_all);
         if let Some(tracker) = rows {
             let start = self.save_tracked_rows(parent, tab, &tracker).await;
             if !matches!(
@@ -319,15 +339,7 @@ impl WorkspaceHandle {
             };
         }
         if let Some(tracker) = self.0.deps.structures.get(tab) {
-            // A close that saves its tabs can ask again while the review is
-            // open, and the review on screen is the one to answer.
-            let Some(_claim) = ReviewClaim::take(&self.0.reviewing, tab) else {
-                return SaveStart::Rejected(SaveRejection::InReview);
-            };
-            return match self.review_structure(parent, &tracker).await {
-                Ok(reviewed) => self.save_structure(tab, &tracker, reviewed),
-                Err(start) => start,
-            };
+            return self.save_tracked_structure(parent, tab, &tracker).await;
         }
         match self.0.deps.directory.save_file(tab) {
             Some(saving) => match saving.await {
@@ -335,6 +347,23 @@ impl WorkspaceHandle {
                 Err(message) => SaveStart::Rejected(SaveRejection::FileNotSaved(message)),
             },
             None => SaveStart::NothingToSave,
+        }
+    }
+
+    async fn save_tracked_structure(
+        &self,
+        parent: &gtk::Widget,
+        tab: Uuid,
+        tracker: &StructureTrackerHandle,
+    ) -> SaveStart {
+        // A close that saves its tabs can ask again while the review is
+        // open, and the review on screen is the one to answer.
+        let Some(_claim) = ReviewClaim::take(&self.0.reviewing, tab) else {
+            return SaveStart::Rejected(SaveRejection::InReview);
+        };
+        match self.review_structure(parent, tracker).await {
+            Ok(reviewed) => self.save_structure(tab, tracker, reviewed),
+            Err(start) => start,
         }
     }
 
@@ -408,7 +437,7 @@ impl WorkspaceHandle {
                 return Err(SaveStart::Rejected(rejection));
             }
         };
-        self.emit(WorkspaceEvent::SaveStarted { tab });
+        self.emit(WorkspaceEvent::SaveStarted { tab, kind });
         Ok((session, ticket, taken))
     }
 

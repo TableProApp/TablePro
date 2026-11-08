@@ -307,6 +307,10 @@ impl WorkspaceModel {
             WorkspaceTab::Table(slot) => {
                 slot.browse.shutdown();
                 self.change_trackers.unregister(slot.id);
+                if let Some(structure) = &slot.structure {
+                    structure.shutdown();
+                    self.structure_trackers.unregister(slot.id);
+                }
             }
             WorkspaceTab::Diagram(slot) => slot.diagram.shutdown(),
             WorkspaceTab::Key(slot) => slot.tab.shutdown(),
@@ -549,6 +553,10 @@ impl WorkspaceModel {
                 WorkspaceTab::Table(slot) => {
                     slot.browse.shutdown();
                     self.change_trackers.unregister(slot.id);
+                    if let Some(structure) = &slot.structure {
+                        structure.shutdown();
+                        self.structure_trackers.unregister(slot.id);
+                    }
                 }
                 WorkspaceTab::Diagram(slot) => slot.diagram.shutdown(),
                 WorkspaceTab::Key(slot) => slot.tab.shutdown(),

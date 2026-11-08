@@ -70,6 +70,21 @@ impl WorkspaceModel {
         });
     }
 
+    /// Build a table tab's Structure view, the first time it opens.
+    pub(super) fn on_show_table_structure(&self, id: Uuid) {
+        let target = match self.workspace_tabs.borrow().get(&id) {
+            Some(WorkspaceTab::Table(slot)) => Some((slot.schema.clone(), slot.table.clone())),
+            _ => None,
+        };
+        let Some(structure) = target.and_then(|(schema, table)| self.factory.table_structure(id, schema, table)) else {
+            return;
+        };
+        if let Some(WorkspaceTab::Table(slot)) = self.workspace_tabs.borrow_mut().get_mut(&id) {
+            slot.browse.set_structure(&structure);
+            slot.structure = Some(structure);
+        }
+    }
+
     /// Right-click → "Drop Table…", or in-tab destructive button. The
     /// table's definition is read first, so a table other tables point
     /// at is refused before the user is asked.
@@ -253,6 +268,12 @@ impl WorkspaceModel {
                         SaveKind::UpdateInPlace(slot.schema.clone(), slot.table.clone())
                     }
                 },
+                // The rows are read by the name the tab was built with,
+                // so a renamed table opens again under its new one.
+                Some(WorkspaceTab::Table(slot)) => match new_table_name.clone() {
+                    Some(name) => SaveKind::PromoteNewToTable(slot.schema.clone(), name),
+                    None => SaveKind::UpdateInPlace(slot.schema.clone(), slot.table.clone()),
+                },
                 _ => SaveKind::Skip,
             }
         };
@@ -368,7 +389,7 @@ impl WorkspaceModel {
             .values()
             .filter_map(|tab| match tab {
                 WorkspaceTab::Table(slot) if slot.schema == table.schema && slot.table == table.name => {
-                    Some((Some(slot.browse.clone()), None))
+                    Some((Some(slot.browse.clone()), slot.structure.clone()))
                 }
                 WorkspaceTab::Structure(slot) if slot.schema == table.schema && slot.table == table.name => {
                     Some((None, Some(slot.structure.clone())))

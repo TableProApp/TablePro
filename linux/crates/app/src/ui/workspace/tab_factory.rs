@@ -228,6 +228,7 @@ impl TabFactory {
     fn table(&self, id: Uuid, opening: TableOpening<'_>) -> Option<WorkspaceTab> {
         let parts = &self.parts;
         let session = parts.context.active.get()?;
+        let session_has_ddl = session.current_dialect().is_some_and(|dialect| dialect.ddl().is_some());
         let TableOpening {
             table: TableRef { schema, name },
             page,
@@ -261,6 +262,9 @@ impl TabFactory {
             first_load,
         });
         connect_browse(&browse, id, &parts.input);
+        if session_has_ddl {
+            browse.offer_structure();
+        }
         let tab_page = self.append(&browse, id, parent);
         let follow = follow_loading(&tab_page, browse.is_loading());
         browse.connect_loading_changed(move |_, loading| follow(loading));
@@ -270,6 +274,7 @@ impl TabFactory {
             schema,
             table: name,
             browse,
+            structure: None,
         }))
     }
 
@@ -289,7 +294,7 @@ impl TabFactory {
             tasks: parts.context.tasks.clone(),
             first_load,
         });
-        connect_structure(&structure, id, &parts.input);
+        connect_structure(&structure, id, &parts.input, WorkspaceInput::SaveTab);
         let page = self.append(&structure, id, None);
         let follow = follow_loading(&page, structure.is_loading());
         structure.connect_loading_changed(move |_, loading| follow(loading));
@@ -301,6 +306,24 @@ impl TabFactory {
             table,
             mode,
         }))
+    }
+
+    /// The Structure view of the table tab `id`. It goes under the tab's
+    /// own id, so the tab's close and save prompts cover its edits.
+    pub(super) fn table_structure(&self, id: Uuid, schema: Option<String>, table: String) -> Option<StructureTab> {
+        let parts = &self.parts;
+        let session = parts.context.active.get()?;
+        let structure = StructureTab::new(StructureTabInit {
+            tracker: parts.structure_trackers.register(id),
+            schema,
+            table,
+            mode: StructureMode::Edit,
+            session,
+            tasks: parts.context.tasks.clone(),
+            first_load: FirstLoad::Now,
+        });
+        connect_structure(&structure, id, &parts.input, WorkspaceInput::SaveStructure);
+        Some(structure)
     }
 
     fn diagram(&self, id: Uuid, opening: DiagramOpening) -> Option<WorkspaceTab> {
@@ -406,11 +429,16 @@ impl EditorPreview {
 }
 
 /// The structure tab's signals, as the workspace's inputs for the tab.
-fn connect_structure(structure: &StructureTab, tab_id: Uuid, input: &WorkspaceSender) {
+fn connect_structure(
+    structure: &StructureTab,
+    tab_id: Uuid,
+    input: &WorkspaceSender,
+    save_message: fn(Uuid) -> WorkspaceInput,
+) {
     let dirty = input.clone();
     structure.connect_dirty_changed(move |_, _| dirty.deliver(WorkspaceInput::TabDirtyChanged));
     let save = input.clone();
-    structure.connect_save_requested(move |_| save.deliver(WorkspaceInput::SaveTab(tab_id)));
+    structure.connect_save_requested(move |_| save.deliver(save_message(tab_id)));
     let stop = input.clone();
     structure.connect_stop_save_requested(move |_| stop.deliver(WorkspaceInput::StopSaving(tab_id)));
     let drop_table = input.clone();
@@ -480,6 +508,8 @@ fn connect_browse(browse: &BrowseTab, tab_id: Uuid, input: &WorkspaceSender) {
     browse.connect_dirty_changed(move |_, _| dirty.deliver(WorkspaceInput::TabDirtyChanged));
     let save = input.clone();
     browse.connect_save_requested(move |_| save.deliver(WorkspaceInput::SaveTab(tab_id)));
+    let structure = input.clone();
+    browse.connect_structure_requested(move |_| structure.deliver(WorkspaceInput::ShowTableStructure(tab_id)));
     let stop = input.clone();
     browse.connect_stop_save_requested(move |_| stop.deliver(WorkspaceInput::StopSaving(tab_id)));
     let refresh = input.clone();

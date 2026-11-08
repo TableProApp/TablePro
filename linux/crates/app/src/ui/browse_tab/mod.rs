@@ -388,6 +388,50 @@ impl BrowseTab {
         self.connect_closure("save-requested", false, glib::closure_local!(move |tab: &Self| f(tab)))
     }
 
+    /// The Structure view opened for the first time and has nothing to show.
+    pub fn connect_structure_requested<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "structure-requested",
+            false,
+            glib::closure_local!(move |tab: &Self| f(tab)),
+        )
+    }
+
+    /// Offer the Data and Structure switch, where the engine has a
+    /// structure to show.
+    pub fn offer_structure(&self) {
+        let imp = self.imp();
+        imp.view_toggle.set_visible(true);
+        let tab = self.downgrade();
+        imp.view_toggle.connect_active_name_notify(move |_| {
+            if let Some(tab) = tab.upgrade() {
+                tab.follow_view_toggle();
+            }
+        });
+    }
+
+    /// Show `structure` as the tab's Structure view.
+    pub fn set_structure(&self, structure: &impl IsA<gtk::Widget>) {
+        libadwaita::prelude::BinExt::set_child(&*self.imp().structure_host, Some(structure));
+    }
+
+    fn follow_view_toggle(&self) {
+        let imp = self.imp();
+        let structure = imp.view_toggle.active_name().as_deref() == Some("structure");
+        if structure && libadwaita::prelude::BinExt::child(&*imp.structure_host).is_none() {
+            self.emit_by_name::<()>("structure-requested", &[]);
+        }
+        imp.view_stack
+            .set_visible_child_name(if structure { "structure" } else { "data" });
+        // Each says something about the rows, and is hidden rather than
+        // unrevealed because the data view decides whether it is revealed.
+        imp.stale_banner.set_visible(!structure);
+        imp.read_only_banner.set_visible(!structure);
+        imp.no_pk_banner.set_visible(!structure);
+        imp.data_start.set_visible(!structure);
+        imp.data_end.set_visible(!structure);
+    }
+
     /// F5 asked the window to read the tab again.
     pub fn connect_refresh_requested<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure(

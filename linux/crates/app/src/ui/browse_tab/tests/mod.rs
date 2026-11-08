@@ -1536,3 +1536,34 @@ fn a_dotted_field_of_a_document_neither_sorts_nor_takes_an_edit() {
     assert!(!grid.edit().edit_cell(&cell), "the dotted field opened for editing");
     assert_eq!(harness.tracker.pending_count(), 0);
 }
+
+/// The Structure view is asked for once, the first time it is switched to,
+/// and the data view's controls leave the bottom bar for it.
+#[gtk4::test]
+fn the_bottom_bar_switches_between_data_and_structure() {
+    use gtk4::prelude::*;
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+    let harness = Harness::open(serving_table(), []);
+    let tab = harness.tab().clone();
+    let asked = std::rc::Rc::new(std::cell::Cell::new(0));
+    let counted = asked.clone();
+    tab.connect_structure_requested(move |_| counted.set(counted.get() + 1));
+    tab.offer_structure();
+    let imp = tab.imp();
+    assert!(imp.view_toggle.is_visible());
+
+    imp.view_toggle.set_active_name(Some("structure"));
+    assert_eq!(asked.get(), 1);
+    assert_eq!(imp.view_stack.visible_child_name().as_deref(), Some("structure"));
+    assert!(!imp.data_start.is_visible());
+
+    tab.set_structure(&gtk4::Label::new(None));
+    imp.view_toggle.set_active_name(Some("data"));
+    imp.view_toggle.set_active_name(Some("structure"));
+    assert_eq!(asked.get(), 1, "a view that is built is asked for again");
+
+    imp.view_toggle.set_active_name(Some("data"));
+    assert_eq!(imp.view_stack.visible_child_name().as_deref(), Some("data"));
+    assert!(imp.data_start.is_visible());
+}
