@@ -12,6 +12,7 @@ type TestResult = Result<(), Box<dyn Error>>;
 
 const SCHEMA_ID: &str = "app.tablepro.TablePro";
 
+// GSettings captures the thread-default context, so every test owns one through glib::async_test.
 struct Fixture {
     _dir: tempfile::TempDir,
     settings: AppSettings,
@@ -39,8 +40,8 @@ fn compile_schemas() -> Result<tempfile::TempDir, Box<dyn Error>> {
     Ok(dir)
 }
 
-#[test]
-fn defaults_match_schema() -> TestResult {
+#[glib::async_test]
+async fn defaults_match_schema() -> TestResult {
     let fixture = Fixture::new()?;
 
     assert_eq!(fixture.settings.default_page_size(), 1_000);
@@ -61,8 +62,8 @@ fn defaults_match_schema() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn usage_data_turns_off_and_on_again() -> TestResult {
+#[glib::async_test]
+async fn usage_data_turns_off_and_on_again() -> TestResult {
     let fixture = Fixture::new()?;
 
     fixture.settings.set_share_usage_data(false)?;
@@ -74,8 +75,8 @@ fn usage_data_turns_off_and_on_again() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn a_day_of_use_counts_once() -> TestResult {
+#[glib::async_test]
+async fn a_day_of_use_counts_once() -> TestResult {
     let fixture = Fixture::new()?;
 
     fixture.settings.record_usage_day("2026-11-05")?;
@@ -89,8 +90,8 @@ fn a_day_of_use_counts_once() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn vim_keybindings_round_trip() -> TestResult {
+#[glib::async_test]
+async fn vim_keybindings_round_trip() -> TestResult {
     let fixture = Fixture::new()?;
 
     fixture.settings.set_vim_keybindings(true)?;
@@ -100,8 +101,8 @@ fn vim_keybindings_round_trip() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn mcp_server_round_trip_and_port_range() -> TestResult {
+#[glib::async_test]
+async fn mcp_server_round_trip_and_port_range() -> TestResult {
     let fixture = Fixture::new()?;
 
     fixture.settings.set_mcp_server_enabled(true)?;
@@ -115,8 +116,8 @@ fn mcp_server_round_trip_and_port_range() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn the_assistant_starts_off_and_keeps_each_providers_model() -> TestResult {
+#[glib::async_test]
+async fn the_assistant_starts_off_and_keeps_each_providers_model() -> TestResult {
     let fixture = Fixture::new()?;
     assert_eq!(fixture.settings.ai_provider(), None);
     assert!(!fixture.settings.ai_inline_suggestions());
@@ -152,8 +153,8 @@ fn the_assistant_starts_off_and_keeps_each_providers_model() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn restore_session_round_trip() -> TestResult {
+#[glib::async_test]
+async fn restore_session_round_trip() -> TestResult {
     let fixture = Fixture::new()?;
 
     fixture.settings.set_restore_session(false)?;
@@ -162,8 +163,8 @@ fn restore_session_round_trip() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn last_seen_version_starts_empty_and_round_trips() -> TestResult {
+#[glib::async_test]
+async fn last_seen_version_starts_empty_and_round_trips() -> TestResult {
     let fixture = Fixture::new()?;
     assert_eq!(fixture.settings.last_seen_version(), "");
 
@@ -173,8 +174,8 @@ fn last_seen_version_starts_empty_and_round_trips() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn confirm_bulk_delete_round_trip() -> TestResult {
+#[glib::async_test]
+async fn confirm_bulk_delete_round_trip() -> TestResult {
     let fixture = Fixture::new()?;
 
     fixture.settings.set_confirm_bulk_delete(false)?;
@@ -184,8 +185,8 @@ fn confirm_bulk_delete_round_trip() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn show_alternate_rows_round_trip() -> TestResult {
+#[glib::async_test]
+async fn show_alternate_rows_round_trip() -> TestResult {
     let fixture = Fixture::new()?;
 
     fixture.settings.set_show_alternate_rows(false)?;
@@ -195,8 +196,8 @@ fn show_alternate_rows_round_trip() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn save_query_history_round_trip() -> TestResult {
+#[glib::async_test]
+async fn save_query_history_round_trip() -> TestResult {
     let fixture = Fixture::new()?;
 
     fixture.settings.set_save_query_history(false)?;
@@ -205,8 +206,8 @@ fn save_query_history_round_trip() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn csv_options_round_trip() -> TestResult {
+#[glib::async_test]
+async fn csv_options_round_trip() -> TestResult {
     let fixture = Fixture::new()?;
     let options = CsvOptions {
         null_to_empty: false,
@@ -225,8 +226,8 @@ fn csv_options_round_trip() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn reset_csv_options_restores_defaults() -> TestResult {
+#[glib::async_test]
+async fn reset_csv_options_restores_defaults() -> TestResult {
     let fixture = Fixture::new()?;
     fixture.settings.set_csv_options(&CsvOptions {
         delimiter: CsvDelimiter::Tab,
@@ -240,8 +241,8 @@ fn reset_csv_options_restores_defaults() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn window_geometry_round_trip() -> TestResult {
+#[glib::async_test]
+async fn window_geometry_round_trip() -> TestResult {
     let fixture = Fixture::new()?;
     let geometry = WindowGeometry {
         width: 1440,
@@ -255,8 +256,8 @@ fn window_geometry_round_trip() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn range_rejects_out_of_bounds() -> TestResult {
+#[glib::async_test]
+async fn range_rejects_out_of_bounds() -> TestResult {
     let fixture = Fixture::new()?;
 
     for (key, result) in [
@@ -278,8 +279,8 @@ fn range_rejects_out_of_bounds() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn query_timeout_zero_is_none() -> TestResult {
+#[glib::async_test]
+async fn query_timeout_zero_is_none() -> TestResult {
     let fixture = Fixture::new()?;
 
     fixture.settings.set_query_timeout_secs(0)?;
@@ -288,8 +289,8 @@ fn query_timeout_zero_is_none() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn editor_font_defaults_to_system() -> TestResult {
+#[glib::async_test]
+async fn editor_font_defaults_to_system() -> TestResult {
     let fixture = Fixture::new()?;
     assert_eq!(fixture.settings.editor_font(), EditorFont::System);
 
@@ -304,8 +305,8 @@ fn editor_font_defaults_to_system() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn missing_schema_is_schema_not_found() -> TestResult {
+#[glib::async_test]
+async fn missing_schema_is_schema_not_found() -> TestResult {
     let dir = compile_schemas()?;
 
     let result = AppSettings::with_backend("app.tablepro.Absent", dir.path(), &gio::memory_settings_backend_new());
@@ -317,8 +318,8 @@ fn missing_schema_is_schema_not_found() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn nonexistent_dir_is_schema_directory() -> TestResult {
+#[glib::async_test]
+async fn nonexistent_dir_is_schema_directory() -> TestResult {
     let dir = tempfile::tempdir()?;
     let missing = dir.path().join("absent");
 
@@ -331,8 +332,8 @@ fn nonexistent_dir_is_schema_directory() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn grid_preferences_start_from_schema_and_keep_one_model() -> TestResult {
+#[glib::async_test]
+async fn grid_preferences_start_from_schema_and_keep_one_model() -> TestResult {
     use tablepro_linux_platform::settings::{GridPreferenceValues, GridPreferences};
 
     let fixture = Fixture::new()?;
@@ -343,8 +344,8 @@ fn grid_preferences_start_from_schema_and_keep_one_model() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn every_grid_preference_observer_reads_the_updated_snapshot() -> TestResult {
+#[glib::async_test]
+async fn every_grid_preference_observer_reads_the_updated_snapshot() -> TestResult {
     use std::cell::RefCell;
     use std::rc::Rc;
 
@@ -377,8 +378,8 @@ fn every_grid_preference_observer_reads_the_updated_snapshot() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn grid_preference_backends_stay_independent() -> TestResult {
+#[glib::async_test]
+async fn grid_preference_backends_stay_independent() -> TestResult {
     let first = Fixture::new()?;
     let second = Fixture::new()?;
     let first_preferences = first.settings.grid_preferences();
@@ -394,8 +395,8 @@ fn grid_preference_backends_stay_independent() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn null_display_is_bounded_even_for_external_settings_writes() -> TestResult {
+#[glib::async_test]
+async fn null_display_is_bounded_even_for_external_settings_writes() -> TestResult {
     use gio::prelude::SettingsExt;
 
     let fixture = Fixture::new()?;
@@ -414,8 +415,8 @@ fn null_display_is_bounded_even_for_external_settings_writes() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn grid_preference_changes_ignore_unrelated_and_equivalent_values() -> TestResult {
+#[glib::async_test]
+async fn grid_preference_changes_ignore_unrelated_and_equivalent_values() -> TestResult {
     use std::cell::Cell;
     use std::rc::Rc;
 
@@ -437,8 +438,8 @@ fn grid_preference_changes_ignore_unrelated_and_equivalent_values() -> TestResul
     Ok(())
 }
 
-#[test]
-fn dropping_grid_preferences_disconnects_the_settings_handler() -> TestResult {
+#[glib::async_test]
+async fn dropping_grid_preferences_disconnects_the_settings_handler() -> TestResult {
     use gio::prelude::*;
 
     let fixture = Fixture::new()?;
@@ -459,8 +460,42 @@ fn dropping_grid_preferences_disconnects_the_settings_handler() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn grid_font_uses_the_shared_snapshot_and_preserves_the_editor_font() -> TestResult {
+#[glib::async_test]
+async fn settings_observers_run_while_another_thread_owns_the_global_context() -> TestResult {
+    use std::cell::Cell;
+    use std::rc::Rc;
+    use std::sync::mpsc;
+
+    let fixture = Fixture::new()?;
+    let preferences = fixture.settings.grid_preferences();
+    let calls = Rc::new(Cell::new(0));
+    let observed = calls.clone();
+    preferences.connect_changed(move |_| observed.set(observed.get() + 1));
+
+    let (ready, started) = mpsc::sync_channel(0);
+    let (release, released) = mpsc::channel();
+    let owner = std::thread::spawn(move || {
+        let context = glib::MainContext::default();
+        let _guard = context.acquire().expect("only this worker uses the global context");
+        ready.send(()).expect("the test waits for context ownership");
+        let _ = released.recv();
+    });
+    started.recv()?;
+
+    let changed = fixture.settings.set_show_row_numbers(false);
+    let notifications = calls.get();
+    let snapshot = preferences.snapshot();
+    drop(release);
+    owner.join().expect("the context owner exits");
+    changed?;
+
+    assert_eq!(notifications, 1);
+    assert!(!snapshot.show_row_numbers);
+    Ok(())
+}
+
+#[glib::async_test]
+async fn grid_font_uses_the_shared_snapshot_and_preserves_the_editor_font() -> TestResult {
     use std::cell::Cell;
     use std::rc::Rc;
 
@@ -487,8 +522,8 @@ fn grid_font_uses_the_shared_snapshot_and_preserves_the_editor_font() -> TestRes
     Ok(())
 }
 
-#[test]
-fn row_copy_format_publishes_every_format_through_the_shared_model() -> TestResult {
+#[glib::async_test]
+async fn row_copy_format_publishes_every_format_through_the_shared_model() -> TestResult {
     use std::cell::RefCell;
     use std::rc::Rc;
     use tablepro_linux_platform::settings::RowCopyFormat;
@@ -513,8 +548,8 @@ fn row_copy_format_publishes_every_format_through_the_shared_model() -> TestResu
     Ok(())
 }
 
-#[test]
-fn automatic_details_preference_is_published_in_the_shared_snapshot() -> TestResult {
+#[glib::async_test]
+async fn automatic_details_preference_is_published_in_the_shared_snapshot() -> TestResult {
     use gio::prelude::SettingsExt;
     use std::cell::RefCell;
     use std::rc::Rc;
