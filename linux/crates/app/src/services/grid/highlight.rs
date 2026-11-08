@@ -463,7 +463,7 @@ mod tests {
         let mut second = rule(FilterOp::Eq, single("2"));
         second.column_occurrence = 1;
         second.target = HighlightTarget::Cell;
-        let rules = HighlightRules::compile(&[second.clone()], &columns(&["status", "status"]));
+        let rules = HighlightRules::compile(std::slice::from_ref(&second), &columns(&["status", "status"]));
         let found = rules.highlight(&cells(&[Some("1"), Some("2")]));
         assert_eq!(found.color_of(0), None);
         assert_eq!(found.color_of(1), Some(HighlightColor::Yellow));

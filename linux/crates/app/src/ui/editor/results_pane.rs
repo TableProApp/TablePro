@@ -674,7 +674,7 @@ mod tests {
         pane.select(0);
         assert_eq!(
             pane.kept_grid(0).expect("restored result").highlight_rules(),
-            [rule.clone()]
+            std::slice::from_ref(&rule)
         );
         pane.rebuild_page(0);
         assert_eq!(pane.kept_grid(0).expect("rebuilt result").highlight_rules(), [rule]);
