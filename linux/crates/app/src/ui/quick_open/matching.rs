@@ -12,6 +12,10 @@ pub(super) fn rank(typed: &[char], name: &[char]) -> Option<Rank> {
     if let Some(at) = name.windows(typed.len()).position(|window| window == typed) {
         return Some(Rank(1, at));
     }
+    // A qualified name must not pick up letters from a different identifier.
+    if typed.contains(&'.') {
+        return None;
+    }
     let mut wanted = typed.iter();
     let mut next = wanted.next();
     let mut first = None;
@@ -51,6 +55,16 @@ mod tests {
         assert_eq!(score("sro", "orders"), None);
         assert_eq!(score("longer", "a"), None);
         assert_eq!(score("x", ""), None);
+    }
+
+    #[test]
+    fn dotted_searches_keep_the_identifier_contiguous() {
+        assert_eq!(score("sales.orders", "sales.orders"), Some(Rank(0, 0)));
+        assert_eq!(score("sales.ord", "sales.orders"), Some(Rank(0, 0)));
+        assert!(score("sales.orders", "SELECT * FROM sales.orders").is_some());
+        assert_eq!(score("sales.orders", "sales.order_items"), None);
+        assert_eq!(score("sales.orders", "sales_archive.orders"), None);
+        assert!(score("ods", "orders").is_some());
     }
 
     #[test]
