@@ -41,6 +41,14 @@
   <object class="GtkBox" id="list_banners">
     <property name="orientation">vertical</property>
     <child>
+      <!-- A filtered list looks like a short one, so the sidebar says it
+           is filtered, as macOS's does. -->
+      <object class="AdwBanner" id="schema_filter_banner">
+        <property name="use-markup">false</property>
+        <property name="button-label" translatable="yes">Show All</property>
+      </object>
+    </child>
+    <child>
       <!-- The list stays as it was when a read fails, so
            the banner says it may be out of date. -->
       <object class="AdwBanner" id="catalog_banner">
@@ -57,5 +65,14 @@
         <property name="title" translatable="yes">Not every key is listed. Search to narrow the list.</property>
       </object>
     </child>
+  </object>
+  <!-- Which schemas the sidebar lists, which the shell shows in the
+       sidebar's bottom bar while the session is in front. -->
+  <object class="GtkMenuButton" id="schema_filter_button">
+    <property name="label" translatable="yes">Schemas</property>
+    <property name="always-show-arrow">true</property>
+    <property name="direction">up</property>
+    <property name="visible">false</property>
+    <property name="tooltip-text" translatable="yes">Schemas to List</property>
   </object>
 </interface>

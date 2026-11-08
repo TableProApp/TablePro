@@ -21,6 +21,7 @@ mod import_ledger;
 mod recent_tabs;
 mod references;
 mod saves;
+mod schema_filter;
 mod session_watches;
 mod sidebar;
 mod status_pages;
@@ -57,7 +58,7 @@ use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 
-use tablepro_core::meta::SchemaInfo;
+use tablepro_core::meta::{ObjectInfo, SchemaInfo};
 use tablepro_core::{DataModel, EditorSession};
 use tablepro_session::{ObjectListSnapshot, Session, SessionHealth, SessionKey};
 use uuid::Uuid;
@@ -131,6 +132,10 @@ pub(crate) struct WorkspaceModel {
     /// The last schema read the sidebar asked for; an older one landing
     /// late is not shown.
     sidebar_read: u64,
+    /// The objects the sidebar was last asked to list, which a change of
+    /// schema filter lists again.
+    sidebar_objects: Arc<[ObjectInfo]>,
+    schema_filter: schema_filter::SchemaFilter,
     definition_reads: u64,
     /// The Show Definition read in flight, which a newer one supersedes.
     definition_read: Option<definitions::DefinitionRead>,
@@ -500,6 +505,12 @@ pub(crate) enum WorkspaceInput {
         read: u64,
         listing: sidebar::SidebarListing,
     },
+    /// Hide a schema from the sidebar, or list it again.
+    HideSchema {
+        name: String,
+        hidden: bool,
+    },
+    ShowAllSchemas,
     /// List a key-value engine's keys again, as the search now asks.
     ListKeys,
     /// The keys a listing found, indexed for the sidebar, or why they
@@ -817,6 +828,7 @@ impl Workspace {
         imp.shell.set(Some(&shell));
         let input = workspace.pump_inputs();
         let _ = imp.sender.set(input.clone());
+        let filter_input = input.clone();
         let _ = imp.key.set(key.clone());
         let context = session_slot(&context, &session);
         let storage = services.storage.clone();
@@ -870,6 +882,12 @@ impl Workspace {
             sidebar,
             catalog_schemas: Arc::from([]),
             sidebar_read: 0,
+            sidebar_objects: Arc::from([]),
+            schema_filter: schema_filter::SchemaFilter::new(
+                imp.schema_filter_button.get(),
+                imp.schema_filter_banner.get(),
+                &filter_input,
+            ),
             definition_reads: 0,
             definition_read: None,
             all_schemas_listed: false,
@@ -1330,6 +1348,8 @@ impl WorkspaceModel {
             WorkspaceInput::RefreshCatalog => self.refresh_catalog(),
             WorkspaceInput::DefaultListCommitted(snapshot) => self.on_default_list_committed(snapshot),
             WorkspaceInput::SidebarRead { read, listing } => self.on_sidebar_read(read, listing),
+            WorkspaceInput::HideSchema { name, hidden } => self.on_schema_hidden(&name, hidden),
+            WorkspaceInput::ShowAllSchemas => self.on_all_schemas_shown(),
             WorkspaceInput::ListKeys => self.list_keys(),
             WorkspaceInput::KeysListed(listed) => self.on_keys_listed(listed),
             WorkspaceInput::LinkChanged => self.on_link_changed(),

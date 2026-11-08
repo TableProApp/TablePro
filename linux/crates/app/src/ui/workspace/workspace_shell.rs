@@ -384,6 +384,7 @@ impl WorkspaceShell {
         let handlers = self.follow_session(workspace);
         imp.session_banners.add_child(workspace);
         imp.list_banners.add_child(&workspace.imp().list_banners.get());
+        imp.list_filters.add_child(&workspace.imp().schema_filter_button.get());
         if let Some(pane) = workspace.assistant_pane() {
             imp.assistant_stack.add_child(&pane);
         }
@@ -470,6 +471,10 @@ impl WorkspaceShell {
         if holds_child(&imp.list_banners, &banners) {
             imp.list_banners.remove(&banners);
         }
+        let filter = workspace.imp().schema_filter_button.get();
+        if holds_child(&imp.list_filters, &filter) {
+            imp.list_filters.remove(&filter);
+        }
         if let Some(pane) = workspace.assistant_pane()
             && holds_child(&imp.assistant_stack, &pane)
         {
@@ -544,6 +549,10 @@ impl WorkspaceShell {
             let banners = front.imp().list_banners.get();
             if holds_child(&imp.list_banners, &banners) {
                 imp.list_banners.set_visible_child(&banners);
+            }
+            let filter = front.imp().schema_filter_button.get();
+            if holds_child(&imp.list_filters, &filter) {
+                imp.list_filters.set_visible_child(&filter);
             }
             if let Some(pane) = front.assistant_pane()
                 && holds_child(&imp.assistant_stack, &pane)

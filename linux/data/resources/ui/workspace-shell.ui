@@ -129,6 +129,10 @@
                                 <property name="direction">up</property>
                               </object>
                             </child>
+                            <child type="end">
+                              <!-- The schemas the connection in front lists. -->
+                              <object class="GtkStack" id="list_filters"/>
+                            </child>
                           </object>
                         </child>
                         <property name="content">

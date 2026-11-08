@@ -65,6 +65,8 @@ pub struct WorkspaceShell {
     #[template_child]
     pub list_banners: TemplateChild<gtk::Stack>,
     #[template_child]
+    pub list_filters: TemplateChild<gtk::Stack>,
+    #[template_child]
     pub sidebar_slot: TemplateChild<adw::Bin>,
     #[template_child]
     pub assistant_split: TemplateChild<adw::OverlaySplitView>,

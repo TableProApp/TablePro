@@ -580,3 +580,36 @@ fn the_sidebar_add_button_is_there_to_use_only_while_the_menu_offers_something()
 
     assert_eq!(shell.imp().sidebar_add_button.is_sensitive(), offered);
 }
+
+/// The sidebar's bottom bar offers the schemas once there are two, and a
+/// hidden one is said in a banner until Show All.
+#[gtk4::test]
+fn hiding_a_schema_shows_a_banner_that_says_the_list_is_filtered() {
+    let test = TestWindow::connected("SchemaFilter");
+    let workspace = test.workspace();
+    let imp = workspace.imp();
+    let (button, banner) = (imp.schema_filter_button.get(), imp.schema_filter_banner.get());
+    assert!(!button.is_visible(), "one schema has nothing to filter");
+
+    let schema = |name: &str| tablepro_core::meta::SchemaInfo {
+        name: name.to_owned(),
+        is_default: name == "public",
+        is_system: false,
+    };
+    let session = workspace
+        .read(|model| model.context.active.get())
+        .flatten()
+        .expect("the session");
+    session
+        .catalog()
+        .commit(vec![schema("public"), schema("sales")], Vec::new());
+    wait_until(WAIT, || button.is_visible()).expect("the schema menu");
+    assert!(!banner.is_revealed());
+
+    workspace.with_model(|model| model.on_schema_hidden("sales", true));
+    wait_until(WAIT, || banner.is_revealed()).expect("the banner");
+    assert_eq!(banner.title(), "Showing 1 of 2 schemas");
+
+    workspace.with_model(|model| model.on_all_schemas_shown());
+    wait_until(WAIT, || !banner.is_revealed()).expect("the banner to go");
+}

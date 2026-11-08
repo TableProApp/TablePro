@@ -31,6 +31,10 @@ pub struct Workspace {
     #[template_child]
     pub catalog_banner: TemplateChild<adw::Banner>,
     #[template_child]
+    pub schema_filter_banner: TemplateChild<adw::Banner>,
+    #[template_child]
+    pub schema_filter_button: TemplateChild<gtk::MenuButton>,
+    #[template_child]
     pub key_limit_banner: TemplateChild<adw::Banner>,
 
     /// The content header's title while the session is in front: the

@@ -23,6 +23,7 @@ mod tree_menu;
 mod tree_node;
 mod tree_row;
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use gtk4::prelude::*;
@@ -119,6 +120,7 @@ pub(super) async fn list_catalog(
     tasks: Tasks,
     objects: Arc<[ObjectInfo]>,
     known: Arc<[SchemaInfo]>,
+    hidden: Arc<HashSet<String>>,
 ) -> Result<SidebarListing, TaskFailure> {
     let schemas = match session.schemas().await {
         Ok(schemas) => Some(schemas),
@@ -131,8 +133,10 @@ pub(super) async fn list_catalog(
     let database = session.database().map(str::to_owned);
     tasks
         .spawn_blocking_task(move || {
-            let listed = schemas.as_deref().unwrap_or(&known);
-            let mut index = SidebarIndex::build(&objects, listed);
+            let all = schemas.as_deref().unwrap_or(&known);
+            let (shown, listed) = super::schema_filter::listed(&hidden, &objects, all);
+            let listed = &*listed;
+            let mut index = SidebarIndex::build(&shown, listed);
             index.withhold_drops(|name| kept(dialect.as_deref(), database.as_deref(), name));
             if dialect
                 .as_deref()
@@ -214,11 +218,13 @@ impl WorkspaceModel {
         self.sidebar_read += 1;
         let read = self.sidebar_read;
         let input = self.input.clone();
+        self.sidebar_objects = objects.clone();
         let listing = list_catalog(
             session,
             self.context.tasks.clone(),
             objects,
             self.catalog_schemas.clone(),
+            self.schema_filter.hidden(),
         );
         crate::runtime::spawn_and_deliver(&self.context.tasks, listing, move |listing| {
             match listing.and_then(|listing| listing) {
@@ -238,7 +244,20 @@ impl WorkspaceModel {
             self.catalog_schemas = schemas;
         }
         self.sidebar.show(listing.index);
+        self.schema_filter.refresh(&self.catalog_schemas, &self.input);
         self.on_table_naming(TableNaming::of(&self.catalog_schemas));
+    }
+
+    pub(super) fn on_schema_hidden(&mut self, name: &str, hidden: bool) {
+        if self.schema_filter.set_hidden(name, hidden) {
+            self.read_sidebar(self.sidebar_objects.clone());
+        }
+    }
+
+    pub(super) fn on_all_schemas_shown(&mut self) {
+        if self.schema_filter.show_all() {
+            self.read_sidebar(self.sidebar_objects.clone());
+        }
     }
 
     /// Every schema's list landed: a reconnect, a schema change or the
