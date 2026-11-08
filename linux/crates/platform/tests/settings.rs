@@ -473,7 +473,7 @@ async fn settings_observers_run_while_another_thread_owns_the_global_context() -
     preferences.connect_changed(move |_| observed.set(observed.get() + 1));
 
     let (ready, started) = mpsc::sync_channel(0);
-    let (release, released) = mpsc::channel();
+    let (release, released) = mpsc::channel::<()>();
     let owner = std::thread::spawn(move || {
         let context = glib::MainContext::default();
         let _guard = context.acquire().expect("only this worker uses the global context");
