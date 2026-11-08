@@ -3,12 +3,10 @@ use std::rc::Rc;
 use tablepro_session::runtime::Tasks;
 use uuid::Uuid;
 
-use super::StateFile;
 use super::highlight_rules_document::HighlightRulesDocument;
+use super::{StateFile, StateFileError, TableStateKey};
 use crate::services::grid::HighlightRule;
 
-/// The highlight rules each table was left with, remembered per
-/// connection, schema and table, as the macOS grid keeps them.
 #[derive(Clone)]
 pub struct HighlightRulesStore {
     file: Rc<StateFile<HighlightRulesDocument>>,
@@ -25,11 +23,12 @@ impl HighlightRulesStore {
         self.file.path()
     }
 
-    pub fn rules(&self, connection_id: Uuid, schema: Option<&str>, table: &str) -> Vec<HighlightRule> {
+    pub fn rules(&self, key: impl Into<TableStateKey>, schema: Option<&str>, table: &str) -> Vec<HighlightRule> {
+        let key = key.into();
         self.file.read(|document| {
             document
                 .connections
-                .get(&connection_id.to_string())
+                .get(key.as_str())
                 .and_then(|schemas| schemas.get(schema.unwrap_or("")))
                 .and_then(|tables| tables.get(table))
                 .cloned()
@@ -37,12 +36,18 @@ impl HighlightRulesStore {
         })
     }
 
-    pub fn set_rules(&self, connection_id: Uuid, schema: Option<&str>, table: &str, rules: Vec<HighlightRule>) {
+    pub fn set_rules(
+        &self,
+        key: impl Into<TableStateKey>,
+        schema: Option<&str>,
+        table: &str,
+        rules: Vec<HighlightRule>,
+    ) {
+        let key = key.into();
         self.file.update(|document| {
-            let schemas = document.connections.entry(connection_id.to_string()).or_default();
+            let schemas = document.connections.entry(key.as_str().to_owned()).or_default();
             let schema_key = schema.unwrap_or("").to_owned();
             if rules.is_empty() {
-                // No rules shrinks the file back, as no filter does.
                 let removed = schemas
                     .get_mut(&schema_key)
                     .is_some_and(|tables| tables.remove(table).is_some());
@@ -50,7 +55,7 @@ impl HighlightRulesStore {
                     schemas.remove(&schema_key);
                 }
                 if schemas.is_empty() {
-                    document.connections.remove(&connection_id.to_string());
+                    document.connections.remove(key.as_str());
                 }
                 return removed;
             }
@@ -67,13 +72,33 @@ impl HighlightRulesStore {
         });
     }
 
-    /// Drop everything for a connection the user deleted.
     pub fn forget_connection(&self, connection_id: Uuid) {
-        self.file
-            .update(|document| document.connections.remove(&connection_id.to_string()).is_some());
+        self.file.update(|document| {
+            let before = document.connections.len();
+            document
+                .connections
+                .retain(|key, _| !TableStateKey::belongs_to(key, connection_id));
+            before != document.connections.len()
+        });
     }
 
-    pub fn flush(&self) -> impl Future<Output = ()> + Send + use<> {
+    pub fn failing(&self) -> tokio::sync::watch::Receiver<bool> {
+        self.file.failing()
+    }
+
+    pub fn has_unsaved_changes(&self) -> bool {
+        self.file.has_unsaved_changes()
+    }
+
+    pub fn current_error(&self) -> Option<StateFileError> {
+        self.file.current_error()
+    }
+
+    pub fn retry(&self) -> bool {
+        self.file.retry()
+    }
+
+    pub fn flush(&self) -> impl Future<Output = Result<(), StateFileError>> + Send + use<> {
         self.file.flush()
     }
 }

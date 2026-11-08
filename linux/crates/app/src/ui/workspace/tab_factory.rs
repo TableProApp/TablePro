@@ -7,7 +7,6 @@ use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::meta::TableRef;
-use tablepro_session::SessionKey;
 use tablepro_storage::{DraftId, DraftScope};
 use uuid::Uuid;
 
@@ -239,14 +238,7 @@ impl TabFactory {
             tracker: parts.change_trackers.register(id),
             schema: schema.clone(),
             table: name.clone(),
-            // Column widths and filters are kept per connection and table;
-            // another database's table of the same name is not that one.
-            connection_id: match parts.label.key() {
-                SessionKey::SavedIn { .. } => None,
-                SessionKey::Saved(_) | SessionKey::File(_) => {
-                    parts.context.active.metadata().map(|metadata| metadata.id)
-                }
-            },
+            state_key: Some(crate::persistence::TableStateKey::for_session(parts.label.key())),
             read_only: parts.read_only,
             page_size: page.page_size,
             initial_offset: page.offset,

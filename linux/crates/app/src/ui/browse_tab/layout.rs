@@ -114,7 +114,7 @@ pub(super) fn filter_strip(tab: &BrowseTab, initial: &FilterSet, dialect: Option
 pub(super) struct GridInit {
     pub(super) table: TableRef,
     pub(super) label: String,
-    pub(super) connection_id: Option<uuid::Uuid>,
+    pub(super) state_key: Option<crate::persistence::TableStateKey>,
     pub(super) sorting: GridSorting,
     pub(super) tracker: TabTrackerHandle,
     pub(super) settings: Rc<AppSettings>,
@@ -132,9 +132,9 @@ pub(super) struct GridInit {
 pub(super) fn grid(tab: &BrowseTab, init: GridInit) -> DataGrid {
     let session = init.session;
     let dialect: DialectSource = Rc::new(move || session.upgrade()?.current_dialect());
-    let layout = init.connection_id.map(|connection_id| LayoutBinding {
+    let layout = init.state_key.map(|state_key| LayoutBinding {
         store: init.layouts,
-        connection_id,
+        state_key,
         schema: init.table.schema.clone(),
         table: init.table.name.clone(),
     });

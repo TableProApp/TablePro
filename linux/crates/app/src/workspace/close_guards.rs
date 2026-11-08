@@ -2,6 +2,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::rc::Rc;
 
+use futures::future::LocalBoxFuture;
 use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
@@ -11,6 +12,8 @@ use super::{CloseDecision, CloseGuard, CloseScope, CloseStep, WorkspaceHandle};
 
 /// Hears how the window's close ended.
 type CloseWaiter = Box<dyn FnOnce(CloseDecision)>;
+type WindowPreflight = Rc<dyn Fn(&gtk::Window) -> LocalBoxFuture<'static, CloseDecision>>;
+type WindowHandles = Rc<dyn Fn() -> Vec<WorkspaceHandle>>;
 
 /// Where the window's own close stands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,6 +36,7 @@ pub(crate) struct CloseGuards {
     requests: Cell<u64>,
     /// Callers waiting to hear how the window's close ended.
     waiting: RefCell<Vec<CloseWaiter>>,
+    preflight: RefCell<Option<WindowPreflight>>,
     /// Open transactions the user agreed to lose in the current
     /// disconnect or switch. A switch asks again once its connection is
     /// ready, about what changed while it connected, but not about these.
@@ -46,8 +50,16 @@ impl CloseGuards {
             window: Cell::new(WindowClose::Open),
             requests: Cell::new(0),
             waiting: RefCell::new(Vec::new()),
+            preflight: RefCell::new(None),
             teardown_acknowledged: RefCell::new(HashSet::new()),
         })
+    }
+
+    pub(crate) fn set_window_preflight(
+        &self,
+        preflight: impl Fn(&gtk::Window) -> LocalBoxFuture<'static, CloseDecision> + 'static,
+    ) {
+        self.preflight.replace(Some(Rc::new(preflight)));
     }
 
     async fn run(
@@ -61,12 +73,6 @@ impl CloseGuards {
         CloseGuard::run(parent, handles, scope, acknowledged).await
     }
 
-    /// The window closes only once its prompts approve; `on_close` runs
-    /// as it does. A close request while they decide is dropped, since
-    /// their dialog is already on screen. `handles` gives the workspace
-    /// of each session the window holds at the time, all asked in one
-    /// pass, so nothing is saved or discarded until every one agreed, and
-    /// a window with none closes at once.
     pub(crate) fn connect_window<W: IsA<gtk::Window>>(
         self: &Rc<Self>,
         window: &W,
@@ -74,9 +80,10 @@ impl CloseGuards {
         on_close: impl Fn(&W) + 'static,
     ) {
         let guards = self.clone();
+        let handles: WindowHandles = Rc::new(handles);
         window.connect_close_request(move |window| {
             guards.requests.set(guards.requests.get() + 1);
-            if !guards.window_may_close(window.upcast_ref(), handles()) {
+            if !guards.window_may_close(window.upcast_ref(), handles.clone()) {
                 return glib::Propagation::Stop;
             }
             on_close(window);
@@ -112,24 +119,36 @@ impl CloseGuards {
         }
     }
 
-    fn window_may_close(self: &Rc<Self>, window: &gtk::Window, handles: Vec<WorkspaceHandle>) -> bool {
+    fn window_may_close(self: &Rc<Self>, window: &gtk::Window, handles: WindowHandles) -> bool {
         match self.window.get() {
             WindowClose::Asking => return false,
             WindowClose::Approved => return true,
             WindowClose::Open => {}
         }
-        if handles
-            .iter()
-            .all(|handle| handle.close_step(CloseScope::Window, &HashSet::new()) == CloseStep::Approve)
+        let preflight = self.preflight.borrow().clone();
+        if preflight.is_none()
+            && handles()
+                .iter()
+                .all(|handle| handle.close_step(CloseScope::Window, &HashSet::new()) == CloseStep::Approve)
         {
             return true;
         }
         self.window.set(WindowClose::Asking);
         let (guards, window) = (self.clone(), window.clone());
         glib::spawn_future_local(async move {
-            let decision = guards
-                .run(window.upcast_ref(), &handles, CloseScope::Window, &mut HashSet::new())
-                .await;
+            let decision = {
+                let _turn = guards.turn.lock().await;
+                let ready = match preflight {
+                    Some(preflight) => preflight(&window).await,
+                    None => CloseDecision::Approved,
+                };
+                if ready == CloseDecision::Approved {
+                    // Pending writes can yield to an edit or a new session, so read their handles again.
+                    CloseGuard::run(window.upcast_ref(), &handles(), CloseScope::Window, &mut HashSet::new()).await
+                } else {
+                    CloseDecision::Cancelled
+                }
+            };
             match decision {
                 CloseDecision::Approved => {
                     guards.window.set(WindowClose::Approved);
@@ -342,8 +361,122 @@ mod tests {
         assert!(visible_alert(&window).is_none());
     }
 
-    /// libadwaita takes a close request over a dialog as dismissing the
-    /// dialog, which keeps the window open.
+    #[gtk4::test]
+    fn a_preflight_holds_an_empty_window_and_joins_close_requests() {
+        let guards = CloseGuards::new();
+        let window = window();
+        let closes = Rc::new(Cell::new(0));
+        let sink = closes.clone();
+        guards.connect_window(&*window, Vec::new, move |_| sink.set(sink.get() + 1));
+        let (send, receive) = futures::channel::oneshot::channel();
+        let receive = Rc::new(RefCell::new(Some(receive)));
+        let calls = Rc::new(Cell::new(0));
+        let observed = calls.clone();
+        guards.set_window_preflight(move |_| {
+            observed.set(observed.get() + 1);
+            let receive = receive.borrow_mut().take().expect("one preflight");
+            Box::pin(async move { receive.await.expect("preflight answer") })
+        });
+        let (first, sink) = decision_sink();
+        guards.request_window_close(&*window, sink);
+        let (second, sink) = decision_sink();
+        guards.request_window_close(&*window, sink);
+        drain_main_context();
+        assert_eq!(calls.get(), 1);
+        assert_eq!(closes.get(), 0);
+        assert_eq!(first.get(), None);
+        assert_eq!(second.get(), None);
+        assert!(window.is_visible());
+
+        send.send(CloseDecision::Approved).expect("waiting preflight");
+        wait_until(WAIT, || closes.get() == 1).expect("approved close");
+        assert_eq!(first.get(), Some(CloseDecision::Approved));
+        assert_eq!(second.get(), Some(CloseDecision::Approved));
+        assert_eq!(calls.get(), 1);
+    }
+
+    #[gtk4::test]
+    fn a_cancelled_preflight_keeps_the_window_and_can_be_asked_again() {
+        let guards = CloseGuards::new();
+        let window = window();
+        let closes = Rc::new(Cell::new(0));
+        let sink = closes.clone();
+        guards.connect_window(&*window, Vec::new, move |_| sink.set(sink.get() + 1));
+        let calls = Rc::new(Cell::new(0));
+        let observed = calls.clone();
+        guards.set_window_preflight(move |_| {
+            let call = observed.get();
+            observed.set(call + 1);
+            Box::pin(std::future::ready(if call == 0 {
+                CloseDecision::Cancelled
+            } else {
+                CloseDecision::Approved
+            }))
+        });
+        let (cancelled, sink) = decision_sink();
+        guards.request_window_close(&*window, sink);
+        wait_until(WAIT, || cancelled.get().is_some()).expect("cancelled close");
+        assert_eq!(cancelled.get(), Some(CloseDecision::Cancelled));
+        assert_eq!(guards.window.get(), WindowClose::Open);
+        assert_eq!(closes.get(), 0);
+        assert!(window.is_visible());
+
+        let (approved, sink) = decision_sink();
+        guards.request_window_close(&*window, sink);
+        wait_until(WAIT, || approved.get().is_some()).expect("second close");
+        assert_eq!(approved.get(), Some(CloseDecision::Approved));
+        assert_eq!(calls.get(), 2);
+        assert_eq!(closes.get(), 1);
+    }
+
+    #[gtk4::test]
+    fn a_cancelled_preflight_does_not_discard_workspace_changes() {
+        let workspace = Workspace::open(ConnectionScript::default());
+        let guards = CloseGuards::new();
+        let (window, closes) = guarded_window(&guards, &workspace);
+        guards.set_window_preflight(|_| Box::pin(std::future::ready(CloseDecision::Cancelled)));
+        let (decision, sink) = decision_sink();
+
+        guards.request_window_close(&*window, sink);
+        wait_until(WAIT, || decision.get().is_some()).expect("preflight decision");
+
+        assert_eq!(decision.get(), Some(CloseDecision::Cancelled));
+        assert_eq!(closes.get(), 0);
+        assert_eq!(workspace.tracker.pending_state(), PendingState::Unsaved);
+        assert!(visible_alert(&window).is_none());
+    }
+
+    #[gtk4::test]
+    fn workspaces_added_while_preflight_waits_are_asked_before_close() {
+        let workspace = Workspace::open(ConnectionScript::default());
+        let guards = CloseGuards::new();
+        let window = window();
+        let handles = Rc::new(RefCell::new(Vec::new()));
+        let current = handles.clone();
+        let closes = Rc::new(Cell::new(0));
+        let sink = closes.clone();
+        guards.connect_window(
+            &*window,
+            move || current.borrow().clone(),
+            move |_| sink.set(sink.get() + 1),
+        );
+        let (send, receive) = futures::channel::oneshot::channel();
+        let receive = Rc::new(RefCell::new(Some(receive)));
+        guards.set_window_preflight(move |_| {
+            let receive = receive.borrow_mut().take().expect("one preflight");
+            Box::pin(async move { receive.await.expect("preflight answer") })
+        });
+        window.close();
+        drain_main_context();
+        handles.borrow_mut().push(workspace.handle.clone());
+        send.send(CloseDecision::Approved).expect("waiting preflight");
+
+        answer_next(&window, "Save Changes?", "cancel", None);
+        wait_until(WAIT, || guards.window.get() == WindowClose::Open).expect("cancelled close");
+        assert_eq!(closes.get(), 0);
+        assert_eq!(workspace.tracker.pending_state(), PendingState::Unsaved);
+    }
+
     #[gtk4::test]
     fn a_close_request_over_the_prompt_keeps_the_window() {
         let workspace = Workspace::open(ConnectionScript::default());

@@ -28,11 +28,7 @@ impl AppStorage {
         let connections = ConnectionStore::new(&paths);
         let column_layouts = ColumnLayoutStore::load(paths.column_layouts_file(), tasks);
         let filter_settings = FilterSettingsStore::load(paths.filter_settings_file(), tasks);
-        // Beside the filters, under a name of its own.
-        let highlight_rules = HighlightRulesStore::load(
-            paths.filter_settings_file().with_file_name("highlight_rules.json"),
-            tasks,
-        );
+        let highlight_rules = HighlightRulesStore::load(paths.highlight_rules_file(), tasks);
         let workspaces = WorkspaceStore::start(
             paths.workspaces_dir(),
             tablepro_storage::DraftStore::new(paths.drafts_dir()),

@@ -5,8 +5,6 @@ use tablepro_storage::document::VersionedDocument;
 
 use crate::services::grid::HighlightRule;
 
-/// Per-table highlight rules, keyed connection, schema, table, in the
-/// same nesting as the filters.
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HighlightRulesDocument {
     #[serde(default)]

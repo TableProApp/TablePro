@@ -49,9 +49,11 @@ impl WorkspaceModel {
         let writer = self.drafts.clone();
         let tabs = self.workspace.detach();
         glib::spawn_future_local(async move {
-            column_layouts.await;
-            filter_settings.await;
-            highlight_rules.await;
+            for result in [column_layouts.await, filter_settings.await, highlight_rules.await] {
+                if let Err(error) = result {
+                    tracing::warn!(%error, "table settings were not saved");
+                }
+            }
             for failure in editor_drafts.await {
                 tracing::warn!(failure, "an editor draft was not saved");
             }

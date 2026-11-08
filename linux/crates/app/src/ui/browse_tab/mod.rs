@@ -100,7 +100,7 @@ pub struct BrowseTabInit {
     pub tracker: TabTrackerHandle,
     pub schema: Option<String>,
     pub table: String,
-    pub connection_id: Option<uuid::Uuid>,
+    pub state_key: Option<crate::persistence::TableStateKey>,
     pub read_only: bool,
     pub page_size: u64,
     pub initial_offset: u64,
@@ -126,7 +126,8 @@ impl BrowseTab {
         let tab: Self = glib::Object::new();
         // The model and the inline strip start with the same FilterSet.
         let (initial_filter, reveal_filter) = init.filter.opening(|| {
-            init.connection_id
+            init.state_key
+                .as_ref()
                 .map(|id| init.filter_settings.filters(id, init.schema.as_deref(), &init.table))
                 .unwrap_or_default()
         });
@@ -155,7 +156,7 @@ impl BrowseTab {
             layout::GridInit {
                 table,
                 label: table_label,
-                connection_id: init.connection_id,
+                state_key: init.state_key.clone(),
                 sorting: grid_sorting(dialect.as_deref(), initial_sort),
                 tracker: init.tracker.clone(),
                 settings: init.settings,
@@ -165,16 +166,16 @@ impl BrowseTab {
                 tasks: init.tasks.clone(),
             },
         );
-        if let Some(connection_id) = init.connection_id {
+        if let Some(state_key) = init.state_key.clone() {
             let rules = init
                 .highlight_rules
-                .rules(connection_id, init.schema.as_deref(), &init.table);
+                .rules(&state_key, init.schema.as_deref(), &init.table);
             if !rules.is_empty() {
                 grid.set_highlight_rules(rules);
             }
             let (store, schema, table) = (init.highlight_rules.clone(), init.schema.clone(), init.table.clone());
             grid.connect_highlight_rules_changed(move |grid| {
-                store.set_rules(connection_id, schema.as_deref(), &table, grid.highlight_rules());
+                store.set_rules(&state_key, schema.as_deref(), &table, grid.highlight_rules());
             });
         }
         let link_changes = init.session.link_changes();
@@ -194,7 +195,7 @@ impl BrowseTab {
             tracker: init.tracker,
             schema: init.schema,
             table: init.table,
-            connection_id: init.connection_id,
+            state_key: init.state_key,
             read_only: init.read_only,
             filter_settings: init.filter_settings,
             pager: BrowsePager::new(init.page_size, init.initial_offset),
@@ -497,7 +498,7 @@ pub(crate) struct BrowseModel {
     tracker: TabTrackerHandle,
     schema: Option<String>,
     table: String,
-    connection_id: Option<uuid::Uuid>,
+    state_key: Option<crate::persistence::TableStateKey>,
     read_only: bool,
     filter_settings: crate::persistence::FilterSettingsStore,
 

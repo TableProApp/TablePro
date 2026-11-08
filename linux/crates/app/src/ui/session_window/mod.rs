@@ -31,6 +31,7 @@ mod session_restore;
 mod session_teardown;
 mod session_window_command;
 mod session_window_input;
+mod state_file_status;
 #[cfg(test)]
 pub(crate) mod tests;
 mod window_actions;
@@ -190,6 +191,7 @@ impl SessionWindow {
 
         self.render();
         self.show_connection_list_banner();
+        self.watch_state_files();
         input.deliver(SessionWindowInput::LoadConnections);
         self.open_launch(launch, &input);
     }
@@ -300,6 +302,7 @@ impl SessionWindow {
         if let Some(presenter) = imp.prompt_presenter.take() {
             presenter.abort();
         }
+        self.stop_state_file_watches();
         self.release_session();
         drop(imp.dialog.take());
         if let Some(welcome) = imp.welcome.take() {
@@ -536,6 +539,8 @@ impl SessionWindow {
             SessionWindowInput::ConnectionsFileRead { path, bytes } => self.on_connections_file_read(path, bytes),
             SessionWindowInput::ImportPreviewed(preview) => self.on_import_previewed(*preview),
             SessionWindowInput::ImportFromApp => self.on_import_from_app(),
+            SessionWindowInput::StateFileStatus(kind) => self.show_state_file_status(kind),
+            SessionWindowInput::RetryStateFile(kind) => self.retry_state_file(kind),
             SessionWindowInput::ShowToast(message) => self.show_toast(&message),
             SessionWindowInput::SecretSave(outcome) => self.on_secret_save(outcome),
         }
@@ -1794,6 +1799,16 @@ impl SessionWindow {
     /// all.
     fn close_guards_for_window(&self) -> Rc<CloseGuards> {
         let guards = CloseGuards::new();
+        let window = self.downgrade();
+        guards.set_window_preflight(move |_| {
+            let window = window.upgrade();
+            Box::pin(async move {
+                match window {
+                    Some(window) => window.confirm_state_files_before_close().await,
+                    None => CloseDecision::Approved,
+                }
+            })
+        });
         let window = self.downgrade();
         guards.connect_window(
             self,

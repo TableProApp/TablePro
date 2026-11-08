@@ -373,7 +373,7 @@ pub(super) fn table_tab(
         tracker,
         schema: None,
         table: table.to_owned(),
-        connection_id: Some(connection_id),
+        state_key: Some(connection_id.into()),
         read_only,
         page_size: 100,
         initial_offset: 0,
