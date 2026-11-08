@@ -23,7 +23,7 @@ The folders, the keywords, the order and the marked tables and databases live in
 
 ## Consequences
 
-- A database an earlier build wrote is copied beside itself before the migration ([0012](0012-copies-before-a-format-upgrade.md)); a build before this one refuses it, as it refuses any newer one. The copies hold none of the new tables, since they are made from the older format, so deleting a folder or a favourite needs no trim of them.
+- A database an earlier build wrote is copied beside itself before the migration ([0012](0012-copies-before-a-format-upgrade.md)); a build before this one refuses it, as it refuses any newer one. A copy made from the older format holds none of the new tables, but one a later migration makes holds them, so deleting a folder, a favourite or a connection's data trims the copies as a saved query's delete does, and the copies' sweep covers folders by id.
 - `SavedQuery` gains `keyword`, `folder_id` and `order`. `NewSavedQuery` is unchanged: a save keeps the keyword and the place of the query it replaces.
 - Not here: the macOS team library, linked folders and per-file favourites, which stay outside the core, and the FFI surface, which a later change adds when Windows or macOS shows favourites.
 - The Linux sidebar shows the folders, the keyword expansion and the marked tables and databases in later changes, each its own pull request.

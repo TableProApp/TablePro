@@ -324,15 +324,32 @@ impl SavedQueries {
     /// connection itself is removed. Its queries name tables only that
     /// database has.
     pub async fn delete_for_connection(&self, connection: Uuid) -> Result<usize, StorageError> {
-        crate::query_history::trim_upgrade_copies(
-            &self.path,
-            &[crate::query_history::CopyDelete {
-                table: "saved_queries",
-                sql: "DELETE FROM main.saved_queries WHERE connection_id = ?".to_owned(),
-                binds: vec![crate::query_history::Bind::Text(connection.to_string())],
-            }],
-        )
-        .await?;
+        // The copies an upgrade kept hold none of what the connection had.
+        let copies: Vec<crate::query_history::CopyDelete> = [
+            (
+                "saved_queries",
+                "DELETE FROM main.saved_queries WHERE connection_id = ?",
+            ),
+            (
+                "saved_query_folders",
+                "DELETE FROM main.saved_query_folders WHERE connection_id = ?",
+            ),
+            (
+                "favourite_tables",
+                "DELETE FROM main.favourite_tables WHERE connection_id = ?",
+            ),
+            (
+                "favourite_databases",
+                "DELETE FROM main.favourite_databases WHERE connection_id = ?",
+            ),
+        ]
+        .map(|(table, sql)| crate::query_history::CopyDelete {
+            table,
+            sql: sql.to_owned(),
+            binds: vec![crate::query_history::Bind::Text(connection.to_string())],
+        })
+        .into();
+        crate::query_history::trim_upgrade_copies(&self.path, &copies).await?;
         let affected = sqlx::query("DELETE FROM saved_queries WHERE connection_id = ?")
             .bind(connection.to_string())
             .execute(&self.pool)

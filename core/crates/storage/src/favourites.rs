@@ -1,6 +1,7 @@
 //! The tables and databases a user marks as favourites on a connection,
 //! as the macOS sidebar keeps them (core ADR 0017).
 
+use std::path::PathBuf;
 use std::time::SystemTime;
 
 use sqlx::{Row, SqlitePool};
@@ -59,11 +60,13 @@ pub struct FavouriteDatabase {
 #[derive(Debug, Clone)]
 pub struct Favourites {
     pool: SqlitePool,
+    // The database's file, whose upgrade copies a removal reaches too.
+    path: PathBuf,
 }
 
 impl Favourites {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+    pub(crate) fn new(pool: SqlitePool, path: PathBuf) -> Self {
+        Self { pool, path }
     }
 
     /// Mark a table. Marking one already marked changes nothing.
@@ -86,6 +89,22 @@ impl Favourites {
     }
 
     pub async fn remove_table(&self, table: &FavouriteTable) -> Result<(), StorageError> {
+        crate::query_history::trim_upgrade_copies(
+            &self.path,
+            &[crate::query_history::CopyDelete {
+                table: "favourite_tables",
+                sql: "DELETE FROM main.favourite_tables \
+                      WHERE connection_id = ? AND database = ? AND schema = ? AND name = ?"
+                    .to_owned(),
+                binds: vec![
+                    crate::query_history::Bind::Text(table.connection_id.to_string()),
+                    crate::query_history::Bind::Text(table.database.clone().unwrap_or_default()),
+                    crate::query_history::Bind::Text(table.schema.clone().unwrap_or_default()),
+                    crate::query_history::Bind::Text(table.name.clone()),
+                ],
+            }],
+        )
+        .await?;
         sqlx::query(
             "DELETE FROM favourite_tables WHERE connection_id = ? AND database = ? AND schema = ? AND name = ?",
         )
@@ -145,6 +164,18 @@ impl Favourites {
     }
 
     pub async fn remove_database(&self, connection: Uuid, database: &str) -> Result<(), StorageError> {
+        crate::query_history::trim_upgrade_copies(
+            &self.path,
+            &[crate::query_history::CopyDelete {
+                table: "favourite_databases",
+                sql: "DELETE FROM main.favourite_databases WHERE connection_id = ? AND database = ?".to_owned(),
+                binds: vec![
+                    crate::query_history::Bind::Text(connection.to_string()),
+                    crate::query_history::Bind::Text(database.to_owned()),
+                ],
+            }],
+        )
+        .await?;
         sqlx::query("DELETE FROM favourite_databases WHERE connection_id = ? AND database = ?")
             .bind(connection.to_string())
             .bind(database)

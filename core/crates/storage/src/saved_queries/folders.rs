@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::time::SystemTime;
 
 use sqlx::{Row, SqlitePool};
@@ -29,11 +30,13 @@ const MAX_NAME_CHARS: usize = 200;
 #[derive(Debug, Clone)]
 pub struct SavedQueryFolders {
     pool: SqlitePool,
+    // The database's file, whose upgrade copies a delete reaches too.
+    path: PathBuf,
 }
 
 impl SavedQueryFolders {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+    pub(crate) fn new(pool: SqlitePool, path: PathBuf) -> Self {
+        Self { pool, path }
     }
 
     /// Make a folder in `parent`, none for the top, last among its
@@ -131,6 +134,17 @@ impl SavedQueryFolders {
     /// Delete a folder and the folders in it. The queries filed in them
     /// stay, at the top of the connection's list.
     pub async fn delete(&self, id: i64) -> Result<(), StorageError> {
+        // The folders in it go from the copies with it, by the cascade, and
+        // the copies' sweep of folders the database no longer has.
+        crate::query_history::trim_upgrade_copies(
+            &self.path,
+            &[crate::query_history::CopyDelete {
+                table: "saved_query_folders",
+                sql: "DELETE FROM main.saved_query_folders WHERE id = ?".to_owned(),
+                binds: vec![crate::query_history::Bind::Integer(id)],
+            }],
+        )
+        .await?;
         let affected = sqlx::query("DELETE FROM saved_query_folders WHERE id = ?")
             .bind(id)
             .execute(&self.pool)
