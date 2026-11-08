@@ -11,13 +11,14 @@ n/a does not apply. Unknown has not been checked.
 
 | | macOS | Linux | Windows |
 |---|---|---|---|
-| Yes | 44 | 25 | 0 |
-| In a PR | 0 | 13 | 0 |
-| Partial | 0 | 2 | 0 |
-| No | 0 | 4 | 0 |
-| Unknown | 0 | 0 | 44 |
+| Yes | 53 | 26 | 0 |
+| In a PR | 0 | 18 | 0 |
+| Partial | 0 | 5 | 0 |
+| No | 0 | 3 | 0 |
+| n/a | 0 | 1 | 0 |
+| Unknown | 0 | 0 | 53 |
 
-44 features.
+53 features.
 
 ## Connections
 
@@ -35,7 +36,8 @@ n/a does not apply. Unknown has not been checked.
 |---|---|---|---|---|
 | Schemas and tables, with search | Yes | Yes | Unknown |  |
 | Tables and Favorites scope switch | Yes | In PR [#4114](https://github.com/TableProApp/TablePro/pull/4114) | Unknown | Linux lists the saved queries of the front connection, and renames and deletes them (4115). |
-| Favorite folders and keywords | Yes | In PR [#4116](https://github.com/TableProApp/TablePro/pull/4116): storage only; the sidebar does not use it yet | Unknown | Shared storage and the decision are core ADR 0017. |
+| Favorite folders | Yes | In PR [#4130](https://github.com/TableProApp/TablePro/pull/4130): on the storage of 4116 | Unknown |  |
+| Favorite keywords that expand in the editor | Yes | Partial ([#4116](https://github.com/TableProApp/TablePro/pull/4116)): storage only; the editor does not expand them yet | Unknown | Shared storage and the decision are core ADR 0017. |
 | Favorite tables and databases, with environments | Yes | In PR [#4116](https://github.com/TableProApp/TablePro/pull/4116): storage only; no UI yet | Unknown |  |
 | Open Quickly (find a table by name) | Yes | In PR [#4121](https://github.com/TableProApp/TablePro/pull/4121): tables and views; not databases, routines or queries | Unknown |  |
 | Sidebar toggle in the window header | Yes | In PR [#4117](https://github.com/TableProApp/TablePro/pull/4117) | Unknown |  |
@@ -51,7 +53,8 @@ n/a does not apply. Unknown has not been checked.
 | Inline cell editing with pending changes, undo and redo | Yes | Yes | Unknown |  |
 | Filters per column and as a WHERE fragment | Yes | Yes | Unknown |  |
 | Open a referenced row and the rows that reference one | Yes | Yes | Unknown |  |
-| Highlight rules (colour rows by a condition) | Yes | No | Unknown |  |
+| Highlight rules (colour rows by a condition) | Yes | In PR [#4127](https://github.com/TableProApp/TablePro/pull/4127): kept per table in 4129; not kept for a query result | Unknown |  |
+| The grid draws in the editor scheme's colours | Yes | In PR [#4128](https://github.com/TableProApp/TablePro/pull/4128) | Unknown |  |
 
 ## Bottom bar
 
@@ -107,3 +110,15 @@ n/a does not apply. Unknown has not been checked.
 | AI assistant | Yes | Yes | Unknown |  |
 | MCP server for outside clients | Yes | Yes | Unknown |  |
 | TablePro account and entitlement | Yes | Yes | Unknown |  |
+
+## Window toolbar
+
+| Feature | macOS | Linux | Windows | Notes |
+|---|---|---|---|---|
+| Safe Mode lock in the toolbar | Yes | In PR [#4124](https://github.com/TableProApp/TablePro/pull/4124) | Unknown |  |
+| Refresh button | Yes | In PR [#4125](https://github.com/TableProApp/TablePro/pull/4125) | Unknown |  |
+| Save Changes check | Yes | In PR [#4126](https://github.com/TableProApp/TablePro/pull/4126) | Unknown |  |
+| Connection and database chips | Yes | Partial: the title names the connection and the sidebar holds every open connection and database; no chips | Unknown |  |
+| Back and Forward through a tab's browse history | Yes | n/a: a referenced row opens in a new tab here, where macOS retargets the tab | Unknown |  |
+| Actions menu (Preview SQL, Show and Copy DDL, Users and Roles, Query Insights, Server Dashboard) | Yes | Partial: Show CREATE TABLE is in the sidebar's menu; the rest is not built | Unknown |  |
+| Reconnect after a lost connection | Yes | Yes | Unknown | On Linux it is the health banner's button. |

@@ -54,9 +54,14 @@ areas:
         windows: unknown
         notes: Linux lists the saved queries of the front connection, and renames and deletes them (4115).
       - id: favorites-folders
-        name: Favorite folders and keywords
+        name: Favorite folders
         macos: yes
-        linux: {status: pending, pr: 4116, note: "storage only; the sidebar does not use it yet"}
+        linux: {status: pending, pr: 4130, note: "on the storage of 4116"}
+        windows: unknown
+      - id: favorites-keywords
+        name: Favorite keywords that expand in the editor
+        macos: yes
+        linux: {status: partial, pr: 4116, note: "storage only; the editor does not expand them yet"}
         windows: unknown
         notes: "Shared storage and the decision are core ADR 0017."
       - id: favorite-tables-databases
@@ -115,7 +120,12 @@ areas:
       - id: highlight-rules
         name: Highlight rules (colour rows by a condition)
         macos: yes
-        linux: no
+        linux: {status: pending, pr: 4127, note: "kept per table in 4129; not kept for a query result"}
+        windows: unknown
+      - id: grid-scheme-colors
+        name: The grid draws in the editor scheme's colours
+        macos: yes
+        linux: {status: pending, pr: 4128}
         windows: unknown
 
   - name: Bottom bar
@@ -260,3 +270,42 @@ areas:
         macos: yes
         linux: yes
         windows: unknown
+
+  - name: Window toolbar
+    features:
+      - id: toolbar-safe-mode
+        name: Safe Mode lock in the toolbar
+        macos: yes
+        linux: {status: pending, pr: 4124}
+        windows: unknown
+      - id: toolbar-refresh
+        name: Refresh button
+        macos: yes
+        linux: {status: pending, pr: 4125}
+        windows: unknown
+      - id: toolbar-save-changes
+        name: Save Changes check
+        macos: yes
+        linux: {status: pending, pr: 4126}
+        windows: unknown
+      - id: toolbar-chips
+        name: Connection and database chips
+        macos: yes
+        linux: {status: partial, note: "the title names the connection and the sidebar holds every open connection and database; no chips"}
+        windows: unknown
+      - id: toolbar-back-forward
+        name: Back and Forward through a tab's browse history
+        macos: yes
+        linux: {status: na, note: "a referenced row opens in a new tab here, where macOS retargets the tab"}
+        windows: unknown
+      - id: toolbar-actions-menu
+        name: Actions menu (Preview SQL, Show and Copy DDL, Users and Roles, Query Insights, Server Dashboard)
+        macos: yes
+        linux: {status: partial, note: "Show CREATE TABLE is in the sidebar's menu; the rest is not built"}
+        windows: unknown
+      - id: toolbar-reconnect
+        name: Reconnect after a lost connection
+        macos: yes
+        linux: yes
+        windows: unknown
+        notes: On Linux it is the health banner's button.
