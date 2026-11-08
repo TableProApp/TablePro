@@ -187,15 +187,12 @@ impl DataGrid {
         self.imp().columns.borrow().columns()
     }
 
-    /// Build the columns for another column set, with what may change in
-    /// its rows. The rows go, since they were read under the old columns.
     pub fn set_columns(&self, columns: Arc<[GridColumn]>, sorting: GridSorting, rules: Option<EditRules>) {
         self.commit_editors();
         self.store().clear();
         self.imp().summary.forget_column();
         self.edit().set_rules(self, rules);
         self.rebuild_columns(columns, sorting);
-        self.apply_display_settings();
         self.show_rows_or_empty();
         self.refresh_actions();
     }
