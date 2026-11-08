@@ -857,4 +857,97 @@ mod tests {
             "renamed"
         );
     }
+    #[tokio::test]
+    async fn concurrent_new_saves_never_overwrite_the_winner() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let store = store(&root).await;
+        let connection = Uuid::new_v4();
+        let (first, second) = tokio::join!(
+            store.save_if_new(new_query("daily", "SELECT 1", connection)),
+            store.save_if_new(new_query("daily", "SELECT 2", connection)),
+        );
+        let first = first.expect("first save");
+        let second = second.expect("second save");
+        assert_ne!(first.is_some(), second.is_some());
+        let saved = store.list(Some(connection)).await.expect("list");
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].query, if first.is_some() { "SELECT 1" } else { "SELECT 2" });
+    }
+
+    #[tokio::test]
+    async fn concurrent_saves_report_exactly_one_replacement_and_keep_the_id() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let store = store(&root).await;
+        let connection = Uuid::new_v4();
+        let (first, second) = tokio::join!(
+            store.save(new_query("daily", "SELECT 1", connection)),
+            store.save(new_query("daily", "SELECT 2", connection)),
+        );
+        let first = first.expect("first save");
+        let second = second.expect("second save");
+        assert_ne!(first.replaced, second.replaced);
+        assert_eq!(first.id, second.id);
+        assert_eq!(store.list(Some(connection)).await.expect("list").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn every_write_moves_the_revision_every_handle_follows() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let paths = StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro");
+        let history = QueryHistory::open(&paths).await.expect("open");
+        let (writer, follower) = (history.saved_queries(), history.saved_queries());
+        let mut changes = follower.changes();
+        let connection = Uuid::new_v4();
+        let mut moved = || {
+            let moved = changes.has_changed().expect("the sender lives");
+            changes.mark_unchanged();
+            moved
+        };
+
+        let saved = writer
+            .save(new_query("daily", "SELECT 1", connection))
+            .await
+            .expect("save");
+        assert!(moved(), "a save");
+        writer
+            .save_if_new(new_query("weekly", "SELECT 2", connection))
+            .await
+            .expect("save if new");
+        assert!(moved(), "a save of a new name");
+        writer.rename(saved.id, "nightly").await.expect("rename");
+        assert!(moved(), "a rename");
+        writer.delete(saved.id).await.expect("delete");
+        assert!(moved(), "a delete");
+        writer
+            .delete_for_connection(connection)
+            .await
+            .expect("delete for connection");
+        assert!(moved(), "a connection's queries removed");
+    }
+
+    #[tokio::test]
+    async fn a_read_or_a_write_that_changed_nothing_leaves_the_revision() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let store = store(&root).await;
+        let connection = Uuid::new_v4();
+        store
+            .save(new_query("daily", "SELECT 1", connection))
+            .await
+            .expect("save");
+        let changes = store.changes();
+
+        store.list(Some(connection)).await.expect("list");
+        store
+            .save_if_new(new_query("daily", "SELECT 2", connection))
+            .await
+            .expect("save if new");
+        store.rename(404, "gone").await.expect_err("no such query");
+        store.delete(404).await.expect_err("no such query");
+        store
+            .delete_for_connection(Uuid::new_v4())
+            .await
+            .expect("delete for a connection with none");
+
+        assert!(!changes.has_changed().expect("the sender lives"));
+    }
 }
