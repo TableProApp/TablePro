@@ -489,16 +489,15 @@ impl QuickOpen {
             u32::try_from(selected).unwrap_or(0)
         });
         if items.is_empty() {
-            widgets
-                .status
-                .set_title(&if imp.requests.borrow().is_pending(Request::Queries) {
-                    gettext("Loading Saved Queries")
-                } else {
-                    gettext("No Matches")
-                });
-            widgets
-                .status
-                .set_description(Some(&gettext("No results match what you typed.")));
+            let loading = imp.requests.borrow().is_pending(Request::Queries)
+                || (imp.generation.get().is_none() && !imp.catalog_error.get());
+            widgets.status.set_title(&if loading {
+                gettext("Loading Results")
+            } else {
+                gettext("No Matches")
+            });
+            let description = (!loading).then(|| gettext("No results match what you typed."));
+            widgets.status.set_description(description.as_deref());
         }
         widgets
             .stack
