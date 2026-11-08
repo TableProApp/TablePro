@@ -105,6 +105,14 @@ impl AppSettings {
         self.set_string(keys::GRID_ROW_HEIGHT, height)
     }
 
+    pub fn auto_show_inspector(&self) -> bool {
+        self.settings.boolean(keys::AUTO_SHOW_INSPECTOR)
+    }
+
+    pub fn set_auto_show_inspector(&self, show: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::AUTO_SHOW_INSPECTOR, show)
+    }
+
     /// The format Copy writes for several rows, as a word the schema lists.
     pub fn row_copy_format(&self) -> String {
         self.settings.string(keys::ROW_COPY_FORMAT).into()

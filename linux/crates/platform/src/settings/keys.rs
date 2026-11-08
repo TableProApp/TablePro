@@ -11,6 +11,7 @@ pub const USE_SYSTEM_FONT: &str = "use-system-font";
 pub const CUSTOM_FONT: &str = "custom-font";
 pub const GRID_USE_SYSTEM_FONT: &str = "grid-use-system-font";
 pub const GRID_FONT: &str = "grid-font";
+pub const AUTO_SHOW_INSPECTOR: &str = "auto-show-inspector";
 pub const ROW_COPY_FORMAT: &str = "row-copy-format";
 pub const STYLE_SCHEME: &str = "style-scheme";
 pub const VIM_KEYBINDINGS: &str = "vim-keybindings";

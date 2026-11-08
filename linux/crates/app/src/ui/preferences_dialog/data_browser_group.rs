@@ -38,6 +38,8 @@ mod imp {
         #[template_child]
         pub row_numbers_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
+        pub auto_inspector_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
         pub row_copy_format_row: TemplateChild<adw::ComboRow>,
         #[template_child]
         pub row_height_row: TemplateChild<adw::ComboRow>,
@@ -127,6 +129,9 @@ impl DataBrowserGroup {
                 let description = value.get::<gtk4::pango::FontDescription>().ok()?;
                 Some(description.to_str().to_variant())
             })
+            .build();
+        gio_settings
+            .bind(keys::AUTO_SHOW_INSPECTOR, &imp.auto_inspector_row.get(), "active")
             .build();
         bind_choice(
             &imp.row_height_row.get(),

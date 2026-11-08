@@ -103,6 +103,12 @@
       <description>The format Copy writes when several rows are selected.</description>
     </key>
 
+    <key name="auto-show-inspector" type="b">
+      <default>false</default>
+      <summary>Open row details when a row is selected</summary>
+      <description>Whether selecting a row in a data grid opens its row details pane.</description>
+    </key>
+
     <key name="null-display" type="s">
       <default>"NULL"</default>
       <summary>Text for a NULL value</summary>

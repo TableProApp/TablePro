@@ -385,6 +385,7 @@ impl DataGrid {
     fn selection_moved(&self) {
         self.refresh_actions();
         self.imp().detail_pane.follow_focus();
+        self.open_details_for_selection();
         self.emit_by_name::<()>("selection-changed", &[]);
     }
 

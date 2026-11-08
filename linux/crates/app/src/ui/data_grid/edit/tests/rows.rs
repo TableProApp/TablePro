@@ -6,7 +6,7 @@ use libadwaita::prelude::*;
 use tablepro_core::Value;
 use tablepro_core::edit::CellInput;
 
-use super::{editing, none, press, two_text_rows};
+use super::{details_shown, editing, none, press, two_text_rows};
 use crate::services::change_tracker::RowState;
 use crate::services::grid::edit_policy;
 use crate::test_support::{drain_main_context, respond, wait_until};
@@ -268,4 +268,19 @@ fn discard_drops_every_pending_change() {
     assert_eq!(grid.grid.store().draft_count(), 0);
     assert_eq!(grid.tracker.pending_count(), 0);
     assert!(super::editing_cell(&grid).is_none(), "the editor outlived the discard");
+}
+
+#[gtk4::test]
+fn selecting_a_row_opens_the_details_only_when_preferences_ask() {
+    let grid = two_text_rows();
+    let settings = grid.grid.config().expect("a configured grid").settings.clone();
+
+    grid.focus(0, 1);
+    assert!(!details_shown(&grid), "off by default");
+
+    settings.set_auto_show_inspector(true).expect("store the flag");
+    grid.grid.selection().unselect_all();
+    grid.grid.selection().select_all();
+    drain_main_context();
+    assert!(details_shown(&grid));
 }
