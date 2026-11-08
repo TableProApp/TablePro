@@ -56,6 +56,24 @@
       </object>
     </child>
     <child>
+      <object class="AdwComboRow" id="date_format_row">
+        <property name="title" translatable="yes">Date Format</property>
+        <property name="subtitle" translatable="yes">How cells show dates and timestamps; Copy and export keep the database's spelling</property>
+        <property name="model">
+          <object class="GtkStringList">
+            <items>
+              <item translatable="yes">ISO 8601 (2024-12-31 23:59:59)</item>
+              <item translatable="yes">ISO Date (2024-12-31)</item>
+              <item translatable="yes">US Long (12/31/2024 11:59:59 PM)</item>
+              <item translatable="yes">US Short (12/31/2024)</item>
+              <item translatable="yes">EU Long (31/12/2024 23:59:59)</item>
+              <item translatable="yes">EU Short (31/12/2024)</item>
+            </items>
+          </object>
+        </property>
+      </object>
+    </child>
+    <child>
       <object class="AdwComboRow" id="default_sort_row">
         <property name="title" translatable="yes">Default Sort</property>
         <property name="subtitle" translatable="yes">How a table is ordered when it opens</property>

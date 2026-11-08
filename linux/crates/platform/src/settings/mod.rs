@@ -140,6 +140,16 @@ impl AppSettings {
         self.set_boolean(keys::SHOW_INVISIBLE_CHARACTERS, show)
     }
 
+    /// How cells spell dates: `iso`, `iso-date`, `us-long`, `us-short`,
+    /// `eu-long` or `eu-short`.
+    pub fn date_format(&self) -> String {
+        self.settings.string(keys::DATE_FORMAT).into()
+    }
+
+    pub fn set_date_format(&self, format: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::DATE_FORMAT, format)
+    }
+
     /// The format Copy writes for several rows, as a word the schema lists.
     pub fn row_copy_format(&self) -> String {
         self.settings.string(keys::ROW_COPY_FORMAT).into()

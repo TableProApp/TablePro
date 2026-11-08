@@ -136,6 +136,20 @@
       <description>Whether the row details value editor draws marks for spaces, tabs and line breaks.</description>
     </key>
 
+    <key name="date-format" type="s">
+      <choices>
+        <choice value="iso"/>
+        <choice value="iso-date"/>
+        <choice value="us-long"/>
+        <choice value="us-short"/>
+        <choice value="eu-long"/>
+        <choice value="eu-short"/>
+      </choices>
+      <default>"iso"</default>
+      <summary>Date format of cells</summary>
+      <description>How the data grid spells dates and timestamps. A copy and an export keep the database's own spelling.</description>
+    </key>
+
     <key name="null-display" type="s">
       <default>"NULL"</default>
       <summary>Text for a NULL value</summary>

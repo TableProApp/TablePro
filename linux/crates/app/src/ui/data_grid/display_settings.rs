@@ -8,7 +8,7 @@ use tablepro_linux_platform::settings::keys;
 
 use super::DataGrid;
 use super::grid_cell::set_class;
-use crate::services::grid::display_text::set_null_display;
+use crate::services::grid::display_text::{DateFormat, date_format, set_date_format, set_null_display};
 use crate::ui::handler_guard::HandlerGuard;
 
 /// The classes a row height takes, one for each word the setting holds.
@@ -30,8 +30,10 @@ impl DataGrid {
         // Connected before the reads: GSettings emits `changed` only for a
         // key read while a handler was connected.
         let handler = settings.gio().connect_changed(None, move |_, key| {
-            if matches!(key, keys::SHOW_ROW_NUMBERS | keys::GRID_ROW_HEIGHT | keys::NULL_DISPLAY)
-                && let Some(grid) = weak.upgrade()
+            if matches!(
+                key,
+                keys::SHOW_ROW_NUMBERS | keys::GRID_ROW_HEIGHT | keys::NULL_DISPLAY | keys::DATE_FORMAT
+            ) && let Some(grid) = weak.upgrade()
             {
                 grid.apply_display_settings();
             }
@@ -59,6 +61,13 @@ impl DataGrid {
         let null = settings.null_display();
         if crate::services::grid::display_text::null_display() != null {
             set_null_display(&null);
+            self.redraw();
+        }
+        let dates = DateFormat::from_word(&settings.date_format());
+        if date_format() != dates {
+            set_date_format(dates);
+            // A date's width changes with its spelling.
+            self.fonts_changed();
             self.redraw();
         }
     }

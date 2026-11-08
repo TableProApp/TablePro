@@ -222,6 +222,13 @@ fn open_grids_follow_the_display_preferences() {
     drain_main_context();
     assert!(numbers.is_visible());
     assert!(view.has_css_class("row-spacious") && !view.has_css_class("row-compact"));
+    settings.set_date_format("eu-short").expect("store the format");
+    drain_main_context();
+    assert_eq!(
+        crate::services::grid::display_text::date_format(),
+        crate::services::grid::display_text::DateFormat::EuShort
+    );
+    crate::services::grid::display_text::set_date_format(crate::services::grid::display_text::DateFormat::Iso);
     crate::services::grid::display_text::set_null_display("NULL");
 }
 

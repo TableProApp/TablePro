@@ -11,6 +11,9 @@ use tablepro_linux_platform::settings::keys;
 /// The words the row height setting holds, in the combo's order.
 const ROW_HEIGHTS: [&str; 4] = ["compact", "normal", "comfortable", "spacious"];
 
+/// The words the date format setting holds, in the combo's order.
+const DATE_FORMATS: [&str; 6] = ["iso", "iso-date", "us-long", "us-short", "eu-long", "eu-short"];
+
 /// The words the default sort setting holds, in the combo's order.
 const DEFAULT_SORTS: [&str; 3] = ["none", "primary-key", "first-column"];
 
@@ -44,6 +47,8 @@ mod imp {
         pub auto_inspector_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
         pub invisibles_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub date_format_row: TemplateChild<adw::ComboRow>,
         #[template_child]
         pub default_sort_row: TemplateChild<adw::ComboRow>,
         #[template_child]
@@ -152,6 +157,13 @@ impl DataBrowserGroup {
         gio_settings
             .bind(keys::SHOW_INVISIBLE_CHARACTERS, &imp.invisibles_row.get(), "active")
             .build();
+        bind_choice(
+            &imp.date_format_row.get(),
+            gio_settings,
+            keys::DATE_FORMAT,
+            &DATE_FORMATS,
+            0,
+        );
         bind_choice(
             &imp.default_sort_row.get(),
             gio_settings,
