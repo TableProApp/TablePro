@@ -187,6 +187,7 @@ impl BrowseModel {
             layout,
             edges,
             seeks,
+            elapsed,
         } = reply;
         self.pager.land(offset, position, edges, seeks);
         let QueryResult { columns, rows, .. } = result;
@@ -209,6 +210,7 @@ impl BrowseModel {
             row_count,
             start_ordinal: offset,
             filtered: !self.current_filter.is_empty(),
+            elapsed: Some(elapsed),
         });
         self.shown_view = Some(self.page_view());
         self.show_page(rows, offset, fx);

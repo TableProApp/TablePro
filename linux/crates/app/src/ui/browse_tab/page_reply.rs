@@ -15,6 +15,8 @@ pub(crate) struct PageReply {
     /// The table pages by key or heap address, so its last page reads
     /// back from its end.
     pub seeks: bool,
+    /// How long the read took, from asking the session to its answer.
+    pub elapsed: std::time::Duration,
 }
 
 impl PageReply {
@@ -44,6 +46,7 @@ impl From<PageRead> for PageReply {
                 next: read.next,
             },
             seeks: matches!(read.mode, PagingMode::Keyset | PagingMode::CtidWindow),
+            elapsed: std::time::Duration::ZERO,
         }
     }
 }

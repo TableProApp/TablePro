@@ -4,7 +4,26 @@ use crate::ui::format::format_thousands;
 
 /// The paginator's text for the page on screen.
 pub(super) fn page_range_label(page: &PageState, total: &RowTotal) -> String {
-    label_with(page, total, format_thousands)
+    let range = label_with(page, total, format_thousands);
+    match page.elapsed {
+        Some(elapsed) if page.row_count > 0 => crate::i18n::gettext_f(
+            // Translators: the rows on screen, then how long the server took to give them.
+            "{range} · {time}",
+            &[("range", &range), ("time", &elapsed_text(elapsed))],
+        ),
+        _ => range,
+    }
+}
+
+/// A read's time as the macOS bar words it: milliseconds, then seconds
+/// from a second on, the shortest read still a millisecond.
+fn elapsed_text(elapsed: std::time::Duration) -> String {
+    let millis = elapsed.as_millis().max(1);
+    if millis < 1000 {
+        crate::i18n::gettext_f("{n} ms", &[("n", &millis.to_string())])
+    } else {
+        crate::i18n::gettext_f("{n} s", &[("n", &format!("{:.1}", elapsed.as_secs_f64()))])
+    }
 }
 
 fn label_with(page: &PageState, total: &RowTotal, format: impl Fn(u64) -> String) -> String {
@@ -34,8 +53,26 @@ mod tests {
             row_count: rows,
             start_ordinal: start,
             filtered,
+            elapsed: None,
         };
         label_with(&page, total, |n| english.format(n))
+    }
+
+    #[test]
+    fn a_read_is_timed_after_the_rows_in_milliseconds_then_seconds() {
+        use std::time::Duration;
+
+        assert_eq!(elapsed_text(Duration::from_micros(200)), "1 ms");
+        assert_eq!(elapsed_text(Duration::from_millis(5)), "5 ms");
+        assert_eq!(elapsed_text(Duration::from_millis(999)), "999 ms");
+        assert_eq!(elapsed_text(Duration::from_millis(1_234)), "1.2 s");
+        let page = PageState {
+            row_count: 2,
+            start_ordinal: 0,
+            filtered: false,
+            elapsed: Some(Duration::from_millis(5)),
+        };
+        assert_eq!(page_range_label(&page, &RowTotal::Exact(2)), "Rows 1 – 2 of 2 · 5 ms");
     }
 
     #[test]

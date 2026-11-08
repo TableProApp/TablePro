@@ -1536,3 +1536,18 @@ fn a_dotted_field_of_a_document_neither_sorts_nor_takes_an_edit() {
     assert!(!grid.edit().edit_cell(&cell), "the dotted field opened for editing");
     assert_eq!(harness.tracker.pending_count(), 0);
 }
+
+/// The paginator names how long the page took, as the macOS bar's
+/// readout does after its row count.
+#[gtk4::test]
+fn the_paginator_says_how_long_the_page_took() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown() == text(&["Ada", "Grace"])).expect("the page");
+    let label = harness.tab().imp().pager_bar.imp().paginator_label.get();
+
+    assert!(label.label().ends_with(" ms"), "the paginator read {:?}", label.label());
+}

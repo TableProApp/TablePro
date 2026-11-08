@@ -141,6 +141,7 @@ impl BrowseModel {
         let cancel = ticket.cancel.clone();
         let position = self.pager.position();
         let work = async move {
+            let started = std::time::Instant::now();
             session
                 .run_cancellable(OperationKind::Page, &cancel, move |lease, options| {
                     let plan = plan.clone();
@@ -159,7 +160,10 @@ impl BrowseModel {
                     }
                 })
                 .await
-                .map(PageReply::from)
+                .map(|read| PageReply {
+                    elapsed: started.elapsed(),
+                    ..PageReply::from(read)
+                })
         };
         self.deliver(ticket, work, BrowseCommand::Page, OperationError::from);
     }

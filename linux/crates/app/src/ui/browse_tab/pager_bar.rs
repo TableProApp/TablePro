@@ -314,6 +314,7 @@ mod tests {
 
     fn page(start_ordinal: u64, row_count: usize) -> PageState {
         PageState {
+            elapsed: None,
             row_count,
             start_ordinal,
             filtered: false,
