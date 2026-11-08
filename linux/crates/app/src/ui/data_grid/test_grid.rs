@@ -318,7 +318,7 @@ impl Grid {
 
 impl Drop for Grid {
     fn drop(&mut self) {
-        gtk::style_context_remove_provider_for_display(&self.window.display(), &self.style);
+        gtk::style_context_remove_provider_for_display(&gtk::prelude::WidgetExt::display(&self.window), &self.style);
         self.window.destroy();
         drain_main_context();
     }
