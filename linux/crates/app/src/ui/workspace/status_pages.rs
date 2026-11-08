@@ -233,7 +233,6 @@ mod tests {
     /// reads them again when one is saved.
     #[gtk4::test]
     fn the_favorites_scope_lists_the_saved_queries_of_the_front_connection() {
-        use gtk4::prelude::*;
         use gtk4::subclass::prelude::ObjectSubclassIsExt;
 
         let test = TestWindow::connected("FavoritesScope");
