@@ -9,6 +9,8 @@ pub const APPLICATIONS_SCIENCE: &str = "applications-science-symbolic";
 pub const ASSISTANT: &str = "assistant-symbolic";
 pub const CHANGES_PREVENT: &str = "changes-prevent-symbolic";
 pub const COMPUTER: &str = "computer-symbolic";
+/// A key, for a primary key column.
+pub const DIALOG_PASSWORD: &str = "dialog-password-symbolic";
 pub const DIALOG_ERROR: &str = "dialog-error-symbolic";
 pub const DIALOG_WARNING: &str = "dialog-warning-symbolic";
 pub const DOCUMENT_EDIT: &str = "document-edit-symbolic";

@@ -1424,3 +1424,31 @@ fn a_page_that_takes_the_row_closes_its_clock_and_writes_nothing() {
     );
     assert!(!pane.imp().clock_popover.is_visible());
 }
+
+/// A primary key column's field carries a key, and a field holding an
+/// edit a pencil, so each reads without opening the field.
+#[gtk4::test]
+fn the_fields_mark_the_primary_key_and_a_pending_edit() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    grid.focus(0, 1);
+    let marked = |icon: &str| {
+        descendants(&pane.imp().field_list.get())
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk::Image>().ok())
+            .filter(|image| image.is_visible() && image.icon_name().as_deref() == Some(icon))
+            .count()
+    };
+    assert_eq!(marked(crate::ui::icons::DIALOG_PASSWORD), 1, "the id column is the key");
+    assert_eq!(marked(crate::ui::icons::DOCUMENT_EDIT), 0);
+
+    let delta = grid.tracker.apply(TrackerEdit::Cell {
+        row_key: key(1),
+        col: 1,
+        original: Value::Text("A".into()),
+        value: CellInput::Value(Value::Text("changed".into())),
+    });
+    grid.grid.apply_delta(&delta);
+    drain_main_context();
+
+    assert_eq!(marked(crate::ui::icons::DOCUMENT_EDIT), 1);
+}

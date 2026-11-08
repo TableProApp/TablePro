@@ -11,6 +11,7 @@ use crate::services::grid::{GridColumn, auto_filled_sentinel, display_text};
 use crate::ui::data_grid::tracked_values::cell_description;
 use crate::ui::data_grid::{DataGrid, GridRow, ServerValue, TrackedValues};
 use crate::ui::handler_guard::HandlerGuard;
+use crate::ui::icons;
 
 /// The data columns in the order the fields list shows them: the ones on
 /// screen as the grid shows them, then the hidden ones.
@@ -63,20 +64,38 @@ pub fn field_value(tracked: &TrackedValues, row: &GridRow, column: &GridColumn) 
 }
 
 /// A field's row: its name and type on one line, its value on the next.
+/// One field: its name with a key for a primary key column, a pencil
+/// while it holds an edit and the type as a badge, over its value.
 fn field_row() -> gtk::Box {
+    let key = gtk::Image::builder()
+        .icon_name(icons::DIALOG_PASSWORD)
+        .pixel_size(12)
+        .visible(false)
+        .build();
+    key.add_css_class("warning");
+    key.set_accessible_role(gtk::AccessibleRole::Presentation);
     let name = gtk::Label::builder()
         .xalign(0.0)
         .hexpand(true)
-        .ellipsize(pango::EllipsizeMode::End)
+        .ellipsize(pango::EllipsizeMode::Middle)
         .build();
+    name.add_css_class("dimmed");
+    let edited = gtk::Image::builder()
+        .icon_name(icons::DOCUMENT_EDIT)
+        .pixel_size(12)
+        .visible(false)
+        .build();
+    edited.add_css_class("accent");
+    edited.set_accessible_role(gtk::AccessibleRole::Presentation);
     let kind = gtk::Label::builder()
-        .xalign(1.0)
+        .xalign(0.5)
         .ellipsize(pango::EllipsizeMode::End)
         .build();
-    kind.add_css_class("caption");
-    kind.add_css_class("dimmed");
+    kind.add_css_class("field-type");
     let top = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    top.append(&key);
     top.append(&name);
+    top.append(&edited);
     top.append(&kind);
     let value = gtk::Inscription::builder()
         .hexpand(true)
@@ -85,15 +104,39 @@ fn field_row() -> gtk::Box {
         .build();
     let row = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
-        .spacing(2)
-        .margin_top(6)
-        .margin_bottom(6)
+        .spacing(3)
+        .margin_top(7)
+        .margin_bottom(7)
         .margin_start(12)
         .margin_end(12)
         .build();
     row.append(&top);
     row.append(&value);
     row
+}
+
+/// The widgets of a field row, in the order `field_row` makes them.
+struct FieldParts {
+    key: gtk::Image,
+    name: gtk::Label,
+    edited: gtk::Image,
+    kind: gtk::Label,
+    value: gtk::Inscription,
+}
+
+fn field_parts(row: &gtk::Widget) -> Option<FieldParts> {
+    let top = row.first_child()?;
+    let key = top.first_child()?;
+    let name = key.next_sibling()?;
+    let edited = name.next_sibling()?;
+    let kind = edited.next_sibling()?;
+    Some(FieldParts {
+        key: key.downcast().ok()?,
+        name: name.downcast().ok()?,
+        edited: edited.downcast().ok()?,
+        kind: kind.downcast().ok()?,
+        value: row.last_child()?.downcast().ok()?,
+    })
 }
 
 fn set_class(widget: &impl IsA<gtk::Widget>, class: &str, on: bool) {
@@ -192,18 +235,17 @@ impl RowDetailPane {
         let Some(row_box) = item.child() else {
             return;
         };
-        let top = row_box.first_child();
-        let (Some(name), Some(kind), Some(shown)) = (
-            top.as_ref()
-                .and_then(|top| top.first_child())
-                .and_downcast::<gtk::Label>(),
-            top.as_ref()
-                .and_then(|top| top.last_child())
-                .and_downcast::<gtk::Label>(),
-            row_box.last_child().and_downcast::<gtk::Inscription>(),
-        ) else {
+        let Some(FieldParts {
+            key,
+            name,
+            edited,
+            kind,
+            value: shown,
+        }) = field_parts(&row_box)
+        else {
             return;
         };
+        key.set_visible(column.catalog.as_ref().is_some_and(|catalog| catalog.primary_key));
         name.set_label(&column.name);
         kind.set_label(&column.value_type().name);
         item.set_accessible_label(&column.name);
@@ -212,6 +254,7 @@ impl RowDetailPane {
             return;
         };
         let value = field_value(&grid.tracked(), &row, &column);
+        edited.set_visible(value.modified);
         shown.set_text(Some(&value.text));
         shown.set_attributes(Some(&value_attributes(&value)));
         set_class(&shown, "dimmed", value.placeholder || value.deleted);
