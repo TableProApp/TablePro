@@ -9,9 +9,11 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
-use libadwaita::prelude::BinExt;
+use libadwaita::prelude::{AdwDialogExt, AlertDialogExt, BinExt, PreferencesGroupExt};
 use tablepro_core::DataModel;
 use tablepro_session::SessionKey;
+use tablepro_storage::SavedQueries;
+use tablepro_storage::saved_queries::SavedQuery;
 use uuid::Uuid;
 
 use super::health_banner::REVIEW_HOST_KEY;
@@ -96,7 +98,7 @@ impl WorkspaceShell {
         let favorites = super::sidebar::FavoritesPane::new(glib::clone!(
             #[weak]
             shell,
-            move |sql| shell.open_favorite(sql)
+            move |action| shell.on_favorite_action(action)
         ));
         sidebar.add_named(&favorites.widget(), Some(FAVORITES));
         imp.sidebar_slot.set_child(Some(&sidebar));
@@ -599,11 +601,106 @@ impl WorkspaceShell {
         );
     }
 
-    /// A favorite was picked: its SQL opens in a new query tab of the front session.
-    fn open_favorite(&self, sql: String) {
-        if let Some(sender) = self.front().and_then(|front| front.sender()) {
-            sender.deliver(super::WorkspaceInput::OpenHistoryQuery(sql));
+    fn on_favorite_action(&self, action: super::sidebar::FavoriteAction) {
+        use super::sidebar::FavoriteAction;
+        match action {
+            // The SQL opens in a new query tab of the front session.
+            FavoriteAction::Open(sql) => {
+                if let Some(sender) = self.front().and_then(|front| front.sender()) {
+                    sender.deliver(super::WorkspaceInput::OpenHistoryQuery(sql));
+                }
+            }
+            FavoriteAction::Rename(favorite) => self.ask_favorite_name(favorite),
+            FavoriteAction::Delete(favorite) => self.ask_favorite_deletion(favorite),
         }
+    }
+
+    fn ask_favorite_name(&self, favorite: SavedQuery) {
+        let dialog = adw::AlertDialog::new(Some(&gettext("Rename Favorite")), None);
+        let entry = adw::EntryRow::builder()
+            .title(gettext("Name"))
+            .activates_default(true)
+            .build();
+        entry.set_text(&favorite.name);
+        let group = adw::PreferencesGroup::new();
+        group.add(&entry);
+        dialog.set_extra_child(Some(&group));
+        dialog.add_response("cancel", &gettext("Cancel"));
+        dialog.add_response("rename", &gettext("Rename"));
+        dialog.set_response_appearance("rename", adw::ResponseAppearance::Suggested);
+        dialog.set_default_response(Some("rename"));
+        dialog.set_close_response("cancel");
+        crate::ui::name_entry::require_name(&dialog, "rename", &entry);
+        let shell = self.downgrade();
+        dialog.connect_response(None, move |_, response| {
+            let name = entry.text().trim().to_owned();
+            if let (true, Some(shell)) = (response == "rename" && name != favorite.name, shell.upgrade()) {
+                shell.rename_favorite(favorite.id, name);
+            }
+        });
+        dialog.present(self.imp().window.upgrade().as_ref());
+    }
+
+    fn ask_favorite_deletion(&self, favorite: SavedQuery) {
+        let dialog = adw::AlertDialog::new(
+            Some(&gettext_f("Delete “{name}”?", &[("name", &favorite.name)])),
+            Some(&gettext("The saved query is deleted. This cannot be undone.")),
+        );
+        dialog.add_response("cancel", &gettext("Cancel"));
+        dialog.add_response("delete", &gettext("Delete"));
+        dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
+        dialog.set_default_response(Some("cancel"));
+        dialog.set_close_response("cancel");
+        let shell = self.downgrade();
+        dialog.connect_response(None, move |_, response| {
+            if let (true, Some(shell)) = (response == "delete", shell.upgrade()) {
+                shell.delete_favorite(favorite.id);
+            }
+        });
+        dialog.present(self.imp().window.upgrade().as_ref());
+    }
+
+    pub(crate) fn rename_favorite(&self, id: i64, name: String) {
+        self.change_favorites(
+            async move |store| store.rename(id, &name).await,
+            gettext("Could not rename that saved query."),
+        );
+    }
+
+    pub(crate) fn delete_favorite(&self, id: i64) {
+        self.change_favorites(
+            async move |store| store.delete(id).await,
+            gettext("Could not delete that saved query."),
+        );
+    }
+
+    /// Run `change` on the saved queries, then read the list again, or
+    /// say `failure`.
+    fn change_favorites<W>(&self, change: impl FnOnce(SavedQueries) -> W + Send + 'static, failure: String)
+    where
+        W: std::future::Future<Output = Result<(), tablepro_storage::StorageError>> + Send + 'static,
+    {
+        let Some((history, tasks)) = self.imp().favorites_source.get() else {
+            return;
+        };
+        let ready = history.ready_store();
+        let shell = self.downgrade();
+        crate::runtime::spawn_and_deliver(
+            tasks,
+            async move {
+                let store = ready.await?.saved_queries();
+                change(store).await.ok()
+            },
+            move |done| {
+                let Some(shell) = shell.upgrade() else {
+                    return;
+                };
+                match done {
+                    Ok(Some(())) => shell.reload_favorites(),
+                    _ => shell.toast_overlay().add_toast(crate::ui::plain_toast(&failure)),
+                }
+            },
+        );
     }
 
     fn on_front_changed(&self) {

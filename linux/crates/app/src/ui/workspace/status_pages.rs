@@ -250,6 +250,29 @@ mod tests {
         wait_until(WAIT, || favorites.names() == ["Orders"]).expect("the saved query to be listed");
     }
 
+    /// A favorite is renamed and deleted from the list, which reads again.
+    #[gtk4::test]
+    fn a_favorite_is_renamed_and_deleted_from_the_list() {
+        use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+        let test = TestWindow::connected("FavoritesChange");
+        let availability = test.services.history().availability();
+        wait_until(WAIT, || availability.borrow().is_ready()).expect("the query database to open");
+        let shell = test.window.shell().expect("the shell");
+        let favorites = shell.imp().favorites.get().cloned().expect("the favorites pane");
+        shell.imp().scope_toggle.set_active_name(Some("favorites"));
+        test.workspace()
+            .with_model(|model| model.on_save_query_named("Orders".to_owned(), "SELECT 1".to_owned()));
+        wait_until(WAIT, || favorites.names() == ["Orders"]).expect("the saved query to be listed");
+        let id = favorites.ids()[0];
+
+        shell.rename_favorite(id, "Weekly orders".to_owned());
+        wait_until(WAIT, || favorites.names() == ["Weekly orders"]).expect("the new name to be listed");
+
+        shell.delete_favorite(id);
+        wait_until(WAIT, || favorites.names().is_empty()).expect("the favorite to go");
+    }
+
     #[gtk4::test]
     fn a_history_dialog_closed_by_hand_is_not_closed_again_on_disconnect() {
         use gtk4::glib;
