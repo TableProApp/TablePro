@@ -1,6 +1,7 @@
 //! The data grid every surface shows rows in: the table tab, the SQL
 //! editor's results and a key-value engine's key tab.
 
+mod cell_font;
 mod client_sorter;
 mod column_chooser;
 mod columns;
@@ -89,10 +90,9 @@ impl DataGrid {
         row_number_column::install_row_factory(&grid);
         find_bar::install(&grid);
         imp.detail_pane.attach(&grid);
+        grid.watch_display_settings();
         grid.set_columns(columns, sorting, rules);
         grid.watch_fonts();
-        grid.watch_stripes();
-        grid.watch_display_settings();
         grid
     }
 

@@ -5,6 +5,7 @@ mod data_browser_group;
 mod device_limit_dialog;
 mod editor_page;
 mod general_page;
+mod grid_page;
 mod history_group;
 mod imp;
 mod mcp_page;
@@ -26,7 +27,7 @@ use crate::ui::file_reveal::FileRevealer;
 
 #[cfg(test)]
 pub(super) use self::{
-    data_browser_group::DataBrowserGroup, editor_page::EditorPage, general_page::GeneralPage,
+    data_browser_group::DataBrowserGroup, editor_page::EditorPage, general_page::GeneralPage, grid_page::GridPage,
     history_group::HistoryGroup,
 };
 
@@ -65,6 +66,7 @@ impl PreferencesDialog {
             revealer.clone(),
             telemetry.has_project_key(),
         );
+        imp.grid_page.bind(settings);
         imp.editor_page.bind(
             settings,
             editor_page::SnippetsFolder {
@@ -110,8 +112,6 @@ impl PreferencesDialog {
     }
 }
 
-/// A query history of its own under `root`, opening in the background
-/// as the app's does.
 #[cfg(test)]
 fn test_history(root: &tempfile::TempDir, tasks: &Tasks) -> HistoryService {
     let paths = tablepro_storage::StoragePaths::under(root.path(), "tablepro-test", "app.tablepro.TablePro.Devel");
@@ -122,8 +122,8 @@ fn test_history(root: &tempfile::TempDir, tasks: &Tasks) -> HistoryService {
     HistoryService::start(paths, preferences, tasks)
 }
 
-/// A storage under a temporary root, so the dialog's storage row and
-/// history actions stay away from the developer's own files.
+// A storage under a temporary root, so the dialog's storage row and
+// history actions stay away from the developer's own files.
 #[cfg(test)]
 fn test_storage(tasks: &Tasks) -> crate::storage::SharedStorage {
     let root = std::env::temp_dir().join(format!("tablepro-prefs-{}", std::process::id()));
@@ -141,9 +141,9 @@ mod tests {
     use crate::test_support::{MemorySettings, assert_labelled, descendants, test_runtime, unlabelled_icon_buttons};
     use crate::ui::file_reveal::RecordingRevealer;
 
-    /// The template lives in the embedded resources, so a test that
-    /// builds the dialog has to register them first. Test order is not
-    /// fixed, so it cannot rely on another test having done it.
+    // The template lives in the embedded resources, so a test that
+    // builds the dialog has to register them first. Test order is not
+    // fixed, so it cannot rely on another test having done it.
     fn new_dialog(
         settings: &MemorySettings,
         storage: &crate::storage::SharedStorage,
@@ -164,13 +164,12 @@ mod tests {
         )
     }
 
-    /// The dialog's pages, in the order it shows them. They are not in
-    /// its widget tree until it is presented, so they come from the
-    /// template.
-    fn pages(dialog: &PreferencesDialog) -> [adw::PreferencesPage; 5] {
+    // Pages are not in the widget tree until the dialog is presented.
+    fn pages(dialog: &PreferencesDialog) -> [adw::PreferencesPage; 6] {
         let imp = dialog.imp();
         [
             imp.general_page.get().upcast(),
+            imp.grid_page.get().upcast(),
             imp.editor_page.get().upcast(),
             imp.ai_page.get().upcast(),
             imp.mcp_page.get().upcast(),
@@ -190,9 +189,10 @@ mod tests {
             test_history(&root, &runtime.tasks()),
             &runtime.tasks(),
         );
-        let [general, editor, ai, mcp, account] = pages(&dialog);
+        let [general, grid, editor, ai, mcp, account] = pages(&dialog);
 
         assert_eq!(general.title(), "General");
+        assert_eq!(grid.title(), "Data Grid");
         assert_eq!(editor.title(), "Editor");
         assert_eq!(ai.title(), "AI");
         assert_eq!(mcp.title(), "MCP");
@@ -303,18 +303,18 @@ mod tests {
         dialog.imp().general_page.history_group().imp().clear_button.get()
     }
 
-    /// How long a test waits for work that crosses a thread. Long
-    /// enough that a loaded machine cannot decide the outcome; a
-    /// passing test returns as soon as its condition holds and never
-    /// spends it.
+    // How long a test waits for work that crosses a thread. Long
+    // enough that a loaded machine cannot decide the outcome; a
+    // passing test returns as soon as its condition holds and never
+    // spends it.
     const WAIT: std::time::Duration = std::time::Duration::from_secs(30);
 
-    /// An AdwDialog needs a real window to present into before its
-    /// toast overlay renders anything. This one opens at a session
-    /// window's size (session-window.ui). A window left at its 360 px
-    /// floor gives its content 350 px under Xvfb, which has no
-    /// compositor, and libadwaita warns that the dialog's bottom sheet,
-    /// which needs 360, does not fit.
+    // An AdwDialog needs a real window to present into before its
+    // toast overlay renders anything. This one opens at a session
+    // window's size (session-window.ui). A window left at its 360 px
+    // floor gives its content 350 px under Xvfb, which has no
+    // compositor, and libadwaita warns that the dialog's bottom sheet,
+    // which needs 360, does not fit.
     fn present_on_a_window(dialog: &PreferencesDialog) -> crate::test_support::OwnedWindow<adw::Window> {
         let window = crate::test_support::OwnedWindow::presented(
             adw::Window::builder().default_width(1200).default_height(760).build(),
@@ -347,9 +347,9 @@ mod tests {
         assert!(clear_button(&dialog).is_mapped());
     }
 
-    /// What the dialog's toast says, read off the label the overlay
-    /// renders. AdwPreferencesDialog owns the overlay itself and does
-    /// not hand it out.
+    // What the dialog's toast says, read off the label the overlay
+    // renders. AdwPreferencesDialog owns the overlay itself and does
+    // not hand it out.
     fn toast_text(window: &adw::Window) -> Option<String> {
         crate::test_support::drain_main_context();
         crate::test_support::descendants(window)
@@ -386,8 +386,8 @@ mod tests {
         .len()
     }
 
-    /// The test drives the runtime from outside it, which is the one
-    /// place blocking on it cannot deadlock.
+    // The test drives the runtime from outside it, which is the one
+    // place blocking on it cannot deadlock.
     #[expect(
         clippy::disallowed_methods,
         reason = "a GTK test has no runtime of its own, so it drives the app's from outside"
@@ -396,9 +396,9 @@ mod tests {
         runtime.tasks().handle().block_on(future)
     }
 
-    /// Press Clear on the confirmation alert the button raised. The
-    /// alert presents into the window's dialog host, not into the
-    /// preferences dialog, so that is where it is.
+    // Press Clear on the confirmation alert the button raised. The
+    // alert presents into the window's dialog host, not into the
+    // preferences dialog, so that is where it is.
     fn confirm_the_alert(window: &adw::Window) {
         crate::test_support::drain_main_context();
         let alert =

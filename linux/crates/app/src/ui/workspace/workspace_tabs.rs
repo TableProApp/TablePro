@@ -1,3 +1,4 @@
+use crate::ui::browse_tab::InitialSort;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -125,7 +126,7 @@ impl WorkspaceModel {
                 page: TablePage {
                     offset,
                     page_size,
-                    sort: sort.map(|sort| (sort.column, sort.ascending)),
+                    sort: InitialSort::Kept(sort.map(|sort| (sort.column, sort.ascending))),
                 },
                 filter: filter.map_or(TableFilter::Remembered, TableFilter::Kept),
             },
@@ -883,7 +884,7 @@ impl WorkspaceModel {
                     page: TablePage {
                         offset,
                         page_size,
-                        sort,
+                        sort: InitialSort::Kept(sort),
                     },
                     filter: TableFilter::Kept(filter),
                 });

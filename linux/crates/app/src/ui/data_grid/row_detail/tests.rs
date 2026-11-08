@@ -1424,3 +1424,53 @@ fn a_page_that_takes_the_row_closes_its_clock_and_writes_nothing() {
     );
     assert!(!pane.imp().clock_popover.is_visible());
 }
+
+#[gtk4::test]
+fn null_preferences_update_details_without_replacing_a_draft() {
+    let (grid, pane) = opened(two_text_columns(), vec![vec![Value::Int(1), Value::Null]]);
+    grid.focus(0, 1);
+    let settings = grid.grid.config().expect("configured grid").settings.clone();
+    settings.set_null_display("missing").expect("store placeholder");
+    drain_main_context();
+
+    assert_eq!(pane.imp().placeholder_label.label(), "missing");
+    let shown: Vec<String> = descendants(&pane.imp().field_list.get())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Inscription>().ok())
+        .filter_map(|inscription| inscription.text().map(|text| text.to_string()))
+        .collect();
+    assert!(shown.contains(&"missing".to_owned()), "field list showed {shown:?}");
+
+    edit_field(&grid, &pane, 0, 1);
+    type_value(&pane, "unfinished");
+    assert!(grid.grid.is_editing());
+    settings
+        .set_null_display("absent")
+        .expect("change placeholder while editing");
+    drain_main_context();
+
+    assert_eq!(pane.typed_text(), "unfinished");
+    assert!(grid.grid.is_editing());
+    assert_eq!(pending(&grid, 1, 1), None);
+}
+
+#[gtk4::test]
+fn changing_automatic_details_opening_keeps_an_active_value_draft() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    edit_field(&grid, &pane, 0, 1);
+    type_value(&pane, "unfinished");
+    let settings = grid.grid.config().expect("a configured grid").settings.clone();
+
+    settings
+        .set_auto_show_inspector(true)
+        .expect("enable automatic opening");
+    settings
+        .set_auto_show_inspector(false)
+        .expect("disable automatic opening");
+    drain_main_context();
+
+    assert!(pane.is_open());
+    assert!(pane.is_editing_value());
+    assert_eq!(pane.typed_text(), "unfinished");
+    assert_eq!(pending(&grid, 1, 1), None);
+}
