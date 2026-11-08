@@ -1581,7 +1581,7 @@ fn structure_refresh_during_a_save_keeps_the_draft_without_a_read_or_prompt() {
     harness.tab().send(SaveInput::SaveStarted);
 
     harness.tab().request_refresh();
-    after_next_frame(&window);
+    after_next_frame(&*window);
 
     assert!(window.visible_dialog().is_none());
     assert_eq!(harness.comments(), [Some("pending comment".to_owned())]);
