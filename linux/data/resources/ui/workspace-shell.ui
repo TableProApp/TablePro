@@ -2,6 +2,30 @@
 <interface>
   <requires lib="gtk" version="4.22"/>
   <requires lib="libadwaita" version="1.9"/>
+  <!-- The sidebar's (+) menu: what the connection in front lets the user
+       make. A window action the engine or a read-only connection refuses is
+       left out. -->
+  <menu id="sidebar_add_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">New _Table…</attribute>
+        <attribute name="action">win.new-table</attribute>
+        <attribute name="hidden-when">action-disabled</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">New _Schema…</attribute>
+        <attribute name="action">win.new-schema</attribute>
+        <attribute name="hidden-when">action-disabled</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">New _Database…</attribute>
+        <attribute name="action">win.new-database</attribute>
+        <attribute name="hidden-when">action-disabled</attribute>
+      </item>
+    </section>
+  </menu>
   <template class="TableProWorkspaceShell" parent="AdwBin">
     <property name="child">
       <!-- libadwaita expects the overview as the window's direct
@@ -91,6 +115,20 @@
                           <object class="GtkStack" id="list_banners">
                             <property name="hhomogeneous">false</property>
                             <property name="vhomogeneous">false</property>
+                          </object>
+                        </child>
+                        <child type="bottom">
+                          <!-- As macOS's sidebar footer: what can be made
+                               in the connection in front. -->
+                          <object class="GtkActionBar">
+                            <child type="start">
+                              <object class="GtkMenuButton" id="sidebar_add_button">
+                                <property name="icon-name">list-add-symbolic</property>
+                                <property name="menu-model">sidebar_add_menu</property>
+                                <property name="sensitive">false</property>
+                                <property name="direction">up</property>
+                              </object>
+                            </child>
                           </object>
                         </child>
                         <property name="content">

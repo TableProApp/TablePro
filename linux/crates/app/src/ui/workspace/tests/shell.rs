@@ -563,3 +563,20 @@ fn the_main_menu_adds_a_connection_with_none_open() {
 
     choose_new_connection(&test, &test.window.content().expect("the picker"));
 }
+
+#[gtk4::test]
+fn the_sidebar_add_button_is_there_to_use_only_while_the_menu_offers_something() {
+    let test = TestWindow::connected("SidebarAdd");
+    let shell = test
+        .window
+        .content()
+        .and_downcast::<WorkspaceShell>()
+        .expect("the shell page");
+    let offered = ["new-table", "new-schema", "new-database"].iter().any(|name| {
+        gtk4::prelude::ActionMapExt::lookup_action(&test.window, name)
+            .expect("the window's action")
+            .is_enabled()
+    });
+
+    assert_eq!(shell.imp().sidebar_add_button.is_sensitive(), offered);
+}

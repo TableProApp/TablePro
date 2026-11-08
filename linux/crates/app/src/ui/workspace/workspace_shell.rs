@@ -42,6 +42,7 @@ glib::wrapper! {
 pub(super) fn describe_buttons(shell: &WorkspaceShell) {
     let imp = shell.imp();
     describe_icon_button(&imp.table_search_toggle.get(), &gettext("Search"), None);
+    describe_icon_button(&imp.sidebar_add_button.get(), &gettext("Add"), None);
     describe_icon_button(
         &imp.refresh_tables_button.get(),
         &gettext("Refresh"),

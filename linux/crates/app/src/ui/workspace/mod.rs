@@ -66,7 +66,7 @@ pub(crate) use self::catalog_ops::DatabaseDrop;
 pub(crate) use self::database_transfer::TransferInput;
 use self::session_watches::SessionWatches;
 use self::tab_title::ConnectionLabel;
-pub(crate) use self::workspace_actions::show_transfer_actions;
+pub(crate) use self::workspace_actions::{show_creation_actions, show_transfer_actions};
 pub(crate) use self::workspace_shell::WorkspaceShell;
 pub(crate) use self::workspace_tab_view::page_position;
 use super::browse_tab::BrowseTab;
