@@ -1,4 +1,4 @@
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::VecDeque;
 use std::sync::OnceLock;
 
@@ -83,6 +83,7 @@ pub struct StructureTab {
     #[template_child]
     pub stop_button: TemplateChild<gtk::Button>,
 
+    pub(super) save_action: OnceCell<gio::SimpleAction>,
     pub(super) model: RefCell<Option<StructureModel>>,
     pub(super) queue: RefCell<VecDeque<StructureTabInput>>,
     pub(super) dispatching: Cell<bool>,

@@ -145,6 +145,7 @@ impl BrowseTab {
             filter_strip.set_revealed(true);
         }
         let actions = browse_actions::install_browse_actions(&tab, init.page_size);
+        let _ = tab.imp().save_action.set(actions.save.clone());
         // A sort saved with the tab cannot reach an engine that reads
         // in its own order.
         let initial_sort = init.initial_sort.filter(|_| sorts_rows(dialect.as_deref()));
@@ -207,6 +208,10 @@ impl BrowseTab {
         tab.imp().model.replace(Some(model));
         tab.start(link_changes, init.first_load);
         tab
+    }
+
+    pub(crate) fn save_action(&self) -> Option<gio::SimpleAction> {
+        self.imp().save_action.get().cloned()
     }
 
     /// Follow reconnects for as long as the tab is open, and read the

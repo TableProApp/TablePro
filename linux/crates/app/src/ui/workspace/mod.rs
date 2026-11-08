@@ -1105,21 +1105,6 @@ impl Workspace {
         self.with_model(|model| model.update(message));
     }
 
-    /// The tab in front, when it holds edits a save would write: the one
-    /// the header's Save Changes saves.
-    pub(super) fn selected_unsaved_tab(&self) -> Option<Uuid> {
-        self.read(|model| {
-            let id = model.selected_workspace_tab_id()?;
-            model
-                .workspace_handle
-                .dirty_tabs()
-                .iter()
-                .any(|tab| tab.id == id && matches!(tab.kind, crate::workspace::DirtyKind::Unsaved))
-                .then_some(id)
-        })
-        .flatten()
-    }
-
     fn with_model<R>(&self, f: impl FnOnce(&mut WorkspaceModel) -> R) -> Option<R> {
         let mut model = self.imp().model.try_borrow_mut().ok()?;
         model.as_mut().map(f)

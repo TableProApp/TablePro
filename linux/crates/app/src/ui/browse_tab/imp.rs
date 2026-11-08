@@ -65,6 +65,7 @@ pub struct BrowseTab {
     /// The tab's one grid, reachable while an input is being handled
     /// and the model is borrowed.
     pub(super) grid: OnceCell<DataGrid>,
+    pub(super) save_action: OnceCell<gio::SimpleAction>,
     pub(super) model: RefCell<Option<BrowseModel>>,
     pub(super) queue: RefCell<VecDeque<BrowseTabInput>>,
     pub(super) dispatching: Cell<bool>,

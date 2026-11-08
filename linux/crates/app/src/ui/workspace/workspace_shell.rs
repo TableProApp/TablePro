@@ -52,7 +52,11 @@ pub(super) fn describe_buttons(shell: &WorkspaceShell) {
         &gettext("Show Sidebar"),
         Some("win.show-sidebar"),
     );
-    describe_icon_button(&imp.save_changes_button.get(), &gettext("Save Changes"), None);
+    describe_icon_button(
+        &imp.save_changes_button.get(),
+        &gettext("Save Changes"),
+        Some("browse.save"),
+    );
     describe_icon_button(
         &imp.new_tab_button.get(),
         &gettext("New Query"),
@@ -515,6 +519,7 @@ impl WorkspaceShell {
     /// The tab on screen changed: its session comes to the front. With
     /// no tab the front stays where it was.
     pub(super) fn follow_selected_page(&self) {
+        self.refresh_save_changes();
         let Some(page) = self.imp().tab_view.selected_page() else {
             return;
         };
@@ -522,31 +527,50 @@ impl WorkspaceShell {
         if let Some((owner, _)) = self.owner_of(&page) {
             self.set_front(Some(&owner));
         }
-        self.refresh_save_changes();
     }
 
-    /// The header's Save Changes is on while the tab in front has edits.
+    fn selected_save_action(&self) -> Option<gio::SimpleAction> {
+        let child = self.imp().tab_view.selected_page()?.child();
+        if let Some(tab) = child.downcast_ref::<crate::ui::browse_tab::BrowseTab>() {
+            return tab.save_action();
+        }
+        if let Some(tab) = child.downcast_ref::<crate::ui::structure_tab::StructureTab>() {
+            return tab.save_action();
+        }
+        child
+            .downcast_ref::<crate::ui::editor::SqlEditor>()?
+            .save_changes_action()
+    }
+
     pub(super) fn refresh_save_changes(&self) {
-        let enabled = self.front().and_then(|front| front.selected_unsaved_tab()).is_some();
-        if let Some(action) = self
-            .imp()
+        let imp = self.imp();
+        if let Some(binding) = imp.save_changes_binding.take() {
+            binding.unbind();
+        }
+        let Some(action) = imp
             .window
             .upgrade()
             .and_then(|window| window.lookup_action("save-changes"))
-        {
-            if let Some(action) = action.downcast_ref::<gio::SimpleAction>() {
-                action.set_enabled(enabled);
+            .and_downcast::<gio::SimpleAction>()
+        else {
+            return;
+        };
+        match self.selected_save_action() {
+            Some(source) => {
+                imp.save_changes_binding.replace(Some(
+                    source
+                        .bind_property("enabled", &action, "enabled")
+                        .sync_create()
+                        .build(),
+                ));
             }
+            None => action.set_enabled(false),
         }
     }
 
-    /// Save the edits of the tab in front, as the header's Save Changes asks.
     pub(super) fn save_changes(&self) {
-        let Some(front) = self.front() else {
-            return;
-        };
-        if let (Some(id), Some(input)) = (front.selected_unsaved_tab(), front.sender()) {
-            input.deliver(WorkspaceInput::SaveTab(id));
+        if let Some(action) = self.selected_save_action() {
+            action.activate(None);
         }
     }
 
@@ -704,6 +728,9 @@ impl WorkspaceShell {
     /// names itself again from here on.
     pub(crate) fn shutdown(&self) {
         let imp = self.imp();
+        if let Some(binding) = imp.save_changes_binding.take() {
+            binding.unbind();
+        }
         for watch in imp.watches.take() {
             watch.unwatch();
         }

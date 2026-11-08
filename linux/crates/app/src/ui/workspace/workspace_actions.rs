@@ -138,6 +138,7 @@ pub(super) fn remove(window: &adw::ApplicationWindow) {
     window.remove_action(CLOSE_ALL_TABS);
     window.remove_action(SWITCH_RECENT_TAB);
     window.remove_action(SHOW_TABS);
+    window.remove_action(SAVE_CHANGES);
 }
 
 /// Offer Export Database and Import SQL File where the session in front

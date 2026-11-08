@@ -133,6 +133,7 @@ pub struct WorkspaceShell {
     pub(super) history_gate: RefCell<Option<glib::JoinHandle<()>>>,
     /// What follows the session in front, let go of at shutdown.
     pub(super) watches: RefCell<Vec<gtk::ExpressionWatch>>,
+    pub(super) save_changes_binding: RefCell<Option<glib::Binding>>,
     /// The overview's new tab, connected to the front's tab factory.
     pub(super) create_tab: RefCell<Option<glib::SignalHandlerId>>,
     /// The tab of this window a drag has out of the view.

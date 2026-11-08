@@ -737,23 +737,3 @@ fn a_session_closing_while_its_tab_is_out_leaves_that_tab_alone() {
     assert!(holds_page(&drag, &page));
     assert!(shell.owner_of(&page).is_none());
 }
-
-/// The header's Save Changes is on while the tab in front has edits and
-/// off when it has none, as the macOS toolbar's check is.
-#[gtk4::test]
-fn the_header_save_changes_follows_the_front_tabs_edits() {
-    let test = TestWindow::connected("HeaderSave");
-    let save = test
-        .window
-        .lookup_action("save-changes")
-        .expect("the save-changes action");
-    assert!(!save.is_enabled(), "on with nothing to save");
-
-    edit_a_table(&test.workspace(), "orders");
-    // The tab says so when an edit lands; the test wrote to its tracker directly.
-    test.workspace()
-        .sender()
-        .expect("the workspace's input")
-        .deliver(WorkspaceInput::TabDirtyChanged);
-    wait_until(WAIT, || save.is_enabled()).expect("Save Changes on for the edited tab");
-}

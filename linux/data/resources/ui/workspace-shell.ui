@@ -134,6 +134,12 @@
                                     <property name="action-name">win.new-editor-tab</property>
                                   </object>
                                 </child>
+                                <child type="start">
+                                  <object class="GtkButton" id="save_changes_button">
+                                    <property name="icon-name">object-select-symbolic</property>
+                                    <property name="action-name">win.save-changes</property>
+                                  </object>
+                                </child>
                                 <property name="title-widget">
                                   <!-- The connection's icon, when it has one,
                                        beside the title that names it. -->
@@ -150,15 +156,6 @@
                                     </child>
                                   </object>
                                 </property>
-                                <child type="end">
-                                  <!-- Writes the edits of the tab in front, as the macOS
-                                       toolbar's check does; off while it has none. -->
-                                  <object class="GtkButton" id="save_changes_button">
-                                    <property name="icon-name">object-select-symbolic</property>
-                                    <property name="action-name">win.save-changes</property>
-                                    <property name="tooltip-text" translatable="yes">Save Changes</property>
-                                  </object>
-                                </child>
                                 <child type="end">
                                   <object class="GtkToggleButton" id="assistant_toggle">
                                     <property name="icon-name">assistant-symbolic</property>

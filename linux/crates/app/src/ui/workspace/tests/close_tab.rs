@@ -334,3 +334,150 @@ fn close_all_tabs_asks_before_closing_unsaved_work() {
     assert!(tab_is_open(&test, id), "the tab with unsaved changes closed");
     assert_eq!(crate::test_support::read_text_file(&path), "SELECT 1;");
 }
+
+#[gtk4::test]
+fn header_save_commits_the_first_inline_edit_and_follows_the_running_save() {
+    use tablepro_core::WriteReport;
+    use tablepro_test_support::CallCounters;
+    use tokio_util::sync::CancellationToken;
+
+    let release = CancellationToken::new();
+    let test = TestWindow::connected_with("HeaderInlineSave", |script| {
+        serving_tables(script);
+        script.write_batch.always(FakeReply::UntilReleased {
+            release: release.clone(),
+            outcome: Ok(WriteReport::new(vec![Some(1)])),
+        });
+    });
+    let (id, tab) = open_table(&test, "users");
+    let shell = shell_of(&test.workspace());
+    let button = shell.imp().save_changes_button.get();
+    crate::test_support::assert_labelled(&button).expect("Save Changes has a name");
+    assert_eq!(button.tooltip_text().as_deref(), Some("Save Changes"));
+    assert!(gtk::test_accessible_has_property(
+        &button,
+        gtk::AccessibleProperty::KeyShortcuts
+    ));
+    assert!(!button.is_sensitive());
+    let cell = type_a_name(&tab);
+    let changes = super::row_tracker(&test.workspace(), id).expect("the changes");
+    assert_eq!(changes.pending_count(), 0);
+    wait_until(WAIT, || button.is_sensitive()).expect("Save Changes for the first inline edit");
+
+    button.emit_clicked();
+
+    let connection = test.connection();
+    wait_until(WAIT, || CallCounters::get(&connection.counters().write_batch) == 1)
+        .expect("the header starts the write");
+    assert!(!cell.is_editing());
+    assert!(!button.is_sensitive(), "Save stays disabled during its write");
+    assert!(
+        connection
+            .observed_sql("write_batch")
+            .iter()
+            .flatten()
+            .any(|sql| sql.contains("UPDATE"))
+    );
+    release.cancel();
+    wait_until(WAIT, || changes.pending_count() == 0 && !test.workspace().is_saving()).expect("the save settles");
+    assert!(!button.is_sensitive(), "the saved tab has nothing to save");
+}
+
+#[gtk4::test]
+fn header_save_follows_sidebar_selection_and_drops_the_previous_tabs_state() {
+    let test = TestWindow::connected_with("HeaderSidebarSave", serving_tables);
+    let workspace = test.workspace();
+    let shell = shell_of(&workspace);
+    let button = shell.imp().save_changes_button.get();
+    let (first, tab) = open_table(&test, "users");
+    type_a_name(&tab);
+    tab.grid().commit_edit();
+    wait_until(WAIT, || button.is_sensitive()).expect("the first tab has edits");
+    let (_, other) = open_table(&test, "teams");
+    assert!(!button.is_sensitive());
+
+    workspace.sender().expect("input").deliver(WorkspaceInput::SelectTable {
+        schema: None,
+        name: "users".to_owned(),
+        open_mode: OpenMode::SwitchOrAppend,
+    });
+    wait_until(WAIT, || workspace.selected_tab() == Some(first)).expect("sidebar selects the edited tab");
+    assert!(
+        button.is_sensitive(),
+        "selection under the workspace borrow lost the action state"
+    );
+
+    other.send(crate::ui::browse_tab::SaveInput::SaveStarted);
+    assert!(
+        button.is_sensitive(),
+        "a background tab changed the selected tab's action"
+    );
+    tab.send(crate::ui::browse_tab::SaveInput::SaveStarted);
+    assert!(!button.is_sensitive());
+    tab.send(crate::ui::browse_tab::SaveInput::SaveCommitted(Default::default()));
+    super::open_editor(&workspace);
+    assert!(
+        !button.is_sensitive(),
+        "a SQL editor without result edits cannot save data"
+    );
+    shell.shutdown();
+    assert!(test.window.lookup_action("save-changes").is_none());
+}
+
+#[gtk4::test]
+fn header_save_uses_the_structure_tabs_save_action() {
+    use crate::ui::structure_tab::{ColumnsInput, SaveInput, StructureTab};
+
+    let test = TestWindow::connected("HeaderStructureSave");
+    let workspace = test.workspace();
+    let shell = shell_of(&workspace);
+    workspace
+        .sender()
+        .expect("input")
+        .deliver(WorkspaceInput::NewTableTab { schema: None });
+    let mut tab = None;
+    wait_until(WAIT, || {
+        tab = shell
+            .tab_view()
+            .selected_page()
+            .and_then(|page| page.child().downcast::<StructureTab>().ok());
+        tab.is_some()
+    })
+    .expect("a new structure tab");
+    let tab = tab.expect("the structure");
+    let button = shell.imp().save_changes_button.get();
+    let source = tab.save_action().expect("the structure save action");
+    assert_eq!(button.is_sensitive(), source.is_enabled());
+    tab.send(ColumnsInput::AddColumn);
+    assert!(source.is_enabled());
+    assert!(button.is_sensitive());
+    tab.send(SaveInput::SaveStarted);
+    assert!(!button.is_sensitive());
+    tab.send(SaveInput::SaveFailed("The connection closed.".to_owned()));
+    assert!(button.is_sensitive());
+}
+
+#[gtk4::test]
+fn header_save_switches_between_sessions_and_disables_without_a_tab() {
+    let sessions = super::two_sessions_with("HeaderSessionSave", "Other", serving_tables);
+    let shell = &sessions.shell;
+    let button = shell.imp().save_changes_button.get();
+    assert!(!button.is_sensitive());
+    super::open_editor(&sessions.first);
+    let (_, tab) = open_table(&sessions.test, "users");
+    type_a_name(&tab);
+    tab.grid().commit_edit();
+    assert!(button.is_sensitive());
+    let edited = shell.tab_view().selected_page().expect("the edited page");
+
+    let clean = super::open_editor(&sessions.second);
+    assert!(!button.is_sensitive());
+    shell.tab_view().set_selected_page(&edited);
+    assert!(button.is_sensitive());
+    shell.tab_view().set_selected_page(&clean);
+    tab.send(crate::ui::browse_tab::SaveInput::SaveStarted);
+    assert!(
+        !button.is_sensitive(),
+        "a background session cannot enable Save Changes"
+    );
+}

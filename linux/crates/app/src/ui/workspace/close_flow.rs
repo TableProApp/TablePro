@@ -184,10 +184,6 @@ impl WorkspaceModel {
         for id in marked {
             self.retitle_tab(id);
         }
-        // The model is borrowed for this very update, so the shell asks it after.
-        if let Some(shell) = self.shell.upgrade() {
-            glib::idle_add_local_once(move || shell.refresh_save_changes());
-        }
         let dirty = dirty_tabs.iter().any(|tab| tab.kind.lost_with_the_window());
         if let Some(workspace) = self.this.upgrade()
             && workspace.imp().dirty.replace(dirty) != dirty
