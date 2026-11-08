@@ -101,6 +101,16 @@ impl QueryHistory {
         crate::saved_queries::SavedQueries::new(self.pool.clone(), self.path.clone())
     }
 
+    /// The folders saved queries are filed in, in the same database.
+    pub fn saved_query_folders(&self) -> crate::saved_queries::SavedQueryFolders {
+        crate::saved_queries::SavedQueryFolders::new(self.pool.clone(), self.path.clone())
+    }
+
+    /// The favourite tables and databases, in the same database.
+    pub fn favourites(&self) -> crate::favourites::Favourites {
+        crate::favourites::Favourites::new(self.pool.clone(), self.path.clone())
+    }
+
     pub async fn record(&self, entry: NewEntry) -> Result<i64, StorageError> {
         if entry.query.len() > MAX_QUERY_BYTES {
             return Err(StorageError::TooLarge {
@@ -538,7 +548,7 @@ async fn trim_copy(copy: &Path, live: &str, first: &[CopyDelete]) -> Result<(), 
             statement.execute(&mut *transaction).await?;
         }
     }
-    for table in ["history", "saved_queries"] {
+    for table in ["history", "saved_queries", "saved_query_folders"] {
         let present: i64 = sqlx::query_scalar(
             "SELECT (SELECT COUNT(*) FROM main.sqlite_master WHERE type = 'table' AND name = ?1) \
              * (SELECT COUNT(*) FROM live.sqlite_master WHERE type = 'table' AND name = ?1)",
@@ -709,7 +719,56 @@ mod tests {
             .fetch_one(&history.pool)
             .await
             .expect("count migrations");
-        assert_eq!(applied, 1);
+        assert_eq!(applied, 2);
+    }
+
+    /// A database an earlier build wrote, with its saved queries, is kept
+    /// as a copy before the favourites' migration and then reads as it did,
+    /// with no keyword and no folder.
+    #[tokio::test]
+    async fn a_database_from_before_the_favourites_keeps_its_saved_queries() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let paths = paths(&root);
+        let path = paths.history_database();
+        crate::fs::create_private_file_if_missing(&path).expect("the file");
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                SqliteConnectOptions::new()
+                    .filename(&path)
+                    .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal),
+            )
+            .await
+            .expect("a pool");
+        sqlx::migrate::Migrator::with_migrations(schema::MIGRATOR.iter().take(1).cloned().collect())
+            .run(&pool)
+            .await
+            .expect("the first migration");
+        let connection = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO saved_queries (name, query, connection_id, connection_name, created_at, updated_at) \
+             VALUES ('daily', 'SELECT 1', ?, 'local', 1, 1)",
+        )
+        .bind(connection.to_string())
+        .execute(&pool)
+        .await
+        .expect("a saved query");
+        pool.close().await;
+
+        let history = QueryHistory::open(&paths).await.expect("open");
+
+        let saved = history.saved_queries().list(Some(connection)).await.expect("list");
+        assert_eq!(saved.len(), 1);
+        assert_eq!(
+            (saved[0].keyword.as_deref(), saved[0].folder_id, saved[0].order),
+            (None, None, 0)
+        );
+        assert!(
+            !crate::upgrade_copies::copies_blocking(&path)
+                .expect("copies")
+                .is_empty(),
+            "no copy was kept before the migration"
+        );
     }
 
     #[tokio::test]
@@ -854,7 +913,7 @@ mod tests {
     /// means a change went into a file that has already run somewhere.
     #[test]
     fn migrator_embeds_every_migration() {
-        assert_eq!(schema::MIGRATOR.iter().count(), 1);
+        assert_eq!(schema::MIGRATOR.iter().count(), 2);
     }
 
     #[tokio::test]
@@ -1399,6 +1458,65 @@ mod tests {
             "a deleted entry's words came along into the copy"
         );
         assert!(indexed(&copy, "qqq").await);
+    }
+
+    /// A copy made after the favourites existed holds no folder, table or
+    /// database the user then deleted.
+    #[tokio::test]
+    async fn deleted_folders_and_favourites_leave_the_copies_too() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let history = QueryHistory::open(&paths(&root)).await.expect("open");
+        let connection = Uuid::new_v4();
+        let folders = history.saved_query_folders();
+        let favourites = history.favourites();
+        let folder = folders.create(connection, "Reports", None).await.expect("a folder");
+        folders
+            .create(connection, "Monthly", Some(folder))
+            .await
+            .expect("a subfolder");
+        let table = crate::favourites::FavouriteTable {
+            connection_id: connection,
+            database: None,
+            schema: None,
+            name: "orders".to_owned(),
+        };
+        favourites.add_table(&table).await.expect("a table");
+        favourites
+            .set_database(connection, "shop", crate::favourites::DatabaseEnvironment::Testing)
+            .await
+            .expect("a database");
+        let copy = crate::upgrade_copies::keep_database(&history.pool, &history.path, 1)
+            .await
+            .expect("a copy");
+        async fn kept(copy: &Path) -> Vec<i64> {
+            let mut database = SqliteConnectOptions::new()
+                .filename(copy)
+                .read_only(true)
+                .connect()
+                .await
+                .expect("open the copy");
+            let mut counts = Vec::new();
+            for table in ["saved_query_folders", "favourite_tables", "favourite_databases"] {
+                counts.push(
+                    sqlx::query_scalar(AssertSqlSafe(format!("SELECT COUNT(*) FROM {table}")))
+                        .fetch_one(&mut database)
+                        .await
+                        .expect("count"),
+                );
+            }
+            database.close().await.expect("close");
+            counts
+        }
+        assert_eq!(kept(&copy).await, [2, 1, 1]);
+
+        folders.delete(folder).await.expect("delete the folder");
+        favourites.remove_table(&table).await.expect("remove the table");
+        favourites
+            .remove_database(connection, "shop")
+            .await
+            .expect("remove the database");
+
+        assert_eq!(kept(&copy).await, [0, 0, 0], "a deleted favourite stayed in the copy");
     }
 
     #[tokio::test]

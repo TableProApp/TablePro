@@ -15,6 +15,13 @@ pub struct SavedQuery {
     /// The connection's name as of the last save, which is what the
     /// list shows when the connection itself is gone.
     pub connection_name: String,
+    /// What the user types in the editor to get the query, one word,
+    /// unique among the connection's queries in any case.
+    pub keyword: Option<String>,
+    /// The folder it is filed in, none for the top of the connection's list.
+    pub folder_id: Option<i64>,
+    /// Its place among the queries of its folder.
+    pub order: i64,
     pub created_at: SystemTime,
     pub updated_at: SystemTime,
 }
@@ -41,6 +48,9 @@ mod tests {
             query: query.to_owned(),
             connection_id: Uuid::nil(),
             connection_name: "local".to_owned(),
+            keyword: None,
+            folder_id: None,
+            order: 0,
             created_at: SystemTime::UNIX_EPOCH,
             updated_at: SystemTime::UNIX_EPOCH,
         }

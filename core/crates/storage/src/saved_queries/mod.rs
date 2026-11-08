@@ -1,3 +1,4 @@
+mod folders;
 mod new_saved_query;
 mod saved_query;
 
@@ -9,8 +10,20 @@ use uuid::Uuid;
 use crate::error::StorageError;
 use crate::unix_time::{from_unix, to_unix};
 
+pub use folders::{SavedQueryFolder, SavedQueryFolders};
 pub use new_saved_query::NewSavedQuery;
 pub use saved_query::SavedQuery;
+
+/// The columns a saved query is read from, in one place so a read and its
+/// row mapping cannot drift.
+macro_rules! columns {
+    () => {
+        "id, name, query, connection_id, connection_name, keyword, folder_id, sort_order, created_at, updated_at"
+    };
+}
+
+/// The longest keyword, which is typed to expand.
+const MAX_KEYWORD_CHARS: usize = 64;
 
 /// What a save did, so the caller can say which.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -149,19 +162,21 @@ impl SavedQueries {
     pub async fn list(&self, connection: Option<Uuid>) -> Result<Vec<SavedQuery>, StorageError> {
         let rows = match connection {
             Some(id) => {
-                sqlx::query(
-                    "SELECT id, name, query, connection_id, connection_name, created_at, updated_at \
-                     FROM saved_queries WHERE connection_id = ? ORDER BY name COLLATE NOCASE, id",
-                )
+                sqlx::query(concat!(
+                    "SELECT ",
+                    columns!(),
+                    " FROM saved_queries WHERE connection_id = ? ORDER BY name COLLATE NOCASE, id"
+                ))
                 .bind(id.to_string())
                 .fetch_all(&self.pool)
                 .await?
             }
             None => {
-                sqlx::query(
-                    "SELECT id, name, query, connection_id, connection_name, created_at, updated_at \
-                     FROM saved_queries ORDER BY connection_name COLLATE NOCASE, name COLLATE NOCASE, id",
-                )
+                sqlx::query(concat!(
+                    "SELECT ",
+                    columns!(),
+                    " FROM saved_queries ORDER BY connection_name COLLATE NOCASE, name COLLATE NOCASE, id"
+                ))
                 .fetch_all(&self.pool)
                 .await?
             }
@@ -170,13 +185,10 @@ impl SavedQueries {
     }
 
     pub async fn get(&self, id: i64) -> Result<Option<SavedQuery>, StorageError> {
-        let row = sqlx::query(
-            "SELECT id, name, query, connection_id, connection_name, created_at, updated_at \
-             FROM saved_queries WHERE id = ?",
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row = sqlx::query(concat!("SELECT ", columns!(), " FROM saved_queries WHERE id = ?"))
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
         row.map(row_to_saved_query).transpose()
     }
 
@@ -211,6 +223,82 @@ impl SavedQueries {
         }
     }
 
+    /// Give a saved query the word that expands to it in the editor, or
+    /// none. A word is one run of characters with no whitespace, kept as
+    /// typed; two queries of a connection never share one in any case.
+    pub async fn set_keyword(&self, id: i64, keyword: Option<&str>) -> Result<(), StorageError> {
+        let keyword = keyword.map(str::trim).filter(|word| !word.is_empty());
+        if let Some(word) = keyword
+            && (word.chars().count() > MAX_KEYWORD_CHARS || word.chars().any(|c| c.is_whitespace() || c.is_control()))
+        {
+            return Err(StorageError::KeywordInvalid { max: MAX_KEYWORD_CHARS });
+        }
+        let affected = sqlx::query("UPDATE saved_queries SET keyword = ?, updated_at = ? WHERE id = ?")
+            .bind(keyword)
+            .bind(to_unix(SystemTime::now()))
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|error| match &error {
+                sqlx::Error::Database(database) if database.is_unique_violation() => StorageError::KeywordTaken,
+                _ => StorageError::Database(error),
+            })?
+            .rows_affected();
+        match affected {
+            0 => Err(StorageError::NotFound),
+            _ => Ok(()),
+        }
+    }
+
+    /// File a saved query in `folder`, none for the top, before another
+    /// query of that place or last. The folder must be the same
+    /// connection's. The places of the queries there are numbered from 0
+    /// again, so the order is whole.
+    pub async fn move_to_folder(&self, id: i64, folder: Option<i64>, before: Option<i64>) -> Result<(), StorageError> {
+        let mut transaction = self.pool.begin().await?;
+        let connection: Option<String> = sqlx::query_scalar("SELECT connection_id FROM saved_queries WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&mut *transaction)
+            .await?;
+        let connection = connection.ok_or(StorageError::NotFound)?;
+        if let Some(folder) = folder {
+            let owner: Option<String> =
+                sqlx::query_scalar("SELECT connection_id FROM saved_query_folders WHERE id = ?")
+                    .bind(folder)
+                    .fetch_optional(&mut *transaction)
+                    .await?;
+            if owner.as_deref() != Some(connection.as_str()) {
+                return Err(StorageError::NotFound);
+            }
+        }
+        let mut place: Vec<i64> = sqlx::query_scalar(
+            "SELECT id FROM saved_queries WHERE folder_id IS ? AND id <> ? ORDER BY sort_order, name COLLATE NOCASE, id",
+        )
+        .bind(folder)
+        .bind(id)
+        .fetch_all(&mut *transaction)
+        .await?;
+        let at = before
+            .and_then(|before| place.iter().position(|held| *held == before))
+            .unwrap_or(place.len());
+        place.insert(at, id);
+        sqlx::query("UPDATE saved_queries SET folder_id = ?, updated_at = ? WHERE id = ?")
+            .bind(folder)
+            .bind(to_unix(SystemTime::now()))
+            .bind(id)
+            .execute(&mut *transaction)
+            .await?;
+        for (order, held) in place.iter().enumerate() {
+            sqlx::query("UPDATE saved_queries SET sort_order = ? WHERE id = ?")
+                .bind(i64::try_from(order).unwrap_or(i64::MAX))
+                .bind(held)
+                .execute(&mut *transaction)
+                .await?;
+        }
+        transaction.commit().await?;
+        Ok(())
+    }
+
     pub async fn delete(&self, id: i64) -> Result<(), StorageError> {
         crate::query_history::trim_upgrade_copies(
             &self.path,
@@ -236,20 +324,49 @@ impl SavedQueries {
     /// connection itself is removed. Its queries name tables only that
     /// database has.
     pub async fn delete_for_connection(&self, connection: Uuid) -> Result<usize, StorageError> {
-        crate::query_history::trim_upgrade_copies(
-            &self.path,
-            &[crate::query_history::CopyDelete {
-                table: "saved_queries",
-                sql: "DELETE FROM main.saved_queries WHERE connection_id = ?".to_owned(),
-                binds: vec![crate::query_history::Bind::Text(connection.to_string())],
-            }],
-        )
-        .await?;
+        // The copies an upgrade kept hold none of what the connection had.
+        let copies: Vec<crate::query_history::CopyDelete> = [
+            (
+                "saved_queries",
+                "DELETE FROM main.saved_queries WHERE connection_id = ?",
+            ),
+            (
+                "saved_query_folders",
+                "DELETE FROM main.saved_query_folders WHERE connection_id = ?",
+            ),
+            (
+                "favourite_tables",
+                "DELETE FROM main.favourite_tables WHERE connection_id = ?",
+            ),
+            (
+                "favourite_databases",
+                "DELETE FROM main.favourite_databases WHERE connection_id = ?",
+            ),
+        ]
+        .map(|(table, sql)| crate::query_history::CopyDelete {
+            table,
+            sql: sql.to_owned(),
+            binds: vec![crate::query_history::Bind::Text(connection.to_string())],
+        })
+        .into();
+        crate::query_history::trim_upgrade_copies(&self.path, &copies).await?;
         let affected = sqlx::query("DELETE FROM saved_queries WHERE connection_id = ?")
             .bind(connection.to_string())
             .execute(&self.pool)
             .await?
             .rows_affected();
+        // What a connection's queries are filed under and the tables and
+        // databases marked beside them name only that connection's schema.
+        for statement in [
+            "DELETE FROM saved_query_folders WHERE connection_id = ?",
+            "DELETE FROM favourite_tables WHERE connection_id = ?",
+            "DELETE FROM favourite_databases WHERE connection_id = ?",
+        ] {
+            sqlx::query(statement)
+                .bind(connection.to_string())
+                .execute(&self.pool)
+                .await?;
+        }
         Ok(affected as usize)
     }
 }
@@ -262,6 +379,9 @@ fn row_to_saved_query(row: sqlx::sqlite::SqliteRow) -> Result<SavedQuery, Storag
         query: row.try_get("query")?,
         connection_id: Uuid::parse_str(&connection_id).unwrap_or_default(),
         connection_name: row.try_get("connection_name")?,
+        keyword: row.try_get("keyword")?,
+        folder_id: row.try_get("folder_id")?,
+        order: row.try_get("sort_order")?,
         created_at: from_unix(row.try_get::<i64, _>("created_at")?),
         updated_at: from_unix(row.try_get::<i64, _>("updated_at")?),
     })
@@ -304,6 +424,172 @@ mod tests {
         assert_eq!(saved.query, "SELECT 1");
         assert_eq!(saved.connection_id, connection);
         assert_eq!(saved.connection_name, "local");
+    }
+
+    #[tokio::test]
+    async fn a_keyword_is_one_word_unique_to_the_connection_in_any_case() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let store = store(&root).await;
+        let connection = Uuid::new_v4();
+        let first = store
+            .save(new_query("a", "SELECT 1", connection))
+            .await
+            .expect("save")
+            .id;
+        let second = store
+            .save(new_query("b", "SELECT 2", connection))
+            .await
+            .expect("save")
+            .id;
+        let elsewhere = store
+            .save(new_query("c", "SELECT 3", Uuid::new_v4()))
+            .await
+            .expect("save")
+            .id;
+
+        store.set_keyword(first, Some("  Daily ")).await.expect("a keyword");
+        assert_eq!(
+            store
+                .get(first)
+                .await
+                .expect("get")
+                .expect("the query")
+                .keyword
+                .as_deref(),
+            Some("Daily")
+        );
+        assert!(matches!(
+            store.set_keyword(second, Some("daily")).await,
+            Err(StorageError::KeywordTaken)
+        ));
+        assert!(matches!(
+            store.set_keyword(second, Some("two words")).await,
+            Err(StorageError::KeywordInvalid { .. })
+        ));
+        store
+            .set_keyword(elsewhere, Some("daily"))
+            .await
+            .expect("another connection may reuse it");
+
+        store
+            .set_keyword(first, Some("  "))
+            .await
+            .expect("a blank keyword clears");
+        assert_eq!(store.get(first).await.expect("get").expect("the query").keyword, None);
+        store
+            .set_keyword(second, Some("daily"))
+            .await
+            .expect("the keyword is free again");
+    }
+
+    #[tokio::test]
+    async fn queries_are_filed_in_folders_that_nest_and_go_with_their_parent() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let history = QueryHistory::open(&StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro"))
+            .await
+            .expect("open");
+        let (store, folders) = (history.saved_queries(), history.saved_query_folders());
+        let connection = Uuid::new_v4();
+        let reports = folders.create(connection, "Reports", None).await.expect("a folder");
+        let monthly = folders
+            .create(connection, "Monthly", Some(reports))
+            .await
+            .expect("a subfolder");
+        let a = store
+            .save(new_query("a", "SELECT 1", connection))
+            .await
+            .expect("save")
+            .id;
+        let b = store
+            .save(new_query("b", "SELECT 2", connection))
+            .await
+            .expect("save")
+            .id;
+
+        store.move_to_folder(a, Some(monthly), None).await.expect("file a");
+        store
+            .move_to_folder(b, Some(monthly), Some(a))
+            .await
+            .expect("file b before a");
+        async fn placed(store: &SavedQueries, id: i64) -> (Option<i64>, i64) {
+            let query = store.get(id).await.expect("get").expect("the query");
+            (query.folder_id, query.order)
+        }
+        assert_eq!(placed(&store, b).await, (Some(monthly), 0));
+        assert_eq!(placed(&store, a).await, (Some(monthly), 1));
+
+        assert!(matches!(
+            folders.create(connection, "REPORTS", None).await,
+            Err(StorageError::FolderNameTaken)
+        ));
+        assert!(matches!(
+            folders.move_to(reports, Some(monthly)).await,
+            Err(StorageError::FolderCycle { .. })
+        ));
+        let other = folders
+            .create(Uuid::new_v4(), "Elsewhere", None)
+            .await
+            .expect("another connection's");
+        assert!(matches!(
+            store.move_to_folder(a, Some(other), None).await,
+            Err(StorageError::NotFound)
+        ));
+
+        folders.delete(reports).await.expect("delete the folder");
+        assert!(
+            folders.list(connection).await.expect("list").is_empty(),
+            "a subfolder outlived its parent"
+        );
+        assert_eq!(placed(&store, a).await.0, None, "a query went with its folder");
+    }
+
+    #[tokio::test]
+    async fn favourite_tables_and_databases_are_kept_per_connection_and_go_with_it() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let history = QueryHistory::open(&StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro"))
+            .await
+            .expect("open");
+        let favourites = history.favourites();
+        let connection = Uuid::new_v4();
+        let orders = crate::favourites::FavouriteTable {
+            connection_id: connection,
+            database: None,
+            schema: Some("public".to_owned()),
+            name: "orders".to_owned(),
+        };
+
+        favourites.add_table(&orders).await.expect("mark a table");
+        favourites
+            .add_table(&orders)
+            .await
+            .expect("marking it again changes nothing");
+        favourites
+            .set_database(connection, "shop", crate::favourites::DatabaseEnvironment::Testing)
+            .await
+            .expect("mark a database");
+        favourites
+            .set_database(connection, "shop", crate::favourites::DatabaseEnvironment::Production)
+            .await
+            .expect("change its environment");
+
+        assert_eq!(
+            favourites.tables(connection).await.expect("tables"),
+            std::slice::from_ref(&orders)
+        );
+        let databases = favourites.databases(connection).await.expect("databases");
+        assert_eq!(databases.len(), 1);
+        assert_eq!(
+            databases[0].environment,
+            crate::favourites::DatabaseEnvironment::Production
+        );
+
+        store(&root)
+            .await
+            .delete_for_connection(connection)
+            .await
+            .expect("remove the connection's data");
+        assert!(favourites.tables(connection).await.expect("tables").is_empty());
+        assert!(favourites.databases(connection).await.expect("databases").is_empty());
     }
 
     #[tokio::test]
