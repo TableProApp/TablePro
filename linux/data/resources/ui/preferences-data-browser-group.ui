@@ -49,6 +49,24 @@
       </object>
     </child>
     <child>
+      <object class="AdwSwitchRow" id="grid_system_font_row">
+        <property name="title" translatable="yes">Use the System Monospace Font for Cells</property>
+      </object>
+    </child>
+    <child>
+      <object class="AdwActionRow" id="grid_font_row">
+        <property name="title" translatable="yes">Cell font</property>
+        <child type="suffix">
+          <object class="GtkFontDialogButton" id="grid_font_button">
+            <property name="valign">center</property>
+            <property name="dialog">
+              <object class="GtkFontDialog"/>
+            </property>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
       <object class="AdwSwitchRow" id="confirm_row">
         <property name="title" translatable="yes">Confirm Before Deleting Rows</property>
       </object>

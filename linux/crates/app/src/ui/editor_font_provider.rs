@@ -6,6 +6,20 @@ use tablepro_linux_platform::{AppSettings, EditorFont};
 
 thread_local! {
     static PROVIDER: RefCell<Option<(gtk4::CssProvider, String)>> = const { RefCell::new(None) };
+    static GRID_PROVIDER: RefCell<Option<(gtk4::CssProvider, String)>> = const { RefCell::new(None) };
+}
+
+/// The data grid's cells take the font the user picked for them. Libadwaita's
+/// `monospace` class sets their family, so the rule names that class.
+pub(crate) fn apply_grid(settings: &AppSettings) {
+    let font = match settings.grid_font() {
+        EditorFont::Custom(description) => Some(pango::FontDescription::from_string(&description)),
+        EditorFont::System => None,
+    };
+    install(
+        &GRID_PROVIDER,
+        font.map(|font| font_css("columnview.data-table .monospace", &font)),
+    );
 }
 
 /// The CSS the display currently carries for the editor, or `None` when
@@ -20,17 +34,27 @@ pub(crate) fn installed_css() -> Option<String> {
 /// selected there is no rule at all: `style.css` already points the class
 /// at libadwaita's monospace variables.
 pub(crate) fn apply(settings: &AppSettings) {
+    let css = match settings.editor_font() {
+        EditorFont::Custom(description) => Some(font_css(
+            EDITOR_SELECTOR,
+            &pango::FontDescription::from_string(&description),
+        )),
+        EditorFont::System => None,
+    };
+    install(&PROVIDER, css);
+}
+
+fn install(slot: &'static std::thread::LocalKey<RefCell<Option<(gtk4::CssProvider, String)>>>, css: Option<String>) {
     let Some(display) = gtk4::gdk::Display::default() else {
         return;
     };
-    PROVIDER.with(|cell| {
+    slot.with(|cell| {
         if let Some((previous, _)) = cell.borrow_mut().take() {
             gtk4::style_context_remove_provider_for_display(&display, &previous);
         }
-        let EditorFont::Custom(description) = settings.editor_font() else {
+        let Some(css) = css else {
             return;
         };
-        let css = editor_font_css(&pango::FontDescription::from_string(&description));
         let provider = gtk4::CssProvider::new();
         provider.load_from_string(&css);
         gtk4::style_context_add_provider_for_display(&display, &provider, gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION);
@@ -38,7 +62,14 @@ pub(crate) fn apply(settings: &AppSettings) {
     });
 }
 
+const EDITOR_SELECTOR: &str = "textview.sql-editor, textview.sql-editor text";
+
+#[cfg(test)]
 fn editor_font_css(font: &pango::FontDescription) -> String {
+    font_css(EDITOR_SELECTOR, font)
+}
+
+fn font_css(selector: &str, font: &pango::FontDescription) -> String {
     let mut declarations = Vec::new();
     if let Some(family) = font.family() {
         declarations.push(format!("font-family: \"{}\";", escape_css_string(&family)));
@@ -59,10 +90,7 @@ fn editor_font_css(font: &pango::FontDescription) -> String {
         pango::Style::Oblique => declarations.push("font-style: oblique;".to_owned()),
         _ => {}
     }
-    format!(
-        "textview.sql-editor, textview.sql-editor text {{ {} }}",
-        declarations.join(" ")
-    )
+    format!("{selector} {{ {} }}", declarations.join(" "))
 }
 
 /// A family name reaches CSS inside double quotes, so a quote or a
@@ -86,6 +114,32 @@ mod tests {
         apply(settings.get());
 
         assert_eq!(installed_css(), None);
+    }
+
+    #[gtk4::test]
+    fn grid_font_styles_cells_only_when_custom() {
+        let settings = MemorySettings::new();
+        let installed = || GRID_PROVIDER.with(|cell| cell.borrow().as_ref().map(|(_, css)| css.clone()));
+
+        apply_grid(settings.get());
+        assert_eq!(installed(), None);
+
+        settings
+            .get()
+            .set_grid_font(&EditorFont::Custom("Fira Code 11".to_owned()))
+            .expect("store the custom font");
+        apply_grid(settings.get());
+        let css = installed().expect("a rule for the cells");
+        assert!(css.starts_with("columnview.data-table .monospace"), "{css}");
+        assert!(css.contains("Fira Code"), "{css}");
+        assert_eq!(installed_css(), None, "the editor keeps its own font");
+
+        settings
+            .get()
+            .set_grid_font(&EditorFont::System)
+            .expect("back to the system font");
+        apply_grid(settings.get());
+        assert_eq!(installed(), None);
     }
 
     #[gtk4::test]

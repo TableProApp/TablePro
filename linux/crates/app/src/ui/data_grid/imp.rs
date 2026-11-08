@@ -88,6 +88,7 @@ pub struct DataGrid {
     pub focus_watch: RefCell<Option<(glib::WeakRef<gtk4::Window>, glib::SignalHandlerId)>>,
     pub(super) font_watch: RefCell<Option<HandlerGuard>>,
     pub(super) display_watch: RefCell<Option<HandlerGuard>>,
+    pub(super) cell_font_watch: RefCell<Option<HandlerGuard>>,
     pub(super) stripes_watch: RefCell<Option<HandlerGuard>>,
 }
 

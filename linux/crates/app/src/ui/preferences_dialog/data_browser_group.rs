@@ -1,5 +1,7 @@
 use gio::prelude::{SettingsExt, SettingsExtManual};
+
 use gtk4::glib;
+use gtk4::glib::prelude::{ToValue, ToVariant};
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::ComboRowExt;
@@ -24,6 +26,12 @@ mod imp {
         pub alternate_rows_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
         pub confirm_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub grid_system_font_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub grid_font_row: TemplateChild<adw::ActionRow>,
+        #[template_child]
+        pub grid_font_button: TemplateChild<gtk4::FontDialogButton>,
         #[template_child]
         pub row_numbers_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
@@ -95,6 +103,25 @@ impl DataBrowserGroup {
             .build();
         gio_settings
             .bind(keys::NULL_DISPLAY, &imp.null_display_row.get(), "text")
+            .build();
+        gio_settings
+            .bind(keys::GRID_USE_SYSTEM_FONT, &imp.grid_system_font_row.get(), "active")
+            .build();
+        // As the editor's font row: only reachable with the system font off.
+        gio_settings
+            .bind(keys::GRID_USE_SYSTEM_FONT, &imp.grid_font_row.get(), "sensitive")
+            .flags(gio::SettingsBindFlags::GET | gio::SettingsBindFlags::INVERT_BOOLEAN)
+            .build();
+        gio_settings
+            .bind(keys::GRID_FONT, &imp.grid_font_button.get(), "font-desc")
+            .mapping(|variant, _| {
+                let description = variant.get::<String>()?;
+                Some(gtk4::pango::FontDescription::from_string(&description).to_value())
+            })
+            .set_mapping(|value, _| {
+                let description = value.get::<gtk4::pango::FontDescription>().ok()?;
+                Some(description.to_str().to_variant())
+            })
             .build();
         // The combo holds a position and the setting a word.
         let row = imp.row_height_row.get();

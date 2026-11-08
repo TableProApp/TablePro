@@ -163,6 +163,26 @@ impl AppSettings {
         }
     }
 
+    /// The font of the data grid's cells, which follows the desktop unless
+    /// the user picked one.
+    pub fn grid_font(&self) -> EditorFont {
+        if self.settings.boolean(keys::GRID_USE_SYSTEM_FONT) {
+            EditorFont::System
+        } else {
+            EditorFont::Custom(self.settings.string(keys::GRID_FONT).into())
+        }
+    }
+
+    pub fn set_grid_font(&self, font: &EditorFont) -> Result<(), SettingsError> {
+        match font {
+            EditorFont::System => self.set_boolean(keys::GRID_USE_SYSTEM_FONT, true),
+            EditorFont::Custom(description) => {
+                self.set_string(keys::GRID_FONT, description)?;
+                self.set_boolean(keys::GRID_USE_SYSTEM_FONT, false)
+            }
+        }
+    }
+
     pub fn style_scheme(&self) -> String {
         self.settings.string(keys::STYLE_SCHEME).into()
     }

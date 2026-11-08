@@ -17,6 +17,8 @@ use crate::services::grid::{
     number_width_chars, sampled_texts, typical_texts, typical_width_chars,
 };
 use crate::ui::handler_guard::HandlerGuard;
+use tablepro_linux_platform::EditorFont;
+use tablepro_linux_platform::settings::keys;
 
 /// Rows sampled for a column's opening width.
 const WIDTH_SAMPLE: usize = 200;
@@ -268,7 +270,7 @@ impl DataGrid {
     /// before it had a window measured in no theme's font.
     pub(super) fn rooted(&self) {
         let measured_in = self.imp().columns.borrow().measured_in.clone();
-        if measured_in.is_some_and(|fonts| fonts != fonts_now(&self.column_view())) {
+        if measured_in.is_some_and(|fonts| fonts != self.fonts_now()) {
             self.fonts_changed();
         }
     }
@@ -277,6 +279,24 @@ impl DataGrid {
     /// settings; the monospace font is libadwaita's.
     pub(super) fn watch_fonts(&self) {
         let style = adw::StyleManager::default();
+        // The cell font is its own setting, applied before the columns
+        // measure themselves in it.
+        if let Some(settings) = self.config().map(|config| config.settings.clone()) {
+            crate::ui::editor_font_provider::apply_grid(&settings);
+            let weak = self.downgrade();
+            let font = settings.gio().connect_changed(None, move |_, key| {
+                if matches!(key, keys::GRID_USE_SYSTEM_FONT | keys::GRID_FONT)
+                    && let Some(grid) = weak.upgrade()
+                    && let Some(config) = grid.config()
+                {
+                    crate::ui::editor_font_provider::apply_grid(&config.settings);
+                    grid.fonts_changed();
+                }
+            });
+            self.imp()
+                .cell_font_watch
+                .replace(Some(HandlerGuard::new(settings.gio(), font)));
+        }
         let handler = style.connect_monospace_font_name_notify(glib::clone!(
             #[weak(rename_to = grid)]
             self,
@@ -285,9 +305,21 @@ impl DataGrid {
         self.imp().font_watch.replace(Some(HandlerGuard::new(&style, handler)));
     }
 
+    /// The font the user picked for cells, `None` for the desktop's.
+    fn cell_font(&self) -> Option<String> {
+        match self.config()?.settings.grid_font() {
+            EditorFont::Custom(description) => Some(description),
+            EditorFont::System => None,
+        }
+    }
+
+    fn fonts_now(&self) -> String {
+        fonts_now(&self.column_view(), self.cell_font().as_deref())
+    }
+
     fn size_columns(&self, measure: Measure) {
         let widths = self.opening_widths(measure);
-        self.imp().columns.borrow_mut().measured_in = Some(fonts_now(&self.column_view()));
+        self.imp().columns.borrow_mut().measured_in = Some(self.fonts_now());
         for (index, view_column, width) in widths {
             self.imp().columns.borrow_mut().auto_widths.insert(index, width);
             view_column.set_fixed_width(width);
@@ -300,7 +332,7 @@ impl DataGrid {
         let by_type = set.pages == Pages::Empty;
         let view = self.column_view();
         let context = view.create_pango_context();
-        let font = value_font(&context);
+        let font = value_font(&context, self.cell_font().as_deref());
         let metrics = context.metrics(Some(&font), None);
         let char_px = pango::units_to_double(metrics.approximate_char_width());
         let null = editable_null_sentinel();
@@ -554,7 +586,7 @@ impl DataGrid {
         };
         let view = self.column_view();
         let context = view.create_pango_context();
-        let metrics = context.metrics(Some(&value_font(&context)), None);
+        let metrics = context.metrics(Some(&value_font(&context, self.cell_font().as_deref())), None);
         let step = (pango::units_to_double(metrics.approximate_digit_width()) * f64::from(STEP_DIGITS)).ceil() as i32;
         let width = column.fixed_width();
         let width = match wider {
@@ -867,8 +899,9 @@ fn same_names(layout: &ColumnLayout, columns: &[GridColumn]) -> bool {
 
 /// The font a cell draws its value in: libadwaita's `monospace` class
 /// sets only the family and size of the desktop's monospace font.
-fn value_font(context: &pango::Context) -> pango::FontDescription {
-    let mut monospace = pango::FontDescription::from_string(&adw::StyleManager::default().monospace_font_name());
+fn value_font(context: &pango::Context, custom: Option<&str>) -> pango::FontDescription {
+    let mut monospace =
+        pango::FontDescription::from_string(custom.unwrap_or(&adw::StyleManager::default().monospace_font_name()));
     monospace.unset_fields(!(pango::FontMask::FAMILY | pango::FontMask::SIZE));
     let mut font = context.font_description().unwrap_or_default();
     font.merge(Some(&monospace), true);
@@ -891,13 +924,17 @@ fn header_width(context: &pango::Context, title: &str) -> i32 {
 /// The grid's font, the text size in it, and the monospace font. A
 /// widget's own context follows a change only at the next frame, so a
 /// fresh one is read.
-fn fonts_now(view: &gtk::ColumnView) -> String {
+fn fonts_now(view: &gtk::ColumnView, custom: Option<&str>) -> String {
     let grid = view
         .create_pango_context()
         .font_description()
         .map(|font| font.to_string())
         .unwrap_or_default();
-    format!("{grid}; {}", adw::StyleManager::default().monospace_font_name())
+    let cells = custom.map_or_else(
+        || adw::StyleManager::default().monospace_font_name().to_string(),
+        str::to_owned,
+    );
+    format!("{grid}; {cells}")
 }
 
 /// How wide `text` is in the tabular figures libadwaita's `numeric`
