@@ -179,6 +179,7 @@ pub(crate) struct WorkspaceModel {
     /// The CSV imports running into this workspace's tables.
     imports: Rc<import_ledger::ImportLedger>,
     history_dialog: Option<HistoryDialog>,
+    quick_open_dialog: Option<super::quick_open::QuickOpen>,
     saved_queries_dialog: Option<super::saved_queries_dialog::SavedQueriesDialog>,
     import_dialog: Option<super::import_dialog::ImportCsvDialog>,
     driver_id: String,
@@ -545,14 +546,10 @@ pub(crate) enum WorkspaceInput {
     DraftsNotSaved,
     ShowHistory,
     ShowSavedQueries,
-    /// Open Quickly: search the connection's tables, views, saved queries and past queries.
+    /// Open Quickly: search the connection's tables and views.
     ShowQuickOpen,
-    /// The saved queries of Open Quickly are read, and its dialog opens.
-    QuickOpenReady {
-        objects: std::sync::Arc<[tablepro_core::meta::ObjectInfo]>,
-        queries: Vec<(String, String)>,
-        history: Vec<String>,
-    },
+    CloseQuickOpen,
+    QuickOpenChosen(super::quick_open::Pick),
     ActiveTab(workspace_tabs::ActiveTabCommand),
     SaveQueryNamed {
         name: String,
@@ -902,6 +899,7 @@ impl Workspace {
             exports: exports.clone(),
             imports: imports.clone(),
             history_dialog: None,
+            quick_open_dialog: None,
             saved_queries_dialog: None,
             import_dialog: None,
             workspace: persistence,
@@ -1269,6 +1267,7 @@ impl WorkspaceModel {
             keys.stop_listing();
         }
         self.sidebar.shutdown();
+        self.close_quick_open();
         // Their entries name this session's tables and queries.
         if let Some(dialog) = self.history_dialog.take() {
             close_if_presented(dialog.upcast_ref());
@@ -1404,11 +1403,8 @@ impl WorkspaceModel {
             WorkspaceInput::ShowHistory => self.on_show_history(),
             WorkspaceInput::ShowSavedQueries => self.on_show_saved_queries(),
             WorkspaceInput::ShowQuickOpen => self.on_show_quick_open(),
-            WorkspaceInput::QuickOpenReady {
-                objects,
-                queries,
-                history,
-            } => self.present_quick_open(objects, queries, history),
+            WorkspaceInput::CloseQuickOpen => self.close_quick_open(),
+            WorkspaceInput::QuickOpenChosen(pick) => self.on_quick_open_chosen(pick),
             WorkspaceInput::ImportCsvRequested { schema, table } => self.on_import_csv_requested(schema, table),
             WorkspaceInput::Transfer(input) => self.on_transfer(input),
             WorkspaceInput::ImportCsvReady {
