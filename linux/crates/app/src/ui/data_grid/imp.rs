@@ -86,7 +86,7 @@ pub struct DataGrid {
     pub editing: Cell<bool>,
     /// The window's focus handler, while the grid is in a window.
     pub focus_watch: RefCell<Option<(glib::WeakRef<gtk4::Window>, glib::SignalHandlerId)>>,
-    /// The rules the user wrote, and them compiled against the columns.
+    pub(super) highlight_dialog: glib::WeakRef<adw::Dialog>,
     pub(super) highlight_source: RefCell<Vec<crate::services::grid::HighlightRule>>,
     pub(super) highlights: RefCell<std::rc::Rc<crate::services::grid::HighlightRules>>,
     pub(super) font_watch: RefCell<Option<HandlerGuard>>,

@@ -81,7 +81,8 @@
                   </object>
                 </child>
                 <child>
-                  <object class="GtkMenuButton" id="highlight_button">
+                  <object class="GtkButton" id="highlight_button">
+                    <property name="action-name">grid.highlight-rules</property>
                     <property name="icon-name">document-edit-symbolic</property>
                     <property name="tooltip-text" translatable="yes">Highlight Rules</property>
                     <property name="visible">false</property>

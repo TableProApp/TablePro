@@ -502,8 +502,6 @@ fn cells_are_freed_with_the_grid() {
     assert_eq!(alive, 0, "cells outlived their grid");
 }
 
-/// A highlight rule tints the rows that meet it, and a cell rule only its
-/// own cell, as the macOS grid's Highlight Rules do.
 #[gtk4::test]
 fn highlight_rules_tint_the_rows_and_cells_that_meet_them() {
     use crate::services::grid::{HighlightColor, HighlightRule, HighlightTarget};
@@ -531,6 +529,7 @@ fn highlight_rules_tint_the_rows_and_cells_that_meet_them() {
     };
     assert_eq!(tint(2, 0), Some(HighlightColor::Red), "the row that meets the rule");
     assert_eq!(tint(2, 1), Some(HighlightColor::Red));
+    assert!(described(&grid.cell_of(2, 1)), "a highlight needs a spoken description");
     assert_eq!(
         tint(1, 0),
         Some(HighlightColor::Green),
@@ -541,38 +540,27 @@ fn highlight_rules_tint_the_rows_and_cells_that_meet_them() {
     grid.grid.set_highlight_rules(Vec::new());
     drain_main_context();
     assert_eq!(tint(2, 1), None, "the tint outlived its rule");
+    assert!(!described(&grid.cell_of(2, 1)));
 }
 
-/// The Highlight Rules popover adds a rule for the grid's first column,
-/// and what is typed in it reaches the grid's rules at once.
 #[gtk4::test]
-fn the_highlight_popover_edits_the_grids_rules() {
+fn highlights_announce_their_colour_and_keep_modified_text_readable() {
+    use crate::services::grid::{HighlightColor, HighlightRule};
     use tablepro_core::filter::FilterValue;
 
-    let grid = Grid::open(two_text_columns(), two_text_values());
-    let popover = crate::ui::data_grid::highlight_rules_popover(&grid.grid);
-    let content = popover.child().expect("the popover's content");
-    let add = descendants(&content)
-        .into_iter()
-        .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
-        .find(|button| button.label().as_deref() == Some("Add Rule"))
-        .expect("the Add Rule button");
-
-    add.emit_clicked();
-
-    let rules = grid.grid.highlight_rules();
-    assert_eq!(rules.len(), 1);
-    assert_eq!(rules[0].column, "id");
-    let value = descendants(&content)
-        .into_iter()
-        .filter_map(|widget| widget.downcast::<gtk::Entry>().ok())
-        .next()
-        .expect("the rule's value entry");
-    value.set_text("1");
-    assert_eq!(
-        grid.grid.highlight_rules()[0].value,
-        Some(FilterValue::Single("1".to_owned()))
-    );
+    let grid = two_text_rows();
+    let mut rule = HighlightRule::new("name");
+    rule.value = Some(FilterValue::Single("edited".to_owned()));
+    rule.color = HighlightColor::Red;
+    grid.grid.set_highlight_rules(vec![rule]);
+    rename_first(&grid, "edited");
+    let cell = grid.cell_of(1, 1);
+    assert!(cell.has_css_class(HighlightColor::Red.css_class()));
+    assert!(has_attribute(&cell, pango::AttrType::Weight));
+    assert!(!has_class(&cell, "warning"));
+    assert!(described(&cell));
+    grid.grid.set_highlight_rules(Vec::new());
+    assert!(has_class(&cell, "warning"));
 }
 
 /// A host that keeps the rules hears of each change, and only of changes.

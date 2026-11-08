@@ -47,7 +47,7 @@ pub use self::find_matches::{FindMatch, find_matches};
 pub use self::grid_column::{CellDisplay, GridColumn, grid_columns};
 pub use self::grid_row_id::GridRowId;
 pub use self::hex_dump::hex_dump;
-pub use self::highlight::{HighlightColor, HighlightRule, HighlightRules, HighlightTarget};
+pub use self::highlight::{HighlightColor, HighlightRule, HighlightRules, HighlightTarget, HighlightValue};
 pub use self::result_refusal::ResultRefusal;
 pub use self::row_key_builder::RowKeyBuilder;
 pub use self::row_snapshot::RowSnapshot;

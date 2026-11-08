@@ -165,15 +165,6 @@ impl BrowseTab {
                 tasks: init.tasks.clone(),
             },
         );
-        {
-            let weak = grid.downgrade();
-            tab.imp().highlight_button.set_create_popup_func(move |button| {
-                if let Some(grid) = weak.upgrade() {
-                    button.set_popover(Some(&crate::ui::data_grid::highlight_rules_popover(&grid)));
-                }
-            });
-        }
-        // The rules the table was left with, kept again as they change.
         if let Some(connection_id) = init.connection_id {
             let rules = init
                 .highlight_rules

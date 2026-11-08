@@ -1,14 +1,13 @@
-//! Highlight rules: a condition on one column that colours the cell or the
-//! whole row that meets it, as the macOS grid's Highlight Rules do
-//! (`HighlightRuleSet`). The conditions use the filter strip's operators,
-//! read here against the text a cell shows, so a rule matches what the user
-//! sees.
+use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
+use tablepro_core::column::ColumnKind;
 use tablepro_core::filter::{FilterOp, FilterValue};
+use tablepro_core::value::SqlDecimal;
 use uuid::Uuid;
 
-/// The colours a rule can paint, the macOS set.
+use super::GridColumn;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HighlightColor {
@@ -32,7 +31,6 @@ impl HighlightColor {
         Self::Gray,
     ];
 
-    /// The style class a painted cell wears.
     pub fn css_class(self) -> &'static str {
         match self {
             Self::Red => "tp-hl-red",
@@ -46,13 +44,10 @@ impl HighlightColor {
     }
 }
 
-/// What a rule paints.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HighlightTarget {
-    /// The whole row.
     Row,
-    /// The cell of the rule's column alone.
     Cell,
 }
 
@@ -61,8 +56,9 @@ pub struct HighlightRule {
     pub id: Uuid,
     pub enabled: bool,
     pub column: String,
+    #[serde(default)]
+    pub column_occurrence: usize,
     pub op: FilterOp,
-    /// `None` for the null tests; the operand for every other operator.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub value: Option<FilterValue>,
     pub case_sensitive: bool,
@@ -76,6 +72,7 @@ impl HighlightRule {
             id: Uuid::new_v4(),
             enabled: true,
             column: column.into(),
+            column_occurrence: 0,
             op: FilterOp::Eq,
             value: Some(FilterValue::Single(String::new())),
             case_sensitive: false,
@@ -84,12 +81,7 @@ impl HighlightRule {
         }
     }
 
-    /// Whether the rule says something a row can meet: a column, and the
-    /// operand its operator takes.
     pub fn is_valid(&self) -> bool {
-        if self.column.is_empty() {
-            return false;
-        }
         match (self.op, &self.value) {
             (FilterOp::IsNull | FilterOp::IsNotNull, _) => true,
             (FilterOp::In | FilterOp::NotIn, Some(FilterValue::List(items))) => !items.is_empty(),
@@ -101,11 +93,9 @@ impl HighlightRule {
     }
 }
 
-/// What a row meets: a colour for all of it, and colours for single cells.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RowHighlight {
     pub row: Option<HighlightColor>,
-    /// By the column's position, the first rule that holds for each.
     pub cells: Vec<(usize, HighlightColor)>,
 }
 
@@ -115,7 +105,6 @@ impl RowHighlight {
         self.row.is_none() && self.cells.is_empty()
     }
 
-    /// The colour of the cell in column `column`: its own rule's, else the row's.
     pub fn color_of(&self, column: usize) -> Option<HighlightColor> {
         self.cells
             .iter()
@@ -125,52 +114,65 @@ impl RowHighlight {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum HighlightValue<'a> {
+    Unavailable,
+    Null,
+    NonText,
+    Text(Cow<'a, str>),
+}
+
 struct Compiled {
     column: usize,
+    kind: ColumnKind,
     rule: HighlightRule,
 }
 
-/// The rules that apply to a result's columns, ready to read rows with.
 #[derive(Default)]
 pub struct HighlightRules {
     compiled: Vec<Compiled>,
+    columns: Vec<usize>,
 }
 
 impl HighlightRules {
-    /// The enabled, valid rules whose column the result has. A rule for a
-    /// column that is not there waits, and meets nothing meanwhile.
-    pub fn compile(rules: &[HighlightRule], columns: &[String]) -> Self {
-        let compiled = rules
+    pub fn compile(rules: &[HighlightRule], columns: &[GridColumn]) -> Self {
+        let compiled: Vec<Compiled> = rules
             .iter()
             .filter(|rule| rule.enabled && rule.is_valid())
             .filter_map(|rule| {
                 columns
                     .iter()
-                    .position(|column| *column == rule.column)
-                    .map(|column| Compiled {
+                    .enumerate()
+                    .filter(|(_, column)| column.name == rule.column)
+                    .nth(rule.column_occurrence)
+                    .map(|(column, definition)| Compiled {
                         column,
+                        kind: definition.column_type.kind.clone(),
                         rule: rule.clone(),
                     })
             })
             .collect();
-        Self { compiled }
+        let mut columns: Vec<usize> = compiled.iter().map(|rule| rule.column).collect();
+        columns.sort_unstable();
+        columns.dedup();
+        Self { compiled, columns }
     }
 
     pub fn is_empty(&self) -> bool {
         self.compiled.is_empty()
     }
 
-    /// The columns the rules read, which is all a row has to say of itself.
     pub fn columns(&self) -> impl Iterator<Item = usize> + '_ {
-        self.compiled.iter().map(|compiled| compiled.column)
+        self.columns.iter().copied()
     }
 
-    /// What `cells` meet, each the text the column shows and `None` for NULL.
-    pub fn highlight(&self, cells: &[Option<&str>]) -> RowHighlight {
+    pub fn highlight(&self, cells: &[HighlightValue<'_>]) -> RowHighlight {
         let mut found = RowHighlight::default();
         for compiled in &self.compiled {
-            let text = cells.get(compiled.column).copied().flatten();
-            if !matches(&compiled.rule, text) {
+            let Some(value) = cells.get(compiled.column) else {
+                continue;
+            };
+            if !matches(&compiled.rule, &compiled.kind, value) {
                 continue;
             }
             match compiled.rule.target {
@@ -185,13 +187,15 @@ impl HighlightRules {
     }
 }
 
-fn matches(rule: &HighlightRule, text: Option<&str>) -> bool {
-    let Some(text) = text else {
-        // NULL meets only the null test.
-        return rule.op == FilterOp::IsNull;
+fn matches(rule: &HighlightRule, kind: &ColumnKind, value: &HighlightValue<'_>) -> bool {
+    let text = match value {
+        HighlightValue::Unavailable => return false,
+        HighlightValue::Null => return rule.op == FilterOp::IsNull,
+        HighlightValue::NonText => return rule.op == FilterOp::IsNotNull,
+        HighlightValue::Text(text) => text.as_ref(),
     };
     let sensitive = rule.case_sensitive;
-    let same = |a: &str, b: &str| compare(a, b, sensitive) == std::cmp::Ordering::Equal;
+    let same = |a: &str, b: &str| compare(a, b, sensitive, kind.is_numeric()) == std::cmp::Ordering::Equal;
     let single = || match &rule.value {
         Some(FilterValue::Single(operand)) => Some(operand.as_str()),
         _ => None,
@@ -201,10 +205,10 @@ fn matches(rule: &HighlightRule, text: Option<&str>) -> bool {
         FilterOp::IsNotNull => true,
         FilterOp::Eq => single().is_some_and(|operand| same(text, operand)),
         FilterOp::NotEq => single().is_some_and(|operand| !same(text, operand)),
-        FilterOp::Lt => single().is_some_and(|operand| compare(text, operand, sensitive).is_lt()),
-        FilterOp::LtEq => single().is_some_and(|operand| compare(text, operand, sensitive).is_le()),
-        FilterOp::Gt => single().is_some_and(|operand| compare(text, operand, sensitive).is_gt()),
-        FilterOp::GtEq => single().is_some_and(|operand| compare(text, operand, sensitive).is_ge()),
+        FilterOp::Lt => single().is_some_and(|operand| compare(text, operand, sensitive, true).is_lt()),
+        FilterOp::LtEq => single().is_some_and(|operand| compare(text, operand, sensitive, true).is_le()),
+        FilterOp::Gt => single().is_some_and(|operand| compare(text, operand, sensitive, true).is_gt()),
+        FilterOp::GtEq => single().is_some_and(|operand| compare(text, operand, sensitive, true).is_ge()),
         FilterOp::Contains => single().is_some_and(|operand| fold(text, sensitive).contains(&fold(operand, sensitive))),
         FilterOp::StartsWith => {
             single().is_some_and(|operand| fold(text, sensitive).starts_with(&fold(operand, sensitive)))
@@ -225,7 +229,7 @@ fn matches(rule: &HighlightRule, text: Option<&str>) -> bool {
         },
         FilterOp::Between => match &rule.value {
             Some(FilterValue::Pair(low, high)) => {
-                compare(text, low, sensitive).is_ge() && compare(text, high, sensitive).is_le()
+                compare(text, low, sensitive, true).is_ge() && compare(text, high, sensitive, true).is_le()
             }
             _ => false,
         },
@@ -240,36 +244,56 @@ fn fold(text: &str, sensitive: bool) -> String {
     }
 }
 
-/// Numbers compare as numbers when both sides read as one, else as text.
-fn compare(a: &str, b: &str, sensitive: bool) -> std::cmp::Ordering {
-    if let (Ok(x), Ok(y)) = (a.trim().parse::<f64>(), b.trim().parse::<f64>())
-        && let Some(order) = x.partial_cmp(&y)
-    {
-        return order;
+fn compare(a: &str, b: &str, sensitive: bool, numeric: bool) -> std::cmp::Ordering {
+    if numeric && let (Ok(x), Ok(y)) = (a.trim().parse::<SqlDecimal>(), b.trim().parse::<SqlDecimal>()) {
+        return x.cmp_numeric(&y);
     }
     fold(a, sensitive).cmp(&fold(b, sensitive))
 }
 
-/// SQL LIKE: `%` is any run of characters and `_` any one.
 fn like(text: &str, pattern: &str, sensitive: bool) -> bool {
-    let text: Vec<char> = fold(text, sensitive).chars().collect();
+    let text = fold(text, sensitive);
     let pattern: Vec<char> = fold(pattern, sensitive).chars().collect();
-    fn walk(text: &[char], pattern: &[char]) -> bool {
-        match pattern.split_first() {
-            None => text.is_empty(),
-            Some(('%', rest)) => (0..=text.len()).any(|skip| walk(&text[skip..], rest)),
-            Some(('_', rest)) => text.split_first().is_some_and(|(_, tail)| walk(tail, rest)),
-            Some((letter, rest)) => text
-                .split_first()
-                .is_some_and(|(head, tail)| head == letter && walk(tail, rest)),
+    // Each prefix is visited once per character, so repeated wildcards cannot branch exponentially.
+    let mut reachable = vec![false; pattern.len() + 1];
+    reachable[0] = true;
+    for (index, token) in pattern.iter().enumerate() {
+        reachable[index + 1] = *token == '%' && reachable[index];
+    }
+    for character in text.chars() {
+        let mut diagonal = reachable[0];
+        reachable[0] = false;
+        for (index, token) in pattern.iter().enumerate() {
+            let above = reachable[index + 1];
+            reachable[index + 1] = match token {
+                '%' => reachable[index] || above,
+                '_' => diagonal,
+                literal => diagonal && *literal == character,
+            };
+            diagonal = above;
         }
     }
-    walk(&text, &pattern)
+    reachable[pattern.len()]
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::grid::test_columns::{grid, info};
+
+    fn columns(names: &[&str]) -> Vec<GridColumn> {
+        names.iter().map(|name| grid(info(name, "numeric"))).collect()
+    }
+
+    fn cells<'a>(texts: &[Option<&'a str>]) -> Vec<HighlightValue<'a>> {
+        texts
+            .iter()
+            .map(|text| match text {
+                Some(text) => HighlightValue::Text(Cow::Borrowed(text)),
+                None => HighlightValue::Null,
+            })
+            .collect()
+    }
 
     fn rule(op: FilterOp, value: Option<FilterValue>) -> HighlightRule {
         HighlightRule {
@@ -284,8 +308,8 @@ mod tests {
     }
 
     fn highlights(rule: HighlightRule, text: Option<&str>) -> bool {
-        let rules = HighlightRules::compile(&[rule], &["status".to_owned()]);
-        !rules.highlight(&[text]).is_none()
+        let rules = HighlightRules::compile(&[rule], &columns(&["status"]));
+        !rules.highlight(&cells(&[text])).is_none()
     }
 
     #[test]
@@ -341,10 +365,10 @@ mod tests {
         cell.value = single("100");
         cell.target = HighlightTarget::Cell;
         cell.color = HighlightColor::Green;
-        let columns = ["status".to_owned(), "amount".to_owned()];
+        let columns = columns(&["status", "amount"]);
         let rules = HighlightRules::compile(&[row, cell], &columns);
 
-        let found = rules.highlight(&[Some("error"), Some("250")]);
+        let found = rules.highlight(&cells(&[Some("error"), Some("250")]));
 
         assert_eq!(found.row, Some(HighlightColor::Red));
         assert_eq!(
@@ -353,7 +377,7 @@ mod tests {
             "the cell's own rule wins"
         );
         assert_eq!(found.color_of(0), Some(HighlightColor::Red));
-        assert!(rules.highlight(&[Some("ok"), Some("5")]).is_none());
+        assert!(rules.highlight(&cells(&[Some("ok"), Some("5")])).is_none());
     }
 
     #[test]
@@ -364,7 +388,7 @@ mod tests {
         let mut elsewhere = rule(FilterOp::Eq, single("x"));
         elsewhere.column = "missing".to_owned();
 
-        let rules = HighlightRules::compile(&[off, blank, elsewhere], &["status".to_owned()]);
+        let rules = HighlightRules::compile(&[off, blank, elsewhere], &columns(&["status"]));
 
         assert!(rules.is_empty());
     }
@@ -375,9 +399,9 @@ mod tests {
         first.color = HighlightColor::Blue;
         let mut second = rule(FilterOp::Contains, single("a"));
         second.color = HighlightColor::Red;
-        let rules = HighlightRules::compile(&[first, second], &["status".to_owned()]);
+        let rules = HighlightRules::compile(&[first, second], &columns(&["status"]));
 
-        assert_eq!(rules.highlight(&[Some("a")]).row, Some(HighlightColor::Blue));
+        assert_eq!(rules.highlight(&cells(&[Some("a")])).row, Some(HighlightColor::Blue));
     }
 
     #[test]
@@ -390,5 +414,96 @@ mod tests {
         let text = serde_json::to_string(&original).expect("encode");
 
         assert_eq!(serde_json::from_str::<HighlightRule>(&text).expect("decode"), original);
+    }
+
+    #[test]
+    fn repeated_wildcards_do_not_branch_exponentially() {
+        assert!(!like(&"a".repeat(1_000), "%a%a%a%b", true));
+        assert!(like("é界", "__", true));
+        assert!(like("", "%%%", true));
+        assert!(!like("", "_", true));
+        assert!(like("error", "%r", true));
+        assert!(!like("errors", "%r", true));
+    }
+
+    #[test]
+    fn numeric_rules_preserve_large_integer_and_decimal_digits() {
+        let smaller = "9007199254740992";
+        let larger = "9007199254740993";
+        assert!(!highlights(rule(FilterOp::Eq, single(smaller)), Some(larger)));
+        assert!(highlights(rule(FilterOp::Gt, single(smaller)), Some(larger)));
+        assert!(!highlights(
+            rule(FilterOp::In, Some(FilterValue::List(vec![smaller.into()]))),
+            Some(larger)
+        ));
+        assert!(!highlights(
+            rule(
+                FilterOp::Between,
+                Some(FilterValue::Pair(smaller.into(), smaller.into()))
+            ),
+            Some(larger)
+        ));
+        assert!(highlights(
+            rule(FilterOp::Gt, single("0.12345678901234567890")),
+            Some("0.12345678901234567891")
+        ));
+    }
+
+    #[test]
+    fn text_equality_keeps_numeric_looking_strings_distinct() {
+        let columns = [grid(info("status", "text"))];
+        let equal = HighlightRules::compile(&[rule(FilterOp::Eq, single("1"))], &columns);
+        assert!(equal.highlight(&cells(&[Some("01")])).is_none());
+        let order = HighlightRules::compile(&[rule(FilterOp::Gt, single("9"))], &columns);
+        assert!(!order.highlight(&cells(&[Some("10")])).is_none());
+    }
+
+    #[test]
+    fn duplicate_names_resolve_by_occurrence_and_wait_if_missing() {
+        let mut second = rule(FilterOp::Eq, single("2"));
+        second.column_occurrence = 1;
+        second.target = HighlightTarget::Cell;
+        let rules = HighlightRules::compile(&[second.clone()], &columns(&["status", "status"]));
+        let found = rules.highlight(&cells(&[Some("1"), Some("2")]));
+        assert_eq!(found.color_of(0), None);
+        assert_eq!(found.color_of(1), Some(HighlightColor::Yellow));
+        assert!(HighlightRules::compile(&[second], &columns(&["status"])).is_empty());
+    }
+
+    #[test]
+    fn unavailable_and_missing_values_are_not_null() {
+        let rules = HighlightRules::compile(&[rule(FilterOp::IsNull, None)], &columns(&["status"]));
+        assert!(rules.highlight(&[]).is_none());
+        assert!(rules.highlight(&[HighlightValue::Unavailable]).is_none());
+        assert!(rules.highlight(&[HighlightValue::NonText]).is_none());
+        assert!(!rules.highlight(&[HighlightValue::Null]).is_none());
+        let rules = HighlightRules::compile(&[rule(FilterOp::IsNotNull, None)], &columns(&["status"]));
+        assert!(!rules.highlight(&[HighlightValue::NonText]).is_none());
+        assert!(rules.highlight(&[HighlightValue::Unavailable]).is_none());
+    }
+
+    #[test]
+    fn matching_uses_full_values_and_never_binary_placeholders() {
+        let long = format!("{}tail", "x".repeat(2_000));
+        assert!(highlights(rule(FilterOp::EndsWith, single("tail")), Some(&long)));
+        let rules = HighlightRules::compile(&[rule(FilterOp::Contains, single("byte"))], &columns(&["status"]));
+        assert!(rules.highlight(&[HighlightValue::NonText]).is_none());
+    }
+
+    #[test]
+    fn an_empty_column_name_is_still_addressable() {
+        let mut rule = rule(FilterOp::Eq, single("1"));
+        rule.column.clear();
+        let rules = HighlightRules::compile(&[rule], &columns(&[""]));
+        assert!(!rules.highlight(&cells(&[Some("1")])).is_none());
+    }
+
+    #[test]
+    fn rules_read_each_column_only_once() {
+        let rules = HighlightRules::compile(
+            &[rule(FilterOp::Eq, single("1")), rule(FilterOp::Gt, single("2"))],
+            &columns(&["status"]),
+        );
+        assert_eq!(rules.columns().collect::<Vec<_>>(), [0]);
     }
 }
