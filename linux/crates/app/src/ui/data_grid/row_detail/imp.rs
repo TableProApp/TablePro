@@ -41,6 +41,8 @@ pub struct RowDetailPane {
     #[template_child]
     pub field_list: TemplateChild<gtk::ListView>,
     #[template_child]
+    pub field_results: TemplateChild<gtk::Stack>,
+    #[template_child]
     pub field_search: TemplateChild<gtk::SearchEntry>,
     #[template_child]
     pub edited_toggle: TemplateChild<gtk::ToggleButton>,
@@ -84,7 +86,6 @@ pub struct RowDetailPane {
     pub grid: glib::WeakRef<DataGrid>,
     pub fields: Fields,
     pub selection: gtk::SingleSelection,
-    /// The fields the search and the edited-only toggle leave in the list.
     pub filtered: gtk::FilterListModel,
     pub field_filter: gtk::CustomFilter,
     /// The row the pane shows, while it has one.

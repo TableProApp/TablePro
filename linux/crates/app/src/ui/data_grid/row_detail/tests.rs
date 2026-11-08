@@ -23,10 +23,10 @@ use crate::test_support::{
     descendants, drain_main_context, finish_on_main, test_backend_records_properties, unlabelled_icon_buttons,
     wait_until,
 };
-use crate::ui::data_grid::GridRequest;
 use crate::ui::data_grid::test_grid::{
     Grid, GridSpec, WAIT, focus_in_grid, key, named, page, persisted, text, two_text_columns, two_text_values,
 };
+use crate::ui::data_grid::{GridRequest, GridSorting};
 use crate::ui::error_text::edit_parse_message;
 
 fn pane_of(grid: &Grid) -> RowDetailPane {
@@ -1499,8 +1499,6 @@ fn a_field_names_its_type_and_its_key_to_a_screen_reader() {
     assert_eq!(field_label(&result_column), "id, integer");
 }
 
-/// The search narrows the fields to the names it matches, and the toggle
-/// to the ones holding an edit.
 #[gtk4::test]
 fn the_field_search_and_the_edited_toggle_narrow_the_list() {
     let (grid, pane) = opened(two_text_columns(), two_text_values());
@@ -1508,6 +1506,7 @@ fn the_field_search_and_the_edited_toggle_narrow_the_list() {
     let imp = pane.imp();
     let listed = || imp.selection.n_items();
     assert_eq!(listed(), 2);
+    assert!(!imp.edited_toggle.is_sensitive());
 
     // The entry reports a search after its own short delay.
     imp.field_search.set_text("NAM");
@@ -1528,4 +1527,148 @@ fn the_field_search_and_the_edited_toggle_narrow_the_list() {
     grid.grid.apply_delta(&delta);
     drain_main_context();
     assert_eq!(listed(), 1, "the edited field joins the list");
+    grid.grid.undo();
+    drain_main_context();
+    assert_eq!(listed(), 0, "undo removes the field from the edited filter");
+    assert!(
+        imp.edited_toggle.is_sensitive(),
+        "the active filter can always be turned off"
+    );
+    imp.edited_toggle.set_active(false);
+    assert_eq!(listed(), 2);
+    assert!(!imp.edited_toggle.is_sensitive());
+}
+
+fn listed_columns(pane: &RowDetailPane) -> Vec<usize> {
+    let model = &pane.imp().filtered;
+    (0..model.n_items())
+        .map(|position| {
+            let boxed = model
+                .item(position)
+                .and_downcast::<gtk4::glib::BoxedAnyObject>()
+                .expect("a field");
+            *boxed.borrow::<usize>()
+        })
+        .collect()
+}
+
+fn search_fields(pane: &RowDetailPane, query: &str) {
+    pane.imp().field_search.set_text(query);
+    pane.imp().field_search.emit_by_name::<()>("search-changed", &[]);
+    drain_main_context();
+}
+
+#[gtk4::test]
+fn field_search_refilters_a_new_schema_with_the_same_column_indices() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    grid.focus(0, 1);
+    search_fields(&pane, "nam");
+    assert_eq!(listed_columns(&pane), vec![1]);
+
+    let mut columns = grid.columns.to_vec();
+    columns[0].name = "name_id".into();
+    columns[1].name = "label".into();
+    grid.grid
+        .set_columns(columns.into(), GridSorting::Server { initial: None }, None);
+    grid.grid.replace_rows(persisted(&two_text_values()), 0);
+    grid.focus(0, 0);
+    drain_main_context();
+
+    assert_eq!(listed_columns(&pane), vec![0]);
+    assert_eq!(
+        drawn_field(&pane, 0).accessible_label().as_str(),
+        "name_id, integer, primary key"
+    );
+}
+
+#[gtk4::test]
+fn field_search_follows_row_selection_replacement_and_edits() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    grid.focus(0, 1);
+    search_fields(&pane, "B");
+    assert!(listed_columns(&pane).is_empty());
+    pane.imp().field_search.grab_focus();
+    grid.grid.selection().select_item(1, true);
+    drain_main_context();
+    assert_eq!(listed_columns(&pane), vec![1]);
+
+    grid.grid
+        .replace_rows(persisted(&[vec![Value::Int(2), Value::Text("C".into())]]), 0);
+    drain_main_context();
+    assert!(listed_columns(&pane).is_empty());
+    let delta = grid.tracker.apply(TrackerEdit::Cell {
+        row_key: key(2),
+        col: 1,
+        original: Value::Text("C".into()),
+        value: text("B"),
+    });
+    grid.grid.apply_delta(&delta);
+    drain_main_context();
+    assert_eq!(listed_columns(&pane), vec![1]);
+    grid.grid.undo();
+    drain_main_context();
+    assert!(listed_columns(&pane).is_empty());
+    grid.grid.clear_rows();
+    drain_main_context();
+    assert!(listed_columns(&pane).is_empty());
+    assert_eq!(pane.imp().stack.visible_child_name().as_deref(), Some("empty"));
+}
+
+#[gtk4::test]
+fn filtering_keeps_the_selected_field_and_restores_its_list_selection() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    grid.focus(0, 1);
+    pane.imp().field_search.grab_focus();
+    search_fields(&pane, "id");
+    assert_eq!(selected_field(&pane), Some(1));
+    assert_eq!(pane.typed_text(), "A");
+    assert_eq!(pane.imp().selection.selected(), gtk::INVALID_LIST_POSITION);
+    assert!(crate::ui::a11y::holds_focus(&pane.imp().field_search.get()));
+
+    search_fields(&pane, "no such field");
+    assert_eq!(pane.imp().field_results.visible_child_name().as_deref(), Some("empty"));
+    search_fields(&pane, "");
+    assert_eq!(selected_field(&pane), Some(1));
+    assert_eq!(pane.imp().selection.selected(), 1);
+    assert_eq!(pane.imp().field_results.visible_child_name().as_deref(), Some("fields"));
+}
+
+#[gtk4::test]
+fn search_keys_and_tab_order_reach_the_filter_list_and_value() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    crate::test_support::KeyInjector::focus_only(&grid.window);
+    take_keyboard(&grid);
+    grid.focus(0, 1);
+    let delta = grid.tracker.apply(TrackerEdit::Cell {
+        row_key: key(1),
+        col: 1,
+        original: Value::Text("A".into()),
+        value: text("changed"),
+    });
+    grid.grid.apply_delta(&delta);
+    pane.imp().field_search.grab_focus();
+    let keys = crate::test_support::KeyInjector::connect().expect("an X11 display");
+    keys.press(gdk::Key::Tab, gdk::ModifierType::empty()).expect("Tab");
+    wait_until(WAIT, || crate::ui::a11y::holds_focus(&pane.imp().edited_toggle.get())).expect("Tab to the filter");
+    keys.press(gdk::Key::Tab, gdk::ModifierType::empty()).expect("Tab");
+    wait_until(WAIT, || crate::ui::a11y::holds_focus(&pane.imp().field_list.get())).expect("Tab to the list");
+    keys.press(gdk::Key::n, gdk::ModifierType::empty())
+        .expect("type to search");
+    wait_until(WAIT, || pane.imp().field_search.text() == "n").expect("typing in the list searches");
+    keys.press(gdk::Key::Escape, gdk::ModifierType::empty())
+        .expect("Escape");
+    wait_until(WAIT, || pane.imp().field_search.text().is_empty()).expect("Escape clears");
+    wait_until(WAIT, || listed_columns(&pane).len() == 2).expect("clearing restores all fields");
+    search_fields(&pane, "name");
+    keys.press(gdk::Key::Return, gdk::ModifierType::empty()).expect("Enter");
+    wait_until(WAIT, || crate::ui::a11y::holds_focus(&pane.imp().value_view.get())).expect("Enter opens the result");
+    assert_eq!(selected_field(&pane), Some(1));
+    assert_eq!(pane.typed_text(), "changed");
+
+    grid.grid.imp().split_view.set_collapsed(true);
+    pane.imp().field_search.grab_focus();
+    search_fields(&pane, "");
+    keys.press(gdk::Key::Escape, gdk::ModifierType::empty())
+        .expect("Escape");
+    wait_until(WAIT, || !grid.grid.imp().split_view.shows_sidebar()).expect("Escape closes the empty overlay search");
 }

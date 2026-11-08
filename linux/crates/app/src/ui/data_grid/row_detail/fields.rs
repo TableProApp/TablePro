@@ -192,13 +192,36 @@ impl RowDetailPane {
             #[weak(rename_to = pane)]
             self,
             #[upgrade_or]
-            true,
+            false,
             move |item| pane.field_shown(field_of(Some(item.clone())))
         ));
         imp.field_search.connect_search_changed(glib::clone!(
             #[weak(rename_to = pane)]
             self,
             move |_| pane.refilter_fields()
+        ));
+        imp.field_search.set_key_capture_widget(Some(&imp.field_list.get()));
+        imp.field_search.connect_stop_search(glib::clone!(
+            #[weak(rename_to = pane)]
+            self,
+            move |entry| {
+                if !entry.text().is_empty() {
+                    entry.set_text("");
+                } else if pane.grid().is_some_and(|grid| grid.imp().split_view.is_collapsed()) {
+                    pane.imp().close_button.emit_clicked();
+                }
+            }
+        ));
+        imp.field_search.connect_activate(glib::clone!(
+            #[weak(rename_to = pane)]
+            self,
+            move |_| {
+                pane.refilter_fields();
+                if pane.imp().filtered.n_items() > 0 {
+                    pane.imp().selection.set_selected(0);
+                    pane.focus_value();
+                }
+            }
         ));
         imp.edited_toggle.connect_toggled(glib::clone!(
             #[weak(rename_to = pane)]
@@ -256,39 +279,54 @@ impl RowDetailPane {
     }
 
     pub(super) fn redraw_fields(&self) {
+        self.refilter_fields();
         let bound: Vec<gtk::ListItem> = self.imp().bound.borrow().clone();
         for item in &bound {
             self.draw_field(item);
         }
-        // An edit made or undone changes which fields are edited.
-        if self.imp().edited_toggle.is_active() {
-            self.refilter_fields();
-        }
     }
 
-    fn refilter_fields(&self) {
-        self.imp().field_filter.changed(gtk::FilterChange::Different);
+    pub(super) fn refilter_fields(&self) {
+        let imp = self.imp();
+        let has_edits = self.grid().zip(self.current_row()).is_some_and(|(grid, row)| {
+            grid.grid_columns().iter().any(|column| {
+                let mark = grid.tracked().mark(&row, column.index);
+                mark.state == CellState::Modified && !mark.row_deleted
+            })
+        });
+        imp.edited_toggle
+            .set_sensitive(has_edits || imp.edited_toggle.is_active());
+        // A changed filter may move the selected position without a user picking a field.
+        let syncing = imp.syncing.replace(true);
+        imp.field_filter.changed(gtk::FilterChange::Different);
+        self.select_in_list(imp.field.get());
+        imp.syncing.set(syncing);
+        imp.field_results.set_visible_child_name(match imp.filtered.n_items() {
+            0 => "empty",
+            _ => "fields",
+        });
     }
 
-    /// Whether the search and the edited-only toggle leave `column`'s
-    /// field in the list.
     fn field_shown(&self, column: Option<usize>) -> bool {
         let imp = self.imp();
-        let (Some(grid), Some(column)) = (self.grid(), column) else {
-            return true;
+        let (Some(grid), Some(column), Some(row)) = (self.grid(), column, self.current_row()) else {
+            return false;
         };
         let Some(column) = grid.grid_columns().get(column).cloned() else {
-            return true;
-        };
-        let wanted = imp.field_search.text().to_lowercase();
-        if !wanted.is_empty() && !column.name.to_lowercase().contains(&wanted) {
             return false;
+        };
+        if imp.edited_toggle.is_active() {
+            let mark = grid.tracked().mark(&row, column.index);
+            if mark.state != CellState::Modified || mark.row_deleted {
+                return false;
+            }
         }
-        if !imp.edited_toggle.is_active() {
+        let wanted = imp.field_search.text().to_lowercase();
+        if wanted.is_empty() || column.name.to_lowercase().contains(&wanted) {
             return true;
         }
-        self.current_row()
-            .is_some_and(|row| field_value(&grid.tracked(), &row, &column).modified)
+        let value = field_value(&grid.tracked(), &row, &column);
+        !value.null && value.text.to_lowercase().contains(&wanted)
     }
 
     fn draw_field(&self, item: &gtk::ListItem) {
@@ -372,7 +410,6 @@ impl RowDetailPane {
 
     pub(super) fn select_in_list(&self, column: Option<usize>) {
         let imp = self.imp();
-        // The list as shown, which the search may have narrowed.
         let shown = &imp.selection;
         let position = column
             .and_then(|column| (0..shown.n_items()).find(|position| field_of(shown.item(*position)) == Some(column)))
@@ -380,9 +417,9 @@ impl RowDetailPane {
         if imp.selection.selected() == position {
             return;
         }
-        imp.syncing.set(true);
+        let syncing = imp.syncing.replace(true);
         imp.selection.set_selected(position);
-        imp.syncing.set(false);
+        imp.syncing.set(syncing);
         if position != gtk::INVALID_LIST_POSITION {
             imp.field_list.scroll_to(position, gtk::ListScrollFlags::NONE, None);
         }
@@ -418,17 +455,15 @@ impl RowDetailPane {
             move || {
                 pane.imp().sync_queued.set(false);
                 pane.watch_column_visibility();
-                if pane.sync_fields() {
-                    pane.render();
-                }
+                pane.sync_fields();
+                pane.render();
             }
         ));
     }
 
-    /// Put the fields in the grid's column order. `true` when it changed.
-    pub(super) fn sync_fields(&self) -> bool {
+    pub(super) fn sync_fields(&self) {
         let Some(grid) = self.grid() else {
-            return false;
+            return;
         };
         let imp = self.imp();
         let wanted = field_order(&grid.shown_columns(), grid.grid_columns().len());
@@ -437,7 +472,7 @@ impl RowDetailPane {
             .filter_map(|position| field_of(store.item(position)))
             .collect();
         if held == wanted {
-            return false;
+            return;
         }
         let items: Vec<glib::BoxedAnyObject> = wanted.into_iter().map(glib::BoxedAnyObject::new).collect();
         imp.syncing.set(true);
@@ -448,7 +483,6 @@ impl RowDetailPane {
             imp.field.set(None);
         }
         self.select_in_list(imp.field.get());
-        true
     }
 
     fn watch_column_visibility(&self) {
