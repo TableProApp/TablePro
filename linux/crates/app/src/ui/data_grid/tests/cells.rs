@@ -589,15 +589,21 @@ fn row_height_preferences_change_the_allocated_row_height() {
     let grid = two_text_rows();
     let settings = grid.grid.config().expect("configured grid").settings.clone();
     let cell = grid.cell_of(1, 1);
-    settings.set_grid_row_height("compact").expect("compact height");
     crate::test_support::after_next_frame(&grid.grid);
     let row = row_widget(&cell);
     wait_until(WAIT, || row.height() > 0).expect("row laid out");
-    let compact = row.measure(gtk::Orientation::Vertical, -1).1;
+    let normal = row.height();
+
+    settings.set_grid_row_height("compact").expect("compact height");
+    wait_until(WAIT, || row.height() < normal).expect("compact rows allocate less height than normal rows");
+    let compact = row.height();
 
     settings.set_grid_row_height("spacious").expect("spacious height");
-    wait_until(WAIT, || row.measure(gtk::Orientation::Vertical, -1).1 > compact)
-        .expect("the larger padding makes a taller row");
-    let spacious = row.measure(gtk::Orientation::Vertical, -1).1;
-    wait_until(WAIT, || row.height() >= spacious).expect("row uses its larger height");
+    wait_until(WAIT, || row.height() > normal).expect("spacious rows allocate more height than normal rows");
+    assert!(row.height() > compact);
+
+    settings.set_grid_row_height("normal").expect("normal height");
+    wait_until(WAIT, || row.height() == normal).expect("normal rows restore their original height");
+    assert_eq!(row_widget(&cell), row);
+    assert_eq!(grid.cell_of(1, 1), cell);
 }
