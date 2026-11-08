@@ -47,5 +47,5 @@ pub use group_name_error::GroupNameError;
 pub use group_tree::GroupTree;
 pub use paths::StoragePaths;
 pub use query_history::QueryHistory;
-pub use saved_queries::{SavedQueries, SavedQueryFolder, SavedQueryFolders};
+pub use saved_queries::{SavedQueries, SavedQueriesSnapshot, SavedQueryFolder, SavedQueryFolders};
 pub use tag_name_error::TagNameError;

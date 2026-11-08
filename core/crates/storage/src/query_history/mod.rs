@@ -1,5 +1,8 @@
+mod backup_folders;
 mod entry;
 mod export;
+#[cfg(test)]
+mod favourites_migration_tests;
 mod history_connection;
 mod history_cursor;
 mod history_page;
@@ -13,7 +16,9 @@ mod search_fold;
 mod status_filter;
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::SystemTime;
+use tokio::sync::watch;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{AssertSqlSafe, ConnectOptions, Connection, Row, SqlitePool};
@@ -63,6 +68,7 @@ pub(crate) enum Bind {
 pub struct QueryHistory {
     pool: SqlitePool,
     path: PathBuf,
+    saved_changes: Arc<watch::Sender<u64>>,
 }
 
 impl QueryHistory {
@@ -87,7 +93,11 @@ impl QueryHistory {
             crate::upgrade_copies::keep_database(&pool, &path, version).await?;
         }
         schema::migrate(&pool).await?;
-        Ok(Self { pool, path })
+        Ok(Self {
+            pool,
+            path,
+            saved_changes: Arc::new(watch::channel(0).0),
+        })
     }
 
     pub fn path(&self) -> &Path {
@@ -98,17 +108,17 @@ impl QueryHistory {
     /// migration chain, one open: what the user keeps and what they
     /// ran are the same kind of thing in the same place.
     pub fn saved_queries(&self) -> crate::saved_queries::SavedQueries {
-        crate::saved_queries::SavedQueries::new(self.pool.clone(), self.path.clone())
+        crate::saved_queries::SavedQueries::new(self.pool.clone(), self.path.clone(), self.saved_changes.clone())
     }
 
     /// The folders saved queries are filed in, in the same database.
     pub fn saved_query_folders(&self) -> crate::saved_queries::SavedQueryFolders {
-        crate::saved_queries::SavedQueryFolders::new(self.pool.clone(), self.path.clone())
+        crate::saved_queries::SavedQueryFolders::new(self.pool.clone(), self.path.clone(), self.saved_changes.clone())
     }
 
     /// The favourite tables and databases, in the same database.
     pub fn favourites(&self) -> crate::favourites::Favourites {
-        crate::favourites::Favourites::new(self.pool.clone(), self.path.clone())
+        crate::favourites::Favourites::new(self.pool.clone(), self.path.clone(), self.saved_changes.clone())
     }
 
     pub async fn record(&self, entry: NewEntry) -> Result<i64, StorageError> {
@@ -268,8 +278,9 @@ impl QueryHistory {
                 binds: chunk.iter().map(|id| Bind::Integer(*id)).collect(),
             })
             .collect();
+        let mut connection = self.pool.acquire().await?;
+        let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
         trim_upgrade_copies(&self.path, &from_copies).await?;
-        let mut transaction = self.pool.begin().await?;
         let mut deleted = Vec::with_capacity(ids.len());
         for chunk in ids.chunks(IDS_PER_STATEMENT) {
             let placeholders = vec!["?"; chunk.len()].join(",");
@@ -323,6 +334,8 @@ impl QueryHistory {
     }
 
     pub async fn clear_all(&self) -> Result<usize, StorageError> {
+        let mut database = self.pool.acquire().await?;
+        let mut transaction = database.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
         trim_upgrade_copies(
             &self.path,
             &[CopyDelete {
@@ -333,15 +346,16 @@ impl QueryHistory {
         )
         .await?;
         let affected = sqlx::query("DELETE FROM history")
-            .execute(&self.pool)
+            .execute(&mut *transaction)
             .await?
             .rows_affected();
         // The delete triggers leave the queries' words in the index until it is optimized.
         if affected > 0 {
             sqlx::query("INSERT INTO history_search(history_search) VALUES('optimize')")
-                .execute(&self.pool)
+                .execute(&mut *transaction)
                 .await?;
         }
+        transaction.commit().await?;
         Ok(affected as usize)
     }
 
@@ -381,7 +395,10 @@ impl QueryHistory {
                 .await?;
         }
         // Rows expired here, or unpinned since a copy was made, leave the copies too.
+        let mut database = self.pool.acquire().await?;
+        let transaction = database.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
         trim_upgrade_copies(&self.path, &[]).await?;
+        transaction.commit().await?;
         Ok(report)
     }
 
@@ -397,6 +414,8 @@ impl QueryHistory {
     /// Drop every query run on a connection, pinned ones included, for a
     /// connection the user deleted along with its history.
     pub async fn delete_for_connection(&self, connection: Uuid) -> Result<u64, StorageError> {
+        let mut database = self.pool.acquire().await?;
+        let mut transaction = database.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
         trim_upgrade_copies(
             &self.path,
             &[CopyDelete {
@@ -408,16 +427,17 @@ impl QueryHistory {
         .await?;
         let removed = sqlx::query("DELETE FROM history WHERE connection_id = ?")
             .bind(connection.to_string())
-            .execute(&self.pool)
+            .execute(&mut *transaction)
             .await?
             .rows_affected();
         // As after a prune: the delete triggers leave tombstones in the
         // index until it is optimized.
         if removed > 0 {
             sqlx::query("INSERT INTO history_search(history_search) VALUES('optimize')")
-                .execute(&self.pool)
+                .execute(&mut *transaction)
                 .await?;
         }
+        transaction.commit().await?;
         Ok(removed)
     }
 
@@ -483,6 +503,7 @@ pub(crate) struct CopyDelete {
     pub(crate) binds: Vec<Bind>,
 }
 
+// Callers hold the live SQLite write lock until their deletion commits, so copy reconciliation cannot restore a pending deletion.
 pub(crate) async fn trim_upgrade_copies(path: &Path, first: &[CopyDelete]) -> Result<(), StorageError> {
     crate::upgrade_copies::remove_leftovers_blocking(path)?;
     let copies = crate::upgrade_copies::copies_blocking(path)?;
@@ -521,6 +542,7 @@ fn is_busy(error: &StorageError) -> bool {
 async fn trim_copy(copy: &Path, live: &str, first: &[CopyDelete]) -> Result<(), StorageError> {
     let mut database = SqliteConnectOptions::new()
         .filename(copy)
+        .foreign_keys(false)
         .journal_mode(sqlx::sqlite::SqliteJournalMode::Delete)
         .pragma("secure_delete", "ON")
         .disable_statement_logging()
@@ -531,6 +553,7 @@ async fn trim_copy(copy: &Path, live: &str, first: &[CopyDelete]) -> Result<(), 
         .execute(&mut database)
         .await?;
     let mut transaction = database.begin().await?;
+    let has_folders = backup_folders::reconcile(&mut transaction).await?;
     for delete in first {
         let present: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM main.sqlite_master WHERE type = 'table' AND name = ?")
@@ -564,9 +587,19 @@ async fn trim_copy(copy: &Path, live: &str, first: &[CopyDelete]) -> Result<(), 
             .await?;
         }
     }
-    // Every time, which costs little on an index already merged.
+    if has_folders {
+        backup_folders::repair_queries(&mut transaction).await?;
+    }
+    if sqlx::query("PRAGMA main.foreign_key_check")
+        .fetch_optional(&mut *transaction)
+        .await?
+        .is_some()
+    {
+        return Err(StorageError::Schema("invalid references in an upgrade copy".to_owned()));
+    }
     optimize_full_text_indexes(&mut transaction).await?;
     transaction.commit().await?;
+    sqlx::query("PRAGMA foreign_keys = ON").execute(&mut database).await?;
     sqlx::query("DETACH DATABASE live").execute(&mut database).await?;
     database.close().await?;
     Ok(())
@@ -719,7 +752,7 @@ mod tests {
             .fetch_one(&history.pool)
             .await
             .expect("count migrations");
-        assert_eq!(applied, 2);
+        assert_eq!(applied, 3);
     }
 
     /// A database an earlier build wrote, with its saved queries, is kept
@@ -913,7 +946,7 @@ mod tests {
     /// means a change went into a file that has already run somewhere.
     #[test]
     fn migrator_embeds_every_migration() {
-        assert_eq!(schema::MIGRATOR.iter().count(), 2);
+        assert_eq!(schema::MIGRATOR.iter().count(), 3);
     }
 
     #[tokio::test]

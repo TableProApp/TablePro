@@ -56,6 +56,9 @@ pub enum StorageError {
     #[error("a keyword is one word of at most {max} characters, with no spaces")]
     KeywordInvalid { max: usize },
 
+    #[error("the folder name contains a control character")]
+    FolderNameInvalid,
+
     #[error("another folder in the same place has that name")]
     FolderNameTaken,
 
@@ -118,6 +121,7 @@ impl StorageError {
             Self::TagNameTaken => "storage.tag_name_taken",
             Self::KeywordTaken => "storage.keyword_taken",
             Self::KeywordInvalid { .. } => "storage.keyword_invalid",
+            Self::FolderNameInvalid => "storage.folder_name_invalid",
             Self::FolderNameTaken => "storage.folder_name_taken",
             Self::FolderCycle { .. } => "storage.folder_cycle",
             Self::Encode(..) => "storage.encode",
