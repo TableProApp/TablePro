@@ -90,13 +90,7 @@ async fn original_schema_upgrade_preserves_queries_and_assigns_connection_scoped
     assert_copy_kept(&paths, 1).await.close().await.expect("close copy");
 }
 
-#[tokio::test]
-async fn favorites_schema_upgrade_preserves_filing_and_metadata_and_normalizes_positions() {
-    let root = tempfile::tempdir().expect("tempdir");
-    let (paths, pool) = old_database(&root, 2).await;
-    let connection = Uuid::new_v4();
-    let other = Uuid::new_v4();
-    insert_queries(&pool, connection, other).await;
+async fn insert_favorites(pool: &SqlitePool, connection: Uuid, other: Uuid) {
     for (id, owner, name, parent, order) in [
         (1, connection, "Reports", None, 8),
         (2, connection, "Archive", None, 2),
@@ -112,22 +106,32 @@ async fn favorites_schema_upgrade_preserves_filing_and_metadata_and_normalizes_p
         .bind(name)
         .bind(parent)
         .bind(order)
-        .execute(&pool)
+        .execute(pool)
         .await
         .expect("folder fixture");
     }
     sqlx::query("UPDATE saved_queries SET folder_id = 3, keyword = 'daily', sort_order = 9 WHERE id = 42")
-        .execute(&pool)
+        .execute(pool)
         .await
         .expect("file query");
     sqlx::query("UPDATE saved_queries SET sort_order = 4 WHERE id <> 42")
-        .execute(&pool)
+        .execute(pool)
         .await
         .expect("root query orders");
     sqlx::query("INSERT INTO favourite_tables (connection_id, database, schema, name, created_at) VALUES (?, 'shop', 'public', 'orders', 31)")
-        .bind(connection.to_string()).execute(&pool).await.expect("table fixture");
+        .bind(connection.to_string()).execute(pool).await.expect("table fixture");
     sqlx::query("INSERT INTO favourite_databases (connection_id, database, environment, created_at) VALUES (?, 'shop', 'production', 32)")
-        .bind(connection.to_string()).execute(&pool).await.expect("database fixture");
+        .bind(connection.to_string()).execute(pool).await.expect("database fixture");
+}
+
+#[tokio::test]
+async fn favorites_schema_upgrade_preserves_filing_and_metadata_and_normalizes_positions() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let (paths, pool) = old_database(&root, 2).await;
+    let connection = Uuid::new_v4();
+    let other = Uuid::new_v4();
+    insert_queries(&pool, connection, other).await;
+    insert_favorites(&pool, connection, other).await;
     pool.close().await;
 
     let history = QueryHistory::open(&paths).await.expect("upgrade");
