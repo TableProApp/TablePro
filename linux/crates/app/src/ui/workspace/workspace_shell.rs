@@ -601,7 +601,7 @@ impl WorkspaceShell {
         );
     }
 
-    fn on_favorite_action(&self, action: super::sidebar::FavoriteAction) {
+    pub(super) fn on_favorite_action(&self, action: super::sidebar::FavoriteAction) {
         use super::sidebar::FavoriteAction;
         match action {
             // The SQL opens in a new query tab of the front session.
