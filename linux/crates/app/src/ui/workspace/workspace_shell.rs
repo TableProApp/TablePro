@@ -1118,12 +1118,15 @@ mod tests {
             "Rename failed".to_owned(),
         );
         assert_eq!(test.hold.live(), 1);
+        let write_hold = test.hold_tokens.borrow().last().expect("rename hold").clone();
         test.window.close();
         wait_until(WAIT, || !test.window.is_visible()).expect("window closed");
-        // Session teardown and workspace flushes hold the process independently of this write.
-        wait_until(WAIT, || test.hold.live() <= 1).expect("window teardown complete");
-        assert_eq!(test.hold.live(), 1, "closing the window released an unfinished write");
+        assert!(
+            write_hold.upgrade().is_some(),
+            "closing the window released the rename's hold"
+        );
         release.send(()).expect("write still running");
+        wait_until(WAIT, || write_hold.upgrade().is_none()).expect("rename hold released");
         wait_until(WAIT, || test.hold.live() == 0).expect("write complete");
         let store = test.services.history().store().expect("history").saved_queries();
         let reading = test.services.tasks.spawn_task(async move { store.get(id).await });
