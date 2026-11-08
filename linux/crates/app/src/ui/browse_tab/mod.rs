@@ -58,6 +58,7 @@ use tablepro_core::dialect::{SqlDialect, TablePaging};
 use tablepro_core::meta::{RowIdentity, TableRef};
 use tablepro_core::{ColumnInfo, FilterSet};
 use tablepro_linux_platform::AppSettings;
+use tablepro_linux_platform::settings::{DefaultSort, GridSortDirection};
 use tablepro_session::operation::DeadlinePolicy;
 use tablepro_session::runtime::{Tasks, WatchForwarder};
 use tablepro_session::{LinkGeneration, Session};
@@ -71,6 +72,7 @@ use self::browse_tab_widgets::BrowseTabWidgets;
 use self::column_recheck::ColumnRecheck;
 pub(super) use self::columns_fetch::{ColumnFreshness, load_columns};
 pub(crate) use self::data_input::DataInput;
+pub use self::default_sort::InitialSort;
 pub(crate) use self::grid_input::GridInput;
 pub(crate) use self::page_reply::PageReply;
 use self::page_state::PageState;
@@ -105,7 +107,7 @@ pub struct BrowseTabInit {
     pub read_only: bool,
     pub page_size: u64,
     pub initial_offset: u64,
-    pub initial_sort: Option<(usize, bool)>,
+    pub initial_sort: InitialSort,
     pub filter: TableFilter,
     pub column_layouts: crate::persistence::ColumnLayoutStore,
     pub filter_settings: crate::persistence::FilterSettingsStore,
@@ -148,16 +150,14 @@ impl BrowseTab {
         let actions = browse_actions::install_browse_actions(&tab, init.page_size);
         // A sort saved with the tab cannot reach an engine that reads
         // in its own order.
-        let initial_sort = init.initial_sort.filter(|_| sorts_rows(dialect.as_deref()));
-        // A tab with a sort of its own, or reopened past its first page,
-        // keeps what it had; a new one takes the sort Preferences ask for.
-        let default_sort =
-            (initial_sort.is_none() && init.initial_offset == 0 && sorts_rows(dialect.as_deref())).then(|| {
-                (
-                    init.settings.default_sort(),
-                    init.settings.default_sort_direction() == "descending",
-                )
-            });
+        let preferences = init.settings.grid_preferences().snapshot();
+        let (initial_sort, default_sort) = match init.initial_sort {
+            InitialSort::Default => (
+                None,
+                Some((preferences.default_sort, preferences.default_sort_direction)),
+            ),
+            InitialSort::Kept(sort) => (sort.filter(|_| sorts_rows(dialect.as_deref())), None),
+        };
         let keys = KeysHandle::new(table.clone());
         let grid = layout::grid(
             &tab,
@@ -505,7 +505,7 @@ pub(crate) struct BrowseModel {
     current_sort: Option<(usize, bool)>,
     /// What Preferences asked for when the tab opened, until the columns
     /// say which column that is.
-    default_sort: Option<(String, bool)>,
+    default_sort: Option<(DefaultSort, GridSortDirection)>,
     /// The WHERE every page and count reads under, kept per connection,
     /// schema and table.
     current_filter: tablepro_core::FilterSet,

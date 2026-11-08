@@ -83,6 +83,7 @@ crates/app/src/services/grid/cell_preset.rs
 crates/app/src/services/grid/column_layout.rs
 crates/app/src/services/grid/column_width.rs
 crates/app/src/services/grid/copy_scope.rs
+crates/app/src/services/grid/date_display.rs
 crates/app/src/services/grid/delete_availability.rs
 crates/app/src/services/grid/display_text.rs
 crates/app/src/services/grid/edit_navigation.rs
@@ -212,6 +213,7 @@ crates/app/src/ui/browse_tab/row_total.rs
 crates/app/src/ui/browse_tab/save_handlers.rs
 crates/app/src/ui/browse_tab/save_input.rs
 crates/app/src/ui/browse_tab/table_filter.rs
+crates/app/src/ui/browse_tab/tests/default_sort.rs
 crates/app/src/ui/browse_tab/tests/load.rs
 crates/app/src/ui/browse_tab/tests/mod.rs
 crates/app/src/ui/browse_tab/tests/references.rs
@@ -246,6 +248,7 @@ crates/app/src/ui/credential_prompt/presenter.rs
 crates/app/src/ui/credential_prompt/prompt_form.rs
 crates/app/src/ui/credential_prompt/prompt_text.rs
 crates/app/src/ui/credential_prompt/prompter.rs
+crates/app/src/ui/data_grid/cell_font.rs
 crates/app/src/ui/data_grid/client_sorter.rs
 crates/app/src/ui/data_grid/column_chooser.rs
 crates/app/src/ui/data_grid/columns.rs
@@ -492,6 +495,7 @@ crates/app/src/ui/preferences_dialog/data_browser_group.rs
 crates/app/src/ui/preferences_dialog/device_limit_dialog.rs
 crates/app/src/ui/preferences_dialog/editor_page.rs
 crates/app/src/ui/preferences_dialog/general_page.rs
+crates/app/src/ui/preferences_dialog/grid_page.rs
 crates/app/src/ui/preferences_dialog/history_group.rs
 crates/app/src/ui/preferences_dialog/imp.rs
 crates/app/src/ui/preferences_dialog/mcp_page.rs
@@ -768,6 +772,7 @@ data/resources/ui/preferences-data-browser-group.ui
 data/resources/ui/preferences-dialog.ui
 data/resources/ui/preferences-editor-page.ui
 data/resources/ui/preferences-general-page.ui
+data/resources/ui/preferences-grid-page.ui
 data/resources/ui/preferences-history-group.ui
 data/resources/ui/preferences-mcp-page.ui
 data/resources/ui/results-pane.ui

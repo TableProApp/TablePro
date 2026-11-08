@@ -48,9 +48,6 @@ impl RowDetailPane {
         self.connect_close(grid);
         self.watch_details(grid);
         self.watch_rows(grid);
-        if let Some(config) = grid.config() {
-            self.watch_invisibles(&config.settings);
-        }
         self.show_nothing();
     }
 

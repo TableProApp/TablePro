@@ -2,7 +2,7 @@ use std::fmt::Write;
 
 use tablepro_core::Value;
 use tablepro_core::column::{BoolStorage, ColumnKind, ColumnType};
-use tablepro_core::value::Temporal;
+use tablepro_linux_platform::settings::DateFormat;
 
 /// A million-character value would hang the main thread in Pango
 /// layout, and the cell shapes all it is given though a line of it
@@ -31,100 +31,21 @@ impl<'a> DisplayText<'a> {
     }
 }
 
-/// The brackets keep it apart from a literal `NULL` text value. A text the
-/// user chose for NULL is shown as it is, since they picked it.
+/// The brackets keep it apart from a literal `NULL` text value.
 pub fn editable_null_sentinel() -> String {
-    // Spelled once, since every bind of a NULL cell asks.
-    EDITABLE_NULL.with(|slot| {
-        slot.borrow_mut()
-            .get_or_insert_with(|| {
-                let text = null_display();
-                if text == READONLY_NULL {
-                    crate::i18n::gettext("<NULL>")
-                } else {
-                    text
-                }
-            })
-            .clone()
-    })
+    crate::i18n::gettext("<NULL>")
+}
+
+pub fn null_text(text: &str, editable: bool) -> String {
+    match (editable, text) {
+        (true, "NULL") => editable_null_sentinel(),
+        _ => text.to_owned(),
+    }
 }
 
 /// A read-only cell dims its NULL instead, so it needs no brackets.
 /// A technical term, so it is not translated.
 const READONLY_NULL: &str = "NULL";
-
-/// How cells spell dates, a word the `date-format` setting holds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum DateFormat {
-    #[default]
-    Iso,
-    IsoDate,
-    UsLong,
-    UsShort,
-    EuLong,
-    EuShort,
-}
-
-impl DateFormat {
-    pub fn from_word(word: &str) -> Self {
-        match word {
-            "iso-date" => Self::IsoDate,
-            "us-long" => Self::UsLong,
-            "us-short" => Self::UsShort,
-            "eu-long" => Self::EuLong,
-            "eu-short" => Self::EuShort,
-            _ => Self::Iso,
-        }
-    }
-
-    /// The chrono pattern for a value with a clock, and `None` for the
-    /// database's own spelling. A fraction of a second follows the seconds
-    /// as the value holds it.
-    fn pattern(self) -> Option<&'static str> {
-        match self {
-            Self::Iso => None,
-            Self::IsoDate => Some("%Y-%m-%d"),
-            Self::UsLong => Some("%m/%d/%Y %I:%M:%S%.f %p"),
-            Self::UsShort => Some("%m/%d/%Y"),
-            Self::EuLong => Some("%d/%m/%Y %H:%M:%S%.f"),
-            Self::EuShort => Some("%d/%m/%Y"),
-        }
-    }
-
-    /// The same for a value that is a day and no more.
-    fn day_pattern(self) -> Option<&'static str> {
-        match self {
-            Self::Iso => None,
-            Self::IsoDate => Some("%Y-%m-%d"),
-            Self::UsLong | Self::UsShort => Some("%m/%d/%Y"),
-            Self::EuLong | Self::EuShort => Some("%d/%m/%Y"),
-        }
-    }
-}
-
-thread_local! {
-    static DATE_FORMAT: std::cell::Cell<DateFormat> = const { std::cell::Cell::new(DateFormat::Iso) };
-    static NULL_DISPLAY: std::cell::RefCell<String> = std::cell::RefCell::new(READONLY_NULL.to_owned());
-    static EDITABLE_NULL: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
-}
-
-/// The text a cell shows for NULL, which Preferences set.
-pub fn null_display() -> String {
-    NULL_DISPLAY.with(|text| text.borrow().clone())
-}
-
-pub fn date_format() -> DateFormat {
-    DATE_FORMAT.with(std::cell::Cell::get)
-}
-
-pub fn set_date_format(format: DateFormat) {
-    DATE_FORMAT.with(|slot| slot.set(format));
-}
-
-pub fn set_null_display(text: &str) {
-    NULL_DISPLAY.with(|slot| *slot.borrow_mut() = text.to_owned());
-    EDITABLE_NULL.with(|slot| *slot.borrow_mut() = None);
-}
 
 /// For a column the server fills in on INSERT, so a new draft row does
 /// not read as if its id were stored as NULL.
@@ -132,16 +53,19 @@ pub fn auto_filled_sentinel() -> String {
     crate::i18n::gettext("(auto)")
 }
 
-/// The text of `value` as the cell draws it. Text, JSON and a value the
-/// driver kept as the server's text are borrowed; anything else is
-/// written into `scratch`, the cell's own buffer.
 pub fn display_text<'a>(value: &'a Value, column: &ColumnType, scratch: &'a mut String) -> DisplayText<'a> {
+    display_text_formatted(value, column, DateFormat::Iso, scratch)
+}
+
+pub fn display_text_formatted<'a>(
+    value: &'a Value,
+    column: &ColumnType,
+    date_format: DateFormat,
+    scratch: &'a mut String,
+) -> DisplayText<'a> {
     scratch.clear();
     match value {
-        Value::Null => {
-            scratch.push_str(&null_display());
-            DisplayText::placeholder(scratch.as_str())
-        }
+        Value::Null => DisplayText::placeholder(READONLY_NULL),
         Value::Text(text) => shown(text, scratch),
         // The server's own text, never parsed and written out again.
         Value::Json(json) => shown(json.as_str(), scratch),
@@ -165,16 +89,18 @@ pub fn display_text<'a>(value: &'a Value, column: &ColumnType, scratch: &'a mut 
             DisplayText::placeholder(scratch)
         }
         other => {
-            write_value(other, column, scratch);
+            write_value(other, column, date_format, scratch);
             cut_in_place(scratch)
         }
     }
 }
 
-/// The text `display_text` spells, whole: past the cell's cut and without
-/// its note of what it left out, for a search that must reach the rest. A
-/// placeholder is the placeholder.
-pub fn whole_text<'a>(value: &'a Value, column: &ColumnType, scratch: &'a mut String) -> &'a str {
+pub fn whole_text<'a>(
+    value: &'a Value,
+    column: &ColumnType,
+    date_format: DateFormat,
+    scratch: &'a mut String,
+) -> &'a str {
     match value {
         Value::Text(text) => text,
         Value::Json(json) => json.as_str(),
@@ -182,16 +108,17 @@ pub fn whole_text<'a>(value: &'a Value, column: &ColumnType, scratch: &'a mut St
         Value::Null | Value::Bytes(_) | Value::Undecodable(_) => display_text(value, column, scratch).text,
         other => {
             scratch.clear();
-            write_value(other, column, scratch);
+            write_value(other, column, date_format, scratch);
             scratch
         }
     }
 }
 
-/// Everything else renders the way it exports, so what the grid shows
-/// and what a copy produces are the same text. The common scalars are
-/// written straight into the buffer.
-fn write_value(value: &Value, column: &ColumnType, scratch: &mut String) {
+fn write_value(value: &Value, column: &ColumnType, date_format: DateFormat, scratch: &mut String) {
+    if let Some(text) = super::date_display::formatted(value, column, date_format) {
+        *scratch = text;
+        return;
+    }
     // Writing to a String cannot fail.
     let _ = match value {
         Value::Bool(flag) => scratch.write_str(if *flag { "true" } else { "false" }),
@@ -208,23 +135,6 @@ fn write_value(value: &Value, column: &ColumnType, scratch: &mut String) {
         Value::Float32(number) if number.is_finite() => write!(scratch, "{number}"),
         Value::Float64(number) if number.is_finite() => write!(scratch, "{number}"),
         Value::Uuid(id) => write!(scratch, "{id}"),
-        Value::Date(Temporal::Finite(day)) if date_format().day_pattern().is_some() => {
-            write!(
-                scratch,
-                "{}",
-                day.format(date_format().day_pattern().unwrap_or_default())
-            )
-        }
-        Value::Timestamp(Temporal::Finite(at)) if date_format().pattern().is_some() => {
-            write!(scratch, "{}", at.format(date_format().pattern().unwrap_or_default()))
-        }
-        // The offset stays, since dropping it would make two moments one text.
-        Value::TimestampTz(Temporal::Finite(at)) if date_format().pattern().is_some() => write!(
-            scratch,
-            "{} {}",
-            at.to_datetime().format(date_format().pattern().unwrap_or_default()),
-            at.offset()
-        ),
         other => {
             if let Some(text) = tablepro_core::export::value_text(other, column) {
                 *scratch = text;
@@ -312,11 +222,9 @@ mod tests {
     use tablepro_core::Value;
     use tablepro_core::column::{BoolStorage, ColumnKind, ColumnType};
     use tablepro_core::value::{JsonText, OffsetTimestamp, SqlTime, Temporal, UndecodableReason, UndecodedValue};
+    use tablepro_linux_platform::settings::DateFormat;
 
-    use super::{
-        DISPLAY_MAX_CHARS, DateFormat, DisplayText, display_text, editable_null_sentinel, set_date_format,
-        set_null_display,
-    };
+    use super::{DISPLAY_MAX_CHARS, DisplayText, display_text, null_text};
 
     fn text_column() -> ColumnType {
         ColumnType::untyped_text("text")
@@ -328,40 +236,11 @@ mod tests {
     }
 
     #[test]
-    fn dates_follow_the_chosen_format_and_iso_leaves_them_alone() {
-        use chrono::{NaiveDate, NaiveDateTime};
-
-        let day = NaiveDate::from_ymd_opt(2024, 12, 31).expect("a day");
-        let at: NaiveDateTime = day.and_hms_opt(23, 59, 58).expect("a time");
-        let date = Value::Date(Temporal::Finite(day));
-        let stamp = Value::Timestamp(Temporal::Finite(at));
-
-        assert_eq!(shown(&date), "2024-12-31");
-        assert_eq!(shown(&stamp), "2024-12-31 23:59:58");
-        for (format, expected_day, expected_stamp) in [
-            (DateFormat::UsLong, "12/31/2024", "12/31/2024 11:59:58 PM"),
-            (DateFormat::UsShort, "12/31/2024", "12/31/2024"),
-            (DateFormat::EuLong, "31/12/2024", "31/12/2024 23:59:58"),
-            (DateFormat::EuShort, "31/12/2024", "31/12/2024"),
-            (DateFormat::IsoDate, "2024-12-31", "2024-12-31"),
-        ] {
-            set_date_format(format);
-            assert_eq!(shown(&date), expected_day, "{format:?}");
-            assert_eq!(shown(&stamp), expected_stamp, "{format:?}");
-        }
-        set_date_format(DateFormat::Iso);
-    }
-
-    #[test]
     fn a_chosen_null_text_reaches_editable_cells_and_the_default_keeps_its_brackets() {
-        assert_eq!(editable_null_sentinel(), "<NULL>");
-
-        set_null_display("(none)");
-        assert_eq!(editable_null_sentinel(), "(none)");
-        assert_eq!(shown(&Value::Null), "(none)");
-
-        set_null_display("NULL");
-        assert_eq!(editable_null_sentinel(), "<NULL>");
+        assert_eq!(null_text("NULL", true), "<NULL>");
+        assert_eq!(null_text("(none)", true), "(none)");
+        assert_eq!(null_text("(none)", false), "(none)");
+        assert_eq!(null_text("NULL", false), "NULL");
     }
 
     #[test]

@@ -88,8 +88,9 @@ pub struct DataGrid {
     pub focus_watch: RefCell<Option<(glib::WeakRef<gtk4::Window>, glib::SignalHandlerId)>>,
     pub(super) font_watch: RefCell<Option<HandlerGuard>>,
     pub(super) display_watch: RefCell<Option<HandlerGuard>>,
-    pub(super) cell_font_watch: RefCell<Option<HandlerGuard>>,
-    pub(super) stripes_watch: RefCell<Option<HandlerGuard>>,
+    pub(super) applied_null: RefCell<Option<String>>,
+    pub(super) applied_date_format: Cell<Option<tablepro_linux_platform::settings::DateFormat>>,
+    pub(super) cell_font: RefCell<Option<super::cell_font::CellFont>>,
 }
 
 #[glib::object_subclass]
@@ -128,6 +129,8 @@ impl ObjectImpl for DataGrid {
         self.summary.stop();
         self.obj().stop_watching_focus();
         drop(self.font_watch.take());
+        drop(self.cell_font.take());
+        drop(self.display_watch.take());
         if let Some(menus) = self.menus.get() {
             menus.unparent();
         }

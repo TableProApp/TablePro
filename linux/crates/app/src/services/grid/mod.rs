@@ -9,6 +9,7 @@ mod cell_preset;
 mod column_layout;
 mod column_width;
 mod copy_scope;
+mod date_display;
 mod delete_availability;
 pub mod display_text;
 mod edit_navigation;

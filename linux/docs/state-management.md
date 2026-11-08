@@ -87,6 +87,14 @@ A tab belongs to its session, and a session to one window ([decisions/0028-sessi
 - Dropped outside every window, `create-window` declines a new window and the tab goes back to that position ([toolkit-workarounds.md](toolkit-workarounds.md#a-tab-dropped-outside-every-window)).
 - `ReturnTab` runs from the window's queue, after libadwaita finishes attaching the page. A tab whose session closed while it was out closes where it is; the session's close already asked about it, and its view no longer holds the page to close it.
 
+## Grid preferences
+
+`AppSettings` owns one `GridPreferences` object. It reads the grid keys from GSettings and announces each changed snapshot. Every grid holds that object through its settings and follows its change signal. Preferences rows bind directly to GSettings, including both directions for choices stored as strings. Each grid owns its font CSS provider, scoped to that grid and removed when the grid closes. Its custom font description supplies both the rendered font and column width measurement. The value editor applies the whitespace preference to its native SpaceDrawer, including while its pane is closed, without changing the buffer or its selection. Automatic Row Details opening reads the same snapshot when the selection changes and opens only for a nonempty selection. Closing it keeps it closed through focus changes and clearing the selection. Turning the preference off leaves an open pane alone. Copy reads the row format from the shared snapshot when it runs; a single focused cell keeps its value format, and Copy As keeps the requested format.
+
+The snapshot belongs to its settings backend, so isolated test settings cannot change another grid. A display change redraws the existing row slots and resizes automatic columns. It keeps row selection, user column widths and active editor drafts. The formatting helpers receive display choices explicitly and keep no global preference state. Date display changes update cells, detail fields and automatic widths. Find captures the date format before its worker starts and repeats an active search when that format changes. The value editor, Copy and export retain the canonical value spelling.
+
+A new table tab snapshots the default sort from `GridPreferences`. `InitialSort::Default` is resolved once after accepted initial metadata, before its first page query. A metadata failure keeps it pending, and an explicit sort cancels it. Restored and reopened tabs carry `InitialSort::Kept`, including an unsorted first page. Later preference changes and refreshes preserve the tab's sort. The saved workspace format stays the same.
+
 ## The SQL editor
 
 `SqlEditor` (`crates/app/src/ui/editor/`) runs SQL on a connection of its own and lists what each statement returned.

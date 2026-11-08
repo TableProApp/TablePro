@@ -319,6 +319,18 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `window-height` | `i` | `760` | 294 to 32767 |
 | `is-maximized` | `b` | `false` | |
 | `default-page-size` | `u` | `1000` | 100 to 100000 |
+| `show-alternate-rows` | `b` | `true` | |
+| `show-row-numbers` | `b` | `true` | |
+| `grid-use-system-font` | `b` | `true` | |
+| `grid-font` | `s` | `Monospace 10` | |
+| `show-invisible-characters` | `b` | `true` | |
+| `auto-show-inspector` | `b` | `false` | |
+| `row-copy-format` | `s` | `rows` | rows, rows-headers, json, csv, csv-headers, markdown |
+| `default-sort` | `s` | `none` | `none`, `primary-key`, `first-column` |
+| `default-sort-direction` | `s` | `ascending` | `ascending`, `descending` |
+| `date-format` | `s` | `iso` | iso, iso-date, us-long, us-short, eu-long, eu-short; display only, copy and export retain original values |
+| `grid-row-height` | `s` | `normal` | compact, normal, comfortable, spacious |
+| `null-display` | `s` | `NULL` | Displayed as at most 20 characters, without control characters; blank uses NULL |
 | `confirm-bulk-delete` | `b` | `true` | |
 | `restore-session` | `b` | `true` | |
 | `last-seen-version` | `s` | empty | |
@@ -351,7 +363,7 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `csv-line-break` | enum | `lf` | lf, crlf, cr |
 | `csv-decimal` | enum | `period` | period, comma |
 
-`tablepro_storage::AppSettings` wraps it in typed accessors:
+`tablepro_linux_platform::AppSettings` wraps it in typed accessors:
 
 ```rust
 pub fn open(schema_id: &str) -> Result<Self, SettingsError>;

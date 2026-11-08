@@ -1,24 +1,12 @@
-use gio::prelude::{SettingsExt, SettingsExtManual};
-
+use gio::prelude::SettingsExtManual;
 use gtk4::glib;
-use gtk4::glib::prelude::{ToValue, ToVariant};
+use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
-use libadwaita::prelude::ComboRowExt;
 use tablepro_linux_platform::AppSettings;
-use tablepro_linux_platform::settings::keys;
-
-/// The words the row height setting holds, in the combo's order.
-const ROW_HEIGHTS: [&str; 4] = ["compact", "normal", "comfortable", "spacious"];
-
-/// The words the date format setting holds, in the combo's order.
-const DATE_FORMATS: [&str; 6] = ["iso", "iso-date", "us-long", "us-short", "eu-long", "eu-short"];
-
-/// The words the default sort setting holds, in the combo's order.
-const DEFAULT_SORTS: [&str; 3] = ["none", "primary-key", "first-column"];
-
-/// The words the copy format setting holds, in the combo's order.
-const ROW_COPY_FORMATS: [&str; 6] = ["rows", "rows-headers", "json", "csv", "csv-headers", "markdown"];
+use tablepro_linux_platform::settings::{
+    DateFormat, DefaultSort, GridRowHeight, GridSortDirection, RowCopyFormat, keys,
+};
 
 mod imp {
     use libadwaita::prelude::*;
@@ -93,8 +81,6 @@ mod imp {
 }
 
 glib::wrapper! {
-    /// The General page's rows for the row paginator and the delete
-    /// confirmation.
     pub struct DataBrowserGroup(ObjectSubclass<imp::DataBrowserGroup>)
         @extends adw::PreferencesGroup, gtk4::Widget,
         @implements gtk4::Accessible, gtk4::Buildable, gtk4::ConstraintTarget;
@@ -128,17 +114,13 @@ impl DataBrowserGroup {
         gio_settings
             .bind(keys::GRID_USE_SYSTEM_FONT, &imp.grid_system_font_row.get(), "active")
             .build();
-        // As the editor's font row: only reachable with the system font off.
         gio_settings
             .bind(keys::GRID_USE_SYSTEM_FONT, &imp.grid_font_row.get(), "sensitive")
             .flags(gio::SettingsBindFlags::GET | gio::SettingsBindFlags::INVERT_BOOLEAN)
             .build();
         gio_settings
             .bind(keys::GRID_FONT, &imp.grid_font_button.get(), "font-desc")
-            .mapping(|variant, _| {
-                let description = variant.get::<String>()?;
-                Some(gtk4::pango::FontDescription::from_string(&description).to_value())
-            })
+            .mapping(|variant, _| Some(gtk4::pango::FontDescription::from_string(variant.str()?).to_value()))
             .set_mapping(|value, _| {
                 let description = value.get::<gtk4::pango::FontDescription>().ok()?;
                 Some(description.to_str().to_variant())
@@ -151,8 +133,7 @@ impl DataBrowserGroup {
             &imp.row_height_row.get(),
             gio_settings,
             keys::GRID_ROW_HEIGHT,
-            &ROW_HEIGHTS,
-            1,
+            GridRowHeight::ALL.map(GridRowHeight::nick),
         );
         gio_settings
             .bind(keys::SHOW_INVISIBLE_CHARACTERS, &imp.invisibles_row.get(), "active")
@@ -161,55 +142,47 @@ impl DataBrowserGroup {
             &imp.date_format_row.get(),
             gio_settings,
             keys::DATE_FORMAT,
-            &DATE_FORMATS,
-            0,
+            DateFormat::ALL.map(DateFormat::nick),
         );
         bind_choice(
             &imp.default_sort_row.get(),
             gio_settings,
             keys::DEFAULT_SORT,
-            &DEFAULT_SORTS,
-            0,
+            DefaultSort::ALL.map(DefaultSort::nick),
         );
         bind_choice(
             &imp.default_sort_direction_row.get(),
             gio_settings,
             keys::DEFAULT_SORT_DIRECTION,
-            &["ascending", "descending"],
-            0,
+            GridSortDirection::ALL.map(GridSortDirection::nick),
         );
         bind_choice(
             &imp.row_copy_format_row.get(),
             gio_settings,
             keys::ROW_COPY_FORMAT,
-            &ROW_COPY_FORMATS,
-            0,
+            RowCopyFormat::ALL.map(RowCopyFormat::nick),
         );
     }
 }
 
-/// A combo holds a position and the setting a word, so each change of
-/// one is written to the other.
-fn bind_choice(
+fn bind_choice<const N: usize>(
     row: &adw::ComboRow,
     settings: &gio::Settings,
     key: &'static str,
-    words: &'static [&'static str],
-    fallback: u32,
+    words: [&'static str; N],
 ) {
-    let current = settings.string(key);
-    row.set_selected(
-        words
-            .iter()
-            .position(|word| *word == current)
-            .map_or(fallback, |at| at as u32),
-    );
-    let stored = settings.clone();
-    row.connect_selected_notify(move |row| {
-        if let Some(word) = words.get(row.selected() as usize) {
-            let _ = stored.set_string(key, word);
-        }
-    });
+    settings
+        .bind(key, row, "selected")
+        .mapping(move |variant, _| {
+            let word = variant.str()?;
+            let index = words.iter().position(|candidate| *candidate == word)?;
+            Some((index as u32).to_value())
+        })
+        .set_mapping(move |value, _| {
+            let index = value.get::<u32>().ok()?;
+            Some(words.get(index as usize)?.to_variant())
+        })
+        .build();
 }
 
 #[cfg(test)]
@@ -253,6 +226,39 @@ mod tests {
     }
 
     #[gtk4::test]
+    fn automatic_details_switches_stay_in_sync() {
+        let settings = MemorySettings::new();
+        let first = bound_group(&settings);
+        let second = bound_group(&settings);
+        assert!(!first.imp().auto_inspector_row.is_active());
+
+        first.imp().auto_inspector_row.set_active(true);
+        assert!(settings.get().auto_show_inspector());
+        assert!(second.imp().auto_inspector_row.is_active());
+        settings.get().set_auto_show_inspector(false).expect("store the flag");
+        assert!(!first.imp().auto_inspector_row.is_active());
+        assert!(!second.imp().auto_inspector_row.is_active());
+    }
+
+    #[gtk4::test]
+    fn whitespace_switches_follow_each_other_and_external_settings() {
+        let settings = MemorySettings::new();
+        let first = bound_group(&settings);
+        let second = bound_group(&settings);
+        assert!(first.imp().invisibles_row.is_active());
+
+        first.imp().invisibles_row.set_active(false);
+        assert!(!settings.get().show_invisible_characters());
+        assert!(!second.imp().invisibles_row.is_active());
+        settings
+            .get()
+            .set_show_invisible_characters(true)
+            .expect("store the flag");
+        assert!(first.imp().invisibles_row.is_active());
+        assert!(second.imp().invisibles_row.is_active());
+    }
+
+    #[gtk4::test]
     fn the_group_is_titled_for_the_data_browser() {
         let settings = MemorySettings::new();
         let group = bound_group(&settings);
@@ -270,5 +276,147 @@ mod tests {
             group.imp().confirm_row.subtitle().as_deref(),
             Some("Ask before deleting 10 or more rows at once")
         );
+    }
+
+    #[gtk4::test]
+    fn display_preferences_follow_changes_from_another_window() {
+        let settings = MemorySettings::new();
+        let first = bound_group(&settings);
+        let second = bound_group(&settings);
+
+        first.imp().row_height_row.set_selected(3);
+        first.imp().row_numbers_row.set_active(false);
+        first.imp().null_display_row.set_text("empty");
+
+        assert_eq!(settings.get().grid_row_height(), "spacious");
+        assert_eq!(second.imp().row_height_row.selected(), 3);
+        assert!(!second.imp().row_numbers_row.is_active());
+        assert_eq!(second.imp().null_display_row.text(), "empty");
+
+        settings.get().set_grid_row_height("compact").expect("store the height");
+        settings.get().set_show_row_numbers(true).expect("store the flag");
+        settings.get().set_null_display("missing").expect("store the text");
+
+        for group in [&first, &second] {
+            assert_eq!(group.imp().row_height_row.selected(), 0);
+            assert!(group.imp().row_numbers_row.is_active());
+            assert_eq!(group.imp().null_display_row.text(), "missing");
+        }
+        second.imp().row_height_row.set_selected(1);
+        assert_eq!(first.imp().row_height_row.selected(), 1);
+        assert_eq!(settings.get().grid_row_height(), "normal");
+    }
+
+    #[gtk4::test]
+    fn null_text_entry_limits_characters_without_cutting_unicode() {
+        let settings = MemorySettings::new();
+        let group = bound_group(&settings);
+        let text = "界".repeat(21);
+
+        group.imp().null_display_row.set_text(&text);
+
+        assert_eq!(group.imp().null_display_row.text(), "界".repeat(20));
+        assert_eq!(settings.get().null_display(), "界".repeat(20));
+    }
+    #[gtk4::test]
+    fn cell_font_rows_bind_both_ways_across_windows() {
+        use tablepro_linux_platform::EditorFont;
+        let settings = MemorySettings::new();
+        let first = bound_group(&settings);
+        let second = bound_group(&settings);
+        assert!(!first.imp().grid_font_row.is_sensitive());
+        assert_eq!(
+            first.imp().grid_font_row.activatable_widget(),
+            Some(first.imp().grid_font_button.get().upcast())
+        );
+
+        first.imp().grid_system_font_row.set_active(false);
+        first
+            .imp()
+            .grid_font_button
+            .set_font_desc(&gtk4::pango::FontDescription::from_string("Sans Bold 15"));
+        assert_eq!(settings.get().grid_font(), EditorFont::Custom("Sans Bold 15".into()));
+        assert!(!second.imp().grid_system_font_row.is_active());
+        assert!(second.imp().grid_font_row.is_sensitive());
+        assert_eq!(
+            first.imp().grid_font_button.font_desc(),
+            second.imp().grid_font_button.font_desc()
+        );
+
+        settings.get().set_grid_font(&EditorFont::System).expect("system font");
+        assert!(first.imp().grid_system_font_row.is_active());
+        assert!(!second.imp().grid_font_row.is_sensitive());
+    }
+
+    #[gtk4::test]
+    fn copy_format_rows_follow_every_choice_from_both_windows() {
+        let settings = MemorySettings::new();
+        let first = bound_group(&settings);
+        let second = bound_group(&settings);
+
+        for (index, format) in RowCopyFormat::ALL.into_iter().enumerate() {
+            first.imp().row_copy_format_row.set_selected(index as u32);
+            assert_eq!(settings.get().row_copy_format(), format);
+            assert_eq!(second.imp().row_copy_format_row.selected(), index as u32);
+        }
+        for (index, format) in RowCopyFormat::ALL.into_iter().enumerate().rev() {
+            settings
+                .get()
+                .set_row_copy_format(format.nick())
+                .expect("store copy format");
+            assert_eq!(first.imp().row_copy_format_row.selected(), index as u32);
+            assert_eq!(second.imp().row_copy_format_row.selected(), index as u32);
+        }
+        second.imp().row_copy_format_row.set_selected(2);
+        assert_eq!(first.imp().row_copy_format_row.selected(), 2);
+        assert_eq!(settings.get().row_copy_format(), RowCopyFormat::Json);
+    }
+    #[gtk4::test]
+    fn default_sort_rows_follow_other_windows_and_external_settings() {
+        let settings = MemorySettings::new();
+        let first = bound_group(&settings);
+        let second = bound_group(&settings);
+        first.imp().default_sort_row.set_selected(1);
+        first.imp().default_sort_direction_row.set_selected(1);
+        assert_eq!(settings.get().default_sort(), DefaultSort::PrimaryKey);
+        assert_eq!(settings.get().default_sort_direction(), GridSortDirection::Descending);
+        assert_eq!(second.imp().default_sort_row.selected(), 1);
+        assert_eq!(second.imp().default_sort_direction_row.selected(), 1);
+
+        settings.get().set_default_sort("first-column").expect("default sort");
+        settings
+            .get()
+            .set_default_sort_direction("ascending")
+            .expect("direction");
+        for group in [&first, &second] {
+            assert_eq!(group.imp().default_sort_row.selected(), 2);
+            assert_eq!(group.imp().default_sort_direction_row.selected(), 0);
+        }
+    }
+
+    #[gtk4::test]
+    fn date_format_rows_follow_both_windows_and_external_settings() {
+        let settings = MemorySettings::new();
+        let first = bound_group(&settings);
+        let second = bound_group(&settings);
+        assert_eq!(first.imp().date_format_row.selected(), 0);
+        assert_eq!(second.imp().date_format_row.selected(), 0);
+
+        for (index, format) in DateFormat::ALL.into_iter().enumerate() {
+            first.imp().date_format_row.set_selected(index as u32);
+            assert_eq!(settings.get().date_format(), format);
+            assert_eq!(second.imp().date_format_row.selected(), index as u32);
+        }
+        for (index, format) in DateFormat::ALL.into_iter().enumerate().rev() {
+            settings
+                .get()
+                .set_date_format(format.nick())
+                .expect("store date format");
+            assert_eq!(first.imp().date_format_row.selected(), index as u32);
+            assert_eq!(second.imp().date_format_row.selected(), index as u32);
+        }
+        second.imp().date_format_row.set_selected(2);
+        assert_eq!(first.imp().date_format_row.selected(), 2);
+        assert_eq!(settings.get().date_format(), DateFormat::UsLong);
     }
 }
