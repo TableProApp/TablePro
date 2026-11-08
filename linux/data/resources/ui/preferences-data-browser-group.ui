@@ -50,6 +50,12 @@
       </object>
     </child>
     <child>
+      <object class="AdwSwitchRow" id="invisibles_row">
+        <property name="title" translatable="yes">Mark Spaces, Tabs and Line Breaks</property>
+        <property name="subtitle" translatable="yes">In the value editor of the row details</property>
+      </object>
+    </child>
+    <child>
       <object class="AdwComboRow" id="default_sort_row">
         <property name="title" translatable="yes">Default Sort</property>
         <property name="subtitle" translatable="yes">How a table is ordered when it opens</property>

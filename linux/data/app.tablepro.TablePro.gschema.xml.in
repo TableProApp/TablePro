@@ -130,6 +130,12 @@
       <description>Which way a table tab sorts by its default column.</description>
     </key>
 
+    <key name="show-invisible-characters" type="b">
+      <default>true</default>
+      <summary>Mark spaces, tabs and line breaks in cell values</summary>
+      <description>Whether the row details value editor draws marks for spaces, tabs and line breaks.</description>
+    </key>
+
     <key name="null-display" type="s">
       <default>"NULL"</default>
       <summary>Text for a NULL value</summary>

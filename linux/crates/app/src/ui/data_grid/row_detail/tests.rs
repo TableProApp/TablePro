@@ -1424,3 +1424,22 @@ fn a_page_that_takes_the_row_closes_its_clock_and_writes_nothing() {
     );
     assert!(!pane.imp().clock_popover.is_visible());
 }
+
+#[gtk4::test]
+fn the_value_editor_marks_whitespace_only_when_preferences_ask() {
+    use sourceview5::prelude::*;
+
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    let settings = grid.grid.config().expect("a configured grid").settings.clone();
+    let drawer = pane.imp().value_view.space_drawer();
+
+    assert!(drawer.enables_matrix(), "marks are on by default, as on macOS");
+
+    settings.set_show_invisible_characters(false).expect("store the flag");
+    drain_main_context();
+    assert!(!drawer.enables_matrix());
+
+    settings.set_show_invisible_characters(true).expect("store the flag");
+    drain_main_context();
+    assert!(drawer.enables_matrix());
+}

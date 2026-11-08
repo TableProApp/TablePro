@@ -43,6 +43,8 @@ mod imp {
         #[template_child]
         pub auto_inspector_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
+        pub invisibles_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
         pub default_sort_row: TemplateChild<adw::ComboRow>,
         #[template_child]
         pub default_sort_direction_row: TemplateChild<adw::ComboRow>,
@@ -147,6 +149,9 @@ impl DataBrowserGroup {
             &ROW_HEIGHTS,
             1,
         );
+        gio_settings
+            .bind(keys::SHOW_INVISIBLE_CHARACTERS, &imp.invisibles_row.get(), "active")
+            .build();
         bind_choice(
             &imp.default_sort_row.get(),
             gio_settings,

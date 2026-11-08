@@ -132,6 +132,14 @@ impl AppSettings {
         self.set_string(keys::DEFAULT_SORT_DIRECTION, direction)
     }
 
+    pub fn show_invisible_characters(&self) -> bool {
+        self.settings.boolean(keys::SHOW_INVISIBLE_CHARACTERS)
+    }
+
+    pub fn set_show_invisible_characters(&self, show: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::SHOW_INVISIBLE_CHARACTERS, show)
+    }
+
     /// The format Copy writes for several rows, as a word the schema lists.
     pub fn row_copy_format(&self) -> String {
         self.settings.string(keys::ROW_COPY_FORMAT).into()
