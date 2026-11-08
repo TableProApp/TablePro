@@ -95,12 +95,47 @@ impl WorkspaceModel {
             .borrow()
             .objects
             .clone();
+        let connection = self.context.active.metadata().map(|metadata| metadata.id);
+        let ready = self.history.ready_store();
         let input = self.input.clone();
-        let dialog = crate::ui::quick_open::QuickOpen::new(&objects, move |pick| {
-            let tablepro_core::meta::TableRef { schema, name } = pick.table;
-            input.deliver(match pick.structure {
-                true => WorkspaceInput::EditStructureTab { schema, table: name },
-                false => WorkspaceInput::SelectTable {
+        // The saved queries are read first, so the dialog opens with them.
+        crate::runtime::spawn_and_deliver(
+            &self.tasks,
+            async move {
+                match (ready.await, connection) {
+                    (Some(history), Some(id)) => history.saved_queries().list(Some(id)).await.unwrap_or_default(),
+                    _ => Vec::new(),
+                }
+            },
+            move |saved| {
+                let queries: Vec<(String, String)> = saved
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|query| (query.name, query.query))
+                    .collect();
+                input.deliver(WorkspaceInput::QuickOpenReady { objects, queries });
+            },
+        );
+    }
+
+    pub(super) fn present_quick_open(
+        &mut self,
+        objects: std::sync::Arc<[tablepro_core::meta::ObjectInfo]>,
+        queries: Vec<(String, String)>,
+    ) {
+        let input = self.input.clone();
+        let dialog = crate::ui::quick_open::QuickOpen::new(&objects, &queries, move |pick| {
+            use crate::ui::quick_open::Pick;
+            input.deliver(match pick {
+                Pick::Query(sql) => WorkspaceInput::OpenHistoryQuery(sql),
+                Pick::Table {
+                    table: tablepro_core::meta::TableRef { schema, name },
+                    structure: true,
+                } => WorkspaceInput::EditStructureTab { schema, table: name },
+                Pick::Table {
+                    table: tablepro_core::meta::TableRef { schema, name },
+                    structure: false,
+                } => WorkspaceInput::SelectTable {
                     schema,
                     name,
                     open_mode: super::OpenMode::SwitchOrAppend,

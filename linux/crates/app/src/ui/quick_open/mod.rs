@@ -22,31 +22,64 @@ use crate::ui::icons;
 /// The rows listed at once, which a longer search narrows.
 const LISTED: usize = 200;
 
-/// What the user chose, and whether they asked for its structure.
+/// What the user chose.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Pick {
-    pub table: TableRef,
-    pub structure: bool,
+pub(crate) enum Pick {
+    /// A table or view, and whether they asked for its structure.
+    Table { table: TableRef, structure: bool },
+    /// A saved query's SQL, which opens in a new query tab.
+    Query(String),
+}
+
+/// What the dialog searches: a table or view, or a saved query.
+#[derive(Debug, Clone)]
+pub(crate) enum Entry {
+    Object(ObjectInfo),
+    Query { name: String, sql: String },
+}
+
+impl Entry {
+    pub(crate) fn name(&self) -> &str {
+        match self {
+            Entry::Object(object) => &object.name,
+            Entry::Query { name, .. } => name,
+        }
+    }
 }
 
 type Chosen = Rc<dyn Fn(Pick)>;
 
-/// The tables and views of `objects`, by name.
-pub(crate) fn candidates(objects: &[ObjectInfo]) -> Vec<ObjectInfo> {
-    let mut found: Vec<ObjectInfo> = objects
+/// The tables and views of `objects` and the saved `queries` as (name, SQL),
+/// by name, a table before a query of the same name.
+pub(crate) fn candidates(objects: &[ObjectInfo], queries: &[(String, String)]) -> Vec<Entry> {
+    let mut found: Vec<Entry> = objects
         .iter()
         .filter(|object| object.kind.is_browsable())
         .cloned()
+        .map(Entry::Object)
+        .chain(queries.iter().map(|(name, sql)| Entry::Query {
+            name: name.clone(),
+            sql: sql.clone(),
+        }))
         .collect();
-    found.sort_by_cached_key(|object| (object.name.to_lowercase(), object.schema.clone()));
+    found.sort_by_cached_key(|entry| {
+        (
+            entry.name().to_lowercase(),
+            matches!(entry, Entry::Query { .. }),
+            match entry {
+                Entry::Object(object) => object.schema.clone(),
+                Entry::Query { .. } => None,
+            },
+        )
+    });
     found
 }
 
 /// The candidates `typed` finds, the best first, at most `LISTED`.
-pub(crate) fn search(candidates: &[ObjectInfo], typed: &str) -> Vec<ObjectInfo> {
-    let mut ranked: Vec<(u32, &ObjectInfo)> = candidates
+pub(crate) fn search(candidates: &[Entry], typed: &str) -> Vec<Entry> {
+    let mut ranked: Vec<(u32, &Entry)> = candidates
         .iter()
-        .filter_map(|object| matching::rank(typed, &object.name).map(|rank| (rank, object)))
+        .filter_map(|entry| matching::rank(typed, entry.name()).map(|rank| (rank, entry)))
         .collect();
     // Stable, so equals keep the by-name order the candidates came in.
     ranked.sort_by_key(|(rank, _)| *rank);
@@ -66,15 +99,15 @@ glib::wrapper! {
 mod imp {
     use std::cell::RefCell;
 
+    use super::Entry;
     use gtk4::glib;
     use gtk4::subclass::prelude::*;
     use libadwaita as adw;
     use libadwaita::subclass::prelude::*;
-    use tablepro_core::meta::ObjectInfo;
 
     #[derive(Default)]
     pub struct QuickOpen {
-        pub candidates: RefCell<Vec<ObjectInfo>>,
+        pub(super) candidates: RefCell<Vec<Entry>>,
     }
 
     #[glib::object_subclass]
@@ -90,18 +123,20 @@ mod imp {
 }
 
 impl QuickOpen {
-    pub(crate) fn new(objects: &[ObjectInfo], chosen: impl Fn(Pick) + 'static) -> Self {
+    pub(crate) fn new(objects: &[ObjectInfo], queries: &[(String, String)], chosen: impl Fn(Pick) + 'static) -> Self {
         let dialog: Self = glib::Object::new();
         dialog.set_title(&gettext("Open Quickly"));
         dialog.set_content_width(520);
         dialog.set_content_height(440);
-        let all = candidates(objects);
+        let all = candidates(objects, queries);
         let store = gio::ListStore::new::<glib::BoxedAnyObject>();
         let selection = gtk::SingleSelection::new(Some(store.clone()));
         let list = gtk::ListView::new(Some(selection.clone()), Some(factory()));
         list.add_css_class("navigation-sidebar");
         list.set_single_click_activate(true);
-        list.update_property(&[gtk::accessible::Property::Label(&gettext("Tables and views"))]);
+        list.update_property(&[gtk::accessible::Property::Label(&gettext(
+            "Tables, views and saved queries",
+        ))]);
         let scrolled = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vexpand(true)
@@ -109,21 +144,23 @@ impl QuickOpen {
             .build();
         let empty = adw::StatusPage::builder()
             .title(gettext("No Matches"))
-            .description(gettext("No table or view matches what you typed."))
+            .description(gettext("No table, view or saved query matches what you typed."))
             .build();
         empty.add_css_class("compact");
         let stack = gtk::Stack::new();
         stack.add_named(&scrolled, Some("list"));
         stack.add_named(&empty, Some("empty"));
         let entry = gtk::SearchEntry::builder()
-            .placeholder_text(gettext("Search tables and views"))
+            .placeholder_text(gettext("Search tables, views and saved queries"))
             .hexpand(true)
             .margin_top(12)
             .margin_bottom(6)
             .margin_start(12)
             .margin_end(12)
             .build();
-        entry.update_property(&[gtk::accessible::Property::Label(&gettext("Search tables and views"))]);
+        entry.update_property(&[gtk::accessible::Property::Label(&gettext(
+            "Search tables, views and saved queries",
+        ))]);
         let body = gtk::Box::new(gtk::Orientation::Vertical, 0);
         body.append(&entry);
         body.append(&stack);
@@ -160,19 +197,22 @@ impl QuickOpen {
         let pick = {
             let (store, chosen) = (store.clone(), chosen.clone());
             move |position: u32, structure: bool| {
-                let Some(object) = store
+                let Some(found) = store
                     .item(position)
                     .and_downcast::<glib::BoxedAnyObject>()
-                    .map(|item| item.borrow::<ObjectInfo>().clone())
+                    .map(|item| item.borrow::<Entry>().clone())
                 else {
                     return;
                 };
                 if let Some(dialog) = dialog_weak.upgrade() {
                     dialog.close();
                 }
-                chosen(Pick {
-                    table: TableRef::new(object.schema, object.name),
-                    structure,
+                chosen(match found {
+                    Entry::Object(object) => Pick::Table {
+                        table: TableRef::new(object.schema, object.name),
+                        structure,
+                    },
+                    Entry::Query { sql, .. } => Pick::Query(sql),
                 });
             }
         };
@@ -217,7 +257,7 @@ impl QuickOpen {
             .candidates
             .borrow()
             .iter()
-            .map(|object| object.name.clone())
+            .map(|entry| entry.name().to_owned())
             .collect()
     }
 }
@@ -271,7 +311,7 @@ fn factory() -> gtk::SignalListItemFactory {
         let (Some(object), Some(row)) = (item.item().and_downcast::<glib::BoxedAnyObject>(), item.child()) else {
             return;
         };
-        let object = object.borrow::<ObjectInfo>().clone();
+        let entry = object.borrow::<Entry>().clone();
         let (Some(icon), Some(name), Some(place)) = (
             row.first_child().and_downcast::<gtk::Image>(),
             row.first_child()
@@ -281,15 +321,25 @@ fn factory() -> gtk::SignalListItemFactory {
         ) else {
             return;
         };
-        icon.set_icon_name(Some(match object.kind {
-            ObjectKind::View | ObjectKind::MaterializedView => icons::VIEW_GRID,
-            _ => icons::TABLE_RELATION,
-        }));
-        name.set_label(&object.name);
-        place.set_label(object.schema.as_deref().unwrap_or_default());
-        let described = match object.schema.as_deref() {
-            Some(schema) => gettext_f("{table}, in {schema}", &[("table", &object.name), ("schema", schema)]),
-            None => object.name.clone(),
+        let described = match &entry {
+            Entry::Object(object) => {
+                icon.set_icon_name(Some(match object.kind {
+                    ObjectKind::View | ObjectKind::MaterializedView => icons::VIEW_GRID,
+                    _ => icons::TABLE_RELATION,
+                }));
+                name.set_label(&object.name);
+                place.set_label(object.schema.as_deref().unwrap_or_default());
+                match object.schema.as_deref() {
+                    Some(schema) => gettext_f("{table}, in {schema}", &[("table", &object.name), ("schema", schema)]),
+                    None => object.name.clone(),
+                }
+            }
+            Entry::Query { name: title, .. } => {
+                icon.set_icon_name(Some("text-x-generic-symbolic"));
+                name.set_label(title);
+                place.set_label(&gettext("Saved query"));
+                gettext_f("{name}, a saved query", &[("name", title)])
+            }
         };
         item.set_accessible_label(&described);
     });
@@ -304,40 +354,60 @@ mod tests {
         ObjectInfo::new(Some(schema.to_owned()), name, kind)
     }
 
-    fn names(found: &[ObjectInfo]) -> Vec<&str> {
-        found.iter().map(|object| object.name.as_str()).collect()
+    fn names(found: &[Entry]) -> Vec<&str> {
+        found.iter().map(Entry::name).collect()
     }
 
     #[test]
     fn only_what_the_grid_can_page_is_offered_and_it_is_ordered_by_name() {
-        let all = candidates(&[
-            table("public", "orders", ObjectKind::Table),
-            table("public", "recount", ObjectKind::Function),
-            table("public", "Customers", ObjectKind::View),
-            table("public", "customers_id_seq", ObjectKind::Sequence),
-        ]);
+        let all = candidates(
+            &[
+                table("public", "orders", ObjectKind::Table),
+                table("public", "recount", ObjectKind::Function),
+                table("public", "Customers", ObjectKind::View),
+                table("public", "customers_id_seq", ObjectKind::Sequence),
+            ],
+            &[],
+        );
 
         assert_eq!(names(&all), ["Customers", "orders"]);
     }
 
     #[test]
     fn the_best_match_comes_first_and_a_miss_is_left_out() {
-        let all = candidates(&[
-            table("public", "reorder_log", ObjectKind::Table),
-            table("public", "orders", ObjectKind::Table),
-            table("sales", "order_items", ObjectKind::Table),
-            table("public", "users", ObjectKind::Table),
-        ]);
+        let all = candidates(
+            &[
+                table("public", "reorder_log", ObjectKind::Table),
+                table("public", "orders", ObjectKind::Table),
+                table("sales", "order_items", ObjectKind::Table),
+                table("public", "users", ObjectKind::Table),
+            ],
+            &[],
+        );
 
         assert_eq!(names(&search(&all, "ord")), ["order_items", "orders", "reorder_log"]);
         assert!(search(&all, "zzz").is_empty());
         assert_eq!(search(&all, "").len(), 4);
     }
 
+    #[test]
+    fn a_saved_query_is_found_by_its_name_beside_the_tables() {
+        let all = candidates(
+            &[table("public", "orders", ObjectKind::Table)],
+            &[
+                ("Orders this week".to_owned(), "SELECT 1".to_owned()),
+                ("Monthly report".to_owned(), "SELECT 2".to_owned()),
+            ],
+        );
+
+        assert_eq!(names(&search(&all, "orders")), ["orders", "Orders this week"]);
+        assert_eq!(names(&search(&all, "month")), ["Monthly report"]);
+    }
+
     #[gtk4::test]
     fn the_dialog_searches_the_tables_it_was_given() {
         libadwaita::init().expect("libadwaita initialises under the test backend");
-        let dialog = QuickOpen::new(&[table("public", "orders", ObjectKind::Table)], |_| {});
+        let dialog = QuickOpen::new(&[table("public", "orders", ObjectKind::Table)], &[], |_| {});
 
         assert_eq!(dialog.candidate_names(), ["orders"]);
     }

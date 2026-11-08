@@ -545,8 +545,13 @@ pub(crate) enum WorkspaceInput {
     DraftsNotSaved,
     ShowHistory,
     ShowSavedQueries,
-    /// Open Quickly: search the connection's tables and views.
+    /// Open Quickly: search the connection's tables, views and saved queries.
     ShowQuickOpen,
+    /// The saved queries of Open Quickly are read, and its dialog opens.
+    QuickOpenReady {
+        objects: std::sync::Arc<[tablepro_core::meta::ObjectInfo]>,
+        queries: Vec<(String, String)>,
+    },
     ActiveTab(workspace_tabs::ActiveTabCommand),
     SaveQueryNamed {
         name: String,
@@ -1398,6 +1403,7 @@ impl WorkspaceModel {
             WorkspaceInput::ShowHistory => self.on_show_history(),
             WorkspaceInput::ShowSavedQueries => self.on_show_saved_queries(),
             WorkspaceInput::ShowQuickOpen => self.on_show_quick_open(),
+            WorkspaceInput::QuickOpenReady { objects, queries } => self.present_quick_open(objects, queries),
             WorkspaceInput::ImportCsvRequested { schema, table } => self.on_import_csv_requested(schema, table),
             WorkspaceInput::Transfer(input) => self.on_transfer(input),
             WorkspaceInput::ImportCsvReady {
