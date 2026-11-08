@@ -1468,8 +1468,14 @@ fn refreshable_structure() -> Harness {
     let mut script = postgres_script();
     script
         .fetch_table_definition
-        .once(FakeReply::ok(definition("id")))
-        .always(FakeReply::ok(definition("server_id")));
+        .once(FakeReply::ok(TableDefinition {
+            columns: vec![integer_column("id", false)],
+            ..definition("id")
+        }))
+        .always(FakeReply::ok(TableDefinition {
+            columns: vec![integer_column("server_id", false)],
+            ..definition("server_id")
+        }));
     let harness = Harness::open(StructureMode::Edit, script, []);
     harness.wait_for_structure();
     harness.tab().send(ColumnsInput::ColumnEdited {

@@ -399,19 +399,24 @@ fn refreshing_cannot_discard_rows_while_their_save_is_running() {
             .sender()
             .expect("workspace input")
             .deliver(WorkspaceInput::Save(SaveRequest::Rows(id)));
+        let connection = test.connection();
         wait_until(WAIT, || {
             tracker.pending_state() == crate::workspace::PendingState::Saving
+                && !connection.observed_cancels("write_batch").is_empty()
         })
-        .expect("the row save starts");
+        .expect("the row save reaches the driver");
 
         if refresh_first {
             assert!(answer(&test.window, "discard"));
         } else {
             workspace.with_model(|model| model.on_refresh_tab(id));
-            drain_main_context();
+            // A saving spinner keeps scheduling frames, so draining until idle can outlive the save's deadline.
+            after_next_frame(&test.window);
+            let alert = visible_alert(&test.window);
             assert!(
-                visible_alert(&test.window).is_none(),
-                "refresh offered to discard an active save"
+                alert.is_none(),
+                "refresh showed an alert during an active save: {:?}",
+                alert.map(|alert| (alert.heading(), alert.body()))
             );
         }
         assert_eq!(tracker.pending_state(), crate::workspace::PendingState::Saving);
