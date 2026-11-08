@@ -589,6 +589,47 @@ mod tests {
     }
 
     #[gtk4::test]
+    fn columns_follows_the_shown_result_and_clears_with_the_run() {
+        use crate::ui::data_grid::test_grid::{Grid, named};
+        use std::cell::Cell;
+        use std::rc::Rc;
+
+        let grid = Grid::open(vec![named("id", "int", true)], vec![]);
+        grid.window.set_child(None::<&gtk4::Widget>);
+        let pane = pane();
+        let result_grid = grid.grid.clone();
+        pane.set_page_builder(move |index| {
+            Some(if index == 0 {
+                ResultPage {
+                    widget: result_grid.clone().upcast(),
+                    grid: Some(result_grid.clone()),
+                }
+            } else {
+                ResultPage::plain(gtk4::Label::new(Some("Done")).upcast())
+            })
+        });
+        grid.window.set_child(Some(&pane));
+        let activated = Rc::new(Cell::new(0));
+        let count = activated.clone();
+        let action = gio::SimpleAction::new("columns", None);
+        action.connect_activate(move |_, _| count.set(count.get() + 1));
+        grid.grid.actions().add_action(&action);
+        pane.append(&[command(), command()]);
+        assert!(pane.imp().columns_button.is_visible());
+        pane.imp().columns_button.emit_clicked();
+        assert_eq!(activated.get(), 1);
+        pane.select(1);
+        assert!(!pane.imp().columns_button.is_visible());
+        assert!(pane.activate_action("grid.columns", None).is_err());
+        pane.select(0);
+        pane.imp().columns_button.emit_clicked();
+        assert_eq!(activated.get(), 2);
+        pane.clear();
+        assert!(!pane.imp().columns_button.is_visible());
+        assert!(pane.activate_action("grid.columns", None).is_err());
+    }
+
+    #[gtk4::test]
     fn a_long_list_builds_only_the_page_it_shows() {
         let pane = pane();
         let not_run = entry(EntryKind::NotRun);

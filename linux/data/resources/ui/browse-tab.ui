@@ -197,28 +197,13 @@
               </object>
             </child>
             <child type="end">
-              <!-- Which columns the grid shows, as the macOS bar's Columns. -->
               <object class="GtkButton" id="columns_button">
+                <property name="label" translatable="yes">Columns</property>
                 <property name="tooltip-text" translatable="yes">Choose which columns the grid shows</property>
                 <property name="action-name">grid.columns</property>
                 <style>
                   <class name="flat"/>
                 </style>
-                <property name="child">
-                  <object class="GtkBox">
-                    <property name="spacing">6</property>
-                    <child>
-                      <object class="GtkImage">
-                        <property name="icon-name">view-reveal-symbolic</property>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkLabel">
-                        <property name="label" translatable="yes">Columns</property>
-                      </object>
-                    </child>
-                  </object>
-                </property>
               </object>
             </child>
             <child type="end">

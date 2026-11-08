@@ -1537,22 +1537,51 @@ fn a_dotted_field_of_a_document_neither_sorts_nor_takes_an_edit() {
     assert_eq!(harness.tracker.pending_count(), 0);
 }
 
-/// The bar's Columns reaches the grid's column chooser, and gives way to
-/// the More menu on a narrow tab.
 #[gtk4::test]
 fn the_bottom_bar_offers_the_column_chooser() {
-    use gtk4::prelude::*;
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    use libadwaita::prelude::*;
 
-    let harness = Harness::open(serving_table(), []);
-    let tab = harness.tab().clone();
-    let button = crate::test_support::descendants(&tab)
-        .into_iter()
-        .filter_map(|widget| widget.downcast::<gtk4::Button>().ok())
-        .find(|button| button.action_name().as_deref() == Some("grid.columns"))
-        .expect("a Columns button");
-
-    assert_eq!(
-        button.tooltip_text().as_deref(),
-        Some("Choose which columns the grid shows")
+    let mut script = serving_table();
+    script.run.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    let tab = harness.tab();
+    let window = crate::test_support::OwnedWindow::presented(
+        libadwaita::Window::builder()
+            .default_width(1000)
+            .default_height(500)
+            .content(tab)
+            .build(),
     );
+    let button = crate::test_support::find_by_action_name(tab, "grid.columns")
+        .and_downcast::<gtk4::Button>()
+        .expect("a Columns button");
+    wait_until(WAIT, || !harness.shown().is_empty() && button.is_visible()).expect("the wide bar shows Columns");
+    assert_eq!(button.label().as_deref(), Some("Columns"));
+    assert!(button.is_focusable());
+    button.emit_clicked();
+    wait_until(WAIT, || window.visible_dialog().is_some()).expect("Columns opens a dialog");
+    let chooser = window.visible_dialog().expect("the chooser");
+    assert!(chooser.is::<crate::ui::data_grid::ColumnChooser>());
+    chooser.close();
+    wait_until(WAIT, || window.visible_dialog().is_none()).expect("the chooser closes");
+
+    window.set_default_size(600, 500);
+    wait_until(WAIT, || !button.is_visible() && tab.imp().more_button.is_visible())
+        .expect("the narrow bar offers More");
+    let menu = tab.imp().more_button.menu_model().expect("More menu");
+    let actions = menu
+        .item_link(0, gtk4::gio::MENU_LINK_SECTION)
+        .expect("actions section");
+    assert!((0..actions.n_items()).any(|index| {
+        actions
+            .item_attribute_value(index, gtk4::gio::MENU_ATTRIBUTE_ACTION, None)
+            .and_then(|value| value.get::<String>())
+            .as_deref()
+            == Some("grid.columns")
+    }));
+    tab.activate_action("grid.columns", None)
+        .expect("More reaches the grid");
+    wait_until(WAIT, || window.visible_dialog().is_some()).expect("More opens Columns");
+    window.visible_dialog().expect("the chooser").close();
 }
