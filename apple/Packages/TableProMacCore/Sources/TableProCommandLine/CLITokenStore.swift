@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import TableProMCP
 
 public protocol CLITokenStoring: Sendable {
     func read() throws -> String?

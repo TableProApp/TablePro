@@ -1,5 +1,5 @@
 import Foundation
-@testable import TableProMCP
+@testable import TableProCommandLine
 import Testing
 
 struct CLITokenStoreTests {

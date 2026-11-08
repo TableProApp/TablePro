@@ -1,0 +1,45 @@
+[package]
+name = "tablepro-cli"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# No colour: output is never coloured, and the feature pulls in anstream.
+# string: the version printed is the app's, known only at run time.
+clap = { version = "4.6.7", default-features = false, features = [
+    "std",
+    "derive",
+    "help",
+    "usage",
+    "error-context",
+    "suggestions",
+    "string",
+] }
+clap_complete = "4.6.11"
+reqwest.workspace = true
+rmcp = { version = "3.6.0", default-features = false, features = ["client", "transport-streamable-http-client-reqwest"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt"] }
+tracing.workspace = true
+unicode-width.workspace = true
+
+[dev-dependencies]
+tablepro-core.workspace = true
+tablepro-driver-sqlite.workspace = true
+tablepro-mcp.workspace = true
+tablepro-session.workspace = true
+tablepro-ssh.workspace = true
+tablepro-storage.workspace = true
+async-trait.workspace = true
+secrecy.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt", "test-util"] }
+tokio-util.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

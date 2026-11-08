@@ -1,5 +1,6 @@
 import Foundation
-@testable import TableProMCP
+@testable import TableProCommandLine
+import TableProMCP
 import Testing
 
 struct CLIRowWriterTests {
@@ -94,6 +95,22 @@ struct CLIRowWriterTests {
         ---+----------------
         1  | ada@example.com
         10 | NULL
+
+        """)
+    }
+
+    @Test("The table pads by terminal cells, so wide characters keep the columns lined up")
+    func tableWideCharacters() {
+        let set = CLIResultSet(
+            columns: ["name", "id"],
+            rows: [[.string("日本語"), .string("1")], [.string("abcdef"), .string("2")], [.string("😀"), .string("3")]]
+        )
+        #expect(render(set, .table) == """
+        name   | id
+        -------+---
+        日本語 | 1
+        abcdef | 2
+        😀     | 3
 
         """)
     }

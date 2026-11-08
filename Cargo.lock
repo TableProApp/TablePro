@@ -1230,6 +1230,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap_complete"
+version = "4.6.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "037e2a1a92236d0aff7e845093f64661d6df4c02c9fcc61a60e9e1d736fa392f"
+dependencies = [
+ "clap",
+]
+
+[[package]]
 name = "clap_derive"
 version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6106,6 +6115,7 @@ dependencies = [
  "pastey",
  "pin-project-lite",
  "rand 0.10.2",
+ "reqwest",
  "schemars 1.2.2",
  "serde",
  "serde_json",
@@ -7574,6 +7584,7 @@ dependencies = [
  "sqlformat",
  "tablepro-account",
  "tablepro-ai",
+ "tablepro-cli",
  "tablepro-core",
  "tablepro-driver-cassandra",
  "tablepro-driver-clickhouse",
@@ -7667,6 +7678,33 @@ name = "tablepro-bindgen"
 version = "0.0.0"
 dependencies = [
  "uniffi",
+]
+
+[[package]]
+name = "tablepro-cli"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "clap",
+ "clap_complete",
+ "reqwest",
+ "rmcp",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "tablepro-core",
+ "tablepro-driver-sqlite",
+ "tablepro-mcp",
+ "tablepro-session",
+ "tablepro-ssh",
+ "tablepro-storage",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "unicode-width",
+ "uuid",
 ]
 
 [[package]]

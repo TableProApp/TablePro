@@ -25,7 +25,8 @@ internal struct MCPServerComposition {
         let transport = MCPHttpServerTransport(
             configuration: .loopback(port: port, socketPath: socketPath),
             authenticator: authenticator,
-            pairingService: .shared
+            pairingService: .shared,
+            tokenRevoker: tokenStore
         )
         let subscriptions = MCPSubscriptionRegistry()
         let services = MCPToolServices(

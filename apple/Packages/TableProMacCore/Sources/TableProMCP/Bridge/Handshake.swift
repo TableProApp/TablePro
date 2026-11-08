@@ -1,16 +1,16 @@
+import AppKit
 import Foundation
 import os
-import TableProProcess
 
 public enum MCPHandshakeAcquisitionError: Error, LocalizedError, Equatable {
-    case launchFailed(status: Int32)
+    case launchFailed(String)
     case timeout(lastFailure: String)
     case serverTurnedOff
 
     public var errorDescription: String? {
         switch self {
-        case .launchFailed(let status):
-            return "Failed to launch TablePro (open exit \(status))"
+        case .launchFailed(let reason):
+            return "Failed to launch TablePro: \(reason)"
         case .timeout(let lastFailure):
             return "Timed out waiting for a trusted TablePro MCP handshake (\(lastFailure))"
         case .serverTurnedOff:
@@ -27,13 +27,13 @@ public struct MCPHandshakeAcquirer: Sendable {
     let refusalUrl: URL
     let logger: any MCPBridgeLogger
     private let pollTimeout: Duration
-    private let launchHostApp: @Sendable (any MCPBridgeLogger) throws -> Void
+    private let launchHostApp: @Sendable (any MCPBridgeLogger) async throws -> Void
 
     public init(
         logger: any MCPBridgeLogger,
         supportDirectory: URL = MCPHandshakeLocation.supportDirectory(),
         pollTimeout: Duration = .seconds(10),
-        launchHostApp: @escaping @Sendable (any MCPBridgeLogger) throws -> Void = { try openHostApp(logger: $0) }
+        launchHostApp: @escaping @Sendable (any MCPBridgeLogger) async throws -> Void = { try await openHostApp(logger: $0) }
     ) {
         self.handshakeUrl = MCPHandshakeLocation.file(in: supportDirectory)
         self.refusalUrl = MCPHandshakeLocation.refusalFile(in: supportDirectory)
@@ -47,7 +47,7 @@ public struct MCPHandshakeAcquirer: Sendable {
             return trusted
         }
         let launchRequestedAt = Date()
-        try launchHostApp(logger)
+        try await launchHostApp(logger)
         return try await pollForTrustedHandshake(launchRequestedAt: launchRequestedAt)
     }
 
@@ -79,23 +79,33 @@ public struct MCPHandshakeAcquirer: Sendable {
         return refusal.answers(launchRequestedAt: launchRequestedAt)
     }
 
-    // `open` hands its own environment to the app it launches, which is how the flag arrives early
-    // enough for the app to stay out of the Dock and the app switcher. Nobody asked for this window
-    // of TablePro: a client did, to answer a question.
-    public static func openHostApp(logger: any MCPBridgeLogger) throws {
-        logger.log(.info, "No trusted MCP handshake; launching TablePro via \(Self.launchUrl)")
-        var environment = ProcessEnvironment.inherited()
-        environment[BackgroundLaunchFlag.variable] = BackgroundLaunchFlag.value
-        let process = try ProcessLauncher.process(for: ProcessCommand(
-            executable: URL(fileURLWithPath: "/usr/bin/open"),
-            arguments: ["-g", Self.launchUrl],
-            environment: environment
-        ))
-        try process.run()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            throw MCPHandshakeAcquisitionError.launchFailed(status: process.terminationStatus)
+    // The copy this helper ships in, not whichever copy owns `tablepro://`. Substitution stays on, so a
+    // running copy elsewhere still answers instead of a second instance starting. The flag has to be in
+    // the launch environment, read before NSApplicationMain, to keep the app out of the Dock.
+    public static func openHostApp(logger: any MCPBridgeLogger) async throws {
+        guard let url = URL(string: launchUrl) else {
+            throw MCPHandshakeAcquisitionError.launchFailed("the start link is not a URL")
         }
+        let configuration = launchConfiguration(environment: ProcessInfo.processInfo.environment)
+        do {
+            if let app = MCPHostApp.containingCurrentProcess() {
+                logger.log(.info, "No trusted MCP handshake; launching \(app.path) via \(Self.launchUrl)")
+                _ = try await NSWorkspace.shared.open([url], withApplicationAt: app, configuration: configuration)
+            } else {
+                logger.log(.info, "No trusted MCP handshake and no enclosing app; launching TablePro via \(Self.launchUrl)")
+                _ = try await NSWorkspace.shared.open(url, configuration: configuration)
+            }
+        } catch {
+            throw MCPHandshakeAcquisitionError.launchFailed(error.localizedDescription)
+        }
+    }
+
+    static func launchConfiguration(environment: [String: String]) -> NSWorkspace.OpenConfiguration {
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = false
+        configuration.environment = environment
+        configuration.environment[BackgroundLaunchFlag.variable] = BackgroundLaunchFlag.value
+        return configuration
     }
 
     private func pollForTrustedHandshake(launchRequestedAt: Date?) async throws -> MCPHandshakePayload {
@@ -121,5 +131,23 @@ public struct MCPHandshakeAcquirer: Sendable {
 public extension MCPHandshakePayload {
     func credentials() -> MCPUpstreamCredentials {
         MCPUpstreamCredentials(socketPath: socketPath, bearerToken: token)
+    }
+}
+
+public enum MCPHostApp {
+    // proc_pidpath, not Bundle.main: run through a link, Bundle.main is the link's folder.
+    public static func containingCurrentProcess() -> URL? {
+        MCPHandshakeTrust.executablePath(forPid: getpid()).flatMap(containing(executablePath:))
+    }
+
+    // Only Contents/MacOS: a tool somewhere else inside another app, such as xctest in Xcode, has no host app.
+    public static func containing(executablePath: String) -> URL? {
+        let macOS = URL(fileURLWithPath: executablePath).resolvingSymlinksInPath().deletingLastPathComponent()
+        let contents = macOS.deletingLastPathComponent()
+        let app = contents.deletingLastPathComponent()
+        guard macOS.lastPathComponent == "MacOS", contents.lastPathComponent == "Contents", app.pathExtension == "app" else {
+            return nil
+        }
+        return app.standardizedFileURL
     }
 }

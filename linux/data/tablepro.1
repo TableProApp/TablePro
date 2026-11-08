@@ -4,7 +4,17 @@ tablepro \- work with your databases
 .SH SYNOPSIS
 .B tablepro
 .RI [ OPTION ...]
-.RI [ FILE ...]
+.RI [ FILE " or " URL ...]
+.br
+.B tablepro open
+.IR FILE " or " URL ...
+.br
+.B tablepro
+.I COMMAND
+.RI [ OPTION ...]
+.br
+.B tablepro
+.BR \-\-help " | " \-\-version
 .SH DESCRIPTION
 TablePro connects to PostgreSQL, MySQL, SQLite, DuckDB, SQL Server, ClickHouse,
 Cassandra, ScyllaDB, Redis and MongoDB.
@@ -16,20 +26,96 @@ Each
 is a SQLite or DuckDB database, opened in its own window,
 or a SQL file, opened in an editor tab of the connection in front.
 A SQL file never runs by itself; with no connection open, the window asks for one.
-A running TablePro opens the files itself and the new launch exits.
+.PP
+Each
+.I URL
+is a connection URL, such as
+.BR postgresql://ada@db.example.com/shop .
+TablePro reads the postgres, postgresql, mysql, mariadb, mysqlx, sqlserver, mssql,
+mongodb, mongodb+srv, redis, rediss, valkey, valkeys, clickhouse, ch, cassandra,
+cql, scylla, scylladb, sqlite, sqlite3 and duckdb schemes.
+A URL that goes where a saved connection goes asks before it opens that connection;
+any other opens the connect dialog filled from it, where Connect is the user's choice.
+A URL never connects on its own.
+.PP
+A running TablePro opens the files and URLs itself and the new launch exits.
+A file whose name is a command's opens with
+.B tablepro open
+or a path such as
+.BR ./query .
+.SH COMMANDS
+The commands talk to the running TablePro through its MCP server, which
+.B Preferences > MCP > Enable MCP Server
+turns on.
+They read the server's port from the settings and its token from the keyring,
+and never start TablePro.
+.B tablepro help
+.I COMMAND
+shows a command's options.
+.TP
+.B open
+Open files and connection URLs, as
+.B tablepro
+does with no command.
+.TP
+.B query
+Run one SQL statement through a saved connection and print the rows.
+.TP
+.B connections
+List the saved connections the commands can use.
+.TP
+.BR databases ", " schemas ", " tables
+List a connection's databases, schemas, or tables and views.
+.TP
+.B describe
+Show a table's columns, indexes and foreign keys, or its DDL with
+.BR \-\-ddl .
+.TP
+.B export
+Print a table as CSV, JSON or SQL INSERT statements, up to 1,000 rows.
+.TP
+.B status
+Say whether TablePro runs, whether its MCP server is on, and whether the command can use it.
+.TP
+.BI "completion " SHELL
+Print the completion script for
+.BR bash ", " zsh " or " fish .
+The packages install all three.
+.TP
+.B help
+Show the commands, or one command's options.
 .SH OPTIONS
 .TP
 .BR \-n ", " \-\-new\-window
 Open a new window, in the running TablePro when there is one.
+With files or URLs, they open in a window of their own.
 .TP
 .B \-\-version
 Print the version and exit.
 .TP
 .BR \-h ", " \-\-help
-Show the options and exit.
+Show the commands and exit.
 .TP
 .B \-\-help\-all
-Show every option, including the GApplication ones, and exit.
+Show the options of the window and of GApplication, and exit.
+.SH EXIT STATUS
+.TP
+.B 0
+Done.
+.TP
+.B 1
+The database returned an error, TablePro could not be reached, or the output could not be written.
+.TP
+.B 2
+A usage error: an unknown command or option, a bad value, an unknown connection, or a
+.I FILE
+that does not exist.
+.TP
+.B 3
+Refused: by the connection's External Clients level, Safe Mode, or the MCP server being off.
+.TP
+.B 4
+The statement timed out.
 .SH ENVIRONMENT
 .TP
 .B RUST_LOG
@@ -78,6 +164,10 @@ is
 .IR ~/.local/share .
 Preferences are kept in GSettings, under the schema
 .BR app.tablepro.TablePro .
+.SH NOTES
+In the Flatpak, the commands run inside the sandbox:
+.B flatpak run app.tablepro.TablePro
+.IR COMMAND .
 .SH BUGS
 Report bugs at https://github.com/TableProApp/TablePro/issues.
 Include the text that Copy Text puts on the clipboard in

@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 public enum CLIExitCode: Int32, Sendable, Equatable {
     case success = 0

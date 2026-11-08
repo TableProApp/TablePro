@@ -46,6 +46,7 @@ private func withSocketServer(
         configuration: .loopback(port: 0, socketPath: socketPath, limits: limits),
         authenticator: authenticator,
         pairingService: pairing,
+        tokenRevoker: StubUnknownTokenRevoker(),
         allowedSocketPeerUid: allowedPeerUid
     )
     try await transport.start()
@@ -197,7 +198,8 @@ struct MCPUnixSocketTransportTests {
         let transport = MCPHttpServerTransport(
             configuration: .loopback(port: 0, socketPath: socketPath),
             authenticator: StubAlwaysAllowAuthenticator(),
-            pairingService: await MCPPairingService()
+            pairingService: await MCPPairingService(),
+            tokenRevoker: StubUnknownTokenRevoker()
         )
         await #expect(throws: MCPHttpServerError.self) {
             try await transport.start()

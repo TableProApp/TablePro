@@ -1,19 +1,25 @@
 import Foundation
-
-public enum CLIClientIdentity {
-    // The app files a query under Command Line when a request names this client.
-    public static let name = "tablepro-cli"
-    public static let title = "Command Line"
-    public static let pairingName = "tablepro command"
-}
+import TableProMCP
 
 public enum CLIServerClientError: Error, Sendable, Equatable {
     // Revoked, expired or unknown.
     case tokenRejected(String)
 }
 
+public enum CLIRevocation: Sendable, Equatable {
+    // Also an answer for a token TablePro no longer knows (RFC 7009, section 2.2).
+    case revoked
+    // HTTP 503 (RFC 7009, section 2.2.1): the token still works at TablePro.
+    case unavailable
+    case refused(String)
+}
+
 public struct CLIServerClient: Sendable {
     static let requestTimeout: Duration = .seconds(360)
+    static let revocationPath = "/v1/integrations/revoke"
+    private static let formUnreserved = CharacterSet(
+        charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+    )
 
     private let socketPath: String
     private let token: String
@@ -24,41 +30,59 @@ public struct CLIServerClient: Sendable {
     }
 
     public func callTool(_ name: String, arguments: [String: JsonValue]) async throws -> JsonValue {
-        // The server tracks a call in flight by token and id, and every run of this command shares one token.
-        let requestId = JsonRpcId.string(UUID().uuidString)
         let params: JsonValue = .object([
             "name": .string(name),
             "arguments": .object(arguments),
-            "_meta": .object([
-                MCPMetaKeys.protocolVersion: .string(MCPProtocolVersion.latest.rawValue),
-                MCPMetaKeys.clientCapabilities: .object([:]),
-                MCPMetaKeys.clientInfo: .object([
-                    "name": .string(CLIClientIdentity.name),
-                    "title": .string(CLIClientIdentity.title),
-                    "version": .string("1")
-                ])
+            "_meta": Self.meta
+        ])
+        let result = try await rpc(method: "tools/call", params: params, toolName: name)
+        return try Self.toolOutput(result)
+    }
+
+    // server/discover needs no scope and touches no connection, so it only proves the token.
+    public func tokenIsAccepted() async throws -> Bool {
+        do {
+            _ = try await rpc(method: "server/discover", params: .object(["_meta": Self.meta]), toolName: nil)
+            return true
+        } catch CLIServerClientError.tokenRejected {
+            return false
+        }
+    }
+
+    private static var meta: JsonValue {
+        .object([
+            MCPMetaKeys.protocolVersion: .string(MCPProtocolVersion.latest.rawValue),
+            MCPMetaKeys.clientCapabilities: .object([:]),
+            MCPMetaKeys.clientInfo: .object([
+                "name": .string(CLIClientIdentity.name),
+                "title": .string(CLIClientIdentity.title),
+                "version": .string(CLIHostApp.current.version ?? "unknown")
             ])
         ])
-        let body = try JsonRpcCodec.encode(.request(JsonRpcRequest(id: requestId, method: "tools/call", params: params)))
+    }
 
-        let request = MCPSocketHttpRequest(
-            path: "/mcp",
-            headers: [
-                ("Content-Type", "application/json"),
-                ("Accept", "application/json, text/event-stream"),
-                ("Authorization", "Bearer \(token)"),
-                ("MCP-Protocol-Version", MCPProtocolVersion.latest.rawValue),
-                ("Mcp-Method", "tools/call"),
-                ("Mcp-Name", MCPBase64Sentinel.encodeIfNeeded(name))
-            ],
-            body: body
-        )
+    private func rpc(method: String, params: JsonValue, toolName: String?) async throws -> JsonValue {
+        // The server tracks a call in flight by token and id, and every run of this command shares one token.
+        let requestId = JsonRpcId.string(UUID().uuidString)
+        let body = try JsonRpcCodec.encode(.request(JsonRpcRequest(id: requestId, method: method, params: params)))
+
+        var headers = [
+            ("Content-Type", "application/json"),
+            ("Accept", "application/json, text/event-stream"),
+            ("Authorization", "Bearer \(token)"),
+            ("MCP-Protocol-Version", MCPProtocolVersion.latest.rawValue),
+            ("Mcp-Method", method)
+        ]
+        if let toolName {
+            headers.append(("Mcp-Name", MCPBase64Sentinel.encodeIfNeeded(toolName)))
+        }
+        let request = MCPSocketHttpRequest(path: "/mcp", headers: headers, body: body)
 
         let (data, response) = try await Self.send(request, socketPath: socketPath)
         let message = try await responseMessage(data: data, response: response, requestId: requestId)
         switch message {
         case .successResponse(let success):
-            return try Self.toolOutput(success.result)
+            return success.result
         case .errorResponse(let failure):
             if failure.error.code == JsonRpcErrorCode.unauthenticated || failure.error.code == JsonRpcErrorCode.expired {
                 throw CLIServerClientError.tokenRejected(failure.error.message)
@@ -130,6 +154,23 @@ public struct CLIServerClient: Sendable {
             throw CLIFailure(.refused, "TablePro did not hand over a token: \(detail).")
         }
         return token
+    }
+
+    // RFC 7009: the token travels as a form field, and holding it is the credential.
+    public static func revoke(token: String, socketPath: String) async throws -> CLIRevocation {
+        let value = token.addingPercentEncoding(withAllowedCharacters: formUnreserved) ?? ""
+        let request = MCPSocketHttpRequest(
+            path: revocationPath,
+            headers: [("Content-Type", "application/x-www-form-urlencoded")],
+            body: Data("token=\(value)".utf8)
+        )
+
+        let (data, response) = try await send(request, socketPath: socketPath)
+        guard response.status != 200 else { return .revoked }
+        if response.status == 503 { return .unavailable }
+        let body = try? JSONDecoder().decode(JsonValue.self, from: data)
+        let detail = body?["error_description"]?.stringValue ?? body?["error"]?.stringValue ?? "HTTP \(response.status)"
+        return .refused(detail)
     }
 
     private static func send(_ request: MCPSocketHttpRequest, socketPath: String) async throws -> (Data, CLIServerResponse) {

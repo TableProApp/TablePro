@@ -1,5 +1,6 @@
 import Foundation
 import TableProCoreTypes
+import TableProMCP
 
 public struct CLIResultSet: Sendable, Equatable {
     public let columns: [String]
@@ -175,13 +176,14 @@ public enum CLIRowWriter {
 
     static let nullMarker = "NULL"
 
+    // Widths are terminal cells, not characters: 日本語 is three characters drawn six cells wide.
     private static func writeTable(_ set: CLIResultSet, to output: inout some TextOutputStream) {
-        let header = set.columns.map(tableCell)
-        let body = set.rows.map { cells($0, count: set.columns.count).map(tableCellValue) }
-        var widths = header.map(\.count)
+        let header = set.columns.map { MeasuredCell(tableCell($0)) }
+        let body = set.rows.map { cells($0, count: set.columns.count).map { MeasuredCell(tableCellValue($0)) } }
+        var widths = header.map(\.width)
         for row in body {
             for (index, cell) in row.enumerated() {
-                widths[index] = max(widths[index], cell.count)
+                widths[index] = max(widths[index], cell.width)
             }
         }
         output.write(tableLine(header, widths: widths))
@@ -192,11 +194,21 @@ public enum CLIRowWriter {
         }
     }
 
-    private static func tableLine(_ cells: [String], widths: [Int]) -> String {
+    private static func tableLine(_ cells: [MeasuredCell], widths: [Int]) -> String {
         let padded = cells.enumerated().map { index, cell in
-            index == cells.count - 1 ? cell : cell + String(repeating: " ", count: widths[index] - cell.count)
+            index == cells.count - 1 ? cell.text : cell.text + String(repeating: " ", count: widths[index] - cell.width)
         }
         return padded.joined(separator: " | ") + "\n"
+    }
+
+    private struct MeasuredCell {
+        let text: String
+        let width: Int
+
+        init(_ text: String) {
+            self.text = text
+            self.width = CLITerminalText.width(of: text)
+        }
     }
 
     private static func tableCellValue(_ value: JsonValue) -> String {
@@ -206,7 +218,7 @@ public enum CLIRowWriter {
 
     // The table goes to a terminal, so a stored escape sequence is shown, never run.
     static func tableCell(_ text: String) -> String {
-        guard text.unicodeScalars.contains(where: isControl) else { return text }
+        guard text.unicodeScalars.contains(where: CLITerminalText.isControl) else { return text }
         var escaped = ""
         for scalar in text.unicodeScalars {
             switch scalar {
@@ -215,18 +227,14 @@ public enum CLIRowWriter {
             case "\n": escaped += "\\n"
             case "\r": escaped += "\\r"
             default:
-                if isControl(scalar) {
-                    escaped += String(format: "\\x%02X", scalar.value)
+                if CLITerminalText.isControl(scalar) {
+                    escaped += CLITerminalText.hex(scalar)
                 } else {
                     escaped.unicodeScalars.append(scalar)
                 }
             }
         }
         return escaped
-    }
-
-    private static func isControl(_ scalar: Unicode.Scalar) -> Bool {
-        scalar.value < 0x20 || (0x7F...0x9F).contains(scalar.value)
     }
 
     private static func cells(_ row: [JsonValue], count: Int) -> [JsonValue] {

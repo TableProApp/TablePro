@@ -1,5 +1,6 @@
 import Foundation
-@testable import TableProMCP
+@testable import TableProCommandLine
+import TableProMCP
 import Testing
 
 struct CLIFailureTests {
