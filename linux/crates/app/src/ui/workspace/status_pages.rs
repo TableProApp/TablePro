@@ -84,6 +84,32 @@ impl WorkspaceModel {
         self.saved_queries_dialog = Some(dialog);
     }
 
+    /// Open Quickly: a search over the session's tables and views, which
+    /// opens the one chosen as the sidebar's row does, or its structure.
+    pub(super) fn on_show_quick_open(&mut self) {
+        let Some(session) = self.context.active.get() else {
+            return;
+        };
+        let objects = session
+            .subscribe_objects(tablepro_core::meta::ObjectScope::AllSchemas)
+            .borrow()
+            .objects
+            .clone();
+        let input = self.input.clone();
+        let dialog = crate::ui::quick_open::QuickOpen::new(&objects, move |pick| {
+            let tablepro_core::meta::TableRef { schema, name } = pick.table;
+            input.deliver(match pick.structure {
+                true => WorkspaceInput::EditStructureTab { schema, table: name },
+                false => WorkspaceInput::SelectTable {
+                    schema,
+                    name,
+                    open_mode: super::OpenMode::SwitchOrAppend,
+                },
+            });
+        });
+        dialog.present(self.dialog_parent().as_ref());
+    }
+
     /// Ask what to call the SQL in front of the user, then keep it.
     ///
     /// The text is read now rather than when the dialog closes, so what

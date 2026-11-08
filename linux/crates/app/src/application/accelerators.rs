@@ -73,6 +73,8 @@ pub const ACCELERATORS: &[Accelerator] = &[
     application("app.new-window", &["<Primary><Shift>n"], General),
     application("app.preferences", &["<Primary>comma"], General),
     application("win.show-history", &["<Primary><Shift>h"], General),
+    // Xcode's Open Quickly is Cmd+Shift+O, which Ctrl+Shift+O already takes here.
+    application("win.quick-open", &["<Primary><Alt>o"], General),
     // As in GIMP and Inkscape.
     application("win.export-results", &["<Primary><Shift>e"], General),
     // As in GNOME Files.

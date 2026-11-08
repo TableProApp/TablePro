@@ -28,6 +28,12 @@
           </object>
         </child>
         <child>
+          <object class="AdwShortcutsItem" id="win-quick-open">
+            <property name="title" translatable="yes">Open Quickly</property>
+            <property name="action-name">win.quick-open</property>
+          </object>
+        </child>
+        <child>
           <object class="AdwShortcutsItem" id="win-show-history">
             <property name="title" translatable="yes">Query History</property>
             <property name="action-name">win.show-history</property>

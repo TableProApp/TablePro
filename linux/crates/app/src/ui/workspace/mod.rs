@@ -545,6 +545,8 @@ pub(crate) enum WorkspaceInput {
     DraftsNotSaved,
     ShowHistory,
     ShowSavedQueries,
+    /// Open Quickly: search the connection's tables and views.
+    ShowQuickOpen,
     ActiveTab(workspace_tabs::ActiveTabCommand),
     SaveQueryNamed {
         name: String,
@@ -1395,6 +1397,7 @@ impl WorkspaceModel {
             WorkspaceInput::DraftsNotSaved => self.on_drafts_not_saved(),
             WorkspaceInput::ShowHistory => self.on_show_history(),
             WorkspaceInput::ShowSavedQueries => self.on_show_saved_queries(),
+            WorkspaceInput::ShowQuickOpen => self.on_show_quick_open(),
             WorkspaceInput::ImportCsvRequested { schema, table } => self.on_import_csv_requested(schema, table),
             WorkspaceInput::Transfer(input) => self.on_transfer(input),
             WorkspaceInput::ImportCsvReady {
