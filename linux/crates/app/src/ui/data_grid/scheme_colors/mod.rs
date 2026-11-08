@@ -86,7 +86,7 @@ impl Palette {
                     background-color: {unfocused_background};
                     color: {unfocused_foreground};
                 }}
-                columnview.{class} inscription.warning {{ color: inherit; }}
+                columnview.{class} tp-grid-cell > label.warning {{ color: inherit; }}
                 columnview.{class} tp-grid-cell > text {{
                     background-color: var(--view-bg-color);
                     color: var(--view-fg-color);

@@ -55,7 +55,9 @@ fn pixel(widget: &impl IsA<gtk::Widget>, x: i32, y: i32) -> [u8; 4] {
     let node = snapshot.to_node().expect("painted widget");
     let renderer = gtk::gsk::CairoRenderer::new();
     renderer.realize(None::<&gdk::Surface>).expect("Cairo renderer");
-    let texture = renderer.render_texture(&node, None);
+    // Widget coordinates must not move with the render node's painted bounds.
+    let viewport = gtk::graphene::Rect::new(0.0, 0.0, widget.width() as f32, widget.height() as f32);
+    let texture = renderer.render_texture(&node, Some(&viewport));
     let mut download = gdk::TextureDownloader::new(&texture);
     download.set_format(gdk::MemoryFormat::R8g8b8a8);
     let (bytes, stride) = download.download_bytes();
@@ -82,8 +84,20 @@ fn base_pixel(grid: &Grid) -> [u8; 4] {
 
 fn row_pixel(grid: &Grid, position: u32) -> [u8; 4] {
     let view = grid.grid.column_view();
-    let bounds = grid.cell_at(position, 1).compute_bounds(&view).expect("cell bounds");
-    pixel(&view, view.width() - 10, bounds.y() as i32 + 4)
+    after_next_frame(&view);
+    let row = grid
+        .cell_at(position, 1)
+        .parent()
+        .and_then(|cell| cell.parent())
+        .expect("row");
+    let filler = row.last_child().and_then(|cell| cell.first_child()).expect("filler");
+    let bounds = filler.compute_bounds(&view).expect("painted filler bounds");
+    assert!(bounds.width() > 0.0 && bounds.height() > 0.0);
+    pixel(
+        &view,
+        (bounds.x() + bounds.width() / 2.0) as i32,
+        (bounds.y() + bounds.height() / 2.0) as i32,
+    )
 }
 
 fn custom_scheme(styles: &str) -> sourceview5::StyleScheme {
@@ -194,17 +208,40 @@ fn independent_grids_follow_their_settings_and_release_their_styles() {
 
 #[gtk4::test]
 fn empty_grid_text_and_stripes_follow_the_grid_foreground() {
+    let desktop = Desktop::new();
     let grid = Grid::open(two_text_columns(), two_text_values());
-    choose(&grid, "Adwaita-dark");
     let settings = &grid.grid.config().expect("settings").settings;
-    settings.set_show_alternate_rows(false).expect("stripes off");
-    let plain = row_pixel(&grid, 1);
-    settings.set_show_alternate_rows(true).expect("stripes on");
-    let striped = row_pixel(&grid, 1);
-    assert!(
-        striped[0] > plain[0] && striped[1] > plain[1] && striped[2] > plain[2],
-        "dark rows need a light stripe"
-    );
+    for appearance in [adw::ColorScheme::ForceLight, adw::ColorScheme::ForceDark] {
+        desktop.0.set_color_scheme(appearance);
+        for id in ["Adwaita-dark", "Adwaita"] {
+            choose(&grid, id);
+            let (background, foreground) = text_style(id);
+            settings.set_show_alternate_rows(false).expect("stripes off");
+            wait_until(WAIT, || !grid.grid.column_view().has_css_class("tp-striped")).expect("stripes disabled");
+            let plain = row_pixel(&grid, 1);
+            assert_pixel(plain, background);
+            settings.set_show_alternate_rows(true).expect("stripes on");
+            wait_until(WAIT, || grid.grid.column_view().has_css_class("tp-striped")).expect("stripes enabled");
+            let striped = row_pixel(&grid, 1);
+            let blend = |foreground, background| foreground * 0.04 + background * 0.96;
+            assert_pixel(
+                striped,
+                gdk::RGBA::new(
+                    blend(foreground.red(), background.red()),
+                    blend(foreground.green(), background.green()),
+                    blend(foreground.blue(), background.blue()),
+                    1.0,
+                ),
+            );
+            if id == "Adwaita-dark" {
+                assert!(
+                    striped[0] > plain[0] && striped[1] > plain[1] && striped[2] > plain[2],
+                    "dark rows need a light stripe: plain={plain:?}, striped={striped:?}"
+                );
+            }
+        }
+    }
+    choose(&grid, "Adwaita-dark");
     grid.grid.clear_rows();
     after_next_frame(&grid.grid);
     assert!(grid.grid.imp().empty_page.is_visible());
@@ -286,6 +323,7 @@ fn high_contrast_restores_native_colors_and_leaving_it_restores_the_scheme() {
 
 #[gtk4::test]
 fn modified_values_keep_their_text_and_bold_mark_in_selected_rows() {
+    let desktop = Desktop::new();
     let grid = Grid::open(two_text_columns(), two_text_values());
     choose(&grid, "Adwaita-dark");
     let cell = grid.focus(0, 1);
@@ -306,7 +344,28 @@ fn modified_values_keep_their_text_and_bold_mark_in_selected_rows() {
             .any(|attr| attr.type_() == gtk::pango::AttrType::Weight)
     );
     let row = cell.parent().and_then(|parent| parent.parent()).expect("row");
-    assert_eq!(display.color(), row.color());
+    for appearance in [adw::ColorScheme::ForceLight, adw::ColorScheme::ForceDark] {
+        desktop.0.set_color_scheme(appearance);
+        for id in ["Adwaita", "Adwaita-dark"] {
+            choose(&grid, id);
+            for selected in [false, true] {
+                if selected {
+                    grid.grid.selection().select_item(0, true);
+                } else {
+                    grid.grid.selection().unselect_all();
+                }
+                after_next_frame(&grid.grid);
+                assert_eq!(display.color(), row.color(), "{id}, selected={selected}");
+                let color = display.color();
+                assert!(
+                    [color.red(), color.green(), color.blue(), color.alpha()]
+                        .into_iter()
+                        .all(|channel| channel.is_finite() && (0.0..=1.0).contains(&channel)),
+                    "scheme text must stay in its sRGB palette: {color:?}"
+                );
+            }
+        }
+    }
 }
 
 #[gtk4::test]
