@@ -58,7 +58,8 @@
     <child>
       <object class="AdwComboRow" id="date_format_row">
         <property name="title" translatable="yes">Date Format</property>
-        <property name="subtitle" translatable="yes">Year-month-day, month/day/year or day/month/year. Copy and export keep the database's spelling</property>
+        <!-- No subtitle: its width would squeeze the chosen example. -->
+        <property name="tooltip-text" translatable="yes">How cells show dates and timestamps. Copy and export keep the database's spelling.</property>
         <property name="model">
           <object class="GtkStringList">
             <items>
