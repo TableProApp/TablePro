@@ -86,8 +86,6 @@
                           </object>
                         </child>
                         <child type="top">
-                          <!-- Which list the sidebar shows, over the list it
-                               switches, as the macOS sidebar has it. -->
                           <object class="AdwToggleGroup" id="scope_toggle">
                             <property name="active-name">tables</property>
                             <property name="homogeneous">true</property>
