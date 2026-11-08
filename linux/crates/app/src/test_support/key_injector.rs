@@ -195,17 +195,29 @@ impl KeyInjector {
         let (left, top) = native.surface_transform();
         let scale = f64::from(native.surface().map_or(1, |surface| surface.scale_factor()));
         let window = self.connection.get_input_focus()?.reply()?.focus;
-        let root = self
+        let screen = self
             .connection
             .setup()
             .roots
             .first()
-            .map(|screen| screen.root)
             .ok_or(KeyInjectionError::NotShown)?;
+        let root = screen.root;
         let origin = self.connection.translate_coordinates(window, root, 0, 0)?.reply()?;
         let on_root = |origin: i16, logical: f64| origin.saturating_add((logical * scale).round() as i16);
         let x = on_root(origin.dst_x, f64::from(point.x()) + left);
         let y = on_root(origin.dst_y, f64::from(point.y()) + top);
+        if x < 0
+            || y < 0
+            || i32::from(x) >= i32::from(screen.width_in_pixels)
+            || i32::from(y) >= i32::from(screen.height_in_pixels)
+        {
+            return Err(KeyInjectionError::PointerOutsideScreen {
+                x,
+                y,
+                width: screen.width_in_pixels,
+                height: screen.height_in_pixels,
+            });
+        }
         self.connection
             .xtest_fake_input(MOTION_NOTIFY_EVENT, 0, x11rb::CURRENT_TIME, root, x, y, 0)?;
         Ok(())

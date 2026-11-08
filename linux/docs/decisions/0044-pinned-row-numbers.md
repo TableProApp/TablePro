@@ -18,8 +18,10 @@ cells and header again at the fixed edge. It snapshots each native row through
 its actual parent into a fresh, untransformed snapshot, then clips and translates
 the resulting node. A passive themed background covers the underlying data. A header hit area
 keeps native pointer crossing and resize cursors out of the covered data headers;
-its native hover state styles the original number header. It has no keyboard
-focus or accessibility entry and uses the grid's existing header menu.
+its native hover state styles the original number header. The hit area stays
+present at the horizontal origin, so a scroll never transfers the pointer before
+layout. It has no keyboard focus or accessibility entry and uses the grid's
+existing header menu.
 
 This preserves the actual row height, selection background, pending icons, stripes
 and CSS without another row model or copied measurements. Descendant redraws

@@ -147,8 +147,6 @@ pub(super) fn install(grid: &DataGrid) {
     view.set_vadjustment(viewport.vadjustment().as_ref());
     view.set_hscroll_policy(viewport.hscroll_policy());
     view.set_vscroll_policy(viewport.vscroll_policy());
-    imp.gutter_backing.update_state(&[gtk::accessible::State::Hidden(true)]);
-    imp.gutter_header.update_state(&[gtk::accessible::State::Hidden(true)]);
     imp.gutter_header.set_cursor_from_name(Some("default"));
     imp.gutter_header.connect_state_flags_changed(glib::clone!(
         #[weak]
@@ -205,7 +203,8 @@ pub(super) fn sync(grid: &DataGrid) {
     }
     let visible = imp.scrolled.hadjustment().value() > 0.0;
     imp.gutter_backing.set_visible(visible);
-    imp.gutter_header.set_visible(visible);
+    // Keep one pointer target while scrolling schedules a new native header allocation.
+    imp.gutter_header.set_visible(grid.row_numbers_column().is_some());
     imp.viewport.queue_draw();
     grid.edit().queue_editor_allocate();
 }

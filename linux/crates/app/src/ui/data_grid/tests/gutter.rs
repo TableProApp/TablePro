@@ -247,7 +247,15 @@ fn wide_rows(count: i64) -> Grid {
                 .collect()
         })
         .collect();
-    Grid::open(columns, rows)
+    let grid = Grid::open(columns, rows);
+    let display = gtk::prelude::WidgetExt::display(&grid.window);
+    let surface = grid.window.surface().expect("shown grid surface");
+    let area = display.monitor_at_surface(&surface).expect("test monitor").geometry();
+    // XTEST clamps off-screen clicks; leave room for decorations at either display scale.
+    grid.window
+        .set_default_size(800.min(area.width() * 3 / 4), 500.min(area.height() * 3 / 4));
+    after_next_frame(&grid.window);
+    grid
 }
 
 fn projection(grid: &Grid) -> gtk::Box {
@@ -750,6 +758,14 @@ fn the_pinned_header_keeps_hover_and_never_offers_a_hidden_resize_handle() {
         .into_iter()
         .find(|widget| widget.css_name() == "header")
         .expect("header");
+    assert!(gtk::test_accessible_has_role(
+        &grid.grid.imp().gutter_header.get(),
+        gtk::AccessibleRole::Presentation,
+    ));
+    assert!(gtk::test_accessible_has_role(
+        &projection(&grid),
+        gtk::AccessibleRole::Presentation,
+    ));
     let numbers = header.first_child().expect("number title");
     let first_data = numbers.next_sibling().expect("first data title");
     let second_data = first_data.next_sibling().expect("second data title");

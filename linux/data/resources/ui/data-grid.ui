@@ -107,6 +107,7 @@
                                 <child type="overlay">
                                   <!-- Input stays with the main view, including its selection anchor. -->
                                   <object class="GtkBox" id="gutter_backing">
+                                    <property name="accessible-role">presentation</property>
                                     <property name="halign">start</property>
                                     <property name="can-target">false</property>
                                     <property name="can-focus">false</property>
@@ -119,6 +120,7 @@
                                 <child type="overlay">
                                   <!-- Native crossing stays out of covered data headers. -->
                                   <object class="GtkBox" id="gutter_header">
+                                    <property name="accessible-role">presentation</property>
                                     <property name="can-focus">false</property>
                                     <property name="visible">false</property>
                                   </object>
