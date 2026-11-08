@@ -39,6 +39,14 @@ impl EditController {
     }
 
     pub(super) fn set_preset(&self, grid: &DataGrid, preset: CellPreset) {
+        self.set_values(grid, |row, column| self.preset_input(grid, row, column, preset));
+    }
+
+    pub(super) fn set_values(
+        &self,
+        grid: &DataGrid,
+        mut input: impl FnMut(&GridRow, usize) -> Result<Option<(GridColumn, CellInput)>, String>,
+    ) {
         grid.commit_editors();
         let Some(target) = grid.target() else {
             return;
@@ -51,7 +59,7 @@ impl EditController {
         let mut skipped = 0;
         let mut refusal = None;
         for row in &target.rows {
-            let outcome = match self.preset_input(grid, row, column, preset) {
+            let outcome = match input(row, column) {
                 Ok(Some((grid_column, input))) => {
                     let start = edit_start(&tracked, row, column);
                     match commit_input(&grid_column, &start, input) {
