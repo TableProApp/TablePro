@@ -510,16 +510,19 @@ impl WorkspaceModel {
         };
         match self.selected_workspace_tab_id() {
             Some(id) => {
-                let (shown, database) = {
+                let (shown, catalog) = {
                     let tabs = self.workspace_tabs.borrow();
                     let tab = tabs.get(&id);
                     (
                         tab.and_then(WorkspaceTab::sidebar_object),
-                        tab.and_then(WorkspaceTab::moved_to),
+                        tab.and_then(|tab| match tab {
+                            WorkspaceTab::Editor(slot) => slot.editor.catalog_session(),
+                            _ => None,
+                        }),
                     )
                 };
-                let row = database
-                    .and_then(|database| self.sidebar_database_session(&shell, &database))
+                let row = catalog
+                    .and_then(|catalog| self.sidebar_catalog_session(&shell, &catalog))
                     .unwrap_or_else(|| self.key.clone());
                 tree.select(Some(&row), shown.as_ref());
             }
@@ -527,33 +530,20 @@ impl WorkspaceModel {
         }
     }
 
-    fn sidebar_database_session(&self, shell: &super::WorkspaceShell, database: &str) -> Option<SessionKey> {
-        let (SessionKey::Saved(id) | SessionKey::SavedIn { id, .. }) = &self.key else {
-            return None;
-        };
-        // Engines that list databases as schemas have no sibling session row.
-        if self.context.active.get()?.current_dialect()?.database_layout()
-            != tablepro_core::dialect::DatabaseLayout::WithSchemas
-        {
-            return None;
-        }
-        // A database that is still opening, or failed to open, has no row yet.
+    fn sidebar_catalog_session(&self, shell: &super::WorkspaceShell, catalog: &Arc<Session>) -> Option<SessionKey> {
+        // Completion and the sidebar follow the same accepted session, including
+        // a server-default database whose connection request had no name.
         shell.sessions().into_iter().find_map(|workspace| {
-            let key = workspace.key()?;
-            let matches = match &key {
-                SessionKey::Saved(of) if of == id => workspace
-                    .read(|model| {
-                        model
-                            .context
-                            .active
-                            .get()
-                            .is_some_and(|session| session.database() == Some(database))
-                    })
-                    .unwrap_or(false),
-                SessionKey::SavedIn { id: of, database: name } => of == id && name == database,
-                _ => false,
-            };
-            matches.then_some(key)
+            let matches = workspace
+                .read(|model| {
+                    model
+                        .context
+                        .active
+                        .get()
+                        .is_some_and(|session| Arc::ptr_eq(&session, catalog))
+                })
+                .unwrap_or(false);
+            matches.then(|| workspace.key()).flatten()
         })
     }
 
@@ -673,10 +663,11 @@ impl WorkspaceModel {
         }
     }
 
-    pub(super) fn follow_catalog(&self, tab_id: Uuid, session: Option<Arc<Session>>) {
+    pub(super) fn follow_catalog(&self, tab_id: Uuid, database: Option<String>, session: Option<Arc<Session>>) {
         if let Some(WorkspaceTab::Editor(slot)) = self.workspace_tabs.borrow().get(&tab_id) {
-            slot.editor.follow_catalog(session);
+            slot.editor.follow_catalog_for(database.as_deref(), session);
         }
+        self.select_in_tree();
     }
 
     pub(super) fn on_database_opened(&self, session: &Arc<Session>) {

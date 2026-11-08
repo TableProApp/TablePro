@@ -3091,6 +3091,29 @@ fn completion_reads_only_the_session_of_the_tabs_database() {
     assert_eq!(followed_catalog(&harness), None, "the last database's catalog stayed");
 }
 
+#[gtk4::test]
+fn a_catalog_reply_keeps_the_database_choice_that_requested_it() {
+    let harness = databases_editor(answering(), false);
+    let catalog = session_in("", harness.runtime.tasks());
+    pick_database(&harness, "analytics");
+    harness
+        .editor
+        .follow_catalog_for(Some("analytics"), Some(catalog.clone()));
+    assert!(
+        harness
+            .editor
+            .catalog_session()
+            .is_some_and(|held| Arc::ptr_eq(&held, &catalog))
+    );
+
+    pick_database(&harness, "shop");
+    harness.editor.follow_catalog_for(Some("analytics"), Some(catalog));
+    assert!(
+        harness.editor.catalog_session().is_none(),
+        "a late lookup restored the old catalog"
+    );
+}
+
 mod result_edits {
     use tablepro_core::column::{ColumnDefault, ColumnInfo, ColumnOrigin};
     use tablepro_core::edit::CellInput;

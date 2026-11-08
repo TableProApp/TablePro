@@ -530,10 +530,9 @@ pub(crate) enum WorkspaceInput {
     ResetWorkspaceLayout,
     /// The session moved to another Safe Mode level, which the title names.
     SafeModeChanged,
-    /// Completion in editor tab `tab_id` reads `session`'s catalog, its
-    /// database's, or its own connection's again with `None`.
     FollowCatalog {
         tab_id: Uuid,
+        database: Option<String>,
         session: Option<Arc<Session>>,
     },
     /// Another database of the connection opened beside it.
@@ -962,6 +961,11 @@ impl Workspace {
         self.imp().index.get()?.id_of(page)
     }
 
+    pub(crate) fn tab_database(&self, id: Uuid) -> Option<String> {
+        self.read(|model| model.editor_tab(id).and_then(|editor| editor.tab_database()))
+            .flatten()
+    }
+
     /// Whether the session has a tab open.
     pub(super) fn has_tabs(&self) -> bool {
         self.imp().index.get().is_some_and(|index| !index.is_empty())
@@ -1384,7 +1388,11 @@ impl WorkspaceModel {
             WorkspaceInput::EditorTabContentChanged(id) => self.on_editor_tab_content_changed(id),
             WorkspaceInput::EditorTabFileChanged(id) => self.on_editor_tab_file_changed(id),
             WorkspaceInput::EditorTabDatabaseChanged(id) => self.on_editor_tab_database_changed(id),
-            WorkspaceInput::FollowCatalog { tab_id, session } => self.follow_catalog(tab_id, session),
+            WorkspaceInput::FollowCatalog {
+                tab_id,
+                database,
+                session,
+            } => self.follow_catalog(tab_id, database, session),
             WorkspaceInput::DatabaseOpened(session) => self.on_database_opened(&session),
             WorkspaceInput::WorkspaceLoaded(loaded) => self.on_workspace_loaded(loaded),
             WorkspaceInput::ResetWorkspaceLayout => self.on_reset_workspace_layout(),

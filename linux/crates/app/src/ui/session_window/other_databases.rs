@@ -354,22 +354,105 @@ impl SessionWindow {
             return;
         };
         let Some(database) = database else {
-            self.deliver_to(key, WorkspaceInput::FollowCatalog { tab_id, session: None });
+            self.deliver_to(
+                key,
+                WorkspaceInput::FollowCatalog {
+                    tab_id,
+                    database: None,
+                    session: None,
+                },
+            );
             return;
         };
         if !self.opens_databases(id) {
             return;
         }
-        let session = match self.holding(id, Some(&database)) {
-            // The tab's own workspace reads that catalog already.
-            Some((held, _)) if &held == key => None,
-            Some((_, session)) => Some(session),
-            None => {
-                self.open_database(id, database);
+        if let Some((held, session)) = self.holding(id, Some(&database)) {
+            self.deliver_to(
+                key,
+                WorkspaceInput::FollowCatalog {
+                    tab_id,
+                    database: Some(database),
+                    session: (held != *key).then_some(session),
+                },
+            );
+            return;
+        }
+        let Some(root) = self.held_session(&SessionKey::Saved(id)) else {
+            return;
+        };
+        if root.database().is_some_and(|name| !name.is_empty()) {
+            self.open_database(id, database);
+            return;
+        }
+        let (Some(state), Some(owner)) = (self.state(), self.held_session(key)) else {
+            return;
+        };
+        let reading = root.clone();
+        let listing = state.services.tasks.spawn_task(async move {
+            reading
+                .run(OperationKind::Metadata, |lease, options| async move {
+                    Ok(lease.list_databases(options).await?)
+                })
+                .await
+        });
+        let window = self.downgrade();
+        let key = key.clone();
+        glib::spawn_future_local(async move {
+            let listed = listing.await;
+            let Some(window) = window.upgrade() else {
+                return;
+            };
+            // A replaced connection or a newer tab choice owns the next lookup.
+            if !window
+                .held_session(&SessionKey::Saved(id))
+                .is_some_and(|held| Arc::ptr_eq(&held, &root))
+                || !window.held_session(&key).is_some_and(|held| Arc::ptr_eq(&held, &owner))
+                || !window
+                    .find_open(|open| (open.claim.key() == &key).then(|| open.workspace.tab_database(tab_id)))
+                    .flatten()
+                    .is_some_and(|current| current == database)
+            {
                 return;
             }
-        };
-        self.deliver_to(key, WorkspaceInput::FollowCatalog { tab_id, session });
+            let databases = match listed {
+                Ok(Ok(databases)) => databases,
+                Ok(Err(error)) => {
+                    window.show_toast(&operation_error_message(&error));
+                    return;
+                }
+                Err(failure) => {
+                    tracing::warn!(%failure, "the connection's default database could not be read");
+                    return;
+                }
+            };
+            if databases
+                .iter()
+                .any(|listed| listed.is_default && listed.name == database)
+            {
+                window.deliver_to(
+                    &key,
+                    WorkspaceInput::FollowCatalog {
+                        tab_id,
+                        database: Some(database),
+                        session: Some(root),
+                    },
+                );
+            } else {
+                // A sibling may have joined while the metadata was being read.
+                match window.holding(id, Some(&database)) {
+                    Some((_, session)) => window.deliver_to(
+                        &key,
+                        WorkspaceInput::FollowCatalog {
+                            tab_id,
+                            database: Some(database),
+                            session: Some(session),
+                        },
+                    ),
+                    None => window.open_database(id, database),
+                }
+            }
+        });
     }
 
     /// A tab of the session under `key` changed the catalog of

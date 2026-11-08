@@ -668,3 +668,97 @@ fn closing_and_reopening_a_moved_tabs_database_refreshes_the_selected_row() {
     test.window.open_database(test.saved.id, ANALYTICS.to_owned());
     wait_until(WAIT, || selected_session(&test) == Some(analytics(&test))).expect("the reopened database row");
 }
+
+fn unnamed_root(name: &str, reply: FakeReply<Vec<tablepro_core::meta::SchemaInfo>>) -> TestWindow {
+    let mut root = answering_script();
+    root.dialect = postgres();
+    root.list_databases.always(reply);
+    let mut sibling = answering_script();
+    sibling.dialect = postgres();
+    sibling.list_databases.always(FakeReply::ok(Vec::new()));
+    let mut test = network_window_with(
+        name,
+        Script {
+            establish: vec![FakeEstablish::Connect(root)],
+            connection: sibling,
+            ..Script::default()
+        },
+    );
+    test.saved.database.clear();
+    test.services
+        .storage
+        .connections()
+        .upsert_blocking(test.saved.clone())
+        .expect("save the unnamed connection");
+    connect(&test);
+    test.window.open_database(test.saved.id, ANALYTICS.to_owned());
+    wait_until(WAIT, || test.window.held_session(&analytics(&test)).is_some()).expect("the sibling");
+    test
+}
+
+fn default_database() -> Vec<tablepro_core::meta::SchemaInfo> {
+    vec![tablepro_core::meta::SchemaInfo {
+        name: "app".to_owned(),
+        is_default: true,
+        is_system: false,
+    }]
+}
+
+#[gtk4::test]
+fn a_sibling_tab_returns_to_the_unnamed_roots_default_database_without_another_connection() {
+    let test = unnamed_root("SidebarServerDefault", FakeReply::ok(default_database()));
+    let root = test.window.held_session(&test.key()).expect("the root session");
+    assert!(root.database().is_none_or(str::is_empty));
+    let (_, editor) = query_in(&test, &analytics(&test));
+
+    editor.move_to_database("app");
+
+    wait_until(WAIT, || {
+        selected_session(&test) == Some(test.key())
+            && editor
+                .catalog_session()
+                .is_some_and(|catalog| std::sync::Arc::ptr_eq(&catalog, &root))
+    })
+    .expect("the root row and its catalog");
+    assert_eq!(
+        test.connector.calls().len(),
+        2,
+        "the server's default database opened twice"
+    );
+}
+
+#[gtk4::test]
+fn a_default_database_lookup_cannot_open_a_sibling_after_its_connection_closes() {
+    let release = tokio_util::sync::CancellationToken::new();
+    let test = unnamed_root(
+        "SidebarDefaultAfterClose",
+        FakeReply::UntilReleased {
+            release: release.clone(),
+            outcome: Ok(default_database()),
+        },
+    );
+    let root = test.window.held_session(&test.key()).expect("the root session");
+    let old = std::sync::Arc::downgrade(&root);
+    let counters = test.connector.connections()[0].counters();
+    let (_, editor) = query_in(&test, &analytics(&test));
+    editor.move_to_database("reports");
+    wait_until(WAIT, || CallCounters::get(&counters.list_databases) == 1).expect("the root metadata lookup to start");
+    drop(root);
+
+    test.window.send(SessionWindowInput::DisconnectSession(test.key()));
+    test.wait_for_page("picker");
+    release.cancel();
+
+    wait_until(WAIT, || old.upgrade().is_none()).expect("the old session and its lookup to be released");
+    assert_eq!(test.connector.calls().len(), 2, "a late lookup opened another database");
+    assert!(test.window.workspaces().is_empty());
+    assert!(
+        test.services
+            .sessions
+            .window_for(&SessionKey::SavedIn {
+                id: test.saved.id,
+                database: "reports".to_owned(),
+            })
+            .is_none()
+    );
+}
