@@ -1556,7 +1556,13 @@ fn the_bottom_bar_offers_the_column_chooser() {
     let button = crate::test_support::find_by_action_name(tab, "grid.columns")
         .and_downcast::<gtk4::Button>()
         .expect("a Columns button");
-    wait_until(WAIT, || !harness.shown().is_empty() && button.is_visible()).expect("the wide bar shows Columns");
+    // A pending initial surface configure can otherwise overwrite the later resize.
+    wait_until(WAIT, || {
+        window.is_mapped() && tab.width() >= 900 && !harness.shown().is_empty()
+    })
+    .expect("the wide window is allocated");
+    assert!(tab.current_breakpoint().is_none());
+    assert!(button.is_visible(), "the wide bar shows Columns");
     assert_eq!(button.label().as_deref(), Some("Columns"));
     assert!(button.is_focusable());
     button.emit_clicked();
@@ -1564,11 +1570,17 @@ fn the_bottom_bar_offers_the_column_chooser() {
     let chooser = window.visible_dialog().expect("the chooser");
     assert!(chooser.is::<crate::ui::data_grid::ColumnChooser>());
     chooser.close();
-    wait_until(WAIT, || window.visible_dialog().is_none()).expect("the chooser closes");
+    wait_until(WAIT, || window.visible_dialog().is_none() && chooser.parent().is_none()).expect("the chooser closes");
 
     window.set_default_size(600, 500);
-    wait_until(WAIT, || !button.is_visible() && tab.imp().more_button.is_visible())
-        .expect("the narrow bar offers More");
+    assert!(
+        wait_until(WAIT, || tab.width() > 0 && tab.width() <= 600).is_ok(),
+        "the tab did not resize: window width {}, tab width {}",
+        window.width(),
+        tab.width(),
+    );
+    assert!(!button.is_visible(), "the narrow bar hides Columns");
+    assert!(tab.imp().more_button.is_visible(), "the narrow bar offers More");
     let menu = tab.imp().more_button.menu_model().expect("More menu");
     let actions = menu
         .item_link(0, gtk4::gio::MENU_LINK_SECTION)
