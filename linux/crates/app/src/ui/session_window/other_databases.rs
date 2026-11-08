@@ -385,6 +385,10 @@ impl SessionWindow {
             self.open_database(id, database);
             return;
         }
+        self.resolve_default_catalog(key, tab_id, id, database, root);
+    }
+
+    fn resolve_default_catalog(&self, key: &SessionKey, tab_id: Uuid, id: Uuid, database: String, root: Arc<Session>) {
         let (Some(state), Some(owner)) = (self.state(), self.held_session(key)) else {
             return;
         };
