@@ -28,6 +28,7 @@ impl DataGrid {
             return;
         };
         let view = self.column_view();
+        let gutter = self.imp().gutter_view.get();
         // Connected before the read: GSettings emits `changed` only for a key
         // read while a handler was connected.
         let handler = settings.gio().connect_changed(
@@ -35,12 +36,18 @@ impl DataGrid {
             glib::clone!(
                 #[weak]
                 view,
-                move |settings, key| set_class(&view, STRIPED, settings.boolean(key))
+                #[weak]
+                gutter,
+                move |settings, key| {
+                    set_class(&view, STRIPED, settings.boolean(key));
+                    set_class(&gutter, STRIPED, settings.boolean(key));
+                }
             ),
         );
         self.imp()
             .stripes_watch
             .replace(Some(HandlerGuard::new(settings.gio(), handler)));
         set_class(&view, STRIPED, settings.show_alternate_rows());
+        set_class(&gutter, STRIPED, settings.show_alternate_rows());
     }
 }

@@ -230,6 +230,7 @@ impl DataGrid {
         }
         self.refresh_actions();
         self.imp().detail_pane.follow_focus();
+        super::pinned_numbers::reveal_focus(self);
     }
 }
 

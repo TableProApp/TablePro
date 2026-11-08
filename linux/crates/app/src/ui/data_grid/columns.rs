@@ -166,9 +166,12 @@ impl DataGrid {
         }
         built.row_numbers = Some(row_number_column::build(self));
         let names: Vec<&str> = columns.iter().map(|column| column.name.as_str()).collect();
+        if let Some(column) = &built.row_numbers {
+            view.append_column(column);
+        }
         for placement in built.layout.arrange(&names) {
             let column = match placement {
-                Placement::RowNumbers => built.row_numbers.clone(),
+                Placement::RowNumbers => None,
                 Placement::Column { index, visible, width } => {
                     built.view_columns.get(index).cloned().inspect(|column| {
                         column.set_visible(visible);
@@ -452,8 +455,33 @@ impl DataGrid {
     /// search counts only the columns on screen, in their order.
     fn columns_moved(&self) {
         self.keep_filler_last();
+        self.keep_numbers_first();
         self.record_layout();
         self.find_rows_changed();
+    }
+
+    fn keep_numbers_first(&self) {
+        let Some(column) = self.row_numbers_column() else {
+            return;
+        };
+        let view = self.column_view();
+        if view.columns().item(0).as_ref() == Some(column.upcast_ref()) {
+            return;
+        }
+        // GTK finishes moving the header after it announces the column change.
+        glib::idle_add_local_once(glib::clone!(
+            #[weak]
+            view,
+            #[weak]
+            column,
+            move || {
+                if column.column_view().as_ref() == Some(&view)
+                    && view.columns().item(0).as_ref() != Some(column.upcast_ref())
+                {
+                    view.insert_column(0, &column);
+                }
+            }
+        ));
     }
 
     // GTK drops a header dragged onto the filler after it, and lets the
@@ -867,7 +895,7 @@ fn same_names(layout: &ColumnLayout, columns: &[GridColumn]) -> bool {
 
 /// The font a cell draws its value in: libadwaita's `monospace` class
 /// sets only the family and size of the desktop's monospace font.
-fn value_font(context: &pango::Context) -> pango::FontDescription {
+pub(super) fn value_font(context: &pango::Context) -> pango::FontDescription {
     let mut monospace = pango::FontDescription::from_string(&adw::StyleManager::default().monospace_font_name());
     monospace.unset_fields(!(pango::FontMask::FAMILY | pango::FontMask::SIZE));
     let mut font = context.font_description().unwrap_or_default();

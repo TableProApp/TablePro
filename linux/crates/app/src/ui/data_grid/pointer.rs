@@ -1,5 +1,5 @@
 use gtk4::prelude::*;
-use gtk4::{self as gtk, gdk};
+use gtk4::{self as gtk, gdk, glib};
 
 use super::{DataGrid, GridCell, GridRow};
 
@@ -13,6 +13,7 @@ enum Hit {
     Empty,
     /// The header, which GTK handles itself.
     Header,
+    NumberHeader,
     /// An open inline editor, whose own menu cuts, copies and pastes.
     Editor,
 }
@@ -37,8 +38,24 @@ pub fn install(grid: &DataGrid) {
         }
     });
     grid.column_view().add_controller(gesture);
-    grid.column_view()
-        .connect_query_tooltip(|view, x, y, _, tooltip| cut_text_tooltip(view, x, y, tooltip));
+    grid.column_view().connect_query_tooltip(glib::clone!(
+        #[weak]
+        grid,
+        #[upgrade_or]
+        false,
+        move |view, x, y, _, tooltip| {
+            if super::pinned_numbers::covers(&grid, f64::from(x)) {
+                if let Hit::Row(row, _) = hit_at(&grid, f64::from(x), f64::from(y))
+                    && let Some(text) = grid.tracked().row_state(&row).text()
+                {
+                    tooltip.set_text(Some(&text));
+                    return true;
+                }
+                return false;
+            }
+            cut_text_tooltip(view, x, y, tooltip)
+        }
+    ));
 }
 
 /// GTK gives a column view cell no click of its own, so a click focuses
@@ -49,9 +66,15 @@ fn focus_on_click(grid: &DataGrid) -> gtk::GestureClick {
     let gesture = gtk::GestureClick::builder().button(gdk::BUTTON_PRIMARY).build();
     gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
     let weak = grid.downgrade();
-    gesture.connect_pressed(move |_, _, x, y| {
-        if let Some(grid) = weak.upgrade()
-            && let Hit::Cell(cell) = hit_at(&grid, x, y)
+    gesture.connect_pressed(move |gesture, _, x, y| {
+        let Some(grid) = weak.upgrade() else {
+            return;
+        };
+        if matches!(hit_at(&grid, x, y), Hit::NumberHeader) {
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+            return;
+        }
+        if let Hit::Cell(cell) = hit_at(&grid, x, y)
             && let Some(focusable) = cell.parent()
         {
             focusable.grab_focus();
@@ -100,8 +123,22 @@ fn hit_at(grid: &DataGrid, x: f64, y: f64) -> Hit {
         .ancestor(gtk::ListView::static_type())
         .or_else(|| picked.downcast_ref::<gtk::ListView>().map(|list| list.clone().upcast()))
     else {
-        return Hit::Header;
+        return if super::pinned_numbers::covers(grid, x) {
+            Hit::NumberHeader
+        } else {
+            Hit::Header
+        };
     };
+    if super::pinned_numbers::covers(grid, x) {
+        let mut widget = Some(picked);
+        while let Some(current) = widget {
+            if current.parent().as_ref() == Some(&list) {
+                return row_of(&current).map_or(Hit::Empty, |(row, position)| Hit::Row(row, position));
+            }
+            widget = current.parent();
+        }
+        return Hit::Empty;
+    }
     if picked.is::<gtk::Text>() || picked.ancestor(gtk::Text::static_type()).is_some() {
         return Hit::Editor;
     }
@@ -141,6 +178,13 @@ impl DataGrid {
             Hit::Cell(cell) => self.open_cell_menu(&cell, Some(at)),
             Hit::Row(row, position) => self.open_row_menu(&row, position, at),
             Hit::Empty => self.open_empty_menu(at),
+            Hit::NumberHeader => {
+                let Some(menus) = self.menus() else {
+                    return false;
+                };
+                self.show_popover(&menus.row_numbers, Some(at));
+                true
+            }
             Hit::Header | Hit::Editor => false,
         }
     }

@@ -89,53 +89,42 @@
                     <property name="child">
                       <object class="GtkScrolledWindow" id="scrolled">
                         <property name="child">
-                          <object class="GtkColumnView" id="column_view">
-                            <property name="show-row-separators">true</property>
-                            <property name="show-column-separators">true</property>
-                            <property name="tab-behavior">cell</property>
-                            <property name="enable-rubberband">true</property>
-                            <property name="has-tooltip">true</property>
-                            <style>
-                              <class name="data-table"/>
-                            </style>
+                          <object class="TableProPinnedNumbers" id="viewport">
+                            <property name="child">
+                              <object class="GtkOverlay">
+                                <property name="child">
+                                  <object class="GtkColumnView" id="column_view">
+                                    <property name="show-row-separators">true</property>
+                                    <property name="show-column-separators">true</property>
+                                    <property name="tab-behavior">cell</property>
+                                    <property name="enable-rubberband">true</property>
+                                    <property name="has-tooltip">true</property>
+                                    <style>
+                                      <class name="data-table"/>
+                                    </style>
+                                  </object>
+                                </property>
+                                <child type="overlay">
+                                  <!-- Input stays with the main view, including its selection anchor. -->
+                                  <object class="GtkColumnView" id="gutter_view">
+                                    <property name="halign">start</property>
+                                    <property name="can-target">false</property>
+                                    <property name="can-focus">false</property>
+                                    <property name="visible">false</property>
+                                    <property name="show-row-separators">true</property>
+                                    <property name="show-column-separators">true</property>
+                                    <style>
+                                      <class name="data-table"/>
+                                      <class name="row-gutter"/>
+                                    </style>
+                                  </object>
+                                </child>
+                              </object>
+                            </property>
                           </object>
                         </property>
                       </object>
                     </property>
-                    <child type="overlay">
-                      <!-- GtkColumnView has no frozen column, so the row
-                           numbers are drawn again over its first column
-                           once the columns scroll sideways. -->
-                      <object class="GtkBox" id="row_gutter">
-                        <property name="orientation">vertical</property>
-                        <property name="halign">start</property>
-                        <property name="visible">false</property>
-                        <style>
-                          <class name="row-gutter"/>
-                        </style>
-                        <child>
-                          <object class="GtkLabel" id="gutter_header">
-                            <property name="xalign">1</property>
-                            <style>
-                              <class name="dimmed"/>
-                              <class name="caption-heading"/>
-                            </style>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkScrolledWindow" id="gutter_scroll">
-                            <property name="vexpand">true</property>
-                            <property name="hscrollbar-policy">never</property>
-                            <property name="vscrollbar-policy">external</property>
-                            <property name="child">
-                              <object class="GtkListView" id="gutter_list">
-                                <property name="can-focus">false</property>
-                              </object>
-                            </property>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
                     <child type="overlay">
                       <object class="AdwStatusPage" id="empty_page">
                         <property name="title" translatable="yes">No Rows</property>

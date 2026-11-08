@@ -98,6 +98,52 @@ impl KeyInjector {
         at: (f32, f32),
         count: u8,
     ) -> Result<(), KeyInjectionError> {
+        self.button(widget, at, 1, count)
+    }
+
+    pub(crate) fn button(
+        &self,
+        widget: &impl IsA<gtk4::Widget>,
+        at: (f32, f32),
+        button: u8,
+        count: u8,
+    ) -> Result<(), KeyInjectionError> {
+        self.move_pointer(widget, at)?;
+        for _ in 0..count {
+            self.fake(BUTTON_PRESS_EVENT, button)?;
+            self.fake(BUTTON_RELEASE_EVENT, button)?;
+        }
+        self.connection.flush()?;
+        self.connection.get_input_focus()?.reply()?;
+        Ok(())
+    }
+
+    pub(crate) fn drag(
+        &self,
+        widget: &impl IsA<gtk4::Widget>,
+        from: (f32, f32),
+        to: (f32, f32),
+    ) -> Result<(), KeyInjectionError> {
+        self.move_pointer(widget, from)?;
+        self.fake(BUTTON_PRESS_EVENT, 1)?;
+        self.connection.flush()?;
+        self.connection.get_input_focus()?.reply()?;
+        super::drain_main_context();
+        for step in 1..=10 {
+            let fraction = step as f32 / 10.0;
+            let point = (from.0 + (to.0 - from.0) * fraction, from.1 + (to.1 - from.1) * fraction);
+            self.move_pointer(widget, point)?;
+            self.connection.flush()?;
+            self.connection.get_input_focus()?.reply()?;
+            super::drain_main_context();
+        }
+        self.fake(BUTTON_RELEASE_EVENT, 1)?;
+        self.connection.flush()?;
+        self.connection.get_input_focus()?.reply()?;
+        Ok(())
+    }
+
+    fn move_pointer(&self, widget: &impl IsA<gtk4::Widget>, at: (f32, f32)) -> Result<(), KeyInjectionError> {
         let widget = widget.as_ref();
         if !widget.is_mapped() || widget.width() <= 0 {
             return Err(KeyInjectionError::NotShown);
@@ -122,12 +168,6 @@ impl KeyInjector {
         let y = on_root(origin.dst_y, f64::from(point.y()) + top);
         self.connection
             .xtest_fake_input(MOTION_NOTIFY_EVENT, 0, x11rb::CURRENT_TIME, root, x, y, 0)?;
-        for _ in 0..count {
-            self.fake(BUTTON_PRESS_EVENT, 1)?;
-            self.fake(BUTTON_RELEASE_EVENT, 1)?;
-        }
-        self.connection.flush()?;
-        self.connection.get_input_focus()?.reply()?;
         Ok(())
     }
 

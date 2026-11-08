@@ -125,6 +125,19 @@ mod imp {
     }
 
     impl WidgetImpl for GridCell {
+        fn contains(&self, x: f64, y: f64) -> bool {
+            let cell = self.obj();
+            if let Some(grid) = cell.grid()
+                && let Some(point) =
+                    cell.compute_point(&grid.column_view(), &gtk::graphene::Point::new(x as f32, y as f32))
+                && super::super::pinned_numbers::covers(&grid, f64::from(point.x()))
+            {
+                // An editor below the passive gutter must not take its pointer gestures.
+                return false;
+            }
+            self.parent_contains(x, y)
+        }
+
         fn unroot(&self) {
             let cell = self.obj();
             if let Some(grid) = cell.grid() {
@@ -298,6 +311,9 @@ impl GridCell {
         }
         editor.as_ref().set_parent(self);
         self.imp().editor.replace(Some(editor.as_ref().clone()));
+        if let Some(row) = self.bound_row() {
+            row.align_height(self);
+        }
     }
 
     /// The editor goes and the text shows again. GTK 4.22 loops forever
@@ -306,6 +322,9 @@ impl GridCell {
     /// edit.
     pub(crate) fn close_editor(&self) {
         if let Some(editor) = self.imp().editor.take() {
+            if let Some(row) = self.bound_row() {
+                row.release_height(self);
+            }
             match holds_window_focus(&editor) {
                 true => {
                     editor.set_visible(false);

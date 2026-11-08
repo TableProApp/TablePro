@@ -51,13 +51,9 @@ pub struct DataGrid {
     #[template_child]
     pub column_view: TemplateChild<gtk4::ColumnView>,
     #[template_child]
-    pub row_gutter: TemplateChild<gtk4::Box>,
+    pub viewport: TemplateChild<super::pinned_numbers::PinnedNumbers>,
     #[template_child]
-    pub gutter_header: TemplateChild<gtk4::Label>,
-    #[template_child]
-    pub gutter_scroll: TemplateChild<gtk4::ScrolledWindow>,
-    #[template_child]
-    pub gutter_list: TemplateChild<gtk4::ListView>,
+    pub gutter_view: TemplateChild<gtk4::ColumnView>,
     #[template_child]
     pub empty_page: TemplateChild<adw::StatusPage>,
     #[template_child]
@@ -94,7 +90,6 @@ pub struct DataGrid {
     pub editing: Cell<bool>,
     /// The window's focus handler, while the grid is in a window.
     pub focus_watch: RefCell<Option<(glib::WeakRef<gtk4::Window>, glib::SignalHandlerId)>>,
-    pub(super) pinned_numbers: std::rc::Rc<super::pinned_numbers::Pinned>,
     pub(super) font_watch: RefCell<Option<HandlerGuard>>,
     pub(super) stripes_watch: RefCell<Option<HandlerGuard>>,
 }
@@ -107,6 +102,7 @@ impl ObjectSubclass for DataGrid {
 
     fn class_init(klass: &mut Self::Class) {
         RowDetailPane::ensure_type();
+        super::pinned_numbers::PinnedNumbers::ensure_type();
         klass.bind_template();
     }
 
@@ -139,6 +135,15 @@ impl ObjectImpl for DataGrid {
             menus.unparent();
         }
         self.columns.borrow_mut().release();
+        while let Some(column) = self
+            .gutter_view
+            .columns()
+            .item(0)
+            .and_downcast::<gtk4::ColumnViewColumn>()
+        {
+            column.set_factory(None::<&gtk4::ListItemFactory>);
+            self.gutter_view.remove_column(&column);
+        }
         self.store.clear();
     }
 }

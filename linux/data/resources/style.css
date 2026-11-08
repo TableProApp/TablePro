@@ -28,24 +28,9 @@ columnview.data-table > listview > row > cell {
   padding: 0;
 }
 
-/* The row numbers over the first column, in the colour of the rows
-   beneath them, so the columns pass under them as they scroll. */
-.row-gutter {
+/* The passive gutter covers horizontally scrolled cells. */
+columnview.row-gutter {
   background-color: var(--view-bg-color);
-  border-right: 1px solid color-mix(in srgb, var(--view-fg-color) 15%, transparent);
-}
-
-.row-gutter listview {
-  background: none;
-}
-
-.row-gutter listview > row {
-  padding: 0;
-  min-height: 0;
-}
-
-.row-gutter listview > row > .row-gutter-cell {
-  padding: 0 6px;
 }
 
 columnview.data-table > listview > row > cell > * {
