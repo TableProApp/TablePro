@@ -9,7 +9,7 @@ use tablepro_core::{ColumnInfo, QueryResult, Value};
 use tablepro_test_support::{ConnectionScript, FakeReply};
 use uuid::Uuid;
 
-use super::super::{OpenMode, WorkspaceInput};
+use super::super::{OpenMode, SaveRequest, WorkspaceInput};
 use super::shell_of;
 use crate::runtime::DeliverInput;
 use crate::test_support::{after_next_frame, drain_main_context, wait_until};
@@ -398,7 +398,7 @@ fn refreshing_cannot_discard_rows_while_their_save_is_running() {
         workspace
             .sender()
             .expect("workspace input")
-            .deliver(WorkspaceInput::SaveRows(id));
+            .deliver(WorkspaceInput::Save(SaveRequest::Rows(id)));
         wait_until(WAIT, || {
             tracker.pending_state() == crate::workspace::PendingState::Saving
         })

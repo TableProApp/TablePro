@@ -19,7 +19,7 @@ use super::tab_title::{ConnectionLabel, apply_tab_title, resolve_tab_title};
 use super::table_naming::TableNaming;
 use super::workspace_persistence::WorkspaceTabs;
 use super::{
-    DiagramTabSlot, EditorTabSlot, KeyTabSlot, OpenMode, StructureTabSlot, TableTabSlot, WorkspaceInput,
+    DiagramTabSlot, EditorTabSlot, KeyTabSlot, OpenMode, SaveRequest, StructureTabSlot, TableTabSlot, WorkspaceInput,
     WorkspaceSender, WorkspaceShell, WorkspaceTab,
 };
 use crate::runtime::DeliverInput;
@@ -296,7 +296,7 @@ impl TabFactory {
             tasks: parts.context.tasks.clone(),
             first_load,
         });
-        connect_structure(&structure, id, &parts.input, WorkspaceInput::SaveTab);
+        connect_structure(&structure, id, &parts.input, SaveRequest::Tab);
         let page = self.append(&structure, id, None);
         let follow = follow_loading(&page, structure.is_loading());
         structure.connect_loading_changed(move |_, loading| follow(loading));
@@ -322,7 +322,7 @@ impl TabFactory {
             tasks: parts.context.tasks.clone(),
             first_load: FirstLoad::Now,
         });
-        connect_structure(&structure, id, &parts.input, WorkspaceInput::SaveStructure);
+        connect_structure(&structure, id, &parts.input, SaveRequest::Structure);
         if let Some(WorkspaceTab::Table(slot)) = parts.tabs.borrow().get(&id) {
             let follow = follow_loading(&slot.page, structure.is_loading() || slot.browse.is_loading());
             let browse = slot.browse.downgrade();
@@ -435,19 +435,18 @@ impl EditorPreview {
     }
 }
 
-/// The structure tab's signals, as the workspace's inputs for the tab.
 fn connect_structure(
     structure: &StructureTab,
     tab_id: Uuid,
     input: &WorkspaceSender,
-    save_message: fn(Uuid) -> WorkspaceInput,
+    save_request: fn(Uuid) -> SaveRequest,
 ) {
     let dirty = input.clone();
     structure.connect_dirty_changed(move |_, _| dirty.deliver(WorkspaceInput::TabDirtyChanged));
     let save = input.clone();
-    structure.connect_save_requested(move |_| save.deliver(save_message(tab_id)));
+    structure.connect_save_requested(move |_| save.deliver(WorkspaceInput::Save(save_request(tab_id))));
     let stop = input.clone();
-    structure.connect_stop_save_requested(move |_| stop.deliver(WorkspaceInput::StopSaving(tab_id)));
+    structure.connect_stop_save_requested(move |_| stop.deliver(WorkspaceInput::Save(SaveRequest::Stop(tab_id))));
     let drop_table = input.clone();
     structure.connect_drop_table_requested(move |_, schema, table| {
         drop_table.deliver(WorkspaceInput::DropTablePrompt { schema, table });
@@ -514,11 +513,11 @@ fn connect_browse(browse: &BrowseTab, tab_id: Uuid, input: &WorkspaceSender) {
     let dirty = input.clone();
     browse.connect_dirty_changed(move |_, _| dirty.deliver(WorkspaceInput::TabDirtyChanged));
     let save = input.clone();
-    browse.connect_save_requested(move |_| save.deliver(WorkspaceInput::SaveRows(tab_id)));
+    browse.connect_save_requested(move |_| save.deliver(WorkspaceInput::Save(SaveRequest::Rows(tab_id))));
     let structure = input.clone();
     browse.connect_structure_requested(move |_| structure.deliver(WorkspaceInput::ShowTableStructure(tab_id)));
     let stop = input.clone();
-    browse.connect_stop_save_requested(move |_| stop.deliver(WorkspaceInput::StopSaving(tab_id)));
+    browse.connect_stop_save_requested(move |_| stop.deliver(WorkspaceInput::Save(SaveRequest::Stop(tab_id))));
     let refresh = input.clone();
     browse.connect_refresh_requested(move |_| refresh.deliver(WorkspaceInput::RefreshTab(tab_id)));
     let follow = input.clone();
@@ -558,9 +557,9 @@ pub(super) fn connect_editor(
     let toast = input.clone();
     editor.connect_toast(move |_, text| toast.deliver(WorkspaceInput::ShowToast(text)));
     let save = input.clone();
-    editor.connect_save_rows(move |_| save.deliver(WorkspaceInput::SaveRows(tab_id)));
+    editor.connect_save_rows(move |_| save.deliver(WorkspaceInput::Save(SaveRequest::Rows(tab_id))));
     let stop = input.clone();
-    editor.connect_stop_saving_rows(move |_| stop.deliver(WorkspaceInput::StopSaving(tab_id)));
+    editor.connect_stop_saving_rows(move |_| stop.deliver(WorkspaceInput::Save(SaveRequest::Stop(tab_id))));
     let dirty = input.clone();
     editor.connect_rows_dirty_changed(move |_| dirty.deliver(WorkspaceInput::TabDirtyChanged));
     let close = input.clone();

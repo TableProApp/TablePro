@@ -572,13 +572,6 @@ impl WorkspaceModel {
         self.index.id_of(&self.tab_view.selected_page()?)
     }
 
-    pub(super) fn selected_browse_tab_id(&self) -> Option<Uuid> {
-        let id = self.selected_workspace_tab_id()?;
-        let tabs = self.workspace_tabs.borrow();
-        let slot = tabs.get(&id)?;
-        if slot.browse_tab().is_some() { Some(id) } else { None }
-    }
-
     /// Stop every tab and let go of the tab view. The pending edits
     /// name rows of the connection going away, so they cannot be saved
     /// after it.
