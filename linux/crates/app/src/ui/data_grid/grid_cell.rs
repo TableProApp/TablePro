@@ -273,7 +273,8 @@ impl GridCell {
         if self.imp().scratch.borrow().capacity() > SCRATCH_KEPT_BYTES {
             self.imp().scratch.replace(String::new());
         }
-        let colour = self.grid().and_then(|grid| grid.highlight_of(&row, column));
+        // GTK binds a new row before attaching it to the grid widget tree.
+        let colour = paint.grid.upgrade().and_then(|grid| grid.highlight_of(&row, column));
         for each in HighlightColor::ALL {
             set_class(self, each.css_class(), colour == Some(each));
         }

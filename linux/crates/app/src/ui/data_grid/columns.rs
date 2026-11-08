@@ -47,6 +47,7 @@ enum Measure {
 #[derive(Debug)]
 pub struct ColumnPaint {
     pub column: GridColumn,
+    pub grid: glib::WeakRef<DataGrid>,
     pub tracked: TrackedValues,
     pub attributes: Rc<TextAttributes>,
     /// The column lines its values up on the last digit. An untyped column
@@ -157,6 +158,7 @@ impl DataGrid {
         for column in columns.iter() {
             let paint = Rc::new(ColumnPaint {
                 column: column.clone(),
+                grid: self.downgrade(),
                 tracked: tracked.clone(),
                 attributes: attributes.clone(),
                 numbers: Cell::new(column.display() == CellDisplay::Number),
