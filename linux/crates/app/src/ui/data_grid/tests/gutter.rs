@@ -742,6 +742,7 @@ fn a_newer_horizontal_scroll_cancels_an_older_focus_reveal() {
 fn the_pinned_header_keeps_hover_and_never_offers_a_hidden_resize_handle() {
     use crate::test_support::{KeyInjector, wait_until};
     use crate::ui::data_grid::test_grid::WAIT;
+    use gtk::subclass::prelude::*;
     let grid = wide_rows(20);
     KeyInjector::focus_only(&grid.window);
     let view = grid.grid.column_view();
@@ -762,13 +763,32 @@ fn the_pinned_header_keeps_hover_and_never_offers_a_hidden_resize_handle() {
     wait_until(WAIT, || numbers.state_flags().contains(gtk::StateFlags::PRELIGHT)).expect("number header hover");
     after_next_frame(&grid.window);
     assert_ne!(
-        header.cursor().and_then(|cursor| cursor.name()).as_deref(),
+        grid.grid
+            .imp()
+            .gutter_header
+            .cursor()
+            .and_then(|cursor| cursor.name())
+            .as_deref(),
         Some("col-resize")
     );
     input.hover(&view, (25.0, 10.0)).expect("covered title hover");
     after_next_frame(&grid.window);
     assert!(numbers.state_flags().contains(gtk::StateFlags::PRELIGHT));
     assert!(!second_data.state_flags().contains(gtk::StateFlags::PRELIGHT));
+    let overlay = view.parent().and_downcast::<gtk::Overlay>().expect("viewport overlay");
+    let cover = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    overlay.add_overlay(&cover);
+    after_next_frame(&grid.window);
+    wait_until(WAIT, || cover.state_flags().contains(gtk::StateFlags::PRELIGHT))
+        .expect("cover took the stationary pointer");
+    overlay.remove_overlay(&cover);
+    after_next_frame(&grid.window);
+    wait_until(WAIT, || numbers.state_flags().contains(gtk::StateFlags::PRELIGHT))
+        .expect("header entered without motion");
+    assert!(
+        !second_data.state_flags().contains(gtk::StateFlags::PRELIGHT),
+        "entry rehighlighted the covered title"
+    );
     let outside = projection(&grid).width() as f32 + 4.0;
     let second = second_data.compute_bounds(&view).expect("second title bounds");
     assert!(

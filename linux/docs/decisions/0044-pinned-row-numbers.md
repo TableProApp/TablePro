@@ -16,7 +16,10 @@ Keep one ColumnView as the only row layout, input and accessibility surface.
 After its normal snapshot, the scrollable container draws the native row-number
 cells and header again at the fixed edge. It snapshots each native row through
 its actual parent into a fresh, untransformed snapshot, then clips and translates
-the resulting node. A passive themed background covers the underlying data.
+the resulting node. A passive themed background covers the underlying data. A header hit area
+keeps native pointer crossing and resize cursors out of the covered data headers;
+its native hover state styles the original number header. It has no keyboard
+focus or accessibility entry and uses the grid's existing header menu.
 
 This preserves the actual row height, selection background, pending icons, stripes
 and CSS without another row model or copied measurements. Descendant redraws

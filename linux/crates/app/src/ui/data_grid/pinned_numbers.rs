@@ -81,8 +81,7 @@ mod imp {
                 child.allocate(width, height, baseline, None);
             }
             if let Some(grid) = self.grid.upgrade() {
-                // Scrolling can move a header under a stationary pointer.
-                super::super::pointer::sync_header_hover(&grid);
+                super::sync_header_state(&grid);
             }
         }
 
@@ -149,6 +148,46 @@ pub(super) fn install(grid: &DataGrid) {
     view.set_hscroll_policy(viewport.hscroll_policy());
     view.set_vscroll_policy(viewport.vscroll_policy());
     imp.gutter_backing.update_state(&[gtk::accessible::State::Hidden(true)]);
+    imp.gutter_header.update_state(&[gtk::accessible::State::Hidden(true)]);
+    imp.gutter_header.set_cursor_from_name(Some("default"));
+    imp.gutter_header.connect_state_flags_changed(glib::clone!(
+        #[weak]
+        grid,
+        move |proxy, previous| {
+            let current = proxy.state_flags();
+            if (previous ^ current).contains(gtk::StateFlags::PRELIGHT) {
+                set_header_hover(&grid, current.contains(gtk::StateFlags::PRELIGHT));
+            }
+        }
+    ));
+    if let Some(overlay) = viewport.child().and_downcast::<gtk::Overlay>() {
+        overlay.connect_get_child_position(glib::clone!(
+            #[weak]
+            grid,
+            #[upgrade_or]
+            None,
+            move |overlay, child| {
+                if child != grid.imp().gutter_header.upcast_ref::<gtk::Widget>() {
+                    return None;
+                }
+                let area = header(&grid.column_view()).and_then(|header| header.compute_bounds(overlay));
+                let Some((area, column)) = area.zip(grid.row_numbers_column()) else {
+                    return Some(gtk::gdk::Rectangle::new(0, 0, 0, 0));
+                };
+                let width = column.fixed_width();
+                let x = match overlay.direction() {
+                    gtk::TextDirection::Rtl => overlay.width() - width,
+                    _ => 0,
+                };
+                Some(gtk::gdk::Rectangle::new(
+                    x,
+                    area.y() as i32,
+                    width,
+                    area.height() as i32,
+                ))
+            }
+        ));
+    }
     imp.scrolled.hadjustment().connect_value_changed(glib::clone!(
         #[weak]
         grid,
@@ -164,7 +203,9 @@ pub(super) fn sync(grid: &DataGrid) {
     if let Some(column) = grid.row_numbers_column() {
         imp.gutter_backing.set_width_request(column.fixed_width());
     }
-    imp.gutter_backing.set_visible(imp.scrolled.hadjustment().value() > 0.0);
+    let visible = imp.scrolled.hadjustment().value() > 0.0;
+    imp.gutter_backing.set_visible(visible);
+    imp.gutter_header.set_visible(visible);
     imp.viewport.queue_draw();
     grid.edit().queue_editor_allocate();
 }
@@ -223,6 +264,34 @@ fn reveal_allocated(grid: &DataGrid, cell: &GridCell) -> bool {
     let before = adjustment.value();
     adjustment.set_value(before - f64::from(covered));
     adjustment.value() != before
+}
+
+fn header(view: &gtk::ColumnView) -> Option<gtk::Widget> {
+    let mut child = view.first_child();
+    while let Some(widget) = child {
+        if widget.css_name() == "header" {
+            return Some(widget);
+        }
+        child = widget.next_sibling();
+    }
+    None
+}
+
+fn sync_header_state(grid: &DataGrid) {
+    let proxy = &grid.imp().gutter_header;
+    if proxy.is_visible() {
+        set_header_hover(grid, proxy.state_flags().contains(gtk::StateFlags::PRELIGHT));
+    }
+}
+
+fn set_header_hover(grid: &DataGrid, hovered: bool) {
+    if let Some(title) = header(&grid.column_view()).and_then(|header| header.first_child()) {
+        if hovered {
+            title.set_state_flags(gtk::StateFlags::PRELIGHT, false);
+        } else {
+            title.unset_state_flags(gtk::StateFlags::PRELIGHT);
+        }
+    }
 }
 
 fn snapshot_numbers(grid: &DataGrid, snapshot: &gtk::Snapshot) {

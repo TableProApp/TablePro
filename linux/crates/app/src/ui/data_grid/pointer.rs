@@ -21,7 +21,7 @@ enum Hit {
 
 // Capture precedes the native row gesture, which retains selection and dragging.
 pub fn install(grid: &DataGrid) {
-    install_header_hover(grid);
+    install_pinned_header(grid);
     grid.column_view().add_controller(focus_on_click(grid));
     let gesture = gtk::GestureClick::builder().button(gdk::BUTTON_SECONDARY).build();
     gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -56,96 +56,31 @@ pub fn install(grid: &DataGrid) {
     ));
 }
 
-// Native row selection keeps the focus that capture places on the clicked cell.
-fn install_header_hover(grid: &DataGrid) {
-    let motion = gtk::EventControllerMotion::new();
-    // GTK's header first chooses its resize cursor for the underlying columns.
-    motion.set_propagation_phase(gtk::PropagationPhase::Bubble);
-    motion.connect_enter(glib::clone!(
+fn install_pinned_header(grid: &DataGrid) {
+    let gesture = gtk::GestureClick::builder().button(0).build();
+    // Native titles consume middle clicks too, before the scroller can act.
+    gesture.connect_pressed(|gesture, _, _, _| {
+        gesture.set_state(gtk::EventSequenceState::Claimed);
+    });
+    gesture.connect_released(glib::clone!(
         #[weak]
         grid,
-        move |_, x, y| {
-            grid.imp().pointer_position.set(Some((x, y)));
-            sync_header_hover(&grid);
-        }
-    ));
-    motion.connect_motion(glib::clone!(
-        #[weak]
-        grid,
-        move |_, x, y| {
-            grid.imp().pointer_position.set(Some((x, y)));
-            sync_header_hover(&grid);
-        }
-    ));
-    motion.connect_leave(glib::clone!(
-        #[weak]
-        grid,
-        move |_| {
-            grid.imp().pointer_position.set(None);
-            sync_header_hover(&grid);
-        }
-    ));
-    grid.column_view().add_controller(motion);
-}
-
-pub(super) fn sync_header_hover(grid: &DataGrid) {
-    let view = grid.column_view();
-    let header = {
-        let mut child = view.first_child();
-        loop {
-            let Some(widget) = child else {
+        move |gesture, _, x, y| {
+            if gesture.current_button() != gdk::BUTTON_SECONDARY {
+                return;
+            }
+            let header = &grid.imp().gutter_header;
+            let Some(point) = header.compute_point(&grid.column_view(), &gtk::graphene::Point::new(x as f32, y as f32))
+            else {
                 return;
             };
-            if widget.css_name() == "header" {
-                break widget;
-            }
-            child = widget.next_sibling();
+            grid.menu_at_pointer(Hit::NumberHeader, f64::from(point.x()), f64::from(point.y()));
         }
-    };
-    let point = grid.imp().pointer_position.get();
-    let hovered = point.and_then(|(x, y)| {
-        let mut picked = view.pick(x, y, gtk::PickFlags::DEFAULT);
-        while let Some(widget) = picked {
-            if widget.parent().as_ref() == Some(&header) {
-                return Some(widget);
-            }
-            picked = widget.parent();
-        }
-        None
-    });
-    let pinned = point.is_some_and(|(x, y)| {
-        super::pinned_numbers::covers(grid, x)
-            && header
-                .compute_bounds(&view)
-                .is_some_and(|area| y >= f64::from(area.y()) && y < f64::from(area.y() + area.height()))
-    });
-    let desired = pinned.then(|| header.first_child()).flatten();
-    let previous = grid
-        .imp()
-        .header_hover
-        .borrow()
-        .as_ref()
-        .and_then(glib::WeakRef::upgrade);
-    if previous != desired {
-        if let Some(previous) = previous {
-            previous.unset_state_flags(gtk::StateFlags::PRELIGHT);
-        }
-        grid.imp()
-            .header_hover
-            .replace(desired.as_ref().map(gtk::Widget::downgrade));
-    }
-    if let Some(desired) = desired {
-        if let Some(covered) = hovered.filter(|widget| widget != &desired) {
-            covered.unset_state_flags(gtk::StateFlags::PRELIGHT);
-        }
-        desired.set_state_flags(gtk::StateFlags::PRELIGHT, false);
-        header.set_cursor_from_name(Some("default"));
-    } else if let Some(hovered) = hovered {
-        // Leaving the gutter may stay inside the same native title, with no crossing event.
-        hovered.set_state_flags(gtk::StateFlags::PRELIGHT, false);
-    }
+    ));
+    grid.imp().gutter_header.add_controller(gesture);
 }
 
+// Native row selection keeps the focus that capture places on the clicked cell.
 fn focus_on_click(grid: &DataGrid) -> gtk::GestureClick {
     let gesture = gtk::GestureClick::builder().button(gdk::BUTTON_PRIMARY).build();
     gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
