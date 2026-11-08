@@ -1,6 +1,8 @@
 # Roadmap
 
-**Status, 2026-11-06**: 0.1.0-beta.1 is the first beta, with every capability in the tables below. It goes to the beta PPA, the beta COPR project, the beta Flatpak repository and GitHub Releases ([README](README.md#betas)). 0.1.0 waits on [release criteria](#release-criteria) 1, 8 and 10, and the [backlog](#backlog) lists what is not built.
+**Status, 2026-11-08**: [0.1.0-beta.3](https://github.com/TableProApp/TablePro/releases/tag/linux-v0.1.0-beta.3) is published on GitHub Releases, the beta PPA, the beta COPR project and the beta Flatpak repository ([README](README.md#betas)). 0.1.0 waits on [release criteria](#release-criteria) 1, 8 and 10. The [backlog](#backlog) lists the remaining work and known issues.
+
+beta.2 was tagged but never published: [release run 42382067978](https://github.com/TableProApp/TablePro/actions/runs/42382067978) failed before publishing. [#4093](https://github.com/TableProApp/TablePro/pull/4093) fixed the failure for beta.3.
 
 The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)) and connects to nine engines, each a crate linked in at compile time ([ADR 0001](docs/decisions/0001-no-plugin-system.md)): [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md), [Cassandra and ScyllaDB](docs/drivers/cassandra.md), [SQLite](docs/drivers/sqlite.md), [DuckDB](docs/drivers/duckdb.md), [Redis](docs/drivers/redis.md) and [MongoDB](docs/drivers/mongodb.md).
 
@@ -181,11 +183,13 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 
 ## Backlog
 
-Not built yet, in no order.
+Remaining work and known issues, in no order.
 
 ### Connections
 
 - Kerberos against a service outside the client's realm, which needs an SPN override in tiberius.
+- Report when Remember Password cannot save a password because there is no default keyring ([#4098](https://github.com/TableProApp/TablePro/issues/4098)).
+- Bring the KDE Wallet unlock prompt in front of the TablePro window ([#4099](https://github.com/TableProApp/TablePro/issues/4099)).
 
 ### Browse, edit and structure
 
@@ -195,13 +199,16 @@ Not built yet, in no order.
 
 ### Release and project
 
-- Write the Flathub manifest and the exception request by hand, and submit them.
+The [Linux user guide](https://docs.tablepro.app/linux), [download page](https://tablepro.app/download) and [support channels](../README.md#docs-and-community) are live. Support is through GitHub issues and Discord.
+
+- After 0.1.0 stable, the maintainer writes and submits the Flathub manifest and exception request by hand, under [Flathub's requirements](docs/decisions/0041-beta-repositories-and-release-packages.md#context).
 - An AUR PKGBUILD, kept by the community.
 - More languages: French, Korean, Turkish, and Simplified and Traditional Chinese, which the macOS app ships.
 - A manual pass with Orca, the keyboard alone, High Contrast, 1.5x text scaling and a right-to-left locale.
 - The [display scale pass](docs/testing.md#display-scales) again on a machine with a GPU and a HiDPI screen: the 2026-10-24 one ran in a container, on a software renderer.
-- Install and use it on Ubuntu 26.04 and Fedora 44 by hand, and under KDE Plasma with the Adwaita style.
-- A Linux user guide on docs.tablepro.app, a page on the marketing site, and a support channel.
+- Install and use it on Ubuntu 26.04 by hand. Fedora 44 GNOME and KDE Plasma passed the [installed-bundle smoke pass](#release-criteria).
+- Investigate the roughly 40-second first launch after a Flatpak update, seen once in a VM ([#4100](https://github.com/TableProApp/TablePro/issues/4100)).
+- Track Flatpak's app-name parsing bug, which makes `flatpak list` show "Usage data" ([#4101](https://github.com/TableProApp/TablePro/issues/4101)).
 
 ### More engines
 
@@ -219,11 +226,13 @@ Not committed: server monitoring (sessions, locks, slow queries), maintenance co
 
 ## Release criteria
 
-What has to hold before 0.1.0, for a user on GNOME 50 with Ubuntu 26.04 or Fedora 44, and where each stands on 2026-11-06:
+What has to hold before 0.1.0, for a user on GNOME 50 with Ubuntu 26.04 or Fedora 44, and where each stands on 2026-11-08:
+
+beta.3 passed all seven items of the [installed-bundle smoke pass](docs/releasing.md#installed-bundle-smoke-pass) on Fedora 44 GNOME 50.6 and Fedora 44 KDE Plasma 6.8.2. The [record on #4089](https://github.com/TableProApp/TablePro/pull/4089#issuecomment-6713150474) includes the beta.1 to beta.3 Flatpak update on both desktops and the known issues. This does not close the manual accessibility pass or the week of daily use below.
 
 | # | The user | Holds today | Still needed |
 |---|---|---|---|
-| 1 | Installs `tablepro` from the PPA or the COPR project, and gets updates from the system's updater | CI builds both packages offline the way Launchpad and COPR do, and starts them in fresh containers. The PPAs and COPR projects are set up, and 0.1.0-beta.1 goes to the beta ones | An install, then an upgrade, from the PPA and the COPR project |
+| 1 | Installs `tablepro` from the PPA or the COPR project, and gets updates from the system's updater | beta.3 is published in the [beta PPA](https://launchpad.net/~tablepro/+archive/ubuntu/tablepro-beta) for Ubuntu 26.04 and 26.10, amd64 and arm64, and the [beta COPR project](https://copr.fedorainfracloud.org/coprs/g/tablepro/tablepro-beta/build/11284999/) for Fedora 44 and 45, x86_64 and aarch64. Fresh installs from both repositories passed in containers on both architectures | Upgrade beta.1 to a later beta from the PPA with apt and from COPR with dnf |
 | 2 | Connects to their everyday PostgreSQL, MySQL, MariaDB, SQL Server, ClickHouse, Cassandra, ScyllaDB or SQLite database | The supported releases and why others are out, in the README's [supported servers](README.md#supported-servers). CI runs every driver's Docker suite on each tested release, MySQL 8.0 and SQL Server 2017 and 2019 among them | Nothing |
 | 3 | Browses tables of real-world data (dates, decimals, JSON, UUIDs, NULLs) and sees correct values | Per-engine decoding with the type fallback and unsupported-type conformance cases ([ADR 0014](docs/decisions/0014-lossless-values-and-dialects.md)). A value corpus on every engine, MariaDB too: dates and times at their extremes and in other zones, decimals, JSON, UUIDs, Unicode and binary values, read back through a table tab, Export All and an editor run, and exported as CSV and SQL INSERT and loaded back into an empty copy | Nothing |
 | 4 | Runs typical queries against tables of a million rows or more without running out of memory or freezing | The 10,000-row editor limit with Export All, and driver tests over 2,000,000 rows. Pages seek past the edge row's key, or walk PostgreSQL heap block windows for a table with no key; OFFSET only under a user sort, a restored deep offset or a partitioned keyless table. Docker tests page 60k and 25k-row tables both ways and check the plan. A 1,000,000-row table is paged to its end and exported on PostgreSQL, MySQL, MariaDB, SQL Server, ClickHouse, Cassandra, ScyllaDB, SQLite and DuckDB, with bounds on time and on resident peak growth. The file engines' cases run in the cargo suite, each in a test binary of its own, so the peak is its alone | Nothing |
