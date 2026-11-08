@@ -176,8 +176,6 @@ impl DataGrid {
         });
     }
 
-    /// Move the focus to the cell at `position` in data column `column`,
-    /// scrolling it into view.
     pub(crate) fn focus_cell(&self, position: u32, column: usize) -> Option<GridCell> {
         let view = self.column_view();
         let view_column = self.data_view_column(column)?;
@@ -192,7 +190,12 @@ impl DataGrid {
         if !self.focused_cell().is_some_and(|cell| landed(&cell)) {
             view.grab_focus();
         }
-        self.focused_cell().filter(landed)
+        let cell = self.focused_cell().filter(landed);
+        if cell.is_some() {
+            // GTK may change the adjustment after its focus notification.
+            super::pinned_numbers::reveal_focus(self);
+        }
+        cell
     }
 
     /// Give the focus back to `cell` once its editor closed, since the
@@ -226,6 +229,7 @@ impl DataGrid {
 
     fn focus_moved(&self) {
         if self.focused_cell().is_none() {
+            super::pinned_numbers::cancel_reveal(self);
             return;
         }
         self.refresh_actions();

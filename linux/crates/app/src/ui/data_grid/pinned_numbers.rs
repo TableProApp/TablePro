@@ -148,7 +148,10 @@ pub(super) fn install(grid: &DataGrid) {
     imp.scrolled.hadjustment().connect_value_changed(glib::clone!(
         #[weak]
         grid,
-        move |_| sync(&grid)
+        move |_| {
+            cancel_reveal(&grid);
+            sync(&grid);
+        }
     ));
 }
 
@@ -185,6 +188,10 @@ pub(super) fn covered_edge(grid: &DataGrid) -> Option<f32> {
 
 pub(super) fn covers(grid: &DataGrid, x: f64) -> bool {
     bounds(grid).is_some_and(|rect| x >= f64::from(rect.x()) && x < f64::from(rect.x() + rect.width()))
+}
+
+pub(super) fn cancel_reveal(grid: &DataGrid) {
+    grid.imp().viewport.imp().focus.take();
 }
 
 pub(super) fn reveal_focus(grid: &DataGrid) {

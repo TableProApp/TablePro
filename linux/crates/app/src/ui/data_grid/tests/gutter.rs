@@ -307,7 +307,7 @@ fn assert_aligned(grid: &Grid) {
     }
 }
 
-fn gutter_pixels(grid: &Grid) -> Vec<u8> {
+fn gutter_image(grid: &Grid) -> gtk::gdk::Texture {
     use gtk::subclass::prelude::*;
     let viewport = grid.grid.imp().viewport.get();
     let parent = viewport.parent().expect("viewport parent");
@@ -321,17 +321,17 @@ fn gutter_pixels(grid: &Grid) -> Vec<u8> {
     } else {
         bounds.x()
     };
-    let area = gtk::graphene::Rect::new(x, bounds.y(), width, bounds.height());
-    let texture = grid
-        .window
+    // render_texture uses one physical pixel per unit, independently of GDK_SCALE.
+    let scale = viewport.scale_factor() as f32;
+    let scaled = gtk::Snapshot::new();
+    scaled.scale(scale, scale);
+    scaled.append_node(&node);
+    let node = scaled.to_node().expect("scaled grid");
+    let area = gtk::graphene::Rect::new(x * scale, bounds.y() * scale, width * scale, bounds.height() * scale);
+    grid.window
         .renderer()
         .expect("renderer")
-        .render_texture(&node, Some(&area));
-    gtk::gdk::TextureDownloader::new(&texture)
-        .download_bytes()
-        .0
-        .as_ref()
-        .to_vec()
+        .render_texture(&node, Some(&area))
 }
 
 fn assert_pinned_pixels(grid: &Grid) {
@@ -339,15 +339,24 @@ fn assert_pinned_pixels(grid: &Grid) {
     let value = adjustment.value();
     adjustment.set_value(0.0);
     after_next_frame(&grid.window);
-    let native = gutter_pixels(grid);
+    let native = gutter_image(grid);
     adjustment.set_value(value);
     after_next_frame(&grid.window);
-    let pinned = gutter_pixels(grid);
-    assert_eq!(native.len(), pinned.len());
+    let pinned = gutter_image(grid);
+    let native_bytes = gtk::gdk::TextureDownloader::new(&native).download_bytes().0;
+    let pinned_bytes = gtk::gdk::TextureDownloader::new(&pinned).download_bytes().0;
+    assert_eq!(native_bytes.len(), pinned_bytes.len());
     assert_eq!(
-        native.iter().zip(&pinned).filter(|(a, b)| a != b).count(),
+        native_bytes
+            .iter()
+            .zip(pinned_bytes.iter())
+            .filter(|(a, b)| a != b)
+            .count(),
         0,
-        "the pinned gutter differs from the native row-number column"
+        "the pinned gutter differs from the native row-number column at scale {}; native_png={} pinned_png={}",
+        grid.window.scale_factor(),
+        gtk::glib::base64_encode(&native.save_to_png_bytes()),
+        gtk::glib::base64_encode(&pinned.save_to_png_bytes())
     );
 }
 
@@ -714,4 +723,17 @@ fn rtl_gutter_menus_and_focus_follow_its_actual_edge() {
             "column {column}: {bounds:?}"
         );
     }
+}
+
+#[gtk4::test]
+fn a_newer_horizontal_scroll_cancels_an_older_focus_reveal() {
+    let grid = wide_rows(20);
+    grid.focus(0, 10);
+    after_next_frame(&grid.window);
+    assert!(grid.grid.focus_cell(0, 0).is_some());
+    let adjustment = scroll(&grid).hadjustment();
+    adjustment.set_value(300.0);
+    after_next_frame(&grid.window);
+    assert_eq!(adjustment.value(), 300.0, "a stale focus request undid the scroll");
+    assert!(projection(&grid).is_visible());
 }
