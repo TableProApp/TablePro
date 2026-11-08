@@ -97,19 +97,26 @@ impl WorkspaceModel {
         self.close_quick_open();
         let input = self.input.clone();
         let dialog = crate::ui::quick_open::QuickOpen::new(session, self.tasks.clone(), move |pick| {
-            let crate::ui::quick_open::Target::Table(table) = pick.target;
-            let tablepro_core::meta::TableRef { schema, name } = table;
-            input.deliver(match pick.structure {
-                true => WorkspaceInput::EditStructureTab { schema, table: name },
-                false => WorkspaceInput::SelectTable {
-                    schema,
-                    name,
-                    open_mode: super::OpenMode::SwitchOrAppend,
-                },
-            });
+            input.deliver(WorkspaceInput::QuickOpenChosen(pick));
         });
         dialog.present(self.dialog_parent().as_ref());
         self.quick_open_dialog = Some(dialog);
+    }
+
+    pub(super) fn on_quick_open_chosen(&mut self, pick: crate::ui::quick_open::Pick) {
+        if !self.is_front() {
+            return;
+        }
+        let crate::ui::quick_open::Target::Table(table) = pick.target;
+        let tablepro_core::meta::TableRef { schema, name } = table;
+        self.update(match pick.structure {
+            true => WorkspaceInput::EditStructureTab { schema, table: name },
+            false => WorkspaceInput::SelectTable {
+                schema,
+                name,
+                open_mode: super::OpenMode::SwitchOrAppend,
+            },
+        });
     }
 
     /// Ask what to call the SQL in front of the user, then keep it.

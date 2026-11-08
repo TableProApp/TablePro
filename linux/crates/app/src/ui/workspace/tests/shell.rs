@@ -580,3 +580,18 @@ fn open_quickly_closes_when_another_session_comes_forward() {
     wait_until(WAIT, || dialog.parent().is_none()).expect("old session dialog closed");
     assert_eq!(sessions.shell.front().as_ref(), Some(&sessions.second));
 }
+
+#[gtk4::test]
+fn a_queued_quick_open_pick_does_not_reopen_a_background_session() {
+    let sessions = super::two_sessions("QuickOpenQueuedPick", "Other");
+    super::open_editor(&sessions.second);
+    let before = sessions.shell.tab_view().n_pages();
+    sessions.first.with_model(|model| {
+        model.on_quick_open_chosen(crate::ui::quick_open::Pick {
+            target: crate::ui::quick_open::Target::Table(tablepro_core::meta::TableRef::new(None, "orders")),
+            structure: false,
+        })
+    });
+    assert_eq!(sessions.shell.front().as_ref(), Some(&sessions.second));
+    assert_eq!(sessions.shell.tab_view().n_pages(), before);
+}

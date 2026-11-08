@@ -72,6 +72,7 @@ mod imp {
         pub(super) generation: Cell<Option<u64>>,
         pub(super) rendered: RefCell<Option<String>>,
         pub(super) pending_pick: Cell<Option<bool>>,
+        pub(super) pending_steps: RefCell<Vec<i32>>,
     }
 
     #[glib::object_subclass]
@@ -176,11 +177,31 @@ impl QuickOpen {
         view.set_content(Some(&body));
         self.set_child(Some(&view));
         self.set_focus(Some(&entry));
+        self.connect_controls(&entry, &list, &banner, &view);
+        let _ = self.imp().widgets.set(Widgets {
+            entry,
+            store,
+            selection,
+            list,
+            stack,
+            status,
+            banner,
+        });
+    }
+
+    fn connect_controls(
+        &self,
+        entry: &gtk::SearchEntry,
+        list: &gtk::ListView,
+        banner: &adw::Banner,
+        view: &adw::ToolbarView,
+    ) {
         entry.connect_changed(glib::clone!(
             #[weak(rename_to=dialog)]
             self,
             move |_| {
                 dialog.imp().pending_pick.set(None);
+                dialog.imp().pending_steps.borrow_mut().clear();
                 dialog.imp().requests.borrow_mut().cancel(Request::Search);
             }
         ));
@@ -213,6 +234,10 @@ impl QuickOpen {
             #[weak(rename_to=dialog)]
             self,
             move |_, position| {
+                if !dialog.current() {
+                    dialog.search();
+                    return;
+                }
                 if let Some(widgets) = dialog.imp().widgets.get() {
                     widgets.selection.set_selected(position);
                 }
@@ -234,15 +259,6 @@ impl QuickOpen {
             move |_, key, _, modifiers| dialog.key(key, modifiers)
         ));
         view.add_controller(keys);
-        let _ = self.imp().widgets.set(Widgets {
-            entry,
-            store,
-            selection,
-            list,
-            stack,
-            status,
-            banner,
-        });
     }
 
     fn key(&self, key: gdk::Key, modifiers: gdk::ModifierType) -> glib::Propagation {
@@ -278,6 +294,7 @@ impl QuickOpen {
         self.imp().watches.borrow_mut().clear();
         self.imp().requests.borrow_mut().cancel_all();
         self.imp().pending_pick.set(None);
+        self.imp().pending_steps.borrow_mut().clear();
     }
 
     fn load(&self, refresh: bool) {
@@ -371,7 +388,10 @@ impl QuickOpen {
         let Some(tasks) = imp.context.borrow().as_ref().map(|context| context.tasks.clone()) else {
             return;
         };
-        if imp.requests.borrow().is_pending(Request::Index) || imp.generation.get().is_none() {
+        if imp.requests.borrow().is_pending(Request::Index)
+            || imp.requests.borrow().is_pending(Request::Search)
+            || imp.generation.get().is_none()
+        {
             return;
         }
         let text = widgets.entry.text().to_string();
@@ -401,6 +421,7 @@ impl QuickOpen {
     fn search_failed(&self) {
         self.imp().rendered.replace(None);
         self.imp().pending_pick.set(None);
+        self.imp().pending_steps.borrow_mut().clear();
         if let Some(widgets) = self.imp().widgets.get() {
             widgets.banner.set_revealed(true);
         }
@@ -448,6 +469,10 @@ impl QuickOpen {
             widgets
                 .list
                 .scroll_to(widgets.selection.selected(), gtk::ListScrollFlags::NONE, None);
+        }
+        let steps = std::mem::take(&mut *imp.pending_steps.borrow_mut());
+        for by in steps {
+            self.step(by);
         }
         if let Some(structure) = imp.pending_pick.take() {
             self.activate(structure);
@@ -501,6 +526,7 @@ impl QuickOpen {
 
     fn step(&self, by: i32) {
         if !self.current() {
+            self.imp().pending_steps.borrow_mut().push(by);
             self.search();
             return;
         }

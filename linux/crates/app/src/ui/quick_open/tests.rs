@@ -247,3 +247,38 @@ fn control_enter_opens_table_structure_with_a_ddl_dialect() {
     assert_eq!(chosen.borrow().len(), 1);
     assert!(chosen.borrow()[0].structure);
 }
+
+#[gtk4::test]
+fn clicking_a_stale_row_never_opens_a_different_search_result() {
+    let (_runtime, _fake, dialog, chosen) = setup(vec![
+        object("customers", ObjectKind::Table),
+        object("orders", ObjectKind::Table),
+    ]);
+    ready(&dialog);
+    let widgets = dialog.imp().widgets.get().unwrap();
+    widgets.entry.set_text("orders");
+    widgets.list.emit_by_name::<()>("activate", &[&0u32]);
+    ready(&dialog);
+    assert!(chosen.borrow().is_empty());
+    assert_eq!(dialog.selected().unwrap().object.name, "orders");
+    widgets.list.emit_by_name::<()>("activate", &[&0u32]);
+    assert_eq!(chosen.borrow().len(), 1);
+}
+
+#[gtk4::test]
+fn arrows_before_search_finishes_apply_before_enter() {
+    let (_runtime, _fake, dialog, chosen) = setup(vec![
+        object("customers", ObjectKind::Table),
+        object("order_items", ObjectKind::Table),
+        object("orders", ObjectKind::Table),
+    ]);
+    ready(&dialog);
+    dialog.imp().widgets.get().unwrap().entry.set_text("ord");
+    dialog.step(1);
+    dialog.activate(false);
+    wait_until(WAIT, || !chosen.borrow().is_empty()).expect("pending navigation and activation");
+    assert_eq!(
+        chosen.borrow()[0].target,
+        Target::Table(tablepro_core::meta::TableRef::new(Some("public".to_owned()), "orders"))
+    );
+}
