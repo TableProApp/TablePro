@@ -75,7 +75,7 @@ pub(super) fn install(window: &adw::ApplicationWindow, shell: &WorkspaceShell) {
                 && let Some((owner, id)) = shell.owner_of(&page)
                 && let Some(input) = owner.sender()
             {
-                input.deliver(WorkspaceInput::RefreshWorkspaceTab(id));
+                input.deliver(WorkspaceInput::RefreshPage(Some(id)));
             }
         })
         .build()]);

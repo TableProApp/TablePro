@@ -436,13 +436,10 @@ impl WorkspaceModel {
         }
     }
 
-    pub(super) fn on_refresh_active_tab(&self) {
-        if let Some(id) = self.selected_workspace_tab_id() {
-            self.on_refresh_workspace_tab(id);
-        }
-    }
-
-    pub(super) fn on_refresh_workspace_tab(&self, id: Uuid) {
+    pub(super) fn on_refresh_page(&self, tab: Option<Uuid>) {
+        let Some(id) = tab.or_else(|| self.selected_workspace_tab_id()) else {
+            return;
+        };
         // Release the tab map before an action emits a workspace signal.
         let target = self.workspace_tabs.borrow().get(&id).and_then(refresh_target);
         match target {
@@ -535,13 +532,6 @@ impl WorkspaceModel {
 
     pub(super) fn selected_workspace_tab_id(&self) -> Option<Uuid> {
         self.index.id_of(&self.tab_view.selected_page()?)
-    }
-
-    pub(super) fn selected_browse_tab_id(&self) -> Option<Uuid> {
-        let id = self.selected_workspace_tab_id()?;
-        let tabs = self.workspace_tabs.borrow();
-        let slot = tabs.get(&id)?;
-        if slot.browse_tab().is_some() { Some(id) } else { None }
     }
 
     /// Stop every tab and let go of the tab view. The pending edits
