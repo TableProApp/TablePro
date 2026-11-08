@@ -1536,3 +1536,23 @@ fn a_dotted_field_of_a_document_neither_sorts_nor_takes_an_edit() {
     assert!(!grid.edit().edit_cell(&cell), "the dotted field opened for editing");
     assert_eq!(harness.tracker.pending_count(), 0);
 }
+
+/// The bar's Columns reaches the grid's column chooser, and gives way to
+/// the More menu on a narrow tab.
+#[gtk4::test]
+fn the_bottom_bar_offers_the_column_chooser() {
+    use gtk4::prelude::*;
+
+    let harness = Harness::open(serving_table(), []);
+    let tab = harness.tab().clone();
+    let button = crate::test_support::descendants(&tab)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk4::Button>().ok())
+        .find(|button| button.action_name().as_deref() == Some("grid.columns"))
+        .expect("a Columns button");
+
+    assert_eq!(
+        button.tooltip_text().as_deref(),
+        Some("Choose which columns the grid shows")
+    );
+}

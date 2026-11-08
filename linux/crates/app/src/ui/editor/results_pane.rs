@@ -54,6 +54,8 @@ mod imp {
         #[template_child]
         pub details_toggle: TemplateChild<gtk4::ToggleButton>,
         #[template_child]
+        pub columns_button: TemplateChild<gtk4::Button>,
+        #[template_child]
         pub transaction_bar: TemplateChild<gtk4::Box>,
         #[template_child]
         pub transaction_label: TemplateChild<gtk4::Label>,
@@ -307,6 +309,7 @@ impl ResultsPane {
         let actions = grid.map(DataGrid::actions);
         self.insert_action_group("grid", actions.as_ref());
         self.imp().details_toggle.set_visible(grid.is_some());
+        self.imp().columns_button.set_visible(grid.is_some());
     }
 
     /// Put the page of line `index` first among the kept ones, building
@@ -562,6 +565,10 @@ mod tests {
                 gtk4::AccessibleProperty::Label
             ));
         }
+        assert!(gtk4::test_accessible_has_property(
+            &pane.imp().columns_button.get(),
+            gtk4::AccessibleProperty::Label
+        ));
     }
 
     #[gtk4::test]
@@ -571,6 +578,10 @@ mod tests {
         pane.append(&[command()]);
 
         assert!(!pane.imp().details_toggle.is_visible());
+        assert!(
+            !pane.imp().columns_button.is_visible(),
+            "Columns without a grid to choose from"
+        );
         assert!(
             pane.activate_action("grid.show-details", None).is_err(),
             "the pane reaches a grid it does not show"
