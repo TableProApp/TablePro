@@ -1324,7 +1324,10 @@ impl WorkspaceModel {
         }
     }
 
-    #[expect(clippy::too_many_lines, reason = "Each workspace input dispatches to its own handler")]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Each workspace input dispatches to its own handler"
+    )]
     fn update(&mut self, msg: WorkspaceInput) {
         match msg {
             WorkspaceInput::HealthChanged(health) => self.refresh_health_banner(&health),
