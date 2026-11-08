@@ -372,6 +372,16 @@ impl ConnectionTree {
         }));
     }
 
+    /// The session row the tree follows, for a test to read.
+    #[cfg(test)]
+    pub(crate) fn followed_session(&self) -> Option<SessionKey> {
+        self.inner
+            .followed
+            .borrow()
+            .as_ref()
+            .map(|followed| followed.key.clone())
+    }
+
     pub(crate) fn shutdown(&self) {
         let inner = &self.inner;
         if let Some(watch) = inner.saved_watch.take() {

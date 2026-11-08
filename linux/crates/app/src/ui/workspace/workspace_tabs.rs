@@ -510,12 +510,20 @@ impl WorkspaceModel {
         };
         match self.selected_workspace_tab_id() {
             Some(id) => {
-                let shown = self
-                    .workspace_tabs
-                    .borrow()
-                    .get(&id)
-                    .and_then(WorkspaceTab::sidebar_object);
-                tree.select(Some(&self.key), shown.as_ref());
+                let tabs = self.workspace_tabs.borrow();
+                let tab = tabs.get(&id);
+                let shown = tab.and_then(WorkspaceTab::sidebar_object);
+                // A query tab moved to another database shows that database's
+                // row, as the macOS window follows the tab (0030).
+                let moved = match tab {
+                    Some(WorkspaceTab::Editor(slot)) => slot.editor.tab_database(),
+                    _ => None,
+                };
+                let row = match (&self.key, moved) {
+                    (SessionKey::Saved(id), Some(database)) => SessionKey::SavedIn { id: *id, database },
+                    _ => self.key.clone(),
+                };
+                tree.select(Some(&row), shown.as_ref());
             }
             None => tree.select(None, None),
         }
