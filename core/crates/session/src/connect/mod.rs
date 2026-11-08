@@ -27,6 +27,7 @@ mod persist_pending_save;
 mod request_target;
 mod resolve_saved;
 mod ssh_tunnels;
+mod store_secrets;
 
 pub use attempt_generation::AttemptGeneration;
 pub use attempt_outcome::AttemptOutcome;

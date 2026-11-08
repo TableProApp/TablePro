@@ -9,13 +9,17 @@ use std::time::Duration;
 
 use gtk4::prelude::*;
 use libadwaita as adw;
-use tablepro_core::{AuthMode, DriverError, DriverRegistry, LivenessPolicy, TlsConfig};
+use secrecy::SecretString;
+use tablepro_core::credentials::{SecretError, SecretKind, SecretSave};
+use tablepro_core::{AuthMode, DriverError, DriverRegistry, FileEndpoint, LivenessPolicy, TlsConfig};
 use tablepro_session::fakes::{FakeConnector, FakeCredentialSource, FakeEstablish};
 use tablepro_session::operation::DefaultDeadlines;
 use tablepro_session::runtime::CountingHold;
 use tablepro_session::{ConnectError, CredentialSource, SessionKey};
 use tablepro_storage::{SavedConnection, StoragePaths};
-use tablepro_test_support::{CallCounters, ConnectionScript, FakeConnection, FakeDriver, FakeReply, FakeSecretVault};
+use tablepro_test_support::{
+    Call, CallCounters, ConnectionScript, FakeConnection, FakeDriver, FakeReply, FakeSecretVault,
+};
 
 use super::*;
 use crate::application::{AppServicesParts, TableProApplication};
@@ -600,6 +604,82 @@ fn toast_routes_to_current_page_overlay() {
 }
 
 #[gtk4::test]
+fn passwords_the_keyring_refused_from_the_dialog_are_said_once_until_a_save_works() {
+    let test = TestWindow::picker("RefusedFromDialog");
+    test.vault.fail_store(SecretKind::DatabasePassword, SecretError::Locked);
+    let submission = remembering(
+        &test,
+        "new.db",
+        &[SecretKind::DatabasePassword, SecretKind::SshPassword],
+    );
+    let id = submission.pending_save.connection.id;
+
+    test.window
+        .send(SessionWindowInput::ConnectFromDialog(Box::new(submission)));
+    test.wait_for_page("workspace");
+    drain_main_context();
+
+    let title = "The keyring is locked, so the passwords were not saved";
+    let said: Vec<adw::Toast> = test
+        .window
+        .imp()
+        .toasts
+        .borrow()
+        .iter()
+        .filter(|toast| toast.title().as_deref() == Some(title))
+        .cloned()
+        .collect();
+    assert_eq!(said.len(), 1, "one save is one report");
+    assert_eq!(said[0].timeout(), 0, "the report leaves on its own");
+    assert_eq!(said[0].button_label().as_deref(), Some("Details"));
+    assert!(shows_text(
+        &test.window.shell().expect("the shell").toast_overlay(),
+        title
+    ));
+    let stores: Vec<Call> = test
+        .vault
+        .calls()
+        .into_iter()
+        .filter(|call| matches!(call, Call::Store(..)))
+        .collect();
+    assert_eq!(
+        stores,
+        vec![Call::Store(id, SecretKind::DatabasePassword)],
+        "the locked keyring was asked again"
+    );
+    assert_eq!(
+        test.services.sessions.window_for(&SessionKey::Saved(id)),
+        Some(test.window.id()),
+        "the connection did not open"
+    );
+
+    let dismissed = Rc::new(std::cell::Cell::new(false));
+    let seen = dismissed.clone();
+    said[0].connect_dismissed(move |_| seen.set(true));
+    test.vault.clear_failures();
+    test.window
+        .send(SessionWindowInput::ConnectFromDialog(Box::new(remembering(
+            &test,
+            "next.db",
+            &[SecretKind::DatabasePassword],
+        ))));
+    wait_until(WAIT, || dismissed.get()).expect("a password the keyring kept to take the report down");
+}
+
+/// The connect dialog's Connect on a new file entry, with Remember on for `kinds`.
+fn remembering(test: &TestWindow, file: &str, kinds: &[SecretKind]) -> ConnectSubmission {
+    let mut submission = dialog_submission(FileEndpoint::create_new(test.dir().join(file)).expect("an endpoint"));
+    for kind in kinds {
+        submission.pending_save.secrets.push(SecretSave {
+            kind: *kind,
+            secret: SecretString::from("typed"),
+            label: "label".to_owned(),
+        });
+    }
+    submission
+}
+
+#[gtk4::test]
 fn the_connect_dialog_opens_once_over_its_own_window() {
     let test = TestWindow::picker("ConnectDialog");
 
@@ -703,7 +783,7 @@ fn a_connect_still_queued_when_its_window_shuts_down_is_closed() {
         result: Ok(Connected {
             pending,
             saved: None,
-            warnings: Vec::new(),
+            secrets: None,
             session_only: Vec::new(),
         }),
     };

@@ -2,6 +2,7 @@ use tablepro_core::credentials::SecretKind;
 use tablepro_session::PendingSession;
 use tablepro_storage::SavedConnection;
 
+use crate::services::secret_save_report::SecretSaveOutcome;
 use crate::ui::error_text::TlsRemedy;
 
 /// What background work a window started brings back to it.
@@ -22,8 +23,7 @@ pub(crate) struct Connected {
     /// The saved entry it connected to, as saved, which a reconnect
     /// reads its secrets for. `None` for a file nobody saved.
     pub saved: Option<SavedConnection>,
-    /// Secrets the keyring refused to keep, one sentence each.
-    pub warnings: Vec<String>,
+    pub secrets: Option<SecretSaveOutcome>,
     /// Secrets typed for this login that the keyring does not hold. The
     /// session reconnects with them rather than with the keyring's copy.
     pub session_only: Vec<SecretKind>,

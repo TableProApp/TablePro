@@ -23,6 +23,7 @@ use crate::services::deletion_error::DeletionError;
 use crate::services::library_outline::LibraryMove;
 use crate::services::saved_connection_editor::GroupChoice;
 use crate::services::saved_connection_error::SavedConnectionError;
+use crate::services::secret_save_report::SecretSaveOutcome;
 use crate::ui::connect_dialog::{ConnectDialog, ConnectDialogInit, ConnectDialogMode, ConnectPrefill, FormField};
 use crate::ui::delete_connection_dialog::{self, DeleteConnectionDialog};
 use crate::ui::file_read::{FileReadError, read_capped_file};
@@ -140,6 +141,7 @@ impl SessionWindow {
         let (Some(state), Some(input)) = (self.state(), self.input()) else {
             return;
         };
+        let asked_to_keep = save.secrets.len();
         let secrets = state.context.secrets.clone();
         let writes = StoreConnectionWrites::new(
             state.services.storage.connections().clone(),
@@ -148,10 +150,8 @@ impl SessionWindow {
         crate::runtime::spawn_held(&state.services.tasks, &*state.services.hold(), async move {
             match tablepro_session::persist_pending_save(&*secrets, &writes, save).await {
                 Ok(report) => {
-                    for (_, error) in &report.secret_failures {
-                        input.deliver(SessionWindowInput::ShowToast(
-                            crate::services::secret_save_report::not_saved_message(error),
-                        ));
+                    if let Some(outcome) = SecretSaveOutcome::of_connection(asked_to_keep, &report.secret_failures) {
+                        input.deliver(SessionWindowInput::SecretSave(outcome));
                     }
                 }
                 Err(error) => {

@@ -1,6 +1,7 @@
 use tablepro_core::credentials::{SecretError, SecretKind, SecretVault};
 use tablepro_storage::{SavedConnection, SavedSshAuth, StorageError};
 
+use super::store_secrets::store_secrets;
 use super::{ConnectionWrites, PendingSave};
 
 /// What a save kept, and which secrets the keyring refused.
@@ -28,18 +29,15 @@ pub async fn persist_pending_save(
         forget,
         is_new,
     } = save;
-    let mut secret_failures = Vec::new();
-    for secret in &to_store {
-        let stored = secrets
-            .store(saved.id, secret.kind, &secret.secret, &secret.label)
-            .await;
-        if secret.kind == SecretKind::SshPassphrase {
-            record_passphrase(&mut saved, stored.is_ok());
-        }
-        if let Err(error) = stored {
-            tracing::warn!(kind = ?secret.kind, %error, "a secret was not stored");
-            secret_failures.push((secret.kind, error));
-        }
+    let secret_failures = store_secrets(secrets, saved.id, &to_store).await;
+    for (kind, error) in &secret_failures {
+        tracing::warn!(?kind, %error, "a secret was not stored");
+    }
+    if to_store.iter().any(|secret| secret.kind == SecretKind::SshPassphrase) {
+        let refused = secret_failures
+            .iter()
+            .any(|(kind, _)| *kind == SecretKind::SshPassphrase);
+        record_passphrase(&mut saved, !refused);
     }
 
     // A secret the user no longer wants kept is only a convenience

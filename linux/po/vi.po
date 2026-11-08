@@ -347,37 +347,118 @@ msgid "TablePro SSH key passphrase for {target}"
 msgstr "Cụm mật khẩu khóa SSH TablePro cho {target}"
 
 #: crates/app/src/services/secret_save_report.rs
-msgid ""
-"No keyring is running, so the password was not saved. It will be asked for "
-"next time."
-msgstr ""
-"Không có chùm khóa nào đang chạy, nên mật khẩu chưa được lưu. Lần sau ứng "
-"dụng sẽ hỏi lại."
+msgid "The keyring is locked, so the password was not saved"
+msgid_plural "The keyring is locked, so the passwords were not saved"
+msgstr[0] "Chùm khóa đang bị khóa, nên mật khẩu chưa được lưu"
+
+#: crates/app/src/services/secret_save_report.rs
+msgid "The keyring is locked, so the passphrase was not saved"
+msgstr "Chùm khóa đang bị khóa, nên cụm mật khẩu chưa được lưu"
+
+#: crates/app/src/services/secret_save_report.rs
+msgid "The keyring is locked, so the API key was not saved"
+msgstr "Chùm khóa đang bị khóa, nên khóa API chưa được lưu"
+
+#: crates/app/src/services/secret_save_report.rs
+msgid "The keyring is locked, so the new access token was not saved"
+msgstr "Chùm khóa đang bị khóa, nên Access Token mới chưa được lưu"
+
+#: crates/app/src/services/secret_save_report.rs
+msgid "No keyring is available, so the password was not saved"
+msgid_plural "No keyring is available, so the passwords were not saved"
+msgstr[0] "Không có chùm khóa nào, nên mật khẩu chưa được lưu"
+
+#: crates/app/src/services/secret_save_report.rs
+msgid "No keyring is available, so the passphrase was not saved"
+msgstr "Không có chùm khóa nào, nên cụm mật khẩu chưa được lưu"
+
+#: crates/app/src/services/secret_save_report.rs
+msgid "No keyring is available, so the API key was not saved"
+msgstr "Không có chùm khóa nào, nên khóa API chưa được lưu"
+
+#: crates/app/src/services/secret_save_report.rs
+msgid "No keyring is available, so the new access token was not saved"
+msgstr "Không có chùm khóa nào, nên Access Token mới chưa được lưu"
+
+#: crates/app/src/services/secret_save_report.rs
+msgid "The keyring did not save the password"
+msgid_plural "The keyring did not save the passwords"
+msgstr[0] "Chùm khóa không lưu mật khẩu"
+
+#: crates/app/src/services/secret_save_report.rs
+msgid "The keyring did not save the passphrase"
+msgstr "Chùm khóa không lưu cụm mật khẩu"
+
+#: crates/app/src/services/secret_save_report.rs
+msgid "The keyring did not save the API key"
+msgstr "Chùm khóa không lưu khóa API"
+
+#: crates/app/src/services/secret_save_report.rs
+msgid "The keyring did not save the new access token"
+msgstr "Chùm khóa không lưu Access Token mới"
+
+#: crates/app/src/services/secret_save_report.rs
+msgid "Password Not Saved"
+msgid_plural "Passwords Not Saved"
+msgstr[0] "Chưa lưu mật khẩu"
+
+#: crates/app/src/services/secret_save_report.rs
+msgid "Passphrase Not Saved"
+msgstr "Chưa lưu cụm mật khẩu"
+
+#: crates/app/src/services/secret_save_report.rs
+msgid "API Key Not Saved"
+msgstr "Chưa lưu khóa API"
+
+#: crates/app/src/services/secret_save_report.rs
+msgid "Access Token Not Saved"
+msgstr "Chưa lưu Access Token"
+
+#: crates/app/src/services/secret_save_report.rs
+msgid "The keyring is locked."
+msgstr "Chùm khóa đang bị khóa."
+
+#: crates/app/src/services/secret_save_report.rs
+msgid "No keyring is running."
+msgstr "Không có chùm khóa nào đang chạy."
+
+#: crates/app/src/services/secret_save_report.rs
+msgid "The secret portal is unavailable."
+msgstr "Cổng thông tin bí mật (secret portal) không khả dụng."
+
+#: crates/app/src/services/secret_save_report.rs
+msgid "TablePro asks for it at the next connect."
+msgid_plural "TablePro asks for them at the next connect."
+msgstr[0] "TablePro sẽ hỏi lại ở lần kết nối sau."
+
+#: crates/app/src/services/secret_save_report.rs
+msgid "Clients keep using the current token."
+msgstr "Client vẫn dùng token hiện tại."
 
 #: crates/app/src/services/secret_save_report.rs
 msgid ""
-"The secret portal is unavailable, so the password was not saved. It will be "
-"asked for next time."
+"Unlock the keyring, accept its prompt and try again. With automatic login, "
+"GNOME may have no default keyring yet: create one in Passwords and Keys and "
+"make it the default."
 msgstr ""
-"Cổng thông tin bí mật (secret portal) không khả dụng, nên mật khẩu chưa được "
-"lưu. Lần sau ứng dụng sẽ hỏi lại."
+"Hãy mở khóa chùm khóa, chấp nhận lời nhắc của nó rồi thử lại. Khi đăng nhập "
+"tự động, GNOME có thể chưa có chùm khóa mặc định: hãy tạo một chùm khóa trong "
+"Mật khẩu và Khóa (Passwords and Keys) rồi đặt nó làm mặc định."
 
 #: crates/app/src/services/secret_save_report.rs
 msgid ""
-"The keyring stayed locked, so the password was not saved. It will be asked "
-"for next time."
+"Install xdg-desktop-portal and your desktop’s keyring, then log out and in."
 msgstr ""
-"Chùm khóa vẫn bị khóa, nên mật khẩu chưa được lưu. Lần sau ứng dụng sẽ hỏi "
-"lại."
+"Hãy cài xdg-desktop-portal và chùm khóa của môi trường máy tính, rồi đăng "
+"xuất và đăng nhập lại."
 
 #: crates/app/src/services/secret_save_report.rs
-#, rust-format
-msgid "The keyring did not save the password: {reason}"
-msgstr "Chùm khóa không lưu mật khẩu: {reason}"
-
-#: crates/app/src/services/secret_save_report.rs
-msgid "The keyring did not save the password."
-msgstr "Chùm khóa không lưu mật khẩu."
+msgid ""
+"Install or start a keyring, such as GNOME Keyring or KWallet, then log out "
+"and in."
+msgstr ""
+"Hãy cài hoặc khởi động một chùm khóa, như GNOME Keyring hoặc KWallet, rồi "
+"đăng xuất và đăng nhập lại."
 
 #: crates/app/src/ui/ai_policy.rs
 msgid "Ask Each Time"

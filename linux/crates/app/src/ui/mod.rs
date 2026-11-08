@@ -57,6 +57,7 @@ mod style_scheme_resolver;
 mod tab_load;
 mod tags;
 pub(crate) mod text_view_teardown;
+mod unsaved_secret_toast;
 mod welcome_view;
 mod window_geometry;
 mod workspace;
@@ -69,3 +70,4 @@ pub(crate) use session_window::{
     LaunchNotice, LibraryEdit, MovedTab, ScriptInput, SessionWindow, SessionWindowInit, SessionWindowInput,
 };
 pub(crate) use structure_tab::review_dialog;
+pub(crate) use unsaved_secret_toast::UnsavedSecretToasts;

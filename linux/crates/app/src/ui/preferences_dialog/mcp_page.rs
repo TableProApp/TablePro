@@ -16,6 +16,7 @@ use tokio::sync::watch;
 
 use crate::services::mcp_service::McpService;
 use crate::services::mcp_status::{McpFailure, McpStatus};
+use crate::services::secret_save_report::SecretSaveReport;
 
 const CANCEL: &str = "cancel";
 const REGENERATE: &str = "regenerate";
@@ -51,6 +52,7 @@ mod imp {
         pub service: RefCell<Option<McpService>>,
         pub status: RefCell<Option<McpStatus>>,
         pub following: RefCell<Option<glib::JoinHandle<()>>>,
+        pub(super) unsaved_token: crate::ui::UnsavedSecretToasts,
     }
 
     #[glib::object_subclass]
@@ -241,7 +243,17 @@ impl McpPage {
                 return;
             };
             match service.regenerate_token().await {
-                Ok(()) => page.toast(&crate::i18n::gettext("New access token made. Copy it to your clients.")),
+                Ok(()) => {
+                    page.imp().unsaved_token.dismiss();
+                    page.toast(&crate::i18n::gettext("New access token made. Copy it to your clients."));
+                }
+                Err(McpFailure::Keyring(error)) => {
+                    let toast = page
+                        .imp()
+                        .unsaved_token
+                        .replace(SecretSaveReport::access_token(error), &page);
+                    page.emit_by_name::<()>("toast", &[&toast]);
+                }
                 Err(failure) => page.toast(&failure_text(&failure)),
             }
         });

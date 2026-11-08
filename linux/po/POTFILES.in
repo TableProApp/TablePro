@@ -598,6 +598,7 @@ crates/app/src/ui/tags/manage_tags_dialog.rs
 crates/app/src/ui/tags/mod.rs
 crates/app/src/ui/tags/tag_dialog.rs
 crates/app/src/ui/text_view_teardown.rs
+crates/app/src/ui/unsaved_secret_toast.rs
 crates/app/src/ui/welcome_view.rs
 crates/app/src/ui/window_geometry.rs
 crates/app/src/ui/workspace/assistant.rs
