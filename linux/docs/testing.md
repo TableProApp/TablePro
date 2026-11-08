@@ -61,7 +61,10 @@ Its tests run on one build, `cargo test --no-run` on the same packages,
 which `meson test` makes before the first test starts, so a test's
 timeout covers only its run. Every test selects the same packages, since
 Cargo resolves features over the selected packages and a selection of
-the app alone would build most crates again.
+the app alone would build most crates again. The tests' profile still
+builds every crate a second time; CI's package builds run the C and C++
+compilers through ccache, so DuckDB's C++ is compiled once, while Launchpad
+and COPR compile it twice.
 Tests that need Docker or a Secret Service are ignored. Without a display
 (SSH, containers), prefix with xvfb the way the CI fast job does:
 
