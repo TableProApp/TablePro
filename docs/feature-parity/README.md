@@ -64,7 +64,7 @@ n/a does not apply. Unknown has not been checked.
 | Default sort of a table (none, primary key, first column) | Yes | In PR [#4140](https://github.com/TableProApp/TablePro/pull/4140): one column | Unknown |  |
 | The format Copy writes for several rows | Yes | In PR [#4137](https://github.com/TableProApp/TablePro/pull/4137) | Unknown |  |
 | Open the row details when a row is selected | Yes | In PR [#4138](https://github.com/TableProApp/TablePro/pull/4138) | Unknown |  |
-| Set Empty, NULL or DEFAULT on every selected row | Yes | In PR [#4136](https://github.com/TableProApp/TablePro/pull/4136): not yet for expressions and UUIDs | Unknown |  |
+| Set Empty, NULL or DEFAULT on every selected row | Yes | In PR [#4136](https://github.com/TableProApp/TablePro/pull/4136): Empty, NULL, DEFAULT and expressions | Unknown |  |
 | Mark spaces, tabs and line breaks in the value editor | Yes | In PR [#4141](https://github.com/TableProApp/TablePro/pull/4141) | Unknown |  |
 
 ## Bottom bar

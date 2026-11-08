@@ -177,7 +177,7 @@ areas:
       - id: grid-set-value
         name: Set Empty, NULL or DEFAULT on every selected row
         macos: yes
-        linux: {status: pending, pr: 4136, note: "not yet for expressions and UUIDs"}
+        linux: {status: pending, pr: 4136, note: "Empty, NULL, DEFAULT and expressions"}
         windows: unknown
       - id: grid-invisibles
         name: Mark spaces, tabs and line breaks in the value editor
