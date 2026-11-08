@@ -6,7 +6,7 @@ use libadwaita::prelude::*;
 use tablepro_core::Value;
 use tablepro_core::edit::CellInput;
 
-use super::{editing, none, press, two_text_rows};
+use super::{editing, none, pending, press, two_text_rows};
 use crate::services::change_tracker::RowState;
 use crate::services::grid::edit_policy;
 use crate::test_support::{drain_main_context, respond, wait_until};
@@ -268,4 +268,17 @@ fn discard_drops_every_pending_change() {
     assert_eq!(grid.grid.store().draft_count(), 0);
     assert_eq!(grid.tracker.pending_count(), 0);
     assert!(super::editing_cell(&grid).is_none(), "the editor outlived the discard");
+}
+
+#[gtk4::test]
+fn set_to_null_reaches_every_selected_row_in_the_focused_column() {
+    let grid = two_text_rows();
+    select_all_from(&grid, 0, 1);
+
+    grid.grid.activate_action("grid.set-null", None).expect("Set to NULL");
+    drain_main_context();
+
+    assert_eq!(pending(&grid, 1, 1), Some(CellInput::Value(Value::Null)));
+    assert_eq!(pending(&grid, 2, 1), Some(CellInput::Value(Value::Null)));
+    assert_eq!(pending(&grid, 1, 0), None, "another column stayed");
 }

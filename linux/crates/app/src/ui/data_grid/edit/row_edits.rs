@@ -5,7 +5,7 @@ use tablepro_core::column::{BoolStorage, ColumnKind};
 use tablepro_core::edit::{CellInput, EditParseError, new_draft_cell, parse_edit_text};
 
 use super::{EditController, edit_start};
-use crate::i18n::gettext;
+use crate::i18n::{gettext, ngettext_f};
 use crate::services::change_tracker::RowKey;
 use crate::services::grid::{
     CellPreset, CommitResult, EditStart, GridColumn, cell_presets, commit_input, edit_context,
@@ -38,18 +38,68 @@ impl EditController {
         }
     }
 
-    /// Set to Empty, NULL or DEFAULT on the cell an action names. The
-    /// menu offers only what the cell takes; a column that refuses the
-    /// value says why, as committing an empty cell would.
+    /// Set to Empty, NULL or DEFAULT on the focused cell's column, in
+    /// every selected row as macOS does. The menu offers only what the
+    /// focused cell takes; a row that refuses the value is left out, and a
+    /// column that refuses it everywhere says why, as committing an empty
+    /// cell would.
     pub(super) fn set_preset(&self, grid: &DataGrid, preset: CellPreset) {
-        let Some((row, column)) = grid.target().and_then(|target| target.cell) else {
+        let Some(target) = grid.target() else {
             return;
         };
-        let Some(grid_column) = self.unlocked_column(grid, &row, column) else {
+        let Some((focused, column)) = target.cell.clone() else {
             return;
+        };
+        let rows = if target.rows.len() > 1 && target.rows.iter().any(|row| row.id() == focused.id()) {
+            target.rows.clone()
+        } else {
+            vec![focused]
+        };
+        let mut writes = Vec::new();
+        let mut refusal = None;
+        for row in &rows {
+            match self.preset_input(grid, row, column, preset) {
+                Ok(Some((grid_column, input))) => writes.push((row.clone(), grid_column, input)),
+                Ok(None) => {}
+                Err(message) => refusal = refusal.or(Some(message)),
+            }
+        }
+        if writes.is_empty() {
+            if let Some(message) = refusal {
+                grid.toast(message);
+            }
+            return;
+        }
+        grid.commit_editors();
+        let skipped = rows.len() - writes.len();
+        for (row, grid_column, input) in writes {
+            let start = edit_start(&self.tracked(), &row, column);
+            self.commit_input(grid, &grid_column, &start, input);
+        }
+        if skipped > 0 {
+            grid.toast(ngettext_f(
+                "{count} row can't take this value and was left as it was",
+                "{count} rows can't take this value and were left as they were",
+                skipped as u32,
+                &[("count", &skipped.to_string())],
+            ));
+        }
+    }
+
+    /// What `preset` writes into one row's cell. `Ok(None)` for a cell
+    /// that is locked, `Err` for one whose column refuses the value.
+    fn preset_input(
+        &self,
+        grid: &DataGrid,
+        row: &GridRow,
+        column: usize,
+        preset: CellPreset,
+    ) -> Result<Option<(GridColumn, CellInput)>, String> {
+        let Some(grid_column) = self.unlocked_column(grid, row, column) else {
+            return Ok(None);
         };
         let Some(catalog) = grid_column.catalog.as_ref() else {
-            return;
+            return Ok(None);
         };
         let presets = cell_presets(&grid_column, &row.id(), grid.sql_dialect().as_deref());
         let input = match preset {
@@ -60,15 +110,8 @@ impl EditController {
             CellPreset::Null => Err(edit_parse_message(&EditParseError::Required)),
             CellPreset::Default if presets.default => Ok(CellInput::Default),
             CellPreset::Default => Err(gettext("This cell can't take the column's default")),
-        };
-        match input {
-            Ok(input) => {
-                grid.commit_editors();
-                let start = edit_start(&self.tracked(), &row, column);
-                self.commit_input(grid, &grid_column, &start, input);
-            }
-            Err(message) => grid.toast(message),
-        }
+        }?;
+        Ok(Some((grid_column, input)))
     }
 
     /// Only a table whose rows can be saved takes a new one (D1).
