@@ -58,16 +58,18 @@
     <child>
       <object class="AdwComboRow" id="date_format_row">
         <property name="title" translatable="yes">Date Format</property>
-        <property name="subtitle" translatable="yes">How cells show dates and timestamps; Copy and export keep the database's spelling</property>
+        <property name="subtitle" translatable="yes">Year-month-day, month/day/year or day/month/year. Copy and export keep the database's spelling</property>
         <property name="model">
           <object class="GtkStringList">
             <items>
-              <item translatable="yes">ISO 8601 (2024-12-31 23:59:59)</item>
-              <item translatable="yes">ISO Date (2024-12-31)</item>
-              <item translatable="yes">US Long (12/31/2024 11:59:59 PM)</item>
-              <item translatable="yes">US Short (12/31/2024)</item>
-              <item translatable="yes">EU Long (31/12/2024 23:59:59)</item>
-              <item translatable="yes">EU Short (31/12/2024)</item>
+              <!-- Examples rather than names, which the combo would cut
+                   at the width of the page. Not translated. -->
+              <item translatable="no">2024-12-31 23:59:59</item>
+              <item translatable="no">2024-12-31</item>
+              <item translatable="no">12/31/2024 11:59:59 PM</item>
+              <item translatable="no">12/31/2024</item>
+              <item translatable="no">31/12/2024 23:59:59</item>
+              <item translatable="no">31/12/2024</item>
             </items>
           </object>
         </property>
