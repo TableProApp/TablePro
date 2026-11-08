@@ -36,8 +36,7 @@ pub struct TextAttributes {
     deleted: pango::AttrList,
     deleted_placeholder: pango::AttrList,
     placeholder: pango::AttrList,
-    /// The stand-in texts, translated once rather than on every bind.
-    editable_null: String,
+    /// The stand-in text, translated once rather than on every bind.
     auto_filled: String,
 }
 
@@ -61,7 +60,6 @@ impl TextAttributes {
             deleted: list(TextMark::Deleted, false),
             deleted_placeholder: list(TextMark::Deleted, true),
             placeholder: list(TextMark::Plain, true),
-            editable_null: editable_null_sentinel(),
             auto_filled: auto_filled_sentinel(),
         }
     }
@@ -344,7 +342,11 @@ fn shown_text<'a>(
         }
         (Some(ServerValue::Default), _) => DisplayText::placeholder("DEFAULT"),
         (Some(ServerValue::Expression(expression)), _) => DisplayText::placeholder(expression.sql),
-        (None, Value::Null) if editable => DisplayText::placeholder(&paint.attributes.editable_null),
+        (None, Value::Null) if editable => {
+            scratch.clear();
+            scratch.push_str(&editable_null_sentinel());
+            DisplayText::placeholder(scratch.as_str())
+        }
         (None, value) => display_text(value, &paint.column.column_type, scratch),
     }
 }
