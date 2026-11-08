@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -26,6 +26,7 @@ impl StateFileError {
 pub struct StateFile<D> {
     path: PathBuf,
     value: RefCell<D>,
+    revision: Cell<u64>,
     protected: bool,
     status: Arc<Mutex<WriteStatus>>,
     failing: Arc<watch::Sender<bool>>,
@@ -88,6 +89,7 @@ where
         Self {
             path,
             value: RefCell::new(value),
+            revision: Cell::new(0),
             protected,
             status,
             failing,
@@ -115,6 +117,10 @@ where
             .clone()
     }
 
+    pub fn revision(&self) -> u64 {
+        self.revision.get()
+    }
+
     pub fn has_unsaved_changes(&self) -> bool {
         self.status.lock().unwrap_or_else(PoisonError::into_inner).unsaved
     }
@@ -127,6 +133,7 @@ where
             }
             value.clone()
         };
+        self.revision.set(self.revision.get().wrapping_add(1));
         self.schedule(snapshot);
     }
 
@@ -394,6 +401,130 @@ mod tests {
         file.flush().await.expect("the latest snapshot landed");
         let reopened = StateFile::<Sample>::load(path, &paused_tasks());
         assert_eq!(reopened.read(|sample| sample.items.clone()), ["one", "two"]);
+    }
+
+    struct SerializeGate {
+        started: tokio::sync::mpsc::UnboundedSender<()>,
+        release: Mutex<std::sync::mpsc::Receiver<()>>,
+    }
+
+    #[derive(Default, Clone, Deserialize)]
+    struct GatedSample {
+        items: Vec<String>,
+        #[serde(skip)]
+        gate: Option<Arc<SerializeGate>>,
+    }
+
+    impl Serialize for GatedSample {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            if let Some(gate) = &self.gate {
+                gate.started.send(()).map_err(serde::ser::Error::custom)?;
+                gate.release
+                    .lock()
+                    .map_err(serde::ser::Error::custom)?
+                    .recv_timeout(std::time::Duration::from_secs(10))
+                    .map_err(serde::ser::Error::custom)?;
+            }
+            Sample {
+                items: self.items.clone(),
+            }
+            .serialize(serializer)
+        }
+    }
+
+    impl VersionedDocument for GatedSample {
+        const KIND: &'static str = "gated-sample";
+        const VERSION: u32 = 1;
+    }
+
+    #[tokio::test]
+    async fn an_older_success_keeps_newer_edits_unsaved_when_their_write_fails() {
+        const WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+        let root = tempfile::tempdir().expect("tempdir");
+        let path = root.path().join("sample.json");
+        let file = StateFile::<GatedSample>::load(path.clone(), &paused_tasks());
+        let gate = || {
+            let (started, starts) = tokio::sync::mpsc::unbounded_channel();
+            let (release, released) = std::sync::mpsc::channel();
+            (
+                Arc::new(SerializeGate {
+                    started,
+                    release: Mutex::new(released),
+                }),
+                starts,
+                release,
+            )
+        };
+        let (first, mut first_started, release_first) = gate();
+        let (second, mut second_started, release_second) = gate();
+        file.update(|document| {
+            document.items = vec!["first".to_owned()];
+            document.gate = Some(first);
+            true
+        });
+        assert_eq!(
+            tokio::time::timeout(WAIT, first_started.recv())
+                .await
+                .expect("first write starts"),
+            Some(())
+        );
+        let earlier = file.flush();
+        file.update(|document| {
+            document.items = vec!["latest".to_owned()];
+            document.gate = Some(second);
+            true
+        });
+        release_first.send(()).expect("release first serializer");
+        tokio::time::timeout(WAIT, earlier)
+            .await
+            .expect("first flush finishes")
+            .expect("first write succeeds");
+        assert_eq!(
+            tokio::time::timeout(WAIT, second_started.recv())
+                .await
+                .expect("second write starts"),
+            Some(())
+        );
+        assert!(file.has_unsaved_changes(), "the older success hid the pending edit");
+        assert_eq!(file.revision(), 2);
+        let first_bytes = std::fs::read(&path).expect("first document landed");
+        let first_document = decode_document::<Sample>(&path, &first_bytes).expect("first document");
+        assert_eq!(first_document.items, ["first"]);
+
+        std::fs::remove_file(&path).expect("remove first document");
+        std::fs::create_dir(&path).expect("block second write");
+        release_second.send(()).expect("release second serializer");
+        let latest = tokio::time::timeout(WAIT, file.flush())
+            .await
+            .expect("second flush finishes");
+        assert!(matches!(latest, Err(StateFileError::Write(_))));
+        assert!(file.has_unsaved_changes(), "the failed latest edit must remain unsaved");
+        assert_eq!(file.read(|document| document.items.clone()), ["latest"]);
+    }
+
+    #[tokio::test]
+    async fn revisions_count_local_edits_even_when_protected_but_never_count_retries() {
+        for protected in [false, true] {
+            let root = tempfile::tempdir().expect("tempdir");
+            let path = root.path().join("sample.json");
+            if protected {
+                std::fs::write(&path, r#"{"version":99,"items":["kept"]}"#).expect("newer file");
+            }
+            let file = StateFile::<Sample>::load(path, &paused_tasks());
+            assert_eq!(file.revision(), 0);
+            file.update(|_| false);
+            assert_eq!(file.revision(), 0);
+            assert_eq!(file.retry(), !protected);
+            assert_eq!(file.revision(), 0, "retrying is not a document edit");
+            let result = push(&file, "one").await;
+            assert_eq!(result.is_err(), protected);
+            assert_eq!(file.revision(), 1);
+            assert_eq!(file.retry(), !protected);
+            assert_eq!(file.revision(), 1);
+            let result = push(&file, "two").await;
+            assert_eq!(result.is_err(), protected);
+            assert_eq!(file.revision(), 2);
+        }
     }
 
     #[test]

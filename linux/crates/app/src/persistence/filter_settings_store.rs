@@ -74,6 +74,10 @@ impl FilterSettingsStore {
         self.file.failing()
     }
 
+    pub fn revision(&self) -> u64 {
+        self.file.revision()
+    }
+
     pub fn has_unsaved_changes(&self) -> bool {
         self.file.has_unsaved_changes()
     }

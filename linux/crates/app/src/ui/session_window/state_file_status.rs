@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use crate::workspace::CloseDecision;
 use gtk4::glib;
 use gtk4::prelude::*;
@@ -46,6 +48,14 @@ impl StateFileKind {
         }
     }
 
+    fn revision(self, storage: &AppStorage) -> u64 {
+        match self {
+            Self::Layouts => storage.column_layouts().revision(),
+            Self::Filters => storage.filter_settings().revision(),
+            Self::Highlights => storage.highlight_rules().revision(),
+        }
+    }
+
     fn retry(self, storage: &AppStorage) -> bool {
         match self {
             Self::Layouts => storage.column_layouts().retry(),
@@ -81,7 +91,7 @@ impl StateFileKind {
 }
 
 impl SessionWindow {
-    pub(super) async fn confirm_state_files_before_close(&self) -> CloseDecision {
+    pub(super) async fn confirm_state_files_before_close(&self, discarded: &Cell<Option<[u64; 3]>>) -> CloseDecision {
         if self.application().is_some_and(|application| {
             application
                 .windows()
@@ -96,6 +106,10 @@ impl SessionWindow {
         let storage = state.services.storage.clone();
         let _hold = state.services.hold().acquire();
         loop {
+            let revisions = StateFileKind::ALL.map(|kind| kind.revision(&storage));
+            if discarded.get() == Some(revisions) {
+                return CloseDecision::Approved;
+            }
             let mut failed = Vec::new();
             for kind in StateFileKind::ALL {
                 if kind.flush(&storage).await.is_err() && kind.unsaved(&storage) {
@@ -103,8 +117,12 @@ impl SessionWindow {
                 }
             }
             if failed.is_empty() {
+                if StateFileKind::ALL.into_iter().any(|kind| kind.unsaved(&storage)) {
+                    continue;
+                }
                 return CloseDecision::Approved;
             }
+            let revisions = StateFileKind::ALL.map(|kind| kind.revision(&storage));
             let retryable = failed
                 .iter()
                 .any(|kind| kind.error(&storage).is_some_and(|error| error.is_retryable()));
@@ -129,7 +147,9 @@ impl SessionWindow {
                 .await
                 .as_str()
             {
-                "discard" => return CloseDecision::Approved,
+                "discard" => {
+                    discarded.set(Some(revisions));
+                }
                 "retry" => {
                     for kind in failed {
                         if kind.error(&storage).is_some_and(|error| error.is_retryable()) {
@@ -213,9 +233,88 @@ impl SessionWindow {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::application::WindowLaunch;
+    use crate::services::change_tracker::RowKey;
     use crate::services::grid::HighlightRule;
+    use crate::services::save_batch::SaveTarget;
+    use crate::services::tracker_edit::TrackerEdit;
     use crate::test_support::{drain_main_context, wait_until};
     use crate::ui::session_window::tests::{TestWindow, WAIT};
+    use crate::ui::workspace::{OpenMode, Workspace, WorkspaceInput};
+    use crate::workspace::dialog_response::{answer, visible_alert};
+    use crate::workspace::test_workspace::integer;
+    use tablepro_core::Value;
+    use tablepro_core::meta::TableRef;
+
+    const SETTINGS_PROMPT: &str = "Table Settings Could Not Be Saved";
+
+    fn wait_for_prompt(window: &SessionWindow, heading: &str) {
+        wait_until(WAIT, || {
+            visible_alert(window).is_some_and(|alert| alert.heading().as_deref() == Some(heading))
+        })
+        .expect("the expected close prompt");
+    }
+
+    fn fail_rule_write(test: &TestWindow) {
+        let store = test.services.storage.highlight_rules();
+        std::fs::create_dir(store.path()).expect("block file replacement");
+        store.set_rules(test.saved.id, None, "orders", vec![HighlightRule::new("status")]);
+        wait_until(WAIT, || store.current_error().is_some()).expect("the failed write");
+    }
+
+    fn edit_table(workspace: &Workspace, name: &str) {
+        let before = workspace.open_tabs().unwrap_or_default();
+        workspace
+            .sender()
+            .expect("workspace input")
+            .deliver(WorkspaceInput::SelectTable {
+                schema: None,
+                name: name.to_owned(),
+                open_mode: OpenMode::NewTab,
+            });
+        let mut opened = None;
+        wait_until(WAIT, || {
+            opened = workspace
+                .open_tabs()
+                .and_then(|tabs| tabs.into_iter().find(|tab| !before.contains(tab)));
+            opened.is_some()
+        })
+        .expect("the table tab");
+        let tracker = crate::ui::workspace::tests::row_tracker(workspace, opened.expect("opened tab"))
+            .expect("the table tracker");
+        let _ = tracker.set_target(SaveTarget {
+            table: TableRef::unqualified(name),
+            columns: vec![integer("id", true), integer("n", false)],
+        });
+        let _ = tracker.apply(TrackerEdit::Cell {
+            row_key: RowKey::from_pk_values(&[Value::Int(1)]).expect("row key"),
+            col: 1,
+            original: Value::Int(1),
+            value: tablepro_core::edit::CellInput::Value(Value::Int(2)),
+        });
+    }
+
+    fn second_connected_window(test: &TestWindow) -> SessionWindow {
+        let saved = tablepro_storage::SavedConnection {
+            id: uuid::Uuid::new_v4(),
+            name: "Second".to_owned(),
+            database: test.dir().join("second.db").display().to_string(),
+            ..test.saved.clone()
+        };
+        test.services
+            .storage
+            .connections()
+            .upsert_blocking(saved.clone())
+            .expect("save second connection");
+        wait_until(WAIT, || test.services.saved_connections.get(saved.id).is_some()).expect("saved list updated");
+        let window = test
+            .app
+            .open_window(WindowLaunch::Connect(Box::new(saved)))
+            .and_then(|window| window.downcast::<SessionWindow>().ok())
+            .expect("second window");
+        wait_until(WAIT, || window.page_name() == "workspace").expect("second window connected");
+        window
+    }
 
     #[gtk4::test]
     fn a_failed_rule_write_offers_retry_and_success_dismisses_the_notice() {
@@ -279,5 +378,78 @@ mod tests {
                 .expect("saved on close")
                 .contains("status")
         );
+    }
+
+    #[gtk4::test]
+    fn the_last_of_two_pending_window_closes_checks_shared_failed_settings_again() {
+        let test = TestWindow::connected("TwoWindowSettingsClose");
+        let second = second_connected_window(&test);
+        edit_table(&test.workspace(), "first_edits");
+        edit_table(&second.workspace().expect("second workspace"), "second_edits");
+        fail_rule_write(&test);
+
+        test.window.close();
+        second.close();
+        wait_for_prompt(&test.window, "Save Changes?");
+        wait_for_prompt(&second, "Save Changes?");
+        assert_eq!(test.app.windows().len(), 2);
+        assert!(answer(&test.window, "discard"));
+        wait_until(WAIT, || !test.window.is_visible() && test.app.windows().len() == 1)
+            .expect("the first close completes while the second waits");
+        assert!(answer(&second, "discard"));
+
+        wait_for_prompt(&second, SETTINGS_PROMPT);
+        assert!(second.is_visible());
+        assert!(test.services.storage.highlight_rules().has_unsaved_changes());
+        assert!(answer(&second, "cancel"));
+        wait_until(WAIT, || visible_alert(&second).is_none()).expect("keep the last window open");
+        assert!(second.is_visible());
+    }
+
+    #[gtk4::test]
+    fn unchanged_settings_discard_is_asked_once_across_workspace_close_prompts() {
+        let test = TestWindow::connected("SettingsDiscardOnce");
+        edit_table(&test.workspace(), "orders");
+        fail_rule_write(&test);
+
+        test.window.close();
+        wait_for_prompt(&test.window, SETTINGS_PROMPT);
+        assert!(answer(&test.window, "discard"));
+        wait_for_prompt(&test.window, "Save Changes?");
+        assert!(answer(&test.window, "discard"));
+
+        wait_until(WAIT, || !test.window.is_visible()).expect("unchanged settings consent remains valid");
+        assert!(test.services.storage.highlight_rules().has_unsaved_changes());
+    }
+
+    #[gtk4::test]
+    fn settings_changed_during_the_workspace_prompt_need_new_discard_consent() {
+        let test = TestWindow::connected("SettingsDiscardRevision");
+        edit_table(&test.workspace(), "orders");
+        fail_rule_write(&test);
+
+        test.window.close();
+        wait_for_prompt(&test.window, SETTINGS_PROMPT);
+        assert!(answer(&test.window, "discard"));
+        wait_for_prompt(&test.window, "Save Changes?");
+        let changed = HighlightRule::new("new_status");
+        test.services
+            .storage
+            .highlight_rules()
+            .set_rules(test.saved.id, None, "orders", vec![changed.clone()]);
+        assert!(answer(&test.window, "discard"));
+
+        wait_for_prompt(&test.window, SETTINGS_PROMPT);
+        assert!(test.window.is_visible());
+        assert_eq!(
+            test.services
+                .storage
+                .highlight_rules()
+                .rules(test.saved.id, None, "orders"),
+            [changed]
+        );
+        assert!(answer(&test.window, "cancel"));
+        wait_until(WAIT, || visible_alert(&test.window).is_none()).expect("keep the changed settings open");
+        assert!(test.window.is_visible());
     }
 }

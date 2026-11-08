@@ -1794,19 +1794,21 @@ impl SessionWindow {
         }
     }
 
-    /// The window closes through one pass of the close prompts over every
-    /// session: one Save Changes for all of them, and Cancel keeps them
-    /// all.
     fn close_guards_for_window(&self) -> Rc<CloseGuards> {
         let guards = CloseGuards::new();
         let window = self.downgrade();
-        guards.set_window_preflight(move |_| {
-            let window = window.upgrade();
-            Box::pin(async move {
-                match window {
-                    Some(window) => window.confirm_state_files_before_close().await,
-                    None => CloseDecision::Approved,
-                }
+        guards.set_window_preflight(move || {
+            let window = window.clone();
+            let discarded = Rc::new(std::cell::Cell::new(None));
+            Rc::new(move |_| {
+                let window = window.upgrade();
+                let discarded = discarded.clone();
+                Box::pin(async move {
+                    match window {
+                        Some(window) => window.confirm_state_files_before_close(&discarded).await,
+                        None => CloseDecision::Approved,
+                    }
+                })
             })
         });
         let window = self.downgrade();
