@@ -84,65 +84,47 @@ impl WorkspaceModel {
         self.saved_queries_dialog = Some(dialog);
     }
 
-    /// Open Quickly: a search over the session's tables and views, which
-    /// opens the one chosen as the sidebar's row does, or its structure.
+    pub(super) fn close_quick_open(&mut self) {
+        if let Some(dialog) = self.quick_open_dialog.take() {
+            dialog.dismiss();
+        }
+    }
+
     pub(super) fn on_show_quick_open(&mut self) {
         let Some(session) = self.context.active.get() else {
             return;
         };
-        let objects = session
-            .subscribe_objects(tablepro_core::meta::ObjectScope::AllSchemas)
-            .borrow()
-            .objects
-            .clone();
-        let connection = self.context.active.metadata().map(|metadata| metadata.id);
-        let ready = self.history.ready_store();
+        self.close_quick_open();
         let input = self.input.clone();
-        // The saved queries are read first, so the dialog opens with them.
-        crate::runtime::spawn_and_deliver(
-            &self.tasks,
-            async move {
-                match (ready.await, connection) {
-                    (Some(history), Some(id)) => history.saved_queries().list(Some(id)).await.unwrap_or_default(),
-                    _ => Vec::new(),
-                }
-            },
-            move |saved| {
-                let queries: Vec<(String, String)> = saved
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|query| (query.name, query.query))
-                    .collect();
-                input.deliver(WorkspaceInput::QuickOpenReady { objects, queries });
-            },
-        );
+        let dialog = crate::ui::quick_open::QuickOpen::new(session, self.tasks.clone(), move |pick| {
+            input.deliver(WorkspaceInput::QuickOpenChosen(pick));
+        });
+        if let Some(metadata) = self.context.active.metadata() {
+            dialog.include_saved_queries(self.history.clone(), metadata.id);
+        }
+        dialog.present(self.dialog_parent().as_ref());
+        self.quick_open_dialog = Some(dialog);
     }
 
-    pub(super) fn present_quick_open(
-        &mut self,
-        objects: std::sync::Arc<[tablepro_core::meta::ObjectInfo]>,
-        queries: Vec<(String, String)>,
-    ) {
-        let input = self.input.clone();
-        let dialog = crate::ui::quick_open::QuickOpen::new(&objects, &queries, move |pick| {
-            use crate::ui::quick_open::Pick;
-            input.deliver(match pick {
-                Pick::Query(sql) => WorkspaceInput::OpenHistoryQuery(sql),
-                Pick::Table {
-                    table: tablepro_core::meta::TableRef { schema, name },
-                    structure: true,
-                } => WorkspaceInput::EditStructureTab { schema, table: name },
-                Pick::Table {
-                    table: tablepro_core::meta::TableRef { schema, name },
-                    structure: false,
-                } => WorkspaceInput::SelectTable {
+    pub(super) fn on_quick_open_chosen(&mut self, pick: crate::ui::quick_open::Pick) {
+        if !self.is_front() {
+            return;
+        }
+        use crate::ui::quick_open::Pick;
+        self.update(match pick {
+            Pick::Query(sql) => WorkspaceInput::OpenHistoryQuery(sql),
+            Pick::Table {
+                table: tablepro_core::meta::TableRef { schema, name },
+                structure,
+            } => match structure {
+                true => WorkspaceInput::EditStructureTab { schema, table: name },
+                false => WorkspaceInput::SelectTable {
                     schema,
                     name,
                     open_mode: super::OpenMode::SwitchOrAppend,
                 },
-            });
+            },
         });
-        dialog.present(self.dialog_parent().as_ref());
     }
 
     /// Ask what to call the SQL in front of the user, then keep it.
@@ -259,6 +241,23 @@ mod tests {
     use super::suggested_query_name;
     use crate::test_support::{finish_on_main, wait_until};
     use crate::ui::session_window::tests::{TestWindow, WAIT};
+
+    #[gtk4::test]
+    fn open_quickly_closes_on_disconnect() {
+        use gtk4::prelude::*;
+        let test = TestWindow::connected("QuickOpenDisconnect");
+        let dialog = test
+            .workspace()
+            .with_model(|model| {
+                model.on_show_quick_open();
+                model.quick_open_dialog.clone().expect("quick open")
+            })
+            .expect("workspace");
+        wait_until(WAIT, || dialog.parent().is_some()).expect("shown");
+        test.window.send(crate::ui::SessionWindowInput::Disconnect);
+        wait_until(WAIT, || dialog.parent().is_none()).expect("dialog closed");
+        wait_until(WAIT, || test.window.page_name() == "picker").expect("disconnected");
+    }
 
     #[gtk4::test]
     fn a_saved_query_is_written_under_a_hold() {

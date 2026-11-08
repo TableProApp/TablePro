@@ -1,63 +1,61 @@
-/// How well `name` answers what the user typed, lower the better, or
-/// `None` when it does not. A name that starts with the text comes first,
-/// then one that holds it, then one whose letters follow it in order with
-/// others between, as a fuzzy finder takes them.
-pub(super) fn rank(typed: &str, name: &str) -> Option<u32> {
-    let typed: Vec<char> = typed.trim().chars().flat_map(char::to_lowercase).collect();
-    if typed.is_empty() {
-        return Some(0);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) struct Rank(u8, usize);
+
+pub(super) fn normalize(text: &str) -> Vec<char> {
+    text.chars().flat_map(char::to_lowercase).collect()
+}
+
+pub(super) fn rank(typed: &[char], name: &[char]) -> Option<Rank> {
+    if typed.is_empty() || name.starts_with(typed) {
+        return Some(Rank(0, 0));
     }
-    let name: Vec<char> = name.chars().flat_map(char::to_lowercase).collect();
-    if name.starts_with(&typed) {
-        return Some(0);
+    if let Some(at) = name.windows(typed.len()).position(|window| window == typed) {
+        return Some(Rank(1, at));
     }
-    if let Some(at) = name.windows(typed.len()).position(|window| window == typed.as_slice()) {
-        return Some(100 + u32::try_from(at).unwrap_or(u32::MAX - 100));
-    }
-    // The letters in order, charged for each one skipped between them.
-    let mut wanted = typed.iter().peekable();
-    let mut skipped = 0u32;
-    let mut started = false;
-    for letter in &name {
-        match wanted.peek() {
-            Some(next) if *next == letter => {
-                wanted.next();
-                started = true;
+    let mut wanted = typed.iter();
+    let mut next = wanted.next();
+    let mut first = None;
+    for (position, letter) in name.iter().enumerate() {
+        if next == Some(letter) {
+            first.get_or_insert(position);
+            next = wanted.next();
+            if next.is_none() {
+                return Some(Rank(2, position - first.unwrap_or(position) + 1 - typed.len()));
             }
-            Some(_) if started => skipped = skipped.saturating_add(1),
-            _ => {}
         }
     }
-    wanted.peek().is_none().then_some(1_000 + skipped)
+    None
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn a_blank_search_keeps_everything() {
-        assert_eq!(rank("  ", "orders"), Some(0));
+    fn score(typed: &str, name: &str) -> Option<Rank> {
+        rank(&normalize(typed.trim()), &normalize(name))
     }
 
     #[test]
-    fn a_prefix_beats_a_hit_inside_beats_scattered_letters() {
-        let prefix = rank("ord", "orders").expect("a prefix");
-        let inside = rank("der", "orders").expect("inside");
-        let scattered = rank("ods", "orders").expect("scattered");
-
-        assert!(prefix < inside && inside < scattered, "{prefix} {inside} {scattered}");
+    fn classes_never_overlap_even_for_long_names() {
+        let prefix = score("ab", "ab").unwrap();
+        let inside = score("ab", &format!("{}ab", "x".repeat(2_000))).unwrap();
+        let scattered = score("ab", "axb").unwrap();
+        assert!(prefix < inside && inside < scattered);
     }
 
     #[test]
-    fn case_does_not_matter_and_a_miss_is_none() {
-        assert_eq!(rank("ORD", "Orders"), Some(0));
-        assert_eq!(rank("xyz", "orders"), None);
-        assert_eq!(rank("sro", "orders"), None, "the letters were out of order");
+    fn whitespace_case_unicode_and_order() {
+        assert_eq!(score("  ", "orders"), Some(Rank(0, 0)));
+        assert_eq!(score(" ÉT ", "Études"), Some(Rank(0, 0)));
+        assert_eq!(score("ods", "orders"), Some(Rank(2, 3)));
+        assert_eq!(score("sro", "orders"), None);
+        assert_eq!(score("longer", "a"), None);
+        assert_eq!(score("x", ""), None);
     }
 
     #[test]
-    fn a_nearer_hit_inside_ranks_first() {
-        assert!(rank("ar", "bar").expect("near") < rank("ar", "xxbar").expect("far"));
+    fn nearer_substrings_and_tighter_subsequences_rank_first() {
+        assert!(score("ar", "bar").unwrap() < score("ar", "xxbar").unwrap());
+        assert!(score("ab", "axb").unwrap() < score("ab", "axxxb").unwrap());
     }
 }
