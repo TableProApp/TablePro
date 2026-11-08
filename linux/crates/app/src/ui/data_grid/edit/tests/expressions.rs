@@ -96,3 +96,35 @@ fn only_an_expression_from_the_engines_list_is_staged() {
 
     assert_eq!(pending(&grid, 1, 1), None);
 }
+
+#[gtk4::test]
+fn an_expression_is_staged_in_every_selected_row() {
+    let dialect: Arc<dyn SqlDialect> = Arc::new(tablepro_driver_postgres::PgDialect::new(&ServerInfo::new(
+        "PostgreSQL",
+        "18.0",
+        18,
+        0,
+        0,
+    )));
+    let grid = Grid::build(
+        GridSpec {
+            dialect: Some(Rc::new(move || Some(dialect.clone()))),
+            ..GridSpec::table(vec![named("id", "integer", true), named("seen", "timestamp", false)])
+        },
+        persisted(&[vec![Value::Int(1), Value::Null], vec![Value::Int(2), Value::Null]]),
+    );
+    grid.focus(0, 1);
+    grid.grid.selection().select_all();
+    crate::test_support::drain_main_context();
+
+    grid.grid
+        .activate_action("grid.set-expression", Some(&"now()".to_variant()))
+        .expect("Set to now()");
+
+    for id in [1, 2] {
+        assert!(
+            matches!(pending(&grid, id, 1), Some(CellInput::Expression(expression)) if expression.sql == "now()"),
+            "row {id}"
+        );
+    }
+}

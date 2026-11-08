@@ -34,22 +34,29 @@ impl EditController {
     /// The menu item names its expression by its SQL, which is looked up
     /// in the engine's list again, so only that list reaches a statement.
     pub(super) fn set_expression(&self, grid: &DataGrid, sql: &str) {
-        let Some((row, column)) = grid.target().and_then(|target| target.cell) else {
+        let Some((rows, column)) = self.value_targets(grid) else {
             return;
         };
-        let Some(grid_column) = self.unlocked_column(grid, &row, column) else {
+        // Each row asks its own list again, so a row that cannot take it is left as it was.
+        let writes: Vec<_> = rows
+            .iter()
+            .filter_map(|row| {
+                let grid_column = self.unlocked_column(grid, row, column)?;
+                let expression = self
+                    .expressions_for(grid, row, column)
+                    .into_iter()
+                    .find(|expression| expression.sql == sql)?;
+                Some((row.clone(), grid_column, expression))
+            })
+            .collect();
+        if writes.is_empty() {
             return;
-        };
-        let Some(expression) = self
-            .expressions_for(grid, &row, column)
-            .into_iter()
-            .find(|expression| expression.sql == sql)
-        else {
-            return;
-        };
+        }
         grid.commit_editors();
-        let start = edit_start(&self.tracked(), &row, column);
-        self.commit_input(grid, &grid_column, &start, CellInput::Expression(expression));
+        for (row, grid_column, expression) in writes {
+            let start = edit_start(&self.tracked(), &row, column);
+            self.commit_input(grid, &grid_column, &start, CellInput::Expression(expression));
+        }
     }
 
     fn expressions_for(&self, grid: &DataGrid, row: &GridRow, column: usize) -> Vec<CellExpression> {

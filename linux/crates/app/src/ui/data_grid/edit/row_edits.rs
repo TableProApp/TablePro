@@ -44,16 +44,8 @@ impl EditController {
     /// column that refuses it everywhere says why, as committing an empty
     /// cell would.
     pub(super) fn set_preset(&self, grid: &DataGrid, preset: CellPreset) {
-        let Some(target) = grid.target() else {
+        let Some((rows, column)) = self.value_targets(grid) else {
             return;
-        };
-        let Some((focused, column)) = target.cell.clone() else {
-            return;
-        };
-        let rows = if target.rows.len() > 1 && target.rows.iter().any(|row| row.id() == focused.id()) {
-            target.rows.clone()
-        } else {
-            vec![focused]
         };
         let mut writes = Vec::new();
         let mut refusal = None;
@@ -84,6 +76,20 @@ impl EditController {
                 &[("count", &skipped.to_string())],
             ));
         }
+    }
+
+    /// The rows a Set Value command reaches and the column it writes: the
+    /// focused cell's column in every selected row when the focused row is
+    /// one of several selected, else the focused cell alone.
+    pub(super) fn value_targets(&self, grid: &DataGrid) -> Option<(Vec<GridRow>, usize)> {
+        let target = grid.target()?;
+        let (focused, column) = target.cell.clone()?;
+        let rows = if target.rows.len() > 1 && target.rows.iter().any(|row| row.id() == focused.id()) {
+            target.rows.clone()
+        } else {
+            vec![focused]
+        };
+        Some((rows, column))
     }
 
     /// What `preset` writes into one row's cell. `Ok(None)` for a cell
