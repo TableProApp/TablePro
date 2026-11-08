@@ -21,7 +21,7 @@
       <!-- A workspace adds these; the picker has no session to show
            history for. -->
       <item>
-        <attribute name="label" translatable="yes">Open _Quickly…</attribute>
+        <attribute name="label" translatable="yes">_Open Quickly…</attribute>
         <attribute name="action">win.quick-open</attribute>
         <attribute name="hidden-when">action-missing</attribute>
       </item>
