@@ -2,6 +2,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::rc::Rc;
 
+use futures::FutureExt;
 use futures::future::LocalBoxFuture;
 use gtk4 as gtk;
 use gtk4::glib;
@@ -116,40 +117,53 @@ impl CloseGuards {
             return true;
         }
         self.window.set(WindowClose::Asking);
+        let (guards, parent) = (self.clone(), window.clone());
+        let mut deciding = Box::pin(async move {
+            let _turn = guards.turn.lock().await;
+            let preflight = preflight.map(|make| make());
+            let mut acknowledged = HashSet::new();
+            let ready = match &preflight {
+                Some(preflight) => preflight(&parent).await,
+                None => CloseDecision::Approved,
+            };
+            if ready == CloseDecision::Cancelled {
+                return CloseDecision::Cancelled;
+            }
+            loop {
+                if CloseGuard::run(parent.upcast_ref(), &handles(), CloseScope::Window, &mut acknowledged).await
+                    == CloseDecision::Cancelled
+                {
+                    return CloseDecision::Cancelled;
+                }
+                if let Some(preflight) = &preflight
+                    && preflight(&parent).await == CloseDecision::Cancelled
+                {
+                    return CloseDecision::Cancelled;
+                }
+                if handles()
+                    .iter()
+                    .all(|handle| handle.close_step(CloseScope::Window, &acknowledged) == CloseStep::Approve)
+                {
+                    return CloseDecision::Approved;
+                }
+            }
+        });
+        // An already approved close must release restore claims before queued lookups can run.
+        match deciding.as_mut().now_or_never() {
+            Some(CloseDecision::Approved) => {
+                self.window.set(WindowClose::Approved);
+                return true;
+            }
+            Some(CloseDecision::Cancelled) => {
+                self.window.set(WindowClose::Open);
+                self.settle(CloseDecision::Cancelled);
+                return false;
+            }
+            None => {}
+        }
         let (guards, window) = (self.clone(), window.clone());
         glib::spawn_future_local(async move {
-            let decision = {
-                let _turn = guards.turn.lock().await;
-                let preflight = preflight.map(|make| make());
-                let mut acknowledged = HashSet::new();
-                let ready = match &preflight {
-                    Some(preflight) => preflight(&window).await,
-                    None => CloseDecision::Approved,
-                };
-                if ready == CloseDecision::Approved {
-                    loop {
-                        if CloseGuard::run(window.upcast_ref(), &handles(), CloseScope::Window, &mut acknowledged).await
-                            == CloseDecision::Cancelled
-                        {
-                            break CloseDecision::Cancelled;
-                        }
-                        if let Some(preflight) = &preflight
-                            && preflight(&window).await == CloseDecision::Cancelled
-                        {
-                            break CloseDecision::Cancelled;
-                        }
-                        if handles()
-                            .iter()
-                            .all(|handle| handle.close_step(CloseScope::Window, &acknowledged) == CloseStep::Approve)
-                        {
-                            break CloseDecision::Approved;
-                        }
-                    }
-                } else {
-                    CloseDecision::Cancelled
-                }
-            };
-            match decision {
+            match deciding.await {
                 CloseDecision::Approved => {
                     guards.window.set(WindowClose::Approved);
                     window.close();
@@ -348,6 +362,32 @@ mod tests {
 
         assert_eq!(closes.get(), 1);
         assert!(visible_alert(&window).is_none());
+    }
+
+    #[gtk4::test]
+    fn an_immediately_ready_preflight_closes_without_yielding() {
+        let guards = CloseGuards::new();
+        let window = window();
+        let closes = Rc::new(Cell::new(0));
+        let sink = closes.clone();
+        guards.connect_window(&*window, Vec::new, move |_| sink.set(sink.get() + 1));
+        let calls = Rc::new(Cell::new(0));
+        let observed = calls.clone();
+        guards.set_window_preflight(move || {
+            let observed = observed.clone();
+            Rc::new(move |_| {
+                observed.set(observed.get() + 1);
+                Box::pin(std::future::ready(CloseDecision::Approved))
+            })
+        });
+        let (decision, sink) = decision_sink();
+
+        guards.request_window_close(&*window, sink);
+
+        assert_eq!(decision.get(), Some(CloseDecision::Approved));
+        assert_eq!(closes.get(), 1);
+        assert_eq!(calls.get(), 2);
+        assert!(!window.is_visible());
     }
 
     #[gtk4::test]

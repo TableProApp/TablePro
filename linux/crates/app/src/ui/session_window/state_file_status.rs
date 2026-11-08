@@ -200,7 +200,7 @@ impl SessionWindow {
             return;
         };
         let retryable = error.is_retryable();
-        let toast = adw::Toast::new(&kind.message(retryable));
+        let toast = crate::ui::plain_toast(&kind.message(retryable));
         toast.set_timeout(0);
         if retryable && let Some(input) = self.input() {
             toast.set_button_label(Some(&gettext("Retry")));
