@@ -400,11 +400,24 @@ fn refreshing_cannot_discard_rows_while_their_save_is_running() {
             .expect("workspace input")
             .deliver(WorkspaceInput::Save(SaveRequest::Rows(id)));
         let connection = test.connection();
-        wait_until(WAIT, || {
+        let began_waiting = std::time::Instant::now();
+        let started = wait_until(WAIT, || {
             tracker.pending_state() == crate::workspace::PendingState::Saving
                 && !connection.observed_cancels("write_batch").is_empty()
-        })
-        .expect("the row save reaches the driver");
+        });
+        assert!(
+            started.is_ok(),
+            "row save did not reach the driver: refresh_first={refresh_first}, elapsed={:?}, state={:?}, observed_writes={}, connections={:?}, alert={:?}",
+            began_waiting.elapsed(),
+            tracker.pending_state(),
+            connection.observed_cancels("write_batch").len(),
+            test.connector
+                .connections()
+                .iter()
+                .map(|connection| (connection.is_closed(), connection.observed_sql("write_batch")))
+                .collect::<Vec<_>>(),
+            visible_alert(&test.window).map(|alert| (alert.heading(), alert.body())),
+        );
 
         if refresh_first {
             assert!(answer(&test.window, "discard"));
