@@ -6,6 +6,7 @@ use chrono::{NaiveDate, NaiveTime};
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, gdk};
+use sourceview5::prelude::*;
 use tablepro_core::column::{TemporalZone, TimeRange};
 use tablepro_core::edit::CellInput;
 use tablepro_core::value::{JsonText, SqlTime, Temporal};
@@ -142,6 +143,125 @@ fn a_date(year: i32, month: u32, day: u32) -> Value {
 
 fn column_of(info: ColumnInfo) -> GridColumn {
     grid_columns(&[info.result_column()], std::slice::from_ref(&info), |_| true)[0].clone()
+}
+
+fn assert_value_scheme(pane: &RowDetailPane, id: &str) {
+    let scheme = pane.imp().value_buffer.style_scheme().expect("the value's scheme");
+    assert_eq!(scheme.id(), id);
+    let expected = scheme.style("text").expect("the scheme text style");
+    let expected = gdk::RGBA::parse(expected.foreground().expect("the scheme foreground")).expect("a scheme color");
+    let attributes = pane
+        .imp()
+        .placeholder_label
+        .attributes()
+        .expect("placeholder attributes");
+    let attributes = attributes.attributes();
+    let color = attributes
+        .iter()
+        .find(|attribute| attribute.type_() == gtk::pango::AttrType::Foreground)
+        .and_then(|attribute| attribute.downcast_ref::<gtk::pango::AttrColor>())
+        .expect("the placeholder uses the scheme foreground")
+        .color();
+    let channel = |value: f32| (value * 65535.0).round() as u16;
+    assert_eq!(
+        (color.red(), color.green(), color.blue()),
+        (
+            channel(expected.red()),
+            channel(expected.green()),
+            channel(expected.blue())
+        )
+    );
+    assert!(
+        attributes
+            .iter()
+            .any(|attribute| { attribute == gtk::pango::AttrInt::new_style(gtk::pango::Style::Italic).upcast_ref() })
+    );
+    assert!(pane.imp().placeholder_label.has_css_class("dimmed"));
+}
+
+#[gtk4::test]
+fn value_scheme_and_placeholders_keep_the_exact_pick_across_desktop_changes() {
+    let (grid, pane) = opened(
+        two_text_columns(),
+        vec![
+            vec![Value::Int(1), Value::Null],
+            vec![Value::Int(2), Value::Text("value".into())],
+        ],
+    );
+    let settings = &grid.grid.config().expect("grid settings").settings;
+    let style = libadwaita::StyleManager::default();
+    let previous = style.color_scheme();
+    for id in ["Adwaita-dark", "Adwaita"] {
+        settings.set_style_scheme(id).expect("a writable preference");
+        for desktop in [libadwaita::ColorScheme::ForceLight, libadwaita::ColorScheme::ForceDark] {
+            style.set_color_scheme(desktop);
+            grid.focus(0, 1);
+            assert!(pane.imp().placeholder_label.is_visible());
+            assert_eq!(pane.imp().placeholder_label.text(), "NULL");
+            assert_value_scheme(&pane, id);
+            grid.focus(1, 1);
+            assert_eq!(pane.typed_text(), "value");
+            assert!(!pane.imp().placeholder_label.is_visible());
+            assert_value_scheme(&pane, id);
+            type_value(&pane, "");
+            assert!(pane.imp().placeholder_label.is_visible());
+            assert_value_scheme(&pane, id);
+            type_value(&pane, "value");
+        }
+    }
+    style.set_color_scheme(previous);
+}
+
+#[gtk4::test]
+fn automatic_value_scheme_recolors_the_placeholder_with_the_desktop() {
+    let (grid, pane) = opened(two_text_columns(), vec![vec![Value::Int(1), Value::Null]]);
+    grid.grid
+        .config()
+        .expect("grid settings")
+        .settings
+        .set_style_scheme("")
+        .expect("the automatic preference");
+    grid.focus(0, 1);
+    let style = libadwaita::StyleManager::default();
+    let previous = style.color_scheme();
+    for (desktop, expected) in [
+        (libadwaita::ColorScheme::ForceLight, "Adwaita"),
+        (libadwaita::ColorScheme::ForceDark, "Adwaita-dark"),
+    ] {
+        style.set_color_scheme(desktop);
+        assert!(pane.imp().placeholder_label.is_visible());
+        assert_value_scheme(&pane, expected);
+    }
+    style.set_color_scheme(previous);
+}
+
+#[gtk4::test]
+fn closed_value_editor_disconnects_scheme_and_placeholder_updates() {
+    let (grid, pane) = opened(two_text_columns(), vec![vec![Value::Int(1), Value::Null]]);
+    let settings = grid.grid.config().expect("grid settings").settings.clone();
+    settings
+        .set_style_scheme("Adwaita-dark")
+        .expect("a writable preference");
+    let buffer = pane.imp().value_buffer.get();
+    let placeholder = pane.imp().placeholder_label.get();
+    let attributes = placeholder.attributes().expect("placeholder attributes");
+    let weak_pane = pane.downgrade();
+    drop(pane);
+    drop(grid);
+    drain_main_context();
+    assert!(weak_pane.upgrade().is_none(), "the value editor outlived its grid");
+
+    settings.set_style_scheme("Adwaita").expect("a writable preference");
+    let style = libadwaita::StyleManager::default();
+    let previous = style.color_scheme();
+    style.set_color_scheme(libadwaita::ColorScheme::ForceLight);
+    style.set_color_scheme(libadwaita::ColorScheme::ForceDark);
+    assert_eq!(
+        buffer.style_scheme().expect("the retained buffer's scheme").id(),
+        "Adwaita-dark"
+    );
+    assert_eq!(placeholder.attributes().expect("retained attributes"), attributes);
+    style.set_color_scheme(previous);
 }
 
 #[gtk4::test]

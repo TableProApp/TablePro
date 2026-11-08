@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::OnceLock;
@@ -15,6 +16,7 @@ use tablepro_session::runtime::Tasks;
 
 use crate::i18n::gettext;
 use crate::ui::file_reveal::FileRevealer;
+use crate::ui::handler_guard::HandlerGuard;
 use crate::ui::style_scheme_grid;
 
 mod imp {
@@ -33,6 +35,9 @@ mod imp {
         pub font_button: TemplateChild<gtk4::FontDialogButton>,
         #[template_child]
         pub style_scheme_box: TemplateChild<gtk4::FlowBox>,
+        #[template_child]
+        pub system_style_row: TemplateChild<adw::SwitchRow>,
+        pub scheme_handler: RefCell<Option<HandlerGuard>>,
         #[template_child]
         pub vim_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
@@ -59,6 +64,10 @@ mod imp {
     }
 
     impl ObjectImpl for EditorPage {
+        fn dispose(&self) {
+            self.scheme_handler.borrow_mut().take();
+        }
+
         fn signals() -> &'static [Signal] {
             static SIGNALS: OnceLock<Vec<Signal>> = OnceLock::new();
             SIGNALS.get_or_init(|| {
@@ -75,8 +84,6 @@ mod imp {
 }
 
 glib::wrapper! {
-    /// The Editor page: the font, the style scheme, Vim keybindings, the
-    /// snippets folder and the query timeout.
     pub struct EditorPage(ObjectSubclass<imp::EditorPage>)
         @extends adw::PreferencesPage, gtk4::Widget,
         @implements gtk4::Accessible, gtk4::Buildable, gtk4::ConstraintTarget;
@@ -88,7 +95,6 @@ impl Default for EditorPage {
     }
 }
 
-/// What the Snippets row opens, and what it opens it with.
 pub(super) struct SnippetsFolder {
     pub folder: PathBuf,
     pub tasks: Tasks,
@@ -129,12 +135,28 @@ impl EditorPage {
             })
             .build();
 
-        style_scheme_grid::populate(&imp.style_scheme_box.get(), settings);
+        gio_settings
+            .bind(keys::STYLE_SCHEME, &imp.system_style_row.get(), "active")
+            .mapping(|variant, _| Some(variant.get::<String>()?.is_empty().to_value()))
+            .set_mapping(|value, _| {
+                let automatic = value.get::<bool>().ok()?;
+                let id = if automatic {
+                    ""
+                } else if adw::StyleManager::default().is_dark() {
+                    "Adwaita-dark"
+                } else {
+                    "Adwaita"
+                };
+                Some(id.to_variant())
+            })
+            .build();
+        imp.scheme_handler
+            .replace(Some(style_scheme_grid::populate(&imp.style_scheme_box.get(), settings)));
         self.bind_snippets(snippets);
     }
 
-    /// AdwPreferencesDialog owns the toast overlay, so the page hands its
-    /// toasts up rather than looking for one.
+    // AdwPreferencesDialog owns the toast overlay, so the page hands its
+    // toasts up rather than looking for one.
     pub(super) fn connect_toast<F: Fn(&Self, &adw::Toast) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure(
             "toast",
@@ -159,7 +181,7 @@ impl EditorPage {
         });
     }
 
-    /// The folder does not exist until the user first opens it.
+    // The folder does not exist until the user first opens it.
     fn open_snippets_folder(&self, snippets: &SnippetsFolder) {
         let folder = snippets.folder.clone();
         let making = snippets
@@ -277,6 +299,7 @@ mod tests {
             [
                 "Use the System Monospace Font",
                 "Editor font",
+                "Follow System Style",
                 "Vim Keybindings",
                 "Snippets folder",
                 "Query timeout (seconds)"
@@ -286,6 +309,108 @@ mod tests {
             page.imp().style_scheme_box.first_child().is_some(),
             "no style scheme previews"
         );
+    }
+
+    fn scheme_preview(page: &EditorPage, id: &str) -> sourceview5::StyleSchemePreview {
+        descendants(&page.imp().style_scheme_box.get())
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<sourceview5::StyleSchemePreview>().ok())
+            .find(|preview| preview.scheme().id() == id)
+            .expect("the scheme preview")
+    }
+
+    fn selected_schemes(page: &EditorPage) -> Vec<String> {
+        descendants(&page.imp().style_scheme_box.get())
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<sourceview5::StyleSchemePreview>().ok())
+            .filter(|preview| preview.is_selected())
+            .map(|preview| preview.scheme().id().to_string())
+            .collect()
+    }
+
+    #[gtk4::test]
+    fn scheme_previews_save_exact_ids_on_either_desktop_style() {
+        adw::init().expect("libadwaita initialises");
+        let style = adw::StyleManager::default();
+        let previous = style.color_scheme();
+        let settings = MemorySettings::new();
+        let page = bound_page(&settings);
+        let other_page = bound_page(&settings);
+        assert!(page.imp().system_style_row.is_active());
+        assert!(selected_schemes(&page).is_empty());
+
+        for (desktop, id) in [
+            (adw::ColorScheme::ForceDark, "Adwaita"),
+            (adw::ColorScheme::ForceLight, "Adwaita-dark"),
+        ] {
+            style.set_color_scheme(desktop);
+            let preview = scheme_preview(&page, id);
+            preview.emit_by_name::<()>("activate", &[]);
+            assert_eq!(settings.get().style_scheme(), id);
+            assert!(!page.imp().system_style_row.is_active());
+            assert!(!other_page.imp().system_style_row.is_active());
+            assert_eq!(selected_schemes(&page), [id]);
+            assert_eq!(selected_schemes(&other_page), [id]);
+            assert_eq!(
+                crate::ui::style_scheme_resolver::scheme(id)
+                    .expect("the picked scheme")
+                    .id(),
+                preview.scheme().id()
+            );
+        }
+        style.set_color_scheme(previous);
+    }
+
+    #[gtk4::test]
+    fn system_style_switch_restores_automatic_and_can_keep_the_current_style() {
+        adw::init().expect("libadwaita initialises");
+        let style = adw::StyleManager::default();
+        let previous = style.color_scheme();
+        let settings = MemorySettings::new();
+        let page = bound_page(&settings);
+        let row = page.imp().system_style_row.get();
+
+        for (desktop, id) in [
+            (adw::ColorScheme::ForceLight, "Adwaita"),
+            (adw::ColorScheme::ForceDark, "Adwaita-dark"),
+        ] {
+            style.set_color_scheme(desktop);
+            row.set_active(false);
+            assert_eq!(settings.get().style_scheme(), id);
+            assert_eq!(selected_schemes(&page), [id]);
+            row.set_active(true);
+            assert_eq!(settings.get().style_scheme(), "");
+            assert!(selected_schemes(&page).is_empty());
+            assert_eq!(
+                crate::ui::style_scheme_resolver::scheme("")
+                    .expect("the automatic scheme")
+                    .id(),
+                id
+            );
+        }
+        style.set_color_scheme(previous);
+    }
+
+    #[gtk4::test]
+    fn dropping_the_editor_page_releases_its_scheme_previews_and_handler() {
+        let settings = MemorySettings::new();
+        let references = Rc::strong_count(settings.get());
+        let page = bound_page(&settings);
+        let preview = scheme_preview(&page, "Adwaita");
+        let weak_preview = preview.downgrade();
+        let weak_page = page.downgrade();
+        let retained = scheme_preview(&page, "Adwaita-dark");
+
+        drop(preview);
+        drop(page);
+        crate::test_support::drain_main_context();
+
+        assert!(weak_page.upgrade().is_none());
+        assert!(weak_preview.upgrade().is_none());
+        settings.get().set_style_scheme("Adwaita-dark").expect("store a scheme");
+        assert!(!retained.is_selected(), "a closed page still follows settings");
+        drop(retained);
+        assert_eq!(Rc::strong_count(settings.get()), references);
     }
 
     #[gtk4::test]

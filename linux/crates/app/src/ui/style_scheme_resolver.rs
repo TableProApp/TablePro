@@ -4,23 +4,14 @@ use sourceview5::prelude::*;
 const LIGHT_FALLBACK: &str = "Adwaita";
 const DARK_FALLBACK: &str = "Adwaita-dark";
 
-/// The scheme the editor draws. What the user picked is drawn as it is,
-/// dark or light, as the macOS theme picker does. Only the default,
-/// Adwaita, follows the desktop's style through its `dark-variant` link,
-/// so an install that never chose still tracks it. Following the link
-/// for every pick replaced a dark scheme chosen on a light desktop with
-/// its light twin.
+// An empty preference follows the desktop; every installed id is an exact choice.
 pub(crate) fn resolve_id(manager: &sourceview5::StyleSchemeManager, preferred: &str, dark: bool) -> String {
-    let fallback = if dark { DARK_FALLBACK } else { LIGHT_FALLBACK };
-    let Some(scheme) = manager.scheme(preferred) else {
-        return fallback.to_owned();
-    };
-    if preferred != LIGHT_FALLBACK {
-        return preferred.to_owned();
-    }
-    match scheme.metadata("dark-variant").filter(|_| dark) {
-        Some(variant) if manager.scheme(&variant).is_some() => variant.into(),
-        _ => preferred.to_owned(),
+    if manager.scheme(preferred).is_some() {
+        preferred.to_owned()
+    } else if dark {
+        DARK_FALLBACK.to_owned()
+    } else {
+        LIGHT_FALLBACK.to_owned()
     }
 }
 
@@ -33,7 +24,6 @@ pub(crate) fn apply(view: &sourceview5::View, preferred: &str) {
     }
 }
 
-/// The scheme `preferred` names, in the variant for the current style.
 pub(crate) fn scheme(preferred: &str) -> Option<sourceview5::StyleScheme> {
     let manager = sourceview5::StyleSchemeManager::default();
     let dark = libadwaita::StyleManager::default().is_dark();
@@ -45,11 +35,11 @@ mod tests {
     use super::*;
 
     #[gtk4::test]
-    fn resolve_dark_variant() {
+    fn automatic_scheme_follows_the_desktop() {
         let manager = sourceview5::StyleSchemeManager::default();
 
-        let dark = resolve_id(&manager, LIGHT_FALLBACK, true);
-        let light = resolve_id(&manager, LIGHT_FALLBACK, false);
+        let dark = resolve_id(&manager, "", true);
+        let light = resolve_id(&manager, "", false);
 
         assert_eq!(dark, DARK_FALLBACK);
         assert_eq!(light, LIGHT_FALLBACK);
@@ -59,8 +49,11 @@ mod tests {
     fn a_picked_scheme_is_drawn_as_picked_whatever_the_desktop() {
         let manager = sourceview5::StyleSchemeManager::default();
 
-        assert_eq!(resolve_id(&manager, DARK_FALLBACK, false), DARK_FALLBACK);
-        assert_eq!(resolve_id(&manager, DARK_FALLBACK, true), DARK_FALLBACK);
+        for id in manager.scheme_ids() {
+            for dark in [false, true] {
+                assert_eq!(resolve_id(&manager, &id, dark), id, "desktop dark: {dark}");
+            }
+        }
     }
 
     #[gtk4::test]
