@@ -564,21 +564,56 @@ fn the_main_menu_adds_a_connection_with_none_open() {
     choose_new_connection(&test, &test.window.content().expect("the picker"));
 }
 
-/// The header's Refresh reaches the window's `refresh-page` action, which
-/// a connected window has and sends to the tab in front.
 #[gtk4::test]
-fn the_header_refresh_names_a_window_action_the_connection_adds() {
+fn the_header_refresh_follows_the_selected_tabs_capability() {
+    use super::super::structure_target::StructureTarget;
+    use super::super::tab_spec::{TabSpec, TablePage};
+    use crate::ui::browse_tab::TableFilter;
+    use tablepro_core::meta::TableRef;
+
     let test = TestWindow::connected("HeaderRefresh");
     let workspace = test.workspace();
     let shell = shell_of(&workspace);
     let button = shell.imp().refresh_page_button.get();
-
     assert_eq!(button.action_name().as_deref(), Some("win.refresh-page"));
-    assert!(
-        test.window
-            .lookup_action("refresh-page")
-            .is_some_and(|action| action.is_enabled()),
-        "the connected window has no refresh-page action"
-    );
-    assert!(button.is_sensitive());
+    crate::test_support::assert_labelled(&button).expect("the refresh button is named");
+    assert!(gtk::test_accessible_has_property(
+        &button,
+        gtk::AccessibleProperty::KeyShortcuts
+    ));
+    assert!(!button.is_sensitive(), "there is no tab to refresh");
+
+    let table = workspace
+        .with_model(|model| {
+            model.open_tab(TabSpec::Table {
+                table: TableRef::unqualified("customers"),
+                page: TablePage::first(100),
+                filter: TableFilter::Remembered,
+            })
+        })
+        .flatten()
+        .expect("a table");
+    wait_until(WAIT, || button.is_sensitive()).expect("table refresh");
+    super::open_editor(&workspace);
+    wait_until(WAIT, || !button.is_sensitive()).expect("no editor rerun");
+    workspace
+        .with_model(|model| {
+            model.open_tab(TabSpec::Structure {
+                target: StructureTarget::Existing(TableRef::unqualified("customers")),
+            })
+        })
+        .flatten()
+        .expect("a structure draft");
+    wait_until(WAIT, || !button.is_sensitive()).expect("no draft to reload");
+    workspace.with_model(|model| model.tab_view.set_selected_page(&table));
+    wait_until(WAIT, || button.is_sensitive()).expect("refresh after selection inside the model");
+
+    for page in (0..shell.tab_view().n_pages())
+        .map(|i| shell.tab_view().nth_page(i))
+        .collect::<Vec<_>>()
+    {
+        shell.tab_view().close_page(&page);
+    }
+    wait_until(WAIT, || shell.tab_view().n_pages() == 0).expect("all clean tabs close");
+    wait_until(WAIT, || !button.is_sensitive()).expect("no refresh after the last tab closes");
 }

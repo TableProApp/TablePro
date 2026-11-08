@@ -135,8 +135,6 @@
                                   </object>
                                 </child>
                                 <child type="start">
-                                  <!-- Reads the tab in front again, as the macOS
-                                       toolbar's Refresh does. -->
                                   <object class="GtkButton" id="refresh_page_button">
                                     <property name="icon-name">view-refresh-symbolic</property>
                                     <property name="action-name">win.refresh-page</property>

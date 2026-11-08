@@ -423,21 +423,33 @@ impl WorkspaceModel {
         self.open_tab(TabSpec::Key { key });
     }
 
-    pub(super) fn on_refresh_active_tab(&self) {
-        let Some(id) = self.selected_workspace_tab_id() else {
+    pub(super) fn refresh_header_actions(&self) {
+        let Some(workspace) = self.this.upgrade() else {
             return;
         };
-        let key = match self.workspace_tabs.borrow().get(&id) {
-            Some(WorkspaceTab::Key(slot)) => Some(slot.tab.clone()),
-            _ => None,
-        };
-        match key {
-            Some(tab) => tab.refresh(),
-            None => {
-                if let Some(id) = self.selected_browse_tab_id() {
-                    self.on_refresh_tab(id);
-                }
-            }
+        let can_refresh = self
+            .selected_workspace_tab_id()
+            .is_some_and(|id| self.workspace_tabs.borrow().get(&id).and_then(refresh_target).is_some());
+        use gtk4::subclass::prelude::*;
+        if workspace.imp().can_refresh.replace(can_refresh) != can_refresh {
+            workspace.notify_can_refresh();
+        }
+    }
+
+    pub(super) fn on_refresh_active_tab(&self) {
+        if let Some(id) = self.selected_workspace_tab_id() {
+            self.on_refresh_workspace_tab(id);
+        }
+    }
+
+    pub(super) fn on_refresh_workspace_tab(&self, id: Uuid) {
+        // Release the tab map before an action emits a workspace signal.
+        let target = self.workspace_tabs.borrow().get(&id).and_then(refresh_target);
+        match target {
+            Some(RefreshTarget::Table(tab)) => tab.send(PagingInput::RequestRefresh),
+            Some(RefreshTarget::Diagram(tab)) => tab.refresh(),
+            Some(RefreshTarget::Key(tab)) => tab.refresh(),
+            None => {}
         }
     }
 
@@ -1109,5 +1121,20 @@ mod tests {
         view.set_selected_page(&view.nth_page(2));
 
         wait_until(WAIT, || column_reads() == 2).expect("the tab read its table once shown");
+    }
+}
+
+enum RefreshTarget {
+    Table(crate::ui::browse_tab::BrowseTab),
+    Diagram(crate::ui::diagram::DiagramTab),
+    Key(crate::ui::key_tab::KeyTab),
+}
+
+fn refresh_target(tab: &WorkspaceTab) -> Option<RefreshTarget> {
+    match tab {
+        WorkspaceTab::Table(slot) => Some(RefreshTarget::Table(slot.browse.clone())),
+        WorkspaceTab::Diagram(slot) => Some(RefreshTarget::Diagram(slot.diagram.clone())),
+        WorkspaceTab::Key(slot) => Some(RefreshTarget::Key(slot.tab.clone())),
+        WorkspaceTab::Editor(_) | WorkspaceTab::Structure(_) => None,
     }
 }
