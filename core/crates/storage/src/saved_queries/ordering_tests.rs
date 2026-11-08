@@ -294,3 +294,28 @@ async fn a_failed_connection_purge_preserves_every_kind_of_favorite_and_its_revi
     assert!(favourites.tables(connection).await.expect("tables").is_empty());
     assert!(favourites.databases(connection).await.expect("databases").is_empty());
 }
+
+#[tokio::test]
+async fn assigning_the_same_folder_preserves_position_and_revision() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let history = QueryHistory::open(&paths(&root)).await.expect("open");
+    let store = history.saved_queries();
+    let connection = Uuid::new_v4();
+    let a = save(&store, connection, "a").await;
+    let b = save(&store, connection, "b").await;
+    let folder = history
+        .saved_query_folders()
+        .create(connection, "Reports", None)
+        .await
+        .expect("folder");
+    store.set_folder(a, Some(folder)).await.expect("file a");
+    store.set_folder(b, Some(folder)).await.expect("file b");
+    let changes = store.changes();
+    store.set_folder(a, Some(folder)).await.expect("same folder");
+    assert_eq!(order(&store, connection, Some(folder)).await, [a, b]);
+    assert!(!changes.has_changed().expect("no revision"));
+    store.set_folder(a, None).await.expect("move to root");
+    assert_eq!(order(&store, connection, None).await, [a]);
+    assert_eq!(order(&store, connection, Some(folder)).await, [b]);
+    assert!(changes.has_changed().expect("revision"));
+}

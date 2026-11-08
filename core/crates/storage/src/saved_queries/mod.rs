@@ -254,7 +254,21 @@ impl SavedQueries {
         Ok(())
     }
 
+    pub async fn set_folder(&self, id: i64, folder: Option<i64>) -> Result<(), StorageError> {
+        self.move_query(id, folder, None, true).await
+    }
+
     pub async fn move_to_folder(&self, id: i64, folder: Option<i64>, before: Option<i64>) -> Result<(), StorageError> {
+        self.move_query(id, folder, before, false).await
+    }
+
+    async fn move_query(
+        &self,
+        id: i64,
+        folder: Option<i64>,
+        before: Option<i64>,
+        keep_position: bool,
+    ) -> Result<(), StorageError> {
         let mut connection = self.pool.acquire().await?;
         let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
         let row = sqlx::query("SELECT connection_id, folder_id FROM saved_queries WHERE id = ?")
@@ -273,6 +287,10 @@ impl SavedQueries {
             if target.as_deref() != Some(owner.as_str()) {
                 return Err(StorageError::NotFound);
             }
+        }
+        if keep_position && old_folder == folder {
+            transaction.commit().await?;
+            return Ok(());
         }
         if before == Some(id) {
             return if old_folder == folder {
