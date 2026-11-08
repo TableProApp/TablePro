@@ -64,6 +64,7 @@ use uuid::Uuid;
 
 pub(crate) use self::catalog_ops::DatabaseDrop;
 pub(crate) use self::database_transfer::TransferInput;
+pub(crate) use self::saves::SaveRequest;
 use self::session_watches::SessionWatches;
 use self::tab_title::ConnectionLabel;
 pub(crate) use self::workspace_actions::show_transfer_actions;
@@ -362,7 +363,6 @@ pub struct TableTabSlot {
     pub schema: Option<String>,
     pub table: String,
     pub browse: BrowseTab,
-    /// The Structure view, made the first time it is asked for.
     pub structure: Option<crate::ui::structure_tab::StructureTab>,
 }
 
@@ -398,8 +398,6 @@ impl WorkspaceTab {
         }
     }
 
-    /// The Structure-side controller: a `Structure` slot's, or the
-    /// Structure view of a `Table` slot that has opened it.
     pub fn structure_tab(&self) -> Option<&crate::ui::structure_tab::StructureTab> {
         match self {
             WorkspaceTab::Structure(s) => Some(&s.structure),
@@ -590,14 +588,8 @@ pub(crate) enum WorkspaceInput {
     /// The tab order, the selection or a tab's state changed, so the
     /// workspace is saved.
     WorkspaceTabsChanged,
-    SaveTab(Uuid),
-    /// Save a table tab's Structure view, whatever its rows hold.
-    SaveStructure(Uuid),
-    /// A table tab's Structure view opened for the first time.
+    Save(SaveRequest),
     ShowTableStructure(Uuid),
-    // A query tab's changed rows alone, never its SQL file.
-    SaveRows(Uuid),
-    StopSaving(Uuid),
     /// A save started or settled, or tabs' changes were dropped.
     Workspace(crate::workspace::WorkspaceEvent),
     SavesInFlightChanged(usize),
@@ -1347,11 +1339,8 @@ impl WorkspaceModel {
                 open_mode,
             } => self.dispatch_select_table(schema, name, open_mode),
             WorkspaceInput::WorkspaceTabsChanged => self.on_workspace_tabs_changed(),
-            WorkspaceInput::SaveTab(id) => self.request_save(id),
-            WorkspaceInput::SaveRows(id) => self.request_save_rows(id),
-            WorkspaceInput::SaveStructure(id) => self.request_save_structure(id),
+            WorkspaceInput::Save(request) => self.on_save_request(request),
             WorkspaceInput::ShowTableStructure(id) => self.on_show_table_structure(id),
-            WorkspaceInput::StopSaving(id) => self.stop_saving(id),
             WorkspaceInput::Workspace(event) => self.on_workspace_event(event),
             WorkspaceInput::SavesInFlightChanged(count) => self.on_saves_in_flight_changed(count),
             WorkspaceInput::EditorTransactionChanged => self.on_editor_transaction_changed(),

@@ -395,3 +395,106 @@ fn count_rows_under_a_filter_that_no_longer_fits_says_why() {
     assert_eq!(count_button(&harness).tooltip_text(), banner.tooltip_text());
     assert_eq!(count_calls(&harness), 0);
 }
+
+#[gtk4::test]
+fn independent_page_and_count_reads_never_show_a_total_below_the_range() {
+    for count_first in [false, true] {
+        let mut script = estimated(RowCountEstimate::Approximate(40));
+        script.query_bound = Default::default();
+        script.count_rows = Default::default();
+        let result = rows(&["Ada", "Grace", "Linus"]);
+        if count_first {
+            script.query_bound.always(FakeReply::Late {
+                after: Duration::from_millis(100),
+                outcome: Ok(result),
+            });
+            script.count_rows.always(FakeReply::ok(2));
+        } else {
+            script.query_bound.always(FakeReply::ok(result));
+            script.count_rows.always(FakeReply::Late {
+                after: Duration::from_millis(100),
+                outcome: Ok(2),
+            });
+        }
+        let harness = Harness::open(script, []);
+        wait_until(WAIT, || {
+            harness.shown().len() == 3 && !count_button(&harness).is_visible()
+        })
+        .expect("both page and count have landed");
+
+        assert_eq!(paginator(&harness), "Rows 1 – 3");
+    }
+}
+
+#[gtk4::test]
+fn deleting_rows_does_not_pair_the_old_page_with_a_smaller_total() {
+    let mut script = estimated(RowCountEstimate::Approximate(40));
+    script.query_bound = Default::default();
+    script
+        .query_bound
+        .once(FakeReply::ok(rows(&["Ada", "Grace"])))
+        .always(FakeReply::err(DriverError::server("refresh failed")));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || paginator(&harness) == "Rows 1 – 2 of 2").expect("the original page and total");
+
+    harness
+        .tab()
+        .send(SaveInput::SaveCommitted(ChangeOrigins { inserts: 0, deletes: 1 }));
+
+    assert_eq!(paginator(&harness), "Rows 1 – 2");
+    wait_until(WAIT, || harness.tab().imp().stale_banner.is_revealed()).expect("the failed refresh");
+    assert_eq!(paginator(&harness), "Rows 1 – 2");
+}
+
+#[gtk4::test]
+fn a_count_started_before_saving_cannot_replace_the_adjusted_total() {
+    let mut script = estimated(RowCountEstimate::Approximate(40));
+    script.count_rows = Default::default();
+    script.count_rows.always(FakeReply::Late {
+        after: Duration::from_millis(300),
+        outcome: Ok(999),
+    });
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || count_calls(&harness) == 1 && harness.shown().len() == 2)
+        .expect("the count is running beside the loaded page");
+
+    harness.tab().send(SaveInput::SaveStarted);
+    assert_eq!(count_label(&harness), "Count Rows");
+    assert!(!count_button(&harness).is_sensitive());
+    harness.tab().send(PagingInput::CountRows);
+    harness
+        .tab()
+        .send(SaveInput::SaveCommitted(ChangeOrigins { inserts: 1, deletes: 0 }));
+    std::thread::sleep(Duration::from_millis(400));
+    drain_main_context();
+
+    assert_eq!(paginator(&harness), "Rows 1 – 2 of about 41");
+    assert_eq!(count_calls(&harness), 1);
+    assert!(count_button(&harness).is_sensitive());
+}
+
+#[gtk4::test]
+fn an_estimate_started_before_saving_cannot_restore_an_old_total() {
+    let mut script = estimated(RowCountEstimate::Unknown);
+    script.table_estimate = Default::default();
+    script.table_estimate.always(FakeReply::Late {
+        after: Duration::from_millis(300),
+        outcome: Ok(estimate(RowCountEstimate::Exact(2))),
+    });
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || {
+        CallCounters::get(&harness.connection.counters().table_estimate) == 1 && harness.shown().len() == 2
+    })
+    .expect("the estimate is running beside the loaded page");
+
+    harness.tab().send(SaveInput::SaveStarted);
+    harness
+        .tab()
+        .send(SaveInput::SaveCommitted(ChangeOrigins { inserts: 1, deletes: 0 }));
+    std::thread::sleep(Duration::from_millis(400));
+    drain_main_context();
+
+    assert_eq!(paginator(&harness), "Rows 1 – 2");
+    assert!(count_button(&harness).is_sensitive());
+    assert_eq!(count_calls(&harness), 0);
+}

@@ -296,9 +296,10 @@ impl StructureTab {
         imp.dispatching.set(false);
     }
 
-    /// Stop the read the tab has running and stop following reconnects
-    /// now, rather than at dispose, which waits for the last reference
-    /// to the widget.
+    pub fn request_refresh(&self) {
+        self.send(SaveInput::RequestRefresh);
+    }
+
     pub fn shutdown(&self) {
         let imp = self.imp();
         imp.link_watch.take();
@@ -375,29 +376,19 @@ impl StructureTab {
         )
     }
 
-    /// Move the bar's controls into `start` and `end` of a bar that holds
-    /// them beside others, so a Structure view inside a table tab has one
-    /// bar and not two, as the macOS window has. The controls stay the
-    /// same widgets, so what enables and shows them keeps working.
-    pub fn dock_actions(&self, start: &gtk::Box, end: &gtk::Box) {
+    pub(crate) fn dock_actions(&self, details: &gtk::Box, secondary: &gtk::Box, primary: &gtk::Box) {
         let imp = self.imp();
         imp.action_bar.set_visible(false);
-        let start_controls: [gtk::Widget; 3] = [
-            imp.pending_label.get().upcast(),
-            imp.saving_spinner.get().upcast(),
-            imp.drop_button.get().upcast(),
-        ];
-        // The bar packs its end from the edge inward; a box lists them left to right.
-        let end_controls: [gtk::Widget; 3] = [
-            imp.stop_button.get().upcast(),
-            imp.discard_button.get().upcast(),
-            imp.save_button.get().upcast(),
-        ];
-        for (controls, target) in [(start_controls, start), (end_controls, end)] {
-            for control in controls {
-                imp.action_bar.remove(&control);
-                target.append(&control);
-            }
+        for (control, target) in [
+            (imp.pending_label.get().upcast::<gtk::Widget>(), details),
+            (imp.drop_button.get().upcast(), details),
+            (imp.stop_button.get().upcast(), secondary),
+            (imp.discard_button.get().upcast(), secondary),
+            (imp.saving_spinner.get().upcast(), primary),
+            (imp.save_button.get().upcast(), primary),
+        ] {
+            imp.action_bar.remove(&control);
+            target.append(&control);
         }
     }
 

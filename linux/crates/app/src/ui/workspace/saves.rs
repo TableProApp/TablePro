@@ -13,10 +13,25 @@ use crate::workspace::{
     CloseScope, DirtyTab, SaveOutcome, SaveSettled, SaveStart, WorkKind, WorkOutcome, WorkspaceEvent,
 };
 
+#[derive(Debug)]
+pub(crate) enum SaveRequest {
+    Tab(Uuid),
+    Rows(Uuid),
+    Structure(Uuid),
+    Stop(Uuid),
+}
+
 impl WorkspaceModel {
-    /// Save one tab, from its own Save button or Ctrl+S. A structure
-    /// save may wait on its review first.
-    pub(super) fn request_save(&self, tab: Uuid) {
+    pub(super) fn on_save_request(&self, request: SaveRequest) {
+        match request {
+            SaveRequest::Tab(tab) => self.request_save(tab),
+            SaveRequest::Rows(tab) => self.request_save_rows(tab),
+            SaveRequest::Structure(tab) => self.request_save_structure(tab),
+            SaveRequest::Stop(tab) => self.workspace_handle.stop_saves(CloseScope::Tab(tab)),
+        }
+    }
+
+    fn request_save(&self, tab: Uuid) {
         let Some(parent) = self.dialog_parent() else {
             return;
         };
@@ -37,7 +52,7 @@ impl WorkspaceModel {
         });
     }
 
-    pub(super) fn request_save_rows(&self, tab: Uuid) {
+    fn request_save_rows(&self, tab: Uuid) {
         let Some(parent) = self.dialog_parent() else {
             return;
         };
@@ -53,7 +68,7 @@ impl WorkspaceModel {
         });
     }
 
-    pub(super) fn request_save_structure(&self, tab: Uuid) {
+    fn request_save_structure(&self, tab: Uuid) {
         let Some(parent) = self.dialog_parent() else {
             return;
         };
@@ -67,10 +82,6 @@ impl WorkspaceModel {
                 start => tracing::debug!(?start, %tab, "structure save"),
             }
         });
-    }
-
-    pub(super) fn stop_saving(&self, tab: Uuid) {
-        self.workspace_handle.stop_saves(CloseScope::Tab(tab));
     }
 
     pub(super) fn on_workspace_event(&mut self, event: WorkspaceEvent) {

@@ -141,7 +141,7 @@ impl DataGrid {
         while let Some(column) = view.columns().item(0).and_downcast::<gtk::ColumnViewColumn>() {
             view.remove_column(&column);
         }
-        let layout = match self.config().and_then(|config| config.layout.as_ref()) {
+        let layout = match self.config().and_then(|config| config.layout.clone()) {
             Some(binding) => binding.load(),
             None if same_names(&old_layout, &columns) => old_layout,
             None => ColumnLayout::default(),
@@ -534,7 +534,7 @@ impl DataGrid {
             ));
         }
         if layout != before
-            && let Some(binding) = self.config().and_then(|config| config.layout.as_ref())
+            && let Some(binding) = self.config().and_then(|config| config.layout.clone())
         {
             binding.save(&layout.rebased(&before, &binding.load()));
         }
@@ -685,7 +685,7 @@ impl DataGrid {
             set.layout = ColumnLayout::default();
             (set.columns.clone(), set.sorting())
         };
-        if let Some(binding) = self.config().and_then(|config| config.layout.as_ref()) {
+        if let Some(binding) = self.config().and_then(|config| config.layout.clone()) {
             binding.save(&ColumnLayout::default());
         }
         let rows: Vec<_> = self.store().rows().map(|row| row.data()).collect();

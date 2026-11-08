@@ -380,6 +380,8 @@
             <child type="start">
               <object class="GtkLabel" id="pending_label">
                 <property name="visible">false</property>
+                <property name="ellipsize">end</property>
+                <property name="max-width-chars">32</property>
                 <style>
                   <class name="dim-label"/>
                 </style>

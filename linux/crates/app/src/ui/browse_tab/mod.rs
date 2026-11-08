@@ -307,6 +307,10 @@ impl BrowseTab {
             .unwrap_or_default()
     }
 
+    pub fn rename_table(&self, name: &str) {
+        self.send(DataInput::Renamed(name.to_owned()));
+    }
+
     pub fn table(&self) -> String {
         self.read(|model| model.table.clone()).unwrap_or_default()
     }
@@ -389,7 +393,6 @@ impl BrowseTab {
         self.connect_closure("save-requested", false, glib::closure_local!(move |tab: &Self| f(tab)))
     }
 
-    /// The Structure view opened for the first time and has nothing to show.
     pub fn connect_structure_requested<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure(
             "structure-requested",
@@ -398,55 +401,82 @@ impl BrowseTab {
         )
     }
 
-    /// Offer the Data and Structure switch, where the engine has a
-    /// structure to show.
     pub fn offer_structure(&self) {
         let imp = self.imp();
         imp.view_toggle.set_visible(true);
         let tab = self.downgrade();
-        imp.view_toggle.connect_active_name_notify(move |_| {
+        imp.view_stack.connect_visible_child_name_notify(move |_| {
             if let Some(tab) = tab.upgrade() {
-                tab.follow_view_toggle();
+                tab.follow_selected_view();
             }
         });
     }
 
-    /// Show `structure` as the tab's Structure view, with its Drop Table,
-    /// Discard and Save in this tab's bottom bar.
     pub fn set_structure(&self, structure: &crate::ui::structure_tab::StructureTab) {
+        libadwaita::prelude::BinExt::set_child(&*self.imp().structure_host, Some(structure));
         let imp = self.imp();
-        libadwaita::prelude::BinExt::set_child(&*imp.structure_host, Some(structure));
-        structure.dock_actions(&imp.structure_start, &imp.structure_end);
+        structure.dock_actions(&imp.structure_details, &imp.structure_secondary, &imp.structure_primary);
+        self.sync_structure_actions();
     }
 
-    fn follow_view_toggle(&self) {
+    pub fn structure_tab(&self) -> Option<crate::ui::structure_tab::StructureTab> {
+        libadwaita::prelude::BinExt::child(&*self.imp().structure_host)?
+            .downcast()
+            .ok()
+    }
+
+    pub fn shows_structure(&self) -> bool {
+        self.imp().view_stack.visible_child_name().as_deref() == Some("structure")
+    }
+
+    fn follow_selected_view(&self) {
         let imp = self.imp();
-        let active = imp.view_toggle.active_name();
-        let structure = active.as_deref() == Some("structure");
-        let json = active.as_deref() == Some("json");
-        if structure && libadwaita::prelude::BinExt::child(&*imp.structure_host).is_none() {
-            self.emit_by_name::<()>("structure-requested", &[]);
-        }
-        if json {
+        let structure = self.shows_structure();
+        if imp.view_stack.visible_child_name().as_deref() == Some("json") {
             self.show_json();
         }
-        imp.view_stack.set_visible_child_name(match (structure, json) {
-            (true, _) => "structure",
-            (_, true) => "json",
-            _ => "data",
-        });
-        // Rows are read in the JSON, not edited in it.
-        imp.insert_button.set_visible(!json);
-        imp.delete_button.set_visible(!json);
-        // Each says something about the rows, and is hidden rather than
-        // unrevealed because the data view decides whether it is revealed.
-        imp.stale_banner.set_visible(!structure);
-        imp.read_only_banner.set_visible(!structure);
-        imp.no_pk_banner.set_visible(!structure);
+        // Finish an open cell before hiding its editor, so close and Save see the draft.
+        if structure {
+            self.commit_cell_edit();
+        }
+        if structure && !imp.structure_requested.replace(true) {
+            self.emit_by_name::<()>("structure-requested", &[]);
+        }
         imp.data_start.set_visible(!structure);
         imp.data_end.set_visible(!structure);
         imp.structure_start.set_visible(structure);
         imp.structure_end.set_visible(structure);
+        self.sync_structure_actions();
+        let actions = imp.browse_actions.get().filter(|_| !structure);
+        self.insert_action_group("browse", actions);
+        if let Some(model) = imp.model.borrow_mut().as_mut() {
+            model.show_grid_actions();
+        }
+    }
+
+    fn sync_structure_actions(&self) {
+        let structure = self.structure_tab().filter(|_| self.shows_structure());
+        self.insert_action_group("structure", structure.as_ref().and_then(|tab| tab.command_actions()));
+    }
+
+    fn save_selected_view(&self) {
+        if self.shows_structure() {
+            if let Some(structure) = self.structure_tab() {
+                let _ = structure.activate_action("structure.save", None);
+            }
+        } else {
+            let _ = self.activate_action("browse.save", None);
+        }
+    }
+
+    fn refresh_selected_view(&self) {
+        if self.shows_structure() {
+            if let Some(structure) = self.structure_tab() {
+                structure.request_refresh();
+            }
+        } else {
+            self.send(PagingInput::RequestRefresh);
+        }
     }
 
     /// The JSON view: the rows on screen as an array of objects, read only,
@@ -483,7 +513,7 @@ impl BrowseTab {
                     return;
                 };
                 let imp = tab.imp();
-                if imp.view_toggle.active_name().as_deref() != Some("json") || imp.json_refresh_queued.replace(true) {
+                if imp.view_stack.visible_child_name().as_deref() != Some("json") || imp.json_refresh_queued.replace(true) {
                     return;
                 }
                 glib::idle_add_local_once(move || {
