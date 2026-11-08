@@ -62,9 +62,13 @@ pub(super) fn install_browse_actions(tab: &BrowseTab, page_size: u64) -> BrowseA
         }
     });
     group.add_action(&page_size);
+    let first = add("first-page", || PagingInput::FirstPage.into());
     let previous = add("previous-page", || PagingInput::PrevPage.into());
     let next = add("next-page", || PagingInput::NextPage.into());
-    tab.imp().pager_bar.follow_page_actions(ACTION_GROUP, &previous, &next);
+    let last = add("last-page", || PagingInput::LastPage.into());
+    tab.imp()
+        .pager_bar
+        .follow_page_actions(ACTION_GROUP, &first, &previous, &next, &last);
     let actions = BrowseActions {
         save: add("save", || SaveInput::CommitSave.into()),
         undo: add("undo", || GridInput::Undo.into()),

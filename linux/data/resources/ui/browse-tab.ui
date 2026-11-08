@@ -7,7 +7,9 @@
     <property name="height-request">160</property>
     <child>
       <object class="AdwBreakpoint" id="narrow_breakpoint">
-        <condition>max-width: 680sp</condition>
+        <condition>max-width: 860sp</condition>
+        <setter object="row_actions_box" property="visible">false</setter>
+        <setter object="details_toggle" property="visible">false</setter>
         <setter object="export_button" property="visible">false</setter>
         <setter object="filter_button" property="visible">false</setter>
         <setter object="page_size_box" property="visible">false</setter>
@@ -127,21 +129,26 @@
               <object class="GtkBox" id="data_start">
                 <property name="spacing">6</property>
                 <child>
-                  <object class="GtkButton" id="insert_button">
-                    <property name="icon-name">list-add-symbolic</property>
-                    <property name="action-name">grid.insert-row</property>
-                    <style>
-                      <class name="flat" />
-                    </style>
-                  </object>
-                </child>
-                <child>
-                  <object class="GtkButton" id="delete_button">
-                    <property name="icon-name">list-remove-symbolic</property>
-                    <property name="action-name">grid.delete-rows</property>
-                    <style>
-                      <class name="flat" />
-                    </style>
+                  <object class="GtkBox" id="row_actions_box">
+                    <property name="spacing">6</property>
+                    <child>
+                      <object class="GtkButton" id="insert_button">
+                        <property name="icon-name">list-add-symbolic</property>
+                        <property name="action-name">grid.insert-row</property>
+                        <style>
+                          <class name="flat" />
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="delete_button">
+                        <property name="icon-name">list-remove-symbolic</property>
+                        <property name="action-name">grid.delete-rows</property>
+                        <style>
+                          <class name="flat" />
+                        </style>
+                      </object>
+                    </child>
                   </object>
                 </child>
                 <child>

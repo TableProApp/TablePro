@@ -1244,6 +1244,72 @@ fn a_read_only_tab_refuses_insert_row() {
 }
 
 #[gtk4::test]
+fn the_compact_menu_reaches_row_commands_only_in_data() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    let tab = harness.tab();
+    tab.offer_structure();
+    let shown = Shown::new(tab);
+    let imp = tab.imp();
+    wait_until(WAIT, || harness.shown().len() == 1 && imp.more_button.is_mapped()).expect("the compact Data bar");
+    assert!(!imp.insert_button.is_mapped());
+    assert!(!imp.delete_button.is_mapped());
+    assert!(!imp.details_toggle.is_mapped());
+    assert!(!imp.pager_bar.imp().first_button.is_visible());
+    assert!(!imp.pager_bar.imp().last_button.is_visible());
+    let menu = imp.more_button.menu_model().expect("the overflow menu");
+    let actions: Vec<String> = (0..menu.n_items())
+        .filter_map(|index| menu.item_link(index, "section"))
+        .flat_map(|section| {
+            (0..section.n_items())
+                .filter_map(|index| {
+                    section
+                        .item_attribute_value(index, "action", None)
+                        .and_then(|value| value.get::<String>())
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    for action in [
+        "grid.insert-row",
+        "grid.delete-rows",
+        "grid.show-details",
+        "browse.first-page",
+        "browse.last-page",
+    ] {
+        assert!(actions.iter().any(|found| found == action), "missing {action}");
+    }
+    imp.more_button.activate_action("grid.insert-row", None).unwrap();
+    drain_main_context();
+    assert_eq!(harness.tracker.pending_count(), 1);
+    imp.more_button.activate_action("grid.show-details", None).unwrap();
+    assert_eq!(
+        harness
+            .grid()
+            .actions()
+            .action_state("show-details")
+            .and_then(|state| state.get::<bool>()),
+        Some(true)
+    );
+
+    imp.view_stack.set_visible_child_name("structure");
+    assert!(imp.more_button.activate_action("grid.insert-row", None).is_err());
+    assert!(imp.more_button.activate_action("browse.last-page", None).is_err());
+    assert_eq!(harness.tracker.pending_count(), 1);
+
+    imp.view_stack.set_visible_child_name("data");
+    shown.0.set_size_request(1_000, 400);
+    wait_until(WAIT, || imp.insert_button.is_mapped() && !imp.more_button.is_mapped())
+        .expect("the wide Data bar restores its controls");
+    assert!(imp.details_toggle.is_mapped());
+    assert!(imp.pager_bar.imp().first_button.is_visible());
+    assert!(imp.pager_bar.imp().last_button.is_visible());
+    assert!(imp.view_toggle.is_mapped());
+}
+
+#[gtk4::test]
 fn browse_buttons_announce_their_keys() {
     use gtk4::subclass::prelude::ObjectSubclassIsExt;
     let mut script = serving_table();
