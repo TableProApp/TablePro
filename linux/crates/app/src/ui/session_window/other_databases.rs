@@ -28,7 +28,7 @@ use super::{MovedTab, SessionWindow};
 use crate::i18n::{gettext, gettext_f};
 use crate::runtime::DeliverInput;
 use crate::ui::error_text::{connect_error_message, operation_error_message};
-use crate::ui::workspace::{DatabaseDrop, Workspace, WorkspaceInput};
+use crate::ui::workspace::{DatabaseDrop, EditorInput, Workspace, WorkspaceInput};
 use crate::workspace::CloseDecision;
 
 /// The response of the chooser that opens the database picked.
@@ -335,7 +335,7 @@ impl SessionWindow {
         // The connection's tabs in that database read its catalog now.
         for other in others {
             if let Some(input) = other.sender() {
-                input.deliver(WorkspaceInput::DatabaseOpened(joined.clone()));
+                input.deliver(WorkspaceInput::Editor(EditorInput::DatabaseOpened(joined.clone())));
             }
         }
     }
@@ -356,11 +356,11 @@ impl SessionWindow {
         let Some(database) = database else {
             self.deliver_to(
                 key,
-                WorkspaceInput::FollowCatalog {
+                WorkspaceInput::Editor(EditorInput::FollowCatalog {
                     tab_id,
                     database: None,
                     session: None,
-                },
+                }),
             );
             return;
         };
@@ -370,11 +370,11 @@ impl SessionWindow {
         if let Some((held, session)) = self.holding(id, Some(&database)) {
             self.deliver_to(
                 key,
-                WorkspaceInput::FollowCatalog {
+                WorkspaceInput::Editor(EditorInput::FollowCatalog {
                     tab_id,
                     database: Some(database),
                     session: (held != *key).then_some(session),
-                },
+                }),
             );
             return;
         }
@@ -436,22 +436,22 @@ impl SessionWindow {
             {
                 window.deliver_to(
                     &key,
-                    WorkspaceInput::FollowCatalog {
+                    WorkspaceInput::Editor(EditorInput::FollowCatalog {
                         tab_id,
                         database: Some(database),
                         session: Some(root),
-                    },
+                    }),
                 );
             } else {
                 // A sibling may have joined while the metadata was being read.
                 match window.holding(id, Some(&database)) {
                     Some((_, session)) => window.deliver_to(
                         &key,
-                        WorkspaceInput::FollowCatalog {
+                        WorkspaceInput::Editor(EditorInput::FollowCatalog {
                             tab_id,
                             database: Some(database),
                             session: Some(session),
-                        },
+                        }),
                     ),
                     None => window.open_database(id, database),
                 }

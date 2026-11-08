@@ -26,10 +26,29 @@ use super::tab_factory::EditorPreview;
 use super::tab_index::TabIndex;
 use super::tab_spec::{TabSpec, TablePage};
 use super::workspace_persistence::reopen;
-use super::{ClosedTabDescriptor, OpenMode, WorkspaceInput, WorkspaceModel, WorkspaceSender, WorkspaceTab};
+use super::{
+    ClosedTabDescriptor, EditorInput, OpenMode, WorkspaceInput, WorkspaceModel, WorkspaceSender, WorkspaceTab,
+};
 use crate::runtime::DeliverInput;
 
 impl WorkspaceModel {
+    pub(super) fn on_editor_input(&mut self, input: EditorInput) {
+        match input {
+            EditorInput::RunStateChanged(id, running) => self.on_editor_tab_run_state_changed(id, running),
+            EditorInput::RunFinished(id, outcome) => self.on_editor_tab_run_finished(id, outcome),
+            EditorInput::ContentChanged(id) => self.on_editor_tab_content_changed(id),
+            EditorInput::FileChanged(id) => self.on_editor_tab_file_changed(id),
+            EditorInput::DatabaseChanged(id) => self.on_editor_tab_database_changed(id),
+            EditorInput::TransactionChanged => self.on_editor_transaction_changed(),
+            EditorInput::FollowCatalog {
+                tab_id,
+                database,
+                session,
+            } => self.follow_catalog(tab_id, database, session),
+            EditorInput::DatabaseOpened(session) => self.on_database_opened(&session),
+        }
+    }
+
     /// Read the saved tabs of the session just adopted, and the editor
     /// text that goes with them, off the GTK thread.
     pub(super) fn restore_workspace_tabs(&mut self, key: SessionKey) {
