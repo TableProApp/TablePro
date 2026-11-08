@@ -31,11 +31,13 @@ pub(crate) enum Pick {
     Query(String),
 }
 
-/// What the dialog searches: a table or view, or a saved query.
+/// What the dialog searches: a table or view, a saved query, or a query
+/// run before.
 #[derive(Debug, Clone)]
 pub(crate) enum Entry {
     Object(ObjectInfo),
     Query { name: String, sql: String },
+    History { title: String, sql: String },
 }
 
 impl Entry {
@@ -43,15 +45,29 @@ impl Entry {
         match self {
             Entry::Object(object) => &object.name,
             Entry::Query { name, .. } => name,
+            Entry::History { title, .. } => title,
         }
     }
+}
+
+/// How long the title of a past query may be, which a long statement is cut to.
+const TITLE_CHARS: usize = 120;
+
+/// A past query's first line, as its title in the list.
+fn history_title(sql: &str) -> String {
+    let line = sql
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or_default();
+    line.chars().take(TITLE_CHARS).collect()
 }
 
 type Chosen = Rc<dyn Fn(Pick)>;
 
 /// The tables and views of `objects` and the saved `queries` as (name, SQL),
 /// by name, a table before a query of the same name.
-pub(crate) fn candidates(objects: &[ObjectInfo], queries: &[(String, String)]) -> Vec<Entry> {
+pub(crate) fn candidates(objects: &[ObjectInfo], queries: &[(String, String)], history: &[String]) -> Vec<Entry> {
     let mut found: Vec<Entry> = objects
         .iter()
         .filter(|object| object.kind.is_browsable())
@@ -61,14 +77,23 @@ pub(crate) fn candidates(objects: &[ObjectInfo], queries: &[(String, String)]) -
             name: name.clone(),
             sql: sql.clone(),
         }))
+        .chain(history.iter().map(|sql| Entry::History {
+            title: history_title(sql),
+            sql: sql.clone(),
+        }))
         .collect();
     found.sort_by_cached_key(|entry| {
         (
             entry.name().to_lowercase(),
-            matches!(entry, Entry::Query { .. }),
+            // A table, then a saved query, then one run before.
+            match entry {
+                Entry::Object(_) => 0,
+                Entry::Query { .. } => 1,
+                Entry::History { .. } => 2,
+            },
             match entry {
                 Entry::Object(object) => object.schema.clone(),
-                Entry::Query { .. } => None,
+                Entry::Query { .. } | Entry::History { .. } => None,
             },
         )
     });
@@ -123,19 +148,24 @@ mod imp {
 }
 
 impl QuickOpen {
-    pub(crate) fn new(objects: &[ObjectInfo], queries: &[(String, String)], chosen: impl Fn(Pick) + 'static) -> Self {
+    pub(crate) fn new(
+        objects: &[ObjectInfo],
+        queries: &[(String, String)],
+        history: &[String],
+        chosen: impl Fn(Pick) + 'static,
+    ) -> Self {
         let dialog: Self = glib::Object::new();
         dialog.set_title(&gettext("Open Quickly"));
         dialog.set_content_width(520);
         dialog.set_content_height(440);
-        let all = candidates(objects, queries);
+        let all = candidates(objects, queries, history);
         let store = gio::ListStore::new::<glib::BoxedAnyObject>();
         let selection = gtk::SingleSelection::new(Some(store.clone()));
         let list = gtk::ListView::new(Some(selection.clone()), Some(factory()));
         list.add_css_class("navigation-sidebar");
         list.set_single_click_activate(true);
         list.update_property(&[gtk::accessible::Property::Label(&gettext(
-            "Tables, views and saved queries",
+            "Tables, views, saved queries and history",
         ))]);
         let scrolled = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
@@ -144,7 +174,9 @@ impl QuickOpen {
             .build();
         let empty = adw::StatusPage::builder()
             .title(gettext("No Matches"))
-            .description(gettext("No table, view or saved query matches what you typed."))
+            .description(gettext(
+                "No table, view, saved query or past query matches what you typed.",
+            ))
             .build();
         empty.add_css_class("compact");
         let stack = gtk::Stack::new();
@@ -212,7 +244,7 @@ impl QuickOpen {
                         table: TableRef::new(object.schema, object.name),
                         structure,
                     },
-                    Entry::Query { sql, .. } => Pick::Query(sql),
+                    Entry::Query { sql, .. } | Entry::History { sql, .. } => Pick::Query(sql),
                 });
             }
         };
@@ -340,6 +372,12 @@ fn factory() -> gtk::SignalListItemFactory {
                 place.set_label(&gettext("Saved query"));
                 gettext_f("{name}, a saved query", &[("name", title)])
             }
+            Entry::History { title, .. } => {
+                icon.set_icon_name(Some(icons::DOCUMENT_OPEN_RECENT));
+                name.set_label(title);
+                place.set_label(&gettext("History"));
+                gettext_f("{query}, a query run before", &[("query", title)])
+            }
         };
         item.set_accessible_label(&described);
     });
@@ -368,6 +406,7 @@ mod tests {
                 table("public", "customers_id_seq", ObjectKind::Sequence),
             ],
             &[],
+            &[],
         );
 
         assert_eq!(names(&all), ["Customers", "orders"]);
@@ -382,6 +421,7 @@ mod tests {
                 table("sales", "order_items", ObjectKind::Table),
                 table("public", "users", ObjectKind::Table),
             ],
+            &[],
             &[],
         );
 
@@ -398,6 +438,7 @@ mod tests {
                 ("Orders this week".to_owned(), "SELECT 1".to_owned()),
                 ("Monthly report".to_owned(), "SELECT 2".to_owned()),
             ],
+            &[],
         );
 
         assert_eq!(names(&search(&all, "orders")), ["orders", "Orders this week"]);
@@ -407,8 +448,26 @@ mod tests {
     #[gtk4::test]
     fn the_dialog_searches_the_tables_it_was_given() {
         libadwaita::init().expect("libadwaita initialises under the test backend");
-        let dialog = QuickOpen::new(&[table("public", "orders", ObjectKind::Table)], &[], |_| {});
+        let dialog = QuickOpen::new(&[table("public", "orders", ObjectKind::Table)], &[], &[], |_| {});
 
         assert_eq!(dialog.candidate_names(), ["orders"]);
+    }
+
+    #[test]
+    fn a_past_query_is_found_by_its_first_line_after_tables_and_saved_queries() {
+        let all = candidates(
+            &[table("public", "orders", ObjectKind::Table)],
+            &[("Orders this week".to_owned(), "SELECT 1".to_owned())],
+            &[
+                "\n  SELECT * FROM orders\nWHERE id = 1".to_owned(),
+                "DELETE FROM sessions".to_owned(),
+            ],
+        );
+
+        assert_eq!(
+            names(&search(&all, "orders")),
+            ["orders", "Orders this week", "SELECT * FROM orders"]
+        );
+        assert_eq!(names(&search(&all, "delete")), ["DELETE FROM sessions"]);
     }
 }

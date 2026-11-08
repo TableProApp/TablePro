@@ -5,6 +5,9 @@ use crate::ui::history_dialog::{HistoryDialog, HistoryDialogInit, QueryDestinati
 use crate::ui::saved_queries_dialog::{SavedQueriesDialog, SavedQueriesDialogInit};
 
 use super::{WorkspaceInput, WorkspaceModel};
+
+/// How many past queries Open Quickly lists, the newest first.
+const PAST_QUERIES: usize = 100;
 use crate::runtime::DeliverInput;
 use crate::ui::plain_toast;
 
@@ -98,22 +101,41 @@ impl WorkspaceModel {
         let connection = self.context.active.metadata().map(|metadata| metadata.id);
         let ready = self.history.ready_store();
         let input = self.input.clone();
-        // The saved queries are read first, so the dialog opens with them.
+        // The saved and past queries are read first, so the dialog opens with them.
         crate::runtime::spawn_and_deliver(
             &self.tasks,
             async move {
                 match (ready.await, connection) {
-                    (Some(history), Some(id)) => history.saved_queries().list(Some(id)).await.unwrap_or_default(),
-                    _ => Vec::new(),
+                    (Some(history), Some(id)) => {
+                        let saved = history.saved_queries().list(Some(id)).await.unwrap_or_default();
+                        let mut query = tablepro_storage::query_history::HistoryQuery::default();
+                        query.connection = Some(id);
+                        let past = history
+                            .search_page(
+                                &query,
+                                tablepro_storage::query_history::HistoryPageRequest::first(PAST_QUERIES),
+                            )
+                            .await
+                            .map(|page| page.entries)
+                            .unwrap_or_default();
+                        (saved, past)
+                    }
+                    _ => (Vec::new(), Vec::new()),
                 }
             },
-            move |saved| {
-                let queries: Vec<(String, String)> = saved
-                    .unwrap_or_default()
+            move |read| {
+                let (saved, past) = read.unwrap_or_default();
+                let queries: Vec<(String, String)> = saved.into_iter().map(|query| (query.name, query.query)).collect();
+                let history: Vec<String> = past
                     .into_iter()
-                    .map(|query| (query.name, query.query))
+                    .filter(|entry| entry.success)
+                    .map(|entry| entry.query)
                     .collect();
-                input.deliver(WorkspaceInput::QuickOpenReady { objects, queries });
+                input.deliver(WorkspaceInput::QuickOpenReady {
+                    objects,
+                    queries,
+                    history,
+                });
             },
         );
     }
@@ -122,9 +144,10 @@ impl WorkspaceModel {
         &mut self,
         objects: std::sync::Arc<[tablepro_core::meta::ObjectInfo]>,
         queries: Vec<(String, String)>,
+        history: Vec<String>,
     ) {
         let input = self.input.clone();
-        let dialog = crate::ui::quick_open::QuickOpen::new(&objects, &queries, move |pick| {
+        let dialog = crate::ui::quick_open::QuickOpen::new(&objects, &queries, &history, move |pick| {
             use crate::ui::quick_open::Pick;
             input.deliver(match pick {
                 Pick::Query(sql) => WorkspaceInput::OpenHistoryQuery(sql),
