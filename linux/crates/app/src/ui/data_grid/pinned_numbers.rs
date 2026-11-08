@@ -159,7 +159,8 @@ pub(super) fn sync(grid: &DataGrid) {
     if let Some(height) = header_height(&view) {
         imp.gutter_header.set_height_request(height);
     }
-    if let Some(height) = row_height(&view)
+    // The separator under a row is drawn beside it, not in it.
+    if let Some(height) = row_height(&view).map(|height| height + i32::from(view.shows_row_separators()))
         && imp.pinned_numbers.row_height.replace(height) != height
     {
         imp.pinned_numbers

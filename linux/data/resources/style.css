@@ -45,7 +45,7 @@ columnview.data-table > listview > row > cell {
 }
 
 .row-gutter listview > row > .row-gutter-cell {
-  padding: 2px 6px;
+  padding: 0 6px;
 }
 
 columnview.data-table > listview > row > cell > * {
