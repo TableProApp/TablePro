@@ -114,7 +114,11 @@ fn json_replaces_failed_filter_results_with_error_and_retry() {
         .unwrap();
     assert!(error.description().unwrap().contains("relation &lt;users&gt; is gone"));
     let retry = error.child().unwrap().downcast::<gtk4::Button>().unwrap();
+    let refreshes = SignalLog::connect(tab, "refresh-requested", |_| ());
     retry.emit_clicked();
+    assert_eq!(refreshes.count(), 1);
+    // This harness has no workspace to approve the request for its clean draft.
+    tab.send(PagingInput::Refresh);
     wait_until(WAIT, || json_rows(tab).is_some_and(|rows| rows[0]["name"] == "fresh")).expect("retry refreshed JSON");
 }
 
@@ -140,7 +144,11 @@ fn json_keeps_failed_refresh_visible_under_its_stale_banner() {
     };
     wait_until(WAIT, || stale().is_some()).expect("the JSON stale banner");
     wait_until(WAIT, || json_rows(tab).is_some_and(|rows| rows[0]["name"] == "kept")).expect("last good rows remain");
+    let refreshes = SignalLog::connect(tab, "refresh-requested", |_| ());
     stale().unwrap().emit_by_name::<()>("button-clicked", &[]);
+    assert_eq!(refreshes.count(), 1);
+    // This harness has no workspace to approve the request for its clean draft.
+    tab.send(PagingInput::Refresh);
     wait_until(WAIT, || json_rows(tab).is_some_and(|rows| rows[0]["name"] == "fresh")).expect("Retry updates JSON");
     assert!(stale().is_none());
 }
