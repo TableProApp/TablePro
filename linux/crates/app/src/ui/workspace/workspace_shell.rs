@@ -1120,6 +1120,8 @@ mod tests {
         assert_eq!(test.hold.live(), 1);
         test.window.close();
         wait_until(WAIT, || !test.window.is_visible()).expect("window closed");
+        // Session teardown and workspace flushes hold the process independently of this write.
+        wait_until(WAIT, || test.hold.live() <= 1).expect("window teardown complete");
         assert_eq!(test.hold.live(), 1, "closing the window released an unfinished write");
         release.send(()).expect("write still running");
         wait_until(WAIT, || test.hold.live() == 0).expect("write complete");
