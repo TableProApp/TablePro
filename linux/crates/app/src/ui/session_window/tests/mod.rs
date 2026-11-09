@@ -1252,7 +1252,7 @@ fn f002_late_show_create_reply_after_disconnect_is_dropped() {
     // The reply comes back through the workspace's input, which the
     // teardown closes before the reply is due.
     assert_eq!(
-        input.try_deliver(WorkspaceInput::RefreshPage),
+        input.try_deliver(WorkspaceInput::RefreshPage(None)),
         Delivery::ReceiverGone,
         "the torn-down workspace still takes input"
     );
