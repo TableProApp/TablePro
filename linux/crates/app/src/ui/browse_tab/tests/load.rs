@@ -66,6 +66,7 @@ fn refresh_keeps_grid_visible_and_sets_tab_loading() {
         });
     let harness = Harness::open(script, []);
     wait_until(WAIT, || harness.shown() == text(&["before"])).expect("the first page");
+    let elapsed = harness.elapsed();
     let loading = loading_log(&harness);
 
     harness.tab().send(PagingInput::Refresh);
@@ -73,9 +74,14 @@ fn refresh_keeps_grid_visible_and_sets_tab_loading() {
     assert_eq!(harness.visible_page().as_deref(), Some("grid"));
     assert_eq!(harness.shown(), text(&["before"]), "the refresh blanked the rows");
     assert!(harness.tab().is_loading());
+    assert_eq!(harness.elapsed(), elapsed, "a refresh changed the old page's time");
     wait_until(WAIT, || harness.shown() == text(&["after"])).expect("the refreshed page");
     assert!(!harness.tab().is_loading());
     assert_eq!(*loading.borrow(), [true, false]);
+    assert!(
+        harness.elapsed() >= Duration::from_millis(300),
+        "the new page kept the old time"
+    );
 }
 
 #[gtk4::test]
@@ -89,6 +95,7 @@ fn failed_refresh_keeps_rows_and_reveals_stale_banner() {
         }));
     let harness = Harness::open(script, []);
     wait_until(WAIT, || harness.shown() == text(&["kept"])).expect("the first page");
+    let elapsed = harness.elapsed();
     let counters = harness.connection.counters();
 
     harness.tab().send(PagingInput::Refresh);
@@ -96,6 +103,7 @@ fn failed_refresh_keeps_rows_and_reveals_stale_banner() {
 
     assert_eq!(CallCounters::get(&counters.query_bound), 2);
     assert_eq!(harness.shown(), text(&["kept"]), "the failed refresh dropped the rows");
+    assert_eq!(harness.elapsed(), elapsed, "a failed refresh replaced the page's time");
     assert_eq!(harness.visible_page().as_deref(), Some("grid"));
     assert!(!harness.tab().is_loading());
     let tooltip = banner(&harness).tooltip_text().map(|text| text.to_string());

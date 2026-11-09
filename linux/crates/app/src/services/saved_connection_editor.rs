@@ -262,24 +262,35 @@ impl SavedConnectionEditor {
 
     // A delete from another window purges a connection's queries once; any this import saves for
     // it afterwards are removed again here.
-    pub async fn save_imported_queries(&self, applied: &AppliedImport, store: &SavedQueries) -> QueryImportOutcome {
+    pub async fn save_imported_queries(
+        &self,
+        applied: &AppliedImport,
+        store: &SavedQueries,
+    ) -> Result<QueryImportOutcome, SavedConnectionError> {
         let outcome = save_queries(applied, store).await;
-        if let Ok(list) = self.list().await {
-            let mut gone: Vec<Uuid> = applied
-                .queries
-                .iter()
-                .map(|query| query.query.connection_id)
-                .filter(|id| !list.iter().any(|saved| saved.id == *id))
-                .collect();
-            gone.sort_unstable();
-            gone.dedup();
-            for id in gone {
-                if let Err(error) = store.delete_for_connection(id).await {
-                    tracing::warn!(%error, "queries imported for a deleted connection are still saved");
-                }
+        let list = self.list().await?;
+        let mut gone: Vec<Uuid> = applied
+            .queries
+            .iter()
+            .map(|query| query.query.connection_id)
+            .filter(|id| !list.iter().any(|saved| saved.id == *id))
+            .collect();
+        gone.sort_unstable();
+        gone.dedup();
+        let mut failure = None;
+        for &id in &gone {
+            if let Err(error) = store.delete_for_connection(id).await {
+                failure.get_or_insert(SavedConnectionError::Storage(error));
             }
         }
-        outcome
+        if let Some(error) = failure {
+            return Err(error);
+        }
+        // Removed queries must not be reported as successfully imported.
+        if let Some(&id) = gone.first() {
+            return Err(SavedConnectionError::NotFound(id));
+        }
+        Ok(outcome)
     }
 
     /// A pick of the group it is already in writes nothing.
@@ -1453,5 +1464,101 @@ mod tests {
             .collect();
         assert_eq!(names, ["Prod", "Prod (Copy)", "Stage", "Test"]);
         assert_eq!(copy.order, 1);
+    }
+    fn imported_query(id: Uuid) -> AppliedImport {
+        AppliedImport {
+            queries: vec![tablepro_foreign_import::review::ImportedQuery {
+                reference: "report".to_owned(),
+                query: tablepro_storage::saved_queries::NewSavedQuery {
+                    name: "Report".to_owned(),
+                    query: "SELECT 1".to_owned(),
+                    connection_id: id,
+                    connection_name: "Prod".to_owned(),
+                },
+            }],
+            ..AppliedImport::default()
+        }
+    }
+
+    async fn query_store(fixture: &Fixture) -> SavedQueries {
+        let paths = StoragePaths::under(fixture._root.path(), "tablepro-test", "app.tablepro.Test");
+        tablepro_storage::QueryHistory::open(&paths)
+            .await
+            .expect("history")
+            .saved_queries()
+    }
+
+    #[tokio::test]
+    async fn an_import_does_not_report_queries_removed_with_their_connection_as_added() {
+        let fixture = fixture().await;
+        let queries = query_store(&fixture).await;
+        let applied = imported_query(fixture.saved.id);
+        fixture
+            .store
+            .remove_blocking(fixture.saved.id)
+            .expect("connection removed");
+        let result = fixture.editor.save_imported_queries(&applied, &queries).await;
+        assert!(matches!(result, Err(SavedConnectionError::NotFound(id)) if id == fixture.saved.id));
+        assert!(queries.list(None).await.expect("queries").is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_import_reports_a_connection_list_read_failure() {
+        let fixture = fixture().await;
+        let queries = query_store(&fixture).await;
+        let applied = imported_query(fixture.saved.id);
+        std::fs::remove_file(fixture.store.path()).expect("remove connection file");
+        std::fs::create_dir(fixture.store.path()).expect("unreadable connection file");
+        let paths = StoragePaths::under(fixture._root.path(), "tablepro-test", "app.tablepro.Test");
+        let editor = SavedConnectionEditor::new(ConnectionStore::new(&paths), fixture.vault.clone(), paused_tasks());
+        let result = editor.save_imported_queries(&applied, &queries).await;
+        assert!(matches!(result, Err(SavedConnectionError::Storage(_))));
+    }
+
+    #[tokio::test]
+    async fn an_import_reports_failure_to_remove_queries_of_a_deleted_connection() {
+        use tablepro_core::statement::{GuardedStatement, StatementBuilder};
+        use tablepro_core::{
+            CallOptions, ConnectEnvironment, ConnectOptions, ConnectTarget, DatabaseDriver, FileEndpoint,
+            ForeignKeyMode, TableRef, WorkspaceSettings, WriteBatch, WriteKind,
+        };
+        use tokio_util::sync::CancellationToken;
+
+        let fixture = fixture().await;
+        let queries = query_store(&fixture).await;
+        let paths = StoragePaths::under(fixture._root.path(), "tablepro-test", "app.tablepro.Test");
+        let options = ConnectOptions {
+            target: ConnectTarget::File(FileEndpoint::open_existing(paths.history_database()).expect("history file")),
+            workspace_settings: WorkspaceSettings::workspace(false),
+            liveness: tablepro_core::LivenessPolicy::DESKTOP,
+            environment: ConnectEnvironment::new("test"),
+        };
+        let mut trigger = StatementBuilder::new();
+        trigger.push_sql("CREATE TRIGGER refuse_delete BEFORE DELETE ON saved_queries BEGIN SELECT RAISE(ABORT, 'test refuses delete'); END");
+        let batch = WriteBatch::new(
+            WriteKind::SchemaChanges,
+            TableRef::unqualified("saved_queries"),
+            vec![GuardedStatement::unguarded(trigger.finish())],
+            ForeignKeyMode::Enforced,
+        );
+        let connection = tablepro_driver_sqlite::SqliteDriver
+            .connect(options, CancellationToken::new())
+            .await
+            .expect("connect");
+        connection
+            .write_batch(&batch, CallOptions::new(None, CancellationToken::new()))
+            .await
+            .expect("trigger");
+        connection.close().await.expect("close");
+        fixture
+            .store
+            .remove_blocking(fixture.saved.id)
+            .expect("connection removed");
+        let result = fixture
+            .editor
+            .save_imported_queries(&imported_query(fixture.saved.id), &queries)
+            .await;
+        assert!(matches!(result, Err(SavedConnectionError::Storage(_))));
+        assert_eq!(queries.list(None).await.expect("queries").len(), 1);
     }
 }
