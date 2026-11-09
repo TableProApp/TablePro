@@ -18,9 +18,9 @@ import SwiftUI
 internal extension MainSplitViewController {
     func refreshAgentPanes(of workspace: ConnectionWorkspace) {
         guard workspace.resolvedContentMode == .agent else { return }
-        workspace.panes.agentRail.rootView = AnyView(buildAgentRailView(for: workspace))
+        workspace.panes.agentRail.rootView = AnyView(buildAgentRailView(for: workspace).onSplitItem())
         workspace.panes.agentConversation.rootView = AnyView(buildAgentConversationView(for: workspace))
-        workspace.panes.agentResult.rootView = AnyView(buildAgentResultView(for: workspace))
+        workspace.panes.agentResult.rootView = AnyView(buildAgentResultView(for: workspace).onSplitItem())
     }
 
     /// Re-arms only when the session naming the window changes, so the title can be asked for on

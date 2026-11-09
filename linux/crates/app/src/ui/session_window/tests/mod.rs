@@ -3,7 +3,8 @@ mod open_file;
 mod other_databases;
 mod sessions;
 
-use std::rc::Rc;
+use std::cell::RefCell;
+use std::rc::{Rc, Weak};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -14,7 +15,7 @@ use tablepro_core::credentials::{SecretError, SecretKind, SecretSave};
 use tablepro_core::{AuthMode, DriverError, DriverRegistry, FileEndpoint, LivenessPolicy, TlsConfig};
 use tablepro_session::fakes::{FakeConnector, FakeCredentialSource, FakeEstablish};
 use tablepro_session::operation::DefaultDeadlines;
-use tablepro_session::runtime::CountingHold;
+use tablepro_session::runtime::{CountingHold, HoldToken, ProcessHold};
 use tablepro_session::{ConnectError, CredentialSource, SessionKey};
 use tablepro_storage::{SavedConnection, StoragePaths};
 use tablepro_test_support::{
@@ -77,6 +78,7 @@ pub(crate) struct TestWindow {
     pub window: SessionWindow,
     pub services: Rc<AppServices>,
     pub hold: Rc<CountingHold>,
+    pub hold_tokens: Rc<RefCell<Vec<Weak<()>>>>,
     pub connector: FakeConnector,
     pub saved: SavedConnection,
     /// The keyring every saved connection reads, unless the script
@@ -85,6 +87,46 @@ pub(crate) struct TestWindow {
     runtime: Option<crate::runtime::AppRuntime>,
     _settings: MemorySettings,
     _dir: tempfile::TempDir,
+}
+
+struct TrackedHold {
+    count: Rc<CountingHold>,
+    tokens: Rc<RefCell<Vec<Weak<()>>>>,
+}
+
+impl TrackedHold {
+    fn new(count: Rc<CountingHold>) -> Self {
+        Self {
+            count,
+            tokens: Rc::default(),
+        }
+    }
+}
+
+impl ProcessHold for TrackedHold {
+    fn acquire(&self) -> HoldToken {
+        let identity = Rc::new(());
+        self.tokens.borrow_mut().push(Rc::downgrade(&identity));
+        HoldToken::new((self.count.acquire(), identity))
+    }
+}
+
+#[test]
+fn hold_identity_distinguishes_a_released_write_from_other_live_work() {
+    let count = Rc::new(CountingHold::new());
+    let hold = TrackedHold::new(count.clone());
+    let write = hold.acquire();
+    let identity = hold.tokens.borrow().last().expect("write token").clone();
+    let cleanup = hold.acquire();
+    assert!(identity.upgrade().is_some());
+    drop(write);
+    assert_eq!(count.live(), 1);
+    assert!(
+        identity.upgrade().is_none(),
+        "cleanup must not keep the write's token alive"
+    );
+    drop(cleanup);
+    assert_eq!(count.live(), 0);
 }
 
 impl TestWindow {
@@ -150,6 +192,8 @@ impl TestWindow {
         let connector = FakeConnector::new(establish).always(FakeEstablish::Connect(connection));
         let liveness = LivenessPolicy::DESKTOP;
         let hold = Rc::new(CountingHold::new());
+        let tracked_hold = TrackedHold::new(hold.clone());
+        let hold_tokens = tracked_hold.tokens.clone();
         let parts = AppServicesParts {
             drivers,
             connector: Arc::new(connector.clone()),
@@ -159,7 +203,7 @@ impl TestWindow {
             storage,
             tasks: runtime.tasks(),
         };
-        let mut services = scripted_services(parts, hold.clone(), credentials, ssh);
+        let mut services = scripted_services(parts, Rc::new(tracked_hold), credentials, ssh);
         if let Some(revealer) = revealer {
             services.file_revealer = revealer;
         }
@@ -170,6 +214,7 @@ impl TestWindow {
             window,
             services,
             hold,
+            hold_tokens,
             connector,
             saved,
             vault,
@@ -287,7 +332,7 @@ fn write_unreadable_list(list_file: &std::path::Path) {
 
 fn scripted_services(
     parts: AppServicesParts,
-    hold: Rc<CountingHold>,
+    hold: Rc<dyn ProcessHold>,
     credentials: Option<FakeCredentialSource>,
     ssh: Option<tablepro_ssh::SshServices>,
 ) -> AppServices {
@@ -1305,7 +1350,7 @@ fn f002_late_show_create_reply_after_disconnect_is_dropped() {
     // The reply comes back through the workspace's input, which the
     // teardown closes before the reply is due.
     assert_eq!(
-        input.try_deliver(WorkspaceInput::RefreshPage),
+        input.try_deliver(WorkspaceInput::RefreshPage(None)),
         Delivery::ReceiverGone,
         "the torn-down workspace still takes input"
     );
