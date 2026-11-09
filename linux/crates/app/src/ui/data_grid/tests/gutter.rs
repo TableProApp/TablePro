@@ -407,6 +407,27 @@ fn the_row_numbers_stay_in_view_when_the_columns_scroll_sideways() {
 }
 
 #[gtk4::test]
+fn hidden_row_numbers_leave_no_pinned_gutter() {
+    use gtk::subclass::prelude::*;
+    let grid = wide_rows(20);
+    scroll(&grid).set_overlay_scrolling(false);
+    sideways(&grid);
+    assert!(projection(&grid).is_visible());
+    let settings = grid.grid.config().expect("configured grid").settings.clone();
+
+    settings.set_show_row_numbers(false).expect("hide row numbers");
+    after_next_frame(&grid.window);
+    assert!(scroll(&grid).hadjustment().value() > 0.0);
+    assert!(!projection(&grid).is_visible());
+    assert!(!grid.grid.imp().gutter_header.is_visible());
+
+    settings.set_show_row_numbers(true).expect("show row numbers");
+    after_next_frame(&grid.window);
+    assert!(projection(&grid).is_visible());
+    assert!(grid.grid.imp().gutter_header.is_visible());
+}
+
+#[gtk4::test]
 fn scrolling_over_the_gutter_uses_the_grid_in_both_axes() {
     use crate::test_support::{KeyInjector, wait_until};
     use crate::ui::data_grid::test_grid::WAIT;

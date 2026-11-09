@@ -10,7 +10,7 @@ use super::columns::ColumnPaint;
 use super::tracked_values::cell_description;
 use super::{DataGrid, GridRow, ServerValue};
 use crate::services::change_tracker::CellState;
-use crate::services::grid::display_text::{DisplayText, auto_filled_sentinel, display_text, editable_null_sentinel};
+use crate::services::grid::display_text::{DisplayText, auto_filled_sentinel, display_text, null_text};
 use crate::services::grid::{CellLock, GridColumn};
 
 /// Enough for any number, date or short text.
@@ -36,8 +36,6 @@ pub struct TextAttributes {
     deleted: pango::AttrList,
     deleted_placeholder: pango::AttrList,
     placeholder: pango::AttrList,
-    /// The stand-in texts, translated once rather than on every bind.
-    editable_null: String,
     auto_filled: String,
 }
 
@@ -61,7 +59,6 @@ impl TextAttributes {
             deleted: list(TextMark::Deleted, false),
             deleted_placeholder: list(TextMark::Deleted, true),
             placeholder: list(TextMark::Plain, true),
-            editable_null: editable_null_sentinel(),
             auto_filled: auto_filled_sentinel(),
         }
     }
@@ -403,7 +400,10 @@ fn shown_text<'a>(
         }
         (Some(ServerValue::Default), _) => DisplayText::placeholder("DEFAULT"),
         (Some(ServerValue::Expression(expression)), _) => DisplayText::placeholder(expression.sql),
-        (None, Value::Null) if editable => DisplayText::placeholder(&paint.attributes.editable_null),
+        (None, Value::Null) => {
+            *scratch = null_text(&paint.preferences.snapshot().null_display, editable);
+            DisplayText::placeholder(scratch)
+        }
         (None, value) => display_text(value, &paint.column.column_type, scratch),
     }
 }

@@ -223,3 +223,17 @@ tp-diagram-canvas > .tp-diagram-border {
 tp-diagram-canvas > .tp-diagram-accent {
   color: var(--accent-color);
 }
+
+/* How much room a data grid row takes around its text, from Preferences.
+   Normal is the default padding above. */
+columnview.data-table.row-compact > listview > row > cell > * {
+  padding: 0 6px;
+}
+
+columnview.data-table.row-comfortable > listview > row > cell > * {
+  padding: 4px 6px;
+}
+
+columnview.data-table.row-spacious > listview > row > cell > * {
+  padding: 6px 6px;
+}
