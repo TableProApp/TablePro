@@ -45,7 +45,7 @@ struct DatabaseTreeTableDetailOutlineTests {
         DatabaseManager.shared.injectSession(session, for: connection.id)
 
         let scrollView = SidebarOutlineScaffold.makeScrollView(
-            outlineView: NSOutlineView(),
+            outlineView: DatabaseTreeNSOutlineView(),
             configuration: SidebarOutlineScaffold.Configuration(
                 columnIdentifier: "TableDetailColumn",
                 allowsMultipleSelection: true,
@@ -346,6 +346,76 @@ struct DatabaseTreeTableDetailOutlineTests {
         )
         #expect(fixture.driver.detailReads == ["columns:orders"])
         #expect(partitions.erased == .idle)
+        await tearDown(fixture)
+    }
+
+    /// The flat shape's Tables section with one table under it, before any restore pass runs.
+    private func showFlat(_ fixture: Fixture, table: DatabaseTreeNode) -> DatabaseTreeNode {
+        let section = fixture.coordinator.node(
+            id: DatabaseTreeNode.objectKindSectionId(.table), kind: .objectKindSection(.table)
+        )
+        fixture.coordinator.childrenCache = ["": [section], section.id: [table]]
+        fixture.outlineView.reloadData()
+        return section
+    }
+
+    /// `expandItem(_:expandChildren:)` is what an Option-click on a disclosure triangle calls.
+    @Test("An Option-click on the Tables section opens no table, so no group reads or is saved")
+    func optionClickOpensNoTable() async throws {
+        let fixture = try makeFixture()
+        let table = tableNode(fixture)
+        let section = showFlat(fixture, table: table)
+
+        fixture.outlineView.expandItem(section, expandChildren: true)
+        let openGroups = fixture.coordinator.resolvedChildren(of: table).filter { group in
+            fixture.outlineView.isItemExpanded(group)
+        }
+
+        #expect(fixture.outlineView.isItemExpanded(section))
+        #expect(!fixture.outlineView.isItemExpanded(table))
+        #expect(openGroups.isEmpty)
+        #expect(fixture.windowState.expandedTreeTables.isEmpty)
+        #expect(fixture.windowState.expandedTreeTableDetailGroups.isEmpty)
+        #expect(fixture.driver.detailReads.isEmpty)
+        await tearDown(fixture)
+    }
+
+    @Test("An Option-click on a table opens that table alone, and a group still opens by its own click")
+    func optionClickOnATableOpensItAlone() async throws {
+        let fixture = try makeFixture()
+        let table = tableNode(fixture)
+        showAtRoot(fixture, [table])
+
+        fixture.outlineView.expandItem(table, expandChildren: true)
+        let groups = fixture.coordinator.resolvedChildren(of: table)
+        let openGroups = groups.filter { group in fixture.outlineView.isItemExpanded(group) }
+
+        #expect(fixture.outlineView.isItemExpanded(table))
+        #expect(openGroups.isEmpty)
+        #expect(fixture.windowState.expandedTreeTables == [DatabaseTableKey(orders(fixture))])
+        #expect(fixture.windowState.expandedTreeTableDetailGroups.isEmpty)
+
+        let columns = try #require(groups.first)
+        fixture.outlineView.expandItem(columns)
+        try await waitUntil { detailState(fixture, .columns).value != nil }
+
+        #expect(fixture.outlineView.isItemExpanded(columns))
+        #expect(fixture.driver.detailReads == ["columns:orders"])
+        await tearDown(fixture)
+    }
+
+    @Test("With Table Details off, an Option-click still opens a partitioned table and reads its partitions")
+    func optionClickKeepsPartitionsWhenDetailsAreOff() async throws {
+        let fixture = try makeFixture(showsTableDetails: false)
+        let ref = orders(fixture, type: .partitionedTable)
+        let table = tableNode(fixture, type: .partitionedTable)
+        let section = showFlat(fixture, table: table)
+
+        fixture.outlineView.expandItem(section, expandChildren: true)
+        try await waitUntil { fixture.driver.reads.contains("partitions:orders") }
+
+        #expect(fixture.outlineView.isItemExpanded(table))
+        #expect(fixture.windowState.expandedTreeTables == [DatabaseTableKey(ref)])
         await tearDown(fixture)
     }
 

@@ -846,6 +846,15 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
         return DatabaseTreeSelection.isSelectable(node.kind)
     }
 
+    /// Refusing a row here keeps it closed, so it posts no expansion: nothing records it and
+    /// nothing reads its list. A row expanded on its own is never refused.
+    func outlineView(_ outlineView: NSOutlineView, shouldExpandItem item: Any) -> Bool {
+        guard let node = item as? DatabaseTreeNode,
+              (outlineView as? DatabaseTreeNSOutlineView)?.isExpandingAsDescendant(node) == true
+        else { return true }
+        return node.opensWithAncestor(showsTableDetails: showsTableDetails)
+    }
+
     /// Hands the section headers to AppKit. In `.sourceList` a group row is drawn at its own
     /// height with its own background and collapse control, and its children are laid out at the
     /// depth the group itself sits at rather than one level in. That last part is what makes a

@@ -154,6 +154,24 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
         }
     }
 
+    /// Whether an Option-click on a row above this one opens it too. With Table Details on, every
+    /// table holds groups that each read a list as they open, so a schema of 2,000 tables queued
+    /// about 10,000 reads and saved every row it opened. A table and its groups then open only by
+    /// their own click; a partitioned table keeps opening with its schema while the option is off.
+    func opensWithAncestor(showsTableDetails: Bool) -> Bool {
+        switch kind {
+        case .table:
+            return !showsTableDetails
+        case .tableDetailGroup:
+            return false
+        case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+             .database, .schema, .partition, .tableDetail, .routine, .trigger, .userType, .status,
+             .objectKindSection, .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection,
+             .redisNode:
+            return true
+        }
+    }
+
     var tableRef: DatabaseTreeTableRef? {
         switch kind {
         case .table(let ref): return ref

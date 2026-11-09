@@ -110,6 +110,29 @@ final class DatabaseTreeNSOutlineView: SidebarOutlineView {
     override func insertNewline(_ sender: Any?) {
         primaryActionTarget?.performPrimaryAction()
     }
+
+    /// An Option-click on a triangle and Option-Right Arrow both arrive here with `expandChildren`
+    /// set, and AppKit then asks `outlineView(_:shouldExpandItem:)` about each descendant without
+    /// saying why. The notifications carry only the row, so the walk is noted here for the delegate.
+    /// A single disclosure started inside the walk, such as a restore, clears it for its own span.
+    private var descendantWalk: DescendantWalk?
+
+    private struct DescendantWalk {
+        let root: AnyObject?
+    }
+
+    override func expandItem(_ item: Any?, expandChildren: Bool) {
+        let outer = descendantWalk
+        descendantWalk = expandChildren ? DescendantWalk(root: item as AnyObject?) : nil
+        defer { descendantWalk = outer }
+        super.expandItem(item, expandChildren: expandChildren)
+    }
+
+    /// True for a row AppKit opens only because a row above it was expanded with its children.
+    func isExpandingAsDescendant(_ item: Any) -> Bool {
+        guard let walk = descendantWalk else { return false }
+        return walk.root !== item as AnyObject
+    }
 }
 
 @MainActor

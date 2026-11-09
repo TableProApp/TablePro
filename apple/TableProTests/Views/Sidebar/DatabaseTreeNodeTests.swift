@@ -386,6 +386,22 @@ struct DatabaseTreeNodeTests {
         #expect(!subpartitioned.isExpandable(showsPartitions: false, showsTableDetails: true))
     }
 
+    @Test("An Option-click above a table opens it only while Table Details is off, and never a detail group")
+    func optionClickReachesTablesOnlyWithoutDetails() {
+        let partitioned = DatabaseTreeNode(id: "p", kind: .table(partitionedRef("orders")))
+        let group = DatabaseTreeNode(
+            id: "g", kind: .tableDetailGroup(DatabaseTreeTableDetailGroupRef(table: tableRef("orders"), kind: .columns))
+        )
+        let subpartitioned = DatabaseTreeNode(id: "sp", kind: .partition(partitionRef("p1", isSubpartitioned: true)))
+        let tablesGroup = DatabaseTreeNode(id: "o", kind: .containerObjectKindSection(objectGroup()))
+
+        #expect(partitioned.opensWithAncestor(showsTableDetails: false))
+        #expect(!partitioned.opensWithAncestor(showsTableDetails: true))
+        #expect(!group.opensWithAncestor(showsTableDetails: true))
+        #expect(subpartitioned.opensWithAncestor(showsTableDetails: false))
+        #expect(tablesGroup.opensWithAncestor(showsTableDetails: true))
+    }
+
     @Test("A detail group expands like an object group, a detail row is a leaf, and a click opens neither")
     func detailRowShapes() {
         let orders = tableRef("orders")
