@@ -150,16 +150,18 @@ final class TableHealthViewModel: ObservableObject {
     }
 
     // A rename or drop moves the history and its generation in one main-actor call, so a run that read the catalog
-    // before it is dropped however late the refresh the rename asks for arrives; that refresh shows the new names.
+    // before it records nothing, however late a refresh for the change arrives, and reads the catalog once more.
     private func performRefresh(_ provider: any TableHealthProvider) async {
         let target = self.database()
         let generation = history.generation(connectionId: connectionId, database: target)
         do {
             let scope = DatabaseScope(connectionId: connectionId, database: target, schema: nil)
             let fresh = try await TableHealthReportLoader.load(provider: provider, scope: scope, lease: lease)
-            guard !Task.isCancelled,
-                  history.generation(connectionId: connectionId, database: target) == generation
-            else { return }
+            guard !Task.isCancelled else { return }
+            guard history.generation(connectionId: connectionId, database: target) == generation else {
+                refreshQueued = true
+                return
+            }
             report = Self.merging(fresh, over: report)
             loadError = nil
             lastRefreshDate = Date()

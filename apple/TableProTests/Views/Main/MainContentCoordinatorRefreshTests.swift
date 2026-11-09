@@ -489,6 +489,43 @@ struct MainContentCoordinatorRefreshTests {
         try await waitUntil { shop.databases.count == 2 }
     }
 
+    @Test("A table drop refreshes the Table Health tabs on its database and no other")
+    func tableDropRefreshesTableHealth() async throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let shop = RefreshLeaseRecorder()
+        let archive = RefreshLeaseRecorder()
+        let shopModel = try makeTableHealthTab("shop", metadata: shop, coordinator: coordinator, tabManager: tabManager)
+        let archiveModel = try makeTableHealthTab("archive", metadata: archive, coordinator: coordinator, tabManager: tabManager)
+        await shopModel.refresh()
+        await archiveModel.refresh()
+
+        coordinator.applyObjectChange(DatabaseObjectChange(
+            connectionId: coordinator.connectionId,
+            scope: DatabaseScope(connectionId: coordinator.connectionId, database: "shop", schema: "public"),
+            name: "orders",
+            kind: .dropped
+        ))
+
+        try await waitUntil { shop.databases.count == 2 }
+        #expect(archive.databases == ["archive"])
+    }
+
+    @Test("A schema drop refreshes the Table Health tabs on its database")
+    func schemaDropRefreshesTableHealth() async throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let shop = RefreshLeaseRecorder()
+        let model = try makeTableHealthTab("shop", metadata: shop, coordinator: coordinator, tabManager: tabManager)
+        await model.refresh()
+
+        coordinator.applyContainerChange(DatabaseContainerChange(
+            connectionId: coordinator.connectionId,
+            container: .schema(database: "shop", schema: "billing"),
+            kind: .dropped
+        ))
+
+        try await waitUntil { shop.databases.count == 2 }
+    }
+
     private func makeTableHealthTab(
         _ database: String,
         metadata: RefreshLeaseRecorder,

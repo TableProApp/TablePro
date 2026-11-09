@@ -724,8 +724,9 @@ struct TableHealthViewModelTests {
     }
 
     // The window asks for the refresh a hop or two after the rename moved the history, so the run that read the old
-    // names can resume first. It must still record nothing: the store moved its generation with the history.
-    @Test("A run that resumes after a rename but before the rename's refresh arrives records nothing")
+    // names can resume first. It records nothing, since the store moved its generation with the history, and the
+    // model reads the catalog again on its own; the refresh the rename asks for then finds the same names.
+    @Test("A run that resumes after a rename but before the rename's refresh arrives records nothing and reruns")
     func runResumingBeforeTheRenameRefreshRecordsNothing() async throws {
         let metadata = HealthMetadata()
         let connectionId = metadata.connection.id
@@ -758,17 +759,44 @@ struct TableHealthViewModelTests {
         await hold.release.open()
         await stale.value
 
-        let afterStale = try store.ledger(connectionId: connectionId, database: "shop")
-        #expect(afterStale.runIndex == 1)
-        #expect(afterStale.firstSeen(logs.id) == nil)
-        #expect(afterStale.isIgnored(renamed))
+        // Run 2 is the rerun: had the stale run recorded, `logs` would be back and the rerun would resolve it.
+        let afterRerun = try store.ledger(connectionId: connectionId, database: "shop")
+        #expect(metadata.leases.count == 3)
+        #expect(afterRerun.runIndex == 2)
+        #expect(afterRerun.firstSeen(logs.id) == nil)
+        #expect(afterRerun.isIgnored(renamed))
+        #expect(afterRerun.resolved.isEmpty)
+        #expect(row(viewModel, table: "logs_v2")?.status == .ignored)
+        #expect(row(viewModel, table: "logs") == nil)
 
         await viewModel.refresh()
 
         let afterRefresh = try store.ledger(connectionId: connectionId, database: "shop")
-        #expect(afterRefresh.runIndex == 2)
+        #expect(afterRefresh.runIndex == 3)
         #expect(afterRefresh.resolved.isEmpty)
         #expect(row(viewModel, table: "logs_v2")?.status == .ignored)
-        #expect(row(viewModel, table: "logs") == nil)
+    }
+
+    @Test("A drop during the first load ends with a report from the run after it, with no refresh asked for")
+    func dropDuringFirstLoadReruns() async {
+        let metadata = HealthMetadata()
+        metadata.server.tablesWithoutKey = ["logs", "events"]
+        let hold = (reached: AsyncGate(), release: AsyncGate())
+        metadata.hold = hold
+        let history = InMemoryHistory()
+        let viewModel = makeViewModel(metadata, history: history)
+
+        let firstLoad = Task { await viewModel.loadIfNeeded() }
+        await hold.reached.wait()
+        metadata.server.tablesWithoutKey = ["logs"]
+        history.generations["shop", default: 0] += 1
+        await hold.release.open()
+        await firstLoad.value
+
+        #expect(metadata.leases.count == 2)
+        #expect(history.recordCount == 1)
+        #expect(viewModel.report != nil)
+        #expect(viewModel.isRefreshing == false)
+        #expect(viewModel.findingRows.map { $0.id.table } == ["logs"])
     }
 }

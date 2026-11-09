@@ -25,8 +25,8 @@ extension MainContentCoordinator {
         }
     }
 
-    // A table or schema rename moves the history's keys, while the report on screen still names the old object:
-    // an ignored finding would show again and Ignore would write an id no run reports.
+    // A table or schema rename or drop moves or removes history keys while the report on screen still names the
+    // old objects: an ignored finding would show again and Ignore would write an id no run reports.
     func refreshTableHealth(inDatabase database: String) {
         for tab in tabManager.tabs where tab.tabType == .tableHealth && tab.tableContext.databaseName == database {
             guard let model = tableHealthModels[tab.id] else { continue }

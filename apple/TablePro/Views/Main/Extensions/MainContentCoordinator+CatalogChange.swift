@@ -41,6 +41,7 @@ extension MainContentCoordinator {
             closeTabsForRemovedObjects(ids: tableTabIds(inDatabase: database, schema: nil))
         case (.dropped, .schema):
             closeTabsForRemovedObjects(ids: tableTabIds(inDatabase: database, schema: container.schema))
+            refreshTableHealth(inDatabase: database)
         case (.renamed(let newName), .database):
             retargetTabs(database: database, schema: nil, toDatabase: newName, toSchema: nil)
         case (.renamed(let newName), .schema):

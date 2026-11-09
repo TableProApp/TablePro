@@ -165,6 +165,7 @@ extension MainContentCoordinator {
             refreshStructure(ofTabs: showing)
         case .dropped:
             closeTabsForRemovedObjects(ids: showing.map(\.id))
+            refreshTableHealth(inDatabase: change.scope.database)
         case .renamed(let newName):
             retitleTabs(ids: Set(showing.map(\.id)), to: newName)
             refreshTableHealth(inDatabase: change.scope.database)
