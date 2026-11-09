@@ -163,10 +163,12 @@ fn stale_metadata_cannot_consume_the_pending_default() {
             columns: vec!["id".into()],
         },
     };
-    harness.tab().send(DataInput::Command(BrowseCommand::Columns(Stamped {
-        stamp: stale.stamp,
-        value: Ok(reply()),
-    })));
+    harness
+        .tab()
+        .send(DataInput::Command(Box::new(BrowseCommand::Columns(Stamped {
+            stamp: stale.stamp,
+            value: Ok(reply()),
+        }))));
     assert_eq!(harness.tab().current_sort(), None);
     assert!(
         harness
@@ -179,10 +181,12 @@ fn stale_metadata_cannot_consume_the_pending_default() {
             .default_sort
             .is_some()
     );
-    harness.tab().send(DataInput::Command(BrowseCommand::Columns(Stamped {
-        stamp: current.stamp,
-        value: Err(LoadFailure::NoColumns),
-    })));
+    harness
+        .tab()
+        .send(DataInput::Command(Box::new(BrowseCommand::Columns(Stamped {
+            stamp: current.stamp,
+            value: Err(LoadFailure::NoColumns),
+        }))));
     assert!(
         harness
             .tab()
@@ -203,10 +207,12 @@ fn stale_metadata_cannot_consume_the_pending_default() {
         .expect("model")
         .sequencer
         .issue(BrowseRequestKind::Columns);
-    harness.tab().send(DataInput::Command(BrowseCommand::Columns(Stamped {
-        stamp: retry.stamp,
-        value: Ok(reply()),
-    })));
+    harness
+        .tab()
+        .send(DataInput::Command(Box::new(BrowseCommand::Columns(Stamped {
+            stamp: retry.stamp,
+            value: Ok(reply()),
+        }))));
     assert_eq!(harness.tab().current_sort(), Some((0, false)));
     assert!(
         harness
