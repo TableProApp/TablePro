@@ -118,6 +118,8 @@ private final class HealthMetadata: ScopedMetadataProviding {
 @MainActor
 private final class InMemoryHistory: TableHealthHistoryStoring {
     var ledgers: [String: TableHealthLedger] = [:]
+    // What the store's rename and drop move in the same call that moves the history.
+    var generations: [String: Int] = [:]
     var failsWrites = false
     private(set) var recordCount = 0
 
@@ -125,8 +127,21 @@ private final class InMemoryHistory: TableHealthHistoryStoring {
         ledgers[database] ?? TableHealthLedger()
     }
 
-    func record(_ report: TableHealthReport, connectionId: UUID, database: String, at date: Date) throws -> TableHealthLedger {
-        try save(connectionId: connectionId, database: database) { ledger in
+    func generation(connectionId: UUID, database: String) -> Int {
+        generations[database, default: 0]
+    }
+
+    func record(
+        _ report: TableHealthReport,
+        connectionId: UUID,
+        database: String,
+        generation: Int,
+        at date: Date
+    ) throws -> TableHealthLedger {
+        guard generation == self.generation(connectionId: connectionId, database: database) else {
+            return ledgers[database] ?? TableHealthLedger()
+        }
+        return try save(connectionId: connectionId, database: database) { ledger in
             recordCount += 1
             return ledger.recording(report, at: date)
         }
@@ -696,7 +711,8 @@ struct TableHealthViewModelTests {
         let first = Task { await viewModel.refresh() }
         await hold.reached.wait()
         metadata.server.tablesWithoutKey = ["logs_v2"]
-        let afterRename = Task { await viewModel.refreshAfterCatalogChange() }
+        history.generations["shop", default: 0] += 1
+        let afterRename = Task { await viewModel.refresh() }
         await hold.release.open()
         await afterRename.value
         await first.value
@@ -705,5 +721,54 @@ struct TableHealthViewModelTests {
         #expect(history.recordCount == 1)
         #expect(viewModel.findingRows.map { $0.id.table } == ["logs_v2"])
         #expect(viewModel.resolvedCount == 0)
+    }
+
+    // The window asks for the refresh a hop or two after the rename moved the history, so the run that read the old
+    // names can resume first. It must still record nothing: the store moved its generation with the history.
+    @Test("A run that resumes after a rename but before the rename's refresh arrives records nothing")
+    func runResumingBeforeTheRenameRefreshRecordsNothing() async throws {
+        let metadata = HealthMetadata()
+        let connectionId = metadata.connection.id
+        let store = TableHealthHistoryStorage(
+            directory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("TableHealthViewModelTests-\(UUID().uuidString)", isDirectory: true),
+            notificationCenter: NotificationCenter()
+        )
+        let viewModel = TableHealthViewModel(
+            connectionId: connectionId,
+            provider: TableHealthProviderFactory.provider(for: .postgresql),
+            history: store,
+            lease: .metadata(metadata),
+            database: { "shop" }
+        )
+        await viewModel.refresh()
+        let logs = try #require(row(viewModel, table: "logs"))
+        viewModel.setIgnored([logs.id], ignored: true)
+        let renamed = TableHealthFindingID(kind: .missingPrimaryKey, schema: "public", table: "logs_v2", object: nil)
+
+        let hold = (reached: AsyncGate(), release: AsyncGate())
+        metadata.hold = hold
+        let stale = Task { await viewModel.refresh() }
+        await hold.reached.wait()
+        metadata.server.tablesWithoutKey = ["logs_v2"]
+        store.renameTable(
+            from: TableScope(connectionId: connectionId, database: "shop", schema: "public", table: "logs"),
+            to: TableScope(connectionId: connectionId, database: "shop", schema: "public", table: "logs_v2")
+        )
+        await hold.release.open()
+        await stale.value
+
+        let afterStale = try store.ledger(connectionId: connectionId, database: "shop")
+        #expect(afterStale.runIndex == 1)
+        #expect(afterStale.firstSeen(logs.id) == nil)
+        #expect(afterStale.isIgnored(renamed))
+
+        await viewModel.refresh()
+
+        let afterRefresh = try store.ledger(connectionId: connectionId, database: "shop")
+        #expect(afterRefresh.runIndex == 2)
+        #expect(afterRefresh.resolved.isEmpty)
+        #expect(row(viewModel, table: "logs_v2")?.status == .ignored)
+        #expect(row(viewModel, table: "logs") == nil)
     }
 }

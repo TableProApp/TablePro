@@ -154,6 +154,28 @@ struct PostgreSQLTableHealthProviderTests {
         #expect(finding.sizeBytes == 65_536)
     }
 
+    @Test("A table the server has not measured, a partitioned parent or one freshly loaded, carries no row estimate rather than 0")
+    func unmeasuredTableHasNoRowEstimate() throws {
+        let noKey = try #require(findings(
+            .missingPrimaryKey,
+            columns: ["schema_name", "table_name", "estimated_rows", "table_bytes"],
+            rows: [["public", "events", nil, nil]]
+        ).first)
+        #expect(noKey.metric("estimated_rows") == nil)
+        #expect(noKey.sizeBytes == nil)
+
+        let foreignKey = try #require(findings(
+            .unindexedForeignKey,
+            columns: [
+                "schema_name", "table_name", "table_kind", "constraint_name", "column_name",
+                "referenced_schema", "referenced_table", "estimated_rows", "table_bytes"
+            ],
+            rows: [["public", "line", "r", "line_order_fk", "order_id", "sales", "orders", nil, nil]]
+        ).first)
+        #expect(foreignKey.metric("estimated_rows") == nil)
+        #expect(foreignKey.metric("referenced_table")?.value == .text("sales.orders"))
+    }
+
     @Test("A foreign key's column rows fold into one finding, in key order")
     func foreignKeyColumnsGroup() {
         let found = findings(

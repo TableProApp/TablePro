@@ -114,10 +114,15 @@ struct TableHealthPreviewPane: View {
             if !facts.isEmpty {
                 Form {
                     ForEach(facts) { fact in
+                        // A value is a name, a column list or a definition: wrapped, it hyphenates into a name
+                        // that does not exist, so it stays on one line with the whole value in its help tag.
                         // Without the flexible frame the columns form lays a long value out wider than the pane.
                         LabeledContent(fact.label) {
                             Text(verbatim: fact.value)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                .help(fact.value)
                         }
                     }
                 }

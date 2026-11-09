@@ -548,7 +548,17 @@ private final class RefreshUnusedHistory: TableHealthHistoryStoring {
         TableHealthLedger()
     }
 
-    func record(_ report: TableHealthReport, connectionId: UUID, database: String, at date: Date) throws -> TableHealthLedger {
+    func generation(connectionId: UUID, database: String) -> Int {
+        0
+    }
+
+    func record(
+        _ report: TableHealthReport,
+        connectionId: UUID,
+        database: String,
+        generation: Int,
+        at date: Date
+    ) throws -> TableHealthLedger {
         TableHealthLedger()
     }
 
@@ -582,7 +592,17 @@ private final class RenamedHistory: TableHealthHistoryStoring {
         database == self.database ? stored : TableHealthLedger()
     }
 
-    func record(_ report: TableHealthReport, connectionId: UUID, database: String, at date: Date) throws -> TableHealthLedger {
+    func generation(connectionId: UUID, database: String) -> Int {
+        0
+    }
+
+    func record(
+        _ report: TableHealthReport,
+        connectionId: UUID,
+        database: String,
+        generation: Int,
+        at date: Date
+    ) throws -> TableHealthLedger {
         try ledger(connectionId: connectionId, database: database)
     }
 

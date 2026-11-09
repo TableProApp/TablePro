@@ -71,6 +71,14 @@ struct TableHealthHistoryStorageTests {
         return store
     }
 
+    private func databasesMoved(in store: TableHealthHistoryStorage, by change: () throws -> Void) rethrows -> Set<String> {
+        let databases = ["shop", "store", "analytics"]
+        let before = databases.map { store.generation(connectionId: connectionId, database: $0) }
+        try change()
+        let after = databases.map { store.generation(connectionId: connectionId, database: $0) }
+        return Set(databases.indices.filter { before[$0] != after[$0] }.map { databases[$0] })
+    }
+
     private func changes(during body: () throws -> Void) rethrows -> [Change] {
         let received = OSAllocatedUnfairLock(initialState: [Change]())
         let observer = notifications.addObserver(forName: .tableHealthHistoryDidChange, object: nil, queue: nil) { note in
@@ -344,10 +352,115 @@ struct TableHealthHistoryStorageTests {
         #expect(try store.ledger(connectionId: otherConnection, database: "shop").firstSeen(orders.id) == Self.day(1))
     }
 
+    @Test("A run that started before a rename records nothing and gets the moved history back")
+    func runFromBeforeARenameRecordsNothing() throws {
+        let store = try seededStore()
+        let started = store.generation(connectionId: connectionId, database: "shop")
+        store.renameTable(from: scope("orders"), to: scope("purchases"))
+        let moved = try store.ledger(connectionId: connectionId, database: "shop")
+
+        var returned: TableHealthLedger?
+        let posted = try changes {
+            returned = try store.record(
+                report([orders, ordersNoteIndex, billingOrders]),
+                connectionId: connectionId,
+                database: "shop",
+                generation: started,
+                at: Self.day(2)
+            )
+        }
+
+        #expect(returned == moved)
+        #expect(posted.isEmpty)
+        let ledger = try makeStore().ledger(connectionId: connectionId, database: "shop")
+        #expect(ledger.runIndex == 1)
+        #expect(ledger.firstSeen(orders.id) == nil)
+        #expect(ledger.isIgnored(id(table: "purchases")))
+    }
+
+    @Test("A run that started after the rename records with the new names")
+    func runFromAfterARenameRecords() throws {
+        let store = try seededStore()
+        store.renameTable(from: scope("orders"), to: scope("purchases"))
+        let purchases = Fixture.finding(table: "purchases")
+
+        let ledger = try store.record(
+            report([purchases, billingOrders]),
+            connectionId: connectionId,
+            database: "shop",
+            generation: store.generation(connectionId: connectionId, database: "shop"),
+            at: Self.day(2)
+        )
+
+        #expect(ledger.runIndex == 2)
+        #expect(ledger.firstSeen(purchases.id) == Self.day(1))
+        #expect(ledger.isIgnored(purchases.id))
+        let resolved = ledger.resolved.map { $0.id }
+        #expect(resolved == [id(.unusedIndex, table: "purchases", object: "orders_note_idx")])
+    }
+
+    @Test("Renames, drops and purges move the generation of the databases they touch, and nothing else does")
+    func generationMovesWithCatalogChanges() throws {
+        let store = makeStore()
+
+        let byRuns = try databasesMoved(in: store) {
+            _ = try store.record(report([orders]), connectionId: connectionId, database: "shop", at: Self.day(1))
+            _ = try store.setIgnored([orders.id], ignored: true, connectionId: connectionId, database: "shop", at: Self.day(1))
+            _ = try store.clearResolved(connectionId: connectionId, database: "shop")
+        }
+        let byTableRename = databasesMoved(in: store) {
+            store.renameTable(from: scope("orders"), to: scope("purchases"))
+        }
+        let bySchemaRename = databasesMoved(in: store) {
+            store.renameContainer(
+                connectionId: connectionId, fromDatabase: "shop", fromSchema: "public", toDatabase: "shop", toSchema: "app"
+            )
+        }
+        let byTableDrop = databasesMoved(in: store) {
+            store.dropTable(scope("purchases", schema: "app"))
+        }
+        let bySchemaDrop = databasesMoved(in: store) {
+            store.dropContainer(connectionId: connectionId, database: "shop", schema: "app")
+        }
+        let byDatabaseRename = databasesMoved(in: store) {
+            store.renameContainer(
+                connectionId: connectionId, fromDatabase: "shop", fromSchema: nil, toDatabase: "store", toSchema: nil
+            )
+        }
+        let byDatabaseDrop = databasesMoved(in: store) {
+            store.dropContainer(connectionId: connectionId, database: "store", schema: nil)
+        }
+        let byPurge = databasesMoved(in: store) {
+            store.purgeConnections([connectionId], leavesTombstones: true)
+        }
+
+        #expect(byRuns.isEmpty)
+        #expect(byTableRename == ["shop"])
+        #expect(bySchemaRename == ["shop"])
+        #expect(byTableDrop == ["shop"])
+        #expect(bySchemaDrop == ["shop"])
+        #expect(byDatabaseRename == ["shop", "store"])
+        #expect(byDatabaseDrop == ["store"])
+        #expect(byPurge == ["shop", "store", "analytics"])
+    }
+
     @Test("Deleting a connection reaches the history store through the registry")
     func registryHoldsTheStore() {
         let shared = TableHealthHistoryStorage.shared
         let registered = TableScopedSettingsRegistry.stores.contains { $0 === shared }
         #expect(registered)
+    }
+}
+
+private extension TableHealthHistoryStorage {
+    // A run nothing was renamed under: it records in the generation it started with.
+    func record(_ report: TableHealthReport, connectionId: UUID, database: String, at date: Date) throws -> TableHealthLedger {
+        try record(
+            report,
+            connectionId: connectionId,
+            database: database,
+            generation: generation(connectionId: connectionId, database: database),
+            at: date
+        )
     }
 }

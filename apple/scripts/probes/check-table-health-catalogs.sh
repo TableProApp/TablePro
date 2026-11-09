@@ -289,10 +289,33 @@ SQL
     )
     [ "$version" -ge 100000 ] && cases+=("nearLimitQuery|")
 
-    # A table never vacuumed or analyzed has no pages recorded, so no size rather than 0.
+    # A table never vacuumed or analyzed has no pages recorded, so no size and no row estimate rather than 0. A
+    # partitioned table has no pages at all, however many rows its partitions hold.
+    pg -d "$DATABASE" > /dev/null <<'SQL'
+CREATE TABLE lk_loaded (v int, parent_id int REFERENCES lk_parent (id));
+INSERT INTO lk_loaded (v) SELECT g FROM generate_series(1, 20000) g;
+SQL
+    if [ "$version" -ge 100000 ]; then
+        pg -d "$DATABASE" > /dev/null <<'SQL'
+CREATE TABLE lk_parted (v int, at date) PARTITION BY RANGE (at);
+CREATE TABLE lk_parted_2026 PARTITION OF lk_parted FOR VALUES FROM ('2026-01-01') TO ('2027-01-01');
+INSERT INTO lk_parted SELECT g, '2026-03-01' FROM generate_series(1, 20000) g;
+ANALYZE lk_parted;
+SQL
+    fi
     local output
     output="$(pg -d "$DATABASE" -c "$(query_of "$source" missingPrimaryKeyQuery)")"
-    expect_pattern "a table with no pages recorded has no size" "$output" "^public\|lk_nopk\|0\|$"
+    expect_pattern "an empty table never measured has no row estimate and no size" "$output" "^public\|lk_nopk\|\|$"
+    expect_pattern "a freshly loaded table has no row estimate and no size until a VACUUM or ANALYZE" "$output" "^public\|lk_loaded\|\|$"
+    if [ "$version" -ge 100000 ]; then
+        expect_pattern "an analyzed partitioned table has no row estimate, since it has no pages" "$output" "^public\|lk_parted\|\|$"
+    fi
+    output="$(pg -d "$DATABASE" -c "$(query_of "$source" unindexedForeignKeyQuery)")"
+    expect_pattern "a freshly loaded referencing table has no row estimate" "$output" \
+        "lk_loaded_parent_id_fkey\|parent_id\|public\|lk_parent\|\|$"
+    pg -d "$DATABASE" -c "ANALYZE lk_loaded" > /dev/null
+    output="$(pg -d "$DATABASE" -c "$(query_of "$source" missingPrimaryKeyQuery)")"
+    expect_pattern "once analyzed, the table has its row estimate and size" "$output" "^public\|lk_loaded\|20000\|[0-9]+$"
 
     local entry query listed
     # $1 says which lock is held; with $2 = listed, each query must still list what the lock covers.
@@ -356,9 +379,12 @@ check_postgres_standbys() {
     else
         echo "note  no logical walsender appeared, so that standby case is skipped"
     fi
-    terminate tablepro_health_logical
 
-    command -v pg_receivewal > /dev/null || { echo "note  pg_receivewal not found, so the physical standby case is skipped"; return; }
+    command -v pg_receivewal > /dev/null || {
+        echo "note  pg_receivewal not found, so the physical standby case is skipped"
+        terminate tablepro_health_logical
+        return
+    }
     local wal receiver
     wal="$(mktemp -d)"
     PGAPPNAME=tablepro_health_physical pg_receivewal -h "$HOST" -p "$PORT" -U "$USER_NAME" -D "$wal" --no-sync > /dev/null 2>&1 &
@@ -371,12 +397,13 @@ check_postgres_standbys() {
     done
     if [ "$appeared" = 1 ]; then
         stats="$(pg -d "$DATABASE" -c "$(query_of "$source" statisticsQuery)")"
-        expect_pattern "a physical walsender is counted as a standby" "$stats" "\|1$"
+        expect_pattern "a physical walsender is counted as a standby, and a logical one beside it is not" "$stats" "\|1$"
     else
         echo "note  pg_receivewal could not stream (a replication line in pg_hba.conf is needed), so the physical standby case is skipped"
     fi
     kill "$receiver" 2> /dev/null
     wait "$receiver" 2> /dev/null
+    terminate tablepro_health_logical
     rm -rf "$wal"
 }
 

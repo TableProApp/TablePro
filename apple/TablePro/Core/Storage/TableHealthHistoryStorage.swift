@@ -37,8 +37,17 @@ final class TableHealthHistoryStorage: TableHealthHistoryStoring, TableScopedSet
         var isUnreadable = false
     }
 
+    private struct GenerationKey: Hashable {
+        let connectionId: UUID
+        let database: String
+    }
+
     private let directory: URL
     private let notificationCenter: NotificationCenter
+    // In memory: a run that has to compare against one never outlives the app. A purge moves every database of the
+    // connection, including ones this store never saw.
+    private var databaseGenerations: [GenerationKey: Int] = [:]
+    private var connectionGenerations: [UUID: Int] = [:]
 
     init(
         directory: URL = AppStorageEnvironment.shared.supportDirectory
@@ -53,13 +62,22 @@ final class TableHealthHistoryStorage: TableHealthHistoryStoring, TableScopedSet
         try load(connectionId).databases[database] ?? TableHealthLedger()
     }
 
+    func generation(connectionId: UUID, database: String) -> Int {
+        connectionGenerations[connectionId, default: 0]
+            + databaseGenerations[GenerationKey(connectionId: connectionId, database: database), default: 0]
+    }
+
     func record(
         _ report: TableHealthReport,
         connectionId: UUID,
         database: String,
+        generation: Int,
         at date: Date
     ) throws -> TableHealthLedger {
-        try mutate(connectionId: connectionId, database: database) { $0.recording(report, at: date) }
+        guard generation == self.generation(connectionId: connectionId, database: database) else {
+            return try ledger(connectionId: connectionId, database: database)
+        }
+        return try mutate(connectionId: connectionId, database: database) { $0.recording(report, at: date) }
     }
 
     func setIgnored(
@@ -80,6 +98,7 @@ final class TableHealthHistoryStorage: TableHealthHistoryStoring, TableScopedSet
 
     // Engines without a schema level (MySQL) store findings with a nil schema, which is what their scopes carry.
     func renameTable(from oldScope: TableScope, to newScope: TableScope) {
+        advanceGenerations(connectionId: oldScope.connectionId, databases: [oldScope.database, newScope.database])
         guard let database = oldScope.database,
               oldScope.connectionId == newScope.connectionId,
               newScope.database == database,
@@ -98,6 +117,7 @@ final class TableHealthHistoryStorage: TableHealthHistoryStoring, TableScopedSet
         toDatabase: String,
         toSchema: String?
     ) {
+        advanceGenerations(connectionId: connectionId, databases: [fromDatabase, toDatabase])
         if let fromSchema {
             guard let toSchema, fromDatabase == toDatabase, fromSchema != toSchema else { return }
             mutateLogging(connectionId: connectionId, database: fromDatabase) {
@@ -120,6 +140,7 @@ final class TableHealthHistoryStorage: TableHealthHistoryStoring, TableScopedSet
     }
 
     func dropTable(_ scope: TableScope) {
+        advanceGenerations(connectionId: scope.connectionId, databases: [scope.database])
         guard let database = scope.database else { return }
         mutateLogging(connectionId: scope.connectionId, database: database) {
             $0.droppingTable(schema: scope.schema, name: scope.table)
@@ -127,6 +148,7 @@ final class TableHealthHistoryStorage: TableHealthHistoryStoring, TableScopedSet
     }
 
     func dropContainer(connectionId: UUID, database: String, schema: String?) {
+        advanceGenerations(connectionId: connectionId, databases: [database])
         if let schema {
             mutateLogging(connectionId: connectionId, database: database) { $0.droppingSchema(schema) }
             return
@@ -145,6 +167,7 @@ final class TableHealthHistoryStorage: TableHealthHistoryStoring, TableScopedSet
     // Device-local, so there is never a tombstone to leave.
     func purgeConnections(_ connectionIds: Set<UUID>, leavesTombstones: Bool) {
         for connectionId in connectionIds {
+            connectionGenerations[connectionId, default: 0] += 1
             let databases = (try? load(connectionId))?.databases.keys.sorted() ?? []
             for url in storedFiles(for: connectionId) {
                 do {
@@ -156,6 +179,12 @@ final class TableHealthHistoryStorage: TableHealthHistoryStoring, TableScopedSet
                 }
             }
             postChange(connectionId: connectionId, databases: databases)
+        }
+    }
+
+    private func advanceGenerations(connectionId: UUID, databases: [String?]) {
+        for database in Set(databases.compactMap { $0 }) {
+            databaseGenerations[GenerationKey(connectionId: connectionId, database: database), default: 0] += 1
         }
     }
 

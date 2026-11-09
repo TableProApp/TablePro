@@ -7,8 +7,8 @@ import Foundation
 // deparsers wait behind an ACCESS EXCLUSIVE lock (an open ALTER TABLE, TRUNCATE or VACUUM FULL) until it ends. Sizes
 // are relpages times block_size, as of the last VACUUM, ANALYZE or index build. A relation with no pages recorded has
 // no size rather than 0: on 10 to 13 a table never vacuumed or analyzed reads relpages 0 and reltuples 0, the same as
-// an empty one. Before 13 ANALYZE leaves the TOAST table's relpages alone, so there a table's TOAST share is as of its
-// last VACUUM.
+// an empty one. Row estimates follow the same rule, so a partitioned table, which has no pages, has none. Before 13
+// ANALYZE leaves the TOAST table's relpages alone, so there a table's TOAST share is as of its last VACUUM.
 struct PostgreSQLTableHealthProvider: TableHealthProvider {
     let checks: [TableHealthCheckKind] = [
         .bloat, .unusedIndex, .redundantIndex, .invalidIndex, .missingPrimaryKey, .unindexedForeignKey,
@@ -19,7 +19,8 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
     private static let counterChecks: [TableHealthCheckKind] = [.bloat, .unusedIndex, .staleStatistics]
 
     // A physical standby's walsender has no database; a logical one (a subscription, a CDC reader) has one, and a
-    // base backup's reports state backup. Without pg_read_all_stats the state reads NULL, which still counts.
+    // base backup's reports state backup. Without pg_read_all_stats the state reads NULL, which still counts. Before
+    // 10 pg_stat_activity lists only backends with a database, so a physical walsender is the one with no row there.
     static let statisticsQuery = """
         SELECT pg_catalog.current_setting('track_counts') AS track_counts,
                pg_catalog.date_part('epoch', d.stats_reset) AS stats_reset,
@@ -27,9 +28,9 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                pg_catalog.pg_is_in_recovery() AS in_recovery,
                (SELECT pg_catalog.count(*)
                 FROM pg_catalog.pg_stat_replication r
-                JOIN pg_catalog.pg_stat_activity a ON a.pid = r.pid
-                WHERE a.datid IS NULL
-                  AND r.state IS DISTINCT FROM 'backup') AS standbys
+                WHERE r.state IS DISTINCT FROM 'backup'
+                  AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_stat_activity a
+                                  WHERE a.pid = r.pid AND a.datid IS NOT NULL)) AS standbys
         FROM pg_catalog.pg_stat_database d
         WHERE d.datname = pg_catalog.current_database()
         """
@@ -124,7 +125,9 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
     static let missingPrimaryKeyQuery = """
         SELECT n.nspname AS schema_name,
                c.relname AS table_name,
-               GREATEST(c.reltuples, 0)::pg_catalog.int8 AS estimated_rows,
+               CASE WHEN c.relpages > 0 AND c.reltuples >= 0::pg_catalog.float4
+                    THEN c.reltuples::pg_catalog.int8
+               END AS estimated_rows,
                CASE WHEN c.relpages > 0
                     THEN (c.relpages::pg_catalog.int8 + COALESCE(tc.relpages, 0)::pg_catalog.int8) * pg_catalog.current_setting('block_size')::pg_catalog.int8
                END AS table_bytes
@@ -170,7 +173,9 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                a.attname AS column_name,
                rn.nspname AS referenced_schema,
                rc.relname AS referenced_table,
-               GREATEST(c.reltuples, 0)::pg_catalog.int8 AS estimated_rows,
+               CASE WHEN c.relpages > 0 AND c.reltuples >= 0::pg_catalog.float4
+                    THEN c.reltuples::pg_catalog.int8
+               END AS estimated_rows,
                CASE WHEN c.relpages > 0
                     THEN (c.relpages::pg_catalog.int8 + COALESCE(tc.relpages, 0)::pg_catalog.int8) * pg_catalog.current_setting('block_size')::pg_catalog.int8
                END AS table_bytes

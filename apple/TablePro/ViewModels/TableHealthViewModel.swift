@@ -72,8 +72,6 @@ final class TableHealthViewModel: ObservableObject {
     private let database: @MainActor () -> String
     private var runTask: Task<Void, Never>?
     private var refreshQueued = false
-    // Bumped by a rename: a run that read the catalog before it would record the old names over the moved history.
-    private var catalogRevision = 0
     private var ledgerLoaded = false
     private var historyObserver: AnyCancellable?
 
@@ -133,12 +131,6 @@ final class TableHealthViewModel: ObservableObject {
         await task.value
     }
 
-    // A table or schema was renamed. A run already reading is dropped and this one reads the catalog again.
-    func refreshAfterCatalogChange() async {
-        catalogRevision += 1
-        await refresh()
-    }
-
     // The tab closed: stop reading so the bulk metadata lane is free for the next caller.
     func cancel() {
         refreshQueued = false
@@ -157,17 +149,21 @@ final class TableHealthViewModel: ObservableObject {
         } while refreshQueued && !Task.isCancelled
     }
 
+    // A rename or drop moves the history and its generation in one main-actor call, so a run that read the catalog
+    // before it is dropped however late the refresh the rename asks for arrives; that refresh shows the new names.
     private func performRefresh(_ provider: any TableHealthProvider) async {
         let target = self.database()
-        let revision = catalogRevision
+        let generation = history.generation(connectionId: connectionId, database: target)
         do {
             let scope = DatabaseScope(connectionId: connectionId, database: target, schema: nil)
             let fresh = try await TableHealthReportLoader.load(provider: provider, scope: scope, lease: lease)
-            guard !Task.isCancelled, revision == catalogRevision else { return }
+            guard !Task.isCancelled,
+                  history.generation(connectionId: connectionId, database: target) == generation
+            else { return }
             report = Self.merging(fresh, over: report)
             loadError = nil
             lastRefreshDate = Date()
-            record(fresh, database: target)
+            record(fresh, database: target, generation: generation)
             settleAfterRefresh()
             rebuildRows()
         } catch {
@@ -202,9 +198,15 @@ final class TableHealthViewModel: ObservableObject {
 
     // MARK: - History
 
-    private func record(_ report: TableHealthReport, database: String) {
+    private func record(_ report: TableHealthReport, database: String, generation: Int) {
         do {
-            ledger = try history.record(report, connectionId: connectionId, database: database, at: report.generatedAt)
+            ledger = try history.record(
+                report,
+                connectionId: connectionId,
+                database: database,
+                generation: generation,
+                at: report.generatedAt
+            )
             ledgerLoaded = true
             storeError = nil
         } catch {
