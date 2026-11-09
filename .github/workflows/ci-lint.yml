@@ -139,6 +139,9 @@ jobs:
           title="$(gh api "repos/$REPOSITORY/pulls/$number" --jq .title)"
           scripts/ci/check-changelog-edits.sh "$base" "$title"
 
+      - name: Check docs/feature-parity/README.md matches features.yml
+        run: python3 scripts/feature-parity.py --check
+
       # shellcheck cannot tell a library function from a command, so a missing source is exit 127
       # at release time (v0.67.1).
       - name: Check every script sources the libraries it calls into

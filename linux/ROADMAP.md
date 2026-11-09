@@ -183,7 +183,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 
 ## Backlog
 
-Remaining work and known issues, in no order.
+Remaining work and known issues, in no order. The macOS app's features this app lacks are in the [feature parity table](../docs/feature-parity/README.md).
 
 ### Connections
 

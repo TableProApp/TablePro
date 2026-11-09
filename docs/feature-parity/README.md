@@ -1,135 +1,134 @@
 # Feature parity
 
-Which user-visible features each app has. The macOS app is the reference, and the Linux and Windows apps
-follow its behavior. This file is generated: edit [`features.yml`](features.yml), then run
-`python3 scripts/parity/render.py`. A pull request that adds or finishes a feature updates its row.
+Which of the macOS app's features the Linux and Windows apps have. A feature with no row has not been compared yet.
+What the Linux app does in each area, in detail: [linux/ROADMAP.md](../../linux/ROADMAP.md#implemented).
 
-Status: Yes is shipped. In PR is built in an open pull request. Partial says what ships. No is not built.
-n/a does not apply. Unknown has not been checked.
+`scripts/feature-parity.py` writes this file from [features.yml](features.yml). Edit that file, then run the script.
 
-## Totals
-
-| | macOS | Linux | Windows |
-|---|---|---|---|
-| Yes | 64 | 26 | 0 |
-| In a PR | 0 | 27 | 0 |
-| Partial | 0 | 7 | 0 |
-| No | 0 | 3 | 0 |
-| n/a | 0 | 1 | 0 |
-| Unknown | 0 | 0 | 64 |
-
-64 features.
+| Status | Meaning |
+|---|---|
+| Yes | On `main`. |
+| In #N | In that open pull request. |
+| Partial | Part of it is on `main`. The note says which part. |
+| No | Not built. |
+| n/a | Does not apply to that app. The note says why. |
+| Unknown | Not checked yet. |
 
 ## Connections
 
-| Feature | macOS | Linux | Windows | Notes |
-|---|---|---|---|---|
-| Saved connections, groups, favourites and tags | Yes | Yes | Unknown |  |
-| SSH tunnels with jump hosts | Yes | Yes | Unknown |  |
-| Safe Mode per connection (off, confirm writes, read only) | Yes | Yes | Unknown |  |
-| Import connections from other apps | Yes | Yes | Unknown | DBX is read on Linux and Windows through the shared core (4147); the macOS importers are Swift and do not list it. |
-| Application menu bar (File, Edit, View, Help) with Quit | Yes | In PR [#4139](https://github.com/TableProApp/TablePro/pull/4139): read by a global menu and assistive technology; GNOME draws none | Unknown |  |
-| Open another database of a server beside the connection | Yes | Yes | Unknown |  |
+| Feature | Linux | Windows |
+|---|---|---|
+| Saved connections, groups, favorites and tags | Yes | Yes |
+| SSH tunnels with jump hosts | Yes | Partial: no jump hosts |
+| Safe Mode per connection (off, confirm writes, read only) | Yes | Partial: Confirm Writes does not ask before a write |
+| Import connections from other apps | Yes | No: imports a TablePro JSON file only |
+| Application menu with Quit | Yes: a main menu, since GNOME apps have no menu bar; [#4139](https://github.com/TableProApp/TablePro/pull/4139) splits the session's commands into a menu of their own | Yes |
+| The server's other databases in the sidebar | Yes: each opened from the sidebar's menu | No |
 
 ## Sidebar
 
-| Feature | macOS | Linux | Windows | Notes |
-|---|---|---|---|---|
-| Schemas and tables, with search | Yes | Yes | Unknown |  |
-| Tables and Favorites scope switch | Yes | In PR [#4114](https://github.com/TableProApp/TablePro/pull/4114) | Unknown | Linux lists the saved queries of the front connection, and renames and deletes them (4115). |
-| Favorite folders | Yes | In PR [#4130](https://github.com/TableProApp/TablePro/pull/4130): on the storage of 4116 | Unknown |  |
-| Favorite keywords that expand in the editor | Yes | Partial ([#4116](https://github.com/TableProApp/TablePro/pull/4116)): storage only; the editor does not expand them yet | Unknown | Shared storage and the decision are core ADR 0017. |
-| Favorite tables and databases, with environments | Yes | In PR [#4116](https://github.com/TableProApp/TablePro/pull/4116): storage only; no UI yet | Unknown |  |
-| Open Quickly (find a table by name) | Yes | In PR [#4121](https://github.com/TableProApp/TablePro/pull/4121): tables and views, saved queries in 4133 and past queries in 4144; not databases, schemas, routines or other connections | Unknown |  |
-| Bottom bar with an Add menu and a schema picker | Yes | Partial ([#4146](https://github.com/TableProApp/TablePro/pull/4146)): the Add menu (table, schema, database); a Schemas menu filters the list (4150), with no active schema | Unknown |  |
-| A row's menu is shown whole, not cut with a scrollbar | Yes | In PR [#4149](https://github.com/TableProApp/TablePro/pull/4149) | Unknown |  |
-| Sidebar toggle in the window header | Yes | In PR [#4117](https://github.com/TableProApp/TablePro/pull/4117) | Unknown |  |
+| Feature | Linux | Windows |
+|---|---|---|
+| Schemas and tables, with search | Yes | Yes |
+| A schema's objects grouped by kind | In [#4159](https://github.com/TableProApp/TablePro/pull/4159) | Yes |
+| Width set by dragging its edge | In [#4155](https://github.com/TableProApp/TablePro/pull/4155) | Yes |
+| Toggle in the window header | Yes | Partial: View > Object Tree and Ctrl+B; no button in the title bar |
+| Bottom bar with an Add menu | In [#4146](https://github.com/TableProApp/TablePro/pull/4146) | No |
+| Choose which schemas the sidebar lists | In [#4150](https://github.com/TableProApp/TablePro/pull/4150) | No |
+| Tables and Favorites scope switch | Yes | No |
+| Favorite folders | In [#4130](https://github.com/TableProApp/TablePro/pull/4130) | No |
+| Favorite keywords that expand in the editor | No | No |
+| Favorite tables and databases, with environments | No | No |
+| Open Quickly (find a table by name) | In [#4121](https://github.com/TableProApp/TablePro/pull/4121): tables and views; saved queries in [#4133](https://github.com/TableProApp/TablePro/pull/4133), past queries in [#4144](https://github.com/TableProApp/TablePro/pull/4144) | Partial: Ctrl+P moves to the sidebar's filter |
 
 ## Data grid
 
-| Feature | macOS | Linux | Windows | Notes |
-|---|---|---|---|---|
-| Virtualized grid with paging and an exact or estimated count | Yes | Yes | Unknown |  |
-| Alternate row shading | Yes | Yes | Unknown |  |
-| Values in the monospace font | Yes | Yes | Unknown |  |
-| Row numbers stay in view while scrolling sideways | Yes | In PR [#4110](https://github.com/TableProApp/TablePro/pull/4110) | Unknown |  |
-| Inline cell editing with pending changes, undo and redo | Yes | Yes | Unknown |  |
-| Filters per column and as a WHERE fragment | Yes | Yes | Unknown |  |
-| Open a referenced row and the rows that reference one | Yes | Yes | Unknown |  |
-| Highlight rules (colour rows by a condition) | Yes | In PR [#4127](https://github.com/TableProApp/TablePro/pull/4127): kept per table in 4129; not kept for a query result | Unknown |  |
-| The grid draws in the editor scheme's colours | Yes | In PR [#4128](https://github.com/TableProApp/TablePro/pull/4128) | Unknown |  |
-| Show row numbers, row height and the text shown for NULL | Yes | In PR [#4134](https://github.com/TableProApp/TablePro/pull/4134) | Unknown |  |
-| Font of the grid's cells | Yes | Partial ([#4135](https://github.com/TableProApp/TablePro/pull/4135)): family and size; no zoom | Unknown |  |
-| Date format of the cells | Yes | In PR [#4142](https://github.com/TableProApp/TablePro/pull/4142): cells only; copy and export keep the database's text | Unknown |  |
-| Default sort of a table (none, primary key, first column) | Yes | In PR [#4140](https://github.com/TableProApp/TablePro/pull/4140): one column | Unknown |  |
-| The format Copy writes for several rows | Yes | In PR [#4137](https://github.com/TableProApp/TablePro/pull/4137) | Unknown |  |
-| Open the row details when a row is selected | Yes | In PR [#4138](https://github.com/TableProApp/TablePro/pull/4138) | Unknown |  |
-| Set Empty, NULL or DEFAULT on every selected row | Yes | In PR [#4136](https://github.com/TableProApp/TablePro/pull/4136): Empty, NULL, DEFAULT and expressions | Unknown |  |
-| Mark spaces, tabs and line breaks in the value editor | Yes | In PR [#4141](https://github.com/TableProApp/TablePro/pull/4141) | Unknown |  |
+| Feature | Linux | Windows |
+|---|---|---|
+| Virtualized grid with paging and an exact or estimated count | Yes | Yes |
+| Alternate row shading | Yes | No |
+| Values in the monospace font | Yes | No |
+| Row numbers stay in view while scrolling sideways | Yes | Yes |
+| Inline cell editing with pending changes, undo and redo | Yes | No |
+| Filters per column and as a WHERE fragment | Yes | No |
+| Open a referenced row and the rows that reference one | Yes | No |
+| Set Value on every selected row (Empty, NULL, DEFAULT, UUID, an expression, any value) | Partial: Empty, NULL, DEFAULT and the engine's expressions | No |
+| Show row numbers, row height and the text shown for NULL | Yes | No |
+| Highlight rules (color rows and cells by a condition) | In [#4127](https://github.com/TableProApp/TablePro/pull/4127): kept per table in [#4129](https://github.com/TableProApp/TablePro/pull/4129) | No |
+| The grid in the editor theme's colors | In [#4128](https://github.com/TableProApp/TablePro/pull/4128) | No |
+| Font of the grid's cells, and zoom | In [#4135](https://github.com/TableProApp/TablePro/pull/4135): family and size; no zoom | No |
+| Date format of the cells | In [#4142](https://github.com/TableProApp/TablePro/pull/4142) | No |
+| Default sort of a table (none, primary key, first column) | In [#4140](https://github.com/TableProApp/TablePro/pull/4140) | No |
+| The format Copy writes for several rows | In [#4137](https://github.com/TableProApp/TablePro/pull/4137) | No: copies tab-separated values only |
+| Open the row details when a row is selected | In [#4138](https://github.com/TableProApp/TablePro/pull/4138) | No |
+| Mark zero-width, control and special space characters in the value editor | No: [#4141](https://github.com/TableProApp/TablePro/pull/4141) marks spaces, tabs and line breaks instead | No |
 
 ## Bottom bar
 
-| Feature | macOS | Linux | Windows | Notes |
-|---|---|---|---|---|
-| Columns button | Yes | In PR [#4118](https://github.com/TableProApp/TablePro/pull/4118) | Unknown |  |
-| Time a page or a query took | Yes | Partial ([#4119](https://github.com/TableProApp/TablePro/pull/4119)): query results show it; table pages in the pull request | Unknown |  |
-| Data and Structure in one tab | Yes | In PR [#4108](https://github.com/TableProApp/TablePro/pull/4108): one bar for it in 4111 | Unknown |  |
-| JSON view of the rows | Yes | In PR [#4122](https://github.com/TableProApp/TablePro/pull/4122): table tabs; not query results | Unknown |  |
-| Chart view of a result | Yes | No | Unknown |  |
-| Map view of a result | Yes | No | Unknown |  |
+| Feature | Linux | Windows |
+|---|---|---|
+| Columns button | Yes | No |
+| Time a page or a query took | Yes | Yes |
+| Data and Structure in one tab | Yes | No |
+| JSON view of the rows | In [#4122](https://github.com/TableProApp/TablePro/pull/4122): table tabs; not query results | No |
+| Chart view of a result | No | No |
+| Map view of a result | No | No |
 
 ## Row details
 
-| Feature | macOS | Linux | Windows | Notes |
-|---|---|---|---|---|
-| Row details pane with an editor for the focused field | Yes | Yes | Unknown |  |
-| Field rows with type badge, key and edit marks | Yes | In PR [#4112](https://github.com/TableProApp/TablePro/pull/4112) | Unknown |  |
-| Field search and edited-only filter | Yes | In PR [#4113](https://github.com/TableProApp/TablePro/pull/4113) | Unknown |  |
-| An editor inside each field row | Yes | No | Unknown |  |
-| A row as JSON | Yes | Partial: a dialog from the grid menu, not a pane view | Unknown |  |
+| Feature | Linux | Windows |
+|---|---|---|
+| Row details pane | Yes | No |
+| Type, key and edit marks on a field | Yes | No |
+| Foreign key mark on a field | In [#4131](https://github.com/TableProApp/TablePro/pull/4131) | No |
+| Field search and an edited-only filter | Yes | No |
+| A field drawn as its name over its value | In [#4156](https://github.com/TableProApp/TablePro/pull/4156) | No |
+| An editor inside each field row | In [#4157](https://github.com/TableProApp/TablePro/pull/4157) | No |
+| A menu on each field | In [#4158](https://github.com/TableProApp/TablePro/pull/4158) | No |
+| A row as JSON | Partial: a dialog from the grid's menu, not a view of the row details | No |
 
 ## SQL editor
 
-| Feature | macOS | Linux | Windows | Notes |
-|---|---|---|---|---|
-| Highlighting, completion, snippets and formatting | Yes | Yes | Unknown |  |
-| Move a query tab to another database | Yes | Yes | Unknown |  |
-| The chosen colour scheme is drawn as chosen | Yes | In PR [#4109](https://github.com/TableProApp/TablePro/pull/4109) | Unknown |  |
-| Dragging the results up keeps the query in view | Yes | In PR [#4120](https://github.com/TableProApp/TablePro/pull/4120) | Unknown |  |
-| Vim keybindings | Yes | Yes | Unknown |  |
+| Feature | Linux | Windows |
+|---|---|---|
+| Highlighting, completion, snippets and formatting | Yes | Partial: highlighting only |
+| Move a query tab to another database | Yes | No |
+| Color schemes | Yes | No |
+| Vim keybindings | Yes | No |
 
 ## Structure and schema
 
-| Feature | macOS | Linux | Windows | Notes |
-|---|---|---|---|---|
-| Structure editor with a reviewed ALTER | Yes | Yes | Unknown |  |
-| ER diagram | Yes | Yes | Unknown |  |
+| Feature | Linux | Windows |
+|---|---|---|
+| Structure editor with a reviewed ALTER | Yes | No |
+| ER diagram | Yes | No |
 
 ## History, import and export
 
-| Feature | macOS | Linux | Windows | Notes |
-|---|---|---|---|---|
-| Query history with search, pins and export | Yes | Yes | Unknown |  |
-| Saved queries | Yes | Yes | Unknown |  |
-| Export results (CSV, JSON, Markdown, HTML, XML, Excel, SQL) | Yes | Yes | Unknown |  |
-| Export a database as SQL and import a SQL file | Yes | Yes | Unknown |  |
+| Feature | Linux | Windows |
+|---|---|---|
+| Query history with search, pins and export | Yes | No |
+| Saved queries | Yes | No |
+| Export results (CSV, JSON, Markdown, HTML, XML, Excel, SQL) | Yes | No |
+| Export a database as SQL and import a SQL file | Yes | No |
 
-## Assistant, MCP and account
+## Assistant, MCP, account and command line
 
-| Feature | macOS | Linux | Windows | Notes |
-|---|---|---|---|---|
-| AI assistant | Yes | Yes | Unknown |  |
-| MCP server for outside clients | Yes | Yes | Unknown |  |
-| TablePro account and entitlement | Yes | Yes | Unknown |  |
+| Feature | Linux | Windows |
+|---|---|---|
+| AI assistant | Yes | No |
+| MCP server for outside clients | Yes | No |
+| TablePro account and entitlement | Yes | No |
+| The `tablepro` command line tool | In [#4145](https://github.com/TableProApp/TablePro/pull/4145) | No: `tablepro.exe` opens the app and reads no arguments |
 
 ## Window toolbar
 
-| Feature | macOS | Linux | Windows | Notes |
-|---|---|---|---|---|
-| Safe Mode lock in the toolbar | Yes | In PR [#4124](https://github.com/TableProApp/TablePro/pull/4124) | Unknown |  |
-| Refresh button | Yes | In PR [#4125](https://github.com/TableProApp/TablePro/pull/4125) | Unknown |  |
-| Save Changes check | Yes | In PR [#4126](https://github.com/TableProApp/TablePro/pull/4126) | Unknown |  |
-| Connection and database chips | Yes | Partial: the title names the connection and the sidebar holds every open connection and database; no chips | Unknown |  |
-| Back and Forward through a tab's browse history | Yes | n/a: a referenced row opens in a new tab here, where macOS retargets the tab | Unknown |  |
-| Actions menu (Preview SQL, Show and Copy DDL, Users and Roles, Query Insights, Server Dashboard) | Yes | Partial: Show CREATE TABLE is in the sidebar's menu; the rest is not built | Unknown |  |
-| Reconnect after a lost connection | Yes | Yes | Unknown | On Linux it is the health banner's button. |
+| Feature | Linux | Windows |
+|---|---|---|
+| Safe Mode level in the toolbar | In [#4124](https://github.com/TableProApp/TablePro/pull/4124) | No |
+| Refresh button | Yes | Yes |
+| Save Changes button | In [#4126](https://github.com/TableProApp/TablePro/pull/4126) | No |
+| Connection and database chips | Partial: the title names the connection and the sidebar lists every open connection and database; no chips | Partial: the title bar names the connection; no database chip |
+| Back and Forward through a tab's browse history | n/a: a referenced row opens in a new tab, where macOS moves the tab to it | No |
+| Actions menu (Preview SQL, Show and Copy DDL, Users and Roles, Query Insights, Server Dashboard) | Partial: Show CREATE TABLE is in the sidebar's menu; the rest is not built | No |
+| Reconnect after a lost connection | Yes | Yes |

@@ -57,6 +57,9 @@ apple/TablePro/Resources/ThirdPartyLicenses/texts/** linguist-vendored
 # Joins the SQLite copyright page and the source blessing with a sentence of its own.
 apple/TablePro/Resources/ThirdPartyLicenses/texts/sqlite.txt -linguist-vendored
 
+# The feature parity table, written from features.yml beside it by scripts/feature-parity.py
+docs/feature-parity/README.md linguist-generated
+
 # Generated Rust and Linux files (Cargo, cargo-about, license_metadata.py)
 Cargo.lock linguist-generated
 linux/data/licenses/** linguist-generated

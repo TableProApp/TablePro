@@ -1,368 +1,240 @@
-# The one home of which user-visible features each app has. README.md in this
-# folder is generated from it: python3 scripts/parity/render.py
-#
-# A platform's value is a status, or a mapping with `status` and optionally
-# `pr` (a pull request number) and `note`.
-#   yes      shipped
-#   pending  built and in an open pull request, not shipped yet (give `pr`)
-#   partial  some of it ships (say what in `note`)
-#   no       not built
-#   na       does not apply to this platform
-#   unknown  nobody has checked
-# macOS is the reference: the other two follow its behavior (see each app's AGENTS.md).
+# The rows of README.md, which scripts/feature-parity.py writes from this file. README.md explains
+# the statuses. A value is a status, or a mapping of status, pr and note.
 
 areas:
   - name: Connections
     features:
-      - id: saved-connections
-        name: Saved connections, groups, favourites and tags
-        macos: yes
+      - name: Saved connections, groups, favorites and tags
         linux: yes
-        windows: unknown
-      - id: ssh-tunnel
-        name: SSH tunnels with jump hosts
-        macos: yes
+        windows: yes
+      - name: SSH tunnels with jump hosts
         linux: yes
-        windows: unknown
-      - id: safe-mode
-        name: Safe Mode per connection (off, confirm writes, read only)
-        macos: yes
+        windows: {status: partial, note: "no jump hosts"}
+      - name: Safe Mode per connection (off, confirm writes, read only)
         linux: yes
-        windows: unknown
-      - id: import-from-apps
-        name: Import connections from other apps
-        macos: yes
+        windows: {status: partial, note: "Confirm Writes does not ask before a write"}
+      - name: Import connections from other apps
         linux: yes
-        windows: unknown
-        notes: DBX is read on Linux and Windows through the shared core (4147); the macOS importers are Swift and do not list it.
-      - id: app-menu-bar
-        name: Application menu bar (File, Edit, View, Help) with Quit
-        macos: yes
-        linux: {status: pending, pr: 4139, note: "read by a global menu and assistive technology; GNOME draws none"}
-        windows: unknown
-      - id: open-database-beside
-        name: Open another database of a server beside the connection
-        macos: yes
-        linux: yes
-        windows: unknown
+        windows: {status: no, note: "imports a TablePro JSON file only"}
+      - name: Application menu with Quit
+        linux: {status: yes, note: "a main menu, since GNOME apps have no menu bar; #4139 splits the session's commands into a menu of their own"}
+        windows: yes
+      - name: The server's other databases in the sidebar
+        linux: {status: yes, note: "each opened from the sidebar's menu"}
+        windows: no
 
   - name: Sidebar
     features:
-      - id: tables-tree
-        name: Schemas and tables, with search
-        macos: yes
+      - name: Schemas and tables, with search
         linux: yes
-        windows: unknown
-      - id: favorites-scope
-        name: Tables and Favorites scope switch
-        macos: yes
-        linux: {status: pending, pr: 4114}
-        windows: unknown
-        notes: Linux lists the saved queries of the front connection, and renames and deletes them (4115).
-      - id: favorites-folders
-        name: Favorite folders
-        macos: yes
-        linux: {status: pending, pr: 4130, note: "on the storage of 4116"}
-        windows: unknown
-      - id: favorites-keywords
-        name: Favorite keywords that expand in the editor
-        macos: yes
-        linux: {status: partial, pr: 4116, note: "storage only; the editor does not expand them yet"}
-        windows: unknown
-        notes: "Shared storage and the decision are core ADR 0017."
-      - id: favorite-tables-databases
-        name: Favorite tables and databases, with environments
-        macos: yes
-        linux: {status: pending, pr: 4116, note: "storage only; no UI yet"}
-        windows: unknown
-      - id: quick-switcher
-        name: Open Quickly (find a table by name)
-        macos: yes
-        linux: {status: pending, pr: 4121, note: "tables and views, saved queries in 4133 and past queries in 4144; not databases, schemas, routines or other connections"}
-        windows: unknown
-      - id: sidebar-footer
-        name: Bottom bar with an Add menu and a schema picker
-        macos: yes
-        linux: {status: partial, pr: 4146, note: "the Add menu (table, schema, database); a Schemas menu filters the list (4150), with no active schema"}
-        windows: unknown
-      - id: sidebar-menu-size
-        name: A row's menu is shown whole, not cut with a scrollbar
-        macos: yes
-        linux: {status: pending, pr: 4149}
-        windows: unknown
-      - id: sidebar-toggle
-        name: Sidebar toggle in the window header
-        macos: yes
-        linux: {status: pending, pr: 4117}
-        windows: unknown
+        windows: yes
+      - name: A schema's objects grouped by kind
+        linux: {status: pending, pr: 4159}
+        windows: yes
+      - name: Width set by dragging its edge
+        linux: {status: pending, pr: 4155}
+        windows: yes
+      - name: Toggle in the window header
+        linux: yes
+        windows: {status: partial, note: "View > Object Tree and Ctrl+B; no button in the title bar"}
+      - name: Bottom bar with an Add menu
+        linux: {status: pending, pr: 4146}
+        windows: no
+      - name: Choose which schemas the sidebar lists
+        linux: {status: pending, pr: 4150}
+        windows: no
+      - name: Tables and Favorites scope switch
+        linux: yes
+        windows: no
+      - name: Favorite folders
+        linux: {status: pending, pr: 4130}
+        windows: no
+      - name: Favorite keywords that expand in the editor
+        linux: no
+        windows: no
+      - name: Favorite tables and databases, with environments
+        linux: no
+        windows: no
+      - name: Open Quickly (find a table by name)
+        linux: {status: pending, pr: 4121, note: "tables and views; saved queries in #4133, past queries in #4144"}
+        windows: {status: partial, note: "Ctrl+P moves to the sidebar's filter"}
 
   - name: Data grid
     features:
-      - id: virtual-grid
-        name: Virtualized grid with paging and an exact or estimated count
-        macos: yes
+      - name: Virtualized grid with paging and an exact or estimated count
         linux: yes
-        windows: unknown
-      - id: grid-alternate-rows
-        name: Alternate row shading
-        macos: yes
+        windows: yes
+      - name: Alternate row shading
         linux: yes
-        windows: unknown
-      - id: grid-monospace
-        name: Values in the monospace font
-        macos: yes
+        windows: no
+      - name: Values in the monospace font
         linux: yes
-        windows: unknown
-      - id: pinned-row-numbers
-        name: Row numbers stay in view while scrolling sideways
-        macos: yes
-        linux: {status: pending, pr: 4110}
-        windows: unknown
-      - id: cell-editing
-        name: Inline cell editing with pending changes, undo and redo
-        macos: yes
+        windows: no
+      - name: Row numbers stay in view while scrolling sideways
         linux: yes
-        windows: unknown
-      - id: filters
-        name: Filters per column and as a WHERE fragment
-        macos: yes
+        windows: yes
+      - name: Inline cell editing with pending changes, undo and redo
         linux: yes
-        windows: unknown
-      - id: foreign-key-navigation
-        name: Open a referenced row and the rows that reference one
-        macos: yes
+        windows: no
+      - name: Filters per column and as a WHERE fragment
         linux: yes
-        windows: unknown
-      - id: highlight-rules
-        name: Highlight rules (colour rows by a condition)
-        macos: yes
-        linux: {status: pending, pr: 4127, note: "kept per table in 4129; not kept for a query result"}
-        windows: unknown
-      - id: grid-scheme-colors
-        name: The grid draws in the editor scheme's colours
-        macos: yes
+        windows: no
+      - name: Open a referenced row and the rows that reference one
+        linux: yes
+        windows: no
+      - name: Set Value on every selected row (Empty, NULL, DEFAULT, UUID, an expression, any value)
+        linux: {status: partial, note: "Empty, NULL, DEFAULT and the engine's expressions"}
+        windows: no
+      - name: Show row numbers, row height and the text shown for NULL
+        linux: yes
+        windows: no
+      - name: Highlight rules (color rows and cells by a condition)
+        linux: {status: pending, pr: 4127, note: "kept per table in #4129"}
+        windows: no
+      - name: The grid in the editor theme's colors
         linux: {status: pending, pr: 4128}
-        windows: unknown
-
-      - id: grid-row-display
-        name: Show row numbers, row height and the text shown for NULL
-        macos: yes
-        linux: {status: pending, pr: 4134}
-        windows: unknown
-      - id: grid-cell-font
-        name: Font of the grid's cells
-        macos: yes
-        linux: {status: partial, pr: 4135, note: "family and size; no zoom"}
-        windows: unknown
-      - id: grid-date-format
-        name: Date format of the cells
-        macos: yes
-        linux: {status: pending, pr: 4142, note: "cells only; copy and export keep the database's text"}
-        windows: unknown
-      - id: grid-default-sort
-        name: Default sort of a table (none, primary key, first column)
-        macos: yes
-        linux: {status: pending, pr: 4140, note: "one column"}
-        windows: unknown
-      - id: grid-copy-format
-        name: The format Copy writes for several rows
-        macos: yes
+        windows: no
+      - name: Font of the grid's cells, and zoom
+        linux: {status: pending, pr: 4135, note: "family and size; no zoom"}
+        windows: no
+      - name: Date format of the cells
+        linux: {status: pending, pr: 4142}
+        windows: no
+      - name: Default sort of a table (none, primary key, first column)
+        linux: {status: pending, pr: 4140}
+        windows: no
+      - name: The format Copy writes for several rows
         linux: {status: pending, pr: 4137}
-        windows: unknown
-      - id: grid-auto-inspector
-        name: Open the row details when a row is selected
-        macos: yes
+        windows: {status: no, note: "copies tab-separated values only"}
+      - name: Open the row details when a row is selected
         linux: {status: pending, pr: 4138}
-        windows: unknown
-      - id: grid-set-value
-        name: Set Empty, NULL or DEFAULT on every selected row
-        macos: yes
-        linux: {status: pending, pr: 4136, note: "Empty, NULL, DEFAULT and expressions"}
-        windows: unknown
-      - id: grid-invisibles
-        name: Mark spaces, tabs and line breaks in the value editor
-        macos: yes
-        linux: {status: pending, pr: 4141}
-        windows: unknown
+        windows: no
+      - name: Mark zero-width, control and special space characters in the value editor
+        linux: {status: no, note: "#4141 marks spaces, tabs and line breaks instead"}
+        windows: no
 
   - name: Bottom bar
     features:
-      - id: bar-columns
-        name: Columns button
-        macos: yes
-        linux: {status: pending, pr: 4118}
-        windows: unknown
-      - id: bar-timing
-        name: Time a page or a query took
-        macos: yes
-        linux: {status: partial, pr: 4119, note: "query results show it; table pages in the pull request"}
-        windows: unknown
-      - id: bar-structure
-        name: Data and Structure in one tab
-        macos: yes
-        linux: {status: pending, pr: 4108, note: "one bar for it in 4111"}
-        windows: unknown
-      - id: bar-json
-        name: JSON view of the rows
-        macos: yes
+      - name: Columns button
+        linux: yes
+        windows: no
+      - name: Time a page or a query took
+        linux: yes
+        windows: yes
+      - name: Data and Structure in one tab
+        linux: yes
+        windows: no
+      - name: JSON view of the rows
         linux: {status: pending, pr: 4122, note: "table tabs; not query results"}
-        windows: unknown
-      - id: bar-chart
-        name: Chart view of a result
-        macos: yes
+        windows: no
+      - name: Chart view of a result
         linux: no
-        windows: unknown
-      - id: bar-map
-        name: Map view of a result
-        macos: yes
+        windows: no
+      - name: Map view of a result
         linux: no
-        windows: unknown
+        windows: no
 
   - name: Row details
     features:
-      - id: row-details-pane
-        name: Row details pane with an editor for the focused field
-        macos: yes
+      - name: Row details pane
         linux: yes
-        windows: unknown
-      - id: row-details-look
-        name: Field rows with type badge, key and edit marks
-        macos: yes
-        linux: {status: pending, pr: 4112}
-        windows: unknown
-      - id: row-details-search
-        name: Field search and edited-only filter
-        macos: yes
-        linux: {status: pending, pr: 4113}
-        windows: unknown
-      - id: row-details-inline
-        name: An editor inside each field row
-        macos: yes
-        linux: no
-        windows: unknown
-      - id: row-json
-        name: A row as JSON
-        macos: yes
-        linux: {status: partial, note: "a dialog from the grid menu, not a pane view"}
-        windows: unknown
+        windows: no
+      - name: Type, key and edit marks on a field
+        linux: yes
+        windows: no
+      - name: Foreign key mark on a field
+        linux: {status: pending, pr: 4131}
+        windows: no
+      - name: Field search and an edited-only filter
+        linux: yes
+        windows: no
+      - name: A field drawn as its name over its value
+        linux: {status: pending, pr: 4156}
+        windows: no
+      - name: An editor inside each field row
+        linux: {status: pending, pr: 4157}
+        windows: no
+      - name: A menu on each field
+        linux: {status: pending, pr: 4158}
+        windows: no
+      - name: A row as JSON
+        linux: {status: partial, note: "a dialog from the grid's menu, not a view of the row details"}
+        windows: no
 
   - name: SQL editor
     features:
-      - id: editor-basics
-        name: Highlighting, completion, snippets and formatting
-        macos: yes
+      - name: Highlighting, completion, snippets and formatting
         linux: yes
-        windows: unknown
-      - id: editor-database-switch
-        name: Move a query tab to another database
-        macos: yes
+        windows: {status: partial, note: "highlighting only"}
+      - name: Move a query tab to another database
         linux: yes
-        windows: unknown
-      - id: editor-scheme
-        name: The chosen colour scheme is drawn as chosen
-        macos: yes
-        linux: {status: pending, pr: 4109}
-        windows: unknown
-      - id: editor-divider
-        name: Dragging the results up keeps the query in view
-        macos: yes
-        linux: {status: pending, pr: 4120}
-        windows: unknown
-      - id: vim-mode
-        name: Vim keybindings
-        macos: yes
+        windows: no
+      - name: Color schemes
         linux: yes
-        windows: unknown
+        windows: no
+      - name: Vim keybindings
+        linux: yes
+        windows: no
 
   - name: Structure and schema
     features:
-      - id: structure-editor
-        name: Structure editor with a reviewed ALTER
-        macos: yes
+      - name: Structure editor with a reviewed ALTER
         linux: yes
-        windows: unknown
-      - id: er-diagram
-        name: ER diagram
-        macos: yes
+        windows: no
+      - name: ER diagram
         linux: yes
-        windows: unknown
+        windows: no
 
   - name: History, import and export
     features:
-      - id: query-history
-        name: Query history with search, pins and export
-        macos: yes
+      - name: Query history with search, pins and export
         linux: yes
-        windows: unknown
-      - id: saved-queries
-        name: Saved queries
-        macos: yes
+        windows: no
+      - name: Saved queries
         linux: yes
-        windows: unknown
-      - id: export-results
-        name: Export results (CSV, JSON, Markdown, HTML, XML, Excel, SQL)
-        macos: yes
+        windows: no
+      - name: Export results (CSV, JSON, Markdown, HTML, XML, Excel, SQL)
         linux: yes
-        windows: unknown
-      - id: sql-dump
-        name: Export a database as SQL and import a SQL file
-        macos: yes
+        windows: no
+      - name: Export a database as SQL and import a SQL file
         linux: yes
-        windows: unknown
+        windows: no
 
-  - name: Assistant, MCP and account
+  - name: Assistant, MCP, account and command line
     features:
-      - id: ai-assistant
-        name: AI assistant
-        macos: yes
+      - name: AI assistant
         linux: yes
-        windows: unknown
-      - id: mcp-server
-        name: MCP server for outside clients
-        macos: yes
+        windows: no
+      - name: MCP server for outside clients
         linux: yes
-        windows: unknown
-      - id: account
-        name: TablePro account and entitlement
-        macos: yes
+        windows: no
+      - name: TablePro account and entitlement
         linux: yes
-        windows: unknown
+        windows: no
+      - name: The `tablepro` command line tool
+        linux: {status: pending, pr: 4145}
+        windows: {status: no, note: "`tablepro.exe` opens the app and reads no arguments"}
 
   - name: Window toolbar
     features:
-      - id: toolbar-safe-mode
-        name: Safe Mode lock in the toolbar
-        macos: yes
+      - name: Safe Mode level in the toolbar
         linux: {status: pending, pr: 4124}
-        windows: unknown
-      - id: toolbar-refresh
-        name: Refresh button
-        macos: yes
-        linux: {status: pending, pr: 4125}
-        windows: unknown
-      - id: toolbar-save-changes
-        name: Save Changes check
-        macos: yes
-        linux: {status: pending, pr: 4126}
-        windows: unknown
-      - id: toolbar-chips
-        name: Connection and database chips
-        macos: yes
-        linux: {status: partial, note: "the title names the connection and the sidebar holds every open connection and database; no chips"}
-        windows: unknown
-      - id: toolbar-back-forward
-        name: Back and Forward through a tab's browse history
-        macos: yes
-        linux: {status: na, note: "a referenced row opens in a new tab here, where macOS retargets the tab"}
-        windows: unknown
-      - id: toolbar-actions-menu
-        name: Actions menu (Preview SQL, Show and Copy DDL, Users and Roles, Query Insights, Server Dashboard)
-        macos: yes
-        linux: {status: partial, note: "Show CREATE TABLE is in the sidebar's menu; the rest is not built"}
-        windows: unknown
-      - id: toolbar-reconnect
-        name: Reconnect after a lost connection
-        macos: yes
+        windows: no
+      - name: Refresh button
         linux: yes
-        windows: unknown
-        notes: On Linux it is the health banner's button.
+        windows: yes
+      - name: Save Changes button
+        linux: {status: pending, pr: 4126}
+        windows: no
+      - name: Connection and database chips
+        linux: {status: partial, note: "the title names the connection and the sidebar lists every open connection and database; no chips"}
+        windows: {status: partial, note: "the title bar names the connection; no database chip"}
+      - name: Back and Forward through a tab's browse history
+        linux: {status: na, note: "a referenced row opens in a new tab, where macOS moves the tab to it"}
+        windows: no
+      - name: Actions menu (Preview SQL, Show and Copy DDL, Users and Roles, Query Insights, Server Dashboard)
+        linux: {status: partial, note: "Show CREATE TABLE is in the sidebar's menu; the rest is not built"}
+        windows: no
+      - name: Reconnect after a lost connection
+        linux: yes
+        windows: yes
