@@ -15,6 +15,7 @@ enum TableHealthListState: Equatable {
     case failed(String)
     case noResults
     case ignoredHidden(Int)
+    case someChecksFailed(Int)
     case noResolved
 }
 
@@ -76,6 +77,9 @@ final class TableHealthViewModel: ObservableObject {
     var isSupported: Bool { provider != nil }
 
     var databaseName: String { database() }
+
+    // A tab restored from before tabs were bound to a database; it can only be closed and opened again.
+    var needsDatabase: Bool { databaseName.isEmpty }
 
     init(
         connectionId: UUID,
@@ -214,6 +218,11 @@ final class TableHealthViewModel: ObservableObject {
         }
     }
 
+    // The tab now names another database, after a rename: its history moved with it.
+    func reloadHistory() {
+        reloadLedger()
+    }
+
     private func historyDidChange(_ notification: Notification) {
         guard let changed = TableHealthHistoryChange.scope(of: notification),
               changed.connectionId == connectionId,
@@ -341,6 +350,10 @@ final class TableHealthViewModel: ObservableObject {
         return report?.result(for: kind)
     }
 
+    var failedCheckCount: Int {
+        report?.checks.filter { if case .failed = $0.outcome { return true } else { return false } }.count ?? 0
+    }
+
     // A check that failed but kept its earlier findings shows them under this line.
     var checkFailure: String? {
         guard let currentCheck, case .failed(let message) = currentCheck.outcome, !currentCheck.findings.isEmpty
@@ -374,12 +387,14 @@ final class TableHealthViewModel: ObservableObject {
         if !filterText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, scopeRowCount > 0 {
             return .noResults
         }
+        if scope == .all, failedCheckCount > 0 { return .someChecksFailed(failedCheckCount) }
         if hiddenIgnoredCount > 0 { return .ignoredHidden(hiddenIgnoredCount) }
         switch scope {
         case .all:
             return .noFindings(String(localized: "Every check that ran found nothing."))
         case .check:
-            return .noFindings(currentCheck?.check.summary ?? "")
+            // The summary already heads the pane.
+            return .noFindings("")
         case .resolved:
             return .noResolved
         }
@@ -413,6 +428,11 @@ final class TableHealthViewModel: ObservableObject {
     }
 
     // MARK: - Copy and export
+
+    // Edit > Copy from the table or the checks list: the selected findings the table shows.
+    func selectionTSV() -> String? {
+        tsv(for: selectedRows)
+    }
 
     func tsv(for rows: [TableHealthFindingRow]) -> String? {
         guard !rows.isEmpty else { return nil }

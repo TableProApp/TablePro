@@ -160,6 +160,14 @@ struct TableHealthExportDataSourceTests {
         }
     }
 
+    @Test("An empty object's size reads as a number, not spelled out")
+    func zeroSizeIsANumber() {
+        let zero = TableHealthColumn.byteSize(0)
+
+        #expect(zero.contains("0"))
+        #expect(zero != Int64(0).formatted(.byteCount(style: .file)))
+    }
+
     @Test("Copy keeps one line per row when a field holds tabs or line breaks")
     func copyFlattensFields() {
         let finding = TableHealthFinding(

@@ -7113,6 +7113,9 @@
     "%1$@ dead rows, %2$@ live. Never vacuumed." : {
 
     },
+    "%1$@ dead rows, %2$@ live. No vacuum recorded since the statistics were reset at %3$@." : {
+
+    },
     "%1$@ does not apply to a %2$@." : {
       "localizations" : {
         "fr" : {
@@ -12512,6 +12515,9 @@
       }
     },
     "^[%lld change](inflect: true)" : {
+
+    },
+    "^[%lld check](inflect: true) could not run. Select one to see why." : {
 
     },
     "^[%lld column](inflect: true)" : {
@@ -42111,6 +42117,9 @@
           }
         }
       }
+    },
+    "Close this tab and choose Database > Table Health." : {
+
     },
     "Close while work is still running?" : {
 
@@ -94820,6 +94829,9 @@
 
     },
     "Indexes whose keys lead another index with the same method, predicate and uniqueness; primary key and constraint indexes stay." : {
+
+    },
+    "Indexes whose keys lead another with the same method and predicate, a plain one under a unique one included; primary key and constraint indexes stay." : {
 
     },
     "Indexes with no recorded reads since the server started, leaving out unique, full-text and foreign key indexes." : {
@@ -170437,6 +170449,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Some Checks Failed" : {
+
+    },
     "Some columns in this preset don't exist in the current table" : {
       "localizations" : {
         "fr" : {
@@ -179827,6 +179842,9 @@
     "Table Health" : {
 
     },
+    "Table Health did not finish within the MCP query timeout of %lld seconds." : {
+
+    },
     "Table Health findings cannot run queries." : {
 
     },
@@ -182865,6 +182883,9 @@
           }
         }
       }
+    },
+    "Tables whose oldest unfrozen row is more than autovacuum_freeze_max_age transactions old (200,000,000 by default)." : {
+
     },
     "Tables whose oldest unfrozen row is more than autovacuum_freeze_max_age transactions old (200,000,000 unless set lower)." : {
 
@@ -194528,6 +194549,9 @@
           }
         }
       }
+    },
+    "The Table Health history file could not be read. The next refresh starts a new history and keeps the old file." : {
+
     },
     "The table is being read again after the save." : {
 

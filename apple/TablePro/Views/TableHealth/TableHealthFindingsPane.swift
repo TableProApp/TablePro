@@ -21,8 +21,14 @@ struct TableHealthFindingsPane: View {
         return summary
     }
 
+    // In All Findings with rows on screen; with none, the empty state says it instead.
+    private var failedChecks: Int {
+        guard viewModel.scope == .all, viewModel.listState == .rows else { return 0 }
+        return viewModel.failedCheckCount
+    }
+
     private var hasHeader: Bool {
-        summary != nil || viewModel.checkFailure != nil || !viewModel.notes.isEmpty
+        summary != nil || viewModel.checkFailure != nil || failedChecks > 0 || !viewModel.notes.isEmpty
     }
 
     private var header: some View {
@@ -32,6 +38,13 @@ struct TableHealthFindingsPane: View {
             }
             if let failure = viewModel.checkFailure {
                 Label(failure, systemImage: "exclamationmark.triangle")
+            }
+            if failedChecks > 0 {
+                Label {
+                    Text(Self.failedChecksText(failedChecks))
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle")
+                }
             }
             ForEach(viewModel.notes, id: \.self) { note in
                 Label(note, systemImage: "info.circle")
@@ -86,6 +99,12 @@ struct TableHealthFindingsPane: View {
             } actions: {
                 Button(String(localized: "Show Ignored")) { viewModel.showIgnored = true }
             }
+        case .someChecksFailed(let count):
+            UnavailableStateView {
+                Label(String(localized: "Some Checks Failed"), systemImage: "exclamationmark.triangle")
+            } description: {
+                Text(Self.failedChecksText(count))
+            }
         case .noResolved:
             UnavailableStateView(
                 String(localized: "No Resolved Findings"),
@@ -93,5 +112,9 @@ struct TableHealthFindingsPane: View {
                 description: Text("A finding moves here when a refresh no longer reports it.")
             )
         }
+    }
+
+    private static func failedChecksText(_ count: Int) -> LocalizedStringKey {
+        "^[\(count) check](inflect: true) could not run. Select one to see why."
     }
 }

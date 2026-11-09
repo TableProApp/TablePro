@@ -1,9 +1,17 @@
 import SwiftUI
 
+// The fix SQL is the pane's main content: the facts sit beside it, or under it in one line each when the pane is
+// too narrow, so they never push it out of view.
 struct TableHealthPreviewPane: View {
     @ObservedObject var viewModel: TableHealthViewModel
     let databaseType: DatabaseType
     let actions: TableHealthActions
+
+    private struct Fact: Identifiable {
+        let id: String
+        let label: String
+        let value: String
+    }
 
     var body: some View {
         let findings = viewModel.selectedFindings
@@ -21,6 +29,7 @@ struct TableHealthPreviewPane: View {
 
     private func single(_ finding: TableHealthFinding) -> some View {
         let fix = TableHealthViewModel.hasFix(finding) ? finding.fixSQL : nil
+        let facts = Self.facts(of: finding)
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Text(verbatim: finding.qualifiedName)
@@ -42,47 +51,104 @@ struct TableHealthPreviewPane: View {
             Text(verbatim: finding.detail)
                 .font(.callout)
                 .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            facts(finding)
-            if let fix {
-                SQLStatementPreview(
-                    prepared: SQLReviewSheet.build(statements: [fix], databaseType: databaseType),
-                    databaseType: databaseType
-                )
-                .id(finding.id)
-                previewNote
+                .lineLimit(2)
+                .help(finding.detail)
+            if facts.isEmpty {
+                fixArea(fix, id: finding.id)
             } else {
-                Text("This finding has no SQL fix.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 12) {
+                        fixArea(fix, id: finding.id)
+                            .frame(
+                                minWidth: 0,
+                                idealWidth: TableHealthLayoutMetrics.previewSQLIdealWidth,
+                                maxWidth: .infinity,
+                                maxHeight: .infinity
+                            )
+                        ScrollView {
+                            factsColumn(facts)
+                        }
+                        .frame(width: TableHealthLayoutMetrics.previewFactsWidth)
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        fixArea(fix, id: finding.id)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        factsGrid(facts)
+                    }
+                }
+            }
+            if fix != nil {
+                previewNote
             }
         }
         .padding(12)
     }
 
     @ViewBuilder
-    private func facts(_ finding: TableHealthFinding) -> some View {
-        if finding.sizeBytes != nil || !finding.metrics.isEmpty {
-            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 4) {
-                if let size = finding.sizeBytes {
-                    GridRow {
-                        Text(verbatim: TableHealthColumn.size.title)
-                            .foregroundStyle(.secondary)
-                        Text(verbatim: ByteSizeFormatting.string(bytes: size))
-                    }
-                }
-                ForEach(finding.metrics, id: \.id) { metric in
-                    GridRow {
-                        Text(verbatim: metric.label)
-                            .foregroundStyle(.secondary)
-                        Text(verbatim: metric.formattedValue)
-                    }
+    private func fixArea(_ fix: String?, id: TableHealthFindingID) -> some View {
+        if let fix {
+            SQLStatementPreview(
+                prepared: SQLReviewSheet.build(statements: [fix], databaseType: databaseType),
+                databaseType: databaseType
+            )
+            .id(id)
+        } else {
+            Text("This finding has no SQL fix.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    // Each label over its value, which wraps: a definition is longer than the column.
+    private func factsColumn(_ facts: [Fact]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(facts) { fact in
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(verbatim: fact.label)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(verbatim: fact.value)
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .font(.callout)
-            .textSelection(.enabled)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .textSelection(.enabled)
+    }
+
+    private func factsGrid(_ facts: [Fact]) -> some View {
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 2) {
+            ForEach(facts) { fact in
+                GridRow {
+                    Text(verbatim: fact.label)
+                        .foregroundStyle(.secondary)
+                    Text(verbatim: fact.value)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .help(fact.value)
+                }
+            }
+        }
+        .font(.callout)
+    }
+
+    private static func facts(of finding: TableHealthFinding) -> [Fact] {
+        var facts: [Fact] = []
+        if let size = finding.sizeBytes {
+            facts.append(Fact(id: "size_bytes", label: TableHealthColumn.size.title, value: TableHealthColumn.byteSize(size)))
+        }
+        for metric in finding.metrics {
+            let value: String
+            if case .bytes(let bytes) = metric.value {
+                value = TableHealthColumn.byteSize(bytes)
+            } else {
+                value = metric.formattedValue
+            }
+            facts.append(Fact(id: metric.id, label: metric.label, value: value))
+        }
+        return facts
     }
 
     private func several(_ findings: [TableHealthFinding]) -> some View {

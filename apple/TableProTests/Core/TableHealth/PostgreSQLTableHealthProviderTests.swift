@@ -354,10 +354,22 @@ struct PostgreSQLTableHealthProviderTests {
     }
 
     // TimescaleDB's chunk tables are not extension members, but their schema is.
+    // The queries a check runs on a server too old for some of them, on a current one, and on one whose version did not read.
+    private func everyServerQuery(for check: TableHealthCheckKind) -> [String] {
+        let servers = [TableHealthStatistics(), statistics(version: "110000"), statistics(version: "170011")]
+        var queries: [String] = []
+        for server in servers {
+            for query in provider.queries(for: check, statistics: server) where !queries.contains(query) {
+                queries.append(query)
+            }
+        }
+        return queries
+    }
+
     @Test("Every check query leaves out extension members, by relation and by schema")
     func everyQueryLeavesOutExtensions() {
         for check in provider.checks {
-            for query in provider.queries(for: check, statistics: TableHealthStatistics()) {
+            for query in everyServerQuery(for: check) {
                 #expect(query.contains("'pg_catalog.pg_class'::pg_catalog.regclass"), "\(check.rawValue) keeps extension relations")
                 #expect(query.contains("'pg_catalog.pg_namespace'::pg_catalog.regclass"), "\(check.rawValue) keeps extension schemas")
                 #expect(query.contains("deptype = 'e'"), "\(check.rawValue) keeps extension members")
@@ -367,8 +379,7 @@ struct PostgreSQLTableHealthProviderTests {
 
     @Test("Every query the report runs only reads")
     func queriesOnlyRead() {
-        let queries = provider.statisticsQueries
-            + provider.checks.flatMap { provider.queries(for: $0, statistics: TableHealthStatistics()) }
+        let queries = provider.statisticsQueries + provider.checks.flatMap { everyServerQuery(for: $0) }
         for query in queries {
             let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
             #expect(text.uppercased().hasPrefix("SELECT"), "\(text.prefix(40)) does not start with SELECT")
@@ -643,7 +654,7 @@ struct PostgreSQLTableHealthProviderTests {
     @Test("The wraparound summary states the freeze age it compares against")
     func transactionIdAgeSummary() {
         #expect(provider.check(.transactionIdAge).summary.contains("autovacuum_freeze_max_age"))
-        #expect(provider.check(.transactionIdAge).summary.contains("200,000,000"))
+        #expect(provider.check(.transactionIdAge).summary.contains("200,000,000 by default"))
         #expect(provider.check(.staleStatistics).summary.contains("10%"))
         #expect(provider.check(.staleStatistics).summary.contains("50"))
     }
@@ -690,5 +701,50 @@ struct PostgreSQLTableHealthProviderTests {
         #expect(found[1].metric("live_rows") == nil)
         #expect(found[1].metric("modified_rows") == nil)
         #expect(found[1].fixSQL == #"ANALYZE "public"."st_part";"#)
+    }
+
+    @Test("The redundant index summary says a plain index under a unique one counts, as the rule flags it")
+    func redundantSummaryNamesUniqueCover() {
+        #expect(provider.check(.redundantIndex).summary.contains("a plain one under a unique one"))
+    }
+
+    @Test("A bloated table with no vacuum since the statistics were reset says so, not that it was never vacuumed")
+    func noVacuumSinceReset() throws {
+        let reset = Date(timeIntervalSince1970: 1_800_000_000)
+        let finding = try #require(findings(
+            .bloat,
+            columns: ["schema_name", "table_name", "live_rows", "dead_rows", "last_vacuum", "table_bytes", "stats_reset"],
+            rows: [["public", "orders", "2000", "3000", nil, "81920", "1800000000"]]
+        ).first)
+        #expect(finding.detail.contains(TableHealthFormatting.date(reset)))
+        #expect(!finding.detail.contains("Never vacuumed"))
+        #expect(finding.metric("last_vacuum") == nil)
+    }
+
+    @Test("A table whose counters were emptied but still has statistics is stale by its modified rows, not never analyzed")
+    func emptiedCountersAreNotNeverAnalyzed() throws {
+        let finding = try #require(findings(
+            .staleStatistics,
+            columns: Self.staleColumns,
+            rows: [["public", "st_reset", "r", "5000", "1000", "550", "f", nil, "245760"]]
+        ).first)
+        #expect(finding.detail == String(
+            format: String(localized: "%1$@ rows modified since it was last analyzed, more than the %2$@ that start an autoanalyze."),
+            (1_000 as Int64).formatted(), (550 as Int64).formatted()
+        ))
+        #expect(finding.metric("never_analyzed")?.value == .flag(false))
+        #expect(finding.metric("last_analyze") == nil)
+    }
+
+    @Test("From PostgreSQL 12 only an index build hides its table's invalid indexes; before, or unread, any holder of its lock does")
+    func invalidIndexQueryByVersion() {
+        for version in ["120000", "170011"] {
+            #expect(provider.queries(for: .invalidIndex, statistics: statistics(version: version))
+                == [PostgreSQLTableHealthProvider.invalidIndexQuery])
+        }
+        #expect(provider.queries(for: .invalidIndex, statistics: statistics(version: "110000"))
+            == [PostgreSQLTableHealthProvider.invalidIndexBefore12Query])
+        #expect(provider.queries(for: .invalidIndex, statistics: TableHealthStatistics())
+            == [PostgreSQLTableHealthProvider.invalidIndexBefore12Query])
     }
 }

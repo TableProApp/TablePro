@@ -4,7 +4,7 @@ import TableProMCP
 
 extension MCPConnectionBridge {
     // Reads the stored history and never records this run, so the tab's New and Resolved stay its own.
-    func tableHealth(scope: DatabaseScope) async throws -> JsonValue {
+    func tableHealth(scope: DatabaseScope, timeoutSeconds: Int) async throws -> JsonValue {
         let databaseType = try await ensureConnected(scope.connectionId)
         guard let provider = TableHealthProviderFactory.provider(for: databaseType) else {
             throw MCPToolExecutionError.unsupported(
@@ -18,12 +18,38 @@ extension MCPConnectionBridge {
         }
         let ledger = try await Self.tableHealthLedger(connectionId: scope.connectionId, database: scope.database)
         // The checks cover every schema, as the Table Health tab does.
-        let report = try await TableHealthReportLoader.load(
-            provider: provider,
-            scope: DatabaseScope(connectionId: scope.connectionId, database: scope.database, schema: nil),
-            metadata: DatabaseManager.shared
-        )
+        let reportScope = DatabaseScope(connectionId: scope.connectionId, database: scope.database, schema: nil)
+        let report = try await Self.withinTableHealthTimeout(seconds: timeoutSeconds) {
+            try await TableHealthReportLoader.load(provider: provider, scope: reportScope, metadata: DatabaseManager.shared)
+        }
         return Self.tableHealthPayload(report, ledger: ledger)
+    }
+
+    // The race runRacingTimeout runs for a statement. A metadata read cannot be aborted on the server, so on a timeout
+    // the checks stop before their next statement and the reply waits only for the one already running.
+    static func withinTableHealthTimeout<T: Sendable>(
+        seconds: Int,
+        _ body: @Sendable @escaping () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                try await body()
+            }
+            group.addTask {
+                try await Task.sleep(for: .seconds(seconds))
+                throw DatabaseAccessError.timeout(
+                    String(
+                        format: String(localized: "Table Health did not finish within the MCP query timeout of %lld seconds."),
+                        seconds
+                    )
+                )
+            }
+            guard let first = try await group.next() else {
+                throw CancellationError()
+            }
+            group.cancelAll()
+            return first
+        }
     }
 
     private static func tableHealthLedger(connectionId: UUID, database: String) async throws -> TableHealthLedger {

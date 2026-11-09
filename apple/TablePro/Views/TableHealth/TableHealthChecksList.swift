@@ -34,6 +34,10 @@ struct TableHealthChecksList: View {
                 Button(String(localized: "Clear Resolved")) { viewModel.clearResolved() }
             }
         }
+        // Without it Edit > Copy falls through to the window, which copies the sidebar's table names.
+        .onCopyCommand {
+            TableHealthCopy.providers(viewModel.selectionTSV())
+        }
     }
 
     // A List cannot deselect into nothing here: some scope is always shown.

@@ -1,6 +1,7 @@
 import Foundation
 @testable import TablePro
 import TableProMCP
+import TableProTestSupport
 import Testing
 
 struct GetTableHealthToolTests {
@@ -198,6 +199,41 @@ struct GetTableHealthToolTests {
         let metric = encoded["metrics"]?.arrayValue?.first
         #expect(keys(metric) == keys(metricSchema?["properties"]))
         #expect(required(metricSchema) == keys(metric))
+    }
+
+    @Test("Checks that outlast the MCP query timeout fail as a timeout, once the statement in flight returns")
+    func timeoutStopsTheChecks() async {
+        let inFlight = AsyncGate()
+        let cancelled = AsyncGate()
+        let call = Task {
+            try await MCPConnectionBridge.withinTableHealthTimeout(seconds: 0) {
+                try await withTaskCancellationHandler {
+                    await inFlight.wait()
+                    try Task.checkCancellation()
+                    return 1
+                } onCancel: {
+                    Task { await cancelled.open() }
+                }
+            }
+        }
+
+        await cancelled.wait()
+        await inFlight.open()
+        let outcome = await call.result
+
+        var thrown: (any Error)?
+        if case .failure(let error) = outcome {
+            thrown = error
+        }
+        let mapped = (thrown as? DatabaseAccessError).map { MCPToolExecutionError.from($0) }
+        #expect(mapped?.code == .timeout)
+        #expect(mapped?.message == "Table Health did not finish within the MCP query timeout of 0 seconds.")
+    }
+
+    @Test("Checks that finish within the MCP query timeout return their report")
+    func checksWithinTheTimeoutReturn() async throws {
+        let value = try await MCPConnectionBridge.withinTableHealthTimeout(seconds: 60) { 7 }
+        #expect(value == 7)
     }
 
     @Test("get_table_health is a registered read-only tool taking a connection and a database")

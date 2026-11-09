@@ -306,15 +306,18 @@ struct TableHealthViewModelTests {
         #expect(!viewModel.isRefreshing)
     }
 
-    @Test("A tab with no database asks for one and reads nothing")
+    @Test("A tab with no database says to open Table Health again, and reads nothing")
     func noDatabaseAsksForOne() async {
         let metadata = HealthMetadata()
         let viewModel = makeViewModel(metadata, database: BoundDatabase(""))
 
         await viewModel.refresh()
 
+        #expect(viewModel.needsDatabase)
         #expect(viewModel.loadError == TableHealthError.noDatabase.errorDescription)
+        #expect(TableHealthError.noDatabase.errorDescription == "Close this tab and choose Database > Table Health.")
         #expect(metadata.leases.isEmpty)
+        #expect(!makeViewModel(metadata).needsDatabase)
     }
 
     @Test("A lost connection says so once, and a later refresh clears it")
@@ -587,5 +590,81 @@ struct TableHealthViewModelTests {
         let script = try #require(viewModel.fixText(for: findings, databaseType: .postgresql))
         #expect(script.hasPrefix("-- "))
         #expect(findings.allSatisfy { finding in finding.fixSQL.map { script.contains($0) } ?? false })
+    }
+
+    @Test("All Findings says that checks failed when they did and nothing else was found")
+    func allFindingsSaysChecksFailed() async {
+        let metadata = HealthMetadata()
+        metadata.server.failsMissingKeyCheck = true
+        let viewModel = makeViewModel(metadata)
+
+        await viewModel.refresh()
+
+        #expect(viewModel.rows.isEmpty)
+        #expect(viewModel.failedCheckCount == 1)
+        #expect(viewModel.listState == .someChecksFailed(1))
+    }
+
+    @Test("All Findings keeps the rows it has when a check fails, and counts the failure")
+    func allFindingsKeepsRowsUnderAFailure() async {
+        let metadata = HealthMetadata()
+        let viewModel = makeViewModel(metadata)
+        await viewModel.refresh()
+
+        metadata.server.failsMissingKeyCheck = true
+        await viewModel.refresh()
+
+        #expect(viewModel.listState == .rows)
+        #expect(viewModel.failedCheckCount == 1)
+    }
+
+    @Test("A check that found nothing leaves its description to the pane's header")
+    func cleanCheckStatesItsSummaryOnce() async {
+        let metadata = HealthMetadata()
+        metadata.server.tablesWithoutKey = []
+        let viewModel = makeViewModel(metadata)
+        await viewModel.refresh()
+
+        viewModel.scope = .check(.missingPrimaryKey)
+
+        #expect(viewModel.listState == .noFindings(""))
+        #expect(viewModel.currentCheck?.check.summary.isEmpty == false)
+    }
+
+    @Test("Copy writes the selected findings the table shows, whichever list has focus")
+    func selectionCopyUsesShownRows() async throws {
+        let metadata = HealthMetadata()
+        metadata.server.tablesWithoutKey = ["logs", "events"]
+        let viewModel = makeViewModel(metadata)
+        await viewModel.refresh()
+        let logs = try #require(row(viewModel, table: "logs"))
+        let events = try #require(row(viewModel, table: "events"))
+        viewModel.selection = [logs.id, events.id]
+
+        viewModel.filterText = "events"
+        let text = try #require(viewModel.selectionTSV())
+
+        let lines = text.components(separatedBy: "\n")
+        #expect(lines.count == 2)
+        #expect(lines[1].contains("public.events"))
+
+        viewModel.selection = []
+        #expect(viewModel.selectionTSV() == nil)
+    }
+
+    @Test("A history reload reads the database the tab names now")
+    func reloadHistoryFollowsTheTab() async throws {
+        let metadata = HealthMetadata()
+        let history = InMemoryHistory()
+        let database = BoundDatabase("shop")
+        let viewModel = makeViewModel(metadata, history: history, database: database)
+        await viewModel.refresh()
+        let logs = try #require(row(viewModel, table: "logs"))
+        history.ledgers["shop_v2"] = (history.ledgers["shop"] ?? TableHealthLedger()).ignoring([logs.id], at: Date())
+
+        database.name = "shop_v2"
+        viewModel.reloadHistory()
+
+        #expect(row(viewModel, table: "logs")?.status == .ignored)
     }
 }

@@ -12,7 +12,7 @@ struct TableHealthFindingsTable: View {
             TableColumn(TableHealthColumn.status.title, value: \TableHealthFindingRow.statusRank) { row in
                 Text(verbatim: TableHealthColumn.status.text(for: row))
             }
-            .width(min: 44, ideal: 56, max: 90)
+            .width(min: 40, ideal: 52, max: 60)
             TableColumn(TableHealthColumn.check.title, value: \TableHealthFindingRow.checkOrder) { row in
                 Text(verbatim: row.checkTitle)
                     .lineLimit(1)
@@ -66,7 +66,7 @@ struct TableHealthFindingsTable: View {
             }
         }
         .onCopyCommand {
-            TableHealthCopy.providers(viewModel.tsv(for: viewModel.selectedRows))
+            TableHealthCopy.providers(viewModel.selectionTSV())
         }
     }
 
@@ -178,7 +178,7 @@ struct TableHealthResolvedTable: View {
             Button(String(localized: "Clear Resolved")) { viewModel.clearResolved() }
         }
         .onCopyCommand {
-            TableHealthCopy.providers(viewModel.tsv(for: viewModel.selectedRows))
+            TableHealthCopy.providers(viewModel.selectionTSV())
         }
     }
 }

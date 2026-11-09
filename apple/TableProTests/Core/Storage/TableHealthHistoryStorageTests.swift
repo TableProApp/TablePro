@@ -172,21 +172,43 @@ struct TableHealthHistoryStorageTests {
         #expect(reread.firstSeen(orders.id) == Self.day(1))
     }
 
-    @Test("An unreadable file is set aside under a free name and never written over")
-    func unreadableFileIsSetAside() throws {
+    @Test("A read, or a change that writes nothing, reports an unreadable file and leaves it where it is")
+    func readLeavesUnreadableFile() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("{ not json".utf8).write(to: fileURL)
+        let store = makeStore()
+        var readError: (any Error)?
+        var clearError: (any Error)?
+
+        do {
+            _ = try store.ledger(connectionId: connectionId, database: "shop")
+        } catch {
+            readError = error
+        }
+        do {
+            _ = try store.clearResolved(connectionId: connectionId, database: "shop")
+        } catch {
+            clearError = error
+        }
+
+        #expect(readError as? TableHealthHistoryStorageError == .unreadable)
+        #expect(clearError as? TableHealthHistoryStorageError == .unreadable)
+        #expect(try String(contentsOf: fileURL, encoding: .utf8) == "{ not json")
+        #expect(!FileManager.default.fileExists(atPath: corruptFileURL(1).path))
+    }
+
+    @Test("A write sets an unreadable file aside under a free name before it replaces it")
+    func writeSetsUnreadableFileAside() throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try Data("older copy".utf8).write(to: corruptFileURL(1))
         try Data("{ not json".utf8).write(to: fileURL)
         let store = makeStore()
 
-        #expect(try store.ledger(connectionId: connectionId, database: "shop") == TableHealthLedger())
-        #expect(try String(contentsOf: corruptFileURL(1), encoding: .utf8) == "older copy")
-        #expect(try String(contentsOf: corruptFileURL(2), encoding: .utf8) == "{ not json")
-
         _ = try store.record(report([orders]), connectionId: connectionId, database: "shop", at: Self.day(1))
 
-        #expect(try makeStore().ledger(connectionId: connectionId, database: "shop").firstSeen(orders.id) == Self.day(1))
+        #expect(try String(contentsOf: corruptFileURL(1), encoding: .utf8) == "older copy")
         #expect(try String(contentsOf: corruptFileURL(2), encoding: .utf8) == "{ not json")
+        #expect(try makeStore().ledger(connectionId: connectionId, database: "shop").firstSeen(orders.id) == Self.day(1))
     }
 
     @Test("A write that cannot land throws and posts nothing")

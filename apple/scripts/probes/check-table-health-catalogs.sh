@@ -290,7 +290,7 @@ INSERT INTO ext_schema.chunk SELECT g FROM generate_series(1, 100) g;
 SQL
     local query output
     for query in bloatQuery unusedIndexQuery redundantIndexQuery missingPrimaryKeyQuery unindexedForeignKeyQuery \
-        invalidIndexQuery staleStatisticsQuery transactionIdAgeQuery; do
+        invalidIndexQuery invalidIndexBefore12Query staleStatisticsQuery transactionIdAgeQuery; do
         output="$(pg -d "$DATABASE" -c "$(query_of "$source" "$query")")"
         expect "$query skips an extension's table" "$output" "ext_owned" no
         expect "$query skips a table in an extension's schema" "$output" "ext_schema" no
@@ -422,6 +422,9 @@ SQL
 }
 
 check_postgres_invalid_indexes() {
+    # The provider picks its literal by version: only 12+ has pg_stat_progress_create_index.
+    local query=invalidIndexBefore12Query
+    [ "$version" -ge 120000 ] && query=invalidIndexQuery
     pg -d "$DATABASE" > /dev/null <<'SQL'
 CREATE TABLE inv (id int PRIMARY KEY, v int, w int);
 INSERT INTO inv SELECT g, g % 10, g FROM generate_series(1, 1000) g;
@@ -452,11 +455,14 @@ SQL
         sleep 0.25
     done
     local invalid
-    invalid="$(pg -d "$DATABASE" -c "$(query_of "$source" invalidIndexQuery)")"
+    invalid="$(pg -d "$DATABASE" -c "$(query_of "$source" "$query")")"
     expect "invalid indexes leave out a table with a build running" "$invalid" "|inv|" no
+    local unused
+    unused="$(pg -d "$DATABASE" -c "$(query_of "$source" unusedIndexQuery)")"
+    expect "unused indexes skip an index still being built" "$unused" "inv_building" no
     wait "$builder"
 
-    invalid="$(pg -d "$DATABASE" -c "$(query_of "$source" invalidIndexQuery)")"
+    invalid="$(pg -d "$DATABASE" -c "$(query_of "$source" "$query")")"
     expect "invalid indexes list a failed unique build, never ready" "$invalid" "public|inv|inv_v_uniq|t|f|" yes
     expect "invalid indexes list a cancelled build, still updated by writes" "$invalid" "public|inv|inv_vw_cancelled|f|t|" yes
     expect "invalid indexes skip a build that finished" "$invalid" "inv_building" no
@@ -469,6 +475,25 @@ SQL
     local shape
     shape="$(pg -d "$DATABASE" -c "$(query_of "$source" redundantIndexQuery)")"
     expect "index shape skips an invalid index" "$shape" "inv_vw_cancelled" no
+    unused="$(pg -d "$DATABASE" -c "$(query_of "$source" unusedIndexQuery)")"
+    expect "unused indexes skip an invalid index, which the invalid index check owns" "$unused" "inv_vw_cancelled" no
+
+    # Autovacuum and ANALYZE take the lock a build holds. From 12 on, only a build hides its table's leftovers.
+    if [ "$version" -ge 120000 ]; then
+        PGAPPNAME=tablepro_health_lock psql -X -q -h "$HOST" -p "$PORT" -U "$USER_NAME" -d "$DATABASE" \
+            -c "BEGIN; LOCK TABLE inv IN SHARE UPDATE EXCLUSIVE MODE; SELECT pg_sleep(30); COMMIT;" > /dev/null 2>&1 &
+        local locker=$!
+        for _ in $(seq 1 20); do
+            [ "$(pg -d "$DATABASE" -c "SELECT count(*) FROM pg_locks WHERE relation = 'inv'::regclass AND mode = 'ShareUpdateExclusiveLock' AND granted")" = "1" ] && break
+            sleep 0.25
+        done
+        invalid="$(pg -d "$DATABASE" -c "$(query_of "$source" invalidIndexQuery)")"
+        expect "invalid indexes stay listed while something other than a build holds the table's lock" "$invalid" "public|inv|inv_vw_cancelled|" yes
+        invalid="$(pg -d "$DATABASE" -c "$(query_of "$source" invalidIndexBefore12Query)")"
+        expect "before 12 the same lock hides them, which is why that query is kept for old servers only" "$invalid" "|inv|" no
+        terminate tablepro_health_lock
+        wait "$locker" 2> /dev/null
+    fi
 
     # The fixes exactly as PostgreSQLTableHealthProviderTests pins them.
     if [ "$version" -ge 120000 ]; then
@@ -480,7 +505,7 @@ SQL
         pg -d "$DATABASE" -c 'DROP INDEX CONCURRENTLY "public"."inv_vw_cancelled";' > /dev/null
         pg -d "$DATABASE" -c 'CREATE INDEX CONCURRENTLY inv_vw_cancelled ON public.inv USING btree (v, w);' > /dev/null
     fi
-    invalid="$(pg -d "$DATABASE" -c "$(query_of "$source" invalidIndexQuery)")"
+    invalid="$(pg -d "$DATABASE" -c "$(query_of "$source" "$query")")"
     expect "the previewed rebuild clears its finding" "$invalid" "|inv_vw_cancelled|" no
     expect "the previewed drop of a leftover copy clears its finding" "$invalid" "|inv_w_idx_ccnew|" no
 }
@@ -611,6 +636,19 @@ SQL
         sleep 1
     done
     expect "the previewed analyze clears its findings" "$stale" "|st_" no
+
+    # A reset, a crash or a failover empties last_analyze with the counters; pg_stats still says the table was analyzed.
+    if pg -d "$DATABASE" -c "SELECT pg_catalog.pg_stat_reset()" > /dev/null 2>&1; then
+        pg -d "$DATABASE" -c "INSERT INTO st_stale SELECT g, g FROM generate_series(5001, 5100) g" > /dev/null
+        for _ in $(seq 1 10); do
+            [ "$(pg -d "$DATABASE" -c "SELECT n_live_tup > 0 FROM pg_stat_user_tables WHERE relname = 'st_stale'")" = "t" ] && break
+            sleep 1
+        done
+        stale="$(pg -d "$DATABASE" -c "$(query_of "$source" staleStatisticsQuery)")"
+        expect "stale statistics trust pg_stats over counters a reset emptied" "$stale" "|st_stale|" no
+    else
+        echo "note  this user cannot call pg_stat_reset(), so the emptied counters case is skipped"
+    fi
 }
 
 check_postgres_transaction_id_age() {

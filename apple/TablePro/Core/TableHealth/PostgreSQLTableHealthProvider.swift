@@ -21,14 +21,18 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
         WHERE d.datname = pg_catalog.current_database()
         """
 
-    // The floor keeps tiny tables out. A pg_ schema is another session's temporary one.
+    // The floor keeps tiny tables out. A pg_ schema is another session's temporary one. A reset, a crash or a failover
+    // empties last_vacuum along with the counters, so the reset time says how far back "no vacuum" reaches.
     static let bloatQuery = """
         SELECT s.schemaname AS schema_name,
                s.relname AS table_name,
                s.n_live_tup AS live_rows,
                s.n_dead_tup AS dead_rows,
                pg_catalog.date_part('epoch', GREATEST(s.last_vacuum, s.last_autovacuum)) AS last_vacuum,
-               pg_catalog.pg_table_size(c.oid) AS table_bytes
+               pg_catalog.pg_table_size(c.oid) AS table_bytes,
+               (SELECT pg_catalog.date_part('epoch', d.stats_reset)
+                FROM pg_catalog.pg_stat_database d
+                WHERE d.datname = pg_catalog.current_database()) AS stats_reset
         FROM pg_catalog.pg_stat_user_tables s
         JOIN pg_catalog.pg_class c ON c.oid = s.relid
         WHERE c.relkind = 'r'
@@ -53,7 +57,8 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
     // A unique or constraint index enforces something no scan counts, an index a foreign key's
     // checks use is needed the first time the referenced table deletes, and a partition's index
     // that a parent index owns cannot be dropped alone. The foreign key test is the one
-    // unindexedForeignKeyQuery uses.
+    // unindexedForeignKeyQuery uses. An invalid index, a build still running included, is the
+    // invalid index check's.
     static let unusedIndexQuery = """
         SELECT s.schemaname AS schema_name,
                s.relname AS table_name,
@@ -66,11 +71,11 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
           AND t.relkind = 'r'
           AND pg_catalog.left(s.schemaname, 3) <> 'pg_'
           AND NOT i.indisunique
+          AND i.indisvalid
           AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conindid = s.indexrelid)
           AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_inherits h WHERE h.inhrelid = s.indexrelid)
           AND NOT (
               i.indpred IS NULL
-              AND i.indisvalid
               AND EXISTS (
                   SELECT 1 FROM pg_catalog.pg_constraint fk
                   WHERE fk.contype = 'f'
@@ -231,10 +236,51 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
         ORDER BY n.nspname, t.relname, ic.relname, p.position
         """
 
-    // A build still running holds SHARE UPDATE EXCLUSIVE on its table for the whole build, which any role can see in
-    // pg_locks. An index built ON ONLY a partitioned table (relkind I) stays invalid by design until every partition
-    // attaches one, so it is not a leftover.
+    // A build still running holds SHARE UPDATE EXCLUSIVE on its table for the whole build, and from 12 on its backend
+    // shows in pg_stat_progress_create_index, pid included for any role. Autovacuum and ANALYZE take the same lock, so
+    // the lock alone would hide a leftover while they run. An index built ON ONLY a partitioned table (relkind I) stays
+    // invalid by design until every partition attaches one, so it is not a leftover.
     static let invalidIndexQuery = """
+        SELECT n.nspname AS schema_name,
+               t.relname AS table_name,
+               c.relname AS index_name,
+               i.indisunique AS is_unique,
+               i.indisready AS is_ready,
+               pg_catalog.pg_relation_size(i.indexrelid) AS index_bytes,
+               pg_catalog.pg_get_indexdef(i.indexrelid) AS index_definition
+        FROM pg_catalog.pg_index i
+        JOIN pg_catalog.pg_class c ON c.oid = i.indexrelid
+        JOIN pg_catalog.pg_class t ON t.oid = i.indrelid
+        JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
+        WHERE NOT i.indisvalid
+          AND c.relkind = 'i'
+          AND pg_catalog.left(n.nspname, 3) <> 'pg_'
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_catalog.pg_locks l
+              WHERE l.locktype = 'relation'
+                AND l.database = (SELECT d.oid FROM pg_catalog.pg_database d WHERE d.datname = pg_catalog.current_database())
+                AND l.relation = i.indrelid
+                AND l.mode = 'ShareUpdateExclusiveLock'
+                AND l.granted
+                AND l.pid IN (SELECT p.pid FROM pg_catalog.pg_stat_progress_create_index p)
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_catalog.pg_depend x
+              WHERE x.classid OPERATOR(pg_catalog.=) 'pg_catalog.pg_class'::pg_catalog.regclass
+                AND x.objid = t.oid
+                AND x.deptype = 'e'
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_catalog.pg_depend x
+              WHERE x.classid OPERATOR(pg_catalog.=) 'pg_catalog.pg_namespace'::pg_catalog.regclass
+                AND x.objid = t.relnamespace
+                AND x.deptype = 'e'
+          )
+        ORDER BY n.nspname, t.relname, c.relname
+        """
+
+    // Before 12 there is no progress view, so any holder of the lock hides the table's invalid indexes for a while.
+    static let invalidIndexBefore12Query = """
         SELECT n.nspname AS schema_name,
                t.relname AS table_name,
                c.relname AS index_name,
@@ -442,8 +488,10 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
         """
 
     // Autoanalyze's default rule: more rows modified than 10% of reltuples plus 50. reltuples is -1 before the
-    // first analyze on 14+. Autovacuum never analyzes a partitioned table, and its activity counters stay empty, so
-    // a parent counts as never analyzed while pg_stats holds no inherited rows for it.
+    // first analyze on 14+. A reset, a crash or a failover empties last_analyze with the counters, so a table counts
+    // as never analyzed only while pg_stats also holds nothing for it. Autovacuum never analyzes a partitioned
+    // table, and its activity counters stay empty, so a parent counts as never analyzed while pg_stats holds no
+    // inherited rows for it.
     static let staleStatisticsQuery = """
         SELECT n.nspname AS schema_name,
                c.relname AS table_name,
@@ -455,6 +503,8 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                     THEN NOT EXISTS (SELECT 1 FROM pg_catalog.pg_stats st
                                      WHERE st.schemaname = n.nspname AND st.tablename = c.relname AND st.inherited)
                     ELSE s.last_analyze IS NULL AND s.last_autoanalyze IS NULL
+                         AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_stats st
+                                         WHERE st.schemaname = n.nspname AND st.tablename = c.relname AND NOT st.inherited)
                END AS never_analyzed,
                pg_catalog.date_part('epoch', GREATEST(s.last_analyze, s.last_autoanalyze)) AS last_analyze,
                pg_catalog.pg_table_size(c.oid) AS table_bytes
@@ -489,7 +539,9 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_stats st
                                WHERE st.schemaname = n.nspname AND st.tablename = c.relname AND st.inherited))
               OR (c.relkind <> 'p'
-                  AND ((s.last_analyze IS NULL AND s.last_autoanalyze IS NULL AND s.n_live_tup > 0)
+                  AND ((s.last_analyze IS NULL AND s.last_autoanalyze IS NULL AND s.n_live_tup > 0
+                        AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_stats st
+                                        WHERE st.schemaname = n.nspname AND st.tablename = c.relname AND NOT st.inherited))
                        OR s.n_mod_since_analyze::pg_catalog.float8 > th.analyze_threshold))
           )
         ORDER BY modified_rows DESC, n.nspname, c.relname
@@ -517,7 +569,7 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
             ))
         case .redundantIndex:
             return TableHealthCheck(kind: kind, summary: String(
-                localized: "Indexes whose keys lead another index with the same method, predicate and uniqueness; primary key and constraint indexes stay."
+                localized: "Indexes whose keys lead another with the same method and predicate, a plain one under a unique one included; primary key and constraint indexes stay."
             ))
         case .invalidIndex:
             return TableHealthCheck(kind: kind, summary: String(
@@ -529,7 +581,7 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
             ))
         case .transactionIdAge:
             return TableHealthCheck(kind: kind, summary: String(
-                localized: "Tables whose oldest unfrozen row is more than autovacuum_freeze_max_age transactions old (200,000,000 unless set lower)."
+                localized: "Tables whose oldest unfrozen row is more than autovacuum_freeze_max_age transactions old (200,000,000 by default)."
             ))
         case .staleStatistics:
             return TableHealthCheck(kind: kind, summary: String(
@@ -545,7 +597,8 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
         case .bloat: return [Self.bloatQuery]
         case .unusedIndex: return [Self.unusedIndexQuery]
         case .redundantIndex: return [Self.redundantIndexQuery]
-        case .invalidIndex: return [Self.invalidIndexQuery]
+        case .invalidIndex:
+            return [(statistics.serverVersion ?? 0) >= 120_000 ? Self.invalidIndexQuery : Self.invalidIndexBefore12Query]
         case .missingPrimaryKey: return [Self.missingPrimaryKeyQuery]
         case .unindexedForeignKey: return [Self.unindexedForeignKeyQuery]
         case .nearLimit: return [Self.nearLimitQuery]
@@ -630,9 +683,19 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
         let lastVacuum = row.date("last_vacuum")
         let dead = deadRows?.formatted() ?? row["dead_rows"]
         let live = liveRows?.formatted() ?? row["live_rows"]
-        let detail = lastVacuum.map {
-            String(format: String(localized: "%1$@ dead rows, %2$@ live. Last vacuumed %3$@."), dead, live, TableHealthFormatting.date($0))
-        } ?? String(format: String(localized: "%1$@ dead rows, %2$@ live. Never vacuumed."), dead, live)
+        let detail: String
+        if let lastVacuum {
+            detail = String(
+                format: String(localized: "%1$@ dead rows, %2$@ live. Last vacuumed %3$@."), dead, live, TableHealthFormatting.date(lastVacuum)
+            )
+        } else if let reset = row.date("stats_reset") {
+            detail = String(
+                format: String(localized: "%1$@ dead rows, %2$@ live. No vacuum recorded since the statistics were reset at %3$@."),
+                dead, live, TableHealthFormatting.date(reset)
+            )
+        } else {
+            detail = String(format: String(localized: "%1$@ dead rows, %2$@ live. Never vacuumed."), dead, live)
+        }
 
         var metrics: [TableHealthMetric] = []
         if let deadRows {

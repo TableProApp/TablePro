@@ -38,6 +38,29 @@ struct TableHealthFixScriptTests {
         #expect(text == expected)
     }
 
+    @Test("A fix two findings share runs once, under both findings' comment lines, where the first stood")
+    func sharedFixRunsOnce() {
+        let drop = #"DROP INDEX CONCURRENTLY "public"."orders_a_idx";"#
+        let text = script([
+            TableHealthFixture.finding(.unusedIndex, schema: "public", table: "orders", object: "orders_a_idx", fixSQL: drop),
+            TableHealthFixture.finding(schema: "public", table: "logs",
+                                       fixSQL: #"ALTER TABLE "public"."logs" ADD PRIMARY KEY (column_name);"#),
+            TableHealthFixture.finding(.redundantIndex, schema: "public", table: "orders", object: "orders_a_idx",
+                                       fixSQL: drop + "\n")
+        ])
+        let body = lines(text).dropFirst(4)
+        #expect(Array(body) == [
+            Substring("-- " + String(format: String(localized: "%1$@: %2$@"), TableHealthCheckKind.unusedIndex.title, "public.orders.orders_a_idx")),
+            Substring("-- " + String(format: String(localized: "%1$@: %2$@"), TableHealthCheckKind.redundantIndex.title, "public.orders.orders_a_idx")),
+            Substring(drop),
+            "",
+            Substring("-- " + String(format: String(localized: "%1$@: %2$@"), TableHealthCheckKind.missingPrimaryKey.title, "public.logs")),
+            #"ALTER TABLE "public"."logs" ADD PRIMARY KEY (column_name);"#,
+            ""
+        ])
+        #expect(text.components(separatedBy: drop).count == 2)
+    }
+
     @Test("A finding without a fix is left out")
     func findingWithoutFixSkipped() {
         let text = script([

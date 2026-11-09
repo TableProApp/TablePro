@@ -116,7 +116,11 @@ public struct GetTableHealthTool: MCPToolImplementation {
     ) async throws -> MCPToolCallResult {
         try MCPArgumentDecoder.rejectUnknownKeys(arguments, allowed: ["connection_id", "database"])
         let scope = try await MCPScopeArguments.resolve(arguments, services: services)
-        let payload = try await services.connectionBridge.tableHealth(scope: scope)
+        let settings = await services.settingsProvider()
+        let payload = try await services.connectionBridge.tableHealth(
+            scope: scope,
+            timeoutSeconds: settings.validatedQueryTimeoutSeconds
+        )
         return .structured(payload)
     }
 }

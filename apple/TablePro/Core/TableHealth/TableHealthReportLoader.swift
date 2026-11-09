@@ -4,7 +4,7 @@ enum TableHealthError: LocalizedError, Equatable {
     case noDatabase
 
     var errorDescription: String? {
-        String(localized: "Select a database in the sidebar to check its tables.")
+        String(localized: "Close this tab and choose Database > Table Health.")
     }
 }
 

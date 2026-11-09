@@ -431,6 +431,27 @@ struct MainContentCoordinatorRefreshTests {
         #expect(coordinator.tableHealthModels[tabId] == nil)
     }
 
+    @Test("A database rename reloads a Table Health tab's history from the new name")
+    func renameReloadsTableHealthHistory() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = try #require(tabManager.addTableHealthTab(databaseName: "shop"))
+        let logs = TableHealthFindingID(kind: .missingPrimaryKey, schema: "public", table: "logs", object: nil)
+        let history = RenamedHistory(database: "shop_v2", ledger: TableHealthLedger().ignoring([logs], at: Date()))
+        let model = TableHealthViewModel(
+            connectionId: coordinator.connectionId,
+            provider: TableHealthProviderFactory.provider(for: .postgresql),
+            history: history,
+            metadata: RefreshLeaseRecorder(),
+            database: { tabManager.tabs.first { $0.id == tabId }?.tableContext.databaseName ?? "" }
+        )
+        coordinator.tableHealthModels[tabId] = model
+
+        coordinator.retargetTabs(database: "shop", schema: nil, toDatabase: "shop_v2", toSchema: nil)
+
+        #expect(model.databaseName == "shop_v2")
+        #expect(model.ledger.isIgnored(logs))
+    }
+
     @Test("Refresh on Users & Roles reloads the principals through the tab's own handler")
     func refreshOnUsersRolesReloads() {
         let (coordinator, tabManager) = makeCoordinator()
@@ -488,5 +509,39 @@ private final class RefreshUnusedHistory: TableHealthHistoryStoring {
 
     func clearResolved(connectionId: UUID, database: String) throws -> TableHealthLedger {
         TableHealthLedger()
+    }
+}
+
+// Holds one database's ledger, the way the store holds a ledger moved by a database rename.
+@MainActor
+private final class RenamedHistory: TableHealthHistoryStoring {
+    private let database: String
+    private let stored: TableHealthLedger
+
+    init(database: String, ledger: TableHealthLedger) {
+        self.database = database
+        stored = ledger
+    }
+
+    func ledger(connectionId: UUID, database: String) throws -> TableHealthLedger {
+        database == self.database ? stored : TableHealthLedger()
+    }
+
+    func record(_ report: TableHealthReport, connectionId: UUID, database: String, at date: Date) throws -> TableHealthLedger {
+        try ledger(connectionId: connectionId, database: database)
+    }
+
+    func setIgnored(
+        _ ids: Set<TableHealthFindingID>,
+        ignored: Bool,
+        connectionId: UUID,
+        database: String,
+        at date: Date
+    ) throws -> TableHealthLedger {
+        try ledger(connectionId: connectionId, database: database)
+    }
+
+    func clearResolved(connectionId: UUID, database: String) throws -> TableHealthLedger {
+        try ledger(connectionId: connectionId, database: database)
     }
 }

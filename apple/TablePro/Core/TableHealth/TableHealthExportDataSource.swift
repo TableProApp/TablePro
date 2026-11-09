@@ -142,13 +142,18 @@ enum TableHealthColumn: Sendable {
         }
     }
 
+    // "0 bytes", where the file style spells out "Zero kB" for an empty index.
+    static func byteSize(_ bytes: Int64) -> String {
+        bytes.formatted(.byteCount(style: .file, spellsOutZero: false))
+    }
+
     func text(for row: TableHealthFindingRow) -> String {
         switch self {
         case .status: return row.status.title
         case .check: return row.checkTitle
         case .table: return row.tableSortKey
         case .object: return row.objectSortKey
-        case .size: return row.finding?.sizeBytes.map { ByteSizeFormatting.string(bytes: $0) } ?? ""
+        case .size: return row.finding?.sizeBytes.map(Self.byteSize) ?? ""
         case .detail: return row.detail
         case .lastSeen: return row.lastSeen.map(TableHealthFormatting.date) ?? ""
         }

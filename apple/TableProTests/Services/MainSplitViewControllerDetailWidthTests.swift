@@ -43,11 +43,12 @@ struct MainSplitViewControllerDetailWidthTests {
         #expect(resolved == 560)
     }
 
-    @Test("Table Health declares the width its pane bar needs, which holds the checks list beside the findings")
+    @Test("Table Health declares the width its pane bar needs, which holds the findings once the checks list collapses")
     func tableHealthDeclaresItsOwnMinimum() {
         let resolved = MainSplitViewController.resolveDetailMinimumThickness(for: .tableHealth, contentMode: .browse)
         #expect(resolved == TableHealthLayoutMetrics.tabMinimumWidth)
-        #expect(resolved >= TableHealthLayoutMetrics.checksListMinimumWidth + TableHealthLayoutMetrics.findingsMinimumWidth)
+        #expect(resolved >= TableHealthLayoutMetrics.findingsMinimumWidth)
+        #expect(TableHealthLayoutMetrics.checksListMinimumWidth < TableHealthLayoutMetrics.checksListMaximumWidth)
     }
 
     @Test(

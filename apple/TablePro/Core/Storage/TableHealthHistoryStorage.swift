@@ -1,14 +1,19 @@
 import Foundation
 import os
 
-enum TableHealthHistoryStorageError: LocalizedError {
+enum TableHealthHistoryStorageError: LocalizedError, Equatable {
     case readFailed(String)
+    case unreadable
     case saveFailed(String)
 
     var errorDescription: String? {
         switch self {
         case .readFailed(let reason):
             return String(format: String(localized: "TablePro could not read the Table Health history: %@"), reason)
+        case .unreadable:
+            return String(
+                localized: "The Table Health history file could not be read. The next refresh starts a new history and keeps the old file."
+            )
         case .saveFailed(let reason):
             return String(format: String(localized: "TablePro could not save the Table Health history: %@"), reason)
         }
@@ -25,6 +30,11 @@ final class TableHealthHistoryStorage: TableHealthHistoryStoring, TableScopedSet
     // An object rather than a bare map of databases, so a later build can add a field beside them.
     private struct Document: Codable {
         var databases: [String: TableHealthLedger] = [:]
+    }
+
+    private struct Loaded {
+        var document = Document()
+        var isUnreadable = false
     }
 
     private let directory: URL
@@ -97,11 +107,12 @@ final class TableHealthHistoryStorage: TableHealthHistoryStoring, TableScopedSet
         }
         guard fromDatabase != toDatabase else { return }
         do {
-            var document = try load(connectionId)
+            let loaded = try read(connectionId)
+            var document = loaded.document
             guard let moving = document.databases.removeValue(forKey: fromDatabase) else { return }
             // The renamed database takes the name, so a ledger left under it describes objects that are gone.
             document.databases[toDatabase] = moving
-            try save(document, for: connectionId)
+            try write(document, over: loaded, for: connectionId)
             postChange(connectionId: connectionId, databases: [fromDatabase, toDatabase])
         } catch {
             Self.logFailure(error, connectionId: connectionId)
@@ -121,9 +132,10 @@ final class TableHealthHistoryStorage: TableHealthHistoryStoring, TableScopedSet
             return
         }
         do {
-            var document = try load(connectionId)
+            let loaded = try read(connectionId)
+            var document = loaded.document
             guard document.databases.removeValue(forKey: database) != nil else { return }
-            try save(document, for: connectionId)
+            try write(document, over: loaded, for: connectionId)
             postChange(connectionId: connectionId, databases: [database])
         } catch {
             Self.logFailure(error, connectionId: connectionId)
@@ -152,12 +164,16 @@ final class TableHealthHistoryStorage: TableHealthHistoryStoring, TableScopedSet
         database: String,
         _ change: (TableHealthLedger) -> TableHealthLedger
     ) throws -> TableHealthLedger {
-        var document = try load(connectionId)
+        let loaded = try read(connectionId)
+        var document = loaded.document
         let current = document.databases[database] ?? TableHealthLedger()
         let next = change(current)
-        guard next != current else { return next }
+        guard next != current else {
+            if loaded.isUnreadable { throw TableHealthHistoryStorageError.unreadable }
+            return next
+        }
         document.databases[database] = next
-        try save(document, for: connectionId)
+        try write(document, over: loaded, for: connectionId)
         postChange(connectionId: connectionId, databases: [database])
         return next
     }
@@ -174,9 +190,16 @@ final class TableHealthHistoryStorage: TableHealthHistoryStoring, TableScopedSet
         }
     }
 
+    // A read leaves a file it cannot decode where it is: only a write sets it aside, right before it replaces it.
     private func load(_ connectionId: UUID) throws -> Document {
+        let loaded = try read(connectionId)
+        guard !loaded.isUnreadable else { throw TableHealthHistoryStorageError.unreadable }
+        return loaded.document
+    }
+
+    private func read(_ connectionId: UUID) throws -> Loaded {
         let url = fileURL(for: connectionId)
-        guard FileManager.default.fileExists(atPath: url.path) else { return Document() }
+        guard FileManager.default.fileExists(atPath: url.path) else { return Loaded() }
         let data: Data
         do {
             data = try Data(contentsOf: url)
@@ -187,14 +210,20 @@ final class TableHealthHistoryStorage: TableHealthHistoryStoring, TableScopedSet
             throw TableHealthHistoryStorageError.readFailed(error.localizedDescription)
         }
         do {
-            return try JSONDecoder().decode(Document.self, from: data)
+            return Loaded(document: try JSONDecoder().decode(Document.self, from: data))
         } catch {
             Self.logger.error(
                 "Unreadable Table Health history for \(connectionId, privacy: .public): \(error.publicLogShape, privacy: .public)"
             )
-            try setAside(url, connectionId: connectionId)
-            return Document()
+            return Loaded(isUnreadable: true)
         }
+    }
+
+    private func write(_ document: Document, over loaded: Loaded, for connectionId: UUID) throws {
+        if loaded.isUnreadable {
+            try setAside(fileURL(for: connectionId), connectionId: connectionId)
+        }
+        try save(document, for: connectionId)
     }
 
     // A file this build cannot decode may be a newer build's, so it is kept under a free name and never written over.
@@ -209,7 +238,7 @@ final class TableHealthHistoryStorage: TableHealthHistoryStoring, TableScopedSet
             Self.logger.error(
                 "Failed to set aside unreadable Table Health history for \(connectionId, privacy: .public): \(error.publicLogShape, privacy: .public)"
             )
-            throw TableHealthHistoryStorageError.readFailed(error.localizedDescription)
+            throw TableHealthHistoryStorageError.saveFailed(error.localizedDescription)
         }
     }
 

@@ -17,7 +17,7 @@ struct TableHealthView: View {
     // A VStack, not safeAreaInset: the inset does not reach a List hosted inside the split view.
     var body: some View {
         VStack(spacing: 0) {
-            if viewModel.isSupported {
+            if viewModel.isSupported, !viewModel.needsDatabase {
                 VStack(spacing: 0) {
                     TableHealthPaneBar(
                         viewModel: viewModel,
@@ -42,6 +42,12 @@ struct TableHealthView: View {
                 String(localized: "Table Health Not Available"),
                 systemImage: "stethoscope",
                 description: Text("Table health is available for PostgreSQL, MySQL and MariaDB.")
+            )
+        } else if viewModel.needsDatabase {
+            UnavailableStateView(
+                String(localized: "No Database Selected"),
+                systemImage: "cylinder",
+                description: Text(verbatim: TableHealthError.noDatabase.errorDescription ?? "")
             )
         } else if viewModel.report != nil {
             AutosavingSplitView(
