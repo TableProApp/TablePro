@@ -61,7 +61,7 @@ pub struct DataGrid {
     #[template_child]
     pub detail_pane: TemplateChild<RowDetailPane>,
 
-    pub config: OnceCell<GridConfig>,
+    pub config: RefCell<Option<GridConfig>>,
     pub store: GridStore,
     pub selection: Selection,
     /// Set for a grid that sorts the rows it holds.
@@ -96,6 +96,7 @@ pub struct DataGrid {
     pub(super) display_watch: RefCell<Option<HandlerGuard>>,
     pub(super) applied_null: RefCell<Option<String>>,
     pub(super) scheme_style: RefCell<Option<super::scheme_colors::SchemeStyle>>,
+    pub(super) cell_font: RefCell<Option<super::cell_font::CellFont>>,
 }
 
 #[glib::object_subclass]
@@ -135,6 +136,7 @@ impl ObjectImpl for DataGrid {
         self.summary.stop();
         self.obj().stop_watching_focus();
         drop(self.font_watch.take());
+        drop(self.cell_font.take());
         drop(self.display_watch.take());
         drop(self.scheme_style.take());
         if let Some(menus) = self.menus.get() {
