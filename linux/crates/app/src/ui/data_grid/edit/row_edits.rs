@@ -5,7 +5,7 @@ use tablepro_core::column::{BoolStorage, ColumnKind};
 use tablepro_core::edit::{CellInput, EditParseError, new_draft_cell, parse_edit_text};
 
 use super::{EditController, edit_start};
-use crate::i18n::gettext;
+use crate::i18n::{gettext, ngettext_f};
 use crate::services::change_tracker::RowKey;
 use crate::services::grid::{
     CellPreset, CommitResult, EditStart, GridColumn, cell_presets, commit_input, edit_context,
@@ -38,18 +38,78 @@ impl EditController {
         }
     }
 
-    /// Set to Empty, NULL or DEFAULT on the cell an action names. The
-    /// menu offers only what the cell takes; a column that refuses the
-    /// value says why, as committing an empty cell would.
     pub(super) fn set_preset(&self, grid: &DataGrid, preset: CellPreset) {
-        let Some((row, column)) = grid.target().and_then(|target| target.cell) else {
+        self.set_values(grid, |row, column| self.preset_input(grid, row, column, preset));
+    }
+
+    pub(super) fn set_values(
+        &self,
+        grid: &DataGrid,
+        mut input: impl FnMut(&GridRow, usize) -> Result<Option<(GridColumn, CellInput)>, String>,
+    ) {
+        grid.commit_editors();
+        let Some(target) = grid.target() else {
             return;
         };
-        let Some(grid_column) = self.unlocked_column(grid, &row, column) else {
+        let Some((_, column)) = target.cell else {
             return;
+        };
+        let tracked = self.tracked();
+        let mut edits = Vec::new();
+        let mut skipped = 0;
+        let mut refusal = None;
+        for row in &target.rows {
+            let outcome = match input(row, column) {
+                Ok(Some((grid_column, input))) => {
+                    let start = edit_start(&tracked, row, column);
+                    match commit_input(&grid_column, &start, input) {
+                        CommitResult::Edit(edit) => {
+                            edits.push(edit);
+                            Ok(())
+                        }
+                        CommitResult::Unchanged => Ok(()),
+                        CommitResult::Rejected(error) => Err(Some(edit_parse_message(&error))),
+                    }
+                }
+                Ok(None) => Err(None),
+                Err(message) => Err(Some(message)),
+            };
+            if let Err(message) = outcome {
+                skipped += 1;
+                refusal = refusal.or(message);
+            }
+        }
+        if !edits.is_empty() {
+            self.apply_edits(grid, edits);
+        }
+        if skipped == target.rows.len()
+            && let Some(message) = refusal
+        {
+            grid.toast(message);
+            return;
+        }
+        if skipped > 0 {
+            grid.toast(ngettext_f(
+                "{count} row can't take this value and was left as it was",
+                "{count} rows can't take this value and were left as they were",
+                skipped as u32,
+                &[("count", &skipped.to_string())],
+            ));
+        }
+    }
+
+    fn preset_input(
+        &self,
+        grid: &DataGrid,
+        row: &GridRow,
+        column: usize,
+        preset: CellPreset,
+    ) -> Result<Option<(GridColumn, CellInput)>, String> {
+        let Some(grid_column) = self.unlocked_column(grid, row, column) else {
+            return Ok(None);
         };
         let Some(catalog) = grid_column.catalog.as_ref() else {
-            return;
+            return Ok(None);
         };
         let presets = cell_presets(&grid_column, &row.id(), grid.sql_dialect().as_deref());
         let input = match preset {
@@ -60,15 +120,8 @@ impl EditController {
             CellPreset::Null => Err(edit_parse_message(&EditParseError::Required)),
             CellPreset::Default if presets.default => Ok(CellInput::Default),
             CellPreset::Default => Err(gettext("This cell can't take the column's default")),
-        };
-        match input {
-            Ok(input) => {
-                grid.commit_editors();
-                let start = edit_start(&self.tracked(), &row, column);
-                self.commit_input(grid, &grid_column, &start, input);
-            }
-            Err(message) => grid.toast(message),
-        }
+        }?;
+        Ok(Some((grid_column, input)))
     }
 
     /// Only a table whose rows can be saved takes a new one (D1).

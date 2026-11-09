@@ -177,6 +177,12 @@ impl EditController {
         }
     }
 
+    pub(crate) fn queue_editor_allocate(&self) {
+        if let Some(cell) = self.open_cell() {
+            cell.queue_allocate();
+        }
+    }
+
     pub fn cancel_open_edit(&self) {
         let held = self.editor_has_focus();
         let cell = self.open_cell();

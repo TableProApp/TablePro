@@ -141,6 +141,7 @@ impl BrowseModel {
         let cancel = ticket.cancel.clone();
         let position = self.pager.position();
         let work = async move {
+            let started = std::time::Instant::now();
             session
                 .run_cancellable(OperationKind::Page, &cancel, move |lease, options| {
                     let plan = plan.clone();
@@ -159,7 +160,7 @@ impl BrowseModel {
                     }
                 })
                 .await
-                .map(PageReply::from)
+                .map(|read| PageReply::new(read, started.elapsed()))
         };
         self.deliver(ticket, work, BrowseCommand::Page, OperationError::from);
     }
@@ -183,7 +184,7 @@ impl BrowseModel {
         let _delivery = crate::runtime::spawn_and_deliver(&self.tasks, work, move |joined| {
             let value = joined.unwrap_or_else(|failure| Err(failed(failure)));
             if let Some(tab) = tab.upgrade() {
-                tab.send(DataInput::Command(command(Stamped { stamp, value })));
+                tab.send(DataInput::Command(Box::new(command(Stamped { stamp, value }))));
             }
         });
     }

@@ -31,7 +31,7 @@ impl BrowseModel {
                 self.begin_read(fx);
                 self.reload_from_columns(ColumnFreshness::Refetch);
             }
-            DataInput::Command(command) => self.on_command(command, fx),
+            DataInput::Command(command) => self.on_command(*command, fx),
             DataInput::LinkChanged(generation) => self.on_link_changed(generation, fx),
             DataInput::SchemaChanged => {
                 self.begin_read(fx);
@@ -193,6 +193,7 @@ impl BrowseModel {
             layout,
             edges,
             seeks,
+            elapsed,
         } = reply;
         self.pager.land(offset, position, edges, seeks);
         let QueryResult { columns, rows, .. } = result;
@@ -215,6 +216,7 @@ impl BrowseModel {
             row_count,
             start_ordinal: offset,
             filtered: !self.current_filter.is_empty(),
+            elapsed,
         });
         self.shown_view = Some(self.page_view());
         self.show_page(rows, offset, fx);

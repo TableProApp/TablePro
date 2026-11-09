@@ -246,6 +246,18 @@ impl Harness {
             .collect()
     }
 
+    pub(super) fn elapsed(&self) -> Duration {
+        use gtk4::subclass::prelude::ObjectSubclassIsExt;
+        self.tab()
+            .imp()
+            .model
+            .borrow()
+            .as_ref()
+            .and_then(|model| model.page.as_ref())
+            .expect("a loaded page")
+            .elapsed
+    }
+
     /// The saved rows the grid holds for the page on screen.
     pub(super) fn saved_rows(&self) -> Vec<GridRow> {
         use gtk4::subclass::prelude::ObjectSubclassIsExt;
@@ -611,10 +623,16 @@ fn stale_page_reply_ignored() {
 
     harness.tab().send(PagingInput::FilterApplied(not_null_name()));
     wait_until(WAIT, || harness.shown() == text(&["filtered"])).expect("the filtered page");
+    let elapsed = harness.elapsed();
     std::thread::sleep(Duration::from_millis(500));
     drain_main_context();
 
     assert_eq!(CallCounters::get(&counters.query_bound), 2);
+    assert_eq!(
+        harness.elapsed(),
+        elapsed,
+        "a stale reply changed the displayed page's time"
+    );
     assert_eq!(
         harness.shown(),
         text(&["filtered"]),
@@ -1587,4 +1605,97 @@ fn a_new_tab_opens_sorted_by_the_default_sort() {
     wait_until(WAIT, || another.current_sort().is_some()).expect("the default sort");
 
     assert_eq!(another.current_sort(), Some((0, false)));
+}
+
+#[gtk4::test]
+fn the_paginator_says_how_long_the_page_took() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::Late {
+        after: Duration::from_millis(20),
+        outcome: Ok(rows(&["Ada", "Grace"])),
+    });
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown() == text(&["Ada", "Grace"])).expect("the page");
+    let label = harness.tab().imp().pager_bar.imp().paginator_label.get();
+
+    assert!(harness.elapsed() >= Duration::from_millis(20));
+    let text = label.label();
+    let (_, elapsed) = text.split_once(" · ").expect("the paginator includes a duration");
+    assert!(!elapsed.is_empty());
+}
+
+#[gtk4::test]
+fn an_empty_page_also_shows_its_fetch_time() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&[])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.visible_page().as_deref() == Some("grid")).expect("the empty page");
+
+    let label = harness.tab().imp().pager_bar.imp().paginator_label.label();
+    assert!(label.starts_with("No rows · "), "{label}");
+}
+
+#[gtk4::test]
+fn the_bottom_bar_offers_the_column_chooser() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    use libadwaita::prelude::*;
+
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    let tab = harness.tab();
+    let window = crate::test_support::OwnedWindow::presented(
+        libadwaita::Window::builder()
+            .default_width(1000)
+            .default_height(500)
+            .content(tab)
+            .build(),
+    );
+    let button = crate::test_support::find_by_action_name(tab, "grid.columns")
+        .and_downcast::<gtk4::Button>()
+        .expect("a Columns button");
+    // A pending initial surface configure can otherwise overwrite the later resize.
+    wait_until(WAIT, || {
+        window.is_mapped() && tab.width() >= 900 && !harness.shown().is_empty()
+    })
+    .expect("the wide window is allocated");
+    assert!(tab.current_breakpoint().is_none());
+    assert!(button.is_visible(), "the wide bar shows Columns");
+    assert_eq!(button.label().as_deref(), Some("Columns"));
+    assert!(button.is_focusable());
+    button.emit_clicked();
+    wait_until(WAIT, || window.visible_dialog().is_some()).expect("Columns opens a dialog");
+    let chooser = window.visible_dialog().expect("the chooser");
+    assert!(chooser.is::<crate::ui::data_grid::ColumnChooser>());
+    chooser.close();
+    wait_until(WAIT, || window.visible_dialog().is_none() && chooser.parent().is_none()).expect("the chooser closes");
+
+    window.set_default_size(600, 500);
+    assert!(
+        wait_until(WAIT, || tab.width() > 0 && tab.width() <= 600).is_ok(),
+        "the tab did not resize: window width {}, tab width {}",
+        window.width(),
+        tab.width(),
+    );
+    assert!(!button.is_visible(), "the narrow bar hides Columns");
+    assert!(tab.imp().more_button.is_visible(), "the narrow bar offers More");
+    let menu = tab.imp().more_button.menu_model().expect("More menu");
+    let actions = menu
+        .item_link(0, gtk4::gio::MENU_LINK_SECTION)
+        .expect("actions section");
+    assert!((0..actions.n_items()).any(|index| {
+        actions
+            .item_attribute_value(index, gtk4::gio::MENU_ATTRIBUTE_ACTION, None)
+            .and_then(|value| value.get::<String>())
+            .as_deref()
+            == Some("grid.columns")
+    }));
+    tab.activate_action("grid.columns", None)
+        .expect("More reaches the grid");
+    wait_until(WAIT, || window.visible_dialog().is_some()).expect("More opens Columns");
+    window.visible_dialog().expect("the chooser").close();
 }

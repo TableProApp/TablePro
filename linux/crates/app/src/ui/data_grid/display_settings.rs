@@ -45,6 +45,7 @@ impl DataGrid {
             .apply_invisibles(values.show_invisible_characters);
         if let Some(numbers) = self.row_numbers_column() {
             numbers.set_visible(values.show_row_numbers);
+            super::pinned_numbers::sync(self);
         }
         let changed = self.imp().applied_null.borrow().as_deref() != Some(&values.null_display);
         let dates_changed =

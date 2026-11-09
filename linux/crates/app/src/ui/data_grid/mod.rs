@@ -19,6 +19,7 @@ mod grid_store;
 mod imp;
 mod keys;
 mod layout_binding;
+mod pinned_numbers;
 mod pointer;
 mod references;
 mod reversed_list;
@@ -88,6 +89,7 @@ impl DataGrid {
         keys::install(&grid);
         pointer::install(&grid);
         row_number_column::install_row_factory(&grid);
+        pinned_numbers::install(&grid);
         find_bar::install(&grid);
         imp.detail_pane.attach(&grid);
         grid.watch_display_settings();
