@@ -1214,6 +1214,9 @@ mod tests {
             query: "SELECT 1".to_owned(),
             connection_id: connection,
             connection_name: "Database".to_owned(),
+            keyword: None,
+            folder_id: None,
+            order: 0,
             created_at: std::time::SystemTime::UNIX_EPOCH,
             updated_at: std::time::SystemTime::UNIX_EPOCH,
         };
