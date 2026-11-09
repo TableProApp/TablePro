@@ -167,6 +167,7 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Favorite tables (iCloud-synced) | UserDefaults | `FavoriteTablesStorage` |
 | Team library, per team: pull cursor, items, unpushed edits, conflicts (synced with tablepro-cloud's `/v2`, never iCloud) | JSON, one file per team | `TeamLibraryStateStore` through `TeamLibrarySync` |
 | Sidebar database and schema filters, recent tables | UserDefaults, device-local | `DatabaseTreeFilterStorage`, `RecentTablesStore` |
+| Connection navigator group expansion | UserDefaults `com.TablePro.navigator.groupExpansion`, device-local, never synced | `ConnectionNavigatorExpansionStore` |
 | History drawer state | UserDefaults, device-local | `HistoryPanelPreferencesStorage` |
 | Server Dashboard tiles, per connection | UserDefaults, device-local | `ServerDashboardTileStorage` |
 | Module on/off (Settings > Extensions) | UserDefaults, device-local, never synced | `AppModuleSettings` |
