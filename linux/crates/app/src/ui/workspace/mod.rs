@@ -815,11 +815,7 @@ impl Workspace {
         } = init;
         let workspace: Self = glib::Object::new();
         let imp = workspace.imp();
-        imp.shell.set(Some(&shell));
-        let input = workspace.pump_inputs();
-        let _ = imp.sender.set(input.clone());
-        let _ = imp.key.set(key.clone());
-        let _ = imp.connection_id.set(session.metadata().id);
+        let input = workspace.bind(&shell, &key, &session);
         let context = session_slot(&context, &session);
         let storage = services.storage.clone();
         let tasks = services.tasks.clone();
@@ -906,6 +902,16 @@ impl Workspace {
         };
         workspace.hold(model, [exports, imports]);
         workspace
+    }
+
+    fn bind(&self, shell: &WorkspaceShell, key: &SessionKey, session: &Session) -> WorkspaceSender {
+        let imp = self.imp();
+        imp.shell.set(Some(shell));
+        let input = self.pump_inputs();
+        let _ = imp.sender.set(input.clone());
+        let _ = imp.key.set(key.clone());
+        let _ = imp.connection_id.set(session.metadata().id);
+        input
     }
 
     /// Hold the model, and have every close of the window ask the
