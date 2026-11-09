@@ -131,6 +131,13 @@ final class TableHealthViewModel: ObservableObject {
         await task.value
     }
 
+    // A run in flight that read the catalog before the change reruns itself through the generation; one that started
+    // after it already reads the changed catalog, so queuing another would read it twice.
+    func refreshAfterCatalogChange() async {
+        guard runTask == nil else { return }
+        await refresh()
+    }
+
     // The tab closed: stop reading so the bulk metadata lane is free for the next caller.
     func cancel() {
         refreshQueued = false

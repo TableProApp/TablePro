@@ -321,6 +321,46 @@ struct TableHealthViewModelTests {
         #expect(!viewModel.isRefreshing)
     }
 
+    @Test("A cancelled run whose history moved records nothing and does not rerun")
+    func cancelledRunWithMovedHistoryStops() async {
+        let metadata = HealthMetadata()
+        let hold = (reached: AsyncGate(), release: AsyncGate())
+        metadata.hold = hold
+        let history = InMemoryHistory()
+        let viewModel = makeViewModel(metadata, history: history)
+
+        let run = Task { await viewModel.refresh() }
+        await hold.reached.wait()
+        viewModel.cancel()
+        history.generations["shop", default: 0] += 1
+        await hold.release.open()
+        await run.value
+
+        #expect(metadata.leases.count == 1)
+        #expect(history.recordCount == 0)
+        #expect(!viewModel.isRefreshing)
+    }
+
+    @Test("A catalog change during a run reruns once, not once more for the change's own refresh")
+    func catalogChangeDuringARunRerunsOnce() async {
+        let metadata = HealthMetadata()
+        let hold = (reached: AsyncGate(), release: AsyncGate())
+        metadata.hold = hold
+        let history = InMemoryHistory()
+        let viewModel = makeViewModel(metadata, history: history)
+
+        let run = Task { await viewModel.refresh() }
+        await hold.reached.wait()
+        history.generations["shop", default: 0] += 1
+        await viewModel.refreshAfterCatalogChange()
+        await hold.release.open()
+        await run.value
+
+        #expect(metadata.leases.count == 2)
+        #expect(history.recordCount == 1)
+        #expect(!viewModel.isRefreshing)
+    }
+
     @Test("A tab with no database says to open Table Health again, and reads nothing")
     func noDatabaseAsksForOne() async {
         let metadata = HealthMetadata()
