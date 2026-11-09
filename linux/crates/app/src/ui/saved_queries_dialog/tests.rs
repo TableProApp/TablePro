@@ -22,6 +22,7 @@ const WAIT: Duration = Duration::from_secs(30);
 
 struct Harness {
     runtime: AppRuntime,
+    hold: Rc<tablepro_session::runtime::CountingHold>,
     store: SavedQueries,
     root: tempfile::TempDir,
 }
@@ -53,6 +54,7 @@ impl Harness {
             });
         Self {
             runtime: test_runtime(),
+            hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
             store,
             root,
         }
@@ -63,6 +65,7 @@ impl Harness {
             store: Some(self.store.clone()),
             active_connection,
             tasks: self.runtime.tasks(),
+            hold: self.hold.clone(),
         })
     }
 }
@@ -301,6 +304,9 @@ fn a_row_shows_its_name_and_summary_as_written() {
         query: "\n  SELECT 1 & 2\nFROM t".to_owned(),
         connection_id: Uuid::nil(),
         connection_name: "local".to_owned(),
+        keyword: None,
+        folder_id: None,
+        order: 0,
         created_at: SystemTime::UNIX_EPOCH,
         updated_at: SystemTime::UNIX_EPOCH,
     };
@@ -335,6 +341,7 @@ fn deleting_a_query_takes_it_out_of_the_list() {
     let id = named(&dialog, "daily orders").id().expect("an id");
 
     dialog.delete(id);
+    assert_eq!(harness.hold.live(), 1, "deletion holds the process");
 
     wait_until(WAIT, || row_titles(&dialog) == ["stale carts"]).expect("the deleted query stayed in the list");
 }
@@ -347,6 +354,7 @@ fn renaming_a_query_lists_it_under_its_new_name() {
     let id = named(&dialog, "daily orders").id().expect("an id");
 
     dialog.rename(id, "weekly orders".to_owned());
+    assert_eq!(harness.hold.live(), 1, "rename holds the process");
 
     wait_until(WAIT, || row_titles(&dialog) == ["weekly orders", "stale carts"]).expect("the new name");
 }
@@ -452,19 +460,19 @@ fn copying_a_query_says_so_inside_the_dialog() {
 }
 
 #[gtk4::test]
-fn a_dialog_with_no_database_shows_the_empty_state_rather_than_failing() {
+fn a_dialog_with_no_database_shows_an_error() {
     init();
     let runtime = test_runtime();
     let dialog = SavedQueriesDialog::new(SavedQueriesDialogInit {
         store: None,
         active_connection: None,
         tasks: runtime.tasks(),
+        hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
     });
 
     drain_main_context();
 
-    assert_eq!(visible_page(&dialog).as_deref(), Some("empty"));
-    assert_eq!(dialog.imp().status_page.title(), "No Saved Queries");
+    assert_eq!(visible_page(&dialog).as_deref(), Some("error"));
     assert!(row_titles(&dialog).is_empty());
 }
 
@@ -487,4 +495,102 @@ fn a_rename_failure_says_what_went_wrong() {
 #[test]
 fn every_row_menu_item_has_an_access_key_of_its_own() {
     assert_access_keys(&row_menu());
+}
+
+#[gtk4::test]
+fn a_change_keeps_the_process_until_it_lands_after_the_dialog_is_gone() {
+    let (harness, local, _) = seeded();
+    let dialog = harness.dialog(Some(local));
+    wait_until(WAIT, || row_titles(&dialog).len() == 2).expect("queries listed");
+    let id = named(&dialog, "daily orders").id().expect("id");
+    let (finish, finished) = tokio::sync::oneshot::channel();
+    dialog.change(StoreChange::Rename, move |store| async move {
+        let _ = finished.await;
+        store.rename(id, "weekly orders").await
+    });
+    assert_eq!(harness.hold.live(), 1);
+    drop(dialog);
+    drain_main_context();
+    assert_eq!(harness.hold.live(), 1);
+    finish.send(()).expect("release write");
+    wait_until(WAIT, || harness.hold.live() == 0).expect("write finished");
+    let store = harness.store.clone();
+    let read = harness.runtime.tasks().spawn_task(async move { store.get(id).await });
+    let query = crate::test_support::finish_on_main(WAIT, read)
+        .expect("read finished")
+        .expect("task")
+        .expect("read")
+        .expect("query");
+    assert_eq!(query.name, "weekly orders");
+}
+
+#[gtk4::test]
+fn external_changes_reach_the_dialog_and_keep_selection_by_id() {
+    let (harness, local, _) = seeded();
+    let dialog = harness.dialog(Some(local));
+    wait_until(WAIT, || row_titles(&dialog).len() == 2).expect("queries listed");
+    let id = named(&dialog, "daily orders").id().expect("id");
+    dialog.imp().parts.get().expect("parts").selection.set_selected(0);
+    let store = harness.store.clone();
+    let change = harness
+        .runtime
+        .tasks()
+        .spawn_task(async move { store.rename(id, "weekly orders").await });
+    crate::test_support::finish_on_main(WAIT, change)
+        .expect("rename finished")
+        .expect("task")
+        .expect("rename");
+    wait_until(WAIT, || row_titles(&dialog) == ["weekly orders", "stale carts"]).expect("external rename listed");
+    let selected = dialog
+        .imp()
+        .parts
+        .get()
+        .expect("parts")
+        .selection
+        .selected_item()
+        .and_downcast::<SavedQueryObject>()
+        .and_then(|object| object.id());
+    assert_eq!(selected, Some(id));
+    let store = harness.store.clone();
+    let change = harness
+        .runtime
+        .tasks()
+        .spawn_task(async move { store.delete(id).await });
+    crate::test_support::finish_on_main(WAIT, change)
+        .expect("delete finished")
+        .expect("task")
+        .expect("delete");
+    wait_until(WAIT, || row_titles(&dialog) == ["stale carts"]).expect("external deletion listed");
+    assert!(
+        dialog
+            .imp()
+            .parts
+            .get()
+            .expect("parts")
+            .selection
+            .selected_item()
+            .is_none()
+    );
+}
+
+#[gtk4::test]
+fn a_replaced_read_cannot_replace_the_current_list() {
+    let (harness, local, _) = seeded();
+    let dialog = harness.dialog(Some(local));
+    wait_until(WAIT, || row_titles(&dialog).len() == 2).expect("queries listed");
+    let old = dialog.imp().load_generation.get();
+    dialog.load();
+    dialog.list_arrived(old, Ok(Ok(Listing::new(Vec::new(), Some(local)))));
+    assert_eq!(row_titles(&dialog).len(), 2);
+}
+
+#[gtk4::test]
+fn an_initial_read_never_claims_the_list_is_empty() {
+    let (harness, local, _) = seeded();
+    let dialog = harness.dialog(Some(local));
+    assert_eq!(visible_page(&dialog).as_deref(), Some("loading"));
+    dialog.apply_matches(Some(HashSet::new()));
+    assert_eq!(visible_page(&dialog).as_deref(), Some("loading"));
+    wait_until(WAIT, || row_titles(&dialog).len() == 2).expect("queries listed");
+    assert_eq!(visible_page(&dialog).as_deref(), Some("list"));
 }
