@@ -125,11 +125,11 @@ pub const ACCELERATORS: &[Accelerator] = &[
     local(
         BrowseTab,
         BUBBLE,
-        "browse.refresh",
+        "table.refresh",
         &["F5", "<Primary>r"],
         Listed(BrowseTable),
     ),
-    local(BrowseTab, BUBBLE, "browse.save", &["<Primary>s"], Listed(BrowseTable)),
+    local(BrowseTab, BUBBLE, "table.save", &["<Primary>s"], Listed(BrowseTable)),
     local(BrowseTab, BUBBLE, "browse.undo", &["<Primary>z"], Listed(BrowseTable)),
     local(
         BrowseTab,

@@ -114,8 +114,10 @@ fn popover(grid: &DataGrid, model: &gio::Menu) -> gtk::PopoverMenu {
 
 fn cell_menu(grid: &DataGrid, references: &gio::Menu, expressions: &gio::Menu) -> gio::Menu {
     let config = grid.config();
-    let editable = config.is_some_and(|config| config.tracker.is_some());
-    let sorts = config.is_some_and(|config| config.sorting != GridSorting::None);
+    let editable = config.as_ref().is_some_and(|config| config.tracker.is_some());
+    let sorts = config
+        .as_ref()
+        .is_some_and(|config| config.sorting != GridSorting::None);
     let menu = gio::Menu::new();
     if editable {
         let edits = presets_section();
@@ -160,7 +162,7 @@ fn cell_menu(grid: &DataGrid, references: &gio::Menu, expressions: &gio::Menu) -
         clipboard.append_item(&item(&gettext("_Paste"), "grid.paste"));
     }
     menu.append_section(None, &clipboard);
-    if config.is_some_and(|config| config.filter_by_value) {
+    if config.as_ref().is_some_and(|config| config.filter_by_value) {
         menu.append_section(
             None,
             &section([
