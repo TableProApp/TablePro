@@ -10,7 +10,7 @@ The app's data goes to the store its shape calls for. The core's `storage` crate
 | The account's device ID and last entitlement, or an imported offline file | JSON file | `tablepro-account` ([core ADR 0016](../../core/docs/decisions/0016-tablepro-accounts.md), [ADR 0038](decisions/0038-account-page-and-license-ask.md)) |
 | The usage data's anonymous ID and what it sent once | JSON file | `Telemetry` in the app crate ([ADR 0039](decisions/0039-usage-data.md)) |
 | Preferences and window geometry | `gio::Settings` | `AppSettings` |
-| Query history and saved queries | SQLite, one database | `QueryHistory`, `SavedQueries` |
+| Query history, saved queries with their folders and keywords, and favourite tables and databases | SQLite, one database ([core ADR 0017](../../core/docs/decisions/0017-favourites.md)) | `QueryHistory`, `SavedQueries`, `SavedQueryFolders`, `Favourites` |
 | Editor tab text | one file per tab | `DraftStore` |
 | Open tabs, open sessions, column layouts, filters | JSON files the app crate writes | `WorkspaceStore`, `OpenSessions`, `crates/app/src/persistence/` |
 
@@ -192,7 +192,8 @@ at compile time with `sqlx::migrate!` and run by `QueryHistory::open`.
 `20260914000000_create_history.sql` creates the `history` table with
 `query_folded`, the trigram index `history_search` over it,
 `history_page_idx` on `(pinned DESC, executed_at DESC, id DESC)` for
-paging, and the `saved_queries` table.
+paging, and the `saved_queries` table. Favorites metadata, ordering, coherent reads
+and mutation notifications follow [core ADR 0017](../../core/docs/decisions/0017-favourites.md).
 
 **An applied migration is never edited.** Each change is a new timestamped
 file with its own fixture test. Editing one in place changes its checksum,
@@ -340,6 +341,10 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `window-height` | `i` | `760` | 294 to 32767 |
 | `is-maximized` | `b` | `false` | |
 | `default-page-size` | `u` | `1000` | 100 to 100000 |
+| `show-alternate-rows` | `b` | `true` | |
+| `show-row-numbers` | `b` | `true` | |
+| `grid-row-height` | `s` | `normal` | compact, normal, comfortable, spacious |
+| `null-display` | `s` | `NULL` | Displayed as at most 20 characters, without control characters; blank uses NULL |
 | `confirm-bulk-delete` | `b` | `true` | |
 | `restore-session` | `b` | `true` | |
 | `last-seen-version` | `s` | empty | |
@@ -372,7 +377,7 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `csv-line-break` | enum | `lf` | lf, crlf, cr |
 | `csv-decimal` | enum | `period` | period, comma |
 
-`tablepro_storage::AppSettings` wraps it in typed accessors:
+`tablepro_linux_platform::AppSettings` wraps it in typed accessors:
 
 ```rust
 pub fn open(schema_id: &str) -> Result<Self, SettingsError>;
