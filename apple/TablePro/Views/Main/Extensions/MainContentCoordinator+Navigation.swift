@@ -437,26 +437,13 @@ extension MainContentCoordinator {
         tabManager.promotePreviewTab(id: selectedTabId)
     }
 
-    func showAllTablesMetadata() {
-        guard allTablesListing() != nil else { return }
-        openTableListing()
-    }
-
-    /// A read-only grid of the browsed container's tables, never an editor holding the statement that
-    /// lists them: the tab builds its statement from the plugin each time it loads.
-    func openTableListing() {
+    /// The flat list's sections are the browsed container's, so their Show Objects lists that one.
+    func showBrowsedObjects(_ kind: SidebarObjectKind) {
         let schemaName = EngineNamespaceSlot(databaseType: connection.type) == .schema ? browseSchemaName : nil
-        let kindTitle = SidebarObjectKind.table.title(
-            tableEntityName: PluginManager.shared.tableEntityName(for: connection.type)
+        showObjects(
+            DatabaseTreeObjectGroup(database: browseDatabaseName, schema: schemaName, kind: kind),
+            asPreview: false
         )
-        let tabId = tabManager.addTableListingTab(
-            title: QueryTabManager.tableListingTitle(kindTitle: kindTitle, schemaName: schemaName),
-            databaseName: browseDatabaseName,
-            schemaName: schemaName
-        )
-        /// Asking again for a listing already open brings it up to date, the way Refresh would. A tab
-        /// opened just now loads when its view first appears, and nothing is listening for this yet.
-        AppEvents.shared.tabRefreshRequested.send(tabId)
     }
 
     /// The schema the sidebar lists, which a cross-database tab can leave the shared driver off.

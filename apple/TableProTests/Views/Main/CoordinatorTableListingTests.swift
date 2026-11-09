@@ -35,7 +35,7 @@ struct CoordinatorTableListingTests {
         let (coordinator, tabManager, log) = makeCoordinator()
         defer { coordinator.teardown() }
 
-        coordinator.openTableListing()
+        coordinator.showBrowsedObjects(.table)
 
         let tab = try #require(tabManager.selectedTab)
         #expect(tab.tabType == .tableListing)
@@ -55,10 +55,10 @@ struct CoordinatorTableListingTests {
         let subscription = AppEvents.shared.tabRefreshRequested.sink { refreshed.append($0) }
         defer { subscription.cancel() }
 
-        coordinator.openTableListing()
+        coordinator.showBrowsedObjects(.table)
         let first = try #require(tabManager.selectedTabId)
         tabManager.addTab(initialQuery: "SELECT 1", databaseName: "shop")
-        coordinator.openTableListing()
+        coordinator.showBrowsedObjects(.table)
 
         #expect(tabManager.selectedTabId == first)
         #expect(tabManager.tabs.filter { $0.tabType == .tableListing }.count == 1)
@@ -69,7 +69,7 @@ struct CoordinatorTableListingTests {
     func refreshReloadsTheListing() throws {
         let (coordinator, tabManager, _) = makeCoordinator()
         defer { coordinator.teardown() }
-        coordinator.openTableListing()
+        coordinator.showBrowsedObjects(.table)
         let id = try #require(tabManager.selectedTabId)
         var refreshed: [UUID] = []
         let subscription = AppEvents.shared.tabRefreshRequested.sink { refreshed.append($0) }
@@ -78,5 +78,130 @@ struct CoordinatorTableListingTests {
         coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
 
         #expect(refreshed == [id])
+    }
+
+    private func group(_ database: String, _ kind: SidebarObjectKind = .table) -> DatabaseTreeObjectGroup {
+        DatabaseTreeObjectGroup(database: database, schema: nil, kind: kind)
+    }
+
+    @Test("Show Objects opens the clicked container and kind, not the browsed one, to keep")
+    func showObjectsOpensTheClickedContainer() throws {
+        let (coordinator, tabManager, _) = makeCoordinator()
+        defer { coordinator.teardown() }
+
+        coordinator.showObjects(group("archive", .view), asPreview: false)
+
+        let tab = try #require(tabManager.selectedTab)
+        #expect(tab.tabType == .tableListing)
+        #expect(tab.tableContext.databaseName == "archive")
+        #expect(tab.display.listingKind == .view)
+        #expect(tab.title == "Views")
+        #expect(!tab.isPreview)
+    }
+
+    @Test("A selection previews a container's objects, and the next selection takes the preview's place")
+    func selectionPreviewsAndReplaces() throws {
+        let (coordinator, tabManager, _) = makeCoordinator()
+        defer { coordinator.teardown() }
+        tabManager.addTab(initialQuery: "SELECT 1", databaseName: "shop")
+        let kept = try #require(tabManager.selectedTabId)
+
+        coordinator.showObjects(group("shop"), asPreview: true)
+        let preview = try #require(tabManager.selectedTab)
+        coordinator.showObjects(group("archive", .function), asPreview: true)
+
+        let replacement = try #require(tabManager.selectedTab)
+        #expect(preview.isPreview)
+        #expect(replacement.id != preview.id)
+        #expect(tabManager.tabs.map(\.id) == [kept, replacement.id])
+        #expect(replacement.isPreview)
+        #expect(replacement.tableContext.databaseName == "archive")
+        #expect(replacement.display.listingKind == .function)
+    }
+
+    @Test("A selection on a container whose objects are open retargets that tab and leaves it a preview")
+    func selectionRetargetsTheContainersTab() throws {
+        let (coordinator, tabManager, _) = makeCoordinator()
+        defer { coordinator.teardown() }
+        coordinator.showObjects(group("shop"), asPreview: true)
+        let id = try #require(tabManager.selectedTabId)
+
+        coordinator.showObjects(group("shop", .trigger), asPreview: true)
+
+        #expect(tabManager.tabs.map(\.id) == [id])
+        #expect(tabManager.selectedTab?.display.listingKind == .trigger)
+        #expect(tabManager.selectedTab?.isPreview == true)
+    }
+
+    @Test("A table preview gives its place to the objects a selection opens")
+    func tablePreviewGivesWay() throws {
+        let (coordinator, tabManager, _) = makeCoordinator()
+        defer { coordinator.teardown() }
+        try tabManager.addTableTab(tableName: "orders", databaseType: .mysql, databaseName: "shop", isPreview: true)
+        let table = try #require(tabManager.selectedTabId)
+
+        coordinator.showObjects(group("shop"), asPreview: true)
+
+        #expect(tabManager.tabs.count == 1)
+        #expect(tabManager.selectedTab?.tabType == .tableListing)
+        #expect(tabManager.selectedTabId != table)
+    }
+
+    @Test("A selection never replaces a tab the user kept")
+    func keptTabsStay() throws {
+        let (coordinator, tabManager, _) = makeCoordinator()
+        defer { coordinator.teardown() }
+        coordinator.showObjects(group("shop"), asPreview: false)
+
+        coordinator.showObjects(group("archive"), asPreview: true)
+
+        #expect(tabManager.tabs.count == 2)
+    }
+
+    @Test("Picking a kind retargets the tab, relabels it and keeps the preview")
+    func pickingAKindKeepsThePreview() throws {
+        let (coordinator, tabManager, _) = makeCoordinator()
+        defer { coordinator.teardown() }
+        coordinator.showObjects(group("shop"), asPreview: true)
+        let id = try #require(tabManager.selectedTabId)
+
+        coordinator.selectListingKind(.view, inTab: id)
+
+        let tab = try #require(tabManager.selectedTab)
+        #expect(tab.id == id)
+        #expect(tab.display.listingKind == .view)
+        #expect(tab.title == "Views")
+        #expect(!tab.isPreview)
+    }
+
+    @Test("Falling back to Tables relabels the tab and leaves a preview a preview")
+    func fallbackKeepsThePreview() throws {
+        let (coordinator, tabManager, _) = makeCoordinator()
+        defer { coordinator.teardown() }
+        coordinator.showObjects(group("shop", .function), asPreview: true)
+        let id = try #require(tabManager.selectedTabId)
+
+        coordinator.adoptListingKind(.table, inTab: id)
+
+        let tab = try #require(tabManager.selectedTab)
+        #expect(tab.display.listingKind == nil)
+        #expect(tab.title == "Tables")
+        #expect(tab.isPreview)
+    }
+
+    @Test("A row opens its table in the listing's own database as a kept tab, and keeps the listing")
+    func rowOpensItsTableInTheListingsDatabase() throws {
+        let (coordinator, tabManager, log) = makeCoordinator()
+        defer { coordinator.teardown() }
+        coordinator.showObjects(group("archive"), asPreview: true)
+        let listing = try #require(tabManager.selectedTabId)
+
+        coordinator.performListingAction(.open(.relation(name: "orders", schema: nil, type: .table)), fromTab: listing)
+
+        let payload = try #require(log.payloads.last)
+        #expect(payload.tableName == "orders")
+        #expect(payload.databaseName == "archive")
+        #expect(!payload.isPreview)
+        #expect(tabManager.tabs.first { $0.id == listing }?.isPreview == false)
     }
 }
