@@ -466,4 +466,89 @@ struct ToolbarContextResolverTests {
         )
         #expect(ToolbarContextResolver.isEnabled(MainWindowToolbar.saveChanges, context: context) == false)
     }
+
+    // MARK: - The object buttons
+
+    /// Every fact a button could ask for is true unless the case names it, so the named fact is
+    /// the only thing that can dim one.
+    private static func objectsContext(
+        connected: Bool = true,
+        contentMode: ConnectionWorkspaceContentMode = .browse,
+        canListObjects: Bool = true,
+        supportsRoutines: Bool = true,
+        supportsUserManagement: Bool = true,
+        supportsBackup: Bool = true,
+        isPresentingSheet: Bool = false
+    ) -> ToolbarContext {
+        ToolbarContext(
+            tabKind: .table,
+            contentMode: contentMode,
+            pane: connected ? .content : .unavailable(.notConnected),
+            isConnected: connected,
+            hasSelectedWorkspace: true,
+            supportsContainerSwitching: true,
+            isPresentingSheet: isPresentingSheet,
+            canListObjects: canListObjects,
+            supportsRoutines: supportsRoutines,
+            supportsUserManagement: supportsUserManagement,
+            supportsBackup: supportsBackup
+        )
+    }
+
+    private static func dimmedObjectButtons(_ context: ToolbarContext) -> Set<NSToolbarItem.Identifier> {
+        Set(MainWindowToolbar.objectKindItemIdentifiers.filter { identifier in
+            !ToolbarContextResolver.isEnabled(identifier, context: context)
+        })
+    }
+
+    @Test("Every object button needs a live session")
+    func objectButtonsNeedASession() {
+        #expect(Self.dimmedObjectButtons(Self.objectsContext()).isEmpty)
+        #expect(
+            Self.dimmedObjectButtons(Self.objectsContext(connected: false))
+                == Set(MainWindowToolbar.objectKindItemIdentifiers)
+        )
+    }
+
+    @Test("Each object button dims for its own missing capability and no other")
+    func objectButtonsFollowTheirCapability() {
+        #expect(
+            Self.dimmedObjectButtons(Self.objectsContext(canListObjects: false))
+                == [MainWindowToolbar.objectTables, MainWindowToolbar.objectViews]
+        )
+        #expect(
+            Self.dimmedObjectButtons(Self.objectsContext(supportsRoutines: false)) == [MainWindowToolbar.objectFunctions]
+        )
+        #expect(
+            Self.dimmedObjectButtons(Self.objectsContext(supportsUserManagement: false)) == [MainWindowToolbar.objectUsers]
+        )
+        #expect(Self.dimmedObjectButtons(Self.objectsContext(supportsBackup: false)) == [MainWindowToolbar.objectBackup])
+    }
+
+    /// Agent mode mounts no browse content, and the menu bar dims every twin of these there.
+    @Test("Agent mode dims the whole object group")
+    func agentModeDimsTheObjectGroup() {
+        #expect(
+            Self.dimmedObjectButtons(Self.objectsContext(contentMode: .agent))
+                == Set(MainWindowToolbar.objectKindItemIdentifiers)
+        )
+    }
+
+    /// Backup presents a sheet, and a window with a sheet attached takes no second one.
+    @Test("A sheet on the window dims Backup and leaves the other buttons")
+    func aSheetDimsOnlyBackup() {
+        #expect(Self.dimmedObjectButtons(Self.objectsContext(isPresentingSheet: true)) == [MainWindowToolbar.objectBackup])
+    }
+
+    @Test("What the connection supports never reaches the visibility key")
+    func objectFactsStayOutOfTheVisibilityKey() {
+        let capable = Self.objectsContext()
+        let bare = Self.objectsContext(
+            canListObjects: false,
+            supportsRoutines: false,
+            supportsUserManagement: false,
+            supportsBackup: false
+        )
+        #expect(capable.visibilityKey == bare.visibilityKey)
+    }
 }

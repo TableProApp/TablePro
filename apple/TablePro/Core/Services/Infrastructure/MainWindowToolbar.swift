@@ -434,6 +434,17 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     ]
     // Xcode's pair. The steps live in the debug tab's own bar and the palette, which keeps a debug tab at eight hit targets.
     nonisolated static let debugDefaultItemIdentifiers: [NSToolbarItem.Identifier] = [debugContinue, debugStop]
+    // The Objects group a General setting adds. Its own identifiers, so Query never collides with New Tab in one toolbar.
+    nonisolated static let objectKindsGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.objectKinds")
+    nonisolated static let objectTables = NSToolbarItem.Identifier("com.TablePro.toolbar.objectKinds.tables")
+    nonisolated static let objectViews = NSToolbarItem.Identifier("com.TablePro.toolbar.objectKinds.views")
+    nonisolated static let objectFunctions = NSToolbarItem.Identifier("com.TablePro.toolbar.objectKinds.functions")
+    nonisolated static let objectUsers = NSToolbarItem.Identifier("com.TablePro.toolbar.objectKinds.users")
+    nonisolated static let objectQuery = NSToolbarItem.Identifier("com.TablePro.toolbar.objectKinds.query")
+    nonisolated static let objectBackup = NSToolbarItem.Identifier("com.TablePro.toolbar.objectKinds.backup")
+    nonisolated static let objectKindItemIdentifiers: [NSToolbarItem.Identifier] = [
+        objectTables, objectViews, objectFunctions, objectUsers, objectQuery, objectBackup,
+    ]
 
     // MARK: - NSToolbarDelegate
 

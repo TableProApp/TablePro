@@ -82,7 +82,7 @@ internal enum ToolbarContextResolver {
     }
 
     // Agent mode mounts no browse content. `MenuContentModeParityTests` holds these to the menu bar's `agentModeSelectors`.
-    private static let browseContentIdentifiers: Set<NSToolbarItem.Identifier> = [
+    private static let browseContentIdentifiers = Set<NSToolbarItem.Identifier>([
         MainWindowToolbar.refresh,
         MainWindowToolbar.saveChanges,
         MainWindowToolbar.addRow,
@@ -96,7 +96,7 @@ internal enum ToolbarContextResolver {
         MainWindowToolbar.importTables,
         MainWindowToolbar.navigateBack,
         MainWindowToolbar.navigateForward,
-    ]
+    ]).union(MainWindowToolbar.objectKindItemIdentifiers)
 
     // The same commands as the menu bar's `sheetCommandSelectors`: a window with a sheet attached takes no second one.
     private static let sheetCommandIdentifiers: Set<NSToolbarItem.Identifier> = [
@@ -105,6 +105,7 @@ internal enum ToolbarContextResolver {
         MainWindowToolbar.exportTables,
         MainWindowToolbar.importTables,
         MainWindowToolbar.restorePreviousValues,
+        MainWindowToolbar.objectBackup,
     ]
 
     // The `default:` is false: an unconditional true left Query History live and inert over a window that never connected.
@@ -162,6 +163,16 @@ internal enum ToolbarContextResolver {
             return context.debugCommands.contains(.stepOut)
         case MainWindowToolbar.debugStop:
             return context.canStopDebugging
+        case MainWindowToolbar.objectTables, MainWindowToolbar.objectViews:
+            return context.isConnected && context.canListObjects
+        case MainWindowToolbar.objectFunctions:
+            return context.isConnected && context.supportsRoutines
+        case MainWindowToolbar.objectUsers:
+            return context.isConnected && context.supportsUserManagement
+        case MainWindowToolbar.objectQuery:
+            return context.isConnected
+        case MainWindowToolbar.objectBackup:
+            return context.isConnected && context.supportsBackup
         default:
             return false
         }

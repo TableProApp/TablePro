@@ -47,6 +47,12 @@ internal struct ToolbarContext: Equatable {
     internal let canStopDebugging: Bool
     internal let isPresentingSheet: Bool
 
+    // What the connection supports, for the Objects group's buttons. Enablement only, never visibility.
+    internal let canListObjects: Bool
+    internal let supportsRoutines: Bool
+    internal let supportsUserManagement: Bool
+    internal let supportsBackup: Bool
+
     // Only these stable facts may change the toolbar layout or labels.
     internal struct VisibilityKey: Equatable {
         internal let tabKind: TabType?
@@ -100,7 +106,11 @@ internal struct ToolbarContext: Equatable {
         showsDebugItems: Bool = false,
         debugCommands: Set<PluginDebugCommand> = [],
         canStopDebugging: Bool = false,
-        isPresentingSheet: Bool = false
+        isPresentingSheet: Bool = false,
+        canListObjects: Bool = false,
+        supportsRoutines: Bool = false,
+        supportsUserManagement: Bool = false,
+        supportsBackup: Bool = false
     ) {
         self.tabKind = tabKind
         self.resultsMode = resultsMode
@@ -126,6 +136,10 @@ internal struct ToolbarContext: Equatable {
         self.debugCommands = debugCommands
         self.canStopDebugging = canStopDebugging
         self.isPresentingSheet = isPresentingSheet
+        self.canListObjects = canListObjects
+        self.supportsRoutines = supportsRoutines
+        self.supportsUserManagement = supportsUserManagement
+        self.supportsBackup = supportsBackup
     }
 
     // Over a key the caller already computed, so the slow-moving facts are read once per context.
@@ -144,7 +158,11 @@ internal struct ToolbarContext: Equatable {
         canNavigateForward: Bool,
         debugCommands: Set<PluginDebugCommand> = [],
         canStopDebugging: Bool = false,
-        isPresentingSheet: Bool = false
+        isPresentingSheet: Bool = false,
+        canListObjects: Bool = false,
+        supportsRoutines: Bool = false,
+        supportsUserManagement: Bool = false,
+        supportsBackup: Bool = false
     ) {
         self.init(
             tabKind: key.tabKind,
@@ -170,7 +188,11 @@ internal struct ToolbarContext: Equatable {
             showsDebugItems: key.showsDebugItems,
             debugCommands: debugCommands,
             canStopDebugging: canStopDebugging,
-            isPresentingSheet: isPresentingSheet
+            isPresentingSheet: isPresentingSheet,
+            canListObjects: canListObjects,
+            supportsRoutines: supportsRoutines,
+            supportsUserManagement: supportsUserManagement,
+            supportsBackup: supportsBackup
         )
     }
 }
