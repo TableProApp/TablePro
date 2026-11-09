@@ -154,6 +154,7 @@ pub(crate) struct Grid {
     pub tracker: TabTrackerHandle,
     pub columns: Arc<[GridColumn]>,
     requests: Rc<RefCell<Vec<GridRequest>>>,
+    style: gtk::CssProvider,
     _settings: MemorySettings,
     _runtime: AppRuntime,
 }
@@ -166,9 +167,15 @@ impl Grid {
 
     pub(crate) fn build(spec: GridSpec, rows: Vec<RowData>) -> Self {
         crate::register_test_resources();
-        // The stylesheet the app draws the grid with, cell padding and the
-        // monospace font included.
         libadwaita::init().expect("libadwaita initialises under the test backend");
+        // Filtered widget tests never start the application that installs this stylesheet.
+        let style = gtk::CssProvider::new();
+        style.load_from_resource("/app/tablepro/TablePro/style.css");
+        gtk::style_context_add_provider_for_display(
+            &gtk::gdk::Display::default().expect("test display"),
+            &style,
+            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
         let runtime = crate::test_support::test_runtime();
         let settings = MemorySettings::new();
         let tracker = TabTrackerHandle::default();
@@ -202,6 +209,8 @@ impl Grid {
         let log = requests.clone();
         grid.connect_request(move |_, request| log.borrow_mut().push(request));
         let window = gtk::Window::new();
+        // Without a window manager, RTL TopStart gravity grows the surface off the screen.
+        window.set_gravity(gtk::WindowGravity::TopLeft);
         window.set_default_size(800, 500);
         window.set_child(Some(&grid));
         window.present();
@@ -213,6 +222,7 @@ impl Grid {
             tracker,
             columns,
             requests,
+            style,
             _settings: settings,
             _runtime: runtime,
         };
@@ -310,6 +320,7 @@ impl Grid {
 
 impl Drop for Grid {
     fn drop(&mut self) {
+        gtk::style_context_remove_provider_for_display(&gtk::prelude::WidgetExt::display(&self.window), &self.style);
         self.window.destroy();
         drain_main_context();
     }
