@@ -65,10 +65,17 @@ fn editor_font_css(font: &pango::FontDescription) -> String {
     )
 }
 
-/// A family name reaches CSS inside double quotes, so a quote or a
-/// backslash in it would end the string early.
-fn escape_css_string(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('"', "\\\"")
+// Font names can come from external settings and must stay inside the CSS string.
+pub(super) fn escape_css_string(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| match ch {
+            '\\' => "\\\\".to_owned(),
+            '"' => "\\\"".to_owned(),
+            ch if ch.is_control() => format!("\\{:x} ", u32::from(ch)),
+            ch => ch.to_string(),
+        })
+        .collect()
 }
 
 #[cfg(test)]
