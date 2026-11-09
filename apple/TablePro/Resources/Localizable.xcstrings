@@ -82547,6 +82547,9 @@
         }
       }
     },
+    "Filter Connections" : {
+
+    },
     "Filter Databases…" : {
       "localizations" : {
         "fr" : {
@@ -103712,6 +103715,9 @@
           }
         }
       }
+    },
+    "List every saved connection beside the database tree" : {
+
     },
     "List Favorite Tables" : {
       "localizations" : {
@@ -128078,6 +128084,9 @@
           }
         }
       }
+    },
+    "Open in another window" : {
+
     },
     "Open in Editor" : {
       "localizations" : {
@@ -177553,6 +177562,9 @@
         }
       }
     },
+    "Switch To" : {
+
+    },
     "Switch to Inline Configuration" : {
       "localizations" : {
         "en" : {
@@ -206315,6 +206327,9 @@
           }
         }
       }
+    },
+    "Turns the connections column into a list of every saved connection, in its groups. Double-click one to open it." : {
+
     },
     "Two columns are both named “%@”. Rename one, then save again." : {
       "localizations" : {
