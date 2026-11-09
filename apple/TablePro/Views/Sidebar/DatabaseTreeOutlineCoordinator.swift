@@ -745,6 +745,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             open(ref, activateGridFocus: true, forceNonPreview: true)
         case .openObjectSource(let objectRef):
             mainCoordinator?.showObjectSource(objectRef)
+        case .showStructure(let ref):
+            perform(SidebarMenuCommand.showStructure(ref))
         case .toggleDisclosure:
             if outlineView.isItemExpanded(node) {
                 outlineView.collapseItem(node)

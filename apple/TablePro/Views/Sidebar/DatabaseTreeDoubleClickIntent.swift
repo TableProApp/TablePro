@@ -17,6 +17,8 @@ internal enum DatabaseTreeDoubleClickIntent: Equatable {
     /// Open a routine's, trigger's or type's source. Selection alone does not open one, because
     /// fetching a definition is a round trip, and arrowing through a section would fire one per row.
     case openObjectSource(DatabaseObjectRef)
+    /// A column, index, foreign key or check is read in its table's Structure tab.
+    case showStructure(DatabaseTreeTableRef)
     /// Expand or collapse a container row.
     case toggleDisclosure
     case ignore
@@ -37,6 +39,8 @@ internal enum DatabaseTreeDoubleClickResolver {
             return .openObjectSource(ref.objectRef)
         case .userType(let ref):
             return .openObjectSource(ref.objectRef)
+        case .tableDetail(let ref):
+            return .showStructure(ref.table)
         default:
             return node.isExpandable ? .toggleDisclosure : .ignore
         }

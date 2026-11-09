@@ -91,6 +91,12 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
         /// A partition of a partitioned table. Separate from `.table` because on MySQL and Oracle a
         /// partition is not a relation and cannot be opened, dropped or renamed on its own.
         case partition(DatabaseTreePartitionRef)
+        /// A heading under a table for one kind of detail. An ordinary row, not a source list group,
+        /// so it indents under its table the way an object group indents under its schema.
+        case tableDetailGroup(DatabaseTreeTableDetailGroupRef)
+        /// A column, index, foreign key or check. A trigger under a table stays `.trigger`, so it
+        /// opens and offers its menu the way it does under a schema.
+        case tableDetail(DatabaseTreeTableDetailRef)
         case routine(DatabaseTreeRoutineRef)
         case trigger(DatabaseTreeTriggerRef)
         case userType(DatabaseTreeUserTypeRef)
@@ -118,7 +124,7 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
     var isExpandable: Bool {
         switch kind {
         case .recentSection, .temporarySection, .foldersSection, .tableFolder, .database, .schema,
-             .objectKindSection, .containerObjectKindSection,
+             .objectKindSection, .containerObjectKindSection, .tableDetailGroup,
              .hierarchicalSchemaSection, .redisKeysSection:
             return true
         case .table(let ref):
@@ -128,8 +134,23 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
         case .redisNode(let node):
             guard case .namespace = node else { return false }
             return true
-        case .recentTable, .temporaryTable, .routine, .trigger, .userType, .status:
+        case .recentTable, .temporaryTable, .routine, .trigger, .userType, .status, .tableDetail:
             return false
+        }
+    }
+
+    /// The disclosure a row offers under the sidebar's options, the one rule every expandability gate
+    /// reads. `isExpandable` answers for the kind alone, as the outline drew it before Table Details:
+    /// partitions shown, details hidden.
+    func isExpandable(showsPartitions: Bool, showsTableDetails: Bool) -> Bool {
+        switch kind {
+        case .table(let ref):
+            if showsTableDetails, TableDetailGroupResolver.listsDetails(of: ref.table.type) { return true }
+            return showsPartitions && ref.table.type == .partitionedTable
+        case .partition:
+            return showsPartitions && isExpandable
+        default:
+            return isExpandable
         }
     }
 
@@ -168,7 +189,7 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
             return true
         case .database, .schema, .containerObjectKindSection, .tableFolder,
              .hierarchicalSchemaSection, .recentTable, .temporaryTable, .table, .partition,
-             .routine, .trigger, .userType, .status, .redisNode:
+             .routine, .trigger, .userType, .status, .redisNode, .tableDetailGroup, .tableDetail:
             return false
         }
     }
@@ -179,7 +200,8 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
             return true
         case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
              .table, .partition, .routine, .trigger, .userType, .status, .objectKindSection,
-             .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
+             .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode,
+             .tableDetailGroup, .tableDetail:
             return false
         }
     }
@@ -192,7 +214,8 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
             return .schema(database: database, schema: schema, isSystem: systemSchemas.contains(schema))
         case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
              .table, .partition, .routine, .trigger, .userType, .status, .objectKindSection,
-             .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
+             .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode,
+             .tableDetailGroup, .tableDetail:
             return nil
         }
     }
@@ -250,6 +273,16 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
     }
 
     static func partitionId(_ ref: DatabaseTreePartitionRef) -> String { "partition\u{1}\(ref.id)" }
+    /// Under the table's own id, so a trigger listed under its table and under its schema's Triggers
+    /// group is two rows: `NSOutlineView` holds each item once.
+    static func tableDetailGroupId(_ group: DatabaseTreeTableDetailGroupRef) -> String {
+        "\(tableId(group.table))\u{1}detailgroup\u{1}\(group.kind.rawValue)"
+    }
+
+    static func tableDetailId(groupId: String, key: String) -> String {
+        "\(groupId)\u{1}detail\u{1}\(key)"
+    }
+
     static func recentTableId(_ ref: DatabaseTreeTableRef) -> String { "recent\u{1}table\u{1}\(ref.id)" }
     static let temporarySectionId = "temporary-section"
     static func temporaryTableId(_ ref: DatabaseTreeTableRef) -> String { "temporary\u{1}table\u{1}\(ref.id)" }

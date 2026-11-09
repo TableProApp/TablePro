@@ -78,7 +78,7 @@ extension DatabaseTreeOutlineCoordinator {
             return redisChildren(of: nil)
         case .redisNode(let redisNode):
             return redisChildren(of: redisNode)
-        case .recentTable, .temporaryTable, .routine, .trigger, .userType, .status:
+        case .recentTable, .temporaryTable, .routine, .trigger, .userType, .status, .tableDetailGroup, .tableDetail:
             return []
         }
     }

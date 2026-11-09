@@ -18,7 +18,8 @@ internal enum DatabaseTreeSelection {
         case .status, .recentSection, .temporarySection, .foldersSection, .objectKindSection, .redisKeysSection:
             return false
         case .database, .schema, .hierarchicalSchemaSection, .table, .partition, .routine, .trigger, .userType,
-             .recentTable, .temporaryTable, .containerObjectKindSection, .tableFolder, .redisNode:
+             .recentTable, .temporaryTable, .containerObjectKindSection, .tableFolder, .redisNode,
+             .tableDetailGroup, .tableDetail:
             return true
         }
     }

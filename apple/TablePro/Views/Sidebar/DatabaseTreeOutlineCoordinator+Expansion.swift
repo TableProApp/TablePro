@@ -199,7 +199,7 @@ extension DatabaseTreeOutlineCoordinator {
         case .objectKindSection, .containerObjectKindSection, .tableFolder, .table, .partition:
             restorePartitionExpansion(under: node)
         case .recentSection, .recentTable, .temporarySection, .temporaryTable, .database, .routine, .trigger,
-             .userType, .status, .redisKeysSection, .redisNode:
+             .userType, .status, .redisKeysSection, .redisNode, .tableDetailGroup, .tableDetail:
             break
         }
     }
@@ -257,7 +257,7 @@ extension DatabaseTreeOutlineCoordinator {
         case .partition(let ref):
             guard let tableRef = ref.tableRef else { break }
             recordTableExpansion(tableRef, expanded: expanded)
-        case .recentTable, .temporaryTable, .routine, .trigger, .userType, .status, .redisNode:
+        case .recentTable, .temporaryTable, .routine, .trigger, .userType, .status, .redisNode, .tableDetailGroup, .tableDetail:
             break
         }
     }
@@ -289,7 +289,7 @@ extension DatabaseTreeOutlineCoordinator {
             loadHierarchicalSchemaObjects(schema)
         case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
              .routine, .trigger, .userType, .status, .objectKindSection, .containerObjectKindSection,
-             .redisKeysSection, .redisNode:
+             .redisKeysSection, .redisNode, .tableDetailGroup, .tableDetail:
             break
         }
     }

@@ -55,6 +55,8 @@ struct DatabaseTreeRowContext {
     var showsPartitions: Bool = true
     /// The engine's schema rows are databases attached beside the opened file, never one to switch to.
     var listsAttachedSchemas: Bool = false
+    /// A group's count comes from the list its table read, which only the coordinator holds.
+    var tableDetailCount: @MainActor (DatabaseTreeTableDetailGroupRef) -> Int? = { _ in nil }
 }
 
 struct DatabaseTreeRowView: View {
@@ -119,6 +121,10 @@ struct DatabaseTreeRowView: View {
             tableRow(ref)
         case .partition(let ref):
             partitionRow(ref)
+        case .tableDetailGroup(let group):
+            TableDetailGroupRowView(kind: group.kind, count: context.tableDetailCount(group))
+        case .tableDetail(let ref):
+            TableDetailRowView(item: ref.item)
         case .routine(let ref):
             RoutineRowView(routine: ref.routine, displayLabel: context.routineDisplayLabel(ref))
         case .trigger(let ref):

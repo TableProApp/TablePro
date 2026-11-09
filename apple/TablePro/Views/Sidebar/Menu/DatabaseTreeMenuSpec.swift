@@ -33,6 +33,8 @@ internal enum DatabaseTreeMenuSpec {
             return folderSections(ref.folder)
         case .partition(let ref):
             return partitionSections(ref, context: context)
+        case .tableDetail(let ref):
+            return tableDetailSections(ref)
         case .database(let metadata):
             return containerSections(.database(metadata.name, isSystem: metadata.isSystemDatabase), context: context)
         case .schema(let database, let schema):
@@ -64,7 +66,9 @@ internal enum DatabaseTreeMenuSpec {
             return redisSections(node)
         case .redisKeysSection:
             return [DatabaseTreeMenuSection([.command(String(localized: "Refresh"), .refreshRedisKeys)])]
-        case .status, .recentSection, .temporarySection:
+        // A group stands for no object. An empty menu still opens as an empty frame, so it gets the
+        // sidebar's own menu, as a status row does.
+        case .status, .recentSection, .temporarySection, .tableDetailGroup:
             return backgroundSections(context)
         }
     }
@@ -333,6 +337,14 @@ internal enum DatabaseTreeMenuSpec {
         return [
             DatabaseTreeMenuSection(copies),
             DatabaseTreeMenuSection([.command(String(localized: "Show DDL"), .showObjectSource(ref.objectRef))])
+        ]
+    }
+
+    /// Editing a column or a key from the tree is out of reach on purpose: the Structure tab does it.
+    private static func tableDetailSections(_ ref: DatabaseTreeTableDetailRef) -> [DatabaseTreeMenuSection] {
+        [
+            DatabaseTreeMenuSection([.command(String(localized: "Copy Name"), .copyText(ref.item.name))]),
+            DatabaseTreeMenuSection([.command(String(localized: "Show Structure"), .showStructure(ref.table))])
         ]
     }
 

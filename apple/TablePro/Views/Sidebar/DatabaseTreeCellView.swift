@@ -41,7 +41,8 @@ final class DatabaseTreeCellView: RenamableSidebarCellView<DatabaseTreeRowView> 
         case .schema, .tableFolder:
             return "folder"
         case .routine, .trigger, .userType, .status, .recentSection, .temporarySection, .foldersSection,
-             .objectKindSection, .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
+             .objectKindSection, .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode,
+             .tableDetailGroup, .tableDetail:
             return "tablecells"
         }
     }
