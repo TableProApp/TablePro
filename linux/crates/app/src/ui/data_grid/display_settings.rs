@@ -57,7 +57,7 @@ impl DataGrid {
             self.imp().applied_null.replace(Some(values.null_display.clone()));
             self.redraw();
         }
-        if changed || font_changed {
+        if changed || font_changed || marks_changed {
             self.fonts_changed();
         }
     }
