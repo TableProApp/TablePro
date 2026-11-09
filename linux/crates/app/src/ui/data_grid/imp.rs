@@ -93,7 +93,8 @@ pub struct DataGrid {
     /// The window's focus handler, while the grid is in a window.
     pub focus_watch: RefCell<Option<(glib::WeakRef<gtk4::Window>, glib::SignalHandlerId)>>,
     pub(super) font_watch: RefCell<Option<HandlerGuard>>,
-    pub(super) stripes_watch: RefCell<Option<HandlerGuard>>,
+    pub(super) display_watch: RefCell<Option<HandlerGuard>>,
+    pub(super) applied_null: RefCell<Option<String>>,
     pub(super) scheme_style: RefCell<Option<super::scheme_colors::SchemeStyle>>,
 }
 
@@ -134,6 +135,7 @@ impl ObjectImpl for DataGrid {
         self.summary.stop();
         self.obj().stop_watching_focus();
         drop(self.font_watch.take());
+        drop(self.display_watch.take());
         drop(self.scheme_style.take());
         if let Some(menus) = self.menus.get() {
             menus.unparent();

@@ -17,9 +17,6 @@
       </object>
     </child>
     <child>
-      <object class="TableProDataBrowserGroup" id="data_browser_group"/>
-    </child>
-    <child>
       <object class="TableProHistoryGroup" id="history_group"/>
     </child>
     <child>

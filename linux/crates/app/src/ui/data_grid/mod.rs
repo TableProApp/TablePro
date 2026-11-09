@@ -5,6 +5,7 @@ mod client_sorter;
 mod column_chooser;
 mod columns;
 mod copy;
+mod display_settings;
 mod edit;
 mod find_bar;
 mod grid_actions;
@@ -94,7 +95,7 @@ impl DataGrid {
         grid.set_columns(columns, sorting, rules);
         scheme_colors::follow(&grid);
         grid.watch_fonts();
-        grid.watch_stripes();
+        grid.watch_display_settings();
         grid
     }
 
@@ -189,8 +190,6 @@ impl DataGrid {
         self.imp().columns.borrow().columns()
     }
 
-    /// Build the columns for another column set, with what may change in
-    /// its rows. The rows go, since they were read under the old columns.
     pub fn set_columns(&self, columns: Arc<[GridColumn]>, sorting: GridSorting, rules: Option<EditRules>) {
         self.commit_editors();
         self.store().clear();
