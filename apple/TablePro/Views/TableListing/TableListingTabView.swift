@@ -9,31 +9,36 @@ import SwiftUI
 internal struct TableListingTabView: View {
     @ObservedObject var model: TableListingViewModel
     let databaseType: DatabaseType
+    let kinds: [SidebarObjectKind]
+    let kindTitle: (SidebarObjectKind) -> String
+    let onSelectKind: (SidebarObjectKind) -> Void
 
     var body: some View {
-        content
-            .task { model.loadIfNeeded() }
+        VStack(spacing: 0) {
+            ObjectListingBar(
+                model: model,
+                kinds: kinds,
+                kindTitle: kindTitle,
+                onSelectKind: onSelectKind
+            )
+            content
+        }
+        // Keyed by target: a retarget hands this view a fresh model that has not loaded yet.
+        .task(id: model.target) { model.loadIfNeeded() }
     }
 
     @ViewBuilder
     private var content: some View {
         switch model.state {
+        // Nothing is on its way, so a spinner would wait forever.
+        case .idle where model.wasInterrupted:
+            failure(String(localized: "The read stopped before it finished."))
         case .idle, .loading:
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .gridStandInBackground()
         case .failed(let message):
-            UnavailableStateView {
-                Label(String(localized: "Can't List Tables"), systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(message)
-            } actions: {
-                Button(String(localized: "Try Again")) {
-                    model.reload()
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .gridStandInBackground()
+            failure(message)
         case .loaded(let listing) where listing.rows.rows.isEmpty:
             emptyState(listing)
         case .loaded(let listing):
@@ -46,6 +51,20 @@ internal struct TableListingTabView: View {
         }
     }
 
+    private func failure(_ message: String) -> some View {
+        UnavailableStateView {
+            Label(model.target.kind.listingFailureTitle, systemImage: "exclamationmark.triangle")
+        } description: {
+            Text(message)
+        } actions: {
+            Button(String(localized: "Try Again")) {
+                model.reload()
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .gridStandInBackground()
+    }
+
     private func emptyState(_ listing: TableListing) -> some View {
         Group {
             if listing.isIncomplete {
@@ -55,7 +74,7 @@ internal struct TableListingTabView: View {
                     description: listing.notice.map { Text($0) }
                 )
             } else {
-                UnavailableStateView(String(localized: "No Tables"), systemImage: "tablecells")
+                UnavailableStateView(model.target.kind.listingEmptyTitle, systemImage: model.target.kind.iconName)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -75,16 +94,20 @@ internal struct TableListingTabView: View {
 
     private var rowsGrid: some View {
         DataGridView(model: model.grid.model)
-            .onAppear { model.grid.model.configuration = configuration }
+            .onAppear { model.grid.model.configuration = configuration(opensRows: model.rowsNameObjects) }
+            .onChange(of: model.rowsNameObjects) { opensRows in
+                model.grid.model.configuration = configuration(opensRows: opensRows)
+            }
     }
 
-    private var configuration: DataGridConfiguration {
+    // A row that names an object opens it; a shell command's rows keep the cell viewer.
+    private func configuration(opensRows: Bool) -> DataGridConfiguration {
         var configuration = DataGridConfiguration()
         configuration.traits = DataGridEngineTraits(databaseType: databaseType)
         configuration.showRowNumbers = true
         configuration.supportsValueFilter = false
         configuration.appliesRowCopyFormat = true
-        configuration.commands = [.freezeColumns, .displayAs]
+        configuration.commands = opensRows ? [.freezeColumns, .displayAs, .openRow] : [.freezeColumns, .displayAs]
         return configuration
     }
 }

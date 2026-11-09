@@ -156,7 +156,8 @@ struct MainEditorContentView: View {
             usersRolesViewModels = usersRolesViewModels.filter { openTabIds.contains($0.key) }
             queryInsightsViewModels = queryInsightsViewModels.filter { openTabIds.contains($0.key) }
             tableHealthViewModels = tableHealthViewModels.filter { openTabIds.contains($0.key) }
-            tableListingModels.retainTabs(openTabIds)
+            // A listing a table click took over keeps its id, and its model must go with the listing.
+            tableListingModels.retainTabs(Set(tabManager.tabs.filter { $0.tabType == .tableListing }.map(\.id)))
             SchemaProviderRegistry.shared.reclaimUnheldProviders(for: connectionId)
         }
         .onChange(of: tabManager.selectedTabId) { _ in
@@ -226,26 +227,57 @@ struct MainEditorContentView: View {
     // MARK: - Table Listing Tab Content
 
     private func tableListingContent(tab: QueryTab) -> some View {
+        let declared = connection.type.declaredObjectKinds
+        let kind = ObjectListingKinds.effective(tab.display.listingKind ?? .table, declared: declared)
         let scope = DatabaseScope(
             connectionId: connection.id,
             database: tab.tableContext.databaseName,
             schema: tab.tableContext.schemaName
         )
-        let kind = tab.display.listingKind ?? .table
         let target = DatabaseTreeObjectGroup(database: scope.database, schema: scope.schema, kind: kind)
-        let model = tableListingModels.model(forTab: tab.id, target: target) {
+        let tabId = tab.id
+        let model = tableListingModels.model(forTab: tabId, target: target) {
             TableListingViewModel(
-                tabId: tab.id,
+                tabId: tabId,
                 scope: scope,
                 kind: kind,
                 loader: TableListingLoader(
                     databaseType: connection.type,
                     slot: EngineNamespaceSlot(databaseType: connection.type)
-                )
+                ),
+                perform: { [weak coordinator = self.coordinator] action in
+                    coordinator?.performListingAction(action, fromTab: tabId)
+                },
+                onInteraction: { [weak tabManager = self.tabManager] in
+                    tabManager?.promotePreviewTab(id: tabId)
+                }
             )
         }
-        return TableListingTabView(model: model, databaseType: connection.type)
-            .id(tab.id)
+        let tableEntityName = PluginManager.shared.tableEntityName(for: connection.type)
+        return TableListingTabView(
+            model: model,
+            databaseType: connection.type,
+            kinds: ObjectListingKinds.available(itemCounts: listedObjectCounts(in: scope), declared: declared, current: kind),
+            kindTitle: { $0.title(tableEntityName: tableEntityName) },
+            onSelectKind: { coordinator.selectListingKind($0, inTab: tabId) }
+        )
+        .task(id: target) {
+            if (tab.display.listingKind ?? .table) != kind {
+                coordinator.adoptListingKind(kind, inTab: tabId)
+            }
+            // The picker offers the groups the sidebar shows, so the container's lists are read once here.
+            await treeService.loadObjects(connectionId: scope.connectionId, database: scope.database, schema: scope.schema)
+        }
+        .id(tab.id)
+    }
+
+    private func listedObjectCounts(in scope: DatabaseScope) -> [SidebarObjectKind: Int] {
+        ObjectListingKinds.itemCounts(
+            tables: treeService.tables(connectionId: scope.connectionId, database: scope.database, schema: scope.schema),
+            routines: treeService.routines(connectionId: scope.connectionId, database: scope.database, schema: scope.schema),
+            triggers: treeService.triggers(connectionId: scope.connectionId, database: scope.database, schema: scope.schema),
+            types: treeService.userDefinedTypes(connectionId: scope.connectionId, database: scope.database, schema: scope.schema)
+        )
     }
 
     // MARK: - Version History Tab Content
