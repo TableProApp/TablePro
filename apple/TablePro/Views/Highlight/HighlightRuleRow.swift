@@ -16,12 +16,7 @@ struct HighlightRuleRow: View {
     let onRemove: () -> Void
     let onCancel: () -> Void
 
-    /// Bounded rather than `.fixedSize()`. A pull-down takes the width of its widest menu item,
-    /// and the items here are the table's column names, so one long name pushed the BETWEEN
-    /// second value field past the popover's edge: measured, a 29-character name puts the row at
-    /// 582pt and a 62-character one at 791pt, against the 523pt a row actually gets inside this
-    /// popover's 540pt list. Capped, both measure 511pt. The filter bar's own 160 does not fit
-    /// here, because that row lives in a wider host.
+    // Narrower than the filter bar's 160: a row gets 523pt inside this popover's list.
     private static let columnPickerMaximumWidth: CGFloat = 140
 
     private var isColumnMissing: Bool {
@@ -60,6 +55,7 @@ struct HighlightRuleRow: View {
             .padding(.leading, 22)
             .opacity(rule.isEnabled ? 1 : 0.5)
         }
+        .controlSize(.small)
         .padding(.vertical, 4)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(HighlightRuleDescription.condition(of: rule))
@@ -74,11 +70,27 @@ struct HighlightRuleRow: View {
     }
 
     private var conditionEditor: some View {
-        HStack(spacing: 6) {
+        FilterRowLayout(spacing: 6, fillMinimum: FilterRowView.valueCellMinimumWidth(spacing: 6)) {
             columnPicker
+                .fillsReservedWidth()
+                .filterRowRole(.reserved(columnCellWidth, minimum: FilterControlMetrics.popUpMinimumWidth))
             operatorMenu
-            valueFields
+                .fillsReservedWidth()
+                .filterRowRole(.reserved(
+                    FilterControlMetrics.operatorWidth(reservesCaseIndicator: true),
+                    minimum: FilterControlMetrics.operatorMinimumWidth(reservesCaseIndicator: true)
+                ))
+            HStack(spacing: 6) {
+                valueFields
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .filterRowRole(.fill)
         }
+        .frame(minHeight: FilterValueTextField.singleLineHeight(for: .small))
+    }
+
+    private var columnCellWidth: CGFloat {
+        min(FilterControlMetrics.popUpWidth(titles: columnOptions.map(\.label)), Self.columnPickerMaximumWidth)
     }
 
     private var columnSelection: Binding<String> {
@@ -103,8 +115,6 @@ struct HighlightRuleRow: View {
             }
         }
         .pickerStyle(.menu)
-        .controlSize(.small)
-        .frame(maxWidth: Self.columnPickerMaximumWidth)
         .labelsHidden()
         .accessibilityValue(rule.columnName)
         .accessibilityIdentifier("highlight-rule-column")
@@ -137,8 +147,8 @@ struct HighlightRuleRow: View {
                 Toggle(String(localized: "Match Case"), isOn: $rule.isCaseSensitive)
             }
         } label: {
-            HStack(spacing: 3) {
-                Text(Self.operatorLabel(rule.filterOperator))
+            HStack(spacing: FilterControlMetrics.caseIndicatorSpacing) {
+                Text(rule.filterOperator.displayName)
                 if rule.filterOperator.supportsCaseSensitivity,
                    rule.isCaseSensitive != rule.filterOperator.defaultIsCaseSensitive {
                     Image(systemName: "textformat")
@@ -149,8 +159,6 @@ struct HighlightRuleRow: View {
             .accessibilityLabel(String(localized: "Rule operator"))
         }
         .menuStyle(.button)
-        .controlSize(.small)
-        .fixedSize()
         .accessibilityValue(rule.filterOperator.displayName)
         .accessibilityIdentifier("highlight-rule-operator")
     }
@@ -165,25 +173,27 @@ struct HighlightRuleRow: View {
                 placeholder: String(localized: "Value"),
                 onCancel: onCancel
             )
-            .frame(minWidth: 90)
+            .frame(minWidth: FilterRowView.valueFieldMinimumWidth)
             .accessibilityLabel(String(localized: "Rule value"))
 
             if rule.filterOperator.requiresSecondValue {
                 Text("and")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                TextField("Value", text: Binding(
-                    get: { rule.secondValue ?? "" },
-                    set: { rule.secondValue = $0 }
-                ))
-                .textFieldStyle(.roundedBorder)
-                .controlSize(.small)
-                .autocorrectionDisabled(true)
-                .frame(minWidth: 70)
+                    .fixedSize()
+                FilterValueTextField(
+                    text: Binding(
+                        get: { rule.secondValue ?? "" },
+                        set: { rule.secondValue = $0 }
+                    ),
+                    focusedId: $focusedRuleID,
+                    identity: FilterValueTextField.secondFieldIdentity(for: rule.id),
+                    placeholder: String(localized: "Value"),
+                    onCancel: onCancel
+                )
+                .frame(minWidth: FilterRowView.valueFieldMinimumWidth)
                 .accessibilityLabel(String(localized: "Second rule value"))
             }
-        } else {
-            Spacer(minLength: 0)
         }
     }
 
@@ -199,7 +209,6 @@ struct HighlightRuleRow: View {
             }
         }
         .pickerStyle(.menu)
-        .controlSize(.small)
         .fixedSize()
         .labelsHidden()
         .accessibilityValue(rule.color.displayName)
@@ -212,7 +221,6 @@ struct HighlightRuleRow: View {
             }
         }
         .pickerStyle(.segmented)
-        .controlSize(.small)
         .fixedSize()
         .labelsHidden()
         .accessibilityLabel(String(localized: "Apply To"))
@@ -223,7 +231,6 @@ struct HighlightRuleRow: View {
         Button(String(localized: "Remove Rule"), systemImage: "minus", action: onRemove)
             .labelStyle(.iconOnly)
             .buttonStyle(.bordered)
-            .controlSize(.small)
             .help(String(localized: "Remove this rule"))
     }
 

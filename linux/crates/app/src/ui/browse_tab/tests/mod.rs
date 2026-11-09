@@ -1904,3 +1904,123 @@ fn the_bottom_bar_offers_the_column_chooser() {
     wait_until(WAIT, || window.visible_dialog().is_some()).expect("More opens Columns");
     window.visible_dialog().expect("the chooser").close();
 }
+
+fn switch_labels(tab: &BrowseTab) -> Vec<gtk4::Label> {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    crate::test_support::descendants(&tab.imp().view_toggle.get())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk4::Label>().ok())
+        .filter(|label| !label.label().is_empty())
+        .collect()
+}
+
+fn bar_shortfall(tab: &BrowseTab) -> Option<String> {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    let cut: Vec<String> = switch_labels(tab)
+        .iter()
+        .filter(|label| label.layout().is_ellipsized() || label.layout().pixel_size().0 > label.width())
+        .map(|label| label.label().to_string())
+        .collect();
+    let (needs, ..) = tab.imp().action_bar.measure(gtk4::Orientation::Horizontal, -1);
+    (!cut.is_empty() || needs > tab.width())
+        .then(|| format!("cut {cut:?}, the bar needs {needs} px of {}", tab.width()))
+}
+
+fn menu_actions(menu: &gtk4::gio::MenuModel) -> Vec<String> {
+    (0..menu.n_items())
+        .filter_map(|index| menu.item_link(index, gtk4::gio::MENU_LINK_SECTION))
+        .flat_map(|section| {
+            (0..section.n_items())
+                .filter_map(|index| {
+                    section
+                        .item_attribute_value(index, gtk4::gio::MENU_ATTRIBUTE_ACTION, None)
+                        .and_then(|value| value.get::<String>())
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+#[gtk4::test]
+fn the_view_switch_keeps_its_names_in_a_1200_px_window() {
+    use crate::ui::structure_tab::{ColumnsInput, StructureMode, StructureTab, StructureTabInit};
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    let tab = harness.tab();
+    tab.offer_structure();
+    let window = crate::test_support::OwnedWindow::presented(
+        libadwaita::Window::builder()
+            .default_width(1_200)
+            .default_height(400)
+            .content(tab)
+            .build(),
+    );
+    let imp = tab.imp();
+    let columns = crate::test_support::find_by_action_name(tab, "grid.columns")
+        .and_downcast::<gtk4::Button>()
+        .expect("a Columns button");
+    wait_until(WAIT, || {
+        window.is_mapped() && tab.width() >= 1_200 && harness.shown().len() == 1
+    })
+    .expect("the tab fills the window");
+    let names: Vec<String> = switch_labels(tab)
+        .iter()
+        .map(|label| label.label().to_string())
+        .collect();
+    assert_eq!(names, ["Data", "Structure", "JSON"]);
+    assert!(
+        wait_until(WAIT, || bar_shortfall(tab).is_none()).is_ok(),
+        "{:?}",
+        bar_shortfall(tab)
+    );
+    assert!(columns.is_visible() && imp.export_button.is_visible() && imp.page_size_dropdown.is_mapped());
+    assert!(!imp.overflow_button.is_visible());
+
+    // What a 1200 px window leaves the tab beside the sidebar at its widest.
+    window.set_default_size(920, 400);
+    wait_until(WAIT, || {
+        tab.width() > 0 && tab.width() <= 920 && imp.overflow_button.is_mapped()
+    })
+    .expect("the tab beside the sidebar");
+    assert!(
+        wait_until(WAIT, || bar_shortfall(tab).is_none()).is_ok(),
+        "{:?}",
+        bar_shortfall(tab)
+    );
+    assert_eq!(
+        imp.view_toggle.display_mode(),
+        libadwaita::InlineViewSwitcherDisplayMode::Labels
+    );
+    assert!(!columns.is_visible() && !imp.export_button.is_visible() && !imp.page_size_dropdown.is_mapped());
+    assert!(!imp.more_button.is_visible());
+    let moved = menu_actions(&imp.overflow_button.menu_model().expect("the overflow menu"));
+    for action in ["grid.columns", "browse.export", "browse.page-size"] {
+        assert!(
+            moved.iter().any(|found| found == action),
+            "the overflow menu lacks {action}"
+        );
+    }
+
+    let structure = StructureTab::new(StructureTabInit {
+        tracker: crate::services::structure_tracker_handle::StructureTrackerHandle::default(),
+        schema: None,
+        table: "new_table".into(),
+        mode: StructureMode::New,
+        session: harness.session.clone(),
+        tasks: harness.runtime.as_ref().unwrap().tasks(),
+        first_load: crate::ui::tab_load::FirstLoad::Now,
+    });
+    structure.send(ColumnsInput::AddColumn);
+    tab.set_structure(&structure);
+    imp.view_stack.set_visible_child_name("structure");
+    wait_until(WAIT, || structure.imp().save_button.is_mapped()).expect("the one Structure bar");
+    assert!(
+        wait_until(WAIT, || bar_shortfall(tab).is_none()).is_ok(),
+        "{:?}",
+        bar_shortfall(tab)
+    );
+    structure.shutdown();
+}
