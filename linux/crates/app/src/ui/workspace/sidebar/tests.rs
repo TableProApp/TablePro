@@ -514,7 +514,7 @@ fn target(key: &SessionKey) -> Option<String> {
 }
 
 /// Each menu item's action and target, sections and submenus flattened.
-fn menu_items(menu: &gio::MenuModel) -> Vec<(String, Option<glib::Variant>)> {
+pub(crate) fn menu_items(menu: &gio::MenuModel) -> Vec<(String, Option<glib::Variant>)> {
     let mut found = Vec::new();
     for index in 0..menu.n_items() {
         if let Some(action) = menu
@@ -2554,6 +2554,42 @@ fn a_search_finds_tables_under_their_schema_past_an_empty_one() {
 
     wait_until(WAIT, || shown.rows() == ["leads"]).expect("only the table it finds");
     wait_until(WAIT, || shown.headings() == ["sales (Alpha)"]).expect("the table's own schema");
+}
+
+#[gtk4::test]
+fn the_add_menu_offers_what_the_engine_makes_for_its_own_session() {
+    let key = SessionKey::Saved(Uuid::new_v4());
+    let offered = |affordances| {
+        let menu = creation_menu(&key, affordances).upcast::<gio::MenuModel>();
+        crate::test_support::assert_access_keys(&menu);
+        let targets = menu_items(&menu)
+            .into_iter()
+            .map(|(action, target)| (action, target.and_then(|target| target.get::<String>())))
+            .collect::<Vec<_>>();
+        (menu_labels(&menu), targets)
+    };
+
+    let (labels, targets) = offered(catalog_affordance());
+    assert_eq!(labels, ["New _Table…", "New _Schema…", "New _Database…"]);
+    assert_eq!(
+        targets,
+        [
+            ("win.new-table-in".to_owned(), target(&key)),
+            ("win.new-schema-in".to_owned(), target(&key)),
+            ("win.new-database-in".to_owned(), target(&key)),
+        ]
+    );
+
+    let mut keyspaces = catalog_affordance();
+    keyspaces.catalog.database_noun = tablepro_core::ddl::DatabaseNoun::Keyspace;
+    keyspaces.lists_databases = true;
+    assert_eq!(offered(keyspaces).0, ["New _Table…", "New _Keyspace…"]);
+
+    let read_only = SidebarAffordances {
+        read_only: true,
+        ..catalog_affordance()
+    };
+    assert!(offered(read_only).0.is_empty(), "a read-only connection makes nothing");
 }
 
 #[gtk4::test]

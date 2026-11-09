@@ -16,12 +16,12 @@ use gtk4::subclass::prelude::*;
 use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use tablepro_session::runtime::{TaskFailure, Tasks};
+use tablepro_session::runtime::{ProcessHold, TaskFailure, Tasks, WatchForwarder};
 use tablepro_storage::{SavedQueries, StorageError};
 use uuid::Uuid;
 
 use crate::i18n::{gettext, gettext_f};
-use crate::runtime::spawn_and_deliver;
+use crate::runtime::{spawn_and_deliver, spawn_held};
 use crate::ui::history_dialog::QueryDestination;
 use saved_query_listing::{Listing, matches};
 use saved_query_object::SavedQueryObject;
@@ -38,6 +38,7 @@ pub(crate) struct SavedQueriesDialogInit {
     // Its connection's queries are listed first.
     pub active_connection: Option<Uuid>,
     pub tasks: Tasks,
+    pub hold: Rc<dyn ProcessHold>,
 }
 
 // What the last search matched. None shows every query.
@@ -47,6 +48,8 @@ struct DialogParts {
     store: Option<SavedQueries>,
     active_connection: Option<Uuid>,
     tasks: Tasks,
+    hold: Rc<dyn ProcessHold>,
+    selection: gtk::SingleSelection,
     items: gio::ListStore,
     matched: Matched,
     filter: gtk::CustomFilter,
@@ -78,10 +81,18 @@ impl SavedQueriesDialog {
         let filtered = gtk::FilterListModel::new(Some(items.clone()), Some(filter.clone()));
         let sorted = gtk::SortListModel::new(Some(filtered), None::<gtk::Sorter>);
         sorted.set_section_sorter(Some(&by_group()));
+        let selection = gtk::SingleSelection::builder()
+            .model(&sorted)
+            .autoselect(false)
+            .can_unselect(true)
+            .build();
+        let changes = init.store.as_ref().map(SavedQueries::changes);
         let _ = dialog.imp().parts.set(DialogParts {
             store: init.store,
             active_connection: init.active_connection,
             tasks: init.tasks,
+            hold: init.hold,
+            selection,
             items,
             matched,
             filter,
@@ -89,8 +100,28 @@ impl SavedQueriesDialog {
         });
         dialog.setup_list();
         dialog.connect_controls();
-        dialog.show_results();
-        dialog.load();
+        let loading = adw::StatusPage::builder()
+            .title(gettext("Loading Saved Queries"))
+            .paintable(&adw::SpinnerPaintable::new(Some(&dialog)))
+            .build();
+        dialog.imp().stack.add_named(&loading, Some("loading"));
+        dialog.imp().stack.set_visible_child_name("loading");
+        if let Some(changes) = changes {
+            let weak = dialog.downgrade();
+            dialog.imp().changes.replace(Some(WatchForwarder::new(
+                changes,
+                move |_| {
+                    if let Some(dialog) = weak.upgrade() {
+                        dialog.load();
+                    }
+                },
+                |future| {
+                    glib::spawn_future_local(future);
+                },
+            )));
+        } else {
+            dialog.load_failed();
+        }
         dialog
     }
 
@@ -112,7 +143,7 @@ impl SavedQueriesDialog {
             return;
         };
         let list_view = imp.list_view.get();
-        list_view.set_model(Some(&gtk::NoSelection::new(Some(parts.sorted.clone()))));
+        list_view.set_model(Some(&parts.selection));
         list_view.set_factory(Some(&self.row_factory()));
         list_view.set_header_factory(Some(&connection_header_factory()));
         let dialog = self.downgrade();
@@ -319,8 +350,6 @@ impl SavedQueriesDialog {
         self.change(StoreChange::Delete, move |store| async move { store.delete(id).await });
     }
 
-    // The list is read again whether the change landed or not, so it
-    // shows what the store holds now.
     fn change<W>(&self, change: StoreChange, work: impl FnOnce(SavedQueries) -> W + Send + 'static)
     where
         W: Future<Output = Result<(), StorageError>> + Send + 'static,
@@ -331,31 +360,32 @@ impl SavedQueriesDialog {
         let Some(store) = parts.store.clone() else {
             return;
         };
+        let (send, received) = tokio::sync::oneshot::channel();
+        spawn_held(&parts.tasks, parts.hold.as_ref(), async move {
+            let _ = send.send(work(store).await);
+        });
         let dialog = self.downgrade();
-        drop(spawn_and_deliver(
-            &parts.tasks,
-            async move { work(store).await },
-            move |done| {
-                let Some(dialog) = dialog.upgrade() else {
-                    return;
-                };
-                let failure = match done {
-                    Ok(Ok(())) => None,
-                    Ok(Err(error)) => {
-                        tracing::warn!(%error, ?change, "a saved query change failed");
-                        Some(change.failure_text(Some(&error)))
-                    }
-                    Err(failure) => {
-                        tracing::warn!(%failure, ?change, "a saved query change did not finish");
-                        Some(change.failure_text(None))
-                    }
-                };
-                if let Some(message) = failure {
-                    dialog.add_toast(&message);
+        glib::spawn_future_local(async move {
+            let done = received.await;
+            let Some(dialog) = dialog.upgrade() else {
+                return;
+            };
+            let failure = match done {
+                Ok(Ok(())) => None,
+                Ok(Err(error)) => {
+                    tracing::warn!(%error, ?change, "a saved query change failed");
+                    Some(change.failure_text(Some(&error)))
                 }
+                Err(failure) => {
+                    tracing::warn!(%failure, ?change, "a saved query change did not finish");
+                    Some(change.failure_text(None))
+                }
+            };
+            if let Some(message) = failure {
+                dialog.add_toast(&message);
                 dialog.load();
-            },
-        ));
+            }
+        });
     }
 
     fn load(&self) {
@@ -402,6 +432,11 @@ impl SavedQueriesDialog {
         let Some(parts) = imp.parts.get() else {
             return;
         };
+        let selected = parts
+            .selection
+            .selected_item()
+            .and_downcast::<SavedQueryObject>()
+            .and_then(|object| object.id());
         let objects: Vec<SavedQueryObject> = listing
             .queries
             .into_iter()
@@ -412,6 +447,19 @@ impl SavedQueriesDialog {
         imp.listed.set(true);
         // The ids the search matched may have changed with the list.
         self.search();
+        if let Some(id) = selected {
+            let position = (0..parts.sorted.n_items()).find(|&position| {
+                parts
+                    .sorted
+                    .item(position)
+                    .and_downcast::<SavedQueryObject>()
+                    .and_then(|object| object.id())
+                    == Some(id)
+            });
+            parts
+                .selection
+                .set_selected(position.unwrap_or(gtk::INVALID_LIST_POSITION));
+        }
         self.show_results();
     }
 
@@ -475,8 +523,7 @@ impl SavedQueriesDialog {
         let Some(parts) = imp.parts.get() else {
             return;
         };
-        // Only a read that lands takes the list off the error page.
-        if !imp.listed.get() && imp.stack.visible_child_name().as_deref() == Some("error") {
+        if !imp.listed.get() {
             return;
         }
         if parts.sorted.n_items() > 0 {

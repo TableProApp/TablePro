@@ -79,6 +79,7 @@ pub(crate) enum SessionWindowInput {
     /// Open Database… on a connection's row: pick another of its server's
     /// databases to open beside it.
     ChooseDatabaseIn(SessionKey),
+    NewTableIn(SessionKey),
     /// New Database… on a connection's row.
     NewDatabaseIn(SessionKey),
     /// New Schema… on a connection's row.

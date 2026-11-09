@@ -476,6 +476,7 @@ impl SessionWindow {
             SessionWindowInput::Disconnect => self.on_disconnect_front(),
             SessionWindowInput::DisconnectSession(key) => self.on_disconnect(key),
             SessionWindowInput::ChooseDatabaseIn(key) => self.choose_database_in(key),
+            SessionWindowInput::NewTableIn(key) => self.deliver_to(&key, WorkspaceInput::NewTableTab { schema: None }),
             SessionWindowInput::NewDatabaseIn(key) => self.deliver_to(&key, WorkspaceInput::NewDatabasePrompt),
             SessionWindowInput::NewSchemaIn(key) => self.deliver_to(&key, WorkspaceInput::NewSchemaPrompt),
             SessionWindowInput::DropDatabaseIn(key) => self.drop_database_in(key),

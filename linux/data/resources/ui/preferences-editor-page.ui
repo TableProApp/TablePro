@@ -33,6 +33,12 @@
       <object class="AdwPreferencesGroup">
         <property name="title" translatable="yes">Style Scheme</property>
         <child>
+          <object class="AdwSwitchRow" id="system_style_row">
+            <property name="title" translatable="yes">Follow System Style</property>
+            <property name="subtitle" translatable="yes">Use Adwaita in the desktop’s light or dark style</property>
+          </object>
+        </child>
+        <child>
           <object class="GtkFlowBox" id="style_scheme_box">
             <property name="selection-mode">none</property>
             <property name="homogeneous">true</property>

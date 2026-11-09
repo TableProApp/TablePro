@@ -2,30 +2,6 @@
 <interface>
   <requires lib="gtk" version="4.22"/>
   <requires lib="libadwaita" version="1.9"/>
-  <!-- The sidebar's (+) menu: what the connection in front lets the user
-       make. A window action the engine or a read-only connection refuses is
-       left out. -->
-  <menu id="sidebar_add_menu">
-    <section>
-      <item>
-        <attribute name="label" translatable="yes">New _Table…</attribute>
-        <attribute name="action">win.new-table</attribute>
-        <attribute name="hidden-when">action-disabled</attribute>
-      </item>
-    </section>
-    <section>
-      <item>
-        <attribute name="label" translatable="yes">New _Schema…</attribute>
-        <attribute name="action">win.new-schema</attribute>
-        <attribute name="hidden-when">action-disabled</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">New _Database…</attribute>
-        <attribute name="action">win.new-database</attribute>
-        <attribute name="hidden-when">action-disabled</attribute>
-      </item>
-    </section>
-  </menu>
   <template class="TableProWorkspaceShell" parent="AdwBin">
     <property name="child">
       <!-- libadwaita expects the overview as the window's direct
@@ -110,6 +86,28 @@
                           </object>
                         </child>
                         <child type="top">
+                          <object class="AdwToggleGroup" id="scope_toggle">
+                            <property name="active-name">tables</property>
+                            <property name="homogeneous">true</property>
+                            <property name="margin-start">12</property>
+                            <property name="margin-end">12</property>
+                            <property name="margin-top">6</property>
+                            <property name="margin-bottom">6</property>
+                            <child>
+                              <object class="AdwToggle">
+                                <property name="name">tables</property>
+                                <property name="label" translatable="yes">Tables</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="AdwToggle">
+                                <property name="name">favorites</property>
+                                <property name="label" translatable="yes">Favorites</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child type="top">
                           <!-- The banners about the list of the session in
                                front. -->
                           <object class="GtkStack" id="list_banners">
@@ -118,15 +116,13 @@
                           </object>
                         </child>
                         <child type="bottom">
-                          <!-- As macOS's sidebar footer: what can be made
-                               in the connection in front. -->
-                          <object class="GtkActionBar">
+                          <object class="GtkActionBar" id="sidebar_bar">
+                            <property name="revealed">false</property>
                             <child type="start">
                               <object class="GtkMenuButton" id="sidebar_add_button">
                                 <property name="icon-name">list-add-symbolic</property>
-                                <property name="menu-model">sidebar_add_menu</property>
-                                <property name="sensitive">false</property>
                                 <property name="direction">up</property>
+                                <property name="visible">false</property>
                               </object>
                             </child>
                             <child type="end">
@@ -174,6 +170,12 @@
                                   <object class="GtkButton" id="new_tab_button">
                                     <property name="icon-name">tab-new-symbolic</property>
                                     <property name="action-name">win.new-editor-tab</property>
+                                  </object>
+                                </child>
+                                <child type="start">
+                                  <object class="GtkButton" id="refresh_page_button">
+                                    <property name="icon-name">view-refresh-symbolic</property>
+                                    <property name="action-name">win.refresh-page</property>
                                   </object>
                                 </child>
                                 <property name="title-widget">

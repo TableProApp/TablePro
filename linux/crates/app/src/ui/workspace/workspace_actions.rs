@@ -23,13 +23,7 @@ type ActionInput = fn() -> WorkspaceInput;
 /// they are not left greyed out with no reason.
 const HISTORY_ACTIONS: [&str; 2] = ["show-history", "show-saved-queries"];
 
-/// What the sidebar's (+) menu makes in the connection in front.
-const CREATION_ACTIONS: [&str; 3] = [NEW_TABLE, NEW_SCHEMA, NEW_DATABASE];
-
-const ENTRIES: [(&str, ActionInput); 12] = [
-    (NEW_TABLE, || WorkspaceInput::NewTableTab { schema: None }),
-    (NEW_SCHEMA, || WorkspaceInput::NewSchemaPrompt),
-    (NEW_DATABASE, || WorkspaceInput::NewDatabasePrompt),
+const ENTRIES: [(&str, ActionInput); 9] = [
     ("new-editor-tab", || WorkspaceInput::NewEditorTab),
     (EXPORT_DATABASE, || {
         WorkspaceInput::Transfer(TransferInput::ExportDatabase)
@@ -47,9 +41,6 @@ const ENTRIES: [(&str, ActionInput); 12] = [
     (super::health_banner::REVIEW_HOST_KEY, || WorkspaceInput::ReviewHostKey),
 ];
 
-const NEW_TABLE: &str = "new-table";
-const NEW_SCHEMA: &str = "new-schema";
-const NEW_DATABASE: &str = "new-database";
 const EXPORT_DATABASE: &str = "export-database";
 const IMPORT_SQL_FILE: &str = "import-sql-file";
 const REOPEN_CLOSED_TAB: &str = "reopen-closed-tab";
@@ -76,6 +67,19 @@ pub(super) fn install(window: &adw::ApplicationWindow, shell: &WorkspaceShell) {
             .build()
     });
     window.add_action_entries(actions);
+    let refreshing = shell.downgrade();
+    window.add_action_entries([gio::ActionEntry::<adw::ApplicationWindow>::builder("refresh-page")
+        .activate(move |_, _, _| {
+            if let Some(shell) = refreshing.upgrade()
+                && let Some(page) = shell.tab_view().selected_page()
+                && let Some((owner, id)) = shell.owner_of(&page)
+                && let Some(input) = owner.sender()
+            {
+                input.deliver(WorkspaceInput::RefreshPage(Some(id)));
+            }
+        })
+        .build()]);
+    set_enabled(window, "refresh-page", false);
     let reopening = shell.downgrade();
     window.add_action_entries([gio::ActionEntry::<adw::ApplicationWindow>::builder(REOPEN_CLOSED_TAB)
         .activate(move |_, _, _| {
@@ -120,27 +124,6 @@ pub(super) fn install(window: &adw::ApplicationWindow, shell: &WorkspaceShell) {
                 .build();
         }
     }
-    // Nothing is offered until a session is in front, and the (+) button is
-    // there to use only while one of its entries is.
-    for name in CREATION_ACTIONS {
-        set_enabled(window, name, false);
-    }
-    let button = shell.imp().sidebar_add_button.downgrade();
-    let creating = window.downgrade();
-    for name in CREATION_ACTIONS {
-        if let Some(action) = window.lookup_action(name) {
-            let (button, window) = (button.clone(), creating.clone());
-            action.connect_notify_local(Some("enabled"), move |_, _| {
-                if let (Some(button), Some(window)) = (button.upgrade(), window.upgrade()) {
-                    button.set_sensitive(
-                        CREATION_ACTIONS
-                            .iter()
-                            .any(|name| window.lookup_action(name).is_some_and(|action| action.is_enabled())),
-                    );
-                }
-            });
-        }
-    }
     // Insensitive until the query database has opened or failed to.
     for name in HISTORY_ACTIONS {
         set_enabled(window, name, false);
@@ -156,20 +139,7 @@ pub(super) fn remove(window: &adw::ApplicationWindow) {
     window.remove_action(CLOSE_ALL_TABS);
     window.remove_action(SWITCH_RECENT_TAB);
     window.remove_action(SHOW_TABS);
-}
-
-/// Offer New Table, New Schema and New Database where the session in
-/// front lets them be made: the engine makes them, and the connection is
-/// not read-only. The sidebar rows offer the same by the same rules.
-pub(crate) fn show_creation_actions(window: &adw::ApplicationWindow, front: Option<&tablepro_session::Session>) {
-    let affordances = front.map(super::sidebar::SidebarAffordances::for_session);
-    for (name, offered) in [
-        (NEW_TABLE, affordances.is_some_and(|a| a.offers_new_table())),
-        (NEW_SCHEMA, affordances.is_some_and(|a| a.offers_new_schema())),
-        (NEW_DATABASE, affordances.is_some_and(|a| a.offers_new_database())),
-    ] {
-        set_enabled(window, name, offered);
-    }
+    window.remove_action("refresh-page");
 }
 
 /// Offer Export Database and Import SQL File where the session in front

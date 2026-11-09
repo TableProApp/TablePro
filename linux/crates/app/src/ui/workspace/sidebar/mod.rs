@@ -4,6 +4,7 @@
 
 mod catalog_watch;
 mod connection_tree;
+mod favorites_pane;
 mod key_listing;
 mod object_key;
 mod object_target;
@@ -36,10 +37,12 @@ use tablepro_session::{ObjectListSnapshot, Session};
 
 pub(super) use catalog_watch::{catalog_watch, reconnect_watch, spawn_local};
 pub(crate) use connection_tree::{ConnectionTree, SessionRowState};
+pub(crate) use favorites_pane::{FavoriteAction, FavoritesPane};
 pub(crate) use key_listing::{KeySidebar, KeysListed};
 pub(super) use sidebar_affordances::SidebarAffordances;
 use sidebar_index::SidebarIndex;
 pub(super) use sidebar_view::SidebarView;
+pub(super) use tree_menu::creation_menu;
 
 use super::table_naming::TableNaming;
 use super::{OpenMode, WorkspaceInput, WorkspaceModel, WorkspaceSender};
@@ -371,8 +374,17 @@ impl WorkspaceModel {
     /// The connection was replaced, perhaps by one to another server
     /// version, so what the sidebar offers is read again.
     pub(super) fn on_link_changed(&self) {
-        if let Some(session) = self.context.active.get() {
-            self.sidebar.set_affordances(SidebarAffordances::for_session(&session));
+        self.show_affordances();
+    }
+
+    pub(super) fn show_affordances(&self) {
+        let Some(session) = self.context.active.get() else {
+            return;
+        };
+        let affordances = SidebarAffordances::for_session(&session);
+        self.sidebar.set_affordances(affordances);
+        if let Some(workspace) = self.this.upgrade() {
+            workspace.show_creation_menu(creation_menu(&self.key, affordances).upcast());
         }
     }
 }
