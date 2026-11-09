@@ -15,7 +15,6 @@ fn two_text_rows() -> Grid {
     Grid::open(two_text_columns(), two_text_values())
 }
 
-/// The gutter cell in `cell`'s row: its pending icon and its number.
 fn gutter(cell: &GridCell) -> (gtk::Image, gtk::Inscription) {
     let content = descendants(&row_widget(cell))
         .into_iter()
@@ -31,7 +30,6 @@ fn number(cell: &GridCell) -> Option<String> {
     gutter(cell).1.text().map(|number| number.to_string())
 }
 
-/// The icon the gutter shows for `cell`'s row and the text it names it by.
 fn state(cell: &GridCell) -> (Option<String>, Option<String>) {
     let (icon, _) = gutter(cell);
     let name = icon
@@ -83,7 +81,6 @@ fn a_results_grid_numbers_its_rows_too() {
     assert_eq!(number(&grid.cell_at(1, 1)).as_deref(), Some("2"));
 }
 
-/// The row keeps the error icon of a failed save until it is edited.
 #[gtk4::test]
 fn the_gutter_shows_each_pending_state() {
     let grid = two_text_rows();
@@ -138,7 +135,6 @@ fn pending_delete_sets_row_widget_description() {
     assert!(described(&row), "a row a save failed on said nothing");
 }
 
-/// A new row's label says so, which a description would only repeat.
 #[gtk4::test]
 fn a_new_row_is_labelled_and_neither_it_nor_its_cells_described() {
     let grid = two_text_rows();
@@ -157,8 +153,6 @@ fn a_new_row_is_labelled_and_neither_it_nor_its_cells_described() {
     assert!(!described(&draft));
 }
 
-/// The second row, since the list keeps the first row's widgets for its
-/// focus.
 #[gtk4::test]
 fn an_unbound_gutter_cell_stops_following_its_row() {
     let grid = two_text_rows();
@@ -178,8 +172,6 @@ fn an_unbound_gutter_cell_stops_following_its_row() {
     assert_eq!(icon.icon_name(), None, "a recycled icon drew a row it no longer shows");
 }
 
-/// The gutter is a column like the others for GTK, and none for the
-/// layout, the sort or the data columns' numbering.
 #[gtk4::test]
 fn the_gutter_neither_sorts_nor_saves_its_width() {
     let layouts = Layouts::new();
@@ -220,4 +212,620 @@ fn the_gutter_neither_sorts_nor_saves_its_width() {
         [Some((0, false))],
         "a sort by the first data column named another"
     );
+}
+
+struct TestStyle {
+    display: gtk::gdk::Display,
+    provider: gtk::CssProvider,
+}
+
+impl TestStyle {
+    fn new(grid: &Grid, css: &str) -> Self {
+        let provider = gtk::CssProvider::new();
+        provider.load_from_string(css);
+        let display = gtk::prelude::WidgetExt::display(&grid.window);
+        gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_USER);
+        after_next_frame(&grid.window);
+        Self { display, provider }
+    }
+}
+
+impl Drop for TestStyle {
+    fn drop(&mut self) {
+        gtk::style_context_remove_provider_for_display(&self.display, &self.provider);
+    }
+}
+
+fn wide_rows(count: i64) -> Grid {
+    use tablepro_core::Value;
+    let mut columns = vec![crate::ui::data_grid::test_grid::named("id", "integer", true)];
+    columns.extend((0..12).map(|n| crate::ui::data_grid::test_grid::named(&format!("column_{n}"), "text", false)));
+    let rows = (1..=count)
+        .map(|id| {
+            std::iter::once(Value::Int(id))
+                .chain((0..12).map(|n| Value::Text(format!("value {id}-{n}"))))
+                .collect()
+        })
+        .collect();
+    Grid::open(columns, rows)
+}
+
+fn projection(grid: &Grid) -> gtk::Box {
+    use gtk::subclass::prelude::*;
+    grid.grid.imp().gutter_backing.get()
+}
+
+fn scroll(grid: &Grid) -> gtk::ScrolledWindow {
+    use gtk::subclass::prelude::*;
+    grid.grid.imp().scrolled.get()
+}
+
+fn pinned_number(grid: &Grid, value: &str) -> gtk::Inscription {
+    descendants(&grid.grid.column_view())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Inscription>().ok())
+        .find(|number| {
+            number.text().as_deref() == Some(value)
+                && number
+                    .parent()
+                    .is_some_and(|content| content.has_css_class("row-number-cell"))
+        })
+        .expect("the pinned row number")
+}
+
+fn pinned_point(grid: &Grid, value: &str) -> (f32, f32) {
+    let number = pinned_number(grid, value);
+    let source = number.compute_bounds(&grid.grid.column_view()).expect("number bounds");
+    let target = projection(grid)
+        .compute_bounds(&grid.grid.column_view())
+        .expect("gutter bounds");
+    (target.x() + 10.0, source.y() + 4.0)
+}
+
+fn assert_aligned(grid: &Grid) {
+    let view = grid.grid.column_view();
+    let shown = descendants(&view)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<GridCell>().ok())
+        .filter(|cell| cell.column() == 1)
+        .filter_map(|cell| {
+            let bounds = cell.compute_bounds(&view)?;
+            (bounds.y() >= 40.0 && bounds.y() + bounds.height() < view.height() as f32).then_some((cell, bounds))
+        })
+        .collect::<Vec<_>>();
+    assert!(!shown.is_empty(), "no visible rows checked");
+    for (cell, bounds) in shown {
+        let position = cell.position().expect("bound position");
+        let number = pinned_number(grid, &(position + 1).to_string());
+        let content = number.parent().expect("gutter content");
+        let pinned = content.compute_bounds(&view).expect("gutter bounds");
+        assert!(
+            (pinned.y() - bounds.y()).abs() <= 1.0,
+            "row {position}: {pinned:?} != {bounds:?}"
+        );
+        assert!((pinned.height() - bounds.height()).abs() <= 1.0);
+    }
+}
+
+fn gutter_image(grid: &Grid) -> gtk::gdk::Texture {
+    use gtk::subclass::prelude::*;
+    let viewport = grid.grid.imp().viewport.get();
+    let parent = viewport.parent().expect("viewport parent");
+    let snapshot = gtk::Snapshot::new();
+    parent.snapshot_child(&viewport, &snapshot);
+    let node = snapshot.to_node().expect("rendered grid");
+    let bounds = viewport.compute_bounds(&parent).expect("viewport bounds");
+    let width = grid.grid.row_numbers_column().expect("number column").fixed_width() as f32;
+    let x = if viewport.direction() == gtk::TextDirection::Rtl {
+        bounds.x() + bounds.width() - width
+    } else {
+        bounds.x()
+    };
+    // render_texture uses one physical pixel per unit, independently of GDK_SCALE.
+    let scale = viewport.scale_factor() as f32;
+    let scaled = gtk::Snapshot::new();
+    scaled.scale(scale, scale);
+    scaled.append_node(&node);
+    let node = scaled.to_node().expect("scaled grid");
+    let area = gtk::graphene::Rect::new(x * scale, bounds.y() * scale, width * scale, bounds.height() * scale);
+    grid.window
+        .renderer()
+        .expect("renderer")
+        .render_texture(&node, Some(&area))
+}
+
+fn assert_pinned_pixels(grid: &Grid) {
+    struct Animations(gtk::Settings, bool);
+    impl Drop for Animations {
+        fn drop(&mut self) {
+            self.0.set_gtk_enable_animations(self.1);
+        }
+    }
+    let settings = gtk::prelude::WidgetExt::settings(&grid.window);
+    let _animations = Animations(settings.clone(), settings.is_gtk_enable_animations());
+    // Freeze theme transitions while comparing snapshots from different frames.
+    settings.set_gtk_enable_animations(false);
+    let adjustment = scroll(grid).hadjustment();
+    let value = adjustment.value();
+    adjustment.set_value(0.0);
+    after_next_frame(&grid.window);
+    let native = gutter_image(grid);
+    adjustment.set_value(value);
+    after_next_frame(&grid.window);
+    let pinned = gutter_image(grid);
+    let native_bytes = gtk::gdk::TextureDownloader::new(&native).download_bytes().0;
+    let pinned_bytes = gtk::gdk::TextureDownloader::new(&pinned).download_bytes().0;
+    assert_eq!(native_bytes.len(), pinned_bytes.len());
+    assert_eq!(
+        native_bytes
+            .iter()
+            .zip(pinned_bytes.iter())
+            .filter(|(a, b)| a != b)
+            .count(),
+        0,
+        "the pinned gutter differs from the native row-number column at scale {}; native_png={} pinned_png={}",
+        grid.window.scale_factor(),
+        gtk::glib::base64_encode(&native.save_to_png_bytes()),
+        gtk::glib::base64_encode(&pinned.save_to_png_bytes())
+    );
+}
+
+fn sideways(grid: &Grid) {
+    let adjustment = scroll(grid).hadjustment();
+    adjustment.set_value(300.0);
+    after_next_frame(&grid.window);
+}
+
+#[gtk4::test]
+fn the_row_numbers_stay_in_view_when_the_columns_scroll_sideways() {
+    let grid = wide_rows(1000);
+    scroll(&grid).set_overlay_scrolling(false);
+    assert!(!projection(&grid).is_visible());
+    sideways(&grid);
+    assert!(projection(&grid).is_visible());
+    assert!(!projection(&grid).can_target());
+    assert!(!projection(&grid).can_focus());
+    assert_eq!(projection(&grid).height(), grid.grid.column_view().height());
+    assert_eq!(
+        descendants(&grid.grid)
+            .iter()
+            .filter(|widget| widget.is::<gtk::ColumnView>())
+            .count(),
+        1,
+        "the gutter must not introduce a second row layout or accessibility tree"
+    );
+    for fraction in [0.0, 0.5, 1.0] {
+        let adjustment = scroll(&grid).vadjustment();
+        adjustment.set_value(fraction * (adjustment.upper() - adjustment.page_size()));
+        after_next_frame(&grid.window);
+        assert_aligned(&grid);
+        assert_pinned_pixels(&grid);
+    }
+    scroll(&grid).hadjustment().set_value(0.0);
+    drain_main_context();
+    assert!(!projection(&grid).is_visible());
+}
+
+#[gtk4::test]
+fn scrolling_over_the_gutter_uses_the_grid_in_both_axes() {
+    use crate::test_support::{KeyInjector, wait_until};
+    use crate::ui::data_grid::test_grid::WAIT;
+    let grid = wide_rows(1000);
+    KeyInjector::focus_only(&grid.window);
+    sideways(&grid);
+    let input = KeyInjector::connect().expect("X11 input");
+    let gutter = projection(&grid);
+    let vertical = scroll(&grid).vadjustment();
+    input.button(&gutter, (10.0, 80.0), 5, 3).expect("wheel down");
+    wait_until(WAIT, || vertical.value() > 0.0).expect("the grid scrolled vertically");
+    after_next_frame(&grid.window);
+    assert_aligned(&grid);
+    let horizontal = scroll(&grid).hadjustment();
+    let before = horizontal.value();
+    input.button(&gutter, (10.0, 80.0), 7, 3).expect("wheel right");
+    wait_until(WAIT, || horizontal.value() > before).expect("the grid scrolled horizontally");
+    after_next_frame(&grid.window);
+    assert_aligned(&grid);
+}
+
+#[gtk4::test]
+fn the_pinned_gutter_keeps_row_and_header_menus() {
+    use crate::test_support::{KeyInjector, wait_until};
+    use crate::ui::data_grid::test_grid::WAIT;
+    use gtk::subclass::prelude::*;
+    let grid = wide_rows(20);
+    KeyInjector::focus_only(&grid.window);
+    sideways(&grid);
+    let input = KeyInjector::connect().expect("X11 input");
+    input
+        .button(&grid.grid.column_view(), pinned_point(&grid, "2"), 3, 1)
+        .expect("row menu click");
+    let menus = grid.grid.imp().menus.get().expect("menus");
+    wait_until(WAIT, || menus.cell.is_visible()).expect("row menu opened");
+    let target = grid.grid.target().expect("menu target");
+    assert_eq!(target.rows.len(), 1);
+    assert_eq!(target.rows[0].key(), Some(key(2)));
+    menus.cell.popdown();
+    drain_main_context();
+    sideways(&grid);
+    input
+        .button(&projection(&grid), (10.0, 10.0), 3, 1)
+        .expect("header menu click");
+    wait_until(WAIT, || menus.row_numbers.is_visible()).expect("header menu opened");
+    assert!(grid.grid.activate_action("grid.select-all", None).is_ok());
+    assert_eq!(grid.grid.selection().selection().size(), 20);
+    menus.row_numbers.popdown();
+}
+
+#[gtk4::test]
+fn gutter_and_data_clicks_share_the_selection_anchor() {
+    use crate::test_support::{KeyInjector, wait_until};
+    use crate::ui::data_grid::test_grid::WAIT;
+    let grid = wide_rows(20);
+    KeyInjector::focus_only(&grid.window);
+    grid.focus(1, 1);
+    sideways(&grid);
+    let input = KeyInjector::connect().expect("X11 input");
+    let data = |position: u32| {
+        let view = grid.grid.column_view();
+        descendants(&view)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<GridCell>().ok())
+            .find(|cell| {
+                cell.position() == Some(position)
+                    && cell.compute_bounds(&view).is_some_and(|bounds| {
+                        bounds.x() > projection(&grid).width() as f32
+                            && bounds.x() + bounds.width() < view.width() as f32
+                    })
+            })
+            .expect("a fully visible data cell")
+            .compute_point(&view, &gtk::graphene::Point::new(4.0, 4.0))
+            .map(|point| (point.x(), point.y()))
+            .expect("data point")
+    };
+    for reverse in [false, true] {
+        let start = if reverse { pinned_point(&grid, "2") } else { data(1) };
+        input.click(&grid.grid.column_view(), start, 1).expect("row selection");
+        wait_until(WAIT, || {
+            grid.grid.selection().selection().size() == 1 && grid.grid.selection().is_selected(1)
+        })
+        .expect("second row selected");
+        let shift = input.hold(gtk::gdk::Key::Shift_L).expect("Shift");
+        let end = if reverse { data(4) } else { pinned_point(&grid, "5") };
+        input.click(&grid.grid.column_view(), end, 1).expect("range selection");
+        wait_until(WAIT, || grid.grid.selection().selection().size() == 4).expect("native selection range");
+        drop(shift);
+        assert!((1..=4).all(|position| grid.grid.selection().is_selected(position)));
+    }
+    input
+        .press(gtk::gdk::Key::Down, gtk::gdk::ModifierType::empty())
+        .expect("keyboard navigation");
+    wait_until(WAIT, || {
+        grid.focused_cell().is_some_and(|cell| cell.position() == Some(5))
+    })
+    .expect("keyboard follows the clicked row");
+}
+
+#[gtk4::test]
+fn the_gutter_matches_font_and_density_changes() {
+    let grid = wide_rows(1000);
+    sideways(&grid);
+    let style = TestStyle::new(
+        &grid,
+        "columnview { font-size: 23px; } columnview .monospace { font-size: 23px; } columnview.data-table > listview > row > cell > * { padding: 9px 6px; }",
+    );
+    for fraction in [0.0, 0.5, 1.0] {
+        let adjustment = scroll(&grid).vadjustment();
+        adjustment.set_value(fraction * (adjustment.upper() - adjustment.page_size()));
+        after_next_frame(&grid.window);
+        assert_aligned(&grid);
+        assert_pinned_pixels(&grid);
+    }
+    drop(style);
+    after_next_frame(&grid.window);
+    assert_aligned(&grid);
+}
+
+#[gtk4::test]
+fn the_pinned_gutter_shows_pending_states_and_stripes() {
+    let grid = wide_rows(20);
+    sideways(&grid);
+    rename_first(&grid, "edited");
+    let number = pinned_number(&grid, "1");
+    let icon = number
+        .parent()
+        .and_then(|content| content.first_child())
+        .and_downcast::<gtk::Image>()
+        .expect("icon");
+    assert_eq!(icon.icon_name().as_deref(), Some(icons::DOCUMENT_EDIT));
+    after_next_frame(&grid.window);
+    assert_pinned_pixels(&grid);
+    assert_eq!(icon.tooltip_text().as_deref(), Some("Modified"));
+    let second = pinned_number(&grid, "2");
+    assert!(second.parent().expect("content").has_css_class("tp-stripe"));
+    grid.grid.selection().select_item(1, false);
+    after_next_frame(&grid.window);
+    assert_pinned_pixels(&grid);
+    grid.grid.discard();
+    assert!(!icon.is_visible());
+    after_next_frame(&grid.window);
+    assert_pinned_pixels(&grid);
+}
+
+#[gtk4::test]
+fn small_fonts_and_an_offscreen_editor_keep_the_gutter_aligned() {
+    let grid = wide_rows(1200);
+    let _style = TestStyle::new(
+        &grid,
+        "columnview { font-size: 7px; } columnview .monospace { font-size: 7px; }",
+    );
+    rename_first(&grid, "changed");
+    grid.focus(0, 1);
+    assert!(grid.grid.edit().edit_cell(&grid.cell_of(1, 1)));
+    sideways(&grid);
+    for fraction in [0.0, 0.5, 1.0, 0.0] {
+        let adjustment = scroll(&grid).vadjustment();
+        adjustment.set_value(fraction * (adjustment.upper() - adjustment.page_size()));
+        after_next_frame(&grid.window);
+        assert_aligned(&grid);
+        assert_pinned_pixels(&grid);
+    }
+}
+
+#[gtk4::test]
+fn a_covered_editor_cannot_take_a_gutter_click() {
+    use crate::test_support::{KeyInjector, wait_until};
+    use crate::ui::data_grid::test_grid::WAIT;
+    let grid = wide_rows(20);
+    KeyInjector::focus_only(&grid.window);
+    grid.focus(0, 1);
+    assert!(grid.grid.edit().edit_cell(&grid.cell_of(1, 1)));
+    let input = KeyInjector::connect().expect("X11 input");
+    sideways(&grid);
+    let point = pinned_point(&grid, "1");
+    let picked = grid
+        .grid
+        .column_view()
+        .pick(f64::from(point.0), f64::from(point.1), gtk::PickFlags::DEFAULT)
+        .expect("gutter target");
+    assert!(!picked.is::<gtk::Text>(), "the covered editor took the gutter");
+    input.click(&grid.grid.column_view(), point, 1).expect("gutter click");
+    wait_until(WAIT, || {
+        !grid.grid.edit().editor_has_focus() && grid.grid.selection().is_selected(0)
+    })
+    .expect("the gutter selected the row and moved focus out of the editor");
+    assert!(grid.grid.selection().is_selected(0));
+    assert!(!grid.grid.edit().editor_has_focus());
+}
+
+#[gtk4::test]
+fn clicking_the_pinned_header_does_not_sort_the_covered_column() {
+    use crate::test_support::KeyInjector;
+    let grid = wide_rows(20);
+    KeyInjector::focus_only(&grid.window);
+    sideways(&grid);
+    let input = KeyInjector::connect().expect("X11 input");
+    let before = sorts(&grid);
+    input.click(&projection(&grid), (10.0, 10.0), 2).expect("header click");
+    after_next_frame(&grid.window);
+    assert_eq!(sorts(&grid), before);
+}
+
+#[gtk4::test]
+fn keyboard_focus_stays_clear_of_the_pinned_gutter() {
+    use crate::test_support::{KeyInjector, wait_until};
+    use crate::ui::data_grid::test_grid::WAIT;
+    let grid = wide_rows(20);
+    KeyInjector::focus_only(&grid.window);
+    grid.focus(0, 10);
+    after_next_frame(&grid.window);
+    let input = KeyInjector::connect().expect("X11 input");
+    for column in (0..10).rev() {
+        input
+            .press(gtk::gdk::Key::Left, gtk::gdk::ModifierType::empty())
+            .expect("left");
+        wait_until(WAIT, || grid.focused_cell().is_some_and(|cell| cell.column() == column)).expect("focused column");
+        after_next_frame(&grid.window);
+        let cell = grid.focused_cell().expect("cell");
+        let bounds = cell.compute_bounds(&grid.grid.column_view()).expect("bounds");
+        let width = grid.grid.row_numbers_column().expect("numbers").fixed_width() as f32;
+        assert!(bounds.x() >= width - 1.0, "column {column} is hidden: {bounds:?}");
+    }
+}
+
+#[gtk4::test]
+fn dragging_across_the_gutter_uses_one_rubberband() {
+    use crate::test_support::{KeyInjector, wait_until};
+    use crate::ui::data_grid::test_grid::WAIT;
+    let grid = wide_rows(20);
+    KeyInjector::focus_only(&grid.window);
+    sideways(&grid);
+    let input = KeyInjector::connect().expect("X11 input");
+    let view = grid.grid.column_view();
+    let from = pinned_point(&grid, "2");
+    let to = pinned_point(&grid, "6");
+    input
+        .drag(&view, (10.0, from.1), (160.0, to.1))
+        .expect("drag from gutter into data");
+    wait_until(WAIT, || grid.grid.selection().selection().size() >= 4).expect("one native rubberband selected rows");
+    grid.grid.selection().unselect_all();
+    input
+        .drag(&view, (160.0, to.1), (10.0, from.1))
+        .expect("drag from data into gutter");
+    wait_until(WAIT, || grid.grid.selection().selection().size() >= 4).expect("the reverse drag selected rows");
+}
+
+#[gtk4::test]
+fn dragging_the_pinned_header_does_not_move_a_data_column() {
+    use crate::test_support::KeyInjector;
+    let grid = wide_rows(20);
+    KeyInjector::focus_only(&grid.window);
+    sideways(&grid);
+    let input = KeyInjector::connect().expect("X11 input");
+    let before = grid.grid.shown_columns();
+    input
+        .drag(&grid.grid.column_view(), (10.0, 10.0), (220.0, 10.0))
+        .expect("header drag");
+    after_next_frame(&grid.window);
+    assert_eq!(grid.grid.shown_columns(), before);
+}
+
+#[gtk4::test]
+fn rtl_gutter_menus_and_focus_follow_its_actual_edge() {
+    use crate::test_support::{KeyInjector, wait_until};
+    use crate::ui::data_grid::test_grid::WAIT;
+    use gtk::subclass::prelude::*;
+    struct Direction(gtk::TextDirection);
+    impl Drop for Direction {
+        fn drop(&mut self) {
+            gtk::Widget::set_default_direction(self.0);
+        }
+    }
+    let _direction = Direction(gtk::Widget::default_direction());
+    gtk::Widget::set_default_direction(gtk::TextDirection::Rtl);
+    let grid = wide_rows(20);
+    KeyInjector::focus_only(&grid.window);
+    sideways(&grid);
+    let view = grid.grid.column_view();
+    let gutter = projection(&grid).compute_bounds(&view).expect("gutter");
+    assert!(gutter.x() > view.width() as f32 / 2.0);
+    assert_pinned_pixels(&grid);
+    let input = KeyInjector::connect().expect("X11 input");
+    input.button(&view, pinned_point(&grid, "2"), 3, 1).expect("row menu");
+    let menus = grid.grid.imp().menus.get().expect("menus");
+    wait_until(WAIT, || menus.cell.is_visible()).expect("row menu opened");
+    assert_eq!(grid.grid.target().expect("target").rows[0].key(), Some(key(2)));
+    menus.cell.popdown();
+    drain_main_context();
+    sideways(&grid);
+    input
+        .button(&projection(&grid), (10.0, 10.0), 3, 1)
+        .expect("header menu");
+    wait_until(WAIT, || menus.row_numbers.is_visible()).expect("header menu opened");
+    menus.row_numbers.popdown();
+    grid.focus(0, 1);
+    assert!(grid.grid.edit().edit_cell(&grid.cell_of(1, 1)));
+    sideways(&grid);
+    grid.window.set_default_size(740, 430);
+    after_next_frame(&grid.window);
+    let point = pinned_point(&grid, "1");
+    let picked = view
+        .pick(f64::from(point.0), f64::from(point.1), gtk::PickFlags::DEFAULT)
+        .expect("target");
+    assert!(
+        !picked.is::<gtk::Text>(),
+        "RTL resize exposed the editor under the gutter"
+    );
+    grid.grid.edit().cancel_open_edit();
+    grid.focus(0, 10);
+    after_next_frame(&grid.window);
+    for column in (0..10).rev() {
+        input
+            .press(gtk::gdk::Key::Right, gtk::gdk::ModifierType::empty())
+            .expect("right");
+        wait_until(WAIT, || grid.focused_cell().is_some_and(|cell| cell.column() == column)).expect("focused column");
+        after_next_frame(&grid.window);
+        let cell = grid.focused_cell().expect("cell");
+        let bounds = cell.compute_bounds(&view).expect("bounds");
+        let width = grid.grid.row_numbers_column().expect("numbers").fixed_width() as f32;
+        assert!(
+            bounds.x() + bounds.width() <= view.width() as f32 - width + 1.0,
+            "column {column}: {bounds:?}"
+        );
+    }
+}
+
+#[gtk4::test]
+fn a_newer_horizontal_scroll_cancels_an_older_focus_reveal() {
+    let grid = wide_rows(20);
+    grid.focus(0, 10);
+    after_next_frame(&grid.window);
+    assert!(grid.grid.focus_cell(0, 0).is_some());
+    let adjustment = scroll(&grid).hadjustment();
+    adjustment.set_value(300.0);
+    after_next_frame(&grid.window);
+    assert_eq!(adjustment.value(), 300.0, "a stale focus request undid the scroll");
+    assert!(projection(&grid).is_visible());
+}
+
+#[gtk4::test]
+fn the_pinned_header_keeps_hover_and_never_offers_a_hidden_resize_handle() {
+    use crate::test_support::{KeyInjector, wait_until};
+    use crate::ui::data_grid::test_grid::WAIT;
+    use gtk::subclass::prelude::*;
+    let grid = wide_rows(20);
+    KeyInjector::focus_only(&grid.window);
+    let view = grid.grid.column_view();
+    let header = descendants(&view)
+        .into_iter()
+        .find(|widget| widget.css_name() == "header")
+        .expect("header");
+    assert!(gtk::test_accessible_has_role(
+        &grid.grid.imp().gutter_header.get(),
+        gtk::AccessibleRole::Presentation,
+    ));
+    assert!(gtk::test_accessible_has_role(
+        &projection(&grid),
+        gtk::AccessibleRole::Presentation,
+    ));
+    let numbers = header.first_child().expect("number title");
+    let first_data = numbers.next_sibling().expect("first data title");
+    let second_data = first_data.next_sibling().expect("second data title");
+    let edge = first_data.compute_bounds(&view).expect("title bounds");
+    scroll(&grid)
+        .hadjustment()
+        .set_value(f64::from(edge.x() + edge.width() - 12.0));
+    after_next_frame(&grid.window);
+    let input = KeyInjector::connect().expect("X11 input");
+    input.hover(&view, (12.0, 10.0)).expect("hidden divider hover");
+    wait_until(WAIT, || numbers.state_flags().contains(gtk::StateFlags::PRELIGHT)).expect("number header hover");
+    after_next_frame(&grid.window);
+    assert_ne!(
+        grid.grid
+            .imp()
+            .gutter_header
+            .cursor()
+            .and_then(|cursor| cursor.name())
+            .as_deref(),
+        Some("col-resize")
+    );
+    input.hover(&view, (25.0, 10.0)).expect("covered title hover");
+    after_next_frame(&grid.window);
+    assert!(numbers.state_flags().contains(gtk::StateFlags::PRELIGHT));
+    assert!(!second_data.state_flags().contains(gtk::StateFlags::PRELIGHT));
+    let cover = input.cover_pointer().expect("native pointer cover");
+    wait_until(WAIT, || !numbers.state_flags().contains(gtk::StateFlags::PRELIGHT))
+        .expect("cover took the stationary pointer");
+    drop(cover);
+    wait_until(WAIT, || numbers.state_flags().contains(gtk::StateFlags::PRELIGHT))
+        .expect("header entered without motion");
+    assert!(
+        !second_data.state_flags().contains(gtk::StateFlags::PRELIGHT),
+        "entry rehighlighted the covered title"
+    );
+    let outside = projection(&grid).width() as f32 + 4.0;
+    let second = second_data.compute_bounds(&view).expect("second title bounds");
+    assert!(
+        outside < second.x() + second.width(),
+        "both points must be in the same native title"
+    );
+    input
+        .hover(&view, (outside, 10.0))
+        .expect("uncovered part of same title");
+    wait_until(WAIT, || second_data.state_flags().contains(gtk::StateFlags::PRELIGHT))
+        .expect("data header hover restored");
+    assert!(!numbers.state_flags().contains(gtk::StateFlags::PRELIGHT));
+    input.hover(&view, (25.0, 10.0)).expect("number header hover again");
+    after_next_frame(&grid.window);
+    scroll(&grid).hadjustment().set_value(0.0);
+    after_next_frame(&grid.window);
+    assert!(numbers.state_flags().contains(gtk::StateFlags::PRELIGHT));
+    scroll(&grid).hadjustment().set_value(300.0);
+    after_next_frame(&grid.window);
+    assert!(
+        numbers.state_flags().contains(gtk::StateFlags::PRELIGHT),
+        "scrolling lost stationary header hover"
+    );
+    input.hover(&view, (25.0, 100.0)).expect("leave the header");
+    wait_until(WAIT, || !numbers.state_flags().contains(gtk::StateFlags::PRELIGHT)).expect("header hover cleared");
 }

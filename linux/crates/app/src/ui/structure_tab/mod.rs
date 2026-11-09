@@ -624,13 +624,7 @@ fn replace_items<T: IsA<glib::Object>>(store: &gio::ListStore, items: impl IntoI
     store.splice(0, store.n_items(), &items);
 }
 
+// SQL in structure forms and write reviews follows the surrounding desktop controls.
 fn apply_sql_scheme(buffer: &sourceview5::Buffer) {
-    let scheme_name = if adw::StyleManager::default().is_dark() {
-        "Adwaita-dark"
-    } else {
-        "Adwaita"
-    };
-    if let Some(scheme) = sourceview5::StyleSchemeManager::default().scheme(scheme_name) {
-        buffer.set_style_scheme(Some(&scheme));
-    }
+    buffer.set_style_scheme(crate::ui::style_scheme_resolver::scheme("").as_ref());
 }

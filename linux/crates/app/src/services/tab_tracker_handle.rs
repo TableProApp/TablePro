@@ -40,6 +40,11 @@ impl TabTrackerHandle {
         self.0.borrow_mut().apply(edit)
     }
 
+    #[must_use = "the grid shows stale rows until the delta is applied"]
+    pub fn apply_all(&self, edits: Vec<TrackerEdit>) -> TrackerDelta {
+        self.0.borrow_mut().apply_all(edits)
+    }
+
     pub fn cell_is_saving(&self, row_key: &RowKey, col: usize) -> bool {
         self.0.borrow().cell_is_saving(row_key, col)
     }

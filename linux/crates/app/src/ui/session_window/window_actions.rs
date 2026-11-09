@@ -267,7 +267,7 @@ mod tests {
         );
         action.activate(None);
         assert_eq!(
-            input.try_deliver(crate::ui::workspace::WorkspaceInput::RefreshPage),
+            input.try_deliver(crate::ui::workspace::WorkspaceInput::RefreshPage(None)),
             Delivery::ReceiverGone
         );
     }
