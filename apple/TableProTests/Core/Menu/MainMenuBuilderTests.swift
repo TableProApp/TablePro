@@ -614,6 +614,15 @@ struct MainMenuValidationTests {
         #expect(enabled(#selector(MainSplitViewController.exportQueryResults(_:)), context))
     }
 
+    @Test("Export Results exports a Table Health tab's findings, and only while connected")
+    func exportResultsOnTableHealth() {
+        var context = MenuValidationContext()
+        context.hasTableHealthFindings = true
+        #expect(!enabled(#selector(MainSplitViewController.exportQueryResults(_:)), context))
+        context.isConnected = true
+        #expect(enabled(#selector(MainSplitViewController.exportQueryResults(_:)), context))
+    }
+
     @Test("Neither survives losing the connection")
     func bothStillNeedAConnection() {
         var context = MenuValidationContext()

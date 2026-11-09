@@ -43,6 +43,13 @@ struct MainSplitViewControllerDetailWidthTests {
         #expect(resolved == 560)
     }
 
+    @Test("Table Health declares the width its pane bar needs, which holds the checks list beside the findings")
+    func tableHealthDeclaresItsOwnMinimum() {
+        let resolved = MainSplitViewController.resolveDetailMinimumThickness(for: .tableHealth, contentMode: .browse)
+        #expect(resolved == TableHealthLayoutMetrics.tabMinimumWidth)
+        #expect(resolved >= TableHealthLayoutMetrics.checksListMinimumWidth + TableHealthLayoutMetrics.findingsMinimumWidth)
+    }
+
     @Test(
         "Every other tab type keeps the default detail minimum",
         arguments: [TabType.query, .table, .createTable, .erDiagram, .serverDashboard]

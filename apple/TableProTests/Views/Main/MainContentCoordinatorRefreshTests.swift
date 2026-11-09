@@ -391,14 +391,44 @@ struct MainContentCoordinatorRefreshTests {
             expected += [tabManager.selectedTabId].compactMap { $0 }
             coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
         }
-        tabManager.addTableHealthTab(databaseName: "shop")
-        expected += [tabManager.selectedTabId].compactMap { $0 }
-        coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
         tabManager.addObjectSourceTab(objectRef: DatabaseObjectRef(kind: .view, name: "active_orders", database: "shop"))
         expected += [tabManager.selectedTabId].compactMap { $0 }
         coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
 
         #expect(requested == expected)
+    }
+
+    @Test("Refresh on a Table Health tab refreshes its model on the tab's own database, with no broadcast")
+    func refreshOnTableHealthRefreshesItsModel() async throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        var requested: [UUID] = []
+        let subscription = AppEvents.shared.tabRefreshRequested.sink { requested.append($0) }
+        defer { subscription.cancel() }
+        let tabId = try #require(tabManager.addTableHealthTab(databaseName: "shop"))
+        let metadata = RefreshLeaseRecorder()
+        coordinator.tableHealthModels[tabId] = TableHealthViewModel(
+            connectionId: coordinator.connectionId,
+            provider: TableHealthProviderFactory.provider(for: .postgresql),
+            history: RefreshUnusedHistory(),
+            metadata: metadata,
+            database: { "shop" }
+        )
+
+        coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
+
+        try await waitUntil { metadata.databases == ["shop"] }
+        #expect(requested.isEmpty)
+    }
+
+    @Test("Closing a Table Health tab drops its model")
+    func closingTableHealthDropsItsModel() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = try #require(tabManager.addTableHealthTab(databaseName: "shop"))
+        coordinator.tableHealthModel(for: tabId)
+
+        coordinator.cleanupTabCaches(openTabIds: [])
+
+        #expect(coordinator.tableHealthModels[tabId] == nil)
     }
 
     @Test("Refresh on Users & Roles reloads the principals through the tab's own handler")
@@ -413,5 +443,50 @@ struct MainContentCoordinatorRefreshTests {
         coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
 
         #expect(reloads == 1)
+    }
+}
+
+private struct RefreshLeaseRefused: Error {}
+
+@MainActor
+private final class RefreshLeaseRecorder: ScopedMetadataProviding {
+    private(set) var databases: [String] = []
+
+    func withMetadataDriver<T: Sendable>(
+        scope: DatabaseScope,
+        workload: MetadataConnectionPool.Workload,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
+    ) async throws -> T {
+        databases.append(scope.database)
+        throw RefreshLeaseRefused()
+    }
+
+    func browseScope(for connectionId: UUID) -> DatabaseScope? {
+        nil
+    }
+}
+
+@MainActor
+private final class RefreshUnusedHistory: TableHealthHistoryStoring {
+    func ledger(connectionId: UUID, database: String) throws -> TableHealthLedger {
+        TableHealthLedger()
+    }
+
+    func record(_ report: TableHealthReport, connectionId: UUID, database: String, at date: Date) throws -> TableHealthLedger {
+        TableHealthLedger()
+    }
+
+    func setIgnored(
+        _ ids: Set<TableHealthFindingID>,
+        ignored: Bool,
+        connectionId: UUID,
+        database: String,
+        at date: Date
+    ) throws -> TableHealthLedger {
+        TableHealthLedger()
+    }
+
+    func clearResolved(connectionId: UUID, database: String) throws -> TableHealthLedger {
+        TableHealthLedger()
     }
 }

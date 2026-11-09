@@ -32,6 +32,8 @@ struct MenuValidationContext: Equatable {
     var canPresentHighlightRules = false
     var isQueryTab = false
     var hasResultRows = false
+    // Export Results reaches a Table Health tab's findings, which no result set holds.
+    var hasTableHealthFindings = false
     var canExportDataDictionary = false
     var canInsertRows = false
     var canDeleteRows = false
@@ -196,7 +198,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(saveDocumentAs(_:)):
             return context.isConnected && context.isQueryTab
         case #selector(exportQueryResults(_:)):
-            return context.isConnected && context.hasResultRows
+            return context.isConnected && (context.hasResultRows || context.hasTableHealthFindings)
 
         case #selector(exportDataDictionary(_:)):
             return context.isConnected && context.canExportDataDictionary
@@ -671,6 +673,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             canPresentHighlightRules: actions.canPresentHighlightRules,
             isQueryTab: actions.isQueryTab,
             hasResultRows: actions.hasResultRows,
+            hasTableHealthFindings: actions.hasTableHealthFindings,
             canExportDataDictionary: actions.canExportDataDictionary,
             canInsertRows: actions.currentTabAllows(.insert),
             canDeleteRows: actions.currentTabAllows(.delete),

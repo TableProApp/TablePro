@@ -3,7 +3,7 @@ import Foundation
 // InnoDB indexes a foreign key's columns itself, so there is no unindexed foreign key check.
 // scripts/probes/check-table-health-catalogs.sh runs these literals against real servers: keep them free of interpolation.
 struct MySQLTableHealthProvider: TableHealthProvider {
-    let checks: [TableHealthCheckKind] = [.unusedIndex, .redundantIndex, .missingPrimaryKey]
+    let checks: [TableHealthCheckKind] = [.unusedIndex, .redundantIndex, .missingPrimaryKey, .nearLimit, .reclaimableSpace]
 
     static let performanceSchemaQuery = "SELECT @@GLOBAL.performance_schema AS performance_schema"
 
@@ -96,8 +96,96 @@ struct MySQLTableHealthProvider: TableHealthProvider {
 
     static let versionQuery = "SELECT VERSION() AS version"
 
+    // PROCESS gates every InnoDB table in information_schema. This one exists on MySQL and MariaDB and holds a
+    // row per buffer pool, so it answers for the tablespace tables the reclaimable space check reads.
+    static let processPrivilegeQuery = "SELECT COUNT(*) AS buffer_pools FROM information_schema.INNODB_BUFFER_POOL_STATS"
+
+    // The limits sys.schema_auto_increment_columns uses; AUTO_INCREMENT is the next value the table hands out.
+    // The 75% threshold compares integers, since 100 * AUTO_INCREMENT overflows BIGINT UNSIGNED near a bigint limit.
+    // A FLOAT or DOUBLE column has no limit here and drops out.
+    static let autoIncrementQuery = """
+        SELECT r.table_name, r.column_name, r.data_type, r.column_type, r.is_nullable, r.column_comment, r.extra,
+               r.auto_increment, r.max_value, r.table_bytes
+        FROM (
+            SELECT t.TABLE_NAME AS table_name,
+                   c.COLUMN_NAME AS column_name,
+                   c.DATA_TYPE AS data_type,
+                   c.COLUMN_TYPE AS column_type,
+                   c.IS_NULLABLE AS is_nullable,
+                   c.COLUMN_COMMENT AS column_comment,
+                   c.EXTRA AS extra,
+                   t.AUTO_INCREMENT AS auto_increment,
+                   (CASE c.DATA_TYPE
+                        WHEN 'tinyint' THEN 255
+                        WHEN 'smallint' THEN 65535
+                        WHEN 'mediumint' THEN 16777215
+                        WHEN 'int' THEN 4294967295
+                        WHEN 'bigint' THEN 18446744073709551615
+                    END >> IF(LOCATE('unsigned', c.COLUMN_TYPE) > 0, 0, 1)) AS max_value,
+                   t.DATA_LENGTH + t.INDEX_LENGTH AS table_bytes
+            FROM information_schema.TABLES t
+            JOIN information_schema.COLUMNS c
+              ON c.TABLE_SCHEMA = t.TABLE_SCHEMA AND c.TABLE_NAME = t.TABLE_NAME
+            WHERE t.TABLE_SCHEMA = DATABASE()
+              AND t.TABLE_TYPE IN ('BASE TABLE', 'SYSTEM VERSIONED')
+              AND c.EXTRA LIKE '%auto_increment%'
+              AND t.AUTO_INCREMENT IS NOT NULL
+        ) r
+        WHERE r.auto_increment >= r.max_value - r.max_value DIV 4
+        ORDER BY r.auto_increment / r.max_value DESC, r.table_name
+        """
+
+    // A table in a shared tablespace reports the free space of the whole tablespace, so InnoDB counts only with a
+    // file of its own. INNODB_TABLES encodes special characters in a name (`@0020`), so such a table drops out
+    // rather than being judged by another table's tablespace.
+    static let reclaimableSpaceQuery = """
+        SELECT t.TABLE_NAME AS table_name,
+               t.ENGINE AS engine,
+               t.TABLE_ROWS AS estimated_rows,
+               t.DATA_LENGTH + t.INDEX_LENGTH AS table_bytes,
+               t.DATA_FREE AS free_bytes
+        FROM information_schema.TABLES t
+        WHERE t.TABLE_SCHEMA = DATABASE()
+          AND t.TABLE_TYPE IN ('BASE TABLE', 'SYSTEM VERSIONED')
+          AND t.DATA_FREE >= 104857600
+          AND t.DATA_FREE * 10 >= t.DATA_LENGTH + t.INDEX_LENGTH + t.DATA_FREE
+          AND (t.ENGINE IN ('MyISAM', 'Aria')
+               OR (t.ENGINE = 'InnoDB' AND EXISTS (
+                   SELECT 1
+                   FROM information_schema.INNODB_TABLES it
+                   JOIN information_schema.INNODB_TABLESPACES ts ON ts.SPACE = it.SPACE
+                   WHERE ts.SPACE_TYPE = 'Single'
+                     AND (it.NAME = CONCAT(t.TABLE_SCHEMA, '/', t.TABLE_NAME)
+                          OR LEFT(it.NAME, CHAR_LENGTH(t.TABLE_SCHEMA) + CHAR_LENGTH(t.TABLE_NAME) + 4)
+                             = CONCAT(t.TABLE_SCHEMA, '/', t.TABLE_NAME, '#p#')))))
+        ORDER BY t.DATA_FREE DESC, t.TABLE_NAME
+        """
+
+    // MariaDB has no INNODB_TABLES and no general tablespaces: space 0 is the system tablespace.
+    static let mariaDBReclaimableSpaceQuery = """
+        SELECT t.TABLE_NAME AS table_name,
+               t.ENGINE AS engine,
+               t.TABLE_ROWS AS estimated_rows,
+               t.DATA_LENGTH + t.INDEX_LENGTH AS table_bytes,
+               t.DATA_FREE AS free_bytes
+        FROM information_schema.TABLES t
+        WHERE t.TABLE_SCHEMA = DATABASE()
+          AND t.TABLE_TYPE IN ('BASE TABLE', 'SYSTEM VERSIONED')
+          AND t.DATA_FREE >= 104857600
+          AND t.DATA_FREE * 10 >= t.DATA_LENGTH + t.INDEX_LENGTH + t.DATA_FREE
+          AND (t.ENGINE IN ('MyISAM', 'Aria')
+               OR (t.ENGINE = 'InnoDB' AND EXISTS (
+                   SELECT 1
+                   FROM information_schema.INNODB_SYS_TABLES it
+                   WHERE it.SPACE <> 0
+                     AND (it.NAME = CONCAT(t.TABLE_SCHEMA, '/', t.TABLE_NAME)
+                          OR LEFT(it.NAME, CHAR_LENGTH(t.TABLE_SCHEMA) + CHAR_LENGTH(t.TABLE_NAME) + 4)
+                             = CONCAT(t.TABLE_SCHEMA, '/', t.TABLE_NAME, '#P#')))))
+        ORDER BY t.DATA_FREE DESC, t.TABLE_NAME
+        """
+
     var statisticsQueries: [String] {
-        [Self.performanceSchemaQuery, Self.uptimeQuery, Self.usageCountingQuery, Self.versionQuery]
+        [Self.performanceSchemaQuery, Self.uptimeQuery, Self.usageCountingQuery, Self.versionQuery, Self.processPrivilegeQuery]
     }
 
     func check(_ kind: TableHealthCheckKind) -> TableHealthCheck {
@@ -112,7 +200,17 @@ struct MySQLTableHealthProvider: TableHealthProvider {
             ))
         case .missingPrimaryKey:
             return TableHealthCheck(kind: kind, summary: String(localized: "Tables with no primary key."))
-        case .bloat, .unindexedForeignKey, .invalidIndex, .nearLimit, .transactionIdAge, .staleStatistics, .reclaimableSpace:
+        case .nearLimit:
+            return TableHealthCheck(
+                kind: kind,
+                title: String(localized: "AUTO_INCREMENT Near Its Limit"),
+                summary: String(localized: "AUTO_INCREMENT columns whose next value has reached 75% of the largest value their type holds.")
+            )
+        case .reclaimableSpace:
+            return TableHealthCheck(kind: kind, summary: String(
+                localized: "Tables stored in their own files whose free space is at least 100 MiB and at least 10% of their size on disk."
+            ))
+        case .bloat, .unindexedForeignKey, .invalidIndex, .transactionIdAge, .staleStatistics:
             return TableHealthCheck(kind: kind, summary: "")
         }
     }
@@ -122,7 +220,10 @@ struct MySQLTableHealthProvider: TableHealthProvider {
         case .unusedIndex: return [Self.unusedIndexQuery, Self.indexQuery, Self.foreignKeyQuery, Self.tableRowsQuery]
         case .redundantIndex: return [Self.indexQuery]
         case .missingPrimaryKey: return [Self.missingPrimaryKeyQuery]
-        case .bloat, .unindexedForeignKey, .invalidIndex, .nearLimit, .transactionIdAge, .staleStatistics, .reclaimableSpace:
+        case .nearLimit: return [Self.autoIncrementQuery, Self.foreignKeyQuery]
+        case .reclaimableSpace:
+            return [statistics.isMariaDB ? Self.mariaDBReclaimableSpaceQuery : Self.reclaimableSpaceQuery]
+        case .bloat, .unindexedForeignKey, .invalidIndex, .transactionIdAge, .staleStatistics:
             return []
         }
     }
@@ -138,15 +239,29 @@ struct MySQLTableHealthProvider: TableHealthProvider {
             statistics.serverVersion = Self.serverVersion(from: version)
             statistics.isMariaDB = version.range(of: "MariaDB", options: .caseInsensitive) != nil
         }
+        if !statistics.isMariaDB, let version = statistics.serverVersion, version < 80_000 {
+            statistics.skippedChecks[.reclaimableSpace] = String(localized: "Needs MySQL 8.0 or later.")
+        } else if (value(4, "buffer_pools").flatMap { Int($0) } ?? 0) == 0 {
+            statistics.skippedChecks[.reclaimableSpace] = String(
+                localized: "Needs the PROCESS privilege to tell a table in its own file from one in a shared tablespace."
+            )
+        }
         if let reason = Self.unusedSkipReason(value) {
             statistics.skippedChecks[.unusedIndex] = reason
-            return statistics
-        }
-        if let uptime = value(1, "value").flatMap(Double.init) {
+        } else if let uptime = value(1, "value").flatMap(Double.init) {
             let start = TableHealthFormatting.date(now.addingTimeInterval(-uptime))
             statistics.notes.append(String(format: String(localized: "Index usage counts since the server started at %@."), start))
         }
         return statistics
+    }
+
+    // MySQL 8 serves AUTO_INCREMENT and the sizes in information_schema.TABLES from a cache. Changing the expiry
+    // would change a session the app pools, so the check says so instead.
+    private static func statisticsCacheNote(_ statistics: TableHealthStatistics) -> String? {
+        guard !statistics.isMariaDB, let version = statistics.serverVersion, version >= 80_000 else { return nil }
+        return String(
+            localized: "MySQL caches the values this check reads for information_schema_stats_expiry seconds, one day by default. ANALYZE TABLE refreshes a table's values."
+        )
     }
 
     private static func unusedSkipReason(_ value: (Int, String) -> String?) -> String? {
@@ -204,7 +319,15 @@ struct MySQLTableHealthProvider: TableHealthProvider {
         case .missingPrimaryKey:
             guard let result = results.first else { return ([], nil) }
             return (TableHealthRow.rows(of: result).map { missingPrimaryKeyFinding($0, context) }, nil)
-        case .bloat, .unindexedForeignKey, .invalidIndex, .nearLimit, .transactionIdAge, .staleStatistics, .reclaimableSpace:
+        case .nearLimit:
+            guard results.count == 2 else { return ([], nil) }
+            let keys = Self.foreignKeysByColumn(TableHealthRow.rows(of: results[1]))
+            let findings = TableHealthRow.rows(of: results[0]).compactMap { nearLimitFinding($0, foreignKeys: keys, context) }
+            return (findings, Self.statisticsCacheNote(statistics))
+        case .reclaimableSpace:
+            guard let result = results.first else { return ([], nil) }
+            return (TableHealthRow.rows(of: result).map { reclaimableSpaceFinding($0, context) }, Self.statisticsCacheNote(statistics))
+        case .bloat, .unindexedForeignKey, .invalidIndex, .transactionIdAge, .staleStatistics:
             return ([], nil)
         }
     }
@@ -280,6 +403,126 @@ struct MySQLTableHealthProvider: TableHealthProvider {
 
     private func dropIndexSQL(table: String, index: String, _ context: TableHealthQueryContext) -> String {
         "ALTER TABLE \(context.qualified(context.database, table)) DROP INDEX \(context.quote(index));"
+    }
+
+    private func nearLimitFinding(
+        _ row: TableHealthRow,
+        foreignKeys: [String: [String]],
+        _ context: TableHealthQueryContext
+    ) -> TableHealthFinding? {
+        guard let next = row.uint64("auto_increment"), let limit = row.uint64("max_value"), limit > 0 else { return nil }
+        let table = row["table_name"], column = row["column_name"], columnType = row["column_type"]
+        let used = TableHealthMetric(
+            id: "used_percent", label: String(localized: "Share Used"), value: .percent(Double(next) / Double(limit))
+        )
+        var detail = String(
+            format: String(localized: "%1$@ is at %2$@ of the largest value %3$@ holds."), column, used.formattedValue, columnType
+        )
+        var fixSQL: String?
+        if let type = Self.widenedType(dataType: row["data_type"], columnType: columnType) {
+            fixSQL = "ALTER TABLE \(context.qualified(context.database, table)) MODIFY COLUMN \(context.quote(column)) "
+                + Self.columnDefinition(type: type, row, context) + ";"
+            if row["data_type"].lowercased() == "bigint" {
+                detail += " " + String(localized: "Run the fix only if the column holds no negative values.")
+            }
+            if let keys = foreignKeys[Self.columnKey(table: table, column: column)] {
+                detail += " " + String(
+                    format: String(
+                        localized: "Foreign keys use this column (%@): drop them, give the column at the other end of each the same type, then add them again."
+                    ),
+                    keys.joined(separator: ", ")
+                )
+            }
+        } else {
+            detail += " " + String(localized: "No integer type holds larger values.")
+        }
+        return TableHealthFinding(
+            kind: .nearLimit, schema: nil, table: table, objectName: column, detail: detail,
+            sizeBytes: row.int64("table_bytes"),
+            metrics: [
+                TableHealthMetric(id: "auto_increment", label: String(localized: "Next Value"), value: .bigCount(next)),
+                TableHealthMetric(id: "max_value", label: String(localized: "Largest Value"), value: .bigCount(limit)),
+                used,
+                TableHealthMetric(id: "column_type", label: String(localized: "Column Type"), value: .text(columnType))
+            ],
+            fixSQL: fixSQL
+        )
+    }
+
+    // A smaller integer widens to BIGINT with its sign kept, and ZEROFILL keeps the width it pads to. A signed
+    // bigint can only give up its sign; an unsigned one is the widest integer there is.
+    static func widenedType(dataType: String, columnType: String) -> String? {
+        let words = columnType.lowercased().split(whereSeparator: \.isWhitespace)
+        let isUnsigned = words.contains("unsigned"), isZerofill = words.contains("zerofill")
+        if dataType.lowercased() == "bigint" { return isUnsigned ? nil : "BIGINT UNSIGNED" }
+        var type = "BIGINT"
+        if isZerofill, let declared = words.first, let width = declared.firstIndex(of: "(") {
+            type += declared[width...]
+        }
+        if isUnsigned { type += " UNSIGNED" }
+        if isZerofill { type += " ZEROFILL" }
+        return type
+    }
+
+    // MODIFY replaces the whole definition, so what the column has besides its type is stated again.
+    private static func columnDefinition(type: String, _ row: TableHealthRow, _ context: TableHealthQueryContext) -> String {
+        var parts = [type, row["is_nullable"].uppercased() == "YES" ? "NULL" : "NOT NULL", "AUTO_INCREMENT"]
+        let extra = row["extra"].split { !$0.isLetter && $0 != "_" }
+        if extra.contains(where: { $0.uppercased() == "INVISIBLE" }) {
+            parts.append("INVISIBLE")
+        }
+        let comment = row["column_comment"]
+        if !comment.isEmpty {
+            parts.append("COMMENT " + context.literal(comment))
+        }
+        return parts.joined(separator: " ")
+    }
+
+    // MySQL refuses to change the type of a column a foreign key uses at either end, even with the checks off.
+    private static func foreignKeysByColumn(_ rows: [TableHealthRow]) -> [String: [String]] {
+        var keys: [String: Set<String>] = [:]
+        for row in rows {
+            let isLocal = row["is_local"] == "1"
+            let owner = isLocal ? row["table_name"] : row["table_schema"] + "." + row["table_name"]
+            let key = String(format: String(localized: "%1$@ on %2$@"), row["constraint_name"], owner)
+            if isLocal {
+                keys[columnKey(table: row["table_name"], column: row["column_name"]), default: []].insert(key)
+            }
+            if row["references_here"] == "1" {
+                keys[columnKey(table: row["referenced_table_name"], column: row["referenced_column_name"]), default: []]
+                    .insert(key)
+            }
+        }
+        return keys.mapValues { $0.sorted() }
+    }
+
+    // Column names never differ only in case; table names can.
+    private static func columnKey(table: String, column: String) -> String {
+        table + "\u{1F}" + column.lowercased()
+    }
+
+    private func reclaimableSpaceFinding(_ row: TableHealthRow, _ context: TableHealthQueryContext) -> TableHealthFinding {
+        let table = row["table_name"]
+        let tableBytes = row.int64("table_bytes"), freeBytes = row.int64("free_bytes") ?? 0
+        let onDisk = Double(tableBytes ?? 0) + Double(freeBytes)
+        let free = TableHealthMetric(id: "free_bytes", label: String(localized: "Reclaimable"), value: .bytes(freeBytes))
+        let share = TableHealthMetric(
+            id: "free_percent", label: String(localized: "Reclaimable Share"), value: .percent(onDisk > 0 ? Double(freeBytes) / onDisk : 0)
+        )
+        var metrics = [free, share]
+        if let rows = row.int64("estimated_rows") {
+            metrics.append(.estimatedRows(rows))
+        }
+        metrics.append(TableHealthMetric(id: "engine", label: String(localized: "Engine"), value: .text(row["engine"])))
+        return TableHealthFinding(
+            kind: .reclaimableSpace, schema: nil, table: table, objectName: nil,
+            detail: String(
+                format: String(localized: "%1$@ reclaimable, %2$@ of the table's size on disk."), free.formattedValue, share.formattedValue
+            ),
+            sizeBytes: tableBytes,
+            metrics: metrics,
+            fixSQL: "OPTIMIZE TABLE \(context.qualified(context.database, table));"
+        )
     }
 }
 

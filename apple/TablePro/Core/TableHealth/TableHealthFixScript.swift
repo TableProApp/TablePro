@@ -5,7 +5,8 @@ enum TableHealthFixScript {
         database: String,
         generatedAt date: Date,
         databaseType: DatabaseType,
-        findings: [TableHealthFinding]
+        findings: [TableHealthFinding],
+        checkTitle: (TableHealthCheckKind) -> String = { $0.title }
     ) -> String {
         var script = [
             commentLine(String(format: String(localized: "Database: %1$@ (%2$@)"), database, databaseType.displayName)),
@@ -14,7 +15,7 @@ enum TableHealthFixScript {
         ].joined(separator: "\n")
         for finding in findings {
             guard let fix = finding.fixSQL, !fix.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
-            let name = String(format: String(localized: "%1$@: %2$@"), finding.kind.title, finding.qualifiedName)
+            let name = String(format: String(localized: "%1$@: %2$@"), checkTitle(finding.kind), finding.qualifiedName)
             script += "\n\n" + commentLine(name) + "\n" + fix
         }
         return script + "\n"

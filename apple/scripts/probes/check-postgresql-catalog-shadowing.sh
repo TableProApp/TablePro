@@ -167,7 +167,8 @@ static_query() {
     ' "$1"
 }
 HEALTH="$ROOT/TablePro/Core/TableHealth/PostgreSQLTableHealthProvider.swift"
-for name in statisticsQuery bloatQuery unusedIndexQuery missingPrimaryKeyQuery unindexedForeignKeyQuery; do
+for name in statisticsQuery bloatQuery unusedIndexQuery missingPrimaryKeyQuery unindexedForeignKeyQuery \
+    redundantIndexQuery invalidIndexQuery nearLimitQuery transactionIdAgeQuery staleStatisticsQuery; do
     static_query "$HEALTH" "$name" > "$HOST_SQL/health-$name.sql"
     [[ -s "$HOST_SQL/health-$name.sql" ]] || { echo "FAIL: $name not found in $HEALTH" >&2; exit 2; }
 done

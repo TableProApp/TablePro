@@ -73,32 +73,105 @@ struct MySQLTableHealthProviderTests {
 
     private static let tableRowsColumns = ["table_name", "estimated_rows"]
 
+    private static func keyResult(_ keys: [KeyRow]) -> QueryResult {
+        var seen: [String: Int] = [:]
+        return TableHealthFixture.result(
+            columns: keyColumns,
+            rows: keys.map { key -> [String?] in
+                let identity = key.schema + "." + key.table + "." + key.constraint
+                seen[identity, default: 0] += 1
+                return [
+                    key.schema, key.table, key.constraint, key.column, key.referencedTable, key.referencedColumn,
+                    String(seen[identity, default: 1]), key.isLocal ? "1" : "0", key.referencesHere ? "1" : "0"
+                ]
+            }
+        )
+    }
+
     private func unused(
         candidates: [(table: String, index: String)],
         indexes: [IndexRow],
         foreignKeys: [KeyRow] = []
     ) -> [String] {
-        var seen: [String: Int] = [:]
         let results = [
             TableHealthFixture.result(
                 columns: ["table_name", "index_name"],
                 rows: candidates.map { candidate -> [String?] in [candidate.table, candidate.index] }
             ),
             Self.indexResult(indexes),
-            TableHealthFixture.result(
-                columns: Self.keyColumns,
-                rows: foreignKeys.map { key -> [String?] in
-                    let identity = key.schema + "." + key.table + "." + key.constraint
-                    seen[identity, default: 0] += 1
-                    return [
-                        key.schema, key.table, key.constraint, key.column, key.referencedTable, key.referencedColumn,
-                        String(seen[identity, default: 1]), key.isLocal ? "1" : "0", key.referencesHere ? "1" : "0"
-                    ]
-                }
-            ),
+            Self.keyResult(foreignKeys),
             TableHealthFixture.result(columns: Self.tableRowsColumns, rows: [])
         ]
         return findings(.unusedIndex, from: results).compactMap { $0.objectName }
+    }
+
+    // One row of autoIncrementQuery. MariaDB writes display widths into column_type ("int(11)").
+    private struct CounterRow {
+        var table = "orders"
+        var column = "id"
+        var dataType = "int"
+        var columnType = "int"
+        var nullable = "NO"
+        var comment = ""
+        var extra = "auto_increment"
+        let next: String
+        let max: String
+    }
+
+    private static let counterColumns = [
+        "table_name", "column_name", "data_type", "column_type", "is_nullable", "column_comment", "extra",
+        "auto_increment", "max_value", "table_bytes"
+    ]
+
+    private func nearLimit(
+        _ rows: [CounterRow],
+        foreignKeys: [KeyRow] = [],
+        statistics: TableHealthStatistics = TableHealthStatistics()
+    ) -> (findings: [TableHealthFinding], note: String?) {
+        provider.findings(
+            for: .nearLimit,
+            from: [
+                TableHealthFixture.result(
+                    columns: Self.counterColumns,
+                    rows: rows.map { row -> [String?] in
+                        [
+                            row.table, row.column, row.dataType, row.columnType, row.nullable, row.comment, row.extra,
+                            row.next, row.max, "16384"
+                        ]
+                    }
+                ),
+                Self.keyResult(foreignKeys)
+            ],
+            context: context,
+            statistics: statistics
+        )
+    }
+
+    private func nearLimitFix(_ row: CounterRow) -> String? {
+        nearLimit([row]).findings.first?.fixSQL
+    }
+
+    private static let reclaimableColumns = ["table_name", "engine", "estimated_rows", "table_bytes", "free_bytes"]
+
+    private struct ProbeDenied: LocalizedError {
+        var errorDescription: String? { "Access denied; you need (at least one of) the PROCESS privilege(s) for this operation" }
+    }
+
+    // The queries a whole report asks a server that answers only its version and the PROCESS probe.
+    private func report(version: String, canReadInnoDB: Bool = true) async throws -> (report: TableHealthReport, asked: [String]) {
+        var asked: [String] = []
+        let report = try await provider.fetchReport(context: context) { query in
+            asked.append(query)
+            if query == MySQLTableHealthProvider.versionQuery {
+                return TableHealthFixture.result(columns: ["version"], rows: [[version]])
+            }
+            if query == MySQLTableHealthProvider.processPrivilegeQuery {
+                guard canReadInnoDB else { throw ProbeDenied() }
+                return TableHealthFixture.result(columns: ["buffer_pools"], rows: [["1"]])
+            }
+            return TableHealthFixture.empty()
+        }
+        return (report, asked)
     }
 
     private func statistics(
@@ -106,7 +179,8 @@ struct MySQLTableHealthProviderTests {
         instrument: String = "YES",
         consumer: String = "YES",
         countedTables: String = "3",
-        version: String = "8.0.46"
+        version: String = "8.0.46",
+        canReadInnoDB: Bool = true
     ) -> TableHealthStatistics {
         provider.statistics(
             from: [
@@ -116,7 +190,8 @@ struct MySQLTableHealthProviderTests {
                     columns: ["table_io_instrument", "global_instrumentation", "counted_tables"],
                     rows: [[instrument, consumer, countedTables]]
                 ),
-                TableHealthFixture.result(columns: ["version"], rows: [[version]])
+                TableHealthFixture.result(columns: ["version"], rows: [[version]]),
+                canReadInnoDB ? TableHealthFixture.result(columns: ["buffer_pools"], rows: [["1"]]) : nil
             ],
             now: Date(timeIntervalSince1970: 1_800_000_000)
         )
@@ -425,7 +500,7 @@ struct MySQLTableHealthProviderTests {
             ],
             now: Date()
         )
-        #expect(stats.skippedChecks.isEmpty)
+        #expect(stats.skippedChecks[.unusedIndex] == nil)
         #expect(stats.notes.isEmpty)
         #expect(stats.serverVersion == nil)
     }
@@ -462,14 +537,202 @@ struct MySQLTableHealthProviderTests {
         }
     }
 
-    @Test("Every query the report runs only reads")
+    @Test("Every query the report runs only reads, on MySQL and on MariaDB")
     func queriesOnlyRead() {
-        let queries = provider.statisticsQueries
-            + provider.checks.flatMap { provider.queries(for: $0, statistics: TableHealthStatistics()) }
+        var queries = provider.statisticsQueries
+        for server in [statistics(version: "8.4.13"), statistics(version: "11.4.13-MariaDB")] {
+            queries += provider.checks.flatMap { provider.queries(for: $0, statistics: server) }
+        }
         for query in queries where query != MySQLTableHealthProvider.uptimeQuery {
             let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
             #expect(text.uppercased().hasPrefix("SELECT"), "\(text.prefix(40)) does not start with SELECT")
         }
         #expect(MySQLTableHealthProvider.uptimeQuery.hasPrefix("SHOW "))
+    }
+
+    @Test("A counter near its limit carries its typed values and widens the column to BIGINT with its sign kept")
+    func nearLimitWidensToBigint() throws {
+        let found = nearLimit([
+            CounterRow(table: "ai_tiny_unsigned", dataType: "tinyint", columnType: "tinyint unsigned", next: "200", max: "255"),
+            CounterRow(table: "ai_int", next: "1700000001", max: "2147483647")
+        ]).findings
+        let tiny = try #require(found.first { $0.table == "ai_tiny_unsigned" })
+        let int = try #require(found.first { $0.table == "ai_int" })
+
+        #expect(tiny.schema == nil)
+        #expect(tiny.objectName == "id")
+        #expect(tiny.sizeBytes == 16384)
+        #expect(tiny.metric("auto_increment")?.value == .bigCount(200))
+        #expect(tiny.metric("max_value")?.value == .bigCount(255))
+        #expect(tiny.metric("used_percent")?.value == .percent(200.0 / 255.0))
+        #expect(tiny.metric("column_type")?.value == .text("tinyint unsigned"))
+        #expect(tiny.fixSQL == "ALTER TABLE `shop`.`ai_tiny_unsigned` MODIFY COLUMN `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT;")
+        #expect(int.fixSQL == "ALTER TABLE `shop`.`ai_int` MODIFY COLUMN `id` BIGINT NOT NULL AUTO_INCREMENT;")
+    }
+
+    @Test("MariaDB's display widths do not reach the new type, except the width a ZEROFILL column pads to")
+    func nearLimitReadsMariaDBTypes() {
+        let signed = nearLimitFix(CounterRow(columnType: "int(11)", next: "1700000001", max: "2147483647"))
+        let unsigned = nearLimitFix(CounterRow(dataType: "tinyint", columnType: "tinyint(3) unsigned", next: "200", max: "255"))
+        let zerofill = nearLimitFix(CounterRow(columnType: "int(5) unsigned zerofill", next: "4000000000", max: "4294967295"))
+        let nullable = nearLimitFix(CounterRow(columnType: "int(11)", nullable: "YES", next: "1700000001", max: "2147483647"))
+
+        #expect(signed == "ALTER TABLE `shop`.`orders` MODIFY COLUMN `id` BIGINT NOT NULL AUTO_INCREMENT;")
+        #expect(unsigned == "ALTER TABLE `shop`.`orders` MODIFY COLUMN `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT;")
+        #expect(zerofill == "ALTER TABLE `shop`.`orders` MODIFY COLUMN `id` BIGINT(5) UNSIGNED ZEROFILL NOT NULL AUTO_INCREMENT;")
+        #expect(nullable == "ALTER TABLE `shop`.`orders` MODIFY COLUMN `id` BIGINT NULL AUTO_INCREMENT;")
+    }
+
+    @Test("An unsigned bigint counter past Int64 keeps its exact value and has no fix; a signed one can drop its sign")
+    func nearLimitAtTheWidestType() throws {
+        let found = nearLimit([
+            CounterRow(
+                table: "events", dataType: "bigint", columnType: "bigint unsigned",
+                next: "15000000000000000000", max: "18446744073709551615"
+            ),
+            CounterRow(table: "logs", dataType: "bigint", columnType: "bigint(20)", next: "7000000000000000000", max: "9223372036854775807")
+        ]).findings
+        let unsigned = try #require(found.first { $0.table == "events" })
+        let signed = try #require(found.first { $0.table == "logs" })
+
+        #expect(unsigned.metric("auto_increment")?.value == .bigCount(15_000_000_000_000_000_000))
+        #expect(unsigned.metric("max_value")?.value == .bigCount(UInt64.max))
+        #expect(unsigned.fixSQL == nil)
+        #expect(!unsigned.detail.isEmpty)
+        #expect(signed.metric("max_value")?.value == .bigCount(UInt64(Int64.max)))
+        #expect(signed.fixSQL == "ALTER TABLE `shop`.`logs` MODIFY COLUMN `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT;")
+    }
+
+    @Test("The fix states the whole column again: an invisible column stays invisible and a hostile comment stays one literal")
+    func nearLimitRestatesTheColumn() {
+        let comment = "it's a \\ path\n*/ DROP TABLE x; -- "
+        let mysql = nearLimitFix(CounterRow(
+            table: "odd`name", column: "se`q", dataType: "smallint", columnType: "smallint", comment: comment,
+            extra: "auto_increment INVISIBLE", next: "30001", max: "32767"
+        ))
+        let mariadb = nearLimitFix(CounterRow(
+            dataType: "smallint", columnType: "smallint(6)", comment: "row counter", extra: "auto_increment, INVISIBLE",
+            next: "30001", max: "32767"
+        ))
+        let visible = nearLimitFix(CounterRow(dataType: "smallint", columnType: "smallint", next: "30001", max: "32767"))
+
+        #expect(mysql == "ALTER TABLE `shop`.`odd``name` MODIFY COLUMN `se``q` BIGINT NOT NULL AUTO_INCREMENT INVISIBLE COMMENT 'it''s a \\\\ path\n*/ DROP TABLE x; -- ';")
+        #expect(mariadb == "ALTER TABLE `shop`.`orders` MODIFY COLUMN `id` BIGINT NOT NULL AUTO_INCREMENT INVISIBLE COMMENT 'row counter';")
+        #expect(visible == "ALTER TABLE `shop`.`orders` MODIFY COLUMN `id` BIGINT NOT NULL AUTO_INCREMENT;")
+    }
+
+    @Test("A counter a foreign key uses at either end names each key, and the fix still widens the column")
+    func nearLimitNamesForeignKeys() throws {
+        let found = nearLimit(
+            [
+                CounterRow(table: "ai_parent", next: "1800000001", max: "2147483647"),
+                CounterRow(table: "ai_child", column: "seq", next: "1800000001", max: "2147483647"),
+                CounterRow(table: "ai_alone", next: "1800000001", max: "2147483647")
+            ],
+            foreignKeys: [
+                KeyRow(
+                    table: "ai_child", constraint: "ai_child_fk", column: "parent_id",
+                    referencedTable: "ai_parent", referencedColumn: "ID", referencesHere: true
+                ),
+                KeyRow(
+                    schema: "archive", table: "audit", constraint: "audit_fk", column: "parent_id",
+                    referencedTable: "ai_parent", referencedColumn: "id", referencesHere: true
+                ),
+                KeyRow(table: "ai_child", constraint: "ai_child_seq_fk", column: "seq", referencedTable: "elsewhere", referencedColumn: "id")
+            ]
+        ).findings
+        let parent = try #require(found.first { $0.table == "ai_parent" })
+        let child = try #require(found.first { $0.table == "ai_child" })
+        let alone = try #require(found.first { $0.table == "ai_alone" })
+
+        #expect(parent.detail.contains("ai_child_fk"))
+        #expect(parent.detail.contains("archive.audit"))
+        #expect(!parent.detail.contains("ai_child_seq_fk"))
+        #expect(parent.fixSQL == "ALTER TABLE `shop`.`ai_parent` MODIFY COLUMN `id` BIGINT NOT NULL AUTO_INCREMENT;")
+        #expect(child.detail.contains("ai_child_seq_fk"))
+        #expect(!alone.detail.contains("_fk"))
+    }
+
+    @Test("On MySQL 8 the cached checks say information_schema may lag; MariaDB and MySQL 5.7 read live values")
+    func statisticsCacheNote() {
+        let reclaimable = { (server: TableHealthStatistics) in
+            self.provider.findings(
+                for: .reclaimableSpace,
+                from: [TableHealthFixture.result(columns: Self.reclaimableColumns, rows: [])],
+                context: self.context,
+                statistics: server
+            ).note
+        }
+        let mysql8 = statistics(version: "8.4.13")
+
+        #expect(nearLimit([], statistics: mysql8).note?.contains("information_schema_stats_expiry") == true)
+        #expect(reclaimable(mysql8)?.contains("information_schema_stats_expiry") == true)
+        #expect(nearLimit([], statistics: statistics(version: "11.4.13-MariaDB-ubu2404")).note == nil)
+        #expect(reclaimable(statistics(version: "11.4.13-MariaDB-ubu2404")) == nil)
+        #expect(nearLimit([], statistics: statistics(version: "5.7.44")).note == nil)
+    }
+
+    @Test("A table with reclaimable space carries its typed values and previews OPTIMIZE TABLE")
+    func reclaimableSpaceFinding() throws {
+        let found = provider.findings(
+            for: .reclaimableSpace,
+            from: [TableHealthFixture.result(
+                columns: Self.reclaimableColumns,
+                rows: [
+                    ["fx_parts", "InnoDB", "122895", "134905856", "148897792"],
+                    ["odd`name", "MyISAM", "131072", "241770496", "119537664"]
+                ]
+            )],
+            context: context,
+            statistics: statistics(version: "8.4.13")
+        ).findings
+        let parts = try #require(found.first)
+        let myisam = try #require(found.last)
+
+        #expect(found.count == 2)
+        #expect(parts.schema == nil)
+        #expect(parts.table == "fx_parts")
+        #expect(parts.objectName == nil)
+        #expect(parts.sizeBytes == 134_905_856)
+        #expect(parts.metric("free_bytes")?.value == .bytes(148_897_792))
+        #expect(parts.metric("free_percent")?.value == .percent(148_897_792.0 / (134_905_856.0 + 148_897_792.0)))
+        #expect(parts.metric("estimated_rows")?.value == .count(122_895))
+        #expect(parts.metric("engine")?.value == .text("InnoDB"))
+        #expect(parts.fixSQL == "OPTIMIZE TABLE `shop`.`fx_parts`;")
+        #expect(myisam.fixSQL == "OPTIMIZE TABLE `shop`.`odd``name`;")
+    }
+
+    @Test("The reclaimable space check reads MySQL 8's tablespace tables on MySQL and MariaDB's own on MariaDB")
+    func reclaimableQueryFollowsTheServer() async throws {
+        let mysql = try await report(version: "8.4.13-log")
+        let mariadb = try await report(version: "11.4.13-MariaDB-ubu2404")
+
+        #expect(mysql.asked.contains(MySQLTableHealthProvider.reclaimableSpaceQuery))
+        #expect(!mysql.asked.contains(MySQLTableHealthProvider.mariaDBReclaimableSpaceQuery))
+        #expect(mariadb.asked.contains(MySQLTableHealthProvider.mariaDBReclaimableSpaceQuery))
+        #expect(!mariadb.asked.contains(MySQLTableHealthProvider.reclaimableSpaceQuery))
+        #expect(mysql.report.result(for: .reclaimableSpace)?.outcome == .completed)
+        #expect(mariadb.report.result(for: .reclaimableSpace)?.outcome == .completed)
+    }
+
+    @Test("Without PROCESS, or before MySQL 8.0, the reclaimable space check is skipped with its reason and the rest run")
+    func reclaimableSkips() async throws {
+        let denied = try await report(version: "8.4.13", canReadInnoDB: false)
+        let old = try await report(version: "5.7.44")
+
+        guard case .skipped(let reason) = denied.report.result(for: .reclaimableSpace)?.outcome else {
+            Issue.record("the check ran without PROCESS")
+            return
+        }
+        #expect(reason.contains("PROCESS"))
+        #expect(!denied.asked.contains(MySQLTableHealthProvider.reclaimableSpaceQuery))
+        #expect(denied.report.result(for: .nearLimit)?.outcome == .completed)
+        #expect(denied.report.result(for: .missingPrimaryKey)?.outcome == .completed)
+        guard case .skipped(let oldReason) = old.report.result(for: .reclaimableSpace)?.outcome else {
+            Issue.record("the check ran on MySQL 5.7")
+            return
+        }
+        #expect(oldReason.contains("8.0"))
+        #expect(statistics(version: "11.4.13-MariaDB", canReadInnoDB: false).skippedChecks[.reclaimableSpace] != nil)
     }
 }
