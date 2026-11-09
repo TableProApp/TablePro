@@ -59,7 +59,8 @@ impl JsonView {
         let error = error_page(retry.clone());
         stack.add_named(&error, Some("error"));
         stack.set_visible_child_name("loading");
-        let toasts = adw::ToastOverlay::builder().child(&stack).build();
+        let toasts = adw::ToastOverlay::new();
+        toasts.set_child(Some(&stack));
         let root = adw::ToolbarView::builder().content(&toasts).build();
         let stale = adw::Banner::new(&gettext("Couldn't refresh rows. Showing the last loaded page."));
         root.add_top_bar(&stale);
