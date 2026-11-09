@@ -9,6 +9,7 @@
 import AppKit
 import SwiftUI
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @MainActor
@@ -61,22 +62,32 @@ struct FilterRowLayoutTests {
         #expect(Set(heights).count == 1, "row heights \(heights)")
     }
 
-    @Test("The value starts at the same x whatever the operator")
-    func valuesShareOneColumn() throws {
+    @Test("The value starts at the same x whatever the operator", arguments: [700, 520] as [CGFloat])
+    func valuesShareOneColumn(width: CGFloat) throws {
         let starts = try [Self.textEquals, Self.textContains, Self.between].map { filter in
-            try #require(valueFields(in: row(filter), width: 700).first).minX
+            try #require(valueFields(in: row(filter), width: width).first).minX
         }
         #expect(Set(starts).count == 1, "value fields start at \(starts)")
+    }
+
+    @Test("A raw condition starts where the other rows' operator does")
+    func rawConditionStartsAtTheOperatorColumn() throws {
+        let value = try #require(valueFields(in: row(Self.textEquals), width: 700).first).minX
+        let raw = try #require(valueFields(in: row(TableFilter.rawCondition("id = 1")), width: 700).first).minX
+        let operatorStart = value - FilterControlMetrics.operatorWidth(reservesCaseIndicator: true) - FilterRowView.spacing
+        #expect(raw == operatorStart, "a raw condition starts at \(raw), the operator column at \(operatorStart)")
     }
 
     @Test("A row never grows past the pane at the pane's narrowest")
     func rowFitsTheNarrowestPane() {
         let width = MainSplitViewController.defaultDetailMinThickness
         let longColumn = TableFilter(columnName: Self.columns[3], filterOperator: .between, value: "1", secondValue: "3")
+        let rowHeight = measureFrame(of: row(Self.textEquals), width: 700).height
         for filter in [Self.textContains, Self.between, Self.enumEquals, longColumn] {
             let frame = measureFrame(of: row(filter), width: width)
             #expect(frame.width <= width, "\(filter.columnName) \(filter.filterOperator) row is \(frame.width)pt in \(width)pt")
             #expect(frame.minX >= 0)
+            #expect(frame.height == rowHeight, "\(filter.filterOperator) row is \(frame.height)pt tall at \(width)pt")
         }
     }
 
@@ -153,33 +164,71 @@ struct FilterRowLayoutTests {
         #expect(field.height > FilterValueTextField.singleLineHeight(for: .small) + 1, "raw field is \(field.height)pt tall")
     }
 
-    @Test("The operator title is as wide for every operator, so changing one moves nothing")
-    func operatorTitleWidthIsStable() {
-        let widths = [FilterOperator.equal, .between, .isNull, .notContains].map { op in
-            NSHostingView(rootView: FilterOperatorMenuTitle(
-                filterOperator: op,
-                showsCaseIndicator: op == .notContains,
-                reservesCaseIndicator: true
-            )).fittingSize.width
+    @Test("Every row reserves room for the widest operator, case badge included")
+    func operatorWidthCoversEveryOperator() {
+        let plain = FilterControlMetrics.operatorWidth(reservesCaseIndicator: false)
+        let withBadge = FilterControlMetrics.operatorWidth(reservesCaseIndicator: true)
+        for op in FilterOperator.allCases {
+            #expect(FilterControlMetrics.popUpWidth(titles: [op.displayName], pullsDown: true) <= plain)
         }
-        #expect(Set(widths).count == 1, "operator title widths \(widths)")
+        #expect(withBadge > plain)
     }
 
-    @Test("The column cell takes its ideal width up to the cap, and less only when squeezed")
-    func columnCapKeepsTheIdealWidth() {
+    @Test("A drifted column lines its row up with the others instead of widening its pop-up")
+    func driftedColumnKeepsTheGrid() throws {
+        let drifted = TableFilter(columnName: "a_column_this_table_no_longer_has_at_all", filterOperator: .equal, value: "a")
+        let starts = try [Self.textEquals, drifted].map { filter in
+            try #require(valueFields(in: row(filter), width: 700).first).minX
+        }
+        #expect(starts[0] == starts[1], "value fields start at \(starts)")
+    }
+
+    @Test("A row on an array path and a row reserving its scope slot line up")
+    func elementScopeSlotKeepsTheGrid() throws {
+        let paths = [PluginFieldPath(path: "items.sku", typeName: "string", depth: 1, arrayPrefixes: ["items"])]
+        let scoped = TableFilter(columnName: "items.sku", filterOperator: .equal, value: "a")
+        let starts = try [scoped, Self.textEquals].map { filter in
+            let view = FilterRowView(
+                filter: .constant(filter),
+                columns: Self.columns,
+                completions: [],
+                caseMatching: .inMemory,
+                columnMenu: FilterColumnMenu.build(columns: Self.columns, fieldPaths: paths),
+                fieldPaths: paths,
+                reservesElementScope: true,
+                onAdd: {},
+                onDuplicate: {},
+                onRemove: {},
+                onApply: {},
+                onSubmit: {},
+                onCancel: {},
+                isReorderEnabled: true,
+                canMoveUp: false,
+                canMoveDown: false,
+                onMoveUp: {},
+                onMoveDown: {},
+                onDropFilter: { _ in },
+                focusedFilterId: .constant(nil)
+            )
+            return try #require(valueFields(in: view, width: 800).first).minX
+        }
+        #expect(starts[0] == starts[1], "value fields start at \(starts)")
+    }
+
+    @Test("A pop-up keeps its ideal width and shrinks only when squeezed")
+    func idealWidthCapKeepsTheIdealWidth() {
         func width(_ text: String, proposal: CGFloat) -> CGFloat {
             let box = FrameBox()
-            let host = NSHostingView(rootView: IdealWidthCap(maximum: 160) { Text(text).lineLimit(1) }
+            let host = NSHostingView(rootView: IdealWidthCap { Text(text).lineLimit(1) }
                 .overlay(FrameProbe(box: box))
                 .frame(width: proposal, alignment: .leading))
             host.frame = NSRect(x: 0, y: 0, width: 600, height: 40)
             host.layoutSubtreeIfNeeded()
             return box.frame?.width ?? .nan
         }
-        let shortIdeal = NSHostingView(rootView: Text("id")).fittingSize.width
-        #expect(abs(width("id", proposal: 400) - shortIdeal) <= 1)
-        #expect(width(String(repeating: "long_name_", count: 10), proposal: 400) == 160)
-        #expect(width(String(repeating: "long_name_", count: 10), proposal: 60) <= 60)
+        let ideal = NSHostingView(rootView: Text("pending")).fittingSize.width
+        #expect(abs(width("pending", proposal: 400) - ideal) <= 1)
+        #expect(width("pending", proposal: 20) <= 20)
     }
 
     // MARK: - Hosting

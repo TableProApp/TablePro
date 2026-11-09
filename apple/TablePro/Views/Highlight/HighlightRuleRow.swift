@@ -70,16 +70,24 @@ struct HighlightRuleRow: View {
     }
 
     private var conditionEditor: some View {
-        HStack(spacing: 6) {
-            IdealWidthCap(maximum: Self.columnPickerMaximumWidth) {
-                columnPicker
-            }
+        FilterRowLayout(spacing: 6, fillMinimum: FilterRowView.valueCellMinimumWidth) {
+            columnPicker
+                .fillsReservedWidth()
+                .filterRowRole(.reserved(columnCellWidth))
             operatorMenu
+                .fillsReservedWidth()
+                .filterRowRole(.reserved(FilterControlMetrics.operatorWidth(reservesCaseIndicator: true)))
             HStack(spacing: 6) {
                 valueFields
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .filterRowRole(.fill)
         }
+        .frame(minHeight: FilterValueTextField.singleLineHeight(for: .small))
+    }
+
+    private var columnCellWidth: CGFloat {
+        min(FilterControlMetrics.popUpWidth(titles: columnOptions.map(\.label)), Self.columnPickerMaximumWidth)
     }
 
     private var columnSelection: Binding<String> {
@@ -136,16 +144,18 @@ struct HighlightRuleRow: View {
                 Toggle(String(localized: "Match Case"), isOn: $rule.isCaseSensitive)
             }
         } label: {
-            FilterOperatorMenuTitle(
-                filterOperator: rule.filterOperator,
-                showsCaseIndicator: rule.filterOperator.supportsCaseSensitivity
-                    && rule.isCaseSensitive != rule.filterOperator.defaultIsCaseSensitive,
-                reservesCaseIndicator: true
-            )
+            HStack(spacing: FilterControlMetrics.caseIndicatorSpacing) {
+                Text(rule.filterOperator.displayName)
+                if rule.filterOperator.supportsCaseSensitivity,
+                   rule.isCaseSensitive != rule.filterOperator.defaultIsCaseSensitive {
+                    Image(systemName: "textformat")
+                        .imageScale(.small)
+                        .foregroundStyle(.secondary)
+                }
+            }
             .accessibilityLabel(String(localized: "Rule operator"))
         }
         .menuStyle(.button)
-        .fixedSize()
         .accessibilityValue(rule.filterOperator.displayName)
         .accessibilityIdentifier("highlight-rule-operator")
     }
@@ -160,13 +170,14 @@ struct HighlightRuleRow: View {
                 placeholder: String(localized: "Value"),
                 onCancel: onCancel
             )
-            .frame(minWidth: 90)
+            .frame(minWidth: 40)
             .accessibilityLabel(String(localized: "Rule value"))
 
             if rule.filterOperator.requiresSecondValue {
                 Text("and")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .fixedSize()
                 FilterValueTextField(
                     text: Binding(
                         get: { rule.secondValue ?? "" },
@@ -177,7 +188,7 @@ struct HighlightRuleRow: View {
                     placeholder: String(localized: "Value"),
                     onCancel: onCancel
                 )
-                .frame(minWidth: 70)
+                .frame(minWidth: 40)
                 .accessibilityLabel(String(localized: "Second rule value"))
             }
         }

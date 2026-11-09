@@ -154,13 +154,11 @@ struct FilterPanelView: View {
             }
         } label: {
             Image(systemName: "ellipsis.circle")
+                .accessibilityLabel(String(localized: "Filter options"))
         }
         .menuStyle(.button)
         .buttonStyle(.borderless)
         .foregroundStyle(.secondary)
-        // An image-only pull-down is otherwise announced by AppKit's fallback name; `.contain` keeps its items reachable.
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(String(localized: "Filter options"))
         .help(String(localized: "Filter options"))
         .popover(isPresented: $showSettingsPopover, arrowEdge: .bottom) {
             FilterSettingsPopover()
