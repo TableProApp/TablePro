@@ -62,6 +62,7 @@ struct GeneralSettings: Codable, Equatable {
     var shareAnalytics: Bool
     var showRecentTables: Bool
     var showsObjectsOnSelection: Bool
+    var showsObjectToolbar: Bool
     var showObjectComments: Bool
     var showObjectIcons: Bool
     var showSystemContainers: Bool
@@ -79,6 +80,7 @@ struct GeneralSettings: Codable, Equatable {
         shareAnalytics: true,
         showRecentTables: false,
         showsObjectsOnSelection: false,
+        showsObjectToolbar: false,
         showObjectComments: true,
         showObjectIcons: true,
         showSystemContainers: false,
@@ -97,6 +99,7 @@ struct GeneralSettings: Codable, Equatable {
         shareAnalytics: Bool = true,
         showRecentTables: Bool = false,
         showsObjectsOnSelection: Bool = false,
+        showsObjectToolbar: Bool = false,
         showObjectComments: Bool = true,
         showObjectIcons: Bool = true,
         showSystemContainers: Bool = false,
@@ -113,6 +116,7 @@ struct GeneralSettings: Codable, Equatable {
         self.shareAnalytics = shareAnalytics
         self.showRecentTables = showRecentTables
         self.showsObjectsOnSelection = showsObjectsOnSelection
+        self.showsObjectToolbar = showsObjectToolbar
         self.showObjectComments = showObjectComments
         self.showObjectIcons = showObjectIcons
         self.showSystemContainers = showSystemContainers
@@ -135,6 +139,7 @@ struct GeneralSettings: Codable, Equatable {
         showsObjectsOnSelection = container.decodeSetting(
             .showsObjectsOnSelection, default: fallback.showsObjectsOnSelection
         )
+        showsObjectToolbar = container.decodeSetting(.showsObjectToolbar, default: fallback.showsObjectToolbar)
         showObjectComments = container.decodeSetting(.showObjectComments, default: fallback.showObjectComments)
         showObjectIcons = container.decodeSetting(.showObjectIcons, default: fallback.showObjectIcons)
         showSystemContainers = container.decodeSetting(.showSystemContainers, default: fallback.showSystemContainers)
