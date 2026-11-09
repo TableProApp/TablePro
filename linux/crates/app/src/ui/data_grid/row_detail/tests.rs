@@ -1571,27 +1571,6 @@ fn null_preferences_update_details_without_replacing_a_draft() {
     assert_eq!(pending(&grid, 1, 1), None);
 }
 
-#[gtk4::test]
-fn changing_automatic_details_opening_keeps_an_active_value_draft() {
-    let (grid, pane) = opened(two_text_columns(), two_text_values());
-    edit_field(&grid, &pane, 0, 1);
-    type_value(&pane, "unfinished");
-    let settings = grid.grid.config().expect("a configured grid").settings.clone();
-
-    settings
-        .set_auto_show_inspector(true)
-        .expect("enable automatic opening");
-    settings
-        .set_auto_show_inspector(false)
-        .expect("disable automatic opening");
-    drain_main_context();
-
-    assert!(pane.is_open());
-    assert!(pane.is_editing_value());
-    assert_eq!(pane.typed_text(), "unfinished");
-    assert_eq!(pending(&grid, 1, 1), None);
-}
-
 fn drawn_field(pane: &RowDetailPane, column: usize) -> gtk::ListItem {
     pane.imp()
         .bound
@@ -1856,4 +1835,25 @@ fn search_keys_and_tab_order_reach_the_filter_list_and_value() {
     keys.press(gdk::Key::Escape, gdk::ModifierType::empty())
         .expect("Escape");
     wait_until(WAIT, || !grid.grid.imp().split_view.shows_sidebar()).expect("Escape closes the empty overlay search");
+}
+
+#[gtk4::test]
+fn changing_automatic_details_opening_keeps_an_active_value_draft() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    edit_field(&grid, &pane, 0, 1);
+    type_value(&pane, "unfinished");
+    let settings = grid.grid.config().expect("a configured grid").settings.clone();
+
+    settings
+        .set_auto_show_inspector(true)
+        .expect("enable automatic opening");
+    settings
+        .set_auto_show_inspector(false)
+        .expect("disable automatic opening");
+    drain_main_context();
+
+    assert!(pane.is_open());
+    assert!(pane.is_editing_value());
+    assert_eq!(pane.typed_text(), "unfinished");
+    assert_eq!(pending(&grid, 1, 1), None);
 }

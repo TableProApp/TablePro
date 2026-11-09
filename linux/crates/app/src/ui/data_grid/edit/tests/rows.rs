@@ -271,100 +271,6 @@ fn discard_drops_every_pending_change() {
 }
 
 #[gtk4::test]
-fn selecting_a_row_opens_the_details_only_when_preferences_ask() {
-    let grid = two_text_rows();
-    let settings = grid.grid.config().expect("a configured grid").settings.clone();
-
-    grid.focus(0, 1);
-    grid.grid.selection().select_item(0, true);
-    assert!(!details_shown(&grid), "off by default");
-
-    settings.set_auto_show_inspector(true).expect("store the flag");
-    drain_main_context();
-    assert!(!details_shown(&grid), "the preference waits for a new selection");
-    grid.focus(0, 0);
-    assert!(!details_shown(&grid), "focus alone does not select a row");
-    grid.grid.selection().select_item(1, true);
-    drain_main_context();
-    assert!(details_shown(&grid));
-
-    settings
-        .set_auto_show_inspector(false)
-        .expect("turn automatic opening off");
-    drain_main_context();
-    assert!(details_shown(&grid), "turning the preference off leaves the pane open");
-    grid.activate("show-details");
-    grid.grid.selection().select_item(0, true);
-    drain_main_context();
-    assert!(!details_shown(&grid));
-}
-
-#[gtk4::test]
-fn closing_details_keeps_it_closed_through_focus_moves_and_escape() {
-    let grid = two_text_rows();
-    let settings = grid.grid.config().expect("a configured grid").settings.clone();
-    settings
-        .set_auto_show_inspector(true)
-        .expect("enable automatic opening");
-    select_all_from(&grid, 0, 1);
-    assert!(details_shown(&grid));
-
-    assert!(press(&grid, gdk::Key::Return, gdk::ModifierType::ALT_MASK));
-    assert!(!details_shown(&grid));
-    grid.focus(1, 0);
-    assert!(
-        !details_shown(&grid),
-        "moving focus with the same selection keeps it closed"
-    );
-    assert!(press(&grid, gdk::Key::Escape, none()));
-    drain_main_context();
-    assert!(grid.grid.selection().selection().is_empty());
-    assert!(
-        grid.grid.focused_cell().is_some(),
-        "the action target still has a focused row"
-    );
-    assert!(!details_shown(&grid), "clearing the selection must not reopen details");
-    grid.focus(0, 1);
-    assert!(
-        !details_shown(&grid),
-        "a focused cell without a selection keeps it closed"
-    );
-
-    grid.grid.selection().select_item(0, true);
-    drain_main_context();
-    assert!(details_shown(&grid), "a new selection opens details again");
-}
-
-#[gtk4::test]
-fn open_grids_use_the_shared_auto_details_preference_on_their_next_selection() {
-    let first = two_text_rows();
-    let settings = first.grid.config().expect("a configured grid").settings.clone();
-    let second = Grid::build(
-        GridSpec {
-            settings: Some(settings.clone()),
-            ..GridSpec::table(two_text_columns())
-        },
-        page(1..3),
-    );
-    let isolated = two_text_rows();
-    for grid in [&first, &second, &isolated] {
-        grid.grid.selection().unselect_all();
-        assert!(!details_shown(grid));
-    }
-
-    settings
-        .set_auto_show_inspector(true)
-        .expect("enable automatic opening");
-    for grid in [&first, &second, &isolated] {
-        grid.grid.selection().select_item(0, true);
-    }
-    drain_main_context();
-    assert!(details_shown(&first));
-    assert!(details_shown(&second));
-    assert!(!details_shown(&isolated));
-}
-
-#[gtk4::test]
 fn set_to_null_reaches_every_selected_row_in_the_focused_column() {
     let grid = two_text_rows();
     select_all_from(&grid, 0, 1);
@@ -619,4 +525,98 @@ fn a_deleted_focus_does_not_disable_presets_for_other_selected_rows() {
     assert_eq!(pending(&grid, 1, 1), None);
     assert_eq!(pending(&grid, 2, 1), Some(CellInput::Value(Value::Null)));
     assert_eq!(grid.tracker.row_state(&key(1)), RowState::PendingDelete);
+}
+
+#[gtk4::test]
+fn selecting_a_row_opens_the_details_only_when_preferences_ask() {
+    let grid = two_text_rows();
+    let settings = grid.grid.config().expect("a configured grid").settings.clone();
+
+    grid.focus(0, 1);
+    grid.grid.selection().select_item(0, true);
+    assert!(!details_shown(&grid), "off by default");
+
+    settings.set_auto_show_inspector(true).expect("store the flag");
+    drain_main_context();
+    assert!(!details_shown(&grid), "the preference waits for a new selection");
+    grid.focus(0, 0);
+    assert!(!details_shown(&grid), "focus alone does not select a row");
+    grid.grid.selection().select_item(1, true);
+    drain_main_context();
+    assert!(details_shown(&grid));
+
+    settings
+        .set_auto_show_inspector(false)
+        .expect("turn automatic opening off");
+    drain_main_context();
+    assert!(details_shown(&grid), "turning the preference off leaves the pane open");
+    grid.activate("show-details");
+    grid.grid.selection().select_item(0, true);
+    drain_main_context();
+    assert!(!details_shown(&grid));
+}
+
+#[gtk4::test]
+fn closing_details_keeps_it_closed_through_focus_moves_and_escape() {
+    let grid = two_text_rows();
+    let settings = grid.grid.config().expect("a configured grid").settings.clone();
+    settings
+        .set_auto_show_inspector(true)
+        .expect("enable automatic opening");
+    select_all_from(&grid, 0, 1);
+    assert!(details_shown(&grid));
+
+    assert!(press(&grid, gdk::Key::Return, gdk::ModifierType::ALT_MASK));
+    assert!(!details_shown(&grid));
+    grid.focus(1, 0);
+    assert!(
+        !details_shown(&grid),
+        "moving focus with the same selection keeps it closed"
+    );
+    assert!(press(&grid, gdk::Key::Escape, none()));
+    drain_main_context();
+    assert!(grid.grid.selection().selection().is_empty());
+    assert!(
+        grid.grid.focused_cell().is_some(),
+        "the action target still has a focused row"
+    );
+    assert!(!details_shown(&grid), "clearing the selection must not reopen details");
+    grid.focus(0, 1);
+    assert!(
+        !details_shown(&grid),
+        "a focused cell without a selection keeps it closed"
+    );
+
+    grid.grid.selection().select_item(0, true);
+    drain_main_context();
+    assert!(details_shown(&grid), "a new selection opens details again");
+}
+
+#[gtk4::test]
+fn open_grids_use_the_shared_auto_details_preference_on_their_next_selection() {
+    let first = two_text_rows();
+    let settings = first.grid.config().expect("a configured grid").settings.clone();
+    let second = Grid::build(
+        GridSpec {
+            settings: Some(settings.clone()),
+            ..GridSpec::table(two_text_columns())
+        },
+        page(1..3),
+    );
+    let isolated = two_text_rows();
+    for grid in [&first, &second, &isolated] {
+        grid.grid.selection().unselect_all();
+        assert!(!details_shown(grid));
+    }
+
+    settings
+        .set_auto_show_inspector(true)
+        .expect("enable automatic opening");
+    for grid in [&first, &second, &isolated] {
+        grid.grid.selection().select_item(0, true);
+    }
+    drain_main_context();
+    assert!(details_shown(&first));
+    assert!(details_shown(&second));
+    assert!(!details_shown(&isolated));
 }
