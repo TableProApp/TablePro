@@ -9,7 +9,7 @@ use ShortcutListing::{Listed, Unlisted};
 use ShortcutOwner::{
     AssistantComposer, BrowseTab, CellEditor, ConnectionTree, DiagramCanvas, DiagramTab, EditorResults, FilterStrip,
     Grid, GridCell, HistoryRow, InlineSuggestion, PickerPage, PickerRow, QuickOpen, SqlEditor, SqlEditorCursors,
-    SqlEditorTab, StructureTab,
+    SqlEditorTab, StructureTab, WorkspaceShell,
 };
 use ShortcutSection::{BrowseTable, DataGrid, ErDiagram, General, TableStructure, Tabs};
 
@@ -117,6 +117,13 @@ pub const ACCELERATORS: &[Accelerator] = &[
         Unlisted,
     ),
     stock("tab-view.select-tenth", &["<Alt>0"], Unlisted),
+    local(
+        WorkspaceShell,
+        BUBBLE,
+        "win.refresh-page",
+        &["F5", "<Primary>r"],
+        Listed(Tabs),
+    ),
     local(BrowseTab, BUBBLE, "browse.filter", &["<Primary>f"], Listed(BrowseTable)),
     // F5 as in GNOME Files, and Ctrl+R as the GNOME HIG names Reload.
     local(
@@ -561,6 +568,7 @@ pub fn local_shortcut_controller(owner: ShortcutOwner) -> gtk::ShortcutControlle
 pub const fn controller_name(owner: ShortcutOwner) -> &'static str {
     match owner {
         QuickOpen => "tablepro-quick-open-shortcuts",
+        WorkspaceShell => "tablepro-workspace-shell-shortcuts",
         BrowseTab => "tablepro-browse-tab-shortcuts",
         GridCell => "tablepro-grid-cell-shortcuts",
         Grid => "tablepro-grid-shortcuts",

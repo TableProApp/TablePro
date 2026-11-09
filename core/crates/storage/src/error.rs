@@ -50,6 +50,21 @@ pub enum StorageError {
     #[error("another tag has that name")]
     TagNameTaken,
 
+    #[error("another saved query of the connection has that keyword")]
+    KeywordTaken,
+
+    #[error("a keyword is one word of at most {max} characters, with no spaces")]
+    KeywordInvalid { max: usize },
+
+    #[error("the folder name contains a control character")]
+    FolderNameInvalid,
+
+    #[error("another folder in the same place has that name")]
+    FolderNameTaken,
+
+    #[error("the folder {id} cannot move inside itself")]
+    FolderCycle { id: i64 },
+
     #[error("export encoding failed: {0}")]
     Encode(#[from] tablepro_core::export::RenderError),
 
@@ -104,6 +119,11 @@ impl StorageError {
             Self::EmptyName => "storage.empty_name",
             Self::NameTaken => "storage.name_taken",
             Self::TagNameTaken => "storage.tag_name_taken",
+            Self::KeywordTaken => "storage.keyword_taken",
+            Self::KeywordInvalid { .. } => "storage.keyword_invalid",
+            Self::FolderNameInvalid => "storage.folder_name_invalid",
+            Self::FolderNameTaken => "storage.folder_name_taken",
+            Self::FolderCycle { .. } => "storage.folder_cycle",
             Self::Encode(..) => "storage.encode",
             Self::HistoryNewerThanApp { .. } => "storage.history_newer_than_app",
             Self::HistoryMigration(..) => "storage.history_migration",

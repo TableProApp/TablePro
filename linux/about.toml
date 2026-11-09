@@ -230,3 +230,10 @@ license = "Apache-2.0"
 [[sync_wrapper.clarify.files]]
 path = "LICENSE"
 checksum = "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+
+# cargo-about cannot identify the combined BSD and MIT license text.
+[sha1_smol.clarify]
+license = "BSD-3-Clause AND MIT"
+[[sha1_smol.clarify.files]]
+path = "LICENSE"
+checksum = "282a21b0710441c364025461a447362daf18f5798a7b72ae2f801a2aa536da51"

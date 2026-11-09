@@ -89,15 +89,44 @@
                     <property name="child">
                       <object class="GtkScrolledWindow" id="scrolled">
                         <property name="child">
-                          <object class="GtkColumnView" id="column_view">
-                            <property name="show-row-separators">true</property>
-                            <property name="show-column-separators">true</property>
-                            <property name="tab-behavior">cell</property>
-                            <property name="enable-rubberband">true</property>
-                            <property name="has-tooltip">true</property>
-                            <style>
-                              <class name="data-table"/>
-                            </style>
+                          <object class="TableProPinnedNumbers" id="viewport">
+                            <property name="child">
+                              <object class="GtkOverlay">
+                                <property name="child">
+                                  <object class="GtkColumnView" id="column_view">
+                                    <property name="show-row-separators">true</property>
+                                    <property name="show-column-separators">true</property>
+                                    <property name="tab-behavior">cell</property>
+                                    <property name="enable-rubberband">true</property>
+                                    <property name="has-tooltip">true</property>
+                                    <style>
+                                      <class name="data-table"/>
+                                    </style>
+                                  </object>
+                                </property>
+                                <child type="overlay">
+                                  <!-- Input stays with the main view, including its selection anchor. -->
+                                  <object class="GtkBox" id="gutter_backing">
+                                    <property name="accessible-role">presentation</property>
+                                    <property name="halign">start</property>
+                                    <property name="can-target">false</property>
+                                    <property name="can-focus">false</property>
+                                    <property name="visible">false</property>
+                                    <style>
+                                      <class name="view"/>
+                                    </style>
+                                  </object>
+                                </child>
+                                <child type="overlay">
+                                  <!-- Native crossing stays out of covered data headers. -->
+                                  <object class="GtkBox" id="gutter_header">
+                                    <property name="accessible-role">presentation</property>
+                                    <property name="can-focus">false</property>
+                                    <property name="visible">false</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </property>
                           </object>
                         </property>
                       </object>

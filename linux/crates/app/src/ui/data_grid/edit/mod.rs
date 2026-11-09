@@ -165,17 +165,20 @@ impl EditController {
         self.policy.get()
     }
 
-    /// Every tracker write but undo, redo and discard goes through here.
     fn apply_edit(&self, grid: &DataGrid, edit: TrackerEdit) {
+        self.apply_edits(grid, vec![edit]);
+    }
+
+    fn apply_edits(&self, grid: &DataGrid, edits: Vec<TrackerEdit>) {
         let Some(tracker) = self.tracked().tracker().cloned() else {
             return;
         };
-        if tracker.refuses(&edit) {
+        if edits.iter().any(|edit| tracker.refuses(edit)) {
             grid.toast(gettext(
                 "This row is being saved. Change it again once the save finishes.",
             ));
         }
-        let delta = tracker.apply(edit);
+        let delta = tracker.apply_all(edits);
         self.apply_delta(&delta);
     }
 
