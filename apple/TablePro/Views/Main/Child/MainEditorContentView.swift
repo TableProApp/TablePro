@@ -836,7 +836,7 @@ struct MainEditorContentView: View {
                     columns: rows.columns,
                     primaryKeyColumn: changeManager.primaryKeyColumn,
                     databaseType: connection.type,
-                    enumValuesByColumn: rows.columnEnumValues
+                    enumValuesByColumn: rows.filterPickerValues
                 )
             }
             Divider()

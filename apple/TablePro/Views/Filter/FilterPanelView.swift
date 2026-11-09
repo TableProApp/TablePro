@@ -50,8 +50,13 @@ struct FilterPanelView: View {
     }
 
     private var filterHeader: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: FilterRowView.spacing) {
             if !state.filters.isEmpty {
+                // Holds the rows' drag handle column, so this checkbox sits over the rows' checkboxes.
+                Color.clear
+                    .frame(width: FilterRowDragHandle.gutterWidth, height: 1)
+                    .accessibilityHidden(true)
+
                 TristateCheckbox(
                     state: TristateCheckbox.State(allEnabled: state.allEnabledState),
                     action: toggleAllFiltersEnabled
@@ -84,7 +89,6 @@ struct FilterPanelView: View {
                 actions.focusGrid()
             }
             .buttonStyle(.bordered)
-            .controlSize(.small)
             .disabled(!state.hasAppliedFilters)
             .help(String(localized: "Clear applied filters without removing filter rows"))
 
@@ -92,12 +96,12 @@ struct FilterPanelView: View {
                 applyAllValidFilters()
             }
             .buttonStyle(.borderedProminent)
-            .controlSize(.small)
             .keyboardShortcut(.return, modifiers: .command)
             .disabled(enabledValidFilterCount == 0 && !state.hasAppliedFilters)
             .help(String(localized: "Apply active filters (Cmd+Return)"))
         }
-        .padding(.horizontal, 12)
+        .controlSize(.small)
+        .padding(.horizontal, FilterRowView.horizontalInset)
         .padding(.vertical, 8)
         .paneBarBackground(Color(nsColor: .controlBackgroundColor))
         .contentShape(Rectangle())
@@ -200,7 +204,7 @@ struct FilterPanelView: View {
     }
 
     private var filterRows: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             ForEach(state.filters) { filter in
                 FilterRowView(
                     filter: filterBinding(for: filter),
@@ -213,6 +217,7 @@ struct FilterPanelView: View {
                     fieldPaths: configuration.fieldPaths,
                     offersRawFilter: configuration.offersRawFilter,
                     rawFilterLabel: configuration.rawFilterLabel,
+                    reservesElementScope: reservesElementScope,
                     onAdd: {
                         focusedFilterId = addDefaultFilter(columns: configuration.columns)
                     },
@@ -249,6 +254,12 @@ struct FilterPanelView: View {
             .frame(height: maxFilterListHeight)
         } else {
             measuredFilterRows
+        }
+    }
+
+    private var reservesElementScope: Bool {
+        state.filters.contains { filter in
+            !filter.isRawSQL && FilterColumnMenu.elementScope(for: filter.columnName, in: configuration.fieldPaths) != nil
         }
     }
 

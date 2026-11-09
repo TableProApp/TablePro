@@ -604,3 +604,11 @@ struct TableRows: Sendable {
         return index
     }
 }
+
+extension TableRows {
+    // A SET cell holds several of its values at once, so only an ENUM is filtered by picking one.
+    var filterPickerValues: [String: [String]] {
+        let setColumns = Set(zip(columns, columnTypes).compactMap { name, type in type.isSetType ? name : nil })
+        return columnEnumValues.filter { !setColumns.contains($0.key) }
+    }
+}
