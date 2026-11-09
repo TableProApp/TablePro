@@ -6,6 +6,7 @@ use chrono::{NaiveDate, NaiveTime};
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, gdk};
+use sourceview5::prelude::*;
 use tablepro_core::column::{TemporalZone, TimeRange};
 use tablepro_core::edit::CellInput;
 use tablepro_core::value::{JsonText, SqlTime, Temporal};
@@ -17,6 +18,7 @@ use super::clock::{ClockField, time_of, with_time};
 use super::fields::{field_label, field_order};
 use super::value_editor::value_content;
 use crate::services::change_tracker::RowKey;
+use crate::services::grid::display_text::DISPLAY_MAX_CHARS;
 use crate::services::grid::{CellLock, GridColumn, GridRowId, grid_columns};
 use crate::services::tracker_edit::TrackerEdit;
 use crate::test_support::{
@@ -142,6 +144,122 @@ fn a_date(year: i32, month: u32, day: u32) -> Value {
 
 fn column_of(info: ColumnInfo) -> GridColumn {
     grid_columns(&[info.result_column()], std::slice::from_ref(&info), |_| true)[0].clone()
+}
+
+fn assert_value_scheme(pane: &RowDetailPane, id: &str) {
+    let scheme = pane.imp().value_buffer.style_scheme().expect("the value's scheme");
+    assert_eq!(scheme.id(), id);
+    let expected = scheme.style("text").expect("the scheme text style");
+    let expected = gdk::RGBA::parse(expected.foreground().expect("the scheme foreground")).expect("a scheme color");
+    let attributes = pane
+        .imp()
+        .placeholder_label
+        .attributes()
+        .expect("placeholder attributes");
+    let attributes = attributes.attributes();
+    let color = attributes
+        .iter()
+        .find(|attribute| attribute.type_() == gtk::pango::AttrType::Foreground)
+        .and_then(|attribute| attribute.downcast_ref::<gtk::pango::AttrColor>())
+        .expect("the placeholder uses the scheme foreground")
+        .color();
+    let channel = |value: f32| (value * 65535.0).round() as u16;
+    assert_eq!(
+        (color.red(), color.green(), color.blue()),
+        (
+            channel(expected.red()),
+            channel(expected.green()),
+            channel(expected.blue())
+        )
+    );
+    assert!(
+        attributes
+            .iter()
+            .any(|attribute| { attribute == gtk::pango::AttrInt::new_style(gtk::pango::Style::Italic).upcast_ref() })
+    );
+    assert!(pane.imp().placeholder_label.has_css_class("dimmed"));
+}
+
+#[gtk4::test]
+fn value_scheme_and_placeholders_keep_the_exact_pick_across_desktop_changes() {
+    let (grid, pane) = opened(
+        vec![named("id", "integer", true), named("quantity", "integer", false)],
+        vec![vec![Value::Int(1), Value::Null], vec![Value::Int(2), Value::Int(7)]],
+    );
+    let settings = &grid.grid.config().expect("grid settings").settings;
+    let style = libadwaita::StyleManager::default();
+    let previous = style.color_scheme();
+    for id in ["Adwaita-dark", "Adwaita"] {
+        settings.set_style_scheme(id).expect("a writable preference");
+        for desktop in [libadwaita::ColorScheme::ForceLight, libadwaita::ColorScheme::ForceDark] {
+            style.set_color_scheme(desktop);
+            grid.focus(0, 1);
+            assert!(pane.imp().placeholder_label.is_visible());
+            assert_eq!(pane.imp().placeholder_label.text(), "NULL");
+            assert_value_scheme(&pane, id);
+            grid.focus(1, 1);
+            assert_eq!(pane.typed_text(), "7");
+            assert!(!pane.imp().placeholder_label.is_visible());
+            assert_value_scheme(&pane, id);
+            type_value(&pane, "");
+            assert!(pane.imp().placeholder_label.is_visible());
+            assert_value_scheme(&pane, id);
+            type_value(&pane, "7");
+        }
+    }
+    style.set_color_scheme(previous);
+}
+
+#[gtk4::test]
+fn automatic_value_scheme_recolors_the_placeholder_with_the_desktop() {
+    let (grid, pane) = opened(two_text_columns(), vec![vec![Value::Int(1), Value::Null]]);
+    grid.grid
+        .config()
+        .expect("grid settings")
+        .settings
+        .set_style_scheme("")
+        .expect("the automatic preference");
+    grid.focus(0, 1);
+    let style = libadwaita::StyleManager::default();
+    let previous = style.color_scheme();
+    for (desktop, expected) in [
+        (libadwaita::ColorScheme::ForceLight, "Adwaita"),
+        (libadwaita::ColorScheme::ForceDark, "Adwaita-dark"),
+    ] {
+        style.set_color_scheme(desktop);
+        assert!(pane.imp().placeholder_label.is_visible());
+        assert_value_scheme(&pane, expected);
+    }
+    style.set_color_scheme(previous);
+}
+
+#[gtk4::test]
+fn closed_value_editor_disconnects_scheme_and_placeholder_updates() {
+    let (grid, pane) = opened(two_text_columns(), vec![vec![Value::Int(1), Value::Null]]);
+    let settings = grid.grid.config().expect("grid settings").settings.clone();
+    settings
+        .set_style_scheme("Adwaita-dark")
+        .expect("a writable preference");
+    let buffer = pane.imp().value_buffer.get();
+    let placeholder = pane.imp().placeholder_label.get();
+    let attributes = placeholder.attributes().expect("placeholder attributes");
+    let weak_pane = pane.downgrade();
+    drop(pane);
+    drop(grid);
+    drain_main_context();
+    assert!(weak_pane.upgrade().is_none(), "the value editor outlived its grid");
+
+    settings.set_style_scheme("Adwaita").expect("a writable preference");
+    let style = libadwaita::StyleManager::default();
+    let previous = style.color_scheme();
+    style.set_color_scheme(libadwaita::ColorScheme::ForceLight);
+    style.set_color_scheme(libadwaita::ColorScheme::ForceDark);
+    assert_eq!(
+        buffer.style_scheme().expect("the retained buffer's scheme").id(),
+        "Adwaita-dark"
+    );
+    assert_eq!(placeholder.attributes().expect("retained attributes"), attributes);
+    style.set_color_scheme(previous);
 }
 
 #[gtk4::test]
@@ -1425,6 +1543,35 @@ fn a_page_that_takes_the_row_closes_its_clock_and_writes_nothing() {
     assert!(!pane.imp().clock_popover.is_visible());
 }
 
+#[gtk4::test]
+fn null_preferences_update_details_without_replacing_a_draft() {
+    let (grid, pane) = opened(two_text_columns(), vec![vec![Value::Int(1), Value::Null]]);
+    grid.focus(0, 1);
+    let settings = grid.grid.config().expect("configured grid").settings.clone();
+    settings.set_null_display("missing").expect("store placeholder");
+    drain_main_context();
+
+    assert_eq!(pane.imp().placeholder_label.label(), "missing");
+    let shown: Vec<String> = descendants(&pane.imp().field_list.get())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Inscription>().ok())
+        .filter_map(|inscription| inscription.text().map(|text| text.to_string()))
+        .collect();
+    assert!(shown.contains(&"missing".to_owned()), "field list showed {shown:?}");
+
+    edit_field(&grid, &pane, 0, 1);
+    type_value(&pane, "unfinished");
+    assert!(grid.grid.is_editing());
+    settings
+        .set_null_display("absent")
+        .expect("change placeholder while editing");
+    drain_main_context();
+
+    assert_eq!(pane.typed_text(), "unfinished");
+    assert!(grid.grid.is_editing());
+    assert_eq!(pending(&grid, 1, 1), None);
+}
+
 fn drawn_field(pane: &RowDetailPane, column: usize) -> gtk::ListItem {
     pane.imp()
         .bound
@@ -1691,28 +1838,74 @@ fn search_keys_and_tab_order_reach_the_filter_list_and_value() {
     wait_until(WAIT, || !grid.grid.imp().split_view.shows_sidebar()).expect("Escape closes the empty overlay search");
 }
 
-#[gtk4::test]
-fn a_fields_copy_button_copies_its_own_value_not_the_selected_ones() {
-    let (grid, pane) = opened(two_text_columns(), two_text_values());
-    grid.focus(1, 1);
-    drain_main_context();
-
-    let row = drawn_field(&pane, 0).child().expect("the field's row");
-    let copy = descendants(&row)
+fn copy_button(pane: &RowDetailPane, column: usize) -> gtk::Button {
+    let row = drawn_field(pane, column).child().expect("the field's row");
+    descendants(&row)
         .into_iter()
         .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
-        .find(|button| button.has_css_class("field-copy"))
-        .expect("the copy button");
-    assert!(copy.is_sensitive());
-    copy.emit_clicked();
+        .find(|button| button.icon_name().as_deref() == Some(crate::ui::icons::EDIT_COPY))
+        .expect("the field's copy button")
+}
 
-    let clipboard = copy.clipboard();
+#[gtk4::test]
+fn a_fields_copy_button_copies_its_whole_value_and_leaves_the_editor() {
+    let long = "x".repeat(DISPLAY_MAX_CHARS + 500);
+    let (grid, pane) = opened(
+        three_text_columns(),
+        vec![vec![Value::Int(1), Value::Text("A".into()), Value::Text(long.clone())]],
+    );
+    grid.focus(0, 1);
+    drain_main_context();
+    let heard: Rc<RefCell<Vec<String>>> = Rc::default();
+    let log = heard.clone();
+    grid.grid.connect_request(move |_, request| {
+        if let GridRequest::Toast(text) = request {
+            log.borrow_mut().push(text);
+        }
+    });
+
+    copy_button(&pane, 2).emit_clicked();
+    wait_until(WAIT, || !heard.borrow().is_empty()).expect("the copy lands");
+
+    let clipboard = grid.grid.clipboard();
     let copied = finish_on_main(WAIT, async move { clipboard.read_text_future().await })
         .expect("the clipboard to answer")
         .expect("text on the clipboard");
     assert_eq!(
-        copied.as_deref(),
-        Some("2"),
-        "the first field's value, with the second selected"
+        copied.as_deref().map(str::len),
+        Some(long.len()),
+        "the copy took the text the field draws"
     );
+    assert_eq!(selected_field(&pane), Some(1), "the copy moved the editor");
+    assert_eq!(pane.typed_text(), "A");
+}
+
+/// The arrows go from field to field, so Tab leaves the list once past
+/// the focused field's own buttons rather than through every field.
+#[gtk4::test]
+fn tab_leaves_the_field_list_after_the_focused_field() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    crate::test_support::KeyInjector::focus_only(&grid.window);
+    take_keyboard(&grid);
+    grid.focus(0, 1);
+    let list = pane.imp().field_list.get();
+    wait_until(WAIT, || {
+        pane.imp().field_search.is_mapped() && list.width() > 0 && list.height() > 0
+    })
+    .expect("the fields are laid out");
+    crate::test_support::after_next_frame(&grid.window);
+    assert!(pane.imp().field_search.grab_focus());
+    let keys = crate::test_support::KeyInjector::connect().expect("an X11 display");
+    let on_copy = || {
+        gtk::prelude::GtkWindowExt::focus(&grid.window)
+            .and_downcast::<gtk::Button>()
+            .is_some_and(|button| button.icon_name().as_deref() == Some(crate::ui::icons::EDIT_COPY))
+    };
+
+    keys.press(gdk::Key::Tab, gdk::ModifierType::empty()).expect("Tab");
+    wait_until(WAIT, || crate::ui::a11y::holds_focus(&list)).expect("Tab to the list");
+    keys.press(gdk::Key::Tab, gdk::ModifierType::empty()).expect("Tab");
+    wait_until(WAIT, on_copy).expect("Tab to the field's copy button");
+    keys.press(gdk::Key::Tab, gdk::ModifierType::empty()).expect("Tab");
+    wait_until(WAIT, || !crate::ui::a11y::holds_focus(&list)).expect("Tab out of the list");
 }

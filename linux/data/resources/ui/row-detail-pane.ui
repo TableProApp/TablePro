@@ -122,10 +122,12 @@
                       <object class="GtkSeparator"/>
                     </child>
                     <child>
-                      <object class="GtkBox">
+                      <object class="GtkPaned">
                         <property name="orientation">vertical</property>
                         <property name="vexpand">true</property>
-                        <child>
+                        <property name="shrink-start-child">false</property>
+                        <property name="shrink-end-child">false</property>
+                        <property name="start-child">
                           <object class="GtkBox">
                             <property name="orientation">vertical</property>
                             <!-- On a row of two hundred columns, the only way to a field. -->
@@ -168,9 +170,10 @@
                                         <property name="min-content-height">120</property>
                                         <property name="child">
                                           <object class="GtkListView" id="field_list">
-                                            <style>
-                                              <class name="row-detail-fields"/>
-                                            </style>
+                                            <!-- Each field has buttons of its own, so Tab
+                                                 leaves the list after them, and the
+                                                 arrows go from field to field. -->
+                                            <property name="tab-behavior">item</property>
                                             <accessibility>
                                               <property name="label" translatable="yes">Fields</property>
                                             </accessibility>
@@ -199,25 +202,19 @@
                               </object>
                             </child>
                           </object>
-                        </child>
-                        <child>
-                          <!-- Where the editor waits while no field row holds it:
-                               the selected field's row takes it in. -->
-                          <object class="GtkBox" id="editor_dock">
-                            <property name="visible">false</property>
-                            <child>
-                          <object class="GtkBox" id="editor_box">
+                        </property>
+                        <property name="end-child">
+                          <object class="GtkBox">
                             <property name="orientation">vertical</property>
-                            <property name="hexpand">true</property>
                             <child>
                               <object class="GtkBox">
-                                <property name="spacing">2</property>
-                                <property name="margin-top">2</property>
-                                <property name="margin-bottom">4</property>
-                                <property name="halign">end</property>
+                                <property name="spacing">6</property>
+                                <property name="margin-top">6</property>
+                                <property name="margin-bottom">6</property>
+                                <property name="margin-start">12</property>
+                                <property name="margin-end">6</property>
                                 <child>
                                   <object class="GtkLabel" id="field_label">
-                                    <property name="visible">false</property>
                                     <property name="hexpand">true</property>
                                     <property name="xalign">0</property>
                                     <property name="ellipsize">end</property>
@@ -387,6 +384,8 @@
                                 <property name="visible">false</property>
                                 <property name="content-fit">scale-down</property>
                                 <property name="margin-top">6</property>
+                                <property name="margin-start">12</property>
+                                <property name="margin-end">12</property>
                                 <property name="alternative-text" translatable="yes">Image preview</property>
                               </object>
                             </child>
@@ -394,15 +393,11 @@
                               <!-- A text view has no placeholder of its own, so
                                    one is drawn over it while it is empty. -->
                               <object class="GtkOverlay">
-                                <style>
-                                  <class name="field-editor"/>
-                                </style>
+                                <property name="vexpand">true</property>
                                 <property name="child">
                                   <object class="GtkScrolledWindow" id="value_scroller">
                                     <property name="hscrollbar-policy">never</property>
-                                    <property name="min-content-height">72</property>
-                                    <property name="propagate-natural-height">true</property>
-                                    <property name="max-content-height">320</property>
+                                    <property name="min-content-height">120</property>
                                     <property name="child">
                                       <object class="GtkSourceView" id="value_view">
                                         <property name="monospace">true</property>
@@ -446,16 +441,16 @@
                                 <property name="wrap-mode">word-char</property>
                                 <property name="visible">false</property>
                                 <property name="margin-top">6</property>
-                                <property name="margin-bottom">2</property>
+                                <property name="margin-bottom">6</property>
+                                <property name="margin-start">12</property>
+                                <property name="margin-end">12</property>
                                 <style>
                                   <class name="caption"/>
                                 </style>
                               </object>
                             </child>
                           </object>
-                            </child>
-                          </object>
-                        </child>
+                        </property>
                       </object>
                     </child>
                   </object>

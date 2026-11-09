@@ -9,6 +9,7 @@ use super::RowDetailPane;
 use crate::i18n::gettext;
 use crate::services::change_tracker::CellState;
 use crate::services::grid::{GridColumn, auto_filled_sentinel, display_text};
+use crate::ui::data_grid::selection::Target;
 use crate::ui::data_grid::tracked_values::cell_description;
 use crate::ui::data_grid::{DataGrid, GridRow, ServerValue, TrackedValues};
 use crate::ui::handler_guard::HandlerGuard;
@@ -42,13 +43,13 @@ pub struct FieldValue {
     pub deleted: bool,
 }
 
-pub fn field_value(tracked: &TrackedValues, row: &GridRow, column: &GridColumn) -> FieldValue {
+pub fn field_value(tracked: &TrackedValues, row: &GridRow, column: &GridColumn, null_display: &str) -> FieldValue {
     let mark = tracked.mark(row, column.index);
     let (text, placeholder, null) = tracked.with_value(row, column.index, |value, computed| match (computed, value) {
         (Some(ServerValue::Default), _) if column.auto_filled() => (auto_filled_sentinel(), true, false),
         (Some(ServerValue::Default), _) => ("DEFAULT".to_owned(), true, false),
         (Some(ServerValue::Expression(expression)), _) => (expression.sql.to_owned(), true, false),
-        (None, Value::Null) => ("NULL".to_owned(), true, true),
+        (None, Value::Null) => (null_display.to_owned(), true, true),
         (None, value) => {
             let mut scratch = String::new();
             let shown = display_text(value, &column.column_type, &mut scratch);
@@ -116,59 +117,38 @@ fn field_row() -> gtk::Box {
     top.append(&name);
     top.append(&edited);
     top.append(&type_box);
-    // A button of the row, not of the list's selection: it copies this
-    // field's value whatever field the editor below holds.
-    let copy = gtk::Button::builder()
-        .icon_name(icons::EDIT_COPY)
-        .tooltip_text(gettext("Copy Value"))
-        .valign(gtk::Align::Center)
-        .build();
-    copy.add_css_class("flat");
-    copy.add_css_class("circular");
-    copy.add_css_class("field-copy");
-    copy.update_property(&[gtk::accessible::Property::Label(&gettext("Copy Value"))]);
-    top.append(&copy);
     let value = gtk::Inscription::builder()
         .hexpand(true)
         .min_chars(1)
         .text_overflow(gtk::InscriptionOverflow::EllipsizeEnd)
         .build();
+    // As the grid's cells and the value editor draw a value.
     value.add_css_class("monospace");
-    // The value sits in a field of its own, as macOS's inspector draws it.
-    let well = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    well.add_css_class("field-well");
-    well.append(&value);
-    copy.connect_clicked(glib::clone!(
-        #[weak]
-        value,
-        move |button| {
-            if let Some(text) = value.text() {
-                button.clipboard().set_text(&text);
-            }
-        }
-    ));
-    let row = gtk::Box::builder()
+    let content = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(2)
+        .hexpand(true)
+        .valign(gtk::Align::Center)
+        .build();
+    content.append(&top);
+    content.append(&value);
+    // A suffix of the row, as on a libadwaita property row.
+    let copy = gtk::Button::builder()
+        .icon_name(icons::EDIT_COPY)
+        .valign(gtk::Align::Center)
+        .build();
+    copy.add_css_class("flat");
+    crate::ui::a11y::describe_icon_button(&copy, &gettext("Copy Value"), None);
+    let row = gtk::Box::builder()
+        .spacing(6)
         .margin_top(6)
         .margin_bottom(6)
         .margin_start(12)
         .margin_end(12)
         .build();
-    row.append(&top);
-    row.append(&well);
-    // Where the editor sits while this field is the selected one.
-    let slot = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    slot.set_visible(false);
-    row.append(&slot);
+    row.append(&content);
+    row.append(&copy);
     row
-}
-
-/// The value's field and the slot after it, in a field row.
-fn well_and_slot(row: &gtk::Widget) -> Option<(gtk::Widget, gtk::Box)> {
-    let slot = row.last_child()?.downcast::<gtk::Box>().ok()?;
-    let well = slot.prev_sibling()?;
-    Some((well, slot))
 }
 
 struct FieldParts {
@@ -176,25 +156,24 @@ struct FieldParts {
     name: gtk::Label,
     edited: gtk::Image,
     kind: gtk::Label,
-    copy: gtk::Button,
     value: gtk::Inscription,
+    copy: gtk::Button,
 }
 
 fn field_parts(row: &gtk::Widget) -> Option<FieldParts> {
-    let top = row.first_child()?;
+    let content = row.first_child()?;
+    let top = content.first_child()?;
     let key = top.first_child()?;
     let name = key.next_sibling()?;
     let edited = name.next_sibling()?;
-    let type_box = edited.next_sibling()?;
-    let kind = type_box.last_child()?;
-    let copy = type_box.next_sibling()?;
+    let kind = edited.next_sibling()?.last_child()?;
     Some(FieldParts {
         key: key.downcast().ok()?,
         name: name.downcast().ok()?,
         edited: edited.downcast().ok()?,
         kind: kind.downcast().ok()?,
-        copy: copy.downcast().ok()?,
-        value: row.last_child()?.prev_sibling()?.first_child()?.downcast().ok()?,
+        value: top.next_sibling()?.downcast().ok()?,
+        copy: content.next_sibling()?.downcast().ok()?,
     })
 }
 
@@ -295,11 +274,32 @@ impl RowDetailPane {
 
     fn field_factory(&self) -> gtk::SignalListItemFactory {
         let factory = gtk::SignalListItemFactory::new();
-        factory.connect_setup(|_, item| {
-            if let Some(item) = item.downcast_ref::<gtk::ListItem>() {
-                item.set_child(Some(&field_row()));
+        factory.connect_setup(glib::clone!(
+            #[weak(rename_to = pane)]
+            self,
+            move |_, item| {
+                let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
+                    return;
+                };
+                let row = field_row();
+                if let Some(parts) = field_parts(row.upcast_ref()) {
+                    // The grid's Copy, so the whole value goes rather than
+                    // the text the field draws, which cuts a long one.
+                    parts.copy.connect_clicked(glib::clone!(
+                        #[weak]
+                        pane,
+                        #[weak]
+                        item,
+                        move |_| {
+                            if let Some(column) = field_of(item.item()) {
+                                pane.act_on_field(column, "copy");
+                            }
+                        }
+                    ));
+                }
+                item.set_child(Some(&row));
             }
-        });
+        ));
         factory.connect_bind(glib::clone!(
             #[weak(rename_to = pane)]
             self,
@@ -307,20 +307,17 @@ impl RowDetailPane {
                 if let Some(item) = item.downcast_ref::<gtk::ListItem>() {
                     pane.imp().bound.borrow_mut().push(item.clone());
                     pane.draw_field(item);
-                    pane.place_editor();
                 }
             }
         ));
         factory.connect_unbind(glib::clone!(
             #[weak(rename_to = pane)]
             self,
-            move |_, item| {
-                pane.imp()
-                    .bound
-                    .borrow_mut()
-                    .retain(|bound| bound.upcast_ref::<glib::Object>() != item);
-                pane.place_editor();
-            }
+            move |_, item| pane
+                .imp()
+                .bound
+                .borrow_mut()
+                .retain(|bound| bound.upcast_ref::<glib::Object>() != item)
         ));
         factory
     }
@@ -330,46 +327,6 @@ impl RowDetailPane {
         let bound: Vec<gtk::ListItem> = self.imp().bound.borrow().clone();
         for item in &bound {
             self.draw_field(item);
-        }
-        self.place_editor();
-    }
-
-    /// Seat the editor in the selected field's row, in place of that
-    /// field's value, and back in the dock when no row on screen holds
-    /// that field. One editor serves every field, so it moves with the
-    /// selection and keeps the keyboard it had.
-    pub(super) fn place_editor(&self) {
-        let imp = self.imp();
-        let editor = imp.editor_box.get();
-        let had_focus = imp.value_view.has_focus();
-        let selected = imp.field.get();
-        let bound: Vec<gtk::ListItem> = imp.bound.borrow().clone();
-        let seat = bound
-            .iter()
-            .find(|item| selected.is_some() && field_of(item.item()) == selected)
-            .and_then(|item| item.child())
-            .and_then(|row| well_and_slot(&row));
-        let holder = editor.parent();
-        let home = seat.as_ref().map(|(_, slot)| slot.clone().upcast::<gtk::Widget>());
-        for item in &bound {
-            if let Some((well, slot)) = item.child().and_then(|row| well_and_slot(&row)) {
-                let taken = home.as_ref() == Some(slot.upcast_ref());
-                well.set_visible(!taken);
-                slot.set_visible(taken);
-            }
-        }
-        if holder == home {
-            return;
-        }
-        if let Some(holder) = holder.and_then(|holder| holder.downcast::<gtk::Box>().ok()) {
-            holder.remove(&editor);
-        }
-        match seat {
-            Some((_, slot)) => slot.append(&editor),
-            None => imp.editor_dock.append(&editor),
-        }
-        if had_focus {
-            imp.value_view.grab_focus();
         }
     }
 
@@ -412,7 +369,11 @@ impl RowDetailPane {
         if wanted.is_empty() || column.name.to_lowercase().contains(&wanted) {
             return true;
         }
-        let value = field_value(&grid.tracked(), &row, &column);
+        let Some(config) = grid.config() else {
+            return false;
+        };
+        let preferences = config.settings.grid_preferences().snapshot();
+        let value = field_value(&grid.tracked(), &row, &column, &preferences.null_display);
         !value.null && value.text.to_lowercase().contains(&wanted)
     }
 
@@ -431,8 +392,8 @@ impl RowDetailPane {
             name,
             edited,
             kind,
-            copy,
             value: shown,
+            ..
         }) = field_parts(&row_box)
         else {
             return;
@@ -443,14 +404,15 @@ impl RowDetailPane {
         item.set_accessible_label(&field_label(&column));
         let Some(row) = self.current_row() else {
             edited.set_visible(false);
-            copy.set_sensitive(false);
             shown.set_text(None);
             return;
         };
-        let value = field_value(&grid.tracked(), &row, &column);
+        let Some(config) = grid.config() else {
+            return;
+        };
+        let preferences = config.settings.grid_preferences().snapshot();
+        let value = field_value(&grid.tracked(), &row, &column, &preferences.null_display);
         edited.set_visible(value.modified);
-        // A stand-in (NULL, DEFAULT, an expression) is not a value to copy.
-        copy.set_sensitive(!value.placeholder);
         shown.set_text(Some(&value.text));
         shown.set_attributes(Some(&value_attributes(&value)));
         set_class(&shown, "dimmed", value.placeholder || value.deleted);
@@ -478,7 +440,6 @@ impl RowDetailPane {
             return;
         };
         self.take_field(column);
-        self.place_editor();
         self.load_value();
         self.move_grid_focus(column);
     }
@@ -487,7 +448,6 @@ impl RowDetailPane {
     pub(super) fn set_field(&self, column: usize) {
         self.take_field(column);
         self.select_in_list(Some(column));
-        self.place_editor();
         self.load_value();
     }
 
@@ -534,6 +494,21 @@ impl RowDetailPane {
         };
         grid.column_view()
             .scroll_to(position, Some(&view_column), gtk::ListScrollFlags::FOCUS, None);
+    }
+
+    /// Run the grid's `action` on the shown row's `column`, whichever
+    /// field the editor holds, as a cell menu runs it on its cell.
+    fn act_on_field(&self, column: usize, action: &str) {
+        let (Some(grid), Some(row)) = (self.grid(), self.current_pin()) else {
+            return;
+        };
+        grid.hold_menu_target(Target {
+            cell: Some((row.clone(), column)),
+            rows: vec![row],
+        });
+        grid.refresh_actions();
+        grid.actions().activate_action(action, None);
+        grid.release_menu_target_soon();
     }
 
     /// A header drag, a hidden column or a new column set reorders the
