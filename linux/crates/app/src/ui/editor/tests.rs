@@ -3113,6 +3113,29 @@ fn completion_reads_only_the_session_of_the_tabs_database() {
     assert_eq!(followed_catalog(&harness), None, "the last database's catalog stayed");
 }
 
+#[gtk4::test]
+fn a_catalog_reply_keeps_the_database_choice_that_requested_it() {
+    let harness = databases_editor(answering(), false);
+    let catalog = session_in("", harness.runtime.tasks());
+    pick_database(&harness, "analytics");
+    harness
+        .editor
+        .follow_catalog_for(Some("analytics"), Some(catalog.clone()));
+    assert!(
+        harness
+            .editor
+            .catalog_session()
+            .is_some_and(|held| Arc::ptr_eq(&held, &catalog))
+    );
+
+    pick_database(&harness, "shop");
+    harness.editor.follow_catalog_for(Some("analytics"), Some(catalog));
+    assert!(
+        harness.editor.catalog_session().is_none(),
+        "a late lookup restored the old catalog"
+    );
+}
+
 mod result_edits {
     use tablepro_core::column::{ColumnDefault, ColumnInfo, ColumnOrigin};
     use tablepro_core::edit::CellInput;
@@ -3338,4 +3361,51 @@ mod result_edits {
         wait_until(WAIT, || sent(&harness.fake).len() > before).expect("the run after the discard");
         assert_eq!(tracker.pending_count(), 0);
     }
+}
+
+#[gtk4::test]
+fn the_divider_keeps_the_editor_in_view() {
+    let harness = editor_with(Replies::default(), "SELECT 1");
+    let window = crate::test_support::OwnedWindow::presented(
+        gtk4::Window::builder()
+            .default_width(800)
+            .default_height(600)
+            .child(&harness.editor)
+            .build(),
+    );
+    let paned = crate::test_support::descendants(&harness.editor)
+        .into_iter()
+        .find_map(|widget| widget.downcast::<gtk4::Paned>().ok())
+        .expect("the divider between the query and its results");
+    let editor = paned.start_child().expect("the editor pane");
+    let results = paned.end_child().expect("the results pane");
+    wait_until(WAIT, || paned.height() > 0).expect("the editor is allocated");
+
+    for text in ["SELECT 1".to_owned(), "SELECT 1;\n".repeat(300)] {
+        harness.editor.buffer().set_text(&text);
+        paned.set_position(0);
+        wait_until(WAIT, || paned.position() > 0).expect("the divider stops above the editor minimum");
+        let minimum = editor.measure(gtk4::Orientation::Vertical, paned.width()).0;
+        assert!(minimum >= 120);
+        assert!(editor.height() >= minimum);
+        assert!(harness.editor.imp().source_view.height() >= 120);
+
+        let bottom = paned.height();
+        paned.set_position(bottom);
+        wait_until(WAIT, || paned.position() < bottom).expect("the results retain their minimum");
+        assert!(results.height() >= results.measure(gtk4::Orientation::Vertical, paned.width()).0);
+        assert!(editor.height() >= minimum);
+
+        let middle = paned.height() / 2;
+        paned.set_position(middle);
+        wait_until(WAIT, || editor.height() > minimum && results.height() > 0)
+            .expect("the divider can still move between its limits");
+    }
+
+    window.set_default_size(800, 400);
+    wait_until(WAIT, || window.height() < 600).expect("the window becomes shorter");
+    paned.set_position(0);
+    wait_until(WAIT, || paned.position() > 0).expect("a short window keeps the editor visible");
+    assert!(harness.editor.imp().source_view.height() >= 120);
+    assert!(results.height() > 0);
 }

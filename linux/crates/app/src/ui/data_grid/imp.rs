@@ -51,6 +51,12 @@ pub struct DataGrid {
     #[template_child]
     pub column_view: TemplateChild<gtk4::ColumnView>,
     #[template_child]
+    pub viewport: TemplateChild<super::pinned_numbers::PinnedNumbers>,
+    #[template_child]
+    pub gutter_backing: TemplateChild<gtk4::Box>,
+    #[template_child]
+    pub gutter_header: TemplateChild<gtk4::Box>,
+    #[template_child]
     pub empty_page: TemplateChild<adw::StatusPage>,
     #[template_child]
     pub detail_pane: TemplateChild<RowDetailPane>,
@@ -99,6 +105,7 @@ impl ObjectSubclass for DataGrid {
 
     fn class_init(klass: &mut Self::Class) {
         RowDetailPane::ensure_type();
+        super::pinned_numbers::PinnedNumbers::ensure_type();
         klass.bind_template();
     }
 
