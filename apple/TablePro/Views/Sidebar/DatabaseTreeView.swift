@@ -24,6 +24,9 @@ struct DatabaseTreeTriggerRef: Identifiable, Equatable {
     let database: String?
     let schema: String?
     let trigger: TriggerInfo
+    /// Set for a trigger listed under its own table, where the row captions when it fires rather
+    /// than the table name the row above already shows.
+    var listedUnderTable = false
 
     var id: String {
         IdentityPath.joined([database ?? "", schema ?? "", trigger.id], separator: "|")
