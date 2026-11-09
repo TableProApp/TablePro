@@ -705,6 +705,7 @@ struct DatabaseTreeMenuSpecTests {
         attached.listsAttachedSchemas = true
 
         #expect(commands(DatabaseTreeMenuSpec.sections(for: attached)) == [
+            .showObjects(DatabaseTreeObjectGroup(database: "app.db", schema: "auth", kind: .table)),
             .refreshContainers([clicked]),
             .copyContainerNames([clicked])
         ])
@@ -1000,18 +1001,55 @@ struct DatabaseTreeMenuSpecTests {
         #expect(SidebarMenuCommand.exportContainers([.schema(database: "app", schema: "public")]).shortcutAction == nil)
     }
 
-    /// Elasticsearch, Typesense and Weaviate have no listing, and the item used to run a MongoDB command
-    /// against them.
-    @Test("Show All Tables is offered only when the engine has a listing")
-    func showAllTablesNeedsAListing() {
-        let offered = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .objectKindSection(.table))))
+    /// Elasticsearch, Typesense and Weaviate have no listing, so their Tables kind has nothing to show.
+    @Test("Show Objects replaces Show All Tables, and Tables need a listing")
+    func showObjectsNeedsAListingForTables() {
+        let offered = DatabaseTreeMenuSpec.sections(for: context(clicked: .objectKindSection(.table)))
         let withheld = commands(DatabaseTreeMenuSpec.sections(
             for: context(clicked: .objectKindSection(.table), canShowAllTables: false)
         ))
+        let functions = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: .objectKindSection(.function), canShowAllTables: false)
+        ))
 
-        #expect(offered.contains(.showAllTablesMetadata))
-        #expect(!withheld.contains(.showAllTablesMetadata))
+        #expect(commands(offered).contains(.showBrowsedObjects(.table)))
+        #expect(!titles(offered).contains(String(format: String(localized: "Show All %@"), "Tables")))
+        #expect(!withheld.contains(.showBrowsedObjects(.table)))
         #expect(withheld.contains(.refreshObjectKind(.table)))
+        #expect(functions.contains(.showBrowsedObjects(.function)))
+    }
+
+    @Test("Show Objects lists the clicked container or group, not the browsed one")
+    func showObjectsNamesTheClickedContainer() {
+        let group = DatabaseTreeObjectGroup(database: "archive", schema: "audit", kind: .view)
+        let cases: [(DatabaseTreeNode.Kind, DatabaseTreeObjectGroup)] = [
+            (.database(DatabaseMetadata.minimal(name: "analytics")), DatabaseTreeObjectGroup(database: "analytics", schema: nil, kind: .table)),
+            (.schema(database: "archive", schema: "billing"), DatabaseTreeObjectGroup(database: "archive", schema: "billing", kind: .table)),
+            (.hierarchicalSchemaSection(schema: "reporting"), DatabaseTreeObjectGroup(database: "app", schema: "reporting", kind: .table)),
+            (.containerObjectKindSection(group), group),
+        ]
+
+        for (clicked, expected) in cases {
+            let issued = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: clicked)))
+            #expect(issued.contains(.showObjects(expected)), "\(expected)")
+        }
+    }
+
+    @Test("A database row that holds schemas, or a selection of several containers, offers no Show Objects")
+    func showObjectsNeedsOneContainerOfObjects() {
+        var bySchema = context(clicked: .database(DatabaseMetadata.minimal(name: "analytics")))
+        bySchema.databaseRowsHoldSchemas = true
+        let several = context(
+            clicked: .schema(database: "app", schema: "sales"),
+            selectedContainers: [.schema(database: "app", schema: "sales"), .schema(database: "app", schema: "hr")]
+        )
+
+        for menu in [bySchema, several] {
+            #expect(!commands(DatabaseTreeMenuSpec.sections(for: menu)).contains { command in
+                if case .showObjects = command { return true }
+                return false
+            })
+        }
     }
 
     @Test("A status row keeps the background menu")
@@ -1098,11 +1136,11 @@ struct DatabaseTreeMenuSpecTests {
     @Test("The Types sections offer only Refresh where the driver cannot create a type")
     func typesSectionsWithoutCreation() {
         let flat = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .objectKindSection(.type))))
-        #expect(flat == [.refreshObjectKind(.type)])
+        #expect(flat == [.showBrowsedObjects(.type), .refreshObjectKind(.type)])
 
         let group = DatabaseTreeObjectGroup(database: "warehouse", schema: "billing", kind: .type)
         let tree = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .containerObjectKindSection(group))))
-        #expect(tree == [.refreshContainerObjectKind(group)])
+        #expect(tree == [.showObjects(group), .refreshContainerObjectKind(group)])
     }
 
     @Test("New Type leads the Types sections, scoped to the section, and is withheld read-only")

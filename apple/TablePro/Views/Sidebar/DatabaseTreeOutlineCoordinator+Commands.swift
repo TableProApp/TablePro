@@ -127,8 +127,10 @@ extension DatabaseTreeOutlineCoordinator {
             mainCoordinator?.requestContainerDrop(targets)
         case .copyObjectsTo, .copyContainerTo, .duplicateDatabase, .searchContainer:
             performSheetCommand(command)
-        case .showAllTablesMetadata:
-            mainCoordinator?.showBrowsedObjects(.table)
+        case .showObjects(let target):
+            mainCoordinator?.showObjects(target, asPreview: false)
+        case .showBrowsedObjects(let kind):
+            mainCoordinator?.showBrowsedObjects(kind)
         case .refreshObjectKind(let kind):
             refreshObjectKind(kind)
         case .refreshContainerObjectKind(let group):
