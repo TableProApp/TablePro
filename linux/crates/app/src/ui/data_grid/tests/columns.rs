@@ -924,3 +924,53 @@ fn timestamp_formats_resize_automatic_columns_but_keep_manual_widths() {
     drain_main_context();
     assert_eq!(column.fixed_width(), 320, "a manual width stays");
 }
+
+/// Whether `display` has the width its text takes as it draws it, under
+/// its own attributes.
+fn draws_whole(display: &gtk::Inscription) -> bool {
+    let layout = display.create_pango_layout(display.text().as_deref());
+    layout.set_attributes(display.attributes().as_ref());
+    display.width() > 0 && layout.pixel_size().0 <= display.width()
+}
+
+#[gtk4::test]
+fn invisible_character_marks_resize_automatic_columns_and_preserve_manual_widths() {
+    for editable in [false, true] {
+        let settings = crate::test_support::MemorySettings::new();
+        settings
+            .get()
+            .set_show_invisible_characters(false)
+            .expect("start without marks");
+        let columns = two_text_columns();
+        let spec = if editable {
+            GridSpec::table(columns)
+        } else {
+            GridSpec::results(columns)
+        };
+        let values = vec![vec![
+            Value::Int(1),
+            Value::Text("a\u{200b}b\u{200b}c\u{200b}d\u{200b}e".into()),
+        ]];
+        let rows = if editable { persisted(&values) } else { results(&values) };
+        let grid = Grid::build(
+            GridSpec {
+                settings: Some(settings.get().clone()),
+                ..spec
+            },
+            rows,
+        );
+        let column = data_column(&grid, 1);
+        let original = column.fixed_width();
+
+        settings.get().set_show_invisible_characters(true).expect("show marks");
+        wait_until(WAIT, || column.fixed_width() > original).expect("automatic column grows");
+        wait_until(WAIT, || {
+            draws_whole(grid.cell_at(0, 1).display().expect("cell display"))
+        })
+        .expect("the whole marked value fits");
+        column.set_fixed_width(260);
+        settings.get().set_show_invisible_characters(false).expect("hide marks");
+        drain_main_context();
+        assert_eq!(column.fixed_width(), 260, "the chosen width stays");
+    }
+}

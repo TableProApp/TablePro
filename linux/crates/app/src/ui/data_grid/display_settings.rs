@@ -62,7 +62,7 @@ impl DataGrid {
         if dates_changed {
             self.find_rows_changed();
         }
-        if changed || font_changed || dates_changed {
+        if changed || font_changed || dates_changed || marks_changed {
             self.fonts_changed();
         }
     }

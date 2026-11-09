@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::ops::Range;
 
 use gtk4::prelude::*;
@@ -42,7 +43,7 @@ fn insert_tint(attributes: &pango::AttrList, range: &Range<u32>) {
 
 /// `base` with a tinted box under each mark, a label a size smaller so it
 /// reads apart from the value around it.
-pub(crate) fn marked_attributes(base: Option<&pango::AttrList>, marks: &[Mark]) -> pango::AttrList {
+fn marked_attributes(base: Option<&pango::AttrList>, marks: &[Mark]) -> pango::AttrList {
     let attributes = base.and_then(pango::AttrList::copy).unwrap_or_default();
     for mark in marks {
         let range = byte_index(mark.range.start)..byte_index(mark.range.end);
@@ -54,19 +55,32 @@ pub(crate) fn marked_attributes(base: Option<&pango::AttrList>, marks: &[Mark]) 
     attributes
 }
 
-/// A one-line view of a value, with its special characters written as
-/// their marks while `marks` holds.
-pub(crate) fn show_value(display: &gtk::Inscription, text: &str, attributes: Option<&pango::AttrList>, marks: bool) {
+/// What a one-line view draws for a value: its text, with each special
+/// character written as its mark while `marks` holds.
+pub(crate) struct Drawn<'a> {
+    pub text: Cow<'a, str>,
+    pub attributes: Option<pango::AttrList>,
+}
+
+// Drawing and column width both take the value from here, so a column is
+// as wide as the marks its cells draw.
+pub(crate) fn drawn<'a>(text: &'a str, attributes: Option<&pango::AttrList>, marks: bool) -> Drawn<'a> {
     match marks.then(|| reveal(text)).flatten() {
-        Some(revealed) => {
-            display.set_text(Some(&revealed.text));
-            display.set_attributes(Some(&marked_attributes(attributes, &revealed.marks)));
-        }
-        None => {
-            display.set_text(Some(text));
-            display.set_attributes(attributes);
-        }
+        Some(revealed) => Drawn {
+            attributes: Some(marked_attributes(attributes, &revealed.marks)),
+            text: Cow::Owned(revealed.text),
+        },
+        None => Drawn {
+            text: Cow::Borrowed(text),
+            attributes: attributes.cloned(),
+        },
     }
+}
+
+pub(crate) fn show_value(display: &gtk::Inscription, text: &str, attributes: Option<&pango::AttrList>, marks: bool) {
+    let drawn = drawn(text, attributes, marks);
+    display.set_text(Some(&drawn.text));
+    display.set_attributes(drawn.attributes.as_ref());
 }
 
 /// The inline editor's marks, rebuilt from its text; its text stays as typed.
