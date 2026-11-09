@@ -171,6 +171,7 @@ internal final class NavigationSidebarViewController: NSViewController {
         }
         showsNavigator = enabled
         applyColumnShown()
+        let browserFocus = objectBrowserFocus()
         if enabled {
             buildNavigatorSplitIfNeeded()
             uninstall(splitController)
@@ -181,7 +182,41 @@ internal final class NavigationSidebarViewController: NSViewController {
             railSplitHost.show(nil)
             install(splitController)
         }
+        restore(browserFocus)
         onRailWidthChange?()
+    }
+
+    private struct BrowserFocus {
+        let holder: NSView
+        let selection: NSRange?
+    }
+
+    /// Moving the object browser to the other split takes it out of the window for a moment, and
+    /// AppKit gives the keyboard to the window when a view holding it leaves, so the view that held
+    /// it is noted first. A field being edited is held by its field editor, which leaves with the
+    /// edit, so the field and its selection are noted instead.
+    private func objectBrowserFocus() -> BrowserFocus? {
+        guard let window = view.window, let responder = window.firstResponder as? NSView,
+              responder.window === window
+        else { return nil }
+        let focus: BrowserFocus
+        if let editor = responder as? NSTextView, editor.isFieldEditor, let field = editor.delegate as? NSView {
+            focus = BrowserFocus(holder: field, selection: editor.selectedRange())
+        } else {
+            focus = BrowserFocus(holder: responder, selection: nil)
+        }
+        return focus.holder.isDescendant(of: objectBrowser.view) ? focus : nil
+    }
+
+    private func restore(_ focus: BrowserFocus?) {
+        guard let focus, let window = view.window, focus.holder.window === window,
+              objectBrowserFocus()?.holder !== focus.holder,
+              window.makeFirstResponder(focus.holder)
+        else { return }
+        if let selection = focus.selection, let editor = window.firstResponder as? NSTextView,
+           NSMaxRange(selection) <= (editor.string as NSString).length {
+            editor.setSelectedRange(selection)
+        }
     }
 
     private func buildNavigatorSplitIfNeeded() {

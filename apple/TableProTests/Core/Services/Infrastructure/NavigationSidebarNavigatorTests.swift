@@ -134,6 +134,48 @@ struct NavigationSidebarNavigatorTests {
         #expect(!Self.isInside(host.window.firstResponder, navigator.view))
     }
 
+    /// Stands in for the object list, which takes the keyboard the way any list does.
+    private final class FocusableView: NSView {
+        override var acceptsFirstResponder: Bool { true }
+    }
+
+    /// Turning the setting on or off moves the object browser into another split, which takes it
+    /// out of the window for a moment, and AppKit hands the keyboard to the window when a view
+    /// holding it leaves.
+    @Test("Turning the navigator on and off leaves the keyboard in the object browser")
+    func togglingTheNavigatorKeepsTheBrowserFocused() throws {
+        let host = SidebarHost()
+        defer { host.tearDown() }
+        let list = FocusableView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+        host.sidebar.objectBrowser.view.addSubview(list)
+        host.window.makeFirstResponder(list)
+        try #require(host.window.firstResponder === list)
+
+        host.sidebar.setNavigatorEnabled(true)
+        #expect(host.window.firstResponder === list)
+
+        host.sidebar.setNavigatorEnabled(false)
+        #expect(host.window.firstResponder === list)
+    }
+
+    /// A field being edited holds the keyboard through its field editor, which leaves with the edit.
+    @Test("Turning the navigator on and off keeps a field in the object browser editing")
+    func togglingTheNavigatorKeepsAFieldEditing() throws {
+        let host = SidebarHost()
+        defer { host.tearDown() }
+        let field = NSTextField(string: "orders")
+        field.frame = NSRect(x: 0, y: 0, width: 120, height: 22)
+        host.sidebar.objectBrowser.view.addSubview(field)
+        host.window.makeFirstResponder(field)
+        try #require(field.currentEditor() != nil)
+
+        host.sidebar.setNavigatorEnabled(true)
+        #expect(field.currentEditor() != nil)
+
+        host.sidebar.setNavigatorEnabled(false)
+        #expect(field.currentEditor() != nil)
+    }
+
     private static func isInside(_ responder: NSResponder?, _ view: NSView) -> Bool {
         guard let responder = responder as? NSView else { return false }
         return responder.isDescendant(of: view)
