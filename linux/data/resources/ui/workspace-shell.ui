@@ -86,6 +86,28 @@
                           </object>
                         </child>
                         <child type="top">
+                          <object class="AdwToggleGroup" id="scope_toggle">
+                            <property name="active-name">tables</property>
+                            <property name="homogeneous">true</property>
+                            <property name="margin-start">12</property>
+                            <property name="margin-end">12</property>
+                            <property name="margin-top">6</property>
+                            <property name="margin-bottom">6</property>
+                            <child>
+                              <object class="AdwToggle">
+                                <property name="name">tables</property>
+                                <property name="label" translatable="yes">Tables</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="AdwToggle">
+                                <property name="name">favorites</property>
+                                <property name="label" translatable="yes">Favorites</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child type="top">
                           <!-- The banners about the list of the session in
                                front. -->
                           <object class="GtkStack" id="list_banners">
@@ -138,6 +160,12 @@
                                   <object class="GtkButton" id="save_changes_button">
                                     <property name="icon-name">object-select-symbolic</property>
                                     <property name="action-name">win.save-changes</property>
+                                  </object>
+                                </child>
+                                <child type="start">
+                                  <object class="GtkButton" id="refresh_page_button">
+                                    <property name="icon-name">view-refresh-symbolic</property>
+                                    <property name="action-name">win.refresh-page</property>
                                   </object>
                                 </child>
                                 <property name="title-widget">

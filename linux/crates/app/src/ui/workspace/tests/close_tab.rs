@@ -506,3 +506,52 @@ fn header_save_switches_between_sessions_and_disables_without_a_tab() {
         "a background session cannot enable Save Changes"
     );
 }
+
+#[gtk4::test]
+fn header_refresh_commits_the_inline_edit_before_asking_to_discard() {
+    let test = TestWindow::connected_with("HeaderRefreshEdit", serving_tables);
+    let (_, tab) = open_table(&test, "users");
+    let cell = type_a_name(&tab);
+    let button = shell_of(&test.workspace()).imp().refresh_page_button.get();
+    wait_until(WAIT, || button.is_sensitive()).expect("table refresh enabled");
+    let before = test.connection().observed_sql("query_bound").len();
+
+    button.emit_clicked();
+    wait_until(WAIT, || crate::workspace::visible_alert(&test.window).is_some()).expect("discard confirmation");
+    assert!(!cell.is_editing());
+    assert_eq!(test.connection().observed_sql("query_bound").len(), before);
+    assert!(crate::workspace::answer(&test.window, "cancel"));
+    crate::test_support::drain_main_context();
+    assert_eq!(test.connection().observed_sql("query_bound").len(), before);
+
+    button.emit_clicked();
+    wait_until(WAIT, || crate::workspace::visible_alert(&test.window).is_some()).expect("discard confirmation again");
+    assert!(crate::workspace::answer(&test.window, "discard"));
+    wait_until(WAIT, || test.connection().observed_sql("query_bound").len() > before).expect("table reloaded");
+}
+
+#[gtk4::test]
+fn header_refresh_keeps_the_tab_clicked_before_selection_moves() {
+    let test = TestWindow::connected_with("HeaderRefreshTarget", serving_tables);
+    let (_, first) = open_table(&test, "users");
+    let (_, second) = open_table(&test, "orders");
+    wait_until(WAIT, || first.grid().row_count() == 2 && second.grid().row_count() == 2).expect("both tables loaded");
+    let shell = shell_of(&test.workspace());
+    let view = shell.tab_view();
+    let first_page = view.page(&first);
+    let second_page = view.page(&second);
+    view.set_selected_page(&first_page);
+    let button = shell.imp().refresh_page_button.get();
+    wait_until(WAIT, || button.is_sensitive()).expect("refresh enabled");
+    let before = test.connection().observed_sql("query_bound").len();
+    button.emit_clicked();
+    view.set_selected_page(&second_page);
+    wait_until(WAIT, || test.connection().observed_sql("query_bound").len() > before).expect("refresh read");
+    assert!(
+        test.connection()
+            .observed_sql("query_bound")
+            .last()
+            .and_then(Option::as_deref)
+            .is_some_and(|sql| sql.contains("users"))
+    );
+}
