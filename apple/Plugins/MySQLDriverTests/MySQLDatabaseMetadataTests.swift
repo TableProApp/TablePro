@@ -46,4 +46,32 @@ struct MySQLDatabaseMetadataTests {
         #expect(metadata.indexSize == Int64.max)
         #expect(metadata.totalSize == Int64.max)
     }
+
+    private func unconnectedDriver() -> MySQLPluginDriver {
+        MySQLPluginDriver(config: DriverConnectionConfig(
+            host: "", port: 0, username: "", password: "", database: "", additionalFields: [:]
+        ))
+    }
+
+    @Test("The table listing adds each table's engine, create time and update time after its index size")
+    func listingCarriesEngineAndTimes() throws {
+        let statement = try #require(unconnectedDriver().allTablesMetadataSQL(schema: "shop"))
+
+        let indexSize = try #require(statement.range(of: "as index_size"))
+        let engine = try #require(statement.range(of: "ENGINE as engine"))
+        let created = try #require(statement.range(of: "CREATE_TIME as create_time"))
+        let updated = try #require(statement.range(of: "UPDATE_TIME as update_time"))
+        let comment = try #require(statement.range(of: "TABLE_COMMENT as comment"))
+        #expect(indexSize.upperBound < engine.lowerBound)
+        #expect(engine.upperBound < created.lowerBound)
+        #expect(created.upperBound < updated.lowerBound)
+        #expect(updated.upperBound < comment.lowerBound)
+    }
+
+    // SHOW TABLE STATUS already answers Engine, Create_time and Update_time.
+    @Test("A server without the catalog keeps its SHOW TABLE STATUS listing as it was")
+    func tableStatusFallbackIsUnchanged() {
+        #expect(MySQLPluginDriver.tableStatusStatement(database: "shop") == "SHOW TABLE STATUS FROM `shop`")
+        #expect(MySQLPluginDriver.tableStatusStatement(database: "") == "SHOW TABLE STATUS")
+    }
 }

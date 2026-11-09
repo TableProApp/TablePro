@@ -99,6 +99,9 @@ internal extension MySQLPluginDriver {
             CONCAT(ROUND((DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024, 2), ' MB') as total_size,
             CONCAT(ROUND(DATA_LENGTH / 1024 / 1024, 2), ' MB') as data_size,
             CONCAT(ROUND(INDEX_LENGTH / 1024 / 1024, 2), ' MB') as index_size,
+            ENGINE as engine,
+            CREATE_TIME as create_time,
+            UPDATE_TIME as update_time,
             TABLE_COMMENT as comment
         FROM information_schema.TABLES
         WHERE TABLE_SCHEMA = '\(effectiveSchemaLiteral(schema))'
