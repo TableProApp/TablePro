@@ -40,7 +40,6 @@ impl RowDetailPane {
         self.imp().grid.set(Some(grid));
         self.connect_fields(grid);
         self.connect_value_editor(grid);
-        self.connect_value_menu(grid);
         self.connect_choices();
         self.connect_calendar();
         self.connect_clock();

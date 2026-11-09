@@ -416,7 +416,7 @@ fn a_locked_cell_is_read_only_with_its_sentence() {
         message(&pane),
         Some(CellLock::KeyColumn.explanation(edit_parse_message))
     );
-    pane.imp().value_menu_button.popup();
+    field_menu(&pane, 0).popup();
     assert!(!grid.is_enabled("set-null"), "the menu offered to change a locked cell");
     assert!(grid.is_enabled("copy"));
 }
@@ -441,7 +441,7 @@ fn set_to_null_writes_null_into_the_field() {
     take_keyboard(&grid);
     grid.focus(0, 1);
     pane.focus_value();
-    pane.imp().value_menu_button.popup();
+    field_menu(&pane, 1).popup();
     assert!(grid.is_enabled("set-null"), "the menu does not act on the field");
     assert!(!grid.is_enabled("set-default"), "a saved row offered DEFAULT");
 
@@ -489,7 +489,7 @@ fn copy_value_copies_the_field() {
         }
     });
 
-    pane.imp().value_menu_button.popup();
+    field_menu(&pane, 1).popup();
     grid.activate("copy");
     wait_until(WAIT, || !heard.borrow().is_empty()).expect("the copy lands");
 
@@ -1969,4 +1969,34 @@ fn a_field_the_search_drops_while_editing_hands_the_keyboard_to_the_search() {
         crate::ui::a11y::holds_focus(&pane.imp().field_search.get()),
         "the keyboard left the pane with the field's row"
     );
+}
+
+/// The menu button of data column `column`'s row, once the list has drawn
+/// it.
+fn field_menu(pane: &RowDetailPane, column: usize) -> gtk::MenuButton {
+    drain_main_context();
+    let row = drawn_field(pane, column).child().expect("the field's row");
+    descendants(&row)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::MenuButton>().ok())
+        .find(|button| button.icon_name().as_deref() == Some(crate::ui::icons::VIEW_MORE))
+        .expect("the field's menu")
+}
+
+#[gtk4::test]
+fn a_fields_menu_acts_on_that_field_and_leaves_the_editor() {
+    let (grid, pane) = opened(three_text_columns(), three_text_values());
+    grid.focus(0, 1);
+    let menu = field_menu(&pane, 2);
+
+    menu.popup();
+    assert!(grid.is_enabled("set-null"), "the menu does not act on its field");
+    grid.activate("set-null");
+    menu.popdown();
+    drain_main_context();
+
+    assert_eq!(pending(&grid, 1, 2), Some(CellInput::Value(Value::Null)));
+    assert_eq!(pending(&grid, 1, 1), None);
+    assert_eq!(selected_field(&pane), Some(1), "the menu moved the editor");
+    assert_eq!(pane.typed_text(), "A");
 }
