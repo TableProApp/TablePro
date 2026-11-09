@@ -124,7 +124,7 @@ struct FilterValueTextField: NSViewRepresentable {
     private static var singleLineHeights: [NSControl.ControlSize: CGFloat] = [:]
 
     // A rounded field wraps only on some macOS versions (measured: one line before 26); one that cannot
-    // wrap is kept to a single scrolling line, or the rest of a condition hides past its first line.
+    // wrap truncates with an ellipsis, so a long condition never reads as complete when it is cut off.
     private static let roundedFieldWraps: Bool = {
         let field = NSTextField()
         field.bezelStyle = .roundedBezel
@@ -176,10 +176,8 @@ struct FilterValueTextField: NSViewRepresentable {
             textField.lineBreakMode = .byWordWrapping
             textField.maximumNumberOfLines = 0
         } else if allowsMultiLine {
-            // Setting the line break mode clears scrolling, so it goes first.
-            textField.usesSingleLineMode = true
+            textField.usesSingleLineMode = false
             textField.lineBreakMode = .byTruncatingTail
-            textField.cell?.isScrollable = true
         } else {
             textField.lineBreakMode = .byTruncatingTail
         }
