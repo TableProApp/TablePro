@@ -215,4 +215,195 @@ struct ObjectKindsToolbarTests {
         }
         #expect(owner.coordinator == nil)
     }
+
+    // MARK: - Insert and remove
+
+    /// A restored arrangement: the app's own items, without spaces, on a private identifier that
+    /// never autosaves. Built with the group allowed, so `extra` can hold it, then switched to the
+    /// setting the case names. AppKit builds the sidebar tracking separator only over a split view
+    /// in a window, so this arrangement has none; `separatorPlacesTheGroupInAWindow` covers it.
+    private static func restoredToolbar(
+        including extra: [NSToolbarItem.Identifier] = [],
+        settingOn: Bool,
+        record: ToolbarObjectKindsRecord
+    ) -> (owner: MainWindowToolbar, toolbar: NSToolbar) {
+        let owner = owner(objectsOn: true)
+        let toolbar = owner.managedToolbar
+        owner.objectKindsRecord = record
+        owner.isInWindow = { true }
+        let placed = [NSToolbarItem.Identifier.toggleSidebar] + extra
+            + [MainWindowToolbar.connection, MainWindowToolbar.refresh, MainWindowToolbar.actions]
+        for identifier in placed {
+            toolbar.insertItem(withItemIdentifier: identifier, at: toolbar.items.count)
+        }
+        owner.objectKindsEnabled = { settingOn }
+        return (owner, toolbar)
+    }
+
+    private static func identifiers(of toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        toolbar.items.map { $0.itemIdentifier }
+    }
+
+    private static func groupCount(in toolbar: NSToolbar) -> Int {
+        identifiers(of: toolbar).filter { $0 == MainWindowToolbar.objectKindsGroup }.count
+    }
+
+    @Test("Turning the setting on puts the group in once")
+    func turningOnInsertsTheGroupOnce() throws {
+        let storage = try EphemeralDefaults()
+        let record = ToolbarObjectKindsRecord(defaults: storage.defaults)
+        #expect(!record.isApplied)
+        let (owner, toolbar) = Self.restoredToolbar(settingOn: true, record: record)
+
+        owner.reconcileObjectKindsGroup()
+
+        #expect(Self.groupCount(in: toolbar) == 1)
+        #expect(ToolbarObjectKindsRecord(defaults: storage.defaults).isApplied)
+
+        let (laterOwner, laterToolbar) = Self.restoredToolbar(settingOn: true, record: record)
+        laterOwner.reconcileObjectKindsGroup()
+        #expect(Self.groupCount(in: laterToolbar) == 0, "The change was already written into the arrangement")
+    }
+
+    @Test("Turning the setting off takes the group out")
+    func turningOffRemovesTheGroup() throws {
+        let storage = try EphemeralDefaults()
+        let record = ToolbarObjectKindsRecord(defaults: storage.defaults)
+        record.record(true)
+        let (owner, toolbar) = Self.restoredToolbar(
+            including: [MainWindowToolbar.objectKindsGroup],
+            settingOn: false,
+            record: record
+        )
+        #expect(Self.groupCount(in: toolbar) == 1)
+
+        owner.reconcileObjectKindsGroup()
+
+        #expect(Self.groupCount(in: toolbar) == 0)
+        #expect(!record.isApplied)
+    }
+
+    @Test("A group the user took out with Customize Toolbar stays out")
+    func aRemovedGroupStaysRemoved() throws {
+        let storage = try EphemeralDefaults()
+        let record = ToolbarObjectKindsRecord(defaults: storage.defaults)
+        record.record(true)
+        let (owner, toolbar) = Self.restoredToolbar(settingOn: true, record: record)
+
+        owner.reconcileObjectKindsGroup()
+
+        #expect(Self.groupCount(in: toolbar) == 0)
+        #expect(record.isApplied)
+    }
+
+    @Test("With the setting off an arrangement is left exactly as it was")
+    func settingOffLeavesTheArrangementAlone() throws {
+        let storage = try EphemeralDefaults()
+        let record = ToolbarObjectKindsRecord(defaults: storage.defaults)
+        let (owner, toolbar) = Self.restoredToolbar(settingOn: false, record: record)
+        let before = Self.identifiers(of: toolbar)
+
+        owner.reconcileObjectKindsGroup()
+
+        #expect(Self.identifiers(of: toolbar) == before)
+        #expect(!record.isApplied)
+        #expect(storage.defaults.object(forKey: ToolbarObjectKindsRecord.key) == nil, "Nothing is written while off")
+    }
+
+    /// AppKit throws when a second item with an identifier already in the toolbar is added.
+    @Test("A group already in the arrangement is not added a second time")
+    func presentGroupIsNotInsertedAgain() throws {
+        let storage = try EphemeralDefaults()
+        let record = ToolbarObjectKindsRecord(defaults: storage.defaults)
+        let (owner, toolbar) = Self.restoredToolbar(
+            including: [MainWindowToolbar.objectKindsGroup],
+            settingOn: true,
+            record: record
+        )
+        #expect(Self.groupCount(in: toolbar) == 1)
+
+        owner.reconcileObjectKindsGroup()
+
+        #expect(Self.groupCount(in: toolbar) == 1)
+        #expect(record.isApplied)
+    }
+
+    /// The connection window's own toolbar, whose split view gives it the sidebar's divider.
+    @Test("In a connection window the group starts the content area, right after the sidebar's strip")
+    func separatorPlacesTheGroupInAWindow() throws {
+        let fixture = try OffscreenConnectionWindow(size: CGSize(width: 1_512, height: 861))
+        defer { fixture.tearDown() }
+        let storage = try EphemeralDefaults()
+        let owner = fixture.toolbarOwner
+        owner.objectKindsRecord = ToolbarObjectKindsRecord(defaults: storage.defaults)
+        owner.objectKindsEnabled = { true }
+
+        owner.reconcileObjectKindsGroup()
+
+        let identifiers = Self.identifiers(of: owner.managedToolbar)
+        let separator = try #require(identifiers.firstIndex(of: .sidebarTrackingSeparator))
+        #expect(identifiers.dropFirst(separator + 1).first == MainWindowToolbar.objectKindsGroup)
+        #expect(Self.groupCount(in: owner.managedToolbar) == 1)
+    }
+
+    @Test("Without the sidebar tracking separator the group goes in at the leading edge")
+    func insertsAtTheLeadingEdgeWithoutTheSeparator() throws {
+        let storage = try EphemeralDefaults()
+        let record = ToolbarObjectKindsRecord(defaults: storage.defaults)
+        let (owner, toolbar) = Self.restoredToolbar(settingOn: true, record: record)
+
+        owner.reconcileObjectKindsGroup()
+
+        #expect(toolbar.items.first?.itemIdentifier == MainWindowToolbar.objectKindsGroup)
+        #expect(Self.groupCount(in: toolbar) == 1)
+    }
+
+    /// A change made while no connection window is open is left for the first window that opens,
+    /// which restores its arrangement before it reconciles.
+    @Test("A toolbar outside a window leaves the change for the next one")
+    func noWindowLeavesTheChangeForTheNextOne() throws {
+        let storage = try EphemeralDefaults()
+        let record = ToolbarObjectKindsRecord(defaults: storage.defaults)
+        let (owner, toolbar) = Self.restoredToolbar(settingOn: true, record: record)
+        owner.isInWindow = { false }
+
+        owner.reconcileObjectKindsGroup()
+        #expect(Self.groupCount(in: toolbar) == 0)
+        #expect(!record.isApplied)
+
+        owner.isInWindow = { true }
+        owner.reconcileObjectKindsGroup()
+        #expect(Self.groupCount(in: toolbar) == 1)
+        #expect(record.isApplied)
+    }
+}
+
+extension GlobalStateSuites {
+    /// The setting itself, flipped the way Settings flips it, reaching a connection window that is
+    /// already open.
+    @MainActor
+    struct ObjectKindsSettingTests {
+        @Test(
+            "The General setting adds the group to an open window and takes it away",
+            .appSettings { $0.general.showsObjectToolbar = false }
+        )
+        func settingReachesAnOpenWindow() throws {
+            let fixture = try OffscreenConnectionWindow(size: CGSize(width: 1_512, height: 861))
+            defer { fixture.tearDown() }
+            let storage = try EphemeralDefaults()
+            fixture.toolbarOwner.objectKindsRecord = ToolbarObjectKindsRecord(defaults: storage.defaults)
+            let toolbar = try #require(fixture.window.toolbar)
+            let hasGroup = { toolbar.items.contains { $0.itemIdentifier == MainWindowToolbar.objectKindsGroup } }
+            #expect(!hasGroup())
+
+            AppSettingsManager.shared.general.showsObjectToolbar = true
+            #expect(hasGroup(), "Turning the setting on reaches the open window")
+            let identifiers = toolbar.items.map { $0.itemIdentifier }
+            let separator = try #require(identifiers.firstIndex(of: .sidebarTrackingSeparator))
+            #expect(identifiers.dropFirst(separator + 1).first == MainWindowToolbar.objectKindsGroup)
+
+            AppSettingsManager.shared.general.showsObjectToolbar = false
+            #expect(!hasGroup(), "Turning it off takes the group away")
+        }
+    }
 }

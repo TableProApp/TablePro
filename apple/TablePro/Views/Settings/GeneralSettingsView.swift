@@ -73,6 +73,9 @@ struct GeneralSettingsView: View {
                 Toggle("Show objects when a database, schema or group is selected", isOn: $settings.showsObjectsOnSelection)
                     .help("Clicking a database, schema or object group in the sidebar lists its objects in the main area. Show Objects in the row's menu lists them either way.")
 
+                Toggle("Show object buttons in the toolbar", isOn: $settings.showsObjectToolbar)
+                    .help("Adds Tables, Views, Functions, Users, Query and Backup buttons to the connection window's toolbar. Customize Toolbar can move or remove them.")
+
                 Toggle("Show object icons", isOn: $settings.showObjectIcons)
                     .help("Shows a type icon before each object name in the sidebar. Turn it off for a plain list of names.")
 

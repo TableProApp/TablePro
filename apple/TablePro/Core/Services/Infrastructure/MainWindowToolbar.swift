@@ -96,6 +96,8 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         AppSettingsManager.shared.general.showsObjectToolbar
     }
 
+    internal var objectKindsRecord = ToolbarObjectKindsRecord()
+
     /// `NSMenu.delegate` is weak, and the safe-mode control's menu is built here rather than by the
     /// menu bar, so this toolbar is what keeps its delegate alive.
     internal let safeModeMenuDelegate = SafeModeMenuDelegate()
@@ -562,6 +564,16 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         }
     }
 
+    // Pushed by the General setting's own write, so no toolbar listens for it while it stays off.
+    internal static func applyObjectToolbarSettingChange() {
+        for window in NSApp.windows {
+            guard let owner = window.toolbar?.delegate as? MainWindowToolbar else { continue }
+            owner.reconcileObjectKindsGroup()
+            // A group inserted now takes its enabled state at once rather than on the next window update.
+            owner.managedToolbar.validateVisibleItems()
+        }
+    }
+
     // Run when the module changes and when the toolbar reaches a window, after it restored its saved arrangement: a
     // change made while no connection window was open would otherwise never reach the arrangement. Inserted or removed
     // in place, because reassigning the toolbar rebuilds the whole titlebar.
@@ -585,6 +597,26 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             }
         }
     }
+
+    // The debug items' rule for the Objects group: written once per change of the setting, so a group the user took out
+    // stays out. It goes first in the content area, after the sidebar's strip, or first of all without that divider.
+    internal func reconcileObjectKindsGroup() {
+        guard windowController?.view.window != nil || isInWindow() else { return }
+        let wanted = objectKindsEnabled()
+        guard objectKindsRecord.isApplied != wanted else { return }
+        objectKindsRecord.record(wanted)
+        if wanted {
+            // AppKit throws on a second item with an identifier the toolbar already holds.
+            guard !managedToolbar.items.contains(where: { $0.itemIdentifier == Self.objectKindsGroup }) else { return }
+            let separator = managedToolbar.items.firstIndex { $0.itemIdentifier == .sidebarTrackingSeparator }
+            managedToolbar.insertItem(withItemIdentifier: Self.objectKindsGroup, at: separator.map { $0 + 1 } ?? 0)
+        } else {
+            for index in managedToolbar.items.indices.reversed()
+            where managedToolbar.items[index].itemIdentifier == Self.objectKindsGroup {
+                managedToolbar.removeItem(at: index)
+            }
+        }
+    }
 }
 
 // The module state last written into the shared arrangement. Toolbars sharing an identifier copy each other's edits, so
@@ -594,6 +626,25 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 // arrangement saved before the module existed holds.
 internal struct ToolbarDebugItemsRecord {
     static let key = "com.TablePro.main.toolbar.v4.debugItems"
+
+    let defaults: UserDefaults
+
+    init(defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
+        self.defaults = defaults
+    }
+
+    var isApplied: Bool {
+        defaults.bool(forKey: Self.key)
+    }
+
+    func record(_ applied: Bool) {
+        defaults.set(applied, forKey: Self.key)
+    }
+}
+
+// The General setting last written into the shared arrangement, kept for the same reasons as the debug items' record.
+internal struct ToolbarObjectKindsRecord {
+    static let key = "com.TablePro.main.toolbar.v4.objectKinds"
 
     let defaults: UserDefaults
 

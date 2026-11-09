@@ -19,6 +19,9 @@ final class AppSettingsManager: ObservableObject {
             if oldValue.connectionHealthCheck != general.connectionHealthCheck {
                 appEvents.connectionHealthCheckChanged.send(())
             }
+            if oldValue.showsObjectToolbar != general.showsObjectToolbar {
+                MainWindowToolbar.applyObjectToolbarSettingChange()
+            }
             syncTracker.markDirty(.settings, id: AppSettingsCategory.general)
         }
     }
