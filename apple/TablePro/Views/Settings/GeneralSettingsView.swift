@@ -64,6 +64,9 @@ struct GeneralSettingsView: View {
                 Toggle("Show connections", isOn: $settings.showWorkspaceRail)
                     .help("Adds a narrow strip on the window's leading edge listing every connection and database you have open, so one click switches to it.")
 
+                Toggle("List every saved connection beside the database tree", isOn: $settings.showsConnectionNavigator)
+                    .help("Turns the connections column into a list of every saved connection, in its groups. Double-click one to open it.")
+
                 Toggle("Show recent tables", isOn: $settings.showRecentTables)
                     .help("Adds a Recent section at the top of the Tables sidebar with the last tables you opened per connection and database.")
 

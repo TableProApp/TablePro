@@ -134,6 +134,57 @@ struct ConnectionWindowPaneResolverTests {
         }
     }
 
+    // MARK: - Navigator
+
+    /// The navigator lists saved connections, not open ones, so a window with one connection still
+    /// has the others to offer.
+    @Test("The navigator stands with any workspace count")
+    func navigatorStandsWithAnyWorkspaceCount() {
+        #expect(ConnectionWindowPaneResolver.showsConnectionNavigator(
+            preferenceEnabled: true,
+            navigatorEnabled: true,
+            isClosing: false
+        ))
+    }
+
+    @Test("A closing window is given no navigator")
+    func navigatorHidesWhileClosing() {
+        #expect(!ConnectionWindowPaneResolver.showsConnectionNavigator(
+            preferenceEnabled: true,
+            navigatorEnabled: true,
+            isClosing: true
+        ))
+    }
+
+    @Test("Hide Connections hides the navigator")
+    func showConnectionsHidesTheNavigator() {
+        #expect(!ConnectionWindowPaneResolver.showsConnectionNavigator(
+            preferenceEnabled: false,
+            navigatorEnabled: true,
+            isClosing: false
+        ))
+    }
+
+    @Test("With the setting off the navigator never stands")
+    func navigatorOffNeverStands() {
+        for preference in [true, false] {
+            for closing in [true, false] {
+                #expect(!ConnectionWindowPaneResolver.showsConnectionNavigator(
+                    preferenceEnabled: preference,
+                    navigatorEnabled: false,
+                    isClosing: closing
+                ))
+            }
+        }
+    }
+
+    @Test("The navigator lets Show Connections act on a window with one workspace")
+    func navigatorOpensTheToggleToOneWorkspace() {
+        #expect(ConnectionWindowPaneResolver.canToggleConnectionsColumn(navigatorEnabled: true, workspaceCount: 1))
+        #expect(!ConnectionWindowPaneResolver.canToggleConnectionsColumn(navigatorEnabled: false, workspaceCount: 1))
+        #expect(ConnectionWindowPaneResolver.canToggleConnectionsColumn(navigatorEnabled: false, workspaceCount: 2))
+    }
+
     // MARK: - Dialling
 
     /// There is no timer in here any more. A connect reports itself from the moment it starts, and

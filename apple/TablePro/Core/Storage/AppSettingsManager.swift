@@ -12,7 +12,8 @@ final class AppSettingsManager: ObservableObject {
         didSet {
             general.language.apply()
             storage.saveGeneral(general)
-            if oldValue.showWorkspaceRail != general.showWorkspaceRail {
+            if oldValue.showWorkspaceRail != general.showWorkspaceRail
+                || oldValue.showsConnectionNavigator != general.showsConnectionNavigator {
                 appEvents.workspaceRailVisibilityChanged.send(())
             }
             if oldValue.connectionHealthCheck != general.connectionHealthCheck {

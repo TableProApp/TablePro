@@ -127,4 +127,24 @@ internal enum ConnectionWindowPaneResolver {
         guard workspaceCount > 1, !isClosing else { return false }
         return preferenceEnabled || !pane.hasContent
     }
+
+    /// Whether the column stands when it holds the navigator instead of the strip.
+    ///
+    /// The navigator lists every saved connection, not the ones the window has open, so it has
+    /// something to offer with one workspace or none, and the workspace count plays no part. The
+    /// preference still does: it is what View > Show Connections writes, and that command keeps
+    /// hiding and showing the column whichever list is in it.
+    internal static func showsConnectionNavigator(
+        preferenceEnabled: Bool,
+        navigatorEnabled: Bool,
+        isClosing: Bool
+    ) -> Bool {
+        navigatorEnabled && preferenceEnabled && !isClosing
+    }
+
+    /// Show Connections only means something where the column can stand: always with the navigator,
+    /// and with the strip only once there is a second workspace to switch to.
+    internal static func canToggleConnectionsColumn(navigatorEnabled: Bool, workspaceCount: Int) -> Bool {
+        navigatorEnabled || workspaceCount > 1
+    }
 }
