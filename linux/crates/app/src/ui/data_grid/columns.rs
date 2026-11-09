@@ -172,9 +172,12 @@ impl DataGrid {
         }
         built.row_numbers = Some(row_number_column::build(self));
         let names: Vec<&str> = columns.iter().map(|column| column.name.as_str()).collect();
+        if let Some(column) = &built.row_numbers {
+            view.append_column(column);
+        }
         for placement in built.layout.arrange(&names) {
             let column = match placement {
-                Placement::RowNumbers => built.row_numbers.clone(),
+                Placement::RowNumbers => None,
                 Placement::Column { index, visible, width } => {
                     built.view_columns.get(index).cloned().inspect(|column| {
                         column.set_visible(visible);
@@ -292,7 +295,7 @@ impl DataGrid {
         self.imp().font_watch.replace(Some(HandlerGuard::new(&style, handler)));
     }
 
-    fn cell_font(&self) -> Option<String> {
+    pub(super) fn cell_font(&self) -> Option<String> {
         match self.config()?.settings.grid_font() {
             EditorFont::Custom(description) => Some(description),
             EditorFont::System => None,
@@ -468,12 +471,35 @@ impl DataGrid {
         self.imp().columns.borrow_mut().handlers.extend(handlers);
     }
 
-    /// A column moved, went or came back: the layout keeps it, and a
-    /// search counts only the columns on screen, in their order.
     fn columns_moved(&self) {
         self.keep_filler_last();
+        self.keep_numbers_first();
         self.record_layout();
         self.find_rows_changed();
+    }
+
+    fn keep_numbers_first(&self) {
+        let Some(column) = self.row_numbers_column() else {
+            return;
+        };
+        let view = self.column_view();
+        if view.columns().item(0).as_ref() == Some(column.upcast_ref()) {
+            return;
+        }
+        // GTK finishes moving the header after it announces the column change.
+        glib::idle_add_local_once(glib::clone!(
+            #[weak]
+            view,
+            #[weak]
+            column,
+            move || {
+                if column.column_view().as_ref() == Some(&view)
+                    && view.columns().item(0).as_ref() != Some(column.upcast_ref())
+                {
+                    view.insert_column(0, &column);
+                }
+            }
+        ));
     }
 
     // GTK drops a header dragged onto the filler after it, and lets the
@@ -885,7 +911,7 @@ fn same_names(layout: &ColumnLayout, columns: &[GridColumn]) -> bool {
     names.len() == columns.len() && names.iter().zip(columns).all(|(name, column)| *name == column.name)
 }
 
-fn value_font(context: &pango::Context, custom: Option<&str>) -> pango::FontDescription {
+pub(super) fn value_font(context: &pango::Context, custom: Option<&str>) -> pango::FontDescription {
     let selected = match custom {
         Some(description) => super::cell_font::custom_font(description),
         None => {

@@ -28,8 +28,16 @@ use crate::ui::shell::{PRIMARY_MENU, TAB_OVERVIEW_MENU, app_menu, primary_menu_b
 /// names it.
 pub(super) const SHOW_SIDEBAR: &str = "show-sidebar";
 
+const TABLES: &str = "tables";
+const FAVORITES: &str = "favorites";
+
 /// The window action that shows and hides the assistant's column.
 pub(super) const SHOW_ASSISTANT: &str = "show-assistant";
+
+type FavoritesRead = Result<
+    Option<Result<Vec<tablepro_storage::saved_queries::SavedQuery>, tablepro_storage::StorageError>>,
+    tablepro_session::runtime::TaskFailure,
+>;
 
 glib::wrapper! {
     pub struct WorkspaceShell(ObjectSubclass<imp::WorkspaceShell>)
@@ -51,6 +59,11 @@ pub(super) fn describe_buttons(shell: &WorkspaceShell) {
         &imp.sidebar_toggle.get(),
         &gettext("Show Sidebar"),
         Some("win.show-sidebar"),
+    );
+    describe_icon_button(
+        &imp.refresh_page_button.get(),
+        &gettext("Refresh Tab"),
+        Some("win.refresh-page"),
     );
     describe_icon_button(
         &imp.new_tab_button.get(),
@@ -86,7 +99,42 @@ impl WorkspaceShell {
         let imp = shell.imp();
         imp.window.set(Some(window));
         let tree = ConnectionTree::new(services.saved_connections.clone());
-        imp.sidebar_slot.set_child(Some(&tree.widget()));
+        let sidebar = gtk::Stack::new();
+        sidebar.add_named(&tree.widget(), Some(TABLES));
+        let favorites = super::sidebar::FavoritesPane::new(
+            glib::clone!(
+                #[weak]
+                shell,
+                move |sql| shell.open_favorite(sql)
+            ),
+            glib::clone!(
+                #[weak]
+                shell,
+                move || shell.reload_favorites()
+            ),
+        );
+        sidebar.add_named(&favorites.widget(), Some(FAVORITES));
+        imp.sidebar_slot.set_child(Some(&sidebar));
+        let _ = imp.sidebar_stack.set(sidebar);
+        let _ = imp.favorites.set(favorites);
+        let _ = imp.favorites_source.set((services.history(), services.tasks.clone()));
+        imp.favorites_availability
+            .replace(Some(tablepro_session::runtime::WatchForwarder::new(
+                services.history().availability(),
+                glib::clone!(
+                    #[weak]
+                    shell,
+                    move |_| shell.follow_favorites()
+                ),
+                |future| {
+                    glib::spawn_future_local(future);
+                },
+            )));
+        imp.scope_toggle.connect_active_name_notify(glib::clone!(
+            #[weak]
+            shell,
+            move |_| shell.on_scope_changed()
+        ));
         tree.follow_search(&imp.table_search);
         let _ = imp.tree.set(tree);
         crate::ui::picker::install_picker_actions(&shell, services.saved_connections.clone(), sender.clone());
@@ -110,7 +158,6 @@ impl WorkspaceShell {
             &imp.split_view.get(),
             "show-sidebar",
         ));
-        follow_sidebar(&imp.split_view, &imp.sidebar_toggle);
         window.add_action(&assistant_action(&shell));
         imp.walk_hooks.replace(Some(shell.hook_recent_walk(window)));
 
@@ -125,6 +172,9 @@ impl WorkspaceShell {
         shell.connect_view();
         shell.connect_front_notify(Self::on_front_changed);
         shell.bind_front();
+        shell.add_controller(crate::application::local_shortcut_controller(
+            crate::application::ShortcutOwner::WorkspaceShell,
+        ));
         shell.describe_front();
 
         imp.table_search_bar.connect_entry(&*imp.table_search);
@@ -327,6 +377,7 @@ impl WorkspaceShell {
             for (name, property) in [
                 (SHOW_ASSISTANT, "assistant-available"),
                 (REVIEW_HOST_KEY, "can-review-host-key"),
+                ("refresh-page", "can-refresh"),
             ] {
                 if let Some(action) = window.lookup_action(name).and_downcast::<gio::SimpleAction>() {
                     // Off until a session is in front to say.
@@ -482,6 +533,9 @@ impl WorkspaceShell {
         if let (Some(tree), Some(key)) = (imp.tree.get(), workspace.key()) {
             tree.remove_session(&key);
         }
+        if let Some(front) = self.front() {
+            front.read(super::WorkspaceModel::select_in_tree);
+        }
         self.tell_sharing();
         self.refresh_saving();
     }
@@ -532,8 +586,105 @@ impl WorkspaceShell {
         self.notify_front();
     }
 
-    /// Show the front's banners and assistant, and name what follows its
-    /// data model after it. The expressions of `bind_front` do the rest.
+    fn on_scope_changed(&self) {
+        let imp = self.imp();
+        let favorites = imp.scope_toggle.active_name().as_deref() == Some(FAVORITES);
+        if let Some(stack) = imp.sidebar_stack.get() {
+            stack.set_visible_child_name(if favorites { FAVORITES } else { TABLES });
+        }
+        // The search reads connections and tables, which this scope does not list.
+        imp.table_search_toggle.set_visible(!favorites);
+        imp.refresh_tables_button.set_visible(!favorites);
+        if favorites {
+            imp.table_search_bar.set_search_mode(false);
+            imp.table_search_bar.set_key_capture_widget(None::<&gtk::Widget>);
+        } else {
+            imp.table_search_bar.set_key_capture_widget(Some(&*imp.sidebar_root));
+        }
+        self.reload_favorites();
+    }
+
+    fn follow_favorites(&self) {
+        let imp = self.imp();
+        if imp.favorites_watch.borrow().is_none()
+            && let Some((history, _)) = imp.favorites_source.get()
+            && let Some(history) = history.store()
+        {
+            imp.favorites_watch
+                .replace(Some(tablepro_session::runtime::WatchForwarder::new(
+                    history.saved_queries().changes(),
+                    glib::clone!(
+                        #[weak(rename_to = shell)]
+                        self,
+                        move |_| shell.reload_favorites()
+                    ),
+                    |future| {
+                        glib::spawn_future_local(future);
+                    },
+                )));
+        }
+        self.reload_favorites();
+    }
+
+    pub(crate) fn reload_favorites(&self) {
+        let imp = self.imp();
+        let generation = imp.favorites_generation.get().wrapping_add(1);
+        imp.favorites_generation.set(generation);
+        let connection = self.front().and_then(|front| front.connection_id());
+        let (Some(pane), Some((history, tasks))) = (imp.favorites.get(), imp.favorites_source.get()) else {
+            return;
+        };
+        if imp.favorites_connection.replace(connection) != connection {
+            pane.clear();
+        }
+        if imp.scope_toggle.active_name().as_deref() != Some(FAVORITES) {
+            return;
+        }
+        let Some(connection) = connection else {
+            pane.no_connection();
+            return;
+        };
+        pane.loading();
+        let ready = history.ready_store();
+        crate::runtime::spawn_and_deliver(
+            tasks,
+            async move {
+                let history = ready.await?;
+                Some(history.saved_queries().list(Some(connection)).await)
+            },
+            glib::clone!(
+                #[weak(rename_to = shell)]
+                self,
+                move |listed| shell.favorites_arrived(generation, connection, listed)
+            ),
+        );
+    }
+
+    fn favorites_arrived(&self, generation: u64, connection: Uuid, listed: FavoritesRead) {
+        if self.imp().favorites_generation.get() != generation
+            || self.front().and_then(|front| front.connection_id()) != Some(connection)
+        {
+            return;
+        }
+        let Some(pane) = self.imp().favorites.get() else {
+            return;
+        };
+        match listed {
+            Ok(Some(Ok(favorites))) => pane.show(favorites),
+            Ok(None) => pane.unavailable(),
+            other => {
+                tracing::warn!(?other, "could not read favorites");
+                pane.failed();
+            }
+        }
+    }
+
+    fn open_favorite(&self, sql: String) {
+        if let Some(sender) = self.front().and_then(|front| front.sender()) {
+            sender.deliver(super::WorkspaceInput::OpenHistoryQuery(sql));
+        }
+    }
+
     fn on_front_changed(&self) {
         let imp = self.imp();
         if let Some(front) = self.front() {
@@ -551,6 +702,7 @@ impl WorkspaceShell {
             }
         }
         self.describe_front();
+        self.reload_favorites();
         self.sync_assistant_column();
         self.follow_front_for_new_tabs();
         // A front with a tab selected says which row it shows itself.
@@ -677,6 +829,10 @@ impl WorkspaceShell {
     /// names itself again from here on.
     pub(crate) fn shutdown(&self) {
         let imp = self.imp();
+        imp.favorites_generation
+            .set(imp.favorites_generation.get().wrapping_add(1));
+        imp.favorites_watch.take();
+        imp.favorites_availability.take();
         for watch in imp.watches.take() {
             watch.unwatch();
         }
@@ -778,32 +934,43 @@ fn with_safe_mode(menu: &gio::MenuModel) -> gio::Menu {
     whole
 }
 
-/// The toggle shows only while the sidebar is out of view: collapsed
-/// into an overlay, or hidden. Beside a shown sidebar it would only hide
-/// the list the user is looking at.
-fn follow_sidebar(split_view: &adw::OverlaySplitView, toggle: &gtk::ToggleButton) -> gtk::ExpressionWatch {
-    let collapsed = gtk::PropertyExpression::new(
-        adw::OverlaySplitView::static_type(),
-        None::<&gtk::Expression>,
-        "collapsed",
-    );
-    let shown = gtk::PropertyExpression::new(
-        adw::OverlaySplitView::static_type(),
-        None::<&gtk::Expression>,
-        "show-sidebar",
-    );
-    let visible = gtk::ClosureExpression::new::<bool>(
-        [collapsed, shown],
-        glib::closure!(|_: Option<glib::Object>, collapsed: bool, shown: bool| collapsed || !shown),
-    );
-    visible.bind(toggle, "visible", Some(split_view))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::config::RESOURCE_BASE_PATH;
     use crate::test_support::assert_access_keys;
+
+    #[gtk4::test]
+    fn favorites_reject_old_reads_and_clear_rows_when_the_front_changes() {
+        use crate::ui::session_window::tests::TestWindow;
+        use tablepro_storage::saved_queries::SavedQuery;
+        let test = TestWindow::connected("FavoritesRequests");
+        let shell = test.window.shell().expect("shell");
+        shell.imp().scope_toggle.set_active_name(Some(FAVORITES));
+        let connection = test.workspace().connection_id().expect("connection");
+        let old = shell.imp().favorites_generation.get();
+        shell.reload_favorites();
+        let current = shell.imp().favorites_generation.get();
+        let saved = SavedQuery {
+            id: 1,
+            name: "Current".to_owned(),
+            query: "SELECT 1".to_owned(),
+            connection_id: connection,
+            connection_name: "Database".to_owned(),
+            created_at: std::time::SystemTime::UNIX_EPOCH,
+            updated_at: std::time::SystemTime::UNIX_EPOCH,
+        };
+        shell.favorites_arrived(current, connection, Ok(Some(Ok(vec![saved.clone()]))));
+        let pane = shell.imp().favorites.get().expect("pane");
+        shell.favorites_arrived(old, connection, Ok(Some(Ok(vec![]))));
+        assert_eq!(pane.names(), ["Current"]);
+        shell.favorites_arrived(current, Uuid::new_v4(), Ok(Some(Ok(vec![]))));
+        assert_eq!(pane.names(), ["Current"]);
+        shell.set_front(None);
+        assert!(pane.names().is_empty());
+        shell.favorites_arrived(current, connection, Ok(Some(Ok(vec![saved]))));
+        assert!(pane.names().is_empty());
+    }
 
     #[gtk4::test]
     fn the_tab_menu_and_the_main_menu_give_each_item_its_own_access_key() {
