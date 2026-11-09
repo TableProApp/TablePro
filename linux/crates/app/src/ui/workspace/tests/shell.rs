@@ -220,6 +220,11 @@ fn narrow_window_swaps_tab_bar_for_tab_button() {
 
     assert!(!imp.tab_bar.is_visible(), "the tab bar stayed");
     assert!(imp.tab_button.is_visible(), "no tab button took its place");
+    assert!(
+        !imp.new_tab_button.is_visible(),
+        "New Query stayed beside the tab button"
+    );
+    assert!(imp.tab_overview.property::<bool>("enable-new-tab"));
     assert!(imp.split_view.is_collapsed());
     let button = session_menu_button(&test);
     wait_until(WAIT, || button.is_mapped()).expect("Session Menu at the window floor");
