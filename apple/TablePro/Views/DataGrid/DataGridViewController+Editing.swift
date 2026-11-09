@@ -70,6 +70,7 @@ extension DataGridViewController {
 
     func beginEditingActiveCell() {
         guard let active = model.selection.activeCell else { return }
+        guard !openRow(at: active.row) else { return }
         reveal(row: active.row, displayColumn: active.displayColumn)
         openEditor(at: active)
     }
@@ -103,7 +104,15 @@ extension DataGridViewController {
     }
 
     func handleCellDoubleClick(at cell: GridCoord) {
+        guard !openRow(at: cell.row) else { return }
         openEditor(at: cell)
+    }
+
+    // Rows that stand for objects open the object, the way a double click opens a file in Finder.
+    private func openRow(at row: Int) -> Bool {
+        guard gridCommands.offers(.openRow), let rowID = model.rowID(at: row) else { return false }
+        model.actions?.gridOpenRow(rowID)
+        return true
     }
 
     func handleClickOnActiveCell(_ cell: GridCoord) {

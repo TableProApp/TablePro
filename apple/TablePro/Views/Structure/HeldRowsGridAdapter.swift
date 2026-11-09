@@ -23,6 +23,9 @@ final class HeldRowsGridAdapter: ObservableObject {
     var spokenTexts: [RowID: [Int: String]] = [:]
     var checkboxState: ((RowID, DataGridColumn) -> Bool?)?
     var checkboxChange: ((Bool, [RowID], DataGridColumn) -> Void)?
+    // For an owner whose rows stand for objects; the grid opens a row only when its commands offer .openRow.
+    var rowMenuItems: (([RowID], RowID) -> [NSMenuItem])?
+    var opensRow: ((RowID) -> Void)?
 
     private(set) var heldRows = TableRows()
     private var displayedRows = TableRows()
@@ -116,6 +119,14 @@ extension HeldRowsGridAdapter: DataGridActions {
 
     func gridSetCheckbox(_ isOn: Bool, rowIDs: [RowID], column: DataGridColumn) {
         checkboxChange?(isOn, rowIDs, column)
+    }
+
+    func gridOpenRow(_ rowID: RowID) {
+        opensRow?(rowID)
+    }
+
+    func gridRowMenuItems(for rowIDs: [RowID], clickedRow: RowID) -> [NSMenuItem] {
+        rowMenuItems?(rowIDs, clickedRow) ?? []
     }
 }
 
