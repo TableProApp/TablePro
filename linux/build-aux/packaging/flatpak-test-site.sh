@@ -7,7 +7,7 @@
 # second, so an installed app has an update to take, and
 # <output dir>/bundles/<branch> the bundles of the first commit. It also
 # validates the desktop entry, the metainfo and the schema each app commit
-# installs.
+# installs, and checks that its catalogue lists every screenshot.
 #
 # --install-deps first installs, as root in a throwaway Ubuntu, the tools
 # this needs.
@@ -65,6 +65,13 @@ for ref in $(ostree refs --repo="$work/repo" | grep "^app/$app/"); do
     desktop-file-validate "$tree/files/share/applications/$app.desktop"
     appstreamcli validate --no-net "$tree/files/share/metainfo/$app.metainfo.xml"
     glib-compile-schemas --strict --dry-run "$tree/files/share/glib-2.0/schemas"
+    # appstreamcli compose drops a screenshot it cannot download.
+    named="$(grep -c '<screenshot[ >]' "$tree/files/share/metainfo/$app.metainfo.xml")"
+    listed="$(gzip -dc "$tree/files/share/app-info/xmls/$app.xml.gz" | grep -c '<screenshot[ >]' || true)"
+    if [ "$listed" -ne "$named" ]; then
+        echo "flatpak-test-site.sh: the catalogue of $ref lists $listed of the metainfo's $named screenshots" >&2
+        exit 1
+    fi
 done
 
 commit "$@"
