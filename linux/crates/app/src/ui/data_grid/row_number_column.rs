@@ -8,15 +8,10 @@ use gtk4::{self as gtk, glib, pango};
 use super::tracked_values::RowPendingState;
 use super::{DataGrid, GridRow, grid_menu};
 
-/// Icon, spacing and the cell's padding beside the digits.
 const CHROME_PX: i32 = 16 + 4 + 13;
 
-/// The handlers a bound gutter cell or row keeps, dropped at unbind.
-type Watches = Rc<RefCell<HashMap<glib::Object, Vec<(glib::WeakRef<glib::Object>, glib::SignalHandlerId)>>>>;
+pub(super) type Watches = Rc<RefCell<HashMap<glib::Object, Vec<(glib::WeakRef<glib::Object>, glib::SignalHandlerId)>>>>;
 
-/// The first column: each row's number and the icon of its pending
-/// change. GtkColumnView has no row headers, so it is a column like the
-/// others, scrolled and dragged with them.
 pub fn build(grid: &DataGrid) -> gtk::ColumnViewColumn {
     let factory = gtk::SignalListItemFactory::new();
     factory.connect_setup(|_, item| {
@@ -33,8 +28,11 @@ pub fn build(grid: &DataGrid) -> gtk::ColumnViewColumn {
             .valign(gtk::Align::Center)
             .build();
         number.add_css_class("numeric");
+        number.add_css_class("monospace");
         number.add_css_class("dimmed");
         let content = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        // Pending icons should not change the row height.
+        content.add_css_class("row-number-cell");
         content.append(&icon);
         content.append(&number);
         cell.set_child(Some(&content));
@@ -54,7 +52,9 @@ pub fn build(grid: &DataGrid) -> gtk::ColumnViewColumn {
             bind_cell(&grid, cell, &row, &watches);
         });
     }
-    factory.connect_unbind(move |_, item| unwatch(&watches, item.upcast_ref()));
+    factory.connect_unbind(move |_, item| {
+        unwatch(&watches, item.upcast_ref());
+    });
     let column = gtk::ColumnViewColumn::builder()
         .title(crate::i18n::pgettext("row number column", "#"))
         .factory(&factory)
@@ -89,8 +89,6 @@ fn bind_cell(grid: &DataGrid, cell: &gtk::ColumnViewCell, row: &GridRow, watches
     );
 }
 
-/// The tracked values are read each time, since the grid's rules follow
-/// its column set.
 fn show_cell(grid: &DataGrid, cell: &gtk::ColumnViewCell) {
     let Some(row) = cell.item().and_downcast::<GridRow>() else {
         return;
@@ -115,8 +113,7 @@ fn show_cell(grid: &DataGrid, cell: &gtk::ColumnViewCell) {
     );
 }
 
-/// A saved row's number counts from the first row read; a draft has none.
-fn row_number(grid: &DataGrid, row: &GridRow, position: u32) -> Option<u64> {
+pub(super) fn row_number(grid: &DataGrid, row: &GridRow, position: u32) -> Option<u64> {
     if row.draft_id().is_some() || position == gtk::INVALID_LIST_POSITION {
         return None;
     }
@@ -124,7 +121,7 @@ fn row_number(grid: &DataGrid, row: &GridRow, position: u32) -> Option<u64> {
     Some(grid.row_base() + u64::from(position.saturating_sub(drafts)) + 1)
 }
 
-fn unwatch(watches: &Watches, item: &glib::Object) {
+pub(super) fn unwatch(watches: &Watches, item: &glib::Object) {
     if let Some(handlers) = watches.borrow_mut().remove(item) {
         for (object, handler) in handlers {
             if let Some(object) = object.upgrade() {
@@ -134,7 +131,6 @@ fn unwatch(watches: &Watches, item: &glib::Object) {
     }
 }
 
-/// As wide as the largest number the rows held reach, in tabular digits.
 pub fn fit(grid: &DataGrid) {
     let Some(column) = grid.row_numbers_column() else {
         return;
@@ -143,13 +139,16 @@ pub fn fit(grid: &DataGrid) {
     let digits = largest.max(1).ilog10() as i32 + 1;
     // A fresh context, since the view's own follows a font change only at
     // the next frame.
-    let metrics = grid.column_view().create_pango_context().metrics(None, None);
+    let context = grid.column_view().create_pango_context();
+    let metrics = context.metrics(
+        Some(&super::columns::value_font(&context, grid.cell_font().as_deref())),
+        None,
+    );
     let digit_px = pango::units_to_double(metrics.approximate_digit_width());
     column.set_fixed_width((f64::from(digits.max(2)) * digit_px).ceil() as i32 + CHROME_PX);
+    super::pinned_numbers::sync(grid);
 }
 
-/// Each row names itself and its pending change to a screen reader, and
-/// takes no focus of its own, so the focus always lands on a cell.
 pub fn install_row_factory(grid: &DataGrid) {
     let factory = gtk::SignalListItemFactory::new();
     factory.connect_setup(|_, item| {
@@ -201,7 +200,6 @@ pub fn install_row_factory(grid: &DataGrid) {
     grid.column_view().set_row_factory(Some(&factory));
 }
 
-/// Through the properties, since their setters take no NULL to clear.
 fn describe_row(grid: &DataGrid, list_row: &gtk::ColumnViewRow) {
     let Some(row) = list_row.item().and_downcast::<GridRow>() else {
         return;

@@ -164,6 +164,13 @@ If the notice offers an earlier tested version, link its exact release and packa
 
 [ADR 0041, Context](decisions/0041-beta-repositories-and-release-packages.md#context) amends the older permission-policy history in ADRs 0008 and 0018. Passing the linter is not permission approval. A maintainer writes the manifest and submission by hand, discloses AI-assisted material as required, and obtains Flathub's permission review under its [current requirements](https://docs.flathub.org/docs/for-app-authors/requirements). A new app enters stable before it can use Flathub beta.
 
+The app's own files also need a maintainer before the submission:
+
+- **Translations.** The AI disclosure names each catalogue in `po/LINGUAS` that an agent translated (Requirements, Generative AI policy). The Localisation policy's bar on machine-generated translations is about the English localisation.
+- **Screenshots.** Retake any whose window changed since `data/screenshots` was taken (MetaInfo guidelines, Quality guidelines, Screenshots, Up to date; [README.md](../README.md#screenshots)).
+- **Licensing.** The metainfo description's last paragraph states what a license gives and when the app asks for one. A change to either changes it in the same release (Requirements, Monetisation policy).
+- **Verification.** Flathub verifies the app through `tablepro.app` once it is listed (Quality guidelines, Managed by app author).
+
 Our existing installs keep their TablePro origin. Adding Flathub or changing the default branch does not migrate that origin. Before offering migration instructions, test an explicit origin change from both our stable and beta installs to the accepted Flathub app. Record the commands and before/after origin, branch and commit from `flatpak info`. Verify updates come from Flathub, secrets still load, saved work survives and rollback works. Keep our repository available until that tested migration is published. Do not promise automatic migration.
 
 ## The first release

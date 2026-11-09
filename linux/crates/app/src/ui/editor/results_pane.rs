@@ -54,6 +54,8 @@ mod imp {
         #[template_child]
         pub details_toggle: TemplateChild<gtk4::ToggleButton>,
         #[template_child]
+        pub columns_button: TemplateChild<gtk4::Button>,
+        #[template_child]
         pub transaction_bar: TemplateChild<gtk4::Box>,
         #[template_child]
         pub transaction_label: TemplateChild<gtk4::Label>,
@@ -307,6 +309,7 @@ impl ResultsPane {
         let actions = grid.map(DataGrid::actions);
         self.insert_action_group("grid", actions.as_ref());
         self.imp().details_toggle.set_visible(grid.is_some());
+        self.imp().columns_button.set_visible(grid.is_some());
     }
 
     /// Put the page of line `index` first among the kept ones, building
@@ -562,6 +565,10 @@ mod tests {
                 gtk4::AccessibleProperty::Label
             ));
         }
+        assert!(gtk4::test_accessible_has_property(
+            &pane.imp().columns_button.get(),
+            gtk4::AccessibleProperty::Label
+        ));
     }
 
     #[gtk4::test]
@@ -572,9 +579,54 @@ mod tests {
 
         assert!(!pane.imp().details_toggle.is_visible());
         assert!(
+            !pane.imp().columns_button.is_visible(),
+            "Columns without a grid to choose from"
+        );
+        assert!(
             pane.activate_action("grid.show-details", None).is_err(),
             "the pane reaches a grid it does not show"
         );
+    }
+
+    #[gtk4::test]
+    fn columns_follows_the_shown_result_and_clears_with_the_run() {
+        use crate::ui::data_grid::test_grid::{Grid, named};
+        use std::cell::Cell;
+        use std::rc::Rc;
+
+        let grid = Grid::open(vec![named("id", "int", true)], vec![]);
+        grid.window.set_child(None::<&gtk4::Widget>);
+        let pane = pane();
+        let result_grid = grid.grid.clone();
+        pane.set_page_builder(move |index| {
+            Some(if index == 0 {
+                ResultPage {
+                    widget: result_grid.clone().upcast(),
+                    grid: Some(result_grid.clone()),
+                }
+            } else {
+                ResultPage::plain(gtk4::Label::new(Some("Done")).upcast())
+            })
+        });
+        grid.window.set_child(Some(&pane));
+        let activated = Rc::new(Cell::new(0));
+        let count = activated.clone();
+        let action = gio::SimpleAction::new("columns", None);
+        action.connect_activate(move |_, _| count.set(count.get() + 1));
+        grid.grid.actions().add_action(&action);
+        pane.append(&[command(), command()]);
+        assert!(pane.imp().columns_button.is_visible());
+        pane.imp().columns_button.emit_clicked();
+        assert_eq!(activated.get(), 1);
+        pane.select(1);
+        assert!(!pane.imp().columns_button.is_visible());
+        assert!(pane.activate_action("grid.columns", None).is_err());
+        pane.select(0);
+        pane.imp().columns_button.emit_clicked();
+        assert_eq!(activated.get(), 2);
+        pane.clear();
+        assert!(!pane.imp().columns_button.is_visible());
+        assert!(pane.activate_action("grid.columns", None).is_err());
     }
 
     #[gtk4::test]
