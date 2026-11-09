@@ -167,7 +167,8 @@ fn an_empty_list_stays_loading_until_the_history_reply_arrives() {
     dialog.show_results(String::new(), vec![]);
     let widgets = dialog.imp().widgets.get().unwrap();
     assert_eq!(widgets.status.title(), "Loading Results");
-    assert!(widgets.status.description().is_none());
+    // AdwStatusPage reads the description from its label, which holds "" once cleared.
+    assert!(widgets.status.description().is_none_or(|text| text.is_empty()));
     assert!(dialog.imp().requests.borrow_mut().accept(Request::Past, pending.stamp));
     dialog.show_results(
         String::new(),
