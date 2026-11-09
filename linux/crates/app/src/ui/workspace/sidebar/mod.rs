@@ -4,6 +4,7 @@
 
 mod catalog_watch;
 mod connection_tree;
+mod favorites_pane;
 mod key_listing;
 mod object_key;
 mod object_target;
@@ -35,6 +36,7 @@ use tablepro_session::{ObjectListSnapshot, Session};
 
 pub(super) use catalog_watch::{catalog_watch, reconnect_watch, spawn_local};
 pub(crate) use connection_tree::{ConnectionTree, SessionRowState};
+pub(crate) use favorites_pane::FavoritesPane;
 pub(crate) use key_listing::{KeySidebar, KeysListed};
 pub(super) use sidebar_affordances::SidebarAffordances;
 use sidebar_index::SidebarIndex;

@@ -35,7 +35,9 @@ impl DataGrid {
             glib::clone!(
                 #[weak]
                 view,
-                move |settings, key| set_class(&view, STRIPED, settings.boolean(key))
+                move |settings, key| {
+                    set_class(&view, STRIPED, settings.boolean(key));
+                }
             ),
         );
         self.imp()
