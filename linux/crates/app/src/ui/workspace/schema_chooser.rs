@@ -168,7 +168,7 @@ impl Chooser {
 }
 
 // Built each time it opens, so it lists the schemas of the session in front as they are then.
-pub(crate) fn popover(choices: SchemaChoices, input: WorkspaceSender) -> gtk::Popover {
+pub(super) fn popover(choices: SchemaChoices, input: WorkspaceSender) -> gtk::Popover {
     let databases = choices.databases;
     let names = gtk::StringList::new(
         &choices

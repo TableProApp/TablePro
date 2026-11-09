@@ -971,7 +971,7 @@ impl Workspace {
     }
 
     // None while the workspace is handling input.
-    pub(crate) fn schema_choices(&self) -> Option<schema_chooser::SchemaChoices> {
+    pub(super) fn schema_choices(&self) -> Option<schema_chooser::SchemaChoices> {
         self.read(WorkspaceModel::schema_choices)
     }
 
