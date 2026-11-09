@@ -15,6 +15,8 @@ pub struct SidebarObject {
     /// of the list.
     pub(super) index: OnceCell<Arc<SidebarIndex>>,
     pub(super) entry: Cell<u32>,
+    /// The rank of the kind a heading row stands for; none for an object.
+    pub(super) heading: Cell<Option<u8>>,
     /// Read from the index when asked, so it costs the object nothing.
     #[property(get = Self::name)]
     name: PhantomData<String>,
@@ -31,6 +33,9 @@ impl ObjectImpl for SidebarObject {}
 
 impl SidebarObject {
     fn name(&self) -> String {
+        if let Some(rank) = self.heading.get() {
+            return super::sidebar_index::rank_title(rank);
+        }
         self.index
             .get()
             .and_then(|index| index.entry(self.entry.get()))

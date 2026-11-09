@@ -1084,6 +1084,9 @@ impl TreeInner {
             return;
         };
         if let Some(object) = item.downcast_ref::<SidebarObject>() {
+            if object.is_heading() {
+                return;
+            }
             if let Some(view) = key.and_then(|key| self.view_of(&key)) {
                 match object.target() {
                     ObjectTarget::Rows(table) => view.open(table),
@@ -1120,6 +1123,12 @@ impl TreeInner {
         let Some((item, key)) = self.item_at(which, position) else {
             return false;
         };
+        if item
+            .downcast_ref::<SidebarObject>()
+            .is_some_and(SidebarObject::is_heading)
+        {
+            return false;
+        }
         // A definition has no tab to open beside the others.
         let table = item
             .downcast_ref::<SidebarObject>()
@@ -1198,6 +1207,9 @@ impl TreeInner {
     fn menu_for(&self, item: &glib::Object, key: Option<SessionKey>) -> Option<gio::Menu> {
         let view = key.and_then(|key| self.view_of(&key));
         if let Some(object) = item.downcast_ref::<SidebarObject>() {
+            if object.is_heading() {
+                return None;
+            }
             let view = view?;
             self.popover.insert_action_group(GROUP, Some(view.actions()));
             return Some(object_menu(

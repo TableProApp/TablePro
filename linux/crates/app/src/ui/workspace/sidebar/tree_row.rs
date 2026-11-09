@@ -81,6 +81,9 @@ mod imp {
                 let Some(object) = row.shown().and_downcast::<SidebarObject>() else {
                     return false;
                 };
+                if object.is_heading() {
+                    return false;
+                }
                 tooltip.set_text(Some(&object.qualified_name()));
                 true
             });
@@ -264,6 +267,16 @@ impl TreeRow {
 
     fn show_object(&self, item: &gtk::ListItem, object: &SidebarObject) {
         let imp = self.imp();
+        if object.is_heading() {
+            self.hide_kind();
+            imp.icon.set_visible(false);
+            imp.name.set_label(&object.name());
+            set_classes(&imp.name, &["dimmed", "caption-heading"]);
+            self.show_suffix(false, false, false);
+            describe(item, "");
+            set_choosable(item, false);
+            return;
+        }
         // A recycled row usually shows a table again, and setting the
         // same icon or description still redraws or re-announces it.
         let icon = object.icon_name();

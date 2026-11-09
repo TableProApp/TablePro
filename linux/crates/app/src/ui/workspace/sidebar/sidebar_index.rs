@@ -312,14 +312,38 @@ fn qualified(schema: Option<&str>, name: &str) -> String {
     }
 }
 
-/// What the grid pages through first, then each kind that has SQL to read.
-fn kind_rank(kind: ObjectKind) -> u8 {
+/// The kinds in the order the macOS sidebar lists them, so each kind is
+/// one run of a section and can sit under a heading of its own. A
+/// partitioned table or a dictionary is listed with the tables.
+pub(crate) fn kind_rank(kind: ObjectKind) -> u8 {
     match kind {
-        ObjectKind::Function => 1,
-        ObjectKind::Procedure => 2,
-        ObjectKind::Sequence => 3,
-        ObjectKind::Trigger => 4,
+        ObjectKind::View => 1,
+        ObjectKind::MaterializedView => 2,
+        ObjectKind::ForeignTable => 3,
+        ObjectKind::Sequence => 4,
+        ObjectKind::Procedure => 5,
+        ObjectKind::Function => 6,
+        ObjectKind::Trigger => 7,
+        ObjectKind::Key(_) => KEY_RANK,
         _ => 0,
+    }
+}
+
+/// A key-value engine's keys have no kinds to group by.
+pub(crate) const KEY_RANK: u8 = 8;
+
+/// What a heading says of the kind with `rank`.
+pub(crate) fn rank_title(rank: u8) -> String {
+    use crate::i18n::pgettext;
+    match rank {
+        1 => pgettext("object kind heading", "Views"),
+        2 => pgettext("object kind heading", "Materialized Views"),
+        3 => pgettext("object kind heading", "Foreign Tables"),
+        4 => pgettext("object kind heading", "Sequences"),
+        5 => pgettext("object kind heading", "Procedures"),
+        6 => pgettext("object kind heading", "Functions"),
+        7 => pgettext("object kind heading", "Triggers"),
+        _ => pgettext("object kind heading", "Tables"),
     }
 }
 
@@ -502,12 +526,12 @@ mod tests {
         assert_eq!(
             kinds,
             [
-                row("active_users", ObjectKind::View, None),
                 row("users", ObjectKind::Table, None),
+                row("active_users", ObjectKind::View, None),
+                row("ids", ObjectKind::Sequence, None),
+                row("archive", ObjectKind::Procedure, None),
                 row("add", ObjectKind::Function, None),
                 row("refresh", ObjectKind::Function, None),
-                row("archive", ObjectKind::Procedure, None),
-                row("ids", ObjectKind::Sequence, None),
                 row("audit", ObjectKind::Trigger, Some("users")),
                 row("audit", ObjectKind::Trigger, Some("orders")),
             ]

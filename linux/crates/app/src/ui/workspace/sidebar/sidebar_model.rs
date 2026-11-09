@@ -178,7 +178,10 @@ impl SidebarModel {
             node.set_schema_name(section.schema.clone());
             let entries = run.map_or_else(Entries::default, |(_, run)| Entries::Run(run.start, run.end));
             if let Some(rows) = node.rows() {
-                rows.show(&index, entries.clone());
+                let listed = run.map_or_else(Entries::default, |(_, run)| {
+                    Entries::grouped(&index, run.start, run.end)
+                });
+                rows.show(&index, listed);
             }
             let results = match &mut found {
                 Found::Nothing => Entries::default(),
@@ -320,7 +323,22 @@ mod tests {
     fn names(list: &gio::ListModel) -> Vec<String> {
         (0..list.n_items())
             .filter_map(|at| list.item(at).and_downcast::<SidebarObject>())
+            .filter(|object| !object.is_heading())
             .map(|object| object.name())
+            .collect()
+    }
+
+    /// Every row of `list`, a kind's heading as its title in brackets.
+    fn rows_of(list: &gio::ListModel) -> Vec<String> {
+        (0..list.n_items())
+            .filter_map(|at| list.item(at).and_downcast::<SidebarObject>())
+            .map(|object| {
+                if object.is_heading() {
+                    format!("[{}]", object.name())
+                } else {
+                    object.name()
+                }
+            })
             .collect()
     }
 
@@ -492,6 +510,73 @@ mod tests {
     }
 
     #[gtk4::test]
+    fn a_schema_lists_its_objects_under_a_heading_for_each_kind_that_has_some() {
+        let model = SidebarModel::new();
+        let of = |kind, name: &str| ObjectInfo {
+            kind,
+            ..object("public", name)
+        };
+        replace(
+            &model,
+            &[
+                of(ObjectKind::Function, "total"),
+                of(ObjectKind::Table, "users"),
+                of(ObjectKind::Sequence, "ids"),
+                of(ObjectKind::View, "active_users"),
+                of(ObjectKind::Table, "orders"),
+            ],
+            &[],
+        );
+
+        let node = nodes(&model.schemas()).remove(0);
+
+        assert_eq!(
+            rows_of(&node.children().expect("the schema's rows")),
+            [
+                "[Tables]",
+                "orders",
+                "users",
+                "[Views]",
+                "active_users",
+                "[Sequences]",
+                "ids",
+                "[Functions]",
+                "total"
+            ]
+        );
+    }
+
+    #[gtk4::test]
+    fn a_search_lists_what_it_finds_without_headings() {
+        let model = SidebarModel::new();
+        let view = ObjectInfo {
+            kind: ObjectKind::View,
+            ..object("public", "user_view")
+        };
+        replace(&model, &[object("public", "users"), view], &[]);
+
+        search(&model, "user");
+
+        let node = nodes(&model.schemas()).remove(0);
+        assert_eq!(rows_of(&node.found().expect("the found rows")), ["users", "user_view"]);
+    }
+
+    #[gtk4::test]
+    fn a_key_listing_has_no_headings() {
+        let model = SidebarModel::new();
+        let key = ObjectInfo {
+            kind: ObjectKind::Key(tablepro_core::meta::KeyKind::Hash),
+            ..object("public", "session:1")
+        };
+        let asked = model.replace(SidebarIndex::keys(&[key], "Database 0".to_owned()));
+        model.show(asked.work_out()).expect("the rows");
+
+        let node = nodes(&model.schemas()).remove(0);
+
+        assert_eq!(rows_of(&node.children().expect("rows")), ["session:1"]);
+    }
+
+    #[gtk4::test]
     fn a_table_is_located_in_its_schema_and_among_the_results() {
         let model = SidebarModel::new();
         replace(
@@ -506,7 +591,7 @@ mod tests {
         let users = TableRef::new(Some("sales".to_owned()), "users");
 
         let (node, offset) = model.locate(&users).expect("the table in its schema");
-        assert_eq!((node.title(), offset), ("sales".to_owned(), 0));
+        assert_eq!((node.title(), offset), ("sales".to_owned(), 1), "under its heading");
         assert!(model.locate_found(&users).is_none(), "found with no search");
 
         search(&model, "user");

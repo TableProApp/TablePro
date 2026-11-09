@@ -4,7 +4,7 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{gio, glib};
 
-use super::sidebar_index::SidebarIndex;
+use super::sidebar_index::{KEY_RANK, SidebarIndex, kind_rank};
 use super::sidebar_list_imp as imp;
 
 glib::wrapper! {
@@ -16,12 +16,31 @@ glib::wrapper! {
         @implements gio::ListModel;
 }
 
-/// The index's entries a list shows: a whole section's run, or the
-/// entries a search picked from it, in list order.
+/// The index's entries a list shows: a whole section's run, the
+/// entries a search picked from it, or a run set under a heading for
+/// each kind, in list order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Entries {
     Run(u32, u32),
     Picked(Vec<u32>),
+    Grouped(Vec<Segment>),
+}
+
+/// The entries of one kind in a run: `start..end` of the index, under
+/// the heading of the kind's `rank`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Segment {
+    pub(crate) rank: u8,
+    pub(crate) start: u32,
+    pub(crate) end: u32,
+}
+
+/// What a position of a list holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Row {
+    /// The heading of the kind with this rank.
+    Heading(u8),
+    Entry(u32),
 }
 
 impl Default for Entries {
@@ -31,17 +50,60 @@ impl Default for Entries {
 }
 
 impl Entries {
+    /// A run of `index`, under a heading for each kind it holds. A key
+    /// listing has one kind of row and no headings.
+    pub(crate) fn grouped(index: &SidebarIndex, start: u32, end: u32) -> Self {
+        let mut segments: Vec<Segment> = Vec::new();
+        for at in start..end {
+            let Some(entry) = index.entry(at) else {
+                break;
+            };
+            let rank = kind_rank(entry.object.kind);
+            if rank == KEY_RANK {
+                return Self::Run(start, end);
+            }
+            match segments.last_mut() {
+                Some(last) if last.rank == rank => last.end = at + 1,
+                _ => segments.push(Segment {
+                    rank,
+                    start: at,
+                    end: at + 1,
+                }),
+            }
+        }
+        Self::Grouped(segments)
+    }
+
     pub(crate) fn len(&self) -> u32 {
         match self {
             Self::Run(start, end) => end.saturating_sub(*start),
             Self::Picked(entries) => u32::try_from(entries.len()).unwrap_or(u32::MAX),
+            Self::Grouped(segments) => segments
+                .iter()
+                .map(|segment| 1 + segment.end.saturating_sub(segment.start))
+                .sum(),
         }
     }
 
-    pub(crate) fn get(&self, position: u32) -> Option<u32> {
+    pub(crate) fn get(&self, position: u32) -> Option<Row> {
         match self {
-            Self::Run(start, end) => start.checked_add(position).filter(|entry| entry < end),
-            Self::Picked(entries) => entries.get(position as usize).copied(),
+            Self::Run(start, end) => start.checked_add(position).filter(|entry| entry < end).map(Row::Entry),
+            Self::Picked(entries) => entries.get(position as usize).copied().map(Row::Entry),
+            Self::Grouped(segments) => {
+                let mut left = position;
+                for segment in segments {
+                    let size = 1 + segment.end.saturating_sub(segment.start);
+                    if left < size {
+                        return Some(if left == 0 {
+                            Row::Heading(segment.rank)
+                        } else {
+                            Row::Entry(segment.start + left - 1)
+                        });
+                    }
+                    left -= size;
+                }
+                None
+            }
         }
     }
 
@@ -53,6 +115,16 @@ impl Entries {
                 .binary_search(&entry)
                 .ok()
                 .and_then(|position| u32::try_from(position).ok()),
+            Self::Grouped(segments) => {
+                let mut before = 0;
+                for segment in segments {
+                    if (segment.start..segment.end).contains(&entry) {
+                        return Some(before + 1 + entry - segment.start);
+                    }
+                    before += 1 + segment.end - segment.start;
+                }
+                None
+            }
         }
     }
 }
@@ -186,6 +258,47 @@ mod tests {
         assert_eq!(list.position_of_entry(3), Some(1));
         assert_eq!(list.position_of_entry(1), None);
         assert_eq!(list.item(2), None, "past the end");
+    }
+
+    #[gtk4::test]
+    fn a_grouped_run_counts_a_heading_for_each_kind() {
+        let objects: Vec<ObjectInfo> = [
+            ("users", ObjectKind::Table),
+            ("recent", ObjectKind::View),
+            ("ids", ObjectKind::Sequence),
+        ]
+        .into_iter()
+        .map(|(name, kind)| ObjectInfo {
+            schema: Some("public".to_owned()),
+            name: name.to_owned(),
+            kind,
+            parent_table: None,
+        })
+        .collect();
+        let index = Arc::new(SidebarIndex::build(&objects, &[]));
+        let list = SidebarList::new();
+
+        list.show(&index, Entries::grouped(&index, 0, 3));
+
+        assert_eq!(list.n_items(), 6);
+        let rows: Vec<(bool, String)> = (0..6)
+            .filter_map(|at| list.item(at).and_downcast::<SidebarObject>())
+            .map(|object| (object.is_heading(), object.name()))
+            .collect();
+        assert_eq!(
+            rows,
+            [
+                (true, "Tables".to_owned()),
+                (false, "users".to_owned()),
+                (true, "Views".to_owned()),
+                (false, "recent".to_owned()),
+                (true, "Sequences".to_owned()),
+                (false, "ids".to_owned()),
+            ]
+        );
+        assert_eq!(list.position_of_entry(0), Some(1));
+        assert_eq!(list.position_of_entry(2), Some(5));
+        assert_eq!(list.item(6), None, "past the end");
     }
 
     #[gtk4::test]

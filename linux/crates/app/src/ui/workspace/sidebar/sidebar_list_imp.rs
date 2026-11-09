@@ -6,7 +6,7 @@ use gtk4::subclass::prelude::*;
 use gtk4::{gio, glib};
 
 use super::sidebar_index::SidebarIndex;
-use super::sidebar_list::Entries;
+use super::sidebar_list::{Entries, Row};
 use super::sidebar_object::SidebarObject;
 
 #[derive(Default)]
@@ -43,14 +43,19 @@ impl ListModelImpl for SidebarList {
 
     fn item(&self, position: u32) -> Option<glib::Object> {
         let entries = self.entries.borrow();
-        let entry = entries.get(position)?;
+        let row = entries.get(position)?;
         let at = position as usize;
         if let Some(Some(object)) = self.objects.borrow().get(at) {
             return Some(object.clone().upcast());
         }
         let index = self.index.borrow();
-        index.entry(entry)?;
-        let object = SidebarObject::new(&index, entry);
+        let object = match row {
+            Row::Heading(rank) => SidebarObject::heading(&index, rank),
+            Row::Entry(entry) => {
+                index.entry(entry)?;
+                SidebarObject::new(&index, entry)
+            }
+        };
         let mut objects = self.objects.borrow_mut();
         if objects.len() <= at {
             objects.resize(entries.len() as usize, None);

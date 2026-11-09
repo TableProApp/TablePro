@@ -22,6 +22,7 @@ use super::connection_tree::{Pane, TreeInner, Which};
 use super::object_key::ObjectKey;
 use super::object_target::ObjectTarget;
 use super::sidebar_event::SidebarEvent;
+use super::sidebar_list::{Entries, SidebarList};
 use super::sidebar_menu::{object_menu, schema_menu};
 use super::sidebar_object::SidebarObject;
 use super::sidebar_view::Holds;
@@ -54,7 +55,17 @@ fn count_rows(schemas: &gio::ListModel, rows: fn(&TreeNode) -> Option<gio::ListM
     (0..schemas.n_items())
         .filter_map(|at| schemas.item(at).and_downcast::<TreeNode>())
         .filter_map(|node| rows(&node))
-        .map(|list| list.n_items())
+        .map(|list| {
+            // Counted from the entries: asking for each item would make
+            // the rows the tests on made rows look at.
+            let headings = list
+                .downcast_ref::<SidebarList>()
+                .map_or(0, |list| match &*list.imp().entries.borrow() {
+                    Entries::Grouped(segments) => segments.len() as u32,
+                    _ => 0,
+                });
+            list.n_items() - headings
+        })
         .sum()
 }
 
@@ -651,7 +662,7 @@ fn a_store_write_keeps_the_other_open_connections_open() {
     let moved = after.iter().position(|name| name == "Zulu").expect("the moved row");
     assert_eq!(
         after[moved - 1..moved + 5],
-        ["Office", "Zulu", "public", "orders", "sales", "leads"],
+        ["Office", "Zulu", "public", "Tables", "orders", "sales"],
         "the moved row came back folded"
     );
 }
@@ -989,7 +1000,7 @@ fn a_search_lists_the_tables_it_finds_under_their_schema_and_connection() {
         every_affordance(),
     );
     shown.open(&alpha, &view);
-    assert_eq!(shown.rows(), ["Alpha", "public", "orders", "users", "Beta"]);
+    assert_eq!(shown.rows(), ["Alpha", "public", "Tables", "orders", "users", "Beta"]);
 
     shown.search("ord");
 
@@ -1164,9 +1175,27 @@ fn an_open_connection_with_nothing_to_list_says_so() {
     tables(&view, &["orders"]);
     assert_eq!(
         shown.rows(),
-        ["Alpha", "public", "orders"],
+        ["Alpha", "public", "Tables", "orders"],
         "a lone schema stays folded"
     );
+}
+
+#[gtk4::test]
+fn a_kind_heading_is_neither_chosen_opened_nor_given_a_menu() {
+    let alpha = connection("Alpha", None);
+    let shown = Shown::new(std::slice::from_ref(&alpha));
+    let (view, _) = session(&[object("public", "orders")], every_affordance());
+    shown.open(&alpha, &view);
+    shown.row("public").set_expanded(true);
+
+    let heading = shown.row_widget("Tables");
+    let item = heading.imp().item.upgrade().expect("the row's item");
+    assert!(!item.is_selectable() && !item.is_activatable());
+    let position = shown.row("Tables").position();
+    shown.pane().list_view.emit_by_name::<()>("activate", &[&position]);
+    assert!(shown.fired().is_empty(), "a heading opened something");
+    shown.menu("Tables");
+    assert!(!shown.popover().is_visible(), "a heading has a menu");
 }
 
 #[gtk4::test]
@@ -1180,7 +1209,11 @@ fn a_lone_schema_of_more_tables_than_a_turn_makes_opens_once_they_are_made() {
     tables(&view, &names.iter().map(String::as_str).collect::<Vec<_>>());
 
     wait_until(WAIT, || shown.row("public").is_expanded()).expect("the lone schema to open");
-    assert_eq!(shown.rows().len(), 5_002, "the connection, its schema and every table");
+    assert_eq!(
+        shown.rows().len(),
+        5_003,
+        "the connection, its schema, the Tables heading and every table"
+    );
 }
 
 #[gtk4::test]
@@ -1575,7 +1608,7 @@ fn a_closed_session_lists_nothing_and_leaves_the_others_open() {
 
     shown.tree.remove_session(&key);
 
-    assert_eq!(shown.rows(), ["Alpha", "Beta", "public", "users"]);
+    assert_eq!(shown.rows(), ["Alpha", "Beta", "public", "Tables", "users"]);
     assert!(!shown.row("Alpha").is_expandable());
     assert_eq!(shown.selected(), None, "the closed session kept its row selected");
 }
@@ -1590,7 +1623,7 @@ fn a_file_no_saved_connection_names_has_a_row_of_its_own() {
 
     assert_eq!(
         shown.rows(),
-        ["Alpha", "sales.db", "main", "orders"],
+        ["Alpha", "sales.db", "main", "Tables", "orders"],
         "a lone schema stays folded"
     );
     shown.search("sales");
