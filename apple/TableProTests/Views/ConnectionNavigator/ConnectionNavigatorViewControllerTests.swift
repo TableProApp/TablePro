@@ -250,6 +250,88 @@ struct ConnectionNavigatorViewControllerTests {
         #expect(clipView.bounds.origin == .zero)
     }
 
+    // MARK: - Revealing the shown connection
+
+    @Test("The list opens with the shown connection selected, even inside closed groups")
+    func shownConnectionInClosedGroupsIsRevealedOnLoad() throws {
+        let outer = ConnectionGroup(name: "Outer")
+        let inner = ConnectionGroup(name: "Inner", parentId: outer.id)
+        try fixture.groupStorage.addGroup(outer)
+        try fixture.groupStorage.addGroup(inner)
+        let shown = DatabaseConnection(name: "shown", groupId: inner.id)
+        fixture.save([shown])
+        fixture.host.hosted = [shown.id]
+        fixture.host.selected = shown.id
+
+        let hosted = host()
+        defer { hosted.tearDown() }
+
+        let row = hosted.controller.row(for: .connection(shown.id))
+        #expect(row >= 0)
+        #expect(hosted.controller.outlineView.selectedRow == row)
+        /// Opened to show the connection, which is not the user choosing to open them.
+        #expect(fixture.expansionStore.load(keeping: [outer.id, inner.id]).isEmpty)
+    }
+
+    @Test("Switching to a connection inside a closed group reveals and selects it")
+    func switchingRevealsTheShownConnection() throws {
+        let group = ConnectionGroup(name: "Group")
+        try fixture.groupStorage.addGroup(group)
+        let first = DatabaseConnection(name: "first")
+        let second = DatabaseConnection(name: "second", groupId: group.id)
+        fixture.save([first, second])
+        fixture.host.hosted = [first.id, second.id]
+        fixture.host.selected = first.id
+        let hosted = host()
+        defer { hosted.tearDown() }
+        try #require(hosted.controller.row(for: .connection(second.id)) == -1)
+
+        fixture.host.selected = second.id
+        hosted.controller.refreshSelection()
+
+        let row = hosted.controller.row(for: .connection(second.id))
+        #expect(row >= 0)
+        #expect(hosted.controller.outlineView.selectedRow == row)
+        #expect(fixture.expansionStore.load(keeping: [group.id]).isEmpty)
+    }
+
+    /// The list rebuilds on every connect, and reapplying the saved expansion closed the group again.
+    @Test("A group opened to show the connection stays open through a rebuild")
+    func revealedGroupStaysOpenThroughARebuild() throws {
+        let group = ConnectionGroup(name: "Group")
+        try fixture.groupStorage.addGroup(group)
+        let shown = DatabaseConnection(name: "shown", groupId: group.id)
+        fixture.save([shown])
+        fixture.host.hosted = [shown.id]
+        fixture.host.selected = shown.id
+        let hosted = host()
+        defer { hosted.tearDown() }
+
+        hosted.controller.model.rebuild()
+
+        let row = hosted.controller.row(for: .connection(shown.id))
+        #expect(row >= 0)
+        #expect(hosted.controller.outlineView.selectedRow == row)
+    }
+
+    @Test("A group the user closes after a reveal stays closed through a rebuild")
+    func closedRevealedGroupStaysClosed() throws {
+        let group = ConnectionGroup(name: "Group")
+        try fixture.groupStorage.addGroup(group)
+        let shown = DatabaseConnection(name: "shown", groupId: group.id)
+        fixture.save([shown])
+        fixture.host.hosted = [shown.id]
+        fixture.host.selected = shown.id
+        let hosted = host()
+        defer { hosted.tearDown() }
+        let outline = hosted.controller.outlineView
+        outline.collapseItem(outline.item(atRow: hosted.controller.row(for: .group(group.id))))
+
+        hosted.controller.model.rebuild()
+
+        #expect(hosted.controller.row(for: .connection(shown.id)) == -1)
+    }
+
     // MARK: - Clicks and Return
 
     /// NSTableView tracks a press until the mouse-up, so the mouse-up waits in the queue first. A

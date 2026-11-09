@@ -96,6 +96,11 @@ internal final class ConnectionNavigatorViewController: NSViewController, NSSear
     private var items: [ConnectionNavigatorRowID: ConnectionNavigatorOutlineItem] = [:]
     private var rootItems: [ConnectionNavigatorOutlineItem] = []
     private var isApplyingExpansion = false
+    /// Groups opened to show the connection on screen. The outline holds them open and the model
+    /// never hears of them, since a reveal is not the user choosing to open a group.
+    private var revealedGroupIds: Set<UUID> = []
+    /// Each shown connection is revealed once, so a group the user closes over it stays closed.
+    private var revealedConnectionId: UUID?
     private var isReloading = false
     private var reportedWidth: CGFloat = 0
     private var rowSizePreference = AppSettingsManager.shared.general.sidebarRowSize
@@ -262,6 +267,7 @@ internal final class ConnectionNavigatorViewController: NSViewController, NSSear
         isReloading = true
         outlineView.reloadData()
         applyExpansion()
+        revealShownConnection()
         if let previous, row(for: previous) >= 0 {
             select(row(for: previous))
         } else {
@@ -326,7 +332,7 @@ internal final class ConnectionNavigatorViewController: NSViewController, NSSear
     private func applyExpansion(to items: [ConnectionNavigatorOutlineItem]) {
         for item in items {
             guard case .group(let group) = item.row, !item.children.isEmpty else { continue }
-            guard model.isGroupExpanded(group) else {
+            guard model.isGroupExpanded(group) || revealedGroupIds.contains(group.id) else {
                 outlineView.collapseItem(item)
                 continue
             }
@@ -352,7 +358,31 @@ internal final class ConnectionNavigatorViewController: NSViewController, NSSear
         guard !isApplyingExpansion, !isReloading,
               let item = notification.userInfo?["NSObject"] as? ConnectionNavigatorOutlineItem,
               case .group(let id) = item.id else { return }
+        revealedGroupIds.remove(id)
         model.setGroupExpanded(id, false)
+    }
+
+    /// Opens the groups above the connection this window shows, in the outline only. A connection
+    /// the list does not hold yet, such as one a filter hides, is revealed once it appears.
+    private func revealShownConnection() {
+        guard let shown = model.shownConnectionId, shown != revealedConnectionId,
+              let groupIds = groupIds(above: .connection(shown), in: rootItems)
+        else { return }
+        revealedConnectionId = shown
+        revealedGroupIds.formUnion(groupIds)
+        applyExpansion()
+    }
+
+    /// The groups holding a row, outermost first, or nil when the list does not hold the row.
+    private func groupIds(above id: ConnectionNavigatorRowID, in items: [ConnectionNavigatorOutlineItem]) -> [UUID]? {
+        for item in items {
+            if item.id == id { return [] }
+            guard case .group(let groupId) = item.id,
+                  let inner = groupIds(above: id, in: item.children)
+            else { continue }
+            return [groupId] + inner
+        }
+        return nil
     }
 
     // MARK: - Selection
@@ -372,6 +402,7 @@ internal final class ConnectionNavigatorViewController: NSViewController, NSSear
         guard isViewLoaded else { return }
         model.refreshPresentation()
         let previous = selectedRowID
+        revealShownConnection()
         selectShownConnection()
         scrollToSelection(ifMovedFrom: previous)
     }
