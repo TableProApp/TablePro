@@ -214,7 +214,7 @@ mod tests {
             AccessibleProperty::KeyShortcuts
         ));
 
-        bar.announce_save_keys("browse", &gio::SimpleAction::new("save", None));
+        bar.announce_save_keys("table", &gio::SimpleAction::new("save", None));
 
         assert!(gtk::test_accessible_has_property(
             &save,

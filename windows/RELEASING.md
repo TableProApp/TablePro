@@ -35,7 +35,7 @@ The maintainer does these once, in this order: a tag runs the workflow file at t
    gh workflow run release-windows.yml --ref main -f version=X.Y.Z
    ```
 
-2. **The tag**, on a `main` commit whose CI push run is green:
+2. **The tag**, on a `main` commit whose CI push run is green and whose `deny.toml` ignores no advisory on the grounds that Windows has no release:
 
    ```bash
    git fetch origin --tags

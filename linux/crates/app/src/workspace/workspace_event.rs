@@ -1,3 +1,4 @@
+use tablepro_core::WriteKind;
 use uuid::Uuid;
 
 use super::SaveSettled;
@@ -7,6 +8,7 @@ use super::SaveSettled;
 pub enum WorkspaceEvent {
     SaveStarted {
         tab: Uuid,
+        kind: WriteKind,
     },
     SaveSettled {
         settled: Box<SaveSettled>,
