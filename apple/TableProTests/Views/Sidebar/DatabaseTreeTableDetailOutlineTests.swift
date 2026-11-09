@@ -1,7 +1,9 @@
 import AppKit
 import Foundation
+import os
 @testable import TablePro
 import TableProPluginKit
+import TableProSQLGrammar
 import TableProTestSupport
 import Testing
 
@@ -433,6 +435,41 @@ struct DatabaseTreeTableDetailOutlineTests {
         #expect(fixture.outlineView.isItemExpanded(node(fixture, columns)))
         try await waitUntil { detailState(fixture, .columns).value != nil }
         #expect(fixture.driver.detailReads == ["columns:orders"])
+        await tearDown(fixture)
+    }
+
+    private func detailNames(_ rows: [DatabaseTreeNode]) -> [String] {
+        rows.compactMap { row -> String? in
+            guard case .tableDetail(let detail) = row.kind else { return nil }
+            return detail.item.name
+        }
+    }
+
+    @Test("A catalog change reads an open group again on the restore pass, and its rows stay until the read lands")
+    func catalogChangeRereadsAnOpenGroupKeepingItsRows() async throws {
+        let fixture = try makeFixture()
+        let table = tableNode(fixture)
+        let columns = group(fixture, .columns)
+        let groupNode = node(fixture, columns)
+        fixture.windowState.expandedTreeTables = [DatabaseTableKey(orders(fixture))]
+        fixture.windowState.expandedTreeTableDetailGroups = [columns.expansionKey]
+        reloadFlat(fixture, table: table)
+        try await waitUntil { detailState(fixture, .columns).value != nil }
+        fixture.driver.columnsByTable["orders"] = [TestFixtures.makeColumnInfo(name: "id", dataType: "bigint")]
+
+        await service.refreshCatalog(for: CatalogChange(connectionId: fixture.connection.id, kinds: .tables))
+        let paused = OSAllocatedUnfairLock(initialState: false)
+        fixture.driver.onTableFetchPaused = { paused.withLock { $0 = true } }
+        fixture.driver.pausesNextTableFetch = true
+        reloadFlat(fixture, table: table)
+        try await waitUntil { paused.withLock { $0 } }
+
+        #expect(detailNames(rebuiltChildren(fixture, of: groupNode)) == ["id", "total"])
+
+        fixture.driver.resumeTableFetch()
+        try await waitUntil { detailNames(rebuiltChildren(fixture, of: groupNode)) == ["id"] }
+        #expect(fixture.outlineView.isItemExpanded(groupNode))
+        #expect(fixture.driver.detailReads == ["columns:orders", "columns:orders"])
         await tearDown(fixture)
     }
 

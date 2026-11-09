@@ -258,6 +258,45 @@ struct WindowSidebarStateTests {
 
     /// A later build may add a group this one has never heard of. Reading it must not throw away the
     /// rest of the blob, the rule `unknownObjectKindKeepsOtherExpansion` pins for object kinds.
+    /// `PersistedExpansion` as the build before Table Details declares it, copied from that build.
+    private struct PreviousPersistedExpansion: Decodable {
+        struct ObjectGroup: Decodable {
+            let database: String
+            let schema: String?
+            let kind: String
+            let expanded: Bool
+        }
+
+        var schemas: [String]
+        var databases: [String]
+        var databaseSchemas: [DatabaseSchemaKey]
+        var tables: [DatabaseTableKey]?
+        var objectGroups: [ObjectGroup]?
+        var seeded: Bool?
+        var collapsedFolders: [UUID]?
+    }
+
+    /// Sparkle never downgrades, but a beta user can turn betas off, so the previous stable reads
+    /// what this build writes.
+    @Test("The build before table details still reads expansion that holds open groups")
+    func previousBuildReadsExpansionWithDetailGroups() throws {
+        let defaults = try makeDefaults()
+        let connectionId = UUID()
+        let orders = DatabaseTableKey(database: "shop", schema: "public", table: "orders")
+        let state = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        state.expandedTreeDatabases.insert("shop")
+        state.expandedTreeTables.insert(orders)
+        state.expandedTreeTableDetailGroups = [DatabaseTableDetailGroupKey(table: orders, group: .columns)]
+
+        let data = try #require(defaults.data(forKey: "com.TablePro.sidebar.treeExpansion.\(connectionId.uuidString)"))
+        let written = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let previous = try JSONDecoder().decode(PreviousPersistedExpansion.self, from: data)
+
+        #expect(written["tableDetailGroups"] != nil)
+        #expect(previous.databases == ["shop"])
+        #expect(previous.tables == [orders])
+    }
+
     @Test("An unrecognized detail group does not discard the rest of the expansion")
     func unknownDetailGroupKeepsOtherExpansion() throws {
         let defaults = try makeDefaults()
