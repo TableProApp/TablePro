@@ -89,6 +89,7 @@ internal final class ConnectionNavigatorViewController: NSViewController, NSSear
     private var rowSizePreference = AppSettingsManager.shared.general.sidebarRowSize
     private var modelCancellables: Set<AnyCancellable> = []
     private var rowSizeObservation: AnyCancellable?
+    private var groupSheet: NSViewController?
 
     internal init(model: ConnectionNavigatorModel = ConnectionNavigatorModel()) {
         self.model = model
@@ -482,12 +483,25 @@ internal final class ConnectionNavigatorViewController: NSViewController, NSSear
         presentNewGroupSheet(parentId: parentId)
     }
 
-    /// The group sheet the Welcome window uses, saving through the same store.
-    private func presentNewGroupSheet(parentId: UUID?) {
-        let sheet = GroupEditorSheet(mode: .create(parentId: parentId), groups: model.groups) { [weak self] draft in
-            try self?.model.createGroup(draft)
-        }
-        presentAsSheet(sheet)
+    /// The group sheet the Welcome window uses, saving through the same store. SwiftUI's `dismiss`
+    /// does not reach a sheet AppKit presents, so the sheet closes through the controller kept here.
+    internal func presentNewGroupSheet(parentId: UUID?) {
+        guard groupSheet == nil else { return }
+        let sheet = GroupEditorSheet(
+            mode: .create(parentId: parentId),
+            groups: model.groups,
+            onDismiss: { [weak self] in self?.dismissGroupSheet() },
+            onSave: { [weak self] draft in try self?.model.createGroup(draft) }
+        )
+        let controller = NSHostingController(rootView: sheet)
+        groupSheet = controller
+        presentAsSheet(controller)
+    }
+
+    private func dismissGroupSheet() {
+        guard let groupSheet else { return }
+        self.groupSheet = nil
+        dismiss(groupSheet)
     }
 
     // MARK: - Data Source

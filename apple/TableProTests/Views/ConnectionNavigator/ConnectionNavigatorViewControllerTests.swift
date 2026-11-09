@@ -6,6 +6,7 @@
 import AppKit
 import Foundation
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -21,6 +22,9 @@ struct ConnectionNavigatorViewControllerTests {
         let window: NSWindow
 
         func tearDown() {
+            for sheet in controller.presentedViewControllers ?? [] {
+                controller.dismiss(sheet)
+            }
             window.orderOut(nil)
             window.contentViewController = nil
         }
@@ -161,6 +165,81 @@ struct ConnectionNavigatorViewControllerTests {
         let shownRow = hosted.controller.row(for: .connection(shown.id))
         #expect(shownRow >= 0)
         #expect(outline.selectedRow == shownRow)
+    }
+
+    // MARK: - New Group sheet
+
+    /// Escape and Return are the Cancel and Create buttons' own shortcuts, so a key equivalent runs
+    /// the button's action. SwiftUI builds no accessibility tree in the test host to press through.
+    private static func keyEquivalent(_ characters: String, keyCode: UInt16, in sheet: NSViewController) throws -> NSEvent {
+        let window = try #require(sheet.view.window)
+        return try #require(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber,
+            context: nil,
+            characters: characters,
+            charactersIgnoringModifiers: characters,
+            isARepeat: false,
+            keyCode: keyCode
+        ))
+    }
+
+    /// Typed through the field editor, the way a key press edits it, so SwiftUI's binding hears it.
+    private static func type(_ text: String, intoFieldOf sheet: NSViewController) throws {
+        let field = try #require(editableTextField(in: sheet.view))
+        let window = try #require(sheet.view.window)
+        #expect(window.makeFirstResponder(field))
+        let editor = try #require(field.currentEditor() as? NSTextView)
+        editor.insertText(text, replacementRange: editor.selectedRange())
+    }
+
+    private static func editableTextField(in view: NSView) -> NSTextField? {
+        if let field = view as? NSTextField, field.isEditable { return field }
+        for subview in view.subviews {
+            if let field = editableTextField(in: subview) { return field }
+        }
+        return nil
+    }
+
+    private func presentedSheet(of controller: ConnectionNavigatorViewController) throws -> NSViewController {
+        let sheet = try #require(controller.presentedViewControllers?.first)
+        sheet.view.layoutSubtreeIfNeeded()
+        return sheet
+    }
+
+    /// The sheet is SwiftUI hosted in an AppKit sheet, where SwiftUI's own dismiss reaches nothing.
+    @Test("Cancel closes the New Group sheet")
+    func cancelClosesNewGroupSheet() async throws {
+        fixture.save([DatabaseConnection(name: "prod")])
+        let hosted = host()
+        defer { hosted.tearDown() }
+        hosted.controller.presentNewGroupSheet(parentId: nil)
+        let sheet = try presentedSheet(of: hosted.controller)
+        let escape = try Self.keyEquivalent("\u{1b}", keyCode: 53, in: sheet)
+
+        #expect(sheet.view.performKeyEquivalent(with: escape))
+        try await waitUntil(timeout: .seconds(2)) { hosted.controller.presentedViewControllers?.isEmpty ?? true }
+        #expect(fixture.groupStorage.loadGroups().isEmpty)
+    }
+
+    @Test("Create saves the group and closes the New Group sheet")
+    func createSavesAndClosesNewGroupSheet() async throws {
+        fixture.save([DatabaseConnection(name: "prod")])
+        let hosted = host()
+        defer { hosted.tearDown() }
+        hosted.controller.presentNewGroupSheet(parentId: nil)
+        let sheet = try presentedSheet(of: hosted.controller)
+        try Self.type("Reports", intoFieldOf: sheet)
+        let returnKey = try Self.keyEquivalent("\r", keyCode: 36, in: sheet)
+
+        /// Create turns on once SwiftUI has read the typed name, which it does on its own schedule.
+        try await waitUntil(timeout: .seconds(2)) { sheet.view.performKeyEquivalent(with: returnKey) }
+        try await waitUntil(timeout: .seconds(2)) { !fixture.groupStorage.loadGroups().isEmpty }
+        #expect(fixture.groupStorage.loadGroups().map(\.name) == ["Reports"])
+        try await waitUntil(timeout: .seconds(2)) { hosted.controller.presentedViewControllers?.isEmpty ?? true }
     }
 
     /// A connection opened from a file or a link is hosted without ever being saved.
