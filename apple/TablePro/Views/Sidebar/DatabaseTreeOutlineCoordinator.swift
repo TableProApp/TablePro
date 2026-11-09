@@ -992,6 +992,7 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
             openRedis(redisNode)
         } else {
             publishSelection()
+            showObjectsForSelection(nodes)
         }
         lastSelection = refs
     }
@@ -1018,6 +1019,32 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
         }
         pendingOpenWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    /// With the setting on, a container or group row lists its objects as a preview, the way a table
+    /// row previews the table. A held arrow key waits out the burst, as a table open does.
+    private func showObjectsForSelection(_ nodes: [DatabaseTreeNode]) {
+        guard let mainCoordinator,
+              let target = DatabaseTreeSelection.selectionObjectsTarget(
+                  selectedNodes: nodes,
+                  showsObjectsOnSelection: AppSettingsManager.shared.general.showsObjectsOnSelection,
+                  databaseHoldsSchemas: supportsSchemaLevel,
+                  hierarchicalDatabase: browsingDatabase ?? ""
+              ),
+              target.kind != .table || mainCoordinator.allTablesListing() != nil
+        else { return }
+        let asPreview = AppSettingsManager.shared.tabs.enablePreviewTabs
+        pendingOpenWork?.cancel()
+        pendingOpenWork = nil
+        guard isAutorepeatingSelection else {
+            mainCoordinator.showObjects(target, asPreview: asPreview)
+            return
+        }
+        let work = DispatchWorkItem { [weak self] in
+            self?.mainCoordinator?.showObjects(target, asPreview: asPreview)
+        }
+        pendingOpenWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.keyRepeatInterval, execute: work)
     }
 
     private func makeCell() -> DatabaseTreeCellView {

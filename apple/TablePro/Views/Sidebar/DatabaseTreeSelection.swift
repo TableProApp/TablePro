@@ -66,4 +66,43 @@ internal enum DatabaseTreeSelection {
         guard selectedNodes.count == 1 else { return nil }
         return SelectionDelta.singleAddition(old: previousRefs, new: newRefs)
     }
+
+    /// The container and kind a row stands for. A database row on an engine grouped by schema holds
+    /// schemas, not objects, so it names none; each schema does.
+    internal static func objectsTarget(
+        of kind: DatabaseTreeNode.Kind,
+        databaseHoldsSchemas: Bool,
+        hierarchicalDatabase: String
+    ) -> DatabaseTreeObjectGroup? {
+        switch kind {
+        case .database(let metadata):
+            return databaseHoldsSchemas ? nil : DatabaseTreeObjectGroup(database: metadata.name, schema: nil, kind: .table)
+        case .schema(let database, let schema):
+            return DatabaseTreeObjectGroup(database: database, schema: schema, kind: .table)
+        case .hierarchicalSchemaSection(let schema):
+            return DatabaseTreeObjectGroup(database: hierarchicalDatabase, schema: schema, kind: .table)
+        case .containerObjectKindSection(let group):
+            return group
+        case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+             .table, .partition, .routine, .trigger, .userType, .status, .objectKindSection, .redisKeysSection,
+             .redisNode:
+            return nil
+        }
+    }
+
+    /// Only a selection of one row lists anything: one row added to a selection is the user
+    /// gathering rows for a command, not picking a container.
+    internal static func selectionObjectsTarget(
+        selectedNodes: [DatabaseTreeNode],
+        showsObjectsOnSelection: Bool,
+        databaseHoldsSchemas: Bool,
+        hierarchicalDatabase: String
+    ) -> DatabaseTreeObjectGroup? {
+        guard showsObjectsOnSelection, selectedNodes.count == 1 else { return nil }
+        return objectsTarget(
+            of: selectedNodes[0].kind,
+            databaseHoldsSchemas: databaseHoldsSchemas,
+            hierarchicalDatabase: hierarchicalDatabase
+        )
+    }
 }
