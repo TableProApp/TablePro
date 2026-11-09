@@ -372,6 +372,13 @@ impl ConnectionTree {
         }));
     }
 
+    #[cfg(test)]
+    pub(crate) fn selected_session(&self) -> Option<SessionKey> {
+        let which = self.inner.shown();
+        let position = self.inner.pane(which).selection.selected();
+        self.inner.item_at(which, position)?.1
+    }
+
     pub(crate) fn shutdown(&self) {
         let inner = &self.inner;
         if let Some(watch) = inner.saved_watch.take() {

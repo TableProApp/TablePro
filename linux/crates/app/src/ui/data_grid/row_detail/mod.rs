@@ -283,6 +283,7 @@ impl RowDetailPane {
     }
 
     fn show_nothing(&self) {
+        self.refilter_fields();
         self.imp().stack.set_visible_child_name("empty");
         self.imp().loaded.take();
     }

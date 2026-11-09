@@ -155,30 +155,9 @@ pub(crate) struct Grid {
     pub tracker: TabTrackerHandle,
     pub columns: Arc<[GridColumn]>,
     requests: Rc<RefCell<Vec<GridRequest>>>,
+    style: gtk::CssProvider,
     _settings: MemorySettings,
     _runtime: AppRuntime,
-    _style: GridStyle,
-}
-
-struct GridStyle {
-    display: gtk::gdk::Display,
-    provider: gtk::CssProvider,
-}
-
-impl GridStyle {
-    fn new() -> Self {
-        let display = gtk::gdk::Display::default().expect("test display");
-        let provider = gtk::CssProvider::new();
-        provider.load_from_resource(&format!("{}/style.css", crate::config::RESOURCE_BASE_PATH));
-        gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
-        Self { display, provider }
-    }
-}
-
-impl Drop for GridStyle {
-    fn drop(&mut self) {
-        gtk::style_context_remove_provider_for_display(&self.display, &self.provider);
-    }
 }
 
 impl Grid {
@@ -190,8 +169,14 @@ impl Grid {
     pub(crate) fn build(spec: GridSpec, rows: Vec<RowData>) -> Self {
         crate::register_test_resources();
         libadwaita::init().expect("libadwaita initialises under the test backend");
-        // This fixture has no AdwApplication startup to load its resource stylesheet.
-        let style = GridStyle::new();
+        // Filtered widget tests never start the application that installs this stylesheet.
+        let style = gtk::CssProvider::new();
+        style.load_from_resource("/app/tablepro/TablePro/style.css");
+        gtk::style_context_add_provider_for_display(
+            &gtk::gdk::Display::default().expect("test display"),
+            &style,
+            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
         let runtime = crate::test_support::test_runtime();
         let settings = MemorySettings::new();
         let tracker = TabTrackerHandle::default();
@@ -225,6 +210,8 @@ impl Grid {
         let log = requests.clone();
         grid.connect_request(move |_, request| log.borrow_mut().push(request));
         let window = gtk::Window::new();
+        // Without a window manager, RTL TopStart gravity grows the surface off the screen.
+        window.set_gravity(gtk::WindowGravity::TopLeft);
         window.set_default_size(800, 500);
         window.set_child(Some(&grid));
         window.present();
@@ -236,9 +223,9 @@ impl Grid {
             tracker,
             columns,
             requests,
+            style,
             _settings: settings,
             _runtime: runtime,
-            _style: style,
         };
         // A saved layout can hide columns, which draw no cells.
         let width = opened.grid.shown_columns().len();
@@ -334,6 +321,7 @@ impl Grid {
 
 impl Drop for Grid {
     fn drop(&mut self) {
+        gtk::style_context_remove_provider_for_display(&gtk::prelude::WidgetExt::display(&self.window), &self.style);
         self.window.destroy();
         drain_main_context();
     }
