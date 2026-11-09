@@ -216,8 +216,6 @@ fn copy_is_off_once_a_page_takes_the_selection_away() {
     assert!(!grid.is_enabled("copy-rows"));
 }
 
-/// The rows leave as the user arranged them: a dragged column where it
-/// was dropped, a hidden one left out, pending edits in.
 #[gtk4::test]
 fn copies_and_exports_follow_a_moved_and_a_hidden_column() {
     let grid = Grid::open(people(), people_rows());
@@ -244,15 +242,10 @@ fn copies_and_exports_follow_a_moved_and_a_hidden_column() {
 
     let preview = super::json_preview(&grid.grid).render().unwrap();
     assert_eq!((preview.shown, preview.total, preview.deleted), (2, 2, 0));
-    let json: serde_json::Value = serde_json::from_str(&preview.text).unwrap();
     assert_eq!(
-        json,
-        serde_json::json!([
-            {"name": "Ada", "id": 1},
-            {"name": "Grace Hopper", "id": 2},
-        ])
+        preview.text,
+        "[\n{\"name\":\"Ada\",\"id\":1},\n{\"name\":\"Grace Hopper\",\"id\":2}\n]"
     );
-    assert!(preview.text.find("name").unwrap() < preview.text.find("id").unwrap());
 
     assert_eq!(grid.grid.shown_columns(), [1, 0]);
     assert_eq!(rows, "name\tid\nAda\t1\nGrace Hopper\t2\n");

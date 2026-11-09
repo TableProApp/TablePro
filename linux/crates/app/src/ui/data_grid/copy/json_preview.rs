@@ -189,8 +189,7 @@ mod tests {
         .unwrap();
         assert!(preview.text.len() <= MAX_BYTES);
         assert_eq!((preview.shown, preview.total), (1, 3));
-        let json: serde_json::Value = serde_json::from_str(&preview.text).unwrap();
-        assert_eq!(json, serde_json::json!([{"value": "kept"}]));
+        assert_eq!(preview.text, "[\n{\"value\":\"kept\"}\n]");
     }
 
     #[test]
