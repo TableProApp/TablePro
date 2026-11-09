@@ -747,20 +747,24 @@ fn the_schemas_button_chooses_what_the_sidebar_lists_and_keeps_it() {
 }
 
 #[gtk4::test]
-fn the_sidebar_takes_the_width_the_user_kept_and_a_drag_handle_sets_a_new_one() {
-    let test = TestWindow::connected("SidebarWidth");
-    let shell = test
-        .window
-        .content()
-        .and_downcast::<WorkspaceShell>()
-        .expect("the shell page");
-    let split = shell.imp().split_view.get();
-    assert_eq!(split.min_sidebar_width(), 260.0, "the schema's default");
-    assert_eq!(split.max_sidebar_width(), 260.0);
-    assert!(shell.imp().sidebar_handle.is_visible());
+fn the_sidebar_takes_the_width_kept_in_settings_and_has_a_handle_to_set_it() {
+    use tablepro_linux_platform::settings::keys::SIDEBAR_WIDTH;
 
-    super::super::workspace_shell::set_sidebar_width(&split, 5000);
-    assert_eq!(split.max_sidebar_width(), 800.0, "a width past the cap");
-    super::super::workspace_shell::set_sidebar_width(&split, 10);
-    assert_eq!(split.min_sidebar_width(), 220.0, "a width under the floor");
+    let test = TestWindow::connected("SidebarWidth");
+    let shell = shell_of(&test.workspace());
+    let (split, handle) = (shell.imp().split_view.get(), shell.imp().sidebar_handle.get());
+    let settings = test.services.settings.gio().clone();
+    assert_eq!(split.max_sidebar_width(), 280.0, "the schema's default");
+
+    settings.set_double(SIDEBAR_WIDTH, 440.0).expect("a width in range");
+    wait_until(WAIT, || split.max_sidebar_width() == 440.0).expect("the window follows the setting");
+    assert!(settings.set_double(SIDEBAR_WIDTH, 100.0).is_err(), "under the floor");
+
+    assert!(handle.is_visible() && handle.is_focusable());
+    assert_eq!(handle.accessible_role(), gtk::AccessibleRole::Separator);
+    crate::test_support::assert_labelled(&handle).expect("the handle is named");
+    split.set_collapsed(true);
+    assert!(!handle.is_visible(), "a collapsed sidebar lies over the content");
+    split.set_collapsed(false);
+    assert!(handle.is_visible());
 }

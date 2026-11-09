@@ -25,6 +25,7 @@ mod schema_chooser;
 mod schema_filter;
 mod session_watches;
 mod sidebar;
+mod sidebar_width;
 mod status_pages;
 mod structure;
 mod structure_target;

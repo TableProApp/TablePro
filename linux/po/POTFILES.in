@@ -645,6 +645,7 @@ crates/app/src/ui/workspace/sidebar/tests.rs
 crates/app/src/ui/workspace/sidebar/tree_menu.rs
 crates/app/src/ui/workspace/sidebar/tree_node.rs
 crates/app/src/ui/workspace/sidebar/tree_row.rs
+crates/app/src/ui/workspace/sidebar_width.rs
 crates/app/src/ui/workspace/status_pages.rs
 crates/app/src/ui/workspace/structure.rs
 crates/app/src/ui/workspace/structure_target.rs

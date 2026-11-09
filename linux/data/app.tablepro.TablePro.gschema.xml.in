@@ -52,11 +52,11 @@
       <description>Whether the main window was maximized when it last closed.</description>
     </key>
 
-    <key name="sidebar-width" type="i">
-      <default>260</default>
-      <range min="200" max="800"/>
+    <key name="sidebar-width" type="d">
+      <default>280.0</default>
+      <range min="220.0" max="1200.0"/>
       <summary>Sidebar width</summary>
-      <description>The width of the sidebar, which a drag on its edge sets.</description>
+      <description>The most the sidebar takes, in scale-independent pixels; the content always keeps half the window.</description>
     </key>
 
     <key name="default-page-size" type="u">
