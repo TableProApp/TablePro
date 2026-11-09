@@ -9,7 +9,6 @@ use super::RowDetailPane;
 use crate::i18n::gettext;
 use crate::services::change_tracker::CellState;
 use crate::services::grid::{GridColumn, auto_filled_sentinel, display_text};
-use crate::ui::data_grid::selection::Target;
 use crate::ui::data_grid::tracked_values::cell_description;
 use crate::ui::data_grid::{DataGrid, GridRow, ServerValue, TrackedValues};
 use crate::ui::handler_guard::HandlerGuard;
@@ -359,56 +358,6 @@ impl RowDetailPane {
         factory
     }
 
-    /// Lay the value editor into the picked field's row, in place of its
-    /// value, and its pickers beside that row's copy button. The list
-    /// recycles rows as it scrolls and filters, so every bind and unbind
-    /// lays them again, and with no row for them they go back to the dock.
-    fn place_editor(&self) {
-        let imp = self.imp();
-        let picked = imp.field.get();
-        let bound: Vec<gtk::ListItem> = imp.bound.borrow().clone();
-        let mut seat = None;
-        for item in &bound {
-            let Some(parts) = item.child().as_ref().and_then(field_parts) else {
-                continue;
-            };
-            let holds = picked.is_some() && item.is_selected() && field_of(item.item()) == picked;
-            parts.value.set_visible(!holds);
-            parts.tools.set_visible(holds);
-            parts.slot.set_visible(holds);
-            if holds {
-                seat = Some((parts.tools, parts.slot));
-            }
-        }
-        let dock = imp.editor_dock.get();
-        let (tools_home, editor_home) = seat.unwrap_or_else(|| (dock.clone(), dock));
-        move_into(&imp.editor_tools.get(), &tools_home);
-        move_into(&imp.editor_box.get(), &editor_home);
-    }
-
-    fn editor_holds_focus(&self) -> bool {
-        let imp = self.imp();
-        crate::ui::a11y::holds_focus(&imp.editor_box.get()) || crate::ui::a11y::holds_focus(&imp.editor_tools.get())
-    }
-
-    /// A filter or a new column set can take away the row that held the
-    /// editor and the keyboard with it, which GTK would hand to the
-    /// window's first control.
-    fn keep_keyboard(&self, editor_had_it: bool) {
-        let imp = self.imp();
-        let list = imp.field_list.get();
-        if !editor_had_it || self.current_row().is_none() || imp.editor_box.is_ancestor(&list) {
-            return;
-        }
-        if imp.filtered.n_items() == 0 {
-            imp.field_search.grab_focus();
-            return;
-        }
-        // The list's focused row was the one taken away.
-        list.scroll_to(0, gtk::ListScrollFlags::FOCUS, None);
-        list.grab_focus();
-    }
-
     pub(super) fn redraw_fields(&self) {
         self.refilter_fields();
         let bound: Vec<gtk::ListItem> = self.imp().bound.borrow().clone();
@@ -571,6 +520,56 @@ impl RowDetailPane {
         }
     }
 
+    /// Lay the value editor into the picked field's row, in place of its
+    /// value, and its pickers beside that row's copy button. The list
+    /// recycles rows as it scrolls and filters, so every bind and unbind
+    /// lays them again, and with no row for them they go back to the dock.
+    fn place_editor(&self) {
+        let imp = self.imp();
+        let picked = imp.field.get();
+        let bound: Vec<gtk::ListItem> = imp.bound.borrow().clone();
+        let mut seat = None;
+        for item in &bound {
+            let Some(parts) = item.child().as_ref().and_then(field_parts) else {
+                continue;
+            };
+            let holds = picked.is_some() && item.is_selected() && field_of(item.item()) == picked;
+            parts.value.set_visible(!holds);
+            parts.tools.set_visible(holds);
+            parts.slot.set_visible(holds);
+            if holds {
+                seat = Some((parts.tools, parts.slot));
+            }
+        }
+        let dock = imp.editor_dock.get();
+        let (tools_home, editor_home) = seat.unwrap_or_else(|| (dock.clone(), dock));
+        move_into(&imp.editor_tools.get(), &tools_home);
+        move_into(&imp.editor_box.get(), &editor_home);
+    }
+
+    fn editor_holds_focus(&self) -> bool {
+        let imp = self.imp();
+        crate::ui::a11y::holds_focus(&imp.editor_box.get()) || crate::ui::a11y::holds_focus(&imp.editor_tools.get())
+    }
+
+    /// A filter or a new column set can take away the row that held the
+    /// editor and the keyboard with it, which GTK would hand to the
+    /// window's first control.
+    fn keep_keyboard(&self, editor_had_it: bool) {
+        let imp = self.imp();
+        let list = imp.field_list.get();
+        if !editor_had_it || self.current_row().is_none() || imp.editor_box.is_ancestor(&list) {
+            return;
+        }
+        if imp.filtered.n_items() == 0 {
+            imp.field_search.grab_focus();
+            return;
+        }
+        // The list's focused row was the one taken away.
+        list.scroll_to(0, gtk::ListScrollFlags::FOCUS, None);
+        list.grab_focus();
+    }
+
     /// Move the grid's focused cell to `column` of the shown row. The
     /// list holds the keyboard, and `scroll_to` only marks the cell the
     /// grid focuses next while the grid does not, so the keyboard stays
@@ -593,7 +592,7 @@ impl RowDetailPane {
     /// whichever field the editor holds, as a cell menu holds its cell.
     fn hold_field(&self, column: usize) -> Option<DataGrid> {
         let (grid, row) = (self.grid()?, self.current_pin()?);
-        grid.hold_menu_target(Target {
+        grid.hold_menu_target(crate::ui::data_grid::selection::Target {
             cell: Some((row.clone(), column)),
             rows: vec![row],
         });
