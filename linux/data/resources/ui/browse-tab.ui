@@ -32,6 +32,7 @@
         <setter object="details_toggle" property="visible">false</setter>
         <setter object="export_button" property="visible">false</setter>
         <setter object="filter_button" property="visible">false</setter>
+        <setter object="columns_button" property="visible">false</setter>
         <setter object="page_size_box" property="visible">false</setter>
         <setter object="more_button" property="visible">true</setter>
         <setter object="pager_bar" property="compact">true</setter>
@@ -291,6 +292,16 @@
                     <child>
                       <object class="GtkDropDown" id="page_size_dropdown" />
                     </child>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton" id="columns_button">
+                    <property name="label" translatable="yes">Columns</property>
+                    <property name="tooltip-text" translatable="yes">Choose which columns the grid shows</property>
+                    <property name="action-name">grid.columns</property>
+                    <style>
+                      <class name="flat" />
+                    </style>
                   </object>
                 </child>
                 <child>

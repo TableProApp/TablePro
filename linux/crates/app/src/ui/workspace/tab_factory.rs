@@ -19,8 +19,8 @@ use super::tab_title::{ConnectionLabel, apply_tab_title, resolve_tab_title};
 use super::table_naming::TableNaming;
 use super::workspace_persistence::WorkspaceTabs;
 use super::{
-    DiagramTabSlot, EditorTabSlot, KeyTabSlot, OpenMode, SaveRequest, StructureTabSlot, TableTabSlot, WorkspaceInput,
-    WorkspaceSender, WorkspaceShell, WorkspaceTab,
+    DiagramTabSlot, EditorInput, EditorTabSlot, KeyTabSlot, OpenMode, SaveRequest, StructureTabSlot, TableTabSlot,
+    WorkspaceInput, WorkspaceSender, WorkspaceShell, WorkspaceTab,
 };
 use crate::runtime::DeliverInput;
 use crate::services::change_tracker_registry::ChangeTrackerRegistry;
@@ -194,7 +194,9 @@ impl TabFactory {
         // It moved before the workspace heard it, which follows it once
         // the tab is in.
         if moved {
-            parts.input.deliver(WorkspaceInput::EditorTabDatabaseChanged(id));
+            parts
+                .input
+                .deliver(WorkspaceInput::Editor(EditorInput::DatabaseChanged(id)));
         }
         editor.attach_assistant(parts.assistant.clone());
         // After the signals are connected, so the workspace marks a tab
@@ -540,20 +542,25 @@ pub(super) fn connect_editor(
 ) {
     let run_state = input.clone();
     editor.connect_run_state_changed(move |_, running| {
-        run_state.deliver(WorkspaceInput::EditorTabRunStateChanged(tab_id, running));
+        run_state.deliver(WorkspaceInput::Editor(EditorInput::RunStateChanged(tab_id, running)));
     });
     let finished = input.clone();
     editor.connect_run_finished(move |_, outcome| {
-        finished.deliver(WorkspaceInput::EditorTabRunFinished(tab_id, outcome))
+        finished.deliver(WorkspaceInput::Editor(EditorInput::RunFinished(tab_id, outcome)))
     });
     let content = input.clone();
-    editor.connect_content_changed(move |_| content.deliver(WorkspaceInput::EditorTabContentChanged(tab_id)));
+    editor
+        .connect_content_changed(move |_| content.deliver(WorkspaceInput::Editor(EditorInput::ContentChanged(tab_id))));
     let file = input.clone();
-    editor.connect_file_changed(move |_| file.deliver(WorkspaceInput::EditorTabFileChanged(tab_id)));
+    editor.connect_file_changed(move |_| file.deliver(WorkspaceInput::Editor(EditorInput::FileChanged(tab_id))));
     let database = input.clone();
-    editor.connect_database_changed(move |_| database.deliver(WorkspaceInput::EditorTabDatabaseChanged(tab_id)));
+    editor.connect_database_changed(move |_| {
+        database.deliver(WorkspaceInput::Editor(EditorInput::DatabaseChanged(tab_id)))
+    });
     let transaction = input.clone();
-    editor.connect_transaction_changed(move |_, _| transaction.deliver(WorkspaceInput::EditorTransactionChanged));
+    editor.connect_transaction_changed(move |_, _| {
+        transaction.deliver(WorkspaceInput::Editor(EditorInput::TransactionChanged))
+    });
     let toast = input.clone();
     editor.connect_toast(move |_, text| toast.deliver(WorkspaceInput::ShowToast(text)));
     let save = input.clone();

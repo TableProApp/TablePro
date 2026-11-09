@@ -285,8 +285,12 @@ for the review and migration checks.
 
 ### Screenshots
 
-The metainfo lists the PNGs in `data/screenshots` at the release tag's
-URL, so a catalogue fetches the ones of the version it lists.
+The metainfo lists the PNGs in `data/screenshots` at the URL of the
+commit a release tarball holds, so a catalogue fetches the ones of the
+version it lists. `git archive` writes that commit into
+`build-aux/source-commit`; a release is built before its tag exists, and
+`appstreamcli compose` drops a screenshot it cannot download. A build
+from a git checkout names the release tag instead.
 
 Take new ones from the app at default settings (light style, blue accent,
 Adwaita Sans and Adwaita Mono at 11 pt, scale 1) with a 1000×700 window,

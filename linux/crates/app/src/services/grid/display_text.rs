@@ -35,6 +35,13 @@ pub fn editable_null_sentinel() -> String {
     crate::i18n::gettext("<NULL>")
 }
 
+pub fn null_text(text: &str, editable: bool) -> String {
+    match (editable, text) {
+        (true, "NULL") => editable_null_sentinel(),
+        _ => text.to_owned(),
+    }
+}
+
 /// A read-only cell dims its NULL instead, so it needs no brackets.
 /// A technical term, so it is not translated.
 const READONLY_NULL: &str = "NULL";
@@ -206,7 +213,7 @@ mod tests {
     use tablepro_core::column::{BoolStorage, ColumnKind, ColumnType};
     use tablepro_core::value::{JsonText, OffsetTimestamp, SqlTime, Temporal, UndecodableReason, UndecodedValue};
 
-    use super::{DISPLAY_MAX_CHARS, DisplayText, display_text};
+    use super::{DISPLAY_MAX_CHARS, DisplayText, display_text, null_text};
 
     fn text_column() -> ColumnType {
         ColumnType::untyped_text("text")
@@ -215,6 +222,14 @@ mod tests {
     fn shown(value: &Value) -> String {
         let mut scratch = String::new();
         display_text(value, &text_column(), &mut scratch).text.to_owned()
+    }
+
+    #[test]
+    fn a_chosen_null_text_reaches_editable_cells_and_the_default_keeps_its_brackets() {
+        assert_eq!(null_text("NULL", true), "<NULL>");
+        assert_eq!(null_text("(none)", true), "(none)");
+        assert_eq!(null_text("(none)", false), "(none)");
+        assert_eq!(null_text("NULL", false), "NULL");
     }
 
     #[test]
