@@ -30,10 +30,12 @@ public struct CLITerminal: Sendable, Equatable {
 // `appPath` is the bundle of the process serving MCP, which a pairing link has to reach.
 public struct CLIServerEndpoint: Sendable, Equatable {
     public let socketPath: String
+    public let serverPID: Int32
     public let appPath: String?
 
-    public init(socketPath: String, appPath: String?) {
+    public init(socketPath: String, serverPID: Int32, appPath: String?) {
         self.socketPath = socketPath
+        self.serverPID = serverPID
         self.appPath = appPath
     }
 }
@@ -44,6 +46,7 @@ public enum CLIServerProbe: Sendable, Equatable {
     case notRunning
     case turnedOff
     case unreachable(String)
+    case peerChanged
 }
 
 public struct CLIHostApp: Sendable, Equatable {

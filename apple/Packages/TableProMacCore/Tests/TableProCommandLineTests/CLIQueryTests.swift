@@ -5,6 +5,24 @@ import TableProMCPTestSupport
 import Testing
 
 struct CLIQueryTests {
+    @Test("CSV and TSV escape terminal controls and preserve pipe bytes", arguments: [true, false], ["csv", "tsv"])
+    func delimitedControls(stdoutIsTerminal: Bool, format: String) async throws {
+        try await withRig { rig in
+            let text = "\u{1B}]52;c;eA==\u{07}\u{1B}[2J"
+            await rig.route([
+                "list_connections": try stagingListing(),
+                "execute_query": try success(rows(["value"], [[.string(text)]]))
+            ])
+            let code = await rig.run(
+                ["query", "-c", "Staging", "--format", format, "SELECT value FROM users"],
+                stdoutIsTerminal: stdoutIsTerminal
+            )
+            #expect(code == .success)
+            let expected = stdoutIsTerminal ? "value\n\\x1B]52;c;eA==\\x07\\x1B[2J\n" : "value\n" + text + "\n"
+            #expect(rig.console.output == expected)
+        }
+    }
+
     @Test("SELECT 1 AS n prints a CSV header and one row and exits 0")
     func csvQuery() async throws {
         try await withRig { rig in

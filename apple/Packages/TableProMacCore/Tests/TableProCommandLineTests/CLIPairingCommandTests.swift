@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 @testable import TableProCommandLine
 import TableProMCP
@@ -80,6 +81,40 @@ struct CLIUnpairTests {
             #expect(rig.tokens.current == nil)
             #expect(rig.console.output.contains("revoked"))
             #expect(!rig.log.calls.contains("openServer"))
+        }
+    }
+
+    @Test("A changed socket peer refuses unpair before sending and keeps the token")
+    func changedPeerKeepsToken() async throws {
+        try await withRig { rig in
+            await rig.route([CLIServerClient.revocationPath: plainJson("{}", status: 200)])
+            let endpoint = CLIServerEndpoint(socketPath: rig.server.socketPath, serverPID: getpid() + 1, appPath: nil)
+            #expect(await rig.run(["unpair"], probe: .reachable(endpoint)) == .failure)
+            #expect(rig.tokens.current == "tp_stored")
+            #expect(rig.console.output.isEmpty)
+            #expect(rig.console.errors.contains("The local MCP server changed; run the command again."))
+            #expect(await rig.server.requests.isEmpty)
+        }
+    }
+
+    @Test("A changed peer during discovery keeps unpair credentials")
+    func discoveryPeerChangeKeepsToken() async throws {
+        try await withRig { rig in
+            let handshake = MCPHandshakePayload(
+                socketPath: rig.server.socketPath,
+                token: "tp_bridge",
+                pid: getpid() + 1,
+                instanceId: "test-instance",
+                protocolVersion: MCPProtocolVersion.latest.rawValue,
+                expiresAt: Date().addingTimeInterval(60)
+            )
+            let probe = await CLILive.probe(handshake, logger: RecordingBridgeLogger())
+            #expect(probe == .peerChanged)
+            #expect(await rig.run(["unpair"], probe: probe) == .failure)
+            #expect(rig.tokens.current == "tp_stored")
+            #expect(rig.console.output.isEmpty)
+            #expect(rig.console.errors.contains("The local MCP server changed; run the command again."))
+            #expect(await rig.server.requests.isEmpty)
         }
     }
 

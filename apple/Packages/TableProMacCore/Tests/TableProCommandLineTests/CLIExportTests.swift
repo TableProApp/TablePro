@@ -21,6 +21,24 @@ private func exported(_ format: String, _ documents: [(label: String, data: Stri
 }
 
 struct CLIExportTests {
+    @Test("Exports escape terminal controls and preserve them in pipes", arguments: [true, false], ["csv", "json", "sql"])
+    func exportedControls(stdoutIsTerminal: Bool, format: String) async throws {
+        try await withRig { rig in
+            let text = "value\n\u{1B}]52;c;eA==\u{07}\u{1B}[2J\n"
+            await rig.route([
+                "list_connections": try stagingListing(),
+                "export_data": try exported(format, [("users", text)])
+            ])
+            let code = await rig.run(
+                ["export", "-c", "Staging", "--format", format, "users"],
+                stdoutIsTerminal: stdoutIsTerminal
+            )
+            #expect(code == .success)
+            let expected = stdoutIsTerminal ? "value\n\\x1B]52;c;eA==\\x07\\x1B[2J\n" : text
+            #expect(rig.console.output == expected)
+        }
+    }
+
     @Test("Two tables in JSON print one document: an array holding each table's array, in order")
     func severalJsonTablesAreOneDocument() async throws {
         try await withRig { rig in

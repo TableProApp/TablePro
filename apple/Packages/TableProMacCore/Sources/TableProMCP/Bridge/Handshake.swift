@@ -129,7 +129,7 @@ public struct MCPHandshakeAcquirer: Sendable {
 
 public extension MCPHandshakePayload {
     func credentials() -> MCPUpstreamCredentials {
-        MCPUpstreamCredentials(socketPath: socketPath, bearerToken: token)
+        MCPUpstreamCredentials(socketPath: socketPath, serverPID: pid, bearerToken: token)
     }
 }
 

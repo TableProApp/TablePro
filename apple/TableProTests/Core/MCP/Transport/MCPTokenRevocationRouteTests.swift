@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 @testable import TablePro
 import TableProMCP
@@ -56,7 +57,7 @@ private struct RevocationServer {
             headers: [("Content-Type", "application/x-www-form-urlencoded")],
             body: Data(form.utf8)
         )
-        let response = try await MCPUnixSocketHttpClient.send(request, socketPath: socketPath, idleTimeout: .seconds(10))
+        let response = try await MCPUnixSocketHttpClient.send(request, socketPath: socketPath, expectedPID: getpid(), idleTimeout: .seconds(10))
         let body = try await response.collectBody()
         let object = try JSONSerialization.jsonObject(with: body) as? [String: Any]
         return (response.status, object?["error"] as? String)

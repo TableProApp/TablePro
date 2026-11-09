@@ -18,6 +18,8 @@ public struct CLIFailure: Error, Sendable, Equatable {
         self.message = message
     }
 
+    static let peerChanged = CLIFailure(.failure, "The local MCP server changed; run the command again.")
+
     public static func usage(_ message: String) -> CLIFailure {
         CLIFailure(.usage, message)
     }

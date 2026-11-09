@@ -28,12 +28,15 @@ struct CLISession: Sendable {
 
     // Free text such as DDL is shown on a terminal, never run, and passes through untouched to a pipe.
     func writeText(_ text: String) {
-        let shown = terminal.standardOutput ? CLITerminalText.message(text) : text
-        console.out(shown.hasSuffix("\n") ? shown : shown + "\n")
+        writeOutput(text.hasSuffix("\n") ? text : text + "\n")
+    }
+
+    func writeOutput(_ text: String) {
+        console.out(terminal.standardOutput ? CLITerminalText.message(text) : text)
     }
 
     func write(_ sets: [CLIResultSet], format: CLIOutputFormat) {
-        var stream = ConsoleStream(console: console)
+        var stream = ConsoleStream(session: self)
         CLIRowWriter.write(sets, as: format, to: &stream)
     }
 
@@ -65,7 +68,7 @@ struct CLISession: Sendable {
     func connect() async throws -> CLIServerClient {
         let server = try await environment.openServer()
         if let token = try tokenStore.read() {
-            return CLIServerClient(socketPath: server.socketPath, token: token)
+            return CLIServerClient(socketPath: server.socketPath, serverPID: server.serverPID, token: token)
         }
         guard terminal.standardError else {
             throw CLIFailure(
@@ -76,7 +79,7 @@ struct CLISession: Sendable {
         writeError("tablepro: approve the tablepro command in TablePro to pair it.")
         let token = try await environment.pair(server)
         try tokenStore.save(token)
-        return CLIServerClient(socketPath: server.socketPath, token: token)
+        return CLIServerClient(socketPath: server.socketPath, serverPID: server.serverPID, token: token)
     }
 
     func call(_ client: CLIServerClient, _ tool: String, _ arguments: [String: JsonValue]) async throws -> JsonValue {
@@ -125,9 +128,9 @@ struct CLISession: Sendable {
 }
 
 private struct ConsoleStream: TextOutputStream {
-    let console: any CLIConsole
+    let session: CLISession
 
     mutating func write(_ string: String) {
-        console.out(string)
+        session.writeOutput(string)
     }
 }

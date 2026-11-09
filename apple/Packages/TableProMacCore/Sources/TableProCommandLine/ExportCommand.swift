@@ -41,7 +41,7 @@ struct ExportCommand: ParsableCommand, CLIRunnable {
 
         let result = try await session.call(client, "export_data", arguments)
         let exports = result["exports"]?.arrayValue ?? []
-        session.console.out(Self.joined(exports.map { $0["data"]?.stringValue ?? "" }, format: format))
+        session.writeOutput(Self.joined(exports.map { $0["data"]?.stringValue ?? "" }, format: format))
         for export in exports where export["is_truncated"]?.boolValue == true {
             let label = export["label"]?.stringValue ?? "a table"
             let count = export["row_count"]?.intValue ?? 0

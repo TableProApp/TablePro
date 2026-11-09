@@ -22,10 +22,12 @@ public struct CLIServerClient: Sendable {
     )
 
     private let socketPath: String
+    private let serverPID: Int32
     private let token: String
 
-    public init(socketPath: String, token: String) {
+    public init(socketPath: String, serverPID: Int32, token: String) {
         self.socketPath = socketPath
+        self.serverPID = serverPID
         self.token = token
     }
 
@@ -78,7 +80,7 @@ public struct CLIServerClient: Sendable {
         }
         let request = MCPSocketHttpRequest(path: "/mcp", headers: headers, body: body)
 
-        let (data, response) = try await Self.send(request, socketPath: socketPath)
+        let (data, response) = try await Self.send(request, socketPath: socketPath, serverPID: serverPID)
         let message = try await responseMessage(data: data, response: response, requestId: requestId)
         switch message {
         case .successResponse(let success):
@@ -140,14 +142,14 @@ public struct CLIServerClient: Sendable {
     }
 
     // The exchange takes no bearer token: the one-time code and the verifier are the credential.
-    public static func exchange(code: String, verifier: String, socketPath: String) async throws -> String {
+    public static func exchange(code: String, verifier: String, socketPath: String, serverPID: Int32) async throws -> String {
         let request = MCPSocketHttpRequest(
             path: "/v1/integrations/exchange",
             headers: [("Content-Type", "application/json")],
             body: try JSONSerialization.data(withJSONObject: ["code": code, "code_verifier": verifier])
         )
 
-        let (data, response) = try await send(request, socketPath: socketPath)
+        let (data, response) = try await send(request, socketPath: socketPath, serverPID: serverPID)
         let body = try? JSONDecoder().decode(JsonValue.self, from: data)
         guard response.status == 200, let token = body?["token"]?.stringValue, !token.isEmpty else {
             let detail = body?["error"]?.stringValue ?? "HTTP \(response.status)"
@@ -157,7 +159,7 @@ public struct CLIServerClient: Sendable {
     }
 
     // RFC 7009: the token travels as a form field, and holding it is the credential.
-    public static func revoke(token: String, socketPath: String) async throws -> CLIRevocation {
+    public static func revoke(token: String, socketPath: String, serverPID: Int32) async throws -> CLIRevocation {
         let value = token.addingPercentEncoding(withAllowedCharacters: formUnreserved) ?? ""
         let request = MCPSocketHttpRequest(
             path: revocationPath,
@@ -165,7 +167,7 @@ public struct CLIServerClient: Sendable {
             body: Data("token=\(value)".utf8)
         )
 
-        let (data, response) = try await send(request, socketPath: socketPath)
+        let (data, response) = try await send(request, socketPath: socketPath, serverPID: serverPID)
         guard response.status != 200 else { return .revoked }
         if response.status == 503 { return .unavailable }
         let body = try? JSONDecoder().decode(JsonValue.self, from: data)
@@ -173,11 +175,13 @@ public struct CLIServerClient: Sendable {
         return .refused(detail)
     }
 
-    private static func send(_ request: MCPSocketHttpRequest, socketPath: String) async throws -> (Data, CLIServerResponse) {
+    private static func send(_ request: MCPSocketHttpRequest, socketPath: String, serverPID: Int32) async throws -> (Data, CLIServerResponse) {
         do {
-            let response = try await MCPUnixSocketHttpClient.send(request, socketPath: socketPath, idleTimeout: requestTimeout)
+            let response = try await MCPUnixSocketHttpClient.send(request, socketPath: socketPath, expectedPID: serverPID, idleTimeout: requestTimeout)
             let data = try await response.collectBody()
             return (data, CLIServerResponse(status: response.status, headers: response.headers))
+        } catch MCPSocketHttpError.peerChanged {
+            throw CLIFailure.peerChanged
         } catch MCPSocketHttpError.timedOut {
             throw CLIFailure(.timedOut, "TablePro did not answer in time.")
         } catch {

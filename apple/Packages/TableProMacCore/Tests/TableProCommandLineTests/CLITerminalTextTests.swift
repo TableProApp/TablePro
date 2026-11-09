@@ -4,6 +4,21 @@ import TableProMCP
 import Testing
 
 struct CLITerminalTextTests {
+    @Test("DDL escapes terminal controls and preserves pipe bytes", arguments: [true, false])
+    func ddlControls(stdoutIsTerminal: Bool) async throws {
+        try await withRig { rig in
+            let ddl = "CREATE TABLE users (value TEXT DEFAULT '\u{1B}]52;c;eA==\u{07}');\n"
+            await rig.route([
+                "list_connections": try stagingListing(),
+                "describe_table": try success(.object(["ddl": .string(ddl)]))
+            ])
+            let code = await rig.run(["describe", "-c", "Staging", "--ddl", "users"], stdoutIsTerminal: stdoutIsTerminal)
+            #expect(code == .success)
+            let expected = stdoutIsTerminal ? "CREATE TABLE users (value TEXT DEFAULT '\\x1B]52;c;eA==\\x07');\n" : ddl
+            #expect(rig.console.output == expected)
+        }
+    }
+
     @Test("A message keeps its line breaks and tabs and shows every other control character")
     func messageEscaping() {
         #expect(CLITerminalText.message("plain\ttext\nnext") == "plain\ttext\nnext")

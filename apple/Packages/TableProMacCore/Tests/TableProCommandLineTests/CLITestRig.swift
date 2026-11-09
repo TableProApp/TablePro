@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 @testable import TableProCommandLine
 import TableProMCP
@@ -72,7 +73,7 @@ struct Rig {
     let log = CallLog()
 
     var reachable: CLIServerProbe {
-        .reachable(CLIServerEndpoint(socketPath: server.socketPath, appPath: nil))
+        .reachable(CLIServerEndpoint(socketPath: server.socketPath, serverPID: getpid(), appPath: nil))
     }
 
     func run(
@@ -102,7 +103,7 @@ struct Rig {
             ),
             openServer: {
                 log.record("openServer")
-                return CLIServerEndpoint(socketPath: socketPath, appPath: nil)
+                return CLIServerEndpoint(socketPath: socketPath, serverPID: getpid(), appPath: nil)
             },
             findServer: {
                 log.record("findServer")

@@ -48,7 +48,11 @@ enum CLILive {
         } catch {
             throw CLIFailure(.failure, "TablePro did not start its MCP server: \(error.localizedDescription)")
         }
-        return try await verified(handshake, logger: logger)
+        do {
+            return try await verified(handshake, logger: logger)
+        } catch MCPSocketHttpError.peerChanged {
+            throw CLIFailure.peerChanged
+        }
     }
 
     // One read of the handshake, no launch and no polling: status must answer at once.
@@ -58,8 +62,14 @@ enum CLILive {
         guard let handshake = try? MCPHandshakeTrust.load(at: file) else {
             return isRunning(app) ? .turnedOff : .notRunning
         }
+        return await probe(handshake, logger: logger)
+    }
+
+    static func probe(_ handshake: MCPHandshakePayload, logger: any MCPBridgeLogger) async -> CLIServerProbe {
         do {
             return .reachable(try await verified(handshake, logger: logger))
+        } catch MCPSocketHttpError.peerChanged {
+            return .peerChanged
         } catch let failure as CLIFailure {
             return .unreachable(failure.message)
         } catch {
@@ -91,7 +101,7 @@ enum CLILive {
 
         switch await listener.waitForCallback(timeout: pairingTimeout) {
         case .approved(let code):
-            return try await CLIServerClient.exchange(code: code, verifier: request.verifier, socketPath: server.socketPath)
+            return try await CLIServerClient.exchange(code: code, verifier: request.verifier, socketPath: server.socketPath, serverPID: server.serverPID)
         case .denied:
             throw CLIFailure(.refused, "Pairing was declined in TablePro.")
         case .ignored, nil:
@@ -138,12 +148,14 @@ enum CLILive {
                 credentials: handshake.credentials(),
                 logger: logger
             )
+        } catch MCPSocketHttpError.peerChanged {
+            throw MCPSocketHttpError.peerChanged
         } catch {
             throw CLIFailure(.failure, "The local MCP server did not prove it is TablePro: \(error.localizedDescription)")
         }
         let appPath = MCPHandshakeTrust.executablePath(forPid: handshake.pid)
             .flatMap(MCPHandshakeTrust.appBundleRoot(forExecutable:))
-        return CLIServerEndpoint(socketPath: handshake.socketPath, appPath: appPath)
+        return CLIServerEndpoint(socketPath: handshake.socketPath, serverPID: handshake.pid, appPath: appPath)
     }
 
     private static func isRunning(_ app: CLIHostApp) -> Bool {

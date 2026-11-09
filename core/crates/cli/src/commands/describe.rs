@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use super::connection_lookup::resolve;
 use crate::answers::{TableDdl, TableDescription, parse};
 use crate::client::McpClient;
@@ -7,7 +5,7 @@ use crate::command_error::CommandError;
 use crate::command_line::DescribeArgs;
 use crate::console::Console;
 use crate::host::Host;
-use crate::output::{Cell, Table, escape_lines};
+use crate::output::{Cell, Table};
 use crate::tool_arguments::TableArguments;
 
 pub(super) async fn run(
@@ -25,15 +23,11 @@ pub(super) async fn run(
     };
     if arguments.ddl {
         let answer: TableDdl = parse(&connection.call(&client, console, "get_table_ddl", &request).await?)?;
-        let mut text = match console.terminal().stdout {
-            true => escape_lines(&answer.ddl),
-            false => Cow::Borrowed(answer.ddl.as_str()),
-        }
-        .into_owned();
+        let mut text = answer.ddl;
         if !text.ends_with('\n') {
             text.push('\n');
         }
-        return console.write_out(text.as_bytes());
+        return console.text(&text);
     }
     let answer: TableDescription = parse(&connection.call(&client, console, "describe_table", &request).await?)?;
     console.tables(&tables(answer), arguments.format)

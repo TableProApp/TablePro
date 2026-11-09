@@ -91,7 +91,7 @@ private func overTcp(_ request: Data, port: UInt16) async throws -> RawHttpTestR
 }
 
 private func overSocket(_ request: MCPSocketHttpRequest, path: String) async throws -> (Int, Data) {
-    let response = try await MCPUnixSocketHttpClient.send(request, socketPath: path, idleTimeout: .seconds(10))
+    let response = try await MCPUnixSocketHttpClient.send(request, socketPath: path, expectedPID: getpid(), idleTimeout: .seconds(10))
     return (response.status, try await response.collectBody())
 }
 
@@ -130,7 +130,7 @@ struct MCPUnixSocketTransportTests {
             let response = try await MCPUnixSocketHttpClient.send(
                 try toolsList(),
                 socketPath: server.socketPath,
-                idleTimeout: .seconds(10)
+                expectedPID: getpid(), idleTimeout: .seconds(10)
             )
             #expect(response.status == 200)
             #expect(response.headers.value(for: "Content-Type") == "application/json")
@@ -153,7 +153,7 @@ struct MCPUnixSocketTransportTests {
                 _ = try await MCPUnixSocketHttpClient.send(
                     try toolsList(),
                     socketPath: server.socketPath,
-                    idleTimeout: .seconds(10)
+                    expectedPID: getpid(), idleTimeout: .seconds(10)
                 )
             } throws: { error in
                 switch error {
@@ -182,7 +182,7 @@ struct MCPUnixSocketTransportTests {
             let response = try await MCPUnixSocketHttpClient.send(
                 try toolsList(),
                 socketPath: server.socketPath,
-                idleTimeout: .seconds(10)
+                expectedPID: getpid(), idleTimeout: .seconds(10)
             )
             #expect(response.status == 200)
         }

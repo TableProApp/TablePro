@@ -28,9 +28,17 @@ impl<'a> Console<'a> {
             .map_err(CommandError::Output)
     }
 
+    pub(crate) fn text(&mut self, text: &str) -> Result<(), CommandError> {
+        let text = match self.terminal.stdout {
+            true => escape_lines(text),
+            false => Cow::Borrowed(text),
+        };
+        self.write_out(text.as_bytes())
+    }
+
     pub(crate) fn tables(&mut self, tables: &[Table], format: Option<OutputFormat>) -> Result<(), CommandError> {
         let text = render(tables, OutputFormat::or_default(format, self.terminal));
-        self.write_out(text.as_bytes())
+        self.text(&text)
     }
 
     pub(crate) fn note(&mut self, text: &str) {

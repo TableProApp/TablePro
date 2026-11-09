@@ -21,7 +21,7 @@ struct StatusCommand: ParsableCommand, CLIRunnable {
 
         var paired: Bool?
         if case .reachable(let server) = probe, let token {
-            paired = try? await CLIServerClient(socketPath: server.socketPath, token: token).tokenIsAccepted()
+            paired = try await CLIServerClient(socketPath: server.socketPath, serverPID: server.serverPID, token: token).tokenIsAccepted()
         } else if token == nil {
             paired = false
         }
@@ -43,7 +43,7 @@ struct StatusCommand: ParsableCommand, CLIRunnable {
         case .turnedOff:
             running = true
             serverOn = .bool(false)
-        case .unreachable:
+        case .unreachable, .peerChanged:
             running = true
             serverOn = .null
         case .notRunning:
@@ -64,6 +64,8 @@ struct StatusCommand: ParsableCommand, CLIRunnable {
 
     static func failure(probe: CLIServerProbe, paired: Bool?) -> CLIFailure? {
         switch probe {
+        case .peerChanged:
+            return .peerChanged
         case .notRunning:
             return CLIFailure(.failure, "TablePro is not running. Any command that needs it starts it.")
         case .unreachable(let reason):
@@ -102,7 +104,7 @@ struct PairCommand: ParsableCommand, CLIRunnable {
         try environment.tokenStore.save(token)
         if let previous, previous != token {
             // The old token would otherwise stay listed and valid with no one holding it.
-            let outcome = try? await CLIServerClient.revoke(token: previous, socketPath: server.socketPath)
+            let outcome = try? await CLIServerClient.revoke(token: previous, socketPath: server.socketPath, serverPID: server.serverPID)
             if outcome != .revoked {
                 session.writeError("tablepro: The previous token is still active. Revoke it under Settings > MCP.")
             }
@@ -129,19 +131,18 @@ struct UnpairCommand: ParsableCommand, CLIRunnable {
             session.console.out("This command is not paired.\n")
             return
         }
-        guard case .reachable(let server) = await environment.findServer() else {
+        let probe = await environment.findServer()
+        if case .peerChanged = probe {
+            throw CLIFailure.peerChanged
+        }
+        guard case .reachable(let server) = probe else {
             environment.tokenStore.delete()
             throw CLIFailure(
                 .failure,
                 "Deleted this command's token, but TablePro's MCP server is not reachable to revoke it. It stays listed under Settings > MCP until you revoke it there."
             )
         }
-        let outcome: CLIRevocation
-        do {
-            outcome = try await CLIServerClient.revoke(token: token, socketPath: server.socketPath)
-        } catch let failure as CLIFailure {
-            outcome = .refused(failure.message)
-        }
+        let outcome = try await CLIServerClient.revoke(token: token, socketPath: server.socketPath, serverPID: server.serverPID)
         switch outcome {
         case .revoked:
             environment.tokenStore.delete()

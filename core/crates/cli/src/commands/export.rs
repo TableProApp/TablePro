@@ -28,7 +28,7 @@ pub(super) async fn run(
         .call_within(&client, console, "export_data", &request, deadline)
         .await?;
     let answer: ExportAnswer = parse(&answer)?;
-    console.write_out(joined(&answer.exports, arguments.format).as_bytes())?;
+    console.text(&joined(&answer.exports, arguments.format))?;
     report(&answer, console);
     Ok(())
 }

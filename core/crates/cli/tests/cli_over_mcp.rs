@@ -621,3 +621,56 @@ async fn status_is_ready_when_a_command_would_run() {
         )
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn exports_and_ddl_escape_terminal_controls_and_preserve_pipe_bytes() {
+    let harness = harness().await;
+    harness.app.approves.store(true, Ordering::SeqCst);
+    let text = "\u{1b}]52;c;eA==\u{7}\u{1b}[2J";
+    let sql = format!("CREATE TABLE controls (value TEXT DEFAULT '{text}')");
+    let created = tablepro(Machine::of(&harness), &["query", "-c", "Writable", &sql]).await;
+    assert_eq!(created.exit, Exit::Success, "{}", created.err);
+    let inserted = tablepro(
+        Machine::of(&harness),
+        &["query", "-c", "Writable", "INSERT INTO controls DEFAULT VALUES"],
+    )
+    .await;
+    assert_eq!(inserted.exit, Exit::Success, "{}", inserted.err);
+
+    for arguments in [
+        vec!["export", "-c", "Readable", "--format", "csv", "controls"],
+        vec!["export", "-c", "Readable", "--format", "sql", "controls"],
+        vec!["describe", "-c", "Readable", "--ddl", "controls"],
+    ] {
+        let piped = tablepro(Machine::of(&harness), &arguments).await;
+        let terminal = tablepro(Machine::of(&harness).in_a_terminal(), &arguments).await;
+        assert_eq!(piped.exit, Exit::Success, "{}", piped.err);
+        assert_eq!(terminal.exit, Exit::Success, "{}", terminal.err);
+        assert!(piped.out.contains(text), "{:?}", piped.out);
+        assert_eq!(
+            terminal.out,
+            piped.out.replace('\u{1b}', "\\x1B").replace('\u{7}', "\\x07")
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn delimited_queries_escape_terminal_controls_and_preserve_pipe_bytes() {
+    let harness = harness().await;
+    for format in ["csv", "tsv"] {
+        let words = [
+            "query",
+            "-c",
+            "Readable",
+            "--format",
+            format,
+            "SELECT char(27) || ']52;c;eA==' || char(7) || char(27) || '[2J' AS value",
+        ];
+        let piped = tablepro(Machine::of(&harness), &words).await;
+        let terminal = tablepro(Machine::of(&harness).in_a_terminal(), &words).await;
+        assert_eq!(piped.exit, Exit::Success, "{}", piped.err);
+        assert_eq!(terminal.exit, Exit::Success, "{}", terminal.err);
+        assert_eq!(piped.out, "value\n\u{1b}]52;c;eA==\u{7}\u{1b}[2J\n");
+        assert_eq!(terminal.out, "value\n\\x1B]52;c;eA==\\x07\\x1B[2J\n");
+    }
+}
