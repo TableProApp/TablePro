@@ -31,6 +31,28 @@ struct AIProviderPresetTests {
         )
     }
 
+    @Test("Runcrate needs a key, and its default Base URL resolves to its chat completions and models routes")
+    func runcratePreset() throws {
+        let preset = AIProviderPreset.runcrate
+        #expect(preset.authStyle == .apiKey)
+        #expect(!preset.rejectsBadKeyWithForbidden)
+
+        let config = AIProviderConfig(preset: preset)
+        #expect(config.type == .custom)
+        #expect(config.presetID == "runcrate")
+        #expect(config.name == "Runcrate")
+        let style = config.type.endpointStyle
+        #expect(style == .chatCompletions)
+        #expect(
+            AIEndpoint(config.endpoint, style: style)?.chatURL(model: "deepseek-ai/DeepSeek-V4.1-Flash", style: style)?.absoluteString
+                == "https://api.runcrate.ai/v1/chat/completions"
+        )
+        #expect(
+            AIEndpoint(config.endpoint, style: style)?.url(appending: style.modelsResource)?.absoluteString
+                == "https://api.runcrate.ai/v1/models"
+        )
+    }
+
     @Test("Every preset has a unique id and an https endpoint the transport can resolve")
     func presetsAreWellFormed() {
         #expect(Set(AIProviderPreset.all.map(\.id)).count == AIProviderPreset.all.count)

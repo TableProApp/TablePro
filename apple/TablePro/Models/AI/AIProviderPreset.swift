@@ -29,7 +29,16 @@ struct AIProviderPreset: Identifiable, Equatable, Sendable {
         rejectsBadKeyWithForbidden: true
     )
 
-    static let all: [AIProviderPreset] = [.requesty]
+    static let runcrate = AIProviderPreset(
+        id: "runcrate",
+        displayName: "Runcrate",
+        endpoint: "https://api.runcrate.ai/v1",
+        symbolName: "cloud",
+        authStyle: .apiKey,
+        rejectsBadKeyWithForbidden: false
+    )
+
+    static let all: [AIProviderPreset] = [.requesty, .runcrate]
 
     static func preset(withID id: String?) -> AIProviderPreset? {
         guard let id else { return nil }
