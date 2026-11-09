@@ -1028,6 +1028,28 @@ fn scheme_id(view: &sourceview5::View) -> Option<String> {
 }
 
 #[gtk4::test]
+fn style_scheme_choices_stay_exact_across_desktop_changes() {
+    adw::init().expect("libadwaita");
+    let runtime = crate::test_support::test_runtime();
+    let settings = MemorySettings::new();
+    let editor = unconnected_editor(&settings, runtime.tasks());
+    let view = editor.imp().source_view.get();
+    let style = adw::StyleManager::default();
+    for id in ["Adwaita", "Adwaita-dark", "classic", "cobalt"] {
+        settings.get().set_style_scheme(id).expect("a scheme");
+        for appearance in [adw::ColorScheme::ForceLight, adw::ColorScheme::ForceDark] {
+            style.set_color_scheme(appearance);
+            assert_eq!(scheme_id(view.upcast_ref()).as_deref(), Some(id));
+        }
+    }
+    settings.get().set_style_scheme("").expect("automatic");
+    assert_eq!(scheme_id(view.upcast_ref()).as_deref(), Some("Adwaita-dark"));
+    style.set_color_scheme(adw::ColorScheme::ForceLight);
+    assert_eq!(scheme_id(view.upcast_ref()).as_deref(), Some("Adwaita"));
+    style.set_color_scheme(adw::ColorScheme::Default);
+}
+
+#[gtk4::test]
 fn closed_editor_frees_source_view() {
     let runtime = crate::test_support::test_runtime();
     let settings = MemorySettings::new();
