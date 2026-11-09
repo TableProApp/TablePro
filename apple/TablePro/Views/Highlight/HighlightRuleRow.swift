@@ -73,10 +73,13 @@ struct HighlightRuleRow: View {
         FilterRowLayout(spacing: 6, fillMinimum: FilterRowView.valueCellMinimumWidth(spacing: 6)) {
             columnPicker
                 .fillsReservedWidth()
-                .filterRowRole(.reserved(columnCellWidth))
+                .filterRowRole(.reserved(columnCellWidth, minimum: FilterControlMetrics.popUpMinimumWidth))
             operatorMenu
                 .fillsReservedWidth()
-                .filterRowRole(.reserved(FilterControlMetrics.operatorWidth(reservesCaseIndicator: true)))
+                .filterRowRole(.reserved(
+                    FilterControlMetrics.operatorWidth(reservesCaseIndicator: true),
+                    minimum: FilterControlMetrics.operatorMinimumWidth(reservesCaseIndicator: true)
+                ))
             HStack(spacing: 6) {
                 valueFields
             }

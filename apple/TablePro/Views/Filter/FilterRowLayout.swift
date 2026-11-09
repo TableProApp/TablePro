@@ -8,19 +8,18 @@ import SwiftUI
 // An HStack hands out width greedily, so its rows overflow a narrow pane and drift apart at middle
 // widths; every row here gives way the same amount, keeping its cells on one grid at any width.
 struct FilterRowLayout: Layout {
+    // A slot's minimum is declared rather than read from its control, so every row gives way alike.
     enum Role: Equatable {
         case fixed
-        case reserved(CGFloat)
+        case reserved(CGFloat, minimum: CGFloat)
         // Keeps the slot's width in the grid, and the fill cell after it starts at the slot instead.
-        case spannedByFill(CGFloat)
+        case spannedByFill(CGFloat, minimum: CGFloat)
         case fill
     }
 
     var spacing: CGFloat
     // The same for every row, so a row with a smaller value cell still gives way like the others.
     var fillMinimum: CGFloat = 0
-    // Likewise for reserved slots, so an empty placeholder shrinks no further than the pop-up it stands for.
-    var reservedMinimum: CGFloat = FilterControlMetrics.popUpMinimumWidth
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let widths = widths(for: proposal.width, subviews: subviews)
@@ -78,10 +77,8 @@ struct FilterRowLayout: Layout {
             switch subview[FilterRowRoleKey.self] {
             case .fixed:
                 widths[index] = subview.sizeThatFits(.unspecified).width
-            case .reserved(let target):
-                reserved.append((index, target, max(minimumWidth(of: subview), reservedMinimum)))
-            case .spannedByFill(let target):
-                reserved.append((index, target, reservedMinimum))
+            case .reserved(let target, let minimum), .spannedByFill(let target, let minimum):
+                reserved.append((index, target, minimum))
             case .fill:
                 fills.append((index, max(minimumWidth(of: subview), fillMinimum)))
             }
@@ -96,16 +93,41 @@ struct FilterRowLayout: Layout {
         }
 
         var available = proposedWidth - gaps(subviews) - widths.reduce(0, +)
-        let targets = reserved.reduce(0) { $0 + $1.target }
         let forReserved = max(available - fills.reduce(0) { $0 + $1.minimum }, 0)
-        let scale = targets > forReserved && targets > 0 ? forReserved / targets : 1
-        for cell in reserved {
-            widths[cell.index] = max(cell.target * scale, cell.minimum)
-            available -= widths[cell.index]
+        for (index, width) in Self.share(forReserved, among: reserved) {
+            widths[index] = width
+            available -= width
         }
         let fillShare = fills.isEmpty ? 0 : available / CGFloat(fills.count)
         for cell in fills { widths[cell.index] = max(fillShare, cell.minimum) }
         return widths
+    }
+
+    // Scales the slots down together; one that reaches its minimum stays there and the rest share what is left.
+    private static func share(
+        _ budget: CGFloat,
+        among slots: [(index: Int, target: CGFloat, minimum: CGFloat)]
+    ) -> [(index: Int, width: CGFloat)] {
+        var open = slots
+        var budget = budget
+        var shares: [(index: Int, width: CGFloat)] = []
+        while !open.isEmpty {
+            let targets = open.reduce(0) { $0 + $1.target }
+            guard targets > budget, targets > 0 else {
+                return shares + open.map { ($0.index, $0.target) }
+            }
+            let scale = budget / targets
+            let clamped = open.filter { $0.target * scale < $0.minimum }
+            guard !clamped.isEmpty else {
+                return shares + open.map { ($0.index, $0.target * scale) }
+            }
+            for slot in clamped {
+                shares.append((slot.index, slot.minimum))
+                budget = max(budget - slot.minimum, 0)
+            }
+            open.removeAll { slot in clamped.contains { $0.index == slot.index } }
+        }
+        return shares
     }
 
     private func minimumWidth(of subview: LayoutSubview) -> CGFloat {

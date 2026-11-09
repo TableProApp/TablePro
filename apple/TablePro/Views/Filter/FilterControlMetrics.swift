@@ -48,7 +48,11 @@ enum FilterControlMetrics {
     static let caseIndicatorSpacing: CGFloat = 3
 
     // SwiftUI draws a small pop-up no narrower than 29.5pt on macOS 27.
-    nonisolated static let popUpMinimumWidth: CGFloat = 32
+    static let popUpMinimumWidth: CGFloat = 32
+
+    static func operatorMinimumWidth(reservesCaseIndicator: Bool) -> CGFloat {
+        popUpMinimumWidth + (reservesCaseIndicator ? caseIndicatorWidth : 0)
+    }
 
     private static var caseIndicatorWidth: CGFloat {
         let configuration = NSImage.SymbolConfiguration(

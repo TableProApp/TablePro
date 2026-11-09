@@ -187,11 +187,13 @@ struct FilterRowLayoutTests {
         #expect(starts[0] == starts[1], "value fields start at \(starts)")
     }
 
-    @Test("A row on an array path and a row reserving its scope slot line up", arguments: [800, 400] as [CGFloat])
+    @Test("Rows on an array path, a badged operator and a plain row line up and fit", arguments: [800, 400] as [CGFloat])
     func elementScopeSlotKeepsTheGrid(width: CGFloat) throws {
-        let paths = [PluginFieldPath(path: "items.sku", typeName: "string", depth: 1, arrayPrefixes: ["items"])]
-        let scoped = TableFilter(columnName: "items.sku", filterOperator: .equal, value: "a")
-        let starts = try [scoped, Self.textEquals].map { filter in
+        // MongoDB reports array members two levels down, which also brings the nested path button.
+        let paths = [PluginFieldPath(path: "orders.items.sku", typeName: "string", depth: 2, arrayPrefixes: ["orders.items"])]
+        let scoped = TableFilter(columnName: "orders.items.sku", filterOperator: .equal, value: "a")
+        let badged = TableFilter(columnName: "title", filterOperator: .contains, value: "a", isCaseSensitive: true)
+        let starts = try [scoped, badged, Self.textEquals].map { filter in
             let view = FilterRowView(
                 filter: .constant(filter),
                 columns: Self.columns,
@@ -217,7 +219,7 @@ struct FilterRowLayoutTests {
             #expect(measureFrame(of: view, width: width).width <= width)
             return try #require(valueFields(in: view, width: width).first).minX
         }
-        #expect(starts[0] == starts[1], "value fields start at \(starts)")
+        #expect(Set(starts).count == 1, "value fields start at \(starts)")
     }
 
     @Test("A pop-up keeps its ideal width and shrinks only when squeezed")

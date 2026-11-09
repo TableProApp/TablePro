@@ -35,7 +35,8 @@ struct FilterRowView: View {
     @State private var isDropTargeted = false
     @State private var showNestedPathPicker = false
 
-    static let spacing: CGFloat = 8
+    // NSRuleEditor spaces its row controls 6pt apart.
+    static let spacing: CGFloat = 6
     static let horizontalInset: CGFloat = 12
 
     private let rowButtonGlyphSize: CGFloat = 14
@@ -85,7 +86,7 @@ struct FilterRowView: View {
                     Color.clear
                         .frame(width: 1, height: 1)
                         .accessibilityHidden(true)
-                        .filterRowRole(.spannedByFill(operatorCellWidth))
+                        .filterRowRole(.spannedByFill(operatorCellWidth, minimum: operatorCellMinimumWidth))
                 } else {
                     operatorPicker
                 }
@@ -187,7 +188,7 @@ struct FilterRowView: View {
     private var columnPicker: some View {
         columnMenuPicker
             .fillsReservedWidth()
-            .filterRowRole(.reserved(columnCellWidth))
+            .filterRowRole(.reserved(columnCellWidth, minimum: FilterControlMetrics.popUpMinimumWidth))
     }
 
     // Sized from the items every row shares, so a row with a drifted or raw item lines up with the rest.
@@ -262,12 +263,12 @@ struct FilterRowView: View {
                 .fillsReservedWidth()
                 .accessibilityIdentifier("filter-element-scope")
                 .help(elementScopeHelp)
-                .filterRowRole(.reserved(Self.elementScopeWidth))
+                .filterRowRole(.reserved(Self.elementScopeWidth, minimum: FilterControlMetrics.popUpMinimumWidth))
         } else if reservesElementScope {
             Color.clear
                 .frame(width: 1, height: 1)
                 .accessibilityHidden(true)
-                .filterRowRole(.reserved(Self.elementScopeWidth))
+                .filterRowRole(.reserved(Self.elementScopeWidth, minimum: FilterControlMetrics.popUpMinimumWidth))
         }
     }
 
@@ -310,11 +311,15 @@ struct FilterRowView: View {
     private var operatorPicker: some View {
         operatorMenu
             .fillsReservedWidth()
-            .filterRowRole(.reserved(operatorCellWidth))
+            .filterRowRole(.reserved(operatorCellWidth, minimum: operatorCellMinimumWidth))
     }
 
     private var operatorCellWidth: CGFloat {
         FilterControlMetrics.operatorWidth(reservesCaseIndicator: caseMatching.isAdjustable)
+    }
+
+    private var operatorCellMinimumWidth: CGFloat {
+        FilterControlMetrics.operatorMinimumWidth(reservesCaseIndicator: caseMatching.isAdjustable)
     }
 
     private var operatorMenu: some View {
