@@ -42,6 +42,8 @@
                 <setter object="assistant_split" property="collapsed">true</setter>
                 <setter object="tab_bar" property="visible">false</setter>
                 <setter object="tab_button" property="visible">true</setter>
+                <!-- Ctrl+S and the tab's own Save remain at this width. -->
+                <setter object="save_changes_button" property="visible">false</setter>
                 <!-- The overview the tab button opens has New Tab, and the
                      header has to fit the window's floor. -->
                 <setter object="new_tab_button" property="visible">false</setter>
