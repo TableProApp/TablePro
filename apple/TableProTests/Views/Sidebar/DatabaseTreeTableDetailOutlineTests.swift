@@ -451,6 +451,24 @@ struct DatabaseTreeTableDetailOutlineTests {
         await tearDown(other)
     }
 
+    @Test("Refreshing a schema in the hierarchical layout reads its tables' loaded detail lists again")
+    func hierarchicalRefreshRereadsDetailLists() async throws {
+        let fixture = try makeFixture()
+        fixture.coordinator.activeDatabase = fixture.connection.database
+        await load(fixture, .columns)
+        fixture.driver.columnsByTable["orders"] = [TestFixtures.makeColumnInfo(name: "id", dataType: "bigint")]
+
+        fixture.coordinator.reloadHierarchicalSchemaObjects("public")
+        try await waitUntil { fixture.driver.detailReads.count == 2 }
+        try await waitUntil {
+            guard case .loaded(.columns(let columns)) = detailState(fixture, .columns) else { return false }
+            return columns.map { $0.name } == ["id"]
+        }
+
+        #expect(fixture.driver.detailReads == ["columns:orders", "columns:orders"])
+        await tearDown(fixture)
+    }
+
     @Test("Turning Table Details off drops the lists it loaded, so a refresh reads none of them")
     func turningDetailsOffDropsTheLists() async throws {
         let fixture = try makeFixture()

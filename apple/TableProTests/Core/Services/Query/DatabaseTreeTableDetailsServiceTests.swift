@@ -206,6 +206,27 @@ struct DatabaseTreeTableDetailsServiceTests {
         DatabaseManager.shared.removeSession(for: connection.id)
     }
 
+    @Test("Refreshing a schema's triggers reads its tables' loaded trigger lists again, and no other kind")
+    func triggerRefreshRereadsTableTriggers() async {
+        let (connection, driver) = connect()
+        await load(connection, .columns)
+        await load(connection, .triggers)
+        driver.triggersByTable["orders"] = [
+            TriggerInfo(name: "orders_stamp", timing: "BEFORE", event: "UPDATE", statement: "")
+        ]
+
+        await service.refreshTriggerObjects(connectionId: connection.id, database: connection.database, schema: "public")
+
+        guard case .loaded(.triggers(let triggers)) = state(connection, .triggers) else {
+            Issue.record("The trigger list is not loaded after the refresh")
+            await disconnect(connection)
+            return
+        }
+        #expect(triggers.map { $0.name } == ["orders_stamp"])
+        #expect(driver.detailReads == ["columns:orders", "triggers:orders", "triggers:orders"])
+        await disconnect(connection)
+    }
+
     @Test("Dropping the lists clears every one, and a read the drop overtakes commits nothing")
     func dropClearsListsAndOvertakesARead() async {
         let (connection, driver) = connect()

@@ -608,10 +608,14 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         await reread(key, connectionId: connectionId, in: schemaLists, fetch: schemaListFetch(key))
     }
 
+    /// The schema's trigger list alone beside the tables: the table refresh already reads every detail
+    /// list, the per-table Triggers among them, and reading one twice at once cancels the first read.
     func refreshObjects(connectionId: UUID, database: String, schema: String?) async {
         async let tables: Void = refreshTableObjects(connectionId: connectionId, database: database, schema: schema)
         async let routines: Void = refreshRoutineObjects(connectionId: connectionId, database: database, schema: schema)
-        async let triggers: Void = refreshTriggerObjects(connectionId: connectionId, database: database, schema: schema)
+        async let triggers: Void = rereadTriggers(
+            Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
+        )
         async let types: Void = refreshUserDefinedTypeObjects(
             connectionId: connectionId, database: database, schema: schema
         )
@@ -633,10 +637,19 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         await reread(key, connectionId: connectionId, in: routineLists, fetch: routineListFetch(key))
     }
 
+    /// A table's Triggers group lists the same triggers one table at a time, so it reads again with
+    /// the schema's list rather than staying stale beside it.
     func refreshTriggerObjects(connectionId: UUID, database: String, schema: String?) async {
-        guard browsesTriggers(connectionId) else { return }
         let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
-        await reread(key, connectionId: connectionId, in: triggerLists, fetch: triggerListFetch(key))
+        async let triggers: Void = rereadTriggers(key)
+        async let details: Void = refreshTableDetails(under: key, kinds: [.triggers])
+        _ = await (triggers, details)
+    }
+
+    /// The hierarchical layout reloads a schema through `SchemaService`, which holds no detail list,
+    /// so its Refresh reads the schema's detail lists here.
+    func refreshTableDetails(connectionId: UUID, database: String, schema: String?) async {
+        await refreshTableDetails(under: Self.objectsKey(connectionId: connectionId, database: database, schema: schema))
     }
 
     func refreshUserDefinedTypeObjects(connectionId: UUID, database: String, schema: String?) async {
@@ -647,6 +660,11 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
 
     private func rereadTables(_ key: ObjectsKey) async {
         await reread(key, connectionId: key.connectionId, in: tableLists, fetch: tableListFetch(key))
+    }
+
+    private func rereadTriggers(_ key: ObjectsKey) async {
+        guard browsesTriggers(key.connectionId) else { return }
+        await reread(key, connectionId: key.connectionId, in: triggerLists, fetch: triggerListFetch(key))
     }
 
     /// A list that is not loaded is dropped and read by its next reader rather than now.
@@ -668,9 +686,12 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
 
     /// The rule partitions follow: a loaded list reads again over its rows, and one that never
     /// loaded is dropped for its next reader.
-    private func refreshTableDetails(under key: ObjectsKey) async {
+    private func refreshTableDetails(
+        under key: ObjectsKey, kinds: Set<TableDetailKind> = Set(TableDetailKind.allCases)
+    ) async {
         let detailKeys = tableDetailsState.keys.filter {
             $0.connectionId == key.connectionId && $0.database == key.database && $0.schema == key.schema
+                && kinds.contains($0.kind)
         }
         for detailKey in detailKeys {
             guard case .loaded = tableDetailsState[detailKey] ?? .idle else {

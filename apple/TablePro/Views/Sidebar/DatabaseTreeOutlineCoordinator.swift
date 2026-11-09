@@ -711,11 +711,21 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         }
     }
 
+    /// `SchemaService` holds no table's detail lists, so they read again beside the schema's objects,
+    /// under the database a hierarchical table row names.
     internal func reloadHierarchicalSchemaObjects(_ schema: String) {
         let connectionId = connectionId
         let database = browsingDatabase
+        let service = service
+        let schemaService = schemaService
         Task {
-            await schemaService.reloadSchemaObjects(connectionId: connectionId, schema: schema, database: database)
+            async let objects: Void = schemaService.reloadSchemaObjects(
+                connectionId: connectionId, schema: schema, database: database
+            )
+            async let details: Void = service.refreshTableDetails(
+                connectionId: connectionId, database: database ?? "", schema: schema
+            )
+            _ = await (objects, details)
         }
     }
 
