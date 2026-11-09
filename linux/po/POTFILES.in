@@ -275,6 +275,7 @@ crates/app/src/ui/data_grid/imp.rs
 crates/app/src/ui/data_grid/keys.rs
 crates/app/src/ui/data_grid/layout_binding.rs
 crates/app/src/ui/data_grid/mod.rs
+crates/app/src/ui/data_grid/pinned_numbers.rs
 crates/app/src/ui/data_grid/pointer.rs
 crates/app/src/ui/data_grid/references/mod.rs
 crates/app/src/ui/data_grid/references/tests.rs

@@ -94,6 +94,7 @@ internal struct AgentSessionRailView: View {
             guard let session = highlightedSession else { return }
             onDelete(session.id)
         }
+        .splitItemGlassBackground()
     }
 
     /// A contextual menu leaves out what does not apply rather than dimming it, which is the reverse

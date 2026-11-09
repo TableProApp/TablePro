@@ -54,6 +54,8 @@ pub struct Workspace {
     /// A provider is chosen, so the assistant's column and toggle show.
     #[property(get)]
     pub(super) assistant_available: Cell<bool>,
+    #[property(get)]
+    pub(super) can_refresh: Cell<bool>,
 
     pub(super) key: OnceCell<SessionKey>,
     // File sessions and saved connections must use the editor save's identity.
