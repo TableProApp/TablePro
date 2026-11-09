@@ -11208,6 +11208,16 @@
         }
       }
     },
+    "%lld of ^[%lld object](inflect: true)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of ^[%2$lld object](inflect: true)"
+          }
+        }
+      }
+    },
     "%lld of ^[%lld row](inflect: true)" : {
       "localizations" : {
         "en" : {
@@ -12595,6 +12605,9 @@
           }
         }
       }
+    },
+    "^[%lld object](inflect: true)" : {
+
     },
     "^[%lld row](inflect: true)" : {
       "localizations" : {
@@ -27781,6 +27794,9 @@
         }
       }
     },
+    "Arguments" : {
+
+    },
     "Array element scope" : {
       "localizations" : {
         "fr" : {
@@ -33521,7 +33537,22 @@
     "Can't Export Messages" : {
 
     },
+    "Can't List Foreign Tables" : {
+
+    },
+    "Can't List Functions" : {
+
+    },
+    "Can't List Materialized Views" : {
+
+    },
+    "Can't List Procedures" : {
+
+    },
     "Can't List Routines" : {
+
+    },
+    "Can't List Sequences" : {
 
     },
     "Can't List Tables" : {
@@ -33563,6 +33594,15 @@
           }
         }
       }
+    },
+    "Can't List Triggers" : {
+
+    },
+    "Can't List Types" : {
+
+    },
+    "Can't List Views" : {
+
     },
     "Can't reach a PGlite socket server at %@:%d. Start it with 'npx @electric-sql/pglite-socket', then try again." : {
       "extractionState" : "manual",
@@ -40754,6 +40794,9 @@
           }
         }
       }
+    },
+    "Clicking a database, schema or object group in the sidebar lists its objects in the main area. Show Objects in the row's menu lists them either way." : {
+
     },
     "Client" : {
       "localizations" : {
@@ -82487,6 +82530,9 @@
         }
       }
     },
+    "Filter by Name" : {
+
+    },
     "Filter by Tag" : {
       "localizations" : {
         "fr" : {
@@ -100312,6 +100358,9 @@
     "Lakehouse analytics, MySQL protocol" : {
 
     },
+    "Language" : {
+
+    },
     "Language %@" : {
       "localizations" : {
         "fr" : {
@@ -115783,6 +115832,9 @@
         }
       }
     },
+    "No" : {
+
+    },
     "No %@" : {
       "localizations" : {
         "fr" : {
@@ -117877,6 +117929,9 @@
         }
       }
     },
+    "No Foreign Tables" : {
+
+    },
     "No functions" : {
       "localizations" : {
         "fr" : {
@@ -117916,6 +117971,9 @@
           }
         }
       }
+    },
+    "No Functions" : {
+
     },
     "No generator can fill %@ (%@), and it cannot be left empty." : {
       "localizations" : {
@@ -118762,6 +118820,9 @@
         }
       }
     },
+    "No Materialized Views" : {
+
+    },
     "No measurable change" : {
       "localizations" : {
         "fr" : {
@@ -119477,6 +119538,9 @@
           }
         }
       }
+    },
+    "No Procedures" : {
+
     },
     "No providers configured" : {
       "localizations" : {
@@ -120715,6 +120779,9 @@
     "No sequences" : {
 
     },
+    "No Sequences" : {
+
+    },
     "No servers yet." : {
       "localizations" : {
         "fr" : {
@@ -121477,6 +121544,9 @@
         }
       }
     },
+    "No Types" : {
+
+    },
     "No Users or Roles" : {
       "localizations" : {
         "fr" : {
@@ -121729,6 +121799,9 @@
           }
         }
       }
+    },
+    "No Views" : {
+
     },
     "No Warnings" : {
       "localizations" : {
@@ -125553,6 +125626,9 @@
           }
         }
       }
+    },
+    "Object Kind" : {
+
     },
     "Object kinds this operation may name, as list_tables reports them. Empty when it acts on the whole database only." : {
       "localizations" : {
@@ -152153,6 +152229,9 @@
         }
       }
     },
+    "Returns" : {
+
+    },
     "Returns %@" : {
       "localizations" : {
         "fr" : {
@@ -166323,6 +166402,12 @@
           }
         }
       }
+    },
+    "Show Objects" : {
+
+    },
+    "Show objects when a database, schema or group is selected" : {
+
     },
     "Show only the objects whose name contains this text" : {
       "localizations" : {
@@ -191283,6 +191368,9 @@
           }
         }
       }
+    },
+    "The read stopped before it finished." : {
+
     },
     "The Realtime Database cannot filter with %@. It supports =, <, <=, >, >=, BETWEEN, STARTS WITH and IS NULL." : {
       "extractionState" : "manual",
@@ -217682,6 +217770,9 @@
           }
         }
       }
+    },
+    "Yes" : {
+
     },
     "Yesterday" : {
       "localizations" : {
