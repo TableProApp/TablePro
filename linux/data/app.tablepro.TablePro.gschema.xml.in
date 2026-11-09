@@ -132,8 +132,8 @@
 
     <key name="show-invisible-characters" type="b">
       <default>true</default>
-      <summary>Mark spaces, tabs and line breaks in cell values</summary>
-      <description>Whether the row details value editor draws marks for spaces, tabs and line breaks.</description>
+      <summary>Show invisible characters</summary>
+      <description>Whether cells and value fields mark zero-width, control and special space characters.</description>
     </key>
 
     <key name="null-display" type="s">

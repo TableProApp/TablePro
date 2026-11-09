@@ -607,3 +607,73 @@ fn row_height_preferences_change_the_allocated_row_height() {
     assert_eq!(row_widget(&cell), row);
     assert_eq!(grid.cell_of(1, 1), cell);
 }
+
+fn marked_value(text: &str) -> Grid {
+    Grid::open(
+        two_text_columns(),
+        vec![vec![Value::Int(1), Value::Text(text.to_owned())]],
+    )
+}
+
+#[gtk4::test]
+fn cells_mark_invisible_characters_until_preferences_turn_it_off() {
+    let grid = marked_value("a\u{200b}b\u{a0}c\nd\te f");
+
+    let cell = grid.cell_of(1, 1);
+    assert_eq!(Grid::display_text(&cell), "aZWSPb\u{a0}cLFd\te f");
+    assert!(has_attribute(&cell, pango::AttrType::Background));
+    assert!(has_attribute(&cell, pango::AttrType::Scale));
+
+    let settings = grid.grid.config().expect("a configured grid").settings.clone();
+    settings.set_show_invisible_characters(false).expect("store the flag");
+    drain_main_context();
+    let cell = grid.cell_of(1, 1);
+    assert_eq!(Grid::display_text(&cell), "a\u{200b}b\u{a0}c\nd\te f");
+    assert!(!has_attribute(&cell, pango::AttrType::Background));
+
+    settings.set_show_invisible_characters(true).expect("store the flag");
+    drain_main_context();
+    assert_eq!(Grid::display_text(&grid.cell_of(1, 1)), "aZWSPb\u{a0}cLFd\te f");
+}
+
+#[gtk4::test]
+fn a_cell_with_nothing_to_mark_draws_its_value_as_it_is() {
+    let grid = marked_value("plain text");
+
+    let cell = grid.cell_of(1, 1);
+    assert_eq!(Grid::display_text(&cell), "plain text");
+    assert!(!has_attribute(&cell, pango::AttrType::Background));
+}
+
+#[gtk4::test]
+fn the_inline_editor_marks_invisible_characters_and_keeps_its_text() {
+    let grid = marked_value("a\u{200b}b");
+    let cell = grid.focus(0, 1);
+    assert!(grid.grid.edit().edit_cell(&cell));
+    let field = grid.grid.edit().open_text().expect("an inline editor");
+    let shown = |field: &gtk::Text| -> Vec<(u32, u32)> {
+        field
+            .attributes()
+            .map(|list| {
+                list.attributes()
+                    .iter()
+                    .filter(|attr| attr.type_() == pango::AttrType::Show)
+                    .map(|attr| (attr.start_index(), attr.end_index()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+
+    assert_eq!(field.text(), "a\u{200b}b");
+    assert_eq!(shown(&field), [(1, 4)]);
+    field.set_text("plain");
+    assert!(shown(&field).is_empty());
+    field.set_text("x\u{1}");
+    assert_eq!(shown(&field), [(1, 2)]);
+
+    let settings = grid.grid.config().expect("a configured grid").settings.clone();
+    settings.set_show_invisible_characters(false).expect("store the flag");
+    drain_main_context();
+    assert!(shown(&field).is_empty());
+    assert_eq!(field.text(), "x\u{1}");
+}

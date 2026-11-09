@@ -231,7 +231,7 @@ mod tests {
     }
 
     #[gtk4::test]
-    fn whitespace_switches_follow_each_other_and_external_settings() {
+    fn invisible_character_switches_follow_each_other_and_external_settings() {
         let settings = MemorySettings::new();
         let first = bound_group(&settings);
         let second = bound_group(&settings);

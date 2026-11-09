@@ -29,6 +29,7 @@ mod row_number_column;
 mod selection;
 mod selection_summary;
 mod server_sorter;
+mod special_marks;
 mod stripes;
 mod table_keys;
 #[cfg(test)]
