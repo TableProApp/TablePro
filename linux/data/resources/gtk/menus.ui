@@ -18,37 +18,6 @@
       </item>
     </section>
     <section>
-      <!-- A workspace adds these; the picker has no session to show
-           history for. -->
-      <item>
-        <attribute name="label" translatable="yes">Query _History</attribute>
-        <attribute name="action">win.show-history</attribute>
-        <attribute name="hidden-when">action-missing</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">Saved _Queries</attribute>
-        <attribute name="action">win.show-saved-queries</attribute>
-        <attribute name="hidden-when">action-missing</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">E_xport Database…</attribute>
-        <attribute name="action">win.export-database</attribute>
-        <attribute name="hidden-when">action-missing</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">Import SQL _File…</attribute>
-        <attribute name="action">win.import-sql-file</attribute>
-        <attribute name="hidden-when">action-missing</attribute>
-      </item>
-      <!-- The window always has it, enabled only while it shows a
-           session. -->
-      <item>
-        <attribute name="label" translatable="yes">_Disconnect</attribute>
-        <attribute name="action">win.disconnect</attribute>
-        <attribute name="hidden-when">action-disabled</attribute>
-      </item>
-    </section>
-    <section>
       <item>
         <attribute name="label" translatable="yes">_Import Connections…</attribute>
         <attribute name="action">win.import-connections</attribute>
@@ -78,6 +47,35 @@
       <item>
         <attribute name="label" translatable="yes">_About TablePro</attribute>
         <attribute name="action">app.about</attribute>
+      </item>
+    </section>
+  </menu>
+  <menu id="session_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Query _History</attribute>
+        <attribute name="action">win.show-history</attribute>
+        <attribute name="hidden-when">action-missing</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Saved _Queries</attribute>
+        <attribute name="action">win.show-saved-queries</attribute>
+        <attribute name="hidden-when">action-missing</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">E_xport Database…</attribute>
+        <attribute name="action">win.export-database</attribute>
+        <attribute name="hidden-when">action-missing</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Import SQL _File…</attribute>
+        <attribute name="action">win.import-sql-file</attribute>
+        <attribute name="hidden-when">action-missing</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Disconnect</attribute>
+        <attribute name="action">win.disconnect</attribute>
+        <attribute name="hidden-when">action-disabled</attribute>
       </item>
     </section>
   </menu>
