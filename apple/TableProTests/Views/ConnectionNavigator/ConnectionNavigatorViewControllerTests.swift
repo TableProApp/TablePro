@@ -227,6 +227,29 @@ struct ConnectionNavigatorViewControllerTests {
         #expect(hosted.controller.row(for: .connection(inside.id)) == -1)
     }
 
+    /// The list rebuilds on every connect, since a connect records a recent connection.
+    @Test("A rebuild leaves the list where the user scrolled it")
+    func rebuildKeepsTheScrollPosition() throws {
+        let connections = (0..<60).map { DatabaseConnection(name: String(format: "connection %02d", $0)) }
+        fixture.save(connections)
+        let shown = try #require(connections.last)
+        fixture.host.hosted = [shown.id]
+        fixture.host.selected = shown.id
+        let hosted = host()
+        defer { hosted.tearDown() }
+        let outline = hosted.controller.outlineView
+        let clipView = try #require(outline.enclosingScrollView?.contentView)
+        let shownRow = hosted.controller.row(for: .connection(shown.id))
+        try #require(outline.selectedRow == shownRow)
+        clipView.scroll(to: .zero)
+        try #require(!clipView.documentVisibleRect.intersects(outline.rect(ofRow: shownRow)))
+
+        hosted.controller.model.rebuild()
+
+        #expect(outline.selectedRow == shownRow)
+        #expect(clipView.bounds.origin == .zero)
+    }
+
     // MARK: - Clicks and Return
 
     /// NSTableView tracks a press until the mouse-up, so the mouse-up waits in the queue first. A

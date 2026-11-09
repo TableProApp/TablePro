@@ -268,6 +268,7 @@ internal final class ConnectionNavigatorViewController: NSViewController, NSSear
             selectShownConnection()
         }
         isReloading = false
+        scrollToSelection(ifMovedFrom: previous)
         applyEmptyState()
     }
 
@@ -370,7 +371,9 @@ internal final class ConnectionNavigatorViewController: NSViewController, NSSear
     internal func refreshSelection() {
         guard isViewLoaded else { return }
         model.refreshPresentation()
+        let previous = selectedRowID
         selectShownConnection()
+        scrollToSelection(ifMovedFrom: previous)
     }
 
     /// A connection the library does not hold, one opened from a file or a link, leaves nothing
@@ -389,6 +392,13 @@ internal final class ConnectionNavigatorViewController: NSViewController, NSSear
             return
         }
         outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+    }
+
+    /// The list rebuilds on every connect, so only a selection that moved brings its row into view.
+    /// The same row staying selected leaves the list where the user scrolled it.
+    private func scrollToSelection(ifMovedFrom previous: ConnectionNavigatorRowID?) {
+        let row = outlineView.selectedRow
+        guard row >= 0, selectedRowID != previous else { return }
         outlineView.scrollRowToVisible(row)
     }
 
@@ -466,6 +476,7 @@ internal final class ConnectionNavigatorViewController: NSViewController, NSSear
         view.window?.makeFirstResponder(outlineView)
         if outlineView.selectedRow < 0 {
             select(0)
+            outlineView.scrollRowToVisible(0)
         }
         return true
     }
