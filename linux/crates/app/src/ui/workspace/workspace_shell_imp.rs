@@ -124,6 +124,7 @@ pub struct WorkspaceShell {
         crate::services::history_service::HistoryService,
         tablepro_session::runtime::Tasks,
     )>,
+    pub(super) favorites_hold: OnceCell<std::rc::Rc<dyn tablepro_session::runtime::ProcessHold>>,
     pub(super) favorites_generation: Cell<u64>,
     pub(super) favorites_connection: Cell<Option<uuid::Uuid>>,
     pub(super) favorites_watch: RefCell<Option<tablepro_session::runtime::WatchForwarder>>,
