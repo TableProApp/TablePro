@@ -643,19 +643,53 @@ fn the_header_refresh_follows_the_selected_tabs_capability() {
     wait_until(WAIT, || !button.is_sensitive()).expect("no refresh after the last tab closes");
 }
 
-#[gtk4::test]
-fn the_sidebar_add_button_is_there_to_use_only_while_the_menu_offers_something() {
-    let test = TestWindow::connected("SidebarAdd");
-    let shell = test
-        .window
-        .content()
-        .and_downcast::<WorkspaceShell>()
-        .expect("the shell page");
-    let offered = ["new-table", "new-schema", "new-database"].iter().any(|name| {
-        gtk4::prelude::ActionMapExt::lookup_action(&test.window, name)
-            .expect("the window's action")
-            .is_enabled()
-    });
+fn postgres(script: &mut tablepro_test_support::ConnectionScript) {
+    script.dialect = Arc::new(tablepro_driver_postgres::PgDialect::new(
+        &tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0),
+    ));
+}
 
-    assert_eq!(shell.imp().sidebar_add_button.is_sensitive(), offered);
+#[gtk4::test]
+fn the_sidebar_add_menu_makes_objects_in_the_session_in_front() {
+    let test = TestWindow::connected_with("SidebarAdd", postgres);
+    let shell = shell_of(&test.workspace());
+    let imp = shell.imp();
+    let (bar, button) = (imp.sidebar_bar.get(), imp.sidebar_add_button.get());
+    wait_until(WAIT, || bar.is_revealed()).expect("the bar under the tree");
+    crate::test_support::assert_labelled(&button).expect("the Add button is named");
+    let target = crate::ui::session_target::to_variant(&test.key());
+    let offered = button
+        .menu_model()
+        .map(|menu| crate::ui::workspace::sidebar::tests::menu_items(&menu))
+        .unwrap_or_default();
+    assert_eq!(
+        offered,
+        [
+            ("win.new-table-in".to_owned(), Some(target.clone())),
+            ("win.new-schema-in".to_owned(), Some(target.clone())),
+            ("win.new-database-in".to_owned(), Some(target.clone())),
+        ]
+    );
+
+    imp.scope_toggle.set_active_name(Some("favorites"));
+    assert!(!bar.is_revealed(), "the bar makes tables under Favorites");
+    imp.scope_toggle.set_active_name(Some("tables"));
+    assert!(bar.is_revealed());
+
+    WidgetExt::activate_action(&button, "win.new-table-in", Some(&target)).expect("the window's action");
+    wait_until(WAIT, || shell.tab_view().n_pages() == 1).expect("a new table's tab");
+}
+
+#[gtk4::test]
+fn a_read_only_connection_has_no_add_menu() {
+    let test = TestWindow::connected_with("SidebarAddReadOnly", |script| {
+        postgres(script);
+        script.read_only = true;
+    });
+    let shell = shell_of(&test.workspace());
+    let imp = shell.imp();
+    crate::test_support::drain_main_context();
+
+    assert!(!imp.sidebar_add_button.is_visible());
+    assert!(!imp.sidebar_bar.is_revealed());
 }

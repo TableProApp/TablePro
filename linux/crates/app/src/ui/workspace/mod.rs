@@ -67,7 +67,7 @@ pub(crate) use self::database_transfer::TransferInput;
 pub(crate) use self::saves::SaveRequest;
 use self::session_watches::SessionWatches;
 use self::tab_title::ConnectionLabel;
-pub(crate) use self::workspace_actions::{show_creation_actions, show_transfer_actions};
+pub(crate) use self::workspace_actions::show_transfer_actions;
 pub(crate) use self::workspace_shell::WorkspaceShell;
 pub(crate) use self::workspace_tab_view::page_position;
 use super::browse_tab::BrowseTab;
@@ -910,6 +910,7 @@ impl Workspace {
     /// which titles its row and the header bars from these.
     fn hold(&self, model: WorkspaceModel, blockers: [Rc<dyn CloseBlocker>; 2]) {
         model.refresh_title();
+        model.show_affordances();
         model.refresh_assistant();
         self.imp().model.replace(Some(model));
         for blocker in blockers {
@@ -932,6 +933,11 @@ impl Workspace {
     /// workspace's signals.
     pub(crate) fn start(&self) {
         self.with_model(WorkspaceModel::open);
+    }
+
+    fn show_creation_menu(&self, menu: gio::MenuModel) {
+        self.imp().creation_menu.replace(Some(menu));
+        self.notify_creation_menu();
     }
 
     /// The key the session is open under.
