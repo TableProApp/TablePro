@@ -47,11 +47,11 @@ pub struct RowDetailPane {
     #[template_child]
     pub edited_toggle: TemplateChild<gtk::ToggleButton>,
     #[template_child]
-    pub editor_box: TemplateChild<gtk::Box>,
-    #[template_child]
     pub editor_dock: TemplateChild<gtk::Box>,
     #[template_child]
-    pub field_label: TemplateChild<gtk::Label>,
+    pub editor_tools: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub editor_box: TemplateChild<gtk::Box>,
     #[template_child]
     pub choice_button: TemplateChild<gtk::MenuButton>,
     #[template_child]

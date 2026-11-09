@@ -4,45 +4,33 @@ use gtk4::prelude::*;
 use tablepro_linux_platform::AppSettings;
 use tablepro_linux_platform::settings::keys;
 
-/// One preview per installed scheme. `StyleSchemePreview` is a toggle,
-/// so the group behaves like a radio set: picking one writes the id and
-/// clears the rest.
-pub(crate) fn populate(container: &gtk4::FlowBox, settings: &Rc<AppSettings>) {
+use crate::ui::handler_guard::HandlerGuard;
+
+pub(crate) fn populate(container: &gtk4::FlowBox, settings: &Rc<AppSettings>) -> HandlerGuard {
     let manager = sourceview5::StyleSchemeManager::default();
     let selected = settings.style_scheme();
-    let previews: Rc<Vec<sourceview5::StyleSchemePreview>> = Rc::new(
-        manager
-            .scheme_ids()
-            .iter()
-            .filter_map(|id| manager.scheme(id))
-            .map(|scheme| sourceview5::StyleSchemePreview::new(&scheme))
-            .collect(),
-    );
-
-    for preview in previews.iter() {
-        preview.set_selected(preview.scheme().id() == selected);
+    let mut previews = Vec::new();
+    for scheme in manager.scheme_ids().iter().filter_map(|id| manager.scheme(id)) {
+        let preview = sourceview5::StyleSchemePreview::new(&scheme);
+        preview.set_selected(scheme.id() == selected);
         let settings = settings.clone();
-        let previews = previews.clone();
         preview.connect_activate(move |activated| {
-            let id = activated.scheme().id();
-            if let Err(error) = settings.set_style_scheme(&id) {
+            if let Err(error) = settings.set_style_scheme(&activated.scheme().id()) {
                 tracing::warn!(%error, "could not save the editor style scheme");
-                return;
-            }
-            for preview in previews.iter() {
-                preview.set_selected(preview.scheme().id() == id);
             }
         });
-        container.append(preview);
+        previews.push(preview.downgrade());
+        container.append(&preview);
     }
 
-    let previews_for_settings = previews.clone();
-    settings
+    // Settings outlive Preferences; they must not keep the previews alive.
+    let changed = settings
         .gio()
         .connect_changed(Some(keys::STYLE_SCHEME), move |settings, key| {
             let id = settings.string(key);
-            for preview in previews_for_settings.iter() {
+            for preview in previews.iter().filter_map(gtk4::glib::WeakRef::upgrade) {
                 preview.set_selected(preview.scheme().id() == id);
             }
         });
+    HandlerGuard::new(settings.gio(), changed)
 }

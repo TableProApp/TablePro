@@ -58,8 +58,9 @@ For a stable or patch, name the fix and the reason, and ask. Only a security fix
 
 ## 6. Follow RELEASING
 
-Run `apple/RELEASING.md`: Cutting a beta, or Cutting a stable or patch, then Forward-port. On a failure, When a run fails or Withdrawing a release.
+Run `apple/RELEASING.md`: Cutting a beta, or Cutting a stable or patch with its Forward-port. On a failure, When a run fails or Withdrawing a release.
 
-- Watch the tag's run: `gh run list --workflow release.yml --limit 3`, then `gh run watch <id> --exit-status`.
+- `apple/scripts/release/tag.sh <tag> <commit>` tags and watches the tag's run. Hold merges and pull request pushes around it as Tagging says, since release jobs get no runner priority.
+- The forward-port goes once the tag's App and Plugins jobs start, not after publishing, so the next beta.1 need not wait for the stable (Forward-port).
 - Then check the source: `gh api -H 'Accept: application/vnd.github.raw' 'repos/TableProApp/TablePro/contents/appcast.xml?ref=gh-pages' | grep -c '<sparkle:shortVersionString>X.Y.Z<'` prints 1; `gh release view vX.Y.Z --json assets -q '.assets | length'` is 4 plus `python3 apple/scripts/release/registry.py targets | wc -l`.
 - After an X.Y.0, the `announce` skill in TableProApp/web is next.

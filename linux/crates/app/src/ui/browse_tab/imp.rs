@@ -28,6 +28,16 @@ pub struct BrowseTab {
     #[template_child]
     pub no_pk_banner: TemplateChild<adw::Banner>,
     #[template_child]
+    pub view_stack: TemplateChild<adw::ViewStack>,
+    #[template_child]
+    pub structure_host: TemplateChild<adw::Bin>,
+    #[template_child]
+    pub view_toggle: TemplateChild<adw::InlineViewSwitcher>,
+    #[template_child]
+    pub data_start: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub data_end: TemplateChild<gtk::Box>,
+    #[template_child]
     pub inner_stack: TemplateChild<gtk::Stack>,
     #[template_child]
     pub loading_page: TemplateChild<adw::StatusPage>,
@@ -65,6 +75,8 @@ pub struct BrowseTab {
     /// The tab's one grid, reachable while an input is being handled
     /// and the model is borrowed.
     pub(super) grid: OnceCell<DataGrid>,
+    pub(super) browse_actions: OnceCell<gtk::gio::SimpleActionGroup>,
+    pub(super) structure_requested: Cell<bool>,
     pub(super) model: RefCell<Option<BrowseModel>>,
     pub(super) queue: RefCell<VecDeque<BrowseTabInput>>,
     pub(super) dispatching: Cell<bool>,
@@ -111,6 +123,7 @@ impl ObjectImpl for BrowseTab {
                     .param_types([bool::static_type()])
                     .build(),
                 Signal::builder("save-requested").build(),
+                Signal::builder("structure-requested").build(),
                 Signal::builder("loading-changed")
                     .param_types([bool::static_type()])
                     .build(),
