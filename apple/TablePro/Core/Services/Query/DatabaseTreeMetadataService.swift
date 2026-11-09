@@ -684,6 +684,26 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         }
     }
 
+    /// Table Details is one option for every window, so turning it off drops every detail list: no
+    /// row draws one, and a refresh would read each of them again. Each key is superseded before any
+    /// suspension, so a read still running commits nothing, and only reads started before the drop
+    /// are cancelled, never one a group opened after the option came back on.
+    func dropTableDetails() {
+        guard !tableDetailsState.isEmpty else { return }
+        var dropped: [TableDetailsKey: Int] = [:]
+        for key in tableDetailsState.keys {
+            tableDetailsCommit.fence.supersede(key)
+            tableDetailsCommit.freshness.markChanged(key)
+            dropped[key] = tableDetailsCommit.freshness.revision(for: key)
+        }
+        tableDetailsState.removeAll()
+        Task { [dropped] in
+            await tableDetailsDedup.cancel { fetch in
+                dropped[fetch.key].map { fetch.revision < $0 } ?? false
+            }
+        }
+    }
+
     /// A table's identity ignores its partition count, so the equality guard on a table list is blind
     /// to a count that moved; another client adding a partition is exactly that case.
     nonisolated internal static func partitionCountsChanged(

@@ -451,6 +451,23 @@ struct DatabaseTreeTableDetailOutlineTests {
         await tearDown(other)
     }
 
+    @Test("Turning Table Details off drops the lists it loaded, so a refresh reads none of them")
+    func turningDetailsOffDropsTheLists() async throws {
+        let fixture = try makeFixture()
+        await load(fixture, .columns)
+        await load(fixture, .triggers)
+
+        fixture.coordinator.showsTableDetails = false
+        await service.refreshTableObjects(
+            connectionId: fixture.connection.id, database: fixture.connection.database, schema: "public"
+        )
+
+        #expect(fixture.driver.detailReads == ["columns:orders", "triggers:orders"])
+        #expect(detailState(fixture, .columns) == .idle)
+        #expect(detailState(fixture, .triggers) == .idle)
+        await tearDown(fixture)
+    }
+
     @Test("Turning Table Details off shows the partitions again, and turning it on brings the open group back")
     func togglingKeepsTheOpenGroup() async throws {
         let fixture = try makeFixture()

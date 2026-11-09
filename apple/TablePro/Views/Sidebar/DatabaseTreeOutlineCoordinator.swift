@@ -38,7 +38,14 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     internal var showRecentTables = true
     internal var showSystemContainers = false
     internal var showsPartitions = true
-    internal var showsTableDetails = false
+    /// Off, no row draws a detail list, so the loaded ones go and nothing reads them again: the
+    /// tree is the one it was before Table Details existed.
+    internal var showsTableDetails = false {
+        didSet {
+            guard oldValue, !showsTableDetails else { return }
+            service.dropTableDetails()
+        }
+    }
     private var rowSize: SidebarRowSize = .medium
 
     internal var nodeCache: [String: DatabaseTreeNode] = [:]

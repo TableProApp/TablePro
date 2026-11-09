@@ -206,6 +206,28 @@ struct DatabaseTreeTableDetailsServiceTests {
         DatabaseManager.shared.removeSession(for: connection.id)
     }
 
+    @Test("Dropping the lists clears every one, and a read the drop overtakes commits nothing")
+    func dropClearsListsAndOvertakesARead() async {
+        let (connection, driver) = connect()
+        await load(connection, .indexes)
+        driver.pausesNextTableFetch = true
+        var read: Task<Void, Never>?
+        await withCheckedContinuation { (paused: CheckedContinuation<Void, Never>) in
+            driver.onTableFetchPaused = { paused.resume() }
+            read = Task { await load(connection, .columns) }
+        }
+
+        service.dropTableDetails()
+        driver.resumeTableFetch()
+        await read?.value
+
+        #expect(state(connection, .columns) == .idle)
+        #expect(state(connection, .indexes) == .idle)
+        #expect(needsFetch(connection, .columns))
+        #expect(needsFetch(connection, .indexes))
+        await disconnect(connection)
+    }
+
     @Test("Refreshing a schema's tables reads a loaded list again and drops one that never loaded")
     func refreshRidesWithTheTables() async {
         let (connection, driver) = connect()
