@@ -81,6 +81,8 @@ pub struct BrowseTab {
     #[template_child]
     pub action_bar: TemplateChild<gtk::ActionBar>,
     #[template_child]
+    pub overflow_button: TemplateChild<gtk::MenuButton>,
+    #[template_child]
     pub more_button: TemplateChild<gtk::MenuButton>,
     #[template_child]
     pub export_button: TemplateChild<gtk::Button>,

@@ -1855,7 +1855,7 @@ fn the_bottom_bar_offers_the_column_chooser() {
     let tab = harness.tab();
     let window = crate::test_support::OwnedWindow::presented(
         libadwaita::Window::builder()
-            .default_width(1000)
+            .default_width(1_200)
             .default_height(500)
             .content(tab)
             .build(),
@@ -1865,7 +1865,7 @@ fn the_bottom_bar_offers_the_column_chooser() {
         .expect("a Columns button");
     // A pending initial surface configure can otherwise overwrite the later resize.
     wait_until(WAIT, || {
-        window.is_mapped() && tab.width() >= 900 && !harness.shown().is_empty()
+        window.is_mapped() && tab.width() >= 1_200 && !harness.shown().is_empty()
     })
     .expect("the wide window is allocated");
     assert!(tab.current_breakpoint().is_none());

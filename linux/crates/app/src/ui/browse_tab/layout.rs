@@ -46,6 +46,7 @@ pub(super) fn build(tab: &BrowseTab, init: &LayoutInit<'_>) -> BrowseTabWidgets 
     imp.inner_stack.set_visible_child_name("loading");
     imp.read_only_banner.set_revealed(init.read_only);
     let page_sizes = page_size_choices(&imp.page_size_dropdown, init.page_size);
+    imp.overflow_button.set_menu_model(Some(&overflow_menu(&page_sizes)));
     imp.more_button.set_menu_model(Some(&more_menu(&page_sizes)));
     imp.json_more.set_menu_model(Some(&json_menu(&page_sizes)));
     connect_controls(tab, page_sizes.clone());
@@ -69,22 +70,11 @@ pub(super) fn build(tab: &BrowseTab, init: &LayoutInit<'_>) -> BrowseTabWidgets 
 }
 
 fn more_menu(page_sizes: &[u64]) -> gio::Menu {
-    let export = gio::MenuItem::new(Some(&gettext("_Export Rows…")), Some("browse.export"));
-    // The window's Export Results key reaches this tab's Export.
-    if let Some(key) = crate::application::triggers_for("win.export-results").first() {
-        export.set_attribute_value("accel", Some(&key.to_variant()));
-    }
     let actions = gio::Menu::new();
     actions.append(Some(&gettext("_Filter Rows")), Some("browse.filter"));
     actions.append(Some(&gettext("Col_umns…")), Some("grid.columns"));
-    actions.append_item(&export);
+    actions.append_item(&export_item());
     actions.append(Some(&gettext("_Count Rows")), Some("browse.count-rows"));
-    let sizes = gio::Menu::new();
-    for size in page_sizes {
-        let item = gio::MenuItem::new(Some(&format_thousands(*size)), None);
-        item.set_action_and_target_value(Some("browse.page-size"), Some(&size.to_variant()));
-        sizes.append_item(&item);
-    }
     let rows = gio::Menu::new();
     rows.append(Some(&gettext("_Insert Row")), Some("grid.insert-row"));
     rows.append(Some(&gettext("_Delete Selected Rows")), Some("grid.delete-rows"));
@@ -96,7 +86,18 @@ fn more_menu(page_sizes: &[u64]) -> gio::Menu {
     menu.append_section(None, &actions);
     menu.append_section(None, &rows);
     menu.append_section(None, &pages);
-    menu.append_section(Some(&gettext("Rows per Page")), &sizes);
+    menu.append_section(Some(&gettext("Rows per Page")), &page_size_menu(page_sizes));
+    menu
+}
+
+// Holds only what the medium breakpoint takes off the bar.
+fn overflow_menu(page_sizes: &[u64]) -> gio::Menu {
+    let actions = gio::Menu::new();
+    actions.append(Some(&gettext("Col_umns…")), Some("grid.columns"));
+    actions.append_item(&export_item());
+    let menu = gio::Menu::new();
+    menu.append_section(None, &actions);
+    menu.append_section(Some(&gettext("Rows per Page")), &page_size_menu(page_sizes));
     menu
 }
 
@@ -105,16 +106,29 @@ fn json_menu(page_sizes: &[u64]) -> gio::Menu {
     actions.append(Some(&gettext("_Filter Rows…")), Some("browse.filter"));
     actions.append(Some(&gettext("_Export Rows…")), Some("browse.export"));
     actions.append(Some(&gettext("_Count Rows")), Some("browse.count-rows"));
+    let menu = gio::Menu::new();
+    menu.append_section(None, &actions);
+    menu.append_section(Some(&gettext("Rows per Page")), &page_size_menu(page_sizes));
+    menu
+}
+
+fn export_item() -> gio::MenuItem {
+    let export = gio::MenuItem::new(Some(&gettext("_Export Rows…")), Some("browse.export"));
+    // The window's Export Results key reaches this tab's Export.
+    if let Some(key) = crate::application::triggers_for("win.export-results").first() {
+        export.set_attribute_value("accel", Some(&key.to_variant()));
+    }
+    export
+}
+
+fn page_size_menu(page_sizes: &[u64]) -> gio::Menu {
     let sizes = gio::Menu::new();
     for size in page_sizes {
         let item = gio::MenuItem::new(Some(&format_thousands(*size)), None);
         item.set_action_and_target_value(Some("browse.page-size"), Some(&size.to_variant()));
         sizes.append_item(&item);
     }
-    let menu = gio::Menu::new();
-    menu.append_section(None, &actions);
-    menu.append_section(Some(&gettext("Rows per Page")), &sizes);
-    menu
+    sizes
 }
 
 /// An inline editor that slides down above the grid. It lives in the
@@ -326,6 +340,7 @@ mod tests {
     fn every_action_in_the_more_menu_has_an_access_key_of_its_own() {
         // A page size is a number, which takes no key.
         crate::test_support::assert_access_keys(&more_menu(&[]));
+        crate::test_support::assert_access_keys(&overflow_menu(&[]));
     }
 
     #[test]
