@@ -290,6 +290,10 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
             partitionsCommit.freshness.markChanged(key)
             marked = true
         }
+        for key in plan.tableDetails {
+            tableDetailsCommit.freshness.markChanged(key)
+            marked = true
+        }
         for key in plan.routines {
             routinesCommit.freshness.markChanged(key)
             marked = true
@@ -614,13 +618,14 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         _ = await (tables, routines, triggers, types)
     }
 
-    /// A row refreshes only the fetch its kind comes from. Partitions ride with the tables, because
-    /// a partition row is drawn as a child of its table.
+    /// A row refreshes only the fetch its kind comes from. Partitions and a table's detail lists ride
+    /// with the tables, because their rows are drawn as children of a table.
     func refreshTableObjects(connectionId: UUID, database: String, schema: String?) async {
         let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
         async let tables: Void = rereadTables(key)
         async let partitions: Void = refreshPartitions(under: key)
-        _ = await (tables, partitions)
+        async let details: Void = refreshTableDetails(under: key)
+        _ = await (tables, partitions, details)
     }
 
     func refreshRoutineObjects(connectionId: UUID, database: String, schema: String?) async {
@@ -658,6 +663,24 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
                 partitionKey, connectionId: partitionKey.connectionId,
                 in: partitionLists, fetch: partitionListFetch(partitionKey)
             )
+        }
+    }
+
+    /// The rule partitions follow: a loaded list reads again over its rows, and one that never
+    /// loaded is dropped for its next reader.
+    private func refreshTableDetails(under key: ObjectsKey) async {
+        let detailKeys = tableDetailsState.keys.filter {
+            $0.connectionId == key.connectionId && $0.database == key.database && $0.schema == key.schema
+        }
+        for detailKey in detailKeys {
+            guard case .loaded = tableDetailsState[detailKey] ?? .idle else {
+                tableDetailsCommit.fence.supersede(detailKey)
+                tableDetailsCommit.freshness.markChanged(detailKey)
+                tableDetailsState.removeValue(forKey: detailKey)
+                await tableDetailsDedup.cancel { $0.key == detailKey }
+                continue
+            }
+            await reread(detailKey, connectionId: detailKey.connectionId, in: tableDetailLists, fetch: tableDetailFetch(detailKey))
         }
     }
 
@@ -862,6 +885,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         triggersCommit.freshness.removeAll { $0.connectionId == connectionId }
         typesCommit.freshness.removeAll { $0.connectionId == connectionId }
         partitionsCommit.freshness.removeAll { $0.connectionId == connectionId }
+        tableDetailsCommit.freshness.removeAll { $0.connectionId == connectionId }
         allSchemaTablesFreshness.removeAll { $0.connectionId == connectionId }
         allSchemaTablesRequested = allSchemaTablesRequested.filter { $0.key.connectionId != connectionId }
         allSchemaTablesCovered = allSchemaTablesCovered.filter { $0.key.connectionId != connectionId }
@@ -874,6 +898,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         triggersState = triggersState.filter { $0.key.connectionId != connectionId }
         typesState = typesState.filter { $0.key.connectionId != connectionId }
         partitionsState = partitionsState.filter { $0.key.connectionId != connectionId }
+        tableDetailsState = tableDetailsState.filter { $0.key.connectionId != connectionId }
     }
 
     // MARK: - Private
@@ -899,6 +924,9 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         for key in connectionPartitionKeys(connectionId) {
             partitionsCommit.fence.supersede(key)
         }
+        for key in tableDetailsState.keys where key.connectionId == connectionId {
+            tableDetailsCommit.fence.supersede(key)
+        }
         for key in allSchemaTablesState.keys where key.connectionId == connectionId {
             allSchemaTablesFence.supersede(key)
         }
@@ -912,6 +940,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         await triggersDedup.cancel { $0.key.connectionId == connectionId }
         await typesDedup.cancel { $0.key.connectionId == connectionId }
         await partitionsDedup.cancel { $0.key.connectionId == connectionId }
+        await tableDetailsDedup.cancel { $0.key.connectionId == connectionId }
         await allSchemaTablesDedup.cancel { $0.database.connectionId == connectionId }
     }
 
@@ -925,6 +954,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         idlePending(\.triggersState) { $0.connectionId == connectionId }
         idlePending(\.typesState) { $0.connectionId == connectionId }
         idlePending(\.partitionsState) { $0.connectionId == connectionId }
+        idlePending(\.tableDetailsState) { $0.connectionId == connectionId }
         idlePending(\.allSchemaTablesState) { $0.connectionId == connectionId }
     }
 

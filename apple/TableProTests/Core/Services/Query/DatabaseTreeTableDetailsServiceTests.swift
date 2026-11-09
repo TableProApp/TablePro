@@ -120,4 +120,106 @@ struct DatabaseTreeTableDetailsServiceTests {
         #expect(driver.detailReads.isEmpty)
         await disconnect(connection)
     }
+
+    private func change(_ connection: DatabaseConnection, _ kinds: SQLCatalogObjectKinds) async {
+        await service.refreshCatalog(for: CatalogChange(connectionId: connection.id, kinds: kinds))
+    }
+
+    @Test("A table change marks every loaded list stale, keeps its rows, and the next ask reads it once")
+    func tableChangeMarksListsStale() async {
+        let (connection, driver) = connect()
+        await load(connection, .columns)
+        await load(connection, .triggers)
+        driver.columnsByTable["orders"] = [TestFixtures.makeColumnInfo(name: "id", dataType: "bigint")]
+
+        await change(connection, .tables)
+
+        #expect(columnNames(connection) == ["id", "total"])
+        #expect(needsFetch(connection, .columns))
+        #expect(needsFetch(connection, .triggers))
+        #expect(driver.detailReads == ["columns:orders", "triggers:orders"])
+
+        async let first: Void = load(connection, .columns)
+        async let second: Void = load(connection, .columns)
+        _ = await (first, second)
+
+        #expect(columnNames(connection) == ["id"])
+        #expect(driver.detailReads == ["columns:orders", "triggers:orders", "columns:orders"])
+        await disconnect(connection)
+    }
+
+    @Test("A trigger change marks trigger lists alone")
+    func triggerChangeMarksTriggersAlone() async {
+        let (connection, _) = connect()
+        await load(connection, .columns)
+        await load(connection, .triggers)
+
+        await change(connection, .triggers)
+
+        #expect(needsFetch(connection, .triggers))
+        #expect(!needsFetch(connection, .columns))
+        await disconnect(connection)
+    }
+
+    @Test("A failed refetch keeps the rows already on screen")
+    func failedRefetchKeepsRows() async {
+        let (connection, driver) = connect()
+        await load(connection, .columns)
+        await change(connection, .tables)
+        driver.detailError = ReadFailed()
+
+        await load(connection, .columns)
+
+        #expect(columnNames(connection) == ["id", "total"])
+        await disconnect(connection)
+    }
+
+    @Test("A reconnect keeps the rows and marks them stale, and a disconnect clears them")
+    func reconnectKeepsAndDisconnectClears() async {
+        let (connection, _) = connect()
+        await load(connection, .columns)
+
+        await service.handleReconnect(connectionId: connection.id)
+        #expect(columnNames(connection) == ["id", "total"])
+        #expect(needsFetch(connection, .columns))
+
+        await service.handleDisconnect(connectionId: connection.id)
+        #expect(state(connection, .columns) == .idle)
+        DatabaseManager.shared.removeSession(for: connection.id)
+    }
+
+    @Test("A read a disconnect overtakes commits nothing")
+    func readOvertakenByDisconnectCommitsNothing() async {
+        let (connection, driver) = connect()
+        driver.pausesNextTableFetch = true
+        var read: Task<Void, Never>?
+        await withCheckedContinuation { (paused: CheckedContinuation<Void, Never>) in
+            driver.onTableFetchPaused = { paused.resume() }
+            read = Task { await load(connection, .columns) }
+        }
+
+        await service.handleDisconnect(connectionId: connection.id)
+        driver.resumeTableFetch()
+        await read?.value
+
+        #expect(state(connection, .columns) == .idle)
+        DatabaseManager.shared.removeSession(for: connection.id)
+    }
+
+    @Test("Refreshing a schema's tables reads a loaded list again and drops one that never loaded")
+    func refreshRidesWithTheTables() async {
+        let (connection, driver) = connect()
+        await load(connection, .columns)
+        driver.detailError = ReadFailed()
+        await load(connection, .indexes)
+        driver.detailError = nil
+        driver.columnsByTable["orders"] = [TestFixtures.makeColumnInfo(name: "id", dataType: "bigint")]
+
+        await service.refreshTableObjects(connectionId: connection.id, database: connection.database, schema: "public")
+
+        #expect(columnNames(connection) == ["id"])
+        #expect(state(connection, .indexes) == .idle)
+        #expect(needsFetch(connection, .indexes))
+        await disconnect(connection)
+    }
 }
