@@ -65,6 +65,8 @@ pub struct WorkspaceShell {
     #[template_child]
     pub sidebar_slot: TemplateChild<adw::Bin>,
     #[template_child]
+    pub scope_toggle: TemplateChild<adw::ToggleGroup>,
+    #[template_child]
     pub assistant_split: TemplateChild<adw::OverlaySplitView>,
     #[template_child]
     pub assistant_stack: TemplateChild<gtk::Stack>,
@@ -114,6 +116,16 @@ pub struct WorkspaceShell {
     /// The saved connections, and the schemas and tables of each one open
     /// in the window.
     pub(super) tree: OnceCell<super::sidebar::ConnectionTree>,
+    pub(super) sidebar_stack: OnceCell<gtk::Stack>,
+    pub(super) favorites: OnceCell<super::sidebar::FavoritesPane>,
+    pub(super) favorites_source: OnceCell<(
+        crate::services::history_service::HistoryService,
+        tablepro_session::runtime::Tasks,
+    )>,
+    pub(super) favorites_generation: Cell<u64>,
+    pub(super) favorites_connection: Cell<Option<uuid::Uuid>>,
+    pub(super) favorites_watch: RefCell<Option<tablepro_session::runtime::WatchForwarder>>,
+    pub(super) favorites_availability: RefCell<Option<tablepro_session::runtime::WatchForwarder>>,
     /// The window the shell added its actions to.
     pub(super) window: glib::WeakRef<adw::ApplicationWindow>,
     pub(super) sender: OnceCell<InputSender<SessionWindowInput>>,
