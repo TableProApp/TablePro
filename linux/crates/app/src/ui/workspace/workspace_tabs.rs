@@ -17,7 +17,8 @@ use crate::ui::browse_tab::{BrowseTabInput, GridInput, PagingInput, SaveInput, T
 use crate::ui::editor::SqlEditor;
 use crate::ui::structure_tab::StructureMode;
 use crate::workspace::{
-    EditorFileRecord, RestoredDrafts, TabRecord, WorkspaceFileName, WorkspaceLoad, WorkspaceRecord, WorkspaceSaveError,
+    CloseScope, EditorFileRecord, PendingState, RestoredDrafts, TabRecord, WorkspaceFileName, WorkspaceLoad,
+    WorkspaceRecord, WorkspaceSaveError,
 };
 
 use super::editor_label::EditorLabel;
@@ -26,10 +27,29 @@ use super::tab_factory::EditorPreview;
 use super::tab_index::TabIndex;
 use super::tab_spec::{TabSpec, TablePage};
 use super::workspace_persistence::reopen;
-use super::{ClosedTabDescriptor, OpenMode, WorkspaceInput, WorkspaceModel, WorkspaceSender, WorkspaceTab};
+use super::{
+    ClosedTabDescriptor, EditorInput, OpenMode, WorkspaceInput, WorkspaceModel, WorkspaceSender, WorkspaceTab,
+};
 use crate::runtime::DeliverInput;
 
 impl WorkspaceModel {
+    pub(super) fn on_editor_input(&mut self, input: EditorInput) {
+        match input {
+            EditorInput::RunStateChanged(id, running) => self.on_editor_tab_run_state_changed(id, running),
+            EditorInput::RunFinished(id, outcome) => self.on_editor_tab_run_finished(id, outcome),
+            EditorInput::ContentChanged(id) => self.on_editor_tab_content_changed(id),
+            EditorInput::FileChanged(id) => self.on_editor_tab_file_changed(id),
+            EditorInput::DatabaseChanged(id) => self.on_editor_tab_database_changed(id),
+            EditorInput::TransactionChanged => self.on_editor_transaction_changed(),
+            EditorInput::FollowCatalog {
+                tab_id,
+                database,
+                session,
+            } => self.follow_catalog(tab_id, database, session),
+            EditorInput::DatabaseOpened(session) => self.on_database_opened(&session),
+        }
+    }
+
     /// Read the saved tabs of the session just adopted, and the editor
     /// text that goes with them, off the GTK thread.
     pub(super) fn restore_workspace_tabs(&mut self, key: SessionKey) {
@@ -307,6 +327,10 @@ impl WorkspaceModel {
             WorkspaceTab::Table(slot) => {
                 slot.browse.shutdown();
                 self.change_trackers.unregister(slot.id);
+                if let Some(structure) = &slot.structure {
+                    structure.shutdown();
+                    self.structure_trackers.unregister(slot.id);
+                }
             }
             WorkspaceTab::Diagram(slot) => slot.diagram.shutdown(),
             WorkspaceTab::Key(slot) => slot.tab.shutdown(),
@@ -423,49 +447,102 @@ impl WorkspaceModel {
         self.open_tab(TabSpec::Key { key });
     }
 
-    pub(super) fn on_refresh_active_tab(&self) {
-        let Some(id) = self.selected_workspace_tab_id() else {
+    pub(super) fn refresh_header_actions(&self) {
+        let Some(workspace) = self.this.upgrade() else {
             return;
         };
-        let key = match self.workspace_tabs.borrow().get(&id) {
-            Some(WorkspaceTab::Key(slot)) => Some(slot.tab.clone()),
-            _ => None,
+        let can_refresh = self
+            .selected_workspace_tab_id()
+            .is_some_and(|id| self.workspace_tabs.borrow().get(&id).and_then(refresh_target).is_some());
+        use gtk4::subclass::prelude::*;
+        if workspace.imp().can_refresh.replace(can_refresh) != can_refresh {
+            workspace.notify_can_refresh();
+        }
+    }
+
+    pub(super) fn on_refresh_page(&self, tab: Option<Uuid>) {
+        let Some(id) = tab.or_else(|| self.selected_workspace_tab_id()) else {
+            return;
         };
-        match key {
-            Some(tab) => tab.refresh(),
-            None => {
-                if let Some(id) = self.selected_browse_tab_id() {
-                    self.on_refresh_tab(id);
-                }
-            }
+        // Release the tab map before an action emits a workspace signal.
+        let target = self.workspace_tabs.borrow().get(&id).and_then(refresh_target);
+        match target {
+            Some(RefreshTarget::Table(tab)) => tab.send(PagingInput::RequestRefresh),
+            Some(RefreshTarget::Diagram(tab)) => tab.refresh(),
+            Some(RefreshTarget::Key(tab)) => tab.refresh(),
+            None => {}
         }
     }
 
     pub(super) fn on_refresh_tab(&self, id: Uuid) {
-        let dirty = self
-            .change_trackers
-            .get(id)
-            .is_some_and(|tracker| tracker.pending_count() > 0);
-        if !dirty {
-            self.dispatch_to_tab(id, PagingInput::Refresh);
+        let (showing_structure, structure) =
+            self.workspace_tabs
+                .borrow()
+                .get(&id)
+                .map_or((false, None), |tab| match tab {
+                    WorkspaceTab::Table(slot) if slot.browse.shows_structure() => (true, slot.structure.clone()),
+                    WorkspaceTab::Structure(slot) => (true, Some(slot.structure.clone())),
+                    _ => (false, None),
+                });
+        if showing_structure {
+            if let Some(structure) = structure {
+                structure.request_refresh();
+            }
             return;
         }
-        // A refetch replaces the rows and with them every pending edit,
-        // so F5 mid-edit asks first, as closing a dirty tab does.
-        let dialog = adw::AlertDialog::new(
-            Some(&crate::i18n::gettext("Discard Pending Changes?")),
-            Some(&crate::i18n::gettext(
+        let browse = self
+            .workspace_tabs
+            .borrow()
+            .get(&id)
+            .and_then(|tab| tab.browse_tab())
+            .cloned();
+        let Some(browse) = browse else {
+            return;
+        };
+        browse.commit_cell_edit();
+        let state = self
+            .change_trackers
+            .get(id)
+            .map_or(PendingState::Clean, |tracker| tracker.pending_state());
+        if state == PendingState::Saving || self.workspace_handle.ledger().in_flight_in(CloseScope::Tab(id)) > 0 {
+            return;
+        }
+        if state == PendingState::Clean {
+            browse.send(PagingInput::Refresh);
+            return;
+        }
+        let unknown = matches!(state, PendingState::OutcomeUnknown(_));
+        let body = if unknown {
+            crate::i18n::gettext(
+                "The last save may have changed the database. Reload to read its current rows and discard these changes.",
+            )
+        } else {
+            crate::i18n::gettext(
                 "Refreshing reloads the table from the database and drops every unsaved edit on this tab.",
-            )),
-        );
+            )
+        };
+        let dialog = adw::AlertDialog::new(Some(&crate::i18n::gettext("Discard Pending Changes?")), Some(&body));
         dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
         dialog.add_response("discard", &crate::i18n::gettext("Discard and Refresh"));
         dialog.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
         dialog.set_default_response(Some("cancel"));
         dialog.set_close_response("cancel");
         let workspace_tabs = self.workspace_tabs.clone();
+        let trackers = self.change_trackers.clone();
+        let handle = self.workspace_handle.clone();
+        let input = self.input.clone();
         dialog.connect_response(None, move |_, response| {
             if response != "discard" {
+                return;
+            }
+            let state = trackers
+                .get(id)
+                .map_or(PendingState::Clean, |tracker| tracker.pending_state());
+            if state == PendingState::Saving || handle.ledger().in_flight_in(CloseScope::Tab(id)) > 0 {
+                return;
+            }
+            if !unknown && matches!(state, PendingState::OutcomeUnknown(_)) {
+                input.deliver(WorkspaceInput::RefreshTab(id));
                 return;
             }
             let browse = workspace_tabs
@@ -498,38 +575,57 @@ impl WorkspaceModel {
         self.report_tabs_changed();
     }
 
-    /// While the session is in front, the tree selects the table or key
-    /// its tab shows, or its connection for any other tab. With no tab
-    /// open no row stays selected: one would say a tab shows it.
     pub(super) fn select_in_tree(&self) {
         if !self.is_front() {
             return;
         }
-        let Some(tree) = self.shell.upgrade().and_then(|shell| shell.tree()) else {
+        let Some(shell) = self.shell.upgrade() else {
+            return;
+        };
+        let Some(tree) = shell.tree() else {
             return;
         };
         match self.selected_workspace_tab_id() {
             Some(id) => {
-                let shown = self
-                    .workspace_tabs
-                    .borrow()
-                    .get(&id)
-                    .and_then(WorkspaceTab::sidebar_object);
-                tree.select(Some(&self.key), shown.as_ref());
+                let (shown, catalog) = {
+                    let tabs = self.workspace_tabs.borrow();
+                    let tab = tabs.get(&id);
+                    (
+                        tab.and_then(WorkspaceTab::sidebar_object),
+                        tab.and_then(|tab| match tab {
+                            WorkspaceTab::Editor(slot) => slot.editor.catalog_session(),
+                            _ => None,
+                        }),
+                    )
+                };
+                let row = catalog
+                    .and_then(|catalog| self.sidebar_catalog_session(&shell, &catalog))
+                    .unwrap_or_else(|| self.key.clone());
+                tree.select(Some(&row), shown.as_ref());
             }
             None => tree.select(None, None),
         }
     }
 
-    pub(super) fn selected_workspace_tab_id(&self) -> Option<Uuid> {
-        self.index.id_of(&self.tab_view.selected_page()?)
+    fn sidebar_catalog_session(&self, shell: &super::WorkspaceShell, catalog: &Arc<Session>) -> Option<SessionKey> {
+        // Completion and the sidebar follow the same accepted session, including
+        // a server-default database whose connection request had no name.
+        shell.sessions().into_iter().find_map(|workspace| {
+            let matches = workspace
+                .read(|model| {
+                    model
+                        .context
+                        .active
+                        .get()
+                        .is_some_and(|session| Arc::ptr_eq(&session, catalog))
+                })
+                .unwrap_or(false);
+            matches.then(|| workspace.key()).flatten()
+        })
     }
 
-    pub(super) fn selected_browse_tab_id(&self) -> Option<Uuid> {
-        let id = self.selected_workspace_tab_id()?;
-        let tabs = self.workspace_tabs.borrow();
-        let slot = tabs.get(&id)?;
-        if slot.browse_tab().is_some() { Some(id) } else { None }
+    pub(super) fn selected_workspace_tab_id(&self) -> Option<Uuid> {
+        self.index.id_of(&self.tab_view.selected_page()?)
     }
 
     /// Stop every tab and let go of the tab view. The pending edits
@@ -549,6 +645,10 @@ impl WorkspaceModel {
                 WorkspaceTab::Table(slot) => {
                     slot.browse.shutdown();
                     self.change_trackers.unregister(slot.id);
+                    if let Some(structure) = &slot.structure {
+                        structure.shutdown();
+                        self.structure_trackers.unregister(slot.id);
+                    }
                 }
                 WorkspaceTab::Diagram(slot) => slot.diagram.shutdown(),
                 WorkspaceTab::Key(slot) => slot.tab.shutdown(),
@@ -614,12 +714,11 @@ impl WorkspaceModel {
         self.persist_workspace_state();
     }
 
-    /// A tab that moved to another database is restored there and names
-    /// it in its title.
     pub(super) fn on_editor_tab_database_changed(&self, id: Uuid) {
         self.retitle_tab(id);
         self.persist_workspace_state();
         self.follow_editor_database(id);
+        self.select_in_tree();
     }
 
     /// Ask the window for the session of the database tab `tab_id` moved
@@ -638,20 +737,20 @@ impl WorkspaceModel {
         }
     }
 
-    pub(super) fn follow_catalog(&self, tab_id: Uuid, session: Option<Arc<Session>>) {
+    pub(super) fn follow_catalog(&self, tab_id: Uuid, database: Option<String>, session: Option<Arc<Session>>) {
         if let Some(WorkspaceTab::Editor(slot)) = self.workspace_tabs.borrow().get(&tab_id) {
-            slot.editor.follow_catalog(session);
+            slot.editor.follow_catalog_for(database.as_deref(), session);
         }
+        self.select_in_tree();
     }
 
-    /// Another database of the connection opened: each editor tab in it
-    /// reads its catalog.
     pub(super) fn on_database_opened(&self, session: &Arc<Session>) {
         for tab in self.workspace_tabs.borrow().values() {
             if let WorkspaceTab::Editor(slot) = tab {
                 slot.editor.follow_catalog(Some(session.clone()));
             }
         }
+        self.select_in_tree();
     }
 
     pub(super) fn on_editor_tab_run_state_changed(&self, id: Uuid, running: bool) {
@@ -700,6 +799,9 @@ impl WorkspaceModel {
         match self.workspace_tabs.borrow().get(&id) {
             // A table tab says itself when it has nothing to export.
             Some(WorkspaceTab::Table(slot)) => {
+                if slot.browse.shows_structure() {
+                    return false;
+                }
                 slot.browse.send(GridInput::Export);
                 true
             }
@@ -926,6 +1028,21 @@ fn saved_drafts(record: &WorkspaceRecord) -> impl Iterator<Item = DraftId> + '_ 
         TabRecord::Editor { draft, .. } => Some(*draft),
         _ => None,
     })
+}
+
+enum RefreshTarget {
+    Table(crate::ui::browse_tab::BrowseTab),
+    Diagram(crate::ui::diagram::DiagramTab),
+    Key(crate::ui::key_tab::KeyTab),
+}
+
+fn refresh_target(tab: &WorkspaceTab) -> Option<RefreshTarget> {
+    match tab {
+        WorkspaceTab::Table(slot) => Some(RefreshTarget::Table(slot.browse.clone())),
+        WorkspaceTab::Diagram(slot) => Some(RefreshTarget::Diagram(slot.diagram.clone())),
+        WorkspaceTab::Key(slot) => Some(RefreshTarget::Key(slot.tab.clone())),
+        WorkspaceTab::Editor(_) | WorkspaceTab::Structure(_) => None,
+    }
 }
 
 #[cfg(test)]

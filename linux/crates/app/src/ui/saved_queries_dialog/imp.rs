@@ -31,6 +31,7 @@ pub struct SavedQueriesDialog {
     pub retry_button: TemplateChild<gtk::Button>,
 
     pub(super) parts: OnceCell<DialogParts>,
+    pub(super) changes: RefCell<Option<tablepro_session::runtime::WatchForwarder>>,
     pub(super) snapshot: RefCell<SearchSnapshot>,
     pub(super) search_generation: Cell<u64>,
     pub(super) load_generation: Cell<u64>,
@@ -54,6 +55,10 @@ impl ObjectSubclass for SavedQueriesDialog {
 }
 
 impl ObjectImpl for SavedQueriesDialog {
+    fn dispose(&self) {
+        self.changes.take();
+    }
+
     fn signals() -> &'static [Signal] {
         static SIGNALS: OnceLock<Vec<Signal>> = OnceLock::new();
         SIGNALS.get_or_init(|| {

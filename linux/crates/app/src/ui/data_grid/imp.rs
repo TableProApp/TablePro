@@ -51,11 +51,17 @@ pub struct DataGrid {
     #[template_child]
     pub column_view: TemplateChild<gtk4::ColumnView>,
     #[template_child]
+    pub viewport: TemplateChild<super::pinned_numbers::PinnedNumbers>,
+    #[template_child]
+    pub gutter_backing: TemplateChild<gtk4::Box>,
+    #[template_child]
+    pub gutter_header: TemplateChild<gtk4::Box>,
+    #[template_child]
     pub empty_page: TemplateChild<adw::StatusPage>,
     #[template_child]
     pub detail_pane: TemplateChild<RowDetailPane>,
 
-    pub config: OnceCell<GridConfig>,
+    pub config: RefCell<Option<GridConfig>>,
     pub store: GridStore,
     pub selection: Selection,
     /// Set for a grid that sorts the rows it holds.
@@ -87,7 +93,8 @@ pub struct DataGrid {
     /// The window's focus handler, while the grid is in a window.
     pub focus_watch: RefCell<Option<(glib::WeakRef<gtk4::Window>, glib::SignalHandlerId)>>,
     pub(super) font_watch: RefCell<Option<HandlerGuard>>,
-    pub(super) stripes_watch: RefCell<Option<HandlerGuard>>,
+    pub(super) display_watch: RefCell<Option<HandlerGuard>>,
+    pub(super) applied_null: RefCell<Option<String>>,
 }
 
 #[glib::object_subclass]
@@ -98,6 +105,7 @@ impl ObjectSubclass for DataGrid {
 
     fn class_init(klass: &mut Self::Class) {
         RowDetailPane::ensure_type();
+        super::pinned_numbers::PinnedNumbers::ensure_type();
         klass.bind_template();
     }
 
@@ -126,6 +134,7 @@ impl ObjectImpl for DataGrid {
         self.summary.stop();
         self.obj().stop_watching_focus();
         drop(self.font_watch.take());
+        drop(self.display_watch.take());
         if let Some(menus) = self.menus.get() {
             menus.unparent();
         }

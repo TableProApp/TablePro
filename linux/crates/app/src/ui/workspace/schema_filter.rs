@@ -1,183 +1,103 @@
-//! Which schemas the sidebar lists, as macOS's schema filter does: a menu
-//! in the sidebar's bottom bar picks them, and a banner says the list is
-//! filtered, since a filtered list looks like a short one. The filter is
-//! kept per connection while the window is open.
-
 use std::borrow::Cow;
-use std::collections::HashSet;
-use std::sync::Arc;
+use std::collections::{BTreeSet, HashSet};
 
-use gtk4 as gtk;
-use gtk4::prelude::*;
-use libadwaita as adw;
 use tablepro_core::meta::{ObjectInfo, SchemaInfo};
 
-use super::{WorkspaceInput, WorkspaceSender};
-use crate::i18n::{gettext, gettext_f};
-use crate::runtime::DeliverInput;
-
-pub(super) struct SchemaFilter {
-    hidden: Arc<HashSet<String>>,
-    button: gtk::MenuButton,
-    banner: adw::Banner,
-    /// The menu on offer, kept while the schemas stay the same so that
-    /// choosing one does not close it.
-    menu: Option<Menu>,
-}
-
-struct Menu {
-    names: Vec<String>,
-    checks: Vec<gtk::CheckButton>,
-    show_all: gtk::Button,
+// The schemas kept, as the macOS app keeps them: none kept lists every
+// schema, and a schema made later stays out of a filter until it is added.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct SchemaFilter {
+    kept: BTreeSet<String>,
 }
 
 impl SchemaFilter {
-    pub(super) fn new(button: gtk::MenuButton, banner: adw::Banner, input: &WorkspaceSender) -> Self {
-        let input = input.clone();
-        banner.connect_button_clicked(move |_| input.deliver(WorkspaceInput::ShowAllSchemas));
-        Self {
-            hidden: Arc::default(),
-            button,
-            banner,
-            menu: None,
-        }
+    pub(crate) fn new(kept: BTreeSet<String>) -> Self {
+        Self { kept }
     }
 
-    pub(super) fn hidden(&self) -> Arc<HashSet<String>> {
-        self.hidden.clone()
+    pub(crate) fn kept(&self) -> &BTreeSet<String> {
+        &self.kept
     }
 
-    /// Hide or list `name`. Whether the filter changed.
-    pub(super) fn set_hidden(&mut self, name: &str, hidden: bool) -> bool {
-        if self.hidden.contains(name) == hidden {
+    // A kept name the list no longer holds counts for nothing, so a filter
+    // of dropped schemas lists every schema rather than none.
+    fn shown<'a>(&self, schemas: &'a [SchemaInfo]) -> Option<HashSet<&'a str>> {
+        let shown: HashSet<&str> = schemas
+            .iter()
+            .map(|schema| schema.name.as_str())
+            .filter(|name| self.kept.contains(*name))
+            .collect();
+        (!shown.is_empty() && shown.len() < schemas.len()).then_some(shown)
+    }
+
+    pub(crate) fn shows(&self, schemas: &[SchemaInfo], name: &str) -> bool {
+        self.shown(schemas).is_none_or(|shown| shown.contains(name))
+    }
+
+    pub(crate) fn summary(&self, schemas: &[SchemaInfo]) -> Option<(usize, usize)> {
+        self.shown(schemas).map(|shown| (shown.len(), schemas.len()))
+    }
+
+    // The last schema listed stays, and listing every schema clears the filter.
+    pub(crate) fn set_shown(&mut self, schemas: &[SchemaInfo], name: &str, shown: bool) -> bool {
+        if !schemas.iter().any(|schema| schema.name == name) || self.shows(schemas, name) == shown {
             return false;
         }
-        let set = Arc::make_mut(&mut self.hidden);
-        if hidden {
-            set.insert(name.to_owned());
+        let mut kept: BTreeSet<String> = schemas
+            .iter()
+            .filter(|schema| self.shows(schemas, &schema.name))
+            .map(|schema| schema.name.clone())
+            .collect();
+        if shown {
+            kept.insert(name.to_owned());
         } else {
-            set.remove(name);
+            kept.remove(name);
         }
+        if kept.is_empty() {
+            return false;
+        }
+        if kept.len() == schemas.len() {
+            kept.clear();
+        }
+        self.kept = kept;
         true
     }
 
-    /// List every schema again. Whether the filter changed.
-    pub(super) fn show_all(&mut self) -> bool {
-        let changed = !self.hidden.is_empty();
-        self.hidden = Arc::default();
-        changed
+    pub(crate) fn show_all(&mut self) -> bool {
+        !std::mem::take(&mut self.kept).is_empty()
     }
 
-    /// Name the schemas the connection has: the menu offers them, and the
-    /// banner says how many the list shows. One schema has nothing to
-    /// filter, and a schema that is gone is not kept hidden.
-    pub(super) fn refresh(&mut self, schemas: &[SchemaInfo], input: &WorkspaceSender) {
-        if !self.hidden.is_empty() {
-            let names: HashSet<&str> = schemas.iter().map(|schema| schema.name.as_str()).collect();
-            if self.hidden.iter().any(|name| !names.contains(name.as_str())) {
-                Arc::make_mut(&mut self.hidden).retain(|name| names.contains(name.as_str()));
-            }
-        }
-        self.button.set_visible(schemas.len() > 1);
-        let names: Vec<String> = schemas.iter().map(|schema| schema.name.clone()).collect();
-        if self.menu.as_ref().is_none_or(|menu| menu.names != names) {
-            self.menu = Some(self.build_menu(names, input));
-        }
-        if let Some(menu) = &self.menu {
-            for (check, schema) in menu.checks.iter().zip(schemas) {
-                check.set_active(!self.hidden.contains(&schema.name));
-            }
-            menu.show_all.set_sensitive(!self.hidden.is_empty());
-        }
-
-        let hidden = schemas
+    // An object with no schema is the default schema's.
+    pub(crate) fn listed<'a>(
+        &self,
+        objects: &'a [ObjectInfo],
+        schemas: &'a [SchemaInfo],
+    ) -> (Cow<'a, [ObjectInfo]>, Cow<'a, [SchemaInfo]>) {
+        let Some(shown) = self.shown(schemas) else {
+            return (Cow::Borrowed(objects), Cow::Borrowed(schemas));
+        };
+        let default = schemas
             .iter()
-            .filter(|schema| self.hidden.contains(&schema.name))
-            .count();
-        self.banner.set_revealed(hidden > 0);
-        if hidden > 0 {
-            self.banner.set_title(&gettext_f(
-                "Showing {shown} of {total} schemas",
-                &[
-                    ("shown", &(schemas.len() - hidden).to_string()),
-                    ("total", &schemas.len().to_string()),
-                ],
-            ));
-        }
+            .find(|schema| schema.is_default)
+            .map(|schema| schema.name.as_str());
+        let objects = objects
+            .iter()
+            .filter(|object| {
+                object
+                    .schema
+                    .as_deref()
+                    .or(default)
+                    .is_none_or(|schema| shown.contains(schema))
+            })
+            .cloned()
+            .collect();
+        let schemas = schemas
+            .iter()
+            .filter(|schema| shown.contains(schema.name.as_str()))
+            .cloned()
+            .collect();
+        (Cow::Owned(objects), Cow::Owned(schemas))
     }
-
-    fn build_menu(&self, names: Vec<String>, input: &WorkspaceSender) -> Menu {
-        let list = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        let mut checks = Vec::new();
-        for schema in &names {
-            let check = gtk::CheckButton::with_label(schema);
-            check.set_active(true);
-            let (input, name) = (input.clone(), schema.clone());
-            check.connect_toggled(move |check| {
-                input.deliver(WorkspaceInput::HideSchema {
-                    name: name.clone(),
-                    hidden: !check.is_active(),
-                });
-            });
-            list.append(&check);
-            checks.push(check);
-        }
-        let scroll = gtk::ScrolledWindow::builder()
-            .child(&list)
-            .propagate_natural_height(true)
-            .max_content_height(320)
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .build();
-        let show_all = gtk::Button::with_label(&gettext("Show All"));
-        show_all.add_css_class("flat");
-        let show = input.clone();
-        show_all.connect_clicked(move |_| show.deliver(WorkspaceInput::ShowAllSchemas));
-
-        let content = gtk::Box::new(gtk::Orientation::Vertical, 6);
-        content.append(&scroll);
-        content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-        content.append(&show_all);
-        self.button
-            .set_popover(Some(&gtk::Popover::builder().child(&content).build()));
-        Menu {
-            names,
-            checks,
-            show_all,
-        }
-    }
-}
-
-/// The objects and schemas the sidebar lists under `hidden`. An object
-/// with no schema belongs to the default one.
-pub(super) fn listed<'a>(
-    hidden: &HashSet<String>,
-    objects: &'a [ObjectInfo],
-    schemas: &'a [SchemaInfo],
-) -> (Cow<'a, [ObjectInfo]>, Cow<'a, [SchemaInfo]>) {
-    if hidden.is_empty() {
-        return (Cow::Borrowed(objects), Cow::Borrowed(schemas));
-    }
-    let default = schemas
-        .iter()
-        .find(|schema| schema.is_default)
-        .map(|schema| schema.name.as_str());
-    let objects = objects
-        .iter()
-        .filter(|object| {
-            object
-                .schema
-                .as_deref()
-                .or(default)
-                .is_none_or(|schema| !hidden.contains(schema))
-        })
-        .cloned()
-        .collect();
-    let schemas = schemas
-        .iter()
-        .filter(|schema| !hidden.contains(&schema.name))
-        .cloned()
-        .collect();
-    (Cow::Owned(objects), Cow::Owned(schemas))
 }
 
 #[cfg(test)]
@@ -190,40 +110,92 @@ mod tests {
         ObjectInfo::new(schema.map(str::to_owned), name, ObjectKind::Table)
     }
 
-    fn schema(name: &str, is_default: bool) -> SchemaInfo {
-        SchemaInfo {
-            name: name.to_owned(),
-            is_default,
-            is_system: false,
-        }
+    fn schemas(names: &[&str]) -> Vec<SchemaInfo> {
+        names
+            .iter()
+            .enumerate()
+            .map(|(at, name)| SchemaInfo {
+                name: (*name).to_owned(),
+                is_default: at == 0,
+                is_system: false,
+            })
+            .collect()
     }
 
-    fn names(objects: &[ObjectInfo]) -> Vec<&str> {
-        objects.iter().map(|object| object.name.as_str()).collect()
+    fn names<T>(items: &[T], name: impl Fn(&T) -> &str) -> Vec<&str> {
+        items.iter().map(name).collect()
+    }
+
+    fn kept(filter: &SchemaFilter) -> Vec<&str> {
+        filter.kept().iter().map(String::as_str).collect()
     }
 
     #[test]
-    fn nothing_hidden_lists_everything_without_a_copy() {
-        let (objects, schemas) = (vec![object(Some("a"), "t")], vec![schema("a", true)]);
-        let (listed_objects, listed_schemas) = listed(&HashSet::new(), &objects, &schemas);
+    fn nothing_kept_lists_everything_without_a_copy() {
+        let (objects, schemas) = (vec![object(Some("public"), "users")], schemas(&["public", "sales"]));
+        let filter = SchemaFilter::default();
+
+        let (listed_objects, listed_schemas) = filter.listed(&objects, &schemas);
+
         assert!(matches!(listed_objects, Cow::Borrowed(_)));
         assert!(matches!(listed_schemas, Cow::Borrowed(_)));
+        assert_eq!(filter.summary(&schemas), None);
     }
 
     #[test]
-    fn a_hidden_schema_takes_its_objects_and_its_section_with_it() {
+    fn a_schema_left_out_takes_its_objects_and_the_default_keeps_those_with_no_schema() {
         let objects = vec![
-            object(Some("a"), "one"),
-            object(Some("b"), "two"),
-            object(None, "three"),
+            object(Some("public"), "users"),
+            object(Some("sales"), "leads"),
+            object(None, "settings"),
         ];
-        let schemas = vec![schema("a", true), schema("b", false)];
+        let schemas = schemas(&["public", "sales"]);
+        let mut filter = SchemaFilter::default();
 
-        let (shown, kept) = listed(&HashSet::from(["b".to_owned()]), &objects, &schemas);
-        assert_eq!(names(&shown), ["one", "three"]);
-        assert_eq!(kept.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), ["a"]);
+        assert!(filter.set_shown(&schemas, "sales", false));
+        let (shown, listed) = filter.listed(&objects, &schemas);
+        assert_eq!(names(&shown, |object| &object.name), ["users", "settings"]);
+        assert_eq!(names(&listed, |schema| &schema.name), ["public"]);
+        assert_eq!(filter.summary(&schemas), Some((1, 2)));
 
-        let (shown, _) = listed(&HashSet::from(["a".to_owned()]), &objects, &schemas);
-        assert_eq!(names(&shown), ["two"], "an object with no schema is the default's");
+        let mut other = SchemaFilter::default();
+        assert!(other.set_shown(&schemas, "public", false));
+        assert_eq!(
+            names(&other.listed(&objects, &schemas).0, |object| &object.name),
+            ["leads"]
+        );
+    }
+
+    #[test]
+    fn a_schema_made_later_stays_out_until_it_is_listed() {
+        let mut filter = SchemaFilter::default();
+        assert!(filter.set_shown(&schemas(&["public", "sales", "audit"]), "audit", false));
+        assert_eq!(kept(&filter), ["public", "sales"]);
+
+        let grown = schemas(&["public", "sales", "audit", "billing"]);
+        assert!(!filter.shows(&grown, "billing"));
+        assert_eq!(filter.summary(&grown), Some((2, 4)));
+    }
+
+    #[test]
+    fn the_last_schema_listed_stays_and_listing_every_one_clears_the_filter() {
+        let schemas = schemas(&["public", "sales"]);
+        let mut filter = SchemaFilter::default();
+        assert!(filter.set_shown(&schemas, "sales", false));
+
+        assert!(!filter.set_shown(&schemas, "public", false), "nothing would be listed");
+        assert!(!filter.set_shown(&schemas, "nowhere", true));
+        assert!(filter.set_shown(&schemas, "sales", true));
+        assert!(filter.kept().is_empty());
+        assert!(!filter.show_all(), "Show All with nothing left out");
+    }
+
+    #[test]
+    fn a_kept_schema_that_was_dropped_counts_for_nothing() {
+        let filter = SchemaFilter::new(BTreeSet::from(["gone".to_owned()]));
+        let schemas = schemas(&["public", "sales"]);
+
+        assert_eq!(filter.summary(&schemas), None);
+        assert!(filter.shows(&schemas, "sales"));
     }
 }

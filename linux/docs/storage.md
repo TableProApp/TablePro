@@ -10,7 +10,7 @@ The app's data goes to the store its shape calls for. The core's `storage` crate
 | The account's device ID and last entitlement, or an imported offline file | JSON file | `tablepro-account` ([core ADR 0016](../../core/docs/decisions/0016-tablepro-accounts.md), [ADR 0038](decisions/0038-account-page-and-license-ask.md)) |
 | The usage data's anonymous ID and what it sent once | JSON file | `Telemetry` in the app crate ([ADR 0039](decisions/0039-usage-data.md)) |
 | Preferences and window geometry | `gio::Settings` | `AppSettings` |
-| Query history and saved queries | SQLite, one database | `QueryHistory`, `SavedQueries` |
+| Query history, saved queries with their folders and keywords, and favourite tables and databases | SQLite, one database ([core ADR 0017](../../core/docs/decisions/0017-favourites.md)) | `QueryHistory`, `SavedQueries`, `SavedQueryFolders`, `Favourites` |
 | Editor tab text | one file per tab | `DraftStore` |
 | Open tabs, open sessions, column layouts, filters | JSON files the app crate writes | `WorkspaceStore`, `OpenSessions`, `crates/app/src/persistence/` |
 
@@ -136,7 +136,7 @@ nothing reaches outside it.
 |---|---|
 | `connections_file()` | `$XDG_CONFIG_HOME/<dir>/connections.json` |
 | `column_layouts_file()` | `$XDG_CONFIG_HOME/<dir>/column_layouts.json`: each table's column layout (order, hidden columns, widths the user set) |
-| `filter_settings_file()` | `$XDG_CONFIG_HOME/<dir>/filter_settings.json` |
+| `filter_settings_file()` | `$XDG_CONFIG_HOME/<dir>/filter_settings.json`, version 2: each table's filter, and the schemas each connection's sidebar lists, per database. Version 1 had no sidebar filters |
 | `history_database()` | `$XDG_STATE_HOME/<dir>/history.db` |
 | `workspaces_dir()` | `$XDG_STATE_HOME/<dir>/workspaces`: one file per session, and `open-sessions.json`: the sessions open at the last quit as `windows`, one list of keys per window, windows in the order of their first recorded session and keys in the order each window adopted them |
 | `drafts_dir()` | `$XDG_DATA_HOME/<dir>/drafts` |
@@ -192,7 +192,8 @@ at compile time with `sqlx::migrate!` and run by `QueryHistory::open`.
 `20260914000000_create_history.sql` creates the `history` table with
 `query_folded`, the trigram index `history_search` over it,
 `history_page_idx` on `(pinned DESC, executed_at DESC, id DESC)` for
-paging, and the `saved_queries` table.
+paging, and the `saved_queries` table. Favorites metadata, ordering, coherent reads
+and mutation notifications follow [core ADR 0017](../../core/docs/decisions/0017-favourites.md).
 
 **An applied migration is never edited.** Each change is a new timestamped
 file with its own fixture test. Editing one in place changes its checksum,
@@ -266,6 +267,27 @@ can tell whether a re-pinned entry falls in the pages already read.
 - `connections_with_history` lists each connection the history holds
   under the name of its latest run, so a renamed connection shows once.
 
+### Following the saved queries
+
+`SavedQueries::changes` is a watch of a revision that every handle of one
+database shares. A save, a save of a new name, a rename, a delete and a
+connection's queries going move it on once they landed; a read, and a write
+that changed nothing, leave it. The sidebar's Favorites and the Saved Queries
+dialog read again on each revision, so a write from any window, an import or
+a deleted connection reaches every list. Each list rejects replies from an
+older read and keeps selection by saved-query id. Confirmed saves, renames
+and deletions hold the process until the write finishes.
+
+The editor first inserts without replacement and asks for confirmation if the
+name is taken. Confirmed replacement updates the same row id. The existence check
+and write share a transaction, so simultaneous saves report which one
+replaced the query. Renames update only the stored name and modification
+time, leaving newer SQL and the connection identity intact.
+
+Unsaved database files use a UUID derived from their canonical URI, so queries
+stay in the same scope after reopening the file. Queries saved by older builds
+with a temporary file identity remain available in the Saved Queries dialog.
+
 ### What goes into the history
 
 `HistoryService::record` is the one way in, for editor runs, saves and
@@ -319,6 +341,10 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `window-height` | `i` | `760` | 294 to 32767 |
 | `is-maximized` | `b` | `false` | |
 | `default-page-size` | `u` | `1000` | 100 to 100000 |
+| `show-alternate-rows` | `b` | `true` | |
+| `show-row-numbers` | `b` | `true` | |
+| `grid-row-height` | `s` | `normal` | compact, normal, comfortable, spacious |
+| `null-display` | `s` | `NULL` | Displayed as at most 20 characters, without control characters; blank uses NULL |
 | `confirm-bulk-delete` | `b` | `true` | |
 | `restore-session` | `b` | `true` | |
 | `last-seen-version` | `s` | empty | |
@@ -351,7 +377,7 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `csv-line-break` | enum | `lf` | lf, crlf, cr |
 | `csv-decimal` | enum | `period` | period, comma |
 
-`tablepro_storage::AppSettings` wraps it in typed accessors:
+`tablepro_linux_platform::AppSettings` wraps it in typed accessors:
 
 ```rust
 pub fn open(schema_id: &str) -> Result<Self, SettingsError>;

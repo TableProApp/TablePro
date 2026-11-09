@@ -57,6 +57,8 @@ pub struct WorkspaceShell {
     #[template_child]
     pub refresh_tables_button: TemplateChild<gtk::Button>,
     #[template_child]
+    pub sidebar_bar: TemplateChild<gtk::ActionBar>,
+    #[template_child]
     pub sidebar_add_button: TemplateChild<gtk::MenuButton>,
     #[template_child]
     pub table_search_bar: TemplateChild<gtk::SearchBar>,
@@ -65,11 +67,13 @@ pub struct WorkspaceShell {
     #[template_child]
     pub list_banners: TemplateChild<gtk::Stack>,
     #[template_child]
-    pub list_filters: TemplateChild<gtk::Stack>,
+    pub schema_filter_button: TemplateChild<gtk::MenuButton>,
     #[template_child]
     pub sidebar_handle: TemplateChild<gtk::Box>,
     #[template_child]
     pub sidebar_slot: TemplateChild<adw::Bin>,
+    #[template_child]
+    pub scope_toggle: TemplateChild<adw::ToggleGroup>,
     #[template_child]
     pub assistant_split: TemplateChild<adw::OverlaySplitView>,
     #[template_child]
@@ -86,6 +90,8 @@ pub struct WorkspaceShell {
     pub window_title: TemplateChild<adw::WindowTitle>,
     #[template_child]
     pub connection_icon: TemplateChild<gtk::Image>,
+    #[template_child]
+    pub refresh_page_button: TemplateChild<gtk::Button>,
     #[template_child]
     pub assistant_toggle: TemplateChild<gtk::ToggleButton>,
     #[template_child]
@@ -120,6 +126,17 @@ pub struct WorkspaceShell {
     /// The saved connections, and the schemas and tables of each one open
     /// in the window.
     pub(super) tree: OnceCell<super::sidebar::ConnectionTree>,
+    pub(super) sidebar_stack: OnceCell<gtk::Stack>,
+    pub(super) favorites: OnceCell<super::sidebar::FavoritesPane>,
+    pub(super) favorites_source: OnceCell<(
+        crate::services::history_service::HistoryService,
+        tablepro_session::runtime::Tasks,
+    )>,
+    pub(super) favorites_hold: OnceCell<std::rc::Rc<dyn tablepro_session::runtime::ProcessHold>>,
+    pub(super) favorites_generation: Cell<u64>,
+    pub(super) favorites_connection: Cell<Option<uuid::Uuid>>,
+    pub(super) favorites_watch: RefCell<Option<tablepro_session::runtime::WatchForwarder>>,
+    pub(super) favorites_availability: RefCell<Option<tablepro_session::runtime::WatchForwarder>>,
     /// The window the shell added its actions to.
     pub(super) window: glib::WeakRef<adw::ApplicationWindow>,
     pub(super) sender: OnceCell<InputSender<SessionWindowInput>>,
