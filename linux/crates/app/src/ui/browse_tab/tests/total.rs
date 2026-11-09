@@ -15,7 +15,12 @@ use crate::services::change_origins::ChangeOrigins;
 use crate::test_support::{LogLines, drain_main_context, wait_until};
 
 fn paginator(harness: &Harness) -> String {
-    harness.tab().imp().pager_bar.imp().paginator_label.label().to_string()
+    let label = harness.tab().imp().pager_bar.imp().paginator_label.label();
+    // These tests pin row totals independently of how long the read takes.
+    label
+        .split_once(" · ")
+        .map_or(label.as_str(), |(range, _)| range)
+        .to_owned()
 }
 
 fn count_button(harness: &Harness) -> gtk4::Button {
