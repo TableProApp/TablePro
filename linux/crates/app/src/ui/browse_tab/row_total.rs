@@ -1,4 +1,3 @@
-/// What the tab knows of how many rows the table has under its filter.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) enum RowTotal {
     #[default]
@@ -18,11 +17,11 @@ pub(crate) enum RowTotal {
 }
 
 impl RowTotal {
-    /// "Rows 1 – 1,000 of 5,000", "of about 5,000,000", or no total.
     pub(super) fn label_with(&self, start: u64, end: u64, format: impl Fn(u64) -> String) -> String {
+        let last = end;
         let (start, end) = (format(start), format(end));
         match self {
-            Self::Exact(total) => crate::i18n::gettext_f(
+            Self::Exact(total) if *total >= last => crate::i18n::gettext_f(
                 "Rows {start} – {end} of {total}",
                 &[("start", &start), ("end", &end), ("total", &format(*total))],
             ),
@@ -33,13 +32,12 @@ impl RowTotal {
             | Self::Unavailable {
                 estimate: Some(estimate),
                 ..
-            } => crate::i18n::gettext_f(
+            } if *estimate >= last => crate::i18n::gettext_f(
                 "Rows {start} – {end} of about {total}",
                 &[("start", &start), ("end", &end), ("total", &format(*estimate))],
             ),
-            Self::Unknown | Self::Counting { estimate: None } | Self::Unavailable { estimate: None, .. } => {
-                crate::i18n::gettext_f("Rows {start} – {end}", &[("start", &start), ("end", &end)])
-            }
+            // Separate reads can describe different snapshots; the range comes from the rows on screen.
+            _ => crate::i18n::gettext_f("Rows {start} – {end}", &[("start", &start), ("end", &end)]),
         }
     }
 
@@ -50,7 +48,6 @@ impl RowTotal {
         }
     }
 
-    /// The estimate a count started from, or the total it replaces.
     pub(crate) fn estimate(&self) -> Option<u64> {
         match self {
             Self::Exact(total) | Self::Estimated(total) => Some(*total),
@@ -59,9 +56,7 @@ impl RowTotal {
         }
     }
 
-    /// A committed save moved the total by what it inserted and deleted.
-    /// Under a filter, an inserted or updated row may not match it, so
-    /// an exact total becomes an estimate there.
+    // Under a filter, an inserted or updated row may no longer match.
     pub(crate) fn adjust_after_save(&mut self, inserted: u64, deleted: u64, filtered: bool) {
         let moved = |total: u64| total.saturating_add(inserted).saturating_sub(deleted);
         *self = match std::mem::take(self) {
@@ -113,6 +108,21 @@ mod tests {
             ),
             "Rows 1,001 – 2,000"
         );
+    }
+
+    #[test]
+    fn totals_older_than_the_displayed_range_are_omitted() {
+        for total in [
+            RowTotal::Exact(2),
+            RowTotal::Estimated(2),
+            RowTotal::Counting { estimate: Some(2) },
+            RowTotal::Unavailable {
+                estimate: Some(2),
+                reason: "Stopped.".to_owned(),
+            },
+        ] {
+            assert_eq!(label(&total, 1, 3), "Rows 1 – 3", "{total:?}");
+        }
     }
 
     #[test]

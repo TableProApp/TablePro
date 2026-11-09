@@ -9,7 +9,7 @@ use super::context::CharacterSets;
 use super::draft_column_object::DraftColumnObject;
 use super::structure_fetch::fetch_structure;
 use super::{
-    LoadInput, LoadedStructure, StructureCommand, StructureEffects, StructureMode, StructureModel,
+    LoadInput, LoadedStructure, SaveInput, StructureCommand, StructureEffects, StructureMode, StructureModel,
     StructureRequestKind, StructureTabOutput, items, replace_items,
 };
 use crate::runtime::{RequestTicket, Stamped};
@@ -38,7 +38,7 @@ impl StructureModel {
                     }
                 }
             }
-            LoadInput::Retry => self.read_definition(fx),
+            LoadInput::Retry => fx.input(SaveInput::RequestRefresh),
         }
     }
 
@@ -68,6 +68,9 @@ impl StructureModel {
             }
         }
         self.widgets.stale_banner.show(presentation.stale.as_ref());
+        self.sync_editable();
+        let pending = self.pending();
+        self.refresh_buttons(pending.change_count(), pending.typed_values_hold());
         if self.tab_loading != presentation.tab_loading {
             self.tab_loading = presentation.tab_loading;
             fx.output(StructureTabOutput::LoadingChanged(presentation.tab_loading));
@@ -221,7 +224,11 @@ impl StructureModel {
     fn retry_failed(&mut self, fx: &mut StructureEffects) {
         let failed = self.failed.take();
         if failed.contains(&StructureRequestKind::Definition) {
-            self.read_definition(fx);
+            if self.last_dirty || self.tracker.is_saving() {
+                self.definition_stale = true;
+            } else {
+                self.read_definition(fx);
+            }
         }
         if failed.contains(&StructureRequestKind::CharacterSets) {
             self.read_character_sets();

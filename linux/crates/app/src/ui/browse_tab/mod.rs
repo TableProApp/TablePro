@@ -311,6 +311,10 @@ impl BrowseTab {
             .unwrap_or_default()
     }
 
+    pub fn rename_table(&self, name: &str) {
+        self.send(DataInput::Renamed(name.to_owned()));
+    }
+
     pub fn table(&self) -> String {
         self.read(|model| model.table.clone()).unwrap_or_default()
     }
@@ -391,6 +395,78 @@ impl BrowseTab {
     /// Save asked the window to write what the tab's tracker holds.
     pub fn connect_save_requested<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure("save-requested", false, glib::closure_local!(move |tab: &Self| f(tab)))
+    }
+
+    pub fn connect_structure_requested<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "structure-requested",
+            false,
+            glib::closure_local!(move |tab: &Self| f(tab)),
+        )
+    }
+
+    pub fn offer_structure(&self) {
+        let imp = self.imp();
+        imp.view_toggle.set_visible(true);
+        let tab = self.downgrade();
+        imp.view_stack.connect_visible_child_name_notify(move |_| {
+            if let Some(tab) = tab.upgrade() {
+                tab.follow_selected_view();
+            }
+        });
+    }
+
+    pub fn set_structure(&self, structure: &crate::ui::structure_tab::StructureTab) {
+        libadwaita::prelude::BinExt::set_child(&*self.imp().structure_host, Some(structure));
+    }
+
+    pub fn structure_tab(&self) -> Option<crate::ui::structure_tab::StructureTab> {
+        libadwaita::prelude::BinExt::child(&*self.imp().structure_host)?
+            .downcast()
+            .ok()
+    }
+
+    pub fn shows_structure(&self) -> bool {
+        self.imp().view_stack.visible_child_name().as_deref() == Some("structure")
+    }
+
+    fn follow_selected_view(&self) {
+        let imp = self.imp();
+        let structure = self.shows_structure();
+        // Finish an open cell before hiding its editor, so close and Save see the draft.
+        if structure {
+            self.commit_cell_edit();
+        }
+        if structure && !imp.structure_requested.replace(true) {
+            self.emit_by_name::<()>("structure-requested", &[]);
+        }
+        imp.data_start.set_visible(!structure);
+        imp.data_end.set_visible(!structure);
+        let actions = imp.browse_actions.get().filter(|_| !structure);
+        self.insert_action_group("browse", actions);
+        if let Some(model) = imp.model.borrow_mut().as_mut() {
+            model.show_grid_actions();
+        }
+    }
+
+    fn save_selected_view(&self) {
+        if self.shows_structure() {
+            if let Some(structure) = self.structure_tab() {
+                let _ = structure.activate_action("structure.save", None);
+            }
+        } else {
+            let _ = self.activate_action("browse.save", None);
+        }
+    }
+
+    fn refresh_selected_view(&self) {
+        if self.shows_structure() {
+            if let Some(structure) = self.structure_tab() {
+                structure.request_refresh();
+            }
+        } else {
+            self.send(PagingInput::RequestRefresh);
+        }
     }
 
     /// F5 asked the window to read the tab again.

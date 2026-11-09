@@ -65,7 +65,7 @@ pub(super) fn describe_buttons(shell: &WorkspaceShell) {
     describe_icon_button(
         &imp.save_changes_button.get(),
         &gettext("Save Changes"),
-        Some("browse.save"),
+        Some("table.save"),
     );
     describe_icon_button(
         &imp.refresh_page_button.get(),

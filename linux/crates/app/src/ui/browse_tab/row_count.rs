@@ -11,6 +11,9 @@ impl BrowseModel {
     /// The server's guess at the table's size, which is all the "of N"
     /// total needs, and which decides whether a count runs on its own.
     pub(super) fn fetch_estimate(&mut self) {
+        if self.saving.get() {
+            return;
+        }
         let ticket = self.issue(BrowseRequestKind::Estimate);
         let session = self.session.clone();
         let table = self.table_ref();
@@ -65,6 +68,9 @@ impl BrowseModel {
     /// Count the rows under the tab's filter. `estimate` shows while it
     /// runs.
     pub(super) fn start_count(&mut self, estimate: Option<u64>, fx: &mut Effects) {
+        if self.saving.get() {
+            return;
+        }
         let Some(plan) = self.read_plan() else {
             return;
         };
@@ -101,9 +107,15 @@ impl BrowseModel {
         }
     }
 
-    /// A refresh or a new filter reads other rows than the running count
-    /// counts, so it stops. A refresh keeps what the count started from;
-    /// a filter has no total until its own estimate lands.
+    pub(super) fn stop_total_reads(&mut self) {
+        // Counts begun before a write cannot replace its adjusted total, even if cancellation arrives late.
+        self.sequencer.cancel(BrowseRequestKind::Estimate);
+        self.after_columns.remove(&BrowseRequestKind::Estimate);
+        self.after_columns.remove(&BrowseRequestKind::Count);
+        self.failed.record(BrowseRequestKind::Estimate, &Ok::<(), ()>(()));
+        self.stop_count(true);
+    }
+
     pub(super) fn stop_count(&mut self, keep_total: bool) {
         self.sequencer.cancel(BrowseRequestKind::Count);
         self.total = match (keep_total, &self.total) {
@@ -147,8 +159,8 @@ impl BrowseModel {
             .pager_bar
             .show_total(&self.pager, self.shown_page(), &self.total);
         let counting = matches!(self.total, RowTotal::Counting { .. });
-        self.actions
-            .count_rows
-            .set_enabled(self.shown_page().is_some() && self.total.exact().is_none() && !counting);
+        let can_count = self.shown_page().is_some() && self.total.exact().is_none() && !counting && !self.saving.get();
+        self.actions.count_rows.set_enabled(can_count);
+        self.widgets.pager_bar.set_count_enabled(can_count);
     }
 }

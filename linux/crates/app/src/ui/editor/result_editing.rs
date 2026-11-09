@@ -191,13 +191,24 @@ impl SqlEditor {
             return true;
         }
         let editor = self.downgrade();
-        confirm_discard(self, pending.max(1), move || {
-            if let Some(editor) = editor.upgrade() {
-                // The run about to start replaces these rows, so they are not read again first.
-                editor.drop_rows();
-                then(&editor);
-            }
-        });
+        confirm_discard(
+            self,
+            pending.max(1),
+            move || tracker.pending_state(),
+            move || {
+                if let Some(editor) = editor.upgrade() {
+                    if editor
+                        .row_tracker()
+                        .is_some_and(|tracker| tracker.pending_state() == PendingState::Saving)
+                    {
+                        return;
+                    }
+                    // The run about to start replaces these rows, so they are not read again first.
+                    editor.drop_rows();
+                    then(&editor);
+                }
+            },
+        );
         false
     }
 
@@ -482,11 +493,16 @@ impl SqlEditor {
             return;
         }
         let editor = self.downgrade();
-        confirm_discard(self, pending, move || {
-            if let Some(editor) = editor.upgrade() {
-                editor.discard_rows();
-            }
-        });
+        confirm_discard(
+            self,
+            pending,
+            move || tracker.pending_state(),
+            move || {
+                if let Some(editor) = editor.upgrade() {
+                    editor.discard_rows();
+                }
+            },
+        );
     }
 
     // The owner's grid, built or not; the tracker's changes are drawn by no other.
@@ -497,6 +513,12 @@ impl SqlEditor {
 
     // After a save whose outcome is unknown the rows on screen may not be what the table holds, so they are read again.
     fn discard_rows(&self) {
+        if self
+            .row_tracker()
+            .is_some_and(|tracker| tracker.pending_state() == PendingState::Saving)
+        {
+            return;
+        }
         let unknown = self
             .row_tracker()
             .is_some_and(|tracker| matches!(tracker.pending_state(), PendingState::OutcomeUnknown(_)));
