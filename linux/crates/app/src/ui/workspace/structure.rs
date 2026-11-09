@@ -70,6 +70,20 @@ impl WorkspaceModel {
         });
     }
 
+    pub(super) fn on_show_table_structure(&self, id: Uuid) {
+        let target = match self.workspace_tabs.borrow().get(&id) {
+            Some(WorkspaceTab::Table(slot)) => Some((slot.schema.clone(), slot.table.clone())),
+            _ => None,
+        };
+        let Some(structure) = target.and_then(|(schema, table)| self.factory.table_structure(id, schema, table)) else {
+            return;
+        };
+        if let Some(WorkspaceTab::Table(slot)) = self.workspace_tabs.borrow_mut().get_mut(&id) {
+            slot.browse.set_structure(&structure);
+            slot.structure = Some(structure);
+        }
+    }
+
     /// Right-click → "Drop Table…", or in-tab destructive button. The
     /// table's definition is read first, so a table other tables point
     /// at is refused before the user is asked.
@@ -253,6 +267,12 @@ impl WorkspaceModel {
                         SaveKind::UpdateInPlace(slot.schema.clone(), slot.table.clone())
                     }
                 },
+                Some(WorkspaceTab::Table(slot)) => {
+                    if let Some(name) = new_table_name.as_ref() {
+                        slot.table.clone_from(name);
+                    }
+                    SaveKind::UpdateInPlace(slot.schema.clone(), slot.table.clone())
+                }
                 _ => SaveKind::Skip,
             }
         };
@@ -274,8 +294,18 @@ impl WorkspaceModel {
                 });
             }
             SaveKind::UpdateInPlace(schema, table) => {
-                if new_table_name.is_some() {
+                if let Some(name) = new_table_name.as_ref() {
+                    let browse = self
+                        .workspace_tabs
+                        .borrow()
+                        .get(&tab_id)
+                        .and_then(|tab| tab.browse_tab())
+                        .cloned();
+                    if let Some(browse) = browse {
+                        browse.rename_table(name);
+                    }
                     self.retitle_tab(tab_id);
+                    self.persist_workspace_state();
                 }
                 self.send_to_structure_tab(tab_id, SaveInput::SaveCompleted { new_table_name });
                 self.input.deliver(WorkspaceInput::SchemaChanged {
@@ -368,7 +398,7 @@ impl WorkspaceModel {
             .values()
             .filter_map(|tab| match tab {
                 WorkspaceTab::Table(slot) if slot.schema == table.schema && slot.table == table.name => {
-                    Some((Some(slot.browse.clone()), None))
+                    Some((Some(slot.browse.clone()), slot.structure.clone()))
                 }
                 WorkspaceTab::Structure(slot) if slot.schema == table.schema && slot.table == table.name => {
                     Some((None, Some(slot.structure.clone())))
