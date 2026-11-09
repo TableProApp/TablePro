@@ -512,6 +512,139 @@ fn the_fields_follow_the_grid_column_order() {
     assert_eq!(fields(&pane), [1, 2, 0], "a hidden column's field did not go last");
 }
 
+fn copy_button(pane: &RowDetailPane, column: usize) -> gtk::Button {
+    let row = drawn_field(pane, column).child().expect("the field's row");
+    descendants(&row)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+        .find(|button| button.icon_name().as_deref() == Some(crate::ui::icons::EDIT_COPY))
+        .expect("the field's copy button")
+}
+
+#[gtk4::test]
+fn a_fields_copy_button_copies_its_whole_value_and_leaves_the_editor() {
+    let long = "x".repeat(DISPLAY_MAX_CHARS + 500);
+    let (grid, pane) = opened(
+        three_text_columns(),
+        vec![vec![Value::Int(1), Value::Text("A".into()), Value::Text(long.clone())]],
+    );
+    grid.focus(0, 1);
+    drain_main_context();
+    let heard: Rc<RefCell<Vec<String>>> = Rc::default();
+    let log = heard.clone();
+    grid.grid.connect_request(move |_, request| {
+        if let GridRequest::Toast(text) = request {
+            log.borrow_mut().push(text);
+        }
+    });
+
+    copy_button(&pane, 2).emit_clicked();
+    wait_until(WAIT, || !heard.borrow().is_empty()).expect("the copy lands");
+
+    let clipboard = grid.grid.clipboard();
+    let copied = finish_on_main(WAIT, async move { clipboard.read_text_future().await })
+        .expect("the clipboard to answer")
+        .expect("text on the clipboard");
+    assert_eq!(
+        copied.as_deref().map(str::len),
+        Some(long.len()),
+        "the copy took the text the field draws"
+    );
+    assert_eq!(selected_field(&pane), Some(1), "the copy moved the editor");
+    assert_eq!(pane.typed_text(), "A");
+}
+
+/// The arrows go from field to field, so Tab leaves the list once past
+/// the focused field's own buttons rather than through every field.
+#[gtk4::test]
+fn tab_leaves_the_field_list_after_the_focused_field() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    crate::test_support::KeyInjector::focus_only(&grid.window);
+    take_keyboard(&grid);
+    grid.focus(0, 1);
+    let list = pane.imp().field_list.get();
+    wait_until(WAIT, || {
+        pane.imp().field_search.is_mapped() && list.width() > 0 && list.height() > 0
+    })
+    .expect("the fields are laid out");
+    crate::test_support::after_next_frame(&grid.window);
+    assert!(pane.imp().field_search.grab_focus());
+    let keys = crate::test_support::KeyInjector::connect().expect("an X11 display");
+    let on_copy = || {
+        gtk::prelude::GtkWindowExt::focus(&grid.window)
+            .and_downcast::<gtk::Button>()
+            .is_some_and(|button| button.icon_name().as_deref() == Some(crate::ui::icons::EDIT_COPY))
+    };
+
+    keys.press(gdk::Key::Tab, gdk::ModifierType::empty()).expect("Tab");
+    wait_until(WAIT, || crate::ui::a11y::holds_focus(&list)).expect("Tab to the list");
+    keys.press(gdk::Key::Tab, gdk::ModifierType::empty()).expect("Tab");
+    wait_until(WAIT, on_copy).expect("Tab to the field's copy button");
+    keys.press(gdk::Key::Tab, gdk::ModifierType::empty()).expect("Tab");
+    wait_until(WAIT, || !crate::ui::a11y::holds_focus(&list)).expect("Tab out of the list");
+}
+
+fn field_row_of(pane: &RowDetailPane, column: usize) -> gtk::Widget {
+    drawn_field(pane, column).child().expect("the field's row")
+}
+
+fn shows_value(pane: &RowDetailPane, column: usize) -> bool {
+    descendants(&field_row_of(pane, column))
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Inscription>().ok())
+        .any(|value| value.is_visible())
+}
+
+#[gtk4::test]
+fn the_value_editor_sits_in_the_picked_fields_row() {
+    let (grid, pane) = opened(three_text_columns(), three_text_values());
+    let imp = pane.imp();
+    grid.focus(0, 1);
+    drain_main_context();
+
+    assert!(
+        imp.editor_box.is_ancestor(&field_row_of(&pane, 1)),
+        "the editor is not in its field's row"
+    );
+    assert!(imp.editor_tools.is_ancestor(&field_row_of(&pane, 1)));
+    assert!(
+        !shows_value(&pane, 1),
+        "the picked field drew its value beside the editor"
+    );
+    assert!(shows_value(&pane, 2));
+
+    grid.focus(0, 2);
+    drain_main_context();
+
+    assert!(
+        imp.editor_box.is_ancestor(&field_row_of(&pane, 2)),
+        "the editor did not follow the field"
+    );
+    assert!(!imp.editor_box.is_ancestor(&field_row_of(&pane, 1)));
+    assert!(shows_value(&pane, 1), "the field left behind lost its value");
+    assert_eq!(pane.typed_text(), "x");
+}
+
+#[gtk4::test]
+fn a_field_the_search_drops_while_editing_hands_the_keyboard_to_the_search() {
+    let (grid, pane) = opened(three_text_columns(), three_text_values());
+    edit_field(&grid, &pane, 0, 2);
+    search_fields(&pane, "x");
+    assert_eq!(listed_columns(&pane), vec![2]);
+    assert!(crate::ui::a11y::holds_focus(&pane.imp().value_view.get()));
+
+    type_value(&pane, "z");
+    assert!(press_in_value(&pane, gdk::Key::Return, gdk::ModifierType::CONTROL_MASK));
+    drain_main_context();
+
+    assert_eq!(pending(&grid, 1, 2), Some(text("z")));
+    assert!(listed_columns(&pane).is_empty());
+    assert!(
+        crate::ui::a11y::holds_focus(&pane.imp().field_search.get()),
+        "the keyboard left the pane with the field's row"
+    );
+}
+
 #[gtk4::test]
 fn every_control_in_the_pane_is_named() {
     let (grid, pane) = opened(two_text_columns(), two_text_values());
@@ -1836,137 +1969,4 @@ fn search_keys_and_tab_order_reach_the_filter_list_and_value() {
     keys.press(gdk::Key::Escape, gdk::ModifierType::empty())
         .expect("Escape");
     wait_until(WAIT, || !grid.grid.imp().split_view.shows_sidebar()).expect("Escape closes the empty overlay search");
-}
-
-fn copy_button(pane: &RowDetailPane, column: usize) -> gtk::Button {
-    let row = drawn_field(pane, column).child().expect("the field's row");
-    descendants(&row)
-        .into_iter()
-        .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
-        .find(|button| button.icon_name().as_deref() == Some(crate::ui::icons::EDIT_COPY))
-        .expect("the field's copy button")
-}
-
-#[gtk4::test]
-fn a_fields_copy_button_copies_its_whole_value_and_leaves_the_editor() {
-    let long = "x".repeat(DISPLAY_MAX_CHARS + 500);
-    let (grid, pane) = opened(
-        three_text_columns(),
-        vec![vec![Value::Int(1), Value::Text("A".into()), Value::Text(long.clone())]],
-    );
-    grid.focus(0, 1);
-    drain_main_context();
-    let heard: Rc<RefCell<Vec<String>>> = Rc::default();
-    let log = heard.clone();
-    grid.grid.connect_request(move |_, request| {
-        if let GridRequest::Toast(text) = request {
-            log.borrow_mut().push(text);
-        }
-    });
-
-    copy_button(&pane, 2).emit_clicked();
-    wait_until(WAIT, || !heard.borrow().is_empty()).expect("the copy lands");
-
-    let clipboard = grid.grid.clipboard();
-    let copied = finish_on_main(WAIT, async move { clipboard.read_text_future().await })
-        .expect("the clipboard to answer")
-        .expect("text on the clipboard");
-    assert_eq!(
-        copied.as_deref().map(str::len),
-        Some(long.len()),
-        "the copy took the text the field draws"
-    );
-    assert_eq!(selected_field(&pane), Some(1), "the copy moved the editor");
-    assert_eq!(pane.typed_text(), "A");
-}
-
-/// The arrows go from field to field, so Tab leaves the list once past
-/// the focused field's own buttons rather than through every field.
-#[gtk4::test]
-fn tab_leaves_the_field_list_after_the_focused_field() {
-    let (grid, pane) = opened(two_text_columns(), two_text_values());
-    crate::test_support::KeyInjector::focus_only(&grid.window);
-    take_keyboard(&grid);
-    grid.focus(0, 1);
-    let list = pane.imp().field_list.get();
-    wait_until(WAIT, || {
-        pane.imp().field_search.is_mapped() && list.width() > 0 && list.height() > 0
-    })
-    .expect("the fields are laid out");
-    crate::test_support::after_next_frame(&grid.window);
-    assert!(pane.imp().field_search.grab_focus());
-    let keys = crate::test_support::KeyInjector::connect().expect("an X11 display");
-    let on_copy = || {
-        gtk::prelude::GtkWindowExt::focus(&grid.window)
-            .and_downcast::<gtk::Button>()
-            .is_some_and(|button| button.icon_name().as_deref() == Some(crate::ui::icons::EDIT_COPY))
-    };
-
-    keys.press(gdk::Key::Tab, gdk::ModifierType::empty()).expect("Tab");
-    wait_until(WAIT, || crate::ui::a11y::holds_focus(&list)).expect("Tab to the list");
-    keys.press(gdk::Key::Tab, gdk::ModifierType::empty()).expect("Tab");
-    wait_until(WAIT, on_copy).expect("Tab to the field's copy button");
-    keys.press(gdk::Key::Tab, gdk::ModifierType::empty()).expect("Tab");
-    wait_until(WAIT, || !crate::ui::a11y::holds_focus(&list)).expect("Tab out of the list");
-}
-
-fn field_row_of(pane: &RowDetailPane, column: usize) -> gtk::Widget {
-    drawn_field(pane, column).child().expect("the field's row")
-}
-
-fn shows_value(pane: &RowDetailPane, column: usize) -> bool {
-    descendants(&field_row_of(pane, column))
-        .into_iter()
-        .filter_map(|widget| widget.downcast::<gtk::Inscription>().ok())
-        .any(|value| value.is_visible())
-}
-
-#[gtk4::test]
-fn the_value_editor_sits_in_the_picked_fields_row() {
-    let (grid, pane) = opened(three_text_columns(), three_text_values());
-    let imp = pane.imp();
-    grid.focus(0, 1);
-    drain_main_context();
-
-    assert!(
-        imp.editor_box.is_ancestor(&field_row_of(&pane, 1)),
-        "the editor is not in its field's row"
-    );
-    assert!(imp.editor_tools.is_ancestor(&field_row_of(&pane, 1)));
-    assert!(
-        !shows_value(&pane, 1),
-        "the picked field drew its value beside the editor"
-    );
-    assert!(shows_value(&pane, 2));
-
-    grid.focus(0, 2);
-    drain_main_context();
-
-    assert!(
-        imp.editor_box.is_ancestor(&field_row_of(&pane, 2)),
-        "the editor did not follow the field"
-    );
-    assert!(!imp.editor_box.is_ancestor(&field_row_of(&pane, 1)));
-    assert!(shows_value(&pane, 1), "the field left behind lost its value");
-    assert_eq!(pane.typed_text(), "x");
-}
-
-#[gtk4::test]
-fn a_field_the_search_drops_while_editing_hands_the_keyboard_to_the_search() {
-    let (grid, pane) = opened(three_text_columns(), three_text_values());
-    edit_field(&grid, &pane, 0, 2);
-    search_fields(&pane, "x");
-    assert_eq!(listed_columns(&pane), vec![2]);
-    assert!(crate::ui::a11y::holds_focus(&pane.imp().value_view.get()));
-
-    type_value(&pane, "z");
-    assert!(press_in_value(&pane, gdk::Key::Return, gdk::ModifierType::CONTROL_MASK));
-    drain_main_context();
-
-    assert_eq!(pending(&grid, 1, 2), Some(text("z")));
-    assert!(listed_columns(&pane).is_empty());
-    assert!(
-        crate::ui::a11y::holds_focus(&pane.imp().field_search.get()),
-        "the keyboard left the pane with the field's row"
-    );
 }
