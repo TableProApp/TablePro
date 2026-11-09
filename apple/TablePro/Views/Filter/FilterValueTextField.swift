@@ -124,7 +124,7 @@ struct FilterValueTextField: NSViewRepresentable {
     private static var singleLineHeights: [NSControl.ControlSize: CGFloat] = [:]
 
     // A rounded field wraps only on some macOS versions (measured: one line before 26); one that cannot
-    // wrap truncates with an ellipsis, so a long condition never reads as complete when it is cut off.
+    // wrap ends a long condition in an ellipsis rather than cutting it off mid-clause.
     private static let roundedFieldWraps: Bool = {
         let field = NSTextField()
         field.bezelStyle = .roundedBezel
