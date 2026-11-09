@@ -541,6 +541,25 @@ fn copy_as_insert_writes_the_columns_on_screen_with_pending_edits() {
 }
 
 #[gtk4::test]
+fn renaming_the_table_keeps_edits_and_selection_in_insert_copies() {
+    let grid = sql_grid(people(), people_rows(), Arc::new(FakeDialect));
+    grid.grid.set_column_visible(2, false);
+    grid.grid
+        .apply_delta(&rename(&grid.tracker, 2, "Grace", "Grace Hopper"));
+    select_all(&grid);
+
+    grid.grid.rename_table("members");
+    let text = copied(&grid, || activate(&grid.grid, "copy-insert"));
+
+    assert_eq!(grid.tracker.pending_count(), 1);
+    assert_eq!(
+        text,
+        "INSERT INTO \"members\" (\"id\", \"name\") VALUES (1, 'Ada');\n\
+         INSERT INTO \"members\" (\"id\", \"name\") VALUES (2, 'Grace Hopper');"
+    );
+}
+
+#[gtk4::test]
 fn copy_as_insert_on_a_draft_leaves_what_the_server_fills_out() {
     let mut id = named("id", "integer", true);
     id.is_auto_increment = true;
