@@ -169,6 +169,44 @@ struct ObjectKindsToolbarTests {
         withExtendedLifetime(actions) {}
     }
 
+    // MARK: - What the connection supports
+
+    /// The context a toolbar pointed at a connection of this engine answers from. No driver is
+    /// installed, so the engine's curated capabilities are what the context can see.
+    private static func context(for type: DatabaseType, objectsOn: Bool) -> ToolbarContext {
+        let fixture = CoordinatorFixture(connection: TestFixtures.makeConnection(database: "shop", type: type))
+        let actions = makeActions(for: fixture)
+        let owner = owner(objectsOn: objectsOn)
+        owner.repoint(to: fixture.coordinator)
+        let context = owner.currentContext()
+        withExtendedLifetime(actions) {}
+        return context
+    }
+
+    @Test("While the group is on, the context reads what the engine supports")
+    func contextReadsTheEngineWhileTheGroupIsOn() {
+        let postgres = Self.context(for: .postgresql, objectsOn: true)
+        #expect(postgres.supportsRoutines)
+        #expect(postgres.supportsBackup)
+        #expect(!postgres.canListObjects, "With no driver the engine builds no listing")
+        #expect(!postgres.supportsUserManagement, "With no driver there is no capability to read")
+
+        #expect(Self.context(for: .mongodb, objectsOn: true).canListObjects, "MongoDB lists through its own command")
+        #expect(!Self.context(for: .sqlite, objectsOn: true).supportsRoutines)
+    }
+
+    /// Nothing but the group reads these, and the listing is a plugin call on every validation pass.
+    @Test("While the group is off, the context asks the connection nothing for it")
+    func contextAsksNothingWhileTheGroupIsOff() {
+        for type in [DatabaseType.postgresql, .mongodb] {
+            let context = Self.context(for: type, objectsOn: false)
+            #expect(!context.canListObjects, "\(type.rawValue)")
+            #expect(!context.supportsRoutines, "\(type.rawValue)")
+            #expect(!context.supportsUserManagement, "\(type.rawValue)")
+            #expect(!context.supportsBackup, "\(type.rawValue)")
+        }
+    }
+
     @Test("A button pressed with no connection behind the toolbar does nothing")
     func buttonsWithNoConnectionDoNothing() throws {
         let owner = Self.owner()
