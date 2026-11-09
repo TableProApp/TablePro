@@ -9,7 +9,6 @@ use super::RowDetailPane;
 use crate::i18n::gettext;
 use crate::services::change_tracker::CellState;
 use crate::services::grid::{GridColumn, auto_filled_sentinel, display_text};
-use crate::ui::data_grid::selection::Target;
 use crate::ui::data_grid::tracked_values::cell_description;
 use crate::ui::data_grid::{DataGrid, GridRow, ServerValue, TrackedValues};
 use crate::ui::handler_guard::HandlerGuard;
@@ -502,7 +501,7 @@ impl RowDetailPane {
         let (Some(grid), Some(row)) = (self.grid(), self.current_pin()) else {
             return;
         };
-        grid.hold_menu_target(Target {
+        grid.hold_menu_target(crate::ui::data_grid::selection::Target {
             cell: Some((row.clone(), column)),
             rows: vec![row],
         });
