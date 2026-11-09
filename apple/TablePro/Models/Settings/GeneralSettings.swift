@@ -61,6 +61,7 @@ struct GeneralSettings: Codable, Equatable {
     var queryTimeoutSeconds: Int
     var shareAnalytics: Bool
     var showRecentTables: Bool
+    var showsObjectsOnSelection: Bool
     var showObjectComments: Bool
     var showObjectIcons: Bool
     var showSystemContainers: Bool
@@ -77,6 +78,7 @@ struct GeneralSettings: Codable, Equatable {
         queryTimeoutSeconds: 60,
         shareAnalytics: true,
         showRecentTables: false,
+        showsObjectsOnSelection: false,
         showObjectComments: true,
         showObjectIcons: true,
         showSystemContainers: false,
@@ -94,6 +96,7 @@ struct GeneralSettings: Codable, Equatable {
         queryTimeoutSeconds: Int = 60,
         shareAnalytics: Bool = true,
         showRecentTables: Bool = false,
+        showsObjectsOnSelection: Bool = false,
         showObjectComments: Bool = true,
         showObjectIcons: Bool = true,
         showSystemContainers: Bool = false,
@@ -109,6 +112,7 @@ struct GeneralSettings: Codable, Equatable {
         self.queryTimeoutSeconds = queryTimeoutSeconds
         self.shareAnalytics = shareAnalytics
         self.showRecentTables = showRecentTables
+        self.showsObjectsOnSelection = showsObjectsOnSelection
         self.showObjectComments = showObjectComments
         self.showObjectIcons = showObjectIcons
         self.showSystemContainers = showSystemContainers
@@ -128,6 +132,9 @@ struct GeneralSettings: Codable, Equatable {
         queryTimeoutSeconds = container.decodeSetting(.queryTimeoutSeconds, default: fallback.queryTimeoutSeconds)
         shareAnalytics = container.decodeSetting(.shareAnalytics, default: fallback.shareAnalytics)
         showRecentTables = container.decodeSetting(.showRecentTables, default: fallback.showRecentTables)
+        showsObjectsOnSelection = container.decodeSetting(
+            .showsObjectsOnSelection, default: fallback.showsObjectsOnSelection
+        )
         showObjectComments = container.decodeSetting(.showObjectComments, default: fallback.showObjectComments)
         showObjectIcons = container.decodeSetting(.showObjectIcons, default: fallback.showObjectIcons)
         showSystemContainers = container.decodeSetting(.showSystemContainers, default: fallback.showSystemContainers)

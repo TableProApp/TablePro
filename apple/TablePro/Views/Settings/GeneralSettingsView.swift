@@ -70,6 +70,9 @@ struct GeneralSettingsView: View {
                 Toggle("Show recent tables", isOn: $settings.showRecentTables)
                     .help("Adds a Recent section at the top of the Tables sidebar with the last tables you opened per connection and database.")
 
+                Toggle("Show objects when a database, schema or group is selected", isOn: $settings.showsObjectsOnSelection)
+                    .help("Clicking a database, schema or object group in the sidebar lists its objects in the main area. Show Objects in the row's menu lists them either way.")
+
                 Toggle("Show object icons", isOn: $settings.showObjectIcons)
                     .help("Shows a type icon before each object name in the sidebar. Turn it off for a plain list of names.")
 
