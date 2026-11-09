@@ -121,8 +121,11 @@ extension DatabaseTreeOutlineCoordinator {
     /// recorded and re-expanded under the same key a table uses. A section can hold 17,000 tables,
     /// so the names the window recorded are checked before any key is built.
     private func restoreTableExpansion(under parent: DatabaseTreeNode) {
-        guard showsPartitions || showsTableDetails, searchText.isEmpty,
-              let outlineView = self.outlineView, let windowState else { return }
+        guard showsPartitions || showsTableDetails, let outlineView = self.outlineView, let windowState else { return }
+        guard searchText.isEmpty else {
+            readOpenDetailRows(under: parent)
+            return
+        }
         let expandedNames = Set(windowState.expandedTreeTables.map { $0.table })
         guard !expandedNames.isEmpty else { return }
         for node in resolvedChildren(of: parent) {
@@ -138,6 +141,24 @@ extension DatabaseTreeOutlineCoordinator {
             guard outlineView.isItemExpanded(node) else { continue }
             triggerLoad(for: node)
             restoreTableExpansion(under: node)
+        }
+    }
+
+    /// A search decides what is open and opens no table, yet a group already open on screen still
+    /// reads a list a change or a reconnect overtook. The restore pass was its only reader, so its
+    /// spinner stayed until the search was cleared.
+    private func readOpenDetailRows(under parent: DatabaseTreeNode) {
+        guard showsTableDetails, let outlineView = self.outlineView else { return }
+        for node in resolvedChildren(of: parent) where outlineView.isItemExpanded(node) {
+            switch node.kind {
+            case .table, .partition, .tableDetailGroup:
+                triggerLoad(for: node)
+                readOpenDetailRows(under: node)
+            case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+                 .database, .schema, .tableDetail, .routine, .trigger, .userType, .status, .objectKindSection,
+                 .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
+                continue
+            }
         }
     }
 

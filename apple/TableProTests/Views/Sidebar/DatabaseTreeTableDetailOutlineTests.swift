@@ -436,6 +436,44 @@ struct DatabaseTreeTableDetailOutlineTests {
         await tearDown(fixture)
     }
 
+    @Test("While a search runs, an open group still reads a list a reconnect overtook")
+    func openGroupRereadsDuringSearch() async throws {
+        let fixture = try makeFixture()
+        let table = tableNode(fixture)
+        let columns = group(fixture, .columns)
+        fixture.windowState.expandedTreeTables = [DatabaseTableKey(orders(fixture))]
+        fixture.windowState.expandedTreeTableDetailGroups = [columns.expansionKey]
+        reloadFlat(fixture, table: table)
+        try await waitUntil { detailState(fixture, .columns).value != nil }
+
+        fixture.coordinator.searchText = "orders"
+        await service.handleReconnect(connectionId: fixture.connection.id)
+        reloadFlat(fixture, table: table)
+        try await waitUntil { fixture.driver.detailReads.count == 2 }
+
+        #expect(fixture.outlineView.isItemExpanded(table))
+        #expect(fixture.outlineView.isItemExpanded(node(fixture, columns)))
+        #expect(fixture.driver.detailReads == ["columns:orders", "columns:orders"])
+        await tearDown(fixture)
+    }
+
+    @Test("A search opens no table the window recorded open, so it reads no group")
+    func searchOpensNoRecordedTable() async throws {
+        let fixture = try makeFixture()
+        let table = tableNode(fixture)
+        let columns = group(fixture, .columns)
+        fixture.windowState.expandedTreeTables = [DatabaseTableKey(orders(fixture))]
+        fixture.windowState.expandedTreeTableDetailGroups = [columns.expansionKey]
+        fixture.coordinator.searchText = "orders"
+
+        reloadFlat(fixture, table: table)
+
+        #expect(!fixture.outlineView.isItemExpanded(table))
+        #expect(!fixture.outlineView.isItemExpanded(node(fixture, columns)))
+        #expect(detailState(fixture, .columns) == .idle)
+        await tearDown(fixture)
+    }
+
     @Test("A detail list landing changes what the outline draws, and another connection's does not")
     func landingListMovesTheRenderInputs() async throws {
         let fixture = try makeFixture()
