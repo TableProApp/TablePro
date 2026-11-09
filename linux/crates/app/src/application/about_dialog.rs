@@ -67,7 +67,7 @@ mod tests {
     use gtk4 as gtk;
 
     use super::*;
-    use crate::application::metainfo_release::{newest_release, tag_version};
+    use crate::application::metainfo_release::{newest_release, screenshots_ref, tag_version};
 
     /// The text between the element `open` starts and the next `close`.
     fn metainfo_text<'a>(xml: &'a str, open: &str, close: &str) -> &'a str {
@@ -124,10 +124,17 @@ mod tests {
     #[test]
     fn embedded_metainfo_pins_project_links_to_the_release_tag() {
         let xml = embedded_metainfo();
-        let version = tag_version(newest_release(&xml).expect("the metainfo lists a release"));
+        let release = newest_release(&xml).expect("the metainfo lists a release");
+        let version = tag_version(release);
         let tree = format!("https://github.com/TableProApp/TablePro/blob/linux-v{version}/linux");
-        let screenshots =
-            format!("https://raw.githubusercontent.com/TableProApp/TablePro/linux-v{version}/linux/data/screenshots/");
+        let source_commit = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../build-aux/source-commit"),
+        )
+        .expect("build-aux/source-commit is in the source tree");
+        let screenshots = format!(
+            "https://raw.githubusercontent.com/TableProApp/TablePro/{}/linux/data/screenshots/",
+            screenshots_ref(&source_commit, release)
+        );
         let releases = metainfo_text(&xml, "<releases", "</releases>");
 
         assert_eq!(

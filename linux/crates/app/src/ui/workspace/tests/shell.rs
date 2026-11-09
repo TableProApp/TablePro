@@ -174,23 +174,36 @@ fn show_tabs_opens_and_closes_the_overview_while_a_tab_is_open() {
 }
 
 #[gtk4::test]
-fn sidebar_toggle_visible_only_when_collapsed_or_hidden() {
+fn the_sidebar_toggle_is_always_in_the_header() {
     let test = TestWindow::connected("SidebarToggle");
     let workspace = test.workspace();
     let shell = shell_of(&workspace);
     let imp = shell.imp();
     let (split, toggle) = (imp.split_view.get(), imp.sidebar_toggle.get());
-    split.set_collapsed(false);
-    split.set_show_sidebar(true);
-    assert!(!toggle.is_visible(), "shown beside a sidebar in view");
-
-    split.set_show_sidebar(false);
-    assert!(toggle.is_visible(), "hidden with the sidebar hidden");
-
-    split.set_show_sidebar(true);
-    split.set_collapsed(true);
-    assert!(toggle.is_visible(), "hidden with the sidebar collapsed");
+    crate::test_support::assert_labelled(&toggle).expect("the sidebar toggle is named");
+    assert_eq!(toggle.tooltip_text().as_deref(), Some("Show Sidebar"));
     assert_eq!(toggle.action_name().as_deref(), Some("win.show-sidebar"));
+
+    for collapsed in [false, true] {
+        split.set_collapsed(collapsed);
+        split.set_show_sidebar(true);
+        assert!(toggle.is_visible());
+        assert!(toggle.is_active());
+
+        toggle.emit_clicked();
+        assert!(!split.shows_sidebar());
+        assert!(!toggle.is_active());
+        assert!(toggle.is_visible());
+
+        toggle.emit_clicked();
+        assert!(split.shows_sidebar());
+        assert!(toggle.is_active());
+
+        WidgetExt::activate_action(&test.window, "win.show-sidebar", None).expect("win.show-sidebar");
+        assert!(!split.shows_sidebar());
+        assert!(!toggle.is_active());
+        assert!(toggle.is_visible());
+    }
 }
 
 #[gtk4::test]
@@ -574,4 +587,58 @@ fn the_main_menu_adds_a_connection_with_none_open() {
     );
 
     choose_new_connection(&test, &test.window.content().expect("the picker"));
+}
+
+#[gtk4::test]
+fn the_header_refresh_follows_the_selected_tabs_capability() {
+    use super::super::structure_target::StructureTarget;
+    use super::super::tab_spec::{TabSpec, TablePage};
+    use crate::ui::browse_tab::TableFilter;
+    use tablepro_core::meta::TableRef;
+
+    let test = TestWindow::connected("HeaderRefresh");
+    let workspace = test.workspace();
+    let shell = shell_of(&workspace);
+    let button = shell.imp().refresh_page_button.get();
+    assert_eq!(button.action_name().as_deref(), Some("win.refresh-page"));
+    crate::test_support::assert_labelled(&button).expect("the refresh button is named");
+    assert!(gtk::test_accessible_has_property(
+        &button,
+        gtk::AccessibleProperty::KeyShortcuts
+    ));
+    assert!(!button.is_sensitive(), "there is no tab to refresh");
+
+    let table = workspace
+        .with_model(|model| {
+            model.open_tab(TabSpec::Table {
+                table: TableRef::unqualified("customers"),
+                page: TablePage::first(100),
+                filter: TableFilter::Remembered,
+            })
+        })
+        .flatten()
+        .expect("a table");
+    wait_until(WAIT, || button.is_sensitive()).expect("table refresh");
+    super::open_editor(&workspace);
+    wait_until(WAIT, || !button.is_sensitive()).expect("no editor rerun");
+    workspace
+        .with_model(|model| {
+            model.open_tab(TabSpec::Structure {
+                target: StructureTarget::Existing(TableRef::unqualified("customers")),
+            })
+        })
+        .flatten()
+        .expect("a structure draft");
+    wait_until(WAIT, || !button.is_sensitive()).expect("no draft to reload");
+    workspace.with_model(|model| model.tab_view.set_selected_page(&table));
+    wait_until(WAIT, || button.is_sensitive()).expect("refresh after selection inside the model");
+
+    for page in (0..shell.tab_view().n_pages())
+        .map(|i| shell.tab_view().nth_page(i))
+        .collect::<Vec<_>>()
+    {
+        shell.tab_view().close_page(&page);
+    }
+    wait_until(WAIT, || shell.tab_view().n_pages() == 0).expect("all clean tabs close");
+    wait_until(WAIT, || !button.is_sensitive()).expect("no refresh after the last tab closes");
 }
