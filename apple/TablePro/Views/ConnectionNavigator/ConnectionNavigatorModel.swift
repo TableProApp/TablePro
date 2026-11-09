@@ -191,7 +191,22 @@ internal final class ConnectionNavigatorModel: ObservableObject {
         } else {
             expandedGroupIds.remove(id)
         }
-        environment.expansionStore.save(expandedGroupIds)
+        updateStoredExpansion { stored in
+            if expanded {
+                stored.insert(id)
+            } else {
+                stored.remove(id)
+            }
+        }
+    }
+
+    /// Every window's navigator saves to the same key, so a change goes onto what is stored now.
+    /// Saving this window's own copy wiped the groups another window had opened since it loaded.
+    private func updateStoredExpansion(_ change: (inout Set<UUID>) -> Void) {
+        let store = environment.expansionStore
+        var stored = store.load(keeping: Set(environment.groupStorage.loadGroups().map(\.id)))
+        change(&stored)
+        store.save(stored)
     }
 
     // MARK: - Interaction
@@ -319,11 +334,9 @@ internal final class ConnectionNavigatorModel: ObservableObject {
             parentId: fields.parentId
         )
         try environment.groupStorage.addGroup(group)
-        expandedGroupIds.insert(group.id)
-        if let parentId = fields.parentId {
-            expandedGroupIds.insert(parentId)
-        }
-        environment.expansionStore.save(expandedGroupIds)
+        let opened = Set([group.id] + [fields.parentId].compactMap { $0 })
+        expandedGroupIds.formUnion(opened)
+        updateStoredExpansion { $0.formUnion(opened) }
         rebuild()
     }
 }

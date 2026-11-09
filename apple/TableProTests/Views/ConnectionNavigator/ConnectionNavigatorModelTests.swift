@@ -116,6 +116,48 @@ struct ConnectionNavigatorModelTests {
         #expect(fixture.expansionStore.load(keeping: [parent.id, child.id]) == [parent.id, child.id])
     }
 
+    /// Each window holds a navigator of its own, and they share one stored set.
+    @Test("Two navigators keep the groups each other opened")
+    func twoNavigatorsKeepEachOthersExpansion() throws {
+        let first = ConnectionGroup(name: "First")
+        let second = ConnectionGroup(name: "Second")
+        try fixture.groupStorage.addGroup(first)
+        try fixture.groupStorage.addGroup(second)
+        let left = fixture.makeModel()
+        let right = fixture.makeModel()
+        left.start()
+        right.start()
+        defer {
+            left.stop()
+            right.stop()
+        }
+
+        left.setGroupExpanded(first.id, true)
+        right.setGroupExpanded(second.id, true)
+
+        #expect(fixture.expansionStore.load(keeping: [first.id, second.id]) == [first.id, second.id])
+    }
+
+    @Test("A group made in one navigator keeps the groups another one opened")
+    func createdGroupKeepsAnotherNavigatorsExpansion() throws {
+        let opened = ConnectionGroup(name: "Opened")
+        try fixture.groupStorage.addGroup(opened)
+        let left = fixture.makeModel()
+        let right = fixture.makeModel()
+        left.start()
+        right.start()
+        defer {
+            left.stop()
+            right.stop()
+        }
+
+        left.setGroupExpanded(opened.id, true)
+        try right.createGroup(ConnectionGroupFields(name: "Made"))
+
+        let made = try #require(fixture.groupStorage.loadGroups().first { $0.name == "Made" })
+        #expect(fixture.expansionStore.load(keeping: [opened.id, made.id]) == [opened.id, made.id])
+    }
+
     @Test("The library reads empty until it holds a connection")
     func libraryEmptyTracksConnections() {
         let model = fixture.makeModel()
