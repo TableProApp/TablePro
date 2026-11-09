@@ -328,7 +328,8 @@ impl RowDetailPane {
         if wanted.is_empty() || column.name.to_lowercase().contains(&wanted) {
             return true;
         }
-        let value = field_value(&grid.tracked(), &row, &column);
+        // A NULL never matches the search, so the text it shows as is not needed.
+        let value = field_value(&grid.tracked(), &row, &column, "");
         !value.null && value.text.to_lowercase().contains(&wanted)
     }
 
