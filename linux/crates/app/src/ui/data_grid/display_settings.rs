@@ -36,6 +36,7 @@ impl DataGrid {
         set_class(&view, "tp-striped", values.show_alternate_rows);
         if let Some(numbers) = self.row_numbers_column() {
             numbers.set_visible(values.show_row_numbers);
+            super::pinned_numbers::sync(self);
         }
         let changed = self.imp().applied_null.borrow().as_deref() != Some(&values.null_display);
         if changed {
