@@ -130,6 +130,10 @@ extension MainWindowToolbar {
             // Answering nil while the module is off is what prunes the controls from a saved arrangement.
             guard debugItemsEnabled() else { return nil }
             return makeDebugItem(itemIdentifier)
+        case Self.objectKindsGroup:
+            // Answering nil while the setting is off is what prunes the group from a saved arrangement.
+            guard objectKindsEnabled() else { return nil }
+            return makeObjectKindsGroup()
         default:
             return nil
         }

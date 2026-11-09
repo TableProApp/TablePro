@@ -91,6 +91,11 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 
     internal var debugItemsRecord = ToolbarDebugItemsRecord()
 
+    // Whether Settings puts the Objects group in the toolbar; it is vended only then, so turning it off prunes it.
+    internal var objectKindsEnabled: @MainActor () -> Bool = {
+        AppSettingsManager.shared.general.showsObjectToolbar
+    }
+
     /// `NSMenu.delegate` is weak, and the safe-mode control's menu is built here rather than by the
     /// menu bar, so this toolbar is what keeps its delegate alive.
     internal let safeModeMenuDelegate = SafeModeMenuDelegate()
@@ -535,7 +540,14 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     }
 
     internal func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        debugItemsEnabled() ? Self.allowedItemIdentifiers + Self.debugItemIdentifiers : Self.allowedItemIdentifiers
+        var allowed = Self.allowedItemIdentifiers
+        if debugItemsEnabled() {
+            allowed += Self.debugItemIdentifiers
+        }
+        if objectKindsEnabled() {
+            allowed.append(Self.objectKindsGroup)
+        }
+        return allowed
     }
 
     // Replaced under test, where no window hosts the toolbar.

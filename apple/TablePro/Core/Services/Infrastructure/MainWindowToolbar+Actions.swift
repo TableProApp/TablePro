@@ -87,6 +87,32 @@ extension MainWindowToolbar {
         coordinator?.frontRoutineDebugController?.stop()
     }
 
+    // The Objects group. Each button has its own action: the overflow menu validates an entry by its action.
+    @objc func performShowTables(_ sender: Any?) {
+        coordinator?.showBrowsedObjects(.table)
+    }
+
+    @objc func performShowViews(_ sender: Any?) {
+        coordinator?.showBrowsedObjects(.view)
+    }
+
+    @objc func performShowFunctions(_ sender: Any?) {
+        coordinator?.showBrowsedObjects(.function)
+    }
+
+    // The same command actions the window's menu commands forward to, for the connection this toolbar points at.
+    @objc func performShowUsers(_ sender: Any?) {
+        coordinator?.commandActions?.showUsersAndRoles()
+    }
+
+    @objc func performNewQuery(_ sender: Any?) {
+        coordinator?.commandActions?.newTab()
+    }
+
+    @objc func performBackupDatabase(_ sender: Any?) {
+        coordinator?.commandActions?.backupDatabase()
+    }
+
     /// The Inspector item on macOS 13, forwarded because the action belongs to the split controller
     /// and a toolbar item's explicit target has to respond to its own selector to validate.
     @objc func forwardToggleInspector(_ sender: Any?) {

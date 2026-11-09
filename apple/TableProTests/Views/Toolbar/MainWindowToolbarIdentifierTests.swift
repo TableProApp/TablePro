@@ -83,6 +83,49 @@ struct MainWindowToolbarIdentifierTests {
         }
     }
 
+    /// The Objects group is never in the default set, so leaving the setting off changes nobody's
+    /// saved arrangement, and the delegate's nil answer is what prunes the group once it goes off.
+    @Test("The delegate builds the Objects group only while its setting is on")
+    func delegateBuildsTheGroupOnlyWhileTheSettingIsOn() throws {
+        let owner = MainWindowToolbar()
+        let vend = {
+            owner.toolbar(
+                owner.managedToolbar,
+                itemForItemIdentifier: MainWindowToolbar.objectKindsGroup,
+                willBeInsertedIntoToolbar: true
+            )
+        }
+        owner.objectKindsEnabled = { false }
+        let defaultsWhileOff = owner.toolbarDefaultItemIdentifiers(owner.managedToolbar)
+        #expect(vend() == nil)
+        #expect(!owner.toolbarAllowedItemIdentifiers(owner.managedToolbar).contains(MainWindowToolbar.objectKindsGroup))
+
+        owner.objectKindsEnabled = { true }
+        let first = try #require(vend() as? NSToolbarItemGroup)
+        let second = try #require(vend())
+        #expect(first.subitems.map { $0.itemIdentifier } == MainWindowToolbar.objectKindItemIdentifiers)
+        #expect(first !== second, "A fresh group on every vend, like every other item")
+        #expect(owner.toolbarAllowedItemIdentifiers(owner.managedToolbar).contains(MainWindowToolbar.objectKindsGroup))
+        #expect(owner.toolbarDefaultItemIdentifiers(owner.managedToolbar) == defaultsWhileOff)
+        #expect(!defaultsWhileOff.contains(MainWindowToolbar.objectKindsGroup))
+        #expect(MainWindowToolbar.toolbarIdentifier == "com.TablePro.main.toolbar.v4")
+    }
+
+    /// A user can have New Tab and the Objects group in one toolbar, and AppKit throws on a second
+    /// item with an identifier already there.
+    @Test("The Objects identifiers collide with nothing else the toolbar offers")
+    func objectKindIdentifiersAreTheirOwn() {
+        let own = [MainWindowToolbar.objectKindsGroup] + MainWindowToolbar.objectKindItemIdentifiers
+        let others = Set(
+            MainWindowToolbar.allowedItemIdentifiers + MainWindowToolbar.debugItemIdentifiers
+                + [MainWindowToolbar.navigateBack, MainWindowToolbar.navigateForward]
+        )
+
+        expectNoDuplicates(in: own, list: "Objects")
+        #expect(Set(own).isDisjoint(with: others))
+        #expect(!own.contains { $0.rawValue.hasSuffix(".dashboard") || $0.rawValue.hasSuffix(".assistant") })
+    }
+
     private func expectNoDuplicates(in identifiers: [NSToolbarItem.Identifier], list: String) {
         let spaces: Set<NSToolbarItem.Identifier> = [.space, .flexibleSpace]
         var seen: Set<NSToolbarItem.Identifier> = []

@@ -355,6 +355,55 @@ extension MainWindowToolbar {
         }
     }
 
+    /// One click to each kind of object, built like the Back/Forward group so AppKit draws it, dims a
+    /// button that cannot open and folds all six into one overflow entry in a narrow window. Tables,
+    /// Views and Functions share the sidebar's glyphs for those kinds.
+    func makeObjectKindsGroup() -> NSToolbarItemGroup {
+        makeNativeGroup(
+            id: Self.objectKindsGroup,
+            label: String(localized: "Objects"),
+            subitems: [
+                menuOnlyItem(
+                    id: Self.objectTables,
+                    label: String(localized: "Tables"),
+                    symbol: SidebarObjectKind.table.iconName,
+                    action: #selector(performShowTables(_:))
+                ),
+                menuOnlyItem(
+                    id: Self.objectViews,
+                    label: String(localized: "Views"),
+                    symbol: SidebarObjectKind.view.iconName,
+                    action: #selector(performShowViews(_:))
+                ),
+                menuOnlyItem(
+                    id: Self.objectFunctions,
+                    label: String(localized: "Functions"),
+                    symbol: SidebarObjectKind.function.iconName,
+                    action: #selector(performShowFunctions(_:))
+                ),
+                menuOnlyItem(
+                    id: Self.objectUsers,
+                    label: String(localized: "Users"),
+                    symbol: "person.2",
+                    action: #selector(performShowUsers(_:))
+                ),
+                menuOnlyItem(
+                    id: Self.objectQuery,
+                    label: String(localized: "Query"),
+                    symbol: "doc.text",
+                    action: #selector(performNewQuery(_:)),
+                    shortcut: .newTab
+                ),
+                menuOnlyItem(
+                    id: Self.objectBackup,
+                    label: String(localized: "Backup"),
+                    symbol: "archivebox",
+                    action: #selector(performBackupDatabase(_:))
+                ),
+            ]
+        )
+    }
+
     // MARK: - Helpers
 
     /// The label is what the customization palette and the overflow menu show, so it stays short.
