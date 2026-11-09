@@ -948,7 +948,10 @@ extension PostgreSQLTableHealthProvider {
         let canReindexConcurrently = (serverVersion ?? 0) >= 120_000
         // REINDEX CONCURRENTLY (12+) builds <index>_ccnew and keeps the old copy as <index>_ccold, adding a digit to
         // a name already taken. Either one left invalid is dropped, not rebuilt.
-        let leftover = index.range(of: "_cc(new|old)[0-9]*$", options: .regularExpression).map { String(index[$0]) }
+        let leftover = ["_ccnew", "_ccold"].first { marker in
+            guard let range = index.range(of: marker, options: .backwards) else { return false }
+            return index[range.upperBound...].allSatisfy { ("0"..."9").contains($0) }
+        }
 
         let detail: String
         let fixSQL: String?
