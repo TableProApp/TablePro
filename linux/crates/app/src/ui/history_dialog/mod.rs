@@ -103,8 +103,7 @@ impl HistoryDialog {
         let entries = gio::ListStore::new::<HistoryEntryObject>();
         let sorted = gtk::SortListModel::new(Some(entries.clone()), None::<gtk::Sorter>);
         sorted.set_section_sorter(Some(&pinned_first()));
-        let menu = gtk::PopoverMenu::from_model(None::<&gio::MenuModel>);
-        menu.set_has_arrow(true);
+        let menu = crate::ui::context_menu::context_menu(None::<&gio::MenuModel>);
         // Parented now: a popover menu finds its actions through the
         // parent it had when it was set up.
         menu.set_parent(&imp.list_view.get());

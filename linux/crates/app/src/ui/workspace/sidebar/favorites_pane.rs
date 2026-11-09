@@ -294,8 +294,7 @@ fn install_menu(
     }
     list.insert_action_group("favorite", Some(&actions));
 
-    let menu = gtk::PopoverMenu::from_model(None::<&gio::MenuModel>);
-    menu.set_has_arrow(false);
+    let menu = crate::ui::context_menu::context_menu(None::<&gio::MenuModel>);
     menu.set_parent(list);
     let click = gtk::GestureClick::builder().button(gtk::gdk::BUTTON_SECONDARY).build();
     {
@@ -632,6 +631,35 @@ mod tests {
         list.activate_action("favorite.delete", Some(&target(&model, 1)))
             .expect("delete");
         assert_eq!(requested(&actions), [("delete", 2, "Two".to_owned())]);
+    }
+
+    #[gtk4::test]
+    fn a_favorites_menu_opens_beside_the_pointer_like_every_sidebar_menu() {
+        let (pane, _window, _) = shown();
+        let list = list(&pane);
+        let row = find_row(&list, 1).expect("first row");
+        let bounds = row.compute_bounds(&list).expect("row bounds");
+        let controllers = list.observe_controllers();
+        let click = (0..controllers.n_items())
+            .filter_map(|position| controllers.item(position).and_downcast::<gtk::GestureClick>())
+            .find(|click| click.button() == gtk::gdk::BUTTON_SECONDARY)
+            .expect("secondary click");
+        let (x, y) = (bounds.x() + 4.0, bounds.y() + 4.0);
+
+        click.emit_by_name::<()>("pressed", &[&1i32, &f64::from(x), &f64::from(y)]);
+
+        assert!(pane.menu.is_visible());
+        assert!(matches!(
+            pane.menu.position(),
+            gtk::PositionType::Left | gtk::PositionType::Right
+        ));
+        assert_eq!(pane.menu.valign(), gtk::Align::Start);
+        assert!(!pane.menu.has_arrow());
+        assert_eq!(
+            pane.menu.pointing_to(),
+            (true, gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1))
+        );
+        pane.menu.popdown();
     }
 
     #[gtk4::test]

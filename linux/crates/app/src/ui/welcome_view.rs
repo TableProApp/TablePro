@@ -145,8 +145,7 @@ impl Parts {
         let finding = view.downgrade();
         let found_filter = gtk::CustomFilter::new(move |item| finding.upgrade().is_some_and(|view| view.finds(item)));
         let found_rows = gtk::FilterListModel::new(Some(found.clone()), Some(found_filter.clone()));
-        let menu = gtk::PopoverMenu::from_model(Some(&library_menu()));
-        menu.set_has_arrow(true);
+        let menu = crate::ui::context_menu::context_menu(Some(&library_menu()));
         Self {
             list,
             tasks,

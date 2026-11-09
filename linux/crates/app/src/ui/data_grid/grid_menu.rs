@@ -98,9 +98,7 @@ impl GridMenus {
 }
 
 fn popover(grid: &DataGrid, model: &gio::Menu) -> gtk::PopoverMenu {
-    let popover = gtk::PopoverMenu::from_model(Some(model));
-    popover.set_has_arrow(false);
-    popover.set_halign(gtk::Align::Start);
+    let popover = crate::ui::context_menu::context_menu(Some(model));
     popover.set_parent(grid);
     let weak = grid.downgrade();
     popover.connect_closed(move |_| {

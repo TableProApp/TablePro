@@ -168,12 +168,7 @@ impl ConnectionTree {
             let tree_pane = Pane::new(&rows, &crate::i18n::gettext("Connections"));
             let found_pane = Pane::new(&results, &crate::i18n::gettext("Search Results"));
             let root = pages(&tree_pane, &found_pane);
-            let popover = gtk::PopoverMenu::from_model(None::<&gio::MenuModel>);
-            popover.set_has_arrow(true);
-            // Beside the row, not above or below it: a long menu fits neither side of a row in the middle
-            // of the sidebar, and the compositor then cuts it to the room on one side and adds a scrollbar,
-            // while the room to the right of the sidebar holds the whole menu.
-            popover.set_position(gtk::PositionType::Right);
+            let popover = crate::ui::context_menu::context_menu(None::<&gio::MenuModel>);
             popover.set_parent(&root);
             TreeInner {
                 root,
