@@ -70,15 +70,7 @@ struct FilterValueTextField: NSViewRepresentable {
         case passThrough
     }
 
-    /// The popup owns a key only once the user has picked a row in it.
-    ///
-    /// An auto-triggered list that preselects its first row owns `Return` from the moment it
-    /// appears, and in a filter field `Return` already means "apply this filter": the user had to
-    /// press `Escape` first to get their own key back. AppKit spells the alternative `-1`, "no
-    /// initial selection", on the `indexOfSelectedItem` its own completion delegate hands a text
-    /// field, and Finder's search field is the shipping shape: the suggestion menu opens with
-    /// nothing highlighted, one `Return` commits what was typed, and `Down` is what reaches the
-    /// first row.
+    // Return already means "apply this filter", so the list owns a key only once a row is picked in it.
     nonisolated static func suggestionCommandOutcome(
         for commandSelector: Selector,
         hasSelection: Bool,
@@ -95,9 +87,7 @@ struct FilterValueTextField: NSViewRepresentable {
         }
     }
 
-    /// Arrowing into an unselected list enters it from the end the arrow points away from, so
-    /// `Down` reaches the first row and `Up` the last. Within the list both clamp, matching the
-    /// query editor's panel.
+    // Matches the query editor's panel: Down enters at the first row, Up at the last, both clamp.
     nonisolated static func selection(
         movedBy delta: Int,
         from current: Int?,
@@ -120,11 +110,46 @@ struct FilterValueTextField: NSViewRepresentable {
         return .closeBar
     }
 
+    // A row lines its pop-ups up against one line of this field, whatever control holds its value.
+    static func singleLineHeight(for controlSize: NSControl.ControlSize) -> CGFloat {
+        if let height = singleLineHeights[controlSize] { return height }
+        let field = NSTextField()
+        field.bezelStyle = .roundedBezel
+        applyFont(to: field, controlSize: controlSize)
+        let height = field.intrinsicContentSize.height
+        singleLineHeights[controlSize] = height
+        return height
+    }
+
+    private static var singleLineHeights: [NSControl.ControlSize: CGFloat] = [:]
+
+    // Two fields of one row each need an identity, or focusing one makes the other claim focus.
+    nonisolated static func secondFieldIdentity(for identity: UUID) -> UUID {
+        var bytes = identity.uuid
+        bytes.0 ^= 0xFF
+        return UUID(uuid: bytes)
+    }
+
+    // SwiftUI sets a hosted control's size from the environment, so the font follows it rather than
+    // keeping a fixed size that mismatched the pop-ups beside it.
+    private static func applyFont(to field: NSTextField, controlSize: NSControl.ControlSize) {
+        field.controlSize = controlSize
+        field.font = .systemFont(ofSize: NSFont.systemFontSize(for: controlSize))
+    }
+
+    private static func controlSize(of environment: EnvironmentValues) -> NSControl.ControlSize {
+        switch environment.controlSize {
+        case .mini: .mini
+        case .small: .small
+        case .large: .large
+        default: .regular
+        }
+    }
+
     func makeNSView(context: Context) -> NSTextField {
         let textField = SubstitutionDisabledTextField()
         textField.bezelStyle = .roundedBezel
-        textField.controlSize = .small
-        textField.font = .systemFont(ofSize: 12)
+        Self.applyFont(to: textField, controlSize: Self.controlSize(of: context.environment))
         textField.placeholderString = placeholder
         textField.delegate = context.coordinator
         textField.stringValue = text
@@ -160,6 +185,10 @@ struct FilterValueTextField: NSViewRepresentable {
         context.coordinator.onCancel = onCancel
         context.coordinator.textField = textField
 
+        let controlSize = Self.controlSize(of: context.environment)
+        if textField.font?.pointSize != NSFont.systemFontSize(for: controlSize) {
+            Self.applyFont(to: textField, controlSize: controlSize)
+        }
         textField.placeholderString = placeholder
 
         let fieldEditor = textField.currentEditor() as? NSTextView
@@ -169,6 +198,17 @@ struct FilterValueTextField: NSViewRepresentable {
         }
 
         context.coordinator.focusIfRequested()
+    }
+
+    // A wrapping field's intrinsic height is one line, so a long condition wrapped out of sight.
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSTextField, context: Context) -> CGSize? {
+        guard allowsMultiLine,
+              let width = proposal.width, width.isFinite, width > 0,
+              let cell = nsView.cell?.copy() as? NSCell else { return nil }
+        cell.stringValue = text
+        let bounds = NSRect(x: 0, y: 0, width: width, height: .greatestFiniteMagnitude)
+        let height = max(cell.cellSize(forBounds: bounds).height, nsView.intrinsicContentSize.height)
+        return CGSize(width: width, height: ceil(height))
     }
 
     func makeCoordinator() -> Coordinator {
@@ -443,10 +483,7 @@ struct FilterValueTextField: NSViewRepresentable {
             suggestionPopover = popover
         }
 
-        /// The completion list never takes focus, so nothing in it is ever the accessibility
-        /// focus. Without an announcement on the field there is no signal that it opened at all,
-        /// and the announcement names the arrow because nothing in the list is selected until one
-        /// is pressed.
+        // The list never takes focus, so without this announcement VoiceOver gives no sign it opened.
         private func announceSuggestions(count: Int, on textField: NSTextField) {
             guard count > 0 else { return }
             NSAccessibility.post(
@@ -555,8 +592,7 @@ struct FilterValueTextField: NSViewRepresentable {
     private struct SuggestionItem: Equatable {
         let label: String
         let insertText: String
-        /// Caret position relative to the insertion start, so a function completion parks the
-        /// caret between its parentheses here exactly as it does in the query editor.
+        // Relative to the insertion start, so a function completion parks the caret between its parentheses.
         let cursorOffset: Int
 
         init(label: String, insertText: String, cursorOffset: Int? = nil) {

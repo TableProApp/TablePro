@@ -17,6 +17,7 @@ struct FilterRowView: View {
     var fieldPaths: [PluginFieldPath] = []
     var offersRawFilter = true
     var rawFilterLabel = String(localized: "Raw SQL")
+    var reservesElementScope = false
     let onAdd: () -> Void
     let onDuplicate: () -> Void
     let onRemove: () -> Void
@@ -34,9 +35,10 @@ struct FilterRowView: View {
     @State private var isDropTargeted = false
     @State private var showNestedPathPicker = false
 
-    private let rowButtonGlyphSize: CGFloat = 14
+    static let spacing: CGFloat = 8
+    static let horizontalInset: CGFloat = 12
 
-    /// How much of a column name the row will spend width on before truncating it.
+    private let rowButtonGlyphSize: CGFloat = 14
     private static let columnPickerMaximumWidth: CGFloat = 160
 
     private var pickerEligibleOperators: Set<FilterOperator> {
@@ -58,7 +60,7 @@ struct FilterRowView: View {
     }
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: Self.spacing) {
             dragHandle
 
             enabledToggle
@@ -66,22 +68,26 @@ struct FilterRowView: View {
             Group {
                 columnPicker
 
-                if arrayPrefix != nil {
-                    elementScopePicker
-                }
+                elementScopeSlot
 
                 if !filter.isRawSQL {
                     operatorPicker
                 }
 
-                valueFields
+                HStack(spacing: Self.spacing) {
+                    valueFields
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .opacity(filter.isEnabled ? 1 : 0.5)
 
             rowButtons
         }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 8)
+        .controlSize(.small)
+        .frame(minHeight: FilterValueTextField.singleLineHeight(for: .small))
+        .padding(.vertical, 5)
+        .padding(.horizontal, Self.horizontalInset)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(dropHighlight)
         .dropDestination(for: FilterRowTransfer.self) { items, _ in
             guard let dragged = items.first else { return false }
@@ -155,9 +161,7 @@ struct FilterRowView: View {
             .help(String(localized: "Include this filter when applying"))
     }
 
-    /// A restored or preset filter can name a path the sample has not returned yet, and a Picker
-    /// whose selection matches no tag renders blank and can reset the binding. Carrying the value
-    /// as its own item keeps it visible and selected until the paths land.
+    // A restored filter can name a path not loaded yet, and a Picker matching no tag renders blank.
     private var driftedColumn: String? {
         guard !filter.isRawSQL, !filter.columnName.isEmpty else { return nil }
         return columnMenu.contains(filter.columnName) ? nil : filter.columnName
@@ -165,36 +169,9 @@ struct FilterRowView: View {
 
     private var columnPicker: some View {
         HStack(spacing: 4) {
-            Picker(String(localized: "Filter column"), selection: columnSelection) {
-                if offersRawFilter || filter.isRawSQL {
-                    Text(rawFilterLabel).tag(String?.none)
-                    Divider()
-                }
-                ForEach(columns, id: \.self) { column in
-                    Text(column).tag(String?.some(column))
-                }
-                ForEach(columnMenu.groups) { group in
-                    Divider()
-                    ForEach(group.paths, id: \.path) { path in
-                        Text(path.path).tag(String?.some(path.path))
-                    }
-                }
-                if let driftedColumn {
-                    Divider()
-                    Text(driftedColumn).tag(String?.some(driftedColumn))
-                }
+            IdealWidthCap(maximum: Self.columnPickerMaximumWidth) {
+                columnMenuPicker
             }
-            .pickerStyle(.menu)
-            .controlSize(.small)
-            /// Bounded rather than `.fixedSize()`. A pull-down takes the width of its widest menu
-            /// item, and the items here are the table's column names, so one long name made the
-            /// whole filter row wider than the pane: measured, a 62-character column name alone
-            /// needs 412pt, and the row reached 681pt inside a 420pt host and was clipped at both
-            /// edges. Capped, the name truncates and the row stays the width of its host.
-            .frame(maxWidth: Self.columnPickerMaximumWidth)
-            .labelsHidden()
-            .accessibilityValue(filter.isRawSQL ? rawFilterLabel : filter.columnName)
-            .help(String(localized: "Select filter column"))
 
             if columnMenu.hasMorePaths {
                 nestedFieldPathButton
@@ -202,7 +179,33 @@ struct FilterRowView: View {
         }
     }
 
-    /// Nil is the raw condition, so a table column that shares the raw row's name stays a column.
+    private var columnMenuPicker: some View {
+        Picker(String(localized: "Filter column"), selection: columnSelection) {
+            if offersRawFilter || filter.isRawSQL {
+                Text(rawFilterLabel).tag(String?.none)
+                Divider()
+            }
+            ForEach(columns, id: \.self) { column in
+                Text(column).tag(String?.some(column))
+            }
+            ForEach(columnMenu.groups) { group in
+                Divider()
+                ForEach(group.paths, id: \.path) { path in
+                    Text(path.path).tag(String?.some(path.path))
+                }
+            }
+            if let driftedColumn {
+                Divider()
+                Text(driftedColumn).tag(String?.some(driftedColumn))
+            }
+        }
+        .pickerStyle(.menu)
+        .labelsHidden()
+        .accessibilityValue(filter.isRawSQL ? rawFilterLabel : filter.columnName)
+        .help(String(localized: "Select filter column"))
+    }
+
+    // Nil is the raw condition, so a table column that shares the raw row's name stays a column.
     private var columnSelection: Binding<String?> {
         Binding(
             get: { filter.isRawSQL ? nil : filter.columnName },
@@ -220,7 +223,6 @@ struct FilterRowView: View {
                 .frame(width: rowButtonGlyphSize, height: rowButtonGlyphSize)
         }
         .buttonStyle(.bordered)
-        .controlSize(.small)
         .accessibilityLabel(String(localized: "Nested field path"))
         .accessibilityIdentifier("filter-nested-field-path")
         .help(String(localized: "Filter on a nested field path"))
@@ -234,20 +236,29 @@ struct FilterRowView: View {
         }
     }
 
-    /// MongoDB reads two conditions on the same array as "any element satisfies each", so
-    /// binding them to one element is a different query the user has to ask for.
-    private var elementScopePicker: some View {
-        Picker("", selection: elementScopeBinding) {
+    // Another row's scope picker would push this row's operator right, so the slot stays reserved.
+    @ViewBuilder
+    private var elementScopeSlot: some View {
+        if let arrayPrefix {
+            elementScopePicker(prefix: arrayPrefix, selection: elementScopeBinding)
+                .accessibilityIdentifier("filter-element-scope")
+                .help(elementScopeHelp)
+        } else if reservesElementScope {
+            elementScopePicker(prefix: "-", selection: .constant(""))
+                .hidden()
+                .accessibilityHidden(true)
+        }
+    }
+
+    // MongoDB reads two conditions on one array as "any element satisfies each"; binding them to one element is another query.
+    private func elementScopePicker(prefix: String, selection: Binding<String>) -> some View {
+        Picker(String(localized: "Array element scope"), selection: selection) {
             Text("any element").tag("")
-            Text("same element").tag(arrayPrefix ?? "")
+            Text("same element").tag(prefix)
         }
         .pickerStyle(.menu)
-        .controlSize(.small)
         .fixedSize()
         .labelsHidden()
-        .accessibilityLabel(String(localized: "Array element scope"))
-        .accessibilityIdentifier("filter-element-scope")
-        .help(elementScopeHelp)
     }
 
     private var arrayPrefix: String? {
@@ -270,6 +281,12 @@ struct FilterRowView: View {
     }
 
     private var operatorPicker: some View {
+        IdealWidthCap {
+            operatorMenu
+        }
+    }
+
+    private var operatorMenu: some View {
         Menu {
             Picker(String(localized: "Filter operator"), selection: operatorSelection) {
                 ForEach(FilterOperator.allCases) { op in
@@ -288,12 +305,14 @@ struct FilterRowView: View {
                 }
             }
         } label: {
-            operatorMenuTitle
-                .accessibilityLabel(String(localized: "Filter operator"))
+            FilterOperatorMenuTitle(
+                filterOperator: filter.filterOperator,
+                showsCaseIndicator: casePresentation.showsIndicator,
+                reservesCaseIndicator: caseMatching.isAdjustable
+            )
+            .accessibilityLabel(String(localized: "Filter operator"))
         }
         .menuStyle(.button)
-        .controlSize(.small)
-        .fixedSize()
         .accessibilityValue(operatorAccessibilityValue)
         .help(caseSensitivityHelp)
     }
@@ -303,18 +322,6 @@ struct FilterRowView: View {
             get: { filter.filterOperator },
             set: { filter = filter.selectingOperator($0) }
         )
-    }
-
-    @ViewBuilder
-    private var operatorMenuTitle: some View {
-        HStack(spacing: 3) {
-            OperatorMenuLabel(op: filter.filterOperator)
-            if casePresentation.showsIndicator {
-                Image(systemName: "textformat")
-                    .imageScale(.small)
-                    .foregroundStyle(.secondary)
-            }
-        }
     }
 
     private var casePresentation: FilterCaseSensitivityPresentation {
@@ -370,7 +377,6 @@ struct FilterRowView: View {
                     onSubmit: onSubmit,
                     onCancel: onCancel
                 )
-                .frame(minWidth: 80)
                 .accessibilityLabel(String(localized: "Filter value"))
             }
 
@@ -379,21 +385,25 @@ struct FilterRowView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 
-                TextField("Value", text: Binding(
-                    get: { filter.secondValue ?? "" },
-                    set: { filter.secondValue = $0 }
-                ))
-                .textFieldStyle(.roundedBorder)
-                .controlSize(.small)
-                .font(.callout)
-                .autocorrectionDisabled(true)
-                .frame(minWidth: 80)
+                FilterValueTextField(
+                    text: secondValueBinding,
+                    focusedId: $focusedFilterId,
+                    identity: FilterValueTextField.secondFieldIdentity(for: filter.id),
+                    placeholder: String(localized: "Value"),
+                    completionSource: .staticValues(completions),
+                    onSubmit: onSubmit,
+                    onCancel: onCancel
+                )
                 .accessibilityLabel(String(localized: "Second filter value"))
-                .onSubmit { onSubmit() }
             }
-        } else {
-            Spacer(minLength: 0)
         }
+    }
+
+    private var secondValueBinding: Binding<String> {
+        Binding(
+            get: { filter.secondValue ?? "" },
+            set: { filter.secondValue = $0 }
+        )
     }
 
     private var rowButtons: some View {
@@ -403,7 +413,6 @@ struct FilterRowView: View {
                     .frame(width: rowButtonGlyphSize, height: rowButtonGlyphSize)
             }
             .buttonStyle(.bordered)
-            .controlSize(.small)
             .accessibilityLabel(String(localized: "Add filter"))
             .help(String(localized: "Add filter row"))
 
@@ -412,7 +421,6 @@ struct FilterRowView: View {
                     .frame(width: rowButtonGlyphSize, height: rowButtonGlyphSize)
             }
             .buttonStyle(.bordered)
-            .controlSize(.small)
             .accessibilityLabel(String(localized: "Remove filter"))
             .help(String(localized: "Remove filter row"))
         }
@@ -470,6 +478,11 @@ struct FilterRowView: View {
     private func enumValuePicker(allowedValues: [String]) -> some View {
         let isDrift = !filter.value.isEmpty && !allowedValues.contains(filter.value)
         Picker(String(localized: "Filter value"), selection: $filter.value) {
+            // An empty value matches no tag, and a pop-up with no selection draws blank.
+            if filter.value.isEmpty {
+                Text("Value").tag("")
+                Divider()
+            }
             ForEach(allowedValues, id: \.self) { value in
                 Text(value).tag(value)
             }
@@ -479,8 +492,6 @@ struct FilterRowView: View {
             }
         }
         .pickerStyle(.menu)
-        .controlSize(.small)
-        .frame(minWidth: 100)
         .labelsHidden()
     }
 
