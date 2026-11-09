@@ -105,6 +105,7 @@ pub(crate) fn text(value: &str) -> CellInput {
 /// How a test grid is built: an editing table grid by default.
 pub(crate) struct GridSpec {
     pub columns: Vec<ColumnInfo>,
+    pub settings: Option<Rc<tablepro_linux_platform::AppSettings>>,
     pub editable: bool,
     pub sorting: GridSorting,
     pub layout: Option<LayoutBinding>,
@@ -123,6 +124,7 @@ impl GridSpec {
     pub(crate) fn table(columns: Vec<ColumnInfo>) -> Self {
         Self {
             columns,
+            settings: None,
             editable: true,
             sorting: GridSorting::Server { initial: None },
             layout: None,
@@ -147,7 +149,6 @@ impl GridSpec {
     }
 }
 
-/// A grid in a shown window, with the requests it made.
 pub(crate) struct Grid {
     pub window: gtk::Window,
     pub grid: DataGrid,
@@ -194,7 +195,7 @@ impl Grid {
             }),
             tracker: spec.editable.then(|| tracker.clone()),
             result_lock: None,
-            settings: settings.get().clone(),
+            settings: spec.settings.unwrap_or_else(|| settings.get().clone()),
             layout: spec.layout,
             references: spec.references,
             dialect: spec.dialect,

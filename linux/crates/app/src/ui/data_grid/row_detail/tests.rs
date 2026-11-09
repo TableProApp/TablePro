@@ -1542,6 +1542,35 @@ fn a_page_that_takes_the_row_closes_its_clock_and_writes_nothing() {
     assert!(!pane.imp().clock_popover.is_visible());
 }
 
+#[gtk4::test]
+fn null_preferences_update_details_without_replacing_a_draft() {
+    let (grid, pane) = opened(two_text_columns(), vec![vec![Value::Int(1), Value::Null]]);
+    grid.focus(0, 1);
+    let settings = grid.grid.config().expect("configured grid").settings.clone();
+    settings.set_null_display("missing").expect("store placeholder");
+    drain_main_context();
+
+    assert_eq!(pane.imp().placeholder_label.label(), "missing");
+    let shown: Vec<String> = descendants(&pane.imp().field_list.get())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Inscription>().ok())
+        .filter_map(|inscription| inscription.text().map(|text| text.to_string()))
+        .collect();
+    assert!(shown.contains(&"missing".to_owned()), "field list showed {shown:?}");
+
+    edit_field(&grid, &pane, 0, 1);
+    type_value(&pane, "unfinished");
+    assert!(grid.grid.is_editing());
+    settings
+        .set_null_display("absent")
+        .expect("change placeholder while editing");
+    drain_main_context();
+
+    assert_eq!(pane.typed_text(), "unfinished");
+    assert!(grid.grid.is_editing());
+    assert_eq!(pending(&grid, 1, 1), None);
+}
+
 fn drawn_field(pane: &RowDetailPane, column: usize) -> gtk::ListItem {
     pane.imp()
         .bound

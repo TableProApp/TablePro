@@ -42,13 +42,13 @@ pub struct FieldValue {
     pub deleted: bool,
 }
 
-pub fn field_value(tracked: &TrackedValues, row: &GridRow, column: &GridColumn) -> FieldValue {
+pub fn field_value(tracked: &TrackedValues, row: &GridRow, column: &GridColumn, null_display: &str) -> FieldValue {
     let mark = tracked.mark(row, column.index);
     let (text, placeholder, null) = tracked.with_value(row, column.index, |value, computed| match (computed, value) {
         (Some(ServerValue::Default), _) if column.auto_filled() => (auto_filled_sentinel(), true, false),
         (Some(ServerValue::Default), _) => ("DEFAULT".to_owned(), true, false),
         (Some(ServerValue::Expression(expression)), _) => (expression.sql.to_owned(), true, false),
-        (None, Value::Null) => ("NULL".to_owned(), true, true),
+        (None, Value::Null) => (null_display.to_owned(), true, true),
         (None, value) => {
             let mut scratch = String::new();
             let shown = display_text(value, &column.column_type, &mut scratch);
@@ -361,7 +361,11 @@ impl RowDetailPane {
             shown.set_text(None);
             return;
         };
-        let value = field_value(&grid.tracked(), &row, &column);
+        let Some(config) = grid.config() else {
+            return;
+        };
+        let preferences = config.settings.grid_preferences().snapshot();
+        let value = field_value(&grid.tracked(), &row, &column, &preferences.null_display);
         edited.set_visible(value.modified);
         shown.set_text(Some(&value.text));
         shown.set_attributes(Some(&value_attributes(&value)));
