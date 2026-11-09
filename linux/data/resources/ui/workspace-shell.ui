@@ -75,6 +75,21 @@
                     <property name="min-sidebar-width">220</property>
                     <property name="max-sidebar-width">280</property>
                     <property name="sidebar">
+                      <!-- The handle on the sidebar's edge sets its width,
+                           as macOS's divider does. -->
+                      <object class="GtkOverlay">
+                      <child type="overlay">
+                        <object class="GtkBox" id="sidebar_handle">
+                          <property name="halign">end</property>
+                          <property name="width-request">6</property>
+                          <property name="cursor">
+                            <object class="GdkCursor">
+                              <property name="name">col-resize</property>
+                            </object>
+                          </property>
+                        </object>
+                      </child>
+                      <property name="child">
                       <object class="AdwToolbarView" id="sidebar_root">
                         <child type="top">
                           <!-- No title: the tree below holds every connection,
@@ -141,6 +156,8 @@
                             <property name="vexpand">true</property>
                           </object>
                         </property>
+                      </object>
+                      </property>
                       </object>
                     </property>
                     <property name="content">

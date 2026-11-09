@@ -112,6 +112,7 @@ impl WorkspaceShell {
             "show-sidebar",
         ));
         follow_sidebar(&imp.split_view, &imp.sidebar_toggle);
+        resizable_sidebar(&imp.split_view, &imp.sidebar_handle, services.settings.gio());
         window.add_action(&assistant_action(&shell));
         imp.walk_hooks.replace(Some(shell.hook_recent_walk(window)));
 
@@ -824,4 +825,46 @@ mod tests {
         assert_access_keys(&tab_menu());
         assert_access_keys(&with_safe_mode(&main));
     }
+}
+
+const SIDEBAR_MIN: i32 = 220;
+const SIDEBAR_MAX: i32 = 800;
+
+pub(super) fn set_sidebar_width(split: &adw::OverlaySplitView, width: i32) {
+    let width = width.clamp(SIDEBAR_MIN, SIDEBAR_MAX);
+    // The split sizes its sidebar between the two, so both set the width.
+    split.set_max_sidebar_width(f64::from(width));
+    split.set_min_sidebar_width(f64::from(width));
+}
+
+/// Let a drag on `handle` set the sidebar's width, and keep the width the
+/// user chose.
+fn resizable_sidebar(split: &adw::OverlaySplitView, handle: &gtk::Box, settings: &gio::Settings) {
+    set_sidebar_width(
+        split,
+        settings.int(tablepro_linux_platform::settings::keys::SIDEBAR_WIDTH),
+    );
+    let drag = gtk::GestureDrag::new();
+    // The handle moves with the edge, and the drag's offset is measured
+    // in the handle's own coordinates, so each step adds it to the width
+    // as it is now, not as it was when the drag began.
+    drag.connect_drag_update({
+        let split = split.clone();
+        move |_, dx, _| {
+            let now = split.sidebar().map_or(0, |sidebar| sidebar.width());
+            set_sidebar_width(&split, now + dx as i32);
+        }
+    });
+    drag.connect_drag_end({
+        let (split, settings) = (split.clone(), settings.clone());
+        move |_, _, _| {
+            if let Err(error) = settings.set_int(
+                tablepro_linux_platform::settings::keys::SIDEBAR_WIDTH,
+                split.min_sidebar_width() as i32,
+            ) {
+                tracing::debug!(%error, "the sidebar's width was not kept");
+            }
+        }
+    });
+    handle.add_controller(drag);
 }

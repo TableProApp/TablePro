@@ -613,3 +613,22 @@ fn hiding_a_schema_shows_a_banner_that_says_the_list_is_filtered() {
     workspace.with_model(|model| model.on_all_schemas_shown());
     wait_until(WAIT, || !banner.is_revealed()).expect("the banner to go");
 }
+
+#[gtk4::test]
+fn the_sidebar_takes_the_width_the_user_kept_and_a_drag_handle_sets_a_new_one() {
+    let test = TestWindow::connected("SidebarWidth");
+    let shell = test
+        .window
+        .content()
+        .and_downcast::<WorkspaceShell>()
+        .expect("the shell page");
+    let split = shell.imp().split_view.get();
+    assert_eq!(split.min_sidebar_width(), 260.0, "the schema's default");
+    assert_eq!(split.max_sidebar_width(), 260.0);
+    assert!(shell.imp().sidebar_handle.is_visible());
+
+    super::super::workspace_shell::set_sidebar_width(&split, 5000);
+    assert_eq!(split.max_sidebar_width(), 800.0, "a width past the cap");
+    super::super::workspace_shell::set_sidebar_width(&split, 10);
+    assert_eq!(split.min_sidebar_width(), 220.0, "a width under the floor");
+}
