@@ -1,9 +1,11 @@
 mod new_saved_query;
 mod saved_query;
 
+use std::sync::Arc;
 use std::time::SystemTime;
 
-use sqlx::{Row, SqlitePool};
+use sqlx::{AssertSqlSafe, Connection, Row, SqlitePool};
+use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::error::StorageError;
@@ -12,44 +14,38 @@ use crate::unix_time::{from_unix, to_unix};
 pub use new_saved_query::NewSavedQuery;
 pub use saved_query::SavedQuery;
 
-/// What a save did, so the caller can say which.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SaveOutcome {
     pub id: i64,
-    /// The name was already in use on this connection and its query
-    /// was overwritten.
     pub replaced: bool,
 }
 
-/// The cap the query history puts on one entry, applied here too: a
-/// saved query is the same kind of text and the same reasons apply.
 const MAX_QUERY_BYTES: usize = 1024 * 1024;
 
-/// A name long enough to be unreadable in the list is a name nobody
-/// meant to type.
 const MAX_NAME_CHARS: usize = 200;
 
-/// The user's named queries. Cloning shares the pool with the query
-/// history it lives beside.
 #[derive(Debug, Clone)]
 pub struct SavedQueries {
     pool: SqlitePool,
     // The database's file, whose upgrade copies a delete reaches too.
     path: std::path::PathBuf,
+    changes: Arc<watch::Sender<u64>>,
 }
 
 impl SavedQueries {
-    pub(crate) fn new(pool: SqlitePool, path: std::path::PathBuf) -> Self {
-        Self { pool, path }
+    pub(crate) fn new(pool: SqlitePool, path: std::path::PathBuf, changes: Arc<watch::Sender<u64>>) -> Self {
+        Self { pool, path, changes }
     }
 
-    /// Keep `query` under its name, replacing whatever that name held
-    /// for this connection.
-    ///
-    /// Saving under a name already in use overwrites it, because that
-    /// is what the user is asking for: the same report, fixed. The
-    /// caller is expected to have confirmed the overwrite, which it
-    /// can see coming from `list`.
+    pub fn changes(&self) -> watch::Receiver<u64> {
+        self.changes.subscribe()
+    }
+
+    fn changed(&self) {
+        self.changes
+            .send_modify(|revision| *revision = revision.wrapping_add(1));
+    }
+
     pub async fn save(&self, query: NewSavedQuery) -> Result<SaveOutcome, StorageError> {
         let name = query.name.trim();
         if name.is_empty() {
@@ -68,14 +64,14 @@ impl SavedQueries {
             });
         }
         let now = to_unix(SystemTime::now());
-        // Asked before the write, because afterwards there is no way to
-        // tell an insert from an overwrite: only one connection is ever
-        // open on this pool, so nothing can slip in between.
+        // Hold the write lock across both statements, so concurrent saves agree on which inserted.
+        let mut connection = self.pool.acquire().await?;
+        let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
         let replaced: bool =
             sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM saved_queries WHERE connection_id = ? AND name = ?")
                 .bind(query.connection_id.to_string())
                 .bind(name)
-                .fetch_one(&self.pool)
+                .fetch_one(&mut *transaction)
                 .await?
                 > 0;
         let id = sqlx::query(
@@ -95,9 +91,11 @@ impl SavedQueries {
         .bind(&query.connection_name)
         .bind(now)
         .bind(now)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *transaction)
         .await?
         .try_get("id")?;
+        transaction.commit().await?;
+        self.changed();
         Ok(SaveOutcome { id, replaced })
     }
 
@@ -137,15 +135,14 @@ impl SavedQueries {
         .bind(now)
         .fetch_optional(&self.pool)
         .await?;
-        Ok(match inserted {
-            Some(row) => Some(row.try_get("id")?),
-            None => None,
-        })
+        let Some(row) = inserted else {
+            return Ok(None);
+        };
+        let id = row.try_get("id")?;
+        self.changed();
+        Ok(Some(id))
     }
 
-    /// Everything saved against `connection`, or everything at all when
-    /// no connection is given. Ordered by name, because the user
-    /// looking for one knows what they called it.
     pub async fn list(&self, connection: Option<Uuid>) -> Result<Vec<SavedQuery>, StorageError> {
         let rows = match connection {
             Some(id) => {
@@ -180,9 +177,6 @@ impl SavedQueries {
         row.map(row_to_saved_query).transpose()
     }
 
-    /// Give a saved query a different name. Fails when the connection
-    /// already has one under that name, which is the caller's cue to
-    /// say so rather than silently merge two queries into one.
     pub async fn rename(&self, id: i64, name: &str) -> Result<(), StorageError> {
         let name = name.trim();
         if name.is_empty() {
@@ -205,10 +199,11 @@ impl SavedQueries {
                 _ => StorageError::Database(error),
             })?
             .rows_affected();
-        match affected {
-            0 => Err(StorageError::NotFound),
-            _ => Ok(()),
+        if affected == 0 {
+            return Err(StorageError::NotFound);
         }
+        self.changed();
+        Ok(())
     }
 
     pub async fn delete(&self, id: i64) -> Result<(), StorageError> {
@@ -226,15 +221,13 @@ impl SavedQueries {
             .execute(&self.pool)
             .await?
             .rows_affected();
-        match affected {
-            0 => Err(StorageError::NotFound),
-            _ => Ok(()),
+        if affected == 0 {
+            return Err(StorageError::NotFound);
         }
+        self.changed();
+        Ok(())
     }
 
-    /// Drop everything saved against a connection, for when the
-    /// connection itself is removed. Its queries name tables only that
-    /// database has.
     pub async fn delete_for_connection(&self, connection: Uuid) -> Result<usize, StorageError> {
         crate::query_history::trim_upgrade_copies(
             &self.path,
@@ -250,6 +243,9 @@ impl SavedQueries {
             .execute(&self.pool)
             .await?
             .rows_affected();
+        if affected > 0 {
+            self.changed();
+        }
         Ok(affected as usize)
     }
 }
@@ -354,6 +350,39 @@ mod tests {
         let all = store.list(Some(connection)).await.expect("list");
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].query, "SELECT 2");
+    }
+
+    #[tokio::test]
+    async fn concurrent_new_saves_never_overwrite_the_winner() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let store = store(&root).await;
+        let connection = Uuid::new_v4();
+        let (first, second) = tokio::join!(
+            store.save_if_new(new_query("daily", "SELECT 1", connection)),
+            store.save_if_new(new_query("daily", "SELECT 2", connection)),
+        );
+        let first = first.expect("first save");
+        let second = second.expect("second save");
+        assert_ne!(first.is_some(), second.is_some());
+        let saved = store.list(Some(connection)).await.expect("list");
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].query, if first.is_some() { "SELECT 1" } else { "SELECT 2" });
+    }
+
+    #[tokio::test]
+    async fn concurrent_saves_report_exactly_one_replacement_and_keep_the_id() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let store = store(&root).await;
+        let connection = Uuid::new_v4();
+        let (first, second) = tokio::join!(
+            store.save(new_query("daily", "SELECT 1", connection)),
+            store.save(new_query("daily", "SELECT 2", connection)),
+        );
+        let first = first.expect("first save");
+        let second = second.expect("second save");
+        assert_ne!(first.replaced, second.replaced);
+        assert_eq!(first.id, second.id);
+        assert_eq!(store.list(Some(connection)).await.expect("list").len(), 1);
     }
 
     #[tokio::test]
@@ -532,6 +561,67 @@ mod tests {
         assert_eq!(removed, 2);
         assert!(store.list(Some(going)).await.expect("list").is_empty());
         assert_eq!(store.list(Some(staying)).await.expect("list").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn every_write_moves_the_revision_every_handle_follows() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let paths = StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro");
+        let history = QueryHistory::open(&paths).await.expect("open");
+        let (writer, follower) = (history.saved_queries(), history.saved_queries());
+        let mut changes = follower.changes();
+        let connection = Uuid::new_v4();
+        let mut moved = || {
+            let moved = changes.has_changed().expect("the sender lives");
+            changes.mark_unchanged();
+            moved
+        };
+
+        let saved = writer
+            .save(new_query("daily", "SELECT 1", connection))
+            .await
+            .expect("save");
+        assert!(moved(), "a save");
+        writer
+            .save_if_new(new_query("weekly", "SELECT 2", connection))
+            .await
+            .expect("save if new");
+        assert!(moved(), "a save of a new name");
+        writer.rename(saved.id, "nightly").await.expect("rename");
+        assert!(moved(), "a rename");
+        writer.delete(saved.id).await.expect("delete");
+        assert!(moved(), "a delete");
+        writer
+            .delete_for_connection(connection)
+            .await
+            .expect("delete for connection");
+        assert!(moved(), "a connection's queries removed");
+    }
+
+    #[tokio::test]
+    async fn a_read_or_a_write_that_changed_nothing_leaves_the_revision() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let store = store(&root).await;
+        let connection = Uuid::new_v4();
+        store
+            .save(new_query("daily", "SELECT 1", connection))
+            .await
+            .expect("save");
+        let changes = store.changes();
+
+        store.list(Some(connection)).await.expect("list");
+        store
+            .save_if_new(new_query("daily", "SELECT 2", connection))
+            .await
+            .expect("save if new");
+        store.rename(404, "gone").await.expect_err("no such query");
+        store.delete(404).await.expect_err("no such query");
+        store
+            .delete_for_connection(Uuid::new_v4())
+            .await
+            .expect("delete for a connection with none");
+
+        assert!(!changes.has_changed().expect("the sender lives"));
     }
 
     #[tokio::test]
