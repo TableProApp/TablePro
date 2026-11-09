@@ -394,16 +394,19 @@ impl RowDetailPane {
     /// A filter or a new column set can take away the row that held the
     /// editor and the keyboard with it, which GTK would hand to the
     /// window's first control.
-    fn keep_keyboard(&self, held: bool) {
+    fn keep_keyboard(&self, editor_had_it: bool) {
         let imp = self.imp();
         let list = imp.field_list.get();
-        if !held || self.current_row().is_none() || imp.editor_box.is_ancestor(&list) {
+        if !editor_had_it || self.current_row().is_none() || imp.editor_box.is_ancestor(&list) {
             return;
         }
-        match imp.filtered.n_items() {
-            0 => imp.field_search.grab_focus(),
-            _ => list.grab_focus(),
-        };
+        if imp.filtered.n_items() == 0 {
+            imp.field_search.grab_focus();
+            return;
+        }
+        // The list's focused row was the one taken away.
+        list.scroll_to(0, gtk::ListScrollFlags::FOCUS, None);
+        list.grab_focus();
     }
 
     pub(super) fn redraw_fields(&self) {
@@ -416,7 +419,7 @@ impl RowDetailPane {
 
     pub(super) fn refilter_fields(&self) {
         let imp = self.imp();
-        let held = self.editor_holds_focus();
+        let editor_had_keyboard = self.editor_holds_focus();
         let has_edits = self.grid().zip(self.current_row()).is_some_and(|(grid, row)| {
             grid.grid_columns().iter().any(|column| {
                 let mark = grid.tracked().mark(&row, column.index);
@@ -435,7 +438,7 @@ impl RowDetailPane {
             _ => "fields",
         });
         self.place_editor();
-        self.keep_keyboard(held);
+        self.keep_keyboard(editor_had_keyboard);
     }
 
     fn field_shown(&self, column: Option<usize>) -> bool {
@@ -666,7 +669,7 @@ impl RowDetailPane {
             return;
         }
         let items: Vec<glib::BoxedAnyObject> = wanted.into_iter().map(glib::BoxedAnyObject::new).collect();
-        let held = self.editor_holds_focus();
+        let editor_had_keyboard = self.editor_holds_focus();
         imp.syncing.set(true);
         store.splice(0, store.n_items(), &items);
         imp.syncing.set(false);
@@ -676,7 +679,7 @@ impl RowDetailPane {
         }
         self.select_in_list(imp.field.get());
         self.place_editor();
-        self.keep_keyboard(held);
+        self.keep_keyboard(editor_had_keyboard);
     }
 
     fn watch_column_visibility(&self) {
