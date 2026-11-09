@@ -48,6 +48,8 @@ struct PersistedTab: Codable {
     var erDiagramSchemaKey: String?
     var objectRef: DatabaseObjectRef?
     var versionHistorySubject: VersionHistorySubject?
+    // Raw, like objectTypeRawValue: a kind a newer build adds decodes to nil, which is Tables.
+    var listingKindRawValue: String?
     var queryParameters: [QueryParameter]?
     var sortColumns: [PersistedSortColumn]?
     // Nil in files written before this existed: decodes to .user when columns were saved, .unset when none were.
@@ -81,6 +83,7 @@ struct PersistedTab: Codable {
         erDiagramSchemaKey: String? = nil,
         objectRef: DatabaseObjectRef? = nil,
         versionHistorySubject: VersionHistorySubject? = nil,
+        listingKindRawValue: String? = nil,
         queryParameters: [QueryParameter]? = nil,
         sortColumns: [PersistedSortColumn]? = nil,
         sortSource: SortSource? = nil,
@@ -109,6 +112,7 @@ struct PersistedTab: Codable {
         self.erDiagramSchemaKey = erDiagramSchemaKey
         self.objectRef = objectRef
         self.versionHistorySubject = versionHistorySubject
+        self.listingKindRawValue = listingKindRawValue
         self.queryParameters = queryParameters
         self.sortColumns = sortColumns
         self.sortSource = sortSource
@@ -127,6 +131,7 @@ struct PersistedTab: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, title, query, tabType, tableName, isView, objectTypeRawValue, databaseName, schemaName
         case sourceFileURL, sourceFileEncoding, erDiagramSchemaKey, objectRef, versionHistorySubject, queryParameters
+        case listingKindRawValue
         case sortColumns, sortSource, restoredPage, restoredPageSize, cursorOffset, cursorLength
         case collapsedFoldRanges
         case columnWidths, columnContentWidths, windowGroupIndex
@@ -151,6 +156,7 @@ struct PersistedTab: Codable {
         erDiagramSchemaKey = try container.decodeIfPresent(String.self, forKey: .erDiagramSchemaKey)
         objectRef = try container.decodeIfPresent(DatabaseObjectRef.self, forKey: .objectRef)
         versionHistorySubject = try container.decodeIfPresent(VersionHistorySubject.self, forKey: .versionHistorySubject)
+        listingKindRawValue = try container.decodeIfPresent(String.self, forKey: .listingKindRawValue)
         queryParameters = try container.decodeIfPresent([QueryParameter].self, forKey: .queryParameters)
         sortColumns = try container.decodeIfPresent([PersistedSortColumn].self, forKey: .sortColumns)
         sortSource = try container.decodeIfPresent(SortSource.self, forKey: .sortSource)
@@ -671,6 +677,8 @@ struct TabDisplayState: Equatable {
     var erDiagramSchemaKey: String?
     var objectRef: DatabaseObjectRef?
     var versionHistorySubject: VersionHistorySubject?
+    // The kind an Objects tab lists. Nil is Tables, which every tab saved before kinds existed shows.
+    var listingKind: SidebarObjectKind?
     var isResultsCollapsed: Bool = false
     var resultSets: [ResultSet] = []
     var activeResultSetId: UUID?

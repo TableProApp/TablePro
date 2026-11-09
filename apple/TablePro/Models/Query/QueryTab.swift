@@ -189,7 +189,8 @@ struct QueryTab: Identifiable, Equatable {
         self.display = TabDisplayState(
             erDiagramSchemaKey: persisted.erDiagramSchemaKey,
             objectRef: persisted.objectRef,
-            versionHistorySubject: persisted.versionHistorySubject
+            versionHistorySubject: persisted.versionHistorySubject,
+            listingKind: persisted.listingKindRawValue.flatMap(SidebarObjectKind.init(rawValue:))
         )
         self.pendingChanges = TabChangeSnapshot()
         self.selectionSnapshot = .empty
@@ -346,6 +347,7 @@ struct QueryTab: Identifiable, Equatable {
             erDiagramSchemaKey: display.erDiagramSchemaKey,
             objectRef: display.objectRef,
             versionHistorySubject: display.versionHistorySubject,
+            listingKindRawValue: display.listingKind?.rawValue,
             queryParameters: content.queryParameters.isEmpty ? nil : content.queryParameters,
             sortColumns: persistedSort,
             sortSource: persistedSortSource,
