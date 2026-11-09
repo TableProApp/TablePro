@@ -173,9 +173,13 @@ impl BrowseTab {
             if !rules.is_empty() {
                 grid.set_highlight_rules(rules);
             }
-            let (store, schema, table) = (init.highlight_rules.clone(), init.schema.clone(), init.table.clone());
+            let store = init.highlight_rules.clone();
+            // The grid's table, not the opening one, so a rename moves the rules with it.
             grid.connect_highlight_rules_changed(move |grid| {
-                store.set_rules(&state_key, schema.as_deref(), &table, grid.highlight_rules());
+                let Some(table) = grid.config().and_then(|config| config.table.clone()) else {
+                    return;
+                };
+                store.set_rules(&state_key, table.schema.as_deref(), &table.name, grid.highlight_rules());
             });
         }
         let link_changes = init.session.link_changes();
@@ -198,6 +202,7 @@ impl BrowseTab {
             state_key: init.state_key,
             read_only: init.read_only,
             filter_settings: init.filter_settings,
+            highlight_rules: init.highlight_rules,
             pager: BrowsePager::new(init.page_size, init.initial_offset),
             deadlines: init.deadlines,
             current_sort: initial_sort,
@@ -577,6 +582,7 @@ pub(crate) struct BrowseModel {
     state_key: Option<crate::persistence::TableStateKey>,
     read_only: bool,
     filter_settings: crate::persistence::FilterSettingsStore,
+    highlight_rules: crate::persistence::HighlightRulesStore,
 
     /// Where the page the tab reads starts, and how many rows it holds.
     pager: BrowsePager,
