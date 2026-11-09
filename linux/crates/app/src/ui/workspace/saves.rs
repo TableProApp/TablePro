@@ -13,10 +13,25 @@ use crate::workspace::{
     CloseScope, DirtyTab, SaveOutcome, SaveSettled, SaveStart, WorkKind, WorkOutcome, WorkspaceEvent,
 };
 
+#[derive(Debug)]
+pub(crate) enum SaveRequest {
+    Tab(Uuid),
+    Rows(Uuid),
+    Structure(Uuid),
+    Stop(Uuid),
+}
+
 impl WorkspaceModel {
-    /// Save one tab, from its own Save button or Ctrl+S. A structure
-    /// save may wait on its review first.
-    pub(super) fn request_save(&self, tab: Uuid) {
+    pub(super) fn on_save_request(&self, request: SaveRequest) {
+        match request {
+            SaveRequest::Tab(tab) => self.request_save(tab),
+            SaveRequest::Rows(tab) => self.request_save_rows(tab),
+            SaveRequest::Structure(tab) => self.request_save_structure(tab),
+            SaveRequest::Stop(tab) => self.workspace_handle.stop_saves(CloseScope::Tab(tab)),
+        }
+    }
+
+    fn request_save(&self, tab: Uuid) {
         let Some(parent) = self.dialog_parent() else {
             return;
         };
@@ -37,7 +52,7 @@ impl WorkspaceModel {
         });
     }
 
-    pub(super) fn request_save_rows(&self, tab: Uuid) {
+    fn request_save_rows(&self, tab: Uuid) {
         let Some(parent) = self.dialog_parent() else {
             return;
         };
@@ -53,17 +68,33 @@ impl WorkspaceModel {
         });
     }
 
-    pub(super) fn stop_saving(&self, tab: Uuid) {
-        self.workspace_handle.stop_saves(CloseScope::Tab(tab));
+    fn request_save_structure(&self, tab: Uuid) {
+        let Some(parent) = self.dialog_parent() else {
+            return;
+        };
+        let (handle, input) = (self.workspace_handle.clone(), self.input.clone());
+        glib::spawn_future_local(async move {
+            match handle.save_structure_of(&parent, tab).await {
+                SaveStart::Rejected(rejection) if rejection.needs_alert() => input.deliver(WorkspaceInput::ShowAlert {
+                    title: crate::i18n::gettext("Cannot Save"),
+                    body: rejection.message(),
+                }),
+                start => tracing::debug!(?start, %tab, "structure save"),
+            }
+        });
     }
 
     pub(super) fn on_workspace_event(&mut self, event: WorkspaceEvent) {
         match event {
-            WorkspaceEvent::SaveStarted { tab } => {
-                self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveStarted);
-                self.send_to_structure_tab(tab, structure_tab::SaveInput::SaveStarted);
-                if let Some(editor) = self.editor_tab(tab) {
-                    editor.rows_save_started();
+            WorkspaceEvent::SaveStarted { tab, kind } => {
+                // A table tab holds both, and only one of them is saving.
+                if kind == WriteKind::SchemaChanges {
+                    self.send_to_structure_tab(tab, structure_tab::SaveInput::SaveStarted);
+                } else {
+                    self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveStarted);
+                    if let Some(editor) = self.editor_tab(tab) {
+                        editor.rows_save_started();
+                    }
                 }
             }
             WorkspaceEvent::SaveSettled { settled, in_prompt } => self.on_save_settled(*settled, in_prompt),

@@ -274,3 +274,19 @@ fn a_key_tab_is_reopened_with_the_session() {
 
     wait_until(WAIT, || key_tabs(&workspace) == ["user:2"]).expect("the saved key tab");
 }
+
+#[gtk4::test]
+fn the_header_refresh_reads_the_selected_key_again() {
+    let test = keys_window("HeaderRefreshKey", |script| {
+        script.scan_keys.always(listing(three_keys(), true));
+        script.read_key.always(string_page("Ada"));
+    });
+    let workspace = test.workspace();
+    open_key(&workspace, "user:2");
+    wait_until(WAIT, || !test.connection().observed_sql("read_key").is_empty()).expect("the key loaded");
+    let button = shell(&workspace).imp().refresh_page_button.get();
+    wait_until(WAIT, || button.is_sensitive()).expect("key refresh enabled");
+    let before = test.connection().observed_sql("read_key").len();
+    button.emit_clicked();
+    wait_until(WAIT, || test.connection().observed_sql("read_key").len() > before).expect("key reloaded");
+}

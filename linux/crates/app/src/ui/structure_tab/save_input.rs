@@ -3,6 +3,10 @@
 #[derive(Debug)]
 pub(crate) enum SaveInput {
     Save,
+    RequestRefresh,
+    DiscardAndReload {
+        acknowledged_unknown: bool,
+    },
     /// The window started saving the tab's pending structure.
     SaveStarted,
     StopSaving,

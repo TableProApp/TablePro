@@ -37,7 +37,8 @@ pub(crate) fn file_request(
     let endpoint = FileEndpoint::open_existing(path).map_err(DriverError::from)?;
     let mut request = ConnectRequest {
         metadata: ConnectionMetadata {
-            id: uuid::Uuid::new_v4(),
+            // Saved queries must remain attached when the same file is opened again.
+            id: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, identity.uri.as_bytes()),
             name,
             driver_id: driver.id().to_owned(),
         },
@@ -100,6 +101,10 @@ mod tests {
         let request = file_request(&identity, &drivers, b"", false).expect("a request");
         let read_only = file_request(&identity, &drivers, b"", true).expect("a read-only request");
 
+        assert_eq!(request.metadata.id, read_only.metadata.id);
+        let other = FileIdentity::new(Some(PathBuf::from("/srv/other.db")), "file:///srv/other.db".to_owned());
+        let other = file_request(&other, &drivers, b"", false).expect("other request");
+        assert_ne!(request.metadata.id, other.metadata.id);
         assert_eq!(request.metadata.name, "app.db");
         assert!(matches!(request.target, RequestTarget::File(_)));
         assert!(!request.workspace_settings.read_only);

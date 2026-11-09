@@ -130,6 +130,35 @@ fn a_width_set_from_the_keyboard_comes_back_at_that_width() {
     wait_until(WAIT, || shown_width(&grid, 1) == saved).expect("the column drawn at its saved width");
 }
 
+#[gtk4::test]
+fn renaming_the_table_keeps_column_layout_under_the_new_name() {
+    let layouts = Layouts::new();
+    let grid = laid_out(Grid::build(
+        GridSpec {
+            layout: Some(layouts.binding("t")),
+            table: Some(tablepro_core::meta::TableRef::new(Some("public".to_owned()), "t")),
+            ..GridSpec::table(two_text_columns())
+        },
+        keyed(&[1, 2]),
+    ));
+    data_column(&grid, 1).set_fixed_width(200);
+    let old_layout = layouts.saved("t");
+
+    grid.grid.rename_table("members");
+
+    assert_eq!(layouts.saved("members"), old_layout);
+    data_column(&grid, 1).set_fixed_width(240);
+    assert_eq!(layouts.saved("members").widths.get("name"), Some(&240));
+    assert_eq!(layouts.saved("t"), old_layout);
+    grid.grid.set_columns(
+        grid.columns.clone(),
+        super::super::GridSorting::Server { initial: None },
+        None,
+    );
+    assert_eq!(data_column(&grid, 1).fixed_width(), 240);
+    assert_eq!(grid.grid.config().expect("configured grid").label, "public.members");
+}
+
 /// GtkColumnView's header drag sets the fixed width and nothing else, as
 /// this does.
 #[gtk4::test]
@@ -829,5 +858,36 @@ mod real_keys {
 
         wait_until(WAIT, || column.fixed_width() > 0 && column.fixed_width() != 300).expect("the grid's width");
         assert_eq!(layouts.saved("t").widths.get("name"), None);
+    }
+}
+
+#[gtk4::test]
+fn null_text_resizes_automatic_columns_and_preserves_manual_widths() {
+    for editable in [false, true] {
+        let columns = two_text_columns();
+        let spec = if editable {
+            GridSpec::table(columns)
+        } else {
+            GridSpec::results(columns)
+        };
+        let values = vec![vec![Value::Int(1), Value::Null]];
+        let rows = if editable { persisted(&values) } else { results(&values) };
+        let grid = Grid::build(spec, rows);
+        let settings = grid.grid.config().expect("configured grid").settings.clone();
+        let column = data_column(&grid, 1);
+        let original = column.fixed_width();
+
+        settings
+            .set_null_display("value is unavailable")
+            .expect("store long placeholder");
+        wait_until(WAIT, || column.fixed_width() > original).expect("automatic column grows");
+        wait_until(WAIT, || {
+            shows_whole(grid.cell_at(0, 1).display().expect("cell display"))
+        })
+        .expect("the whole placeholder fits");
+        column.set_fixed_width(260);
+        settings.set_null_display("none").expect("store short placeholder");
+        drain_main_context();
+        assert_eq!(column.fixed_width(), 260, "the chosen width stays");
     }
 }
