@@ -126,8 +126,17 @@ mod tests {
         let xml = embedded_metainfo();
         let version = tag_version(newest_release(&xml).expect("the metainfo lists a release"));
         let tree = format!("https://github.com/TableProApp/TablePro/blob/linux-v{version}/linux");
+        let commit = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../build-aux/source-commit"),
+        )
+        .expect("build-aux/source-commit is in the source tree");
+        // A release tarball has its commit there (export-subst); a git checkout keeps the placeholder.
+        let screenshots_ref = match commit.trim() {
+            placeholder if placeholder.starts_with('$') => format!("linux-v{version}"),
+            commit => commit.to_owned(),
+        };
         let screenshots =
-            format!("https://raw.githubusercontent.com/TableProApp/TablePro/linux-v{version}/linux/data/screenshots/");
+            format!("https://raw.githubusercontent.com/TableProApp/TablePro/{screenshots_ref}/linux/data/screenshots/");
         let releases = metainfo_text(&xml, "<releases", "</releases>");
 
         assert_eq!(
