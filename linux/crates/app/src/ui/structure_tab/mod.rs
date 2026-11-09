@@ -296,9 +296,10 @@ impl StructureTab {
         imp.dispatching.set(false);
     }
 
-    /// Stop the read the tab has running and stop following reconnects
-    /// now, rather than at dispose, which waits for the last reference
-    /// to the widget.
+    pub fn request_refresh(&self) {
+        self.send(SaveInput::RequestRefresh);
+    }
+
     pub fn shutdown(&self) {
         let imp = self.imp();
         imp.link_watch.take();
