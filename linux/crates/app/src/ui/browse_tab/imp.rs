@@ -125,6 +125,7 @@ impl ObjectImpl for BrowseTab {
                     .build(),
                 Signal::builder("save-requested").build(),
                 Signal::builder("structure-requested").build(),
+                Signal::builder("save-action-changed").build(),
                 Signal::builder("loading-changed")
                     .param_types([bool::static_type()])
                     .build(),

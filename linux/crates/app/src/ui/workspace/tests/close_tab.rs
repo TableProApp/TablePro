@@ -503,6 +503,86 @@ fn header_save_switches_between_sessions_and_disables_without_a_tab() {
     );
 }
 
+fn serving_a_structure(script: &mut ConnectionScript) {
+    use tablepro_core::ddl::{ColumnAttributes, ColumnDefinition, TableDefinition};
+
+    serving_tables(script);
+    script.dialect = std::sync::Arc::new(tablepro_driver_postgres::PgDialect::new(
+        &tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0),
+    ));
+    script.fetch_table_definition.always(FakeReply::ok(TableDefinition {
+        table: tablepro_core::meta::TableRef::unqualified("users"),
+        columns: vec![ColumnDefinition::new(
+            column("name", "TEXT", false),
+            ColumnAttributes::default(),
+        )],
+        primary_key: None,
+        indexes: Vec::new(),
+        foreign_keys: Vec::new(),
+        inbound_foreign_keys: Vec::new(),
+        source: None,
+        options: None,
+    }));
+}
+
+fn show_structure(tab: &BrowseTab) -> crate::ui::structure_tab::StructureTab {
+    tab.imp().view_stack.set_visible_child_name("structure");
+    let mut structure = None;
+    wait_until(WAIT, || {
+        structure = tab.structure_tab().filter(|structure| {
+            !structure.is_loading() && structure.imp().inner_stack.visible_child_name().as_deref() == Some("editor")
+        });
+        structure.is_some()
+    })
+    .expect("the table's structure");
+    structure.expect("the structure")
+}
+
+#[gtk4::test]
+fn header_save_saves_the_structure_a_table_tab_shows() {
+    let test = TestWindow::connected_with("HeaderStructureViewSave", serving_a_structure);
+    let (id, tab) = open_table(&test, "users");
+    let button = shell_of(&test.workspace()).imp().save_changes_button.get();
+    type_a_name(&tab);
+    tab.commit_cell_edit();
+    wait_until(WAIT, || button.is_sensitive()).expect("the row edit enables Save Changes");
+
+    let structure = show_structure(&tab);
+    assert!(!button.is_sensitive(), "the unchanged structure has nothing to save");
+    structure.send(crate::ui::structure_tab::ColumnsInput::AddColumn);
+    assert!(button.is_sensitive(), "the structure's draft enables Save Changes");
+    assert_eq!(button.tooltip_text().as_deref(), Some("Save Changes"));
+
+    let schema_saves = crate::test_support::SignalLog::connect(&structure, "save-requested", |_| ());
+    let row_saves = crate::test_support::SignalLog::connect(&tab, "save-requested", |_| ());
+    button.emit_clicked();
+    assert_eq!(schema_saves.count(), 1, "the header saves the structure on screen");
+    assert_eq!(row_saves.count(), 0);
+    let rows = super::row_tracker(&test.workspace(), id).expect("the row changes");
+    assert_eq!(rows.pending_count(), 1, "the row edit waits for the Data view");
+}
+
+#[gtk4::test]
+fn header_save_follows_the_rows_again_once_the_table_tab_shows_its_data() {
+    let test = TestWindow::connected_with("HeaderDataViewSave", serving_a_structure);
+    let (_, tab) = open_table(&test, "users");
+    let button = shell_of(&test.workspace()).imp().save_changes_button.get();
+    let structure = show_structure(&tab);
+    structure.send(crate::ui::structure_tab::ColumnsInput::AddColumn);
+    assert!(button.is_sensitive());
+
+    tab.imp().view_stack.set_visible_child_name("data");
+    assert!(!button.is_sensitive(), "the rows have nothing to save");
+    type_a_name(&tab);
+    wait_until(WAIT, || button.is_sensitive()).expect("the row edit enables Save Changes");
+
+    let schema_saves = crate::test_support::SignalLog::connect(&structure, "save-requested", |_| ());
+    let row_saves = crate::test_support::SignalLog::connect(&tab, "save-requested", |_| ());
+    button.emit_clicked();
+    assert_eq!(row_saves.count(), 1, "the header saves the rows on screen");
+    assert_eq!(schema_saves.count(), 0);
+}
+
 #[gtk4::test]
 fn a_schema_rename_keeps_the_table_tab_and_its_pending_rows() {
     let test = TestWindow::connected_with("RenameCombinedTable", serving_tables);

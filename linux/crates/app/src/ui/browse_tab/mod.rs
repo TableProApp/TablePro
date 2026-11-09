@@ -210,7 +210,10 @@ impl BrowseTab {
         tab
     }
 
-    pub(crate) fn save_action(&self) -> Option<gio::SimpleAction> {
+    pub(crate) fn shown_save_action(&self) -> Option<gio::SimpleAction> {
+        if self.shows_structure() {
+            return self.structure_tab()?.save_action();
+        }
         self.imp().save_action.get().cloned()
     }
 
@@ -405,6 +408,14 @@ impl BrowseTab {
         )
     }
 
+    pub fn connect_save_action_changed<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "save-action-changed",
+            false,
+            glib::closure_local!(move |tab: &Self| f(tab)),
+        )
+    }
+
     pub fn offer_structure(&self) {
         let imp = self.imp();
         imp.view_toggle.set_visible(true);
@@ -418,6 +429,7 @@ impl BrowseTab {
 
     pub fn set_structure(&self, structure: &crate::ui::structure_tab::StructureTab) {
         libadwaita::prelude::BinExt::set_child(&*self.imp().structure_host, Some(structure));
+        self.emit_by_name::<()>("save-action-changed", &[]);
     }
 
     pub fn structure_tab(&self) -> Option<crate::ui::structure_tab::StructureTab> {
@@ -447,15 +459,12 @@ impl BrowseTab {
         if let Some(model) = imp.model.borrow_mut().as_mut() {
             model.show_grid_actions();
         }
+        self.emit_by_name::<()>("save-action-changed", &[]);
     }
 
     fn save_selected_view(&self) {
-        if self.shows_structure() {
-            if let Some(structure) = self.structure_tab() {
-                let _ = structure.activate_action("structure.save", None);
-            }
-        } else {
-            let _ = self.activate_action("browse.save", None);
+        if let Some(action) = self.shown_save_action() {
+            action.activate(None);
         }
     }
 

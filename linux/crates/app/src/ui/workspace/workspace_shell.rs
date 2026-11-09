@@ -589,7 +589,7 @@ impl WorkspaceShell {
     fn selected_save_action(&self) -> Option<gio::SimpleAction> {
         let child = self.imp().tab_view.selected_page()?.child();
         if let Some(tab) = child.downcast_ref::<crate::ui::browse_tab::BrowseTab>() {
-            return tab.save_action();
+            return tab.shown_save_action();
         }
         if let Some(tab) = child.downcast_ref::<crate::ui::structure_tab::StructureTab>() {
             return tab.save_action();
@@ -600,6 +600,34 @@ impl WorkspaceShell {
     }
 
     pub(super) fn refresh_save_changes(&self) {
+        self.forget_table_view();
+        let imp = self.imp();
+        if let Some(tab) = imp
+            .tab_view
+            .selected_page()
+            .and_then(|page| page.child().downcast::<crate::ui::browse_tab::BrowseTab>().ok())
+        {
+            // Data and Structure save different things, so a switch rebinds.
+            let shell = self.downgrade();
+            let handler = tab.connect_save_action_changed(move |_| {
+                if let Some(shell) = shell.upgrade() {
+                    shell.bind_save_changes();
+                }
+            });
+            imp.save_changes_view.replace(Some((tab.downgrade(), handler)));
+        }
+        self.bind_save_changes();
+    }
+
+    fn forget_table_view(&self) {
+        if let Some((tab, handler)) = self.imp().save_changes_view.take()
+            && let Some(tab) = tab.upgrade()
+        {
+            tab.disconnect(handler);
+        }
+    }
+
+    fn bind_save_changes(&self) {
         let imp = self.imp();
         if let Some(binding) = imp.save_changes_binding.take() {
             binding.unbind();
@@ -995,6 +1023,7 @@ impl WorkspaceShell {
     /// names itself again from here on.
     pub(crate) fn shutdown(&self) {
         let imp = self.imp();
+        self.forget_table_view();
         if let Some(binding) = imp.save_changes_binding.take() {
             binding.unbind();
         }
