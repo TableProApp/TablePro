@@ -63,6 +63,11 @@ pub(super) fn describe_buttons(shell: &WorkspaceShell) {
         Some("win.show-sidebar"),
     );
     describe_icon_button(
+        &imp.refresh_page_button.get(),
+        &gettext("Refresh Tab"),
+        Some("win.refresh-page"),
+    );
+    describe_icon_button(
         &imp.new_tab_button.get(),
         &gettext("New Query"),
         Some("win.new-editor-tab"),
@@ -156,7 +161,6 @@ impl WorkspaceShell {
             &imp.split_view.get(),
             "show-sidebar",
         ));
-        follow_sidebar(&imp.split_view, &imp.sidebar_toggle);
         window.add_action(&assistant_action(&shell));
         imp.walk_hooks.replace(Some(shell.hook_recent_walk(window)));
 
@@ -171,6 +175,9 @@ impl WorkspaceShell {
         shell.connect_view();
         shell.connect_front_notify(Self::on_front_changed);
         shell.bind_front();
+        shell.add_controller(crate::application::local_shortcut_controller(
+            crate::application::ShortcutOwner::WorkspaceShell,
+        ));
         shell.describe_front();
 
         imp.table_search_bar.connect_entry(&*imp.table_search);
@@ -373,6 +380,7 @@ impl WorkspaceShell {
             for (name, property) in [
                 (SHOW_ASSISTANT, "assistant-available"),
                 (REVIEW_HOST_KEY, "can-review-host-key"),
+                ("refresh-page", "can-refresh"),
             ] {
                 if let Some(action) = window.lookup_action(name).and_downcast::<gio::SimpleAction>() {
                     // Off until a session is in front to say.
@@ -527,6 +535,9 @@ impl WorkspaceShell {
         }
         if let (Some(tree), Some(key)) = (imp.tree.get(), workspace.key()) {
             tree.remove_session(&key);
+        }
+        if let Some(front) = self.front() {
+            front.read(super::WorkspaceModel::select_in_tree);
         }
         self.tell_sharing();
         self.refresh_saving();
@@ -1063,27 +1074,6 @@ fn with_safe_mode(menu: &gio::MenuModel) -> gio::Menu {
     whole.append_section(None, &section);
     whole.append_section(None, menu);
     whole
-}
-
-/// The toggle shows only while the sidebar is out of view: collapsed
-/// into an overlay, or hidden. Beside a shown sidebar it would only hide
-/// the list the user is looking at.
-fn follow_sidebar(split_view: &adw::OverlaySplitView, toggle: &gtk::ToggleButton) -> gtk::ExpressionWatch {
-    let collapsed = gtk::PropertyExpression::new(
-        adw::OverlaySplitView::static_type(),
-        None::<&gtk::Expression>,
-        "collapsed",
-    );
-    let shown = gtk::PropertyExpression::new(
-        adw::OverlaySplitView::static_type(),
-        None::<&gtk::Expression>,
-        "show-sidebar",
-    );
-    let visible = gtk::ClosureExpression::new::<bool>(
-        [collapsed, shown],
-        glib::closure!(|_: Option<glib::Object>, collapsed: bool, shown: bool| collapsed || !shown),
-    );
-    visible.bind(toggle, "visible", Some(split_view))
 }
 
 #[cfg(test)]

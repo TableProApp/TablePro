@@ -18,10 +18,10 @@ mod status_filter;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
-use tokio::sync::watch;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{AssertSqlSafe, ConnectOptions, Connection, Row, SqlitePool};
+use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::error::StorageError;
@@ -68,6 +68,7 @@ pub(crate) enum Bind {
 pub struct QueryHistory {
     pool: SqlitePool,
     path: PathBuf,
+    // Shared by every handle `saved_queries` gives out, so a write through one reaches the others' followers.
     saved_changes: Arc<watch::Sender<u64>>,
 }
 
@@ -104,9 +105,6 @@ impl QueryHistory {
         &self.path
     }
 
-    /// The saved queries, which share this database. One file, one
-    /// migration chain, one open: what the user keeps and what they
-    /// ran are the same kind of thing in the same place.
     pub fn saved_queries(&self) -> crate::saved_queries::SavedQueries {
         crate::saved_queries::SavedQueries::new(self.pool.clone(), self.path.clone(), self.saved_changes.clone())
     }
