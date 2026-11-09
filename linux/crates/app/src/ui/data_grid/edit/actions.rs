@@ -66,9 +66,17 @@ pub(super) fn refresh(controller: &EditController, grid: &DataGrid, target: Opti
         Ok(()) => target.and_then(|target| target.cell.as_ref()),
         Err(_) => None,
     };
-    let (kind, presets) = cell.map_or((None, CellPresets::default()), |(row, column)| {
-        cell_state(controller, grid, row, *column)
-    });
+    let kind = cell.and_then(|(row, column)| cell_state(controller, grid, row, *column).0);
+    let presets = match (cell, target) {
+        (Some((_, column)), Some(target)) => target.rows.iter().fold(CellPresets::default(), |mut offered, row| {
+            let (_, presets) = cell_state(controller, grid, row, *column);
+            offered.empty |= presets.empty;
+            offered.null |= presets.null;
+            offered.default |= presets.default;
+            offered
+        }),
+        _ => CellPresets::default(),
+    };
     // The capture-phase keys a focused editor would lose to the grid.
     let typing = controller.editor_has_focus();
     let edits = !typing
