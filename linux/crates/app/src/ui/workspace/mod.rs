@@ -573,7 +573,7 @@ pub(crate) enum WorkspaceInput {
         id: Uuid,
         approved: bool,
     },
-    RefreshPage,
+    RefreshPage(Option<Uuid>),
     ExportResults {
         tab: Uuid,
         offer: Box<ExportOffer>,
@@ -1112,7 +1112,10 @@ impl Workspace {
     }
 
     fn handle_input(&self, message: WorkspaceInput) {
-        self.with_model(|model| model.update(message));
+        self.with_model(|model| {
+            model.update(message);
+            model.refresh_header_actions();
+        });
     }
 
     fn with_model<R>(&self, f: impl FnOnce(&mut WorkspaceModel) -> R) -> Option<R> {
@@ -1417,7 +1420,7 @@ impl WorkspaceModel {
             WorkspaceInput::ReplaceSavedQuery(query) => self.save_named_query(query, true),
             WorkspaceInput::OpenHistoryQuery(text) => self.open_editor_tab(Some(text)),
             WorkspaceInput::ReplaceActiveTabQuery(text) => self.on_replace_active_tab_query(text),
-            WorkspaceInput::RefreshPage => self.on_refresh_active_tab(),
+            WorkspaceInput::RefreshPage(tab) => self.on_refresh_page(tab),
             WorkspaceInput::ExportResults { tab, offer } => self.on_export_results(tab, *offer),
             WorkspaceInput::ExportEnded { tab, outcome } => self.on_export_ended(tab, outcome),
             WorkspaceInput::ReopenClosedTab(tab) => self.on_reopen_closed_tab(tab),

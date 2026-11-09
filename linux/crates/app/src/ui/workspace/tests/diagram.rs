@@ -274,3 +274,16 @@ fn the_diagram_draws_in_the_themes_colours() {
     assert_eq!(palette.background.alpha(), 1.0);
     assert!(palette.accent.alpha() > 0.0);
 }
+
+#[gtk4::test]
+fn the_header_refresh_reads_the_selected_diagram_again() {
+    let test = TestWindow::connected_with("HeaderRefreshDiagram", sales);
+    show_diagram(&test, "sales");
+    wait_until(WAIT, || diagrams(&test).len() == 1).expect("the diagram tab");
+    drawn(&diagrams(&test)[0]);
+    let button = shell_of(&test.workspace()).imp().refresh_page_button.get();
+    wait_until(WAIT, || button.is_sensitive()).expect("diagram refresh enabled");
+    let before = test.connection().observed_sql("list_objects").len();
+    button.emit_clicked();
+    wait_until(WAIT, || test.connection().observed_sql("list_objects").len() > before).expect("diagram reloaded");
+}

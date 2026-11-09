@@ -61,6 +61,11 @@ pub(super) fn describe_buttons(shell: &WorkspaceShell) {
         Some("win.show-sidebar"),
     );
     describe_icon_button(
+        &imp.refresh_page_button.get(),
+        &gettext("Refresh Tab"),
+        Some("win.refresh-page"),
+    );
+    describe_icon_button(
         &imp.new_tab_button.get(),
         &gettext("New Query"),
         Some("win.new-editor-tab"),
@@ -168,6 +173,9 @@ impl WorkspaceShell {
         shell.connect_view();
         shell.connect_front_notify(Self::on_front_changed);
         shell.bind_front();
+        shell.add_controller(crate::application::local_shortcut_controller(
+            crate::application::ShortcutOwner::WorkspaceShell,
+        ));
         shell.describe_front();
 
         imp.table_search_bar.connect_entry(&*imp.table_search);
@@ -370,6 +378,7 @@ impl WorkspaceShell {
             for (name, property) in [
                 (SHOW_ASSISTANT, "assistant-available"),
                 (REVIEW_HOST_KEY, "can-review-host-key"),
+                ("refresh-page", "can-refresh"),
             ] {
                 if let Some(action) = window.lookup_action(name).and_downcast::<gio::SimpleAction>() {
                     // Off until a session is in front to say.
