@@ -16,6 +16,7 @@ yanked = "deny"
 unmaintained = "workspace"
 ignore = [
     { id = "RUSTSEC-2023-0071", reason = "rsa is reached through sqlx-mysql, which encrypts the MySQL password with the server's public key, and through russh and ssh-key, which sign one login with an RSA identity file in the in-process SSH transport, off in the Linux app's build. Neither decrypts in process. The rsa ban below holds that scope. See linux/docs/decisions/0009-crypto-provider-and-sources.md and core/docs/decisions/0009-in-process-ssh-on-windows.md." },
+    { id = "RUSTSEC-2026-0459", reason = "The bundled SQLite before 3.54.0 is built only for targets other than Linux, and none ships: the Linux app links the distribution's SQLite (sqlite-unbundled), the Windows app has no release, and the macOS app does not link the core yet. sqlx-sqlite 0.9.0 requires libsqlite3-sys below 0.38; remove this once sqlx allows 0.39." },
 ]
 
 [licenses]
