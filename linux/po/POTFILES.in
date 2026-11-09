@@ -621,6 +621,7 @@ crates/app/src/ui/workspace/mod.rs
 crates/app/src/ui/workspace/recent_tabs.rs
 crates/app/src/ui/workspace/references.rs
 crates/app/src/ui/workspace/saves.rs
+crates/app/src/ui/workspace/schema_chooser.rs
 crates/app/src/ui/workspace/schema_filter.rs
 crates/app/src/ui/workspace/session_watches.rs
 crates/app/src/ui/workspace/sidebar/catalog_watch.rs

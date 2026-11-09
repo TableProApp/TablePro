@@ -21,6 +21,7 @@ mod import_ledger;
 mod recent_tabs;
 mod references;
 mod saves;
+mod schema_chooser;
 mod schema_filter;
 mod session_watches;
 mod sidebar;
@@ -133,10 +134,10 @@ pub(crate) struct WorkspaceModel {
     /// The last schema read the sidebar asked for; an older one landing
     /// late is not shown.
     sidebar_read: u64,
-    /// The objects the sidebar was last asked to list, which a change of
-    /// schema filter lists again.
+    // A change of schema filter lists these again.
     sidebar_objects: Arc<[ObjectInfo]>,
     schema_filter: schema_filter::SchemaFilter,
+    schema_filter_banner: adw::Banner,
     definition_reads: u64,
     /// The Show Definition read in flight, which a newer one supersedes.
     definition_read: Option<definitions::DefinitionRead>,
@@ -522,10 +523,9 @@ pub(crate) enum WorkspaceInput {
         read: u64,
         listing: sidebar::SidebarListing,
     },
-    /// Hide a schema from the sidebar, or list it again.
-    HideSchema {
+    ShowSchema {
         name: String,
-        hidden: bool,
+        shown: bool,
     },
     ShowAllSchemas,
     /// List a key-value engine's keys again, as the search now asks.
@@ -827,7 +827,6 @@ impl Workspace {
         imp.shell.set(Some(&shell));
         let input = workspace.pump_inputs();
         let _ = imp.sender.set(input.clone());
-        let filter_input = input.clone();
         let _ = imp.key.set(key.clone());
         let _ = imp.connection_id.set(session.metadata().id);
         let context = session_slot(&context, &session);
@@ -861,7 +860,15 @@ impl Workspace {
         let watches = SessionWatches::new(&session, &services.saved_connections, &input);
         let draft_failures = draft_failure_watch(&drafts, &input);
         transaction_banner::connect_show(&imp.transaction_banner, &input);
+        let showing = input.clone();
+        imp.schema_filter_banner
+            .connect_button_clicked(move |_| showing.deliver(WorkspaceInput::ShowAllSchemas));
 
+        let schema_filter = schema_filter::SchemaFilter::new(
+            storage
+                .filter_settings()
+                .sidebar_schemas(session.metadata().id, session.database().unwrap_or_default()),
+        );
         let model = WorkspaceModel {
             assistant,
             driver_name: driver_display_name(&context, &session.metadata().driver_id),
@@ -883,11 +890,8 @@ impl Workspace {
             catalog_schemas: Arc::from([]),
             sidebar_read: 0,
             sidebar_objects: Arc::from([]),
-            schema_filter: schema_filter::SchemaFilter::new(
-                imp.schema_filter_button.get(),
-                imp.schema_filter_banner.get(),
-                &filter_input,
-            ),
+            schema_filter,
+            schema_filter_banner: imp.schema_filter_banner.get(),
             definition_reads: 0,
             definition_read: None,
             all_schemas_listed: false,
@@ -956,6 +960,18 @@ impl Workspace {
     fn show_creation_menu(&self, menu: gio::MenuModel) {
         self.imp().creation_menu.replace(Some(menu));
         self.notify_creation_menu();
+    }
+
+    fn show_schema_filter_label(&self, label: String) {
+        if *self.imp().schema_filter_label.borrow() != label {
+            self.imp().schema_filter_label.replace(label);
+            self.notify_schema_filter_label();
+        }
+    }
+
+    // None while the workspace is handling input.
+    pub(crate) fn schema_choices(&self) -> Option<schema_chooser::SchemaChoices> {
+        self.read(WorkspaceModel::schema_choices)
     }
 
     /// The key the session is open under.
@@ -1366,7 +1382,7 @@ impl WorkspaceModel {
             WorkspaceInput::RefreshCatalog => self.refresh_catalog(),
             WorkspaceInput::DefaultListCommitted(snapshot) => self.on_default_list_committed(snapshot),
             WorkspaceInput::SidebarRead { read, listing } => self.on_sidebar_read(read, listing),
-            WorkspaceInput::HideSchema { name, hidden } => self.on_schema_hidden(&name, hidden),
+            WorkspaceInput::ShowSchema { name, shown } => self.on_schema_shown(&name, shown),
             WorkspaceInput::ShowAllSchemas => self.on_all_schemas_shown(),
             WorkspaceInput::ListKeys => self.list_keys(),
             WorkspaceInput::KeysListed(listed) => self.on_keys_listed(listed),

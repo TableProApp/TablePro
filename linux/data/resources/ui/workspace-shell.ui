@@ -126,8 +126,11 @@
                               </object>
                             </child>
                             <child type="end">
-                              <!-- The schemas the connection in front lists. -->
-                              <object class="GtkStack" id="list_filters"/>
+                              <object class="GtkMenuButton" id="schema_filter_button">
+                                <property name="always-show-arrow">true</property>
+                                <property name="direction">up</property>
+                                <property name="visible">false</property>
+                              </object>
                             </child>
                           </object>
                         </child>

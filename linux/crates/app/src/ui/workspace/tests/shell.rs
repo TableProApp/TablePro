@@ -694,15 +694,14 @@ fn a_read_only_connection_has_no_add_menu() {
     assert!(!imp.sidebar_bar.is_revealed());
 }
 
-/// The sidebar's bottom bar offers the schemas once there are two, and a
-/// hidden one is said in a banner until Show All.
 #[gtk4::test]
-fn hiding_a_schema_shows_a_banner_that_says_the_list_is_filtered() {
+fn the_schemas_button_chooses_what_the_sidebar_lists_and_keeps_it() {
     let test = TestWindow::connected("SchemaFilter");
     let workspace = test.workspace();
-    let imp = workspace.imp();
-    let (button, banner) = (imp.schema_filter_button.get(), imp.schema_filter_banner.get());
-    assert!(!button.is_visible(), "one schema has nothing to filter");
+    let shell = shell_of(&workspace);
+    let (button, bar) = (shell.imp().schema_filter_button.get(), shell.imp().sidebar_bar.get());
+    let banner = workspace.imp().schema_filter_banner.get();
+    assert!(!button.is_visible(), "one schema has nothing to choose among");
 
     let schema = |name: &str| tablepro_core::meta::SchemaInfo {
         name: name.to_owned(),
@@ -716,13 +715,33 @@ fn hiding_a_schema_shows_a_banner_that_says_the_list_is_filtered() {
     session
         .catalog()
         .commit(vec![schema("public"), schema("sales")], Vec::new());
-    wait_until(WAIT, || button.is_visible()).expect("the schema menu");
+    wait_until(WAIT, || button.is_visible()).expect("the Schemas button");
+    assert_eq!(button.label().as_deref(), Some("Schemas"));
+    assert!(bar.is_revealed());
     assert!(!banner.is_revealed());
 
-    workspace.with_model(|model| model.on_schema_hidden("sales", true));
+    button.popup();
+    let popover = button.popover().expect("the chooser");
+    let check = |name: &str| {
+        descendants(&popover)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk::CheckButton>().ok())
+            .find(|check| check.label().as_deref() == Some(name))
+    };
+    wait_until(WAIT, || check("sales").is_some()).expect("a check for each schema");
+    check("sales").expect("the sales check").set_active(false);
     wait_until(WAIT, || banner.is_revealed()).expect("the banner");
     assert_eq!(banner.title(), "Showing 1 of 2 schemas");
+    let (id, database) = (session.metadata().id, session.database().unwrap_or_default().to_owned());
+    let filters = test.services.storage.filter_settings().clone();
+    assert_eq!(
+        filters.sidebar_schemas(id, &database),
+        std::collections::BTreeSet::from(["public".to_owned()])
+    );
+    wait_until(WAIT, || check("public").is_some_and(|check| !check.is_sensitive()))
+        .expect("the last schema listed stays");
 
-    workspace.with_model(|model| model.on_all_schemas_shown());
-    wait_until(WAIT, || !banner.is_revealed()).expect("the banner to go");
+    banner.emit_by_name::<()>("button-clicked", &[]);
+    wait_until(WAIT, || !banner.is_revealed()).expect("Show All");
+    assert!(filters.sidebar_schemas(id, &database).is_empty());
 }

@@ -33,8 +33,6 @@ pub struct Workspace {
     #[template_child]
     pub schema_filter_banner: TemplateChild<adw::Banner>,
     #[template_child]
-    pub schema_filter_button: TemplateChild<gtk::MenuButton>,
-    #[template_child]
     pub key_limit_banner: TemplateChild<adw::Banner>,
 
     /// The content header's title while the session is in front: the
@@ -62,6 +60,9 @@ pub struct Workspace {
     pub(super) can_refresh: Cell<bool>,
     #[property(get)]
     pub(super) creation_menu: RefCell<Option<gio::MenuModel>>,
+    // Empty while the session's sidebar has no schemas to choose among.
+    #[property(get)]
+    pub(super) schema_filter_label: RefCell<String>,
 
     pub(super) key: OnceCell<SessionKey>,
     // File sessions and saved connections must use the editor save's identity.
