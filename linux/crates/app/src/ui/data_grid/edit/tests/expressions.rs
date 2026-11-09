@@ -10,6 +10,10 @@ use super::{pending, type_into};
 use crate::ui::data_grid::test_grid::{Grid, GridSpec, named, persisted};
 
 fn postgres_grid() -> Grid {
+    postgres_rows(vec![vec![Value::Int(1), Value::Null, Value::Text("a".into())]])
+}
+
+fn postgres_rows(rows: Vec<Vec<Value>>) -> Grid {
     let dialect: Arc<dyn SqlDialect> = Arc::new(tablepro_driver_postgres::PgDialect::new(&ServerInfo::new(
         "PostgreSQL",
         "18.0",
@@ -26,7 +30,7 @@ fn postgres_grid() -> Grid {
                 named("note", "text", false),
             ])
         },
-        persisted(&[vec![Value::Int(1), Value::Null, Value::Text("a".into())]]),
+        persisted(&rows),
     )
 }
 
@@ -95,4 +99,77 @@ fn only_an_expression_from_the_engines_list_is_staged() {
     close_menu(&grid);
 
     assert_eq!(pending(&grid, 1, 1), None);
+}
+
+#[gtk4::test]
+fn an_expression_is_staged_in_every_selected_row() {
+    let grid = postgres_rows(
+        (1..=60)
+            .map(|id| vec![Value::Int(id), Value::Null, Value::Text("note".into())])
+            .collect(),
+    );
+    grid.focus(0, 1);
+    grid.grid.selection().select_all();
+    crate::test_support::drain_main_context();
+
+    grid.grid
+        .activate_action("grid.set-expression", Some(&"now()".to_variant()))
+        .expect("Set to now()");
+
+    for id in 1..=60 {
+        assert!(
+            matches!(pending(&grid, id, 1), Some(CellInput::Expression(expression)) if expression.sql == "now()"),
+            "row {id}"
+        );
+    }
+    grid.grid.undo();
+    assert_eq!(grid.tracker.pending_count(), 0);
+    assert!(!grid.tracker.can_undo());
+    grid.grid.redo();
+    assert_eq!(grid.tracker.pending_count(), 60);
+}
+
+#[gtk4::test]
+fn expressions_remain_available_with_a_locked_focused_row() {
+    use crate::services::tracker_edit::TrackerEdit;
+    use crate::ui::data_grid::test_grid::key;
+    let grid = postgres_rows(vec![
+        vec![Value::Int(1), Value::Null, Value::Text("a".into())],
+        vec![Value::Int(2), Value::Null, Value::Text("b".into())],
+    ]);
+    let delta = grid.tracker.apply(TrackerEdit::DeleteRows {
+        persisted: vec![(key(1), Arc::from([Value::Int(1), Value::Null, Value::Text("a".into())]))],
+        drafts: vec![],
+    });
+    grid.grid.apply_delta(&delta);
+    grid.focus(0, 1);
+    grid.grid.selection().select_all();
+    crate::test_support::drain_main_context();
+    assert!(offered(&grid, 1).iter().any(|sql| sql == "now()"));
+    grid.grid
+        .activate_action("grid.set-expression", Some(&"now()".to_variant()))
+        .expect("Set to now()");
+    close_menu(&grid);
+    assert_eq!(pending(&grid, 1, 1), None);
+    assert!(matches!(pending(&grid, 2, 1), Some(CellInput::Expression(expression)) if expression.sql == "now()"));
+    assert_eq!(
+        super::toasts(&grid),
+        ["1 row can't take this value and was left as it was"]
+    );
+}
+
+#[gtk4::test]
+fn an_unlisted_expression_changes_none_of_the_selected_rows() {
+    let grid = postgres_rows(vec![
+        vec![Value::Int(1), Value::Null, Value::Text("a".into())],
+        vec![Value::Int(2), Value::Null, Value::Text("b".into())],
+    ]);
+    grid.focus(0, 1);
+    grid.grid.selection().select_all();
+    crate::test_support::drain_main_context();
+    grid.grid
+        .activate_action("grid.set-expression", Some(&"now(); DROP TABLE users".to_variant()))
+        .expect("the action");
+    assert_eq!(grid.tracker.pending_count(), 0);
+    assert!(!grid.tracker.can_undo());
 }

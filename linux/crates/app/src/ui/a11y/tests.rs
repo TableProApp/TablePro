@@ -40,6 +40,7 @@ fn template_classes() -> Vec<glib::Type> {
         preferences_dialog::DataBrowserGroup::static_type(),
         preferences_dialog::EditorPage::static_type(),
         preferences_dialog::GeneralPage::static_type(),
+        preferences_dialog::GridPage::static_type(),
         preferences_dialog::HistoryGroup::static_type(),
         saved_queries_dialog::SavedQueriesDialog::static_type(),
         saved_queries_dialog::SavedQueryRow::static_type(),

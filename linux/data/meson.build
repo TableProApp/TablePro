@@ -4,6 +4,17 @@ substitutions.set('bindir', bindir)
 substitutions.set('gettext-package', meson.project_name())
 substitutions.set('version', meson.project_version())
 
+# git archive writes the commit into source-commit (export-subst), and a
+# release is built before its tag exists: appstreamcli compose drops a
+# screenshot whose URL names the tag. A git checkout keeps the tag's URL.
+fs = import('fs')
+source_commit = fs.read(meson.project_source_root() / 'build-aux' / 'source-commit').strip()
+if source_commit.startswith('$')
+  substitutions.set('screenshots-ref', 'linux-v' + meson.project_version())
+else
+  substitutions.set('screenshots-ref', source_commit)
+endif
+
 desktop_file_in = configure_file(
   input: 'app.tablepro.TablePro.desktop.in.in',
   output: application_id + '.desktop.in',

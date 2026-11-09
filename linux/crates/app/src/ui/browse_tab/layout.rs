@@ -71,6 +71,7 @@ fn more_menu(page_sizes: &[u64]) -> gio::Menu {
     }
     let actions = gio::Menu::new();
     actions.append(Some(&gettext("_Filter Rows")), Some("browse.filter"));
+    actions.append(Some(&gettext("Col_umns…")), Some("grid.columns"));
     actions.append_item(&export);
     actions.append(Some(&gettext("_Count Rows")), Some("browse.count-rows"));
     actions.append(Some(&gettext("_Highlight Rules…")), Some("grid.highlight-rules"));

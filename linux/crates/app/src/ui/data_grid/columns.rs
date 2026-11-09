@@ -11,12 +11,12 @@ use tablepro_core::Value;
 use super::grid_cell::{GridCell, TextAttributes};
 use super::server_sorter::ServerSorter;
 use super::{DataGrid, GridRow, GridSorting, TrackedValues, client_sorter, grid_menu, row_number_column};
-use crate::services::grid::display_text::editable_null_sentinel;
 use crate::services::grid::{
     CellDisplay, ColumnLayout, GridColumn, LayoutSlot, Placement, default_width_chars, header_text, merge_order,
     number_width_chars, sampled_texts, typical_texts, typical_width_chars,
 };
 use crate::ui::handler_guard::HandlerGuard;
+use tablepro_linux_platform::settings::GridPreferences;
 
 /// Rows sampled for a column's opening width.
 const WIDTH_SAMPLE: usize = 200;
@@ -50,6 +50,7 @@ pub struct ColumnPaint {
     pub grid: glib::WeakRef<DataGrid>,
     pub tracked: TrackedValues,
     pub attributes: Rc<TextAttributes>,
+    pub preferences: GridPreferences,
     /// The column lines its values up on the last digit. An untyped column
     /// does once every value it holds is a number.
     pub numbers: Cell<bool>,
@@ -161,6 +162,10 @@ impl DataGrid {
                 grid: self.downgrade(),
                 tracked: tracked.clone(),
                 attributes: attributes.clone(),
+                preferences: self
+                    .config()
+                    .map(|config| config.settings.grid_preferences().clone())
+                    .unwrap_or_default(),
                 numbers: Cell::new(column.display() == CellDisplay::Number),
             });
             built.view_columns.push(self.build_column(&paint, sorting));
@@ -168,9 +173,12 @@ impl DataGrid {
         }
         built.row_numbers = Some(row_number_column::build(self));
         let names: Vec<&str> = columns.iter().map(|column| column.name.as_str()).collect();
+        if let Some(column) = &built.row_numbers {
+            view.append_column(column);
+        }
         for placement in built.layout.arrange(&names) {
             let column = match placement {
-                Placement::RowNumbers => built.row_numbers.clone(),
+                Placement::RowNumbers => None,
                 Placement::Column { index, visible, width } => {
                     built.view_columns.get(index).cloned().inspect(|column| {
                         column.set_visible(visible);
@@ -191,6 +199,7 @@ impl DataGrid {
         self.size_unsized_columns();
         self.watch_layout_changes();
         self.wire_sorting(sorting);
+        self.apply_display_settings();
     }
 
     fn build_column(&self, paint: &Rc<ColumnPaint>, sorting: GridSorting) -> gtk::ColumnViewColumn {
@@ -305,7 +314,6 @@ impl DataGrid {
         let font = value_font(&context);
         let metrics = context.metrics(Some(&font), None);
         let char_px = pango::units_to_double(metrics.approximate_char_width());
-        let null = editable_null_sentinel();
         let mut widths = Vec::new();
         for (paint, view_column) in set.paints.iter().zip(&set.view_columns) {
             let index = paint.column.index;
@@ -350,9 +358,12 @@ impl DataGrid {
                 None => 0,
             };
             let header = header_width(&context, header_text(column)) + indicator;
-            // A NULL the user can replace draws as `<NULL>`, wider than the
-            // fewest cells a column takes.
-            let placeholder = match paint.tracked.tracks_changes() && values.iter().any(|value| value.is_null()) {
+            let preferences = paint.preferences.snapshot();
+            let null = crate::services::grid::display_text::null_text(
+                &preferences.null_display,
+                paint.tracked.tracks_changes(),
+            );
+            let placeholder = match values.iter().any(|value| value.is_null()) {
                 true => drawn_width(&context, &font, &null),
                 false => 0,
             };
@@ -450,12 +461,35 @@ impl DataGrid {
         self.imp().columns.borrow_mut().handlers.extend(handlers);
     }
 
-    /// A column moved, went or came back: the layout keeps it, and a
-    /// search counts only the columns on screen, in their order.
     fn columns_moved(&self) {
         self.keep_filler_last();
+        self.keep_numbers_first();
         self.record_layout();
         self.find_rows_changed();
+    }
+
+    fn keep_numbers_first(&self) {
+        let Some(column) = self.row_numbers_column() else {
+            return;
+        };
+        let view = self.column_view();
+        if view.columns().item(0).as_ref() == Some(column.upcast_ref()) {
+            return;
+        }
+        // GTK finishes moving the header after it announces the column change.
+        glib::idle_add_local_once(glib::clone!(
+            #[weak]
+            view,
+            #[weak]
+            column,
+            move || {
+                if column.column_view().as_ref() == Some(&view)
+                    && view.columns().item(0).as_ref() != Some(column.upcast_ref())
+                {
+                    view.insert_column(0, &column);
+                }
+            }
+        ));
     }
 
     // GTK drops a header dragged onto the filler after it, and lets the
@@ -867,9 +901,8 @@ fn same_names(layout: &ColumnLayout, columns: &[GridColumn]) -> bool {
     names.len() == columns.len() && names.iter().zip(columns).all(|(name, column)| *name == column.name)
 }
 
-/// The font a cell draws its value in: libadwaita's `monospace` class
-/// sets only the family and size of the desktop's monospace font.
-fn value_font(context: &pango::Context) -> pango::FontDescription {
+// Libadwaita's monospace class overrides only family and size.
+pub(super) fn value_font(context: &pango::Context) -> pango::FontDescription {
     let mut monospace = pango::FontDescription::from_string(&adw::StyleManager::default().monospace_font_name());
     monospace.unset_fields(!(pango::FontMask::FAMILY | pango::FontMask::SIZE));
     let mut font = context.font_description().unwrap_or_default();
