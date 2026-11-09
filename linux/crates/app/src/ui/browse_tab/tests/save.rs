@@ -77,7 +77,7 @@ fn a_refresh_counts_what_is_typed_in_an_open_editor() {
 
     harness
         .tab()
-        .activate_action("browse.refresh", None)
+        .activate_action("table.refresh", None)
         .expect("the browse group");
 
     assert_eq!(refreshes.count(), 1);

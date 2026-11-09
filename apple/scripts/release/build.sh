@@ -90,7 +90,9 @@ build_app() {
         profile=("TABLEPRO_PROVISIONING_PROFILE=$name")
     fi
 
-    xcodebuild_project archive-app archive -scheme TablePro -archivePath "$archive" \
+    # One task at a time: the app module's arm64 and x86_64 whole-module compiles at once outgrow
+    # a 7 GB hosted runner and swap, 237 min against 105 min measured in run 42617599195.
+    xcodebuild_project archive-app archive -jobs 1 -scheme TablePro -archivePath "$archive" \
         ${profile[@]+"${profile[@]}"}
     # -exportArchive refuses a generic archive, which is what any other installed product makes it.
     [ "$(plutil -extract ApplicationProperties.ApplicationPath raw -o - "$archive/Info.plist" 2> /dev/null)" \
