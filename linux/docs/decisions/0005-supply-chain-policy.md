@@ -75,6 +75,6 @@ sqlx takes MySQL CA certificates only as PEM bytes and has no hook for a rustls 
 
 ### Command-line output formats (`tablepro-cli`)
 
-The `tablepro` command prints rows as csv, tsv, json, jsonl and a padded table, from the JSON values the MCP server sends ([core ADR 0017](../../../core/docs/decisions/0017-command-line.md)). The `csv` crate quotes per writer, not per field, so it cannot write NULL as an empty field and an empty string as `""` in one record, which the format promises on every platform. `tablepro_core::export` renders typed driver values, which the command never holds. `unicode-width` measures the table's columns.
+The `tablepro` command prints rows as csv, tsv, json, jsonl and a padded table, from the JSON values the MCP server sends ([core ADR 0018](../../../core/docs/decisions/0018-command-line.md)). The `csv` crate quotes per writer, not per field, so it cannot write NULL as an empty field and an empty string as `""` in one record, which the format promises on every platform. `tablepro_core::export` renders typed driver values, which the command never holds. `unicode-width` measures the table's columns.
 
 **Watch list**: a `csv` writer option that quotes an empty field.

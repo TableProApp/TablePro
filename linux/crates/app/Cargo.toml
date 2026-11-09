@@ -101,7 +101,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 # Cells a value takes in the grid's monospace font.
 unicode-width.workspace = true
-uuid.workspace = true
+uuid = { workspace = true, features = ["v5"] }
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
 # Counts grouped the way the user's locale groups digits.
 icu_decimal = { version = "2.3", features = ["alloc"] }

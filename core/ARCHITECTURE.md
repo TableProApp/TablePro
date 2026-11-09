@@ -60,7 +60,7 @@ Rules, enforced by review:
 - Each `drivers/<engine>` crate depends on `core`, and on `net` when it speaks TLS or dials TCP. **Drivers never depend on each other, on `session` or on `ssh`.**
 - `session` depends on `core`, `net`, `ssh` and `storage`, and on no driver outside its tests: it reaches drivers through `DriverRegistry`, and SSH through the `SshTunnels` the app passes in. Its Docker tests take `tablepro-driver-postgres`, `tablepro-driver-redis` and `tablepro-driver-mongodb` as dev-dependencies.
 - `mcp` depends on `core`, `session` and `storage`, and on no driver outside its tests. It reaches the windows and the user through the `McpHost` trait the app implements.
-- `cli` depends on no workspace crate: it speaks to the app's MCP server over HTTP and reaches the port, the token and the app's state through the `Host` trait the app implements ([0017](docs/decisions/0017-command-line.md)).
+- `cli` depends on no workspace crate: it speaks to the app's MCP server over HTTP and reaches the port, the token and the app's state through the `Host` trait the app implements ([0018](docs/decisions/0018-command-line.md)).
 - `ai` depends on `core` and `net`. It speaks the providers' protocols and builds the prompts from what the app hands it; the app decides what a prompt may carry.
 - `account` depends on `core` and `storage`. It reaches the browser, the keyring and the machine ID through what the app passes in ([0016](docs/decisions/0016-tablepro-accounts.md)).
 - `ffi` stands in for an app outside Rust: it names every driver and passes the host's services in. No other core crate depends on it.

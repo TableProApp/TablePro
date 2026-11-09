@@ -55,6 +55,16 @@ internal final class NavigationSidebarViewController: NSViewController {
 
     override func loadView() {
         view = NSView()
+        // On the pane root and not the split below it, so it reaches the titlebar band too.
+        let backdrop = SplitItemBackdrop.makeView()
+        backdrop.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(backdrop)
+        NSLayoutConstraint.activate([
+            backdrop.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backdrop.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            backdrop.topAnchor.constraint(equalTo: view.topAnchor),
+            backdrop.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
 
         _ = railController.view
         railController.isStripShown = false

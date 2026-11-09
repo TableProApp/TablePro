@@ -831,3 +831,34 @@ mod real_keys {
         assert_eq!(layouts.saved("t").widths.get("name"), None);
     }
 }
+
+#[gtk4::test]
+fn null_text_resizes_automatic_columns_and_preserves_manual_widths() {
+    for editable in [false, true] {
+        let columns = two_text_columns();
+        let spec = if editable {
+            GridSpec::table(columns)
+        } else {
+            GridSpec::results(columns)
+        };
+        let values = vec![vec![Value::Int(1), Value::Null]];
+        let rows = if editable { persisted(&values) } else { results(&values) };
+        let grid = Grid::build(spec, rows);
+        let settings = grid.grid.config().expect("configured grid").settings.clone();
+        let column = data_column(&grid, 1);
+        let original = column.fixed_width();
+
+        settings
+            .set_null_display("value is unavailable")
+            .expect("store long placeholder");
+        wait_until(WAIT, || column.fixed_width() > original).expect("automatic column grows");
+        wait_until(WAIT, || {
+            shows_whole(grid.cell_at(0, 1).display().expect("cell display"))
+        })
+        .expect("the whole placeholder fits");
+        column.set_fixed_width(260);
+        settings.set_null_display("none").expect("store short placeholder");
+        drain_main_context();
+        assert_eq!(column.fixed_width(), 260, "the chosen width stays");
+    }
+}

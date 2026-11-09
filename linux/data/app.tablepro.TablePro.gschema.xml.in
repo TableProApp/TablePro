@@ -71,6 +71,30 @@
       <description>Shade every other row of a data grid so a row reads across its columns.</description>
     </key>
 
+    <key name="show-row-numbers" type="b">
+      <default>true</default>
+      <summary>Show row numbers</summary>
+      <description>Show each row's number in the first column of a data grid.</description>
+    </key>
+
+    <key name="grid-row-height" type="s">
+      <choices>
+        <choice value="compact"/>
+        <choice value="normal"/>
+        <choice value="comfortable"/>
+        <choice value="spacious"/>
+      </choices>
+      <default>"normal"</default>
+      <summary>Data grid row height</summary>
+      <description>How much room a data grid row takes around its text.</description>
+    </key>
+
+    <key name="null-display" type="s">
+      <default>"NULL"</default>
+      <summary>Text for a NULL value</summary>
+      <description>What a data grid cell shows for a value that is NULL.</description>
+    </key>
+
     <key name="save-query-history" type="b">
       <default>true</default>
       <summary>Save query history</summary>
@@ -104,9 +128,9 @@
     </key>
 
     <key name="style-scheme" type="s">
-      <default>'Adwaita'</default>
+      <default>''</default>
       <summary>Editor style scheme</summary>
-      <description>GtkSourceView style scheme id for the SQL editor.</description>
+      <description>GtkSourceView style scheme id for the SQL editor. Empty follows the system light or dark style.</description>
     </key>
 
     <key name="vim-keybindings" type="b">

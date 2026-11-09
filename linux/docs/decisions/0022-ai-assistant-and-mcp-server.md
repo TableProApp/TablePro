@@ -1,6 +1,6 @@
 # 0022: An AI assistant and a local MCP server
 
-- **Status**: Accepted; the level of connections saved before it existed superseded by 0033; the token's readers amended by 0044
+- **Status**: Accepted; the level of connections saved before it existed superseded by 0033; the token's readers amended by 0045
 - **Date**: 2026-10-23
 
 ## Context
