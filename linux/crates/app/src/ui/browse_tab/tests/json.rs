@@ -1,7 +1,6 @@
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
 use libadwaita as adw;
-use libadwaita::prelude::*;
 use tablepro_core::DriverError;
 use tablepro_test_support::FakeReply;
 

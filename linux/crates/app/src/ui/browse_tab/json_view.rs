@@ -247,7 +247,7 @@ impl State {
             cells: None,
         };
         copy_payload(&self.view, payload, |message| {
-            self.toasts.add_toast(adw::Toast::new(message))
+            self.toasts.add_toast(crate::ui::plain_toast(message))
         });
     }
 
