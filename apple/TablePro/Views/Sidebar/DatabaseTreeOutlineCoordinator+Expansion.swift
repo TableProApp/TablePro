@@ -30,7 +30,7 @@ extension DatabaseTreeOutlineCoordinator {
             case .objectKindSection(let kind):
                 let hasMatches = flatItemCount(for: kind) > 0
                 setExpanded(sectionNode, viewModel?.effectiveExpanded(kind: kind, hasMatches: hasMatches) ?? true)
-                if outlineView.isItemExpanded(sectionNode) { restorePartitionExpansion(under: sectionNode) }
+                if outlineView.isItemExpanded(sectionNode) { restoreTableExpansion(under: sectionNode) }
             case .foldersSection:
                 setExpanded(sectionNode, searching || (viewModel?.isFoldersExpanded ?? true))
                 if outlineView.isItemExpanded(sectionNode) { restoreFolderExpansion(under: sectionNode) }
@@ -116,27 +116,35 @@ extension DatabaseTreeOutlineCoordinator {
         )
     }
 
-    /// Both a partitioned table and a subpartitioned partition of one are restored here. On
-    /// PostgreSQL a subpartitioned partition is a relation of its own and loads its own children, so
-    /// it is recorded and re-expanded under the same key a table uses.
-    private func restorePartitionExpansion(under parent: DatabaseTreeNode) {
-        guard showsPartitions, searchText.isEmpty, let outlineView = self.outlineView, let windowState
-        else { return }
+    /// A table, its detail groups and a subpartitioned partition are restored here. On PostgreSQL a
+    /// subpartitioned partition is a relation of its own and loads its own children, so it is
+    /// recorded and re-expanded under the same key a table uses. A section can hold 17,000 tables,
+    /// so the names the window recorded are checked before any key is built.
+    private func restoreTableExpansion(under parent: DatabaseTreeNode) {
+        guard showsPartitions || showsTableDetails, searchText.isEmpty,
+              let outlineView = self.outlineView, let windowState else { return }
+        let expandedNames = Set(windowState.expandedTreeTables.map { $0.table })
+        guard !expandedNames.isEmpty else { return }
         for node in resolvedChildren(of: parent) {
-            guard node.isExpandable, let ref = expandableTableRef(of: node) else { continue }
-            let key = DatabaseTableKey(database: ref.database ?? "", schema: ref.schema, table: ref.table.name)
-            guard windowState.expandedTreeTables.contains(key) else { continue }
+            if case .tableDetailGroup(let group) = node.kind {
+                guard windowState.expandedTreeTableDetailGroups.contains(group.expansionKey) else { continue }
+            } else {
+                guard let ref = expandableTableRef(of: node), expandedNames.contains(ref.table.name),
+                      node.isExpandable(showsPartitions: showsPartitions, showsTableDetails: showsTableDetails),
+                      windowState.expandedTreeTables.contains(DatabaseTableKey(ref))
+                else { continue }
+            }
             setExpanded(node, true)
             guard outlineView.isItemExpanded(node) else { continue }
             triggerLoad(for: node)
-            restorePartitionExpansion(under: node)
+            restoreTableExpansion(under: node)
         }
     }
 
     private func expandableTableRef(of node: DatabaseTreeNode) -> DatabaseTreeTableRef? {
         switch node.kind {
         case .table(let ref):
-            return ref.table.type == .partitionedTable ? ref : nil
+            return ref
         case .partition(let ref):
             return ref.tableRef
         default:
@@ -145,11 +153,10 @@ extension DatabaseTreeOutlineCoordinator {
     }
 
     private func recordTableExpansion(_ ref: DatabaseTreeTableRef, expanded: Bool) {
-        let key = DatabaseTableKey(database: ref.database ?? "", schema: ref.schema, table: ref.table.name)
         if expanded {
-            windowState?.expandedTreeTables.insert(key)
+            windowState?.expandedTreeTables.insert(DatabaseTableKey(ref))
         } else {
-            windowState?.expandedTreeTables.remove(key)
+            windowState?.expandedTreeTables.remove(DatabaseTableKey(ref))
         }
     }
 
@@ -162,7 +169,7 @@ extension DatabaseTreeOutlineCoordinator {
             guard let ref = folderNode.folderRef else { continue }
             let collapsed = windowState?.collapsedTableFolders.contains(ref.folder.id) ?? false
             setExpanded(folderNode, searching || !collapsed)
-            if outlineView.isItemExpanded(folderNode) { restorePartitionExpansion(under: folderNode) }
+            if outlineView.isItemExpanded(folderNode) { restoreTableExpansion(under: folderNode) }
         }
     }
 
@@ -178,7 +185,7 @@ extension DatabaseTreeOutlineCoordinator {
                 stored: windowState?.isTreeObjectGroupExpanded(group) ?? group.kind.isExpandedByDefault
             )
             setExpanded(groupNode, expanded)
-            if outlineView.isItemExpanded(groupNode) { restorePartitionExpansion(under: groupNode) }
+            if outlineView.isItemExpanded(groupNode) { restoreTableExpansion(under: groupNode) }
         }
     }
 
@@ -197,7 +204,7 @@ extension DatabaseTreeOutlineCoordinator {
         case .foldersSection:
             restoreFolderExpansion(under: node)
         case .objectKindSection, .containerObjectKindSection, .tableFolder, .table, .partition, .tableDetailGroup:
-            restorePartitionExpansion(under: node)
+            restoreTableExpansion(under: node)
         case .recentSection, .recentTable, .temporarySection, .temporaryTable, .database, .routine, .trigger,
              .userType, .status, .redisKeysSection, .redisNode, .tableDetail:
             break
@@ -285,6 +292,8 @@ extension DatabaseTreeOutlineCoordinator {
             else { return }
             loadObjects(database: database, schema: schema)
         case .table(let ref):
+            // With Table Details on, partitions load with their own group rather than with the table.
+            guard !showsTableDetails else { return }
             loadPartitions(ref)
         case .partition(let ref):
             loadPartitions(ref.tableRef ?? ref.parent)

@@ -483,6 +483,7 @@ struct SidebarView: View {
             showRecentTables: settingsManager.general.showRecentTables,
             showSystemContainers: settingsManager.general.showSystemContainers,
             showsPartitions: settingsManager.general.showPartitions,
+            showsTableDetails: settingsManager.general.showTableDetails,
             rowSizePreference: settingsManager.general.sidebarRowSize
         )
     }

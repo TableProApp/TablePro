@@ -38,6 +38,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     internal var showRecentTables = true
     internal var showSystemContainers = false
     internal var showsPartitions = true
+    internal var showsTableDetails = false
     private var rowSize: SidebarRowSize = .medium
 
     internal var nodeCache: [String: DatabaseTreeNode] = [:]
@@ -218,6 +219,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             || showRecentTables != view.showRecentTables
             || showSystemContainers != view.showSystemContainers
             || showsPartitions != view.showsPartitions
+            || showsTableDetails != view.showsTableDetails
             || rowSize != view.resolvedRowSize
 
         searchText = view.searchText
@@ -229,6 +231,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         showRecentTables = view.showRecentTables
         showSystemContainers = view.showSystemContainers
         showsPartitions = view.showsPartitions
+        showsTableDetails = view.showsTableDetails
         rowSize = view.resolvedRowSize
 
         if !hasRenderedOnce || activeChanged {
@@ -779,18 +782,12 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDataSource {
     }
 
     /// `DatabaseTreeNode.isExpandable` answers from the node's kind alone and has no settings to
-    /// read, so the hide-partitions gate has to be applied here as well as in the node builder.
-    /// Without it a hidden table kept a disclosure triangle that opened on nothing.
+    /// read. Whether a table or a partition discloses also follows the Partitions and Table Details
+    /// options, so the gate reads the node's options rule. Without it a hidden set of children left
+    /// a disclosure triangle that opened on nothing.
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
-        guard let node = item as? DatabaseTreeNode, node.isExpandable else { return false }
-        switch node.kind {
-        case .table(let ref) where ref.table.type == .partitionedTable:
-            return showsPartitions
-        case .partition:
-            return showsPartitions
-        default:
-            return true
-        }
+        guard let node = item as? DatabaseTreeNode else { return false }
+        return node.isExpandable(showsPartitions: showsPartitions, showsTableDetails: showsTableDetails)
     }
 }
 

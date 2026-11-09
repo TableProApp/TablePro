@@ -63,6 +63,7 @@ extension DatabaseTreeOutlineCoordinator {
         case .schema(let database, let schema):
             return objectNodes(database: database, schema: schema)
         case .table(let ref):
+            if showsTableDetails { return tableDetailGroupNodes(of: ref) }
             guard showsPartitions, ref.table.type == .partitionedTable else { return [] }
             return partitionNodes(of: ref, parentId: DatabaseTreeNode.tableId(ref))
         case .partition(let ref):

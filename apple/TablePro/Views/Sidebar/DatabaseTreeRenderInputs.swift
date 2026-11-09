@@ -79,6 +79,7 @@ struct DatabaseTreeRenderInputs: Equatable {
     let types: [ObjectsKey: Rows<UserDefinedTypeInfo>]
     let currency: [ObjectsKey: Currency]
     let partitions: [DatabaseTreeMetadataService.PartitionsKey: Rows<PartitionInfo>]
+    let tableDetails: [DatabaseTreeMetadataService.TableDetailsKey: MetadataLoadState<TableDetailList>]
     let listings: [DatabaseKey: Listing]
     let listsRevision: Int
     let catalogGeneration: Int
@@ -133,6 +134,7 @@ struct DatabaseTreeRenderInputs: Equatable {
         self.types = types
         self.currency = currency
         self.partitions = Self.slice(treeMetadata.partitionsState, where: { $0.connectionId == connectionId }) { Rows($0) }
+        self.tableDetails = Self.slice(treeMetadata.tableDetailsState, where: { $0.connectionId == connectionId }) { $0 }
         self.listings = listings
         self.listsRevision = treeMetadata.listsRevision(for: connectionId)
         self.catalogGeneration = schemaService.generationToken(for: connectionId)

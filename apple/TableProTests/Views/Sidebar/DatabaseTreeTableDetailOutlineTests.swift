@@ -22,7 +22,7 @@ struct DatabaseTreeTableDetailOutlineTests {
 
     private let service = DatabaseTreeMetadataService.shared
 
-    private func makeFixture() throws -> Fixture {
+    private func makeFixture(showsTableDetails: Bool = true, showsPartitions: Bool = true) throws -> Fixture {
         let connection = TestFixtures.makeConnection(type: .pglite)
         let driver = CatalogReadCountingDriver(connection: connection)
         driver.columnsByTable["orders"] = [
@@ -58,6 +58,8 @@ struct DatabaseTreeTableDetailOutlineTests {
         coordinator.connectionId = connection.id
         coordinator.databaseType = .pglite
         coordinator.windowState = windowState
+        coordinator.showsTableDetails = showsTableDetails
+        coordinator.showsPartitions = showsPartitions
         outlineView.dataSource = coordinator
         outlineView.delegate = coordinator
         coordinator.attach(outlineView: outlineView)
@@ -259,6 +261,146 @@ struct DatabaseTreeTableDetailOutlineTests {
         try await waitUntil { detailState(fixture, .columns).value != nil }
 
         #expect(fixture.driver.detailReads == ["columns:orders", "columns:orders"])
+        await tearDown(fixture)
+    }
+
+    private func tableNode(_ fixture: Fixture, type: TableInfo.TableType = .table) -> DatabaseTreeNode {
+        let ref = orders(fixture, type: type)
+        return fixture.coordinator.node(id: DatabaseTreeNode.tableId(ref), kind: .table(ref))
+    }
+
+    private func groupKinds(_ fixture: Fixture, of node: DatabaseTreeNode) -> [TableDetailGroupKind] {
+        fixture.coordinator.resolvedChildren(of: node).compactMap { child in
+            guard case .tableDetailGroup(let group) = child.kind else { return nil }
+            return group.kind
+        }
+    }
+
+    private func isExpandable(_ fixture: Fixture, _ node: DatabaseTreeNode) -> Bool {
+        fixture.coordinator.outlineView(fixture.outlineView, isItemExpandable: node)
+    }
+
+    /// What `refresh()` does for these rows: drop every built child, reload, and put the saved
+    /// disclosure back. The root is the flat shape's Tables section with one table under it.
+    private func reloadFlat(_ fixture: Fixture, table: DatabaseTreeNode) {
+        let section = fixture.coordinator.node(
+            id: DatabaseTreeNode.objectKindSectionId(.table), kind: .objectKindSection(.table)
+        )
+        fixture.coordinator.childrenCache = ["": [section], section.id: [table]]
+        fixture.outlineView.reloadData()
+        fixture.coordinator.applyDesiredExpansion()
+    }
+
+    @Test("With Table Details off, a plain table has no triangle and a partitioned one lists partitions as before")
+    func detailsOffKeepsTodaysTree() async throws {
+        let fixture = try makeFixture(showsTableDetails: false)
+        let partitionedId = DatabaseTreeNode.tableId(orders(fixture, type: .partitionedTable))
+        let partitioned = tableNode(fixture, type: .partitionedTable)
+        let childIds = fixture.coordinator.resolvedChildren(of: partitioned).map { $0.id }
+
+        #expect(!isExpandable(fixture, tableNode(fixture)))
+        #expect(isExpandable(fixture, partitioned))
+        #expect(childIds == [DatabaseTreeNode.statusId(parentId: partitionedId, status: .loading)])
+        await tearDown(fixture)
+    }
+
+    @Test("With Table Details on, a table lists the groups its engine and relation type support")
+    func detailsOnListsGroups() async throws {
+        let fixture = try makeFixture()
+        let table = tableNode(fixture)
+
+        #expect(isExpandable(fixture, table))
+        #expect(groupKinds(fixture, of: table) == [.columns, .indexes, .foreignKeys, .checks, .triggers])
+        #expect(groupKinds(fixture, of: tableNode(fixture, type: .view)) == [.columns])
+        #expect(groupKinds(fixture, of: tableNode(fixture, type: .materializedView)) == [.columns, .indexes])
+        #expect(!isExpandable(fixture, tableNode(fixture, type: .sequence)))
+        await tearDown(fixture)
+    }
+
+    @Test("A partitioned table's partitions move into a last Partitions group, shown only while Partitions is on")
+    func partitionsGroupFollowsItsOption() async throws {
+        let shown = try makeFixture()
+        let hidden = try makeFixture(showsPartitions: false)
+        let hiddenTable = tableNode(hidden, type: .partitionedTable)
+
+        #expect(groupKinds(shown, of: tableNode(shown, type: .partitionedTable)).last == .partitions)
+        #expect(isExpandable(hidden, hiddenTable))
+        #expect(!groupKinds(hidden, of: hiddenTable).contains(.partitions))
+        await tearDown(shown)
+        await tearDown(hidden)
+    }
+
+    @Test("Opening a table reads nothing until one of its groups opens")
+    func openingATableReadsNothing() async throws {
+        let fixture = try makeFixture()
+        let table = tableNode(fixture, type: .partitionedTable)
+        showAtRoot(fixture, [table])
+
+        fixture.outlineView.expandItem(table)
+        let columns = try #require(fixture.coordinator.resolvedChildren(of: table).first)
+        fixture.outlineView.expandItem(columns)
+        try await waitUntil { detailState(fixture, .columns).value != nil }
+
+        let partitions = service.partitionsLoadState(
+            connectionId: fixture.connection.id, database: fixture.connection.database, schema: "public", table: "orders"
+        )
+        #expect(fixture.driver.detailReads == ["columns:orders"])
+        #expect(partitions.erased == .idle)
+        await tearDown(fixture)
+    }
+
+    @Test("An open table and group come back after a reload, and the group reads its list")
+    func openGroupsAreRestored() async throws {
+        let fixture = try makeFixture()
+        let table = tableNode(fixture)
+        let columns = group(fixture, .columns)
+        fixture.windowState.expandedTreeTables = [DatabaseTableKey(orders(fixture))]
+        fixture.windowState.expandedTreeTableDetailGroups = [columns.expansionKey]
+
+        reloadFlat(fixture, table: table)
+
+        #expect(fixture.outlineView.isItemExpanded(table))
+        #expect(fixture.outlineView.isItemExpanded(node(fixture, columns)))
+        try await waitUntil { detailState(fixture, .columns).value != nil }
+        #expect(fixture.driver.detailReads == ["columns:orders"])
+        await tearDown(fixture)
+    }
+
+    @Test("A detail list landing changes what the outline draws, and another connection's does not")
+    func landingListMovesTheRenderInputs() async throws {
+        let fixture = try makeFixture()
+        let other = try makeFixture()
+        let before = fixture.coordinator.currentRenderInputs()
+
+        await load(other, .columns)
+        #expect(fixture.coordinator.currentRenderInputs() == before)
+
+        await load(fixture, .columns)
+        #expect(fixture.coordinator.currentRenderInputs() != before)
+        await tearDown(fixture)
+        await tearDown(other)
+    }
+
+    @Test("Turning Table Details off shows the partitions again, and turning it on brings the open group back")
+    func togglingKeepsTheOpenGroup() async throws {
+        let fixture = try makeFixture()
+        let ref = orders(fixture, type: .partitionedTable)
+        let table = tableNode(fixture, type: .partitionedTable)
+        let columns = group(fixture, .columns, type: .partitionedTable)
+        fixture.windowState.expandedTreeTables = [DatabaseTableKey(ref)]
+        fixture.windowState.expandedTreeTableDetailGroups = [columns.expansionKey]
+        reloadFlat(fixture, table: table)
+        #expect(fixture.outlineView.isItemExpanded(node(fixture, columns)))
+
+        fixture.coordinator.showsTableDetails = false
+        reloadFlat(fixture, table: table)
+        let plainIds = fixture.coordinator.resolvedChildren(of: table).map { $0.id }
+        #expect(plainIds == [DatabaseTreeNode.statusId(parentId: DatabaseTreeNode.tableId(ref), status: .loading)])
+        #expect(fixture.windowState.expandedTreeTableDetailGroups == [columns.expansionKey])
+
+        fixture.coordinator.showsTableDetails = true
+        reloadFlat(fixture, table: table)
+        #expect(fixture.outlineView.isItemExpanded(node(fixture, columns)))
         await tearDown(fixture)
     }
 }

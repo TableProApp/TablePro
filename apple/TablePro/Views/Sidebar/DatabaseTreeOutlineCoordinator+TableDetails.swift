@@ -8,6 +8,19 @@ import Foundation
 /// The rows under a table while Table Details is on: one group per kind of detail, and under each
 /// group the list its engine read for that table.
 extension DatabaseTreeOutlineCoordinator {
+    /// What a table lists follows its relation type and what its engine can read.
+    internal func tableDetailGroupNodes(of ref: DatabaseTreeTableRef) -> [DatabaseTreeNode] {
+        TableDetailGroupResolver.groups(
+            for: ref.table.type,
+            capabilities: TableDetailCapabilities(databaseType: databaseType),
+            showsPartitions: showsPartitions
+        )
+        .map { kind in
+            let group = DatabaseTreeTableDetailGroupRef(table: ref, kind: kind)
+            return node(id: DatabaseTreeNode.tableDetailGroupId(group), kind: .tableDetailGroup(group))
+        }
+    }
+
     internal func tableDetailNodes(in group: DatabaseTreeTableDetailGroupRef) -> [DatabaseTreeNode] {
         let groupId = DatabaseTreeNode.tableDetailGroupId(group)
         let ref = group.table
