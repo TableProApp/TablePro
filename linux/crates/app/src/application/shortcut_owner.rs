@@ -1,5 +1,6 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ShortcutOwner {
+    WorkspaceShell,
     BrowseTab,
     QuickOpen,
     /// A data grid's column view, ahead of the list's own key bindings.

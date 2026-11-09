@@ -87,6 +87,12 @@ A tab belongs to its session, and a session to one window ([decisions/0028-sessi
 - Dropped outside every window, `create-window` declines a new window and the tab goes back to that position ([toolkit-workarounds.md](toolkit-workarounds.md#a-tab-dropped-outside-every-window)).
 - `ReturnTab` runs from the window's queue, after libadwaita finishes attaching the page. A tab whose session closed while it was out closes where it is; the session's close already asked about it, and its view no longer holds the page to close it.
 
+## Grid preferences
+
+`AppSettings` owns one `GridPreferences` object. It reads the grid keys from GSettings and announces each changed snapshot. Every grid holds that object through its settings and follows its change signal. Preferences rows bind directly to GSettings, including both directions for choices stored as strings.
+
+The snapshot belongs to its settings backend, so isolated test settings cannot change another grid. A display change redraws the existing row slots and resizes automatic columns. It keeps row selection, user column widths and active editor drafts. The formatting helpers receive display choices explicitly and keep no global preference state.
+
 ## The SQL editor
 
 `SqlEditor` (`crates/app/src/ui/editor/`) runs SQL on a connection of its own and lists what each statement returned.

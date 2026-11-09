@@ -10260,6 +10260,17 @@ msgid "Export results to CSV, JSON, SQL, Excel, Markdown, HTML and XML"
 msgstr "Xuất kết quả sang CSV, JSON, SQL, Excel, Markdown, HTML và XML"
 
 #: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid ""
+"TablePro works fully without an account or a license. A license covers 3 "
+"devices at a time, Mac or Linux. From the 30th day you use TablePro without "
+"one, a message in the window asks you to buy one, at most once every 90 days."
+msgstr ""
+"TablePro hoạt động đầy đủ mà không cần tài khoản hay giấy phép. Một giấy phép"
+" dùng được trên 3 thiết bị cùng lúc, Mac hoặc Linux. Từ ngày thứ 30 bạn dùng "
+"TablePro mà chưa có giấy phép, một thông báo trong cửa sổ sẽ đề nghị bạn mua,"
+" nhiều nhất 90 ngày một lần."
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
 msgid "Browse and edit table rows"
 msgstr "Duyệt và sửa các dòng của bảng"
 

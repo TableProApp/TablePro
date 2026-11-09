@@ -81,6 +81,12 @@
       <object class="AdwShortcutsSection" id="section-tabs">
         <property name="title" translatable="yes">Tabs</property>
         <child>
+          <object class="AdwShortcutsItem" id="win-refresh-page">
+            <property name="title" translatable="yes">Refresh Tab</property>
+            <property name="accelerator">F5 &lt;Primary&gt;r</property>
+          </object>
+        </child>
+        <child>
           <object class="AdwShortcutsItem" id="win-new-editor-tab">
             <property name="title" translatable="yes">New SQL Editor Tab</property>
             <property name="action-name">win.new-editor-tab</property>
