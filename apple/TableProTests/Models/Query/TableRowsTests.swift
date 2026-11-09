@@ -772,3 +772,19 @@ struct TableRowsColumnTypeNamesTests {
         #expect(table.columnTypeNames == ["id": "INT"])
     }
 }
+
+struct TableRowsFilterPickerTests {
+    @Test("Only an ENUM column offers its values as a filter pop-up; a SET value can hold several")
+    func setColumnsAreLeftToTheTextField() {
+        let table = TableRows(
+            columns: ["status", "perms", "name"],
+            columnTypes: [
+                .enumType(rawType: "ENUM", values: ["open", "closed"]),
+                .set(rawType: "SET", values: ["read", "write"]),
+                .text(rawType: nil),
+            ],
+            columnEnumValues: ["status": ["open", "closed"], "perms": ["read", "write"]]
+        )
+        #expect(table.filterPickerValues == ["status": ["open", "closed"]])
+    }
+}
