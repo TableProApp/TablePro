@@ -1,11 +1,13 @@
 import SwiftUI
 
-// The fix SQL is the pane's main content: the facts sit beside it, or under it in one line each when the pane is
-// too narrow, so they never push it out of view.
+// The fix SQL is the pane's main content. The finding's detail and facts sit beside it, or under it in a capped
+// scrolling area when the pane is too narrow, so they never push it out of view.
 struct TableHealthPreviewPane: View {
     @ObservedObject var viewModel: TableHealthViewModel
     let databaseType: DatabaseType
     let actions: TableHealthActions
+
+    @State private var aboutHeight: CGFloat = 0
 
     private struct Fact: Identifiable {
         let id: String
@@ -29,7 +31,6 @@ struct TableHealthPreviewPane: View {
 
     private func single(_ finding: TableHealthFinding) -> some View {
         let fix = TableHealthViewModel.hasFix(finding) ? finding.fixSQL : nil
-        let facts = Self.facts(of: finding)
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Text(verbatim: finding.qualifiedName)
@@ -48,33 +49,32 @@ struct TableHealthPreviewPane: View {
                 }
                 .disabled(fix == nil)
             }
-            Text(verbatim: finding.detail)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .help(finding.detail)
-            if facts.isEmpty {
-                fixArea(fix, id: finding.id)
-            } else {
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 12) {
-                        fixArea(fix, id: finding.id)
-                            .frame(
-                                minWidth: 0,
-                                idealWidth: TableHealthLayoutMetrics.previewSQLIdealWidth,
-                                maxWidth: .infinity,
-                                maxHeight: .infinity
-                            )
-                        ScrollView {
-                            factsColumn(facts)
-                        }
-                        .frame(width: TableHealthLayoutMetrics.previewFactsWidth)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 12) {
+                    fixArea(fix, id: finding.id)
+                        .frame(
+                            minWidth: 0,
+                            idealWidth: TableHealthLayoutMetrics.previewSQLIdealWidth,
+                            maxWidth: .infinity,
+                            maxHeight: .infinity
+                        )
+                    ScrollView {
+                        about(finding)
                     }
-                    VStack(alignment: .leading, spacing: 8) {
-                        fixArea(fix, id: finding.id)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        factsGrid(facts)
+                    .frame(width: TableHealthLayoutMetrics.previewAboutWidth)
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    fixArea(fix, id: finding.id)
+                        .frame(
+                            maxWidth: .infinity,
+                            minHeight: TableHealthLayoutMetrics.previewSQLMinimumHeight,
+                            maxHeight: .infinity
+                        )
+                    // A ScrollView takes all the height it is offered, so it gets the content's height up to the cap.
+                    ScrollView {
+                        about(finding)
                     }
+                    .frame(height: min(aboutHeight, TableHealthLayoutMetrics.previewAboutMaximumHeight))
                 }
             }
             if fix != nil {
@@ -100,38 +100,32 @@ struct TableHealthPreviewPane: View {
         }
     }
 
-    // Each label over its value, which wraps: a definition is longer than the column.
-    private func factsColumn(_ facts: [Fact]) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(facts) { fact in
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(verbatim: fact.label)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(verbatim: fact.value)
-                        .font(.callout)
-                        .fixedSize(horizontal: false, vertical: true)
+    // The whole detail: a warning such as the lock a type change takes must not be cut off.
+    private func about(_ finding: TableHealthFinding) -> some View {
+        let facts = Self.facts(of: finding)
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(verbatim: finding.detail)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if !facts.isEmpty {
+                Form {
+                    ForEach(facts) { fact in
+                        LabeledContent(fact.label) {
+                            Text(verbatim: fact.value)
+                        }
+                    }
                 }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .textSelection(.enabled)
-    }
-
-    private func factsGrid(_ facts: [Fact]) -> some View {
-        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 2) {
-            ForEach(facts) { fact in
-                GridRow {
-                    Text(verbatim: fact.label)
-                        .foregroundStyle(.secondary)
-                    Text(verbatim: fact.value)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .help(fact.value)
-                }
+                .formStyle(.columns)
             }
         }
         .font(.callout)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .textSelection(.enabled)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { height in
+            aboutHeight = height
+        }
     }
 
     private static func facts(of finding: TableHealthFinding) -> [Fact] {

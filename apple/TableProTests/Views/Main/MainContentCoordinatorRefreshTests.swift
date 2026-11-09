@@ -452,6 +452,61 @@ struct MainContentCoordinatorRefreshTests {
         #expect(model.ledger.isIgnored(logs))
     }
 
+    @Test("A table rename refreshes the Table Health tabs on its database and no other")
+    func tableRenameRefreshesTableHealth() async throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let shop = RefreshLeaseRecorder()
+        let archive = RefreshLeaseRecorder()
+        let shopModel = try makeTableHealthTab("shop", metadata: shop, coordinator: coordinator, tabManager: tabManager)
+        let archiveModel = try makeTableHealthTab("archive", metadata: archive, coordinator: coordinator, tabManager: tabManager)
+        await shopModel.refresh()
+        await archiveModel.refresh()
+
+        coordinator.applyObjectChange(DatabaseObjectChange(
+            connectionId: coordinator.connectionId,
+            scope: DatabaseScope(connectionId: coordinator.connectionId, database: "shop", schema: "public"),
+            name: "orders",
+            kind: .renamed(to: "orders_v2")
+        ))
+
+        try await waitUntil { shop.databases.count == 2 }
+        #expect(archive.databases == ["archive"])
+    }
+
+    @Test("A schema rename refreshes the Table Health tabs on its database")
+    func schemaRenameRefreshesTableHealth() async throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let shop = RefreshLeaseRecorder()
+        let model = try makeTableHealthTab("shop", metadata: shop, coordinator: coordinator, tabManager: tabManager)
+        await model.refresh()
+
+        coordinator.applyContainerChange(DatabaseContainerChange(
+            connectionId: coordinator.connectionId,
+            container: .schema(database: "shop", schema: "billing"),
+            kind: .renamed(to: "finance")
+        ))
+
+        try await waitUntil { shop.databases.count == 2 }
+    }
+
+    private func makeTableHealthTab(
+        _ database: String,
+        metadata: RefreshLeaseRecorder,
+        coordinator: MainContentCoordinator,
+        tabManager: QueryTabManager
+    ) throws -> TableHealthViewModel {
+        let tabId = try #require(tabManager.addTableHealthTab(databaseName: database))
+        let model = TableHealthViewModel(
+            connectionId: coordinator.connectionId,
+            provider: TableHealthProviderFactory.provider(for: .postgresql),
+            history: RefreshUnusedHistory(),
+            metadata: metadata,
+            database: { database }
+        )
+        coordinator.tableHealthModels[tabId] = model
+        return model
+    }
+
     @Test("Refresh on Users & Roles reloads the principals through the tab's own handler")
     func refreshOnUsersRolesReloads() {
         let (coordinator, tabManager) = makeCoordinator()

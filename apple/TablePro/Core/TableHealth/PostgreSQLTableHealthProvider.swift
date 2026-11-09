@@ -3,6 +3,10 @@ import Foundation
 // scripts/probes/check-table-health-catalogs.sh runs these literals against real servers: keep them free of interpolation.
 // Every query leaves out what an extension owns, by relation and by schema: TimescaleDB's chunk tables are not extension
 // members themselves, but their schema is, and a fix there would change the extension's own objects.
+// No query opens a relation another session may hold locked: the size functions and the index and expression
+// deparsers wait behind an ACCESS EXCLUSIVE lock (an open ALTER TABLE, TRUNCATE or VACUUM FULL) until it ends. Sizes
+// are relpages times block_size, as of the last VACUUM, ANALYZE or index build; on 14 and later a table never measured
+// has reltuples -1 and no size.
 struct PostgreSQLTableHealthProvider: TableHealthProvider {
     let checks: [TableHealthCheckKind] = [
         .bloat, .unusedIndex, .redundantIndex, .invalidIndex, .missingPrimaryKey, .unindexedForeignKey,
@@ -16,25 +20,30 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
         SELECT pg_catalog.current_setting('track_counts') AS track_counts,
                pg_catalog.date_part('epoch', d.stats_reset) AS stats_reset,
                pg_catalog.current_setting('server_version_num') AS server_version_num,
-               pg_catalog.pg_is_in_recovery() AS in_recovery
+               pg_catalog.pg_is_in_recovery() AS in_recovery,
+               (SELECT pg_catalog.count(*) FROM pg_catalog.pg_stat_replication) AS standbys
         FROM pg_catalog.pg_stat_database d
         WHERE d.datname = pg_catalog.current_database()
         """
 
-    // The floor keeps tiny tables out. A pg_ schema is another session's temporary one. A reset, a crash or a failover
-    // empties last_vacuum along with the counters, so the reset time says how far back "no vacuum" reaches.
+    // The floor keeps tiny tables out. A pg_ schema is another session's temporary one. pg_stat_reset() empties
+    // last_vacuum and records when; a crash empties it too, and on 15 and later leaves stats_reset NULL, so an empty
+    // last_vacuum proves only that the server's statistics hold no vacuum.
     static let bloatQuery = """
         SELECT s.schemaname AS schema_name,
                s.relname AS table_name,
                s.n_live_tup AS live_rows,
                s.n_dead_tup AS dead_rows,
                pg_catalog.date_part('epoch', GREATEST(s.last_vacuum, s.last_autovacuum)) AS last_vacuum,
-               pg_catalog.pg_table_size(c.oid) AS table_bytes,
+               CASE WHEN c.reltuples >= 0::pg_catalog.float4
+                    THEN (c.relpages::pg_catalog.int8 + COALESCE(tc.relpages, 0)::pg_catalog.int8) * pg_catalog.current_setting('block_size')::pg_catalog.int8
+               END AS table_bytes,
                (SELECT pg_catalog.date_part('epoch', d.stats_reset)
                 FROM pg_catalog.pg_stat_database d
                 WHERE d.datname = pg_catalog.current_database()) AS stats_reset
         FROM pg_catalog.pg_stat_user_tables s
         JOIN pg_catalog.pg_class c ON c.oid = s.relid
+        LEFT JOIN pg_catalog.pg_class tc ON tc.oid = c.reltoastrelid
         WHERE c.relkind = 'r'
           AND pg_catalog.left(s.schemaname, 3) <> 'pg_'
           AND s.n_dead_tup >= 1000
@@ -63,9 +72,10 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
         SELECT s.schemaname AS schema_name,
                s.relname AS table_name,
                s.indexrelname AS index_name,
-               pg_catalog.pg_relation_size(s.indexrelid) AS index_bytes
+               ic.relpages::pg_catalog.int8 * pg_catalog.current_setting('block_size')::pg_catalog.int8 AS index_bytes
         FROM pg_catalog.pg_stat_user_indexes s
         JOIN pg_catalog.pg_index i ON i.indexrelid = s.indexrelid
+        JOIN pg_catalog.pg_class ic ON ic.oid = s.indexrelid
         JOIN pg_catalog.pg_class t ON t.oid = s.relid
         WHERE s.idx_scan = 0
           AND t.relkind = 'r'
@@ -105,9 +115,12 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
         SELECT n.nspname AS schema_name,
                c.relname AS table_name,
                GREATEST(c.reltuples, 0)::pg_catalog.int8 AS estimated_rows,
-               pg_catalog.pg_table_size(c.oid) AS table_bytes
+               CASE WHEN c.reltuples >= 0::pg_catalog.float4
+                    THEN (c.relpages::pg_catalog.int8 + COALESCE(tc.relpages, 0)::pg_catalog.int8) * pg_catalog.current_setting('block_size')::pg_catalog.int8
+               END AS table_bytes
         FROM pg_catalog.pg_class c
         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        LEFT JOIN pg_catalog.pg_class tc ON tc.oid = c.reltoastrelid
         WHERE c.relkind IN ('r', 'p')
           AND n.nspname <> 'information_schema'
           AND pg_catalog.left(n.nspname, 3) <> 'pg_'
@@ -148,9 +161,12 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                rn.nspname AS referenced_schema,
                rc.relname AS referenced_table,
                GREATEST(c.reltuples, 0)::pg_catalog.int8 AS estimated_rows,
-               pg_catalog.pg_table_size(c.oid) AS table_bytes
+               CASE WHEN c.reltuples >= 0::pg_catalog.float4
+                    THEN (c.relpages::pg_catalog.int8 + COALESCE(tc.relpages, 0)::pg_catalog.int8) * pg_catalog.current_setting('block_size')::pg_catalog.int8
+               END AS table_bytes
         FROM pg_catalog.pg_constraint con
         JOIN pg_catalog.pg_class c ON c.oid = con.conrelid
+        LEFT JOIN pg_catalog.pg_class tc ON tc.oid = c.reltoastrelid
         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
         JOIN pg_catalog.pg_class rc ON rc.oid = con.confrelid
         JOIN pg_catalog.pg_namespace rn ON rn.oid = rc.relnamespace
@@ -183,9 +199,10 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
         ORDER BY n.nspname, c.relname, con.conname, k.position
         """
 
-    // One row per index column; PostgreSQLIndexShape compares them. A key part is the deparsed column or expression
-    // with its operator class, collation and sort flags. indnkeyatts (11+) and indnullsnotdistinct (15+) go through
-    // row_to_json for older servers.
+    // One row per index column; PostgreSQLIndexShape compares them. A key part is the column, or for attnum 0 the next
+    // expression of indexprs, with its operator class, collation and sort flags. Expressions and predicates compare as
+    // node text without the :location offsets, which differ with where the statement wrote them; deparsing them would
+    // lock the table. indnkeyatts (11+) and indnullsnotdistinct (15+) go through row_to_json for older servers.
     static let redundantIndexQuery = """
         SELECT n.nspname AS schema_name,
                t.relname AS table_name,
@@ -199,12 +216,15 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                (i.indisreplident
                 OR EXISTS (SELECT 1 FROM pg_catalog.pg_constraint con WHERE con.conindid = i.indexrelid)
                 OR EXISTS (SELECT 1 FROM pg_catalog.pg_inherits h WHERE h.inhrelid = i.indexrelid)) AS is_protected,
-               pg_catalog.pg_get_expr(i.indpred, i.indrelid) AS predicate,
-               pg_catalog.pg_relation_size(i.indexrelid) AS index_bytes,
-               CASE WHEN p.position = 1 THEN pg_catalog.pg_get_indexdef(i.indexrelid) END AS index_definition,
+               pg_catalog.regexp_replace(i.indpred::pg_catalog.text, ' :location -?[0-9]+', '', 'g') AS predicate,
+               CASE WHEN p.position = 1
+                    THEN pg_catalog.regexp_replace(i.indexprs::pg_catalog.text, ' :location -?[0-9]+', '', 'g')
+               END AS expressions,
+               ic.relpages::pg_catalog.int8 * pg_catalog.current_setting('block_size')::pg_catalog.int8 AS index_bytes,
                k.key_count,
                p.position,
-               pg_catalog.pg_get_indexdef(i.indexrelid, p.position, true) AS column_text,
+               (i.indkey::pg_catalog.int2[])[p.position - 1] AS attnum,
+               a.attname AS column_name,
                CASE WHEN p.position <= k.key_count THEN (i.indclass::pg_catalog.oid[])[p.position - 1] END AS opclass,
                CASE WHEN p.position <= k.key_count THEN (i.indcollation::pg_catalog.oid[])[p.position - 1] END AS collation,
                CASE WHEN p.position <= k.key_count THEN (i.indoption::pg_catalog.int2[])[p.position - 1] END AS sort_option
@@ -217,6 +237,8 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
             SELECT COALESCE((pg_catalog.row_to_json(i) OPERATOR(pg_catalog.->>) 'indnkeyatts'::pg_catalog.text)::pg_catalog.int4, i.indnatts) AS key_count
         ) k
         CROSS JOIN LATERAL pg_catalog.generate_series(1, i.indnatts) AS p(position)
+        LEFT JOIN pg_catalog.pg_attribute a
+               ON a.attrelid = i.indrelid AND a.attnum = (i.indkey::pg_catalog.int2[])[p.position - 1]
         WHERE i.indisvalid
           AND t.relkind IN ('r', 'p', 'm')
           AND n.nspname <> 'information_schema'
@@ -239,15 +261,26 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
     // A build still running holds SHARE UPDATE EXCLUSIVE on its table for the whole build, and from 12 on its backend
     // shows in pg_stat_progress_create_index, pid included for any role. Autovacuum and ANALYZE take the same lock, so
     // the lock alone would hide a leftover while they run. An index built ON ONLY a partitioned table (relkind I) stays
-    // invalid by design until every partition attaches one, so it is not a leftover.
+    // invalid by design until every partition attaches one, so it is not a leftover. pg_get_indexdef locks the table,
+    // so the definition is read only while no other session holds or awaits ACCESS EXCLUSIVE on it; a lock taken in
+    // the moment between the two still makes this read wait.
     static let invalidIndexQuery = """
         SELECT n.nspname AS schema_name,
                t.relname AS table_name,
                c.relname AS index_name,
                i.indisunique AS is_unique,
                i.indisready AS is_ready,
-               pg_catalog.pg_relation_size(i.indexrelid) AS index_bytes,
-               pg_catalog.pg_get_indexdef(i.indexrelid) AS index_definition
+               c.relpages::pg_catalog.int8 * pg_catalog.current_setting('block_size')::pg_catalog.int8 AS index_bytes,
+               CASE WHEN NOT EXISTS (
+                        SELECT 1 FROM pg_catalog.pg_locks l
+                        WHERE l.locktype = 'relation'
+                          AND l.database = (SELECT d.oid FROM pg_catalog.pg_database d WHERE d.datname = pg_catalog.current_database())
+                          AND l.relation = i.indrelid
+                          AND l.mode = 'AccessExclusiveLock'
+                          AND l.pid <> pg_catalog.pg_backend_pid()
+                    )
+                    THEN pg_catalog.pg_get_indexdef(i.indexrelid)
+               END AS index_definition
         FROM pg_catalog.pg_index i
         JOIN pg_catalog.pg_class c ON c.oid = i.indexrelid
         JOIN pg_catalog.pg_class t ON t.oid = i.indrelid
@@ -286,8 +319,17 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                c.relname AS index_name,
                i.indisunique AS is_unique,
                i.indisready AS is_ready,
-               pg_catalog.pg_relation_size(i.indexrelid) AS index_bytes,
-               pg_catalog.pg_get_indexdef(i.indexrelid) AS index_definition
+               c.relpages::pg_catalog.int8 * pg_catalog.current_setting('block_size')::pg_catalog.int8 AS index_bytes,
+               CASE WHEN NOT EXISTS (
+                        SELECT 1 FROM pg_catalog.pg_locks l
+                        WHERE l.locktype = 'relation'
+                          AND l.database = (SELECT d.oid FROM pg_catalog.pg_database d WHERE d.datname = pg_catalog.current_database())
+                          AND l.relation = i.indrelid
+                          AND l.mode = 'AccessExclusiveLock'
+                          AND l.pid <> pg_catalog.pg_backend_pid()
+                    )
+                    THEN pg_catalog.pg_get_indexdef(i.indexrelid)
+               END AS index_definition
         FROM pg_catalog.pg_index i
         JOIN pg_catalog.pg_class c ON c.oid = i.indexrelid
         JOIN pg_catalog.pg_class t ON t.oid = i.indrelid
@@ -321,10 +363,12 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
     // pg_sequence is 10+. The range is the narrower of the sequence's own limits and the integer column it feeds
     // through OWNED BY, an identity or a nextval default; the narrowest such column wins. last_value reads as
     // pg_sequences reads it: NULL without SELECT or USAGE, and for an unlogged sequence on a standby, where reading
-    // one fails before 17. A cycling sequence wraps by design. Unreadable sequences come back for the check's note.
+    // one fails before 17. Reading it takes ROW EXCLUSIVE on the sequence, so a sequence another session holds or
+    // awaits in a conflicting mode (an open ALTER SEQUENCE) is left unread. A cycling sequence wraps by design.
+    // Unreadable and locked sequences come back for the check's note.
     static let nearLimitQuery = """
         SELECT r.sequence_schema, r.sequence_name, r.sequence_type, r.increment_by, r.sequence_min, r.sequence_max,
-               r.last_value, r.lower_bound, r.upper_bound, r.used_fraction, r.readable,
+               r.last_value, r.lower_bound, r.upper_bound, r.used_fraction, r.readable, r.locked,
                r.table_schema, r.table_name, r.column_name, r.column_type, r.column_min, r.column_max, r.ownership,
                r.table_bytes, r.referencing_columns
         FROM (
@@ -343,6 +387,7 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                    END / NULLIF(b.upper_bound::pg_catalog.numeric - b.lower_bound::pg_catalog.numeric, 0::pg_catalog.numeric)
                    AS used_fraction,
                    v.readable,
+                   v.locked,
                    col.table_schema,
                    col.table_name,
                    col.column_name,
@@ -355,9 +400,19 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
             FROM pg_catalog.pg_sequence q
             JOIN pg_catalog.pg_class s ON s.oid = q.seqrelid
             JOIN pg_catalog.pg_namespace sn ON sn.oid = s.relnamespace
+            LEFT JOIN (
+                SELECT DISTINCT l.relation
+                FROM pg_catalog.pg_locks l
+                WHERE l.locktype = 'relation'
+                  AND l.database = (SELECT d.oid FROM pg_catalog.pg_database d WHERE d.datname = pg_catalog.current_database())
+                  AND l.mode IN ('ShareLock', 'ShareRowExclusiveLock', 'ExclusiveLock', 'AccessExclusiveLock')
+                  AND l.pid <> pg_catalog.pg_backend_pid()
+            ) lk ON lk.relation = s.oid
             CROSS JOIN LATERAL (
                 SELECT pg_catalog.has_sequence_privilege(s.oid, 'SELECT,USAGE') AS readable,
+                       lk.relation IS NOT NULL AS locked,
                        CASE WHEN pg_catalog.has_sequence_privilege(s.oid, 'SELECT,USAGE')
+                                 AND lk.relation IS NULL
                                  AND (s.relpersistence = 'p' OR (s.relpersistence = 'u' AND NOT pg_catalog.pg_is_in_recovery()))
                             THEN pg_catalog.pg_sequence_last_value(s.oid)
                        END AS last_value
@@ -368,7 +423,9 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                        a.attname AS column_name,
                        pg_catalog.format_type(a.atttypid, a.atttypmod) AS column_type,
                        f.ownership,
-                       pg_catalog.pg_table_size(t.oid) AS table_bytes,
+                       CASE WHEN t.reltuples >= 0::pg_catalog.float4
+                            THEN (t.relpages::pg_catalog.int8 + COALESCE(tt.relpages, 0)::pg_catalog.int8) * pg_catalog.current_setting('block_size')::pg_catalog.int8
+                       END AS table_bytes,
                        CASE WHEN ty.base OPERATOR(pg_catalog.=) 'pg_catalog.int2'::pg_catalog.regtype THEN -32768::pg_catalog.int8
                             WHEN ty.base OPERATOR(pg_catalog.=) 'pg_catalog.int4'::pg_catalog.regtype THEN -2147483648::pg_catalog.int8
                        END AS column_min,
@@ -407,6 +464,7 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                       AND d.refobjid = s.oid
                 ) f
                 JOIN pg_catalog.pg_class t ON t.oid = f.table_oid
+                LEFT JOIN pg_catalog.pg_class tt ON tt.oid = t.reltoastrelid
                 JOIN pg_catalog.pg_namespace tn ON tn.oid = t.relnamespace
                 JOIN pg_catalog.pg_attribute a ON a.attrelid = f.table_oid AND a.attnum = f.column_number
                 JOIN pg_catalog.pg_type ct ON ct.oid = a.atttypid
@@ -434,7 +492,7 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                     AND x.deptype = 'e'
               )
         ) r
-        WHERE NOT r.readable OR r.used_fraction >= 0.75
+        WHERE NOT r.readable OR r.locked OR r.used_fraction >= 0.75
         ORDER BY r.used_fraction DESC NULLS LAST, r.sequence_schema, r.sequence_name
         """
 
@@ -453,7 +511,9 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                    f.freeze_max_age,
                    2147483648 - GREATEST(pg_catalog.age(c.relfrozenxid), COALESCE(pg_catalog.age(t.relfrozenxid), 0)) AS transactions_left,
                    pg_catalog.date_part('epoch', GREATEST(s.last_vacuum, s.last_autovacuum)) AS last_vacuum,
-                   pg_catalog.pg_table_size(c.oid) AS table_bytes
+                   CASE WHEN c.reltuples >= 0::pg_catalog.float4
+                        THEN (c.relpages::pg_catalog.int8 + COALESCE(t.relpages, 0)::pg_catalog.int8) * pg_catalog.current_setting('block_size')::pg_catalog.int8
+                   END AS table_bytes
             FROM pg_catalog.pg_class c
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             LEFT JOIN pg_catalog.pg_class t ON t.oid = c.reltoastrelid
@@ -489,9 +549,10 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
 
     // Autoanalyze's default rule: more rows modified than 10% of reltuples plus 50. reltuples is -1 before the
     // first analyze on 14+. A reset, a crash or a failover empties last_analyze with the counters, so a table counts
-    // as never analyzed only while pg_stats also holds nothing for it. Autovacuum never analyzes a partitioned
-    // table, and its activity counters stay empty, so a parent counts as never analyzed while pg_stats holds no
-    // inherited rows for it.
+    // as never analyzed only while pg_stats also holds nothing for it. pg_stats shows a table's rows only to a role
+    // that may read the table and is not under row-level security; elsewhere the counters are all there is, and
+    // stats_readable says so. Autovacuum never analyzes a partitioned table, and its activity counters stay empty, so
+    // a parent counts as never analyzed while a role that can read its pg_stats finds no inherited rows there.
     static let staleStatisticsQuery = """
         SELECT n.nspname AS schema_name,
                c.relname AS table_name,
@@ -503,14 +564,22 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                     THEN NOT EXISTS (SELECT 1 FROM pg_catalog.pg_stats st
                                      WHERE st.schemaname = n.nspname AND st.tablename = c.relname AND st.inherited)
                     ELSE s.last_analyze IS NULL AND s.last_autoanalyze IS NULL
-                         AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_stats st
-                                         WHERE st.schemaname = n.nspname AND st.tablename = c.relname AND NOT st.inherited)
+                         AND NOT (sr.stats_readable
+                                  AND EXISTS (SELECT 1 FROM pg_catalog.pg_stats st
+                                              WHERE st.schemaname = n.nspname AND st.tablename = c.relname AND NOT st.inherited))
                END AS never_analyzed,
+               sr.stats_readable,
                pg_catalog.date_part('epoch', GREATEST(s.last_analyze, s.last_autoanalyze)) AS last_analyze,
-               pg_catalog.pg_table_size(c.oid) AS table_bytes
+               CASE WHEN c.reltuples >= 0::pg_catalog.float4
+                    THEN (c.relpages::pg_catalog.int8 + COALESCE(tc.relpages, 0)::pg_catalog.int8) * pg_catalog.current_setting('block_size')::pg_catalog.int8
+               END AS table_bytes
         FROM pg_catalog.pg_class c
         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        LEFT JOIN pg_catalog.pg_class tc ON tc.oid = c.reltoastrelid
         LEFT JOIN pg_catalog.pg_stat_user_tables s ON s.relid = c.oid
+        CROSS JOIN LATERAL (
+            SELECT pg_catalog.has_table_privilege(c.oid, 'SELECT') AND NOT pg_catalog.row_security_active(c.oid) AS stats_readable
+        ) sr
         CROSS JOIN LATERAL (
             SELECT 50::pg_catalog.float8
                    + 0.1::pg_catalog.float8 * GREATEST(c.reltuples::pg_catalog.float8, 0::pg_catalog.float8) AS analyze_threshold
@@ -532,7 +601,7 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
           )
           AND (
               (c.relkind = 'p'
-               AND pg_catalog.has_table_privilege(c.oid, 'SELECT')
+               AND sr.stats_readable
                AND EXISTS (SELECT 1 FROM pg_catalog.pg_inherits h
                            JOIN pg_catalog.pg_stat_user_tables ps ON ps.relid = h.inhrelid
                            WHERE h.inhparent = c.oid AND ps.n_live_tup > 0)
@@ -540,8 +609,9 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                                WHERE st.schemaname = n.nspname AND st.tablename = c.relname AND st.inherited))
               OR (c.relkind <> 'p'
                   AND ((s.last_analyze IS NULL AND s.last_autoanalyze IS NULL AND s.n_live_tup > 0
-                        AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_stats st
-                                        WHERE st.schemaname = n.nspname AND st.tablename = c.relname AND NOT st.inherited))
+                        AND NOT (sr.stats_readable
+                                 AND EXISTS (SELECT 1 FROM pg_catalog.pg_stats st
+                                             WHERE st.schemaname = n.nspname AND st.tablename = c.relname AND NOT st.inherited)))
                        OR s.n_mod_since_analyze::pg_catalog.float8 > th.analyze_threshold))
           )
         ORDER BY modified_rows DESC, n.nspname, c.relname
@@ -638,9 +708,13 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                 TableHealthFormatting.date(reset)
             ))
         } else {
-            statistics.notes.append(
-                String(localized: "Index usage counts since the statistics were first collected; they have never been reset.")
-            )
+            statistics.notes.append(String(
+                localized: "Index usage counts cover only what the server's statistics hold; a reset, a crash or a failover discards them."
+            ))
+        }
+        // A primary counts the index scans its own sessions make, never those on its standbys.
+        if !statistics.isStandby, let standbys = row.int64("standbys"), standbys > 0 {
+            statistics.notes.append(String(localized: "Index scans on this server's standbys are not counted here."))
         }
         return statistics
     }
@@ -694,7 +768,7 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                 dead, live, TableHealthFormatting.date(reset)
             )
         } else {
-            detail = String(format: String(localized: "%1$@ dead rows, %2$@ live. Never vacuumed."), dead, live)
+            detail = String(format: String(localized: "%1$@ dead rows, %2$@ live. No vacuum recorded in the server's statistics."), dead, live)
         }
 
         var metrics: [TableHealthMetric] = []
@@ -823,16 +897,12 @@ extension PostgreSQLTableHealthProvider {
                 var metrics = [
                     TableHealthMetric(id: "covering_index", label: String(localized: "Covering Index"), value: .text(covering.name))
                 ]
-                if let definition = index.definition {
-                    metrics.append(TableHealthMetric(
-                        id: "index_definition", label: String(localized: "Definition"), value: .text(definition)
-                    ))
-                }
-                if let definition = covering.definition {
-                    metrics.append(TableHealthMetric(
-                        id: "covering_definition", label: String(localized: "Covering Definition"), value: .text(definition)
-                    ))
-                }
+                metrics.append(TableHealthMetric(
+                    id: "columns", label: String(localized: "Columns"), value: .text(index.columnsDescription)
+                ))
+                metrics.append(TableHealthMetric(
+                    id: "covering_columns", label: String(localized: "Covering Columns"), value: .text(covering.columnsDescription)
+                ))
                 // PostgreSQL refuses to drop an index on a partitioned table concurrently.
                 let drop = table.isPartitioned ? "DROP INDEX" : "DROP INDEX CONCURRENTLY"
                 findings.append(TableHealthFinding(
@@ -918,27 +988,40 @@ extension PostgreSQLTableHealthProvider {
         _ context: TableHealthQueryContext
     ) -> (findings: [TableHealthFinding], note: String?) {
         var findings: [TableHealthFinding] = []
-        var unreadable = 0
+        var unreadable = 0, locked = 0
         for row in rows {
             if row.flag("readable") == false {
                 unreadable += 1
+            } else if row.flag("locked") == true {
+                locked += 1
             } else if let finding = nearLimitFinding(row, context) {
                 findings.append(finding)
             }
         }
-        let note: String?
+        var notes: [String] = []
         switch unreadable {
         case 0:
-            note = nil
+            break
         case 1:
-            note = String(localized: "One sequence is not readable by this user, so its counter was not checked.")
+            notes.append(String(localized: "One sequence is not readable by this user, so its counter was not checked."))
         default:
-            note = String(
+            notes.append(String(
                 format: String(localized: "%lld sequences are not readable by this user, so their counters were not checked."),
                 unreadable
-            )
+            ))
         }
-        return (findings, note)
+        switch locked {
+        case 0:
+            break
+        case 1:
+            notes.append(String(localized: "One sequence is locked by another session, so its counter was not checked."))
+        default:
+            notes.append(String(
+                format: String(localized: "%lld sequences are locked by another session, so their counters were not checked."),
+                locked
+            ))
+        }
+        return (findings, notes.isEmpty ? nil : notes.joined(separator: " "))
     }
 
     private static func typeLimit(of type: String, ascending: Bool) -> Int64? {
@@ -1076,12 +1159,18 @@ extension PostgreSQLTableHealthProvider {
         let schema = row["schema_name"], table = row["table_name"]
         let isPartitioned = row["table_kind"] == "p"
         let neverAnalyzed = row.flag("never_analyzed") == true
+        // Without SELECT on the table, or under row-level security, pg_stats hides its rows and only the counters speak.
+        let statisticsReadable = row.flag("stats_readable") != false
         let lastAnalyze = row.date("last_analyze")
         let modified = Self.countText(row, "modified_rows"), threshold = Self.countText(row, "analyze_threshold")
         let detail: String
         if isPartitioned {
             detail = String(
                 localized: "Never analyzed. Autovacuum does not analyze a partitioned table, so only a manual ANALYZE gives it statistics."
+            )
+        } else if neverAnalyzed, !statisticsReadable {
+            detail = String(
+                localized: "No analyze recorded in the server's statistics, and this user cannot read the table's statistics to confirm it."
             )
         } else if neverAnalyzed {
             detail = String(localized: "Never analyzed, so the planner has no statistics for it.")
@@ -1111,7 +1200,9 @@ extension PostgreSQLTableHealthProvider {
                 }
             }
         }
-        metrics.append(TableHealthMetric(id: "never_analyzed", label: String(localized: "Never Analyzed"), value: .flag(neverAnalyzed)))
+        if statisticsReadable {
+            metrics.append(TableHealthMetric(id: "never_analyzed", label: String(localized: "Never Analyzed"), value: .flag(neverAnalyzed)))
+        }
         if let lastAnalyze {
             metrics.append(TableHealthMetric(id: "last_analyze", label: String(localized: "Last Analyze"), value: .date(lastAnalyze)))
         }

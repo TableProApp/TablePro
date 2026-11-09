@@ -17,7 +17,9 @@
 #
 # Passwords come from PGPASSWORD and MYSQL_PWD. Needs psql or mysql on PATH, and a user that may
 # create and drop a database; on PostgreSQL also a role, for the unreadable sequence case. Exits non-zero
-# on a disagreement, 3 when it cannot run. MySQL also takes a user, for the PROCESS refusal. PostgreSQL takes about a minute: the invalid index and
+# on a disagreement, 3 when it cannot run. MySQL also takes a user, for the PROCESS refusal. Every
+# PostgreSQL query also runs while another session holds ACCESS EXCLUSIVE on a table it lists and on one
+# it does not, and must answer without waiting. PostgreSQL takes about a minute: the invalid index and
 # transaction ID cases wait on held snapshots.
 
 set -uo pipefail
@@ -241,6 +243,81 @@ SQL
     fi
     check_postgres_stale_statistics
     check_postgres_transaction_id_age
+    check_postgres_locks
+}
+
+# Every query must answer while another session holds ACCESS EXCLUSIVE on a table: a size or a definition read
+# from the relation itself would wait until that transaction ends. An open TRUNCATE locks the table, its TOAST
+# table and every index; an open ALTER SEQUENCE blocks reading the sequence. lock_timeout in the probe's own
+# session turns a wait into an error.
+check_postgres_locks() {
+    pg -d "$DATABASE" > /dev/null <<'SQL'
+CREATE TABLE lk_other (id int PRIMARY KEY);
+INSERT INTO lk_other SELECT g FROM generate_series(1, 10) g;
+CREATE TABLE lk_listed (id serial PRIMARY KEY, v int, w int, note text);
+INSERT INTO lk_listed (v, w, note) SELECT g % 3, g, repeat('x', 3000) FROM generate_series(1, 10) g;
+CREATE INDEX lk_listed_v_idx ON lk_listed (v);
+CREATE INDEX lk_listed_vw_idx ON lk_listed (v, w);
+SELECT setval('lk_listed_id_seq', 1700000000);
+CREATE TABLE lk_nopk (v int);
+CREATE TABLE lk_parent (id int PRIMARY KEY);
+CREATE TABLE lk_child (id int PRIMARY KEY, parent_id int REFERENCES lk_parent (id));
+CREATE TABLE lk_bloat (id int PRIMARY KEY, v int) WITH (autovacuum_enabled = false);
+INSERT INTO lk_bloat SELECT g, g FROM generate_series(1, 5000) g;
+DELETE FROM lk_bloat WHERE id <= 3000;
+SQL
+    pg -d "$DATABASE" -c "CREATE UNIQUE INDEX CONCURRENTLY lk_listed_v_uniq ON lk_listed (v)" > /dev/null 2>&1
+    for _ in $(seq 1 10); do
+        [ "$(pg -d "$DATABASE" -c "SELECT count(*) FROM pg_stat_user_tables WHERE relname IN ('lk_bloat', 'lk_listed') AND n_live_tup > 0")" = "2" ] && break
+        sleep 1
+    done
+
+    local invalid=invalidIndexBefore12Query
+    [ "$version" -ge 120000 ] && invalid=invalidIndexQuery
+    # Query, then what it must still list while lk_listed and its neighbours are locked.
+    local cases=(
+        "statisticsQuery|"
+        "bloatQuery||lk_bloat|"
+        "unusedIndexQuery|lk_listed_v_idx"
+        "redundantIndexQuery||lk_listed|r|lk_listed_v_idx|"
+        "$invalid|public|lk_listed|lk_listed_v_uniq|t|f|"
+        "missingPrimaryKeyQuery|public|lk_nopk"
+        "unindexedForeignKeyQuery|lk_child_parent_id_fkey"
+        "staleStatisticsQuery|public|lk_listed|r|"
+        "transactionIdAgeQuery|"
+    )
+    [ "$version" -ge 100000 ] && cases+=("nearLimitQuery|")
+
+    local entry query listed output
+    hold_lock tablepro_health_other_lock "LOCK TABLE lk_other IN ACCESS EXCLUSIVE MODE"
+    for entry in "${cases[@]}"; do
+        query="${entry%%|*}"
+        output="$(pg -d "$DATABASE" -c "SET lock_timeout = '5s'" -c "$(query_of "$source" "$query")" 2>&1)"
+        expect "$query answers while a table it does not list is locked" "$output" "lock timeout" no
+    done
+    terminate tablepro_health_other_lock
+
+    local sequence_lock=""
+    [ "$version" -ge 100000 ] && sequence_lock="; ALTER SEQUENCE lk_listed_id_seq MAXVALUE 2147483647"
+    hold_lock tablepro_health_listed_lock "TRUNCATE lk_listed, lk_nopk, lk_child, lk_bloat$sequence_lock"
+    for entry in "${cases[@]}"; do
+        query="${entry%%|*}"
+        listed="${entry#*|}"
+        output="$(pg -d "$DATABASE" -c "SET lock_timeout = '5s'" -c "$(query_of "$source" "$query")" 2>&1)"
+        expect "$query answers while the tables it lists, their indexes and TOAST tables are locked" "$output" "lock timeout" no
+        if [ -n "$listed" ]; then
+            expect "$query still lists the locked table" "$output" "$listed" yes
+        fi
+    done
+    output="$(pg -d "$DATABASE" -c "SET lock_timeout = '5s'" -c "$(query_of "$source" "$invalid")" 2>&1)"
+    expect_pattern "an invalid index on a locked table comes back without the definition that would wait" "$output" \
+        "lk_listed_v_uniq\|t\|f\|[0-9]*\|$"
+    if [ "$version" -ge 100000 ]; then
+        output="$(pg -d "$DATABASE" -c "SET lock_timeout = '5s'" -c "$(query_of "$source" nearLimitQuery)" 2>&1)"
+        expect "a sequence an open ALTER SEQUENCE holds comes back unread and marked locked" "$output" \
+            "public|lk_listed_id_seq|integer|1|1|2147483647||1|2147483647||t|t|" yes
+    fi
+    terminate tablepro_health_listed_lock
 }
 
 cleanup_postgres() {
@@ -254,6 +331,18 @@ cleanup_postgres() {
 # server running the statement, and the snapshot it holds, until the statement ends.
 terminate() {
     pg -d postgres -c "SELECT pg_catalog.pg_terminate_backend(pid) FROM pg_catalog.pg_stat_activity WHERE application_name = '$1'" > /dev/null
+}
+
+# Runs $2 in a background transaction under application name $1 and holds its locks until terminated, once the
+# server shows one of them granted.
+hold_lock() {
+    PGAPPNAME="$1" psql -X -q -h "$HOST" -p "$PORT" -U "$USER_NAME" -d "$DATABASE" \
+        -c "BEGIN; $2; SELECT pg_sleep(120); COMMIT;" > /dev/null 2>&1 &
+    for _ in $(seq 1 20); do
+        [ "$(pg -d postgres -c "SELECT count(*) > 0 FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid WHERE a.application_name = '$1' AND l.mode = 'AccessExclusiveLock' AND l.granted")" = "t" ] && return
+        sleep 0.25
+    done
+    echo "note  the locks held as $1 did not appear" >&2
 }
 
 # Holds a REPEATABLE READ snapshot in the background under application name $1 for $2 seconds, and waits
@@ -382,15 +471,17 @@ SQL
     expect "index shape reads an index a foreign key uses as protected" "$shape" "public|rk|r|k_rk_z_fkref|btree|t|f|t|false|t|" yes
     expect "index shape reads a deferrable constraint as not immediate" "$shape" "public|rd|r|k_rd_v_deferrable|btree|t|f|f|false|t|" yes
     expect "index shape reads the replica identity index as protected" "$shape" "public|rr|r|rr_zz_replident|btree|t|f|t|false|t|" yes
-    expect "index shape reads a predicate" "$shape" "public|ri|r|r_a_partial_dup|btree|f|f|t|false|f|(a > 0)|" yes
-    expect "index shape deparses an expression key" "$shape" "|1|1|lower(email)|" yes
-    expect "index shape reads a descending key's sort flags" "$shape" "|1|1|a|1978|0|3" yes
+    expect "index shape reads a predicate as node text" "$shape" "public|ri|r|r_a_partial_dup|btree|f|f|t|false|f|{OPEXPR :opno 521 " yes
+    expect "index shape reads an expression key as node text in its index's list" "$shape" "|k_lower_email|btree|f|f|t|false|f||({FUNCEXPR :funcid 870 " yes
+    expect "index shape gives an expression key attnum 0 and no column" "$shape" "|1|1|0||3126|100|0" yes
+    expect "index shape drops the :location offsets that differ with where a statement wrote an expression" "$shape" ":location" no
+    expect "index shape reads a descending key's column and sort flags" "$shape" "|1|1|2|a|1978|0|3" yes
     expect "index shape reads a materialized view's index" "$shape" "public|rmv|m|r_rmv_a|btree|" yes
     expect "index shape reads a GIN index's method" "$shape" "public|ri|r|k_note_gin|gin|" yes
     if [ "$version" -ge 110000 ]; then
-        expect "index shape reads an INCLUDE column after the key count" "$shape" "k_a_incl_c|btree|f|f|t|false|f||8192||1|2|c|||" yes
+        expect "index shape reads an INCLUDE column after the key count" "$shape" "k_a_incl_c|btree|f|f|t|false|f|||8192|1|2|4|c|||" yes
         expect "index shape reads an attached partition index as protected" "$shape" "public|rp_2026|r|rp_2026_k_at_idx|btree|f|f|t|false|t|" yes
-        expect "index shape reads a partitioned table's index" "$shape" "public|rp|p|r_rp_k|btree|f|f|t|false|f||0|" yes
+        expect "index shape reads a partitioned table's index" "$shape" "public|rp|p|r_rp_k|btree|f|f|t|false|f|||0|" yes
     fi
     if [ "$version" -ge 150000 ]; then
         expect "index shape reads NULLS NOT DISTINCT" "$shape" "public|ri|r|k_nnd|btree|t|f|t|true|f|" yes
@@ -646,6 +737,17 @@ SQL
         done
         stale="$(pg -d "$DATABASE" -c "$(query_of "$source" staleStatisticsQuery)")"
         expect "stale statistics trust pg_stats over counters a reset emptied" "$stale" "|st_stale|" no
+        # pg_stats hides a table's rows from a role without SELECT on it, and under row-level security.
+        if [ "$(pg -d "$DATABASE" -c "SELECT count(*) FROM pg_roles WHERE rolname = '$READER_ROLE'")" = "1" ]; then
+            stale="$(pg -d "$DATABASE" -c "SET ROLE $READER_ROLE" -c "$(query_of "$source" staleStatisticsQuery)")"
+            expect_pattern "without SELECT the counters decide, and the row says pg_stats could not be read" "$stale" \
+                "\|st_stale\|r\|[0-9]+\|[0-9]+\|[0-9]+\|t\|f\|"
+            pg -d "$DATABASE" -c "GRANT SELECT ON st_stale TO $READER_ROLE" -c "ALTER TABLE st_stale ENABLE ROW LEVEL SECURITY" > /dev/null
+            stale="$(pg -d "$DATABASE" -c "SET ROLE $READER_ROLE" -c "$(query_of "$source" staleStatisticsQuery)")"
+            expect_pattern "under row-level security the counters decide, and the row says pg_stats could not be read" "$stale" \
+                "\|st_stale\|r\|[0-9]+\|[0-9]+\|[0-9]+\|t\|f\|"
+            pg -d "$DATABASE" -c "ALTER TABLE st_stale DISABLE ROW LEVEL SECURITY" -c "REVOKE SELECT ON st_stale FROM $READER_ROLE" > /dev/null
+        fi
     else
         echo "note  this user cannot call pg_stat_reset(), so the emptied counters case is skipped"
     fi
@@ -670,6 +772,11 @@ SQL
     expect "transaction ID age skips a table under the server's freeze age" "$ages" "xid_young" no
     expect "transaction ID age skips an extension's table past its freeze age" "$ages" "ext_owned" no
     expect "transaction ID age skips a table in an extension's schema past its freeze age" "$ages" "ext_schema" no
+    hold_lock tablepro_health_xid_lock "LOCK TABLE xid_old IN ACCESS EXCLUSIVE MODE"
+    ages="$(pg -d "$DATABASE" -c "SET lock_timeout = '5s'" -c "$(query_of "$source" transactionIdAgeQuery)" 2>&1)"
+    expect "transaction ID age answers while the table it lists is locked" "$ages" "lock timeout" no
+    expect "transaction ID age still lists the locked table" "$ages" "public|xid_old|" yes
+    terminate tablepro_health_xid_lock
 
     terminate tablepro_health_xid
     # The fix exactly as PostgreSQLTableHealthProviderTests pins it.

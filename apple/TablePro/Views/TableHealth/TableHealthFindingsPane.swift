@@ -95,15 +95,24 @@ struct TableHealthFindingsPane: View {
             UnavailableStateView {
                 Label(String(localized: "No Findings"), systemImage: "eye.slash")
             } description: {
-                Text("^[\(count) ignored finding](inflect: true) hidden.")
+                Text(Self.hiddenIgnoredText(count))
             } actions: {
                 Button(String(localized: "Show Ignored")) { viewModel.showIgnored = true }
             }
-        case .someChecksFailed(let count):
+        case .someChecksFailed(let failed, let hiddenIgnored):
             UnavailableStateView {
                 Label(String(localized: "Some Checks Failed"), systemImage: "exclamationmark.triangle")
             } description: {
-                Text(Self.failedChecksText(count))
+                VStack(spacing: 4) {
+                    Text(Self.failedChecksText(failed))
+                    if hiddenIgnored > 0 {
+                        Text(Self.hiddenIgnoredText(hiddenIgnored))
+                    }
+                }
+            } actions: {
+                if hiddenIgnored > 0 {
+                    Button(String(localized: "Show Ignored")) { viewModel.showIgnored = true }
+                }
             }
         case .noResolved:
             UnavailableStateView(
@@ -116,5 +125,9 @@ struct TableHealthFindingsPane: View {
 
     private static func failedChecksText(_ count: Int) -> LocalizedStringKey {
         "^[\(count) check](inflect: true) could not run. Select one to see why."
+    }
+
+    private static func hiddenIgnoredText(_ count: Int) -> LocalizedStringKey {
+        "^[\(count) ignored finding](inflect: true) hidden."
     }
 }

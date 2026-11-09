@@ -51,6 +51,14 @@ struct MainSplitViewControllerDetailWidthTests {
         #expect(TableHealthLayoutMetrics.checksListMinimumWidth < TableHealthLayoutMetrics.checksListMaximumWidth)
     }
 
+    // Measured: a 480pt window leaves a tab about 357pt under its toolbar, tab strip and pane bar.
+    @Test("Table Health's findings and preview minimums fit the smallest window, divider included")
+    func tableHealthFitsTheSmallestWindow() {
+        let required = TableHealthLayoutMetrics.findingsMinimumHeight + 1 + TableHealthLayoutMetrics.previewMinimumHeight
+        #expect(required <= 357)
+        #expect(MainSplitViewController.baseWindowMinHeight == 480)
+    }
+
     @Test(
         "Every other tab type keeps the default detail minimum",
         arguments: [TabType.query, .table, .createTable, .erDiagram, .serverDashboard]

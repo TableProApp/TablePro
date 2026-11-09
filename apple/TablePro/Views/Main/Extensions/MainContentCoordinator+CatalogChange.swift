@@ -7,13 +7,13 @@ import Foundation
 import TableProPluginKit
 import TableProSQLGrammar
 
-/// What a window does with a change to its connection's catalog. The connection-level half has
-/// already run once in `CatalogChangeService`; this is the part each window owns: its tabs, its
-/// selection and its cached columns.
+// What a window does with a change to its connection's catalog. The connection-level half has
+// already run once in `CatalogChangeService`; this is the part each window owns: its tabs, its
+// selection and its cached columns.
 extension MainContentCoordinator {
-    /// Reported whether the statement succeeded or failed: DDL that commits as it runs, a procedure
-    /// or a dropped connection can leave the catalog changed behind an error. A table it dropped or
-    /// renamed is reported apart, and only by a statement that succeeded.
+    // Reported whether the statement succeeded or failed: DDL that commits as it runs, a procedure
+    // or a dropped connection can leave the catalog changed behind an error. A table it dropped or
+    // renamed is reported apart, and only by a statement that succeeded.
     nonisolated static func postStatementRan(
         _ sql: String,
         on connection: DatabaseConnection,
@@ -46,11 +46,12 @@ extension MainContentCoordinator {
         case (.renamed(let newName), .schema):
             guard let schema = container.schema else { return }
             retargetTabs(database: database, schema: schema, toDatabase: database, toSchema: newName)
+            refreshTableHealth(inDatabase: database)
         }
     }
 
-    /// Selection and queued operations naming objects the freshly loaded catalog no longer has,
-    /// judged by the object each names rather than by a bare table name.
+    // Selection and queued operations naming objects the freshly loaded catalog no longer has,
+    // judged by the object each names rather than by a bare table name.
     func pruneStaleSidebarState() {
         let adoption = CatalogEditAdoption(
             databaseManager: services.databaseManager,

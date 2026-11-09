@@ -5,8 +5,10 @@ import Testing
 
 // The cases a PostgreSQL 13 and 17 server gave for the redundant index rule; the probe seeds the same names.
 struct PostgreSQLIndexShapeTests {
+    // A column by name, or an expression by its node text as the query returns it, without :location.
     private struct Key: ExpressibleByStringLiteral {
         let column: String
+        var isExpression = false
         var opclass = "1978"
         var collation = "0"
         var sort = "0"
@@ -21,6 +23,18 @@ struct PostgreSQLIndexShapeTests {
         init(stringLiteral value: String) {
             self.init(value)
         }
+
+        static func expression(_ node: String, opclass: String = "3126", collation: String = "100") -> Key {
+            var key = Key(node, opclass: opclass, collation: collation)
+            key.isExpression = true
+            return key
+        }
+    }
+
+    private static let lowerEmail = "{FUNCEXPR :funcid 870 :funcresulttype 25 :args ({VAR :varno 1 :varattno 5 :vartype 25})}"
+    private static let upperEmail = "{FUNCEXPR :funcid 871 :funcresulttype 25 :args ({VAR :varno 1 :varattno 5 :vartype 25})}"
+    private static func tsvector(_ config: String) -> String {
+        "{FUNCEXPR :funcid 3745 :args ({CONST :consttype 3734 :constvalue 4 [ \(config) 0 0 0 ]} {VAR :varno 1 :varattno 7})}"
     }
 
     private struct IndexRow {
@@ -42,14 +56,16 @@ struct PostgreSQLIndexShapeTests {
 
     private static let columns = [
         "schema_name", "table_name", "table_kind", "index_name", "access_method", "is_unique", "is_primary", "is_immediate",
-        "nulls_not_distinct", "is_protected", "predicate", "index_bytes", "index_definition", "key_count", "position",
-        "column_text", "opclass", "collation", "sort_option"
+        "nulls_not_distinct", "is_protected", "predicate", "expressions", "index_bytes", "key_count", "position",
+        "attnum", "column_name", "opclass", "collation", "sort_option"
     ]
 
     private static func flag(_ value: Bool) -> String { value ? "t" : "f" }
 
+    // An expression key has attnum 0 and its node in the index's expressions list, which the first row carries.
     private static func rows(_ indexes: [IndexRow]) -> [[String?]] {
-        indexes.flatMap { index -> [[String?]] in
+        var attnums: [String: Int] = [:]
+        return indexes.flatMap { index -> [[String?]] in
             var parts: [(column: String, key: Key?)] = []
             for key in index.keys {
                 parts.append((key.column, key))
@@ -57,13 +73,25 @@ struct PostgreSQLIndexShapeTests {
             for column in index.includes {
                 parts.append((column, nil))
             }
+            let expressionNodes = index.keys.filter(\.isExpression).map(\.column)
+            let expressions = expressionNodes.isEmpty ? nil : "(" + expressionNodes.joined(separator: " ") + ")"
             return parts.enumerated().map { offset, part -> [String?] in
-                [
+                let isExpression = part.key?.isExpression == true
+                let attnumKey = index.schema + "." + index.table + "." + part.column
+                let attnum: Int
+                if isExpression {
+                    attnum = 0
+                } else if let known = attnums[attnumKey] {
+                    attnum = known
+                } else {
+                    attnum = attnums.count + 1
+                    attnums[attnumKey] = attnum
+                }
+                return [
                     index.schema, index.table, index.tableKind, index.name, index.method, flag(index.unique), flag(index.primary),
                     flag(index.immediate), index.nullsNotDistinct ? "true" : "false", flag(index.protected), index.predicate,
-                    index.bytes, offset == 0 ? "CREATE INDEX \(index.name) ON \(index.schema).\(index.table)" : nil,
-                    String(index.keys.count), String(offset + 1), part.column, part.key?.opclass, part.key?.collation,
-                    part.key?.sort
+                    offset == 0 ? expressions : nil, index.bytes, String(index.keys.count), String(offset + 1),
+                    String(attnum), isExpression ? nil : part.column, part.key?.opclass, part.key?.collation, part.key?.sort
                 ]
             }
         }
@@ -116,8 +144,8 @@ struct PostgreSQLIndexShapeTests {
             IndexRow(name: "k_code_pattern", keys: [Key("code", opclass: "4217", collation: "100")]),
             IndexRow(name: "k_code_c", keys: [Key("code", opclass: "3126", collation: "950")]),
             IndexRow(name: "k_hash_a", method: "hash", keys: [Key("a", opclass: "10020")]),
-            IndexRow(name: "k_lower_email", keys: [Key("lower(email)", opclass: "3126", collation: "100")]),
-            IndexRow(name: "k_upper_email", keys: [Key("upper(email)", opclass: "3126", collation: "100")])
+            IndexRow(name: "k_lower_email", keys: [.expression(Self.lowerEmail)]),
+            IndexRow(name: "k_upper_email", keys: [.expression(Self.upperEmail)])
         ])
         #expect(found.isEmpty)
     }
@@ -125,10 +153,37 @@ struct PostgreSQLIndexShapeTests {
     @Test("The same expression twice is a duplicate")
     func duplicateExpression() {
         let found = redundant([
-            IndexRow(name: "k_lower_email", keys: [Key("lower(email)", opclass: "3126", collation: "100")]),
-            IndexRow(name: "r_lower_email_dup", keys: [Key("lower(email)", opclass: "3126", collation: "100")])
+            IndexRow(name: "k_lower_email", keys: [.expression(Self.lowerEmail)]),
+            IndexRow(name: "r_lower_email_dup", keys: [.expression(Self.lowerEmail)])
         ])
         #expect(found == ["r_lower_email_dup": "k_lower_email"])
+    }
+
+    @Test("Expressions compare by node text, and each zero in the key takes the next expression in order")
+    func expressionsByNodeText() throws {
+        let found = redundant([
+            IndexRow(name: "r_a_lower", keys: ["a", .expression(Self.lowerEmail)]),
+            IndexRow(name: "k_a_lower_b", keys: ["a", .expression(Self.lowerEmail), "b"]),
+            IndexRow(name: "k_lower_upper", keys: [.expression(Self.lowerEmail), .expression(Self.upperEmail)]),
+            IndexRow(name: "k_upper_lower", keys: [.expression(Self.upperEmail), .expression(Self.lowerEmail)])
+        ])
+        #expect(found == ["r_a_lower": "k_a_lower_b"])
+
+        let finding = try #require(findings([
+            IndexRow(name: "r_a_lower", keys: ["a", .expression(Self.lowerEmail)]),
+            IndexRow(name: "k_a_lower_b", keys: ["a", .expression(Self.lowerEmail), "b"])
+        ]).first)
+        let expression = String(localized: "(expression)")
+        #expect(finding.metric("columns")?.value == .text("a, " + expression))
+        #expect(finding.metric("covering_columns")?.value == .text("a, " + expression + ", b"))
+    }
+
+    @Test("A node list splits into its top-level nodes, and an escaped brace opens or closes none")
+    func expressionListSplits() {
+        #expect(PostgreSQLIndexShape.expressions(#"({A :x 1} {B :args ({C :y 2})} {D :name a\}b\{c})"#) == [
+            "{A :x 1}", "{B :args ({C :y 2})}", #"{D :name a\}b\{c}"#
+        ])
+        #expect(PostgreSQLIndexShape.expressions("").isEmpty)
     }
 
     @Test("A partial index is covered only by one with the same predicate")
@@ -205,6 +260,8 @@ struct PostgreSQLIndexShapeTests {
 
         let withCover = indexes + [IndexRow(table: "ri_incl", name: "k_abc_incl", keys: ["a", "b"], includes: ["c"])]
         #expect(redundant(withCover) == ["k_a_incl_c": "k_abc_incl", "k_ab2": "k_abc_incl", "r_a_only": "k_abc_incl"])
+        let included = findings(withCover).first { $0.objectName == "k_a_incl_c" }
+        #expect(included?.metric("columns")?.value == .text(String(format: String(localized: "%1$@ INCLUDE (%2$@)"), "a", "c")))
     }
 
     @Test("A GiST or GIN index is redundant only to an equal one, never to a longer one")
@@ -212,14 +269,14 @@ struct PostgreSQLIndexShapeTests {
         let found = redundant([
             IndexRow(table: "rx", name: "rx_room_during_excl", method: "gist", protected: true, keys: ["room", "during"]),
             IndexRow(table: "rx", name: "k_rx_room_gist", method: "gist", keys: ["room"]),
-            IndexRow(name: "k_note_gin", method: "gin", keys: [Key("to_tsvector('simple'::regconfig, note)", opclass: "10073")]),
-            IndexRow(name: "k_note_gin_2", method: "gin", keys: [Key("to_tsvector('english'::regconfig, note)", opclass: "10073")]),
-            IndexRow(name: "r_note_gin_dup", method: "gin", keys: [Key("to_tsvector('simple'::regconfig, note)", opclass: "10073")])
+            IndexRow(name: "k_note_gin", method: "gin", keys: [.expression(Self.tsvector("1"), opclass: "10073", collation: "0")]),
+            IndexRow(name: "k_note_gin_2", method: "gin", keys: [.expression(Self.tsvector("2"), opclass: "10073", collation: "0")]),
+            IndexRow(name: "r_note_gin_dup", method: "gin", keys: [.expression(Self.tsvector("1"), opclass: "10073", collation: "0")])
         ])
         #expect(found == ["r_note_gin_dup": "k_note_gin"])
     }
 
-    @Test("A redundant index previews a concurrent drop and carries its size and both definitions")
+    @Test("A redundant index previews a concurrent drop and carries its size and both indexes' columns")
     func redundantFinding() throws {
         let finding = try #require(findings([
             IndexRow(schema: "sales", table: "orders", name: "orders_a_idx", bytes: "16384", keys: ["a"]),
@@ -231,8 +288,8 @@ struct PostgreSQLIndexShapeTests {
         #expect(finding.sizeBytes == 16_384)
         #expect(finding.fixSQL == #"DROP INDEX CONCURRENTLY "sales"."orders_a_idx";"#)
         #expect(finding.metric("covering_index")?.value == .text("orders_ab_idx"))
-        #expect(finding.metric("index_definition")?.value == .text("CREATE INDEX orders_a_idx ON sales.orders"))
-        #expect(finding.metric("covering_definition")?.value == .text("CREATE INDEX orders_ab_idx ON sales.orders"))
+        #expect(finding.metric("columns")?.value == .text("a"))
+        #expect(finding.metric("covering_columns")?.value == .text("a, b"))
         #expect(finding.metric("index_bytes") == nil)
         #expect(finding.detail == String(format: String(localized: "%1$@ is covered by %2$@."), "orders_a_idx", "orders_ab_idx"))
     }

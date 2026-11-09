@@ -602,7 +602,24 @@ struct TableHealthViewModelTests {
 
         #expect(viewModel.rows.isEmpty)
         #expect(viewModel.failedCheckCount == 1)
-        #expect(viewModel.listState == .someChecksFailed(1))
+        #expect(viewModel.listState == .someChecksFailed(failed: 1, hiddenIgnored: 0))
+    }
+
+    @Test("A failed check in All Findings still says how many ignored findings are hidden")
+    func failedChecksKeepTheIgnoredCount() async throws {
+        let metadata = HealthMetadata()
+        let viewModel = makeViewModel(metadata)
+        await viewModel.refresh()
+        let logs = try #require(row(viewModel, table: "logs"))
+        viewModel.setIgnored([logs.id], ignored: true)
+
+        metadata.server.failsMissingKeyCheck = true
+        await viewModel.refresh()
+
+        #expect(viewModel.rows.isEmpty)
+        #expect(viewModel.listState == .someChecksFailed(failed: 1, hiddenIgnored: 1))
+        viewModel.showIgnored = true
+        #expect(viewModel.listState == .rows)
     }
 
     @Test("All Findings keeps the rows it has when a check fails, and counts the failure")

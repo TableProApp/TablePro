@@ -13,8 +13,8 @@ import TableProPluginKit
 extension MainContentCoordinator {
     private static let objectToolsLogger = Logger(subsystem: "com.TablePro", category: "DatabaseObjectTools")
 
-    /// The object a sidebar row or the menu bar's selection names, scoped to its own database and
-    /// schema. A row whose database is nil belongs to the database being browsed.
+    // The object a sidebar row or the menu bar's selection names, scoped to its own database and
+    // schema. A row whose database is nil belongs to the database being browsed.
     func objectTarget(for ref: DatabaseTreeTableRef) -> DatabaseObjectTarget? {
         guard let scope = services.databaseManager.resolvedScope(
             database: ref.database,
@@ -31,7 +31,7 @@ extension MainContentCoordinator {
 
     // MARK: - Copy DDL
 
-    /// The same text the DDL viewer and the Structure tab's DDL show, read in the object's own scope.
+    // The same text the DDL viewer and the Structure tab's DDL show, read in the object's own scope.
     func copyDDL(of ref: DatabaseTreeTableRef) {
         guard let target = objectTarget(for: ref) else { return }
         let name = target.name
@@ -66,8 +66,8 @@ extension MainContentCoordinator {
         }
     }
 
-    /// A failed check still asks the question: the refresh itself does not depend on it, and a
-    /// server that could not answer the catalog read will say why when the refresh runs.
+    // A failed check still asks the question: the refresh itself does not depend on it, and a
+    // server that could not answer the catalog read will say why when the refresh runs.
     private func refreshPrompt(for target: DatabaseObjectTarget) async -> MaterializedViewRefreshPrompt {
         do {
             let availability = try await MaterializedViewRefreshing.concurrentRefreshAvailability(of: target)
@@ -167,6 +167,7 @@ extension MainContentCoordinator {
             closeTabsForRemovedObjects(ids: showing.map(\.id))
         case .renamed(let newName):
             retitleTabs(ids: Set(showing.map(\.id)), to: newName)
+            refreshTableHealth(inDatabase: change.scope.database)
         }
     }
 }

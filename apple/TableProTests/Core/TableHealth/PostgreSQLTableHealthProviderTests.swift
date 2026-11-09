@@ -8,7 +8,7 @@ struct PostgreSQLTableHealthProviderTests {
         var errorDescription: String? { "permission denied for pg_stat_user_tables" }
     }
 
-    private static let statisticsColumns = ["track_counts", "stats_reset", "server_version_num", "in_recovery"]
+    private static let statisticsColumns = ["track_counts", "stats_reset", "server_version_num", "in_recovery", "standbys"]
 
     private let provider = PostgreSQLTableHealthProvider()
     private let context = TableHealthFixture.postgresContext()
@@ -40,19 +40,23 @@ struct PostgreSQLTableHealthProviderTests {
         trackCounts: String = "on",
         statsReset: String? = nil,
         version: String? = "170011",
-        inRecovery: String? = "f"
+        inRecovery: String? = "f",
+        standbys: String? = "0"
     ) -> QueryResult {
-        TableHealthFixture.result(columns: statisticsColumns, rows: [[trackCounts, statsReset, version, inRecovery]])
+        TableHealthFixture.result(columns: statisticsColumns, rows: [[trackCounts, statsReset, version, inRecovery, standbys]])
     }
 
     private func statistics(
         trackCounts: String = "on",
         statsReset: String? = nil,
         version: String? = "170011",
-        inRecovery: String? = "f"
+        inRecovery: String? = "f",
+        standbys: String? = "0"
     ) -> TableHealthStatistics {
         provider.statistics(
-            from: [Self.statisticsResult(trackCounts: trackCounts, statsReset: statsReset, version: version, inRecovery: inRecovery)],
+            from: [Self.statisticsResult(
+                trackCounts: trackCounts, statsReset: statsReset, version: version, inRecovery: inRecovery, standbys: standbys
+            )],
             now: Date()
         )
     }
@@ -88,14 +92,18 @@ struct PostgreSQLTableHealthProviderTests {
         #expect(finding.fixSQL == #"VACUUM (ANALYZE) "public"."orders";"#)
     }
 
-    @Test("A table never vacuumed says so and has no last vacuum value")
+    @Test("A table with no vacuum recorded says only that, since a crash also empties the record, and has no last vacuum value")
     func neverVacuumed() throws {
         let finding = try #require(findings(
             .bloat,
-            columns: ["schema_name", "table_name", "live_rows", "dead_rows", "last_vacuum", "table_bytes"],
-            rows: [["public", "orders", "2000", "3000", nil, "81920"]]
+            columns: ["schema_name", "table_name", "live_rows", "dead_rows", "last_vacuum", "table_bytes", "stats_reset"],
+            rows: [["public", "orders", "2000", "3000", nil, "81920", nil]]
         ).first)
-        #expect(finding.detail.contains("Never vacuumed"))
+        #expect(finding.detail == String(
+            format: String(localized: "%1$@ dead rows, %2$@ live. No vacuum recorded in the server's statistics."),
+            (3_000 as Int64).formatted(), (2_000 as Int64).formatted()
+        ))
+        #expect(!finding.detail.contains("Never"))
         #expect(finding.metric("last_vacuum") == nil)
     }
 
@@ -202,7 +210,9 @@ struct PostgreSQLTableHealthProviderTests {
         #expect(statistics(statsReset: "1800000000").notes == [
             String(format: String(localized: "Index usage counts since the statistics were last reset at %@."), TableHealthFormatting.date(reset))
         ])
-        #expect(statistics(statsReset: nil).notes.first?.contains("never been reset") == true)
+        #expect(statistics(statsReset: nil).notes == [String(
+            localized: "Index usage counts cover only what the server's statistics hold; a reset, a crash or a failover discards them."
+        )])
         #expect(provider.statistics(from: [nil], now: Date()) == TableHealthStatistics())
     }
 
@@ -450,7 +460,7 @@ struct PostgreSQLTableHealthProviderTests {
 
     private static let sequenceColumns = [
         "sequence_schema", "sequence_name", "sequence_type", "increment_by", "sequence_min", "sequence_max",
-        "last_value", "lower_bound", "upper_bound", "used_fraction", "readable",
+        "last_value", "lower_bound", "upper_bound", "used_fraction", "readable", "locked",
         "table_schema", "table_name", "column_name", "column_type", "column_min", "column_max", "ownership",
         "table_bytes", "referencing_columns"
     ]
@@ -466,6 +476,7 @@ struct PostgreSQLTableHealthProviderTests {
         var upper = "2147483647"
         var used: String? = "0.79162418869475292852"
         var readable = "t"
+        var locked = "f"
         var table: String?
         var column: String? = "id"
         var columnType: String? = "integer"
@@ -476,7 +487,7 @@ struct PostgreSQLTableHealthProviderTests {
 
         var cells: [String?] {
             [
-                "public", name, type, increment, minimum, maximum, last, lower, upper, used, readable,
+                "public", name, type, increment, minimum, maximum, last, lower, upper, used, readable, locked,
                 table == nil ? nil : "public", table, table == nil ? nil : column, table == nil ? nil : columnType,
                 table == nil ? nil : columnMin, table == nil ? nil : columnMax, table == nil ? nil : ownership,
                 table == nil ? nil : "8192", referencing
@@ -746,5 +757,62 @@ struct PostgreSQLTableHealthProviderTests {
             == [PostgreSQLTableHealthProvider.invalidIndexBefore12Query])
         #expect(provider.queries(for: .invalidIndex, statistics: TableHealthStatistics())
             == [PostgreSQLTableHealthProvider.invalidIndexBefore12Query])
+    }
+
+    @Test("A primary with standbys says their index scans are not counted, and a standby or a lone primary says nothing")
+    func standbyScansNote() {
+        let note = String(localized: "Index scans on this server's standbys are not counted here.")
+        #expect(statistics(standbys: "2").notes.contains(note))
+        #expect(!statistics(standbys: "0").notes.contains(note))
+        #expect(!statistics(standbys: nil).notes.contains(note))
+        #expect(!statistics(inRecovery: "t", standbys: "1").notes.contains(note))
+    }
+
+    @Test("A table whose statistics this user cannot read is not called never analyzed, and the detail says why")
+    func unreadableStatisticsAreNotNeverAnalyzed() throws {
+        let columns = Self.staleColumns + ["stats_readable"]
+        let found = findings(
+            .staleStatistics,
+            columns: columns,
+            rows: [
+                ["public", "st_hidden", "r", "5000", "5000", "50", "t", nil, "212992", "f"],
+                ["public", "st_never", "r", "5000", "5000", "50", "t", nil, "212992", "t"]
+            ]
+        )
+        #expect(found.count == 2)
+        #expect(found[0].detail == String(
+            localized: "No analyze recorded in the server's statistics, and this user cannot read the table's statistics to confirm it."
+        ))
+        #expect(found[0].metric("never_analyzed") == nil)
+        #expect(found[1].detail == String(localized: "Never analyzed, so the planner has no statistics for it."))
+        #expect(found[1].metric("never_analyzed")?.value == .flag(true))
+    }
+
+    @Test("A sequence another session holds locked is left unread and counted in the check's note")
+    func lockedSequencesBecomeNote() {
+        let locked = SequenceRow(name: "seq_busy", last: nil, used: nil, locked: "t")
+        let one = sequences([locked, SequenceRow(name: "seq_int_id_seq", table: "seq_int")])
+        #expect(one.findings.map { $0.objectName } == ["seq_int_id_seq"])
+        #expect(one.note == String(localized: "One sequence is locked by another session, so its counter was not checked."))
+
+        let secret = SequenceRow(name: "seq_secret", type: "smallint", last: nil, used: nil, readable: "f")
+        let both = sequences([locked, SequenceRow(name: "seq_busy_2", last: nil, used: nil, locked: "t"), secret])
+        #expect(both.findings.isEmpty)
+        #expect(both.note == [
+            String(localized: "One sequence is not readable by this user, so its counter was not checked."),
+            String(format: String(localized: "%lld sequences are locked by another session, so their counters were not checked."), 2)
+        ].joined(separator: " "))
+    }
+
+    @Test("Before 12, an invalid index whose table was locked, so its definition was not read, falls back to a plain rebuild")
+    func lockedDefinitionFallsBackToReindex() throws {
+        let finding = try #require(findings(
+            .invalidIndex,
+            columns: Self.invalidColumns,
+            rows: [["public", "inv", "inv_vw_cancelled", "f", "t", "16384", nil]],
+            statistics: statistics(version: "110000")
+        ).first)
+        #expect(finding.fixSQL == #"REINDEX INDEX "public"."inv_vw_cancelled";"#)
+        #expect(finding.metric("index_definition") == nil)
     }
 }

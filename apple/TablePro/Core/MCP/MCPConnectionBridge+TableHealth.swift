@@ -25,30 +25,40 @@ extension MCPConnectionBridge {
         return Self.tableHealthPayload(report, ledger: ledger)
     }
 
-    // The race runRacingTimeout runs for a statement. A metadata read cannot be aborted on the server, so on a timeout
-    // the checks stop before their next statement and the reply waits only for the one already running.
+    // Answers at the deadline and lets the checks wind down after it: a read queued on the pool's serial lane sees its
+    // cancel only when the job ahead of it ends, and a catalog read already running cannot be stopped on the server.
     static func withinTableHealthTimeout<T: Sendable>(
         seconds: Int,
         _ body: @Sendable @escaping () async throws -> T
     ) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask {
-                try await body()
+        let deadline = TableHealthDeadline<T>()
+        let work = Task {
+            do {
+                deadline.settle(.success(try await body()))
+            } catch {
+                deadline.settle(.failure(error))
             }
-            group.addTask {
+        }
+        let timer = Task {
+            do {
                 try await Task.sleep(for: .seconds(seconds))
-                throw DatabaseAccessError.timeout(
-                    String(
-                        format: String(localized: "Table Health did not finish within the MCP query timeout of %lld seconds."),
-                        seconds
-                    )
+            } catch {
+                return
+            }
+            deadline.settle(.failure(DatabaseAccessError.timeout(
+                String(
+                    format: String(localized: "Table Health did not finish within the MCP query timeout of %lld seconds."),
+                    seconds
                 )
-            }
-            guard let first = try await group.next() else {
-                throw CancellationError()
-            }
-            group.cancelAll()
-            return first
+            )))
+            work.cancel()
+        }
+        defer { timer.cancel() }
+        return try await withTaskCancellationHandler {
+            try await deadline.wait()
+        } onCancel: {
+            deadline.settle(.failure(CancellationError()))
+            work.cancel()
         }
     }
 
@@ -168,5 +178,53 @@ extension MCPConnectionBridge {
             "type": .string(type),
             "value": value
         ])
+    }
+}
+
+// The first outcome wins; later ones are dropped, so a read that ends after the timeout answered changes nothing.
+private final class TableHealthDeadline<T: Sendable>: Sendable {
+    private enum State: Sendable {
+        case running
+        case waiting(CheckedContinuation<T, any Error>)
+        case settled(Result<T, any Error>)
+        case delivered
+    }
+
+    private let state = OSAllocatedUnfairLock<State>(initialState: .running)
+
+    func settle(_ result: Result<T, any Error>) {
+        let waiter = state.withLock { state -> CheckedContinuation<T, any Error>? in
+            switch state {
+            case .running:
+                state = .settled(result)
+                return nil
+            case .waiting(let continuation):
+                state = .delivered
+                return continuation
+            case .settled, .delivered:
+                return nil
+            }
+        }
+        waiter?.resume(with: result)
+    }
+
+    func wait() async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            let ready = state.withLock { state -> Result<T, any Error>? in
+                switch state {
+                case .running:
+                    state = .waiting(continuation)
+                    return nil
+                case .settled(let result):
+                    state = .delivered
+                    return result
+                case .waiting, .delivered:
+                    return .failure(CancellationError())
+                }
+            }
+            if let ready {
+                continuation.resume(with: ready)
+            }
+        }
     }
 }

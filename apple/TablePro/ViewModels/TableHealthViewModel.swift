@@ -15,7 +15,8 @@ enum TableHealthListState: Equatable {
     case failed(String)
     case noResults
     case ignoredHidden(Int)
-    case someChecksFailed(Int)
+    // A failure outranks hidden ignored findings, which it still counts.
+    case someChecksFailed(failed: Int, hiddenIgnored: Int)
     case noResolved
 }
 
@@ -387,7 +388,9 @@ final class TableHealthViewModel: ObservableObject {
         if !filterText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, scopeRowCount > 0 {
             return .noResults
         }
-        if scope == .all, failedCheckCount > 0 { return .someChecksFailed(failedCheckCount) }
+        if scope == .all, failedCheckCount > 0 {
+            return .someChecksFailed(failed: failedCheckCount, hiddenIgnored: hiddenIgnoredCount)
+        }
         if hiddenIgnoredCount > 0 { return .ignoredHidden(hiddenIgnoredCount) }
         switch scope {
         case .all:

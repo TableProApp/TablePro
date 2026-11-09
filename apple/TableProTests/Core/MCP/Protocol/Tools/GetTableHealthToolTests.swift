@@ -201,33 +201,76 @@ struct GetTableHealthToolTests {
         #expect(required(metricSchema) == keys(metric))
     }
 
-    @Test("Checks that outlast the MCP query timeout fail as a timeout, once the statement in flight returns")
-    func timeoutStopsTheChecks() async {
-        let inFlight = AsyncGate()
-        let cancelled = AsyncGate()
-        let call = Task {
-            try await MCPConnectionBridge.withinTableHealthTimeout(seconds: 0) {
+    // The stand-in read stays held until after the call has answered, like one queued behind the tab's report on
+    // the pool's serial lane, so a race that waited for it would never finish.
+    @Test("The MCP query timeout answers at once and tells the checks to stop", .timeLimit(.minutes(1)))
+    func timeoutAnswersWithoutWaitingForTheChecks() async {
+        let held = AsyncGate()
+        let stopped = AsyncGate()
+        var thrown: (any Error)?
+
+        do {
+            _ = try await MCPConnectionBridge.withinTableHealthTimeout(seconds: 0) {
                 try await withTaskCancellationHandler {
-                    await inFlight.wait()
+                    await held.wait()
                     try Task.checkCancellation()
                     return 1
                 } onCancel: {
-                    Task { await cancelled.open() }
+                    Task { await stopped.open() }
+                }
+            }
+        } catch {
+            thrown = error
+        }
+        await stopped.wait()
+        await held.open()
+
+        let mapped = (thrown as? DatabaseAccessError).map { MCPToolExecutionError.from($0) }
+        #expect(mapped?.code == .timeout)
+        #expect(mapped?.message == "Table Health did not finish within the MCP query timeout of 0 seconds.")
+    }
+
+    @Test("A cancelled call answers at once and tells the checks to stop", .timeLimit(.minutes(1)))
+    func cancelAnswersWithoutWaitingForTheChecks() async {
+        let held = AsyncGate()
+        let stopped = AsyncGate()
+        let call = Task {
+            try await MCPConnectionBridge.withinTableHealthTimeout(seconds: 3_600) {
+                try await withTaskCancellationHandler {
+                    await held.wait()
+                    try Task.checkCancellation()
+                    return 1
+                } onCancel: {
+                    Task { await stopped.open() }
                 }
             }
         }
 
-        await cancelled.wait()
-        await inFlight.open()
+        await held.arrived(1)
+        call.cancel()
         let outcome = await call.result
+        await stopped.wait()
+        await held.open()
 
         var thrown: (any Error)?
         if case .failure(let error) = outcome {
             thrown = error
         }
+        #expect(thrown is CancellationError)
+    }
+
+    @Test("An error from the checks reaches the caller as it is")
+    func checkErrorPassesThrough() async {
+        var thrown: (any Error)?
+        do {
+            _ = try await MCPConnectionBridge.withinTableHealthTimeout(seconds: 3_600) { () async throws -> Int in
+                throw DatabaseAccessError.notFound("no such database")
+            }
+        } catch {
+            thrown = error
+        }
         let mapped = (thrown as? DatabaseAccessError).map { MCPToolExecutionError.from($0) }
-        #expect(mapped?.code == .timeout)
-        #expect(mapped?.message == "Table Health did not finish within the MCP query timeout of 0 seconds.")
+        #expect(mapped?.code == .notFound)
     }
 
     @Test("Checks that finish within the MCP query timeout return their report")

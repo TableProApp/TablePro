@@ -3,12 +3,17 @@ import Foundation
 // The valid indexes of one table, from PostgreSQLTableHealthProvider.redundantIndexQuery: a row per index column,
 // key columns first, then the INCLUDE columns.
 struct PostgreSQLIndexShape {
-    // A key column or expression as the server deparses it, with what decides which lookups it serves.
+    // A key column by name, or an expression by its node text, with what decides which lookups it serves.
     struct KeyPart: Equatable {
         let column: String
+        let isExpression: Bool
         let operatorClass: String
         let collation: String
         let sortOption: String
+
+        var displayName: String {
+            isExpression ? String(localized: "(expression)") : column
+        }
     }
 
     struct Index {
@@ -23,11 +28,17 @@ struct PostgreSQLIndexShape {
         let isProtected: Bool
         let predicate: String?
         let sizeBytes: Int64?
-        var definition: String?
         var keys: [KeyPart]
         var includes: [String]
 
         var columns: [String] { keys.map(\.column) + includes }
+
+        // The key columns, expressions as a placeholder, then any INCLUDE columns.
+        var columnsDescription: String {
+            let keyList = keys.map(\.displayName).joined(separator: ", ")
+            guard !includes.isEmpty else { return keyList }
+            return String(format: String(localized: "%1$@ INCLUDE (%2$@)"), keyList, includes.joined(separator: ", "))
+        }
 
         // Only a B-tree serves a lookup on its leading keys, so another method is redundant only to an equal index.
         // A unique index is redundant only to one enforcing the same rule. Of two indexes that cover each other, a
@@ -103,7 +114,6 @@ struct PostgreSQLIndexShape {
                     isProtected: row.flag("is_protected") == true,
                     predicate: row.text("predicate"),
                     sizeBytes: row.int64("index_bytes"),
-                    definition: nil,
                     keys: [],
                     includes: []
                 ))
@@ -118,22 +128,59 @@ struct PostgreSQLIndexShape {
                 let indexParts = (parts[tableKey + [tables[tablePosition].indexes[indexPosition].name]] ?? [])
                     .sorted { $0.position < $1.position }
                 var index = tables[tablePosition].indexes[indexPosition]
+                // indexprs holds one expression per zero in indkey, in key order.
+                var expressions = indexParts.lazy.compactMap { $0.row.text("expressions") }.first.map(Self.expressions) ?? []
                 for part in indexParts {
-                    if index.definition == nil { index.definition = part.row.text("index_definition") }
+                    let isExpression = part.row.int64("attnum") == 0
+                    let column = isExpression
+                        ? (expressions.isEmpty ? "" : expressions.removeFirst())
+                        : part.row["column_name"]
                     if part.position <= part.keyCount {
                         index.keys.append(KeyPart(
-                            column: part.row["column_text"],
+                            column: column,
+                            isExpression: isExpression,
                             operatorClass: part.row["opclass"],
                             collation: part.row["collation"],
                             sortOption: part.row["sort_option"]
                         ))
                     } else {
-                        index.includes.append(part.row["column_text"])
+                        index.includes.append(column)
                     }
                 }
                 tables[tablePosition].indexes[indexPosition] = index
             }
         }
         return tables
+    }
+
+    // The top-level nodes of a node-tree list, "({A ...} {B ...})". The server escapes a brace inside a token with a
+    // backslash, so an escaped character never opens or closes a node.
+    static func expressions(_ list: String) -> [String] {
+        var nodes: [String] = []
+        var current = ""
+        var depth = 0
+        var escaped = false
+        for character in list {
+            if escaped {
+                if depth > 0 { current.append(character) }
+                escaped = false
+                continue
+            }
+            if character == "\\" {
+                escaped = true
+                if depth > 0 { current.append(character) }
+                continue
+            }
+            if character == "{" { depth += 1 }
+            if depth > 0 { current.append(character) }
+            if character == "}", depth > 0 {
+                depth -= 1
+                if depth == 0 {
+                    nodes.append(current)
+                    current = ""
+                }
+            }
+        }
+        return nodes
     }
 }

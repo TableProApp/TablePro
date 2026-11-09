@@ -1819,6 +1819,9 @@
         }
       }
     },
+    "(expression)" : {
+
+    },
     "(NULL)" : {
       "localizations" : {
         "fr" : {
@@ -7113,6 +7116,9 @@
     "%1$@ dead rows, %2$@ live. Never vacuumed." : {
 
     },
+    "%1$@ dead rows, %2$@ live. No vacuum recorded in the server's statistics." : {
+
+    },
     "%1$@ dead rows, %2$@ live. No vacuum recorded since the statistics were reset at %3$@." : {
 
     },
@@ -7239,6 +7245,9 @@
       }
     },
     "%1$@ in SRID %2$d." : {
+
+    },
+    "%1$@ INCLUDE (%2$@)" : {
 
     },
     "%1$@ is a capped collection, and a longer field name makes MongoDB delete its oldest documents. Choose a name no longer than %2$@." : {
@@ -11801,6 +11810,9 @@
           }
         }
       }
+    },
+    "%lld sequences are locked by another session, so their counters were not checked." : {
+
     },
     "%lld sequences are not readable by this user, so their counters were not checked." : {
 
@@ -55700,6 +55712,9 @@
     "Country" : {
 
     },
+    "Covering Columns" : {
+
+    },
     "Covering Definition" : {
 
     },
@@ -94601,6 +94616,9 @@
         }
       }
     },
+    "Index scans on this server's standbys are not counted here." : {
+
+    },
     "Index size" : {
       "localizations" : {
         "fr" : {
@@ -94682,6 +94700,9 @@
           }
         }
       }
+    },
+    "Index usage counts cover only what the server's statistics hold; a reset, a crash or a failover discards them." : {
+
     },
     "Index usage counts since the server started at %@." : {
 
@@ -116279,6 +116300,9 @@
         }
       }
     },
+    "No analyze recorded in the server's statistics, and this user cannot read the table's statistics to confirm it." : {
+
+    },
     "No Attached Databases" : {
 
     },
@@ -123154,6 +123178,9 @@
         }
       }
     },
+    "Not dropped: its covering index %@ is dropped in this script." : {
+
+    },
     "not equals" : {
       "localizations" : {
         "fr" : {
@@ -126903,6 +126930,9 @@
           }
         }
       }
+    },
+    "One sequence is locked by another session, so its counter was not checked." : {
+
     },
     "One sequence is not readable by this user, so its counter was not checked." : {
 
