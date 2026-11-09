@@ -315,6 +315,7 @@ internal final class MainSplitViewController: NSSplitViewController {
 
         navigationSidebar = NavigationSidebarViewController()
         navigationSidebar.railController.host = self
+        navigationSidebar.navigatorController.model.host = self
         navigationSidebar.railController.onLayoutChange = { [weak self] _ in
             self?.navigationSidebar.applyRailLayout()
             self?.recomputeWindowMinSize()
@@ -702,6 +703,7 @@ internal final class MainSplitViewController: NSSplitViewController {
         /// Only this window's rail moved, and only its highlight. Broadcasting instead made every
         /// rail in the app rebuild its whole entry list to answer a question none of them asked.
         navigationSidebar?.railController.refreshSelection()
+        navigationSidebar?.navigatorController.refreshSelection()
         syncFrontmostTabManager()
 
         /// The toolbar's shape follows the workspace, not only its coordinator. Pointing the toolbar
@@ -1188,6 +1190,14 @@ internal final class MainSplitViewController: NSSplitViewController {
     }
 
     var canToggleWorkspaceRail: Bool {
+        ConnectionWindowPaneResolver.canToggleConnectionsColumn(
+            navigatorEnabled: AppSettingsManager.shared.general.showsConnectionNavigator,
+            workspaceCount: WorkspaceRailStore.entries.count
+        )
+    }
+
+    /// Stepping between workspaces needs a second one whichever list the column holds.
+    var canCycleWorkspaces: Bool {
         WorkspaceRailStore.entries.count > 1
     }
 
@@ -1215,13 +1225,22 @@ internal final class MainSplitViewController: NSSplitViewController {
     /// sibling connection opening or closing is enough.
     func applyRailVisibility(workspaceCount: Int) {
         hostedWorkspaceCount = workspaceCount
+        let general = AppSettingsManager.shared.general
+        let showsNavigator = general.showsConnectionNavigator
+        navigationSidebar?.setNavigatorEnabled(showsNavigator)
         setWorkspaceRailVisible(
-            ConnectionWindowPaneResolver.showsWorkspaceRail(
-                preferenceEnabled: AppSettingsManager.shared.general.showWorkspaceRail,
-                workspaceCount: workspaceCount,
-                pane: currentPane,
-                isClosing: phase == .closing
-            )
+            showsNavigator
+                ? ConnectionWindowPaneResolver.showsConnectionNavigator(
+                    preferenceEnabled: general.showWorkspaceRail,
+                    navigatorEnabled: showsNavigator,
+                    isClosing: phase == .closing
+                )
+                : ConnectionWindowPaneResolver.showsWorkspaceRail(
+                    preferenceEnabled: general.showWorkspaceRail,
+                    workspaceCount: workspaceCount,
+                    pane: currentPane,
+                    isClosing: phase == .closing
+                )
         )
         applyChromeStandingOnRail()
     }
