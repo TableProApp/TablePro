@@ -2465,6 +2465,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "%@ (unique)" : {
+
+    },
     "%@ (You)" : {
       "localizations" : {
         "fr" : {
@@ -207495,6 +207498,9 @@
           }
         }
       }
+    },
+    "unique" : {
+
     },
     "Unique" : {
       "localizations" : {
