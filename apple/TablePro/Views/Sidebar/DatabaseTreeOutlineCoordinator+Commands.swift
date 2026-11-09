@@ -152,7 +152,7 @@ extension DatabaseTreeOutlineCoordinator {
         case .openRedisKey(let key, let keyType):
             mainCoordinator?.openRedisKey(key, keyType: keyType)
         case .toggleObjectIcons, .toggleObjectComments, .toggleSystemContainers, .togglePartitions,
-             .setRowSize:
+             .toggleTableDetails, .setRowSize:
             _ = SidebarViewOptionsMenu.apply(command)
         }
     }

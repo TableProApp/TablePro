@@ -91,6 +91,7 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
             showObjectComments: settings.showObjectComments,
             showSystemContainers: settings.showSystemContainers,
             showPartitions: settings.showPartitions,
+            showTableDetails: settings.showTableDetails,
             rowSize: settings.sidebarRowSize,
             canFilterDatabases: PluginManager.shared.supportsDatabaseTree(for: databaseType)
                 && sidebarState?.sidebarLayout == .tree,

@@ -46,6 +46,7 @@ internal struct DatabaseTreeMenuContext {
     internal let showObjectComments: Bool
     internal let showSystemContainers: Bool
     internal let showPartitions: Bool
+    internal var showTableDetails: Bool = false
     internal let rowSize: SidebarRowSizePreference
     internal var canFilterDatabases: Bool = false
     internal var hasDatabaseFilter: Bool = false

@@ -366,6 +366,7 @@ struct DatabaseTreeMenuSpecTests {
             showObjectComments: true,
             showSystemContainers: true,
             showPartitions: true,
+            showTableDetails: false,
             rowSize: .matchSystem
         )
         let items = sections.first?.items ?? []
@@ -387,6 +388,7 @@ struct DatabaseTreeMenuSpecTests {
             showObjectComments: true,
             showSystemContainers: true,
             showPartitions: false,
+            showTableDetails: false,
             rowSize: .matchSystem
         )
         let states: [Bool?] = (sections.first?.items ?? []).compactMap { item in

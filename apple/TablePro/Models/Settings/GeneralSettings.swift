@@ -65,6 +65,7 @@ struct GeneralSettings: Codable, Equatable {
     var showObjectIcons: Bool
     var showSystemContainers: Bool
     var showPartitions: Bool
+    var showTableDetails: Bool
     var showWorkspaceRail: Bool
     var sidebarRowSize: SidebarRowSizePreference
     var connectionHealthCheck: ConnectionHealthCheck
@@ -79,6 +80,7 @@ struct GeneralSettings: Codable, Equatable {
         showObjectIcons: true,
         showSystemContainers: false,
         showPartitions: true,
+        showTableDetails: false,
         showWorkspaceRail: true,
         sidebarRowSize: .matchSystem,
         connectionHealthCheck: .every30Seconds
@@ -94,6 +96,7 @@ struct GeneralSettings: Codable, Equatable {
         showObjectIcons: Bool = true,
         showSystemContainers: Bool = false,
         showPartitions: Bool = true,
+        showTableDetails: Bool = false,
         showWorkspaceRail: Bool = true,
         sidebarRowSize: SidebarRowSizePreference = .matchSystem,
         connectionHealthCheck: ConnectionHealthCheck = .every30Seconds
@@ -107,6 +110,7 @@ struct GeneralSettings: Codable, Equatable {
         self.showObjectIcons = showObjectIcons
         self.showSystemContainers = showSystemContainers
         self.showPartitions = showPartitions
+        self.showTableDetails = showTableDetails
         self.showWorkspaceRail = showWorkspaceRail
         self.sidebarRowSize = sidebarRowSize
         self.connectionHealthCheck = connectionHealthCheck
@@ -124,6 +128,7 @@ struct GeneralSettings: Codable, Equatable {
         showObjectIcons = container.decodeSetting(.showObjectIcons, default: fallback.showObjectIcons)
         showSystemContainers = container.decodeSetting(.showSystemContainers, default: fallback.showSystemContainers)
         showPartitions = container.decodeSetting(.showPartitions, default: fallback.showPartitions)
+        showTableDetails = container.decodeSetting(.showTableDetails, default: fallback.showTableDetails)
         showWorkspaceRail = container.decodeSetting(.showWorkspaceRail, default: fallback.showWorkspaceRail)
         sidebarRowSize = container.decodeSetting(.sidebarRowSize, default: fallback.sidebarRowSize)
         connectionHealthCheck = container.decodeSetting(.connectionHealthCheck, default: fallback.connectionHealthCheck)

@@ -69,6 +69,7 @@ struct GeneralSettingsBoolSettingTests {
         BoolSetting(key: "showObjectIcons", defaultValue: true),
         BoolSetting(key: "showSystemContainers", defaultValue: false),
         BoolSetting(key: "showPartitions", defaultValue: true),
+        BoolSetting(key: "showTableDetails", defaultValue: false),
         BoolSetting(key: "showWorkspaceRail", defaultValue: true),
     ]
 
