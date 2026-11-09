@@ -219,3 +219,26 @@ tp-diagram-canvas > .tp-diagram-border {
 tp-diagram-canvas > .tp-diagram-accent {
   color: var(--accent-color);
 }
+
+/* Row details: each field is a name over its value in a field of its own,
+   as macOS's inspector draws it. The selection marks the field the editor
+   below holds with its outline, not a fill over the whole row. */
+.row-detail-fields,
+.row-detail-fields > row,
+.row-detail-fields > row:hover,
+.row-detail-fields > row:selected {
+  background: none;
+}
+
+.row-detail-fields .field-well {
+  background-color: var(--view-bg-color);
+  border: 1px solid alpha(currentColor, 0.2);
+  border-radius: 6px;
+  padding: 4px 8px;
+  min-height: 22px;
+}
+
+.row-detail-fields > row:selected .field-well {
+  border-color: var(--accent-color);
+  box-shadow: inset 0 0 0 1px var(--accent-color);
+}

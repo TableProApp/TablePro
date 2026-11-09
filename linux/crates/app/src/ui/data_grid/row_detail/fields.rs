@@ -116,11 +116,37 @@ fn field_row() -> gtk::Box {
     top.append(&name);
     top.append(&edited);
     top.append(&type_box);
+    // A button of the row, not of the list's selection: it copies this
+    // field's value whatever field the editor below holds.
+    let copy = gtk::Button::builder()
+        .icon_name(icons::EDIT_COPY)
+        .tooltip_text(gettext("Copy Value"))
+        .valign(gtk::Align::Center)
+        .build();
+    copy.add_css_class("flat");
+    copy.add_css_class("circular");
+    copy.add_css_class("field-copy");
+    copy.update_property(&[gtk::accessible::Property::Label(&gettext("Copy Value"))]);
+    top.append(&copy);
     let value = gtk::Inscription::builder()
         .hexpand(true)
         .min_chars(1)
         .text_overflow(gtk::InscriptionOverflow::EllipsizeEnd)
         .build();
+    value.add_css_class("monospace");
+    // The value sits in a field of its own, as macOS's inspector draws it.
+    let well = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    well.add_css_class("field-well");
+    well.append(&value);
+    copy.connect_clicked(glib::clone!(
+        #[weak]
+        value,
+        move |button| {
+            if let Some(text) = value.text() {
+                button.clipboard().set_text(&text);
+            }
+        }
+    ));
     let row = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(2)
@@ -130,7 +156,7 @@ fn field_row() -> gtk::Box {
         .margin_end(12)
         .build();
     row.append(&top);
-    row.append(&value);
+    row.append(&well);
     row
 }
 
@@ -139,6 +165,7 @@ struct FieldParts {
     name: gtk::Label,
     edited: gtk::Image,
     kind: gtk::Label,
+    copy: gtk::Button,
     value: gtk::Inscription,
 }
 
@@ -147,13 +174,16 @@ fn field_parts(row: &gtk::Widget) -> Option<FieldParts> {
     let key = top.first_child()?;
     let name = key.next_sibling()?;
     let edited = name.next_sibling()?;
-    let kind = edited.next_sibling()?.last_child()?;
+    let type_box = edited.next_sibling()?;
+    let kind = type_box.last_child()?;
+    let copy = type_box.next_sibling()?;
     Some(FieldParts {
         key: key.downcast().ok()?,
         name: name.downcast().ok()?,
         edited: edited.downcast().ok()?,
         kind: kind.downcast().ok()?,
-        value: row.last_child()?.downcast().ok()?,
+        copy: copy.downcast().ok()?,
+        value: row.last_child()?.first_child()?.downcast().ok()?,
     })
 }
 
@@ -347,6 +377,7 @@ impl RowDetailPane {
             name,
             edited,
             kind,
+            copy,
             value: shown,
         }) = field_parts(&row_box)
         else {
@@ -358,11 +389,14 @@ impl RowDetailPane {
         item.set_accessible_label(&field_label(&column));
         let Some(row) = self.current_row() else {
             edited.set_visible(false);
+            copy.set_sensitive(false);
             shown.set_text(None);
             return;
         };
         let value = field_value(&grid.tracked(), &row, &column);
         edited.set_visible(value.modified);
+        // A stand-in (NULL, DEFAULT, an expression) is not a value to copy.
+        copy.set_sensitive(!value.placeholder);
         shown.set_text(Some(&value.text));
         shown.set_attributes(Some(&value_attributes(&value)));
         set_class(&shown, "dimmed", value.placeholder || value.deleted);

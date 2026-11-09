@@ -170,6 +170,9 @@
                                         <property name="min-content-height">120</property>
                                         <property name="child">
                                           <object class="GtkListView" id="field_list">
+                                            <style>
+                                              <class name="row-detail-fields"/>
+                                            </style>
                                             <accessibility>
                                               <property name="label" translatable="yes">Fields</property>
                                             </accessibility>

@@ -1690,3 +1690,29 @@ fn search_keys_and_tab_order_reach_the_filter_list_and_value() {
         .expect("Escape");
     wait_until(WAIT, || !grid.grid.imp().split_view.shows_sidebar()).expect("Escape closes the empty overlay search");
 }
+
+#[gtk4::test]
+fn a_fields_copy_button_copies_its_own_value_not_the_selected_ones() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    grid.focus(1, 1);
+    drain_main_context();
+
+    let row = drawn_field(&pane, 0).child().expect("the field's row");
+    let copy = descendants(&row)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+        .find(|button| button.has_css_class("field-copy"))
+        .expect("the copy button");
+    assert!(copy.is_sensitive());
+    copy.emit_clicked();
+
+    let clipboard = copy.clipboard();
+    let copied = finish_on_main(WAIT, async move { clipboard.read_text_future().await })
+        .expect("the clipboard to answer")
+        .expect("text on the clipboard");
+    assert_eq!(
+        copied.as_deref(),
+        Some("2"),
+        "the first field's value, with the second selected"
+    );
+}
