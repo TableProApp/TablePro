@@ -525,6 +525,9 @@ impl WorkspaceShell {
         if let (Some(tree), Some(key)) = (imp.tree.get(), workspace.key()) {
             tree.remove_session(&key);
         }
+        if let Some(front) = self.front() {
+            front.read(super::WorkspaceModel::select_in_tree);
+        }
         self.tell_sharing();
         self.refresh_saving();
     }
