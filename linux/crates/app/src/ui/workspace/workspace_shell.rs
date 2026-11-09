@@ -9,8 +9,10 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
-use libadwaita::prelude::BinExt;
+use libadwaita::prelude::{AdwDialogExt, AlertDialogExt, BinExt, PreferencesGroupExt};
 use tablepro_core::DataModel;
+use tablepro_storage::SavedQueries;
+use tablepro_storage::saved_queries::SavedQuery;
 use uuid::Uuid;
 
 use super::health_banner::REVIEW_HOST_KEY;
@@ -28,8 +30,16 @@ use crate::ui::shell::{PRIMARY_MENU, TAB_OVERVIEW_MENU, app_menu, primary_menu_b
 /// names it.
 pub(super) const SHOW_SIDEBAR: &str = "show-sidebar";
 
+const TABLES: &str = "tables";
+const FAVORITES: &str = "favorites";
+
 /// The window action that shows and hides the assistant's column.
 pub(super) const SHOW_ASSISTANT: &str = "show-assistant";
+
+type FavoritesRead = Result<
+    Option<Result<Vec<tablepro_storage::saved_queries::SavedQuery>, tablepro_storage::StorageError>>,
+    tablepro_session::runtime::TaskFailure,
+>;
 
 glib::wrapper! {
     pub struct WorkspaceShell(ObjectSubclass<imp::WorkspaceShell>)
@@ -52,6 +62,11 @@ pub(super) fn describe_buttons(shell: &WorkspaceShell) {
         &imp.sidebar_toggle.get(),
         &gettext("Show Sidebar"),
         Some("win.show-sidebar"),
+    );
+    describe_icon_button(
+        &imp.refresh_page_button.get(),
+        &gettext("Refresh Tab"),
+        Some("win.refresh-page"),
     );
     describe_icon_button(
         &imp.new_tab_button.get(),
@@ -87,7 +102,43 @@ impl WorkspaceShell {
         let imp = shell.imp();
         imp.window.set(Some(window));
         let tree = ConnectionTree::new(services.saved_connections.clone());
-        imp.sidebar_slot.set_child(Some(&tree.widget()));
+        let sidebar = gtk::Stack::new();
+        sidebar.add_named(&tree.widget(), Some(TABLES));
+        let favorites = super::sidebar::FavoritesPane::new(
+            glib::clone!(
+                #[weak]
+                shell,
+                move |action| shell.on_favorite_action(action)
+            ),
+            glib::clone!(
+                #[weak]
+                shell,
+                move || shell.reload_favorites()
+            ),
+        );
+        sidebar.add_named(&favorites.widget(), Some(FAVORITES));
+        imp.sidebar_slot.set_child(Some(&sidebar));
+        let _ = imp.sidebar_stack.set(sidebar);
+        let _ = imp.favorites.set(favorites);
+        let _ = imp.favorites_source.set((services.history(), services.tasks.clone()));
+        let _ = imp.favorites_hold.set(services.hold());
+        imp.favorites_availability
+            .replace(Some(tablepro_session::runtime::WatchForwarder::new(
+                services.history().availability(),
+                glib::clone!(
+                    #[weak]
+                    shell,
+                    move |_| shell.follow_favorites()
+                ),
+                |future| {
+                    glib::spawn_future_local(future);
+                },
+            )));
+        imp.scope_toggle.connect_active_name_notify(glib::clone!(
+            #[weak]
+            shell,
+            move |_| shell.on_scope_changed()
+        ));
         tree.follow_search(&imp.table_search);
         let _ = imp.tree.set(tree);
         crate::ui::picker::install_picker_actions(&shell, services.saved_connections.clone(), sender.clone());
@@ -111,7 +162,6 @@ impl WorkspaceShell {
             &imp.split_view.get(),
             "show-sidebar",
         ));
-        follow_sidebar(&imp.split_view, &imp.sidebar_toggle);
         window.add_action(&assistant_action(&shell));
         imp.walk_hooks.replace(Some(shell.hook_recent_walk(window)));
 
@@ -126,6 +176,9 @@ impl WorkspaceShell {
         shell.connect_view();
         shell.connect_front_notify(Self::on_front_changed);
         shell.bind_front();
+        shell.add_controller(crate::application::local_shortcut_controller(
+            crate::application::ShortcutOwner::WorkspaceShell,
+        ));
         shell.describe_front();
 
         imp.table_search_bar.connect_entry(&*imp.table_search);
@@ -328,6 +381,7 @@ impl WorkspaceShell {
             for (name, property) in [
                 (SHOW_ASSISTANT, "assistant-available"),
                 (REVIEW_HOST_KEY, "can-review-host-key"),
+                ("refresh-page", "can-refresh"),
             ] {
                 if let Some(action) = window.lookup_action(name).and_downcast::<gio::SimpleAction>() {
                     // Off until a session is in front to say.
@@ -483,6 +537,9 @@ impl WorkspaceShell {
         if let (Some(tree), Some(key)) = (imp.tree.get(), workspace.key()) {
             tree.remove_session(&key);
         }
+        if let Some(front) = self.front() {
+            front.read(super::WorkspaceModel::select_in_tree);
+        }
         self.tell_sharing();
         self.refresh_saving();
     }
@@ -533,8 +590,217 @@ impl WorkspaceShell {
         self.notify_front();
     }
 
-    /// Show the front's banners and assistant, and name what follows its
-    /// data model after it. The expressions of `bind_front` do the rest.
+    fn on_scope_changed(&self) {
+        let imp = self.imp();
+        let favorites = imp.scope_toggle.active_name().as_deref() == Some(FAVORITES);
+        if let Some(stack) = imp.sidebar_stack.get() {
+            stack.set_visible_child_name(if favorites { FAVORITES } else { TABLES });
+        }
+        // The search reads connections and tables, which this scope does not list.
+        imp.table_search_toggle.set_visible(!favorites);
+        imp.refresh_tables_button.set_visible(!favorites);
+        if favorites {
+            imp.table_search_bar.set_search_mode(false);
+            imp.table_search_bar.set_key_capture_widget(None::<&gtk::Widget>);
+        } else {
+            imp.table_search_bar.set_key_capture_widget(Some(&*imp.sidebar_root));
+        }
+        self.reload_favorites();
+    }
+
+    fn follow_favorites(&self) {
+        let imp = self.imp();
+        if imp.favorites_watch.borrow().is_none()
+            && let Some((history, _)) = imp.favorites_source.get()
+            && let Some(history) = history.store()
+        {
+            imp.favorites_watch
+                .replace(Some(tablepro_session::runtime::WatchForwarder::new(
+                    history.saved_queries().changes(),
+                    glib::clone!(
+                        #[weak(rename_to = shell)]
+                        self,
+                        move |_| shell.reload_favorites()
+                    ),
+                    |future| {
+                        glib::spawn_future_local(future);
+                    },
+                )));
+        }
+        self.reload_favorites();
+    }
+
+    pub(crate) fn reload_favorites(&self) {
+        let imp = self.imp();
+        let generation = imp.favorites_generation.get().wrapping_add(1);
+        imp.favorites_generation.set(generation);
+        let connection = self.front().and_then(|front| front.connection_id());
+        let (Some(pane), Some((history, tasks))) = (imp.favorites.get(), imp.favorites_source.get()) else {
+            return;
+        };
+        if imp.favorites_connection.replace(connection) != connection {
+            pane.clear();
+        }
+        if imp.scope_toggle.active_name().as_deref() != Some(FAVORITES) {
+            return;
+        }
+        let Some(connection) = connection else {
+            pane.no_connection();
+            return;
+        };
+        pane.loading();
+        let ready = history.ready_store();
+        crate::runtime::spawn_and_deliver(
+            tasks,
+            async move {
+                let history = ready.await?;
+                Some(history.saved_queries().list(Some(connection)).await)
+            },
+            glib::clone!(
+                #[weak(rename_to = shell)]
+                self,
+                move |listed| shell.favorites_arrived(generation, connection, listed)
+            ),
+        );
+    }
+
+    fn favorites_arrived(&self, generation: u64, connection: Uuid, listed: FavoritesRead) {
+        if self.imp().favorites_generation.get() != generation
+            || self.front().and_then(|front| front.connection_id()) != Some(connection)
+        {
+            return;
+        }
+        let Some(pane) = self.imp().favorites.get() else {
+            return;
+        };
+        match listed {
+            Ok(Some(Ok(favorites))) => pane.show(favorites),
+            Ok(None) => pane.unavailable(),
+            other => {
+                tracing::warn!(?other, "could not read favorites");
+                pane.failed();
+            }
+        }
+    }
+
+    pub(super) fn on_favorite_action(&self, action: super::sidebar::FavoriteAction) {
+        use super::sidebar::FavoriteAction;
+        match action {
+            FavoriteAction::Open(sql) => {
+                if let Some(sender) = self.front().and_then(|front| front.sender()) {
+                    sender.deliver(super::WorkspaceInput::OpenHistoryQuery(sql));
+                }
+            }
+            FavoriteAction::Rename(favorite) => self.ask_favorite_name(favorite),
+            FavoriteAction::Delete(favorite) => self.ask_favorite_deletion(favorite),
+        }
+    }
+
+    fn ask_favorite_name(&self, favorite: SavedQuery) {
+        let dialog = adw::AlertDialog::new(Some(&gettext("Rename Favorite")), None);
+        let entry = adw::EntryRow::builder()
+            .title(gettext("Name"))
+            .activates_default(true)
+            .build();
+        entry.set_text(&favorite.name);
+        let group = adw::PreferencesGroup::new();
+        group.add(&entry);
+        dialog.set_extra_child(Some(&group));
+        dialog.add_response("cancel", &gettext("Cancel"));
+        dialog.add_response("rename", &gettext("Rename"));
+        dialog.set_response_appearance("rename", adw::ResponseAppearance::Suggested);
+        dialog.set_default_response(Some("rename"));
+        dialog.set_close_response("cancel");
+        crate::ui::name_entry::require_name(&dialog, "rename", &entry);
+        dialog.set_focus(Some(&entry));
+        let shell = self.downgrade();
+        dialog.connect_response(None, move |_, response| {
+            let name = entry.text().trim().to_owned();
+            if let (true, Some(shell)) = (
+                response == "rename" && !name.is_empty() && name != favorite.name,
+                shell.upgrade(),
+            ) {
+                shell.rename_favorite(favorite.id, name);
+            }
+        });
+        dialog.present(self.imp().window.upgrade().as_ref());
+    }
+
+    fn ask_favorite_deletion(&self, favorite: SavedQuery) {
+        let dialog = adw::AlertDialog::new(
+            Some(&gettext_f("Delete “{name}”?", &[("name", &favorite.name)])),
+            Some(&gettext("The saved query is deleted. This cannot be undone.")),
+        );
+        dialog.add_response("cancel", &gettext("Cancel"));
+        dialog.add_response("delete", &gettext("Delete"));
+        dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
+        dialog.set_default_response(Some("cancel"));
+        dialog.set_close_response("cancel");
+        let shell = self.downgrade();
+        dialog.connect_response(None, move |_, response| {
+            if let (true, Some(shell)) = (response == "delete", shell.upgrade()) {
+                shell.delete_favorite(favorite.id);
+            }
+        });
+        dialog.present(self.imp().window.upgrade().as_ref());
+    }
+
+    pub(crate) fn rename_favorite(&self, id: i64, name: String) {
+        self.change_favorites(
+            async move |store| store.rename(id, &name).await,
+            gettext("Could not rename that saved query."),
+        );
+    }
+
+    pub(crate) fn delete_favorite(&self, id: i64) {
+        self.change_favorites(
+            async move |store| store.delete(id).await,
+            gettext("Could not delete that saved query."),
+        );
+    }
+
+    fn change_favorites<W>(&self, change: impl FnOnce(SavedQueries) -> W + Send + 'static, failure: String)
+    where
+        W: std::future::Future<Output = Result<(), tablepro_storage::StorageError>> + Send + 'static,
+    {
+        let imp = self.imp();
+        let Some((history, tasks)) = imp.favorites_source.get() else {
+            return;
+        };
+        let Some(hold) = imp.favorites_hold.get() else {
+            return;
+        };
+        let ready = history.ready_store();
+        let (send, received) = tokio::sync::oneshot::channel();
+        crate::runtime::spawn_held(tasks, hold.as_ref(), async move {
+            let result = match ready.await {
+                Some(history) => change(history.saved_queries()).await,
+                None => Err(tablepro_storage::StorageError::NotInitialised),
+            };
+            let _ = send.send(result);
+        });
+        let shell = self.downgrade();
+        glib::spawn_future_local(async move {
+            let result = received.await;
+            let Some(shell) = shell.upgrade() else {
+                return;
+            };
+            let message = match result {
+                Ok(Ok(())) => return,
+                Ok(Err(error)) => {
+                    tracing::warn!(%error, "could not change a favorite");
+                    favorite_failure_text(&error, &failure)
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "favorite change did not finish");
+                    failure
+                }
+            };
+            shell.toast_overlay().add_toast(crate::ui::plain_toast(&message));
+            shell.reload_favorites();
+        });
+    }
+
     fn on_front_changed(&self) {
         let imp = self.imp();
         if let Some(front) = self.front() {
@@ -552,6 +818,7 @@ impl WorkspaceShell {
             }
         }
         self.describe_front();
+        self.reload_favorites();
         self.sync_assistant_column();
         self.follow_front_for_new_tabs();
         // A front with a tab selected says which row it shows itself.
@@ -678,6 +945,10 @@ impl WorkspaceShell {
     /// names itself again from here on.
     pub(crate) fn shutdown(&self) {
         let imp = self.imp();
+        imp.favorites_generation
+            .set(imp.favorites_generation.get().wrapping_add(1));
+        imp.favorites_watch.take();
+        imp.favorites_availability.take();
         for watch in imp.watches.take() {
             watch.unwatch();
         }
@@ -705,6 +976,18 @@ impl WorkspaceShell {
             window.remove_action(SHOW_ASSISTANT);
             super::workspace_actions::remove(&window);
         }
+    }
+}
+
+fn favorite_failure_text(error: &tablepro_storage::StorageError, fallback: &str) -> String {
+    use tablepro_storage::StorageError;
+    match error {
+        StorageError::NameTaken => gettext("That name is already used by another saved query."),
+        StorageError::TooLarge { .. } => gettext("That name is too long."),
+        StorageError::EmptyName => gettext("Enter a name for the saved query."),
+        StorageError::NotFound => gettext("That saved query was deleted elsewhere."),
+        StorageError::NotInitialised => gettext("Saved queries are unavailable. Restart TablePro to try again."),
+        _ => fallback.to_owned(),
     }
 }
 
@@ -779,32 +1062,176 @@ fn with_safe_mode(menu: &gio::MenuModel) -> gio::Menu {
     whole
 }
 
-/// The toggle shows only while the sidebar is out of view: collapsed
-/// into an overlay, or hidden. Beside a shown sidebar it would only hide
-/// the list the user is looking at.
-fn follow_sidebar(split_view: &adw::OverlaySplitView, toggle: &gtk::ToggleButton) -> gtk::ExpressionWatch {
-    let collapsed = gtk::PropertyExpression::new(
-        adw::OverlaySplitView::static_type(),
-        None::<&gtk::Expression>,
-        "collapsed",
-    );
-    let shown = gtk::PropertyExpression::new(
-        adw::OverlaySplitView::static_type(),
-        None::<&gtk::Expression>,
-        "show-sidebar",
-    );
-    let visible = gtk::ClosureExpression::new::<bool>(
-        [collapsed, shown],
-        glib::closure!(|_: Option<glib::Object>, collapsed: bool, shown: bool| collapsed || !shown),
-    );
-    visible.bind(toggle, "visible", Some(split_view))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::config::RESOURCE_BASE_PATH;
     use crate::test_support::assert_access_keys;
+
+    fn saved_favorite(test: &crate::ui::session_window::tests::TestWindow, name: &str) -> SavedQuery {
+        use crate::test_support::{finish_on_main, wait_until};
+        use crate::ui::session_window::tests::WAIT;
+        let availability = test.services.history().availability();
+        wait_until(WAIT, || availability.borrow().is_ready()).expect("history ready");
+        test.workspace()
+            .with_model(|model| model.on_save_query_named(name.to_owned(), "SELECT 1".to_owned()));
+        wait_until(WAIT, || test.hold.live() == 0).expect("save complete");
+        let store = test.services.history().store().expect("history").saved_queries();
+        let name = name.to_owned();
+        let reading = test.services.tasks.spawn_task(async move {
+            store
+                .list(None)
+                .await
+                .expect("list")
+                .into_iter()
+                .find(|query| query.name == name)
+        });
+        finish_on_main(WAIT, reading)
+            .expect("read complete")
+            .expect("task")
+            .expect("query")
+    }
+
+    #[gtk4::test]
+    fn a_favorite_write_finishes_after_its_window_closes() {
+        use crate::test_support::{finish_on_main, wait_until};
+        use crate::ui::session_window::tests::{TestWindow, WAIT};
+        let test = TestWindow::connected("FavoriteWriteClosed");
+        let favorite = saved_favorite(&test, "Before");
+        let shell = test.window.shell().expect("shell");
+        let (release, released) = tokio::sync::oneshot::channel();
+        let id = favorite.id;
+        shell.change_favorites(
+            move |store| async move {
+                released.await.expect("release write");
+                store.rename(id, "After close").await
+            },
+            "Rename failed".to_owned(),
+        );
+        assert_eq!(test.hold.live(), 1);
+        let write_hold = test.hold_tokens.borrow().last().expect("rename hold").clone();
+        test.window.close();
+        wait_until(WAIT, || !test.window.is_visible()).expect("window closed");
+        assert!(
+            write_hold.upgrade().is_some(),
+            "closing the window released the rename's hold"
+        );
+        release.send(()).expect("write still running");
+        wait_until(WAIT, || write_hold.upgrade().is_none()).expect("rename hold released");
+        wait_until(WAIT, || test.hold.live() == 0).expect("write complete");
+        let store = test.services.history().store().expect("history").saved_queries();
+        let reading = test.services.tasks.spawn_task(async move { store.get(id).await });
+        let saved = finish_on_main(WAIT, reading)
+            .expect("read complete")
+            .expect("task")
+            .expect("get")
+            .expect("saved query");
+        assert_eq!(saved.name, "After close");
+        assert_eq!(saved.query, favorite.query);
+        assert_eq!(saved.connection_id, favorite.connection_id);
+        assert_eq!(saved.created_at, favorite.created_at);
+    }
+
+    #[gtk4::test]
+    fn favorite_rename_rejects_blank_names_and_reports_collisions() {
+        use crate::test_support::{descendants, wait_until};
+        use crate::ui::session_window::tests::{TestWindow, WAIT};
+        use crate::workspace::{answer, visible_alert};
+        let test = TestWindow::connected("FavoriteRenameErrors");
+        let favorite = saved_favorite(&test, "Orders");
+        saved_favorite(&test, "Taken");
+        let shell = test.window.shell().expect("shell");
+        shell.ask_favorite_name(favorite.clone());
+        let dialog = visible_alert(&test.window).expect("rename prompt");
+        let entry = descendants(&dialog)
+            .into_iter()
+            .find_map(|widget| widget.downcast::<adw::EntryRow>().ok())
+            .expect("name entry");
+        assert_eq!(entry.text(), "Orders");
+        entry.set_text("   ");
+        assert!(!dialog.is_response_enabled("rename"));
+        answer(&test.window, "cancel");
+        wait_until(WAIT, || visible_alert(&test.window).is_none()).expect("cancelled");
+        shell.rename_favorite(favorite.id, "Taken".to_owned());
+        assert_eq!(test.hold.live(), 1);
+        wait_until(WAIT, || {
+            descendants(&shell.toast_overlay())
+                .iter()
+                .filter_map(|widget| widget.downcast_ref::<gtk::Label>())
+                .any(|label| label.label() == "That name is already used by another saved query.")
+        })
+        .expect("name conflict explained");
+        wait_until(WAIT, || test.hold.live() == 0).expect("hold ended after failure");
+    }
+
+    #[gtk4::test]
+    fn favorite_deletion_requires_confirmation_and_holds_the_write() {
+        use crate::test_support::{finish_on_main, wait_until};
+        use crate::ui::session_window::tests::{TestWindow, WAIT};
+        use crate::workspace::{answer, visible_alert};
+        let test = TestWindow::connected("FavoriteDeleteConfirmed");
+        let favorite = saved_favorite(&test, "Orders");
+        let shell = test.window.shell().expect("shell");
+        let read = || {
+            let store = test.services.history().store().expect("history").saved_queries();
+            let id = favorite.id;
+            let reading = test.services.tasks.spawn_task(async move { store.get(id).await });
+            finish_on_main(WAIT, reading)
+                .expect("read complete")
+                .expect("task")
+                .expect("get")
+        };
+        shell.ask_favorite_deletion(favorite.clone());
+        let dialog = visible_alert(&test.window).expect("delete prompt");
+        assert_eq!(dialog.default_response().as_deref(), Some("cancel"));
+        assert_eq!(
+            dialog.response_appearance("delete"),
+            adw::ResponseAppearance::Destructive
+        );
+        answer(&test.window, "cancel");
+        wait_until(WAIT, || visible_alert(&test.window).is_none()).expect("cancelled");
+        assert!(read().is_some());
+        shell.ask_favorite_deletion(favorite.clone());
+        answer(&test.window, "delete");
+        assert_eq!(test.hold.live(), 1);
+        wait_until(WAIT, || test.hold.live() == 0).expect("delete complete");
+        assert!(read().is_none());
+    }
+
+    #[gtk4::test]
+    fn favorites_reject_old_reads_and_clear_rows_when_the_front_changes() {
+        use crate::ui::session_window::tests::TestWindow;
+        use tablepro_storage::saved_queries::SavedQuery;
+        let test = TestWindow::connected("FavoritesRequests");
+        let shell = test.window.shell().expect("shell");
+        shell.imp().scope_toggle.set_active_name(Some(FAVORITES));
+        let connection = test.workspace().connection_id().expect("connection");
+        let old = shell.imp().favorites_generation.get();
+        shell.reload_favorites();
+        let current = shell.imp().favorites_generation.get();
+        let saved = SavedQuery {
+            id: 1,
+            name: "Current".to_owned(),
+            query: "SELECT 1".to_owned(),
+            connection_id: connection,
+            connection_name: "Database".to_owned(),
+            keyword: None,
+            folder_id: None,
+            order: 0,
+            created_at: std::time::SystemTime::UNIX_EPOCH,
+            updated_at: std::time::SystemTime::UNIX_EPOCH,
+        };
+        shell.favorites_arrived(current, connection, Ok(Some(Ok(vec![saved.clone()]))));
+        let pane = shell.imp().favorites.get().expect("pane");
+        shell.favorites_arrived(old, connection, Ok(Some(Ok(vec![]))));
+        assert_eq!(pane.names(), ["Current"]);
+        shell.favorites_arrived(current, Uuid::new_v4(), Ok(Some(Ok(vec![]))));
+        assert_eq!(pane.names(), ["Current"]);
+        shell.set_front(None);
+        assert!(pane.names().is_empty());
+        shell.favorites_arrived(current, connection, Ok(Some(Ok(vec![saved]))));
+        assert!(pane.names().is_empty());
+    }
 
     #[gtk4::test]
     fn the_tab_menu_and_the_main_menu_give_each_item_its_own_access_key() {

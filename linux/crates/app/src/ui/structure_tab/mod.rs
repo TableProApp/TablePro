@@ -296,9 +296,10 @@ impl StructureTab {
         imp.dispatching.set(false);
     }
 
-    /// Stop the read the tab has running and stop following reconnects
-    /// now, rather than at dispose, which waits for the last reference
-    /// to the widget.
+    pub fn request_refresh(&self) {
+        self.send(SaveInput::RequestRefresh);
+    }
+
     pub fn shutdown(&self) {
         let imp = self.imp();
         imp.link_watch.take();
@@ -624,13 +625,7 @@ fn replace_items<T: IsA<glib::Object>>(store: &gio::ListStore, items: impl IntoI
     store.splice(0, store.n_items(), &items);
 }
 
+// SQL in structure forms and write reviews follows the surrounding desktop controls.
 fn apply_sql_scheme(buffer: &sourceview5::Buffer) {
-    let scheme_name = if adw::StyleManager::default().is_dark() {
-        "Adwaita-dark"
-    } else {
-        "Adwaita"
-    };
-    if let Some(scheme) = sourceview5::StyleSchemeManager::default().scheme(scheme_name) {
-        buffer.set_style_scheme(Some(&scheme));
-    }
+    buffer.set_style_scheme(crate::ui::style_scheme_resolver::scheme("").as_ref());
 }

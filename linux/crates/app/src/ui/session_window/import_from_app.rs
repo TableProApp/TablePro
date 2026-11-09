@@ -67,7 +67,7 @@ impl SessionWindow {
 
 pub(super) fn imported_message(
     imported: &ImportedFromApp,
-    queries: Option<QueryImportOutcome>,
+    queries: Option<Result<QueryImportOutcome, SavedConnectionError>>,
     queries_available: bool,
 ) -> String {
     let connections = imported.applied.connections.len();
@@ -80,7 +80,7 @@ pub(super) fn imported_message(
             &[("n", &connections.to_string())],
         ));
     }
-    if let Some(queries) = queries {
+    if let Some(Ok(queries)) = &queries {
         if queries.added > 0 {
             parts.push(ngettext_f(
                 "Added {n} saved query.",
@@ -97,6 +97,14 @@ pub(super) fn imported_message(
                 &[("n", &queries.failed.to_string())],
             ));
         }
+    } else if let Some(Err(error)) = queries {
+        tracing::warn!(%error, "saved query import could not finish");
+        parts.push(match error {
+            SavedConnectionError::NotFound(_) => {
+                gettext("Saved query import was interrupted because a connection was deleted.")
+            }
+            _ => gettext("Saved query import could not finish. Some queries may have been saved."),
+        });
     } else if !queries_available && !imported.applied.queries.is_empty() {
         parts.push(gettext(
             "Saved queries were not added: the query history is not available.",
@@ -114,4 +122,35 @@ pub(super) fn imported_message(
         return gettext("Nothing was imported.");
     }
     parts.join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn query_cleanup_failures_are_visible_without_claiming_success() {
+        let imported = ImportedFromApp {
+            applied: Default::default(),
+            secrets_not_kept: 0,
+        };
+        let message = imported_message(
+            &imported,
+            Some(Err(SavedConnectionError::Storage(StorageError::NotInitialised))),
+            true,
+        );
+        assert_eq!(
+            message,
+            "Saved query import could not finish. Some queries may have been saved."
+        );
+        let message = imported_message(
+            &imported,
+            Some(Err(SavedConnectionError::NotFound(uuid::Uuid::new_v4()))),
+            true,
+        );
+        assert_eq!(
+            message,
+            "Saved query import was interrupted because a connection was deleted."
+        );
+    }
 }
