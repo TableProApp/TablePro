@@ -30,14 +30,23 @@ struct ConnectionNavigatorViewControllerTests {
         }
     }
 
-    private func host() -> Hosted {
+    /// The headless test host never gives a window the keyboard, and `NSTableView` tracks a click
+    /// only in the key window, so a test that clicks says the window is key.
+    private final class TestWindow: NSWindow {
+        var claimsKey = false
+
+        override var isKeyWindow: Bool { claimsKey || super.isKeyWindow }
+    }
+
+    private func host(claimingKey: Bool = false) -> Hosted {
         let controller = ConnectionNavigatorViewController(model: fixture.makeModel())
-        let window = NSWindow(
+        let window = TestWindow(
             contentRect: NSRect(x: 0, y: 0, width: 260, height: 500),
             styleMask: [.titled],
             backing: .buffered,
             defer: false
         )
+        window.claimsKey = claimingKey
         window.isReleasedWhenClosed = false
         window.contentViewController = controller
         window.orderFront(nil)
@@ -165,6 +174,78 @@ struct ConnectionNavigatorViewControllerTests {
         let shownRow = hosted.controller.row(for: .connection(shown.id))
         #expect(shownRow >= 0)
         #expect(outline.selectedRow == shownRow)
+    }
+
+    // MARK: - Clicks
+
+    /// NSTableView tracks a press until the mouse-up, so the mouse-up waits in the queue first. A
+    /// double click is a second press that AppKit reports with a click count of 2.
+    private static func click(row: Int, in hosted: Hosted, clickCount: Int = 1) throws {
+        let outline = hosted.controller.outlineView
+        let rect = outline.rect(ofRow: row)
+        let location = outline.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil)
+        func event(_ type: NSEvent.EventType) throws -> NSEvent {
+            try #require(NSEvent.mouseEvent(
+                with: type,
+                location: location,
+                modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: hosted.window.windowNumber,
+                context: nil,
+                eventNumber: 0,
+                clickCount: clickCount,
+                pressure: type == .leftMouseDown ? 1 : 0
+            ))
+        }
+        let up = try event(.leftMouseUp)
+        let down = try event(.leftMouseDown)
+        NSApp.postEvent(up, atStart: true)
+        outline.mouseDown(with: down)
+        _ = NSApp.nextEvent(matching: .leftMouseUp, until: .distantPast, inMode: .default, dequeue: true)
+    }
+
+    /// A window showing one connection, beside saved connections it does not host.
+    private func hostShowingOne(beside names: [String]) -> (hosted: Hosted, shown: UUID, closed: [UUID]) {
+        let shown = DatabaseConnection(name: "shown")
+        let closed = names.map { DatabaseConnection(name: $0) }
+        fixture.save([shown] + closed)
+        fixture.host.hosted = [shown.id]
+        fixture.host.selected = shown.id
+        return (host(claimingKey: true), shown.id, closed.map(\.id))
+    }
+
+    /// A list holding production servers must not dial one because the pointer slipped.
+    @Test("A single click on a connection this window does not host routes nothing")
+    func singleClickOnClosedConnectionRoutesNothing() async throws {
+        let (hosted, shown, closed) = hostShowingOne(beside: ["clicked", "opened"])
+        defer { hosted.tearDown() }
+        let clickedRow = hosted.controller.row(for: .connection(closed[0]))
+        let openedRow = hosted.controller.row(for: .connection(closed[1]))
+        try #require(clickedRow >= 0 && openedRow >= 0)
+
+        try Self.click(row: clickedRow, in: hosted)
+        #expect(hosted.controller.outlineView.selectedRow == clickedRow)
+        /// An open the click had queued would land before this one, which is queued after it.
+        try Self.click(row: openedRow, in: hosted)
+        try Self.click(row: openedRow, in: hosted, clickCount: 2)
+        try await waitUntil(timeout: .seconds(2)) { !fixture.router.openedConnections.isEmpty }
+
+        #expect(fixture.router.openedConnections == [closed[1]])
+        #expect(fixture.host.selected == shown)
+    }
+
+    @Test("A double click on a connection this window does not host opens it")
+    func doubleClickOnClosedConnectionRoutesOpen() async throws {
+        let (hosted, _, closed) = hostShowingOne(beside: ["closed"])
+        defer { hosted.tearDown() }
+        let row = hosted.controller.row(for: .connection(closed[0]))
+        try #require(row >= 0)
+
+        try Self.click(row: row, in: hosted)
+        try Self.click(row: row, in: hosted, clickCount: 2)
+
+        try await waitUntil(timeout: .seconds(2)) { !fixture.router.openedConnections.isEmpty }
+        #expect(fixture.router.openedConnections == [closed[0]])
     }
 
     // MARK: - New Group sheet
