@@ -61,8 +61,6 @@ pub(super) fn build(tab: &BrowseTab, init: &LayoutInit<'_>) -> BrowseTabWidgets 
     }
 }
 
-/// What the bottom bar holds past the tab's breakpoint, where it has no
-/// room for it.
 fn more_menu(page_sizes: &[u64]) -> gio::Menu {
     let export = gio::MenuItem::new(Some(&gettext("_Export Rows…")), Some("browse.export"));
     // The window's Export Results key reaches this tab's Export.
@@ -71,6 +69,7 @@ fn more_menu(page_sizes: &[u64]) -> gio::Menu {
     }
     let actions = gio::Menu::new();
     actions.append(Some(&gettext("_Filter Rows")), Some("browse.filter"));
+    actions.append(Some(&gettext("Col_umns…")), Some("grid.columns"));
     actions.append_item(&export);
     actions.append(Some(&gettext("_Count Rows")), Some("browse.count-rows"));
     let sizes = gio::Menu::new();
@@ -79,8 +78,17 @@ fn more_menu(page_sizes: &[u64]) -> gio::Menu {
         item.set_action_and_target_value(Some("browse.page-size"), Some(&size.to_variant()));
         sizes.append_item(&item);
     }
+    let rows = gio::Menu::new();
+    rows.append(Some(&gettext("_Insert Row")), Some("grid.insert-row"));
+    rows.append(Some(&gettext("_Delete Selected Rows")), Some("grid.delete-rows"));
+    rows.append(Some(&gettext("_Row Details")), Some("grid.show-details"));
+    let pages = gio::Menu::new();
+    pages.append(Some(&gettext("First _Page")), Some("browse.first-page"));
+    pages.append(Some(&gettext("_Last Page")), Some("browse.last-page"));
     let menu = gio::Menu::new();
     menu.append_section(None, &actions);
+    menu.append_section(None, &rows);
+    menu.append_section(None, &pages);
     menu.append_section(Some(&gettext("Rows per Page")), &sizes);
     menu
 }
@@ -158,7 +166,7 @@ pub(super) fn grid(tab: &BrowseTab, init: GridInit) -> DataGrid {
     grid.set_hexpand(true);
     let imp = tab.imp();
     imp.grid_holder.append(&grid);
-    imp.action_bar.pack_start(&grid.selection_summary());
+    imp.data_start.append(&grid.selection_summary());
     let _ = imp.grid.set(grid.clone());
     connect_grid(tab, &grid);
     grid

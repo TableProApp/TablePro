@@ -12,6 +12,7 @@ use crate::services::grid::GridColumn;
 #[derive(Debug)]
 pub struct GridMenus {
     pub cell: gtk::PopoverMenu,
+    pub row_numbers: gtk::PopoverMenu,
     /// Below the last row, for a grid that takes new rows.
     pub empty: Option<gtk::PopoverMenu>,
     /// Filled from the table's foreign keys as a menu opens.
@@ -71,6 +72,7 @@ impl GridMenus {
         let reference_chooser = popover(grid, &gio::Menu::new());
         let choices = editable.then(|| popover(grid, &gio::Menu::new()));
         Self {
+            row_numbers: popover(grid, &row_numbers_header_menu()),
             cell,
             empty,
             references,
@@ -84,6 +86,7 @@ impl GridMenus {
     /// the grid lets go of itself.
     pub fn unparent(&self) {
         self.cell.unparent();
+        self.row_numbers.unparent();
         if let Some(empty) = &self.empty {
             empty.unparent();
         }
@@ -111,8 +114,10 @@ fn popover(grid: &DataGrid, model: &gio::Menu) -> gtk::PopoverMenu {
 
 fn cell_menu(grid: &DataGrid, references: &gio::Menu, expressions: &gio::Menu) -> gio::Menu {
     let config = grid.config();
-    let editable = config.is_some_and(|config| config.tracker.is_some());
-    let sorts = config.is_some_and(|config| config.sorting != GridSorting::None);
+    let editable = config.as_ref().is_some_and(|config| config.tracker.is_some());
+    let sorts = config
+        .as_ref()
+        .is_some_and(|config| config.sorting != GridSorting::None);
     let menu = gio::Menu::new();
     if editable {
         let edits = presets_section();
@@ -157,7 +162,7 @@ fn cell_menu(grid: &DataGrid, references: &gio::Menu, expressions: &gio::Menu) -
         clipboard.append_item(&item(&gettext("_Paste"), "grid.paste"));
     }
     menu.append_section(None, &clipboard);
-    if config.is_some_and(|config| config.filter_by_value) {
+    if config.as_ref().is_some_and(|config| config.filter_by_value) {
         menu.append_section(
             None,
             &section([
