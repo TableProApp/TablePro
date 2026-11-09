@@ -61,7 +61,7 @@ pub struct DataGrid {
     #[template_child]
     pub detail_pane: TemplateChild<RowDetailPane>,
 
-    pub config: OnceCell<GridConfig>,
+    pub config: RefCell<Option<GridConfig>>,
     pub store: GridStore,
     pub selection: Selection,
     /// Set for a grid that sorts the rows it holds.

@@ -289,16 +289,28 @@ fn every_page_fits_the_window_floor() {
     fits_the_floor(&content());
 }
 
-/// The floor measured on the tab's own content, with its widest
-/// bars up: the pager's longest label, pending changes and the
-/// filter strip.
 #[gtk4::test]
 fn an_open_table_tab_fits_the_window_floor() {
+    table_tab_fits_the_window_floor(false);
+}
+
+#[gtk4::test]
+fn a_table_tab_with_structure_switch_fits_the_window_floor() {
+    table_tab_fits_the_window_floor(true);
+}
+
+fn table_tab_fits_the_window_floor(with_structure: bool) {
     use crate::ui::browse_tab::{BrowseTab, PagingInput};
+    let mut connection = served_table();
+    if with_structure {
+        connection.dialect = Arc::new(tablepro_driver_postgres::PgDialect::new(
+            &tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0),
+        ));
+    }
     let test = TestWindow::with_script(
         "TableFloor",
         Script {
-            connection: served_table(),
+            connection,
             window_size: Some((360, 294)),
             ..Script::default()
         },
