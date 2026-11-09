@@ -6,6 +6,7 @@ use chrono::{NaiveDate, NaiveTime};
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, gdk};
+use sourceview5::prelude::*;
 use tablepro_core::column::{TemporalZone, TimeRange};
 use tablepro_core::edit::CellInput;
 use tablepro_core::value::{JsonText, SqlTime, Temporal};
@@ -14,7 +15,7 @@ use tablepro_core::{ColumnInfo, Value};
 use super::RowDetailPane;
 use super::calendar::{day_of, day_start_offset, with_day};
 use super::clock::{ClockField, time_of, with_time};
-use super::fields::field_order;
+use super::fields::{field_label, field_order};
 use super::value_editor::value_content;
 use crate::services::change_tracker::RowKey;
 use crate::services::grid::{CellLock, GridColumn, GridRowId, grid_columns};
@@ -23,10 +24,10 @@ use crate::test_support::{
     descendants, drain_main_context, finish_on_main, test_backend_records_properties, unlabelled_icon_buttons,
     wait_until,
 };
-use crate::ui::data_grid::GridRequest;
 use crate::ui::data_grid::test_grid::{
     Grid, GridSpec, WAIT, focus_in_grid, key, named, page, persisted, text, two_text_columns, two_text_values,
 };
+use crate::ui::data_grid::{GridRequest, GridSorting};
 use crate::ui::error_text::edit_parse_message;
 
 fn pane_of(grid: &Grid) -> RowDetailPane {
@@ -142,6 +143,122 @@ fn a_date(year: i32, month: u32, day: u32) -> Value {
 
 fn column_of(info: ColumnInfo) -> GridColumn {
     grid_columns(&[info.result_column()], std::slice::from_ref(&info), |_| true)[0].clone()
+}
+
+fn assert_value_scheme(pane: &RowDetailPane, id: &str) {
+    let scheme = pane.imp().value_buffer.style_scheme().expect("the value's scheme");
+    assert_eq!(scheme.id(), id);
+    let expected = scheme.style("text").expect("the scheme text style");
+    let expected = gdk::RGBA::parse(expected.foreground().expect("the scheme foreground")).expect("a scheme color");
+    let attributes = pane
+        .imp()
+        .placeholder_label
+        .attributes()
+        .expect("placeholder attributes");
+    let attributes = attributes.attributes();
+    let color = attributes
+        .iter()
+        .find(|attribute| attribute.type_() == gtk::pango::AttrType::Foreground)
+        .and_then(|attribute| attribute.downcast_ref::<gtk::pango::AttrColor>())
+        .expect("the placeholder uses the scheme foreground")
+        .color();
+    let channel = |value: f32| (value * 65535.0).round() as u16;
+    assert_eq!(
+        (color.red(), color.green(), color.blue()),
+        (
+            channel(expected.red()),
+            channel(expected.green()),
+            channel(expected.blue())
+        )
+    );
+    assert!(
+        attributes
+            .iter()
+            .any(|attribute| { attribute == gtk::pango::AttrInt::new_style(gtk::pango::Style::Italic).upcast_ref() })
+    );
+    assert!(pane.imp().placeholder_label.has_css_class("dimmed"));
+}
+
+#[gtk4::test]
+fn value_scheme_and_placeholders_keep_the_exact_pick_across_desktop_changes() {
+    let (grid, pane) = opened(
+        vec![named("id", "integer", true), named("quantity", "integer", false)],
+        vec![vec![Value::Int(1), Value::Null], vec![Value::Int(2), Value::Int(7)]],
+    );
+    let settings = &grid.grid.config().expect("grid settings").settings;
+    let style = libadwaita::StyleManager::default();
+    let previous = style.color_scheme();
+    for id in ["Adwaita-dark", "Adwaita"] {
+        settings.set_style_scheme(id).expect("a writable preference");
+        for desktop in [libadwaita::ColorScheme::ForceLight, libadwaita::ColorScheme::ForceDark] {
+            style.set_color_scheme(desktop);
+            grid.focus(0, 1);
+            assert!(pane.imp().placeholder_label.is_visible());
+            assert_eq!(pane.imp().placeholder_label.text(), "NULL");
+            assert_value_scheme(&pane, id);
+            grid.focus(1, 1);
+            assert_eq!(pane.typed_text(), "7");
+            assert!(!pane.imp().placeholder_label.is_visible());
+            assert_value_scheme(&pane, id);
+            type_value(&pane, "");
+            assert!(pane.imp().placeholder_label.is_visible());
+            assert_value_scheme(&pane, id);
+            type_value(&pane, "7");
+        }
+    }
+    style.set_color_scheme(previous);
+}
+
+#[gtk4::test]
+fn automatic_value_scheme_recolors_the_placeholder_with_the_desktop() {
+    let (grid, pane) = opened(two_text_columns(), vec![vec![Value::Int(1), Value::Null]]);
+    grid.grid
+        .config()
+        .expect("grid settings")
+        .settings
+        .set_style_scheme("")
+        .expect("the automatic preference");
+    grid.focus(0, 1);
+    let style = libadwaita::StyleManager::default();
+    let previous = style.color_scheme();
+    for (desktop, expected) in [
+        (libadwaita::ColorScheme::ForceLight, "Adwaita"),
+        (libadwaita::ColorScheme::ForceDark, "Adwaita-dark"),
+    ] {
+        style.set_color_scheme(desktop);
+        assert!(pane.imp().placeholder_label.is_visible());
+        assert_value_scheme(&pane, expected);
+    }
+    style.set_color_scheme(previous);
+}
+
+#[gtk4::test]
+fn closed_value_editor_disconnects_scheme_and_placeholder_updates() {
+    let (grid, pane) = opened(two_text_columns(), vec![vec![Value::Int(1), Value::Null]]);
+    let settings = grid.grid.config().expect("grid settings").settings.clone();
+    settings
+        .set_style_scheme("Adwaita-dark")
+        .expect("a writable preference");
+    let buffer = pane.imp().value_buffer.get();
+    let placeholder = pane.imp().placeholder_label.get();
+    let attributes = placeholder.attributes().expect("placeholder attributes");
+    let weak_pane = pane.downgrade();
+    drop(pane);
+    drop(grid);
+    drain_main_context();
+    assert!(weak_pane.upgrade().is_none(), "the value editor outlived its grid");
+
+    settings.set_style_scheme("Adwaita").expect("a writable preference");
+    let style = libadwaita::StyleManager::default();
+    let previous = style.color_scheme();
+    style.set_color_scheme(libadwaita::ColorScheme::ForceLight);
+    style.set_color_scheme(libadwaita::ColorScheme::ForceDark);
+    assert_eq!(
+        buffer.style_scheme().expect("the retained buffer's scheme").id(),
+        "Adwaita-dark"
+    );
+    assert_eq!(placeholder.attributes().expect("retained attributes"), attributes);
+    style.set_color_scheme(previous);
 }
 
 #[gtk4::test]
@@ -1473,4 +1590,270 @@ fn changing_automatic_details_opening_keeps_an_active_value_draft() {
     assert!(pane.is_editing_value());
     assert_eq!(pane.typed_text(), "unfinished");
     assert_eq!(pending(&grid, 1, 1), None);
+}
+
+fn drawn_field(pane: &RowDetailPane, column: usize) -> gtk::ListItem {
+    pane.imp()
+        .bound
+        .borrow()
+        .iter()
+        .find(|item| {
+            item.item()
+                .and_downcast::<gtk4::glib::BoxedAnyObject>()
+                .is_some_and(|boxed| *boxed.borrow::<usize>() == column)
+        })
+        .cloned()
+        .expect("the field is drawn")
+}
+
+fn marks(pane: &RowDetailPane, column: usize, icon: &str) -> bool {
+    let row = drawn_field(pane, column).child().expect("the field's row");
+    descendants(&row)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Image>().ok())
+        .any(|image| image.is_visible() && image.icon_name().as_deref() == Some(icon))
+}
+
+#[gtk4::test]
+fn a_field_marks_its_primary_key_and_a_pending_edit() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    grid.focus(0, 1);
+    drain_main_context();
+    let key_mark = crate::ui::icons::PRIMARY_KEY;
+    let edit_mark = crate::ui::icons::DOCUMENT_EDIT;
+    assert!(marks(&pane, 0, key_mark));
+    assert!(!marks(&pane, 1, key_mark));
+    assert!(!marks(&pane, 1, edit_mark));
+    assert!(marks(&pane, 0, crate::ui::icons::TEXT_X_GENERIC));
+    assert!(marks(&pane, 1, crate::ui::icons::TEXT_X_GENERIC));
+
+    let delta = grid.tracker.apply(TrackerEdit::Cell {
+        row_key: key(1),
+        col: 1,
+        original: Value::Text("A".into()),
+        value: CellInput::Value(Value::Text("changed".into())),
+    });
+    grid.grid.apply_delta(&delta);
+    drain_main_context();
+    assert!(marks(&pane, 1, edit_mark));
+    assert!(!marks(&pane, 0, edit_mark));
+    assert_eq!(
+        drawn_field(&pane, 1).accessible_description().as_str(),
+        "changed, Modified"
+    );
+
+    grid.grid.undo();
+    drain_main_context();
+    assert!(!marks(&pane, 1, edit_mark), "the pencil outlived the undo");
+    assert_eq!(drawn_field(&pane, 1).accessible_description().as_str(), "A");
+}
+
+#[gtk4::test]
+fn a_field_names_its_type_and_its_key_to_a_screen_reader() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    grid.focus(0, 1);
+    drain_main_context();
+
+    assert_eq!(
+        drawn_field(&pane, 0).accessible_label().as_str(),
+        "id, integer, primary key"
+    );
+    assert_eq!(drawn_field(&pane, 1).accessible_label().as_str(), "name, text");
+    let result_column = GridColumn {
+        catalog: None,
+        ..column_of(named("id", "integer", true))
+    };
+    assert_eq!(field_label(&result_column), "id, integer");
+}
+
+#[gtk4::test]
+fn the_field_search_and_the_edited_toggle_narrow_the_list() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    grid.focus(0, 1);
+    let imp = pane.imp();
+    let listed = || imp.selection.n_items();
+    assert_eq!(listed(), 2);
+    assert!(!imp.edited_toggle.is_sensitive());
+
+    // The entry reports a search after its own short delay.
+    imp.field_search.set_text("NAM");
+    wait_until(WAIT, || listed() == 1).expect("a search matches a name in any case");
+
+    imp.field_search.set_text("");
+    wait_until(WAIT, || listed() == 2).expect("the fields come back");
+    imp.edited_toggle.set_active(true);
+    drain_main_context();
+    assert_eq!(listed(), 0, "nothing is edited yet");
+
+    let delta = grid.tracker.apply(TrackerEdit::Cell {
+        row_key: key(1),
+        col: 1,
+        original: Value::Text("A".into()),
+        value: CellInput::Value(Value::Text("changed".into())),
+    });
+    grid.grid.apply_delta(&delta);
+    drain_main_context();
+    assert_eq!(listed(), 1, "the edited field joins the list");
+    grid.grid.undo();
+    drain_main_context();
+    assert_eq!(listed(), 0, "undo removes the field from the edited filter");
+    assert!(
+        imp.edited_toggle.is_sensitive(),
+        "the active filter can always be turned off"
+    );
+    imp.edited_toggle.set_active(false);
+    assert_eq!(listed(), 2);
+    assert!(!imp.edited_toggle.is_sensitive());
+}
+
+fn listed_columns(pane: &RowDetailPane) -> Vec<usize> {
+    let model = &pane.imp().filtered;
+    (0..model.n_items())
+        .map(|position| {
+            let boxed = model
+                .item(position)
+                .and_downcast::<gtk4::glib::BoxedAnyObject>()
+                .expect("a field");
+            *boxed.borrow::<usize>()
+        })
+        .collect()
+}
+
+fn search_fields(pane: &RowDetailPane, query: &str) {
+    pane.imp().field_search.set_text(query);
+    pane.imp().field_search.emit_by_name::<()>("search-changed", &[]);
+    drain_main_context();
+}
+
+#[gtk4::test]
+fn field_search_refilters_a_new_schema_with_the_same_column_indices() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    grid.focus(0, 1);
+    search_fields(&pane, "nam");
+    assert_eq!(listed_columns(&pane), vec![1]);
+
+    let mut columns = grid.columns.to_vec();
+    columns[0].name = "name_id".into();
+    columns[1].name = "label".into();
+    grid.grid
+        .set_columns(columns.into(), GridSorting::Server { initial: None }, None);
+    grid.grid.replace_rows(persisted(&two_text_values()), 0);
+    grid.focus(0, 0);
+    drain_main_context();
+
+    assert_eq!(listed_columns(&pane), vec![0]);
+    assert_eq!(
+        drawn_field(&pane, 0).accessible_label().as_str(),
+        "name_id, integer, primary key"
+    );
+}
+
+#[gtk4::test]
+fn field_search_follows_row_selection_replacement_and_edits() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    grid.focus(0, 1);
+    search_fields(&pane, "B");
+    assert!(listed_columns(&pane).is_empty());
+    pane.imp().field_search.grab_focus();
+    grid.grid.selection().select_item(1, true);
+    drain_main_context();
+    assert_eq!(listed_columns(&pane), vec![1]);
+
+    grid.grid
+        .replace_rows(persisted(&[vec![Value::Int(2), Value::Text("C".into())]]), 0);
+    drain_main_context();
+    assert!(listed_columns(&pane).is_empty());
+    let delta = grid.tracker.apply(TrackerEdit::Cell {
+        row_key: key(2),
+        col: 1,
+        original: Value::Text("C".into()),
+        value: text("B"),
+    });
+    grid.grid.apply_delta(&delta);
+    drain_main_context();
+    assert_eq!(listed_columns(&pane), vec![1]);
+    grid.grid.undo();
+    drain_main_context();
+    assert!(listed_columns(&pane).is_empty());
+    grid.grid.clear_rows();
+    drain_main_context();
+    assert!(listed_columns(&pane).is_empty());
+    assert_eq!(pane.imp().stack.visible_child_name().as_deref(), Some("empty"));
+}
+
+#[gtk4::test]
+fn filtering_keeps_the_selected_field_and_restores_its_list_selection() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    grid.focus(0, 1);
+    pane.imp().field_search.grab_focus();
+    search_fields(&pane, "id");
+    assert_eq!(selected_field(&pane), Some(1));
+    assert_eq!(pane.typed_text(), "A");
+    assert_eq!(pane.imp().selection.selected(), gtk::INVALID_LIST_POSITION);
+    assert!(crate::ui::a11y::holds_focus(&pane.imp().field_search.get()));
+
+    search_fields(&pane, "no such field");
+    assert_eq!(pane.imp().field_results.visible_child_name().as_deref(), Some("empty"));
+    search_fields(&pane, "");
+    assert_eq!(selected_field(&pane), Some(1));
+    assert_eq!(pane.imp().selection.selected(), 1);
+    assert_eq!(pane.imp().field_results.visible_child_name().as_deref(), Some("fields"));
+}
+
+#[gtk4::test]
+fn search_keys_and_tab_order_reach_the_filter_list_and_value() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    crate::test_support::KeyInjector::focus_only(&grid.window);
+    take_keyboard(&grid);
+    grid.focus(0, 1);
+    let delta = grid.tracker.apply(TrackerEdit::Cell {
+        row_key: key(1),
+        col: 1,
+        original: Value::Text("A".into()),
+        value: text("changed"),
+    });
+    grid.grid.apply_delta(&delta);
+    // GTK orders Tab stops by their allocation, which follows the pane opening.
+    wait_until(WAIT, || {
+        pane.imp().field_search.is_mapped()
+            && pane.imp().field_search.width() > 0
+            && pane.imp().field_search.height() > 0
+            && pane.imp().edited_toggle.is_mapped()
+            && pane.imp().edited_toggle.width() > 0
+            && pane.imp().edited_toggle.height() > 0
+            && pane.imp().field_list.width() > 0
+    })
+    .expect("the search controls are laid out");
+    crate::test_support::after_next_frame(&grid.window);
+    assert!(pane.imp().edited_toggle.is_sensitive());
+    assert!(pane.imp().field_search.grab_focus());
+    assert!(crate::ui::a11y::holds_focus(&pane.imp().field_search.get()));
+    let keys = crate::test_support::KeyInjector::connect().expect("an X11 display");
+    keys.press(gdk::Key::Tab, gdk::ModifierType::empty()).expect("Tab");
+    wait_until(WAIT, || crate::ui::a11y::holds_focus(&pane.imp().edited_toggle.get())).expect("Tab to the filter");
+    keys.press(gdk::Key::Tab, gdk::ModifierType::empty()).expect("Tab");
+    wait_until(WAIT, || crate::ui::a11y::holds_focus(&pane.imp().field_list.get())).expect("Tab to the list");
+    keys.press(gdk::Key::n, gdk::ModifierType::empty())
+        .expect("type to search");
+    wait_until(WAIT, || pane.imp().field_search.text() == "n").expect("typing in the list searches");
+    assert!(crate::ui::a11y::holds_focus(&pane.imp().field_search.get()));
+    keys.press(gdk::Key::space, gdk::ModifierType::empty())
+        .expect("a space in the query");
+    wait_until(WAIT, || pane.imp().field_search.text() == "n ").expect("the entry keeps spaces in the query");
+    keys.press(gdk::Key::Escape, gdk::ModifierType::empty())
+        .expect("Escape");
+    wait_until(WAIT, || pane.imp().field_search.text().is_empty()).expect("Escape clears");
+    wait_until(WAIT, || listed_columns(&pane).len() == 2).expect("clearing restores all fields");
+    search_fields(&pane, "name");
+    keys.press(gdk::Key::Return, gdk::ModifierType::empty()).expect("Enter");
+    wait_until(WAIT, || crate::ui::a11y::holds_focus(&pane.imp().value_view.get())).expect("Enter opens the result");
+    assert_eq!(selected_field(&pane), Some(1));
+    assert_eq!(pane.typed_text(), "changed");
+
+    grid.grid.imp().split_view.set_collapsed(true);
+    pane.imp().field_search.grab_focus();
+    search_fields(&pane, "");
+    keys.press(gdk::Key::Escape, gdk::ModifierType::empty())
+        .expect("Escape");
+    wait_until(WAIT, || !grid.grid.imp().split_view.shows_sidebar()).expect("Escape closes the empty overlay search");
 }

@@ -67,6 +67,19 @@ pub(super) fn install(window: &adw::ApplicationWindow, shell: &WorkspaceShell) {
             .build()
     });
     window.add_action_entries(actions);
+    let refreshing = shell.downgrade();
+    window.add_action_entries([gio::ActionEntry::<adw::ApplicationWindow>::builder("refresh-page")
+        .activate(move |_, _, _| {
+            if let Some(shell) = refreshing.upgrade()
+                && let Some(page) = shell.tab_view().selected_page()
+                && let Some((owner, id)) = shell.owner_of(&page)
+                && let Some(input) = owner.sender()
+            {
+                input.deliver(WorkspaceInput::RefreshPage(Some(id)));
+            }
+        })
+        .build()]);
+    set_enabled(window, "refresh-page", false);
     let reopening = shell.downgrade();
     window.add_action_entries([gio::ActionEntry::<adw::ApplicationWindow>::builder(REOPEN_CLOSED_TAB)
         .activate(move |_, _, _| {
@@ -126,6 +139,7 @@ pub(super) fn remove(window: &adw::ApplicationWindow) {
     window.remove_action(CLOSE_ALL_TABS);
     window.remove_action(SWITCH_RECENT_TAB);
     window.remove_action(SHOW_TABS);
+    window.remove_action("refresh-page");
 }
 
 /// Offer Export Database and Import SQL File where the session in front

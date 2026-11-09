@@ -1,6 +1,6 @@
 # 0027: One data grid on GtkColumnView, with rows and a focused cell
 
-- **Status**: Accepted
+- **Status**: Accepted; row numbers superseded by [0044](0044-pinned-row-numbers.md)
 - **Date**: 2026-10-25
 
 ## Context

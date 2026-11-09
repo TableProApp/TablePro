@@ -8,19 +8,15 @@ use sourceview5::prelude::*;
 
 use crate::ui::handler_guard::HandlerGuard;
 
-/// What a code block's buttons reach beyond it.
 #[derive(Clone)]
 pub(crate) struct BlockHooks {
     pub settings: Rc<tablepro_linux_platform::AppSettings>,
-    /// Put the code in the editor.
     pub insert: Rc<dyn Fn(String)>,
     pub toast: Rc<dyn Fn(String)>,
 }
 
-/// One code block of a reply: highlighted as the editor is, with Copy
-/// and Insert. A label rather than a text view: a text view lays its
-/// text out in an idle that a running spinner can hold off, and until
-/// then asks for the height of no text.
+// A label measures streaming text synchronously; a text view waits for an idle
+// that the running spinner can hold off.
 pub(crate) struct CodeBlock {
     root: gtk::Box,
     shown: Rc<Shown>,
@@ -28,11 +24,12 @@ pub(crate) struct CodeBlock {
     _theme: [HandlerGuard; 2],
 }
 
-/// The code and the label that shows it, with the buffer that colours it.
 struct Shown {
     code: RefCell<String>,
     label: gtk::Label,
     buffer: sourceview5::Buffer,
+    colors: gtk::CssProvider,
+    color_class: String,
 }
 
 impl CodeBlock {
@@ -50,16 +47,22 @@ impl CodeBlock {
             .wrap(true)
             .wrap_mode(gtk::pango::WrapMode::WordChar)
             .selectable(true)
-            .margin_top(8)
-            .margin_bottom(8)
-            .margin_start(10)
-            .margin_end(10)
             .build();
         label.add_css_class("monospace");
+        let color_class = format!("code-{}", gtk::glib::uuid_string_random());
+        label.add_css_class(&color_class);
+        let colors = gtk::CssProvider::new();
+        gtk::style_context_add_provider_for_display(
+            &label.display(),
+            &colors,
+            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
         let shown = Rc::new(Shown {
             code: RefCell::new(code.to_owned()),
             label,
             buffer,
+            colors,
+            color_class,
         });
         shown.paint(&hooks.settings.style_scheme());
 
@@ -116,7 +119,6 @@ impl CodeBlock {
         &self.root
     }
 
-    /// Show `code` in place of what the block shows, as a reply streams.
     pub(crate) fn set_code(&self, code: &str) {
         if *self.shown.code.borrow() == code {
             return;
@@ -127,12 +129,23 @@ impl CodeBlock {
 }
 
 impl Shown {
-    /// Lay the code out in the label, coloured by the `scheme` the user
-    /// picked for the editor.
     fn paint(&self, scheme: &str) {
         let code = self.code.borrow();
-        self.buffer
-            .set_style_scheme(crate::ui::style_scheme_resolver::scheme(scheme).as_ref());
+        let scheme = crate::ui::style_scheme_resolver::scheme(scheme);
+        self.buffer.set_style_scheme(scheme.as_ref());
+        let text = gtk::TextTag::new(None);
+        if let Some(style) = scheme.as_ref().and_then(|scheme| scheme.style("text")) {
+            style.apply(&text);
+        }
+        // Only parsed colors enter CSS; a scheme file cannot supply declarations.
+        let foreground = text.foreground_rgba().filter(|_| text.is_foreground_set());
+        let background = text.background_rgba().filter(|_| text.is_background_set());
+        self.colors.load_from_string(&format!(
+            ".{} {{ padding: 8px 10px; color: {}; background-color: {}; }}",
+            self.color_class,
+            foreground.map_or_else(|| "inherit".to_owned(), |color| color.to_string()),
+            background.map_or_else(|| "transparent".to_owned(), |color| color.to_string()),
+        ));
         self.buffer.set_text(&code);
         let (start, end) = self.buffer.bounds();
         self.buffer.ensure_highlight(&start, &end);
@@ -162,7 +175,12 @@ impl Shown {
     }
 }
 
-/// What a highlighting tag sets, as text attributes.
+impl Drop for Shown {
+    fn drop(&mut self) {
+        gtk::style_context_remove_provider_for_display(&self.label.display(), &self.colors);
+    }
+}
+
 fn tag_attributes(tag: &gtk::TextTag) -> Vec<gtk::pango::Attribute> {
     let mut attributes = Vec::new();
     let channels = |rgba: gtk::gdk::RGBA| {
@@ -218,6 +236,82 @@ mod tests {
     use std::cell::RefCell;
 
     use super::*;
+
+    fn background_pixel(label: &gtk::Label) -> [u8; 4] {
+        use gtk::gsk::prelude::*;
+
+        crate::test_support::after_next_frame(label);
+        let snapshot = gtk::Snapshot::new();
+        gtk::WidgetPaintable::new(Some(label)).snapshot(&snapshot, f64::from(label.width()), f64::from(label.height()));
+        let node = snapshot.to_node().expect("painted label");
+        let renderer = gtk::gsk::CairoRenderer::new();
+        renderer.realize(None::<&gtk::gdk::Surface>).expect("Cairo renderer");
+        let texture = renderer.render_texture(&node, None);
+        let mut download = gtk::gdk::TextureDownloader::new(&texture);
+        download.set_format(gtk::gdk::MemoryFormat::R8g8b8a8);
+        let (bytes, _) = download.download_bytes();
+        let pixel = bytes[..4].try_into().expect("one pixel");
+        renderer.unrealize();
+        pixel
+    }
+
+    #[gtk4::test]
+    fn style_scheme_colors_paint_the_code_foreground_and_background_together() {
+        adw::init().expect("libadwaita");
+        let settings = crate::test_support::MemorySettings::new();
+        let block = CodeBlock::new("SELECT name FROM users;", Some("sql"), &hooks(&settings));
+        let window = crate::test_support::OwnedWindow::presented(
+            gtk::Window::builder().child(block.widget()).default_width(400).build(),
+        );
+        let style = adw::StyleManager::default();
+        let previous = style.color_scheme();
+        for id in ["Adwaita-dark", "Adwaita"] {
+            settings.get().set_style_scheme(id).expect("a scheme");
+            for desktop in [adw::ColorScheme::ForceLight, adw::ColorScheme::ForceDark] {
+                style.set_color_scheme(desktop);
+                let scheme = block.shown.buffer.style_scheme().expect("a scheme");
+                assert_eq!(scheme.id(), id);
+                let text = gtk::TextTag::new(None);
+                scheme.style("text").expect("text style").apply(&text);
+                let foreground = text.foreground_rgba().expect("foreground");
+                let background = text.background_rgba().expect("background");
+                let pixel = background_pixel(&block.shown.label);
+                assert_eq!(block.shown.label.color(), foreground);
+                let byte = |value: f32| (value * 255.0).round() as u8;
+                assert_eq!(
+                    pixel,
+                    [
+                        byte(background.red()),
+                        byte(background.green()),
+                        byte(background.blue()),
+                        255
+                    ]
+                );
+                block.set_code("SELECT name FROM users WHERE id = 1;");
+                assert_eq!(block.shown.label.text(), "SELECT name FROM users WHERE id = 1;");
+            }
+        }
+        settings.get().set_style_scheme("").expect("automatic");
+        style.set_color_scheme(adw::ColorScheme::ForceLight);
+        assert_eq!(block.shown.buffer.style_scheme().expect("scheme").id(), "Adwaita");
+        style.set_color_scheme(adw::ColorScheme::ForceDark);
+        assert_eq!(block.shown.buffer.style_scheme().expect("scheme").id(), "Adwaita-dark");
+        drop(window);
+        style.set_color_scheme(previous);
+    }
+
+    #[gtk4::test]
+    fn dropping_a_code_block_releases_its_paint_and_theme_handlers() {
+        let settings = crate::test_support::MemorySettings::new();
+        let references = Rc::weak_count(settings.get());
+        let block = CodeBlock::new("plain code", Some("text"), &hooks(&settings));
+        let shown = Rc::downgrade(&block.shown);
+        let provider = block.shown.colors.downgrade();
+        drop(block);
+        assert!(shown.upgrade().is_none());
+        assert!(provider.upgrade().is_none());
+        assert_eq!(Rc::weak_count(settings.get()), references);
+    }
 
     #[gtk4::test]
     fn insert_hands_over_the_code_as_it_now_reads() {
