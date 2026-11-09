@@ -40,6 +40,10 @@ pub(crate) enum CommandError {
     Transport(String),
     #[error("TablePro did not answer within {seconds} seconds.")]
     NoAnswer { seconds: u64 },
+    #[error(
+        "TablePro's answer is larger than the {mebibytes} MiB this command reads. Ask for fewer rows with --limit."
+    )]
+    AnswerTooLarge { mebibytes: usize },
     #[error("{message}")]
     Tool { code: String, message: String },
     #[error("No connection named “{0}” is open to the tablepro command. Run tablepro connections to list them.")]
@@ -86,6 +90,7 @@ impl CommandError {
             Self::NotTablePro { .. } => "cli.not_tablepro",
             Self::Transport(_) => "cli.transport",
             Self::NoAnswer { .. } => "cli.no_answer",
+            Self::AnswerTooLarge { .. } => "cli.answer_too_large",
             Self::Tool { code, .. } => code,
             Self::UnknownConnection(_) => "cli.unknown_connection",
             Self::AmbiguousConnection { .. } => "cli.ambiguous_connection",
@@ -116,6 +121,7 @@ impl CommandError {
             | Self::NotAnswering { .. }
             | Self::NotTablePro { .. }
             | Self::Transport(_)
+            | Self::AnswerTooLarge { .. }
             | Self::NotOpen(_)
             | Self::OpenTimedOut(_)
             | Self::Answer(_)

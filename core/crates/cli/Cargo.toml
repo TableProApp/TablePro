@@ -22,7 +22,7 @@ http.workspace = true
 hyper-util.workspace = true
 reqwest.workspace = true
 tower = { version = "0.5", features = ["util"] }
-rmcp = { version = "3.6.0", default-features = false, features = ["client", "transport-streamable-http-client-reqwest"] }
+rmcp = { version = "3.9.0", default-features = false, features = ["client", "transport-streamable-http-client-reqwest"] }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

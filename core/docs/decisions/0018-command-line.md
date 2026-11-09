@@ -82,7 +82,9 @@ redirects disabled. A reqwest connector layer calls `Host::verify_peer` on every
 new TCP connection before HTTP can send the bearer token. Missing socket
 addresses or a failed check close that connection. A separate probe would leave
 a gap in which another process could take the port. Verified connections can be
-reused. The later MCP handshake must also name the server `tablepro`.
+reused. The later MCP handshake must also name the server `tablepro`. rmcp reads
+at most 16 MiB of one answer; a larger one fails with a message to ask for fewer
+rows.
 
 On Linux, verification checks the peer socket's owner against the current user.
 It does not prove the process is TablePro. That user is the boundary because the

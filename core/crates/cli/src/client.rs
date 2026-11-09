@@ -195,10 +195,18 @@ fn transport_failure(error: &(dyn Error + 'static), port: u16) -> CommandError {
         if let Some(host) = current.downcast_ref::<HostError>() {
             return CommandError::Host(host.clone());
         }
-        if let Some(StreamableHttpError::Client(http)) = current.downcast_ref::<StreamableHttpError<reqwest::Error>>()
-            && let Some(failure) = http_failure(http, port)
-        {
-            return failure;
+        match current.downcast_ref::<StreamableHttpError<reqwest::Error>>() {
+            Some(StreamableHttpError::ResponseBodyTooLarge { max_size }) => {
+                return CommandError::AnswerTooLarge {
+                    mebibytes: max_size / (1024 * 1024),
+                };
+            }
+            Some(StreamableHttpError::Client(http)) => {
+                if let Some(failure) = http_failure(http, port) {
+                    return failure;
+                }
+            }
+            _ => {}
         }
         if let Some(http) = current.downcast_ref::<reqwest::Error>()
             && let Some(failure) = http_failure(http, port)
@@ -347,5 +355,17 @@ mod tests {
         assert_eq!(deadlines.statement(Some(300)), Duration::from_secs(420));
         assert_eq!(deadlines.tables(0), Duration::from_secs(60));
         assert_eq!(deadlines.tables(3), Duration::from_secs(180));
+    }
+
+    #[test]
+    fn an_answer_past_the_body_limit_says_to_ask_for_fewer_rows() {
+        let error = StreamableHttpError::<reqwest::Error>::ResponseBodyTooLarge {
+            max_size: 16 * 1024 * 1024,
+        };
+
+        let failure = transport_failure(&error, 1);
+
+        assert!(matches!(failure, CommandError::AnswerTooLarge { mebibytes: 16 }));
+        assert!(failure.to_string().contains("--limit"));
     }
 }
