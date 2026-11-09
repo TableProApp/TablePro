@@ -226,14 +226,18 @@ struct MainEditorContentView: View {
     // MARK: - Table Listing Tab Content
 
     private func tableListingContent(tab: QueryTab) -> some View {
-        let model = tableListingModels.model(forTab: tab.id) {
+        let scope = DatabaseScope(
+            connectionId: connection.id,
+            database: tab.tableContext.databaseName,
+            schema: tab.tableContext.schemaName
+        )
+        let kind = tab.display.listingKind ?? .table
+        let target = DatabaseTreeObjectGroup(database: scope.database, schema: scope.schema, kind: kind)
+        let model = tableListingModels.model(forTab: tab.id, target: target) {
             TableListingViewModel(
                 tabId: tab.id,
-                scope: DatabaseScope(
-                    connectionId: connection.id,
-                    database: tab.tableContext.databaseName,
-                    schema: tab.tableContext.schemaName
-                ),
+                scope: scope,
+                kind: kind,
                 loader: TableListingLoader(
                     databaseType: connection.type,
                     slot: EngineNamespaceSlot(databaseType: connection.type)
