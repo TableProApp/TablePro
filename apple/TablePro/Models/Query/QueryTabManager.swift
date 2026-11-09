@@ -548,14 +548,23 @@ final class QueryTabManager: ObservableObject {
         selectedTabId = newTab.id
     }
 
+    // One listing per container: asking again selects it, and another kind retargets it rather than opening a second
+    // tab. A preview takes the strip slot of the preview it replaces, so browsing the sidebar does not grow the strip.
     @discardableResult
-    func addTableListingTab(title: String, databaseName: String, schemaName: String?) -> UUID {
+    func addTableListingTab(
+        title: String,
+        databaseName: String,
+        schemaName: String?,
+        kind: SidebarObjectKind = .table,
+        isPreview: Bool = false,
+        replacing previewId: UUID? = nil
+    ) -> UUID {
         let schemaName = schemaName.flatMap { $0.isEmpty ? nil : $0 }
-        if let existing = tabs.first(where: {
-            $0.tabType == .tableListing
-                && $0.tableContext.databaseName == databaseName
-                && $0.tableContext.schemaName == schemaName
-        }) {
+        if let existing = tableListingTab(databaseName: databaseName, schemaName: schemaName) {
+            setTableListingKind(kind, title: title, tabId: existing.id)
+            if !isPreview {
+                promotePreviewTab(id: existing.id)
+            }
             selectedTabId = existing.id
             return existing.id
         }
@@ -563,10 +572,44 @@ final class QueryTabManager: ObservableObject {
         newTab.tableContext.isEditable = false
         newTab.tableContext.databaseName = databaseName
         newTab.tableContext.schemaName = schemaName
-        newTab.hasUserInteraction = true
-        tabs.append(newTab)
+        newTab.display.listingKind = Self.storedListingKind(kind)
+        newTab.isPreview = isPreview
+        // The structure-change check promotes a preview carrying this flag; a listing preview is kept only by the user.
+        newTab.hasUserInteraction = !isPreview
+        if let previewId, let index = tabs.firstIndex(where: { $0.id == previewId && $0.isPreview }) {
+            var updated = tabs
+            updated[index] = newTab
+            tabs = updated
+        } else {
+            tabs.append(newTab)
+        }
         selectedTabId = newTab.id
         return newTab.id
+    }
+
+    func tableListingTab(databaseName: String, schemaName: String?) -> QueryTab? {
+        let schemaName = schemaName.flatMap { $0.isEmpty ? nil : $0 }
+        return tabs.first {
+            $0.tabType == .tableListing
+                && $0.tableContext.databaseName == databaseName
+                && $0.tableContext.schemaName == schemaName
+        }
+    }
+
+    func setTableListingKind(_ kind: SidebarObjectKind, title: String, tabId: UUID) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabId && $0.tabType == .tableListing }) else { return }
+        let stored = Self.storedListingKind(kind)
+        guard tabs[index].display.listingKind != stored || tabs[index].title != title else { return }
+        mutate(at: index) { tab in
+            tab.display.listingKind = stored
+            tab.title = title
+        }
+        markTabRenamed(tabId)
+    }
+
+    // Nil stands for Tables, so a tab saved before kinds existed reads as one.
+    private static func storedListingKind(_ kind: SidebarObjectKind) -> SidebarObjectKind? {
+        kind == .table ? nil : kind
     }
 
     // One tab per run: debugging the same routine again starts a second session rather than taking over a live one.
@@ -674,6 +717,7 @@ final class QueryTabManager: ObservableObject {
         tab.display.resultsViewMode = .data
         tab.display.resultSets = []
         tab.display.activeResultSetId = nil
+        tab.display.listingKind = nil
         tab.sortState = SortState()
         tab.restoredSortSource = .unset
         tab.selectionSnapshot = .empty
