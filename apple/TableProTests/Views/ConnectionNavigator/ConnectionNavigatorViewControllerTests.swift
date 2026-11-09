@@ -176,6 +176,57 @@ struct ConnectionNavigatorViewControllerTests {
         #expect(outline.selectedRow == shownRow)
     }
 
+    /// The rows say how a group stood when they were built, and the user opens and closes groups
+    /// without a rebuild.
+    @Test("A subgroup the user opened is still open after its parent is closed and reopened")
+    func subgroupStaysOpenThroughItsParent() throws {
+        let parent = ConnectionGroup(name: "Parent")
+        let child = ConnectionGroup(name: "Child", parentId: parent.id)
+        try fixture.groupStorage.addGroup(parent)
+        try fixture.groupStorage.addGroup(child)
+        let inside = DatabaseConnection(name: "inside", groupId: child.id)
+        fixture.save([inside])
+        fixture.expansionStore.save([parent.id])
+        let hosted = host()
+        defer { hosted.tearDown() }
+        let outline = hosted.controller.outlineView
+        let parentItem = outline.item(atRow: hosted.controller.row(for: .group(parent.id)))
+        let childItem = outline.item(atRow: hosted.controller.row(for: .group(child.id)))
+        try #require(parentItem != nil && childItem != nil)
+        outline.expandItem(childItem)
+        outline.collapseItem(parentItem)
+
+        outline.expandItem(parentItem)
+
+        #expect(outline.isItemExpanded(childItem))
+        #expect(hosted.controller.row(for: .connection(inside.id)) >= 0)
+    }
+
+    @Test("A subgroup the user closed is still closed after its parent is closed and reopened")
+    func subgroupStaysClosedThroughItsParent() throws {
+        let parent = ConnectionGroup(name: "Parent")
+        let child = ConnectionGroup(name: "Child", parentId: parent.id)
+        try fixture.groupStorage.addGroup(parent)
+        try fixture.groupStorage.addGroup(child)
+        let inside = DatabaseConnection(name: "inside", groupId: child.id)
+        fixture.save([inside])
+        fixture.expansionStore.save([parent.id, child.id])
+        let hosted = host()
+        defer { hosted.tearDown() }
+        let outline = hosted.controller.outlineView
+        let parentItem = outline.item(atRow: hosted.controller.row(for: .group(parent.id)))
+        let childItem = outline.item(atRow: hosted.controller.row(for: .group(child.id)))
+        try #require(parentItem != nil && childItem != nil)
+        try #require(outline.isItemExpanded(childItem))
+        outline.collapseItem(childItem)
+        outline.collapseItem(parentItem)
+
+        outline.expandItem(parentItem)
+
+        #expect(!outline.isItemExpanded(childItem))
+        #expect(hosted.controller.row(for: .connection(inside.id)) == -1)
+    }
+
     // MARK: - Clicks and Return
 
     /// NSTableView tracks a press until the mouse-up, so the mouse-up waits in the queue first. A

@@ -176,6 +176,12 @@ internal final class ConnectionNavigatorModel: ObservableObject {
         return (statuses, placements)
     }
 
+    /// Whether a group is open now. A row's own flag is what it was when the rows were built, and
+    /// the user opens and closes groups without a rebuild. A filter's choice lasts until it changes.
+    internal func isGroupExpanded(_ group: ConnectionNavigatorGroupRow) -> Bool {
+        isFiltering ? group.isExpanded : expandedGroupIds.contains(group.id)
+    }
+
     /// The groups a filter opens are the filter's, so a user expanding or collapsing one while it
     /// runs does not overwrite what they chose before typing.
     internal func setGroupExpanded(_ id: UUID, _ expanded: Bool) {

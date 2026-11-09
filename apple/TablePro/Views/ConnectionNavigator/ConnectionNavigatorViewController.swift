@@ -325,7 +325,7 @@ internal final class ConnectionNavigatorViewController: NSViewController, NSSear
     private func applyExpansion(to items: [ConnectionNavigatorOutlineItem]) {
         for item in items {
             guard case .group(let group) = item.row, !item.children.isEmpty else { continue }
-            guard group.isExpanded else {
+            guard model.isGroupExpanded(group) else {
                 outlineView.collapseItem(item)
                 continue
             }
