@@ -401,7 +401,6 @@ impl RowDetailPane {
         buffer.place_cursor(&buffer.start_iter());
         let view = imp.value_view.get();
         view.set_editable(content.message.is_none());
-        imp.field_label.set_label(name);
         view.update_property(&[gtk::accessible::Property::Label(name)]);
         self.show_message(content.message.as_deref(), false);
         imp.calendar_button.set_visible(content.calendar);
