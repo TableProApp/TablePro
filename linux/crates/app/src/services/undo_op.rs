@@ -10,6 +10,9 @@ use super::touch::Touch;
 /// same order it would have before the step.
 #[derive(Debug, Clone, PartialEq)]
 pub enum UndoOp {
+    Group {
+        steps: Vec<UndoOp>,
+    },
     /// `None` on either side means the cell had no pending edit, which
     /// is also what an edit back to the fetched value leaves.
     CellEdit {
@@ -51,6 +54,9 @@ impl UndoOp {
             touched: mark.touched,
         };
         match self {
+            UndoOp::Group { steps } => Some(UndoOp::Group {
+                steps: steps.iter().map(|step| step.relayout(layout)).collect::<Option<_>>()?,
+            }),
             UndoOp::CellEdit {
                 row_key,
                 col,
@@ -119,6 +125,10 @@ impl UndoOp {
     pub fn forget_draft(&mut self, draft_id: u64) -> bool {
         let gone = RowKey::Draft(draft_id);
         match self {
+            UndoOp::Group { steps } => {
+                steps.retain_mut(|step| step.forget_draft(draft_id));
+                !steps.is_empty()
+            }
             UndoOp::Insert { drafts } => {
                 drafts.retain(|draft| draft.draft_id != draft_id);
                 !drafts.is_empty()

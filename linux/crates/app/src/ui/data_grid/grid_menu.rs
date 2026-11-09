@@ -12,6 +12,7 @@ use crate::services::grid::GridColumn;
 #[derive(Debug)]
 pub struct GridMenus {
     pub cell: gtk::PopoverMenu,
+    pub row_numbers: gtk::PopoverMenu,
     /// Below the last row, for a grid that takes new rows.
     pub empty: Option<gtk::PopoverMenu>,
     /// Filled from the table's foreign keys as a menu opens.
@@ -71,6 +72,7 @@ impl GridMenus {
         let reference_chooser = popover(grid, &gio::Menu::new());
         let choices = editable.then(|| popover(grid, &gio::Menu::new()));
         Self {
+            row_numbers: popover(grid, &row_numbers_header_menu()),
             cell,
             empty,
             references,
@@ -84,6 +86,7 @@ impl GridMenus {
     /// the grid lets go of itself.
     pub fn unparent(&self) {
         self.cell.unparent();
+        self.row_numbers.unparent();
         if let Some(empty) = &self.empty {
             empty.unparent();
         }

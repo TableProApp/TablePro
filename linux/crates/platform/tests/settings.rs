@@ -48,7 +48,7 @@ fn defaults_match_schema() -> TestResult {
     assert!(fixture.settings.show_alternate_rows());
     assert_eq!(fixture.settings.history_retention_days(), 30);
     assert_eq!(fixture.settings.query_timeout(), Some(Duration::from_secs(60)));
-    assert_eq!(fixture.settings.style_scheme(), "Adwaita");
+    assert_eq!(fixture.settings.style_scheme(), "");
     assert_eq!(fixture.settings.csv_options(), CsvOptions::default());
     assert!(fixture.settings.restore_session());
     assert!(fixture.settings.save_query_history());
@@ -328,5 +328,17 @@ fn nonexistent_dir_is_schema_directory() -> TestResult {
         return Err("a directory with no compiled schemas must not open".into());
     };
     assert!(matches!(error, SettingsError::SchemaDirectory { path, .. } if path == missing));
+    Ok(())
+}
+
+#[test]
+fn an_explicit_adwaita_choice_is_distinct_from_the_system_default() -> TestResult {
+    use gio::prelude::SettingsExt;
+
+    let fixture = Fixture::new()?;
+    fixture.settings.set_style_scheme("Adwaita")?;
+    assert_eq!(fixture.settings.style_scheme(), "Adwaita");
+    fixture.settings.gio().reset(keys::STYLE_SCHEME);
+    assert_eq!(fixture.settings.style_scheme(), "");
     Ok(())
 }

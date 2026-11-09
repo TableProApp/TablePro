@@ -200,6 +200,27 @@ fn sql_buffer(tab: &StructureTab) -> sourceview5::Buffer {
 }
 
 #[gtk4::test]
+fn style_scheme_in_structure_and_write_reviews_follows_the_desktop() {
+    adw::init().expect("libadwaita");
+    let style = adw::StyleManager::default();
+    let harness = Harness::open(StructureMode::New, ConnectionScript::default(), []);
+    let dialog = adw::AlertDialog::new(None, None);
+    let review = super::review_dialog::sql_view("SELECT 1", &dialog);
+    let view = review.child().and_downcast::<sourceview5::View>().expect("SQL view");
+    let review_buffer = view.buffer().downcast::<sourceview5::Buffer>().expect("source buffer");
+    for (appearance, id) in [
+        (adw::ColorScheme::ForceLight, "Adwaita"),
+        (adw::ColorScheme::ForceDark, "Adwaita-dark"),
+    ] {
+        style.set_color_scheme(appearance);
+        assert_eq!(scheme_id(&sql_buffer(harness.tab())).as_deref(), Some(id));
+        assert_eq!(scheme_id(&review_buffer).as_deref(), Some(id));
+    }
+    crate::ui::text_view_teardown::release(&view);
+    style.set_color_scheme(adw::ColorScheme::Default);
+}
+
+#[gtk4::test]
 fn style_handler_disconnected_on_shutdown() {
     let style = adw::StyleManager::default();
     style.set_color_scheme(adw::ColorScheme::ForceLight);

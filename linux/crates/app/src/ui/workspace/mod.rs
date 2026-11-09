@@ -470,6 +470,22 @@ fn close_if_presented(dialog: &adw::Dialog) {
 }
 
 #[derive(Debug)]
+pub(crate) enum EditorInput {
+    RunStateChanged(Uuid, bool),
+    RunFinished(Uuid, crate::workspace::WorkOutcome),
+    ContentChanged(Uuid),
+    FileChanged(Uuid),
+    DatabaseChanged(Uuid),
+    TransactionChanged,
+    FollowCatalog {
+        tab_id: Uuid,
+        database: Option<String>,
+        session: Option<Arc<Session>>,
+    },
+    DatabaseOpened(Arc<Session>),
+}
+
+#[derive(Debug)]
 pub(crate) enum WorkspaceInput {
     HealthChanged(SessionHealth),
     /// Another session's tab came into the bar, or the last one left it.
@@ -515,15 +531,7 @@ pub(crate) enum WorkspaceInput {
     },
     NewEditorTab,
     CloseActiveWorkspaceTab,
-    EditorTabRunStateChanged(Uuid, bool),
-    EditorTabRunFinished(Uuid, crate::workspace::WorkOutcome),
-    EditorTabContentChanged(Uuid),
-    /// An editor tab was saved, opened a file, or its text came to
-    /// differ from its file's or match it again.
-    EditorTabFileChanged(Uuid),
-    /// An editor tab moved to another database, which its record keeps
-    /// and its title names.
-    EditorTabDatabaseChanged(Uuid),
+    Editor(EditorInput),
     /// The session's saved tabs and their editor text, read off the GTK
     /// thread.
     WorkspaceLoaded(workspace_tabs::LoadedWorkspace),
@@ -531,14 +539,6 @@ pub(crate) enum WorkspaceInput {
     ResetWorkspaceLayout,
     /// The session moved to another Safe Mode level, which the title names.
     SafeModeChanged,
-    /// Completion in editor tab `tab_id` reads `session`'s catalog, its
-    /// database's, or its own connection's again with `None`.
-    FollowCatalog {
-        tab_id: Uuid,
-        session: Option<Arc<Session>>,
-    },
-    /// Another database of the connection opened beside it.
-    DatabaseOpened(Arc<Session>),
     /// The saved connections changed, the title's icon perhaps with them.
     SavedConnectionsChanged,
     WorkspaceLayoutReset(Result<Option<std::path::PathBuf>, crate::workspace::WorkspaceSaveError>),
@@ -547,6 +547,8 @@ pub(crate) enum WorkspaceInput {
     ShowHistory,
     ShowSavedQueries,
     ActiveTab(workspace_tabs::ActiveTabCommand),
+    ConfirmReplaceSavedQuery(tablepro_storage::saved_queries::NewSavedQuery),
+    ReplaceSavedQuery(tablepro_storage::saved_queries::NewSavedQuery),
     SaveQueryNamed {
         name: String,
         query: String,
@@ -572,7 +574,7 @@ pub(crate) enum WorkspaceInput {
         id: Uuid,
         approved: bool,
     },
-    RefreshPage,
+    RefreshPage(Option<Uuid>),
     ExportResults {
         tab: Uuid,
         offer: Box<ExportOffer>,
@@ -593,8 +595,6 @@ pub(crate) enum WorkspaceInput {
     /// A save started or settled, or tabs' changes were dropped.
     Workspace(crate::workspace::WorkspaceEvent),
     SavesInFlightChanged(usize),
-    /// An editor tab's transaction opened, failed or ended.
-    EditorTransactionChanged,
     /// The transaction banner's Show.
     ShowTransactionTab,
     ShowAlert {
@@ -817,6 +817,7 @@ impl Workspace {
         let input = workspace.pump_inputs();
         let _ = imp.sender.set(input.clone());
         let _ = imp.key.set(key.clone());
+        let _ = imp.connection_id.set(session.metadata().id);
         let context = session_slot(&context, &session);
         let storage = services.storage.clone();
         let tasks = services.tasks.clone();
@@ -938,6 +939,10 @@ impl Workspace {
         self.imp().key.get().cloned()
     }
 
+    pub(crate) fn connection_id(&self) -> Option<Uuid> {
+        self.imp().connection_id.get().copied()
+    }
+
     /// What the session's engine holds, which names the page with no
     /// tab open.
     pub(crate) fn data_model(&self) -> Option<DataModel> {
@@ -959,6 +964,11 @@ impl Workspace {
     /// the index, so it answers while the workspace handles its input.
     pub(crate) fn tab_id(&self, page: &adw::TabPage) -> Option<Uuid> {
         self.imp().index.get()?.id_of(page)
+    }
+
+    pub(crate) fn tab_database(&self, id: Uuid) -> Option<String> {
+        self.read(|model| model.editor_tab(id).and_then(|editor| editor.tab_database()))
+            .flatten()
     }
 
     /// Whether the session has a tab open.
@@ -1101,7 +1111,10 @@ impl Workspace {
     }
 
     fn handle_input(&self, message: WorkspaceInput) {
-        self.with_model(|model| model.update(message));
+        self.with_model(|model| {
+            model.update(message);
+            model.refresh_header_actions();
+        });
     }
 
     fn with_model<R>(&self, f: impl FnOnce(&mut WorkspaceModel) -> R) -> Option<R> {
@@ -1316,6 +1329,10 @@ impl WorkspaceModel {
         }
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Each workspace input dispatches to its own handler"
+    )]
     fn update(&mut self, msg: WorkspaceInput) {
         match msg {
             WorkspaceInput::HealthChanged(health) => self.refresh_health_banner(&health),
@@ -1343,7 +1360,6 @@ impl WorkspaceModel {
             WorkspaceInput::ShowTableStructure(id) => self.on_show_table_structure(id),
             WorkspaceInput::Workspace(event) => self.on_workspace_event(event),
             WorkspaceInput::SavesInFlightChanged(count) => self.on_saves_in_flight_changed(count),
-            WorkspaceInput::EditorTransactionChanged => self.on_editor_transaction_changed(),
             WorkspaceInput::ShowTransactionTab => self.show_transaction_tab(),
             WorkspaceInput::WorkspaceTabClosed(id) => self.close_workspace_tab_by_id(id),
             WorkspaceInput::CloseWorkspaceTab(id) => self.close_workspace_tab(id),
@@ -1377,13 +1393,7 @@ impl WorkspaceModel {
             }
             WorkspaceInput::SchemaChanged { schema, table } => self.on_schema_changed(schema, table),
             WorkspaceInput::NewEditorTab => self.open_editor_tab(None),
-            WorkspaceInput::EditorTabRunStateChanged(id, running) => self.on_editor_tab_run_state_changed(id, running),
-            WorkspaceInput::EditorTabRunFinished(id, outcome) => self.on_editor_tab_run_finished(id, outcome),
-            WorkspaceInput::EditorTabContentChanged(id) => self.on_editor_tab_content_changed(id),
-            WorkspaceInput::EditorTabFileChanged(id) => self.on_editor_tab_file_changed(id),
-            WorkspaceInput::EditorTabDatabaseChanged(id) => self.on_editor_tab_database_changed(id),
-            WorkspaceInput::FollowCatalog { tab_id, session } => self.follow_catalog(tab_id, session),
-            WorkspaceInput::DatabaseOpened(session) => self.on_database_opened(&session),
+            WorkspaceInput::Editor(input) => self.on_editor_input(input),
             WorkspaceInput::WorkspaceLoaded(loaded) => self.on_workspace_loaded(loaded),
             WorkspaceInput::ResetWorkspaceLayout => self.on_reset_workspace_layout(),
             WorkspaceInput::SafeModeChanged => self.refresh_title(),
@@ -1404,9 +1414,11 @@ impl WorkspaceModel {
             WorkspaceInput::ImportCsvRun(import) => self.on_import_csv_run(*import),
             WorkspaceInput::ActiveTab(command) => self.on_active_tab_command(command),
             WorkspaceInput::SaveQueryNamed { name, query } => self.on_save_query_named(name, query),
+            WorkspaceInput::ConfirmReplaceSavedQuery(query) => self.confirm_replace_saved_query(query),
+            WorkspaceInput::ReplaceSavedQuery(query) => self.save_named_query(query, true),
             WorkspaceInput::OpenHistoryQuery(text) => self.open_editor_tab(Some(text)),
             WorkspaceInput::ReplaceActiveTabQuery(text) => self.on_replace_active_tab_query(text),
-            WorkspaceInput::RefreshPage => self.on_refresh_active_tab(),
+            WorkspaceInput::RefreshPage(tab) => self.on_refresh_page(tab),
             WorkspaceInput::ExportResults { tab, offer } => self.on_export_results(tab, *offer),
             WorkspaceInput::ExportEnded { tab, outcome } => self.on_export_ended(tab, outcome),
             WorkspaceInput::ReopenClosedTab(tab) => self.on_reopen_closed_tab(tab),
