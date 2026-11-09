@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::ffi::{CStr, CString, c_int};
 use std::marker::PhantomData;
 use std::path::Path;
@@ -21,7 +22,37 @@ impl Database {
         let database = Self {
             raw: NonNull::new(raw)?,
         };
-        (code == ffi::SQLITE_OK).then_some(database)
+        (code == ffi::SQLITE_OK && database.distrust_schema()).then_some(database)
+    }
+
+    // The file is another app's, so no SQL its schema holds runs: a view named like a table read here
+    // could loop forever on open. A query on a view fails instead.
+    fn distrust_schema(&self) -> bool {
+        [
+            (ffi::SQLITE_DBCONFIG_DEFENSIVE, 1),
+            (ffi::SQLITE_DBCONFIG_TRUSTED_SCHEMA, 0),
+            (ffi::SQLITE_DBCONFIG_ENABLE_VIEW, 0),
+            (ffi::SQLITE_DBCONFIG_ENABLE_TRIGGER, 0),
+        ]
+        .into_iter()
+        .all(|(option, value): (c_int, c_int)| {
+            // SAFETY: the connection is open, and each option takes an int and an int pointer that may be null.
+            let code = unsafe { ffi::sqlite3_db_config(self.raw.as_ptr(), option, value, ptr::null_mut::<c_int>()) };
+            code == ffi::SQLITE_OK
+        })
+    }
+
+    pub(crate) fn columns(&self, table: &str) -> HashSet<String> {
+        let Some(mut statement) = self.prepare(&format!("PRAGMA table_info({table})")) else {
+            return HashSet::new();
+        };
+        let mut names = HashSet::new();
+        while let Some(row) = statement.next_row() {
+            if let Some(name) = row.text(1) {
+                names.insert(name);
+            }
+        }
+        names
     }
 
     pub(crate) fn prepare(&self, sql: &str) -> Option<Statement<'_>> {

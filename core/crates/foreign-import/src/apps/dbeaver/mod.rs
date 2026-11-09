@@ -497,21 +497,7 @@ fn color(config: &Value) -> Option<ForeignColor> {
     let [r, g, b, ..] = components[..] else {
         return None;
     };
-    if r > 200 && g < 100 && b < 100 {
-        Some(ForeignColor::Red)
-    } else if r > 200 && g > 100 && g < 200 && b < 100 {
-        Some(ForeignColor::Orange)
-    } else if r > 200 && g > 200 && b < 100 {
-        Some(ForeignColor::Yellow)
-    } else if r < 100 && g > 150 && b < 100 {
-        Some(ForeignColor::Green)
-    } else if r < 100 && g < 100 && b > 200 {
-        Some(ForeignColor::Blue)
-    } else if r > 100 && g < 100 && b > 150 {
-        Some(ForeignColor::Purple)
-    } else {
-        None
-    }
+    super::rgb_color(r, g, b)
 }
 
 // A port is a number or a numeric string; one outside 0...65535 counts as missing.

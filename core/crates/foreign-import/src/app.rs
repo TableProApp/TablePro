@@ -93,8 +93,8 @@ impl ForeignApp {
 
     pub fn saved_query_support(self) -> SavedQuerySupport {
         match self {
-            Self::TablePlus | Self::SequelAce | Self::BeekeeperStudio | Self::Dbx => SavedQuerySupport::GlobalFolder,
-            Self::DBeaver => SavedQuerySupport::Scripts,
+            Self::TablePlus | Self::SequelAce | Self::BeekeeperStudio => SavedQuerySupport::GlobalFolder,
+            Self::DBeaver | Self::Dbx => SavedQuerySupport::Scripts,
             Self::DataGrip => SavedQuerySupport::Consoles,
             Self::Navicat => SavedQuerySupport::NotInExport,
         }

@@ -1,15 +1,16 @@
-// DBX (t8y2/dbx), a Tauri app. It keeps every connection as one JSON document in a row of
-// `dbx.db`, and its passwords apart, encrypted under a key held in the system keyring, so only the
-// connections are read.
+// DBX (t8y2/dbx), a Tauri app that keeps everything in one SQLite file, `dbx.db`. The shapes read here
+// are those of `crates/dbx-core/src/persistence/storage.rs` and `crates/dbx-types/src/models/connection.rs`.
 
+mod config;
 mod locations;
+mod store;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 
-use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
+use self::config::{Config, Layer, SshLayer};
 use crate::app::{AppReader, check_cancel};
 use crate::apps::jdbc;
 use crate::apps::sqlite::Database;
@@ -23,6 +24,26 @@ use crate::{
 
 const APP: ForeignApp = ForeignApp::Dbx;
 
+// What a connection does on DBX that TablePro has no field for, keyed as the review lists it. None of
+// these is carried: each one runs SQL, starts a command or routes the connection another way.
+const PROXY: &str = "proxy";
+const HTTP_TUNNEL: &str = "httpTunnel";
+const SSH_TUNNEL: &str = "sshTunnel";
+const PROXY_COMMAND: &str = "sshProxyCommand";
+const INIT_SCRIPT: &str = "initScript";
+const ATTACHED_DATABASES: &str = "attachedDatabases";
+const CONNECTION_STRING: &str = "connectionString";
+
+// The six swatches of DBX's connection dialog.
+const SWATCHES: [(&str, ForeignColor); 6] = [
+    ("#22c55e", ForeignColor::Green),
+    ("#eab308", ForeignColor::Yellow),
+    ("#f97316", ForeignColor::Orange),
+    ("#ef4444", ForeignColor::Red),
+    ("#3b82f6", ForeignColor::Blue),
+    ("#a855f7", ForeignColor::Purple),
+];
+
 pub(crate) struct Dbx {
     data_dir: PathBuf,
 }
@@ -34,45 +55,37 @@ impl Dbx {
         }
     }
 
+    fn store(&self) -> PathBuf {
+        self.data_dir.join(locations::STORE)
+    }
+
     fn open(&self) -> Result<Database, ForeignImportError> {
-        let path = self.data_dir.join(locations::STORE);
-        if !path.exists() {
+        let path = self.store();
+        if !path.is_file() {
             return Err(ForeignImportError::FileNotFound { app: APP });
         }
         Database::open_read_only(&path).ok_or_else(|| ForeignImportError::parse("Could not open dbx.db"))
     }
+}
 
-    // The JSON of each row. One that is not valid JSON is skipped, as the app skips it.
-    fn configs(&self) -> Result<Vec<Config>, ForeignImportError> {
-        let db = self.open()?;
-        let Some(mut statement) = db.prepare("SELECT config_json FROM connections ORDER BY rowid") else {
-            return Err(ForeignImportError::parse("dbx.db has no connections table"));
-        };
-        let mut configs = Vec::new();
-        while let Some(row) = statement.next_row() {
-            let Some(json) = row.text(0) else {
-                continue;
-            };
-            match serde_json::from_str::<Config>(&json) {
-                Ok(config) => configs.push(config),
-                Err(error) => tracing::warn!(%error, "skipping a DBX connection that does not parse"),
-            }
-        }
-        Ok(configs)
-    }
+struct Lookups {
+    profiles: HashMap<String, Layer>,
+    groups: HashMap<String, Vec<String>>,
+    secret_names: HashMap<String, HashSet<String>>,
 }
 
 impl AppReader for Dbx {
     fn has_data(&self) -> bool {
-        self.data_dir.join(locations::STORE).exists()
+        self.store().is_file()
     }
 
     fn inventory(&self) -> Inventory {
+        let Ok(db) = self.open() else {
+            return Inventory::default();
+        };
         Inventory {
-            connections: self.configs().map_or(0, |configs| {
-                configs.iter().filter(|config| engine_of(config).is_some()).count()
-            }),
-            saved_queries: 0,
+            connections: configs(&db).map_or(0, |configs| configs.len()),
+            saved_queries: store::saved_sql_count(&db),
         }
     }
 
@@ -81,118 +94,135 @@ impl AppReader for Dbx {
         request: &ImportRequest,
         cancel: &CancellationToken,
     ) -> Result<CollectedImport, ForeignImportError> {
-        let configs = self.configs()?;
+        let db = self.open()?;
+        let configs = configs(&db)?;
+        let lookups = Lookups {
+            profiles: store::tunnel_profiles(&db),
+            groups: store::group_paths(&db),
+            secret_names: store::secret_names(&db),
+        };
         let mut records = Vec::with_capacity(configs.len());
-        for config in configs {
+        for (config, engine) in configs {
             check_cancel(cancel)?;
-            let Some(engine) = engine_of(&config) else {
-                tracing::warn!("skipping a DBX connection with no database type");
-                continue;
-            };
-            records.push(record(&config, engine));
+            records.push(record(&config, engine, &lookups));
         }
-        // The passwords are encrypted under a key in the system keyring, which this does not read.
+        let saved_queries = if request.include_saved_queries {
+            store::saved_sql(&db, request.saved_query_byte_limit, cancel)?
+        } else {
+            Vec::new()
+        };
+        // DBX encrypts every secret under a key it keeps in the system keyring.
         let passwords = if request.include_passwords {
             PasswordOutcome::LeftInKeychain
         } else {
             PasswordOutcome::NotRequested
         };
-        assemble(APP, records, Vec::new(), passwords)
+        assemble(APP, records, saved_queries, passwords)
     }
 }
 
-// The fields of `ConnectionConfig` an import reads. The app has about seventy; a field this does
-// not name is ignored, and one the app left out is its default.
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
-struct Config {
-    id: String,
-    name: String,
-    db_type: String,
-    host: String,
-    port: Option<u16>,
-    username: String,
-    database: Option<String>,
-    color: Option<String>,
-    ssl: bool,
-    // The driver parameters of the connection, `sslmode=verify-full&...`: the app has no TLS mode
-    // field of its own, so the mode rides here.
-    url_params: Option<String>,
-    ca_cert_path: Option<String>,
-    client_cert_path: Option<String>,
-    client_key_path: Option<String>,
-    transport_layers: Vec<Layer>,
+// A row that is not valid JSON or names no engine is left out, as DBX leaves out a row it cannot read.
+fn configs(db: &Database) -> Result<Vec<(Config, String)>, ForeignImportError> {
+    let configs = store::connection_rows(db)?
+        .iter()
+        .filter_map(|json| match serde_json::from_str::<Config>(json) {
+            Ok(config) => {
+                let engine = engine_of(&config);
+                if engine.is_none() {
+                    tracing::warn!("skipping a DBX connection with no database type");
+                }
+                engine.map(|engine| (config, engine))
+            }
+            Err(error) => {
+                tracing::warn!(%error, "skipping a DBX connection that does not parse");
+                None
+            }
+        })
+        .collect();
+    Ok(configs)
 }
 
-// `#[serde(tag = "type")]` in the app: `ssh`, `proxy` and `http_tunnel`. Only SSH has a meaning here.
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
-enum Layer {
-    Ssh(SshLayer),
-    #[serde(other)]
-    Other,
-}
-
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
-struct SshLayer {
-    enabled: Option<bool>,
-    host: String,
-    port: Option<u16>,
-    user: String,
-    key_path: Option<String>,
-    use_ssh_agent: bool,
-}
-
+// DBX's `db_type` ids, from `plugins/connection-types`, with the driver profiles TablePro has an engine
+// for. Any other id goes through as the engine's name, which the review reports when no driver opens it.
 fn engine_of(config: &Config) -> Option<String> {
-    let raw = config.db_type.trim();
-    if raw.is_empty() {
+    let db_type = config.db_type.trim().to_lowercase();
+    if db_type.is_empty() {
         return None;
     }
-    // The app's `db_type` ids, each of which is the lowercase of an engine name TablePro has, but
-    // for these.
-    let mapped = match raw.to_lowercase().as_str() {
-        "postgres" | "postgresql" => "PostgreSQL",
-        "sqlserver" | "mssql" => "SQL Server",
-        "mongodb" | "mongo" => "MongoDB",
-        "duckdb" => "DuckDB",
-        "sqlite" => "SQLite",
-        _ => return Some(engine::resolve(raw)),
+    let profile = config
+        .driver_profile
+        .as_deref()
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase();
+    let name = match (db_type.as_str(), profile.as_str()) {
+        ("mysql", "mariadb") => "MariaDB",
+        ("mysql", "tidb") => "TiDB",
+        ("mysql", "oceanbase") => "OceanBase",
+        ("postgres", "cockroachdb") => "CockroachDB",
+        ("postgres", _) => "PostgreSQL",
+        ("sqlserver", _) => "SQL Server",
+        ("kingbase", _) => "KingbaseES",
+        ("saphana", _) => "SAP HANA",
+        ("prestosql", _) => "Presto",
+        ("cloudflare-d1", _) => "Cloudflare D1",
+        _ => return Some(engine::resolve(&db_type)),
     };
-    Some(mapped.to_owned())
+    Some(name.to_owned())
 }
 
-fn record(config: &Config, engine: String) -> ForeignConnectionRecord {
+fn record(config: &Config, engine: String, lookups: &Lookups) -> ForeignConnectionRecord {
+    let mut fields = BTreeMap::new();
     let file_field = engine::local_file_path_field(&engine);
-    let mut additional_fields = BTreeMap::new();
-    // A file engine's path is kept where the host goes.
-    let (host, database) = match (file_field, config.host.is_empty()) {
-        (Some(LocalFilePathField::Database), false) => (String::new(), config.host.clone()),
-        (Some(LocalFilePathField::AdditionalField(field)), false) => {
-            additional_fields.insert(field.to_owned(), config.host.clone());
-            (String::new(), String::new())
+    // A file engine keeps its file's path where the host goes.
+    let (host, port, database) = match file_field {
+        Some(LocalFilePathField::Database) => (String::new(), 0, config.host.clone()),
+        Some(LocalFilePathField::AdditionalField(field)) => {
+            if !config.host.trim().is_empty() {
+                fields.insert(field.to_owned(), config.host.clone());
+            }
+            (String::new(), 0, String::new())
         }
-        _ => (
-            if config.host.is_empty() {
+        None => (
+            if config.host.trim().is_empty() {
                 "localhost".to_owned()
             } else {
                 config.host.clone()
             },
+            match config.port {
+                0 => engine::default_port(&engine),
+                port => port,
+            },
             config.database.clone().unwrap_or_default(),
         ),
     };
-    let port = match config.port {
-        Some(port) if port != 0 => port,
-        _ if file_field.is_some() => 0,
-        _ => engine::default_port(&engine),
+
+    let (hops, lost) = config.route(&lookups.profiles);
+    let kept_apart = |name: &str| {
+        lookups
+            .secret_names
+            .get(&config.id)
+            .is_some_and(|names| names.contains(name))
     };
-    let ssh = config.transport_layers.iter().find_map(|layer| match layer {
-        Layer::Ssh(ssh) if ssh.enabled != Some(false) && !ssh.host.is_empty() => Some(ssh_of(ssh)),
-        _ => None,
-    });
-    let ssl = ssl_of(config, &mut additional_fields);
+    let written = |value: &Option<String>| value.as_deref().is_some_and(|value| !value.trim().is_empty());
+    let startup = [
+        (written(&config.init_script) || kept_apart("init_script"), INIT_SCRIPT),
+        (!config.attached_databases.is_empty(), ATTACHED_DATABASES),
+        (
+            written(&config.connection_string) || kept_apart("connection_string"),
+            CONNECTION_STRING,
+        ),
+    ];
+    let not_kept = lost
+        .into_iter()
+        .chain(startup.into_iter().filter_map(|(set, key)| set.then_some(key)));
+    for key in not_kept {
+        fields.insert(key.to_owned(), "true".to_owned());
+    }
+
+    let ssl = ssl_of(config, &engine, &mut fields);
     let settings = ForeignConnection {
-        name: if config.name.is_empty() {
+        name: if config.name.trim().is_empty() {
             "Untitled".to_owned()
         } else {
             config.name.clone()
@@ -202,84 +232,96 @@ fn record(config: &Config, engine: String) -> ForeignConnectionRecord {
         database,
         username: config.username.clone(),
         engine,
-        ssh,
+        ssh: ssh_of(&hops),
         ssl,
-        color: map_color(config.color.as_deref()),
-        additional_fields,
+        color: color_of(config.color.as_deref()),
+        additional_fields: fields,
     };
     ForeignConnectionRecord {
         source_id: Some(config.id.clone()).filter(|id| !id.is_empty()),
-        group_path: Vec::new(),
+        group_path: lookups.groups.get(&config.id).cloned().unwrap_or_default(),
         credentials: None,
         settings,
     }
 }
 
-fn ssh_of(layer: &SshLayer) -> ForeignSsh {
-    let key = layer.key_path.as_deref().unwrap_or_default();
-    let auth = if layer.use_ssh_agent {
-        ForeignSshAuth::Agent
-    } else if key.is_empty() {
-        ForeignSshAuth::Password
-    } else {
-        ForeignSshAuth::PrivateKey
-    };
-    ForeignSsh {
-        host: layer.host.clone(),
-        port: layer.port,
-        username: layer.user.clone(),
+fn ssh_of(hops: &[SshLayer]) -> Option<ForeignSsh> {
+    let (target, jumps) = hops.split_last()?;
+    let (auth, private_key_path) = sign_in(target);
+    let jump_hosts = jumps
+        .iter()
+        .map(|hop| {
+            let (auth, private_key_path) = sign_in(hop);
+            ForeignJumpHost {
+                host: hop.host.clone(),
+                port: Some(hop.port),
+                username: hop.user.clone(),
+                auth,
+                private_key_path,
+            }
+        })
+        .collect();
+    Some(ForeignSsh {
+        host: target.host.clone(),
+        port: Some(target.port),
+        username: target.user.clone(),
         auth,
-        private_key_path: super::resolve_key_path(key),
-        jump_hosts: Vec::<ForeignJumpHost>::new(),
+        private_key_path,
+        jump_hosts,
+    })
+}
+
+// `auth_method` names the one way DBX signs in. A connection saved before it tried a key, a password,
+// then the agent, by which of them it had.
+fn sign_in(hop: &SshLayer) -> (ForeignSshAuth, String) {
+    let key = super::resolve_key_path(hop.key_path.trim());
+    let auth = match hop.auth_method.trim() {
+        "agent" => ForeignSshAuth::Agent,
+        "key" | "key+password" => ForeignSshAuth::PrivateKey,
+        "password" | "none" => ForeignSshAuth::Password,
+        _ if !key.is_empty() => ForeignSshAuth::PrivateKey,
+        _ if hop.use_ssh_agent => ForeignSshAuth::Agent,
+        _ => ForeignSshAuth::Password,
+    };
+    match auth {
+        ForeignSshAuth::PrivateKey => (auth, key),
+        ForeignSshAuth::Agent | ForeignSshAuth::Password => (auth, String::new()),
     }
 }
 
-// The app has no TLS mode field: `ssl` turns TLS on, a CA file makes it check the server, and a
-// `sslmode` driver parameter can name any mode, even with `ssl` off. The parameter wins when it names
-// one, so a verified connection is not imported as an unverified one, and TLS set in a way this does
-// not read marks the record, so the review asks instead of importing the connection off.
-fn ssl_of(config: &Config, fields: &mut BTreeMap<String, String>) -> Option<ForeignSsl> {
-    let named = |path: &Option<String>| path.clone().filter(|path| !path.is_empty());
+// DBX has no TLS mode field: `ssl` turns TLS on, a CA file has MySQL check the server, and an
+// `sslmode` driver parameter can name any mode. The stricter of the two is kept, so no connection
+// imports weaker than DBX may open it, and TLS set some other way marks the record for the review.
+fn ssl_of(config: &Config, engine: &str, fields: &mut BTreeMap<String, String>) -> Option<ForeignSsl> {
     let params = config
         .url_params
         .as_deref()
         .unwrap_or_default()
         .trim()
         .trim_start_matches('?');
-    let from_params = if params.is_empty() {
-        None
-    } else {
-        let sets_other_tls = params
-            .split(['&', ';'])
-            .filter_map(|pair| pair.split_once('='))
-            .map(|(key, _)| key.trim().to_lowercase())
-            .any(|key| key != "sslmode" && jdbc::is_tls_parameter(&key));
-        if sets_other_tls {
-            fields.insert(crate::TLS_SETTINGS_UNREAD.to_owned(), "true".to_owned());
-        }
-        jdbc::url_ssl_or_mark(&format!("dbx://host/?{params}"), fields)
-    };
-    let (ca, cert, key) = (
-        named(&config.ca_cert_path),
-        named(&config.client_cert_path),
-        named(&config.client_key_path),
-    );
-    // What `ssl` and the files imply, which a parameter may raise but never lower.
+    let url = format!("dbx://host/?{params}");
+    let named = jdbc::url_ssl_or_mark(&url, fields).map(|ssl| ssl.mode);
+    let file = |path: &str| Some(path.trim().to_owned()).filter(|path| !path.is_empty());
+    let ca = file(&config.ca_cert_path);
     let implied = match (config.ssl, ca.is_some()) {
         (true, true) => Some(ForeignSslMode::VerifyCa),
         (true, false) => Some(ForeignSslMode::Required),
         (false, _) => None,
     };
-    let mode = match (from_params.map(|ssl| ssl.mode), implied) {
+    let mode = match (named, implied) {
         (Some(named), Some(implied)) => stricter(named, implied),
         (Some(mode), None) | (None, Some(mode)) => mode,
+        // DBX writes libpq's own default into the URL of a connection that names no mode.
+        (None, None) if matches!(engine, "PostgreSQL" | "CockroachDB" | "Redshift") => {
+            return jdbc::driver_default_ssl(&url, false, ForeignSslMode::Preferred, fields);
+        }
         (None, None) => return None,
     };
     Some(ForeignSsl {
         mode,
         ca_certificate_path: ca,
-        client_certificate_path: cert,
-        client_key_path: key,
+        client_certificate_path: file(&config.client_cert_path),
+        client_key_path: file(&config.client_key_path),
     })
 }
 
@@ -294,16 +336,82 @@ fn stricter(a: ForeignSslMode, b: ForeignSslMode) -> ForeignSslMode {
     if rank(b) > rank(a) { b } else { a }
 }
 
-fn map_color(raw: Option<&str>) -> Option<ForeignColor> {
-    match raw?.to_lowercase().as_str() {
-        "red" => Some(ForeignColor::Red),
-        "orange" => Some(ForeignColor::Orange),
-        "yellow" => Some(ForeignColor::Yellow),
-        "green" => Some(ForeignColor::Green),
-        "blue" => Some(ForeignColor::Blue),
-        "purple" => Some(ForeignColor::Purple),
-        "pink" => Some(ForeignColor::Pink),
-        "gray" | "grey" => Some(ForeignColor::Gray),
-        _ => None,
+// A swatch, else the clear hue of a custom `#rrggbb`.
+fn color_of(raw: Option<&str>) -> Option<ForeignColor> {
+    let raw = raw?.trim().to_ascii_lowercase();
+    if let Some((_, color)) = SWATCHES.iter().find(|(swatch, _)| *swatch == raw) {
+        return Some(*color);
+    }
+    let digits = raw.strip_prefix('#').filter(|digits| digits.len() == 6)?;
+    let channel = |at: usize| {
+        digits
+            .get(at..at + 2)
+            .and_then(|pair| i64::from_str_radix(pair, 16).ok())
+    };
+    super::rgb_color(channel(0)?, channel(2)?, channel(4)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config(json: &str) -> Config {
+        serde_json::from_str(json).expect("a config")
+    }
+
+    #[test]
+    fn every_swatch_and_a_clear_custom_hue_map_to_a_colour() {
+        for (swatch, color) in SWATCHES {
+            assert_eq!(color_of(Some(swatch)), Some(color));
+        }
+        assert_eq!(color_of(Some(" #EF4444 ")), Some(ForeignColor::Red));
+        assert_eq!(color_of(Some("#1020f0")), Some(ForeignColor::Blue));
+        assert_eq!(color_of(Some("#808080")), None);
+        assert_eq!(color_of(Some("red")), None);
+        assert_eq!(color_of(Some("#fff")), None);
+        assert_eq!(color_of(Some("")), None);
+        assert_eq!(color_of(None), None);
+    }
+
+    #[test]
+    fn a_driver_profile_names_the_engine_it_is() {
+        let engine = |db_type: &str, profile: &str| {
+            engine_of(&config(&format!(
+                r#"{{"db_type":"{db_type}","driver_profile":"{profile}"}}"#
+            )))
+        };
+
+        assert_eq!(engine("mysql", "mariadb").as_deref(), Some("MariaDB"));
+        assert_eq!(engine("mysql", "polardb").as_deref(), Some("MySQL"));
+        assert_eq!(engine("postgres", "cockroachdb").as_deref(), Some("CockroachDB"));
+        assert_eq!(engine("postgres", "").as_deref(), Some("PostgreSQL"));
+        assert_eq!(engine("sqlserver", "").as_deref(), Some("SQL Server"));
+        assert_eq!(engine("duckdb", "").as_deref(), Some("DuckDB"));
+        assert_eq!(engine("hive", "").as_deref(), Some("hive"));
+        assert_eq!(engine(" ", "").as_deref(), None);
+    }
+
+    #[test]
+    fn each_hop_signs_in_the_way_it_names() {
+        let hop = |json: &str| sign_in(&serde_json::from_str::<SshLayer>(json).expect("a hop"));
+
+        assert_eq!(
+            hop(r#"{"auth_method":"key","key_path":"id_ed25519"}"#),
+            (ForeignSshAuth::PrivateKey, "~/.ssh/id_ed25519".to_owned())
+        );
+        assert_eq!(
+            hop(r#"{"auth_method":"agent","key_path":"id_ed25519"}"#),
+            (ForeignSshAuth::Agent, String::new())
+        );
+        assert_eq!(
+            hop(r#"{"auth_method":"password","use_ssh_agent":true}"#),
+            (ForeignSshAuth::Password, String::new())
+        );
+        assert_eq!(
+            hop(r#"{"key_path":"/keys/id"}"#),
+            (ForeignSshAuth::PrivateKey, "/keys/id".to_owned())
+        );
+        assert_eq!(hop(r#"{"use_ssh_agent":true}"#), (ForeignSshAuth::Agent, String::new()));
+        assert_eq!(hop("{}"), (ForeignSshAuth::Password, String::new()));
     }
 }
