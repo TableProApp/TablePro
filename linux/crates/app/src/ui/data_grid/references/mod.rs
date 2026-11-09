@@ -206,8 +206,7 @@ fn add_choice(grid: &DataGrid, name: &str, act: impl Fn(&DataGrid, usize) + 'sta
 fn offers(grid: &DataGrid, row: &GridRow, column: usize) -> Offers {
     let Some(keys) = grid
         .config()
-        .and_then(|config| config.references.as_ref())
-        .map(KeysHandle::get)
+        .and_then(|config| config.references.as_ref().map(KeysHandle::get))
     else {
         return Offers::default();
     };
