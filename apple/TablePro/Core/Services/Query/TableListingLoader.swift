@@ -37,10 +37,17 @@ internal struct TableListingLoader: Sendable {
                 }
                 return try await driver.executeCatalogRead(query: statement)
             }
+            let rows = TableRows.from(queryRows: result.rows, columns: result.columns, columnTypes: result.columnTypes)
+            let items = ObjectListingColumns(columns: result.columns)?.items(
+                in: rows,
+                containerSchema: scope.schema,
+                readsSchemaColumn: slot == .schema
+            ) ?? [:]
             return .fetched(TableListing(
-                rows: TableRows.from(queryRows: result.rows, columns: result.columns, columnTypes: result.columnTypes),
+                rows: rows,
                 isIncomplete: result.isTruncated,
-                statusMessage: result.statusMessage
+                statusMessage: result.statusMessage,
+                items: items
             ))
         } catch {
             if DatabaseCancellationDiagnosis.isCancellation(error) { return .cancelled }
@@ -58,10 +65,14 @@ internal struct TableListing: Sendable {
     /// The driver's own words about the result, such as the cursor of the next page, else a plain
     /// statement that the listing is partial.
     let notice: String?
+    /// The object each row lists, which the name filter and the row commands read. Empty for a
+    /// listing with no name column, whose rows stay plain values.
+    let items: [RowID: ObjectListingItem]
 
-    init(rows: TableRows, isIncomplete: Bool, statusMessage: String?) {
+    init(rows: TableRows, isIncomplete: Bool, statusMessage: String?, items: [RowID: ObjectListingItem] = [:]) {
         self.rows = rows
         self.isIncomplete = isIncomplete
+        self.items = items
         if let statusMessage, !statusMessage.isEmpty {
             notice = statusMessage
         } else {
