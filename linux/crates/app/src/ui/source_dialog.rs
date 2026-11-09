@@ -12,7 +12,7 @@ use crate::ui::clipboard::ClipboardPayload;
 use crate::ui::format::format_thousands;
 use crate::ui::handler_guard::HandlerGuard;
 
-const FALLBACK_SCHEME: &str = "Adwaita";
+const FALLBACK_SCHEME: &str = "";
 
 /// Read-only text in a source view, with Copy. What it shows may be cut
 /// short, since the view lays out every character it holds; Copy always
@@ -37,8 +37,6 @@ pub(crate) struct SourceDialog {
     pub(crate) header: adw::HeaderBar,
 }
 
-/// With `settings`, the text takes the SQL editor's scheme, following a
-/// change of it or of the light or dark style while the dialog is open.
 pub(crate) fn source_dialog(text: SourceText, settings: Option<&Rc<AppSettings>>) -> SourceDialog {
     let buffer = sourceview5::Buffer::new(None);
     if let Some(language) = sourceview5::LanguageManager::default().language(text.language) {
@@ -205,8 +203,15 @@ mod tests {
         shown.dialog.present(Some(&*window));
         assert_eq!(scheme_of(&shown.dialog).as_deref(), Some("classic"));
 
-        settings.get().gio().set_string(key, "Adwaita").expect("a writable key");
-        assert_eq!(scheme_of(&shown.dialog).as_deref(), Some("Adwaita"));
+        let style = adw::StyleManager::default();
+        for (id, appearance) in [
+            ("Adwaita-dark", adw::ColorScheme::ForceLight),
+            ("Adwaita", adw::ColorScheme::ForceDark),
+        ] {
+            settings.get().gio().set_string(key, id).expect("a writable key");
+            style.set_color_scheme(appearance);
+            assert_eq!(scheme_of(&shown.dialog).as_deref(), Some(id));
+        }
 
         shown.dialog.force_close();
         adw::StyleManager::default().set_color_scheme(adw::ColorScheme::Default);

@@ -168,7 +168,7 @@ impl WorkspaceModel {
             imports.settle(ticket.id);
             match finished {
                 Ok(Ok(rows)) => {
-                    input.deliver(WorkspaceInput::RefreshPage);
+                    input.deliver(WorkspaceInput::RefreshPage(None));
                     input.deliver(WorkspaceInput::ShowToast(crate::i18n::ngettext_f(
                         "Imported {n} row.",
                         "Imported {n} rows.",
@@ -180,7 +180,7 @@ impl WorkspaceModel {
                     "That file has no rows to import.",
                 ))),
                 Ok(Err(ImportEnd::Stopped)) => {
-                    input.deliver(WorkspaceInput::RefreshPage);
+                    input.deliver(WorkspaceInput::RefreshPage(None));
                     input.deliver(WorkspaceInput::ShowToast(crate::i18n::gettext("Import stopped.")));
                 }
                 Ok(Err(ImportEnd::Declined)) => {}
