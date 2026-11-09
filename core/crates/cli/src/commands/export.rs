@@ -5,7 +5,7 @@ use crate::command_error::CommandError;
 use crate::command_line::ExportArgs;
 use crate::console::Console;
 use crate::host::Host;
-use crate::output::ExportFormat;
+use crate::output::{ExportFormat, json_document};
 use crate::tool_arguments::ExportArguments;
 
 pub(super) async fn run(
@@ -28,7 +28,11 @@ pub(super) async fn run(
         .call_within(&client, console, "export_data", &request, deadline)
         .await?;
     let answer: ExportAnswer = parse(&answer)?;
-    console.text(&joined(&answer.exports, arguments.format))?;
+    let text = joined(&answer.exports, arguments.format);
+    match arguments.format {
+        ExportFormat::Json => console.text(&json_document(&text))?,
+        _ => console.text(&text)?,
+    }
     report(&answer, console);
     Ok(())
 }

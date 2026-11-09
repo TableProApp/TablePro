@@ -6,4 +6,4 @@ mod writer;
 pub(crate) use escape::escape_lines;
 pub(crate) use format::{ExportFormat, OutputFormat};
 pub(crate) use table::{Cell, Table};
-pub(crate) use writer::render;
+pub(crate) use writer::{json_document, render};

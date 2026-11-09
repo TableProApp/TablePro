@@ -5,6 +5,30 @@ import TableProMCPTestSupport
 import Testing
 
 struct CLIQueryTests {
+    @Test("JSON controls round-trip on terminals and in pipes", arguments: ["json", "jsonl"])
+    func jsonControls(format: String) async throws {
+        let text = "\u{7F}\u{85}\u{1B}"
+        var outputs: [String] = []
+        for terminal in [false, true] {
+            try await withRig { rig in
+                await rig.route([
+                    "list_connections": try stagingListing(),
+                    "execute_query": try success(rows([text, "nested"], [[.string(text), .object([text: .array([.string(text)])])]]))
+                ])
+                let code = await rig.run(
+                    ["query", "-c", "Staging", "--format", format, "SELECT value FROM users"],
+                    stdoutIsTerminal: terminal
+                )
+                #expect(code == .success)
+                let decoded = try JSONSerialization.jsonObject(with: Data(rig.console.output.utf8))
+                let row = try #require(format == "json" ? (decoded as? [[String: Any]])?.first : decoded as? [String: Any])
+                #expect(row[text] as? String == text)
+                #expect((row["nested"] as? [String: [String]])?[text] == [text])
+                outputs.append(rig.console.output)
+            }
+        }
+        #expect(outputs[0] == outputs[1])
+    }
     @Test("CSV and TSV escape terminal controls and preserve pipe bytes", arguments: [true, false], ["csv", "tsv"])
     func delimitedControls(stdoutIsTerminal: Bool, format: String) async throws {
         try await withRig { rig in

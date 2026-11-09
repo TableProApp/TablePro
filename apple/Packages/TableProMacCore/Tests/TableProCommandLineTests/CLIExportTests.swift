@@ -21,7 +21,32 @@ private func exported(_ format: String, _ documents: [(label: String, data: Stri
 }
 
 struct CLIExportTests {
-    @Test("Exports escape terminal controls and preserve them in pipes", arguments: [true, false], ["csv", "json", "sql"])
+    @Test("JSON exports round-trip controls on terminals and in pipes", arguments: [1, 2])
+    func jsonControls(tableCount: Int) async throws {
+        let text = "\u{7F}\u{85}\u{1B}"
+        let document = "[{\"value\":\"\u{7F}\u{85}\\u001b\",\"number\":12345678901234567890.1234567890}]"
+        var outputs: [String] = []
+        for terminal in [false, true] {
+            try await withRig { rig in
+                await rig.route([
+                    "list_connections": try stagingListing(),
+                    "export_data": try exported("json", Array(repeating: ("users", document), count: tableCount))
+                ])
+                let code = await rig.run(
+                    ["export", "-c", "Staging", "--format", "json"] + Array(repeating: "users", count: tableCount),
+                    stdoutIsTerminal: terminal
+                )
+                #expect(code == .success)
+                let decoded = try JSONSerialization.jsonObject(with: Data(rig.console.output.utf8))
+                let rows = try #require(tableCount == 1 ? decoded as? [[String: Any]] : (decoded as? [[[String: Any]]])?.first)
+                #expect(rows.first?["value"] as? String == text)
+                #expect(rig.console.output.contains("12345678901234567890.1234567890"))
+                outputs.append(rig.console.output)
+            }
+        }
+        #expect(outputs[0] == outputs[1])
+    }
+    @Test("Exports escape terminal controls and preserve them in pipes", arguments: [true, false], ["csv", "sql"])
     func exportedControls(stdoutIsTerminal: Bool, format: String) async throws {
         try await withRig { rig in
             let text = "value\n\u{1B}]52;c;eA==\u{07}\u{1B}[2J\n"

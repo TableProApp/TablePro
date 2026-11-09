@@ -1,5 +1,6 @@
 // The formats are the macOS command's (CLIRowWriter.swift), so a script reads the same text on every platform.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fmt::Write as _;
 
@@ -156,7 +157,7 @@ fn json_object(keys: &[String], row: &[Cell], text: &mut String) {
         match cell {
             Cell::Null => text.push_str("null"),
             Cell::Text(value) => json_string(value, text),
-            Cell::Json(value) => text.push_str(value),
+            Cell::Json(value) => text.push_str(&json_document(value)),
         }
     }
     text.push('}');
@@ -168,16 +169,32 @@ fn json_string(value: &str, text: &mut String) {
         match character {
             '"' => text.push_str("\\\""),
             '\\' => text.push_str("\\\\"),
-            '\n' => text.push_str("\\n"),
-            '\r' => text.push_str("\\r"),
-            '\t' => text.push_str("\\t"),
-            other if u32::from(other) < 0x20 => {
+            other if other.is_control() => {
                 let _ = write!(text, "\\u{:04x}", u32::from(other));
             }
             other => text.push(other),
         }
     }
     text.push('"');
+}
+
+// JSON permits raw DEL and C1 in strings, but a terminal must never receive them.
+pub(crate) fn json_document(value: &str) -> Cow<'_, str> {
+    if !value
+        .chars()
+        .any(|character| ('\u{7f}'..='\u{9f}').contains(&character))
+    {
+        return Cow::Borrowed(value);
+    }
+    let mut text = String::with_capacity(value.len());
+    for character in value.chars() {
+        if ('\u{7f}'..='\u{9f}').contains(&character) {
+            let _ = write!(text, "\\u{:04x}", u32::from(character));
+        } else {
+            text.push(character);
+        }
+    }
+    Cow::Owned(text)
 }
 
 // A join can name two columns alike, and an object keeps only one of two equal keys.
@@ -298,6 +315,41 @@ mod tests {
             render(&[table], OutputFormat::Json),
             "[\n  {\"n\":18446744073709551615,\"s\":\"a\\\"\\u0001\"},\n  {\"n\":null,\"s\":\"b\"}\n]\n"
         );
+    }
+
+    #[test]
+    fn json_strings_escape_all_controls_and_preserve_other_unicode() {
+        for scalar in (0..=0x1f).chain(0x7f..=0x9f) {
+            let value = char::from_u32(scalar).expect("control scalar").to_string();
+            let mut text = String::new();
+            json_string(&value, &mut text);
+            assert_eq!(text, format!("\"\\u{scalar:04x}\""));
+            assert_eq!(serde_json::from_str::<String>(&text).expect("valid JSON"), value);
+        }
+        let mut text = String::new();
+        json_string(" ~\u{a0}日本語😀", &mut text);
+        assert_eq!(text, "\" ~\u{a0}日本語😀\"");
+    }
+
+    #[test]
+    fn nested_json_controls_keep_keys_values_and_number_precision() {
+        let value = "\u{7f}\u{85}\u{1b}";
+        let mut table = Table::new(&[value]);
+        let nested =
+            format!("{{\"{value}\":[\"{value}\",12345678901234567890.1234567890]}}").replace('\u{1b}', "\\u001b");
+        table.push(vec![Cell::literal(nested)]);
+        for format in [OutputFormat::Json, OutputFormat::Jsonl] {
+            let output = render(std::slice::from_ref(&table), format);
+            assert_eq!(super::super::escape_lines(&output), output);
+            let decoded: serde_json::Value = serde_json::from_str(&output).expect("valid JSON");
+            let row = if format == OutputFormat::Json {
+                &decoded[0]
+            } else {
+                &decoded
+            };
+            assert_eq!(row[value][value][0], value);
+            assert!(output.contains("12345678901234567890.1234567890"));
+        }
     }
 
     #[test]

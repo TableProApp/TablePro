@@ -148,7 +148,7 @@ public enum CLIRowWriter {
         case .int(let number):
             return String(number)
         case .double, .array, .object:
-            return value.jsonString()
+            return jsonDocument(value.jsonString())
         }
     }
 
@@ -159,11 +159,8 @@ public enum CLIRowWriter {
             switch scalar {
             case "\"": escaped += "\\\""
             case "\\": escaped += "\\\\"
-            case "\n": escaped += "\\n"
-            case "\r": escaped += "\\r"
-            case "\t": escaped += "\\t"
             default:
-                if scalar.value < 0x20 {
+                if CLITerminalText.isControl(scalar) {
                     escaped += String(format: "\\u%04x", scalar.value)
                 } else {
                     escaped.unicodeScalars.append(scalar)
@@ -171,6 +168,21 @@ public enum CLIRowWriter {
             }
         }
         escaped += "\""
+        return escaped
+    }
+
+    // JSON permits raw DEL and C1 in strings, but a terminal must never receive them.
+    static func jsonDocument(_ text: String) -> String {
+        guard text.unicodeScalars.contains(where: { (0x7F...0x9F).contains($0.value) }) else { return text }
+        var escaped = ""
+        escaped.reserveCapacity(text.utf8.count)
+        for scalar in text.unicodeScalars {
+            if (0x7F...0x9F).contains(scalar.value) {
+                escaped += String(format: "\\u%04x", scalar.value)
+            } else {
+                escaped.unicodeScalars.append(scalar)
+            }
+        }
         return escaped
     }
 

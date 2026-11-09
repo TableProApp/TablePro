@@ -81,7 +81,19 @@ struct CLIRowWriterTests {
 
     @Test("Control characters are escaped in JSON strings")
     func jsonControlCharacters() {
-        #expect(CLIRowWriter.jsonString("a\u{1}b\nc") == "\"a\\u0001b\\nc\"")
+        #expect(CLIRowWriter.jsonString("a\u{1}b\nc") == "\"a\\u0001b\\u000ac\"")
+    }
+
+    @Test("Every C0, DEL and C1 character uses a Unicode escape in JSON")
+    func allJsonControlCharacters() throws {
+        for value in Array(0...0x1F) + Array(0x7F...0x9F) {
+            let scalar = try #require(Unicode.Scalar(value))
+            let text = String(scalar)
+            let encoded = CLIRowWriter.jsonString(text)
+            #expect(encoded == String(format: "\"\\u%04x\"", value))
+            #expect(try JSONDecoder().decode(String.self, from: Data(encoded.utf8)) == text)
+        }
+        #expect(CLIRowWriter.jsonString(" ~\u{A0}日本語😀") == "\" ~\u{A0}日本語😀\"")
     }
 
     @Test("The table pads every column but the last and shows NULL")

@@ -674,3 +674,48 @@ async fn delimited_queries_escape_terminal_controls_and_preserve_pipe_bytes() {
         assert_eq!(terminal.out, "value\n\\x1B]52;c;eA==\\x07\\x1B[2J\n");
     }
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn json_queries_round_trip_controls_on_terminals_and_in_pipes() {
+    let harness = harness().await;
+    let value = "\u{7f}\u{85}\u{1b}";
+    for format in ["json", "jsonl"] {
+        let words = [
+            "query",
+            "-c",
+            "Readable",
+            "--format",
+            format,
+            "SELECT char(127) || char(133) || char(27) AS value",
+        ];
+        let piped = tablepro(Machine::of(&harness), &words).await;
+        let terminal = tablepro(Machine::of(&harness).in_a_terminal(), &words).await;
+        assert_eq!(piped.exit, Exit::Success, "{}", piped.err);
+        assert_eq!(terminal.exit, Exit::Success, "{}", terminal.err);
+        let decoded: serde_json::Value = serde_json::from_str(&terminal.out).expect("valid JSON");
+        let row = if format == "json" { &decoded[0] } else { &decoded };
+        assert_eq!(row["value"], value);
+        assert_eq!(terminal.out, piped.out);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn json_exports_round_trip_controls_on_terminals_and_in_pipes() {
+    let harness = harness().await;
+    harness.app.approves.store(true, Ordering::SeqCst);
+    for sql in [
+        "CREATE TABLE controls (value TEXT)",
+        "INSERT INTO controls VALUES (char(127) || char(133) || char(27))",
+    ] {
+        let ran = tablepro(Machine::of(&harness), &["query", "-c", "Writable", sql]).await;
+        assert_eq!(ran.exit, Exit::Success, "{}", ran.err);
+    }
+    let words = ["export", "-c", "Readable", "--format", "json", "controls"];
+    let piped = tablepro(Machine::of(&harness), &words).await;
+    let terminal = tablepro(Machine::of(&harness).in_a_terminal(), &words).await;
+    assert_eq!(piped.exit, Exit::Success, "{}", piped.err);
+    assert_eq!(terminal.exit, Exit::Success, "{}", terminal.err);
+    let decoded: serde_json::Value = serde_json::from_str(&terminal.out).expect("valid JSON");
+    assert_eq!(decoded[0]["value"], "\u{7f}\u{85}\u{1b}");
+    assert_eq!(terminal.out, piped.out);
+}
