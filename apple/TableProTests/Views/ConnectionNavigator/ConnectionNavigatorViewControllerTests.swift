@@ -176,7 +176,7 @@ struct ConnectionNavigatorViewControllerTests {
         #expect(outline.selectedRow == shownRow)
     }
 
-    // MARK: - Clicks
+    // MARK: - Clicks and Return
 
     /// NSTableView tracks a press until the mouse-up, so the mouse-up waits in the queue first. A
     /// double click is a second press that AppKit reports with a click count of 2.
@@ -202,6 +202,23 @@ struct ConnectionNavigatorViewControllerTests {
         NSApp.postEvent(up, atStart: true)
         outline.mouseDown(with: down)
         _ = NSApp.nextEvent(matching: .leftMouseUp, until: .distantPast, inMode: .default, dequeue: true)
+    }
+
+    /// Through the list's key handling, which turns Return into `insertNewline(_:)`.
+    private static func pressReturn(in hosted: Hosted) throws {
+        let event = try #require(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: hosted.window.windowNumber,
+            context: nil,
+            characters: "\r",
+            charactersIgnoringModifiers: "\r",
+            isARepeat: false,
+            keyCode: 36
+        ))
+        hosted.controller.outlineView.keyDown(with: event)
     }
 
     /// A window showing one connection, beside saved connections it does not host.
@@ -243,6 +260,22 @@ struct ConnectionNavigatorViewControllerTests {
 
         try Self.click(row: row, in: hosted)
         try Self.click(row: row, in: hosted, clickCount: 2)
+
+        try await waitUntil(timeout: .seconds(2)) { !fixture.router.openedConnections.isEmpty }
+        #expect(fixture.router.openedConnections == [closed[0]])
+    }
+
+    @Test("Return on a connection this window does not host opens it")
+    func returnOnClosedConnectionRoutesOpen() async throws {
+        let (hosted, _, closed) = hostShowingOne(beside: ["closed"])
+        defer { hosted.tearDown() }
+        let outline = hosted.controller.outlineView
+        let row = hosted.controller.row(for: .connection(closed[0]))
+        try #require(row >= 0)
+        hosted.window.makeFirstResponder(outline)
+        outline.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+
+        try Self.pressReturn(in: hosted)
 
         try await waitUntil(timeout: .seconds(2)) { !fixture.router.openedConnections.isEmpty }
         #expect(fixture.router.openedConnections == [closed[0]])

@@ -31,6 +31,18 @@ internal final class ConnectionNavigatorOutlineView: NSOutlineView {
         super.mouseDown(with: event)
     }
 
+    /// `NSTableView` moves the selection for the arrow keys itself but never turns Return into
+    /// `insertNewline(_:)`, so Return and Enter go through the key bindings, as the data grid's
+    /// table sends them.
+    override internal func keyDown(with event: NSEvent) {
+        switch event.specialKey {
+        case .carriageReturn?, .enter?, .newline?:
+            interpretKeyEvents([event])
+        default:
+            super.keyDown(with: event)
+        }
+    }
+
     override internal func insertNewline(_ sender: Any?) {
         navigator?.activateSelection()
     }
