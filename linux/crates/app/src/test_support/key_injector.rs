@@ -3,8 +3,8 @@ use gtk4::prelude::*;
 use gtk4::{gdk, graphene};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{
-    BUTTON_PRESS_EVENT, BUTTON_RELEASE_EVENT, ConnectionExt as _, KEY_PRESS_EVENT, KEY_RELEASE_EVENT,
-    MOTION_NOTIFY_EVENT,
+    BUTTON_PRESS_EVENT, BUTTON_RELEASE_EVENT, ConnectionExt as _, CreateWindowAux, KEY_PRESS_EVENT, KEY_RELEASE_EVENT,
+    MOTION_NOTIFY_EVENT, Window, WindowClass,
 };
 use x11rb::protocol::xtest::ConnectionExt as _;
 use x11rb::rust_connection::RustConnection;
@@ -89,15 +89,101 @@ impl KeyInjector {
         Ok(())
     }
 
-    /// Click the primary button `count` times at `at` in `widget`'s own
-    /// coordinates, in the window that has the keyboard. A widget not laid
-    /// out yet sits at the window's corner, so it is refused.
     pub(crate) fn click(
         &self,
         widget: &impl IsA<gtk4::Widget>,
         at: (f32, f32),
         count: u8,
     ) -> Result<(), KeyInjectionError> {
+        self.button(widget, at, 1, count)
+    }
+
+    pub(crate) fn button(
+        &self,
+        widget: &impl IsA<gtk4::Widget>,
+        at: (f32, f32),
+        button: u8,
+        count: u8,
+    ) -> Result<(), KeyInjectionError> {
+        self.move_pointer(widget, at)?;
+        for _ in 0..count {
+            self.fake(BUTTON_PRESS_EVENT, button)?;
+            self.fake(BUTTON_RELEASE_EVENT, button)?;
+        }
+        self.connection.flush()?;
+        self.connection.get_input_focus()?.reply()?;
+        Ok(())
+    }
+
+    pub(crate) fn drag(
+        &self,
+        widget: &impl IsA<gtk4::Widget>,
+        from: (f32, f32),
+        to: (f32, f32),
+    ) -> Result<(), KeyInjectionError> {
+        self.move_pointer(widget, from)?;
+        self.fake(BUTTON_PRESS_EVENT, 1)?;
+        self.connection.flush()?;
+        self.connection.get_input_focus()?.reply()?;
+        super::drain_main_context();
+        for step in 1..=10 {
+            let fraction = step as f32 / 10.0;
+            let point = (from.0 + (to.0 - from.0) * fraction, from.1 + (to.1 - from.1) * fraction);
+            self.move_pointer(widget, point)?;
+            self.connection.flush()?;
+            self.connection.get_input_focus()?.reply()?;
+            super::drain_main_context();
+        }
+        self.fake(BUTTON_RELEASE_EVENT, 1)?;
+        self.connection.flush()?;
+        self.connection.get_input_focus()?.reply()?;
+        Ok(())
+    }
+
+    pub(crate) fn hover(&self, widget: &impl IsA<gtk4::Widget>, at: (f32, f32)) -> Result<(), KeyInjectionError> {
+        self.move_pointer(widget, at)?;
+        self.connection.flush()?;
+        self.connection.get_input_focus()?.reply()?;
+        Ok(())
+    }
+
+    pub(crate) fn cover_pointer(&self) -> Result<PointerCover<'_>, KeyInjectionError> {
+        let root = self
+            .connection
+            .setup()
+            .roots
+            .first()
+            .map(|screen| screen.root)
+            .ok_or(KeyInjectionError::NotShown)?;
+        let pointer = self.connection.query_pointer(root)?.reply()?;
+        let window = self.connection.generate_id()?;
+        // A native cover triggers crossing events without pointer motion or a keyboard grab.
+        self.connection
+            .create_window(
+                0,
+                window,
+                root,
+                pointer.root_x.saturating_sub(8),
+                pointer.root_y.saturating_sub(8),
+                16,
+                16,
+                0,
+                WindowClass::INPUT_ONLY,
+                0,
+                &CreateWindowAux::new().override_redirect(1),
+            )?
+            .check()?;
+        let cover = PointerCover { keys: self, window };
+        self.connection.map_window(window)?.check()?;
+        Ok(cover)
+    }
+
+    fn uncover_pointer(&self, window: Window) -> Result<(), KeyInjectionError> {
+        self.connection.destroy_window(window)?.check()?;
+        Ok(())
+    }
+
+    fn move_pointer(&self, widget: &impl IsA<gtk4::Widget>, at: (f32, f32)) -> Result<(), KeyInjectionError> {
         let widget = widget.as_ref();
         if !widget.is_mapped() || widget.width() <= 0 {
             return Err(KeyInjectionError::NotShown);
@@ -109,25 +195,31 @@ impl KeyInjector {
         let (left, top) = native.surface_transform();
         let scale = f64::from(native.surface().map_or(1, |surface| surface.scale_factor()));
         let window = self.connection.get_input_focus()?.reply()?.focus;
-        let root = self
+        let screen = self
             .connection
             .setup()
             .roots
             .first()
-            .map(|screen| screen.root)
             .ok_or(KeyInjectionError::NotShown)?;
+        let root = screen.root;
         let origin = self.connection.translate_coordinates(window, root, 0, 0)?.reply()?;
         let on_root = |origin: i16, logical: f64| origin.saturating_add((logical * scale).round() as i16);
         let x = on_root(origin.dst_x, f64::from(point.x()) + left);
         let y = on_root(origin.dst_y, f64::from(point.y()) + top);
+        if x < 0
+            || y < 0
+            || i32::from(x) >= i32::from(screen.width_in_pixels)
+            || i32::from(y) >= i32::from(screen.height_in_pixels)
+        {
+            return Err(KeyInjectionError::PointerOutsideScreen {
+                x,
+                y,
+                width: screen.width_in_pixels,
+                height: screen.height_in_pixels,
+            });
+        }
         self.connection
             .xtest_fake_input(MOTION_NOTIFY_EVENT, 0, x11rb::CURRENT_TIME, root, x, y, 0)?;
-        for _ in 0..count {
-            self.fake(BUTTON_PRESS_EVENT, 1)?;
-            self.fake(BUTTON_RELEASE_EVENT, 1)?;
-        }
-        self.connection.flush()?;
-        self.connection.get_input_focus()?.reply()?;
         Ok(())
     }
 
@@ -155,6 +247,19 @@ impl KeyInjector {
         self.connection
             .xtest_fake_input(kind, keycode, x11rb::CURRENT_TIME, x11rb::NONE, 0, 0, 0)?;
         Ok(())
+    }
+}
+
+pub(crate) struct PointerCover<'a> {
+    keys: &'a KeyInjector,
+    window: Window,
+}
+
+impl Drop for PointerCover<'_> {
+    fn drop(&mut self) {
+        if let Err(error) = self.keys.uncover_pointer(self.window) {
+            tracing::error!(%error, "a pointer cover was not removed");
+        }
     }
 }
 

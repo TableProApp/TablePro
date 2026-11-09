@@ -49,7 +49,7 @@ async fn defaults_match_schema() -> TestResult {
     assert!(fixture.settings.show_alternate_rows());
     assert_eq!(fixture.settings.history_retention_days(), 30);
     assert_eq!(fixture.settings.query_timeout(), Some(Duration::from_secs(60)));
-    assert_eq!(fixture.settings.style_scheme(), "Adwaita");
+    assert_eq!(fixture.settings.style_scheme(), "");
     assert_eq!(fixture.settings.csv_options(), CsvOptions::default());
     assert!(fixture.settings.restore_session());
     assert!(fixture.settings.save_query_history());
@@ -491,5 +491,17 @@ async fn settings_observers_run_while_another_thread_owns_the_global_context() -
 
     assert_eq!(notifications, 1);
     assert!(!snapshot.show_row_numbers);
+    Ok(())
+}
+
+#[glib::async_test]
+async fn an_explicit_adwaita_choice_is_distinct_from_the_system_default() -> TestResult {
+    use gio::prelude::SettingsExt;
+
+    let fixture = Fixture::new()?;
+    fixture.settings.set_style_scheme("Adwaita")?;
+    assert_eq!(fixture.settings.style_scheme(), "Adwaita");
+    fixture.settings.gio().reset(keys::STYLE_SCHEME);
+    assert_eq!(fixture.settings.style_scheme(), "");
     Ok(())
 }

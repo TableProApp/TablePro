@@ -28,13 +28,14 @@ private struct StatusBarMaterial: NSViewRepresentable {
     func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
 
-/// The material does not follow a custom window color, so over a themed backdrop the bar draws none.
+// The material does not follow a custom window color, so over a themed backdrop the bar draws none.
 private struct StatusBarChromeModifier: ViewModifier {
     @ObservedObject private var themeEngine = ThemeEngine.shared
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.isOnSplitItem) private var isOnSplitItem
 
     func body(content: Content) -> some View {
-        let isThemed = ThemeBackdropState.isThemed(highContrast: contrast == .increased)
+        let isThemed = ThemeBackdropState.isThemed(highContrast: contrast == .increased, onSplitItem: isOnSplitItem)
         return VStack(spacing: 0) {
             Divider()
             content
