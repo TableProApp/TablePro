@@ -253,6 +253,7 @@ impl RowDetailPane {
 
     fn text_changed(&self) {
         self.update_placeholder();
+        self.mark_special_characters();
         if !self.imp().loading.get() {
             self.begin_edit();
         }

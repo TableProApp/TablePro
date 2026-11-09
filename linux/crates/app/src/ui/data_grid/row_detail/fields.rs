@@ -11,6 +11,7 @@ use crate::i18n::gettext;
 use crate::services::change_tracker::CellState;
 use crate::services::grid::display_text::display_text_formatted;
 use crate::services::grid::{GridColumn, auto_filled_sentinel};
+use crate::ui::data_grid::special_marks::show_value;
 use crate::ui::data_grid::tracked_values::cell_description;
 use crate::ui::data_grid::{DataGrid, GridRow, ServerValue, TrackedValues};
 use crate::ui::handler_guard::HandlerGuard;
@@ -391,8 +392,12 @@ impl RowDetailPane {
             preferences.date_format,
         );
         edited.set_visible(value.modified);
-        shown.set_text(Some(&value.text));
-        shown.set_attributes(Some(&value_attributes(&value)));
+        show_value(
+            &shown,
+            &value.text,
+            Some(&value_attributes(&value)),
+            preferences.show_invisible_characters && !value.placeholder,
+        );
         set_class(&shown, "dimmed", value.placeholder || value.deleted);
         // Adwaita's own warning colour beside the bold, as the grid's
         // cells mark a pending value.

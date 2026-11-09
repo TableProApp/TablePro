@@ -610,7 +610,7 @@ async fn default_sort_choices_and_direction_share_the_grid_snapshot() -> TestRes
 }
 
 #[glib::async_test]
-async fn whitespace_preference_uses_the_shared_snapshot_and_external_updates() -> TestResult {
+async fn invisible_characters_preference_uses_the_shared_snapshot_and_external_updates() -> TestResult {
     use gio::prelude::SettingsExt;
     use std::cell::RefCell;
     use std::rc::Rc;

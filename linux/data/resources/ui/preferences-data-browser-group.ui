@@ -51,8 +51,8 @@
     </child>
     <child>
       <object class="AdwSwitchRow" id="invisibles_row">
-        <property name="title" translatable="yes">Mark Spaces, Tabs and Line Breaks</property>
-        <property name="subtitle" translatable="yes">In the value editor of the row details</property>
+        <property name="title" translatable="yes">Show Invisible Characters</property>
+        <property name="subtitle" translatable="yes">Mark zero-width, control and special space characters in cells and value fields</property>
       </object>
     </child>
     <child>

@@ -7,6 +7,7 @@ use gtk4::{self as gtk, glib, pango};
 use tablepro_core::Value;
 
 use super::columns::ColumnPaint;
+use super::special_marks::show_value;
 use super::tracked_values::cell_description;
 use super::{DataGrid, GridRow, ServerValue};
 use crate::services::change_tracker::CellState;
@@ -312,11 +313,16 @@ impl GridCell {
             (false, CellState::Modified) => TextMark::Modified,
             (false, _) => TextMark::Plain,
         };
+        let marks = paint.preferences.snapshot().show_invisible_characters;
         let null = paint.tracked.with_value(&row, column, |value, computed| {
             let mut scratch = self.imp().scratch.borrow_mut();
             let shown = shown_text(&paint, value, computed, lock.is_none(), &mut scratch);
-            display.set_text(Some(shown.text));
-            display.set_attributes(paint.attributes.for_text(text_mark, shown.placeholder));
+            show_value(
+                display,
+                shown.text,
+                paint.attributes.for_text(text_mark, shown.placeholder),
+                marks && !shown.placeholder,
+            );
             set_class(
                 display,
                 "dimmed",

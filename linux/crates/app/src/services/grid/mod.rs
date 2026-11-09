@@ -23,6 +23,7 @@ mod result_refusal;
 mod row_key_builder;
 mod row_snapshot;
 mod selection_summary;
+pub mod special_characters;
 #[cfg(test)]
 mod test_columns;
 
