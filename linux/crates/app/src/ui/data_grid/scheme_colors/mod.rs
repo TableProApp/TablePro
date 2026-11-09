@@ -87,23 +87,23 @@ impl Palette {
                     color: {unfocused_foreground};
                 }}
                 columnview.{class} tp-grid-cell > label.warning {{ color: inherit; }}
-                columnview.{class} tp-grid-cell > text {{
+                columnview.{class} tp-grid-cell > viewport > text {{
                     background-color: var(--view-bg-color);
                     color: var(--view-fg-color);
                 }}
-                columnview.{class} tp-grid-cell > text selection {{
+                columnview.{class} tp-grid-cell > viewport > text selection {{
                     background-color: {selected_background};
                     color: {selected_foreground};
                 }}
-                columnview.{class} tp-grid-cell > text:not(:focus) selection {{
+                columnview.{class} tp-grid-cell > viewport > text:not(:focus) selection {{
                     background-color: {unfocused_background};
                     color: {unfocused_foreground};
                 }}
-                columnview.{class} tp-grid-cell > text.error {{
+                columnview.{class} tp-grid-cell > viewport > text.error {{
                     background-color: var(--error-bg-color);
                     color: var(--error-fg-color);
                 }}
-                columnview.{class} tp-grid-cell > text.error selection {{
+                columnview.{class} tp-grid-cell > viewport > text.error selection {{
                     background-color: var(--error-fg-color);
                     color: var(--error-bg-color);
                 }}
