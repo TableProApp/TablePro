@@ -42,13 +42,13 @@ pub struct FieldValue {
     pub deleted: bool,
 }
 
-pub fn field_value(tracked: &TrackedValues, row: &GridRow, column: &GridColumn) -> FieldValue {
+pub fn field_value(tracked: &TrackedValues, row: &GridRow, column: &GridColumn, null_display: &str) -> FieldValue {
     let mark = tracked.mark(row, column.index);
     let (text, placeholder, null) = tracked.with_value(row, column.index, |value, computed| match (computed, value) {
         (Some(ServerValue::Default), _) if column.auto_filled() => (auto_filled_sentinel(), true, false),
         (Some(ServerValue::Default), _) => ("DEFAULT".to_owned(), true, false),
         (Some(ServerValue::Expression(expression)), _) => (expression.sql.to_owned(), true, false),
-        (None, Value::Null) => ("NULL".to_owned(), true, true),
+        (None, Value::Null) => (null_display.to_owned(), true, true),
         (None, value) => {
             let mut scratch = String::new();
             let shown = display_text(value, &column.column_type, &mut scratch);
@@ -185,7 +185,52 @@ impl RowDetailPane {
         let imp = self.imp();
         imp.selection.set_autoselect(false);
         imp.selection.set_can_unselect(true);
-        imp.selection.set_model(Some(&imp.fields.0));
+        imp.filtered.set_model(Some(&imp.fields.0));
+        imp.filtered.set_filter(Some(&imp.field_filter));
+        imp.selection.set_model(Some(&imp.filtered));
+        imp.field_filter.set_filter_func(glib::clone!(
+            #[weak(rename_to = pane)]
+            self,
+            #[upgrade_or]
+            false,
+            move |item| pane.field_shown(field_of(Some(item.clone())))
+        ));
+        imp.field_search.connect_search_changed(glib::clone!(
+            #[weak(rename_to = pane)]
+            self,
+            move |_| pane.refilter_fields()
+        ));
+        imp.field_search.set_key_capture_widget(Some(&imp.field_list.get()));
+        imp.field_search.connect_search_started(|entry| {
+            entry.grab_focus();
+        });
+        imp.field_search.connect_stop_search(glib::clone!(
+            #[weak(rename_to = pane)]
+            self,
+            move |entry| {
+                if !entry.text().is_empty() {
+                    entry.set_text("");
+                } else if pane.grid().is_some_and(|grid| grid.imp().split_view.is_collapsed()) {
+                    pane.imp().close_button.emit_clicked();
+                }
+            }
+        ));
+        imp.field_search.connect_activate(glib::clone!(
+            #[weak(rename_to = pane)]
+            self,
+            move |_| {
+                pane.refilter_fields();
+                if pane.imp().filtered.n_items() > 0 {
+                    pane.imp().selection.set_selected(0);
+                    pane.focus_value();
+                }
+            }
+        ));
+        imp.edited_toggle.connect_toggled(glib::clone!(
+            #[weak(rename_to = pane)]
+            self,
+            move |_| pane.refilter_fields()
+        ));
         imp.field_list.set_model(Some(&imp.selection));
         imp.field_list.set_factory(Some(&self.field_factory()));
         imp.selection.connect_selected_notify(glib::clone!(
@@ -237,10 +282,58 @@ impl RowDetailPane {
     }
 
     pub(super) fn redraw_fields(&self) {
+        self.refilter_fields();
         let bound: Vec<gtk::ListItem> = self.imp().bound.borrow().clone();
         for item in &bound {
             self.draw_field(item);
         }
+    }
+
+    pub(super) fn refilter_fields(&self) {
+        let imp = self.imp();
+        let has_edits = self.grid().zip(self.current_row()).is_some_and(|(grid, row)| {
+            grid.grid_columns().iter().any(|column| {
+                let mark = grid.tracked().mark(&row, column.index);
+                mark.state == CellState::Modified && !mark.row_deleted
+            })
+        });
+        imp.edited_toggle
+            .set_sensitive(has_edits || imp.edited_toggle.is_active());
+        // A changed filter may move the selected position without a user picking a field.
+        let syncing = imp.syncing.replace(true);
+        imp.field_filter.changed(gtk::FilterChange::Different);
+        self.select_in_list(imp.field.get());
+        imp.syncing.set(syncing);
+        imp.field_results.set_visible_child_name(match imp.filtered.n_items() {
+            0 => "empty",
+            _ => "fields",
+        });
+    }
+
+    fn field_shown(&self, column: Option<usize>) -> bool {
+        let imp = self.imp();
+        let (Some(grid), Some(column), Some(row)) = (self.grid(), column, self.current_row()) else {
+            return false;
+        };
+        let Some(column) = grid.grid_columns().get(column).cloned() else {
+            return false;
+        };
+        if imp.edited_toggle.is_active() {
+            let mark = grid.tracked().mark(&row, column.index);
+            if mark.state != CellState::Modified || mark.row_deleted {
+                return false;
+            }
+        }
+        let wanted = imp.field_search.text().to_lowercase();
+        if wanted.is_empty() || column.name.to_lowercase().contains(&wanted) {
+            return true;
+        }
+        let Some(config) = grid.config() else {
+            return false;
+        };
+        let preferences = config.settings.grid_preferences().snapshot();
+        let value = field_value(&grid.tracked(), &row, &column, &preferences.null_display);
+        !value.null && value.text.to_lowercase().contains(&wanted)
     }
 
     fn draw_field(&self, item: &gtk::ListItem) {
@@ -272,7 +365,11 @@ impl RowDetailPane {
             shown.set_text(None);
             return;
         };
-        let value = field_value(&grid.tracked(), &row, &column);
+        let Some(config) = grid.config() else {
+            return;
+        };
+        let preferences = config.settings.grid_preferences().snapshot();
+        let value = field_value(&grid.tracked(), &row, &column, &preferences.null_display);
         edited.set_visible(value.modified);
         shown.set_text(Some(&value.text));
         shown.set_attributes(Some(&value_attributes(&value)));
@@ -324,16 +421,16 @@ impl RowDetailPane {
 
     pub(super) fn select_in_list(&self, column: Option<usize>) {
         let imp = self.imp();
-        let store = &imp.fields.0;
+        let shown = &imp.selection;
         let position = column
-            .and_then(|column| (0..store.n_items()).find(|position| field_of(store.item(*position)) == Some(column)))
+            .and_then(|column| (0..shown.n_items()).find(|position| field_of(shown.item(*position)) == Some(column)))
             .unwrap_or(gtk::INVALID_LIST_POSITION);
         if imp.selection.selected() == position {
             return;
         }
-        imp.syncing.set(true);
+        let syncing = imp.syncing.replace(true);
         imp.selection.set_selected(position);
-        imp.syncing.set(false);
+        imp.syncing.set(syncing);
         if position != gtk::INVALID_LIST_POSITION {
             imp.field_list.scroll_to(position, gtk::ListScrollFlags::NONE, None);
         }
@@ -369,17 +466,15 @@ impl RowDetailPane {
             move || {
                 pane.imp().sync_queued.set(false);
                 pane.watch_column_visibility();
-                if pane.sync_fields() {
-                    pane.render();
-                }
+                pane.sync_fields();
+                pane.render();
             }
         ));
     }
 
-    /// Put the fields in the grid's column order. `true` when it changed.
-    pub(super) fn sync_fields(&self) -> bool {
+    pub(super) fn sync_fields(&self) {
         let Some(grid) = self.grid() else {
-            return false;
+            return;
         };
         let imp = self.imp();
         let wanted = field_order(&grid.shown_columns(), grid.grid_columns().len());
@@ -388,7 +483,7 @@ impl RowDetailPane {
             .filter_map(|position| field_of(store.item(position)))
             .collect();
         if held == wanted {
-            return false;
+            return;
         }
         let items: Vec<glib::BoxedAnyObject> = wanted.into_iter().map(glib::BoxedAnyObject::new).collect();
         imp.syncing.set(true);
@@ -399,7 +494,6 @@ impl RowDetailPane {
             imp.field.set(None);
         }
         self.select_in_list(imp.field.get());
-        true
     }
 
     fn watch_column_visibility(&self) {
