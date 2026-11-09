@@ -7,7 +7,7 @@ struct MetricsBarView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Label(String(localized: "Server Metrics"), systemImage: "gauge.with.dots.needle.33percent")
+                Label(String(localized: "Server Metrics"), systemImage: "speedometer")
                     .font(.headline)
                 Spacer()
                 if let error {

@@ -42,9 +42,13 @@ struct MySQLTableHealthProviderTests {
         )
     }
 
+    private func findings(_ check: TableHealthCheckKind, from results: [QueryResult]) -> [TableHealthFinding] {
+        provider.findings(for: check, from: results, context: context, statistics: TableHealthStatistics()).findings
+    }
+
     private func redundant(_ rows: [IndexRow]) -> [String: String] {
         var map: [String: String] = [:]
-        for finding in provider.findings(for: .redundantIndex, from: [Self.indexResult(rows)], context: context) {
+        for finding in findings(.redundantIndex, from: [Self.indexResult(rows)]) {
             map[finding.objectName ?? ""] = finding.detail
         }
         return map
@@ -66,6 +70,8 @@ struct MySQLTableHealthProviderTests {
         "table_schema", "table_name", "constraint_name", "column_name",
         "referenced_table_name", "referenced_column_name", "ordinal_position", "is_local", "references_here"
     ]
+
+    private static let tableRowsColumns = ["table_name", "estimated_rows"]
 
     private func unused(
         candidates: [(table: String, index: String)],
@@ -89,16 +95,18 @@ struct MySQLTableHealthProviderTests {
                         String(seen[identity, default: 1]), key.isLocal ? "1" : "0", key.referencesHere ? "1" : "0"
                     ]
                 }
-            )
+            ),
+            TableHealthFixture.result(columns: Self.tableRowsColumns, rows: [])
         ]
-        return provider.findings(for: .unusedIndex, from: results, context: context).compactMap(\.objectName)
+        return findings(.unusedIndex, from: results).compactMap { $0.objectName }
     }
 
     private func statistics(
         performanceSchema: String = "1",
         instrument: String = "YES",
         consumer: String = "YES",
-        countedTables: String = "3"
+        countedTables: String = "3",
+        version: String = "8.0.46"
     ) -> TableHealthStatistics {
         provider.statistics(
             from: [
@@ -107,7 +115,8 @@ struct MySQLTableHealthProviderTests {
                 TableHealthFixture.result(
                     columns: ["table_io_instrument", "global_instrumentation", "counted_tables"],
                     rows: [[instrument, consumer, countedTables]]
-                )
+                ),
+                TableHealthFixture.result(columns: ["version"], rows: [[version]])
             ],
             now: Date(timeIntervalSince1970: 1_800_000_000)
         )
@@ -209,8 +218,8 @@ struct MySQLTableHealthProviderTests {
             IndexRow(index: "idx_ab", nonUnique: "1", column: "a", visible: "NO"),
             IndexRow(index: "idx_ab", nonUnique: "1", column: "b", visible: "NO")
         ])
-        let ignored = provider.findings(
-            for: .redundantIndex,
+        let ignored = findings(
+            .redundantIndex,
             from: [TableHealthFixture.result(
                 columns: [
                     "TABLE_NAME", "INDEX_NAME", "SEQ_IN_INDEX", "NON_UNIQUE", "INDEX_TYPE", "COLUMN_NAME", "SUB_PART", "COLLATION",
@@ -221,8 +230,7 @@ struct MySQLTableHealthProviderTests {
                     ["orders", "idx_ab", "1", "1", "BTREE", "a", nil, "A", "YES"],
                     ["orders", "idx_ab", "2", "1", "BTREE", "b", nil, "A", "YES"]
                 ]
-            )],
-            context: context
+            )]
         )
         #expect(invisible.isEmpty)
         #expect(ignored.isEmpty)
@@ -259,19 +267,19 @@ struct MySQLTableHealthProviderTests {
         #expect(found.isEmpty)
     }
 
-    @Test("A redundant index previews a drop qualified by the report's database")
+    @Test("A redundant index previews a drop qualified by the report's database and names its covering index")
     func redundantFixQuotes() throws {
-        let finding = try #require(provider.findings(
-            for: .redundantIndex,
+        let finding = try #require(findings(
+            .redundantIndex,
             from: [Self.indexResult([
                 IndexRow(table: "odd`name", index: "idx_a", nonUnique: "1", column: "a"),
                 IndexRow(table: "odd`name", index: "idx_ab", nonUnique: "1", column: "a"),
                 IndexRow(table: "odd`name", index: "idx_ab", nonUnique: "1", column: "b")
-            ])],
-            context: context
+            ])]
         ).first)
         #expect(finding.schema == nil)
         #expect(finding.fixSQL == "ALTER TABLE `shop`.`odd``name` DROP INDEX `idx_a`;")
+        #expect(finding.metric("covering_index")?.value == .text("idx_ab"))
     }
 
     @Test("An unread plain index is unused; a unique, a full-text and a dropped index are not")
@@ -351,25 +359,30 @@ struct MySQLTableHealthProviderTests {
         #expect(found == ["refs_id_idx"])
     }
 
-    @Test("An unused index and a table without a primary key preview their fixes")
+    @Test("An unused index and a table without a primary key preview their fixes and carry the table's rows")
     func unusedAndMissingKeyFixes() throws {
-        let unusedFinding = try #require(provider.findings(
-            for: .unusedIndex,
+        let unusedFinding = try #require(findings(
+            .unusedIndex,
             from: [
                 TableHealthFixture.result(columns: ["table_name", "index_name"], rows: [["orders", "orders_note_idx"]]),
                 Self.indexResult([IndexRow(index: "orders_note_idx", nonUnique: "1", column: "note")]),
-                TableHealthFixture.result(columns: Self.keyColumns, rows: [])
-            ],
-            context: context
+                TableHealthFixture.result(columns: Self.keyColumns, rows: []),
+                TableHealthFixture.result(columns: Self.tableRowsColumns, rows: [["Orders", "7"], ["orders", "4200"]])
+            ]
         ).first)
-        let keyFinding = try #require(provider.findings(
-            for: .missingPrimaryKey,
-            from: [TableHealthFixture.result(columns: ["table_name"], rows: [["logs"]])],
-            context: context
+        let keyFinding = try #require(findings(
+            .missingPrimaryKey,
+            from: [TableHealthFixture.result(
+                columns: ["table_name", "estimated_rows", "table_bytes"], rows: [["logs", "900", "49152"]]
+            )]
         ).first)
 
         #expect(unusedFinding.fixSQL == "ALTER TABLE `shop`.`orders` DROP INDEX `orders_note_idx`;")
+        #expect(unusedFinding.metric("estimated_rows")?.value == .count(4200))
+        #expect(unusedFinding.sizeBytes == nil)
         #expect(keyFinding.fixSQL == "ALTER TABLE `shop`.`logs` ADD PRIMARY KEY (column_name);")
+        #expect(keyFinding.metric("estimated_rows")?.value == .count(900))
+        #expect(keyFinding.sizeBytes == 49152)
     }
 
     @Test("Each setting that stops index reads being counted skips the unused index check")
@@ -384,7 +397,22 @@ struct MySQLTableHealthProviderTests {
     @Test("While reads are counted, the note names the server start")
     func serverStartNote() {
         let start = Date(timeIntervalSince1970: 1_800_000_000 - 3600).formatted(date: .abbreviated, time: .shortened)
-        #expect(statistics().note?.contains(start) == true)
+        #expect(statistics().notes.contains { $0.contains(start) })
+    }
+
+    @Test("The statistics read the server version and tell MariaDB apart, also when the unused check is skipped")
+    func serverVersion() {
+        let mysql = statistics(version: "8.0.46")
+        let mariadb = statistics(performanceSchema: "0", version: "10.6.28-MariaDB-1:10.6.28+maria~ubu2004")
+        #expect(mysql.serverVersion == 80046)
+        #expect(!mysql.isMariaDB)
+        #expect(mariadb.serverVersion == 100_628)
+        #expect(mariadb.isMariaDB)
+        #expect(mariadb.skippedChecks[.unusedIndex] != nil)
+        #expect(MySQLTableHealthProvider.serverVersion(from: "8.4.13-log") == 80413)
+        #expect(MySQLTableHealthProvider.serverVersion(from: "5.5.5-10.11.6-MariaDB") == 101_106)
+        #expect(MySQLTableHealthProvider.serverVersion(from: "11.4") == 110_400)
+        #expect(MySQLTableHealthProvider.serverVersion(from: "unknown") == nil)
     }
 
     @Test("Without access to the counting settings the unused check still runs and reports for itself")
@@ -398,7 +426,8 @@ struct MySQLTableHealthProviderTests {
             now: Date()
         )
         #expect(stats.skippedChecks.isEmpty)
-        #expect(stats.note == nil)
+        #expect(stats.notes.isEmpty)
+        #expect(stats.serverVersion == nil)
     }
 
     @Test("The index catalog is read once for the two checks that use it")
@@ -411,9 +440,32 @@ struct MySQLTableHealthProviderTests {
         #expect(asked.filter { $0 == MySQLTableHealthProvider.indexQuery }.count == 1)
     }
 
+    @Test("Every check the provider lists has a query on every server it can meet, so none reports nothing found unread")
+    func everyCheckHasAQuery() {
+        var servers = [provider.statistics(from: [nil, nil, nil, nil], now: Date())]
+        for version in ["5.7.44", "8.0.46", "8.4.13", "10.6.28-MariaDB", "11.4.13-MariaDB"] {
+            servers.append(statistics(version: version))
+            servers.append(statistics(performanceSchema: "0", version: version))
+        }
+        for server in servers {
+            for check in provider.checks where server.skippedChecks[check] == nil {
+                #expect(!provider.queries(for: check, statistics: server).isEmpty, "\(check.rawValue) has no query")
+            }
+        }
+    }
+
+    @Test("Every check names itself and states what it looks for")
+    func everyCheckDescribed() {
+        for check in provider.checks {
+            #expect(provider.check(check).kind == check)
+            #expect(!provider.check(check).summary.isEmpty, "\(check.rawValue) has no summary")
+        }
+    }
+
     @Test("Every query the report runs only reads")
     func queriesOnlyRead() {
-        let queries = provider.statisticsQueries + provider.checks.flatMap { provider.queries(for: $0) }
+        let queries = provider.statisticsQueries
+            + provider.checks.flatMap { provider.queries(for: $0, statistics: TableHealthStatistics()) }
         for query in queries where query != MySQLTableHealthProvider.uptimeQuery {
             let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
             #expect(text.uppercased().hasPrefix("SELECT"), "\(text.prefix(40)) does not start with SELECT")

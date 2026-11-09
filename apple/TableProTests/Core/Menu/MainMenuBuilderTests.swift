@@ -757,9 +757,21 @@ struct MainMenuValidationTests {
         context.supportsUserManagement = true
         context.supportsContainerSwitching = true
         context.supportsTableHealth = true
+        context.hasDatabase = true
         #expect(enabled(#selector(MainSplitViewController.showServerDashboard(_:)), context))
         #expect(enabled(#selector(MainSplitViewController.showUsersAndRoles(_:)), context))
         #expect(enabled(#selector(MainSplitViewController.openContainerSwitcher(_:)), context))
+        #expect(enabled(#selector(MainSplitViewController.showTableHealth(_:)), context))
+    }
+
+    // A tab opened without one would check whatever database the sidebar browsed next.
+    @Test("Table Health stays dim while the entry on screen names no database")
+    func tableHealthNeedsADatabase() {
+        var context = capableContext()
+        context.isConnected = true
+        context.hasDatabase = false
+        #expect(!enabled(#selector(MainSplitViewController.showTableHealth(_:)), context))
+        context.hasDatabase = true
         #expect(enabled(#selector(MainSplitViewController.showTableHealth(_:)), context))
     }
 
@@ -810,6 +822,7 @@ struct MainMenuValidationTests {
         context.canInsertRows = true
         context.canDeleteRows = true
         context.supportsTableHealth = true
+        context.hasDatabase = true
         context.isCurrentTabSchemaResolved = true
         context.hasTableSelection = true
         context.hasRowSelection = true

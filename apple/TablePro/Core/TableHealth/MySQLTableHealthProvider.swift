@@ -68,7 +68,9 @@ struct MySQLTableHealthProvider: TableHealthProvider {
 
     // MariaDB lists a system-versioned table under its own type.
     static let missingPrimaryKeyQuery = """
-        SELECT t.TABLE_NAME AS table_name
+        SELECT t.TABLE_NAME AS table_name,
+               t.TABLE_ROWS AS estimated_rows,
+               t.DATA_LENGTH + t.INDEX_LENGTH AS table_bytes
         FROM information_schema.TABLES t
         WHERE t.TABLE_SCHEMA = DATABASE()
           AND t.TABLE_TYPE IN ('BASE TABLE', 'SYSTEM VERSIONED')
@@ -81,16 +83,47 @@ struct MySQLTableHealthProvider: TableHealthProvider {
         ORDER BY t.TABLE_NAME
         """
 
+    // Joined to the unused index candidates in Swift by exact name, like the index rows, so no SQL
+    // compares performance_schema names with information_schema ones, whose collations differ.
+    static let tableRowsQuery = """
+        SELECT t.TABLE_NAME AS table_name,
+               t.TABLE_ROWS AS estimated_rows
+        FROM information_schema.TABLES t
+        WHERE t.TABLE_SCHEMA = DATABASE()
+          AND t.TABLE_TYPE IN ('BASE TABLE', 'SYSTEM VERSIONED')
+        ORDER BY t.TABLE_NAME
+        """
+
+    static let versionQuery = "SELECT VERSION() AS version"
+
     var statisticsQueries: [String] {
-        [Self.performanceSchemaQuery, Self.uptimeQuery, Self.usageCountingQuery]
+        [Self.performanceSchemaQuery, Self.uptimeQuery, Self.usageCountingQuery, Self.versionQuery]
     }
 
-    func queries(for check: TableHealthCheckKind) -> [String] {
+    func check(_ kind: TableHealthCheckKind) -> TableHealthCheck {
+        switch kind {
+        case .unusedIndex:
+            return TableHealthCheck(kind: kind, summary: String(
+                localized: "Indexes with no recorded reads since the server started, leaving out unique, full-text and foreign key indexes."
+            ))
+        case .redundantIndex:
+            return TableHealthCheck(kind: kind, summary: String(
+                localized: "Indexes whose columns lead another visible index of the same type on the same table."
+            ))
+        case .missingPrimaryKey:
+            return TableHealthCheck(kind: kind, summary: String(localized: "Tables with no primary key."))
+        case .bloat, .unindexedForeignKey, .invalidIndex, .nearLimit, .transactionIdAge, .staleStatistics, .reclaimableSpace:
+            return TableHealthCheck(kind: kind, summary: "")
+        }
+    }
+
+    func queries(for check: TableHealthCheckKind, statistics: TableHealthStatistics) -> [String] {
         switch check {
-        case .unusedIndex: return [Self.unusedIndexQuery, Self.indexQuery, Self.foreignKeyQuery]
+        case .unusedIndex: return [Self.unusedIndexQuery, Self.indexQuery, Self.foreignKeyQuery, Self.tableRowsQuery]
         case .redundantIndex: return [Self.indexQuery]
         case .missingPrimaryKey: return [Self.missingPrimaryKeyQuery]
-        case .bloat, .unindexedForeignKey: return []
+        case .bloat, .unindexedForeignKey, .invalidIndex, .nearLimit, .transactionIdAge, .staleStatistics, .reclaimableSpace:
+            return []
         }
     }
 
@@ -99,55 +132,91 @@ struct MySQLTableHealthProvider: TableHealthProvider {
             guard position < results.count, let result = results[position] else { return nil }
             return TableHealthRow.rows(of: result).first?[column]
         }
-        func skippingUnused(_ reason: String) -> TableHealthStatistics {
-            TableHealthStatistics(skippedChecks: [.unusedIndex: reason])
-        }
 
+        var statistics = TableHealthStatistics()
+        if let version = value(3, "version") {
+            statistics.serverVersion = Self.serverVersion(from: version)
+            statistics.isMariaDB = version.range(of: "MariaDB", options: .caseInsensitive) != nil
+        }
+        if let reason = Self.unusedSkipReason(value) {
+            statistics.skippedChecks[.unusedIndex] = reason
+            return statistics
+        }
+        if let uptime = value(1, "value").flatMap(Double.init) {
+            let start = TableHealthFormatting.date(now.addingTimeInterval(-uptime))
+            statistics.notes.append(String(format: String(localized: "Index usage counts since the server started at %@."), start))
+        }
+        return statistics
+    }
+
+    private static func unusedSkipReason(_ value: (Int, String) -> String?) -> String? {
         if let enabled = value(0, "performance_schema"), enabled != "1", enabled.uppercased() != "ON" {
-            return skippingUnused(String(localized: "Performance Schema is off, so the server records no index reads."))
+            return String(localized: "Performance Schema is off, so the server records no index reads.")
         }
         if value(2, "table_io_instrument") == "NO" {
-            return skippingUnused(String(localized: "The wait/io/table/sql/handler instrument is disabled, so the server records no index reads."))
+            return String(localized: "The wait/io/table/sql/handler instrument is disabled, so the server records no index reads.")
         }
         if value(2, "global_instrumentation") == "NO" {
-            return skippingUnused(String(localized: "The global_instrumentation consumer is disabled, so the server records no index reads."))
+            return String(localized: "The global_instrumentation consumer is disabled, so the server records no index reads.")
         }
         if value(2, "counted_tables") == "0" {
-            return skippingUnused(String(
+            return String(
                 localized: "No table in this database has a recorded read or write since the server started, so an unread index cannot be told from an uncounted one."
-            ))
+            )
         }
+        return nil
+    }
 
-        guard let uptime = value(1, "value").flatMap(Double.init) else { return TableHealthStatistics() }
-        let start = now.addingTimeInterval(-uptime).formatted(date: .abbreviated, time: .shortened)
-        return TableHealthStatistics(
-            note: String(format: String(localized: "Index usage counts since the server started at %@."), start)
-        )
+    // "8.0.46" is 80046 and "10.6.28-MariaDB-1:10.6.28+maria~ubu2004" is 100628. A MariaDB server that
+    // fronts its version with "5.5.5-" for old clients is read past that prefix.
+    static func serverVersion(from text: String) -> Int? {
+        var version = Substring(text.trimmingCharacters(in: .whitespaces))
+        if version.hasPrefix("5.5.5-") { version = version.dropFirst(6) }
+        let parts = version.prefix { $0.isASCII && ($0.isNumber || $0 == ".") }
+            .split(separator: ".", omittingEmptySubsequences: false)
+            .prefix(3)
+            .map { Int($0) }
+        guard let major = parts.first ?? nil else { return nil }
+        let minor = parts.count > 1 ? parts[1] ?? 0 : 0
+        let patch = parts.count > 2 ? parts[2] ?? 0 : 0
+        return major * 10_000 + minor * 100 + patch
     }
 
     func findings(
         for check: TableHealthCheckKind,
         from results: [QueryResult],
-        context: TableHealthQueryContext
-    ) -> [TableHealthFinding] {
+        context: TableHealthQueryContext,
+        statistics: TableHealthStatistics
+    ) -> (findings: [TableHealthFinding], note: String?) {
         switch check {
         case .unusedIndex:
-            guard results.count == 3 else { return [] }
-            return unusedIndexFindings(
+            guard results.count == 4 else { return ([], nil) }
+            return (unusedIndexFindings(
                 candidates: TableHealthRow.rows(of: results[0]),
                 tables: MySQLIndexShape.tables(from: TableHealthRow.rows(of: results[1])),
                 foreignKeys: MySQLIndexShape.foreignKeys(from: TableHealthRow.rows(of: results[2])),
+                tableRows: Self.estimatedRows(from: TableHealthRow.rows(of: results[3])),
                 context: context
-            )
+            ), nil)
         case .redundantIndex:
-            guard let result = results.first else { return [] }
-            return redundantIndexFindings(MySQLIndexShape.tables(from: TableHealthRow.rows(of: result)), context)
+            guard let result = results.first else { return ([], nil) }
+            return (redundantIndexFindings(MySQLIndexShape.tables(from: TableHealthRow.rows(of: result)), context), nil)
         case .missingPrimaryKey:
-            guard let result = results.first else { return [] }
-            return TableHealthRow.rows(of: result).map { missingPrimaryKeyFinding($0["table_name"], context) }
-        case .bloat, .unindexedForeignKey:
-            return []
+            guard let result = results.first else { return ([], nil) }
+            return (TableHealthRow.rows(of: result).map { missingPrimaryKeyFinding($0, context) }, nil)
+        case .bloat, .unindexedForeignKey, .invalidIndex, .nearLimit, .transactionIdAge, .staleStatistics, .reclaimableSpace:
+            return ([], nil)
         }
+    }
+
+    private static func estimatedRows(from rows: [TableHealthRow]) -> [String: Int64] {
+        var byTable: [String: Int64] = [:]
+        for row in rows {
+            if let count = row.int64("estimated_rows") {
+                byTable[row["table_name"]] = count
+            }
+        }
+        return byTable
     }
 
     // A unique index enforces something no read counts, and a MATCH search reads a full-text index
@@ -157,6 +226,7 @@ struct MySQLTableHealthProvider: TableHealthProvider {
         candidates: [TableHealthRow],
         tables: [MySQLIndexShape],
         foreignKeys: [String: [[String]]],
+        tableRows: [String: Int64],
         context: TableHealthQueryContext
     ) -> [TableHealthFinding] {
         let shapes = Dictionary(tables.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
@@ -170,6 +240,7 @@ struct MySQLTableHealthProvider: TableHealthProvider {
             return TableHealthFinding(
                 kind: .unusedIndex, schema: nil, table: table, objectName: indexName,
                 detail: String(format: String(localized: "%@ has no recorded reads."), indexName),
+                metrics: tableRows[table].map { [TableHealthMetric.estimatedRows($0)] } ?? [],
                 fixSQL: dropIndexSQL(table: table, index: indexName, context)
             )
         }
@@ -186,6 +257,9 @@ struct MySQLTableHealthProvider: TableHealthProvider {
                 findings.append(TableHealthFinding(
                     kind: .redundantIndex, schema: nil, table: table.name, objectName: index.name,
                     detail: String(format: String(localized: "%1$@ is covered by %2$@."), index.name, dominant.name),
+                    metrics: [TableHealthMetric(
+                        id: "covering_index", label: String(localized: "Covering Index"), value: .text(dominant.name)
+                    )],
                     fixSQL: dropIndexSQL(table: table.name, index: index.name, context)
                 ))
             }
@@ -193,10 +267,13 @@ struct MySQLTableHealthProvider: TableHealthProvider {
         return findings
     }
 
-    private func missingPrimaryKeyFinding(_ table: String, _ context: TableHealthQueryContext) -> TableHealthFinding {
-        TableHealthFinding(
+    private func missingPrimaryKeyFinding(_ row: TableHealthRow, _ context: TableHealthQueryContext) -> TableHealthFinding {
+        let table = row["table_name"]
+        return TableHealthFinding(
             kind: .missingPrimaryKey, schema: nil, table: table, objectName: nil,
             detail: String(localized: "No primary key. Replace column_name with the columns that identify a row."),
+            sizeBytes: row.int64("table_bytes"),
+            metrics: row.int64("estimated_rows").map { [TableHealthMetric.estimatedRows($0)] } ?? [],
             fixSQL: "ALTER TABLE \(context.qualified(context.database, table)) ADD PRIMARY KEY (column_name);"
         )
     }

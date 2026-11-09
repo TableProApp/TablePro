@@ -6,7 +6,8 @@ struct TableHealthActions {
     let openFix: (_ finding: TableHealthFinding, _ database: String) -> Void
 
     func copyFix(_ finding: TableHealthFinding) {
-        ClipboardService.shared.writeText(finding.fixSQL)
+        guard let fix = finding.fixSQL else { return }
+        ClipboardService.shared.writeText(fix)
     }
 }
 
@@ -106,11 +107,13 @@ private struct TableHealthFindingsList: View {
     var body: some View {
         if let report = viewModel.report {
             List(selection: $viewModel.selectedFindingId) {
-                if let note = report.statisticsNote {
+                if !report.notes.isEmpty {
                     Section {
-                        Label(note, systemImage: "info.circle")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
+                        ForEach(report.notes, id: \.self) { note in
+                            Label(note, systemImage: "info.circle")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 ForEach(report.checks) { check in
@@ -158,7 +161,7 @@ private struct TableHealthFindingsList: View {
         }
         ForEach(check.findings) { finding in
             VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: finding.qualifiedTable)
+                Text(verbatim: finding.qualifiedTable ?? finding.qualifiedName)
                 Text(verbatim: finding.detail)
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -194,7 +197,7 @@ private struct TableHealthDetailPane: View {
         if let finding = viewModel.selectedFinding, let database = viewModel.report?.database {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
-                    Text(verbatim: finding.qualifiedTable)
+                    Text(verbatim: finding.qualifiedTable ?? finding.qualifiedName)
                         .font(.headline)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -204,7 +207,7 @@ private struct TableHealthDetailPane: View {
                     Button(String(localized: "Open in Editor")) { actions.openFix(finding, database) }
                 }
                 SQLStatementPreview(
-                    prepared: SQLReviewSheet.build(statements: [finding.fixSQL], databaseType: databaseType),
+                    prepared: SQLReviewSheet.build(statements: finding.fixSQL.map { [$0] } ?? [], databaseType: databaseType),
                     databaseType: databaseType
                 )
                 .id(finding.id)

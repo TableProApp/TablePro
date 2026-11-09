@@ -355,11 +355,13 @@ struct MainEditorContentView: View {
     private var tableHealthActions: TableHealthActions {
         TableHealthActions(
             openTable: { finding, database in
-                coordinator.openTableTab(finding.table, schema: finding.schema, database: database)
+                guard let table = finding.table else { return }
+                coordinator.openTableTab(table, schema: finding.schema, database: database)
             },
             openFix: { finding, database in
+                guard let fix = finding.fixSQL else { return }
                 coordinator.openQuery(
-                    finding.fixSQL,
+                    fix,
                     on: connection.id,
                     databaseName: database,
                     intent: .loadIntoFrontTab

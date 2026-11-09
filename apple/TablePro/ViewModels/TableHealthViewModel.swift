@@ -2,14 +2,6 @@ import Combine
 import Foundation
 import os
 
-enum TableHealthError: LocalizedError {
-    case noDatabase
-
-    var errorDescription: String? {
-        String(localized: "Select a database in the sidebar to check its tables.")
-    }
-}
-
 @MainActor
 final class TableHealthViewModel: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "TableHealth")
@@ -70,13 +62,7 @@ final class TableHealthViewModel: ObservableObject {
 
         do {
             guard let scope = metadata.browseScope(for: connectionId) else { throw DatabaseError.notConnected }
-            guard !scope.isServerScoped else { throw TableHealthError.noDatabase }
-            let fresh = try await metadata.withMetadataDriver(scope: scope, workload: .bulk) { driver in
-                let context = TableHealthQueryContext(database: scope.database) { driver.quoteIdentifier($0) }
-                return try await provider.fetchReport(context: context) { query in
-                    try await driver.executeCatalogRead(query: query)
-                }
-            }
+            let fresh = try await TableHealthReportLoader.load(provider: provider, scope: scope, metadata: metadata)
             report = Self.merging(fresh, over: report)
             loadError = nil
             lastRefreshDate = Date()

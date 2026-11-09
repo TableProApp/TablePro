@@ -386,11 +386,14 @@ struct MainContentCoordinatorRefreshTests {
         defer { subscription.cancel() }
 
         var expected: [UUID] = []
-        for tabType in [TabType.serverDashboard, .insights, .tableHealth] {
+        for tabType in [TabType.serverDashboard, .insights] {
             tabManager.addSingletonTab(tabType)
             expected += [tabManager.selectedTabId].compactMap { $0 }
             coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
         }
+        tabManager.addTableHealthTab(databaseName: "shop")
+        expected += [tabManager.selectedTabId].compactMap { $0 }
+        coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
         tabManager.addObjectSourceTab(objectRef: DatabaseObjectRef(kind: .view, name: "active_orders", database: "shop"))
         expected += [tabManager.selectedTabId].compactMap { $0 }
         coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
