@@ -169,7 +169,7 @@ pub(super) fn install(grid: &DataGrid) {
                     return None;
                 }
                 let area = header(&grid.column_view()).and_then(|header| header.compute_bounds(overlay));
-                let Some((area, column)) = area.zip(grid.row_numbers_column()) else {
+                let Some((area, column)) = area.zip(shown_numbers(&grid)) else {
                     return Some(gtk::gdk::Rectangle::new(0, 0, 0, 0));
                 };
                 let width = column.fixed_width();
@@ -196,15 +196,21 @@ pub(super) fn install(grid: &DataGrid) {
     ));
 }
 
+// The row numbers preference hides the column without taking it out of the view.
+fn shown_numbers(grid: &DataGrid) -> Option<gtk::ColumnViewColumn> {
+    grid.row_numbers_column().filter(|column| column.is_visible())
+}
+
 pub(super) fn sync(grid: &DataGrid) {
     let imp = grid.imp();
-    if let Some(column) = grid.row_numbers_column() {
+    let numbers = shown_numbers(grid);
+    if let Some(column) = &numbers {
         imp.gutter_backing.set_width_request(column.fixed_width());
     }
-    let visible = imp.scrolled.hadjustment().value() > 0.0;
+    let visible = numbers.is_some() && imp.scrolled.hadjustment().value() > 0.0;
     imp.gutter_backing.set_visible(visible);
     // Keep one pointer target while scrolling schedules a new native header allocation.
-    imp.gutter_header.set_visible(grid.row_numbers_column().is_some());
+    imp.gutter_header.set_visible(numbers.is_some());
     imp.viewport.queue_draw();
     grid.edit().queue_editor_allocate();
 }

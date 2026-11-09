@@ -348,7 +348,12 @@ impl RowDetailPane {
         }
         let tracked = grid.tracked();
         let input = tracked.edit_input(&row, column.index);
-        let content = value_content(&column, &row.id(), tracked.lock(&column, &row), &input);
+        let mut content = value_content(&column, &row.id(), tracked.lock(&column, &row), &input);
+        if matches!(input, CellInput::Value(Value::Null))
+            && let Some(config) = grid.config()
+        {
+            content.open_placeholder = Some(config.settings.grid_preferences().snapshot().null_display.clone());
+        }
         self.show_value(&column.name, &content);
         self.show_picture(match input {
             CellInput::Value(Value::Bytes(bytes)) => Some(bytes),
