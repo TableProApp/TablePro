@@ -87,6 +87,8 @@ pub struct WorkspaceShell {
     #[template_child]
     pub assistant_toggle: TemplateChild<gtk::ToggleButton>,
     #[template_child]
+    pub safe_mode_slot: TemplateChild<adw::Bin>,
+    #[template_child]
     pub safe_mode_button: TemplateChild<gtk::MenuButton>,
     #[template_child]
     pub tab_button: TemplateChild<adw::TabButton>,

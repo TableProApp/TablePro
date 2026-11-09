@@ -234,6 +234,29 @@ fn narrow_window_swaps_tab_bar_for_tab_button() {
 }
 
 #[gtk4::test]
+fn the_safe_mode_lock_leaves_the_narrow_header_to_the_session_menu() {
+    for (name, width, height, shown) in [("NarrowLock", 360, 294, false), ("WideLock", 1200, 760, true)] {
+        let test = sized(name, width, height);
+        let workspace = test.workspace();
+        let shell = shell_of(&workspace);
+        let imp = shell.imp();
+        let narrow = (!shown).then(|| imp.narrow_breakpoint.get());
+        wait_until(Duration::from_secs(2), || {
+            imp.breakpoint_bin.width() > 0 && imp.breakpoint_bin.current_breakpoint() == narrow
+        })
+        .expect("the breakpoint for the width");
+        wait_until(WAIT, || imp.safe_mode_button.is_visible()).expect("the connection's level");
+        assert_eq!(imp.safe_mode_slot.is_visible(), shown, "{name}");
+        shell.show_safe_mode(Some(tablepro_core::SafeModeLevel::ReadOnly));
+        assert_eq!(
+            imp.safe_mode_slot.is_visible(),
+            shown,
+            "a level change kept the {name} layout"
+        );
+    }
+}
+
+#[gtk4::test]
 fn wide_window_shows_tab_bar() {
     let test = sized("Wide", 1200, 760);
     let workspace = test.workspace();
