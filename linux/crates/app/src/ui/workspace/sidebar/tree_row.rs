@@ -81,9 +81,6 @@ mod imp {
                 let Some(object) = row.shown().and_downcast::<SidebarObject>() else {
                     return false;
                 };
-                if object.is_heading() {
-                    return false;
-                }
                 tooltip.set_text(Some(&object.qualified_name()));
                 true
             });
@@ -267,16 +264,6 @@ impl TreeRow {
 
     fn show_object(&self, item: &gtk::ListItem, object: &SidebarObject) {
         let imp = self.imp();
-        if object.is_heading() {
-            self.hide_kind();
-            imp.icon.set_visible(false);
-            imp.name.set_label(&object.name());
-            set_classes(&imp.name, &["dimmed", "caption-heading"]);
-            self.show_suffix(false, false, false);
-            describe(item, "");
-            set_choosable(item, false);
-            return;
-        }
         // A recycled row usually shows a table again, and setting the
         // same icon or description still redraws or re-announces it.
         let icon = object.icon_name();
@@ -315,6 +302,16 @@ impl TreeRow {
             NodeKind::Group => self.show_plain(item, crate::ui::icons::FOLDER, &group_description(node)),
             NodeKind::Schema => {
                 self.show_plain(item, crate::ui::icons::DRIVE_HARDDISK, &crate::i18n::gettext("Schema"));
+            }
+            NodeKind::ObjectGroup => {
+                let count = node.rows().map_or(0, |rows| rows.n_items());
+                let description = crate::i18n::ngettext_f(
+                    "{count} object",
+                    "{count} objects",
+                    count,
+                    &[("count", &count.to_string())],
+                );
+                self.show_plain(item, crate::ui::icons::FOLDER, &description);
             }
             NodeKind::Placeholder => self.show_plain(item, crate::ui::icons::VIEW_GRID, ""),
             NodeKind::Connection => self.show_connection(node),

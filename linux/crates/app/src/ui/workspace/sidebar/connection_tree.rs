@@ -783,9 +783,7 @@ impl TreeInner {
             let Some(node) = row.item().and_downcast::<TreeNode>() else {
                 continue;
             };
-            if node.kind() != NodeKind::Schema {
-                rows.extend(child_rows(&row));
-            }
+            rows.extend(rows_holding_nodes(&row, &node));
             open.insert(node);
         }
         open
@@ -805,9 +803,7 @@ impl TreeInner {
                 continue;
             }
             expand(&row);
-            if node.kind() != NodeKind::Schema {
-                rows.extend(child_rows(&row));
-            }
+            rows.extend(rows_holding_nodes(&row, &node));
         }
     }
 
@@ -830,7 +826,7 @@ impl TreeInner {
         let lone = (schemas.n_items() == 1)
             .then(|| schemas.item(0).and_downcast::<TreeNode>())
             .flatten()
-            .filter(|schema| schema.rows().is_some_and(|rows| rows.n_items() > 0));
+            .filter(|schema| schema.children().is_some_and(|rows| rows.n_items() > 0));
         {
             let mut branches = self.branches.borrow_mut();
             let Some(branch) = branches.get_mut(key) else {
@@ -980,15 +976,21 @@ impl TreeInner {
         table: &TableRef,
         open: bool,
     ) -> Option<gtk::TreeListRow> {
-        let (schema, offset) = self.view_of(key)?.locate(table)?;
+        let located = self.view_of(key)?.locate(table)?;
         if open {
             expand(connection);
         }
-        let schema = child_row(connection, &schema)?;
+        let mut parent = child_row(connection, &located.schema)?;
         if open {
-            expand(&schema);
+            expand(&parent);
         }
-        schema.child_row(offset)
+        if let Some(group) = &located.group {
+            parent = child_row(&parent, group)?;
+            if open {
+                expand(&parent);
+            }
+        }
+        parent.child_row(located.offset)
     }
 
     /// Select the row of `table`, or of the session's connection, in the
@@ -1091,9 +1093,6 @@ impl TreeInner {
             return;
         };
         if let Some(object) = item.downcast_ref::<SidebarObject>() {
-            if object.is_heading() {
-                return;
-            }
             if let Some(view) = key.and_then(|key| self.view_of(&key)) {
                 match object.target() {
                     ObjectTarget::Rows(table) => view.open(table),
@@ -1107,7 +1106,7 @@ impl TreeInner {
         };
         match node.kind() {
             NodeKind::Connection => activate_connection(&self.pane(which).list_view, node, self.stored(node)),
-            NodeKind::Group | NodeKind::Schema => {
+            NodeKind::Group | NodeKind::Schema | NodeKind::ObjectGroup => {
                 if let Some(row) = self.rows.row(position).filter(|_| which == Which::Tree) {
                     row.set_expanded(!row.is_expanded());
                 }
@@ -1130,12 +1129,6 @@ impl TreeInner {
         let Some((item, key)) = self.item_at(which, position) else {
             return false;
         };
-        if item
-            .downcast_ref::<SidebarObject>()
-            .is_some_and(SidebarObject::is_heading)
-        {
-            return false;
-        }
         // A definition has no tab to open beside the others.
         let table = item
             .downcast_ref::<SidebarObject>()
@@ -1214,9 +1207,6 @@ impl TreeInner {
     fn menu_for(&self, item: &glib::Object, key: Option<SessionKey>) -> Option<gio::Menu> {
         let view = key.and_then(|key| self.view_of(&key));
         if let Some(object) = item.downcast_ref::<SidebarObject>() {
-            if object.is_heading() {
-                return None;
-            }
             let view = view?;
             self.popover.insert_action_group(GROUP, Some(view.actions()));
             return Some(object_menu(
@@ -1237,7 +1227,7 @@ impl TreeInner {
             }
             NodeKind::Connection => self.connection_menu(node),
             NodeKind::Group => self.group_menu(node),
-            NodeKind::Placeholder => None,
+            NodeKind::ObjectGroup | NodeKind::Placeholder => None,
         }
     }
 
@@ -1261,7 +1251,7 @@ impl TreeInner {
         match node.kind() {
             NodeKind::Group => node.group_id().map(LibraryItem::Group),
             NodeKind::Connection => self.stored(node).map(LibraryItem::Connection),
-            NodeKind::Schema | NodeKind::Placeholder => None,
+            NodeKind::Schema | NodeKind::ObjectGroup | NodeKind::Placeholder => None,
         }
     }
 
@@ -1758,6 +1748,18 @@ fn top_rows(tree: &gtk::TreeListModel) -> Vec<gtk::TreeListRow> {
 
 /// The rows under an open row, which never holds a schema's tables when
 /// walked from the roots.
+// A schema's rows below its groups are objects, which may be many thousands.
+fn rows_holding_nodes(row: &gtk::TreeListRow, node: &TreeNode) -> Vec<gtk::TreeListRow> {
+    match node.kind() {
+        NodeKind::Schema => {
+            let groups = node.groups().map_or(0, |groups| groups.n_items());
+            (0..groups).filter_map(|position| row.child_row(position)).collect()
+        }
+        NodeKind::ObjectGroup | NodeKind::Placeholder => Vec::new(),
+        NodeKind::Group | NodeKind::Connection => child_rows(row),
+    }
+}
+
 fn child_rows(row: &gtk::TreeListRow) -> Vec<gtk::TreeListRow> {
     let count = row.children().map_or(0, |children| children.n_items());
     (0..count).filter_map(|position| row.child_row(position)).collect()

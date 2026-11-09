@@ -25,20 +25,6 @@ impl SidebarObject {
         this
     }
 
-    /// The heading over the objects of one kind, a row that opens
-    /// nothing.
-    pub(crate) fn heading(index: &Arc<SidebarIndex>, rank: u8) -> Self {
-        let this: Self = glib::Object::new();
-        let imp = this.imp();
-        let _ = imp.index.set(index.clone());
-        imp.heading.set(Some(rank));
-        this
-    }
-
-    pub(crate) fn is_heading(&self) -> bool {
-        self.imp().heading.get().is_some()
-    }
-
     fn row(&self) -> Option<&IndexEntry> {
         let imp = self.imp();
         imp.index.get()?.entry(imp.entry.get())

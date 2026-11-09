@@ -312,38 +312,93 @@ fn qualified(schema: Option<&str>, name: &str) -> String {
     }
 }
 
-/// The kinds in the order the macOS sidebar lists them, so each kind is
-/// one run of a section and can sit under a heading of its own. A
-/// partitioned table or a dictionary is listed with the tables.
-pub(crate) fn kind_rank(kind: ObjectKind) -> u8 {
-    match kind {
-        ObjectKind::View => 1,
-        ObjectKind::MaterializedView => 2,
-        ObjectKind::ForeignTable => 3,
-        ObjectKind::Sequence => 4,
-        ObjectKind::Procedure => 5,
-        ObjectKind::Function => 6,
-        ObjectKind::Trigger => 7,
-        ObjectKind::Key(_) => KEY_RANK,
-        _ => 0,
+// The macOS app's order. Tables, partitions, dictionaries and keys stay in the schema's own list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum ObjectGroup {
+    Views,
+    MaterializedViews,
+    ForeignTables,
+    Sequences,
+    Procedures,
+    Functions,
+    Triggers,
+}
+
+const GROUPS: [ObjectGroup; 7] = [
+    ObjectGroup::Views,
+    ObjectGroup::MaterializedViews,
+    ObjectGroup::ForeignTables,
+    ObjectGroup::Sequences,
+    ObjectGroup::Procedures,
+    ObjectGroup::Functions,
+    ObjectGroup::Triggers,
+];
+
+impl ObjectGroup {
+    fn of(kind: ObjectKind) -> Option<Self> {
+        match kind {
+            ObjectKind::View => Some(Self::Views),
+            ObjectKind::MaterializedView => Some(Self::MaterializedViews),
+            ObjectKind::ForeignTable => Some(Self::ForeignTables),
+            ObjectKind::Sequence => Some(Self::Sequences),
+            ObjectKind::Procedure => Some(Self::Procedures),
+            ObjectKind::Function => Some(Self::Functions),
+            ObjectKind::Trigger => Some(Self::Triggers),
+            ObjectKind::Table | ObjectKind::PartitionedTable | ObjectKind::Dictionary | ObjectKind::Key(_) => None,
+        }
+    }
+
+    pub(crate) fn title(self) -> String {
+        use crate::i18n::pgettext;
+        match self {
+            Self::Views => pgettext("sidebar group", "Views"),
+            Self::MaterializedViews => pgettext("sidebar group", "Materialized Views"),
+            Self::ForeignTables => pgettext("sidebar group", "Foreign Tables"),
+            Self::Sequences => pgettext("sidebar group", "Sequences"),
+            Self::Procedures => pgettext("sidebar group", "Procedures"),
+            Self::Functions => pgettext("sidebar group", "Functions"),
+            Self::Triggers => pgettext("sidebar group", "Triggers"),
+        }
     }
 }
 
-/// A key-value engine's keys have no kinds to group by.
-pub(crate) const KEY_RANK: u8 = 8;
+// Each group is then one stretch of its section's run, after the objects no group takes.
+fn kind_rank(kind: ObjectKind) -> u8 {
+    ObjectGroup::of(kind)
+        .and_then(|group| GROUPS.iter().position(|each| *each == group))
+        .map_or(0, |at| u8::try_from(at + 1).unwrap_or(u8::MAX))
+}
 
-/// What a heading says of the kind with `rank`.
-pub(crate) fn rank_title(rank: u8) -> String {
-    use crate::i18n::pgettext;
-    match rank {
-        1 => pgettext("object kind heading", "Views"),
-        2 => pgettext("object kind heading", "Materialized Views"),
-        3 => pgettext("object kind heading", "Foreign Tables"),
-        4 => pgettext("object kind heading", "Sequences"),
-        5 => pgettext("object kind heading", "Procedures"),
-        6 => pgettext("object kind heading", "Functions"),
-        7 => pgettext("object kind heading", "Triggers"),
-        _ => pgettext("object kind heading", "Tables"),
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct GroupRun {
+    pub(crate) group: Option<ObjectGroup>,
+    pub(crate) start: u32,
+    pub(crate) end: u32,
+}
+
+impl SidebarIndex {
+    // The objects no group takes come first, even when there are none.
+    pub(crate) fn group_runs(&self, run: SectionRun) -> Vec<GroupRun> {
+        let entries = self
+            .entries
+            .get(run.start as usize..run.end as usize)
+            .unwrap_or_default();
+        let mut runs = Vec::new();
+        let mut start = 0;
+        for (rank, group) in std::iter::once(None).chain(GROUPS.map(Some)).enumerate() {
+            let end =
+                start + entries[start..].partition_point(|entry| usize::from(kind_rank(entry.object.kind)) <= rank);
+            if group.is_none() || end > start {
+                let at = |offset: usize| run.start + u32::try_from(offset).unwrap_or(u32::MAX);
+                runs.push(GroupRun {
+                    group,
+                    start: at(start),
+                    end: at(end),
+                });
+            }
+            start = end;
+        }
+        runs
     }
 }
 
@@ -537,6 +592,45 @@ mod tests {
             ]
         );
         assert_eq!(index.runs().len(), 1, "every kind shares its schema's section");
+        let groups: Vec<(Option<ObjectGroup>, u32, u32)> = index
+            .group_runs(index.runs()[0])
+            .into_iter()
+            .map(|run| (run.group, run.start, run.end))
+            .collect();
+        assert_eq!(
+            groups,
+            [
+                (None, 0, 1),
+                (Some(ObjectGroup::Views), 1, 2),
+                (Some(ObjectGroup::Sequences), 2, 3),
+                (Some(ObjectGroup::Procedures), 3, 4),
+                (Some(ObjectGroup::Functions), 4, 6),
+                (Some(ObjectGroup::Triggers), 6, 8),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_schema_of_views_alone_has_no_objects_of_its_own() {
+        let index = SidebarIndex::build(&[object(Some("public"), "recent", ObjectKind::View)], &[]);
+
+        let groups = index.group_runs(index.runs()[0]);
+
+        assert_eq!(
+            groups,
+            [
+                GroupRun {
+                    group: None,
+                    start: 0,
+                    end: 0
+                },
+                GroupRun {
+                    group: Some(ObjectGroup::Views),
+                    start: 0,
+                    end: 1
+                },
+            ]
+        );
     }
 
     #[test]

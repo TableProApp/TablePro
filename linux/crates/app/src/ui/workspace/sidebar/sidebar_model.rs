@@ -8,7 +8,7 @@ use gtk4::prelude::*;
 use tablepro_core::meta::{ObjectKind, TableRef};
 
 use super::object_target::ObjectTarget;
-use super::sidebar_index::{SidebarIndex, search_key};
+use super::sidebar_index::{ObjectGroup, SectionRun, SidebarIndex, search_key};
 use super::sidebar_list::{Entries, SidebarList};
 use super::tree_node::TreeNode;
 use crate::ui::store_sync;
@@ -177,12 +177,7 @@ impl SidebarModel {
                 .unwrap_or_else(|| TreeNode::schema(&section.title, None));
             node.set_schema_name(section.schema.clone());
             let entries = run.map_or_else(Entries::default, |(_, run)| Entries::Run(run.start, run.end));
-            if let Some(rows) = node.rows() {
-                let listed = run.map_or_else(Entries::default, |(_, run)| {
-                    Entries::grouped(&index, run.start, run.end)
-                });
-                rows.show(&index, listed);
-            }
+            show_groups(&node, &index, run.map(|(_, run)| run));
             let results = match &mut found {
                 Found::Nothing => Entries::default(),
                 Found::Everything => entries,
@@ -236,30 +231,79 @@ impl SidebarModel {
         index.entry(entry).map(|entry| entry.object.kind)
     }
 
-    /// The schema whose tables hold `table`, and where among them.
-    pub(crate) fn locate(&self, table: &TableRef) -> Option<(TreeNode, u32)> {
-        self.locate_in(table, TreeNode::rows)
+    pub(crate) fn locate(&self, table: &TableRef) -> Option<Located> {
+        let entry = self.shown.borrow().find(&ObjectTarget::Rows(table.clone()))?;
+        nodes_of(&self.schemas).into_iter().find_map(|schema| {
+            let groups = schema.groups()?;
+            if let Some(offset) = schema.rows().and_then(|rows| rows.position_of_entry(entry)) {
+                return Some(Located {
+                    offset: groups.n_items() + offset,
+                    group: None,
+                    schema,
+                });
+            }
+            nodes_of(&groups).into_iter().find_map(|group| {
+                let offset = group.rows()?.position_of_entry(entry)?;
+                Some(Located {
+                    schema: schema.clone(),
+                    group: Some(group),
+                    offset,
+                })
+            })
+        })
     }
 
     /// The schema whose found tables hold `table`, and where among them.
     pub(crate) fn locate_found(&self, table: &TableRef) -> Option<(TreeNode, u32)> {
-        self.locate_in(table, TreeNode::found_rows)
-    }
-
-    fn locate_in(
-        &self,
-        table: &TableRef,
-        list: fn(&TreeNode) -> Option<super::sidebar_list::SidebarList>,
-    ) -> Option<(TreeNode, u32)> {
         let entry = self.shown.borrow().find(&ObjectTarget::Rows(table.clone()))?;
-        let store = &self.schemas;
-        (0..store.n_items())
-            .filter_map(|at| store.item(at).and_downcast::<TreeNode>())
-            .find_map(|node| {
-                let offset = list(&node)?.position_of_entry(entry)?;
-                Some((node, offset))
-            })
+        nodes_of(&self.schemas).into_iter().find_map(|node| {
+            let offset = node.found_rows()?.position_of_entry(entry)?;
+            Some((node, offset))
+        })
     }
+}
+
+// `offset` is under the group when there is one, else under the schema, after its groups.
+#[derive(Debug)]
+pub(crate) struct Located {
+    pub(crate) schema: TreeNode,
+    pub(crate) group: Option<TreeNode>,
+    pub(crate) offset: u32,
+}
+
+fn nodes_of(store: &impl IsA<gio::ListModel>) -> Vec<TreeNode> {
+    (0..store.n_items())
+        .filter_map(|at| store.item(at).and_downcast::<TreeNode>())
+        .collect()
+}
+
+// A group keeps its node across lists, so the tree keeps it open.
+fn show_groups(schema: &TreeNode, index: &Arc<SidebarIndex>, run: Option<SectionRun>) {
+    let Some(store) = schema.groups() else {
+        return;
+    };
+    let held: HashMap<ObjectGroup, TreeNode> = nodes_of(&store)
+        .into_iter()
+        .filter_map(|node| Some((node.object_group()?, node)))
+        .collect();
+    let mut own = Entries::default();
+    let mut groups = Vec::new();
+    for group_run in run.map(|run| index.group_runs(run)).unwrap_or_default() {
+        let entries = Entries::Run(group_run.start, group_run.end);
+        let Some(group) = group_run.group else {
+            own = entries;
+            continue;
+        };
+        let node = held.get(&group).cloned().unwrap_or_else(|| TreeNode::objects(group));
+        if let Some(rows) = node.rows() {
+            rows.show(index, entries);
+        }
+        groups.push(node);
+    }
+    if let Some(rows) = schema.rows() {
+        rows.show(index, own);
+    }
+    store_sync::sync(&store, &groups);
 }
 
 fn flatten(first: &gio::ListStore, then: &gio::ListStore) -> gtk::FlattenListModel {
@@ -323,22 +367,7 @@ mod tests {
     fn names(list: &gio::ListModel) -> Vec<String> {
         (0..list.n_items())
             .filter_map(|at| list.item(at).and_downcast::<SidebarObject>())
-            .filter(|object| !object.is_heading())
             .map(|object| object.name())
-            .collect()
-    }
-
-    /// Every row of `list`, a kind's heading as its title in brackets.
-    fn rows_of(list: &gio::ListModel) -> Vec<String> {
-        (0..list.n_items())
-            .filter_map(|at| list.item(at).and_downcast::<SidebarObject>())
-            .map(|object| {
-                if object.is_heading() {
-                    format!("[{}]", object.name())
-                } else {
-                    object.name()
-                }
-            })
             .collect()
     }
 
@@ -347,9 +376,11 @@ mod tests {
         nodes(store)
             .into_iter()
             .map(|node| {
+                let groups = node.groups().map(|groups| nodes(&groups.upcast())).unwrap_or_default();
+                let lists = std::iter::once(node.rows()).chain(groups.iter().map(TreeNode::rows));
                 (
                     node.title(),
-                    node.children().map(|list| names(&list)).unwrap_or_default(),
+                    lists.flatten().flat_map(|list| names(&list.upcast())).collect(),
                 )
             })
             .collect()
@@ -509,60 +540,64 @@ mod tests {
         assert_eq!(model.kind_of(&rows("active_users")), Some(ObjectKind::View));
     }
 
+    fn under(node: &TreeNode) -> Vec<String> {
+        let Some(children) = node.children() else {
+            return Vec::new();
+        };
+        (0..children.n_items())
+            .filter_map(|at| children.item(at))
+            .filter_map(|item| match item.downcast::<TreeNode>() {
+                Ok(group) => Some(group.title()),
+                Err(item) => item.downcast::<SidebarObject>().ok().map(|object| object.name()),
+            })
+            .collect()
+    }
+
     #[gtk4::test]
-    fn a_schema_lists_its_objects_under_a_heading_for_each_kind_that_has_some() {
+    fn a_schema_lists_a_group_for_each_other_kind_before_its_tables() {
         let model = SidebarModel::new();
         let of = |kind, name: &str| ObjectInfo {
             kind,
             ..object("public", name)
         };
-        replace(
-            &model,
-            &[
-                of(ObjectKind::Function, "total"),
-                of(ObjectKind::Table, "users"),
-                of(ObjectKind::Sequence, "ids"),
-                of(ObjectKind::View, "active_users"),
-                of(ObjectKind::Table, "orders"),
-            ],
-            &[],
-        );
+        let objects = [
+            of(ObjectKind::Function, "total"),
+            object("public", "users"),
+            of(ObjectKind::Sequence, "ids"),
+            of(ObjectKind::View, "active_users"),
+            object("public", "orders"),
+            of(ObjectKind::Function, "add"),
+        ];
+        replace(&model, &objects, &[]);
 
-        let node = nodes(&model.schemas()).remove(0);
+        let schema = nodes(&model.schemas()).remove(0);
+        assert_eq!(under(&schema), ["Views", "Sequences", "Functions", "orders", "users"]);
+        let groups = nodes(&schema.groups().expect("the schema's groups").upcast());
+        assert_eq!(under(&groups[2]), ["add", "total"]);
+        assert_eq!(groups[0].object_group(), Some(ObjectGroup::Views));
 
+        replace(&model, &objects[..5], &[]);
+        let again = nodes(&model.schemas()).remove(0);
+        let kept = nodes(&again.groups().expect("the schema's groups").upcast());
         assert_eq!(
-            rows_of(&node.children().expect("the schema's rows")),
-            [
-                "[Tables]",
-                "orders",
-                "users",
-                "[Views]",
-                "active_users",
-                "[Sequences]",
-                "ids",
-                "[Functions]",
-                "total"
-            ]
+            kept[0], groups[0],
+            "a new list keeps the group, and the tree keeps it open"
         );
+        assert_eq!(under(&kept[2]), ["total"]);
+
+        let view = model
+            .locate(&TableRef::new(Some("public".to_owned()), "active_users"))
+            .expect("the view");
+        assert_eq!(view.group.as_ref(), Some(&kept[0]));
+        assert_eq!(view.offset, 0);
+        let orders = model
+            .locate(&TableRef::new(Some("public".to_owned()), "orders"))
+            .expect("the table");
+        assert_eq!((orders.group, orders.offset), (None, 3), "after the three groups");
     }
 
     #[gtk4::test]
-    fn a_search_lists_what_it_finds_without_headings() {
-        let model = SidebarModel::new();
-        let view = ObjectInfo {
-            kind: ObjectKind::View,
-            ..object("public", "user_view")
-        };
-        replace(&model, &[object("public", "users"), view], &[]);
-
-        search(&model, "user");
-
-        let node = nodes(&model.schemas()).remove(0);
-        assert_eq!(rows_of(&node.found().expect("the found rows")), ["users", "user_view"]);
-    }
-
-    #[gtk4::test]
-    fn a_key_listing_has_no_headings() {
+    fn a_key_listing_has_no_groups() {
         let model = SidebarModel::new();
         let key = ObjectInfo {
             kind: ObjectKind::Key(tablepro_core::meta::KeyKind::Hash),
@@ -571,9 +606,7 @@ mod tests {
         let asked = model.replace(SidebarIndex::keys(&[key], "Database 0".to_owned()));
         model.show(asked.work_out()).expect("the rows");
 
-        let node = nodes(&model.schemas()).remove(0);
-
-        assert_eq!(rows_of(&node.children().expect("rows")), ["session:1"]);
+        assert_eq!(under(&nodes(&model.schemas()).remove(0)), ["session:1"]);
     }
 
     #[gtk4::test]
@@ -590,8 +623,9 @@ mod tests {
         );
         let users = TableRef::new(Some("sales".to_owned()), "users");
 
-        let (node, offset) = model.locate(&users).expect("the table in its schema");
-        assert_eq!((node.title(), offset), ("sales".to_owned(), 1), "under its heading");
+        let located = model.locate(&users).expect("the table in its schema");
+        assert_eq!((located.schema.title(), located.offset), ("sales".to_owned(), 0));
+        assert!(located.group.is_none());
         assert!(model.locate_found(&users).is_none(), "found with no search");
 
         search(&model, "user");
