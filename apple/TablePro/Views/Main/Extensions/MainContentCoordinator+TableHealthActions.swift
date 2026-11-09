@@ -30,7 +30,7 @@ extension MainContentCoordinator {
     func refreshTableHealth(inDatabase database: String) {
         for tab in tabManager.tabs where tab.tabType == .tableHealth && tab.tableContext.databaseName == database {
             guard let model = tableHealthModels[tab.id] else { continue }
-            Task { await model.refresh() }
+            Task { await model.refreshAfterCatalogChange() }
         }
     }
 

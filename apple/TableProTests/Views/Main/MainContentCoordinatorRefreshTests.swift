@@ -410,7 +410,7 @@ struct MainContentCoordinatorRefreshTests {
             connectionId: coordinator.connectionId,
             provider: TableHealthProviderFactory.provider(for: .postgresql),
             history: RefreshUnusedHistory(),
-            metadata: metadata,
+            lease: .metadata(metadata),
             database: { "shop" }
         )
 
@@ -441,7 +441,7 @@ struct MainContentCoordinatorRefreshTests {
             connectionId: coordinator.connectionId,
             provider: TableHealthProviderFactory.provider(for: .postgresql),
             history: history,
-            metadata: RefreshLeaseRecorder(),
+            lease: .metadata(RefreshLeaseRecorder()),
             database: { tabManager.tabs.first { $0.id == tabId }?.tableContext.databaseName ?? "" }
         )
         coordinator.tableHealthModels[tabId] = model
@@ -500,7 +500,7 @@ struct MainContentCoordinatorRefreshTests {
             connectionId: coordinator.connectionId,
             provider: TableHealthProviderFactory.provider(for: .postgresql),
             history: RefreshUnusedHistory(),
-            metadata: metadata,
+            lease: .metadata(metadata),
             database: { database }
         )
         coordinator.tableHealthModels[tabId] = model

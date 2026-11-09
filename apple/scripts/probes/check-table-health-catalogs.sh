@@ -244,6 +244,7 @@ SQL
     check_postgres_stale_statistics
     check_postgres_transaction_id_age
     check_postgres_locks
+    check_postgres_standbys
 }
 
 # Every query must answer while another session holds ACCESS EXCLUSIVE on a table: a size or a definition read
@@ -288,40 +289,102 @@ SQL
     )
     [ "$version" -ge 100000 ] && cases+=("nearLimitQuery|")
 
-    local entry query listed output
+    # A table never vacuumed or analyzed has no pages recorded, so no size rather than 0.
+    local output
+    output="$(pg -d "$DATABASE" -c "$(query_of "$source" missingPrimaryKeyQuery)")"
+    expect_pattern "a table with no pages recorded has no size" "$output" "^public\|lk_nopk\|0\|$"
+
+    local entry query listed
+    # $1 says which lock is held; with $2 = listed, each query must still list what the lock covers.
+    run_lock_cases() {
+        for entry in "${cases[@]}"; do
+            query="${entry%%|*}"
+            listed="${entry#*|}"
+            output="$(pg -d "$DATABASE" -c "SET lock_timeout = '5s'" -c "$(query_of "$source" "$query")" 2>&1)"
+            expect "$query answers while $1" "$output" "lock timeout" no
+            if [ "$2" = listed ] && [ -n "$listed" ]; then
+                expect "$query still lists the locked table while $1" "$output" "$listed" yes
+            fi
+        done
+        [ "$2" = listed ] || return
+        output="$(pg -d "$DATABASE" -c "SET lock_timeout = '5s'" -c "$(query_of "$source" "$invalid")" 2>&1)"
+        expect_pattern "an invalid index comes back without the definition that would wait while $1" "$output" \
+            "lk_listed_v_uniq\|t\|f\|[0-9]*\|$"
+        if [ "$version" -ge 100000 ]; then
+            output="$(pg -d "$DATABASE" -c "SET lock_timeout = '5s'" -c "$(query_of "$source" nearLimitQuery)" 2>&1)"
+            expect "a sequence comes back unread and marked locked while $1" "$output" \
+                "public|lk_listed_id_seq|integer|1|1|2147483647||1|2147483647||t|t|" yes
+        fi
+    }
+
     hold_lock tablepro_health_other_lock "LOCK TABLE lk_other IN ACCESS EXCLUSIVE MODE"
-    for entry in "${cases[@]}"; do
-        query="${entry%%|*}"
-        output="$(pg -d "$DATABASE" -c "SET lock_timeout = '5s'" -c "$(query_of "$source" "$query")" 2>&1)"
-        expect "$query answers while a table it does not list is locked" "$output" "lock timeout" no
-    done
+    run_lock_cases "a table it does not list is locked" unlisted
     terminate tablepro_health_other_lock
 
     local sequence_lock=""
     [ "$version" -ge 100000 ] && sequence_lock="; ALTER SEQUENCE lk_listed_id_seq MAXVALUE 2147483647"
     hold_lock tablepro_health_listed_lock "TRUNCATE lk_listed, lk_nopk, lk_child, lk_bloat$sequence_lock"
-    for entry in "${cases[@]}"; do
-        query="${entry%%|*}"
-        listed="${entry#*|}"
-        output="$(pg -d "$DATABASE" -c "SET lock_timeout = '5s'" -c "$(query_of "$source" "$query")" 2>&1)"
-        expect "$query answers while the tables it lists, their indexes and TOAST tables are locked" "$output" "lock timeout" no
-        if [ -n "$listed" ]; then
-            expect "$query still lists the locked table" "$output" "$listed" yes
-        fi
-    done
-    output="$(pg -d "$DATABASE" -c "SET lock_timeout = '5s'" -c "$(query_of "$source" "$invalid")" 2>&1)"
-    expect_pattern "an invalid index on a locked table comes back without the definition that would wait" "$output" \
-        "lk_listed_v_uniq\|t\|f\|[0-9]*\|$"
-    if [ "$version" -ge 100000 ]; then
-        output="$(pg -d "$DATABASE" -c "SET lock_timeout = '5s'" -c "$(query_of "$source" nearLimitQuery)" 2>&1)"
-        expect "a sequence an open ALTER SEQUENCE holds comes back unread and marked locked" "$output" \
-            "public|lk_listed_id_seq|integer|1|1|2147483647||1|2147483647||t|t|" yes
-    fi
+    run_lock_cases "an open transaction locks the tables it lists, their indexes and TOAST tables" listed
     terminate tablepro_health_listed_lock
+
+    # A prepared transaction keeps its locks with no backend, so pg_locks shows them with a NULL pid.
+    if [ "$(pg -d "$DATABASE" -c "SHOW max_prepared_transactions")" -gt 0 ]; then
+        local prepared=(-c "BEGIN" -c "TRUNCATE lk_listed, lk_nopk, lk_child, lk_bloat")
+        [ "$version" -ge 100000 ] && prepared+=(-c "ALTER SEQUENCE lk_listed_id_seq MAXVALUE 2147483647")
+        pg -d "$DATABASE" "${prepared[@]}" -c "PREPARE TRANSACTION 'tablepro_health_lock'" > /dev/null
+        run_lock_cases "a prepared transaction locks the tables it lists" listed
+        pg -d "$DATABASE" -c "ROLLBACK PREPARED 'tablepro_health_lock'" > /dev/null
+    else
+        echo "note  max_prepared_transactions is 0, so the prepared transaction lock case is skipped"
+    fi
+}
+
+# Only a physical standby runs queries whose index scans this server does not count: a logical walsender feeds a
+# subscriber or a CDC reader, and a base backup runs no queries.
+check_postgres_standbys() {
+    local stats appeared=0
+    PGAPPNAME=tablepro_health_logical psql -X -q "host=$HOST port=$PORT user=$USER_NAME dbname=$DATABASE replication=database" \
+        -c "SELECT pg_sleep(30)" > /dev/null 2>&1 &
+    for _ in $(seq 1 20); do
+        [ "$(pg -d postgres -c "SELECT count(*) FROM pg_stat_replication WHERE application_name = 'tablepro_health_logical'")" = "1" ] \
+            && { appeared=1; break; }
+        sleep 0.25
+    done
+    if [ "$appeared" = 1 ]; then
+        stats="$(pg -d "$DATABASE" -c "$(query_of "$source" statisticsQuery)")"
+        expect_pattern "a logical walsender is not counted as a standby" "$stats" "\|0$"
+    else
+        echo "note  no logical walsender appeared, so that standby case is skipped"
+    fi
+    terminate tablepro_health_logical
+
+    command -v pg_receivewal > /dev/null || { echo "note  pg_receivewal not found, so the physical standby case is skipped"; return; }
+    local wal receiver
+    wal="$(mktemp -d)"
+    PGAPPNAME=tablepro_health_physical pg_receivewal -h "$HOST" -p "$PORT" -U "$USER_NAME" -D "$wal" --no-sync > /dev/null 2>&1 &
+    receiver=$!
+    appeared=0
+    for _ in $(seq 1 20); do
+        [ "$(pg -d postgres -c "SELECT count(*) FROM pg_stat_replication WHERE application_name = 'tablepro_health_physical'")" = "1" ] \
+            && { appeared=1; break; }
+        sleep 0.25
+    done
+    if [ "$appeared" = 1 ]; then
+        stats="$(pg -d "$DATABASE" -c "$(query_of "$source" statisticsQuery)")"
+        expect_pattern "a physical walsender is counted as a standby" "$stats" "\|1$"
+    else
+        echo "note  pg_receivewal could not stream (a replication line in pg_hba.conf is needed), so the physical standby case is skipped"
+    fi
+    kill "$receiver" 2> /dev/null
+    wait "$receiver" 2> /dev/null
+    rm -rf "$wal"
 }
 
 cleanup_postgres() {
     local admin=(psql -X -q -h "$HOST" -p "$PORT" -U "$USER_NAME" -d postgres)
+    # A prepared transaction left by an interrupted run would block the drop; it ends only from its own database.
+    psql -X -q -h "$HOST" -p "$PORT" -U "$USER_NAME" -d "$DATABASE" \
+        -c "ROLLBACK PREPARED 'tablepro_health_lock'" > /dev/null 2>&1
     "${admin[@]}" -c "SELECT pg_catalog.pg_terminate_backend(pid) FROM pg_catalog.pg_stat_activity WHERE datname = '$DATABASE' AND pid <> pg_catalog.pg_backend_pid()" > /dev/null 2>&1
     "${admin[@]}" -c "DROP DATABASE IF EXISTS $DATABASE" > /dev/null 2>&1
     "${admin[@]}" -c "DROP ROLE IF EXISTS $READER_ROLE" > /dev/null 2>&1
@@ -481,7 +544,7 @@ SQL
     if [ "$version" -ge 110000 ]; then
         expect "index shape reads an INCLUDE column after the key count" "$shape" "k_a_incl_c|btree|f|f|t|false|f|||8192|1|2|4|c|||" yes
         expect "index shape reads an attached partition index as protected" "$shape" "public|rp_2026|r|rp_2026_k_at_idx|btree|f|f|t|false|t|" yes
-        expect "index shape reads a partitioned table's index" "$shape" "public|rp|p|r_rp_k|btree|f|f|t|false|f|||0|" yes
+        expect "index shape reads a partitioned table's index, which has no pages and so no size" "$shape" "public|rp|p|r_rp_k|btree|f|f|t|false|f||||1|1|" yes
     fi
     if [ "$version" -ge 150000 ]; then
         expect "index shape reads NULLS NOT DISTINCT" "$shape" "public|ri|r|k_nnd|btree|t|f|t|true|f|" yes

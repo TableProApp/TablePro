@@ -186,7 +186,7 @@ struct TableHealthViewModelTests {
             connectionId: metadata.connection.id,
             provider: TableHealthProviderFactory.provider(for: databaseType),
             history: history,
-            metadata: metadata,
+            lease: .metadata(metadata),
             database: { database.name }
         )
     }
@@ -683,5 +683,27 @@ struct TableHealthViewModelTests {
         viewModel.reloadHistory()
 
         #expect(row(viewModel, table: "logs")?.status == .ignored)
+    }
+
+    @Test("A run that read the catalog before a rename records nothing, and the run after the rename records")
+    func renameDuringARunDropsThatRun() async {
+        let metadata = HealthMetadata()
+        let hold = (reached: AsyncGate(), release: AsyncGate())
+        metadata.hold = hold
+        let history = InMemoryHistory()
+        let viewModel = makeViewModel(metadata, history: history)
+
+        let first = Task { await viewModel.refresh() }
+        await hold.reached.wait()
+        metadata.server.tablesWithoutKey = ["logs_v2"]
+        let afterRename = Task { await viewModel.refreshAfterCatalogChange() }
+        await hold.release.open()
+        await afterRename.value
+        await first.value
+
+        #expect(metadata.leases.count == 2)
+        #expect(history.recordCount == 1)
+        #expect(viewModel.findingRows.map { $0.id.table } == ["logs_v2"])
+        #expect(viewModel.resolvedCount == 0)
     }
 }

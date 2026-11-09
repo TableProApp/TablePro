@@ -112,17 +112,20 @@ extension DatabaseManager {
         }
     }
 
-    /// A read that stops on the server once the task awaiting it is cancelled. It runs under a lease
-    /// owner of its own, so the cancel reaches this read and nothing else on the connection.
+    // A read that stops on the server once the task awaiting it is cancelled. It runs under a lease owner of its own,
+    // so the cancel reaches this read and nothing else on the connection.
     func withCancellableRead<T: Sendable>(
         scope: DatabaseScope,
         route: ScopedDriverRoute,
+        workload: MetadataConnectionPool.Workload = .interactive,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
         let owner = DriverLeaseOwner()
         let connectionId = scope.connectionId
         return try await withTaskCancellationHandler {
-            try await withScopedDriver(scope: scope, route: route, cancellation: .cancellableRead(owner), body)
+            try await withScopedDriver(
+                scope: scope, route: route, workload: workload, cancellation: .cancellableRead(owner), body
+            )
         } onCancel: {
             Task { @MainActor in
                 try? DatabaseManager.shared.cancelRunningQuery(owner: owner, on: connectionId, delivery: .background)

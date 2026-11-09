@@ -44,6 +44,32 @@ struct GetTableHealthToolTests {
         Set(schema?["required"]?.arrayValue?.compactMap { $0.stringValue } ?? [])
     }
 
+    // An unused index, and a redundant one it covers: dropping both leaves the redundant one's lookups with no index.
+    private let unusedCover = TableHealthFinding(
+        kind: .unusedIndex,
+        schema: "public",
+        table: "orders",
+        objectName: "orders_customer_status_idx",
+        detail: "No scans",
+        sizeBytes: 8_192,
+        metrics: [TableHealthMetric.estimatedRows(10)],
+        fixSQL: "DROP INDEX public.orders_customer_status_idx;"
+    )
+    private let coveredRedundant = TableHealthFinding(
+        kind: .redundantIndex,
+        schema: "public",
+        table: "orders",
+        objectName: "orders_customer_idx",
+        detail: "Covered",
+        sizeBytes: 4_096,
+        metrics: [TableHealthMetric(id: "covering_index", label: "Covering Index", value: .text("orders_customer_status_idx"))],
+        fixSQL: "DROP INDEX public.orders_customer_idx;"
+    )
+
+    private func finding(named object: String, in payload: JsonValue) -> JsonValue? {
+        payload["findings"]?.arrayValue?.first { $0["object"]?.stringValue == object }
+    }
+
     @Test("A failed check reaches the client as fixed text, never the server's own words")
     func failedCheckIsFixedText() {
         let payload = MCPConnectionBridge.tableHealthPayload(
@@ -155,20 +181,11 @@ struct GetTableHealthToolTests {
 
     @Test("Every key the payload sends is declared in the output schema, and every required one is sent")
     func payloadMatchesTheOutputSchema() throws {
-        let finding = TableHealthFinding(
-            kind: .unusedIndex,
-            schema: "public",
-            table: "orders",
-            objectName: "orders_note_idx",
-            detail: "Never scanned",
-            sizeBytes: 8_192,
-            metrics: [TableHealthMetric.estimatedRows(10)],
-            fixSQL: "DROP INDEX public.orders_note_idx;"
-        )
         let payload = MCPConnectionBridge.tableHealthPayload(
             report(
                 [
-                    result(.unusedIndex, .completed, [finding], note: "Counts since the reset"),
+                    result(.unusedIndex, .completed, [unusedCover], note: "Counts since the reset"),
+                    result(.redundantIndex, .completed, [coveredRedundant]),
                     result(.bloat, .failed("boom")),
                     result(.staleStatistics, .skipped("standby"))
                 ],
@@ -191,14 +208,49 @@ struct GetTableHealthToolTests {
             #expect(required(checkSchema).isSubset(of: checkKeys))
         }
 
-        let encoded = try #require(payload["findings"]?.arrayValue?.first)
-        let findingKeys = keys(encoded)
-        #expect(findingKeys == keys(findingSchema?["properties"]))
-        #expect(required(findingSchema).isSubset(of: findingKeys))
+        let findings = payload["findings"]?.arrayValue ?? []
+        var sentFindingKeys: Set<String> = []
+        for encoded in findings {
+            let findingKeys = keys(encoded)
+            sentFindingKeys.formUnion(findingKeys)
+            #expect(findingKeys.isSubset(of: keys(findingSchema?["properties"])), "undeclared: \(findingKeys)")
+            #expect(required(findingSchema).isSubset(of: findingKeys))
+            for metric in encoded["metrics"]?.arrayValue ?? [] {
+                #expect(keys(metric) == keys(metricSchema?["properties"]))
+                #expect(required(metricSchema) == keys(metric))
+            }
+        }
+        #expect(sentFindingKeys == keys(findingSchema?["properties"]))
+    }
 
-        let metric = encoded["metrics"]?.arrayValue?.first
-        #expect(keys(metric) == keys(metricSchema?["properties"]))
-        #expect(required(metricSchema) == keys(metric))
+    @Test("A fix that would drop a redundant index along with its unused cover is withheld, with the reason")
+    func coveredFixIsWithheld() throws {
+        let payload = MCPConnectionBridge.tableHealthPayload(
+            report([
+                result(.unusedIndex, .completed, [unusedCover]),
+                result(.redundantIndex, .completed, [coveredRedundant])
+            ]),
+            ledger: TableHealthLedger()
+        )
+
+        let withheld = try #require(finding(named: "orders_customer_idx", in: payload))
+        let kept = try #require(finding(named: "orders_customer_status_idx", in: payload))
+        #expect(withheld["fix_sql"] == nil)
+        #expect(withheld["fix_withheld_reason"]?.stringValue?.contains("orders_customer_status_idx") == true)
+        #expect(kept["fix_sql"]?.stringValue == "DROP INDEX public.orders_customer_status_idx;")
+        #expect(kept["fix_withheld_reason"] == nil)
+    }
+
+    @Test("A redundant index whose cover stays keeps its fix")
+    func uncoveredFixIsSent() throws {
+        let payload = MCPConnectionBridge.tableHealthPayload(
+            report([result(.redundantIndex, .completed, [coveredRedundant])]),
+            ledger: TableHealthLedger()
+        )
+
+        let redundant = try #require(finding(named: "orders_customer_idx", in: payload))
+        #expect(redundant["fix_sql"]?.stringValue == "DROP INDEX public.orders_customer_idx;")
+        #expect(redundant["fix_withheld_reason"] == nil)
     }
 
     // The stand-in read stays held until after the call has answered, like one queued behind the tab's report on

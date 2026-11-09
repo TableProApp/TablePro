@@ -20,13 +20,13 @@ extension MCPConnectionBridge {
         // The checks cover every schema, as the Table Health tab does.
         let reportScope = DatabaseScope(connectionId: scope.connectionId, database: scope.database, schema: nil)
         let report = try await Self.withinTableHealthTimeout(seconds: timeoutSeconds) {
-            try await TableHealthReportLoader.load(provider: provider, scope: reportScope, metadata: DatabaseManager.shared)
+            try await TableHealthReportLoader.load(provider: provider, scope: reportScope, lease: .cancellable)
         }
         return Self.tableHealthPayload(report, ledger: ledger)
     }
 
-    // Answers at the deadline and lets the checks wind down after it: a read queued on the pool's serial lane sees its
-    // cancel only when the job ahead of it ends, and a catalog read already running cannot be stopped on the server.
+    // Answers at the deadline and cancels the checks without waiting for them: a read queued on the pool's serial lane
+    // sees its cancel only when the job ahead of it ends, and a running statement ends once the server takes the cancel.
     static func withinTableHealthTimeout<T: Sendable>(
         seconds: Int,
         _ body: @Sendable @escaping () async throws -> T
@@ -76,14 +76,21 @@ extension MCPConnectionBridge {
         }
     }
 
+    // A client that runs every fix_sql it gets would drop a used index along with the unused index covering it, so the
+    // fixes the Save Fix Script leaves out are left out here too.
     static func tableHealthPayload(_ report: TableHealthReport, ledger: TableHealthLedger) -> JsonValue {
-        .object([
+        let withheld = TableHealthFixScript.withheldFixes(in: report.findings)
+        return .object([
             "database": .string(report.database),
             "generated_at": .string(iso8601.withLockUnchecked { $0.string(from: report.generatedAt) }),
             "notes": .array(report.notes.map { .string($0) }),
             "checks": .array(report.checks.map(tableHealthCheckPayload)),
             "findings": .array(report.findings.map { finding in
-                tableHealthFindingPayload(finding, status: ledger.mcpStatus(of: finding.id))
+                tableHealthFindingPayload(
+                    finding,
+                    status: ledger.mcpStatus(of: finding.id),
+                    withholdsFix: withheld.contains(finding.id)
+                )
             })
         ])
     }
@@ -120,7 +127,11 @@ extension MCPConnectionBridge {
         return String(localized: "The server did not answer this check.")
     }
 
-    static func tableHealthFindingPayload(_ finding: TableHealthFinding, status: TableHealthFindingStatus) -> JsonValue {
+    static func tableHealthFindingPayload(
+        _ finding: TableHealthFinding,
+        status: TableHealthFindingStatus,
+        withholdsFix: Bool
+    ) -> JsonValue {
         var fields: [String: JsonValue] = [
             "kind": .string(finding.kind.rawValue),
             "detail": .string(finding.detail),
@@ -139,10 +150,26 @@ extension MCPConnectionBridge {
         if let sizeBytes = finding.sizeBytes {
             fields["size_bytes"] = .int(Int(sizeBytes))
         }
-        if let fixSQL = finding.fixSQL {
+        if withholdsFix {
+            fields["fix_withheld_reason"] = .string(withheldFixReason(finding))
+        } else if let fixSQL = finding.fixSQL {
             fields["fix_sql"] = .string(fixSQL)
         }
         return .object(fields)
+    }
+
+    static func withheldFixReason(_ finding: TableHealthFinding) -> String {
+        guard case .text(let cover)? = finding.metric("covering_index")?.value else {
+            return String(
+                localized: "Withheld: another finding's fix drops the index that covers this one, and dropping both leaves these lookups with no index."
+            )
+        }
+        return String(
+            format: String(
+                localized: "Withheld: another finding's fix drops %@, the index that covers this one, and dropping both leaves these lookups with no index."
+            ),
+            cover
+        )
     }
 
     static func tableHealthMetricPayload(_ metric: TableHealthMetric) -> JsonValue {

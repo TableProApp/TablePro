@@ -71,7 +71,12 @@ public struct GetTableHealthTool: MCPToolImplementation {
                         ),
                         "detail": MCPToolSchema.string(String(localized: "One-line description")),
                         "size_bytes": MCPToolSchema.integer(
-                            String(localized: "On-disk size of what the fix acts on: the index for an index check, the table otherwise")
+                            String(
+                                localized: """
+                                Estimated size of what the fix acts on: the index for an index check, the table \
+                                otherwise. On PostgreSQL it is as of the last VACUUM, ANALYZE or index build.
+                                """
+                            )
                         ),
                         "metrics": MCPToolSchema.array(
                             String(localized: "Measured values"),
@@ -93,7 +98,12 @@ public struct GetTableHealthTool: MCPToolImplementation {
                             )
                         ),
                         "fix_sql": MCPToolSchema.string(
-                            String(localized: "SQL that fixes the finding, absent when there is none. Review it before running it.")
+                            String(
+                                localized: "SQL that fixes the finding, absent when there is none or it is withheld. Review it before running it."
+                            )
+                        ),
+                        "fix_withheld_reason": MCPToolSchema.string(
+                            String(localized: "Why fix_sql is left out: running it with the other fixes would do harm")
                         ),
                         "status": MCPToolSchema.string(
                             String(localized: "new: not seen in the last run the Table Health tab recorded; ignored: the user accepted it"),

@@ -105,6 +105,20 @@ struct TableHealthFixScriptTests {
         #expect(!text.contains(#"DROP INDEX CONCURRENTLY "public"."orders_customer_idx";"#))
     }
 
+    @Test("The withheld fixes are the redundant indexes whose cover another finding with a fix drops")
+    func withheldFixesNameTheKeptFindings() {
+        let kept = redundant("orders_customer_idx", coveredBy: "orders_customer_created_idx")
+        let coverStays = redundant("orders_status_idx", coveredBy: "orders_status_created_idx")
+        let findings = [unused("orders_customer_created_idx"), kept, coverStays]
+        #expect(TableHealthFixScript.withheldFixes(in: findings) == [kept.id])
+        #expect(TableHealthFixScript.withheldFixes(in: [kept, coverStays]).isEmpty)
+
+        let coverWithoutFix = TableHealthFixture.finding(
+            .unusedIndex, schema: "public", table: "orders", object: "orders_customer_created_idx", fixSQL: nil
+        )
+        #expect(TableHealthFixScript.withheldFixes(in: [coverWithoutFix, kept]).isEmpty)
+    }
+
     @Test("A redundant index still drops when its cover stays, when the cover is another table's, or when it is unused itself")
     func redundantIndexDropsOtherwise() {
         let coverStays = script([redundant("orders_customer_idx", coveredBy: "orders_customer_created_idx")])

@@ -70,11 +70,15 @@ struct TableHealthPreviewPane: View {
                             minHeight: TableHealthLayoutMetrics.previewSQLMinimumHeight,
                             maxHeight: .infinity
                         )
-                    // A ScrollView takes all the height it is offered, so it gets the content's height up to the cap.
+                    // A ScrollView takes all the height it is offered: at least the content up to the cap, and no
+                    // more than the content when the pane is dragged taller.
                     ScrollView {
                         about(finding)
                     }
-                    .frame(height: min(aboutHeight, TableHealthLayoutMetrics.previewAboutMaximumHeight))
+                    .frame(
+                        minHeight: min(aboutHeight, TableHealthLayoutMetrics.previewAboutMaximumHeight),
+                        maxHeight: aboutHeight
+                    )
                 }
             }
             if fix != nil {
@@ -110,8 +114,10 @@ struct TableHealthPreviewPane: View {
             if !facts.isEmpty {
                 Form {
                     ForEach(facts) { fact in
+                        // Without the flexible frame the columns form lays a long value out wider than the pane.
                         LabeledContent(fact.label) {
                             Text(verbatim: fact.value)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                 }

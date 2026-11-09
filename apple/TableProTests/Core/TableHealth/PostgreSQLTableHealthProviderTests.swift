@@ -128,6 +128,20 @@ struct PostgreSQLTableHealthProviderTests {
         #expect(finding.fixSQL == #"DROP INDEX CONCURRENTLY "sales"."orders_note_idx";"#)
     }
 
+    @Test("An unused index says only that the server's statistics hold no scans, which a reset or a crash also empties")
+    func unusedIndexDetailClaimsOnlyTheStatistics() throws {
+        let finding = try #require(findings(
+            .unusedIndex,
+            columns: ["schema_name", "table_name", "index_name", "index_bytes"],
+            rows: [["sales", "orders", "orders_note_idx", "8192"]]
+        ).first)
+        #expect(finding.detail == String(
+            format: String(localized: "%1$@ has no scans in the server's statistics. It takes %2$@."),
+            "orders_note_idx", ByteSizeFormatting.string(byteString: "8192")
+        ))
+        #expect(!finding.detail.contains("never"))
+    }
+
     @Test("A table without a primary key quotes its name in the preview and carries its rows and size")
     func missingPrimaryKeyQuotesName() throws {
         let finding = try #require(findings(
@@ -804,15 +818,19 @@ struct PostgreSQLTableHealthProviderTests {
         ].joined(separator: " "))
     }
 
-    @Test("Before 12, an invalid index whose table was locked, so its definition was not read, falls back to a plain rebuild")
-    func lockedDefinitionFallsBackToReindex() throws {
+    @Test("Before 12, an invalid index whose table was locked has no fix rather than a rebuild that blocks writes, and says to refresh")
+    func lockedDefinitionHasNoFix() throws {
         let finding = try #require(findings(
             .invalidIndex,
             columns: Self.invalidColumns,
             rows: [["public", "inv", "inv_vw_cancelled", "f", "t", "16384", nil]],
             statistics: statistics(version: "110000")
         ).first)
-        #expect(finding.fixSQL == #"REINDEX INDEX "public"."inv_vw_cancelled";"#)
+        #expect(finding.fixSQL == nil)
+        #expect(finding.detail.contains(String(
+            localized: "Another session held its table locked, so its definition could not be read. Refresh once the lock is gone for a fix."
+        )))
         #expect(finding.metric("index_definition") == nil)
+        #expect(try invalid("inv_vw_cancelled", version: "170011").fixSQL == #"REINDEX INDEX CONCURRENTLY "public"."inv_vw_cancelled";"#)
     }
 }

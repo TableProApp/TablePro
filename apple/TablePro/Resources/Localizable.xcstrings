@@ -7183,6 +7183,9 @@
         }
       }
     },
+    "%1$@ has no scans in the server's statistics. It takes %2$@." : {
+
+    },
     "%1$@ has type %2$@, which MongoDB does not have. Choose a type from the list." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -25454,6 +25457,9 @@
 
     },
     "Another selected row adds the same query." : {
+
+    },
+    "Another session held its table locked, so its definition could not be read. Refresh once the lock is gone for a fix." : {
 
     },
     "Another source column is mapped to the same destination column." : {
@@ -74297,6 +74303,9 @@
           }
         }
       }
+    },
+    "Estimated size of what the fix acts on: the index for an index check, the table otherwise. On PostgreSQL it is as of the last VACUUM, ANALYZE or index build." : {
+
     },
     "Estimated Startup Cost" : {
       "localizations" : {
@@ -172336,6 +172345,9 @@
         }
       }
     },
+    "SQL that fixes the finding, absent when there is none or it is withheld. Review it before running it." : {
+
+    },
     "SQL that fixes the finding, absent when there is none. Review it before running it." : {
 
     },
@@ -216807,6 +216819,9 @@
         }
       }
     },
+    "Why fix_sql is left out: running it with the other fixes would do harm" : {
+
+    },
     "Why the check was skipped or failed" : {
 
     },
@@ -217534,6 +217549,12 @@
       }
     },
     "With the Dashboard" : {
+
+    },
+    "Withheld: another finding's fix drops %@, the index that covers this one, and dropping both leaves these lookups with no index." : {
+
+    },
+    "Withheld: another finding's fix drops the index that covers this one, and dropping both leaves these lookups with no index." : {
 
     },
     "Word wrap" : {

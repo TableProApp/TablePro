@@ -5,8 +5,10 @@ import Foundation
 // members themselves, but their schema is, and a fix there would change the extension's own objects.
 // No query opens a relation another session may hold locked: the size functions and the index and expression
 // deparsers wait behind an ACCESS EXCLUSIVE lock (an open ALTER TABLE, TRUNCATE or VACUUM FULL) until it ends. Sizes
-// are relpages times block_size, as of the last VACUUM, ANALYZE or index build; on 14 and later a table never measured
-// has reltuples -1 and no size.
+// are relpages times block_size, as of the last VACUUM, ANALYZE or index build. A relation with no pages recorded has
+// no size rather than 0: on 10 to 13 a table never vacuumed or analyzed reads relpages 0 and reltuples 0, the same as
+// an empty one. Before 13 ANALYZE leaves the TOAST table's relpages alone, so there a table's TOAST share is as of its
+// last VACUUM.
 struct PostgreSQLTableHealthProvider: TableHealthProvider {
     let checks: [TableHealthCheckKind] = [
         .bloat, .unusedIndex, .redundantIndex, .invalidIndex, .missingPrimaryKey, .unindexedForeignKey,
@@ -16,12 +18,18 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
     // The checks that read activity counters, which a standby keeps for its own queries only.
     private static let counterChecks: [TableHealthCheckKind] = [.bloat, .unusedIndex, .staleStatistics]
 
+    // A physical standby's walsender has no database; a logical one (a subscription, a CDC reader) has one, and a
+    // base backup's reports state backup. Without pg_read_all_stats the state reads NULL, which still counts.
     static let statisticsQuery = """
         SELECT pg_catalog.current_setting('track_counts') AS track_counts,
                pg_catalog.date_part('epoch', d.stats_reset) AS stats_reset,
                pg_catalog.current_setting('server_version_num') AS server_version_num,
                pg_catalog.pg_is_in_recovery() AS in_recovery,
-               (SELECT pg_catalog.count(*) FROM pg_catalog.pg_stat_replication) AS standbys
+               (SELECT pg_catalog.count(*)
+                FROM pg_catalog.pg_stat_replication r
+                JOIN pg_catalog.pg_stat_activity a ON a.pid = r.pid
+                WHERE a.datid IS NULL
+                  AND r.state IS DISTINCT FROM 'backup') AS standbys
         FROM pg_catalog.pg_stat_database d
         WHERE d.datname = pg_catalog.current_database()
         """
@@ -35,7 +43,7 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                s.n_live_tup AS live_rows,
                s.n_dead_tup AS dead_rows,
                pg_catalog.date_part('epoch', GREATEST(s.last_vacuum, s.last_autovacuum)) AS last_vacuum,
-               CASE WHEN c.reltuples >= 0::pg_catalog.float4
+               CASE WHEN c.relpages > 0
                     THEN (c.relpages::pg_catalog.int8 + COALESCE(tc.relpages, 0)::pg_catalog.int8) * pg_catalog.current_setting('block_size')::pg_catalog.int8
                END AS table_bytes,
                (SELECT pg_catalog.date_part('epoch', d.stats_reset)
@@ -72,7 +80,9 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
         SELECT s.schemaname AS schema_name,
                s.relname AS table_name,
                s.indexrelname AS index_name,
-               ic.relpages::pg_catalog.int8 * pg_catalog.current_setting('block_size')::pg_catalog.int8 AS index_bytes
+               CASE WHEN ic.relpages > 0
+                    THEN ic.relpages::pg_catalog.int8 * pg_catalog.current_setting('block_size')::pg_catalog.int8
+               END AS index_bytes
         FROM pg_catalog.pg_stat_user_indexes s
         JOIN pg_catalog.pg_index i ON i.indexrelid = s.indexrelid
         JOIN pg_catalog.pg_class ic ON ic.oid = s.indexrelid
@@ -115,7 +125,7 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
         SELECT n.nspname AS schema_name,
                c.relname AS table_name,
                GREATEST(c.reltuples, 0)::pg_catalog.int8 AS estimated_rows,
-               CASE WHEN c.reltuples >= 0::pg_catalog.float4
+               CASE WHEN c.relpages > 0
                     THEN (c.relpages::pg_catalog.int8 + COALESCE(tc.relpages, 0)::pg_catalog.int8) * pg_catalog.current_setting('block_size')::pg_catalog.int8
                END AS table_bytes
         FROM pg_catalog.pg_class c
@@ -161,7 +171,7 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                rn.nspname AS referenced_schema,
                rc.relname AS referenced_table,
                GREATEST(c.reltuples, 0)::pg_catalog.int8 AS estimated_rows,
-               CASE WHEN c.reltuples >= 0::pg_catalog.float4
+               CASE WHEN c.relpages > 0
                     THEN (c.relpages::pg_catalog.int8 + COALESCE(tc.relpages, 0)::pg_catalog.int8) * pg_catalog.current_setting('block_size')::pg_catalog.int8
                END AS table_bytes
         FROM pg_catalog.pg_constraint con
@@ -220,7 +230,9 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                CASE WHEN p.position = 1
                     THEN pg_catalog.regexp_replace(i.indexprs::pg_catalog.text, ' :location -?[0-9]+', '', 'g')
                END AS expressions,
-               ic.relpages::pg_catalog.int8 * pg_catalog.current_setting('block_size')::pg_catalog.int8 AS index_bytes,
+               CASE WHEN ic.relpages > 0
+                    THEN ic.relpages::pg_catalog.int8 * pg_catalog.current_setting('block_size')::pg_catalog.int8
+               END AS index_bytes,
                k.key_count,
                p.position,
                (i.indkey::pg_catalog.int2[])[p.position - 1] AS attnum,
@@ -270,14 +282,16 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                c.relname AS index_name,
                i.indisunique AS is_unique,
                i.indisready AS is_ready,
-               c.relpages::pg_catalog.int8 * pg_catalog.current_setting('block_size')::pg_catalog.int8 AS index_bytes,
+               CASE WHEN c.relpages > 0
+                    THEN c.relpages::pg_catalog.int8 * pg_catalog.current_setting('block_size')::pg_catalog.int8
+               END AS index_bytes,
                CASE WHEN NOT EXISTS (
                         SELECT 1 FROM pg_catalog.pg_locks l
                         WHERE l.locktype = 'relation'
                           AND l.database = (SELECT d.oid FROM pg_catalog.pg_database d WHERE d.datname = pg_catalog.current_database())
                           AND l.relation = i.indrelid
                           AND l.mode = 'AccessExclusiveLock'
-                          AND l.pid <> pg_catalog.pg_backend_pid()
+                          AND l.pid IS DISTINCT FROM pg_catalog.pg_backend_pid()
                     )
                     THEN pg_catalog.pg_get_indexdef(i.indexrelid)
                END AS index_definition
@@ -319,14 +333,16 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                c.relname AS index_name,
                i.indisunique AS is_unique,
                i.indisready AS is_ready,
-               c.relpages::pg_catalog.int8 * pg_catalog.current_setting('block_size')::pg_catalog.int8 AS index_bytes,
+               CASE WHEN c.relpages > 0
+                    THEN c.relpages::pg_catalog.int8 * pg_catalog.current_setting('block_size')::pg_catalog.int8
+               END AS index_bytes,
                CASE WHEN NOT EXISTS (
                         SELECT 1 FROM pg_catalog.pg_locks l
                         WHERE l.locktype = 'relation'
                           AND l.database = (SELECT d.oid FROM pg_catalog.pg_database d WHERE d.datname = pg_catalog.current_database())
                           AND l.relation = i.indrelid
                           AND l.mode = 'AccessExclusiveLock'
-                          AND l.pid <> pg_catalog.pg_backend_pid()
+                          AND l.pid IS DISTINCT FROM pg_catalog.pg_backend_pid()
                     )
                     THEN pg_catalog.pg_get_indexdef(i.indexrelid)
                END AS index_definition
@@ -406,7 +422,7 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                 WHERE l.locktype = 'relation'
                   AND l.database = (SELECT d.oid FROM pg_catalog.pg_database d WHERE d.datname = pg_catalog.current_database())
                   AND l.mode IN ('ShareLock', 'ShareRowExclusiveLock', 'ExclusiveLock', 'AccessExclusiveLock')
-                  AND l.pid <> pg_catalog.pg_backend_pid()
+                  AND l.pid IS DISTINCT FROM pg_catalog.pg_backend_pid()
             ) lk ON lk.relation = s.oid
             CROSS JOIN LATERAL (
                 SELECT pg_catalog.has_sequence_privilege(s.oid, 'SELECT,USAGE') AS readable,
@@ -423,7 +439,7 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                        a.attname AS column_name,
                        pg_catalog.format_type(a.atttypid, a.atttypmod) AS column_type,
                        f.ownership,
-                       CASE WHEN t.reltuples >= 0::pg_catalog.float4
+                       CASE WHEN t.relpages > 0
                             THEN (t.relpages::pg_catalog.int8 + COALESCE(tt.relpages, 0)::pg_catalog.int8) * pg_catalog.current_setting('block_size')::pg_catalog.int8
                        END AS table_bytes,
                        CASE WHEN ty.base OPERATOR(pg_catalog.=) 'pg_catalog.int2'::pg_catalog.regtype THEN -32768::pg_catalog.int8
@@ -511,7 +527,7 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                    f.freeze_max_age,
                    2147483648 - GREATEST(pg_catalog.age(c.relfrozenxid), COALESCE(pg_catalog.age(t.relfrozenxid), 0)) AS transactions_left,
                    pg_catalog.date_part('epoch', GREATEST(s.last_vacuum, s.last_autovacuum)) AS last_vacuum,
-                   CASE WHEN c.reltuples >= 0::pg_catalog.float4
+                   CASE WHEN c.relpages > 0
                         THEN (c.relpages::pg_catalog.int8 + COALESCE(t.relpages, 0)::pg_catalog.int8) * pg_catalog.current_setting('block_size')::pg_catalog.int8
                    END AS table_bytes
             FROM pg_catalog.pg_class c
@@ -570,7 +586,7 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                END AS never_analyzed,
                sr.stats_readable,
                pg_catalog.date_part('epoch', GREATEST(s.last_analyze, s.last_autoanalyze)) AS last_analyze,
-               CASE WHEN c.reltuples >= 0::pg_catalog.float4
+               CASE WHEN c.relpages > 0
                     THEN (c.relpages::pg_catalog.int8 + COALESCE(tc.relpages, 0)::pg_catalog.int8) * pg_catalog.current_setting('block_size')::pg_catalog.int8
                END AS table_bytes
         FROM pg_catalog.pg_class c
@@ -797,7 +813,7 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
         let size = ByteSizeFormatting.string(byteString: row["index_bytes"])
         return TableHealthFinding(
             kind: .unusedIndex, schema: schema, table: row["table_name"], objectName: index,
-            detail: String(format: String(localized: "%1$@ has never been scanned. It takes %2$@."), index, size),
+            detail: String(format: String(localized: "%1$@ has no scans in the server's statistics. It takes %2$@."), index, size),
             sizeBytes: row.int64("index_bytes"),
             fixSQL: "DROP INDEX CONCURRENTLY \(context.qualified(schema, index));"
         )
@@ -930,7 +946,7 @@ extension PostgreSQLTableHealthProvider {
         let leftover = index.range(of: "_cc(new|old)[0-9]*$", options: .regularExpression).map { String(index[$0]) }
 
         let detail: String
-        let fixSQL: String
+        let fixSQL: String?
         if let leftover, serverVersion.map({ $0 >= 120_000 }) ?? true {
             detail = leftover.hasPrefix("_ccold")
                 ? String(format: String(
@@ -953,14 +969,22 @@ extension PostgreSQLTableHealthProvider {
             if isUnique {
                 sentences.append(String(localized: "Rebuilding a unique index fails while the table holds duplicate values."))
             }
-            detail = sentences.joined(separator: " ")
+            // Before 12 the only rebuild that keeps writes going is a drop and a concurrent build from the definition,
+            // which the query leaves out while another session holds the table. A plain REINDEX would block writes
+            // for the whole rebuild, so there is no fix until a refresh can read the definition.
             if canReindexConcurrently {
                 fixSQL = "REINDEX INDEX CONCURRENTLY \(target);"
             } else if let create = definition.flatMap(Self.concurrentCreate) {
                 fixSQL = "DROP INDEX CONCURRENTLY \(target);\n\(create);"
             } else {
-                fixSQL = "REINDEX INDEX \(target);"
+                fixSQL = nil
+                if definition == nil {
+                    sentences.append(String(
+                        localized: "Another session held its table locked, so its definition could not be read. Refresh once the lock is gone for a fix."
+                    ))
+                }
             }
+            detail = sentences.joined(separator: " ")
         }
 
         var metrics: [TableHealthMetric] = []
