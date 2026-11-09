@@ -1536,3 +1536,64 @@ fn a_dotted_field_of_a_document_neither_sorts_nor_takes_an_edit() {
     assert!(!grid.edit().edit_cell(&cell), "the dotted field opened for editing");
     assert_eq!(harness.tracker.pending_count(), 0);
 }
+
+#[gtk4::test]
+fn the_bottom_bar_offers_the_column_chooser() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    use libadwaita::prelude::*;
+
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    let tab = harness.tab();
+    let window = crate::test_support::OwnedWindow::presented(
+        libadwaita::Window::builder()
+            .default_width(1000)
+            .default_height(500)
+            .content(tab)
+            .build(),
+    );
+    let button = crate::test_support::find_by_action_name(tab, "grid.columns")
+        .and_downcast::<gtk4::Button>()
+        .expect("a Columns button");
+    // A pending initial surface configure can otherwise overwrite the later resize.
+    wait_until(WAIT, || {
+        window.is_mapped() && tab.width() >= 900 && !harness.shown().is_empty()
+    })
+    .expect("the wide window is allocated");
+    assert!(tab.current_breakpoint().is_none());
+    assert!(button.is_visible(), "the wide bar shows Columns");
+    assert_eq!(button.label().as_deref(), Some("Columns"));
+    assert!(button.is_focusable());
+    button.emit_clicked();
+    wait_until(WAIT, || window.visible_dialog().is_some()).expect("Columns opens a dialog");
+    let chooser = window.visible_dialog().expect("the chooser");
+    assert!(chooser.is::<crate::ui::data_grid::ColumnChooser>());
+    chooser.close();
+    wait_until(WAIT, || window.visible_dialog().is_none() && chooser.parent().is_none()).expect("the chooser closes");
+
+    window.set_default_size(600, 500);
+    assert!(
+        wait_until(WAIT, || tab.width() > 0 && tab.width() <= 600).is_ok(),
+        "the tab did not resize: window width {}, tab width {}",
+        window.width(),
+        tab.width(),
+    );
+    assert!(!button.is_visible(), "the narrow bar hides Columns");
+    assert!(tab.imp().more_button.is_visible(), "the narrow bar offers More");
+    let menu = tab.imp().more_button.menu_model().expect("More menu");
+    let actions = menu
+        .item_link(0, gtk4::gio::MENU_LINK_SECTION)
+        .expect("actions section");
+    assert!((0..actions.n_items()).any(|index| {
+        actions
+            .item_attribute_value(index, gtk4::gio::MENU_ATTRIBUTE_ACTION, None)
+            .and_then(|value| value.get::<String>())
+            .as_deref()
+            == Some("grid.columns")
+    }));
+    tab.activate_action("grid.columns", None)
+        .expect("More reaches the grid");
+    wait_until(WAIT, || window.visible_dialog().is_some()).expect("More opens Columns");
+    window.visible_dialog().expect("the chooser").close();
+}
