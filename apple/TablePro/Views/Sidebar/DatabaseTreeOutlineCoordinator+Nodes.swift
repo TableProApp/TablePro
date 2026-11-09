@@ -64,7 +64,7 @@ extension DatabaseTreeOutlineCoordinator {
             return objectNodes(database: database, schema: schema)
         case .table(let ref):
             guard showsPartitions, ref.table.type == .partitionedTable else { return [] }
-            return partitionNodes(of: ref)
+            return partitionNodes(of: ref, parentId: DatabaseTreeNode.tableId(ref))
         case .partition(let ref):
             guard showsPartitions, ref.partition.isSubpartitioned else { return [] }
             return subpartitionNodes(of: ref)
@@ -78,15 +78,16 @@ extension DatabaseTreeOutlineCoordinator {
             return redisChildren(of: nil)
         case .redisNode(let redisNode):
             return redisChildren(of: redisNode)
-        case .recentTable, .temporaryTable, .routine, .trigger, .userType, .status, .tableDetailGroup, .tableDetail:
+        case .tableDetailGroup(let group):
+            return tableDetailNodes(in: group)
+        case .recentTable, .temporaryTable, .routine, .trigger, .userType, .status, .tableDetail:
             return []
         }
     }
 
     /// Only the top-level partitions. A subpartition names the partition it subdivides and is
     /// nested under that row instead, because an engine that has them reports both in one list.
-    private func partitionNodes(of ref: DatabaseTreeTableRef) -> [DatabaseTreeNode] {
-        let parentId = DatabaseTreeNode.tableId(ref)
+    internal func partitionNodes(of ref: DatabaseTreeTableRef, parentId: String) -> [DatabaseTreeNode] {
         let state = service.partitionsLoadState(
             connectionId: connectionId, database: ref.database ?? "", schema: ref.schema, table: ref.table.name
         )
@@ -108,7 +109,7 @@ extension DatabaseTreeOutlineCoordinator {
     /// own list carrying its name.
     private func subpartitionNodes(of ref: DatabaseTreePartitionRef) -> [DatabaseTreeNode] {
         if let relation = ref.tableRef {
-            return partitionNodes(of: relation)
+            return partitionNodes(of: relation, parentId: DatabaseTreeNode.tableId(relation))
         }
         let parent = ref.parent
         let state = service.partitionsLoadState(
@@ -802,7 +803,7 @@ extension DatabaseTreeOutlineCoordinator {
         }
     }
 
-    private func statusNode(parentId: String, status: DatabaseTreeNode.Status) -> DatabaseTreeNode {
+    internal func statusNode(parentId: String, status: DatabaseTreeNode.Status) -> DatabaseTreeNode {
         node(id: DatabaseTreeNode.statusId(parentId: parentId, status: status), kind: .status(status))
     }
 

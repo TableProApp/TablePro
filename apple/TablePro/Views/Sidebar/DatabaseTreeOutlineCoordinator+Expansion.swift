@@ -196,10 +196,10 @@ extension DatabaseTreeOutlineCoordinator {
             restoreObjectGroupExpansion(under: node)
         case .foldersSection:
             restoreFolderExpansion(under: node)
-        case .objectKindSection, .containerObjectKindSection, .tableFolder, .table, .partition:
+        case .objectKindSection, .containerObjectKindSection, .tableFolder, .table, .partition, .tableDetailGroup:
             restorePartitionExpansion(under: node)
         case .recentSection, .recentTable, .temporarySection, .temporaryTable, .database, .routine, .trigger,
-             .userType, .status, .redisKeysSection, .redisNode, .tableDetailGroup, .tableDetail:
+             .userType, .status, .redisKeysSection, .redisNode, .tableDetail:
             break
         }
     }
@@ -257,7 +257,13 @@ extension DatabaseTreeOutlineCoordinator {
         case .partition(let ref):
             guard let tableRef = ref.tableRef else { break }
             recordTableExpansion(tableRef, expanded: expanded)
-        case .recentTable, .temporaryTable, .routine, .trigger, .userType, .status, .redisNode, .tableDetailGroup, .tableDetail:
+        case .tableDetailGroup(let group):
+            if expanded {
+                windowState?.expandedTreeTableDetailGroups.insert(group.expansionKey)
+            } else {
+                windowState?.expandedTreeTableDetailGroups.remove(group.expansionKey)
+            }
+        case .recentTable, .temporaryTable, .routine, .trigger, .userType, .status, .redisNode, .tableDetail:
             break
         }
     }
@@ -282,6 +288,8 @@ extension DatabaseTreeOutlineCoordinator {
             loadPartitions(ref)
         case .partition(let ref):
             loadPartitions(ref.tableRef ?? ref.parent)
+        case .tableDetailGroup(let group):
+            loadTableDetailGroup(group)
         case .hierarchicalSchemaSection(let schema):
             guard DatabaseTreeFilter.readsOnDisclosure(origin: disclosureOrigin)
                 || !hierarchicalSearchSkipsRead(schema)
@@ -289,7 +297,7 @@ extension DatabaseTreeOutlineCoordinator {
             loadHierarchicalSchemaObjects(schema)
         case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
              .routine, .trigger, .userType, .status, .objectKindSection, .containerObjectKindSection,
-             .redisKeysSection, .redisNode, .tableDetailGroup, .tableDetail:
+             .redisKeysSection, .redisNode, .tableDetail:
             break
         }
     }
@@ -389,6 +397,30 @@ extension DatabaseTreeOutlineCoordinator {
         Task {
             await service.loadPartitions(
                 connectionId: connectionId, database: database, schema: ref.schema, table: ref.table.name
+            )
+        }
+    }
+
+    /// A group reads its own list alone. Partitions keep their own list and the rule it already follows.
+    private func loadTableDetailGroup(_ group: DatabaseTreeTableDetailGroupRef) {
+        let ref = group.table
+        guard let kind = group.kind.detailKind else {
+            loadPartitions(ref)
+            return
+        }
+        let connectionId = connectionId
+        let database = ref.database ?? ""
+        let phase = service.tableDetailsLoadState(
+            connectionId: connectionId, database: database, schema: ref.schema, table: ref.table.name, kind: kind
+        ).erased
+        let needsFetch = service.tableDetailsNeedFetch(
+            connectionId: connectionId, database: database, schema: ref.schema, table: ref.table.name, kind: kind
+        )
+        guard TableDetailGroupResolver.readsOnDisclosure(needsFetch: needsFetch, phase: phase, origin: disclosureOrigin)
+        else { return }
+        Task {
+            await service.loadTableDetails(
+                connectionId: connectionId, database: database, schema: ref.schema, table: ref.table.name, kind: kind
             )
         }
     }

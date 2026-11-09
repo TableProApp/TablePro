@@ -625,7 +625,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
                 self?.routineDisplayLabels[ref.id] ?? ref.routine.name
             },
             showsPartitions: showsPartitions,
-            listsAttachedSchemas: listsAttachedSchemas
+            listsAttachedSchemas: listsAttachedSchemas,
+            tableDetailCount: { [weak self] group in self?.tableDetailCount(group) }
         )
     }
 
