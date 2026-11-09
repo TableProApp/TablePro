@@ -1716,3 +1716,23 @@ fn a_fields_copy_button_copies_its_own_value_not_the_selected_ones() {
         "the first field's value, with the second selected"
     );
 }
+
+#[gtk4::test]
+fn a_fields_menu_makes_that_field_the_one_its_actions_act_on() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    grid.focus(0, 1);
+    drain_main_context();
+    assert_eq!(selected_field(&pane), Some(1));
+
+    let row = drawn_field(&pane, 0).child().expect("the field's row");
+    let more = descendants(&row)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::MenuButton>().ok())
+        .find(|button| button.tooltip_text().as_deref() == Some("More Actions"))
+        .expect("the field's menu");
+    more.popup();
+    drain_main_context();
+
+    assert_eq!(selected_field(&pane), Some(0));
+    more.popdown();
+}

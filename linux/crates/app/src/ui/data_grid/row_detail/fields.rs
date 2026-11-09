@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
-use gtk4::{self as gtk, glib, pango};
+use gtk4::{self as gtk, gio, glib, pango};
 use tablepro_core::Value;
 
 use super::RowDetailPane;
@@ -87,7 +87,7 @@ fn marker(icon: &str) -> gtk::Image {
     image
 }
 
-fn field_row() -> gtk::Box {
+fn field_row(menu: Option<&gio::MenuModel>) -> (gtk::Box, gtk::MenuButton) {
     let key = marker(icons::PRIMARY_KEY);
     // Dimmed as a libadwaita property row's title, so the eye lands on the value.
     let name = gtk::Label::builder()
@@ -128,6 +128,18 @@ fn field_row() -> gtk::Box {
     copy.add_css_class("field-copy");
     copy.update_property(&[gtk::accessible::Property::Label(&gettext("Copy Value"))]);
     top.append(&copy);
+    // The menu of the editor's own button, for any field: opening it
+    // makes this field the selected one, which the actions act on.
+    let more = gtk::MenuButton::builder()
+        .icon_name(icons::GO_DOWN)
+        .tooltip_text(gettext("More Actions"))
+        .valign(gtk::Align::Center)
+        .build();
+    more.set_menu_model(menu);
+    more.add_css_class("flat");
+    more.add_css_class("circular");
+    more.update_property(&[gtk::accessible::Property::Label(&gettext("More Actions"))]);
+    top.append(&more);
     let value = gtk::Inscription::builder()
         .hexpand(true)
         .min_chars(1)
@@ -161,7 +173,7 @@ fn field_row() -> gtk::Box {
     let slot = gtk::Box::new(gtk::Orientation::Vertical, 0);
     slot.set_visible(false);
     row.append(&slot);
-    row
+    (row, more)
 }
 
 /// The value's field and the slot after it, in a field row.
@@ -295,11 +307,33 @@ impl RowDetailPane {
 
     fn field_factory(&self) -> gtk::SignalListItemFactory {
         let factory = gtk::SignalListItemFactory::new();
-        factory.connect_setup(|_, item| {
-            if let Some(item) = item.downcast_ref::<gtk::ListItem>() {
-                item.set_child(Some(&field_row()));
+        factory.connect_setup(glib::clone!(
+            #[weak(rename_to = pane)]
+            self,
+            move |_, item| {
+                let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
+                    return;
+                };
+                let menu = pane.imp().value_menu_button.menu_model();
+                let (row, more) = field_row(menu.as_ref());
+                item.set_child(Some(&row));
+                more.connect_active_notify(glib::clone!(
+                    #[weak]
+                    pane,
+                    #[weak]
+                    item,
+                    move |button| {
+                        if !button.is_active() {
+                            return;
+                        }
+                        if let Some(column) = field_of(item.item()) {
+                            pane.set_field(column);
+                            pane.move_grid_focus(column);
+                        }
+                    }
+                ));
             }
-        });
+        ));
         factory.connect_bind(glib::clone!(
             #[weak(rename_to = pane)]
             self,
