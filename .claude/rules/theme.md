@@ -10,8 +10,10 @@ paths:
 
 ## Content, never chrome
 
-- **A theme colors content and the window backdrop, never chrome.** Content: code, the grid, values and wells (an editable value is a `ValueTextField`, not a bezeled control), value trees, diffs, record tables, diagrams, charts, and their stand-in states. Chrome: controls, Accent, Highlight, sidebar, inspector frame, toolbar, titlebar, tab strip, bars, Settings, Welcome, the connection form, sheets, popovers, and `List`, `Form` and `Table` backgrounds. `NSApp.appearance` is the only lever on chrome.
+- **A theme colors content and the window backdrop, never chrome.** Content: code, the grid, values and wells (an editable value is a `ValueTextField`, not a bezeled control), value trees, diffs, record tables, diagrams, charts, and their stand-in states. Chrome: controls, Accent, Highlight, sidebar, inspector frame, toolbar, titlebar, tab strip, bars, Settings, Welcome, the connection form, sheets, popovers, and `List`, `Form` and `Table` backgrounds. `NSApp.appearance` is the only lever on chrome, apart from the Reduce Transparency fill below.
 - **Chrome never reads a slot.** It asks `ThemeBackdropState.isThemed` and picks a system style: `.paneBarBackground(_:ignoresSafeAreaEdges:)` on a pane bar (nothing while themed; no edges, so a top bar never reaches under the toolbar), `.statusBarChrome()` on a status bar, `.splitItemGlassBackground()` on a list filling a glass sidebar or inspector item. No `.tint` with a theme color.
+- **Reduce Transparency is the one fill on chrome.** It swaps the sidebar and inspector glass for an opaque system fill that drops the window color. So while it is on, on macOS 26 and later, and the theme sets `window.background`, each glass sidebar and inspector pane draws that color under its whole pane (Windows). Its lists stay clear, so the selection and controls stay system. Increase Contrast keeps the system fill.
+- **A bar is themed only where the window color reaches what is behind it.** Before macOS 26 nothing colors a sidebar or inspector, so a bar there keeps its material: the pane says it sits on a split item, and `ThemeBackdropState` asks `canReachChrome` for it.
 - **The slot family follows the surface.** Code, values, trees, wells: `editor.*`, so a code field in a form (Startup Commands, Agent SQL) wears it while the form stays system. Records, schema objects, diagram nodes, chart plots, grid stand-ins: `dataGrid.*`. Diff rows: `dataGrid.inserted`, `modified`, `deleted`. Behind panes: `window.background`. Identity, severity and status hues stay system.
 - **Every call site passes the exact system color it drew before as the fallback**, so an unset slot draws an unthemed app. A default changes only on purpose, named in the PR and a changelog fragment.
 
@@ -37,6 +39,7 @@ paths:
 - **A content window subclasses `ContentWindow`** and holds a `ThemeWindowBackdrop`. On macOS 26 and later the backdrop sets `window.background` only while the theme sets it; earlier the window keeps its own color. Code asks `ThemeWindowBackdrop.canReachChrome`, never an `#available` of its own.
 - `ContentWindow` owns the titlebar. Before macOS 26 it stays opaque: a transparent one there swaps its material for a flat fill.
 - The detail column sits on `DetailColumnBackdrop`, so a pane that draws nothing shows `window.background`. `DetailPaneBackdropFill` goes only there.
+- A glass sidebar or inspector pane sits on `SplitItemBackdrop`, pinned to the pane's edges and not its safe area, so it covers the titlebar band too. It draws only under Reduce Transparency (Content, never chrome) and is clear otherwise, so the glass shows.
 
 ## Engine and catalog
 

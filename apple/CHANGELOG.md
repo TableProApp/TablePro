@@ -9,6 +9,115 @@ Unreleased changes are files in `changelog.d/`.
 
 <!-- towncrier release notes start -->
 
+## [0.86.0](https://github.com/TableProApp/TablePro/releases/tag/v0.86.0) - 2026-11-09 [CRITICAL]
+
+Sign in with a TablePro account to use your plan, see your devices and sync a team library. A license key from an earlier version moves into your account the first time the app opens.
+A dropped connection keeps its rows while it reconnects, with Cancel, and every surface shows the same connection state.
+Imports, exports, backups, restores and transfers share one progress sheet, and Quit, Close and Disconnect ask once about work still running.
+Remote DuckDB connections can go through an SSH tunnel, Cloudflare Tunnel, SOCKS proxy or tunnel command, and now require the Token instead of secrets in ~/.duckdb.
+A raw SQL filter can no longer run a second statement, and a DuckDB token no longer reaches another server that a later ATTACH names.
+Sending feedback from inside the app is no longer available.
+
+### Added
+
+- A dropped connection keeps its rows and shows a reconnecting bar with Cancel, then Reconnect after 10 tries. ([#4001](https://github.com/TableProApp/TablePro/pull/4001))
+- Settings > MCP offers Try Again when the server fails to start, and says when the port you set was in use. ([#4007](https://github.com/TableProApp/TablePro/pull/4007))
+- Plugin installs and updates show their progress with Cancel, and a failed update stays in Settings with Try Again. ([#4009](https://github.com/TableProApp/TablePro/pull/4009))
+- Quit, Close and Disconnect ask once, in one alert listing the restores, imports, exports and queries still running. ([#4009](https://github.com/TableProApp/TablePro/pull/4009))
+- Downloading cloud-sql-proxy shows its progress with Cancel, and connecting says when it downloads. ([#4009](https://github.com/TableProApp/TablePro/pull/4009))
+- Linked folders show what each scan found, and Settings > License > Team shows the team library's last refresh. ([#4009](https://github.com/TableProApp/TablePro/pull/4009))
+- A notification when an agent session waits for your answer or its reply fails while you are elsewhere. ([#4009](https://github.com/TableProApp/TablePro/pull/4009))
+- Remote DuckDB connections can go through an SSH tunnel, Cloudflare Tunnel, SOCKS proxy or tunnel command. ([#4021](https://github.com/TableProApp/TablePro/pull/4021))
+- Sign in with a TablePro account to unlock paid features, see your devices and sync a team library. ([#4045](https://github.com/TableProApp/TablePro/pull/4045))
+
+### Changed
+
+- The connections strip, Welcome, the switcher, menus and the iOS app show one connection state, only when it needs you. ([#4001](https://github.com/TableProApp/TablePro/pull/4001))
+- The welcome window shows a license that needs attention and iCloud sync problems, each linking to the fix. ([#4005](https://github.com/TableProApp/TablePro/pull/4005))
+- Plugins that could not load are listed in Settings > Extensions with the reason, Update, Try Again and Remove. ([#4007](https://github.com/TableProApp/TablePro/pull/4007))
+- Notices, warnings and errors use the standard macOS look: color only on the symbol, with no tinted boxes, dots or chips. ([#4007](https://github.com/TableProApp/TablePro/pull/4007))
+- Connection tags are edited in a token field: type a name to add or create a tag, and press Delete to remove one. ([#4007](https://github.com/TableProApp/TablePro/pull/4007))
+- On iOS, a saved row no longer shows a toast, and NULL, Default and column types use standard buttons and text. ([#4007](https://github.com/TableProApp/TablePro/pull/4007))
+- Imports, exports, backups, restores, transfers and copies share one progress sheet, and Escape asks before stopping. ([#4009](https://github.com/TableProApp/TablePro/pull/4009))
+- A finished tab shows a checkmark and a failed one a red triangle, where both showed the same dot. ([#4009](https://github.com/TableProApp/TablePro/pull/4009))
+- The MCP disconnect tool refuses while the connection has running work, unsaved changes or an open transaction. ([#4018](https://github.com/TableProApp/TablePro/pull/4018))
+- Remote DuckDB connections now require the Token and no longer read secrets saved in ~/.duckdb. ([#4021](https://github.com/TableProApp/TablePro/pull/4021))
+- etcd keys and values that are not UTF-8 show as hex, and a quoted `\xHH` in an etcd command writes that byte. ([#4023](https://github.com/TableProApp/TablePro/pull/4023))
+- A license key from an earlier version moves into your TablePro account the first time the app opens. ([#4045](https://github.com/TableProApp/TablePro/pull/4045))
+
+### Removed
+
+- Sending feedback from inside the app is no longer available. ([#4045](https://github.com/TableProApp/TablePro/pull/4045))
+
+### Fixed
+
+- A failed connect showed as disconnected on the connections strip, and a lost connection as failed. ([#4001](https://github.com/TableProApp/TablePro/pull/4001))
+- The toolbar lost the connection's name after a disconnect. ([#4001](https://github.com/TableProApp/TablePro/pull/4001))
+- On iOS, a lost connection stopped reconnecting after one failed try. ([#4001](https://github.com/TableProApp/TablePro/pull/4001))
+- Cancelling a reconnect after an SSH tunnel dropped did not stop it, and the connection could come back on its own. ([#4001](https://github.com/TableProApp/TablePro/pull/4001))
+- Sync Now showed for iCloud problems that trying again cannot clear, such as a restricted account. ([#4005](https://github.com/TableProApp/TablePro/pull/4005))
+- Try Again on a license check showed nothing when the check failed. ([#4005](https://github.com/TableProApp/TablePro/pull/4005))
+- Pro features asked a license that could not be checked for 30 days, or was suspended, to buy a license. ([#4005](https://github.com/TableProApp/TablePro/pull/4005))
+- Notes from MySQL and SQLite maintenance, such as an OPTIMIZE note or an integrity check problem, were never shown. ([#4007](https://github.com/TableProApp/TablePro/pull/4007))
+- Settings > Notifications kept showing an old permission after it was changed in System Settings. ([#4007](https://github.com/TableProApp/TablePro/pull/4007))
+- The MCP status said the port was in use whenever the failure text happened to contain 48. ([#4007](https://github.com/TableProApp/TablePro/pull/4007))
+- A GitHub Copilot error showed only inside its provider sheet while the provider row said Not signed in. ([#4007](https://github.com/TableProApp/TablePro/pull/4007))
+- Quitting left a restore or backup tool running in the background. ([#4009](https://github.com/TableProApp/TablePro/pull/4009))
+- A team library pull kept connection settings it should have removed until TablePro restarted. ([#4009](https://github.com/TableProApp/TablePro/pull/4009))
+- A restore's progress bar never moved. ([#4009](https://github.com/TableProApp/TablePro/pull/4009))
+- Restores, comparisons and sync scripts never notified when they finished out of sight. ([#4009](https://github.com/TableProApp/TablePro/pull/4009))
+- Importing from another app now keeps the TLS, key passphrases and extra connection files that app saved. ([#4015](https://github.com/TableProApp/TablePro/pull/4015))
+- On iOS, the NULL button moved across the field when turned on while editing a row. ([#4018](https://github.com/TableProApp/TablePro/pull/4018))
+- An export or table transfer kept running with no window after a disconnect that did not ask first. ([#4018](https://github.com/TableProApp/TablePro/pull/4018))
+- The selected connection in the sidebar showed a blank white badge when it was lost or failed. ([#4018](https://github.com/TableProApp/TablePro/pull/4018))
+- Restore Previous Values stayed enabled with nothing to restore, then only showed an alert. ([#4018](https://github.com/TableProApp/TablePro/pull/4018))
+- The cell Filter menu added a second copy of a filter that was already running. ([#4019](https://github.com/TableProApp/TablePro/pull/4019))
+- Changing a filter's operator kept the old Match Case setting, and Search All Rows matched case. ([#4019](https://github.com/TableProApp/TablePro/pull/4019))
+- A filter that could not run, such as raw SQL with a comment, loaded every row while showing as applied. ([#4019](https://github.com/TableProApp/TablePro/pull/4019))
+- Raw filter rows were offered on etcd, DynamoDB, Memcached, Weaviate, InfluxDB and Kafka, which cannot run them. ([#4019](https://github.com/TableProApp/TablePro/pull/4019))
+- Loading a filter preset turned its same element rows into any element rows. ([#4019](https://github.com/TableProApp/TablePro/pull/4019))
+- Raw SQL filters on SQL Server and Oracle failed with an invalid column error. ([#4019](https://github.com/TableProApp/TablePro/pull/4019))
+- A page turn, sort or refresh ran filter edits that had not been applied. ([#4019](https://github.com/TableProApp/TablePro/pull/4019))
+- Duplicate Filter dropped Match Case and the element scope, and put the cursor in the wrong row. ([#4019](https://github.com/TableProApp/TablePro/pull/4019))
+- Switching a filter row between Raw SQL and a column hid the text you had typed. ([#4019](https://github.com/TableProApp/TablePro/pull/4019))
+- MongoDB exports cut nested values at 10,000 characters. ([#4020](https://github.com/TableProApp/TablePro/pull/4020))
+- MQL exports changed mixed-type fields, nested BSON values and stored nulls. ([#4020](https://github.com/TableProApp/TablePro/pull/4020))
+- MQL exports lost special field names and changed numeric field order. ([#4020](https://github.com/TableProApp/TablePro/pull/4020))
+- MQL exports lost empty collections and skipped some index and validator values. ([#4020](https://github.com/TableProApp/TablePro/pull/4020))
+- A copied connection URL misread IPv6 hosts and dropped the settings after a database name holding # or ?. ([#4021](https://github.com/TableProApp/TablePro/pull/4021))
+- Beancount and Memcached showed Database instead of Ledger or Server once their driver loaded. ([#4021](https://github.com/TableProApp/TablePro/pull/4021))
+- Remote DuckDB connections ignored the SSL settings shown and could not trust a private CA or self-signed certificate. ([#4021](https://github.com/TableProApp/TablePro/pull/4021))
+- Drop offered to ignore foreign key checks on DuckDB, ClickHouse, SQL Server, SurrealDB, Teradata and Beancount. ([#4021](https://github.com/TableProApp/TablePro/pull/4021))
+- A remote DuckDB connection that could not download the Quack extension showed a misleading error. ([#4021](https://github.com/TableProApp/TablePro/pull/4021))
+- etcd keys starting with `--` could not be saved or deleted from the grid. ([#4023](https://github.com/TableProApp/TablePro/pull/4023))
+- An etcd range query with invalid page bounds could crash the app. ([#4023](https://github.com/TableProApp/TablePro/pull/4023))
+- etcd `get`, `del` and `watch` with `--prefix` could reach keys outside the prefix when it ended in some non-ASCII text. ([#4023](https://github.com/TableProApp/TablePro/pull/4023))
+- Saving an etcd key that ends in a zero width space or starts with a byte order mark changed a different key. ([#4023](https://github.com/TableProApp/TablePro/pull/4023))
+- etcd commands could run without the read-only or delete limits set by the app. ([#4023](https://github.com/TableProApp/TablePro/pull/4023))
+- Editing or deleting a non-UTF-8 etcd key changed a key named `<b64:…>`, and a rename saved a binary value as text. ([#4023](https://github.com/TableProApp/TablePro/pull/4023))
+- etcd `get "" --prefix`, and exporting the root of a connection with no key prefix, failed with "key is not provided". ([#4023](https://github.com/TableProApp/TablePro/pull/4023))
+- SQLite, libSQL, DuckDB and Beancount cut text at a NUL character when reading or saving it. ([#4024](https://github.com/TableProApp/TablePro/pull/4024))
+- MongoDB edits and deletes could target the wrong document after reconnecting or switching databases. ([#4028](https://github.com/TableProApp/TablePro/pull/4028))
+- MCP and AI chat could not confirm a DELETE without WHERE, leaving it blocked or routed through the wrong tool. ([#4029](https://github.com/TableProApp/TablePro/pull/4029))
+- Stopping an import could misreport rollback, and opening another dialog could hide a running transfer. ([#4031](https://github.com/TableProApp/TablePro/pull/4031))
+- The iPad app on a Mac crashing when you open a connection, or add or edit one. ([#4032](https://github.com/TableProApp/TablePro/pull/4032))
+- Data dictionary exports could render names and comments as markup when Unicode characters joined punctuation. ([#4034](https://github.com/TableProApp/TablePro/pull/4034))
+- SQL Server edits could target the wrong text key, and filters or SQL exports could change Unicode or line endings. ([#4035](https://github.com/TableProApp/TablePro/pull/4035))
+- SQL Server edits on a char or varchar key could also change a row whose key differs only by characters like ß and ss. ([#4039](https://github.com/TableProApp/TablePro/pull/4039))
+- Deleting or editing a Firebase node or collection whose name starts with a combining mark changed the name without it. ([#4040](https://github.com/TableProApp/TablePro/pull/4040))
+- A value bound into a Databend query behind some comments or hints could land outside its quotes. ([#4041](https://github.com/TableProApp/TablePro/pull/4041))
+- A Databend table with a backtick in its name opened, edited and exported as another table. ([#4041](https://github.com/TableProApp/TablePro/pull/4041))
+- Editing or deleting a Databend row whose text held a NUL before digits could change a different row. ([#4041](https://github.com/TableProApp/TablePro/pull/4041))
+- Read-Only and Safe Mode treated pg_background, pg_cron and TimescaleDB calls, drop_chunks included, as reads. ([#4043](https://github.com/TableProApp/TablePro/pull/4043))
+- Safe Mode on Databend missed a DROP or other write hidden behind an optimizer hint, a comment or SETTINGS. ([#4044](https://github.com/TableProApp/TablePro/pull/4044))
+- A StarRocks query parameter stored a form feed as the letter f, or failed after a comment ending in a carriage return. ([#4044](https://github.com/TableProApp/TablePro/pull/4044))
+
+### Security
+
+- A raw SQL filter could close its own parentheses and run a second statement, such as a DELETE. ([#4019](https://github.com/TableProApp/TablePro/pull/4019))
+- A remote DuckDB token could reach another Quack server that a later ATTACH in the same session named. ([#4021](https://github.com/TableProApp/TablePro/pull/4021))
+
+
 ## [0.85.0](https://github.com/TableProApp/TablePro/releases/tag/v0.85.0) - 2026-11-04 [CRITICAL]
 
 Neo4j, InfluxDB 2 and 3, Qdrant, Memcached and StarRocks connections, and KingbaseES with a downloadable driver.

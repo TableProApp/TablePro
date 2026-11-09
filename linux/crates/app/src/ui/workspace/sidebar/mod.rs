@@ -4,6 +4,7 @@
 
 mod catalog_watch;
 mod connection_tree;
+mod favorites_pane;
 mod key_listing;
 mod object_key;
 mod object_target;
@@ -23,7 +24,6 @@ mod tree_menu;
 mod tree_node;
 mod tree_row;
 
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use gtk4::prelude::*;
@@ -36,11 +36,14 @@ use tablepro_session::{ObjectListSnapshot, Session};
 
 pub(super) use catalog_watch::{catalog_watch, reconnect_watch, spawn_local};
 pub(crate) use connection_tree::{ConnectionTree, SessionRowState};
+pub(crate) use favorites_pane::{FavoriteAction, FavoritesPane};
 pub(crate) use key_listing::{KeySidebar, KeysListed};
 pub(super) use sidebar_affordances::SidebarAffordances;
 use sidebar_index::SidebarIndex;
 pub(super) use sidebar_view::SidebarView;
+pub(super) use tree_menu::creation_menu;
 
+use super::schema_filter::SchemaFilter;
 use super::table_naming::TableNaming;
 use super::{OpenMode, WorkspaceInput, WorkspaceModel, WorkspaceSender};
 use crate::runtime::DeliverInput;
@@ -120,7 +123,7 @@ pub(super) async fn list_catalog(
     tasks: Tasks,
     objects: Arc<[ObjectInfo]>,
     known: Arc<[SchemaInfo]>,
-    hidden: Arc<HashSet<String>>,
+    filter: SchemaFilter,
 ) -> Result<SidebarListing, TaskFailure> {
     let schemas = match session.schemas().await {
         Ok(schemas) => Some(schemas),
@@ -133,8 +136,7 @@ pub(super) async fn list_catalog(
     let database = session.database().map(str::to_owned);
     tasks
         .spawn_blocking_task(move || {
-            let all = schemas.as_deref().unwrap_or(&known);
-            let (shown, listed) = super::schema_filter::listed(&hidden, &objects, all);
+            let (shown, listed) = filter.listed(&objects, schemas.as_deref().unwrap_or(&known));
             let listed = &*listed;
             let mut index = SidebarIndex::build(&shown, listed);
             index.withhold_drops(|name| kept(dialect.as_deref(), database.as_deref(), name));
@@ -211,7 +213,7 @@ impl WorkspaceModel {
     /// Read the session's schemas, which place the sidebar's sections and
     /// decide whether tab titles name their schema, then show `objects`
     /// under them. Only the last read asked for is shown.
-    fn read_sidebar(&mut self, objects: Arc<[ObjectInfo]>) {
+    pub(super) fn read_sidebar(&mut self, objects: Arc<[ObjectInfo]>) {
         let Some(session) = self.context.active.get() else {
             return;
         };
@@ -224,7 +226,7 @@ impl WorkspaceModel {
             self.context.tasks.clone(),
             objects,
             self.catalog_schemas.clone(),
-            self.schema_filter.hidden(),
+            self.schema_filter.clone(),
         );
         crate::runtime::spawn_and_deliver(&self.context.tasks, listing, move |listing| {
             match listing.and_then(|listing| listing) {
@@ -244,20 +246,8 @@ impl WorkspaceModel {
             self.catalog_schemas = schemas;
         }
         self.sidebar.show(listing.index);
-        self.schema_filter.refresh(&self.catalog_schemas, &self.input);
+        self.show_schema_filter();
         self.on_table_naming(TableNaming::of(&self.catalog_schemas));
-    }
-
-    pub(super) fn on_schema_hidden(&mut self, name: &str, hidden: bool) {
-        if self.schema_filter.set_hidden(name, hidden) {
-            self.read_sidebar(self.sidebar_objects.clone());
-        }
-    }
-
-    pub(super) fn on_all_schemas_shown(&mut self) {
-        if self.schema_filter.show_all() {
-            self.read_sidebar(self.sidebar_objects.clone());
-        }
     }
 
     /// Every schema's list landed: a reconnect, a schema change or the
@@ -371,8 +361,17 @@ impl WorkspaceModel {
     /// The connection was replaced, perhaps by one to another server
     /// version, so what the sidebar offers is read again.
     pub(super) fn on_link_changed(&self) {
-        if let Some(session) = self.context.active.get() {
-            self.sidebar.set_affordances(SidebarAffordances::for_session(&session));
+        self.show_affordances();
+    }
+
+    pub(super) fn show_affordances(&self) {
+        let Some(session) = self.context.active.get() else {
+            return;
+        };
+        let affordances = SidebarAffordances::for_session(&session);
+        self.sidebar.set_affordances(affordances);
+        if let Some(workspace) = self.this.upgrade() {
+            workspace.show_creation_menu(creation_menu(&self.key, affordances).upcast());
         }
     }
 }

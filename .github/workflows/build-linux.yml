@@ -475,7 +475,7 @@ jobs:
           cache-key: flatpak-devel-${{ matrix.arch }}-${{ hashFiles('Cargo.lock') }}
       # The image is built on the linter's own. Only the findings in
       # lint-exceptions.json may remain. The repository is not linted: its
-      # screenshot checks need images mirrored from the release tag.
+      # screenshot checks need the mirror only Flathub's build makes.
       - name: Lint the manifest
         if: ${{ !cancelled() && matrix.arch == 'x86_64' }}
         run: |

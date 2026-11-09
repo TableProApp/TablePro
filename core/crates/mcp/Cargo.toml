@@ -18,7 +18,7 @@ hyper = { version = "1", features = ["server", "http1"] }
 hyper-util = { workspace = true }
 # The protocol, its versions and the Streamable HTTP transport, which
 # checks the Host header for a loopback name and refuses any Origin.
-rmcp = { version = "3.6.0", default-features = false, features = ["server", "transport-streamable-http-server"] }
+rmcp = { version = "3.9.0", default-features = false, features = ["server", "transport-streamable-http-server"] }
 schemars = "1"
 secrecy.workspace = true
 serde.workspace = true

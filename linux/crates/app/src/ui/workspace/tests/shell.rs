@@ -174,23 +174,36 @@ fn show_tabs_opens_and_closes_the_overview_while_a_tab_is_open() {
 }
 
 #[gtk4::test]
-fn sidebar_toggle_visible_only_when_collapsed_or_hidden() {
+fn the_sidebar_toggle_is_always_in_the_header() {
     let test = TestWindow::connected("SidebarToggle");
     let workspace = test.workspace();
     let shell = shell_of(&workspace);
     let imp = shell.imp();
     let (split, toggle) = (imp.split_view.get(), imp.sidebar_toggle.get());
-    split.set_collapsed(false);
-    split.set_show_sidebar(true);
-    assert!(!toggle.is_visible(), "shown beside a sidebar in view");
-
-    split.set_show_sidebar(false);
-    assert!(toggle.is_visible(), "hidden with the sidebar hidden");
-
-    split.set_show_sidebar(true);
-    split.set_collapsed(true);
-    assert!(toggle.is_visible(), "hidden with the sidebar collapsed");
+    crate::test_support::assert_labelled(&toggle).expect("the sidebar toggle is named");
+    assert_eq!(toggle.tooltip_text().as_deref(), Some("Show Sidebar"));
     assert_eq!(toggle.action_name().as_deref(), Some("win.show-sidebar"));
+
+    for collapsed in [false, true] {
+        split.set_collapsed(collapsed);
+        split.set_show_sidebar(true);
+        assert!(toggle.is_visible());
+        assert!(toggle.is_active());
+
+        toggle.emit_clicked();
+        assert!(!split.shows_sidebar());
+        assert!(!toggle.is_active());
+        assert!(toggle.is_visible());
+
+        toggle.emit_clicked();
+        assert!(split.shows_sidebar());
+        assert!(toggle.is_active());
+
+        WidgetExt::activate_action(&test.window, "win.show-sidebar", None).expect("win.show-sidebar");
+        assert!(!split.shows_sidebar());
+        assert!(!toggle.is_active());
+        assert!(toggle.is_visible());
+    }
 }
 
 #[gtk4::test]
@@ -276,16 +289,28 @@ fn every_page_fits_the_window_floor() {
     fits_the_floor(&content());
 }
 
-/// The floor measured on the tab's own content, with its widest
-/// bars up: the pager's longest label, pending changes and the
-/// filter strip.
 #[gtk4::test]
 fn an_open_table_tab_fits_the_window_floor() {
+    table_tab_fits_the_window_floor(false);
+}
+
+#[gtk4::test]
+fn a_table_tab_with_structure_switch_fits_the_window_floor() {
+    table_tab_fits_the_window_floor(true);
+}
+
+fn table_tab_fits_the_window_floor(with_structure: bool) {
     use crate::ui::browse_tab::{BrowseTab, PagingInput};
+    let mut connection = served_table();
+    if with_structure {
+        connection.dialect = Arc::new(tablepro_driver_postgres::PgDialect::new(
+            &tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0),
+        ));
+    }
     let test = TestWindow::with_script(
         "TableFloor",
         Script {
-            connection: served_table(),
+            connection,
             window_size: Some((360, 294)),
             ..Script::default()
         },
@@ -565,31 +590,118 @@ fn the_main_menu_adds_a_connection_with_none_open() {
 }
 
 #[gtk4::test]
-fn the_sidebar_add_button_is_there_to_use_only_while_the_menu_offers_something() {
-    let test = TestWindow::connected("SidebarAdd");
-    let shell = test
-        .window
-        .content()
-        .and_downcast::<WorkspaceShell>()
-        .expect("the shell page");
-    let offered = ["new-table", "new-schema", "new-database"].iter().any(|name| {
-        gtk4::prelude::ActionMapExt::lookup_action(&test.window, name)
-            .expect("the window's action")
-            .is_enabled()
-    });
+fn the_header_refresh_follows_the_selected_tabs_capability() {
+    use super::super::structure_target::StructureTarget;
+    use super::super::tab_spec::{TabSpec, TablePage};
+    use crate::ui::browse_tab::TableFilter;
+    use tablepro_core::meta::TableRef;
 
-    assert_eq!(shell.imp().sidebar_add_button.is_sensitive(), offered);
+    let test = TestWindow::connected("HeaderRefresh");
+    let workspace = test.workspace();
+    let shell = shell_of(&workspace);
+    let button = shell.imp().refresh_page_button.get();
+    assert_eq!(button.action_name().as_deref(), Some("win.refresh-page"));
+    crate::test_support::assert_labelled(&button).expect("the refresh button is named");
+    assert!(gtk::test_accessible_has_property(
+        &button,
+        gtk::AccessibleProperty::KeyShortcuts
+    ));
+    assert!(!button.is_sensitive(), "there is no tab to refresh");
+
+    let table = workspace
+        .with_model(|model| {
+            model.open_tab(TabSpec::Table {
+                table: TableRef::unqualified("customers"),
+                page: TablePage::first(100),
+                filter: TableFilter::Remembered,
+            })
+        })
+        .flatten()
+        .expect("a table");
+    wait_until(WAIT, || button.is_sensitive()).expect("table refresh");
+    super::open_editor(&workspace);
+    wait_until(WAIT, || !button.is_sensitive()).expect("no editor rerun");
+    workspace
+        .with_model(|model| {
+            model.open_tab(TabSpec::Structure {
+                target: StructureTarget::Existing(TableRef::unqualified("customers")),
+            })
+        })
+        .flatten()
+        .expect("a structure draft");
+    wait_until(WAIT, || !button.is_sensitive()).expect("no draft to reload");
+    workspace.with_model(|model| model.tab_view.set_selected_page(&table));
+    wait_until(WAIT, || button.is_sensitive()).expect("refresh after selection inside the model");
+
+    for page in (0..shell.tab_view().n_pages())
+        .map(|i| shell.tab_view().nth_page(i))
+        .collect::<Vec<_>>()
+    {
+        shell.tab_view().close_page(&page);
+    }
+    wait_until(WAIT, || shell.tab_view().n_pages() == 0).expect("all clean tabs close");
+    wait_until(WAIT, || !button.is_sensitive()).expect("no refresh after the last tab closes");
 }
 
-/// The sidebar's bottom bar offers the schemas once there are two, and a
-/// hidden one is said in a banner until Show All.
+fn postgres(script: &mut tablepro_test_support::ConnectionScript) {
+    script.dialect = Arc::new(tablepro_driver_postgres::PgDialect::new(
+        &tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0),
+    ));
+}
+
 #[gtk4::test]
-fn hiding_a_schema_shows_a_banner_that_says_the_list_is_filtered() {
+fn the_sidebar_add_menu_makes_objects_in_the_session_in_front() {
+    let test = TestWindow::connected_with("SidebarAdd", postgres);
+    let shell = shell_of(&test.workspace());
+    let imp = shell.imp();
+    let (bar, button) = (imp.sidebar_bar.get(), imp.sidebar_add_button.get());
+    wait_until(WAIT, || bar.is_revealed()).expect("the bar under the tree");
+    crate::test_support::assert_labelled(&button).expect("the Add button is named");
+    let target = crate::ui::session_target::to_variant(&test.key());
+    let offered = button
+        .menu_model()
+        .map(|menu| crate::ui::workspace::sidebar::tests::menu_items(&menu))
+        .unwrap_or_default();
+    assert_eq!(
+        offered,
+        [
+            ("win.new-table-in".to_owned(), Some(target.clone())),
+            ("win.new-schema-in".to_owned(), Some(target.clone())),
+            ("win.new-database-in".to_owned(), Some(target.clone())),
+        ]
+    );
+
+    imp.scope_toggle.set_active_name(Some("favorites"));
+    assert!(!bar.is_revealed(), "the bar makes tables under Favorites");
+    imp.scope_toggle.set_active_name(Some("tables"));
+    assert!(bar.is_revealed());
+
+    WidgetExt::activate_action(&button, "win.new-table-in", Some(&target)).expect("the window's action");
+    wait_until(WAIT, || shell.tab_view().n_pages() == 1).expect("a new table's tab");
+}
+
+#[gtk4::test]
+fn a_read_only_connection_has_no_add_menu() {
+    let test = TestWindow::connected_with("SidebarAddReadOnly", |script| {
+        postgres(script);
+        script.read_only = true;
+    });
+    let shell = shell_of(&test.workspace());
+    let imp = shell.imp();
+    crate::test_support::drain_main_context();
+
+    assert!(!imp.sidebar_add_button.is_visible());
+    assert!(!imp.sidebar_bar.is_revealed());
+}
+
+#[gtk4::test]
+fn the_schemas_button_chooses_what_the_sidebar_lists_and_keeps_it() {
     let test = TestWindow::connected("SchemaFilter");
     let workspace = test.workspace();
-    let imp = workspace.imp();
-    let (button, banner) = (imp.schema_filter_button.get(), imp.schema_filter_banner.get());
-    assert!(!button.is_visible(), "one schema has nothing to filter");
+    let shell = shell_of(&workspace);
+    let (button, bar) = (shell.imp().schema_filter_button.get(), shell.imp().sidebar_bar.get());
+    let banner = workspace.imp().schema_filter_banner.get();
+    assert!(!button.is_visible(), "one schema has nothing to choose among");
 
     let schema = |name: &str| tablepro_core::meta::SchemaInfo {
         name: name.to_owned(),
@@ -603,32 +715,56 @@ fn hiding_a_schema_shows_a_banner_that_says_the_list_is_filtered() {
     session
         .catalog()
         .commit(vec![schema("public"), schema("sales")], Vec::new());
-    wait_until(WAIT, || button.is_visible()).expect("the schema menu");
+    wait_until(WAIT, || button.is_visible()).expect("the Schemas button");
+    assert_eq!(button.label().as_deref(), Some("Schemas"));
+    assert!(bar.is_revealed());
     assert!(!banner.is_revealed());
 
-    workspace.with_model(|model| model.on_schema_hidden("sales", true));
+    button.popup();
+    let popover = button.popover().expect("the chooser");
+    let check = |name: &str| {
+        descendants(&popover)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk::CheckButton>().ok())
+            .find(|check| check.label().as_deref() == Some(name))
+    };
+    wait_until(WAIT, || check("sales").is_some()).expect("a check for each schema");
+    check("sales").expect("the sales check").set_active(false);
     wait_until(WAIT, || banner.is_revealed()).expect("the banner");
     assert_eq!(banner.title(), "Showing 1 of 2 schemas");
+    let (id, database) = (session.metadata().id, session.database().unwrap_or_default().to_owned());
+    let filters = test.services.storage.filter_settings().clone();
+    assert_eq!(
+        filters.sidebar_schemas(id, &database),
+        std::collections::BTreeSet::from(["public".to_owned()])
+    );
+    wait_until(WAIT, || check("public").is_some_and(|check| !check.is_sensitive()))
+        .expect("the last schema listed stays");
 
-    workspace.with_model(|model| model.on_all_schemas_shown());
-    wait_until(WAIT, || !banner.is_revealed()).expect("the banner to go");
+    banner.emit_by_name::<()>("button-clicked", &[]);
+    wait_until(WAIT, || !banner.is_revealed()).expect("Show All");
+    assert!(filters.sidebar_schemas(id, &database).is_empty());
 }
 
 #[gtk4::test]
-fn the_sidebar_takes_the_width_the_user_kept_and_a_drag_handle_sets_a_new_one() {
-    let test = TestWindow::connected("SidebarWidth");
-    let shell = test
-        .window
-        .content()
-        .and_downcast::<WorkspaceShell>()
-        .expect("the shell page");
-    let split = shell.imp().split_view.get();
-    assert_eq!(split.min_sidebar_width(), 260.0, "the schema's default");
-    assert_eq!(split.max_sidebar_width(), 260.0);
-    assert!(shell.imp().sidebar_handle.is_visible());
+fn the_sidebar_takes_the_width_kept_in_settings_and_has_a_handle_to_set_it() {
+    use tablepro_linux_platform::settings::keys::SIDEBAR_WIDTH;
 
-    super::super::workspace_shell::set_sidebar_width(&split, 5000);
-    assert_eq!(split.max_sidebar_width(), 800.0, "a width past the cap");
-    super::super::workspace_shell::set_sidebar_width(&split, 10);
-    assert_eq!(split.min_sidebar_width(), 220.0, "a width under the floor");
+    let test = TestWindow::connected("SidebarWidth");
+    let shell = shell_of(&test.workspace());
+    let (split, handle) = (shell.imp().split_view.get(), shell.imp().sidebar_handle.get());
+    let settings = test.services.settings.gio().clone();
+    assert_eq!(split.max_sidebar_width(), 280.0, "the schema's default");
+
+    settings.set_double(SIDEBAR_WIDTH, 440.0).expect("a width in range");
+    wait_until(WAIT, || split.max_sidebar_width() == 440.0).expect("the window follows the setting");
+    assert!(settings.set_double(SIDEBAR_WIDTH, 100.0).is_err(), "under the floor");
+
+    assert!(handle.is_visible() && handle.is_focusable());
+    assert_eq!(handle.accessible_role(), gtk::AccessibleRole::Separator);
+    crate::test_support::assert_labelled(&handle).expect("the handle is named");
+    split.set_collapsed(true);
+    assert!(!handle.is_visible(), "a collapsed sidebar lies over the content");
+    split.set_collapsed(false);
+    assert!(handle.is_visible());
 }
