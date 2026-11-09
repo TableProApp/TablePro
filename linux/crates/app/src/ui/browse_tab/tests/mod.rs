@@ -217,6 +217,18 @@ impl Harness {
             .collect()
     }
 
+    pub(super) fn elapsed(&self) -> Duration {
+        use gtk4::subclass::prelude::ObjectSubclassIsExt;
+        self.tab()
+            .imp()
+            .model
+            .borrow()
+            .as_ref()
+            .and_then(|model| model.page.as_ref())
+            .expect("a loaded page")
+            .elapsed
+    }
+
     /// The saved rows the grid holds for the page on screen.
     pub(super) fn saved_rows(&self) -> Vec<GridRow> {
         use gtk4::subclass::prelude::ObjectSubclassIsExt;
@@ -579,10 +591,16 @@ fn stale_page_reply_ignored() {
 
     harness.tab().send(PagingInput::FilterApplied(not_null_name()));
     wait_until(WAIT, || harness.shown() == text(&["filtered"])).expect("the filtered page");
+    let elapsed = harness.elapsed();
     std::thread::sleep(Duration::from_millis(500));
     drain_main_context();
 
     assert_eq!(CallCounters::get(&counters.query_bound), 2);
+    assert_eq!(
+        harness.elapsed(),
+        elapsed,
+        "a stale reply changed the displayed page's time"
+    );
     assert_eq!(
         harness.shown(),
         text(&["filtered"]),
@@ -1535,6 +1553,38 @@ fn a_dotted_field_of_a_document_neither_sorts_nor_takes_an_edit() {
     assert_eq!(cell.lock(), Some(crate::services::grid::CellLock::Unaddressable));
     assert!(!grid.edit().edit_cell(&cell), "the dotted field opened for editing");
     assert_eq!(harness.tracker.pending_count(), 0);
+}
+
+#[gtk4::test]
+fn the_paginator_says_how_long_the_page_took() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::Late {
+        after: Duration::from_millis(20),
+        outcome: Ok(rows(&["Ada", "Grace"])),
+    });
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown() == text(&["Ada", "Grace"])).expect("the page");
+    let label = harness.tab().imp().pager_bar.imp().paginator_label.get();
+
+    assert!(harness.elapsed() >= Duration::from_millis(20));
+    let text = label.label();
+    let (_, elapsed) = text.split_once(" · ").expect("the paginator includes a duration");
+    assert!(!elapsed.is_empty());
+}
+
+#[gtk4::test]
+fn an_empty_page_also_shows_its_fetch_time() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&[])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.visible_page().as_deref() == Some("grid")).expect("the empty page");
+
+    let label = harness.tab().imp().pager_bar.imp().paginator_label.label();
+    assert!(label.starts_with("No rows · "), "{label}");
 }
 
 #[gtk4::test]
