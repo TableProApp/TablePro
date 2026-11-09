@@ -36,6 +36,8 @@ struct DataFileRowDetailsView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .splitItemBackdrop()
+        .onSplitItem()
         .onAppear(perform: configure)
         .onChange(of: controller.selectedRowIndices) { _ in configure() }
         .onChange(of: controller.pageRevision) { _ in configure() }

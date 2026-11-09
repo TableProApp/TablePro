@@ -314,6 +314,7 @@ mod tests {
 
     fn page(start_ordinal: u64, row_count: usize) -> PageState {
         PageState {
+            elapsed: std::time::Duration::from_millis(5),
             row_count,
             start_ordinal,
             filtered: false,
@@ -526,11 +527,11 @@ mod tests {
 
         bar.show_total(&pager, Some(&page(0, 5)), &RowTotal::Exact(5));
 
-        assert_eq!(bar.imp().paginator_label.label(), "Rows 1 – 5 of 5");
+        assert_eq!(bar.imp().paginator_label.label(), "Rows 1 – 5 of 5 · 5 ms");
         assert_eq!(
             crate::ui::a11y::announced_in(&bar),
             [(
-                "Rows 1 – 5 of 5".to_owned(),
+                "Rows 1 – 5 of 5 · 5 ms".to_owned(),
                 gtk::AccessibleAnnouncementPriority::Medium
             )],
             "a page turn is said once"
