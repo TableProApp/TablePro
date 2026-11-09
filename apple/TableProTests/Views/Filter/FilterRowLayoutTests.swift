@@ -164,14 +164,18 @@ struct FilterRowLayoutTests {
         #expect(field.height > FilterValueTextField.singleLineHeight(for: .small) + 1, "raw field is \(field.height)pt tall")
     }
 
-    @Test("Every row reserves room for the widest operator, case badge included")
-    func operatorWidthCoversEveryOperator() {
-        let plain = FilterControlMetrics.operatorWidth(reservesCaseIndicator: false)
-        let withBadge = FilterControlMetrics.operatorWidth(reservesCaseIndicator: true)
+    @Test("The operator slot fits every operator's pull-down as SwiftUI draws it")
+    func operatorSlotFitsEveryOperator() {
+        let slot = FilterControlMetrics.operatorWidth(reservesCaseIndicator: false)
         for op in FilterOperator.allCases {
-            #expect(FilterControlMetrics.popUpWidth(titles: [op.displayName], pullsDown: true) <= plain)
+            let menu = Menu { Button("x") {} } label: { Text(op.displayName) }
+                .menuStyle(.button)
+                .controlSize(.small)
+                .fixedSize()
+            let drawn = NSHostingView(rootView: menu).fittingSize.width
+            #expect(drawn <= slot, "\(op.displayName) draws \(drawn)pt in a \(slot)pt slot")
         }
-        #expect(withBadge > plain)
+        #expect(FilterControlMetrics.operatorWidth(reservesCaseIndicator: true) > slot)
     }
 
     @Test("A drifted column lines its row up with the others instead of widening its pop-up")
@@ -183,8 +187,8 @@ struct FilterRowLayoutTests {
         #expect(starts[0] == starts[1], "value fields start at \(starts)")
     }
 
-    @Test("A row on an array path and a row reserving its scope slot line up")
-    func elementScopeSlotKeepsTheGrid() throws {
+    @Test("A row on an array path and a row reserving its scope slot line up", arguments: [800, 400] as [CGFloat])
+    func elementScopeSlotKeepsTheGrid(width: CGFloat) throws {
         let paths = [PluginFieldPath(path: "items.sku", typeName: "string", depth: 1, arrayPrefixes: ["items"])]
         let scoped = TableFilter(columnName: "items.sku", filterOperator: .equal, value: "a")
         let starts = try [scoped, Self.textEquals].map { filter in
@@ -210,7 +214,8 @@ struct FilterRowLayoutTests {
                 onDropFilter: { _ in },
                 focusedFilterId: .constant(nil)
             )
-            return try #require(valueFields(in: view, width: 800).first).minX
+            #expect(measureFrame(of: view, width: width).width <= width)
+            return try #require(valueFields(in: view, width: width).first).minX
         }
         #expect(starts[0] == starts[1], "value fields start at \(starts)")
     }

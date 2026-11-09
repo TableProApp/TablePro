@@ -70,7 +70,7 @@ struct HighlightRuleRow: View {
     }
 
     private var conditionEditor: some View {
-        FilterRowLayout(spacing: 6, fillMinimum: FilterRowView.valueCellMinimumWidth) {
+        FilterRowLayout(spacing: 6, fillMinimum: FilterRowView.valueCellMinimumWidth(spacing: 6)) {
             columnPicker
                 .fillsReservedWidth()
                 .filterRowRole(.reserved(columnCellWidth))
@@ -170,7 +170,7 @@ struct HighlightRuleRow: View {
                 placeholder: String(localized: "Value"),
                 onCancel: onCancel
             )
-            .frame(minWidth: 40)
+            .frame(minWidth: FilterRowView.valueFieldMinimumWidth)
             .accessibilityLabel(String(localized: "Rule value"))
 
             if rule.filterOperator.requiresSecondValue {
@@ -188,7 +188,7 @@ struct HighlightRuleRow: View {
                     placeholder: String(localized: "Value"),
                     onCancel: onCancel
                 )
-                .frame(minWidth: 40)
+                .frame(minWidth: FilterRowView.valueFieldMinimumWidth)
                 .accessibilityLabel(String(localized: "Second rule value"))
             }
         }

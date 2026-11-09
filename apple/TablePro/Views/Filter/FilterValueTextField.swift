@@ -123,6 +123,21 @@ struct FilterValueTextField: NSViewRepresentable {
 
     private static var singleLineHeights: [NSControl.ControlSize: CGFloat] = [:]
 
+    // A rounded field wraps only on some macOS versions (measured: one line before 26); one that cannot
+    // wrap has to scroll, or the rest of a long condition is hidden past the first line.
+    private static let roundedFieldWraps: Bool = {
+        let field = NSTextField()
+        field.bezelStyle = .roundedBezel
+        applyFont(to: field, controlSize: .small)
+        field.usesSingleLineMode = false
+        field.cell?.wraps = true
+        field.cell?.isScrollable = false
+        field.stringValue = String(repeating: "condition ", count: 20)
+        let bounds = NSRect(x: 0, y: 0, width: 120, height: CGFloat.greatestFiniteMagnitude)
+        let wrapped = field.cell?.cellSize(forBounds: bounds).height ?? 0
+        return wrapped > singleLineHeight(for: .small) * 1.5
+    }()
+
     // Two fields of one row each need an identity, or focusing one makes the other claim focus.
     nonisolated static func secondFieldIdentity(for identity: UUID) -> UUID {
         var bytes = identity.uuid
@@ -154,12 +169,16 @@ struct FilterValueTextField: NSViewRepresentable {
         textField.delegate = context.coordinator
         textField.stringValue = text
 
-        if allowsMultiLine {
+        if allowsMultiLine, Self.roundedFieldWraps {
             textField.usesSingleLineMode = false
             textField.cell?.wraps = true
             textField.cell?.isScrollable = false
             textField.lineBreakMode = .byWordWrapping
             textField.maximumNumberOfLines = 0
+        } else if allowsMultiLine {
+            textField.usesSingleLineMode = false
+            textField.cell?.isScrollable = true
+            textField.lineBreakMode = .byTruncatingTail
         } else {
             textField.lineBreakMode = .byTruncatingTail
         }
@@ -202,7 +221,7 @@ struct FilterValueTextField: NSViewRepresentable {
 
     // A wrapping field's intrinsic height is one line, so a long condition wrapped out of sight.
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSTextField, context: Context) -> CGSize? {
-        guard allowsMultiLine,
+        guard allowsMultiLine, Self.roundedFieldWraps,
               let width = proposal.width, width.isFinite, width > 0,
               let cell = nsView.cell?.copy() as? NSCell else { return nil }
         cell.stringValue = text

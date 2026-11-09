@@ -40,10 +40,10 @@ struct FilterRowView: View {
 
     private let rowButtonGlyphSize: CGFloat = 14
     private static let columnPickerMaximumWidth: CGFloat = 160
-    private static let valueFieldMinimumWidth: CGFloat = 28
+    static let valueFieldMinimumWidth: CGFloat = 28
 
     // Room for a Between pair, the widest value cell, before the column and operator give way.
-    static var valueCellMinimumWidth: CGFloat {
+    static func valueCellMinimumWidth(spacing: CGFloat) -> CGFloat {
         2 * valueFieldMinimumWidth + 2 * spacing + FilterControlMetrics.textWidth(String(localized: "and"))
     }
 
@@ -66,7 +66,7 @@ struct FilterRowView: View {
     }
 
     var body: some View {
-        FilterRowLayout(spacing: Self.spacing, fillMinimum: Self.valueCellMinimumWidth) {
+        FilterRowLayout(spacing: Self.spacing, fillMinimum: Self.valueCellMinimumWidth(spacing: Self.spacing)) {
             dragHandle
 
             enabledToggle

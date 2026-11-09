@@ -19,6 +19,8 @@ struct FilterRowLayout: Layout {
     var spacing: CGFloat
     // The same for every row, so a row with a smaller value cell still gives way like the others.
     var fillMinimum: CGFloat = 0
+    // Likewise for reserved slots, so an empty placeholder shrinks no further than the pop-up it stands for.
+    var reservedMinimum: CGFloat = FilterControlMetrics.popUpMinimumWidth
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let widths = widths(for: proposal.width, subviews: subviews)
@@ -77,9 +79,9 @@ struct FilterRowLayout: Layout {
             case .fixed:
                 widths[index] = subview.sizeThatFits(.unspecified).width
             case .reserved(let target):
-                reserved.append((index, target, minimumWidth(of: subview)))
+                reserved.append((index, target, max(minimumWidth(of: subview), reservedMinimum)))
             case .spannedByFill(let target):
-                reserved.append((index, target, 0))
+                reserved.append((index, target, reservedMinimum))
             case .fill:
                 fills.append((index, max(minimumWidth(of: subview), fillMinimum)))
             }
