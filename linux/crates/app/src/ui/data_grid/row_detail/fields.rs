@@ -157,7 +157,18 @@ fn field_row() -> gtk::Box {
         .build();
     row.append(&top);
     row.append(&well);
+    // Where the editor sits while this field is the selected one.
+    let slot = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    slot.set_visible(false);
+    row.append(&slot);
     row
+}
+
+/// The value's field and the slot after it, in a field row.
+fn well_and_slot(row: &gtk::Widget) -> Option<(gtk::Widget, gtk::Box)> {
+    let slot = row.last_child()?.downcast::<gtk::Box>().ok()?;
+    let well = slot.prev_sibling()?;
+    Some((well, slot))
 }
 
 struct FieldParts {
@@ -183,7 +194,7 @@ fn field_parts(row: &gtk::Widget) -> Option<FieldParts> {
         edited: edited.downcast().ok()?,
         kind: kind.downcast().ok()?,
         copy: copy.downcast().ok()?,
-        value: row.last_child()?.first_child()?.downcast().ok()?,
+        value: row.last_child()?.prev_sibling()?.first_child()?.downcast().ok()?,
     })
 }
 
@@ -296,17 +307,20 @@ impl RowDetailPane {
                 if let Some(item) = item.downcast_ref::<gtk::ListItem>() {
                     pane.imp().bound.borrow_mut().push(item.clone());
                     pane.draw_field(item);
+                    pane.place_editor();
                 }
             }
         ));
         factory.connect_unbind(glib::clone!(
             #[weak(rename_to = pane)]
             self,
-            move |_, item| pane
-                .imp()
-                .bound
-                .borrow_mut()
-                .retain(|bound| bound.upcast_ref::<glib::Object>() != item)
+            move |_, item| {
+                pane.imp()
+                    .bound
+                    .borrow_mut()
+                    .retain(|bound| bound.upcast_ref::<glib::Object>() != item);
+                pane.place_editor();
+            }
         ));
         factory
     }
@@ -316,6 +330,46 @@ impl RowDetailPane {
         let bound: Vec<gtk::ListItem> = self.imp().bound.borrow().clone();
         for item in &bound {
             self.draw_field(item);
+        }
+        self.place_editor();
+    }
+
+    /// Seat the editor in the selected field's row, in place of that
+    /// field's value, and back in the dock when no row on screen holds
+    /// that field. One editor serves every field, so it moves with the
+    /// selection and keeps the keyboard it had.
+    pub(super) fn place_editor(&self) {
+        let imp = self.imp();
+        let editor = imp.editor_box.get();
+        let had_focus = imp.value_view.has_focus();
+        let selected = imp.field.get();
+        let bound: Vec<gtk::ListItem> = imp.bound.borrow().clone();
+        let seat = bound
+            .iter()
+            .find(|item| selected.is_some() && field_of(item.item()) == selected)
+            .and_then(|item| item.child())
+            .and_then(|row| well_and_slot(&row));
+        let holder = editor.parent();
+        let home = seat.as_ref().map(|(_, slot)| slot.clone().upcast::<gtk::Widget>());
+        for item in &bound {
+            if let Some((well, slot)) = item.child().and_then(|row| well_and_slot(&row)) {
+                let taken = home.as_ref() == Some(slot.upcast_ref());
+                well.set_visible(!taken);
+                slot.set_visible(taken);
+            }
+        }
+        if holder == home {
+            return;
+        }
+        if let Some(holder) = holder.and_then(|holder| holder.downcast::<gtk::Box>().ok()) {
+            holder.remove(&editor);
+        }
+        match seat {
+            Some((_, slot)) => slot.append(&editor),
+            None => imp.editor_dock.append(&editor),
+        }
+        if had_focus {
+            imp.value_view.grab_focus();
         }
     }
 
@@ -424,6 +478,7 @@ impl RowDetailPane {
             return;
         };
         self.take_field(column);
+        self.place_editor();
         self.load_value();
         self.move_grid_focus(column);
     }
@@ -432,6 +487,7 @@ impl RowDetailPane {
     pub(super) fn set_field(&self, column: usize) {
         self.take_field(column);
         self.select_in_list(Some(column));
+        self.place_editor();
         self.load_value();
     }
 
