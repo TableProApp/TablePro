@@ -113724,6 +113724,9 @@
         }
       }
     },
+    "Navigator Layout turns on table details, the Objects tab on selection, the Objects toolbar buttons and the connections list, and makes Tree the default sidebar layout. Standard Layout turns them off again. Open connections switch layout too." : {
+
+    },
     "Nearest" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -210737,6 +210740,9 @@
     "Use License Key…" : {
 
     },
+    "Use Navigator Layout" : {
+
+    },
     "Use Required for Amazon Keyspaces and other hosted Cassandra deployments." : {
       "localizations" : {
         "fr" : {
@@ -210876,6 +210882,9 @@
           }
         }
       }
+    },
+    "Use Standard Layout" : {
+
     },
     "Use System Color" : {
 
