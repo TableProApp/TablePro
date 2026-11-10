@@ -72,7 +72,7 @@ struct MCPHandshakeSocketTrustTests {
 
             let loaded = try MCPHandshakeTrust.load(at: folder.handshake)
             #expect(loaded.socketPath == folder.socketPath)
-            #expect(loaded.credentials() == MCPUpstreamCredentials(socketPath: folder.socketPath, bearerToken: "tp_test"))
+            #expect(loaded.credentials() == MCPUpstreamCredentials(socketPath: folder.socketPath, serverPID: getpid(), bearerToken: "tp_test"))
         }
     }
 

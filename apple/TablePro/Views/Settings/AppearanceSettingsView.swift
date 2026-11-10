@@ -16,8 +16,8 @@ internal struct AppearanceSettingsView: View {
         }
     }
 
-    // A List inside a scrolling grouped Form neither scrolls nor takes keyboard focus (measured on
-    // macOS 27), so the Form keeps its own height and the theme list sits below it.
+    // A List inside a scrolling grouped Form does not scroll (measured on macOS 27), so the Form
+    // keeps its own height and the theme list sits below it.
     private var settingsForm: some View {
         Form {
             Section {

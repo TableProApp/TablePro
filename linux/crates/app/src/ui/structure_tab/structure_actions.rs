@@ -6,7 +6,10 @@ use super::{SaveInput, StructureTab};
 use crate::application::{ShortcutOwner, local_shortcut_controller};
 
 impl StructureTab {
-    /// Ctrl+S saves as the Save button does, and only while it could.
+    pub(crate) fn save_action(&self) -> Option<gio::SimpleAction> {
+        self.imp().save_action.get().cloned()
+    }
+
     pub(super) fn install_actions(&self) {
         let imp = self.imp();
         let save = gio::SimpleAction::new("save", None);
@@ -18,6 +21,7 @@ impl StructureTab {
             .build();
         let group = gio::SimpleActionGroup::new();
         group.add_action(&save);
+        let _ = imp.save_action.set(save);
         self.insert_action_group("structure", Some(&group));
         self.add_controller(local_shortcut_controller(ShortcutOwner::StructureTab));
         crate::ui::a11y::announce_key_shortcuts(&imp.save_button.get(), "structure.save");

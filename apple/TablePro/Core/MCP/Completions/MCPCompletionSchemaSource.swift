@@ -54,6 +54,7 @@ public enum MCPConnectionReferenceMatcher {
 
 public protocol MCPCompletionSchemaSource: Sendable {
     func connections(principal: MCPPrincipal) async -> [MCPConnectionDescriptor]
+    func isApproved(principal: MCPPrincipal, connectionId: UUID) async -> Bool
     func databases(connectionId: UUID) async -> [String]
     func schemas(connectionId: UUID, database: String?) async -> [String]
     func tables(connectionId: UUID, database: String?, schema: String?) async -> [String]
@@ -80,6 +81,10 @@ public struct MCPBridgeCompletionSchemaSource: MCPCompletionSchemaSource {
                 safeMode: entry["safe_mode"]?.stringValue ?? "off"
             )
         }
+    }
+
+    public func isApproved(principal: MCPPrincipal, connectionId: UUID) async -> Bool {
+        await services.authPolicy.isAllowedWithoutPrompt(principal: principal, connectionId: connectionId)
     }
 
     public func databases(connectionId: UUID) async -> [String] {

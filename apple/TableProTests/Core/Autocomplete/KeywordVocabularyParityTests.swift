@@ -9,6 +9,7 @@
 import Foundation
 @testable import TablePro
 @testable import TableProAutocomplete
+import TableProSQLGrammar
 import Testing
 
 struct KeywordVocabularyParityTests {
@@ -110,9 +111,9 @@ struct KeywordVocabularyParityTests {
 
         let text = statement as NSString
         let endOfAdd = text.range(of: "add").location + 3
-        #expect(KeywordUppercaseHelper.keywordBeforePosition(text, at: endOfAdd)?.word == "add")
+        #expect(KeywordUppercaseHelper.keywordBeforePosition(text, at: endOfAdd, grammar: .ansi)?.word == "add")
 
         let endOfUsers = text.range(of: "users").location + 5
-        #expect(KeywordUppercaseHelper.keywordBeforePosition(text, at: endOfUsers) == nil)
+        #expect(KeywordUppercaseHelper.keywordBeforePosition(text, at: endOfUsers, grammar: .ansi) == nil)
     }
 }

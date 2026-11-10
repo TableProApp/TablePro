@@ -59,7 +59,9 @@ internal final class DatabaseSearchLiveReader: DatabaseSearchReading {
         let engine = DatabaseSearchColumnPlanner.Engine(databaseType: databaseType, dialect: dialect)
         let rowCap = Self.rowCap
         let scope = DatabaseScope(connectionId: connection.id, database: database, schema: target.schema)
-        return try await manager.withCancellableRead(scope: scope, route: manager.metadataRoute(for: scope)) { driver in
+        return try await manager.withCancellableRead(
+            scope: scope, route: manager.metadataRoute(for: scope), ownsSessionState: false
+        ) { driver in
             let classifier = ColumnTypeClassifier(family: family)
             let columns = try await driver.fetchColumns(table: target.name, schema: target.schema).map { info in
                 let type = classifier.classify(rawTypeName: info.typeNameForClassification)

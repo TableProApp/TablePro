@@ -30,6 +30,7 @@ public actor MCPHttpServerTransport {
     private let configuration: MCPHttpServerConfiguration
     private let authenticator: any MCPAuthenticator
     private let pairingService: MCPPairingService
+    private let tokenRevoker: any MCPTokenRevoking
     private let clock: any MCPClock
     private let allowedSocketPeerUid: uid_t
 
@@ -51,12 +52,14 @@ public actor MCPHttpServerTransport {
         configuration: MCPHttpServerConfiguration,
         authenticator: any MCPAuthenticator,
         pairingService: MCPPairingService,
+        tokenRevoker: any MCPTokenRevoking,
         clock: any MCPClock = MCPSystemClock(),
         allowedSocketPeerUid: uid_t = getuid()
     ) {
         self.configuration = configuration
         self.authenticator = authenticator
         self.pairingService = pairingService
+        self.tokenRevoker = tokenRevoker
         self.clock = clock
         self.allowedSocketPeerUid = allowedSocketPeerUid
 
@@ -281,6 +284,7 @@ public actor MCPHttpServerTransport {
         return MCPHttpRequestRouter(
             authenticator: authenticator,
             pairingService: pairingService,
+            tokenRevoker: tokenRevoker,
             clock: clock,
             boundPort: boundPort == 0 ? configuration.port : boundPort,
             emitInbound: { exchange in

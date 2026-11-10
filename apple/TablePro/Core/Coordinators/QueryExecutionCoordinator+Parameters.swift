@@ -100,7 +100,7 @@ private struct ExecutedStatementHistory {
 
 extension QueryExecutionCoordinator {
     func detectAndReconcileParameters(sql: String, existing: [QueryParameter]) -> [QueryParameter] {
-        QueryExecutor.detectAndReconcileParameters(sql: sql, existing: existing)
+        QueryExecutor.detectAndReconcileParameters(sql: sql, existing: existing, grammar: parent.lexicalGrammar)
     }
 
     func executeQueryWithParameters(
@@ -108,9 +108,10 @@ extension QueryExecutionCoordinator {
         parameters: [QueryParameter],
         bypassRowLimit: Bool = false,
         anchor: StatementAnchor? = nil,
-        install: ResultInstall = .newResult
+        install: ResultInstall = .newResult,
+        onTab target: UUID? = nil
     ) {
-        guard let (_, index) = parent.tabManager.selectedTabAndIndex else { return }
+        guard let (_, index) = parent.executionTab(target) else { return }
 
         let missing = parameters.filter {
             !$0.isNull && $0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -131,7 +132,8 @@ extension QueryExecutionCoordinator {
         let conversion = SQLParameterExtractor.convertToNativeStyle(
             sql: sql,
             parameters: parameters,
-            style: style
+            style: style,
+            grammar: parent.lexicalGrammar
         )
 
         paramLog.info("Executing parameterized query: \(conversion.sql.prefix(100), privacy: .private) with \(conversion.values.count) parameters")
@@ -143,7 +145,8 @@ extension QueryExecutionCoordinator {
             bypassRowLimit: bypassRowLimit,
             originalSQL: sql,
             anchor: anchor,
-            install: install
+            install: install,
+            onTab: target
         )
     }
 
@@ -156,9 +159,10 @@ extension QueryExecutionCoordinator {
         bypassRowLimit: Bool = false,
         originalSQL: String? = nil,
         anchor: StatementAnchor? = nil,
-        install: ResultInstall = .newResult
+        install: ResultInstall = .newResult,
+        onTab target: UUID? = nil
     ) {
-        guard let (selectedTab, index) = parent.tabManager.selectedTabAndIndex,
+        guard let (selectedTab, index) = parent.executionTab(target),
               !parent.tabExecution.isExecuting(selectedTab.id) else { return }
 
         guard let scope = parent.scope(for: selectedTab) else {
@@ -311,9 +315,10 @@ extension QueryExecutionCoordinator {
     func executeMultipleStatementsWithParameters(
         _ statements: [SQLStatementScanner.ExecutableStatement],
         parameters: [QueryParameter],
-        bypassRowLimit: Bool = false
+        bypassRowLimit: Bool = false,
+        onTab target: UUID? = nil
     ) {
-        guard let (selectedTab, index) = parent.tabManager.selectedTabAndIndex,
+        guard let (selectedTab, index) = parent.executionTab(target),
               !parent.tabExecution.isExecuting(selectedTab.id) else { return }
 
         let missing = parameters.filter {
@@ -481,10 +486,10 @@ extension QueryExecutionCoordinator {
         let sql = statement.sql
         let parameterNames = parameters.isEmpty || !statement.acceptsBindParameters
             ? []
-            : SQLParameterExtractor.extractParameters(from: sql)
+            : SQLParameterExtractor.extractParameters(from: sql, grammar: grammar)
         let conversion = parameterNames.isEmpty
             ? nil
-            : SQLParameterExtractor.convertToNativeStyle(sql: sql, parameters: parameters, style: style)
+            : SQLParameterExtractor.convertToNativeStyle(sql: sql, parameters: parameters, style: style, grammar: grammar)
         let executableSQL = conversion?.sql ?? sql
         let bounded = resolveStatement(sql: executableSQL, tabType: tabType, bypassLimit: bypassRowLimit)
         return PreparedStatement(
@@ -821,6 +826,7 @@ extension QueryExecutionCoordinator {
             }
         }
         parent.seedBufferFromActiveResult(tabId: tabId)
+        parent.dropParkedEdits(ofBackgroundTab: tabId)
         if parent.tabManager.selectedTabId == tabId {
             parent.toolbarState.isResultsCollapsed = false
             parent.toolbarState.recordQueryTiming(timing, for: tabId)

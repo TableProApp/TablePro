@@ -83,6 +83,7 @@ cargo_env.set('TABLEPRO_POSTHOG_KEY', get_option('posthog_key'))
 subdir('data')
 subdir('po')
 subdir('crates/app')
+subdir('data/completions')
 subdir('build-aux')
 
 # `meson devenv` runs cargo against the build tree, where the askpass

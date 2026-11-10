@@ -11,7 +11,7 @@ struct ServerDashboardView: View {
             if viewModel.supportedPanels.isEmpty {
                 UnavailableStateView(
                     String(localized: "Dashboard Not Available"),
-                    systemImage: "gauge.with.dots.needle.0percent",
+                    systemImage: "gauge.low",
                     description: Text("Server monitoring is not available for this database type.")
                 )
             } else {

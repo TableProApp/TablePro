@@ -25,7 +25,7 @@ extension RedisPluginDriver {
             return try await runOperation(operation, connection: conn, startTime: startTime)
         } catch let queued as RedisQueuedCommand {
             guard operation.queuedCommandAnswer == .reportQueued else { throw queued }
-            recordQueued(queued.command)
+            recordQueued(queued.command, mustApply: operation.mustApply)
             return buildStatusResult(Self.queuedStatus, startTime: startTime)
         }
     }
@@ -73,6 +73,13 @@ extension RedisPluginDriver {
              .multi, .exec, .discard:
             return try await executeServerOperation(operation, connection: conn, startTime: startTime)
 
+        case .mustApply(let args):
+            let reply = try await conn.run(args.asRedisArguments)
+            guard RedisConditionalWrite.applied(reply) else {
+                throw RedisPluginError(code: 0, message: RedisConditionalWrite.refusedMessage)
+            }
+            return buildStatusResult("OK", startTime: startTime)
+
         case .inDatabase(let database, let operation):
             return try await conn.withDatabase(database) {
                 try await runOperation(operation, connection: conn, startTime: startTime)
@@ -113,6 +120,7 @@ extension RedisPluginDriver {
                 if let pxat = opts.pxat { args += ["PXAT", String(pxat)].asRedisArguments }
                 if opts.nx { args.append("NX".redisArgument) }
                 if opts.xx { args.append("XX".redisArgument) }
+                if opts.keepTTL { args.append("KEEPTTL".redisArgument) }
             }
             try await conn.run(args)
             return buildStatusResult("OK", startTime: startTime)

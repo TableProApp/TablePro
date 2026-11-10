@@ -61,7 +61,7 @@ Start from the template CI builds, so you do not need gettext 1.0:
      or newer, as in CI's Translations job, that fails an entry whose
      translation drops or misspells a `{name}` placeholder;
    - the .deb and .rpm install it, and their smoke test starts
-     `tablepro --help` under it and looks for its translation of
+     `tablepro --help-all` under it and looks for its translation of
      "Open a new window".
 
 4. Compile and install it. The package build does this on its own. To

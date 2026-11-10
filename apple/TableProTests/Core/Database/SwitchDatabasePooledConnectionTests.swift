@@ -93,6 +93,23 @@ struct SwitchDatabasePooledConnectionTests {
         #expect(!MetadataConnectionPool.shared.isReplacingTransport(for: connection.id))
     }
 
+    @Test("A switch that reconnects reports the transaction the connection it closed was holding")
+    func reconnectingSwitchReportsTheTransactionItEnded() async throws {
+        let connection = makeSession()
+        defer { cleanUp(connection) }
+        let manager = DatabaseManager.shared
+        let driver = try #require(manager.session(for: connection.id)?.driver as? MockDatabaseDriver)
+        driver.sessionTransactionStateToReturn = .inTransaction
+        let scope = DatabaseScope(connectionId: connection.id, database: "app", schema: nil)
+        try await manager.withScopedDriver(scope: scope, route: .sessionDriver, cancellation: .untracked) { _ in }
+        #expect(manager.sessionTransactions.holdsTransaction(connectionId: connection.id, container: "app"))
+
+        try? await manager.switchDatabase(to: "unreachable", for: connection.id, persist: false)
+
+        #expect(driver.disconnectCallCount >= 1)
+        #expect(manager.sessionLanes.hasTransactionLoss(database: "app", for: connection.id))
+    }
+
     @Test("A switch that reconnects a connection that stopped answering closes its pooled connections")
     func recoveringSwitchClosesThePool() async {
         let connection = makeSession(stoppedAnswering: true)

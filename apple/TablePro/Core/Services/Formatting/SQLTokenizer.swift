@@ -396,6 +396,12 @@ private struct Lexer {
             readWord()
             return
         }
+        if let end = SQLOperatorRun.end(at: index, in: text, grammar: grammar), end - index > 1 {
+            let start = index
+            index = end
+            emit(.operator, from: start)
+            return
+        }
         if readPrefixedName(unit) { return }
         readOperatorOrPunctuation(unit)
     }
@@ -420,6 +426,11 @@ private struct Lexer {
             emit(.placeholder, from: start)
         case .quoted:
             let opener = text.character(at: start)
+            if span.isTerminated, grammar.isQuote(opener), let end = accountHostEnd(at: index) {
+                index = end
+                emit(.identifier, from: start)
+                return
+            }
             emit(opener == Self.backtick || opener == Self.openBracket ? .identifier : .string, from: start)
         }
     }
@@ -526,6 +537,11 @@ private struct Lexer {
         while index < length, continuesWord(at: index) {
             index += 1
         }
+        if let end = accountHostEnd(at: index) {
+            index = end
+            emit(.identifier, from: start)
+            return
+        }
         let word = substring(from: start, to: index)
         let upper = word.uppercased()
         if tokenizer.isKeyword(upper) {
@@ -559,7 +575,37 @@ private struct Lexer {
         return span
     }
 
-    // `@name`, `@@version`, `:name`, `$1`, `?1` and T-SQL's `#temp` and `##global` are one token each.
+    // `user@host` is one name: MySQL's ``'app'@'%'`` and `` `root`@`localhost` `` and Oracle's `emp@remote` take no
+    // space at the `@`, and a user name that spells a keyword keeps its case. Not where `@` is an operator character.
+    private func accountHostEnd(at position: Int) -> Int? {
+        guard !grammar.readsOperatorRuns, position + 1 < length, text.character(at: position) == Self.at else {
+            return nil
+        }
+        let host = position + 1
+        if let span = quotedName(at: host) { return span.end }
+        guard isWordPart(text.character(at: host)), text.character(at: host) != Self.at else { return nil }
+        var end = host
+        while end < length {
+            let isInnerDot = text.character(at: end) == Self.dot && end + 1 < length
+                && isWordPart(text.character(at: end + 1))
+            guard isInnerDot || continuesWord(at: end) else { break }
+            end += 1
+        }
+        return end
+    }
+
+    private func quotedName(at position: Int) -> SQLNonCodeSpan.Span? {
+        guard position < length, grammar.isQuote(text.character(at: position)),
+              let span = SQLNonCodeSpan.span(at: position, in: text, grammar: grammar), span.kind == .quoted,
+              span.isTerminated
+        else {
+            return nil
+        }
+        return span
+    }
+
+    // `@name`, `@@version`, `:name`, `$1`, `?1` and T-SQL's `#temp` and `##global` are one token each, and so is
+    // MySQL's quoted user variable, `` @`my var` ``.
     private mutating func readPrefixedName(_ unit: UInt16) -> Bool {
         let start = index
         switch unit {
@@ -582,6 +628,11 @@ private struct Lexer {
             emit(.placeholder, from: start)
             return true
         case Self.at, Self.hash:
+            if unit == Self.at, !grammar.readsOperatorRuns, let span = quotedName(at: index + 1) {
+                index = span.end
+                emit(.placeholder, from: start)
+                return true
+            }
             var cursor = index + 1
             if cursor < length, text.character(at: cursor) == unit {
                 cursor += 1
