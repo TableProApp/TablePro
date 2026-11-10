@@ -205,13 +205,11 @@ fn record(config: &Config, engine: String, lookups: &Lookups) -> ForeignConnecti
             .is_some_and(|names| names.contains(name))
     };
     let written = |value: &Option<String>| value.as_deref().is_some_and(|value| !value.trim().is_empty());
+    let connection_string = written(&config.connection_string) || kept_apart("connection_string");
     let startup = [
         (written(&config.init_script) || kept_apart("init_script"), INIT_SCRIPT),
         (!config.attached_databases.is_empty(), ATTACHED_DATABASES),
-        (
-            written(&config.connection_string) || kept_apart("connection_string"),
-            CONNECTION_STRING,
-        ),
+        (connection_string, CONNECTION_STRING),
     ];
     let not_kept = lost
         .into_iter()
@@ -220,7 +218,10 @@ fn record(config: &Config, engine: String, lookups: &Lookups) -> ForeignConnecti
         fields.insert(key.to_owned(), "true".to_owned());
     }
 
-    let ssl = ssl_of(config, &engine, &mut fields);
+    // DBX saves driver parameters with the secrets it encrypts, and connects through a connection string
+    // in place of the host, so the TLS either one sets cannot be read.
+    let tls_unread = file_field.is_none() && (kept_apart("url_params") || connection_string);
+    let ssl = ssl_of(config, &engine, tls_unread, &mut fields);
     let settings = ForeignConnection {
         name: if config.name.trim().is_empty() {
             "Untitled".to_owned()
@@ -292,13 +293,18 @@ fn sign_in(hop: &SshLayer) -> (ForeignSshAuth, String) {
 // DBX has no TLS mode field: `ssl` turns TLS on, a CA file has MySQL check the server, and an
 // `sslmode` driver parameter can name any mode. The stricter of the two is kept, so no connection
 // imports weaker than DBX may open it, and TLS set some other way marks the record for the review.
-fn ssl_of(config: &Config, engine: &str, fields: &mut BTreeMap<String, String>) -> Option<ForeignSsl> {
-    let params = config
-        .url_params
-        .as_deref()
-        .unwrap_or_default()
-        .trim()
-        .trim_start_matches('?');
+fn ssl_of(config: &Config, engine: &str, unread: bool, fields: &mut BTreeMap<String, String>) -> Option<ForeignSsl> {
+    let params = if unread {
+        fields.insert(crate::TLS_SETTINGS_UNREAD.to_owned(), "true".to_owned());
+        ""
+    } else {
+        config
+            .url_params
+            .as_deref()
+            .unwrap_or_default()
+            .trim()
+            .trim_start_matches('?')
+    };
     let url = format!("dbx://host/?{params}");
     let named = jdbc::url_ssl_or_mark(&url, fields).map(|ssl| ssl.mode);
     let file = |path: &str| Some(path.trim().to_owned()).filter(|path| !path.is_empty());
@@ -313,7 +319,7 @@ fn ssl_of(config: &Config, engine: &str, fields: &mut BTreeMap<String, String>) 
         (Some(mode), None) | (None, Some(mode)) => mode,
         // DBX writes libpq's own default into the URL of a connection that names no mode.
         (None, None) if matches!(engine, "PostgreSQL" | "CockroachDB" | "Redshift") => {
-            return jdbc::driver_default_ssl(&url, false, ForeignSslMode::Preferred, fields);
+            return jdbc::driver_default_ssl(&url, unread, ForeignSslMode::Preferred, fields);
         }
         (None, None) => return None,
     };

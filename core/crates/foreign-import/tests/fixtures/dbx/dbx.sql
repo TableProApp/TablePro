@@ -2,6 +2,8 @@
 -- with rows in the shape DBX writes them: `ConnectionConfig` and `TransportLayerConfig` as serde
 -- writes them (crates/dbx-types/src/models/connection.rs), secrets as `dbxenc1` envelopes
 -- (persistence/secret_codec.rs) whose bytes are random, and the sidebar layout of ai/mcp_policy.rs.
+-- The inline `url_params`, `init_script` and passwords are as a DBX before its secret migration left
+-- them; DBX now writes those to connection_secrets and null to the JSON.
 CREATE TABLE IF NOT EXISTS connections (
     id TEXT PRIMARY KEY,
     config_json TEXT NOT NULL

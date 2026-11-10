@@ -255,7 +255,10 @@ fn what_runs_sql_or_a_command_or_routes_elsewhere_is_named_and_never_carried() {
         not_kept(settings(&collected, "c-duck")),
         ["duckdbFilePath", "initScript"]
     );
-    assert_eq!(not_kept(settings(&collected, "c-mongo")), ["connectionString"]);
+    assert_eq!(
+        not_kept(settings(&collected, "c-mongo")),
+        ["connectionString", TLS_SETTINGS_UNREAD]
+    );
     assert_eq!(not_kept(settings(&collected, "c-cache")), ["sshProxyCommand"]);
     let gone = settings(&collected, "c-gone");
     assert_eq!(not_kept(gone), ["sshTunnel"]);
@@ -396,6 +399,20 @@ INSERT INTO connections VALUES ('t7', '{"id":"t7","name":"CA and require","db_ty
   "ca_cert_path":"/certs/ca.pem","url_params":"sslmode=require"}');
 INSERT INTO connections VALUES ('t8', '{"id":"t8","name":"MySQL plain","db_type":"mysql","host":"h","ssl":false}');
 INSERT INTO connections VALUES ('t9', '{"id":"t9","name":"Switched on","db_type":"sqlserver","host":"h","ssl":true}');
+INSERT INTO connections VALUES ('t10', '{"id":"t10","name":"Parameters apart","db_type":"postgres","host":"h",
+  "ssl":false,"url_params":null}');
+INSERT INTO connections VALUES ('t11', '{"id":"t11","name":"Verified, parameters apart","db_type":"postgres",
+  "host":"h","ssl":true,"ca_cert_path":"/certs/ca.pem","url_params":null}');
+INSERT INTO connections VALUES ('t12', '{"id":"t12","name":"By URI","db_type":"mongodb","host":"mongo.internal",
+  "port":27017,"ssl":false,"connection_string":null}');
+INSERT INTO connections VALUES ('t13', '{"id":"t13","name":"File with parameters","db_type":"sqlite",
+  "host":"/data/app.db","ssl":false,"url_params":null}');
+CREATE TABLE connection_secrets (connection_id TEXT NOT NULL, key TEXT NOT NULL, secret TEXT NOT NULL,
+  secret_enc TEXT, PRIMARY KEY (connection_id, key));
+INSERT INTO connection_secrets VALUES ('t10', 'url_params', '', 'dbxenc1.cGFyYW1zLXQxMA.c3NsbW9kZQ'),
+  ('t11', 'url_params', '', 'dbxenc1.cGFyYW1zLXQxMQ.c3NsbW9kZQ'),
+  ('t12', 'connection_string', '', 'dbxenc1.c3RyaW5nLXQxMg.bW9uZ29kYg'),
+  ('t13', 'url_params', '', 'dbxenc1.cGFyYW1zLXQxMw.ZXh0ZW5zaW9u');
 "#;
 
 #[test]
@@ -434,6 +451,36 @@ fn a_tls_mode_in_the_driver_parameters_is_kept_and_never_weakened() {
         !settings(&collected, "t1")
             .additional_fields
             .contains_key(TLS_SETTINGS_UNREAD)
+    );
+}
+
+// DBX saves `url_params` and a connection string among the secrets it encrypts and leaves null in the JSON.
+#[test]
+fn tls_dbx_keeps_encrypted_is_unread_and_no_default_stands_in_for_it() {
+    let home = Home::with_store(ForeignPlatform::Linux, TLS_STORE);
+
+    let collected = home.collect(&CONNECTIONS_ONLY);
+
+    let mode = |reference: &str| settings(&collected, reference).ssl.as_ref().map(|ssl| ssl.mode);
+    for unread in ["t10", "t11", "t12"] {
+        assert!(
+            settings(&collected, unread)
+                .additional_fields
+                .contains_key(TLS_SETTINGS_UNREAD),
+            "{unread} was imported as though its TLS were known"
+        );
+    }
+    assert_eq!(mode("t10"), None);
+    assert_eq!(not_kept(settings(&collected, "t10")), [TLS_SETTINGS_UNREAD]);
+    assert_eq!(
+        mode("t11"),
+        Some(ForeignSslMode::VerifyCa),
+        "what `ssl` and the CA file say still holds"
+    );
+    assert_eq!(mode("t12"), None);
+    assert!(
+        not_kept(settings(&collected, "t13")).is_empty(),
+        "a database file has no TLS to read"
     );
 }
 
