@@ -176,15 +176,7 @@ impl BrowseTab {
                 tasks: init.tasks.clone(),
             },
         );
-        if let Some(state_key) = init.state_key.clone() {
-            keep_highlight_rules(
-                &grid,
-                &init.highlight_rules,
-                state_key,
-                init.schema.as_deref(),
-                &init.table,
-            );
-        }
+        restore_highlights(&grid, &init.highlight_rules, init.state_key.clone());
         let link_changes = init.session.link_changes();
         let model = BrowseModel {
             this: tab.downgrade(),
@@ -695,16 +687,20 @@ impl BrowseModel {
     }
 }
 
-fn keep_highlight_rules(
+fn restore_highlights(
     grid: &DataGrid,
     store: &crate::persistence::HighlightRulesStore,
-    state_key: crate::persistence::TableStateKey,
-    schema: Option<&str>,
-    table: &str,
+    state_key: Option<crate::persistence::TableStateKey>,
 ) {
-    let rules = store.rules(&state_key, schema, table);
-    if !rules.is_empty() {
-        grid.set_highlight_rules(rules);
+    let Some(state_key) = state_key else {
+        return;
+    };
+    let opened = grid.config().and_then(|config| config.table.clone());
+    if let Some(table) = opened {
+        let rules = store.rules(&state_key, table.schema.as_deref(), &table.name);
+        if !rules.is_empty() {
+            grid.set_highlight_rules(rules);
+        }
     }
     let store = store.clone();
     // The grid's table, not the opening one, so a rename moves the rules with it.
