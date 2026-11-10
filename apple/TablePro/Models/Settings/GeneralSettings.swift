@@ -74,6 +74,7 @@ struct GeneralSettings: Codable, Equatable {
     var showWorkspaceRail: Bool
     var sidebarRowSize: SidebarRowSizePreference
     var showsConnectionNavigator: Bool
+    var showsConnectionsInTree: Bool
     var connectionHealthCheck: ConnectionHealthCheck
 
     static let `default` = GeneralSettings(
@@ -94,6 +95,7 @@ struct GeneralSettings: Codable, Equatable {
         showWorkspaceRail: true,
         sidebarRowSize: .matchSystem,
         showsConnectionNavigator: false,
+        showsConnectionsInTree: false,
         connectionHealthCheck: .every30Seconds
     )
 
@@ -115,6 +117,7 @@ struct GeneralSettings: Codable, Equatable {
         showWorkspaceRail: Bool = true,
         sidebarRowSize: SidebarRowSizePreference = .matchSystem,
         showsConnectionNavigator: Bool = false,
+        showsConnectionsInTree: Bool = false,
         connectionHealthCheck: ConnectionHealthCheck = .every30Seconds
     ) {
         self.startupBehavior = startupBehavior
@@ -134,6 +137,7 @@ struct GeneralSettings: Codable, Equatable {
         self.showWorkspaceRail = showWorkspaceRail
         self.sidebarRowSize = sidebarRowSize
         self.showsConnectionNavigator = showsConnectionNavigator
+        self.showsConnectionsInTree = showsConnectionsInTree
         self.connectionHealthCheck = connectionHealthCheck
     }
 
@@ -162,6 +166,7 @@ struct GeneralSettings: Codable, Equatable {
             .showsConnectionNavigator,
             default: fallback.showsConnectionNavigator
         )
+        showsConnectionsInTree = container.decodeSetting(.showsConnectionsInTree, default: fallback.showsConnectionsInTree)
         connectionHealthCheck = container.decodeSetting(.connectionHealthCheck, default: fallback.connectionHealthCheck)
     }
 }

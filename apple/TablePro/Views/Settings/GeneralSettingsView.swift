@@ -74,9 +74,9 @@ struct GeneralSettingsView: View {
             } footer: {
                 Text(String(localized: """
                     Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects \
-                    tab on selection, the Objects toolbar buttons, toolbar labels and the connections list, and makes \
-                    Tree the default sidebar layout. Standard Layout turns them off again. Open connections switch \
-                    layout too.
+                    tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the \
+                    tree, and makes Tree the default sidebar layout. Standard Layout turns them off again. Open \
+                    connections switch layout too.
                     """))
             }
 
@@ -86,6 +86,12 @@ struct GeneralSettingsView: View {
 
                 Toggle("List every saved connection beside the database tree", isOn: $settings.showsConnectionNavigator)
                     .help("Turns the connections column into a list of every saved connection, in its groups. Double-click one to open it.")
+
+                Toggle("Show saved connections in the database tree", isOn: $settings.showsConnectionsInTree)
+                    .help(String(localized: """
+                        In the Tree layout, lists every saved connection in its groups at the top of the sidebar, \
+                        with the connection on screen opened to its databases. Double-click another one to open it.
+                        """))
 
                 Toggle("Show recent tables", isOn: $settings.showRecentTables)
                     .help("Adds a Recent section at the top of the Tables sidebar with the last tables you opened per connection and database.")

@@ -18,7 +18,8 @@ struct NavigatorLayoutPresetTests {
         expected.showsObjectsOnSelection = true
         expected.showsObjectToolbar = true
         expected.showsToolbarLabels = true
-        expected.showsConnectionNavigator = true
+        expected.showsConnectionsInTree = true
+        expected.showsConnectionNavigator = false
         return expected
     }
 
@@ -34,13 +35,28 @@ struct NavigatorLayoutPresetTests {
         #expect(settings.showsObjectsOnSelection)
         #expect(settings.showsObjectToolbar)
         #expect(settings.showsToolbarLabels)
-        #expect(settings.showsConnectionNavigator)
+        #expect(settings.showsConnectionsInTree)
         #expect(layout == .tree)
+    }
+
+    /// The tree lists the saved connections itself, so a second list of them in its own column
+    /// would put the window back at two columns.
+    @Test("Use Navigator Layout turns the separate connections column off")
+    func applyTurnsTheConnectionsColumnOff() {
+        var settings = GeneralSettings.default
+        settings.showsConnectionNavigator = true
+        var layout = SidebarLayout.flat
+
+        NavigatorLayoutPreset.apply(to: &settings, defaultLayout: &layout)
+
+        #expect(settings.showsConnectionsInTree)
+        #expect(!settings.showsConnectionNavigator)
     }
 
     @Test("Use Standard Layout puts all seven back to their defaults")
     func restorePutsTheDefaultsBack() {
         var settings = Self.navigatorLayout(from: .default)
+        settings.showsConnectionNavigator = true
         var layout = SidebarLayout.tree
 
         NavigatorLayoutPreset.restore(to: &settings, defaultLayout: &layout)
@@ -50,6 +66,7 @@ struct NavigatorLayoutPresetTests {
         #expect(settings.showsObjectsOnSelection == GeneralSettings.default.showsObjectsOnSelection)
         #expect(settings.showsObjectToolbar == GeneralSettings.default.showsObjectToolbar)
         #expect(!settings.showsToolbarLabels, "Standard Layout is icons only")
+        #expect(settings.showsConnectionsInTree == GeneralSettings.default.showsConnectionsInTree)
         #expect(settings.showsConnectionNavigator == GeneralSettings.default.showsConnectionNavigator)
         #expect(settings == GeneralSettings.default)
         #expect(layout == .flat)
@@ -129,6 +146,7 @@ extension GlobalStateSuites {
                 $0.general.showsObjectToolbar = false
                 $0.general.showsToolbarLabels = false
                 $0.general.showsConnectionNavigator = false
+                $0.general.showsConnectionsInTree = false
             }
         )
         func presetReachesAnOpenWindow() throws {
@@ -150,13 +168,13 @@ extension GlobalStateSuites {
 
             #expect(hasButtons(), "The Objects buttons reach the open window")
             #expect(toolbar.displayMode == .iconAndLabel, "Labels go under the toolbar's icons")
-            #expect(railChanges == 1, "The connections column is told to swap in the navigator")
+            #expect(railChanges == 1, "The connections column is told the tree now lists the connections")
 
             NavigatorLayoutPreset.restore(to: &AppSettingsManager.shared.general, defaultLayout: &layout)
 
             #expect(!hasButtons(), "The Objects buttons leave the open window")
             #expect(toolbar.displayMode == .iconOnly, "Standard Layout puts the icons back alone")
-            #expect(railChanges == 2, "The connections column is told to swap the navigator out")
+            #expect(railChanges == 2, "The connections column is told the tree stops listing them")
         }
     }
 }

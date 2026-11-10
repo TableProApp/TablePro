@@ -12,8 +12,10 @@ final class AppSettingsManager: ObservableObject {
         didSet {
             general.language.apply()
             storage.saveGeneral(general)
+            // The strip stands aside for a tree that lists the connections itself, so that setting moves it too.
             if oldValue.showWorkspaceRail != general.showWorkspaceRail
-                || oldValue.showsConnectionNavigator != general.showsConnectionNavigator {
+                || oldValue.showsConnectionNavigator != general.showsConnectionNavigator
+                || oldValue.showsConnectionsInTree != general.showsConnectionsInTree {
                 appEvents.workspaceRailVisibilityChanged.send(())
             }
             if oldValue.connectionHealthCheck != general.connectionHealthCheck {
