@@ -360,6 +360,10 @@ final class ConnectionCoordinator {
         case duringWork
         // The transaction is gone either way, which is what was asked for.
         case duringRollBack
+        // The app closed a database file as it went to the background, which rolled the transaction back.
+        case inBackground
+        // The app closed the file once a running statement ended, and that statement may have ended the transaction.
+        case inBackgroundAfterStatement
     }
 
     // True when the redial dropped a held transaction and the outcome is already settled for the user.
@@ -405,7 +409,10 @@ final class ConnectionCoordinator {
         }
 
         workWasRunning = workWasRunning || appState.sessionTransactions.isRunningStatements(connection.id)
-        let heldTransaction = transactionHold != nil
+        let ended = appState.sessionTransactions.endedHold(for: connection.id, on: held?.driver)
+        workWasRunning = workWasRunning || ended?.duringWork == true
+        let heldTransaction = transactionHold != nil || ended != nil
+        let released = ended.flatMap { releasedLoss($0, on: held, asked: loss) }
         isReconnecting = true
         defer { isReconnecting = false }
         do {
@@ -419,12 +426,12 @@ final class ConnectionCoordinator {
             guard attemptToken == token else { return false }
             await takeSession(outcome.session, token: token, dialedHere: outcome.dialedHere)
             guard attemptToken == token else { return false }
-            let dropped = heldTransaction ? settledLoss(loss, workWasRunning: workWasRunning) : unsettledLoss
+            let dropped = heldTransaction ? released ?? settledLoss(loss, workWasRunning: workWasRunning) : unsettledLoss
             return reportDroppedTransaction(dropped)
         } catch {
             guard attemptToken == token else { return false }
             if heldTransaction {
-                unsettledLoss = settledLoss(loss, workWasRunning: workWasRunning)
+                unsettledLoss = released ?? settledLoss(loss, workWasRunning: workWasRunning)
             }
             phase = .lost(classify(error, operation: "reconnect"))
             self.session = nil
@@ -434,6 +441,17 @@ final class ConnectionCoordinator {
 
     private func settledLoss(_ loss: SessionLoss, workWasRunning: Bool) -> SessionLoss {
         workWasRunning || statementFailedDuringCheck ? .duringWork : loss
+    }
+
+    // The release closed the file once its running statement ended, so a later failure on the closed file decides nothing.
+    private func releasedLoss(
+        _ ended: SessionTransactionMonitor.EndedHold,
+        on held: ConnectionSession?,
+        asked loss: SessionLoss
+    ) -> SessionLoss? {
+        guard held?.driver.holdsSuspensionBlockingResource == true else { return nil }
+        if ended.duringWork { return .inBackgroundAfterStatement }
+        return loss == .duringRollBack ? .duringRollBack : .inBackground
     }
 
     // True when the transaction a redial ended is settled for the user.
@@ -685,6 +703,20 @@ final class ConnectionCoordinator {
             )
         case .duringRollBack:
             nil
+        case .inBackground:
+            String(
+                format: String(
+                    localized: "TablePro closed %@ when it went to the background, which rolled back its open transaction. It has been reopened; run the statements again, and commit before you leave the app."
+                ),
+                connectionName
+            )
+        case .inBackgroundAfterStatement:
+            String(
+                format: String(
+                    localized: "TablePro closed %@ when it went to the background while a statement was running, so its open transaction may have been committed or rolled back. It has been reopened; check which of its changes were saved before running them again."
+                ),
+                connectionName
+            )
         }
     }
 

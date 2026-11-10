@@ -67,7 +67,9 @@ internal extension LibPQPluginConnection {
             generation: generation
         )
 
-        return PostGISTypes.rendering(parsed, types: typeNames.postgisTypes)
+        var rendered = PostGISTypes.rendering(parsed, types: typeNames.postgisTypes)
+        rendered.columnSources = PostgreSQLColumnOrigins.sources(of: result)
+        return rendered
     }
 
     static func decodeCell(

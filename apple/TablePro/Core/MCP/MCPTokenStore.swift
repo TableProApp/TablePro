@@ -36,6 +36,8 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
     var isActive: Bool
     // Set only by the bridge's own mint, never from the name, which a pairing request supplies.
     let isBridgeCredential: Bool
+    // Set only by the Claude Agent chat's own mint, on the same terms.
+    let isClaudeAgentCredential: Bool
     let extraScopes: Set<MCPScope>
 
     var scopes: Set<MCPScope> {
@@ -48,6 +50,15 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
     }
 
     var isEffectivelyActive: Bool { isActive && !isExpired }
+
+    var grantSubject: MCPGrantSubject {
+        MCPGrantSubject(tokenId: id, isBridgeCredential: isBridgeCredential, isClaudeAgentCredential: isClaudeAgentCredential)
+    }
+
+    // The bridge's credential rotates on its own, so ending one withdraws nothing the bridge was granted.
+    var subjectWithdrawnWhenEnded: MCPGrantSubject? {
+        isBridgeCredential ? nil : grantSubject
+    }
 
     init(
         id: UUID,
@@ -62,6 +73,7 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         expiresAt: Date?,
         isActive: Bool,
         isBridgeCredential: Bool = false,
+        isClaudeAgentCredential: Bool = false,
         extraScopes: Set<MCPScope> = []
     ) {
         self.id = id
@@ -76,6 +88,7 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         self.expiresAt = expiresAt
         self.isActive = isActive
         self.isBridgeCredential = isBridgeCredential
+        self.isClaudeAgentCredential = isClaudeAgentCredential
         self.extraScopes = extraScopes.intersection(MCPScope.optionalGrants)
     }
 
@@ -92,6 +105,7 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         case expiresAt
         case isActive
         case isBridgeCredential
+        case isClaudeAgentCredential
         case extraScopes
     }
 
@@ -109,6 +123,7 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         self.isActive = try container.decode(Bool.self, forKey: .isActive)
         self.connectionAccess = try container.decodeIfPresent(ConnectionAccess.self, forKey: .connectionAccess) ?? .all
         self.isBridgeCredential = try container.decodeIfPresent(Bool.self, forKey: .isBridgeCredential) ?? false
+        self.isClaudeAgentCredential = try container.decodeIfPresent(Bool.self, forKey: .isClaudeAgentCredential) ?? false
         // Lenient, so a bad value costs this grant only; the filter keeps a tier scope such as admin out.
         let storedExtraScopes = (try? container.decodeIfPresent([String].self, forKey: .extraScopes)) ?? []
         self.extraScopes = Set(storedExtraScopes.compactMap(MCPScope.init(rawValue:)))
@@ -128,6 +143,9 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         try container.encodeIfPresent(lastUsedAt, forKey: .lastUsedAt)
         try container.encodeIfPresent(expiresAt, forKey: .expiresAt)
         try container.encode(isBridgeCredential, forKey: .isBridgeCredential)
+        if isClaudeAgentCredential {
+            try container.encode(isClaudeAgentCredential, forKey: .isClaudeAgentCredential)
+        }
         try container.encode(isActive, forKey: .isActive)
         if !extraScopes.isEmpty {
             try container.encode(extraScopes.map(\.rawValue).sorted(), forKey: .extraScopes)
@@ -182,7 +200,8 @@ actor MCPTokenStore {
     private var lastSavedAt: ContinuousClock.Instant = .now
     private static let saveCooldown: Duration = .seconds(60)
 
-    private var revocationObservers: [UUID: @Sendable (String, Bool) async -> Void] = [:]
+    // Called with the token id and the subject whose approvals ended with it, nil when they outlive it.
+    private var revocationObservers: [UUID: @Sendable (String, MCPGrantSubject?) async -> Void] = [:]
 
     init(credentialStore: any MCPTokenCredentialStoring = MCPTokenKeychainStore()) {
         self.credentialStore = credentialStore
@@ -191,7 +210,7 @@ actor MCPTokenStore {
     }
 
     @discardableResult
-    func addRevocationObserver(_ handler: @escaping @Sendable (String, Bool) async -> Void) -> UUID {
+    func addRevocationObserver(_ handler: @escaping @Sendable (String, MCPGrantSubject?) async -> Void) -> UUID {
         let id = UUID()
         revocationObservers[id] = handler
         return id
@@ -208,6 +227,7 @@ actor MCPTokenStore {
         connectionAccess: ConnectionAccess,
         expiresAt: Date?,
         isBridgeCredential: Bool,
+        isClaudeAgentCredential: Bool,
         extraScopes: Set<MCPScope>
     ) throws -> (token: MCPAuthToken, plaintext: String) {
         let name = (!isBridgeCredential && name == Self.stdioBridgeTokenName)
@@ -235,6 +255,7 @@ actor MCPTokenStore {
             expiresAt: expiresAt,
             isActive: true,
             isBridgeCredential: isBridgeCredential,
+            isClaudeAgentCredential: isClaudeAgentCredential && !isBridgeCredential,
             extraScopes: isBridgeCredential ? [] : extraScopes
         )
 
@@ -270,9 +291,9 @@ actor MCPTokenStore {
 
         tokens[index].isActive = false
         let revokedName = tokens[index].name
-        let wasBridge = tokens[index].isBridgeCredential
+        let withdrawn = tokens[index].subjectWithdrawnWhenEnded
         let persisted = save()
-        notifyRevocationObservers(tokenId: tokenId, wasBridgeCredential: wasBridge)
+        notifyRevocationObservers(tokenId: tokenId, withdrawing: withdrawn)
 
         Self.logger.info("Revoked MCP token '\(revokedName, privacy: .private(mask: .hash))'")
         MCPAuditLogger.logTokenRevoked(tokenId: tokenId, tokenName: revokedName)
@@ -292,25 +313,34 @@ actor MCPTokenStore {
     }
 
     func delete(tokenId: UUID) {
+        remove(tokenId: tokenId, withdrawsApprovals: true)
+    }
+
+    // A Claude Agent turn ends its own token this way: the approvals belong to the agent, not to one turn.
+    func retire(tokenId: UUID) {
+        remove(tokenId: tokenId, withdrawsApprovals: false)
+    }
+
+    private func remove(tokenId: UUID, withdrawsApprovals: Bool) {
         guard let index = tokens.firstIndex(where: { $0.id == tokenId }) else {
             Self.logger.warning("Attempted to delete non-existent token \(tokenId.uuidString, privacy: .public)")
             return
         }
 
         let name = tokens[index].name
-        let wasBridge = tokens[index].isBridgeCredential
+        let withdrawn = withdrawsApprovals ? tokens[index].subjectWithdrawnWhenEnded : nil
         tokens.remove(at: index)
         save()
-        notifyRevocationObservers(tokenId: tokenId, wasBridgeCredential: wasBridge)
+        notifyRevocationObservers(tokenId: tokenId, withdrawing: withdrawn)
 
         Self.logger.info("Deleted MCP token '\(name, privacy: .private(mask: .hash))'")
     }
 
-    private func notifyRevocationObservers(tokenId: UUID, wasBridgeCredential: Bool) {
+    private func notifyRevocationObservers(tokenId: UUID, withdrawing subject: MCPGrantSubject?) {
         let observers = Array(revocationObservers.values)
         let key = tokenId.uuidString
         for observer in observers {
-            Task { await observer(key, wasBridgeCredential) }
+            Task { await observer(key, subject) }
         }
     }
 

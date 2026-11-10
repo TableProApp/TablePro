@@ -19,10 +19,12 @@ private struct DriverRequest: Sendable {
     let port: Int
     let password: String?
     let preTunnelHost: String?
+    let refreshPassword: (@Sendable () async throws -> String?)?
 }
 
 private final class SigningDriverFactory: DriverFactory, @unchecked Sendable {
     var mint: @Sendable (String?) async throws -> String? = { stored in stored }
+    var opensCatalogs = false
     private(set) var mintRequests: [MintRequest] = []
     private(set) var driverRequests: [DriverRequest] = []
 
@@ -44,16 +46,28 @@ private final class SigningDriverFactory: DriverFactory, @unchecked Sendable {
         password: String?,
         preTunnelHost: String?
     ) throws -> any DatabaseDriver {
+        try createDriver(for: connection, password: password, preTunnelHost: preTunnelHost, refreshPassword: nil)
+    }
+
+    func createDriver(
+        for connection: DatabaseConnection,
+        password: String?,
+        preTunnelHost: String?,
+        refreshPassword: (@Sendable () async throws -> String?)?
+    ) throws -> any DatabaseDriver {
         driverRequests.append(DriverRequest(
             host: connection.host,
             port: connection.port,
             password: password,
-            preTunnelHost: preTunnelHost
+            preTunnelHost: preTunnelHost,
+            refreshPassword: refreshPassword
         ))
         return MockDatabaseDriver()
     }
 
     func supportedTypes() -> [DatabaseType] { [mockType] }
+
+    func opensCatalogConnections(for connection: DatabaseConnection) -> Bool { opensCatalogs }
 }
 
 private final class PasswordRecordingFactory: DriverFactory, @unchecked Sendable {
@@ -177,6 +191,52 @@ struct ConnectionManagerSignInTests {
         #expect(driver.host == "127.0.0.1")
         #expect(driver.port == 33_306)
         #expect(driver.preTunnelHost == connection.host)
+    }
+
+    @Test("Through a tunnel, a driver signing in again later mints for the saved endpoint, not the tunnel's")
+    func tunneledRefreshMintsForTheSavedEndpoint() async throws {
+        let factory = SigningDriverFactory()
+        let manager = ConnectionManager(
+            driverFactory: factory,
+            secureStore: MockSecureStore(),
+            sshProvider: MockSSHProvider()
+        )
+        let connection = rdsConnection(tunneled: true)
+        _ = try await manager.connect(connection)
+        let refresh = try #require(factory.driverRequests.first?.refreshPassword)
+        factory.mint = { _ in "fresh-token" }
+
+        let token = try await refresh()
+
+        let mint = try #require(factory.mintRequests.last)
+        #expect(token == "fresh-token")
+        #expect(factory.mintRequests.count == 2)
+        #expect(mint.host == connection.host)
+        #expect(mint.port == connection.port)
+    }
+
+    @Test("A catalog connection behind a tunnel mints again for the saved endpoint too")
+    func tunneledCatalogRefreshMintsForTheSavedEndpoint() async throws {
+        let factory = SigningDriverFactory()
+        factory.opensCatalogs = true
+        let manager = ConnectionManager(
+            driverFactory: factory,
+            secureStore: MockSecureStore(),
+            sshProvider: MockSSHProvider()
+        )
+        let connection = rdsConnection(tunneled: true)
+        _ = try await manager.connect(connection)
+        _ = try #require(await manager.catalogDriver(for: connection.id, database: ""))
+        let catalog = try #require(factory.driverRequests.last)
+        let refresh = try #require(catalog.refreshPassword)
+
+        _ = try await refresh()
+
+        let mint = try #require(factory.mintRequests.last)
+        #expect(factory.driverRequests.count == 2)
+        #expect(catalog.host == "127.0.0.1")
+        #expect(mint.host == connection.host)
+        #expect(mint.port == connection.port)
     }
 
     @Test("Without a tunnel, the driver dials the saved host and gets no preTunnelHost")

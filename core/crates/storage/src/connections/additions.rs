@@ -23,8 +23,8 @@ impl ConnectionStore {
         expected: &ConnectionList,
         imported: Vec<ImportedConnection>,
     ) -> Result<Vec<SavedConnection>, StorageError> {
-        let mut state = self.lock();
-        let mut document = self.ensure_loaded(&mut state)?;
+        let mut state = self.lock_to_write();
+        let mut document = self.ensure_current(&mut state)?;
         if !document.lists_as(expected) {
             return Err(StorageError::ImportOutdated);
         }

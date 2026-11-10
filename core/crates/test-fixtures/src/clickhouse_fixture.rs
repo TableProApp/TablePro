@@ -18,6 +18,9 @@ const HTTP_PORT: u16 = ClickHouseFixture::HTTP_PORT;
 const HTTPS_PORT: u16 = ClickHouseFixture::HTTPS_PORT;
 const PASSWORD_USER: &str = "tablepro";
 const LIMITED_USER: &str = "tablepro_limited";
+const READONLY_USER: &str = "tablepro_readonly";
+const LENIENT_READONLY_USER: &str = "tablepro_readonly_lenient";
+const UNSYNCED_USER: &str = "tablepro_unsynced";
 const DATABASE: &str = "tablepro";
 const SERVICE: &str = "clickhouse";
 const READY_TIMEOUT: Duration = Duration::from_secs(60);
@@ -118,8 +121,30 @@ impl ClickHouseFixture {
              </server></openSSL>\n\
              </clickhouse>\n"
         );
+        // The stock config turns on `settings_constraints_replace_previous`, without which a profile cannot name a
+        // setting `changeable_in_readonly`.
+        let profiles = format!(
+            "<profiles>\n\
+             <{READONLY_USER}><profile>default</profile><readonly>1</readonly></{READONLY_USER}>\n\
+             <{LENIENT_READONLY_USER}><profile>default</profile><readonly>1</readonly><constraints>\
+             <output_format_json_quote_denormals><changeable_in_readonly/></output_format_json_quote_denormals>\
+             <readonly><changeable_in_readonly/></readonly>\
+             </constraints></{LENIENT_READONLY_USER}>\n\
+             <{UNSYNCED_USER}><profile>default</profile><mutations_sync>0</mutations_sync><constraints>\
+             <mutations_sync><readonly/></mutations_sync>\
+             </constraints></{UNSYNCED_USER}>\n\
+             </profiles>\n"
+        );
+        let own_profile = [READONLY_USER, LENIENT_READONLY_USER, UNSYNCED_USER].map(|name| {
+            format!(
+                "<{name}><password>{password}</password><networks><ip>::/0</ip></networks>\
+                 <profile>{name}</profile><quota>default</quota></{name}>\n"
+            )
+        });
+        let own_profile = own_profile.concat();
         let users = format!(
-            "<clickhouse><users>\n\
+            "<clickhouse>{profiles}<users>\n\
+             {own_profile}\
              <{PASSWORD_USER}>\n\
              <password>{password}</password>\n\
              <networks><ip>::/0</ip></networks>\n\
@@ -189,6 +214,21 @@ impl ClickHouseFixture {
     /// stock server config holds back without a grant.
     pub fn limited_credentials(&self) -> FixtureCredentials {
         FixtureCredentials::new(LIMITED_USER, &self.password)
+    }
+
+    // A login whose profile sets `readonly=1` and lets it change no setting.
+    pub fn readonly_credentials(&self) -> FixtureCredentials {
+        FixtureCredentials::new(READONLY_USER, &self.password)
+    }
+
+    // A login at `readonly=1` whose profile lets it change `output_format_json_quote_denormals` and `readonly` itself.
+    pub fn lenient_readonly_credentials(&self) -> FixtureCredentials {
+        FixtureCredentials::new(LENIENT_READONLY_USER, &self.password)
+    }
+
+    // A login that may write, whose profile holds `mutations_sync` at 0.
+    pub fn unsynced_credentials(&self) -> FixtureCredentials {
+        FixtureCredentials::new(UNSYNCED_USER, &self.password)
     }
 
     pub fn certificate_credentials(&self) -> FixtureCredentials {

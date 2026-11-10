@@ -19,6 +19,35 @@ protocol RowDataParser {
     func parse(_ text: String, schema: TableSchema) -> Result<[ParsedRow], RowParseError>
 }
 
+// One line's fields fitted to the table: a short line's missing fields are blank cells, extra fields are dropped,
+// and the key is left to the server.
+private func fittedRow(
+    _ fields: [String],
+    lineNumber: Int,
+    schema: TableSchema,
+    normalize: (String) -> String?
+) -> ParsedRow {
+    var values: [String?] = []
+    var blankColumns: Set<Int> = []
+    for (column, field) in fields.prefix(schema.columnCount).enumerated() {
+        if field.trimmingCharacters(in: .whitespaces).isEmpty { blankColumns.insert(column) }
+        values.append(normalize(field))
+    }
+    while values.count < schema.columnCount {
+        blankColumns.insert(values.count)
+        values.append(nil)
+    }
+    if let pkIndex = schema.primaryKeyIndex, pkIndex < values.count {
+        values[pkIndex] = "__DEFAULT__"
+        blankColumns.remove(pkIndex)
+    }
+    return ParsedRow(
+        values: values.map(PluginCellValue.fromOptional),
+        sourceLineNumber: lineNumber,
+        blankColumns: blankColumns
+    )
+}
+
 /// TSV (Tab-Separated Values) parser
 /// Matches the format produced by RowOperationsManager.copySelectedRowsToClipboard()
 struct TSVRowParser: RowDataParser {
@@ -38,26 +67,12 @@ struct TSVRowParser: RowDataParser {
         var parsedRows: [ParsedRow] = []
 
         for (index, line) in lines.enumerated() {
-            let lineNumber = index + 1
-
-            let rawValues = line.components(separatedBy: "\t")
-            var values = rawValues.map { normalizeValue($0) }
-
-            if values.count < schema.columnCount {
-                while values.count < schema.columnCount {
-                    values.append(nil)
-                }
-            } else if values.count > schema.columnCount {
-                values = Array(values.prefix(schema.columnCount))
-            }
-
-            if let pkIndex = schema.primaryKeyIndex, pkIndex < values.count {
-                values[pkIndex] = "__DEFAULT__"
-            }
-
-            let typedValues = values.map(PluginCellValue.fromOptional)
-            let parsedRow = ParsedRow(values: typedValues, sourceLineNumber: lineNumber)
-            parsedRows.append(parsedRow)
+            parsedRows.append(fittedRow(
+                line.components(separatedBy: "\t"),
+                lineNumber: index + 1,
+                schema: schema,
+                normalize: normalizeValue
+            ))
         }
 
         guard !parsedRows.isEmpty else {
@@ -109,23 +124,12 @@ struct CSVRowParser: RowDataParser {
         var parsedRows: [ParsedRow] = []
 
         for recordIndex in startIndex..<records.count {
-            let lineNumber = recordIndex + 1
-            var values = records[recordIndex].map { normalizeValue($0) }
-
-            if values.count < schema.columnCount {
-                while values.count < schema.columnCount {
-                    values.append(nil)
-                }
-            } else if values.count > schema.columnCount {
-                values = Array(values.prefix(schema.columnCount))
-            }
-
-            if let pkIndex = schema.primaryKeyIndex, pkIndex < values.count {
-                values[pkIndex] = "__DEFAULT__"
-            }
-
-            let typedValues = values.map(PluginCellValue.fromOptional)
-            parsedRows.append(ParsedRow(values: typedValues, sourceLineNumber: lineNumber))
+            parsedRows.append(fittedRow(
+                records[recordIndex],
+                lineNumber: recordIndex + 1,
+                schema: schema,
+                normalize: normalizeValue
+            ))
         }
 
         guard !parsedRows.isEmpty else {

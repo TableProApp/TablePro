@@ -239,7 +239,8 @@ public sealed partial class WorkspaceView : UserControl
         return true;
     }
 
-    public async Task CloseTabsAsync()
+    // A reconnect keeps the closed tabs, which hold only their text or table, to reopen on the next session.
+    public async Task CloseTabsAsync(bool keepClosed = false)
     {
         CancelRecovery();
         _hostKeyFailure = null;
@@ -251,7 +252,12 @@ public sealed partial class WorkspaceView : UserControl
         _watching = null;
         HealthBar.IsOpen = false;
         ElsewhereBar.IsOpen = false;
-        _closed.Clear();
+        HideChangesOnConnect();
+        if (!keepClosed)
+        {
+            _closed.Clear();
+        }
+
         foreach (var content in Tabs.TabItems.OfType<TabViewItem>().Select(item => item.Content).OfType<ITabContent>().ToList())
         {
             await content.CloseAsync().ConfigureAwait(true);
@@ -648,6 +654,24 @@ public sealed partial class WorkspaceView : UserControl
             DefaultButton = ContentDialogButton.Close,
         };
         return await WindowDialogs.ShowAsync(dialog, this) == ContentDialogResult.Primary;
+    }
+
+    // A saved change only a new connection takes, kept back because a held transaction would go with this one.
+    internal void ShowChangesOnConnect(bool asksBeforeWrites)
+    {
+        ChangesBar.Title = Strings.Get("ChangesOnConnectTitle");
+        ChangesBar.Message = asksBeforeWrites ? Strings.Get("ChangesOnConnectAsks") : string.Empty;
+        // A closed InfoBar keeps its margin, so the bar is collapsed while it is closed.
+        ChangesBar.Visibility = Visibility.Visible;
+        // Narrator reads an InfoBar when it opens, not when its text changes.
+        ChangesBar.IsOpen = false;
+        ChangesBar.IsOpen = true;
+    }
+
+    internal void HideChangesOnConnect()
+    {
+        ChangesBar.IsOpen = false;
+        ChangesBar.Visibility = Visibility.Collapsed;
     }
 
     // The tab shown names its own transaction; this bar names one another tab holds.

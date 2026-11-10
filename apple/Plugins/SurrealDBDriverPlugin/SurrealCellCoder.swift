@@ -33,10 +33,12 @@ public enum SurrealCellCoder {
 
     // `held` is every kind of value the field was read holding. It decides text typed into a
     // field with no declared type, where the shape of the text alone would retype a string.
+    // `recordHeld` is the kind this record's own field held when it was read, and decides first.
     public static func value(
         from cell: PluginCellValue,
         kind: SurrealFieldKind?,
-        held: Set<SurrealFieldKind.Base> = []
+        held: Set<SurrealFieldKind.Base> = [],
+        recordHeld: SurrealFieldKind.Base? = nil
     ) -> SurrealValue {
         switch cell {
         case .null:
@@ -44,8 +46,25 @@ public enum SurrealCellCoder {
         case let .bytes(data):
             return .bytes(data)
         case let .text(text):
+            if let recordHeld, let typed = value(fromText: text, keeping: recordHeld, kind: kind) { return typed }
             return value(fromText: text, kind: kind, held: held)
         }
+    }
+
+    // A cell shows the string '1001' and the int 1001 alike, and a field with no declared type, or a
+    // union, can hold both. Nil when the text cannot be a value of the kind the record held.
+    private static func value(
+        fromText text: String,
+        keeping base: SurrealFieldKind.Base,
+        kind: SurrealFieldKind?
+    ) -> SurrealValue? {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard base != .any, !trimmed.isEmpty else { return nil }
+        if base == .decimal, Double(trimmed) == nil { return nil }
+        let heldKind = kind.flatMap { $0.base == base ? $0 : nil }
+            ?? SurrealFieldKind(base: base, isOptional: true, raw: base.rawValue)
+        let typed = value(fromText: text, kind: heldKind, held: [])
+        return base == .string || typed != .string(text) ? typed : nil
     }
 
     // MARK: - Text coercion

@@ -83,7 +83,13 @@ extension DatabaseManager {
                             Self.logger.error("Rollback failed after schema change error: \(error.localizedDescription)")
                         }
                     }
-                    throw SchemaChangeFailedAfterWriting(message: "Schema change failed: \(error.localizedDescription)")
+                    let applied: [SchemaStatement] = useTransaction
+                        ? []
+                        : statements.prefix(measured.count).filter { !$0.carriesCredentials }
+                    throw SchemaChangeFailedAfterWriting(
+                        message: "Schema change failed: \(error.localizedDescription)",
+                        appliedStatements: applied.map(\.sql)
+                    )
                 }
                 try await Self.confirmFinished(script, scope: scope, on: driver)
                 return measured
@@ -93,7 +99,7 @@ extension DatabaseManager {
         } catch let failure as SchemaChangeFailedAfterWriting {
             Self.reportCatalogChangeAfterFailure(in: scope)
             reportSavedChange(of: script, in: scope)
-            throw DatabaseError.queryFailed(failure.message)
+            throw DatabaseError.queryFailed(failure.reportedMessage)
         } catch {
             Self.reportCatalogChangeAfterFailure(in: scope)
             throw error
@@ -335,6 +341,14 @@ struct CreateTableIncompleteError: LocalizedError {
 /// changed even though the save did not finish.
 private struct SchemaChangeFailedAfterWriting: Error {
     let message: String
+    // Statements an engine that commits each DDL statement kept after a later one failed.
+    var appliedStatements: [String] = []
+
+    var reportedMessage: String {
+        guard !appliedStatements.isEmpty else { return message }
+        let heading = String(localized: "These statements ran before the failure and were not rolled back:")
+        return message + "\n\n" + ([heading] + appliedStatements).joined(separator: "\n")
+    }
 }
 
 private extension SchemaChangeScript {

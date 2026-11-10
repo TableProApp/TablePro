@@ -42,6 +42,7 @@
         <setter object="details_toggle" property="visible">false</setter>
         <setter object="export_button" property="visible">false</setter>
         <setter object="filter_button" property="visible">false</setter>
+        <setter object="highlight_button" property="visible">false</setter>
         <setter object="columns_button" property="visible">false</setter>
         <setter object="page_size_box" property="visible">false</setter>
         <setter object="more_button" property="visible">true</setter>
@@ -270,6 +271,19 @@
                     <style>
                       <class name="flat" />
                     </style>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton" id="highlight_button">
+                    <property name="action-name">grid.highlight-rules</property>
+                    <property name="icon-name">document-edit-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Highlight Rules</property>
+                    <style>
+                      <class name="flat" />
+                    </style>
+                    <accessibility>
+                      <property name="label" translatable="yes">Highlight Rules</property>
+                    </accessibility>
                   </object>
                 </child>
                 <child>

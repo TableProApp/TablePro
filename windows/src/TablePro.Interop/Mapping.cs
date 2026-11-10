@@ -254,6 +254,13 @@ internal static class Mapping
     public static Native.ConnectionSecrets Secrets(ConnectionSecrets secrets) =>
         new(secrets.DatabasePassword, secrets.SshPassword, secrets.SshPassphrase);
 
+    public static Native.SafeModeTag Level(SafeMode level) => level switch
+    {
+        SafeMode.ConfirmWrites => Native.SafeModeTag.ConfirmWrites,
+        SafeMode.ReadOnly => Native.SafeModeTag.ReadOnly,
+        _ => Native.SafeModeTag.Off,
+    };
+
     public static Native.ConnectionRecord Record(SavedConnection connection) => new(
         connection.Id?.ToString() ?? string.Empty,
         connection.Name,
@@ -283,12 +290,7 @@ internal static class Mapping
                     _ => new Native.SshAuthTag.Agent(),
                 })
             : null,
-        connection.SafeMode switch
-        {
-            SafeMode.ConfirmWrites => Native.SafeModeTag.ConfirmWrites,
-            SafeMode.ReadOnly => Native.SafeModeTag.ReadOnly,
-            _ => Native.SafeModeTag.Off,
-        },
+        Level(connection.SafeMode),
         connection.QueryTimeoutSeconds is { } timeout ? checked((uint)timeout) : null,
         connection.Color,
         connection.GroupId?.ToString(),

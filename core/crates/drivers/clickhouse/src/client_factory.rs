@@ -22,7 +22,6 @@ const POOL_IDLE_TIMEOUT: Duration = Duration::from_secs(2);
 /// certificate's common name instead of a password.
 const CERTIFICATE_AUTH_HEADER: &str = "X-ClickHouse-SSL-Certificate-Auth";
 
-/// The settings every request carries.
 const COMMON_SETTINGS: [(&str, &str); 7] = [
     // A Decimal is written at its column's scale, so a value read back
     // keeps the scale it was stored with and compares equal to it.
@@ -47,16 +46,62 @@ const COMMON_SETTINGS: [(&str, &str); 7] = [
     // `replication_wait_for_inactive_replica_timeout`, two minutes by
     // default, and then end with UNFINISHED although the live replicas
     // applied it.
-    ("mutations_sync", "1"),
+    (MUTATIONS_SYNC, "1"),
     // A read whose connection the app dropped stops on the server even
     // when no KILL could be sent.
     ("cancel_http_readonly_queries_on_client_close", "1"),
 ];
 
+pub(crate) const MAX_EXECUTION_TIME: &str = "max_execution_time";
+pub(crate) const TIMEOUT_OVERFLOW_MODE: &str = "timeout_overflow_mode";
+pub(crate) const MUTATIONS_SYNC: &str = "mutations_sync";
+
+// A login at `readonly=1`, or one a profile constraint holds to a value, refuses the whole request that changes such a
+// setting (164, 452), so the driver sends only what `system.settings` says this login may change.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ChangeableSettings(Vec<&'static str>);
+
+impl ChangeableSettings {
+    pub(crate) fn all() -> Self {
+        Self(Self::asked().collect())
+    }
+
+    pub(crate) fn asked() -> impl Iterator<Item = &'static str> {
+        COMMON_SETTINGS
+            .into_iter()
+            .map(|(name, _)| name)
+            .chain([MAX_EXECUTION_TIME, TIMEOUT_OVERFLOW_MODE])
+    }
+
+    pub(crate) fn listed(names: &[String]) -> Self {
+        Self(
+            Self::asked()
+                .filter(|asked| names.iter().any(|name| name == asked))
+                .collect(),
+        )
+    }
+
+    pub(crate) fn allows(&self, name: &str) -> bool {
+        self.0.contains(&name)
+    }
+
+    pub(crate) fn common(&self) -> impl Iterator<Item = (&'static str, &'static str)> + '_ {
+        COMMON_SETTINGS.into_iter().filter(|(name, _)| self.allows(name))
+    }
+
+    // A bound without the mode would let a profile's `timeout_overflow_mode=break` end a read at it with the rows read
+    // so far, as if they were all.
+    pub(crate) fn bounds_reads(&self) -> bool {
+        self.allows(MAX_EXECUTION_TIME) && self.allows(TIMEOUT_OVERFLOW_MODE)
+    }
+}
+
 // `readonly=2` still lets `INSERT INTO FUNCTION file(...)` write a file (measured on 26.8); 1 refuses it and still
-// takes the settings a request carries. A login already at 1 or 2 refuses any change of `readonly`, so it keeps its own.
+// takes the settings a request carries. A login at 2 refuses any change of `readonly`. One at 1 takes the 1 as no
+// change, and it puts back a session that ran `SET readonly = 0`, which a profile marking `readonly`
+// `changeable_in_readonly` lets it run.
 pub(crate) fn strict_readonly(login_level: u8) -> Option<&'static str> {
-    (login_level == 0).then_some("1")
+    (login_level <= 1).then_some("1")
 }
 
 // User SQL and everything on a read-only connection is held strictly. The app's own reads keep 2, which still lets
@@ -69,17 +114,17 @@ pub(crate) fn read_level(read_only: bool, user_sql: bool, login_level: u8) -> Op
 }
 
 pub(crate) fn read_only_settings(login_level: u8) -> Vec<(&'static str, &'static str)> {
-    let mut settings = vec![("allow_ddl", "0")];
+    let mut settings = Vec::new();
+    // A login at 1 refuses the change, and `readonly=1` refuses the DDL it would.
+    if login_level != 1 {
+        settings.push(("allow_ddl", "0"));
+    }
     settings.extend(strict_readonly(login_level).map(|level| ("readonly", level)));
     settings
 }
 
-/// The client every request of one target goes through: hyper's pool
-/// over the target's transport, the target's credentials and database,
-/// and the settings every request carries.
-///
-/// The clickhouse crate's own TLS stays unused: TLS is negotiated here,
-/// over the transport's stream, against the trust the target names.
+// No setting goes on here: the login's first answer says which of the driver's it may change. The crate's own TLS
+// stays unused, since TLS is negotiated over the transport's stream against the trust the target names.
 pub(crate) fn base_client(
     target: &NetworkTarget,
     liveness: &LivenessPolicy,
@@ -106,14 +151,11 @@ pub(crate) fn base_client(
     };
     // A typed fetch then reads RowBinary, which names no column types, so no type name the server sends is parsed,
     // however deep it nests, nor a list sized by the column count the server claims.
-    let mut client = client
+    let client = client
         .with_url(service_url(scheme, target))
         .with_validation(false)
         .with_product_info(APPLICATION_NAME, environment.client_version.clone());
-    for (name, value) in COMMON_SETTINGS {
-        client = client.with_setting(name, value);
-    }
-    client = with_credentials(client, target)?;
+    let mut client = with_credentials(client, target)?;
     if let Some(database) = target.database.as_deref().filter(|name| !name.is_empty()) {
         client = client.with_database(database);
     }
@@ -176,8 +218,44 @@ mod tests {
 
     #[test]
     fn a_login_with_a_readonly_level_of_its_own_keeps_it() {
-        assert_eq!(read_only_settings(1), vec![("allow_ddl", "0")]);
         assert_eq!(read_only_settings(2), vec![("allow_ddl", "0")]);
+    }
+
+    #[test]
+    fn a_read_only_connection_holds_a_login_at_readonly_1_to_its_level_without_allow_ddl() {
+        assert_eq!(read_only_settings(1), vec![("readonly", "1")]);
+    }
+
+    #[test]
+    fn only_the_drivers_own_settings_the_server_lists_are_changeable() {
+        let listed = ["mutations_sync", "max_threads", MAX_EXECUTION_TIME].map(str::to_owned);
+
+        let changeable = ChangeableSettings::listed(&listed);
+
+        assert!(changeable.allows("mutations_sync"));
+        assert!(changeable.allows(MAX_EXECUTION_TIME));
+        assert!(!changeable.allows("max_threads"));
+        assert!(!changeable.allows("output_format_json_quote_denormals"));
+        assert_eq!(changeable.common().collect::<Vec<_>>(), vec![("mutations_sync", "1")]);
+    }
+
+    #[test]
+    fn a_read_is_bounded_on_the_server_only_with_its_overflow_mode() {
+        let bound_only = ChangeableSettings::listed(&[MAX_EXECUTION_TIME.to_owned()]);
+        let both = ChangeableSettings::listed(&[MAX_EXECUTION_TIME.to_owned(), TIMEOUT_OVERFLOW_MODE.to_owned()]);
+
+        assert!(!bound_only.bounds_reads());
+        assert!(both.bounds_reads());
+        assert!(ChangeableSettings::all().bounds_reads());
+    }
+
+    #[test]
+    fn a_login_that_may_change_nothing_gets_no_common_setting() {
+        let changeable = ChangeableSettings::listed(&[]);
+
+        assert_eq!(changeable.common().count(), 0);
+        assert!(!changeable.bounds_reads());
+        assert_eq!(ChangeableSettings::all().common().count(), COMMON_SETTINGS.len());
     }
 
     #[test]
@@ -193,7 +271,13 @@ mod tests {
         assert_eq!(read_level(false, true, 2), None);
         assert_eq!(read_level(false, false, 2), Some("2"));
         assert_eq!(read_level(false, false, 1), None);
-        assert_eq!(read_level(true, true, 1), None);
+    }
+
+    #[test]
+    fn user_sql_and_a_read_only_connection_hold_a_login_at_readonly_1_to_its_level() {
+        assert_eq!(read_level(false, true, 1), Some("1"));
+        assert_eq!(read_level(true, true, 1), Some("1"));
+        assert_eq!(read_level(true, false, 1), Some("1"));
     }
 
     #[test]

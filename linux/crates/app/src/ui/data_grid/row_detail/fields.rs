@@ -133,16 +133,32 @@ fn field_row() -> gtk::Box {
         .min_chars(1)
         .text_overflow(gtk::InscriptionOverflow::EllipsizeEnd)
         .build();
-    let row = gtk::Box::builder()
+    // As the grid's cells and the value editor draw a value.
+    value.add_css_class("monospace");
+    let content = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(2)
+        .hexpand(true)
+        .valign(gtk::Align::Center)
+        .build();
+    content.append(&top);
+    content.append(&value);
+    // A suffix of the row, as on a libadwaita property row.
+    let copy = gtk::Button::builder()
+        .icon_name(icons::EDIT_COPY)
+        .valign(gtk::Align::Center)
+        .build();
+    copy.add_css_class("flat");
+    crate::ui::a11y::describe_icon_button(&copy, &gettext("Copy Value"), None);
+    let row = gtk::Box::builder()
+        .spacing(6)
         .margin_top(6)
         .margin_bottom(6)
         .margin_start(12)
         .margin_end(12)
         .build();
-    row.append(&top);
-    row.append(&value);
+    row.append(&content);
+    row.append(&copy);
     row
 }
 
@@ -152,10 +168,12 @@ struct FieldParts {
     edited: gtk::Image,
     kind: gtk::Label,
     value: gtk::Inscription,
+    copy: gtk::Button,
 }
 
 fn field_parts(row: &gtk::Widget) -> Option<FieldParts> {
-    let top = row.first_child()?;
+    let content = row.first_child()?;
+    let top = content.first_child()?;
     let key = top.first_child()?;
     let name = key.next_sibling()?;
     let edited = name.next_sibling()?;
@@ -165,7 +183,8 @@ fn field_parts(row: &gtk::Widget) -> Option<FieldParts> {
         name: name.downcast().ok()?,
         edited: edited.downcast().ok()?,
         kind: kind.downcast().ok()?,
-        value: row.last_child()?.downcast().ok()?,
+        value: top.next_sibling()?.downcast().ok()?,
+        copy: content.next_sibling()?.downcast().ok()?,
     })
 }
 
@@ -266,11 +285,32 @@ impl RowDetailPane {
 
     fn field_factory(&self) -> gtk::SignalListItemFactory {
         let factory = gtk::SignalListItemFactory::new();
-        factory.connect_setup(|_, item| {
-            if let Some(item) = item.downcast_ref::<gtk::ListItem>() {
-                item.set_child(Some(&field_row()));
+        factory.connect_setup(glib::clone!(
+            #[weak(rename_to = pane)]
+            self,
+            move |_, item| {
+                let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
+                    return;
+                };
+                let row = field_row();
+                if let Some(parts) = field_parts(row.upcast_ref()) {
+                    // The grid's Copy, so the whole value goes rather than
+                    // the text the field draws, which cuts a long one.
+                    parts.copy.connect_clicked(glib::clone!(
+                        #[weak]
+                        pane,
+                        #[weak]
+                        item,
+                        move |_| {
+                            if let Some(column) = field_of(item.item()) {
+                                pane.act_on_field(column, "copy");
+                            }
+                        }
+                    ));
+                }
+                item.set_child(Some(&row));
             }
-        });
+        ));
         factory.connect_bind(glib::clone!(
             #[weak(rename_to = pane)]
             self,
@@ -370,6 +410,7 @@ impl RowDetailPane {
             edited,
             kind,
             value: shown,
+            ..
         }) = field_parts(&row_box)
         else {
             return;
@@ -490,6 +531,21 @@ impl RowDetailPane {
         };
         grid.column_view()
             .scroll_to(position, Some(&view_column), gtk::ListScrollFlags::FOCUS, None);
+    }
+
+    /// Run the grid's `action` on the shown row's `column`, whichever
+    /// field the editor holds, as a cell menu runs it on its cell.
+    fn act_on_field(&self, column: usize, action: &str) {
+        let (Some(grid), Some(row)) = (self.grid(), self.current_pin()) else {
+            return;
+        };
+        grid.hold_menu_target(crate::ui::data_grid::selection::Target {
+            cell: Some((row.clone(), column)),
+            rows: vec![row],
+        });
+        grid.refresh_actions();
+        grid.actions().activate_action(action, None);
+        grid.release_menu_target_soon();
     }
 
     /// A header drag, a hidden column or a new column set reorders the

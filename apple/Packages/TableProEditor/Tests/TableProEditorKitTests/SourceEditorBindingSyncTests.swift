@@ -148,6 +148,43 @@ final class SourceEditorBindingSyncTests {
     }
 
     @MainActor
+    @Test func test_takeHandsTheDebouncedEditOverAndLetsTheNextDocumentIn() {
+        var bound = ""
+        var setterCallCount = 0
+        let coordinator = makeCoordinator(get: { bound }, set: { bound = $0; setterCallCount += 1 })
+        let largeText = String(repeating: "a", count: 500_001)
+        controller.textView.setText(largeText)
+        coordinator.textViewDidChangeText(
+            Notification(name: TextView.textDidChangeNotification, object: controller.textView)
+        )
+        #expect(coordinator.phase.isEditorChangePending)
+
+        let taken = coordinator.textSync.takePendingWriteback(from: controller.textView)
+
+        #expect(taken == largeText)
+        #expect(setterCallCount == 0)
+        #expect(coordinator.textSync.writebackTask == nil)
+        #expect(!coordinator.phase.isEditorChangePending)
+
+        coordinator.textSync.applyRepresentableText("SELECT 2", controller: controller)
+        #expect(controller.textView.string == "SELECT 2")
+    }
+
+    @MainActor
+    @Test func test_takeWithoutAPendingWritebackKeepsTheEditLatch() {
+        var bound = ""
+        let coordinator = makeCoordinator(get: { bound }, set: { bound = $0 })
+        controller.textView.setText("small edit")
+        coordinator.textViewDidChangeText(
+            Notification(name: TextView.textDidChangeNotification, object: controller.textView)
+        )
+        #expect(bound == "small edit")
+
+        #expect(coordinator.textSync.takePendingWriteback(from: controller.textView) == nil)
+        #expect(coordinator.phase.isEditorChangePending)
+    }
+
+    @MainActor
     @Test func test_syncSkipsStaleBindingSnapshotWhileEditIsInFlight() {
         var bound = ""
         let coordinator = makeCoordinator(get: { bound }, set: { bound = $0 })

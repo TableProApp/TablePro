@@ -10,7 +10,7 @@ HTTP has no login and no long-lived session, so there is no pool of logins:
 
 - hyper keeps idle HTTP connections for 2 s, shorter than the server's keep-alive (3 s before 23.11, 10 s after), so a reused connection is never one the server is about to close.
 - Every connection is a stream from `Transport::open`. The URL names only the service, for the `Host` header and the TLS name, so an SSH forward never needs a DNS lookup of a name only the far side can resolve.
-- The connect is the first request, `SELECT version(), currentDatabase()` and the login's own `readonly` level from `system.settings`, on the control client, within the connect and login timeouts together. A refused password or a failed handshake shows up there.
+- The connect is the first request, within the connect and login timeouts together. It carries no setting and asks for `version()`, `currentDatabase()`, the login's own `readonly` and `mutations_sync`, and which of the driver's settings `system.settings` lets this login change (`readonly = 0` there). A refused password or a failed handshake shows up there.
 - `probe` is one more request, `SELECT 1`, on the control client.
 
 Three clients share that connection pool:
@@ -18,10 +18,10 @@ Three clients share that connection pool:
 | Client | Used for | Settings beyond the common ones |
 |---|---|---|
 | Workspace | Catalogue reads, pages, counts, exports, write probes, editor sessions | `readonly=1` and `allow_ddl=0` on a read-only connection |
-| Writes | The statements of a save | `wait_end_of_query=1`, `max_execution_time=0` |
+| Writes | The statements of a save | `wait_end_of_query=1`, and `max_execution_time=0` where the login may change it |
 | Control | `KILL QUERY`, `SYSTEM FLUSH LOGS`, commit resolution | None. It is not held read-only, because a `KILL` is not a read, and it runs only SQL the driver wrote. |
 
-Every request carries these settings:
+Every request carries these settings, each only where the login may change it:
 
 | Setting | Why |
 |---|---|
@@ -32,6 +32,13 @@ Every request carries these settings:
 | `output_format_json_validate_utf8=0` | A String that is not UTF-8 arrives byte for byte. |
 | `mutations_sync=1` | A save waits for its mutation, so the grid refetches what the save wrote. |
 | `cancel_http_readonly_queries_on_client_close=1` | A read whose HTTP connection the app dropped stops on the server even when no `KILL` got through. |
+
+The server refuses a whole request that changes a setting the login may not change: any setting at `readonly=1` that the profile does not mark `changeable_in_readonly` (error 164), or one a profile constraint holds `const` (452). So a request carries only the settings the connect found changeable. An unchanged value is never checked, so a setting whose server default is already the driver's value (`date_time_output_format`, `http_write_exception_in_output_format`, `output_format_json_validate_utf8` on 26.x) holds either way. Without the others:
+
+- A Decimal is padded to its column's scale as it is read, so it reads the same as with `output_format_decimal_trailing_zeros`, except inside a Map, Tuple, Variant, Dynamic or JSON value, which keeps the server's text.
+- The server writes NaN and infinity as null. In a Float column that is not Nullable, the cell reads as a value out of range, never as NULL. In a Nullable one it reads as NULL, since the server writes NULL the same way.
+- A save with a mutation still carries `mutations_sync=1` when the login's own value is 0. The server then refuses the whole save (452, or 164 at `readonly=1`) before any of it runs. Without the setting, the server answers a mutation as soon as it is queued, and the save would read as done even if the mutation then failed. A login whose own value is 1 or 2 already waits, and an `INSERT` never needs to.
+- A dropped read runs on until it ends or is killed; a stop still sends `KILL`.
 
 The client names itself to the server as TablePro with the app's version (`with_product_info`).
 
@@ -47,11 +54,11 @@ Results stream as `JSONCompactEachRowWithNamesAndTypes`, and each cell is read b
 
 ## Read-only
 
-`ReadOnlyEnforcement::EngineEnforced`. A read-only connection sends `readonly=1` and `allow_ddl=0` with every workspace and editor request, and the server refuses a write whatever the SQL says (error 164, or 392 for DDL). `readonly=2` is not enough: it still lets `INSERT INTO FUNCTION file(...)` write a file on the server (measured on 26.8). Under `readonly=1` a `SET`, a `SETTINGS` clause or a temporary table is refused too; the settings the driver sends with a request still apply. A read of user SQL, such as an MCP read or an export of a query, carries `readonly=1` on any connection; the app's own reads carry `readonly=2`. A login whose profile already sets `readonly` refuses any change of it, so such a login keeps its own level and nothing is sent. Saves on a read-only connection are refused before anything is sent.
+`ReadOnlyEnforcement::EngineEnforced`. A read-only connection sends `readonly=1` and `allow_ddl=0` with every workspace and editor request, and the server refuses a write whatever the SQL says (error 164, or 392 for DDL). `readonly=2` is not enough: it still lets `INSERT INTO FUNCTION file(...)` write a file on the server (measured on 26.8). Under `readonly=1` a `SET`, a `SETTINGS` clause or a temporary table is refused too; the settings the driver sends with a request still apply. A read of user SQL, such as an MCP read or an export of a query, carries `readonly=1` on any connection; the app's own reads carry `readonly=2`. A login whose profile sets `readonly=2` refuses any change of it, so such a login keeps its own level and no `readonly` is sent. A login at 1 gets `readonly=1` anyway: the server takes an unchanged value as no change, and the value puts back a session that ran `SET readonly = 0`, which a profile marking `readonly` `changeable_in_readonly` allows. It gets no `allow_ddl`, a change that level refuses and whose DDL `readonly=1` refuses already. A `SETTINGS readonly = 0` clause in user SQL is outside the driver's reach on such a profile. Saves on a read-only connection are refused before anything is sent.
 
 ## Stops and timeouts
 
-A read carries `max_execution_time` (the nearer of the call's deadline and the workspace's 60 s, in whole seconds rounded up) with `timeout_overflow_mode=throw`, so the server stops it on time on its own (error 159).
+A read carries `max_execution_time` (the nearer of the call's deadline and the workspace's 60 s, in whole seconds rounded up) with `timeout_overflow_mode=throw`, so the server stops it on time on its own (error 159). A login that may not change both gets neither, since a bound with a profile's `timeout_overflow_mode=break` would end a read early with partial rows; the workspace's bound then becomes the call's deadline, which stops the read with a `KILL`.
 
 A stop is `KILL QUERY WHERE query_id = ? ASYNC` on the control client. Each query the driver sends carries a query id of its own, and the id is bound by the client, never written into the SQL. The `KILL` names that one query, so a late one cannot hit the next: `StopDelivery::OutOfBand(StopScope::Statement)`. The server answers the stopped query with error 394, which reads as `Cancelled`, or as `Timeout { server_cancelled: true }` when the deadline asked for it.
 
@@ -107,7 +114,7 @@ The query log and the process list are each node's own, and the driver asks the 
 
 - An editor session is the workspace client with a `session_id` of its own and `session_timeout=3600`, so the server keeps the session's settings and temporary tables between runs. Opening it asks `SELECT 1` in the session, and every run after that sends `session_check=1`, so a session the server let expire fails with 372 instead of starting an empty one. The server runs one query at a time per session, so a second run is `EditorSessionBusy`.
 - One statement per run (`ScriptExecution::SingleStatement`), each with a new query id.
-- The run's deadline, or the session's statement timeout, goes to the server as `max_execution_time` with `timeout_overflow_mode=throw`. A stop sends `KILL QUERY` and keeps reading, because the server answers the `KILL` by ending the response; a server that has not answered within the cancel grace is cut off.
+- The run's deadline, or the session's statement timeout, goes to the server as `max_execution_time` with `timeout_overflow_mode=throw` where the login may change both; the run stops itself at it either way. A stop sends `KILL QUERY` and keeps reading, because the server answers the `KILL` by ending the response; a server that has not answered within the cancel grace is cut off.
 - Past the row limit the driver sends `KILL QUERY` for the rest of the result rather than reading it.
 - The server keeps a session locked until a query it was told to stop has ended, which can be after the run gave up its response, and refuses the session's next query with 373 until then. So when a stopped run gave up its response before the end, as one cut off at the cancel grace, past the row limit or at a row it could not read does, the next run first sends `KILL QUERY ... SYNC` for that query, which answers once it is gone, and waits under its own cancel and deadline, or for the cancel grace at most when it has neither a deadline nor a statement timeout. A stop the server answered by ending the response leaves nothing to wait for. A 373 that still comes is `EditorSessionBusy`, and the session stays ready.
 - ClickHouse has no transaction an editor statement can leave open, so the transaction state is always `Idle`.

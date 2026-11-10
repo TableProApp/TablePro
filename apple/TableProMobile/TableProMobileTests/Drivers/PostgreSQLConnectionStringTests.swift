@@ -34,6 +34,16 @@ struct PostgreSQLConnectionStringTests {
         #expect(connStr.contains("sslmode='disable'"))
     }
 
+    @Test("libpq is asked for the keepalive while it connects; the idle time it drops is set on the socket after")
+    func asksLibpqForTheKeepalive() throws {
+        let connStr = try build(ssl: .disabled)
+
+        #expect(connStr.contains("keepalives='1'"))
+        #expect(connStr.contains("keepalives_idle='60'"))
+        #expect(connStr.contains("keepalives_interval='10'"))
+        #expect(connStr.contains("keepalives_count='3'"))
+    }
+
     @Test("the session is pinned to UTF8 in the startup packet, whatever the database's encoding")
     func pinsClientEncoding() throws {
         #expect(try build(ssl: .disabled).contains("client_encoding='UTF8'"))

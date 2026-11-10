@@ -224,6 +224,35 @@ tp-diagram-canvas > .tp-diagram-accent {
   color: var(--accent-color);
 }
 
+/* Selection stays distinct from rules, and rule colours take precedence over stripes. */
+columnview.data-table > listview > row:not(:selected) > cell > .tp-hl-red {
+  background-color: color-mix(in srgb, var(--red-3) 28%, transparent);
+}
+
+columnview.data-table > listview > row:not(:selected) > cell > .tp-hl-orange {
+  background-color: color-mix(in srgb, var(--orange-3) 28%, transparent);
+}
+
+columnview.data-table > listview > row:not(:selected) > cell > .tp-hl-yellow {
+  background-color: color-mix(in srgb, var(--yellow-3) 32%, transparent);
+}
+
+columnview.data-table > listview > row:not(:selected) > cell > .tp-hl-green {
+  background-color: color-mix(in srgb, var(--green-3) 28%, transparent);
+}
+
+columnview.data-table > listview > row:not(:selected) > cell > .tp-hl-blue {
+  background-color: color-mix(in srgb, var(--blue-3) 28%, transparent);
+}
+
+columnview.data-table > listview > row:not(:selected) > cell > .tp-hl-purple {
+  background-color: color-mix(in srgb, var(--purple-3) 28%, transparent);
+}
+
+columnview.data-table > listview > row:not(:selected) > cell > .tp-hl-gray {
+  background-color: color-mix(in srgb, var(--view-fg-color) 12%, transparent);
+}
+
 /* How much room a data grid row takes around its text, from Preferences.
    Normal is the default padding above. */
 columnview.data-table.row-compact > listview > row > cell > * {

@@ -17,6 +17,7 @@ mod prompter;
 mod results;
 mod run;
 mod runtime;
+mod safe_mode_gate;
 mod session;
 mod syntax;
 pub mod window_abi;
@@ -37,6 +38,7 @@ pub use library::{
 pub use prompter::{HostPrompter, PromptAnswer, PromptFieldInfo, PromptPurposeTag, PromptReasonTag, PromptRequest};
 pub use results::{ResultColumnInfo, ResultSet, ValueKind};
 pub use run::{QueryRun, RunEvent, RunListener, RunOutcome, TransactionStateTag, TruncationTag};
+pub use safe_mode_gate::RunGate;
 pub use session::{ColumnSort, DatabaseSession, FailureCauseTag, SessionHealthTag, TableQuery};
 
 uniffi::setup_scaffolding!();
