@@ -323,11 +323,10 @@ impl Drop for Shown {
     }
 }
 
-// GTK fits a default size to the monitor, which xvfb-run makes narrower than 1200 px; a size request it keeps.
-pub(super) fn hold_size(window: &impl IsA<gtk4::Window>, width: i32, height: i32) {
-    let window = window.upcast_ref::<gtk4::Window>();
-    window.set_size_request(width, height);
-    window.set_default_size(width, height);
+// A window's size request also covers its frame, which leaves the content 10 px short under xvfb.
+pub(super) fn hold_size(window: &impl IsA<gtk4::Window>, tab: &BrowseTab, width: i32, height: i32) {
+    tab.set_size_request(width, height);
+    window.upcast_ref::<gtk4::Window>().set_default_size(width, height);
 }
 
 /// The files and preferences a test tab reads.
@@ -1861,7 +1860,7 @@ fn the_bottom_bar_offers_the_column_chooser() {
     let harness = Harness::open(script, []);
     let tab = harness.tab();
     let window = libadwaita::Window::builder().content(tab).build();
-    hold_size(&window, 1_200, 500);
+    hold_size(&window, tab, 1_200, 500);
     let window = crate::test_support::OwnedWindow::presented(window);
     let button = crate::test_support::find_by_action_name(tab, "grid.columns")
         .and_downcast::<gtk4::Button>()
@@ -1882,7 +1881,7 @@ fn the_bottom_bar_offers_the_column_chooser() {
     chooser.close();
     wait_until(WAIT, || window.visible_dialog().is_none() && chooser.parent().is_none()).expect("the chooser closes");
 
-    hold_size(&*window, 600, 500);
+    hold_size(&*window, tab, 600, 500);
     assert!(
         wait_until(WAIT, || tab.width() > 0 && tab.width() <= 600).is_ok(),
         "the tab did not resize: window width {}, tab width {}",
@@ -1955,7 +1954,7 @@ fn the_view_switch_keeps_its_names_in_a_1200_px_window() {
     let tab = harness.tab();
     tab.offer_structure();
     let window = libadwaita::Window::builder().content(tab).build();
-    hold_size(&window, 1_200, 400);
+    hold_size(&window, tab, 1_200, 400);
     let window = crate::test_support::OwnedWindow::presented(window);
     let imp = tab.imp();
     let columns = crate::test_support::find_by_action_name(tab, "grid.columns")
@@ -1979,7 +1978,7 @@ fn the_view_switch_keeps_its_names_in_a_1200_px_window() {
     assert!(!imp.overflow_button.is_visible());
 
     // What a 1200 px window leaves the tab beside the sidebar at its widest.
-    hold_size(&*window, 920, 400);
+    hold_size(&*window, tab, 920, 400);
     wait_until(WAIT, || {
         tab.width() > 0 && tab.width() <= 920 && imp.overflow_button.is_mapped()
     })
