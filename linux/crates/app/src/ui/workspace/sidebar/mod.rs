@@ -220,13 +220,13 @@ impl WorkspaceModel {
         self.sidebar_read += 1;
         let read = self.sidebar_read;
         let input = self.input.clone();
-        self.sidebar_objects = objects.clone();
+        self.schema_filter.remember(&objects);
         let listing = list_catalog(
             session,
             self.context.tasks.clone(),
             objects,
             self.catalog_schemas.clone(),
-            self.schema_filter.clone(),
+            self.schema_filter.filter(),
         );
         crate::runtime::spawn_and_deliver(&self.context.tasks, listing, move |listing| {
             match listing.and_then(|listing| listing) {

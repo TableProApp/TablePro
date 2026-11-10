@@ -139,24 +139,7 @@ impl WorkspaceShell {
             shell,
             move |_| shell.on_scope_changed()
         ));
-        for button in [imp.sidebar_add_button.get(), imp.schema_filter_button.get()] {
-            button.connect_visible_notify(glib::clone!(
-                #[weak]
-                shell,
-                move |_| shell.show_sidebar_bar()
-            ));
-        }
-        imp.schema_filter_button.set_create_popup_func(glib::clone!(
-            #[weak]
-            shell,
-            move |button: &gtk::MenuButton| {
-                let chooser = shell.front().and_then(|front| {
-                    let input = front.sender()?;
-                    Some(super::schema_chooser::popover(front.schema_choices()?, input))
-                });
-                button.set_popover(chooser.as_ref());
-            }
-        ));
+        shell.connect_sidebar_bar();
         tree.follow_search(&imp.table_search);
         let _ = imp.tree.set(tree);
         crate::ui::picker::install_picker_actions(&shell, services.saved_connections.clone(), sender.clone());
@@ -647,6 +630,28 @@ impl WorkspaceShell {
         }
         self.show_sidebar_bar();
         self.reload_favorites();
+    }
+
+    fn connect_sidebar_bar(&self) {
+        let imp = self.imp();
+        for button in [imp.sidebar_add_button.get(), imp.schema_filter_button.get()] {
+            button.connect_visible_notify(glib::clone!(
+                #[weak(rename_to = shell)]
+                self,
+                move |_| shell.show_sidebar_bar()
+            ));
+        }
+        imp.schema_filter_button.set_create_popup_func(glib::clone!(
+            #[weak(rename_to = shell)]
+            self,
+            move |button: &gtk::MenuButton| {
+                let chooser = shell.front().and_then(|front| {
+                    let input = front.sender()?;
+                    Some(super::schema_chooser::popover(front.schema_choices()?, input))
+                });
+                button.set_popover(chooser.as_ref());
+            }
+        ));
     }
 
     // Its controls act on the tree, which the Favorites scope does not list.
