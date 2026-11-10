@@ -20,24 +20,25 @@ public enum SurrealStatementGenerator {
         scope: SurrealScope,
         columns: [String],
         kinds: [String: SurrealFieldKind],
+        heldKinds: [String: Set<SurrealFieldKind.Base>] = [:],
         changes: [PluginRowChange],
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) throws(PluginRowWriteRefusal) -> [PluginRowWrite] {
         var writes: [PluginRowWrite] = []
+        let typing = FieldTyping(kinds: kinds, held: heldKinds)
 
         for change in changes where change.type == .update && !insertedRowIndices.contains(change.rowIndex) {
-            guard let write = try update(table: table, scope: scope, columns: columns, kinds: kinds, change: change) else {
-                continue
-            }
+            let write = try update(table: table, scope: scope, columns: columns, typing: typing, change: change)
+            guard let write else { continue }
             writes.append(write)
         }
 
         for index in insertedRowIndices.sorted() {
             guard let values = insertedRowData[index] else { continue }
             writes.append(try insert(
-                table: table, scope: scope, columns: columns, kinds: kinds, values: values, rowIndex: index
+                table: table, scope: scope, columns: columns, typing: typing, values: values, rowIndex: index
             ))
         }
 
@@ -50,13 +51,22 @@ public enum SurrealStatementGenerator {
         return writes
     }
 
+    private struct FieldTyping {
+        let kinds: [String: SurrealFieldKind]
+        let held: [String: Set<SurrealFieldKind.Base>]
+
+        func value(of cell: PluginCellValue, in column: String) -> SurrealValue {
+            SurrealCellCoder.value(from: cell, kind: kinds[column], held: held[column] ?? [])
+        }
+    }
+
     // MARK: - Statements
 
     private static func update(
         table: String,
         scope: SurrealScope,
         columns: [String],
-        kinds: [String: SurrealFieldKind],
+        typing: FieldTyping,
         change: PluginRowChange
     ) throws(PluginRowWriteRefusal) -> PluginRowWrite? {
         if let reserved = change.cellChanges.first(where: { SurrealInfoParser.isReservedColumn($0.columnName) }) {
@@ -74,7 +84,7 @@ public enum SurrealStatementGenerator {
             if !cell.newValue.isNull {
                 try refuseShortened(cell.oldValue, in: cell.columnName, rowIndex: change.rowIndex)
             }
-            let value = SurrealCellCoder.value(from: cell.newValue, kind: kinds[cell.columnName])
+            let value = typing.value(of: cell.newValue, in: cell.columnName)
             parameters.append(SurrealCellCoder.parameter(value))
             assignments.append(SurrealQL.quoteIdentifier(cell.columnName) + " = $p\(parameters.count - 1)")
         }
@@ -91,7 +101,7 @@ public enum SurrealStatementGenerator {
         table: String,
         scope: SurrealScope,
         columns: [String],
-        kinds: [String: SurrealFieldKind],
+        typing: FieldTyping,
         values: [PluginCellValue],
         rowIndex: Int
     ) throws(PluginRowWriteRefusal) -> PluginRowWrite {
@@ -116,7 +126,7 @@ public enum SurrealStatementGenerator {
             if case .null = cell { continue }
             if Self.isAutoDefault(cell) { continue }
             try refuseShortened(cell, in: column, rowIndex: rowIndex)
-            let value = SurrealCellCoder.value(from: cell, kind: kinds[column])
+            let value = typing.value(of: cell, in: column)
             parameters.append(SurrealCellCoder.parameter(value))
             assignments.append(SurrealQL.quoteIdentifier(column) + " = $p\(parameters.count - 1)")
         }

@@ -891,3 +891,86 @@ fn null_text_resizes_automatic_columns_and_preserves_manual_widths() {
         assert_eq!(column.fixed_width(), 260, "the chosen width stays");
     }
 }
+
+#[gtk4::test]
+fn timestamp_formats_resize_automatic_columns_but_keep_manual_widths() {
+    let timestamp = chrono::NaiveDate::from_ymd_opt(2026, 11, 8)
+        .expect("a date")
+        .and_hms_opt(13, 4, 5)
+        .expect("a time");
+    let grid = Grid::open(
+        vec![named("id", "integer", true), named("at", "timestamp", false)],
+        vec![vec![Value::Int(1), Value::Timestamp(Temporal::Finite(timestamp))]],
+    );
+    let settings = grid.grid.config().expect("configured grid").settings.clone();
+    let column = data_column(&grid, 1);
+    settings.set_date_format("us-short").expect("short date");
+    drain_main_context();
+    let short = column.fixed_width();
+
+    settings.set_date_format("us-long").expect("date and time");
+    wait_until(WAIT, || column.fixed_width() > short).expect("long format widens the column");
+    let long = column.fixed_width();
+    assert_eq!(Grid::display_text(&grid.cell_of(1, 1)), "11/08/2026 01:04:05 PM");
+    wait_until(WAIT, || {
+        shows_whole(grid.cell_of(1, 1).display().expect("cell display"))
+    })
+    .expect("the whole date and time fits");
+
+    settings.set_date_format("eu-short").expect("short European date");
+    wait_until(WAIT, || column.fixed_width() < long).expect("short format narrows an automatic column");
+    column.set_fixed_width(320);
+    settings.set_date_format("us-long").expect("date and time again");
+    drain_main_context();
+    assert_eq!(column.fixed_width(), 320, "a manual width stays");
+}
+
+/// Whether `display` has the width its text takes as it draws it, under
+/// its own attributes.
+fn draws_whole(display: &gtk::Inscription) -> bool {
+    let layout = display.create_pango_layout(display.text().as_deref());
+    layout.set_attributes(display.attributes().as_ref());
+    display.width() > 0 && layout.pixel_size().0 <= display.width()
+}
+
+#[gtk4::test]
+fn invisible_character_marks_resize_automatic_columns_and_preserve_manual_widths() {
+    for editable in [false, true] {
+        let settings = crate::test_support::MemorySettings::new();
+        settings
+            .get()
+            .set_show_invisible_characters(false)
+            .expect("start without marks");
+        let columns = two_text_columns();
+        let spec = if editable {
+            GridSpec::table(columns)
+        } else {
+            GridSpec::results(columns)
+        };
+        let values = vec![vec![
+            Value::Int(1),
+            Value::Text("a\u{200b}b\u{200b}c\u{200b}d\u{200b}e".into()),
+        ]];
+        let rows = if editable { persisted(&values) } else { results(&values) };
+        let grid = Grid::build(
+            GridSpec {
+                settings: Some(settings.get().clone()),
+                ..spec
+            },
+            rows,
+        );
+        let column = data_column(&grid, 1);
+        let original = column.fixed_width();
+
+        settings.get().set_show_invisible_characters(true).expect("show marks");
+        wait_until(WAIT, || column.fixed_width() > original).expect("automatic column grows");
+        wait_until(WAIT, || {
+            draws_whole(grid.cell_at(0, 1).display().expect("cell display"))
+        })
+        .expect("the whole marked value fits");
+        column.set_fixed_width(260);
+        settings.get().set_show_invisible_characters(false).expect("hide marks");
+        drain_main_context();
+        assert_eq!(column.fixed_width(), 260, "the chosen width stays");
+    }
+}

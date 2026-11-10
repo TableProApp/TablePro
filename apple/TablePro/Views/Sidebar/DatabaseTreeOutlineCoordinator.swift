@@ -513,7 +513,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         openWork = Task { @MainActor in
             defer { openSelectionDepth -= 1 }
             await inFlight?.value
-            await activate(ref)
+            guard await activate(ref) else { return }
             mainCoordinator?.openTableTab(
                 ref.table,
                 schema: ref.schema,
@@ -546,8 +546,9 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         windowState.select(tables: tables, rowCount: nodes.count)
     }
 
-    internal func activate(_ ref: DatabaseTreeTableRef) async {
-        await mainCoordinator?.switchContainers(database: ref.database, schema: ref.schema)
+    // False when the switch failed or was cancelled: the session is still on another database.
+    internal func activate(_ ref: DatabaseTreeTableRef) async -> Bool {
+        await mainCoordinator?.switchContainers(database: ref.database, schema: ref.schema) ?? true
     }
 
     internal func setActiveDatabase(_ database: String) {

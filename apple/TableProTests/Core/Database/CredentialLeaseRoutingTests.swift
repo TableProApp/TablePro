@@ -78,4 +78,25 @@ struct CredentialLeaseRoutingTests {
         #expect(error?.localizedDescription.contains(DatabaseManager.parkedTransactionLostMessage(database: "app")) == true)
         try await manager.withScopedDriver(scope: scope, route: .sessionDriver, cancellation: .protectedWrite) { _ in }
     }
+
+    @Test("A metadata read on the session driver leaves the lost transaction's report for the user's statement")
+    func metadataReadLeavesTheLossReport() async throws {
+        let connection = TestFixtures.makeConnection(database: "", type: .mysql)
+        var session = ConnectionSession(connection: connection, driver: MockDatabaseDriver(connection: connection))
+        session.status = .connected
+        let manager = DatabaseManager.shared
+        manager.injectSession(session, for: connection.id)
+        defer { manager.removeSession(for: connection.id) }
+        let scope = DatabaseScope(connectionId: connection.id, database: "", schema: nil)
+        #expect(manager.metadataRoute(for: scope) == .sessionDriver)
+        manager.sessionLanes.markTransactionLost(database: "", for: connection.id)
+
+        try await manager.withMetadataDriver(scope: scope) { _ in }
+
+        #expect(manager.sessionLanes.hasTransactionLoss(database: "", for: connection.id))
+        await #expect(throws: DatabaseError.self) {
+            try await manager.withScopedDriver(scope: scope, route: .sessionDriver, cancellation: .protectedWrite) { _ in }
+        }
+        #expect(!manager.sessionLanes.hasTransactionLoss(database: "", for: connection.id))
+    }
 }

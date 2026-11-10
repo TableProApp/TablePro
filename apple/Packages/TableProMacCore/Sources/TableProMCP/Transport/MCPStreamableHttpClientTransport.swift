@@ -65,6 +65,11 @@ public actor MCPStreamableHttpClientTransport {
         }
     }
 
+    func sendAndWait(_ frame: MCPUpstreamFrame) async throws {
+        guard !isClosed else { throw MCPTransportError.closed }
+        try await perform(frame, allowCredentialRefresh: false)
+    }
+
     public func close() async {
         if isClosed {
             return
@@ -86,18 +91,16 @@ public actor MCPStreamableHttpClientTransport {
     private func dispatch(_ frame: MCPUpstreamFrame) async {
         do {
             try await perform(frame, allowCredentialRefresh: true)
-        } catch let error as MCPTransportError {
-            await recover(from: error, frame: frame)
         } catch {
-            emitTransportFailure(error, frame: frame)
+            await recover(from: error, frame: frame)
         }
     }
 
     // The app may have restarted: resend only after the provider re-acquires and verifies the listener.
-    private func recover(from failure: MCPTransportError, frame: MCPUpstreamFrame) async {
+    private func recover(from failure: Error, frame: MCPUpstreamFrame) async {
         guard !isClosed, !Task.isCancelled else { return }
         switch failure {
-        case .authentication, .unreachable:
+        case MCPTransportError.authentication, MCPTransportError.unreachable, MCPSocketHttpError.peerChanged:
             break
         default:
             emitTransportFailure(failure, frame: frame)
@@ -129,6 +132,7 @@ public actor MCPStreamableHttpClientTransport {
             response = try await MCPUnixSocketHttpClient.send(
                 request,
                 socketPath: credentials.socketPath,
+                expectedPID: credentials.serverPID,
                 idleTimeout: configuration.requestTimeout
             )
         } catch {
@@ -306,6 +310,8 @@ public actor MCPStreamableHttpClientTransport {
         switch failure {
         case .connectFailed(let detail), .invalidSocketPath(let detail):
             return MCPTransportError.unreachable(detail: detail)
+        case .peerChanged:
+            return failure
         case .timedOut:
             return MCPTransportError.timeout
         case .invalidHeader(let name):

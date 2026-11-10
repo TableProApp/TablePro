@@ -404,6 +404,7 @@ internal final class ConnectionWorkspace {
         sessionState?.coordinator.teardown()
         sessionState = nil
         session = nil
+        MainContentCoordinator.endTabSessionIfUnhosted(for: connectionId, closing: self)
         undoManager.removeAllActions()
         agentUndoManager.removeAllActions()
         /// Once nothing hosts this connection any more, its agent sessions stop: a stream, a tool

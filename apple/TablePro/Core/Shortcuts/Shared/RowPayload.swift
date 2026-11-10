@@ -86,29 +86,33 @@ nonisolated enum RowPayload {
         throw IntentDataError.invalidJSONShape
     }
 
+    // An unquoted empty field is no value, so the column takes its default or NULL. A quoted "" is an empty string.
     static func parseCSV(_ text: String) throws -> [PayloadRow] {
         let records = try csvRecords(in: text)
-        guard let header = records.first, !header.allSatisfy(\.isEmpty) else {
+        guard let header = records.first?.map({ $0.text }), !header.allSatisfy(\.isEmpty) else {
             throw IntentDataError.csvMissingHeader
         }
-        return records.dropFirst().compactMap { record in
-            guard !(record.count == 1 && record[0].isEmpty) else { return nil }
+        return try records.enumerated().dropFirst().compactMap { line, record in
+            guard !(record.count == 1 && record[0].text.isEmpty && !record[0].isQuoted) else { return nil }
+            guard record.count == header.count else {
+                throw IntentDataError.csvFieldCountMismatch(record: line + 1, found: record.count, expected: header.count)
+            }
             var values: [String: PayloadValue] = [:]
-            for (index, column) in header.enumerated() where !column.isEmpty {
-                let field = index < record.count ? record[index] : ""
-                values[column] = .text(field)
+            for (column, field) in zip(header, record) where !column.isEmpty {
+                guard field.isQuoted || !field.text.isEmpty else { continue }
+                values[column] = .text(field.text)
             }
             return PayloadRow(values: values)
         }
     }
 
-    private static func csvRecords(in text: String) throws -> [[String]] {
+    private static func csvRecords(in text: String) throws -> [[(text: String, isQuoted: Bool)]] {
         let dialect = DelimitedDialect()
         let reader = DelimitedFieldReader(dialect: dialect)
         return try Array(text.utf8).withUnsafeBufferPointer { buffer in
             guard let base = buffer.baseAddress else { return [] }
             let index = try DelimitedRowIndexer.index(buffer, dialect: dialect, contentStart: 0)
-            return (0..<index.rowCount).map { reader.fields(in: base, range: index.range(ofRow: $0)) }
+            return (0..<index.rowCount).map { reader.fieldsWithQuoting(in: base, range: index.range(ofRow: $0)) }
         }
     }
 

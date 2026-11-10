@@ -1,3 +1,4 @@
+mod default_sort;
 mod load;
 mod references;
 mod rows;
@@ -16,7 +17,9 @@ use tablepro_session::Session;
 use tablepro_session::fakes::FakeEstablish;
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeConnection, FakeReply};
 
-use super::{BrowseTab, BrowseTabInit, DataInput, GridInput, PagingInput, RowTotal, SaveInput, TableFilter};
+use super::{
+    BrowseTab, BrowseTabInit, DataInput, GridInput, InitialSort, PagingInput, RowTotal, SaveInput, TableFilter,
+};
 use crate::services::change_tracker::RowKey;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::TrackerDelta;
@@ -162,24 +165,50 @@ impl Harness {
         filter: TableFilter,
         read_only: bool,
     ) -> Self {
+        Self::open_configured(
+            script,
+            reconnects,
+            Opening {
+                saved,
+                filter,
+                read_only,
+                ..Opening::users()
+            },
+            TabStores::new(),
+        )
+    }
+
+    fn open_with_sort(script: ConnectionScript, initial_sort: InitialSort, choice: &str, direction: &str) -> Self {
+        let stores = TabStores::new();
+        stores.settings.get().set_default_sort(choice).expect("default sort");
+        stores
+            .settings
+            .get()
+            .set_default_sort_direction(direction)
+            .expect("default direction");
+        Self::open_configured(
+            script,
+            [],
+            Opening {
+                initial_sort,
+                ..Opening::users()
+            },
+            stores,
+        )
+    }
+
+    fn open_configured(
+        script: ConnectionScript,
+        reconnects: impl IntoIterator<Item = FakeEstablish>,
+        opening: Opening,
+        stores: TabStores,
+    ) -> Self {
         libadwaita::init().expect("libadwaita initialises under the test backend");
         crate::register_test_resources();
         let runtime = crate::test_support::test_runtime();
         let fake = FakeSession::start(script, reconnects, runtime.tasks());
-        let stores = TabStores::new();
-        let tracker = TabTrackerHandle::default();
-        let tab = table_tab(
-            &fake.session,
-            &runtime,
-            &stores,
-            Opening {
-                saved,
-                filter,
-                tracker: tracker.clone(),
-                read_only,
-                ..Opening::users()
-            },
-        );
+        let tracker = opening.tracker.clone();
+        let tab = table_tab(&fake.session, &runtime, &stores, opening);
         Self {
             tab: Some(tab),
             tracker,
@@ -349,6 +378,7 @@ pub(super) struct Opening {
     pub(super) filter: TableFilter,
     pub(super) tracker: TabTrackerHandle,
     pub(super) read_only: bool,
+    pub(super) initial_sort: InitialSort,
 }
 
 impl Opening {
@@ -359,6 +389,7 @@ impl Opening {
             filter: TableFilter::Remembered,
             tracker: TabTrackerHandle::default(),
             read_only: false,
+            initial_sort: InitialSort::Default,
         }
     }
 }
@@ -375,6 +406,7 @@ pub(super) fn table_tab(
         filter,
         tracker,
         read_only,
+        initial_sort,
     } = opening;
     let tasks = runtime.tasks();
     let connection_id = uuid::Uuid::new_v4();
@@ -389,7 +421,7 @@ pub(super) fn table_tab(
         read_only,
         page_size: 100,
         initial_offset: 0,
-        initial_sort: None,
+        initial_sort,
         filter,
         column_layouts: crate::persistence::ColumnLayoutStore::load(root.join("column_layouts.json"), &tasks),
         filter_settings,
@@ -1619,6 +1651,26 @@ fn a_dotted_field_of_a_document_neither_sorts_nor_takes_an_edit() {
     assert_eq!(cell.lock(), Some(crate::services::grid::CellLock::Unaddressable));
     assert!(!grid.edit().edit_cell(&cell), "the dotted field opened for editing");
     assert_eq!(harness.tracker.pending_count(), 0);
+}
+
+#[gtk4::test]
+fn a_new_tab_opens_sorted_by_the_default_sort() {
+    let mut script = serving_table();
+    script.count_rows.always(FakeReply::ok(1_000));
+    script.query_bound.always(FakeReply::ok(full_page(0)));
+    let mut harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
+    assert_eq!(harness.tab().current_sort(), None, "no default sort until asked");
+
+    let settings = harness.stores.settings.get().clone();
+    settings.set_default_sort("primary-key").expect("store the sort");
+    settings
+        .set_default_sort_direction("descending")
+        .expect("store the direction");
+    let another = harness.open_another();
+    wait_until(WAIT, || another.current_sort().is_some()).expect("the default sort");
+
+    assert_eq!(another.current_sort(), Some((0, false)));
 }
 
 #[gtk4::test]

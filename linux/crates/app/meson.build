@@ -21,7 +21,7 @@ cargo_built = cargo_target_dir / cargo_profile_dir
 app_env = cargo_env
 app_env.set('TABLEPRO_METAINFO', metainfo_file.full_path())
 
-custom_target(
+tablepro_binaries = custom_target(
   'cargo-build',
   build_always_stale: true,
   build_by_default: true,

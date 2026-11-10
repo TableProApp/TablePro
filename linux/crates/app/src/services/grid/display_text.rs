@@ -2,6 +2,7 @@ use std::fmt::Write;
 
 use tablepro_core::Value;
 use tablepro_core::column::{BoolStorage, ColumnKind, ColumnType};
+use tablepro_linux_platform::settings::DateFormat;
 
 /// A million-character value would hang the main thread in Pango
 /// layout, and the cell shapes all it is given though a line of it
@@ -52,10 +53,16 @@ pub fn auto_filled_sentinel() -> String {
     crate::i18n::gettext("(auto)")
 }
 
-/// The text of `value` as the cell draws it. Text, JSON and a value the
-/// driver kept as the server's text are borrowed; anything else is
-/// written into `scratch`, the cell's own buffer.
 pub fn display_text<'a>(value: &'a Value, column: &ColumnType, scratch: &'a mut String) -> DisplayText<'a> {
+    display_text_formatted(value, column, DateFormat::Iso, scratch)
+}
+
+pub fn display_text_formatted<'a>(
+    value: &'a Value,
+    column: &ColumnType,
+    date_format: DateFormat,
+    scratch: &'a mut String,
+) -> DisplayText<'a> {
     scratch.clear();
     match value {
         Value::Null => DisplayText::placeholder(READONLY_NULL),
@@ -82,16 +89,18 @@ pub fn display_text<'a>(value: &'a Value, column: &ColumnType, scratch: &'a mut 
             DisplayText::placeholder(scratch)
         }
         other => {
-            write_value(other, column, scratch);
+            write_value(other, column, date_format, scratch);
             cut_in_place(scratch)
         }
     }
 }
 
-/// The text `display_text` spells, whole: past the cell's cut and without
-/// its note of what it left out, for a search that must reach the rest. A
-/// placeholder is the placeholder.
-pub fn whole_text<'a>(value: &'a Value, column: &ColumnType, scratch: &'a mut String) -> &'a str {
+pub fn whole_text<'a>(
+    value: &'a Value,
+    column: &ColumnType,
+    date_format: DateFormat,
+    scratch: &'a mut String,
+) -> &'a str {
     match value {
         Value::Text(text) => text,
         Value::Json(json) => json.as_str(),
@@ -99,16 +108,17 @@ pub fn whole_text<'a>(value: &'a Value, column: &ColumnType, scratch: &'a mut St
         Value::Null | Value::Bytes(_) | Value::Undecodable(_) => display_text(value, column, scratch).text,
         other => {
             scratch.clear();
-            write_value(other, column, scratch);
+            write_value(other, column, date_format, scratch);
             scratch
         }
     }
 }
 
-/// Everything else renders the way it exports, so what the grid shows
-/// and what a copy produces are the same text. The common scalars are
-/// written straight into the buffer.
-fn write_value(value: &Value, column: &ColumnType, scratch: &mut String) {
+fn write_value(value: &Value, column: &ColumnType, date_format: DateFormat, scratch: &mut String) {
+    if let Some(text) = super::date_display::formatted(value, column, date_format) {
+        *scratch = text;
+        return;
+    }
     // Writing to a String cannot fail.
     let _ = match value {
         Value::Bool(flag) => scratch.write_str(if *flag { "true" } else { "false" }),

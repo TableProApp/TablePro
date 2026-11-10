@@ -307,9 +307,8 @@ final class AnthropicProvider: ChatTransport {
     }
 
     static func decodeStreamLine(_ line: String) -> [String: Any]? {
-        guard line.hasPrefix("data: ") else { return nil }
-        let jsonString = String(line.dropFirst(6))
-        guard jsonString != "[DONE]",
+        guard let jsonString = SSEEventStream.dataPayload(line),
+              jsonString != "[DONE]",
               let data = jsonString.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }

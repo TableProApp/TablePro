@@ -22,6 +22,11 @@ internal class SidebarOutlineView: NSOutlineView {
         super.mouseDown(with: event)
     }
 
+    override internal func keyDown(with event: NSEvent) {
+        guard !interpretCommandKey(event) else { return }
+        super.keyDown(with: event)
+    }
+
     override internal func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         adoptFirstResponderIfVacant()

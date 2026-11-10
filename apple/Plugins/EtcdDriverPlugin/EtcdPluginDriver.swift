@@ -452,6 +452,18 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         case .put(let key, let value, let leaseId):
             return try await dispatchPut(key: key, value: value, leaseId: leaseId, client: client, startTime: startTime)
 
+        case .create(let key, let value, let leaseId):
+            return try await dispatchGuardedWrite(
+                .create(key: key, value: value, lease: leaseId),
+                key: key, value: value, client: client, startTime: startTime
+            )
+
+        case .move(let source, let target, let value, let leaseId, let modRevision):
+            return try await dispatchGuardedWrite(
+                .move(from: source, to: target, value: value, lease: leaseId, modRevision: modRevision),
+                key: target, value: value, client: client, startTime: startTime
+            )
+
         case .del(let key, let prefix):
             return try await dispatchDel(key: key, prefix: prefix, client: client, startTime: startTime)
 
@@ -609,6 +621,32 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             rowsAffected: 1,
             executionTime: Date().timeIntervalSince(startTime)
         )
+    }
+
+    private func dispatchGuardedWrite(
+        _ request: EtcdTxnRequest, key: Data, value: Data,
+        client: EtcdHttpClient, startTime: Date
+    ) async throws -> PluginQueryResult {
+        let response = try await client.txnRequest(request)
+        switch response.outcome {
+        case .applied:
+            return PluginQueryResult(
+                columns: ["Key", "Value", "Revision"],
+                columnTypeNames: ["String", "String", "Int64"],
+                rows: [[.etcd(key), .etcd(value), .text(response.revision ?? "unknown")]],
+                rowsAffected: 1,
+                executionTime: Date().timeIntervalSince(startTime)
+            )
+        case .targetExists:
+            throw EtcdGuardedWriteRefusal(message: String(
+                format: String(localized: "A key named '%@' already exists."),
+                EtcdCommandText.text(key) ?? EtcdCommandText.quoted(key)
+            ))
+        case .sourceChanged:
+            throw EtcdGuardedWriteRefusal(
+                message: String(localized: "The key changed on the server after it was read. Refresh and try again.")
+            )
+        }
     }
 
     private func dispatchDel(

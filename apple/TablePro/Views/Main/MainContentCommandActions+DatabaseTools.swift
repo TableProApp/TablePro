@@ -32,7 +32,13 @@ extension MainContentCommandActions {
     }
 
     func showTableHealth() {
-        coordinator?.showSingletonTab(.tableHealth)
+        coordinator?.showTableHealth()
+    }
+
+    // The entry a new tab opens on names a database; Table Health checks one and never falls back to the browse cursor.
+    var hasDatabase: Bool {
+        guard let coordinator else { return false }
+        return !coordinator.newTabDatabaseName.isEmpty
     }
 
     var supportsServerDashboard: Bool {
