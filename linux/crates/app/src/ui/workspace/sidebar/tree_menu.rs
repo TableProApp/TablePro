@@ -1,3 +1,4 @@
+use gtk4::gio::prelude::MenuModelExt;
 use gtk4::{gio, glib};
 use tablepro_core::ddl::DatabaseNoun;
 use tablepro_session::SessionKey;

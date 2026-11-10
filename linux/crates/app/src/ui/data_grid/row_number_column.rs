@@ -140,7 +140,10 @@ pub fn fit(grid: &DataGrid) {
     // A fresh context, since the view's own follows a font change only at
     // the next frame.
     let context = grid.column_view().create_pango_context();
-    let metrics = context.metrics(Some(&super::columns::value_font(&context)), None);
+    let metrics = context.metrics(
+        Some(&super::columns::value_font(&context, grid.cell_font().as_deref())),
+        None,
+    );
     let digit_px = pango::units_to_double(metrics.approximate_digit_width());
     column.set_fixed_width((f64::from(digits.max(2)) * digit_px).ceil() as i32 + CHROME_PX);
     super::pinned_numbers::sync(grid);
