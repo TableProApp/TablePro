@@ -60,4 +60,12 @@ internal enum ConnectionNavigatorRow: Equatable {
         case .connection: return []
         }
     }
+
+    /// What type-select matches and VoiceOver reads for the row.
+    internal var name: String {
+        switch self {
+        case .group(let group): return group.name
+        case .connection(let connection): return connection.connection.name
+        }
+    }
 }

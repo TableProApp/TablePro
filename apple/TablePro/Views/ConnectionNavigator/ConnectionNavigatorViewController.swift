@@ -75,7 +75,8 @@ internal final class ConnectionNavigatorCellView: SidebarHostingCellView<Connect
 @MainActor
 internal final class ConnectionNavigatorViewController: NSViewController, NSSearchFieldDelegate, NSMenuDelegate,
     NSOutlineViewDataSource, NSOutlineViewDelegate {
-    internal static let defaultWidth: CGFloat = 220
+    // Fits a two-word name such as "Reports PostgreSQL" beside its icon and status at the default text size.
+    internal static let defaultWidth: CGFloat = 250
     internal static let minimumWidth: CGFloat = 180
     internal static let maximumWidth: CGFloat = 400
 
@@ -584,6 +585,8 @@ internal final class ConnectionNavigatorViewController: NSViewController, NSSear
         let cell = outlineView.makeView(withIdentifier: Self.cellIdentifier, owner: self) as? ConnectionNavigatorCellView
             ?? makeCell()
         cell.update(rootView: ConnectionNavigatorRowView(row: item.row, rowSizePreference: rowSizePreference))
+        // The hosted row has no text field, so the outline's row would reach VoiceOver with no name.
+        cell.setAccessibilityLabel(item.row.name)
         return cell
     }
 
@@ -598,10 +601,6 @@ internal final class ConnectionNavigatorViewController: NSViewController, NSSear
         typeSelectStringFor tableColumn: NSTableColumn?,
         item: Any
     ) -> String? {
-        switch (item as? ConnectionNavigatorOutlineItem)?.row {
-        case .group(let group): return group.name
-        case .connection(let connection): return connection.connection.name
-        case nil: return nil
-        }
+        (item as? ConnectionNavigatorOutlineItem)?.row.name
     }
 }
