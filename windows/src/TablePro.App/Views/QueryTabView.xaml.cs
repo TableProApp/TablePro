@@ -176,7 +176,7 @@ public sealed partial class QueryTabView : UserControl, ITabContent
         return await WindowDialogs.ShowAsync(dialog, this) == ContentDialogResult.Primary;
     }
 
-    private Task RunSqlAsync(string sql) => _work.RunAsync(token => RunOnEditorAsync(sql, token));
+    private Task<bool> RunSqlAsync(string sql) => _work.RunAsync(token => RunOnEditorAsync(sql, token));
 
     private async Task RunOnEditorAsync(string sql, CancellationToken cancellationToken)
     {
