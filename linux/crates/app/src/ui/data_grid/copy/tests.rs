@@ -25,6 +25,7 @@ use crate::ui::data_grid::{DataGrid, GridCell, GridRequest};
 use crate::ui::export::ExportSource;
 
 const BEFORE: &str = "nothing copied yet";
+const TWO_TEXT_ROWS_JSON: &str = "[\n{\"id\":1,\"name\":\"A\"},\n{\"id\":2,\"name\":\"B\"}\n]";
 
 /// What a copy test drives: a grid and the requests it made.
 trait Copies {
@@ -746,4 +747,50 @@ fn the_text_copies_take_the_columns_on_screen() {
     );
     assert_eq!(lines, "{\"id\":1,\"name\":\"Ada\"}\n{\"id\":2,\"name\":\"Grace\"}\n");
     assert_eq!(one_row, "1, 'Ada', 2, 'Grace'");
+}
+
+#[gtk4::test]
+fn copy_writes_several_rows_in_the_preferred_format() {
+    use tablepro_linux_platform::settings::RowCopyFormat;
+
+    let grid = Grid::open(two_text_columns(), two_text_values());
+    select_all(&grid);
+    let settings = &grid.grid.config().expect("a configured grid").settings;
+    for format in RowCopyFormat::ALL {
+        settings.set_row_copy_format(format.nick()).expect("store the format");
+
+        let text = copied(&grid, || activate(&grid.grid, "copy"));
+
+        match format {
+            RowCopyFormat::Rows => assert_eq!(text, "1\tA\n2\tB\n"),
+            RowCopyFormat::RowsWithHeaders => assert_eq!(text, "id\tname\n1\tA\n2\tB\n"),
+            RowCopyFormat::Csv => assert_eq!(text, "1,A\n2,B\n"),
+            RowCopyFormat::CsvWithHeaders => assert_eq!(text, "id,name\n1,A\n2,B\n"),
+            RowCopyFormat::Markdown => assert_eq!(text, "| id | name |\n| --- | --- |\n| 1 | A |\n| 2 | B |"),
+            RowCopyFormat::Json => assert_eq!(text, TWO_TEXT_ROWS_JSON),
+        }
+    }
+}
+
+#[gtk4::test]
+fn preferred_row_format_preserves_single_cell_copy_and_explicit_formats() {
+    let grid = Grid::open(two_text_columns(), two_text_values());
+    grid.grid
+        .config()
+        .expect("a configured grid")
+        .settings
+        .set_row_copy_format("json")
+        .expect("store the format");
+    grid.grid.selection().select_item(0, true);
+    grid.focus(0, 1);
+
+    assert_eq!(copied(&grid, || activate(&grid.grid, "copy")), "A");
+
+    select_all(&grid);
+    assert_eq!(
+        copied(&grid, || activate(&grid.grid, "copy-csv-headers")),
+        "id,name\n1,A\n2,B\n"
+    );
+    let text = copied(&grid, || activate(&grid.grid, "copy"));
+    assert_eq!(text, TWO_TEXT_ROWS_JSON);
 }

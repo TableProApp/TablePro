@@ -47,23 +47,180 @@ impl GridRowHeight {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum RowCopyFormat {
+    #[default]
+    Rows,
+    RowsWithHeaders,
+    Json,
+    Csv,
+    CsvWithHeaders,
+    Markdown,
+}
+
+impl RowCopyFormat {
+    pub const ALL: [Self; 6] = [
+        Self::Rows,
+        Self::RowsWithHeaders,
+        Self::Json,
+        Self::Csv,
+        Self::CsvWithHeaders,
+        Self::Markdown,
+    ];
+
+    pub fn from_nick(nick: &str) -> Self {
+        match nick {
+            "rows-headers" => Self::RowsWithHeaders,
+            "json" => Self::Json,
+            "csv" => Self::Csv,
+            "csv-headers" => Self::CsvWithHeaders,
+            "markdown" => Self::Markdown,
+            _ => Self::Rows,
+        }
+    }
+
+    pub fn nick(self) -> &'static str {
+        match self {
+            Self::Rows => "rows",
+            Self::RowsWithHeaders => "rows-headers",
+            Self::Json => "json",
+            Self::Csv => "csv",
+            Self::CsvWithHeaders => "csv-headers",
+            Self::Markdown => "markdown",
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum DefaultSort {
+    #[default]
+    None,
+    PrimaryKey,
+    FirstColumn,
+}
+
+impl DefaultSort {
+    pub const ALL: [Self; 3] = [Self::None, Self::PrimaryKey, Self::FirstColumn];
+
+    pub fn from_nick(nick: &str) -> Self {
+        match nick {
+            "primary-key" => Self::PrimaryKey,
+            "first-column" => Self::FirstColumn,
+            _ => Self::None,
+        }
+    }
+
+    pub fn nick(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::PrimaryKey => "primary-key",
+            Self::FirstColumn => "first-column",
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum GridSortDirection {
+    #[default]
+    Ascending,
+    Descending,
+}
+
+impl GridSortDirection {
+    pub const ALL: [Self; 2] = [Self::Ascending, Self::Descending];
+
+    pub fn from_nick(nick: &str) -> Self {
+        match nick {
+            "descending" => Self::Descending,
+            _ => Self::Ascending,
+        }
+    }
+
+    pub fn nick(self) -> &'static str {
+        match self {
+            Self::Ascending => "ascending",
+            Self::Descending => "descending",
+        }
+    }
+
+    pub fn ascending(self) -> bool {
+        self == Self::Ascending
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum DateFormat {
+    #[default]
+    Iso,
+    IsoDate,
+    UsLong,
+    UsShort,
+    EuLong,
+    EuShort,
+}
+
+impl DateFormat {
+    pub const ALL: [Self; 6] = [
+        Self::Iso,
+        Self::IsoDate,
+        Self::UsLong,
+        Self::UsShort,
+        Self::EuLong,
+        Self::EuShort,
+    ];
+
+    pub fn from_nick(nick: &str) -> Self {
+        match nick {
+            "iso-date" => Self::IsoDate,
+            "us-long" => Self::UsLong,
+            "us-short" => Self::UsShort,
+            "eu-long" => Self::EuLong,
+            "eu-short" => Self::EuShort,
+            _ => Self::Iso,
+        }
+    }
+
+    pub fn nick(self) -> &'static str {
+        match self {
+            Self::Iso => "iso",
+            Self::IsoDate => "iso-date",
+            Self::UsLong => "us-long",
+            Self::UsShort => "us-short",
+            Self::EuLong => "eu-long",
+            Self::EuShort => "eu-short",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GridPreferenceValues {
+    pub date_format: DateFormat,
+    pub default_sort: DefaultSort,
+    pub default_sort_direction: GridSortDirection,
     pub show_row_numbers: bool,
     pub show_alternate_rows: bool,
     pub row_height: GridRowHeight,
     pub null_display: String,
     pub font: EditorFont,
+    pub row_copy_format: RowCopyFormat,
+    pub auto_show_inspector: bool,
+    pub show_invisible_characters: bool,
 }
 
 impl Default for GridPreferenceValues {
     fn default() -> Self {
         Self {
+            date_format: DateFormat::Iso,
+            default_sort: DefaultSort::None,
+            default_sort_direction: GridSortDirection::Ascending,
             show_row_numbers: true,
             show_alternate_rows: true,
             row_height: GridRowHeight::Normal,
             null_display: "NULL".to_owned(),
             font: EditorFont::System,
+            row_copy_format: RowCopyFormat::Rows,
+            auto_show_inspector: false,
+            show_invisible_characters: true,
         }
     }
 }
@@ -71,6 +228,12 @@ impl Default for GridPreferenceValues {
 impl GridPreferenceValues {
     fn read(settings: &gio::Settings) -> Self {
         Self {
+            date_format: DateFormat::from_nick(&settings.string(keys::DATE_FORMAT)),
+            row_copy_format: RowCopyFormat::from_nick(&settings.string(keys::ROW_COPY_FORMAT)),
+            auto_show_inspector: settings.boolean(keys::AUTO_SHOW_INSPECTOR),
+            show_invisible_characters: settings.boolean(keys::SHOW_INVISIBLE_CHARACTERS),
+            default_sort: DefaultSort::from_nick(&settings.string(keys::DEFAULT_SORT)),
+            default_sort_direction: GridSortDirection::from_nick(&settings.string(keys::DEFAULT_SORT_DIRECTION)),
             show_row_numbers: settings.boolean(keys::SHOW_ROW_NUMBERS),
             show_alternate_rows: settings.boolean(keys::SHOW_ALTERNATE_ROWS),
             row_height: GridRowHeight::from_nick(&settings.string(keys::GRID_ROW_HEIGHT)),
@@ -143,11 +306,17 @@ impl GridPreferences {
             if matches!(
                 key,
                 keys::SHOW_ROW_NUMBERS
+                    | keys::DATE_FORMAT
+                    | keys::DEFAULT_SORT
+                    | keys::DEFAULT_SORT_DIRECTION
                     | keys::SHOW_ALTERNATE_ROWS
                     | keys::GRID_ROW_HEIGHT
                     | keys::NULL_DISPLAY
                     | keys::GRID_USE_SYSTEM_FONT
                     | keys::GRID_FONT
+                    | keys::ROW_COPY_FORMAT
+                    | keys::AUTO_SHOW_INSPECTOR
+                    | keys::SHOW_INVISIBLE_CHARACTERS
             ) && let Some(preferences) = weak.upgrade()
             {
                 preferences.update(GridPreferenceValues::read(settings));

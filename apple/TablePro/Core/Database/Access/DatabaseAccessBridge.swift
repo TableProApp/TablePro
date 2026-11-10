@@ -393,7 +393,8 @@ internal actor DatabaseAccessBridge {
                 route: route,
                 policy: policy,
                 owner: owner,
-                timeoutSeconds: timeoutSeconds
+                timeoutSeconds: timeoutSeconds,
+                onLateCompletion: { CatalogChangeService.post(statementRan) }
             ) { driver in
                 let answer = try await driver.executeUserQuery(
                     query: sql,
@@ -457,7 +458,8 @@ internal actor DatabaseAccessBridge {
                 route: route,
                 policy: policy,
                 owner: owner,
-                timeoutSeconds: timeoutSeconds
+                timeoutSeconds: timeoutSeconds,
+                onLateCompletion: { CatalogChangeService.post(statementRan) }
             ) { driver in
                 try await driver.explainPlan(statement: statement, variantId: variantId)
             }
@@ -647,10 +649,23 @@ internal actor DatabaseAccessBridge {
         policy: DriverCancellationPolicy,
         owner: DriverLeaseOwner,
         timeoutSeconds: Int,
+        onLateCompletion: (@Sendable () -> Void)? = nil,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> Output
     ) async throws -> Output {
         let connectionId = scope.connectionId
         let manager = await databaseManager
+        if policy == .protectedWrite {
+            return try await Self.awaitProtectedWrite(
+                timeout: .seconds(timeoutSeconds),
+                timeoutSeconds: timeoutSeconds,
+                onLateCompletion: onLateCompletion
+            ) { enterDriver in
+                try await manager.withScopedDriver(scope: scope, route: route, cancellation: policy) { driver in
+                    try enterDriver()
+                    return try await body(driver)
+                }
+            }
+        }
         return try await withThrowingTaskGroup(of: Output.self) { group in
             group.addTask {
                 try await manager.withScopedDriver(
@@ -667,18 +682,101 @@ internal actor DatabaseAccessBridge {
                         owner: owner, on: connectionId, delivery: .immediate
                     )
                 }
-                throw DatabaseAccessError.timeout(
-                    String(
-                        format: String(localized: "Query timed out after %d seconds"),
-                        timeoutSeconds
-                    )
-                )
+                throw Self.plainTimeout(seconds: timeoutSeconds)
             }
             guard let first = try await group.next() else {
                 throw DatabaseAccessError.dataSourceError("No result from query execution")
             }
             group.cancelAll()
             return first
+        }
+    }
+
+    private static func plainTimeout(seconds: Int) -> DatabaseAccessError {
+        .timeout(String(format: String(localized: "Query timed out after %d seconds"), seconds))
+    }
+
+    private enum ProtectedWritePhase: Sendable {
+        case queued
+        case inDriver
+        case abandoned
+    }
+
+    // A protected write is never aborted once the driver has it. Past the deadline, or after the
+    // caller cancels, such a write runs on and the caller is told the outcome is unknown: a plain
+    // timeout would read as "nothing happened" and invite a retry that applies it twice. A write
+    // still waiting for its turn is refused instead, so nothing runs after the caller was told no.
+    // `work` calls `enterDriver` as the first thing inside its driver turn.
+    internal static func awaitProtectedWrite<Output: Sendable>(
+        timeout: Duration,
+        timeoutSeconds: Int,
+        onLateCompletion: (@Sendable () -> Void)? = nil,
+        _ work: @Sendable @escaping (_ enterDriver: @escaping @Sendable () throws -> Void) async throws -> Output
+    ) async throws -> Output {
+        let phase = OSAllocatedUnfairLock(initialState: ProtectedWritePhase.queued)
+        let abandonIfQueued: @Sendable () -> Bool = {
+            phase.withLock { current -> Bool in
+                guard current == .queued else { return current == .abandoned }
+                current = .abandoned
+                return true
+            }
+        }
+        let (outcomes, continuation) = AsyncThrowingStream<Output?, any Error>.makeStream()
+        let deadline = Task<Bool, Never> {
+            do {
+                try await Task.sleep(for: timeout)
+            } catch {
+                return false
+            }
+            continuation.yield(nil)
+            return true
+        }
+        let workTask = Task {
+            do {
+                let output = try await work {
+                    let entered = phase.withLock { current -> Bool in
+                        guard current == .queued else { return false }
+                        current = .inDriver
+                        return true
+                    }
+                    guard entered else { throw CancellationError() }
+                }
+                continuation.yield(output)
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+            deadline.cancel()
+            let ranInDriver = phase.withLock { $0 == .inDriver }
+            if await deadline.value, ranInDriver {
+                onLateCompletion?()
+            }
+        }
+        return try await withTaskCancellationHandler {
+            for try await outcome in outcomes {
+                if let outcome { return outcome }
+                if abandonIfQueued() {
+                    workTask.cancel()
+                    throw plainTimeout(seconds: timeoutSeconds)
+                }
+                throw DatabaseAccessError.timeout(
+                    String(
+                        format: String(localized: """
+                            The statement did not finish within %d seconds and is still running. \
+                            It may have been applied; check before running it again.
+                            """),
+                        timeoutSeconds
+                    ),
+                    context: ["outcome": "unknown"]
+                )
+            }
+            try Task.checkCancellation()
+            throw DatabaseAccessError.dataSourceError("No result from query execution")
+        } onCancel: {
+            if abandonIfQueued() {
+                workTask.cancel()
+            }
+            deadline.cancel()
         }
     }
 

@@ -336,10 +336,12 @@ impl DataGrid {
                 .filter_map(|cells| cells.as_deref().and_then(|cells| cells.get(index)))
                 .collect();
             let column = &paint.column;
+            let preferences = paint.preferences.snapshot();
+            let date_format = preferences.date_format;
             let chars = match (by_type, paint.numbers.get()) {
-                (true, _) => typical_width_chars(column),
+                (true, _) => typical_width_chars(column, date_format),
                 (false, true) => number_width_chars(column, values.iter().copied()),
-                (false, false) => default_width_chars(column, values.iter().copied()),
+                (false, false) => default_width_chars(column, values.iter().copied(), date_format),
             };
             let estimate = (f64::from(chars) * char_px).ceil() as i32;
             // A number is never cut. Nor is a date, held or not, nor with
@@ -348,15 +350,15 @@ impl DataGrid {
             let sampled = match (by_type, paint.numbers.get()) {
                 (_, true) => tabular_width(&context, &font, &"0".repeat(usize::try_from(chars).unwrap_or_default())),
                 (true, false) => 0,
-                // One line each, so one layout measures them all.
-                (false, false) => drawn_width(
+                (false, false) => sampled_width(
                     &context,
                     &font,
-                    &sampled_texts(column, values.iter().copied()).join("\n"),
+                    &sampled_texts(column, values.iter().copied(), date_format),
+                    preferences.show_invisible_characters,
                 ),
             };
             let spelled = match by_type || column.display() == CellDisplay::Temporal {
-                true => typical_texts(column)
+                true => typical_texts(column, date_format)
                     .iter()
                     .map(|typical| tabular_width(&context, &font, typical))
                     .max()
@@ -368,7 +370,6 @@ impl DataGrid {
                 None => 0,
             };
             let header = header_width(&context, header_text(column)) + indicator;
-            let preferences = paint.preferences.snapshot();
             let null = crate::services::grid::display_text::null_text(
                 &preferences.null_display,
                 paint.tracked.tracks_changes(),
@@ -963,6 +964,31 @@ fn tabular_width(context: &pango::Context, font: &pango::FontDescription, text: 
     let tabular = pango::AttrList::new();
     tabular.insert(pango::AttrFontFeatures::new("tnum"));
     layout.set_attributes(Some(&tabular));
+    layout.pixel_size().0
+}
+
+/// The widest of `texts` as a cell draws it, marks and all. One line each,
+/// so one layout measures them all.
+fn sampled_width(context: &pango::Context, font: &pango::FontDescription, texts: &[String], marks: bool) -> i32 {
+    let mut lines = String::new();
+    let attributes = pango::AttrList::new();
+    for text in texts {
+        if !lines.is_empty() {
+            lines.push('\n');
+        }
+        let drawn = super::special_marks::drawn(text, None, marks);
+        let offset = u32::try_from(lines.len()).unwrap_or(u32::MAX);
+        for mut attribute in drawn.attributes.iter().flat_map(pango::AttrList::attributes) {
+            attribute.set_start_index(attribute.start_index().saturating_add(offset));
+            attribute.set_end_index(attribute.end_index().saturating_add(offset));
+            attributes.insert(attribute);
+        }
+        lines.push_str(&drawn.text);
+    }
+    let layout = pango::Layout::new(context);
+    layout.set_text(&lines);
+    layout.set_font_description(Some(font));
+    layout.set_attributes(Some(&attributes));
     layout.pixel_size().0
 }
 

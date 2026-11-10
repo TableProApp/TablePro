@@ -413,10 +413,16 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             schema: resolvedSchema, table: table
         )
 
+        let shapeQuery = PostgreSQLTableDDL.shapeQuery(
+            schema: resolvedSchema, table: table, capabilities: versionedCapabilities
+        )
+
         async let columnsResult = catalogRead(columnsQuery)
         async let constraintsResult = catalogRead(constraintsQuery)
+        async let shapeResult = try? catalogRead(shapeQuery)
 
         let (cols, cons) = try await (columnsResult, constraintsResult)
+        let shapeRows = await shapeResult
 
         /// `pg_attribute` covers views and materialized views as well as tables, so a view reached
         /// here as a `CREATE TABLE` of its columns. The Structure tab's DDL and every other caller
@@ -440,10 +446,17 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         var parts = columnDefs
         parts.append(contentsOf: constraints)
 
+        let shape = PostgreSQLTableDDL.shape(fromRows: shapeRows?.rows.map { $0.map(\.asText) })
+        var partitions: [PostgreSQLTableDDL.Partition] = []
+        if shape.partitionKey != nil {
+            let tree = try await catalogRead(PostgreSQLTableDDL.partitionTreeQuery(schema: resolvedSchema, table: table))
+            partitions = tree.rows.compactMap { PostgreSQLTableDDL.partition(from: $0.map(\.asText)) }
+        }
+
         let quotedSchema = quoteIdentifier(resolvedSchema)
-        return "CREATE TABLE \(quotedSchema).\(quotedTable) (\n  " +
-            parts.joined(separator: ",\n  ") +
-            "\n);"
+        return PostgreSQLTableDDL.script(
+            name: "\(quotedSchema).\(quotedTable)", definitions: parts, shape: shape, partitions: partitions
+        )
     }
 
     /// `pg_get_indexdef` is what `pg_dump` itself emits, and it round-trips an expression key, an
@@ -452,6 +465,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     /// spanning two schemas attaches each index to the right one.
     func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
         try await fetchStandaloneIndexes(table: table, schema: schema ?? core.currentSchema).definitions
+            .map(PostgreSQLTableDDL.indexCoveringPartitions)
     }
 
     func fetchStandaloneIndexes(table: String, schema: String) async throws -> PostgreSQLStandaloneIndexes {

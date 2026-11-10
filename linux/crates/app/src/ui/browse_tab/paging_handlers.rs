@@ -68,6 +68,7 @@ impl BrowseModel {
     /// A sort the headers did not make, which they show too.
     /// Read the first page in `next` order.
     pub(super) fn sort_by(&mut self, next: Option<(usize, bool)>, fx: &mut Effects) {
+        self.default_sort = None;
         // One header click can report the same sort twice.
         if self.current_sort == next {
             return;

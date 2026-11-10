@@ -58,6 +58,12 @@ internal final class TabPersistenceCoordinator: ObservableObject {
         hasObservedTabs = true
     }
 
+    // The gate is one session's knowledge of the disk. Left open after the connection's last window closed, a
+    // window later opened on content alone, which skips the restore, would write its one tab over the saved set.
+    internal func endSession() {
+        hasObservedTabs = false
+    }
+
     // MARK: - Save
 
     /// An automatic save never deletes, and never runs before a restore has told it what is on

@@ -28,8 +28,51 @@ enum KeychainStringResult: Sendable, Equatable {
 protocol KeychainStoring: Sendable {
     @discardableResult
     func writeString(_ value: String, forKey key: String) -> Bool
+    // deviceOnly keeps the item out of iCloud Keychain whatever the password sync setting says.
+    @discardableResult
+    func writeString(_ value: String, forKey key: String, deviceOnly: Bool) -> Bool
     func readStringResult(forKey key: String) -> KeychainStringResult
+    // deviceOnly reads this Mac's own item before one iCloud Keychain delivered.
+    func readStringResult(forKey key: String, deviceOnly: Bool) -> KeychainStringResult
     func delete(forKey key: String)
+}
+
+extension KeychainStoring {
+    func readStringResult(forKey key: String, deviceOnly: Bool) -> KeychainStringResult {
+        readStringResult(forKey: key)
+    }
+
+    @discardableResult
+    func writeString(_ value: String, forKey key: String, deviceOnly: Bool) -> Bool {
+        writeString(value, forKey: key)
+    }
+}
+
+protocol KeychainItemStore: Sendable {
+    func add(_ attributes: [String: Any]) -> OSStatus
+    func update(_ query: [String: Any], attributes: [String: Any]) -> OSStatus
+    func copyData(_ query: [String: Any]) -> (status: OSStatus, data: Data?)
+    func delete(_ query: [String: Any]) -> OSStatus
+}
+
+struct SystemKeychainItemStore: KeychainItemStore {
+    func add(_ attributes: [String: Any]) -> OSStatus {
+        SecItemAdd(attributes as CFDictionary, nil)
+    }
+
+    func update(_ query: [String: Any], attributes: [String: Any]) -> OSStatus {
+        SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+    }
+
+    func copyData(_ query: [String: Any]) -> (status: OSStatus, data: Data?) {
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        return (status, result as? Data)
+    }
+
+    func delete(_ query: [String: Any]) -> OSStatus {
+        SecItemDelete(query as CFDictionary)
+    }
 }
 
 final class KeychainHelper: KeychainStoring {
@@ -56,62 +99,93 @@ final class KeychainHelper: KeychainStoring {
 
     // Off for a credential bound to this Mac, which another Mac must never receive through iCloud.
     private let followsPasswordSync: Bool
+    private let passwordSyncSetting: @Sendable () -> Bool
+    private let items: any KeychainItemStore
 
     private var isPasswordSyncEnabled: Bool {
-        followsPasswordSync && AppStorageEnvironment.shared.defaults.bool(forKey: Self.passwordSyncEnabledKey)
+        followsPasswordSync && passwordSyncSetting()
     }
 
-    init(service: String = "com.TablePro", followsPasswordSync: Bool = true) {
+    static func storedPasswordSyncSetting() -> Bool {
+        AppStorageEnvironment.shared.defaults.bool(forKey: passwordSyncEnabledKey)
+    }
+
+    init(
+        service: String = "com.TablePro",
+        followsPasswordSync: Bool = true,
+        passwordSyncSetting: @escaping @Sendable () -> Bool = { KeychainHelper.storedPasswordSyncSetting() },
+        items: any KeychainItemStore = SystemKeychainItemStore()
+    ) {
         self.service = service
         self.followsPasswordSync = followsPasswordSync
+        self.passwordSyncSetting = passwordSyncSetting
+        self.items = items
     }
 
     // MARK: - Data API
 
     @discardableResult
     func write(_ data: Data, forKey key: String) -> Bool {
-        let synchronizable = isPasswordSyncEnabled
+        write(data, forKey: key, deviceOnly: false)
+    }
+
+    // Synchronizable is part of an item's identity, so a key can hold a synced and a local item at once. The write
+    // goes to the one the setting selects. A synced item is never removed here: deleting it reaches every device.
+    @discardableResult
+    func write(_ data: Data, forKey key: String, deviceOnly: Bool) -> Bool {
+        let synchronizable = !deviceOnly && isPasswordSyncEnabled
         let accessible = accessibility(forSync: synchronizable)
+        let target = itemQuery(forKey: key, synchronizable: synchronizable)
 
-        var addQuery = baseQuery(forKey: key)
-        addQuery[kSecValueData as String] = data
-        addQuery[kSecAttrAccessible as String] = accessible
-        if synchronizable {
-            addQuery[kSecAttrSynchronizable as String] = true
-        }
-
-        var status = SecItemAdd(addQuery as CFDictionary, nil)
-
-        if status == errSecDuplicateItem {
-            var search = baseQuery(forKey: key)
-            search[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
-            let attributes: [String: Any] = [
-                kSecValueData as String: data,
-                kSecAttrSynchronizable as String: synchronizable,
-                kSecAttrAccessible as String: accessible
-            ]
-            status = SecItemUpdate(search as CFDictionary, attributes as CFDictionary)
+        var status = items.update(target, attributes: [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: accessible
+        ])
+        if status == errSecItemNotFound {
+            var attributes = target
+            attributes[kSecValueData as String] = data
+            attributes[kSecAttrAccessible as String] = accessible
+            status = items.add(attributes)
         }
 
         if status != errSecSuccess {
             log(status: status, operation: "write", key: key)
             return false
         }
+
+        if synchronizable {
+            let stale = items.delete(itemQuery(forKey: key, synchronizable: false))
+            if stale != errSecSuccess, stale != errSecItemNotFound {
+                log(status: stale, operation: "remove the local copy", key: key)
+            }
+        }
         return true
     }
 
     func read(forKey key: String) -> KeychainResult {
-        var query = baseQuery(forKey: key)
-        query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
-        query[kSecReturnData as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        read(forKey: key, deviceOnly: false)
+    }
 
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
+    func read(forKey key: String, deviceOnly: Bool) -> KeychainResult {
+        var preferred = itemQuery(forKey: key, synchronizable: !deviceOnly && isPasswordSyncEnabled)
+        preferred[kSecReturnData as String] = true
+        preferred[kSecMatchLimit as String] = kSecMatchLimitOne
+        let first = items.copyData(preferred)
+        guard first.status == errSecItemNotFound else {
+            return result(for: first, key: key)
+        }
 
-        switch status {
+        var fallback = baseQuery(forKey: key)
+        fallback[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
+        fallback[kSecReturnData as String] = true
+        fallback[kSecMatchLimit as String] = kSecMatchLimitOne
+        return result(for: items.copyData(fallback), key: key)
+    }
+
+    private func result(for copied: (status: OSStatus, data: Data?), key: String) -> KeychainResult {
+        switch copied.status {
         case errSecSuccess:
-            if let data = result as? Data {
+            if let data = copied.data {
                 return .found(data)
             }
             return .notFound
@@ -127,8 +201,8 @@ final class KeychainHelper: KeychainStoring {
             Self.logger.warning("Keychain auth failed for '\(key, privacy: .public)'")
             return .authFailed
         default:
-            log(status: status, operation: "read", key: key)
-            return .error(status)
+            log(status: copied.status, operation: "read", key: key)
+            return .error(copied.status)
         }
     }
 
@@ -136,7 +210,7 @@ final class KeychainHelper: KeychainStoring {
         var query = baseQuery(forKey: key)
         query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
 
-        let status = SecItemDelete(query as CFDictionary)
+        let status = items.delete(query)
         if status != errSecSuccess, status != errSecItemNotFound {
             log(status: status, operation: "delete", key: key)
         }
@@ -150,7 +224,16 @@ final class KeychainHelper: KeychainStoring {
             Self.logger.error("UTF-8 encode failed for '\(key, privacy: .public)'")
             return false
         }
-        return write(data, forKey: key)
+        return write(data, forKey: key, deviceOnly: false)
+    }
+
+    @discardableResult
+    func writeString(_ value: String, forKey key: String, deviceOnly: Bool) -> Bool {
+        guard let data = value.data(using: .utf8) else {
+            Self.logger.error("UTF-8 encode failed for '\(key, privacy: .public)'")
+            return false
+        }
+        return write(data, forKey: key, deviceOnly: deviceOnly)
     }
 
     func readString(forKey key: String) -> String? {
@@ -161,7 +244,11 @@ final class KeychainHelper: KeychainStoring {
     }
 
     func readStringResult(forKey key: String) -> KeychainStringResult {
-        switch read(forKey: key) {
+        readStringResult(forKey: key, deviceOnly: false)
+    }
+
+    func readStringResult(forKey key: String, deviceOnly: Bool) -> KeychainStringResult {
+        switch read(forKey: key, deviceOnly: deviceOnly) {
         case .found(let data):
             guard let value = String(data: data, encoding: .utf8) else {
                 Self.logger.error("UTF-8 decode failed for '\(key, privacy: .public)'")
@@ -177,6 +264,15 @@ final class KeychainHelper: KeychainStoring {
     }
 
     // MARK: - Private
+
+    // No synchronizable key matches local items only, in the file-based keychain too.
+    private func itemQuery(forKey key: String, synchronizable: Bool) -> [String: Any] {
+        var query = baseQuery(forKey: key)
+        if synchronizable {
+            query[kSecAttrSynchronizable as String] = true
+        }
+        return query
+    }
 
     private func baseQuery(forKey key: String) -> [String: Any] {
         var query: [String: Any] = [

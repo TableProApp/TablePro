@@ -633,7 +633,7 @@ internal final class MainSplitViewController: NSSplitViewController {
         /// the coordinator itself rather than which workspace is on screen keeps this exact when a
         /// background workspace loses its session.
         let releasedCoordinator = workspace.sessionState?.coordinator
-        workspace.sessionState?.coordinator.teardown()
+        workspace.sessionState?.coordinator.teardown(endsTabSession: false)
         workspace.sessionState = nil
         workspace.session = nil
         if let releasedCoordinator, toolbarOwner?.coordinator === releasedCoordinator {
@@ -1407,7 +1407,9 @@ internal final class MainSplitViewController: NSSplitViewController {
         switch tabType {
         case .usersRoles:
             return UsersRolesLayoutMetrics.tabMinimumWidth
-        case .query, .table, .createTable, .erDiagram, .serverDashboard, .insights, .tableHealth, .objectSource,
+        case .tableHealth:
+            return TableHealthLayoutMetrics.tabMinimumWidth
+        case .query, .table, .createTable, .erDiagram, .serverDashboard, .insights, .objectSource,
              .versionHistory, .tableListing, .routineDebug, .liveMessages:
             return defaultDetailMinThickness
         }

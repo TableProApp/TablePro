@@ -1,5 +1,5 @@
+import Darwin
 import Foundation
-import Network
 
 public struct MCPSocketHttpRequest: Sendable {
     public let method: String
@@ -34,6 +34,7 @@ public enum MCPSocketHttpError: Error, Equatable, Sendable {
     case connectFailed(String)
     case invalidSocketPath(String)
     case invalidHeader(String)
+    case peerChanged
     case timedOut
     case connectionClosed(String)
     case malformedResponse(String)
@@ -47,6 +48,7 @@ public enum MCPUnixSocketHttpClient {
     public static func send(
         _ request: MCPSocketHttpRequest,
         socketPath: String,
+        expectedPID: Int32,
         idleTimeout: Duration
     ) async throws -> MCPSocketHttpResponse {
         guard socketPath.hasPrefix("/"), MCPSocketLocation.fits(socketPath) else {
@@ -54,6 +56,7 @@ public enum MCPUnixSocketHttpClient {
         }
         let exchange = MCPUnixSocketHttpExchange(
             socketPath: socketPath,
+            expectedPID: expectedPID,
             request: try encode(request),
             idleTimeout: idleTimeout
         )
@@ -91,7 +94,11 @@ public enum MCPUnixSocketHttpClient {
 private final class MCPUnixSocketHttpExchange: @unchecked Sendable {
     private static let receiveChunkSize = 65_536
 
-    private let connection: NWConnection
+    private let socketPath: String
+    private let expectedPID: Int32
+    private var connection: MCPUnixSocketConnection?
+    private var connecting: DispatchSourceWrite?
+    private var connected = false
     private let queue = DispatchQueue(label: "com.TablePro.MCP.UnixSocketHttpClient")
     private let request: Data
     private let idleTimeout: Duration
@@ -102,15 +109,12 @@ private final class MCPUnixSocketHttpExchange: @unchecked Sendable {
     private var reader = HttpResponseReader()
     private var headContinuation: CheckedContinuation<MCPSocketHttpResponse, Error>?
     private var headResolved = false
-    private var isReady = false
     private var finished = false
     private var idleTimer: DispatchSourceTimer?
 
-    init(socketPath: String, request: Data, idleTimeout: Duration) {
-        connection = NWConnection(
-            to: .unix(path: socketPath),
-            using: NWParameters(tls: nil, tcp: NWProtocolTCP.Options())
-        )
+    init(socketPath: String, expectedPID: Int32, request: Data, idleTimeout: Duration) {
+        self.socketPath = socketPath
+        self.expectedPID = expectedPID
         self.request = request
         self.idleTimeout = idleTimeout
         let (stream, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
@@ -142,60 +146,117 @@ private final class MCPUnixSocketHttpExchange: @unchecked Sendable {
             resolveHead(.failure(CancellationError()))
             return
         }
-        connection.stateUpdateHandler = { [self] state in
-            switch state {
-            case .ready:
-                handleReady()
-            case .waiting(let error), .failed(let error):
-                // After connect, the peer's close fails the state before its last bytes are read.
-                guard !isReady else { return }
-                fail(MCPSocketHttpError.connectFailed(error.localizedDescription))
-            case .cancelled:
-                connection.stateUpdateHandler = nil
-                fail(MCPSocketHttpError.connectionClosed("cancelled"))
-            default:
-                break
-            }
-        }
         armIdleTimer()
-        connection.start(queue: queue)
+        do {
+            try connectSocket()
+        } catch {
+            fail(error)
+        }
     }
 
-    private func handleReady() {
-        guard !isReady, !finished else { return }
-        isReady = true
+    private func connectSocket() throws {
+        let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard descriptor >= 0 else { throw connectFailure() }
+        var transferred = false
+        defer { if !transferred { close(descriptor) } }
+        var noSigPipe: Int32 = 1
+        guard fcntl(descriptor, F_SETFD, FD_CLOEXEC) == 0,
+              fcntl(descriptor, F_SETFL, O_NONBLOCK) == 0,
+              setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size)) == 0 else {
+            throw connectFailure()
+        }
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        address.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
+        withUnsafeMutableBytes(of: &address.sun_path) { raw in
+            socketPath.utf8CString.withUnsafeBytes { raw.copyMemory(from: $0) }
+        }
+        let result = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.connect(descriptor, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        if result == 0 {
+            transferred = true
+            acceptConnected(descriptor)
+            return
+        }
+        guard errno == EINPROGRESS else { throw connectFailure() }
+        let source = DispatchSource.makeWriteSource(fileDescriptor: descriptor, queue: queue)
+        source.setEventHandler { @Sendable [self] in
+            var code: Int32 = 0
+            var size = socklen_t(MemoryLayout<Int32>.size)
+            guard getsockopt(descriptor, SOL_SOCKET, SO_ERROR, &code, &size) == 0, code == 0 else {
+                fail(MCPSocketHttpError.connectFailed(String(cString: strerror(code == 0 ? errno : code))))
+                return
+            }
+            connected = true
+            connecting?.cancel()
+            connecting = nil
+        }
+        source.setCancelHandler { @Sendable [self] in
+            if connected && !finished {
+                acceptConnected(descriptor)
+            } else {
+                close(descriptor)
+            }
+        }
+        connecting = source
+        transferred = true
+        source.resume()
+    }
+
+    private func acceptConnected(_ descriptor: Int32) {
+        do {
+            try MCPHandshakeTrust.verifyConnectedPeer(descriptor: descriptor, expectedPID: expectedPID)
+        } catch {
+            close(descriptor)
+            fail(MCPSocketHttpError.peerChanged)
+            return
+        }
+        let stream = MCPUnixSocketConnection(descriptor: descriptor)
+        connection = stream
+        stream.start { _ in }
         // A server may answer and close before reading the request (a 503 at capacity).
-        connection.send(content: request, completion: .contentProcessed { _ in })
+        stream.send(request) { _ in }
         receiveNext()
     }
 
+    private func connectFailure() -> MCPSocketHttpError {
+        .connectFailed(String(cString: strerror(errno)))
+    }
+
     private func receiveNext() {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: Self.receiveChunkSize) { [self] content, _, isComplete, error in
-            guard !finished else { return }
-            if let content, !content.isEmpty {
-                armIdleTimer()
-                do {
-                    try consume(reader.feed(content))
-                } catch {
-                    fail(MCPSocketHttpError.malformedResponse(String(describing: error)))
-                    return
-                }
-            }
-            guard !finished else { return }
-            if let error {
-                fail(MCPSocketHttpError.connectionClosed(error.localizedDescription))
-                return
-            }
-            if isComplete {
-                do {
-                    try consume(reader.finish())
-                } catch {
-                    fail(MCPSocketHttpError.connectionClosed(String(describing: error)))
-                }
-                return
-            }
-            receiveNext()
+        connection?.receive(maximumLength: Self.receiveChunkSize) { [self] content, isComplete, error in
+            queue.async { self.received(content, isComplete: isComplete, error: error) }
         }
+    }
+
+    private func received(_ content: Data?, isComplete: Bool, error: String?) {
+        guard !finished else { return }
+        if let content, !content.isEmpty {
+            armIdleTimer()
+            do {
+                consume(try reader.feed(content))
+            } catch {
+                fail(MCPSocketHttpError.malformedResponse(String(describing: error)))
+                return
+            }
+        }
+        guard !finished else { return }
+        if let error {
+            fail(MCPSocketHttpError.connectionClosed(error))
+            return
+        }
+        if isComplete {
+            do {
+                consume(try reader.finish())
+            } catch {
+                fail(MCPSocketHttpError.connectionClosed(String(describing: error)))
+            }
+            return
+        }
+        receiveNext()
     }
 
     private func consume(_ events: [HttpResponseEvent]) {
@@ -211,7 +272,8 @@ private final class MCPUnixSocketHttpExchange: @unchecked Sendable {
                 finished = true
                 stopIdleTimer()
                 bodyContinuation.finish()
-                connection.cancel()
+                connection?.cancel()
+                connection = nil
             }
         }
     }
@@ -223,7 +285,10 @@ private final class MCPUnixSocketHttpExchange: @unchecked Sendable {
         stopIdleTimer()
         resolveHead(.failure(error))
         bodyContinuation.finish(throwing: error)
-        connection.cancel()
+        connecting?.cancel()
+        connecting = nil
+        connection?.cancel()
+        connection = nil
     }
 
     private func resolveHead(_ result: Result<MCPSocketHttpResponse, Error>) {

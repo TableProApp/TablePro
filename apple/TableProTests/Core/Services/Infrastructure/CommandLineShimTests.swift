@@ -9,7 +9,10 @@ struct CommandLineShimTests {
         return path
     }
 
-    private func tool(in directory: String) throws -> CommandLineShim {
+    private func tool(
+        in directory: String,
+        isOnReadOnlyVolume: @escaping @Sendable (URL) -> Bool = { CommandLineShim.isOnReadOnlyVolume($0) }
+    ) throws -> CommandLineShim {
         let shim = (directory as NSString).appendingPathComponent("Tablé Pro's.app/bin/tablepro")
         try FileManager.default.createDirectory(
             atPath: (shim as NSString).deletingLastPathComponent,
@@ -18,7 +21,8 @@ struct CommandLineShimTests {
         FileManager.default.createFile(atPath: shim, contents: Data("#!/bin/sh\n".utf8))
         return CommandLineShim(
             shimPath: shim,
-            linkPath: (directory as NSString).appendingPathComponent("local/bin/tablepro")
+            linkPath: (directory as NSString).appendingPathComponent("local/bin/tablepro"),
+            isOnReadOnlyVolume: isOnReadOnlyVolume
         )
     }
 
@@ -31,13 +35,77 @@ struct CommandLineShimTests {
         return process.terminationStatus
     }
 
-    @Test("The app bundle carries an executable shim that opens TablePro by bundle id")
-    func bundleCarriesTheShim() throws {
-        let shim = CommandLineShim().shimPath
-        #expect(shim.hasSuffix("/Contents/SharedSupport/bin/tablepro"))
-        #expect(FileManager.default.isExecutableFile(atPath: shim))
-        let contents = try String(contentsOfFile: shim, encoding: .utf8)
-        #expect(contents.contains("exec open -b com.TablePro \"$@\""))
+    private func makeExecutable(atPath path: String, contents: String) throws {
+        try FileManager.default.createDirectory(
+            atPath: (path as NSString).deletingLastPathComponent,
+            withIntermediateDirectories: true
+        )
+        FileManager.default.createFile(atPath: path, contents: Data(contents.utf8))
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path)
+    }
+
+    private func runCapturingOutput(_ executable: String, arguments: [String]) throws -> (status: Int32, output: String) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        try process.run()
+        let output = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return (process.terminationStatus, String(decoding: output, as: UTF8.self))
+    }
+
+    @Test("Through a link, the bundled shim hands every argument to its own bundle's tablepro-cli")
+    func bundledShimRunsTheBundledCommand() throws {
+        let bundled = CommandLineShim().shimPath
+        #expect(bundled.hasSuffix("/Contents/SharedSupport/bin/tablepro"))
+        #expect(FileManager.default.isExecutableFile(atPath: bundled))
+
+        let directory = try makeDirectory()
+        let app = (directory as NSString).appendingPathComponent("Copy of TablePro.app/Contents")
+        let shim = (app as NSString).appendingPathComponent("SharedSupport/bin/tablepro")
+        try FileManager.default.createDirectory(
+            atPath: (shim as NSString).deletingLastPathComponent,
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.copyItem(atPath: bundled, toPath: shim)
+        try makeExecutable(
+            atPath: (app as NSString).appendingPathComponent("MacOS/tablepro-cli"),
+            contents: "#!/bin/sh\nprintf '%s\\n' \"$@\"\n"
+        )
+        let link = (directory as NSString).appendingPathComponent("bin/tablepro")
+        try FileManager.default.createDirectory(
+            atPath: (link as NSString).deletingLastPathComponent,
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: shim)
+
+        for arguments in [["--help"], ["--version"], ["help"], ["query", "-c", "My DB", "SELECT 1"]] {
+            let result = try runCapturingOutput(link, arguments: arguments)
+            #expect(result.status == 0)
+            #expect(result.output == arguments.map { $0 + "\n" }.joined())
+        }
+    }
+
+    @Test("On a read-only volume no link line is offered, and a link already made can still be removed")
+    func readOnlyVolumeWithholdsTheLinkLine() throws {
+        let directory = try makeDirectory()
+        let shimPath = (directory as NSString).appendingPathComponent("Tablé Pro's.app/bin/tablepro")
+        let tool = try tool(in: directory, isOnReadOnlyVolume: { $0.path == shimPath })
+
+        #expect(tool.command(for: .notLinked) == nil)
+        #expect(tool.command(for: .otherFile) == nil)
+        #expect(tool.command(for: .linked) == tool.unlinkCommand)
+    }
+
+    @Test("On a writable volume the link line is offered until the link exists")
+    func writableVolumeOffersTheLinkLine() throws {
+        let tool = try tool(in: try makeDirectory())
+
+        #expect(tool.command(for: .notLinked) == tool.linkCommand)
+        #expect(tool.command(for: .otherFile) == tool.linkCommand)
+        #expect(tool.command(for: .linked) == tool.unlinkCommand)
     }
 
     @Test("Nothing at the link path reads as not linked")

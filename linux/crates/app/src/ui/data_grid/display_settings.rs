@@ -44,13 +44,31 @@ impl DataGrid {
             numbers.set_visible(values.show_row_numbers);
             super::pinned_numbers::sync(self);
         }
+        let marks = values.show_invisible_characters;
+        let marks_changed = self.imp().applied_marks.replace(Some(marks)) != Some(marks);
+        if marks_changed {
+            self.imp().detail_pane.mark_special_characters();
+            if let Some(field) = self.edit().open_text() {
+                super::special_marks::mark_field(&field, marks);
+            }
+        }
         let changed = self.imp().applied_null.borrow().as_deref() != Some(&values.null_display);
-        if changed {
+        let dates_changed =
+            self.imp().applied_date_format.replace(Some(values.date_format)) != Some(values.date_format);
+        if changed || dates_changed || marks_changed {
             self.imp().applied_null.replace(Some(values.null_display.clone()));
             self.redraw();
         }
-        if changed || font_changed {
+        if dates_changed {
+            self.find_rows_changed();
+        }
+        if changed || font_changed || dates_changed || marks_changed {
             self.fonts_changed();
         }
+    }
+
+    pub(crate) fn marks_special_characters(&self) -> bool {
+        self.config()
+            .is_some_and(|config| config.settings.grid_preferences().snapshot().show_invisible_characters)
     }
 }
