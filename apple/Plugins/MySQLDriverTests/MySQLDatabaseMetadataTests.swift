@@ -68,6 +68,26 @@ struct MySQLDatabaseMetadataTests {
         #expect(updated.upperBound < comment.lowerBound)
     }
 
+    // The Objects list formats bytes for the reader and sorts them as numbers; "0.05 MB" text could do neither.
+    @Test("The table listing reports its sizes as bytes, not as text rounded to megabytes")
+    func listingReportsBytes() throws {
+        let statement = try #require(unconnectedDriver().allTablesMetadataSQL(schema: "shop"))
+
+        #expect(statement.contains("DATA_LENGTH + INDEX_LENGTH as total_size"))
+        #expect(statement.contains("DATA_LENGTH as data_size"))
+        #expect(statement.contains("INDEX_LENGTH as index_size"))
+        #expect(!statement.contains("MB"))
+    }
+
+    @Test("Databend's table listing reports its sizes as bytes too")
+    func databendListingReportsBytes() {
+        let statement = DatabendCatalog.allTablesMetadataSQL
+
+        #expect(statement.contains("data_length AS data_size"))
+        #expect(statement.contains("index_length AS index_size"))
+        #expect(!statement.contains("MB"))
+    }
+
     // SHOW TABLE STATUS already answers Engine, Create_time and Update_time.
     @Test("A server without the catalog keeps its SHOW TABLE STATUS listing as it was")
     func tableStatusFallbackIsUnchanged() {
