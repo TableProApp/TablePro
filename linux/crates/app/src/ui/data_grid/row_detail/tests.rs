@@ -646,6 +646,23 @@ fn a_field_the_search_drops_while_editing_hands_the_keyboard_to_the_search() {
 }
 
 #[gtk4::test]
+fn a_field_the_search_hides_lists_again_when_the_grid_shows_it() {
+    let (grid, pane) = opened(three_text_columns(), three_text_values());
+    let imp = pane.imp();
+    grid.focus(0, 1);
+    search_fields(&pane, "note");
+    assert_eq!(listed_columns(&pane), vec![2]);
+
+    grid.grid.show_details_for(1);
+    wait_until(WAIT, || imp.editor_box.is_ancestor(&imp.field_list.get())).expect("the editor takes a row");
+
+    assert!(imp.field_search.text().is_empty(), "the search still hides the field");
+    assert_eq!(listed_columns(&pane), vec![0, 1, 2]);
+    assert!(imp.editor_box.is_ancestor(&field_row_of(&pane, 1)));
+    assert_eq!(pane.typed_text(), "A");
+}
+
+#[gtk4::test]
 fn every_control_in_the_pane_is_named() {
     let (grid, pane) = opened(two_text_columns(), two_text_values());
     grid.focus(0, 1);

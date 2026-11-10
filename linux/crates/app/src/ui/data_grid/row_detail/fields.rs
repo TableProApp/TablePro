@@ -518,9 +518,21 @@ impl RowDetailPane {
     /// Show `column`'s field, selected in the list, as the grid asks.
     pub(super) fn set_field(&self, column: usize) {
         self.take_field(column);
+        self.list_field(column);
         self.select_in_list(Some(column));
         self.place_editor();
         self.load_value();
+    }
+
+    // The editor sits only in a listed field's row.
+    fn list_field(&self, column: usize) {
+        let imp = self.imp();
+        if self.current_row().is_none() || self.field_shown(Some(column)) {
+            return;
+        }
+        imp.field_search.set_text("");
+        imp.edited_toggle.set_active(false);
+        self.refilter_fields();
     }
 
     /// Make `column` the selected field. What was typed in another field
