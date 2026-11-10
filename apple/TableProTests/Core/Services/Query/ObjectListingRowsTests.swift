@@ -36,6 +36,7 @@ struct ObjectListingRowsTests {
         let listing = ObjectListingRows.listing(kind: .view, from: .relations(tables), scope: scope)
 
         #expect(listing.rows.columns == [String(localized: "Name"), String(localized: "Schema"), String(localized: "Comment")])
+        #expect(listing.columnKeys == ["name", "schema", "comment"])
         #expect(cells(listing.rows) == [["recent_orders", "sales", "Last 30 days"]])
         #expect(listing.items[.existing(0)] == .relation(name: "recent_orders", schema: "sales", type: .view))
     }
@@ -47,6 +48,7 @@ struct ObjectListingRowsTests {
         let listing = ObjectListingRows.listing(kind: .sequence, from: .relations(tables), scope: scope)
 
         #expect(listing.rows.columns == [String(localized: "Name"), String(localized: "Schema"), String(localized: "Rows")])
+        #expect(listing.columnKeys == ["name", "schema", "estimated_rows"])
         #expect(listing.rows.columnTypes[2] == .integer(rawType: nil))
     }
 
@@ -155,7 +157,9 @@ struct ObjectListingRowsTests {
     func listingAliasesReadAsWords() {
         #expect(ObjectListingColumns.displayTitle(for: "estimated_rows") == "Rows")
         #expect(ObjectListingColumns.displayTitle(for: "SCHEMA_NAME") == "Schema")
-        #expect(ObjectListingColumns.displayTitle(for: "update_time") == "Updated")
+        #expect(ObjectListingColumns.displayTitle(for: "data_size") == "Data Length")
+        #expect(ObjectListingColumns.displayTitle(for: "create_time") == "Created Date")
+        #expect(ObjectListingColumns.displayTitle(for: "update_time") == "Modified Date")
         #expect(ObjectListingColumns.displayTitle(for: "total_rows") == "total_rows")
     }
 

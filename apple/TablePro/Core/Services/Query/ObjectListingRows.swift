@@ -56,7 +56,8 @@ extension ObjectListingItem {
 extension TableListing {
     /// A list the sidebar commits again unchanged has nothing for the grid to redraw.
     func showsSameRows(as other: TableListing) -> Bool {
-        rows.columns == other.rows.columns && rows.rows == other.rows.rows && items == other.items
+        rows.columns == other.rows.columns && columnKeys == other.columnKeys
+            && rows.rows == other.rows.rows && items == other.items
     }
 
     /// Where each object `previous` listed sits in this listing, by row id. Row ids are positions, so
@@ -118,22 +119,7 @@ internal struct ObjectListingColumns: Equatable {
     /// The plugins alias their listing columns for SQL, not for reading, so a known alias reads as words.
     /// An alias this does not know keeps the plugin's spelling.
     static func displayTitle(for column: String) -> String {
-        switch column.lowercased() {
-        case "schema", "schema_name": String(localized: "Schema")
-        case "name": String(localized: "Name")
-        case "kind": String(localized: "Type")
-        case "charset": String(localized: "Charset")
-        case "collation": String(localized: "Collation")
-        case "estimated_rows": String(localized: "Rows")
-        case "total_size": String(localized: "Total Size")
-        case "data_size": String(localized: "Data Size")
-        case "index_size": String(localized: "Index Size")
-        case "engine": String(localized: "Engine")
-        case "create_time": String(localized: "Created")
-        case "update_time": String(localized: "Updated")
-        case "comment": String(localized: "Comment")
-        default: column
-        }
+        ObjectListingField(alias: column)?.title ?? column
     }
 
     /// An unknown word, such as a ClickHouse engine name, reads as a table: only a view must not
@@ -165,38 +151,38 @@ internal enum ObjectListingRows {
         switch list {
         case .relations(let tables):
             let columns: [ListingColumn<TableInfo>] = [
-                ListingColumn(String(localized: "Name"), isOptional: false) { $0.name },
-                ListingColumn(String(localized: "Schema")) { $0.schema ?? schema },
-                ListingColumn(String(localized: "Rows"), isCount: true) { $0.rowCount.map(String.init) },
-                ListingColumn(String(localized: "Comment")) { $0.comment?.nilIfEmpty },
+                ListingColumn("name", String(localized: "Name"), isOptional: false) { $0.name },
+                ListingColumn("schema", String(localized: "Schema")) { $0.schema ?? schema },
+                ListingColumn("estimated_rows", String(localized: "Rows"), isCount: true) { $0.rowCount.map(String.init) },
+                ListingColumn("comment", String(localized: "Comment")) { $0.comment?.nilIfEmpty },
             ]
             let matching = tables.filter { SidebarObjectKind.resolve(tableType: $0.type) == kind }
             return build(matching, columns: columns) { .relation(name: $0.name, schema: schema ?? $0.schema, type: $0.type) }
         case .routines(let routines):
             let columns: [ListingColumn<RoutineInfo>] = [
-                ListingColumn(String(localized: "Name"), isOptional: false) { $0.name },
-                ListingColumn(String(localized: "Schema")) { $0.schema ?? schema },
-                ListingColumn(String(localized: "Arguments")) { $0.argumentSignature?.nilIfEmpty },
-                ListingColumn(String(localized: "Returns")) { $0.returnType?.nilIfEmpty },
-                ListingColumn(String(localized: "Language")) { $0.language?.nilIfEmpty },
+                ListingColumn("name", String(localized: "Name"), isOptional: false) { $0.name },
+                ListingColumn("schema", String(localized: "Schema")) { $0.schema ?? schema },
+                ListingColumn("arguments", String(localized: "Arguments")) { $0.argumentSignature?.nilIfEmpty },
+                ListingColumn("returns", String(localized: "Returns")) { $0.returnType?.nilIfEmpty },
+                ListingColumn("language", String(localized: "Language")) { $0.language?.nilIfEmpty },
             ]
             let matching = routines.filter { $0.kind.sidebarObjectKind == kind }
             return build(matching, columns: columns) { .sourced(DatabaseObjectRef(routine: $0, database: database)) }
         case .triggers(let triggers):
             let columns: [ListingColumn<TriggerInfo>] = [
-                ListingColumn(String(localized: "Name"), isOptional: false) { $0.name },
-                ListingColumn(String(localized: "Table")) { $0.table?.nilIfEmpty },
-                ListingColumn(String(localized: "Timing")) { $0.timing.nilIfEmpty },
-                ListingColumn(String(localized: "Event")) { $0.event.nilIfEmpty },
-                ListingColumn(String(localized: "Enabled")) { trigger in
+                ListingColumn("name", String(localized: "Name"), isOptional: false) { $0.name },
+                ListingColumn("table", String(localized: "Table")) { $0.table?.nilIfEmpty },
+                ListingColumn("timing", String(localized: "Timing")) { $0.timing.nilIfEmpty },
+                ListingColumn("event", String(localized: "Event")) { $0.event.nilIfEmpty },
+                ListingColumn("enabled", String(localized: "Enabled")) { trigger in
                     trigger.enabled.map { $0 ? String(localized: "Yes") : String(localized: "No") }
                 },
             ]
             return build(triggers, columns: columns) { .sourced(DatabaseObjectRef(trigger: $0, database: database)) }
         case .types(let types):
             let columns: [ListingColumn<UserDefinedTypeInfo>] = [
-                ListingColumn(String(localized: "Name"), isOptional: false) { $0.name },
-                ListingColumn(String(localized: "Schema")) { $0.schema ?? schema },
+                ListingColumn("name", String(localized: "Name"), isOptional: false) { $0.name },
+                ListingColumn("schema", String(localized: "Schema")) { $0.schema ?? schema },
             ]
             return build(types, columns: columns) { .sourced(DatabaseObjectRef(userType: $0, database: database)) }
         }
@@ -221,19 +207,22 @@ internal enum ObjectListingRows {
             rows: TableRows.from(queryRows: rows, columns: kept.map(\.title), columnTypes: types),
             isIncomplete: false,
             statusMessage: nil,
-            items: items
+            items: items,
+            columnKeys: kept.map(\.key)
         )
     }
 }
 
 /// A column no object has a value for says nothing, as a Schema column does on an engine without schemas.
 private struct ListingColumn<Object> {
+    let key: String
     let title: String
     let isOptional: Bool
     let isCount: Bool
     let value: (Object) -> String?
 
-    init(_ title: String, isOptional: Bool = true, isCount: Bool = false, value: @escaping (Object) -> String?) {
+    init(_ key: String, _ title: String, isOptional: Bool = true, isCount: Bool = false, value: @escaping (Object) -> String?) {
+        self.key = key
         self.title = title
         self.isOptional = isOptional
         self.isCount = isCount
@@ -248,11 +237,21 @@ internal enum ObjectListingFilter {
         let needle = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !needle.isEmpty, !listing.items.isEmpty else { return listing.rows }
         let hidden = Set(listing.rows.rows.compactMap { row -> RowID? in
-            guard let name = listing.items[row.id]?.name, name.localizedStandardContains(needle) else { return row.id }
+            guard let name = listing.items[row.id]?.name, matches(name, needle) else { return row.id }
             return nil
         })
         var shown = listing.rows
         shown.remove(rowIDs: hidden)
         return shown
+    }
+
+    /// Whether `name` holds the filter text, ignoring case, accents and the spaces around the text.
+    static func keeps(_ name: String, matching text: String) -> Bool {
+        let needle = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return needle.isEmpty || matches(name, needle)
+    }
+
+    private static func matches(_ name: String, _ needle: String) -> Bool {
+        name.localizedStandardContains(needle)
     }
 }
