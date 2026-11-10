@@ -79,7 +79,8 @@ struct HostListFieldRow: View {
         /// The control group brings its own intrinsic height, which is taller than the two
         /// hand-sized 20pt buttons this row used to draw.
         let buttonBarHeight: CGFloat = 32
-        return min(rows * rowHeight + buttonBarHeight + 8, 140)
+        // No cap: a List in a grouped Form never scrolls, so it shows every row and the Form scrolls.
+        return rows * rowHeight + buttonBarHeight + 8
     }
 
     private func bindingForEntry(_ entry: HostEntry) -> Binding<String> {
