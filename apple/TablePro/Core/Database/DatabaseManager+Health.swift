@@ -40,6 +40,7 @@ extension DatabaseManager {
             pingInterval: { await AppSettingsManager.shared.general.connectionHealthCheck.interval },
             pingHandler: { [weak self] in
                 guard let self else { return false }
+                await self.closeIdleOpenedLanes(for: connectionId)
                 if await self.queriesInFlight[connectionId] != nil {
                     Self.logger.debug("Ping skipped, operation in flight for \(connectionId)")
                     return true
@@ -178,6 +179,19 @@ extension DatabaseManager {
         }
     }
 
+    // Read before the driver is closed and replaced, which prunes the hold. The user's next statement there
+    // is refused once, as on a lane, instead of running outside the transaction it was written for.
+    internal func noteTransactionLost(with driver: DatabaseDriver?, for connectionId: UUID) {
+        guard let driver, let session = activeSessions[connectionId] else { return }
+        let lost = sessionTransactions.holds(for: connectionId).filter { sessionTransactions.driver(for: $0) === driver }
+        for hold in lost {
+            sessionLanes.markTransactionLost(
+                database: hold.key.lane ?? session.resolvedBrowseDatabase,
+                for: connectionId
+            )
+        }
+    }
+
     internal func reconnectVerdict(for error: Error) -> ConnectionFailureClassifier.ReconnectVerdict {
         if let tlsError = error as? SSLHandshakeError {
             return ConnectionFailureClassifier.reconnectVerdict(for: tlsError)
@@ -229,6 +243,7 @@ extension DatabaseManager {
         generation: Int
     ) async throws -> ReconnectResult? {
         let connectionId = session.connection.id
+        noteTransactionLost(with: session.driver, for: connectionId)
         session.driver?.disconnect()
         // Resolved as the connect resolved it; a reference that lost its approval needs a person.
         let connection = try await envVarReferenceConsent.resolve(session.connection, trigger: .background)

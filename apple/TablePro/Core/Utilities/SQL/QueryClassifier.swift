@@ -209,7 +209,7 @@ private extension QueryClassifier {
         return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
     }
 
-    /// `DB <index> <command>` and `OUTSIDEBLOCK <command>` run the command they wrap, so that
+    /// `DB <index> <command>`, `OUTSIDEBLOCK <command>` and `MUSTAPPLY <command>` run the command they wrap, so that
     /// command decides the tier: read as the bare prefix, `DB 0 FLUSHDB` would pass as an ordinary
     /// write. A prefix with nothing after it is left whole, which classifies as a write. The words are
     /// read the way the driver reads them, so a quoted `"FLUSHALL"` is the command it runs.
@@ -218,7 +218,7 @@ private extension QueryClassifier {
         while let first = rest.first?.uppercased() {
             if first == "DB", rest.count > 2 {
                 rest = rest.dropFirst(2)
-            } else if first == "OUTSIDEBLOCK", rest.count > 1 {
+            } else if first == "OUTSIDEBLOCK" || first == "MUSTAPPLY", rest.count > 1 {
                 rest = rest.dropFirst()
             } else {
                 break

@@ -22,6 +22,7 @@ public enum MCPToolRegistry {
         GetConnectionStatusTool(),
         GetDatabaseStatisticsTool(),
         GetTableDdlTool(),
+        GetTableHealthTool(),
         GetTableStatisticsTool(),
         GetViewDefinitionTool(),
         InsertRowsTool(),

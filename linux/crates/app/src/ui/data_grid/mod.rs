@@ -26,9 +26,11 @@ mod reversed_list;
 mod row_detail;
 mod row_json_dialog;
 mod row_number_column;
+mod scheme_colors;
 mod selection;
 mod selection_summary;
 mod server_sorter;
+mod special_marks;
 mod stripes;
 mod table_keys;
 #[cfg(test)]
@@ -95,6 +97,7 @@ impl DataGrid {
         imp.detail_pane.attach(&grid);
         grid.watch_display_settings();
         grid.set_columns(columns, sorting, rules);
+        scheme_colors::follow(&grid);
         grid.watch_fonts();
         grid
     }
@@ -418,6 +421,7 @@ impl DataGrid {
     fn selection_moved(&self) {
         self.refresh_actions();
         self.imp().detail_pane.follow_focus();
+        self.open_details_for_selection();
         self.emit_by_name::<()>("selection-changed", &[]);
     }
 

@@ -1,6 +1,8 @@
 //! A database file handed over D-Bus, the way Files' Open With does,
 //! starts TablePro and opens a window on it. The same file again brings
-//! that window forward; another file opens a second window.
+//! that window forward; another file opens a second window. A connection
+//! link opens a window too, and its password never reaches the log. A
+//! command such as `status` never starts TablePro.
 
 #![expect(
     clippy::print_stderr,
@@ -9,7 +11,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
+use std::process::{Command, ExitCode, Stdio};
 use std::time::{Duration, Instant};
 
 use gio::prelude::*;
@@ -22,6 +24,8 @@ const APP_ID: &str = tablepro_app::config::APP_ID;
 const WAIT: Duration = Duration::from_secs(30);
 /// The first Open waits for D-Bus to start the service.
 const CALL_TIMEOUT_MS: i32 = 30_000;
+// It must never reach the log.
+const LINK_PASSWORD: &str = "link-s3cret";
 
 fn main() -> ExitCode {
     match run() {
@@ -61,15 +65,19 @@ fn opens(sandbox: &Sandbox, address: &str) -> Result<(), String> {
     let first = sandbox.database("first.sqlite3")?;
     let second = sandbox.database("second.sqlite3")?;
 
-    let outcome = open_twice_then_another(&connection, &first, &second);
+    let outcome = a_command_never_starts_tablepro(sandbox, address, &connection)
+        .and_then(|()| open_twice_then_another(&connection, &first, &second))
+        .and_then(|()| a_link_opens_a_window_and_keeps_its_password(sandbox, &connection));
     if name_has_owner(&connection) {
-        let quitting = quit(&connection)
-            .and_then(|()| wait_until("TablePro to exit after app.quit", || !name_has_owner(&connection)));
+        let quitting = quit_all_windows(&connection);
         if let (Ok(()), Err(message)) = (&outcome, quitting) {
             return Err(message);
         }
     }
-    outcome
+    outcome.map_err(|message| {
+        let log = std::fs::read_to_string(&sandbox.log).unwrap_or_default();
+        format!("{message}\nTablePro's log:\n{log}")
+    })
 }
 
 fn open_twice_then_another(connection: &gio::DBusConnection, first: &str, second: &str) -> Result<(), String> {
@@ -92,6 +100,54 @@ fn open_twice_then_another(connection: &gio::DBusConnection, first: &str, second
 
     open(connection, second)?;
     wait_until("a window on the second file", || window_ids(connection).len() == 2)
+}
+
+// A call to TablePro's own name would have D-Bus start it through the service file.
+fn a_command_never_starts_tablepro(
+    sandbox: &Sandbox,
+    address: &str,
+    connection: &gio::DBusConnection,
+) -> Result<(), String> {
+    let output = Command::new(env!("CARGO_BIN_EXE_tablepro"))
+        .arg("status")
+        .envs(sandbox.environment.iter().cloned())
+        .env("DBUS_SESSION_BUS_ADDRESS", address)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|error| format!("could not run tablepro status: {error}"))?;
+
+    if output.status.success() {
+        return Err(format!(
+            "tablepro status said TablePro is ready when it is not running:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        ));
+    }
+    std::thread::sleep(Duration::from_millis(500));
+    if name_has_owner(connection) {
+        return Err("tablepro status started TablePro".to_owned());
+    }
+    Ok(())
+}
+
+// Both windows show a database, so the link gets a window of its own for its connect dialog.
+fn a_link_opens_a_window_and_keeps_its_password(
+    sandbox: &Sandbox,
+    connection: &gio::DBusConnection,
+) -> Result<(), String> {
+    let before = window_ids(connection).len();
+    open(
+        connection,
+        &format!("postgresql://ada:{LINK_PASSWORD}@db.invalid:5432/shop?sslmode=require"),
+    )?;
+    wait_until("a window for the link", || window_ids(connection).len() == before + 1)?;
+    // The old path logged the URL as a file it could not open, after the window appeared.
+    std::thread::sleep(Duration::from_millis(500));
+    let log = std::fs::read_to_string(&sandbox.log)
+        .map_err(|error| format!("could not read {}: {error}", sandbox.log.display()))?;
+    if log.contains(LINK_PASSWORD) {
+        return Err(format!("TablePro logged the link's password:\n{log}"));
+    }
+    Ok(())
 }
 
 /// What Files sends for Open With on a D-Bus activatable application.
@@ -133,6 +189,22 @@ fn quit(connection: &gio::DBusConnection) -> Result<(), String> {
         )
         .map(drop)
         .map_err(|error| format!("app.quit over D-Bus failed: {error}"))
+}
+
+fn quit_all_windows(connection: &gio::DBusConnection) -> Result<(), String> {
+    let deadline = Instant::now() + WAIT;
+    let mut refused = None;
+    while name_has_owner(connection) {
+        if Instant::now() >= deadline {
+            let reason = refused.map(|error| format!(": {error}")).unwrap_or_default();
+            return Err(format!("timed out waiting for TablePro to exit after app.quit{reason}"));
+        }
+        // A link's modal dialog takes the first quit, so its window needs another once the dialog closes.
+        // An exiting GApplication drops its actions before its name, so a quit sent then fails.
+        refused = quit(connection).err();
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    Ok(())
 }
 
 fn name_has_owner(connection: &gio::DBusConnection) -> bool {
@@ -220,6 +292,9 @@ fn wait_until(what: &str, mut ready: impl FnMut() -> bool) -> Result<(), String>
 struct Sandbox {
     root: PathBuf,
     services: PathBuf,
+    environment: Vec<(String, PathBuf)>,
+    // TablePro logs to stderr.
+    log: PathBuf,
 }
 
 impl Sandbox {
@@ -251,10 +326,14 @@ impl Sandbox {
             }
         }
         let services = dir("services")?;
-        write_service(&services, &environment)?;
+        let log = root.join("tablepro.log");
+        std::fs::write(&log, b"").map_err(|error| format!("could not create {}: {error}", log.display()))?;
+        write_service(&services, &environment, &log)?;
         Ok(Self {
             root: root.to_path_buf(),
             services,
+            environment,
+            log,
         })
     }
 
@@ -268,13 +347,16 @@ impl Sandbox {
 
 /// The D-Bus service file that starts this build's binary, with the
 /// sandbox set in its Exec line rather than in this process.
-fn write_service(dir: &Path, environment: &[(String, PathBuf)]) -> Result<(), String> {
+fn write_service(dir: &Path, environment: &[(String, PathBuf)], log: &Path) -> Result<(), String> {
     let mut exec = vec!["/usr/bin/env".to_owned()];
     for (name, value) in environment {
         exec.push(quoted(&format!("{name}={}", value.display()))?);
     }
+    exec.push("/bin/sh".to_owned());
+    exec.push("-c".to_owned());
+    exec.push(quoted(r#"exec "$0" --gapplication-service 2>>"$1""#)?);
     exec.push(quoted(env!("CARGO_BIN_EXE_tablepro"))?);
-    exec.push("--gapplication-service".to_owned());
+    exec.push(quoted(&log.display().to_string())?);
     let service = format!("[D-BUS Service]\nName={APP_ID}\nExec={}\n", exec.join(" "));
     let path = dir.join(format!("{APP_ID}.service"));
     std::fs::write(&path, service).map_err(|error| format!("could not write {}: {error}", path.display()))

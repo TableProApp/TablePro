@@ -66,6 +66,27 @@ public struct DelimitedFieldReader: Sendable {
         return result
     }
 
+    // An empty field and a quoted empty field read as the same text; only the quoting tells "no value" from "".
+    public func fieldsWithQuoting(
+        in base: UnsafePointer<UInt8>,
+        range: Range<Int>
+    ) -> [(text: String, isQuoted: Bool)] {
+        var scratch: [UInt8] = []
+        var result: [(text: String, isQuoted: Bool)] = []
+        let encoding = dialect.encoding.readsInPlace ? dialect.encoding : .utf8
+        let end = range.upperBound
+        var index = range.lowerBound
+        while true {
+            let isQuoted = index < end && base[index] == dialect.quote
+            let next = readField(in: base, from: index, end: end, scratch: &scratch) { content in
+                result.append((text: TabularTextCodec.string(from: content, encoding: encoding), isQuoted: isQuoted))
+                return true
+            }
+            guard let resume = next.resume else { return result }
+            index = resume
+        }
+    }
+
     private struct FieldEnd {
         let resume: Int?
         let shouldContinue: Bool

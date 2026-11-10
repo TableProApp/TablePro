@@ -100,9 +100,10 @@ extension QueryExecutionCoordinator {
     func executeBatches(
         _ batches: [ExecutableBatch],
         parameters: [QueryParameter],
-        bypassRowLimit: Bool = false
+        bypassRowLimit: Bool = false,
+        onTab target: UUID? = nil
     ) {
-        guard let (selectedTab, index) = parent.tabManager.selectedTabAndIndex,
+        guard let (selectedTab, index) = parent.executionTab(target),
               !parent.tabExecution.isExecuting(selectedTab.id) else { return }
 
         if let firstMissing = parameters.first(where: {
@@ -197,9 +198,11 @@ extension QueryExecutionCoordinator {
         let startLines = BatchErrorText.lines(of: batches.map(\.range.location), in: query)
         return zip(batches, startLines).map { batch, startLine in
             let bindsParameters = !parameters.isEmpty && batch.acceptsBindParameters
-                && !SQLParameterExtractor.extractParameters(from: batch.sql).isEmpty
+                && !SQLParameterExtractor.extractParameters(from: batch.sql, grammar: grammar).isEmpty
             let conversion = bindsParameters
-                ? SQLParameterExtractor.convertToNativeStyle(sql: batch.sql, parameters: parameters, style: style)
+                ? SQLParameterExtractor.convertToNativeStyle(
+                    sql: batch.sql, parameters: parameters, style: style, grammar: grammar
+                )
                 : nil
             let isCommitPoint = batch.statements.count == 1
                 && batch.statements.allSatisfy { BatchCommitStatement.matches($0.sql, grammar: grammar) }
@@ -455,6 +458,7 @@ extension QueryExecutionCoordinator {
             }
         }
         parent.seedBufferFromActiveResult(tabId: tabId)
+        parent.dropParkedEdits(ofBackgroundTab: tabId)
         if parent.tabManager.selectedTabId == tabId {
             parent.toolbarState.isResultsCollapsed = false
             parent.toolbarState.recordQueryTiming(timing, for: tabId)

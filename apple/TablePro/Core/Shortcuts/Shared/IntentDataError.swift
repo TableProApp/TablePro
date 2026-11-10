@@ -16,6 +16,7 @@ nonisolated enum IntentDataError: Error, CustomLocalizedStringResourceConvertibl
     case jsonArrayContainsNonObject
     case invalidJSONShape
     case csvMissingHeader
+    case csvFieldCountMismatch(record: Int, found: Int, expected: Int)
     case malformedPayload(String)
     case tooManyRows(Int)
 
@@ -49,6 +50,8 @@ nonisolated enum IntentDataError: Error, CustomLocalizedStringResourceConvertibl
             return LocalizedStringResource("Provide a JSON object or an array of objects.")
         case .csvMissingHeader:
             return LocalizedStringResource("The CSV data has no header row.")
+        case .csvFieldCountMismatch(let record, let found, let expected):
+            return "Record \(record) of the CSV data has \(found) fields, but the header has \(expected)."
         case .malformedPayload(let message):
             return "The data could not be read: \(message)"
         case .tooManyRows(let limit):

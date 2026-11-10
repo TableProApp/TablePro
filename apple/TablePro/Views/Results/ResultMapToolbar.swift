@@ -38,7 +38,7 @@ struct ResultMapToolbar: View {
             Button {
                 onFit()
             } label: {
-                Label(String(localized: "Fit to Result"), systemImage: "arrow.down.left.and.arrow.up.right")
+                Label(String(localized: "Fit to Result"), systemImage: "arrow.up.left.and.arrow.down.right")
             }
             .buttonStyle(.borderless)
             .controlSize(.small)
