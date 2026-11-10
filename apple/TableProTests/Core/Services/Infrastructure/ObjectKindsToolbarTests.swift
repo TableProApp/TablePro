@@ -172,43 +172,103 @@ struct ObjectKindsToolbarTests {
 
     // MARK: - What the connection supports
 
+    /// Where Settings puts the group: what the toolbar's own facts are read for.
+    private static func insertGroup(into owner: MainWindowToolbar) {
+        owner.managedToolbar.insertItem(withItemIdentifier: MainWindowToolbar.objectKindsGroup, at: 0)
+    }
+
     /// The context a toolbar pointed at a connection of this engine answers from. No driver is
     /// installed, so the engine's curated capabilities are what the context can see.
-    private static func context(for type: DatabaseType, objectsOn: Bool) -> ToolbarContext {
+    private static func context(
+        for type: DatabaseType,
+        groupInToolbar: Bool = true,
+        settingOn: Bool = true
+    ) -> ToolbarContext {
         let fixture = CoordinatorFixture(connection: TestFixtures.makeConnection(database: "shop", type: type))
         let actions = makeActions(for: fixture)
-        let owner = owner(objectsOn: objectsOn)
+        let owner = owner()
+        if groupInToolbar {
+            insertGroup(into: owner)
+        }
+        owner.objectKindsEnabled = { settingOn }
         owner.repoint(to: fixture.coordinator)
         let context = owner.currentContext()
         withExtendedLifetime(actions) {}
         return context
     }
 
-    @Test("While the group is on, the context reads what the engine supports")
-    func contextReadsTheEngineWhileTheGroupIsOn() {
-        let postgres = Self.context(for: .postgresql, objectsOn: true)
+    @Test("With the group in the toolbar, the context reads what the engine supports")
+    func contextReadsTheEngineWhileTheGroupIsShown() {
+        let postgres = Self.context(for: .postgresql)
         #expect(postgres.supportsBackup)
         #expect(!postgres.canListTables, "With no driver the engine builds no listing")
         #expect(!postgres.supportsUserManagement, "With no driver there is no capability to read")
         #expect(!postgres.offersFunctions, "No routine list is loaded for the browsed schema")
 
-        let mongo = Self.context(for: .mongodb, objectsOn: true)
+        let mongo = Self.context(for: .mongodb)
         #expect(mongo.canListTables, "MongoDB lists through its own command")
         #expect(!mongo.offersViews, "A table listing says nothing about views")
-        #expect(!Self.context(for: .sqlite, objectsOn: true).offersFunctions)
+        #expect(!Self.context(for: .sqlite).offersFunctions)
     }
 
     /// Nothing but the group reads these, and the listing is a plugin call on every validation pass.
-    @Test("While the group is off, the context asks the connection nothing for it")
-    func contextAsksNothingWhileTheGroupIsOff() {
+    /// The setting is not enough: a group taken out with Customize Toolbar has no button to validate.
+    @Test("Without the group in the toolbar, the context asks the connection nothing for it", arguments: [true, false])
+    func contextAsksNothingWithoutTheGroup(settingOn: Bool) {
         for type in [DatabaseType.postgresql, .mongodb] {
-            let context = Self.context(for: type, objectsOn: false)
+            let context = Self.context(for: type, groupInToolbar: false, settingOn: settingOn)
             #expect(!context.canListTables, "\(type.rawValue)")
             #expect(!context.offersViews, "\(type.rawValue)")
             #expect(!context.offersFunctions, "\(type.rawValue)")
             #expect(!context.supportsUserManagement, "\(type.rawValue)")
             #expect(!context.supportsBackup, "\(type.rawValue)")
         }
+    }
+
+    /// A validation pass runs on every window update, keystrokes included, and the listing is a
+    /// plugin call that builds the whole statement for a yes or no.
+    @Test("A pass with nothing changed builds no listing, and a switch or a reconnect builds one again")
+    func listingIsAskedOncePerContainerAndSession() {
+        let connection = TestFixtures.makeConnection(database: "shop", type: .postgresql)
+        let plugin = CountingListingDriver()
+        var session = ConnectionSession(
+            connection: connection,
+            driver: PluginDriverAdapter(connection: connection, pluginDriver: plugin)
+        )
+        session.status = .connected
+        session.browseSchema = "public"
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let fixture = CoordinatorFixture(connection: connection)
+        let owner = Self.owner()
+        Self.insertGroup(into: owner)
+        owner.repoint(to: fixture.coordinator)
+
+        #expect(owner.currentContext().canListTables)
+        let asked = plugin.listings
+        #expect(asked > 0)
+        _ = owner.currentContext()
+        _ = owner.currentContext()
+        #expect(plugin.listings == asked, "Nothing moved, so nothing is asked again")
+
+        DatabaseManager.shared.updateSession(connection.id) { $0.browseSchema = "sales" }
+        _ = owner.currentContext()
+        _ = owner.currentContext()
+        #expect(plugin.listings == asked + 1, "A schema switch asks once")
+
+        DatabaseManager.shared.updateSession(connection.id) { $0.browseDatabase = "archive" }
+        _ = owner.currentContext()
+        _ = owner.currentContext()
+        #expect(plugin.listings == asked + 2, "A database switch asks once")
+
+        let reconnected = CountingListingDriver()
+        DatabaseManager.shared.updateSession(connection.id) {
+            $0.driver = PluginDriverAdapter(connection: connection, pluginDriver: reconnected)
+        }
+        _ = owner.currentContext()
+        _ = owner.currentContext()
+        #expect(reconnected.listings == 1, "A reconnect's driver is asked once")
+        withExtendedLifetime(fixture) {}
     }
 
     // MARK: - What the browsed container offers
@@ -276,6 +336,7 @@ struct ObjectKindsToolbarTests {
         let fixture = CoordinatorFixture(connection: connection)
         fixture.coordinator.toolbarState.connectionState = .connected
         let owner = owner()
+        insertGroup(into: owner)
         owner.repoint(to: fixture.coordinator)
         let context = withExtendedLifetime(fixture) { owner.currentContext() }
         return Set(MainWindowToolbar.objectKindItemIdentifiers.filter { identifier in
@@ -322,6 +383,37 @@ struct ObjectKindsToolbarTests {
         #expect(!enabled.contains(MainWindowToolbar.objectViews))
         #expect(!enabled.contains(MainWindowToolbar.objectFunctions), "A procedure is not a function")
         #expect(enabled.contains(MainWindowToolbar.objectQuery))
+        await Self.leave(connection)
+        PluginMetadataRegistry.shared.unregister(typeId: engine.rawValue)
+    }
+
+    /// The facts are kept between passes, so a list the sidebar reads again has to reach them.
+    @Test("A view the container's next read brings lights Views")
+    func aReloadedListReachesTheButtons() async throws {
+        let engine = Self.registerListlessEngine()
+        let connection = await Self.browsing(
+            tables: [TestFixtures.makeTableInfo(name: "orders", schema: "public")],
+            routines: [],
+            on: engine
+        )
+        let fixture = CoordinatorFixture(connection: connection)
+        fixture.coordinator.toolbarState.connectionState = .connected
+        let owner = Self.owner()
+        Self.insertGroup(into: owner)
+        owner.repoint(to: fixture.coordinator)
+        #expect(!owner.currentContext().offersViews)
+
+        let driver = try #require(DatabaseManager.shared.driver(for: connection.id) as? MockDatabaseDriver)
+        driver.schemaTablesToReturn = ["public": [
+            TestFixtures.makeTableInfo(name: "orders", schema: "public"),
+            TestFixtures.makeTableInfo(name: "open_orders", type: .view, schema: "public"),
+        ]]
+        let tree = DatabaseTreeMetadataService.shared
+        tree.markListsStale(connectionId: connection.id)
+        await tree.loadTables(connectionId: connection.id, database: "shop", schema: "public")
+
+        #expect(owner.currentContext().offersViews)
+        withExtendedLifetime(fixture) {}
         await Self.leave(connection)
         PluginMetadataRegistry.shared.unregister(typeId: engine.rawValue)
     }
@@ -525,4 +617,16 @@ extension GlobalStateSuites {
             #expect(!hasGroup(), "Turning it off takes the group away")
         }
     }
+}
+
+/// Counts the listing statements asked for, which is the plugin call a validation pass would repeat.
+private final class CountingListingDriver: PluginDriverStub, @unchecked Sendable {
+    private(set) var listings = 0
+
+    func allTablesMetadataSQL(schema: String?) -> String? {
+        listings += 1
+        return "LIST \(schema ?? "-")"
+    }
+
+    func ping() async throws {}
 }

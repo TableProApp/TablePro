@@ -98,6 +98,9 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 
     internal var objectKindsRecord = ToolbarObjectKindsRecord()
 
+    // The Objects group's facts and what they were read from, kept from one validation pass to the next.
+    internal var objectKindFactsCache: ObjectKindFactsCache?
+
     /// `NSMenu.delegate` is weak, and the safe-mode control's menu is built here rather than by the
     /// menu bar, so this toolbar is what keeps its delegate alive.
     internal let safeModeMenuDelegate = SafeModeMenuDelegate()
