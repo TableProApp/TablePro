@@ -1,4 +1,5 @@
 import Foundation
+import TableProSQLGrammar
 
 public enum KeywordUppercaseHelper {
     public static func isWordBoundary(_ string: String) -> Bool {
@@ -11,99 +12,39 @@ public enum KeywordUppercaseHelper {
         }
     }
 
-    /// Checks if a UTF-16 character is part of a SQL identifier (a-z, A-Z, 0-9, _).
     static func isWordCharacter(_ ch: unichar) -> Bool {
         (ch >= 0x41 && ch <= 0x5A) || (ch >= 0x61 && ch <= 0x7A) ||
         (ch >= 0x30 && ch <= 0x39) || ch == 0x5F
     }
 
-    /// Scans backwards up to 2,000 characters to determine if `position` is inside
-    /// a protected context (string literal, comment, backtick identifier, dollar-quote).
-    /// Keywords inside protected contexts should NOT be uppercased.
-    static func isInsideProtectedContext(_ text: NSString, at position: Int) -> Bool {
-        let scanStart = max(0, position - 2_000)
-        var inSingleQuote = false
-        var inDoubleQuote = false
-        var inBacktick = false
-        var inLineComment = false
-        var inBlockComment = false
-        var inDollarQuote = false
-        var i = scanStart
-
-        while i < position {
-            let ch = text.character(at: i)
-
-            if inBlockComment {
-                if ch == 0x2A && i + 1 < position && text.character(at: i + 1) == 0x2F {
-                    inBlockComment = false
-                    i += 2
-                    continue
-                }
-                i += 1
+    // Read from the start of the text with the session's grammar: a literal can open any distance back, and where it
+    // ends is the engine's rule.
+    static func isInsideProtectedContext(_ text: NSString, at position: Int, grammar: SQLLexicalGrammar) -> Bool {
+        let length = text.length
+        let runsExecutableComments = grammar.contains(.executableComments)
+        var index = 0
+        while index < position {
+            // The server runs the body of `/*! ... */`, so it is code.
+            if runsExecutableComments, let opener = SqlLexer.executableCommentOpenerLength(text, at: index, length: length) {
+                index += opener
                 continue
             }
-            if inLineComment {
-                if ch == 0x0A { inLineComment = false }
-                i += 1
+            guard let span = SQLNonCodeSpan.span(at: index, in: text, grammar: grammar) else {
+                index += 1
                 continue
             }
-            if inDollarQuote {
-                if ch == 0x24 && i + 1 < position && text.character(at: i + 1) == 0x24 {
-                    inDollarQuote = false
-                    i += 2
-                    continue
-                }
-                i += 1
-                continue
-            }
-
-            if ch == 0x5C && (inSingleQuote || inDoubleQuote) {
-                i += 2
-                continue
-            }
-
-            switch ch {
-            case 0x27: if !inDoubleQuote && !inBacktick { inSingleQuote.toggle() }
-            case 0x22: if !inSingleQuote && !inBacktick { inDoubleQuote.toggle() }
-            case 0x60: if !inSingleQuote && !inDoubleQuote { inBacktick.toggle() }
-            case 0x23:
-                if !inSingleQuote && !inDoubleQuote && !inBacktick {
-                    inLineComment = true
-                }
-            case 0x2D:
-                if !inSingleQuote && !inDoubleQuote && !inBacktick &&
-                   i + 1 < position && text.character(at: i + 1) == 0x2D {
-                    inLineComment = true
-                    i += 2
-                    continue
-                }
-            case 0x2F:
-                if !inSingleQuote && !inDoubleQuote && !inBacktick &&
-                   i + 1 < position && text.character(at: i + 1) == 0x2A {
-                    inBlockComment = true
-                    i += 2
-                    continue
-                }
-            case 0x24:
-                if !inSingleQuote && !inDoubleQuote && !inBacktick &&
-                   i + 1 < position && text.character(at: i + 1) == 0x24 {
-                    inDollarQuote.toggle()
-                    i += 2
-                    continue
-                }
-            default: break
-            }
-            i += 1
+            if SQLContextAnalyzer.holds(span, cursor: position) { return true }
+            index = max(span.end, index + 1)
         }
-
-        return inSingleQuote || inDoubleQuote || inBacktick || inLineComment || inBlockComment || inDollarQuote
+        return false
     }
 
-    /// Nil when the word is not a keyword, sits in a protected context, or is already in the target case.
+    // Nil when the word is not a keyword, sits in a comment, a literal or a quoted name, or is already in the target case.
     public static func keywordBeforePosition(
         _ text: NSString,
         at position: Int,
-        uppercase: Bool = true
+        uppercase: Bool = true,
+        grammar: SQLLexicalGrammar
     ) -> (word: String, folded: String, range: NSRange)? {
         var wordStart = position
         while wordStart > 0 {
@@ -117,7 +58,7 @@ public enum KeywordUppercaseHelper {
 
         let word = text.substring(with: NSRange(location: wordStart, length: wordLength))
         guard SQLKeywords.keywordSet.contains(word.lowercased()) else { return nil }
-        guard !isInsideProtectedContext(text, at: wordStart) else { return nil }
+        guard !isInsideProtectedContext(text, at: wordStart, grammar: grammar) else { return nil }
 
         let folded = uppercase ? word.uppercased() : word.lowercased()
         guard folded != word else { return nil }

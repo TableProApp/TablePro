@@ -15,7 +15,7 @@ This is the guide for work under `core/`. The root `AGENTS.md` holds the rules e
 
 ## Map
 
-- `crates/core`, `crates/net`, `crates/ssh`, `crates/storage`, `crates/session`, `crates/ai`, `crates/mcp`, `crates/account`: the libraries. `crates/drivers/*`: one crate per engine. `crates/ffi`: the library the Windows and Apple apps load (`ARCHITECTURE.md`, Bindings). `crates/bindgen`: the Swift binding generator. `crates/test-fixtures` and `crates/test-support`: test-only.
+- `crates/core`, `crates/net`, `crates/ssh`, `crates/storage`, `crates/session`, `crates/ai`, `crates/mcp`, `crates/account`, `crates/cli`: the libraries. `crates/drivers/*`: one crate per engine. `crates/ffi`: the library the Windows and Apple apps load (`ARCHITECTURE.md`, Bindings). `crates/bindgen`: the Swift binding generator. `crates/test-fixtures` and `crates/test-support`: test-only.
 - `ARCHITECTURE.md`: the crates, the graph, the platform seams and the driver layer. `docs/decisions/`: the cross-platform decisions.
 - The Cargo workspace and its tool settings are at the top of the repository: `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `rustfmt.toml`, `clippy.toml`, `deny.toml`, `.config/nextest.toml`.
 - Until another app builds the core, the Linux docs hold its contracts: `linux/docs/adding-drivers.md`, `linux/docs/drivers/`, `linux/docs/error-handling.md`, `linux/docs/testing.md` and `linux/docs/storage.md`.

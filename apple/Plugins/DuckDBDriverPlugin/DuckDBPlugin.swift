@@ -715,6 +715,18 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return Self.queryResult(try await connectionActor.executeReadOnly(query, parameters: parameters))
     }
 
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        guard rowCap > 0 else { return nil }
+        return Self.queryResult(try await connectionActor.executeBounded(query, parameters: [], rowCap: rowCap))
+    }
+
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
+        guard let cap = rowCap, cap > 0 else {
+            return Self.queryResult(try await connectionActor.executePrepared(query, parameters: parameters ?? []))
+        }
+        return Self.queryResult(try await connectionActor.executeBounded(query, parameters: parameters ?? [], rowCap: cap))
+    }
+
     func executeUserQuery(
         query: String,
         rowCap: Int?,
@@ -724,16 +736,8 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard context.readOnly, context.origin == .external else {
             return try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
         }
-        let raw = Self.queryResult(try await connectionActor.executeReadOnly(query, parameters: parameters ?? []))
-        guard let cap = rowCap, cap > 0, raw.rows.count > cap else { return raw }
-        return PluginQueryResult(
-            columns: raw.columns,
-            columnTypeNames: raw.columnTypeNames,
-            rows: Array(raw.rows.prefix(cap)),
-            rowsAffected: raw.rowsAffected,
-            executionTime: raw.executionTime,
-            isTruncated: true
-        )
+        let cap = rowCap.flatMap { $0 > 0 ? $0 : nil }
+        return Self.queryResult(try await connectionActor.executeReadOnly(query, parameters: parameters ?? [], rowCap: cap))
     }
 
     private static func queryResult(_ rawResult: DuckDBRawResult) -> PluginQueryResult {
@@ -756,7 +760,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let actor = connectionActor
 
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(DuckDBBoundedStream.bufferedBatches)) { continuation in
             Task {
                 do {
                     try await actor.streamQuery(query, continuation: continuation)
@@ -770,7 +774,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
         guard context.readOnly, context.origin == .external else { return streamRows(query: query) }
         let actor = connectionActor
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(DuckDBBoundedStream.bufferedBatches)) { continuation in
             Task {
                 do {
                     try await actor.streamReadOnly(query, continuation: continuation)

@@ -2233,4 +2233,25 @@ struct SQLFormatterServiceTests {
         let first = try format(sql, options: options)
         #expect(try format(first, options: options) == first)
     }
+
+    // MARK: - Account names and operator runs
+
+    @Test("A MySQL account name and a quoted user variable keep their @ unspaced")
+    func mysqlAccountNames() throws {
+        #expect(try format("grant all on db.* to 'app'@'%'").hasSuffix("'app'@'%'"))
+        #expect(try format("create definer=`root`@`localhost` view v as select 1").contains("`root`@`localhost`"))
+        #expect(try format("create user admin@localhost").hasSuffix("admin@localhost"))
+        #expect(try format("select @`my var`").hasSuffix("@`my var`"))
+    }
+
+    @Test(
+        "A PostgreSQL operator outside the vocabulary is not split",
+        arguments: ["<#>", "<%", "%>", "&&&", "?-|", "<<|", "@-@"]
+    )
+    func postgresOperatorRun(symbol: String) throws {
+        let spaced = try formatter.format("select a \(symbol) b from t", dialect: .postgresql).formattedSQL
+        #expect(spaced.contains("a \(symbol) b"))
+        let glued = try formatter.format("select a\(symbol)b from t", dialect: .postgresql).formattedSQL
+        #expect(glued.contains("a \(symbol) b"))
+    }
 }

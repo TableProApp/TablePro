@@ -148,6 +148,8 @@ public actor MCPCompletionProvider {
         guard case .resolved(let connection) = MCPConnectionReferenceMatcher.resolve(reference, in: connections) else {
             return nil
         }
+        // Asked on every request and ahead of the name cache, so a denial or a revoked grant applies at once.
+        guard await source.isApproved(principal: principal, connectionId: connection.id) else { return nil }
         return connection
     }
 

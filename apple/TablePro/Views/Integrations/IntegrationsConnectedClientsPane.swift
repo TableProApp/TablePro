@@ -9,6 +9,7 @@ struct IntegrationsConnectedClientsPane: View {
     @ObservedObject private var manager = MCPServerManager.shared
     @State private var selection: MCPServerManager.SessionSnapshot.ID?
     @State private var disconnectCandidate: MCPServerManager.SessionSnapshot?
+    @State private var revocationNotSaved = false
     @State private var sortOrder: [KeyPathComparator<MCPServerManager.SessionSnapshot>] = [
         KeyPathComparator(\MCPServerManager.SessionSnapshot.connectedSince, order: .reverse)
     ]
@@ -40,6 +41,11 @@ struct IntegrationsConnectedClientsPane: View {
             actions: alertActions,
             message: alertMessage
         )
+        .alert(String(localized: "Couldn't Save the Revocation"), isPresented: $revocationNotSaved) {
+            Button(String(localized: "OK")) {}
+        } message: {
+            Text(String(localized: "TablePro could not save the change to the Keychain. The token works again after TablePro restarts."))
+        }
     }
 
     private var sortedClients: [MCPServerManager.SessionSnapshot] {
@@ -68,7 +74,11 @@ struct IntegrationsConnectedClientsPane: View {
             disconnectCandidate = nil
         }
         Button(String(localized: "Disconnect"), role: .destructive) {
-            Task { await manager.disconnectClient(client.id) }
+            Task {
+                if !(await manager.disconnectClient(client.id)) {
+                    revocationNotSaved = true
+                }
+            }
             disconnectCandidate = nil
         }
     }

@@ -71,6 +71,81 @@ struct PluginExportDocumentTests {
         #expect(count == 2)
     }
 
+    private final class PullCount: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+
+        func increment() -> Int {
+            lock.lock()
+            defer { lock.unlock() }
+            count += 1
+            return count
+        }
+
+        var value: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return count
+        }
+    }
+
+    private func endlessRows(_ pulls: PullCount) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        AsyncThrowingStream(unfolding: {
+            pulls.increment() == 1
+                ? .header(PluginStreamHeader(columns: ["v"], columnTypeNames: ["VARCHAR"]))
+                : .rows([["42"]])
+        })
+    }
+
+    @Test("The legacy adapter reads a row batch only when its consumer asks for one")
+    func wrappingPullsOnDemand() async throws {
+        let pulls = PullCount()
+        var iterator = PluginExportStreamElement.wrapping(endlessRows(pulls)).makeAsyncIterator()
+        _ = try await iterator.next()
+        _ = try await iterator.next()
+        _ = try await iterator.next()
+        // A pump would have run ahead of a consumer that stopped here.
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(pulls.value == 3)
+    }
+
+    @Test("The cell adapter over the legacy adapter still reads on demand")
+    func cellsPullOnDemand() async throws {
+        let pulls = PullCount()
+        let stream = PluginExportStreamElement.cells(PluginExportStreamElement.wrapping(endlessRows(pulls)))
+        var iterator = stream.makeAsyncIterator()
+        _ = try await iterator.next()
+        _ = try await iterator.next()
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(pulls.value == 2)
+    }
+
+    @Test("A failure in the inner stream reaches the consumer")
+    func wrappingForwardsFailure() async {
+        let failing = AsyncThrowingStream<PluginStreamElement, Error> { continuation in
+            continuation.yield(.rows([["1"]]))
+            continuation.finish(throwing: PluginExportError.encodingFailed)
+        }
+        await #expect(throws: PluginExportError.self) {
+            for try await _ in PluginExportStreamElement.wrapping(failing) {}
+        }
+    }
+
+    @Test("A document with a field outside the columns fails the cell stream")
+    func cellsRefuseAnUnknownField() async {
+        let stream = AsyncThrowingStream<PluginExportStreamElement, Error> { continuation in
+            continuation.yield(.header(PluginStreamHeader(columns: ["v"], columnTypeNames: ["VARCHAR"])))
+            let document = PluginExportDocument(fields: [
+                PluginExportField(name: "other", canonicalJSON: #""1""#, typeName: "VARCHAR", cellValue: "1")
+            ])
+            continuation.yield(.rows([["1"]], documents: [document]))
+            continuation.finish()
+        }
+        await #expect(throws: PluginExportError.self) {
+            for try await _ in PluginExportStreamElement.cells(stream) {}
+        }
+    }
+
     @Test("Cell consumers retain every row from document streams")
     func cellStream() async throws {
         let stream = AsyncThrowingStream<PluginExportStreamElement, Error> { continuation in

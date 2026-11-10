@@ -32,8 +32,7 @@ final class ParquetExportPlugin: ObservableObject, ExportFormatPlugin, SettableP
     typealias Settings = ParquetExportOptions
     static let settingsStorageId = "parquet"
 
-    /// Rows staged per `INSERT`. DuckDB binds an appender-sized batch happily; this only bounds how
-    /// many rows are held in Swift at once.
+    // Bounds how many rows are held in Swift between appender flushes.
     private static let stagingBatchSize = 2_000
 
     @Published var settings = ParquetExportOptions() {
@@ -63,7 +62,7 @@ final class ParquetExportPlugin: ObservableObject, ExportFormatPlugin, SettableP
         var warnings: [String] = []
 
         try await ParquetTableFiles.write(tables, destination: destination, progress: progress) { table, fileURL in
-            try await writeTable(table, dataSource: dataSource, to: fileURL, progress: progress)
+            warnings += try await writeTable(table, dataSource: dataSource, to: fileURL, progress: progress)
         }
 
         if tables.count > 1 {
@@ -80,7 +79,7 @@ final class ParquetExportPlugin: ObservableObject, ExportFormatPlugin, SettableP
         dataSource: any PluginExportDataSource,
         to fileURL: URL,
         progress: PluginExportProgress
-    ) async throws {
+    ) async throws -> [String] {
         let columnInfo = (try? await dataSource.fetchColumns(
             table: table.name, databaseName: table.databaseName)) ?? []
         let declaredTypes = Dictionary(
@@ -96,9 +95,10 @@ final class ParquetExportPlugin: ObservableObject, ExportFormatPlugin, SettableP
             switch element {
             case .header(let header):
                 columns = header.columns
-                let types = columns.map { column in
-                    ParquetTypeMapper.duckDBType(
-                        forColumnType: declaredTypes[column] ?? "", databaseTypeId: dataSource.databaseTypeId)
+                let types = columns.enumerated().map { index, column in
+                    let streamed = index < header.columnTypeNames.count ? header.columnTypeNames[index] : ""
+                    return ParquetTypeMapper.duckDBType(
+                        forColumnType: declaredTypes[column] ?? streamed, databaseTypeId: dataSource.databaseTypeId)
                 }
                 try staging.createTable(columns: columns, types: types)
                 created = true
@@ -108,7 +108,7 @@ final class ParquetExportPlugin: ObservableObject, ExportFormatPlugin, SettableP
                     batch.append(row)
                     progress.incrementRow()
                     guard batch.count >= Self.stagingBatchSize else { continue }
-                    try staging.insert(rows: batch, columnCount: columns.count)
+                    try staging.insert(rows: batch)
                     batch.removeAll(keepingCapacity: true)
                 }
             }
@@ -119,12 +119,17 @@ final class ParquetExportPlugin: ObservableObject, ExportFormatPlugin, SettableP
                 String(format: String(localized: "%@ returned no columns."), table.name))
         }
         if !batch.isEmpty {
-            try staging.insert(rows: batch, columnCount: columns.count)
+            try staging.insert(rows: batch)
         }
-        try staging.copyToParquet(
+        let fallbacks = try staging.copyToParquet(
             fileURL: fileURL,
             compression: settings.compression.duckDBValue,
             rowGroupSize: settings.rowGroupSize
         )
+        return fallbacks.map { fallback in
+            String(
+                format: String(localized: "%1$@.%2$@ was written as text: %3$lld values do not fit %4$@."),
+                table.name, fallback.column, Int64(fallback.valueCount), fallback.type)
+        }
     }
 }

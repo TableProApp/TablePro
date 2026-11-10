@@ -137,7 +137,8 @@ internal struct CrossEngineValueCoercer: Sendable {
     /// only by accident, because its `:` makes the array parse fail, so the bug was invisible
     /// until a row held an empty one and `jsonb_typeof` came back `array`.
     private func json(_ value: PluginCellValue, source: CanonicalTypeKind?) -> PluginCellValue {
-        guard sourceFamily == .postgres, case .array = source, case .text(let text) = value else { return value }
+        guard sourceFamily == .postgres, case .array(let elementKind) = source,
+              case .text(let text) = value else { return value }
         guard text.hasPrefix("{"), text.hasSuffix("}") else { return value }
         guard let elements = PostgresArrayLiteralCodec.parse(text) else { return value }
         var items: [String] = []
@@ -147,7 +148,7 @@ internal struct CrossEngineValueCoercer: Sendable {
             case .null:
                 items.append("null")
             case .value(let raw):
-                items.append(Self.jsonScalar(raw))
+                items.append(Self.jsonScalar(raw, element: elementKind))
             /// A case this build has never seen cannot be rendered as JSON, and a wrong guess would
             /// be written into every row. The value is left as the array literal it arrived as.
             @unknown default:
@@ -198,15 +199,24 @@ internal struct CrossEngineValueCoercer: Sendable {
         return try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
     }()
 
-    private static func jsonScalar(_ raw: String) -> String {
-        if raw == "true" || raw == "false" { return raw }
-        if Int64(raw) != nil || Double(raw) != nil { return raw }
-        let escaped = raw
-            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
-            .replacingOccurrences(of: "\"", with: "\\\"", options: .literal)
-            .replacingOccurrences(of: "\n", with: "\\n", options: .literal)
-            .replacingOccurrences(of: "\r", with: "\\r", options: .literal)
-            .replacingOccurrences(of: "\t", with: "\\t", options: .literal)
-        return "\"\(escaped)\""
+    // The element's type decides, never the shape of the text: a `text[]` holding 02134, inf or
+    // true holds strings, and written bare they are invalid JSON or a different type.
+    private static func jsonScalar(_ raw: String, element: CanonicalTypeKind) -> String {
+        switch element {
+        case .boolean:
+            switch raw.lowercased() {
+            case "t", "true": return "true"
+            case "f", "false": return "false"
+            default: break
+            }
+        case .integer, .decimal, .floatingPoint:
+            if let literal = JsonNumberNormalizer.numberLiteral(from: raw) { return literal }
+        case .json:
+            let parsed = try? JSONSerialization.jsonObject(with: Data(raw.utf8), options: [.fragmentsAllowed])
+            if parsed != nil { return raw }
+        default:
+            break
+        }
+        return "\"\(PluginExportUtilities.escapeJSONString(raw))\""
     }
 }

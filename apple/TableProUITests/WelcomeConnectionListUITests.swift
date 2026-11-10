@@ -43,4 +43,20 @@ final class WelcomeConnectionListUITests: UITestCase {
             "Escape must keep the old name"
         )
     }
+
+    func testReturnOnASelectedConnectionOpensIt() throws {
+        try seedSQLiteSession([ConnectionSeed(name: "alpha-staging", tabs: [], isOpen: false)])
+        let app = try launchApp()
+        let welcome = welcomeWindow(in: app)
+        XCTAssertTrue(welcome.waitToExist(timeout: 15))
+        let list = welcomeConnectionList(in: welcome)
+        let row = welcomeConnectionRow(named: "alpha-staging", in: list)
+        XCTAssertTrue(waitUntilHittable(row, timeout: 15))
+        row.click()
+        XCTAssertTrue(waitForPredicate(timeout: 5) { self.holdsKeyboardFocus(list) }, "A click must give the list the keyboard")
+
+        app.typeKey(.return, modifierFlags: [])
+
+        XCTAssertTrue(mainWindow(in: app).waitToExist(timeout: 30), "Return must open the selected connection")
+    }
 }

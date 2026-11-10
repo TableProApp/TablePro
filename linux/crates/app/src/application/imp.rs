@@ -10,11 +10,14 @@ use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
 
 use super::app_activity::Activity;
+use super::open_files::Placement;
 use super::session_signals::SessionSignals;
 use super::{AppServices, WindowRegistry, install_app_actions, install_application_accelerators};
 use crate::workspace::CloseDecision;
 
 pub(super) const NEW_WINDOW_OPTION: &str = "new-window";
+// GOption's G_OPTION_REMAINING: the files and links after the options.
+pub(super) const FILES_OPTION: &str = "";
 
 #[derive(Default)]
 pub struct TableProApplication {
@@ -31,9 +34,9 @@ pub struct TableProApplication {
     /// The restore waiting on the record, which a quit approved
     /// meanwhile waits for too.
     pub(super) restoring: RefCell<Option<glib::JoinHandle<()>>>,
-    /// Files handed over while the record is read, opened after the
-    /// windows it restores.
-    pub(super) pending_files: RefCell<Vec<gio::File>>,
+    /// Files and links handed over while the record is read, opened
+    /// after the windows it restores.
+    pub(super) pending_files: RefCell<Vec<(Vec<gio::File>, Placement)>>,
     /// What to say at launch, found before any window opened.
     pub(super) launch_notices: RefCell<Vec<crate::ui::LaunchNotice>>,
     /// Answers the MCP server's questions about windows and sessions.
@@ -79,6 +82,15 @@ impl ObjectImpl for TableProApplication {
             &crate::i18n::gettext("Open a new window"),
             None,
         );
+        // GOption collects the files, so handle-local-options can send them with --new-window's hint.
+        self.obj().add_main_option(
+            FILES_OPTION,
+            glib::Char::from(b'\0'),
+            glib::OptionFlags::NONE,
+            glib::OptionArg::FilenameArray,
+            "",
+            Some(&crate::i18n::gettext("[FILE or URL…]")),
+        );
     }
 }
 
@@ -116,37 +128,45 @@ impl ApplicationImpl for TableProApplication {
         app.open_launch_windows();
     }
 
-    /// The files from Open With in the file manager, or from the command
-    /// line. GApplication opens them instead of activating, so no picker
-    /// window comes with them.
-    fn open(&self, files: &[gio::File], _hint: &str) {
+    // GApplication opens them instead of activating, so no picker window comes with them.
+    fn open(&self, files: &[gio::File], hint: &str) {
+        let placement = Placement::from_hint(hint);
         match self.restore.get() {
-            RestoreState::Done => self.obj().open_files(files),
+            RestoreState::Done => self.obj().open_files(files, placement),
             // The record is read before a file's window adds to it, or
             // that write would replace the sessions still to restore.
             RestoreState::NotAttempted => {
-                self.pending_files.borrow_mut().extend_from_slice(files);
+                self.pending_files.borrow_mut().push((files.to_vec(), placement));
                 self.obj().restore_session();
             }
-            RestoreState::Loading => self.pending_files.borrow_mut().extend_from_slice(files),
+            RestoreState::Loading => self.pending_files.borrow_mut().push((files.to_vec(), placement)),
             RestoreState::Quitting { .. } => {
-                self.pending_files.borrow_mut().extend_from_slice(files);
+                self.pending_files.borrow_mut().push((files.to_vec(), placement));
                 self.restore.set(RestoreState::Quitting { relaunched: true });
             }
         }
     }
 
-    /// `--new-window` on a second launch opens the window in the running
-    /// instance and exits. On the first launch it falls through to
-    /// activate, which opens the one window either way.
+    // Opened here as GApplication would open them: a second launch then exits, and a first one runs
+    // while their windows hold it. On a first launch, --new-window alone falls through to activate.
     fn handle_local_options(&self, options: &glib::VariantDict) -> ControlFlow<glib::ExitCode> {
-        if !options.contains(NEW_WINDOW_OPTION) {
+        let new_window = options.contains(NEW_WINDOW_OPTION);
+        let files = launch_files(options);
+        if !new_window && files.is_empty() {
             return ControlFlow::Continue(());
         }
         let app = self.obj();
         if let Err(error) = app.register(gio::Cancellable::NONE) {
             tracing::error!(%error, "could not register with the session bus");
             return ControlFlow::Break(glib::ExitCode::FAILURE);
+        }
+        if !files.is_empty() {
+            let placement = match new_window {
+                true => Placement::NewWindow,
+                false => Placement::Reuse,
+            };
+            app.open(&files, placement.hint());
+            return ControlFlow::Break(glib::ExitCode::SUCCESS);
         }
         if app.is_remote() {
             app.activate_action("new-window", None);
@@ -184,3 +204,17 @@ impl GtkApplicationImpl for TableProApplication {
 }
 
 impl AdwApplicationImpl for TableProApplication {}
+
+fn launch_files(options: &glib::VariantDict) -> Vec<gio::File> {
+    match options.lookup::<Vec<std::ffi::OsString>>(FILES_OPTION) {
+        Ok(arguments) => arguments
+            .unwrap_or_default()
+            .iter()
+            .map(gio::File::for_commandline_arg)
+            .collect(),
+        Err(error) => {
+            tracing::warn!(%error, "the command line's files came in an unexpected form");
+            Vec::new()
+        }
+    }
+}

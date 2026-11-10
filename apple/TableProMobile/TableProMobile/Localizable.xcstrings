@@ -18638,6 +18638,16 @@
         }
       }
     },
+    "Record %lld of the CSV data has %lld fields, but the header has %lld." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Record %1$lld of the CSV data has %2$lld fields, but the header has %3$lld."
+          }
+        }
+      }
+    },
     "Records" : {
       "extractionState" : "manual",
       "generatesSymbol" : false

@@ -1,14 +1,18 @@
 import CDuckDB
 import Foundation
 
-// A table function lets DuckDB render an existing result without running the user's statement again.
+// DuckDB spells a value as text only through a query. A streaming result keeps its own connection busy until it ends
+// (DUCKDB_ERROR_RESOURCE_IN_USE), so a second connection renders each fetched chunk through a table function.
 final class DuckDBResultReader: @unchecked Sendable {
     private let name = "_tablepro_result_" + UUID().uuidString.replacingOccurrences(of: "-", with: "")
+    private let connection: duckdb_connection
     private let connectionID: idx_t
     private let lock = NSLock()
     private var source: duckdb_result?
+    private var pendingChunk: duckdb_data_chunk?
 
-    init(connection: duckdb_connection) throws {
+    init(renderConnection connection: duckdb_connection) throws {
+        self.connection = connection
         var context: duckdb_client_context?
         duckdb_connection_get_client_context(connection, &context)
         defer { duckdb_destroy_client_context(&context) }
@@ -39,29 +43,55 @@ final class DuckDBResultReader: @unchecked Sendable {
         }
     }
 
-    func render(
-        _ result: duckdb_result,
-        columns: [(name: String, type: DuckDBLogicalType?)],
-        on connection: duckdb_connection
-    ) throws -> duckdb_result {
-        lock.lock()
-        source = result
-        lock.unlock()
-        defer {
-            lock.lock()
-            source = nil
-            lock.unlock()
-        }
+    func send(_ sql: String) -> Bool {
+        var result = duckdb_result()
+        defer { duckdb_destroy_result(&result) }
+        return duckdb_query(connection, sql, &result) == DuckDBSuccess
+    }
+
+    func prepareProjection(
+        of result: duckdb_result,
+        columns: [(name: String, type: DuckDBLogicalType?)]
+    ) throws -> duckdb_prepared_statement {
+        setSource(result, chunk: nil)
+        defer { setSource(nil, chunk: nil) }
 
         let sql = DuckDBProjectedQuery.build(function: name, columns: columns)
+        var statement: duckdb_prepared_statement?
+        guard duckdb_prepare(connection, sql, &statement) == DuckDBSuccess, let prepared = statement else {
+            let message = statement.flatMap { duckdb_prepare_error($0) }.map { String(cString: $0) }
+                ?? "Could not render the DuckDB result"
+            duckdb_destroy_prepare(&statement)
+            throw DuckDBPluginError.queryFailed(message)
+        }
+        return prepared
+    }
+
+    // The chunk has to outlive the call: the rendered result is materialized before this returns.
+    func render(
+        _ chunk: duckdb_data_chunk,
+        of result: duckdb_result,
+        with projection: duckdb_prepared_statement
+    ) throws -> duckdb_result {
+        // DuckDB binds the function again on every execution, so the result stays readable for its column types.
+        setSource(result, chunk: chunk)
+        defer { setSource(nil, chunk: nil) }
+
         var rendered = duckdb_result()
-        guard duckdb_query(connection, sql, &rendered) == DuckDBSuccess else {
+        guard duckdb_execute_prepared(projection, &rendered) == DuckDBSuccess else {
             let message = duckdb_result_error(&rendered).map { String(cString: $0) }
                 ?? "Could not render the DuckDB result"
             duckdb_destroy_result(&rendered)
             throw DuckDBPluginError.queryFailed(message)
         }
         return rendered
+    }
+
+    private func setSource(_ result: duckdb_result?, chunk: duckdb_data_chunk?) {
+        lock.lock()
+        source = result
+        pendingChunk = chunk
+        lock.unlock()
     }
 
     private func bind(_ info: duckdb_bind_info) {
@@ -88,24 +118,16 @@ final class DuckDBResultReader: @unchecked Sendable {
             }
             duckdb_bind_add_result_column(info, DuckDBProjectedQuery.sourceAlias(at: Int(column)), type)
         }
-        duckdb_bind_set_cardinality(info, duckdb_row_count(&source), true)
     }
 
     private func scan(_ info: duckdb_function_info, into output: duckdb_data_chunk) {
         lock.lock()
         defer { lock.unlock() }
-        guard var source else {
-            duckdb_function_set_error(info, "No result is being read")
+        guard let chunk = pendingChunk else {
             duckdb_data_chunk_set_size(output, 0)
             return
         }
-        var chunk = duckdb_fetch_chunk(source)
-        defer { duckdb_destroy_data_chunk(&chunk) }
-        guard let chunk else {
-            if let message = duckdb_result_error(&source) { duckdb_function_set_error(info, message) }
-            duckdb_data_chunk_set_size(output, 0)
-            return
-        }
+        pendingChunk = nil
         for column in 0..<duckdb_data_chunk_get_column_count(chunk) {
             duckdb_vector_reference_vector(
                 duckdb_data_chunk_get_vector(output, column), duckdb_data_chunk_get_vector(chunk, column)

@@ -42,6 +42,8 @@
                 <setter object="assistant_split" property="collapsed">true</setter>
                 <setter object="tab_bar" property="visible">false</setter>
                 <setter object="tab_button" property="visible">true</setter>
+                <!-- Ctrl+S and the tab's own Save remain at this width. -->
+                <setter object="save_changes_button" property="visible">false</setter>
                 <!-- The overview the tab button opens has New Tab, and the
                      header has to fit the window's floor. -->
                 <setter object="new_tab_button" property="visible">false</setter>
@@ -169,6 +171,12 @@
                                   <object class="GtkButton" id="new_tab_button">
                                     <property name="icon-name">tab-new-symbolic</property>
                                     <property name="action-name">win.new-editor-tab</property>
+                                  </object>
+                                </child>
+                                <child type="start">
+                                  <object class="GtkButton" id="save_changes_button">
+                                    <property name="icon-name">object-select-symbolic</property>
+                                    <property name="action-name">win.save-changes</property>
                                   </object>
                                 </child>
                                 <child type="start">

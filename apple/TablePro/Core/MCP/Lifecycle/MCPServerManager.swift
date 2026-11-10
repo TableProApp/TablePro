@@ -150,20 +150,29 @@ internal final class MCPServerManager: ObservableObject {
         composition?.authPolicy ?? MCPAuthPolicy()
     }
 
-    internal func disconnectClient(_ clientId: String) async {
-        guard let composition else { return }
+    // False when the Keychain write failed: the token works again after a restart.
+    @discardableResult
+    internal func revokeToken(id: UUID) async -> Bool {
+        guard let tokenStore else { return true }
+        return await tokenStore.revoke(tokenId: id)
+    }
+
+    @discardableResult
+    internal func disconnectClient(_ clientId: String) async -> Bool {
+        guard let composition else { return true }
         let entries = await composition.activityLedger.snapshot(now: Date())
 
         guard let tokenId = entries.first(where: { $0.id == clientId })?.tokenId else {
             await composition.activityLedger.forget(id: clientId)
             await refreshClients()
-            return
+            return true
         }
 
-        await tokenStore?.revoke(tokenId: tokenId)
+        let persisted = await revokeToken(id: tokenId)
         await composition.authPolicy.clearApprovals(tokenId: tokenId)
         await composition.activityLedger.forget(tokenId: tokenId)
         await refreshClients()
+        return persisted
     }
 
     // The one check every start path reaches, so no caller can bind a listener while MCP is off.
