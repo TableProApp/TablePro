@@ -8210,6 +8210,12 @@ DEALINGS IN THE SOFTWARE.
 
 Used by:
 
+- anstyle 1.0.14
+- clap 4.6.7
+- clap_builder 4.6.7
+- clap_complete 4.6.11
+- clap_derive 4.6.7
+- clap_lex 1.1.1
 - env_filter 2.0.0
 - env_logger 0.11.11
 - toml_datetime 1.1.1+spec-1.1.0

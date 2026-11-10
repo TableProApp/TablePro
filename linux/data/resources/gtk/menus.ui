@@ -53,6 +53,11 @@
   <menu id="session_menu">
     <section>
       <item>
+        <attribute name="label" translatable="yes">_Open Quickly…</attribute>
+        <attribute name="action">win.quick-open</attribute>
+        <attribute name="hidden-when">action-missing</attribute>
+      </item>
+      <item>
         <attribute name="label" translatable="yes">Query _History</attribute>
         <attribute name="action">win.show-history</attribute>
         <attribute name="hidden-when">action-missing</attribute>

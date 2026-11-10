@@ -1,90 +1,340 @@
 .TH TABLEPRO 1 2026-11-07 "TablePro 0.1.0-beta.3" "User Commands"
 .SH NAME
-tablepro \- work with your databases
+tablepro \- open databases and query saved connections from a shell
 .SH SYNOPSIS
-.B tablepro
-.RI [ OPTION ...]
-.RI [ FILE ...]
+.SY tablepro
+.OP \-n
+.RI [ FILE " | " URL " ...]"
+.YS
+.SY "tablepro open"
+.OP \-n
+.RI [ FILE " | " URL " ...]"
+.YS
+.SY "tablepro query"
+.BI \-c " CONNECTION"
+.OP \-\-database NAME
+.OP \-\-format FORMAT
+.OP \-\-limit ROWS
+.OP \-\-timeout SECONDS
+.OP \-\-read\-only
+.RI [ SQL " |"
+.BI \-f " FILE"
+.RB ]
+.YS
+.SY "tablepro connections"
+.OP \-\-format FORMAT
+.YS
+.SY "tablepro databases"
+.BI \-c " CONNECTION"
+.OP \-\-format FORMAT
+.YS
+.SY "tablepro schemas"
+.BI \-c " CONNECTION"
+.OP \-\-database NAME
+.OP \-\-format FORMAT
+.YS
+.SY "tablepro tables"
+.BI \-c " CONNECTION"
+.OP \-\-database NAME
+.OP \-\-schema NAME
+.OP \-\-format FORMAT
+.YS
+.SY "tablepro describe"
+.BI \-c " CONNECTION"
+.OP \-\-database NAME
+.OP \-\-schema NAME
+.RB [ \-\-ddl " | " \-\-format " FORMAT ]"
+.I TABLE
+.YS
+.SY "tablepro export"
+.BI \-c " CONNECTION"
+.BI \-\-format " FORMAT"
+.OP \-\-database NAME
+.OP \-\-schema NAME
+.OP \-\-limit ROWS
+.IR TABLE ...
+.YS
+.SY "tablepro status"
+.OP \-\-format FORMAT
+.YS
+.SY "tablepro completion"
+.BR bash " | " zsh " | " fish
+.YS
+.SY "tablepro help"
+.RI [ COMMAND ]
+.YS
+.SY tablepro
+.BR \-\-help " | " \-\-version
+.YS
 .SH DESCRIPTION
-TablePro connects to PostgreSQL, MySQL, SQLite, DuckDB, SQL Server, ClickHouse,
-Cassandra, ScyllaDB, Redis and MongoDB.
-It browses tables, edits rows in place, runs SQL with syntax highlighting,
-and reaches servers behind an SSH bastion through the system OpenSSH client.
+TablePro browses and edits PostgreSQL, MySQL, MariaDB, SQLite, DuckDB,
+SQL Server, ClickHouse, Cassandra, ScyllaDB, Redis and MongoDB databases.
 .PP
-Each
-.I FILE
-is a SQLite or DuckDB database, opened in its own window,
-or a SQL file, opened in an editor tab of the connection in front.
-A SQL file never runs by itself; with no connection open, the window asks for one.
-A running TablePro opens the files itself and the new launch exits.
+Run without a command to open the graphical app.
+Files and connection URLs open there, in the running instance when one exists.
+Queries, schema listings and exports print in the terminal.
+.PP
+The Linux packages install
+.BR tablepro .
+For Flatpak, replace it with
+.B flatpak run app.tablepro.TablePro
+in each invocation.
+Run the command from the same installation as the app.
+.SH COMMANDS
+Commands that use the database require the app to be running with
+.B Preferences > MCP > Enable MCP Server
+on.
+They read the server port from the app's settings and its token from the keyring.
+They never start the app or create a token.
+There is no pairing command.
+.PP
+A command opens a closed connection only when standard error is a terminal.
+Answer any prompt in the app; the command waits up to five minutes.
+For unattended scripts, open the connection first.
+.TP
+.B open
+Open files and links, or the app with no targets.
+SQL files open in an editor without running.
+SQLite and DuckDB files open database sessions.
+A link matching a saved connection asks before opening it;
+other links fill the connect dialog and wait for Connect.
+Local links also require consent.
+.TP
+.B query
+Run one statement, or one SQL Server batch.
+Read UTF-8 SQL from the argument, a file, or standard input.
+With no argument or file, standard input must be a pipe or redirected file.
+Use
+.B \-f \-
+to read from a terminal until end of file.
+SQL text is limited to 100 KiB.
+.TP
+.B connections
+List visible saved connections by name, id and type.
+.TP
+.B databases
+List the connection's databases.
+An engine without database listing returns an error.
+.TP
+.B schemas
+List schemas, including default and system flags.
+.TP
+.B tables
+List tables and views in a schema.
+.TP
+.B describe
+Print columns, indexes and foreign keys as separate result sets.
+Use
+.B \-\-ddl
+for the CREATE statements instead.
+.TP
+.B export
+Print data from one to 20 tables or views.
+Choose CSV, JSON or SQL INSERT statements with the required
+.B \-\-format
+option.
+Names are unquoted SQL identifiers; use shell quotes for spaces and
+.B \-\-schema
+for the schema.
+Redirect standard output to save a file.
+.TP
+.B status
+Report the app version, running state, MCP setting and port,
+token availability, server version and readiness.
+Does not start the app or open a connection.
+.TP
+.B completion
+Print a completion script for bash, zsh or fish.
+The .deb and .rpm packages install these scripts; Flatpak does not.
+Connection names are not looked up for completion.
+.TP
+.B help
+Show all commands, or the options of one command.
 .SH OPTIONS
+Options apply to the commands shown in SYNOPSIS.
+.TP
+.BR \-c ", " \-\-connection " CONNECTION"
+Select a saved connection by name or id.
+Use an id if several connections have the same name.
+.TP
+.BI \-\-database " NAME"
+Use a database already open beside the connection through Open Database.
+The default is the connection's own database.
+.TP
+.BI \-\-schema " NAME"
+Use a schema instead of the connection's default.
+This option is not accepted by query; qualify names in the SQL instead.
+.TP
+.BR \-f ", " \-\-file " FILE"
+Read SQL from FILE, or standard input when FILE is a single dash.
+Cannot be combined with a SQL argument.
+.TP
+.BI \-\-format " FORMAT"
+For query, listings, describe and status: csv, tsv, json, jsonl or table.
+The default is table on a terminal and csv otherwise.
+For export: csv, json or sql, with no default.
+Format names accept any letter case.
+.TP
+.BI \-\-limit " ROWS"
+Return 1 to 1,000 rows, with 100 as the default.
+For query the limit applies per result set; for export, per table.
+Truncation is reported on standard error.
+The limit does not bound how many rows a write changes.
+.TP
+.BI \-\-timeout " SECONDS"
+Allow 1 to 300 seconds for the statement, with 30 as the default.
+Time spent waiting for write approval is not part of this timeout.
+.TP
+.B \-\-read\-only
+Refuse any statement that is not a read, before asking for write approval.
+.TP
+.B \-\-ddl
+Print CREATE statements instead of a table description.
+Cannot be combined with
+.BR \-\-format .
 .TP
 .BR \-n ", " \-\-new\-window
-Open a new window, in the running TablePro when there is one.
-.TP
-.B \-\-version
-Print the version and exit.
+Open a new window, with any supplied files or URLs.
 .TP
 .BR \-h ", " \-\-help
-Show the options and exit.
+Print help and exit.
+.TP
+.B \-\-version
+Print the app version and exit.
 .TP
 .B \-\-help\-all
-Show every option, including the GApplication ones, and exit.
-.SH ENVIRONMENT
+Show the GUI and GApplication options.
 .TP
-.B RUST_LOG
-Which messages are logged to standard error, as a tracing filter such as
-.BR info " or " tablepro=debug .
+.B \-\-
+End options.
+Place SQL or file names beginning with a dash after this marker.
+.SH OUTPUT
+Rows go to standard output; errors, notices and truncation messages go to standard error.
+CSV has a header, an empty field for NULL and two quotes for an empty string.
+TSV escapes tabs, newlines, carriage returns and backslashes.
+JSON is an array of objects; JSONL writes one object per line.
+The table format aligns columns and displays control characters as escapes.
+.PP
+Several result sets become an array of arrays in JSON,
+consecutive objects in JSONL, or blocks separated by a blank line otherwise.
+Several JSON table exports also form an array of arrays.
+.SH ACCESS
+The connection's External Clients setting controls access.
+Blocked connections are omitted from listings and cannot be selected.
+Read Only is the default and refuses writes.
+Read & Write still requires approval for every write in the connection's window.
+Safe Mode Read-Only refuses writes regardless of external access.
+A transaction left open by a write is rolled back when that call ends.
+.SH CONNECTION URLS
+The desktop registers these schemes:
+postgresql, postgres, mysql, mariadb, mysqlx, sqlserver, mssql,
+clickhouse, ch, cassandra, cql, scylla, scylladb, redis, rediss,
+valkey, valkeys, mongodb, mongodb+srv, sqlite, sqlite3 and duckdb.
+A jdbc wrapper around a supported URL also works from the command line.
+.PP
+A link never connects without consent.
+For a saved connection, click Open; Enter and Escape cancel.
+For other links, review the connect dialog and click Connect.
+A successful connection from that dialog is saved.
+.SH EXIT STATUS
 .TP
-.B TABLEPRO_LOG_FORMAT
-.B json
-logs one JSON object per line.
+.B 0
+Success, including help, version and completion output.
+A pipe closed by its reader also exits 0.
+.TP
+.B 1
+Database, connection or output error.
+Also used when the app is stopped, a script finds a closed connection,
+or a connection does not open within the wait period.
+.TP
+.B 2
+Invalid usage, SQL input or option value; unknown or ambiguous connection;
+missing file.
+.TP
+.B 3
+Access refused, MCP server disabled, token rejected, or approval declined.
+.TP
+.B 4
+Query or server request timed out.
 .SH FILES
 .TP
 .I $XDG_CONFIG_HOME/tablepro/connections.json
-The saved connections: hosts, ports, user names and SSH settings.
-Passwords are not in it; they are in the Secret Service keyring.
+Saved connections. Passwords and the MCP token live in the keyring.
 .TP
-.I $XDG_CONFIG_HOME/tablepro/column_widths.json
-.TQ
+.I $XDG_CONFIG_HOME/tablepro/column_layouts.json
+Column layout settings.
+.TP
 .I $XDG_CONFIG_HOME/tablepro/filter_settings.json
-Column widths and filters, kept per table.
+Saved table filters.
 .TP
 .I $XDG_STATE_HOME/tablepro/history.db
-The query history and the saved queries, in a SQLite database.
+Query history and saved queries.
 .TP
 .I $XDG_STATE_HOME/tablepro/workspaces/
-The tabs of each connection, and which connections were open at the last quit.
+Saved tabs and open connections.
 .TP
 .I $XDG_DATA_HOME/tablepro/drafts/
-The text of each SQL editor tab.
+SQL editor drafts.
 .TP
 .I $XDG_STATE_HOME/tablepro/crashes/
-A report of each crash.
-.TP
-.I $XDG_RUNTIME_DIR/app/app.tablepro.TablePro/ssh/
-The control sockets of the open SSH tunnels.
+Crash reports from the graphical app.
 .PP
-When unset,
-.B XDG_CONFIG_HOME
-is
+Preferences use the GSettings schema
+.BR app.tablepro.TablePro .
+Flatpak uses its own settings and keyring storage.
+.SH ENVIRONMENT
+.TP
+.BR XDG_CONFIG_HOME ", " XDG_STATE_HOME ", " XDG_DATA_HOME
+Base directories for application files.
+Defaults are
 .IR ~/.config ,
-.B XDG_STATE_HOME
-is
 .I ~/.local/state
 and
-.B XDG_DATA_HOME
-is
-.IR ~/.local/share .
-Preferences are kept in GSettings, under the schema
-.BR app.tablepro.TablePro .
-.SH BUGS
-Report bugs at https://github.com/TableProApp/TablePro/issues.
-Include the text that Copy Text puts on the clipboard in
-About TablePro > Troubleshooting > Debugging Information.
-.SH SEE ALSO
-.BR ssh (1),
-.BR ssh_config (5),
-.BR gsettings (1)
+.IR ~/.local/share ,
+respectively.
+.TP
+.B RUST_LOG
+Log filter for the graphical app, such as
+.BR tablepro=debug .
+Does not control query output.
+.TP
+.B TABLEPRO_LOG_FORMAT
+Graphical app log format: text by default, or json.
+.SH EXAMPLES
+Open a database file:
 .PP
-https://docs.tablepro.app
+.EX
+tablepro app.sqlite3
+.EE
+.PP
+Open a file named like a command:
+.PP
+.EX
+tablepro open ./query
+.EE
+.PP
+List connections and run a report:
+.PP
+.EX
+tablepro connections \-\-format json
+tablepro query \-c Staging \-f report.sql \-\-format csv > report.csv
+.EE
+.PP
+Read SQL from standard input under Flatpak:
+.PP
+.EX
+flatpak run app.tablepro.TablePro query \-c Staging < report.sql
+.EE
+.PP
+Inspect and export a table:
+.PP
+.EX
+tablepro describe \-c Staging \-\-schema public \-\-ddl orders
+tablepro export \-c Staging \-\-format sql \-\-limit 1000 orders > orders.sql
+.EE
+.SH SEE ALSO
+.BR flatpak (1),
+.BR gsettings (1),
+.BR ssh (1)
+.PP
+https://docs.tablepro.app/linux/command-line

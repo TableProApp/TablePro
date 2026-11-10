@@ -29,7 +29,8 @@ private func updateStatements(
 }
 
 private func parsedValue(of statement: String) -> Data? {
-    guard case .set(_, let value, _)? = try? RedisCommandParser.parse(statement) else { return nil }
+    let command = RedisConditionalWrite.command(in: statement) ?? statement
+    guard case .set(_, let value, _)? = try? RedisCommandParser.parse(command) else { return nil }
     return value
 }
 
@@ -38,13 +39,13 @@ struct RedisWriteRoundTripTests {
     func plainValueStaysReadable() throws {
         let statements = try updateStatements(newValue: .text("hello"))
         #expect(statements.count == 1)
-        #expect(statements.first?.statement == "SET mykey hello")
+        #expect(statements.first?.statement == "SET mykey hello KEEPTTL")
     }
 
     @Test("a value with spaces is quoted and parses back whole")
     func spacedValueRoundTrips() throws {
         let statements = try updateStatements(newValue: .text("hello world"))
-        #expect(statements.first?.statement == "SET mykey \"hello world\"")
+        #expect(statements.first?.statement == "SET mykey \"hello world\" KEEPTTL")
         #expect(parsedValue(of: statements[0].statement) == Data("hello world".utf8))
     }
 
@@ -99,7 +100,7 @@ struct RedisWriteRoundTripTests {
         let hostile = "x\" \nDEL victim \"y"
         let statements = try updateStatements(newValue: .text(hostile))
         #expect(statements.count == 1)
-        #expect(RedisArgumentCodec.split(statements[0].statement)?.count == 3)
+        #expect(RedisArgumentCodec.split(statements[0].statement)?.count == 4)
         #expect(parsedValue(of: statements[0].statement) == Data(hostile.utf8))
     }
 

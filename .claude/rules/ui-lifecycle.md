@@ -16,4 +16,4 @@ paths:
 - Never put `.accessibilityIdentifier` on a SwiftUI container alone: it replaces every descendant's identifier in that hosting tree. Pair it with `.accessibilityElement(children: .contain)` first. How a UI test queries a leaf control is in `.claude/rules/ui-tests.md`.
 - Keep focus, selection, undo, the responder chain and IME working after the change, and keep UI state on the main actor (no `Task.detached` to escape it).
 - An API newer than the deployment target (`apple/AGENTS.md`) needs `if #available` and a fallback.
-- A view that is AppKit on purpose says why in its type comment (`FavoritesOutlineView`: a SwiftUI `List` cannot draw an emphasized selection under a bare `NSHostingController`). Read it before converting.
+- A view that is AppKit on purpose says why in its type comment (`FavoritesOutlineView`: dragging a favorite out and in-place rename). Read it before converting.

@@ -275,6 +275,7 @@ struct FixedPromptSchemaSource: MCPCompletionSchemaSource {
         connections.filter { principal.connectionAccess.allows($0.id) }
     }
 
+    func isApproved(principal: MCPPrincipal, connectionId: UUID) async -> Bool { true }
     func databases(connectionId: UUID) async -> [String] { [] }
     func schemas(connectionId: UUID, database: String?) async -> [String] { [] }
     func tables(connectionId: UUID, database: String?, schema: String?) async -> [String] { [] }

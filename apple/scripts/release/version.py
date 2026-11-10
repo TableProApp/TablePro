@@ -22,8 +22,8 @@ MAX_LEAD_LINES = 6
 GRAMMAR = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-beta\.(0|[1-9][0-9]*))?")
 
 CI_WORKFLOW = ".github/workflows/ci.yml"
-# A job of a called workflow is named "<ci.yml job> / <its own job>".
-TEST_JOBS = ("macos / macOS Tests", "ios / iOS and Package Tests")
+# A job of a called workflow is named "<ci.yml job> / <its own job>". The plan runs each when its suite changed.
+TEST_JOBS = {"macos / macOS Tests": "macos", "ios / iOS and Package Tests": "ios"}
 DETECTOR = "scripts/ci/detect-changed-paths.sh"
 SHIPPED = "shipped"
 FRAGMENTS = "changelog.d/"
@@ -165,6 +165,12 @@ class GitHub:
                           ".workflow_runs[] | [.id, .path, .status, .conclusion // \"\", .html_url] | @tsv")
         return [Run(*line.split("\t")) for line in lines if line]
 
+    def passed_push_runs(self, branch: str) -> List[Tuple[str, str]]:
+        lines = self._api(f"repos/{self.repository}/actions/workflows/{Path(CI_WORKFLOW).name}/runs?branch={branch}"
+                          "&event=push&status=success&per_page=100",
+                          ".workflow_runs[] | [.id, .head_sha] | @tsv", paginate=True)
+        return [(run_id, sha) for run_id, sha in (line.split("\t") for line in lines if line)]
+
     def job_conclusions(self, run_id: str, job: str) -> List[str]:
         return self._api(f"repos/{self.repository}/actions/runs/{run_id}/jobs?filter=latest&per_page=100",
                          f".jobs[] | select(.name == \"{job}\") | .conclusion // \"\"", paginate=True)
@@ -301,25 +307,60 @@ def fragment_errors(paths: List[str], version: Version) -> List[str]:
     return [f"{version.tag} still has {', '.join(fragments)} in {FRAGMENTS}; assemble again on the line head"]
 
 
-def run_errors(github: GitHub, run: Run) -> List[str]:
+# The plan skips the ci.yml job that calls a test job, so the test job itself never appears in the run.
+def left_out(github: GitHub, run: Run, job: str) -> bool:
+    return github.job_conclusions(run.id, job.split(" / ")[0]) == ["skipped"]
+
+
+# A job the plan left out counts when its own suite has not changed since it last passed on the line. Not shipped: a
+# macOS-only pick leaves iOS last passing before it, and no test job reads the release scripts in shipped.
+def untested_errors(git: Git, github: GitHub, changed: Callable[[str, str, str], bool], tag: str, commit: str,
+                    branch: str, jobs: List[str]) -> List[str]:
+    ancestors = [(run_id, sha) for run_id, sha in github.passed_push_runs(branch)
+                 if sha != commit and git.exists(sha) and git.is_ancestor(sha, commit)]
+    errors = []
+    for job in jobs:
+        suite = TEST_JOBS[job]
+        passed = next((sha for run_id, sha in ancestors if github.job_conclusions(run_id, job) == ["success"]), None)
+        if passed is None:
+            errors.append(f"no earlier CI push run on {branch} ran {job} at an ancestor of {tag}")
+        elif changed(passed, tag, suite):
+            errors.append(f"{tag} changes the {suite} suite since {passed}, where {job} last passed on {branch}")
+    return errors
+
+
+def run_errors(github: GitHub, run: Run, untested: Callable[[List[str]], List[str]]) -> List[str]:
     if run.status != "completed":
         return [f"CI is {run.status} at {run.url}: re-run Verify once it is green"]
     if run.conclusion != "success":
         return [f"CI ended '{run.conclusion}' at {run.url}"]
     errors = []
+    skipped = []
     for job in TEST_JOBS:
         conclusions = github.job_conclusions(run.id, job)
-        if conclusions != ["success"]:
-            errors.append(f"{job} ran no tests at {run.url} (job: {', '.join(conclusions) or 'none'})")
-    return errors
+        if conclusions == ["success"]:
+            continue
+        errors.append(f"{job} ran no tests at {run.url} (job: {', '.join(conclusions) or 'none'})")
+        if not conclusions and left_out(github, run, job):
+            skipped.append(job)
+    if not errors or len(skipped) < len(errors):
+        return errors
+    reasons = untested(skipped)
+    return errors + reasons if reasons else []
 
 
-def push_run_errors(github: GitHub, sha: str, line: str) -> List[str]:
+def push_run_errors(git: Git, github: GitHub, changed: Callable[[str, str, str], bool], tag: str,
+                    line: str) -> List[str]:
     branch = f"release/{line}"
-    runs = [run for run in github.push_runs(sha, branch) if run.path == CI_WORKFLOW]
+    commit = git.commit(tag)
+    runs = [run for run in github.push_runs(commit, branch) if run.path == CI_WORKFLOW]
     if not runs:
-        return [f"no CI push run on {branch} at {sha}"]
-    return [error for run in runs for error in run_errors(github, run)]
+        return [f"no CI push run on {branch} at {commit}"]
+
+    def untested(jobs: List[str]) -> List[str]:
+        return untested_errors(git, github, changed, tag, commit, branch, jobs)
+
+    return [error for run in runs for error in run_errors(github, run, untested)]
 
 
 def check(tag: str, git: Git, github: GitHub, changed: Callable[[str, str, str], bool]) -> List[str]:
@@ -340,7 +381,7 @@ def check(tag: str, git: Git, github: GitHub, changed: Callable[[str, str, str],
     errors += fragment_errors(git.list_tree(tag, FRAGMENTS), version)
     if errors:
         return errors
-    return push_run_errors(github, git.commit(tag), version.line)
+    return push_run_errors(git, github, changed, tag, version.line)
 
 
 def main(argv: Optional[List[str]] = None) -> int:

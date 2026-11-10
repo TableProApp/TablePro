@@ -6,9 +6,7 @@
 import Foundation
 import os
 
-/// Turns an `EditorTabPayload` into a tab. This is the single translation from "what the user
-/// asked to open" to "a tab in a connection's list", so a payload opens the same tab whether the
-/// connection is being created for it or has been open for hours.
+// The one payload-to-tab translation, so a payload opens the same tab on a new connection and on one open for hours.
 @MainActor
 internal enum EditorTabOpener {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "EditorTabOpener")
@@ -20,9 +18,8 @@ internal enum EditorTabOpener {
         toolbarState: ConnectionToolbarState?
     ) {
         let browseDatabaseName = DatabaseManager.shared.browseDatabaseName(for: connection)
-        /// A table named without a database is the one in the database being browsed, the same answer
-        /// the lookup for a tab already showing it gives. Anything else opened without one belongs to
-        /// the entry on screen, which the cursor lags while a switch to it is on its way.
+        // A bare table is the browsed database's, as the lookup for an open copy answers. Anything else
+        // goes to the entry on screen, which the browse cursor lags during a switch.
         let openingDatabaseName = tabManager.openingDatabase(browsing: browseDatabaseName)
 
         switch payload.intent {
@@ -90,8 +87,10 @@ internal enum EditorTabOpener {
                 databaseName: payload.databaseName ?? openingDatabaseName,
                 schemaName: payload.schemaName
             )
-        case .serverDashboard, .usersRoles, .insights, .tableHealth:
+        case .serverDashboard, .usersRoles, .insights:
             tabManager.addSingletonTab(payload.tabType)
+        case .tableHealth:
+            tabManager.addTableHealthTab(databaseName: payload.databaseName ?? openingDatabaseName)
         case .objectSource:
             guard let objectRef = payload.objectRef else { return }
             tabManager.addObjectSourceTab(objectRef: objectRef)
@@ -144,9 +143,7 @@ internal enum EditorTabOpener {
             return
         }
 
-        /// Only a tab this payload created may take the payload's state. An existing tab was
-        /// reselected, not asked for, and writing the payload's filter over its own would destroy
-        /// work the user did there while leaving the grid on rows the new filter never ran.
+        // A reselected tab keeps its own filter: the payload's would replace the user's work over rows it never ran on.
         guard didCreateTab, let index = tabManager.selectedTabIndex else { return }
         tabManager.tabs[index].tableContext.isView = payload.isView
         tabManager.tabs[index].tableContext.objectType = payload.objectType

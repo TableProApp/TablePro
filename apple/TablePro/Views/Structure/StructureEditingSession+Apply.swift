@@ -137,8 +137,11 @@ internal extension StructureEditingSession {
         /// are the ones it held, and only while they are still exactly those.
         guard let hold = changeManager.holdForSave() else { return .refused }
         isApplying = true
-        let outcome = await saveHeldChanges(hold.changes, coordinator: coordinator)
+        let (outcome, alterFailure) = await saveHeldChanges(hold.changes, coordinator: coordinator)
         let cleared = changeManager.releaseHold(hold, written: outcome == .applied)
+        if let alterFailure {
+            await settle(alterFailure, coordinator: coordinator)
+        }
         isApplying = false
         guard outcome == .applied else { return outcome }
         guard cleared else {
@@ -154,10 +157,36 @@ internal extension StructureEditingSession {
         return outcome
     }
 
+    // A failed save that may have written; its error waits for the table to be read again.
+    private struct AlterFailure {
+        let failure: StructureApplyFailure
+        let startedAt: ContinuousClock.Instant
+    }
+
+    // Runs with the hold released and the save still marked running, so nothing saves against the old baseline.
+    private func settle(_ alterFailure: AlterFailure, coordinator: MainContentCoordinator?) async {
+        let rebased = await rebaseAfterFailedSave()
+        present(
+            alterFailure.failure,
+            note: rebased ? Self.partlyAppliedNote : nil,
+            startedAt: alterFailure.startedAt,
+            coordinator: coordinator
+        )
+    }
+
+    private static var partlyAppliedNote: String {
+        String(
+            localized: """
+                Some of these changes were applied before the save failed. The table was read again, \
+                and only the changes that were not applied are still staged.
+                """
+        )
+    }
+
     private func saveHeldChanges(
         _ changes: [SchemaChange],
         coordinator: MainContentCoordinator?
-    ) async -> StructureSaveOutcome {
+    ) async -> (StructureSaveOutcome, AlterFailure?) {
         let planStart = ContinuousClock.Instant.now
         let plan: StructureSavePlan
         do {
@@ -169,7 +198,7 @@ internal extension StructureEditingSession {
                 message: error.localizedDescription,
                 window: coordinator?.contentWindow
             )
-            return .failed(error.localizedDescription)
+            return (.failed(error.localizedDescription), nil)
         }
 
         switch plan {
@@ -181,7 +210,10 @@ internal extension StructureEditingSession {
             /// The review sheet is that confirmation and shows the exact script, so the run it
             /// starts tells the gate it was confirmed rather than stacking the gate's own sheet over
             /// it for the same decision. The HIG's rule is one alert at a time.
-            return presentRebuildReview(prepared, preparedFrom: changes, startedAt: planStart, coordinator: coordinator)
+            let outcome = presentRebuildReview(
+                prepared, preparedFrom: changes, startedAt: planStart, coordinator: coordinator
+            )
+            return (outcome, nil)
         case .alter(let script):
             return await applyAlterStatements(script, coordinator: coordinator)
         }
@@ -195,7 +227,7 @@ internal extension StructureEditingSession {
     private func applyAlterStatements(
         _ script: SchemaChangeScript,
         coordinator: MainContentCoordinator?
-    ) async -> StructureSaveOutcome {
+    ) async -> (StructureSaveOutcome, AlterFailure?) {
         let operationStart = ContinuousClock.Instant.now
 
         do {
@@ -206,20 +238,26 @@ internal extension StructureEditingSession {
                 gate: executionGate
             )
             report(.succeeded(OperationSummary()), startedAt: operationStart, coordinator: coordinator)
-            return .applied
+            return (.applied, nil)
         } catch {
             let failure = StructureApplyFailure(error)
-            present(failure, startedAt: operationStart, coordinator: coordinator)
-            return failure.outcome
+            // A gate refusal and a driver's refusal both stop before the first statement.
+            guard failure.reportsFailure, !(error is SchemaOperationRefusedError) else {
+                present(failure, startedAt: operationStart, coordinator: coordinator)
+                return (failure.outcome, nil)
+            }
+            return (failure.outcome, AlterFailure(failure: failure, startedAt: operationStart))
         }
     }
 
     private func present(
         _ failure: StructureApplyFailure,
+        note: String? = nil,
         startedAt: ContinuousClock.Instant,
         coordinator: MainContentCoordinator?
     ) {
-        guard let message = failure.message else { return }
+        guard let reason = failure.message else { return }
+        let message = [reason, note].compactMap { $0 }.joined(separator: "\n\n")
         if failure.reportsFailure {
             report(.failed(reason: message), startedAt: startedAt, coordinator: coordinator)
         }

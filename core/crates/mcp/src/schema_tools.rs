@@ -1,12 +1,12 @@
 use serde::Serialize;
 use tablepro_core::column::ColumnDefault;
 use tablepro_core::ddl::BuildDdlError;
-use tablepro_core::meta::{IndexKey, ObjectKind, ObjectScope, RowCountEstimate};
-use tablepro_core::{ColumnInfo, ForeignKeyInfo, IndexInfo, TableRef};
+use tablepro_core::meta::{IndexKey, ObjectKind, ObjectScope, RowCountEstimate, SchemaInfo};
+use tablepro_core::{ColumnInfo, DriverError, ForeignKeyInfo, IndexInfo, TableRef};
 use tablepro_session::{OperationError, OperationKind};
 
 use crate::connection_tools::to_json;
-use crate::tool_args::{ConnectionArgs, SchemaArgs, TableArgs};
+use crate::tool_args::{ConnectionArgs, DatabaseArgs, SchemaArgs, TableArgs};
 use crate::tool_context::ToolContext;
 use crate::tool_error::ToolError;
 
@@ -22,9 +22,12 @@ struct ListedSchema {
     is_system: bool,
 }
 
-pub async fn list_schemas(context: &ToolContext, args: ConnectionArgs) -> Result<String, ToolError> {
+pub async fn list_schemas(context: &ToolContext, args: DatabaseArgs) -> Result<String, ToolError> {
     let connection = context.connection(&args.connection_id)?;
-    let session = context.session(&connection).await?;
+    let session = context
+        .held_session(&connection, args.database.as_deref())
+        .await?
+        .session;
     let schemas = session
         .schemas()
         .await
@@ -39,6 +42,48 @@ pub async fn list_schemas(context: &ToolContext, args: ConnectionArgs) -> Result
             })
             .collect(),
     })
+}
+
+#[derive(Serialize)]
+struct DatabaseList {
+    databases: Vec<ListedDatabase>,
+}
+
+#[derive(Serialize)]
+struct ListedDatabase {
+    name: String,
+    is_current: bool,
+}
+
+pub async fn list_databases(context: &ToolContext, args: ConnectionArgs) -> Result<String, ToolError> {
+    let connection = context.connection(&args.connection_id)?;
+    let session = context.session(&connection).await?;
+    let databases = session
+        .run(OperationKind::Metadata, |lease, call| async move {
+            Ok(lease.list_databases(call).await?)
+        })
+        .await
+        .map_err(|error| match error {
+            OperationError::Driver(DriverError::Unsupported { .. }) => ToolError::Unsupported(format!(
+                "“{}” reaches one database and lists no others",
+                connection.name
+            )),
+            error => ToolError::from_operation(&error),
+        })?;
+    to_json(&database_list(&databases))
+}
+
+fn database_list(databases: &[SchemaInfo]) -> DatabaseList {
+    DatabaseList {
+        databases: databases
+            .iter()
+            .map(|database| ListedDatabase {
+                name: database.name.clone(),
+                // The driver marks the connection's own database as the default.
+                is_current: database.is_default,
+            })
+            .collect(),
+    }
 }
 
 #[derive(Serialize)]
@@ -58,7 +103,10 @@ struct ListedTable {
 /// client just created is there; the read also refreshes the sidebar.
 pub async fn list_tables(context: &ToolContext, args: SchemaArgs) -> Result<String, ToolError> {
     let connection = context.connection(&args.connection_id)?;
-    let session = context.session(&connection).await?;
+    let session = context
+        .held_session(&connection, args.database.as_deref())
+        .await?
+        .session;
     let scope = match args.schema {
         Some(schema) => ObjectScope::Schema(schema),
         None => ObjectScope::DefaultSchema,
@@ -147,7 +195,10 @@ type TableParts = (Vec<ColumnInfo>, Vec<IndexInfo>, Vec<ForeignKeyInfo>, RowCoun
 
 pub async fn describe_table(context: &ToolContext, args: TableArgs) -> Result<String, ToolError> {
     let connection = context.connection(&args.connection_id)?;
-    let session = context.session(&connection).await?;
+    let session = context
+        .held_session(&connection, args.database.as_deref())
+        .await?
+        .session;
     let table = TableRef::new(args.schema, args.table);
     let read: Result<TableParts, OperationError> = session
         .run(OperationKind::Metadata, |lease, call| {
@@ -251,7 +302,10 @@ struct TableDdl {
 /// dialect.
 pub async fn get_table_ddl(context: &ToolContext, args: TableArgs) -> Result<String, ToolError> {
     let connection = context.connection(&args.connection_id)?;
-    let session = context.session(&connection).await?;
+    let session = context
+        .held_session(&connection, args.database.as_deref())
+        .await?
+        .session;
     let table = TableRef::new(args.schema, args.table);
     let read = session
         .run(OperationKind::Metadata, |lease, call| {
@@ -284,4 +338,30 @@ pub fn no_such_table(table: &TableRef) -> ToolError {
         Some(schema) => format!("no table or view named {} in schema {schema}", table.name),
         None => format!("no table or view named {} in the default schema", table.name),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_connections_own_database_is_the_current_one() {
+        let database = |name: &str, is_default: bool, is_system: bool| SchemaInfo {
+            name: name.to_owned(),
+            is_default,
+            is_system,
+        };
+
+        let listed = to_json(&database_list(&[
+            database("analytics", false, false),
+            database("shop", true, false),
+            database("postgres", false, true),
+        ]))
+        .expect("JSON");
+
+        assert_eq!(
+            listed,
+            r#"{"databases":[{"name":"analytics","is_current":false},{"name":"shop","is_current":true},{"name":"postgres","is_current":false}]}"#
+        );
+    }
 }

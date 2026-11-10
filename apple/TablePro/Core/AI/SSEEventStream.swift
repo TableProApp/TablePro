@@ -7,6 +7,13 @@ import Foundation
 import TableProHTTP
 
 enum SSEEventStream {
+    // WHATWG event stream: the field ends at the colon, and one space after it is optional.
+    static func dataPayload(_ line: String) -> String? {
+        guard line.hasPrefix("data:") else { return nil }
+        let value = line.dropFirst(5)
+        return String(value.first == " " ? value.dropFirst() : value)
+    }
+
     static func make<State>(
         session: URLSession,
         treatForbiddenAsAuthFailure: Bool = false,
@@ -14,7 +21,7 @@ enum SSEEventStream {
         decodeLine: @escaping @Sendable (String) -> [String: Any]?,
         makeState: @escaping @Sendable () -> State,
         parse: @escaping @Sendable ([String: Any], inout State) throws -> [ChatStreamEvent],
-        finalEvents: @escaping @Sendable (State) -> [ChatStreamEvent] = { _ in [] },
+        finalEvents: @escaping @Sendable (State) throws -> [ChatStreamEvent] = { _ in [] },
         refreshOnUnauthorized: (@Sendable () async throws -> Void)? = nil
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -48,7 +55,7 @@ enum SSEEventStream {
                         let events = try parse(json, &state)
                         for event in events { continuation.yield(event) }
                     }
-                    for final in finalEvents(state) {
+                    for final in try finalEvents(state) {
                         continuation.yield(final)
                     }
                     continuation.finish()

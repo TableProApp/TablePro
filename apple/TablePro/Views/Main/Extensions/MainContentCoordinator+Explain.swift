@@ -15,6 +15,17 @@ import TableProSQLGrammar
 extension MainContentCoordinator {
     @discardableResult
     func runExplain(variant: ExplainVariant? = nil) -> Task<Void, Never>? {
+        guard let tabId = tabManager.selectedTabId else { return nil }
+        // Nil when the discard prompt has to ask first: the plan follows the answer.
+        var started: Task<Void, Never>?
+        confirmRunDiscard(onTab: tabId) { [weak self] in
+            started = self?.startExplain(variant: variant)
+        }
+        return started
+    }
+
+    private func startExplain(variant: ExplainVariant?) -> Task<Void, Never>? {
+        if let tabId = tabManager.selectedTabId { flushEditorText(forTab: tabId) }
         guard let (tab, index) = tabManager.selectedTabAndIndex else { return nil }
         guard !tabExecution.isExecuting(tab.id) else {
             traceExecutionBlocked(tabId: tab.id, site: "runExplain")
@@ -197,6 +208,7 @@ extension MainContentCoordinator {
                         }
                     }
                     seedBufferFromActiveResult(tabId: tabId)
+                    dropParkedEdits(ofBackgroundTab: tabId)
                     toolbarState.isResultsCollapsed = false
 
                     recordHistory(

@@ -528,8 +528,8 @@ extension DatabaseManager {
         let sessionStartedAt = session.connectedAt
         let generation = sessionLanes.beginSwitch(for: connectionId)
 
-        let target: DatabaseDriver
-        let freshlyOpened: Bool
+        var target: DatabaseDriver
+        var freshlyOpened: Bool
         if let parkedDriver = await answeringParkedDriver(database: database, for: connectionId) {
             target = parkedDriver
             freshlyOpened = false
@@ -546,6 +546,13 @@ extension DatabaseManager {
         else {
             if freshlyOpened { target.disconnect() }
             throw CancellationError()
+        }
+        // A statement on this database opened its connection while this open was in flight, and may hold
+        // a transaction there. That connection is the one to browse on; the one opened here is closed.
+        if freshlyOpened, let parkedMeanwhile = sessionLanes.parkedDriver(for: connectionId, database: database) {
+            target.disconnect()
+            target = parkedMeanwhile
+            freshlyOpened = false
         }
 
         _ = sessionLanes.unpark(database: database, for: connectionId)
@@ -656,6 +663,8 @@ extension DatabaseManager {
         let previousBrowseSchema = previous.browseSchema
         let previousSavedSchema = appSettingsStorage.loadLastSchema(for: connectionId)
 
+        // Noted under the database being left, before the session names the target.
+        noteTransactionLost(with: previous.driver, for: connectionId)
         updateSession(connectionId) { session in
             session.connection.database = database
             session.browseDatabase = database

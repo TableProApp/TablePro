@@ -6,34 +6,31 @@
 import Foundation
 import TableProPluginKit
 
-/// Maps a source column's declared type to the DuckDB type the staging table uses.
-///
-/// Parquet is a typed format, so writing every column as a string would produce a file that reads
-/// back with no numbers, no dates and no booleans. The source engine's own type name is the only
-/// thing that says what a column holds, because a streamed value arrives as text either way.
+// A streamed value arrives as text whatever it holds, so the declared type decides the column's
+// Parquet type. A column whose values do not fit it is written as text (DuckDBStagingDatabase).
 public enum ParquetTypeMapper {
-    /// The DuckDB type for a column, or `VARCHAR` when nothing better is known. A value that fails
-    /// to cast becomes null rather than failing the export, which is what `TRY_CAST` gives.
     public static func duckDBType(forColumnType typeName: String, databaseTypeId: String) -> String {
         let base = baseName(typeName)
         if let moneyType = fixedPointMoneyTypes[databaseTypeId]?[base] { return moneyType }
-        if integerTypes.contains(base) { return "BIGINT" }
+        if integerTypes.contains(base) {
+            return base == "bigint" && isUnsigned(typeName) ? "UBIGINT" : "BIGINT"
+        }
         if exactNumericTypes.contains(base) {
             guard !enginesIgnoringDeclaredPrecision.contains(databaseTypeId) else { return "DOUBLE" }
             return exactNumericType(declaredAs: typeName)
         }
         if approximateNumericTypes.contains(base) { return "DOUBLE" }
         if booleanTypes.contains(base) { return "BOOLEAN" }
-        if dateTypes.contains(base) { return "DATE" }
+        if base == "bit" { return isSingleBit(typeName) ? "BOOLEAN" : "VARCHAR" }
+        if dateTypes.contains(base) {
+            return enginesWhereDateCarriesTime.contains(databaseTypeId) ? "TIMESTAMP" : "DATE"
+        }
         if timestampTypes.contains(base) { return "TIMESTAMP" }
         if timeTypes.contains(base) { return "TIME" }
         if binaryTypes.contains(base) { return "BLOB" }
         return "VARCHAR"
     }
 
-    /// A type name carries its width in parentheses (`VARCHAR(64)`, `NUMERIC(10,2)`) and sometimes a
-    /// modifier after a space (`INT UNSIGNED`, `TIMESTAMP WITH TIME ZONE`). Only the first word
-    /// before either matters here.
     public static func baseName(_ typeName: String) -> String {
         let trimmed = typeName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let withoutArgs = trimmed.split(separator: "(", maxSplits: 1).first.map(String.init) ?? trimmed
@@ -42,6 +39,21 @@ public enum ParquetTypeMapper {
             .split(separator: " ")
             .first
             .map(String.init) ?? withoutArgs
+    }
+
+    private static func words(_ typeName: String) -> [Substring] {
+        typeName.lowercased().split { !$0.isLetter }
+    }
+
+    private static func isUnsigned(_ typeName: String) -> Bool {
+        words(typeName).contains("unsigned")
+    }
+
+    // `bit` and `bit(1)` hold one flag. `bit(8)` and `bit varying` hold a string of them.
+    private static func isSingleBit(_ typeName: String) -> Bool {
+        guard !words(typeName).contains("varying") else { return false }
+        guard let width = typeArguments(typeName).first else { return true }
+        return Int(width) == 1
     }
 
     private static func exactNumericType(declaredAs typeName: String) -> String {
@@ -85,7 +97,9 @@ public enum ParquetTypeMapper {
         "float", "float4", "float8", "double", "real", "binary_float", "binary_double"
     ]
 
-    private static let booleanTypes: Set<String> = ["bool", "boolean", "bit"]
+    private static let booleanTypes: Set<String> = ["bool", "boolean"]
+
+    private static let enginesWhereDateCarriesTime: Set<String> = ["Oracle"]
 
     private static let dateTypes: Set<String> = ["date"]
 

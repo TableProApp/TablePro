@@ -234,3 +234,106 @@ fn a_followed_tab_keeps_its_filter_in_the_saved_tabs_and_through_a_reopen() {
     assert_eq!(reopened.table(), "customers");
     assert_eq!(reopened.applied_filter(), customer("42").filter);
 }
+
+#[gtk4::test]
+fn reopening_a_closed_unsorted_table_does_not_apply_the_default() {
+    let test = TestWindow::connected_with("ReopenUnsortedGrid", serving_tables);
+    test.services
+        .settings
+        .set_default_sort("primary-key")
+        .expect("default sort");
+    test.services
+        .settings
+        .set_default_sort_direction("descending")
+        .expect("direction");
+    let (_, page) = open_orders(&test);
+    let tab = page.child().downcast::<BrowseTab>().expect("table tab");
+    wait_until(WAIT, || !tab.is_loading() && tab.grid().store().len() == 1).expect("initial page");
+    assert_eq!(tab.current_sort(), Some((0, false)));
+    tab.grid().sort_by(None);
+    wait_until(WAIT, || !tab.is_loading() && tab.current_sort().is_none()).expect("clear sort");
+    let workspace = test.workspace();
+    let view = shell_of(&workspace).imp().tab_view.clone();
+    let count = view.n_pages();
+    workspace
+        .sender()
+        .expect("input")
+        .deliver(WorkspaceInput::CloseActiveWorkspaceTab);
+    wait_until(WAIT, || view.n_pages() < count).expect("closed table");
+
+    WidgetExt::activate_action(&test.window, "win.reopen-closed-tab", None).expect("reopen");
+    let mut reopened = None;
+    wait_until(WAIT, || {
+        reopened = view
+            .selected_page()
+            .filter(|candidate| candidate != &page)
+            .and_then(|page| page.child().downcast::<BrowseTab>().ok());
+        reopened
+            .as_ref()
+            .is_some_and(|tab| !tab.is_loading() && tab.grid().store().len() == 1)
+    })
+    .expect("reopened table");
+    assert_eq!(reopened.expect("tab").current_sort(), None);
+}
+
+#[gtk4::test]
+fn session_restore_keeps_an_unsorted_first_page() {
+    use crate::test_support::finish_on_main;
+    use crate::ui::SessionWindowInput;
+    use crate::ui::session_window::tests::Script;
+    use crate::workspace::WorkspaceRecord;
+
+    let mut connection = ConnectionScript::default();
+    serving_tables(&mut connection);
+    let test = TestWindow::with_script(
+        "RestoreUnsortedGrid",
+        Script {
+            connection,
+            ..Script::default()
+        },
+    );
+    test.services
+        .settings
+        .set_default_sort("primary-key")
+        .expect("default sort");
+    test.services
+        .settings
+        .set_default_sort_direction("descending")
+        .expect("direction");
+    let store = test.services.storage.workspaces();
+    store
+        .schedule(
+            &test.key(),
+            WorkspaceRecord {
+                active_tab: Some(0),
+                tabs: vec![TabRecord::Table {
+                    schema: None,
+                    table: "orders".into(),
+                    offset: 0,
+                    page_size: 100,
+                    sort: None,
+                    filter: None,
+                }],
+            },
+        )
+        .expect("saved table");
+    finish_on_main(WAIT, store.flush(&test.key()))
+        .expect("flush")
+        .expect("save");
+
+    test.window
+        .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+    test.wait_for_page("workspace");
+    let view = shell_of(&test.workspace()).imp().tab_view.clone();
+    let mut restored = None;
+    wait_until(WAIT, || {
+        restored = view
+            .selected_page()
+            .and_then(|page| page.child().downcast::<BrowseTab>().ok());
+        restored
+            .as_ref()
+            .is_some_and(|tab| !tab.is_loading() && tab.grid().store().len() == 1)
+    })
+    .expect("restored table");
+    assert_eq!(restored.expect("tab").current_sort(), None);
+}
