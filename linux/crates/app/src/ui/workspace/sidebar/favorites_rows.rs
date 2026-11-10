@@ -202,8 +202,7 @@ pub(super) fn install_menu(
             };
             gesture.set_state(gtk::EventSequenceState::Claimed);
             menu.set_menu_model(Some(&menu_of(key)));
-            menu.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
-            menu.popup();
+            crate::ui::context_menu::popup_at(&menu, Some(gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
         }
     });
     list.add_controller(click);
@@ -272,8 +271,7 @@ fn install_keys(
                     )
                 });
             menu.set_menu_model(Some(&menu_of(row_key)));
-            menu.set_pointing_to(anchor.as_ref());
-            menu.popup();
+            crate::ui::context_menu::popup_at(&menu, anchor);
             return glib::Propagation::Stop;
         }
         if !modifiers.is_empty() {

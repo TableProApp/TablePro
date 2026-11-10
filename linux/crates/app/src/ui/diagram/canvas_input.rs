@@ -231,8 +231,7 @@ pub(super) fn popup_menu(canvas: &DiagramCanvas, at: gdk::Rectangle) {
             popover
         })
         .clone();
-    popover.set_pointing_to(Some(&at));
-    popover.popup();
+    crate::ui::context_menu::popup_at(&popover, Some(at));
 }
 
 fn table_menu() -> gio::Menu {

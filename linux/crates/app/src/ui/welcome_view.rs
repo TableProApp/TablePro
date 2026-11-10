@@ -517,8 +517,7 @@ impl WelcomeView {
         let stack = self.imp().stack.get();
         let at = list_view.compute_point(&stack, &graphene::Point::new(x as f32, y as f32));
         let pointing = at.map(|point| gdk::Rectangle::new(point.x() as i32, point.y() as i32, 1, 1));
-        parts.menu.set_pointing_to(pointing.as_ref());
-        parts.menu.popup();
+        crate::ui::context_menu::popup_at(&parts.menu, pointing);
     }
 
     fn activate(&self, which: Which, position: u32) {

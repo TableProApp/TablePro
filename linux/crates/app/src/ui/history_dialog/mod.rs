@@ -328,8 +328,7 @@ impl HistoryDialog {
             }),
         };
         parts.menu.set_menu_model(Some(&row_menu(&entry)));
-        parts.menu.set_pointing_to(pointing.as_ref());
-        parts.menu.popup();
+        crate::ui::context_menu::popup_at(&parts.menu, pointing);
     }
 
     fn popup_focused_row_menu(&self) {

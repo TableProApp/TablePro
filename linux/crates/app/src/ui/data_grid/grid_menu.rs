@@ -341,8 +341,7 @@ impl DataGrid {
                 rect.height(),
             ))
         });
-        popover.set_pointing_to(at.as_ref());
-        popover.popup();
+        crate::ui::context_menu::popup_at(popover, at);
     }
 
     pub(crate) fn bounds_in_view(&self, widget: &gtk::Widget) -> Option<gdk::Rectangle> {
