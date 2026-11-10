@@ -21,7 +21,7 @@ nonisolated enum PostgreSQLConnectionString {
             ("connect_timeout", String(connectTimeoutSeconds)),
             ("sslmode", ssl.postgresSSLMode),
             ("client_encoding", clientEncoding),
-        ]
+        ] + SessionSocketKeepalive.libpqParameters
 
         if let caPath = ssl.existingCACertificatePath {
             parameters.append(("sslrootcert", caPath))

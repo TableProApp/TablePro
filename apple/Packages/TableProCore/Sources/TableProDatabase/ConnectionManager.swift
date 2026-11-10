@@ -99,7 +99,10 @@ public final class ConnectionManager: @unchecked Sendable {
             let driver = try driverFactory.createDriver(
                 for: effectiveConnection,
                 password: password,
-                preTunnelHost: preTunnelHost
+                preTunnelHost: preTunnelHost,
+                refreshPassword: Self.passwordRefresh(
+                    for: connection, stored: stored, factory: driverFactory, secureStore: secureStore
+                )
             )
             try await driver.connect()
 
@@ -407,6 +410,16 @@ public final class ConnectionManager: @unchecked Sendable {
         return catalogs[connectionId] === connection
     }
 
+    // Resolves for the connection as saved: behind a tunnel the driver's own connection names the loopback.
+    private static func passwordRefresh(
+        for saved: DatabaseConnection,
+        stored: String?,
+        factory: DriverFactory,
+        secureStore: SecureStore
+    ) -> @Sendable () async throws -> String? {
+        { try await factory.resolvePassword(for: saved, stored: stored, secureStore: secureStore) }
+    }
+
     private static func openCatalogDriver(
         dial: SessionDial,
         database: String,
@@ -420,7 +433,12 @@ public final class ConnectionManager: @unchecked Sendable {
         // An IAM token is minted for the saved host and expires, so each catalog connection gets its own.
         let stored = try secureStore.retrieve(forKey: passwordKey(for: dial.saved.id))
         let password = try await factory.resolvePassword(for: dial.saved, stored: stored, secureStore: secureStore)
-        let driver = try factory.createDriver(for: target, password: password, preTunnelHost: dial.preTunnelHost)
+        let driver = try factory.createDriver(
+            for: target,
+            password: password,
+            preTunnelHost: dial.preTunnelHost,
+            refreshPassword: passwordRefresh(for: dial.saved, stored: stored, factory: factory, secureStore: secureStore)
+        )
         try await driver.connect()
         do {
             try await factory.prepareCatalogDriver(driver, for: target)
