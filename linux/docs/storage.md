@@ -344,6 +344,12 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `show-row-numbers` | `b` | `true` | |
 | `grid-use-system-font` | `b` | `true` | |
 | `grid-font` | `s` | `Monospace 10` | |
+| `show-invisible-characters` | `b` | `true` | |
+| `auto-show-inspector` | `b` | `false` | |
+| `row-copy-format` | `s` | `rows` | rows, rows-headers, json, csv, csv-headers, markdown |
+| `default-sort` | `s` | `none` | `none`, `primary-key`, `first-column` |
+| `default-sort-direction` | `s` | `ascending` | `ascending`, `descending` |
+| `date-format` | `s` | `iso` | iso, iso-date, us-long, us-short, eu-long, eu-short; display only, copy and export retain original values |
 | `grid-row-height` | `s` | `normal` | compact, normal, comfortable, spacious |
 | `null-display` | `s` | `NULL` | Displayed as at most 20 characters, without control characters; blank uses NULL |
 | `confirm-bulk-delete` | `b` | `true` | |

@@ -87,6 +87,7 @@ crates/app/src/services/grid/cell_preset.rs
 crates/app/src/services/grid/column_layout.rs
 crates/app/src/services/grid/column_width.rs
 crates/app/src/services/grid/copy_scope.rs
+crates/app/src/services/grid/date_display.rs
 crates/app/src/services/grid/delete_availability.rs
 crates/app/src/services/grid/display_text.rs
 crates/app/src/services/grid/edit_navigation.rs
@@ -101,6 +102,7 @@ crates/app/src/services/grid/result_refusal.rs
 crates/app/src/services/grid/row_key_builder.rs
 crates/app/src/services/grid/row_snapshot.rs
 crates/app/src/services/grid/selection_summary.rs
+crates/app/src/services/grid/special_characters.rs
 crates/app/src/services/grid/test_columns.rs
 crates/app/src/services/history_availability.rs
 crates/app/src/services/history_preferences.rs
@@ -197,6 +199,7 @@ crates/app/src/ui/browse_tab/count_failure_text.rs
 crates/app/src/ui/browse_tab/count_policy.rs
 crates/app/src/ui/browse_tab/data_handlers.rs
 crates/app/src/ui/browse_tab/data_input.rs
+crates/app/src/ui/browse_tab/default_sort.rs
 crates/app/src/ui/browse_tab/fetch.rs
 crates/app/src/ui/browse_tab/grid_handlers.rs
 crates/app/src/ui/browse_tab/grid_input.rs
@@ -215,6 +218,7 @@ crates/app/src/ui/browse_tab/row_total.rs
 crates/app/src/ui/browse_tab/save_handlers.rs
 crates/app/src/ui/browse_tab/save_input.rs
 crates/app/src/ui/browse_tab/table_filter.rs
+crates/app/src/ui/browse_tab/tests/default_sort.rs
 crates/app/src/ui/browse_tab/tests/load.rs
 crates/app/src/ui/browse_tab/tests/mod.rs
 crates/app/src/ui/browse_tab/tests/references.rs
@@ -290,6 +294,7 @@ crates/app/src/ui/data_grid/row_detail/calendar.rs
 crates/app/src/ui/data_grid/row_detail/clock.rs
 crates/app/src/ui/data_grid/row_detail/fields.rs
 crates/app/src/ui/data_grid/row_detail/imp.rs
+crates/app/src/ui/data_grid/row_detail/invisibles.rs
 crates/app/src/ui/data_grid/row_detail/mod.rs
 crates/app/src/ui/data_grid/row_detail/picture.rs
 crates/app/src/ui/data_grid/row_detail/tests.rs
@@ -299,6 +304,7 @@ crates/app/src/ui/data_grid/row_number_column.rs
 crates/app/src/ui/data_grid/selection.rs
 crates/app/src/ui/data_grid/selection_summary.rs
 crates/app/src/ui/data_grid/server_sorter.rs
+crates/app/src/ui/data_grid/special_marks.rs
 crates/app/src/ui/data_grid/stripes.rs
 crates/app/src/ui/data_grid/table_keys.rs
 crates/app/src/ui/data_grid/test_grid.rs
