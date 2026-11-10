@@ -323,6 +323,41 @@ struct ConnectionSecretScopeTests {
         #expect(!succeeded.writeFailed)
     }
 
+    @Test("A save leaves a secret the form loaded and did not change as it is, even after another device changed it")
+    func unchangedSecretIsNotWrittenAgain() {
+        let connection = makeConnection(localOnly: false)
+        #expect(storage.addConnection(connection, password: "P1"))
+        let reads = storage.recordingSecretReads {
+            #expect(storage.loadPassword(for: connection.id) == "P1")
+        }
+        #expect(reads.loaded == [passwordKey(connection.id): "P1"])
+
+        keychain.seedSynced("P2", forKey: passwordKey(connection.id))
+        keychain.failWrites(to: passwordKey(connection.id))
+        let staged = storage.stagingSecretEdits(for: connection.id, deviceOnly: false, unchanged: reads.loaded) {
+            storage.savePassword("P1", for: connection.id)
+        }
+
+        #expect(!staged.writeFailed)
+        #expect(keychain.syncedValue(forKey: passwordKey(connection.id)) == "P2")
+    }
+
+    @Test("A save still writes a secret the form changed")
+    func changedSecretIsWritten() {
+        let connection = makeConnection(localOnly: false)
+        #expect(storage.addConnection(connection, password: "P1"))
+        let reads = storage.recordingSecretReads {
+            _ = storage.loadPassword(for: connection.id)
+        }
+
+        let staged = storage.stagingSecretEdits(for: connection.id, deviceOnly: false, unchanged: reads.loaded) {
+            storage.savePassword("P3", for: connection.id)
+        }
+
+        #expect(!staged.writeFailed)
+        #expect(keychain.syncedValue(forKey: passwordKey(connection.id)) == "P3")
+    }
+
     @Test("Staged writes take the scope the unsaved record will have")
     func stagedWritesTakeTheGivenScope() {
         let id = UUID()

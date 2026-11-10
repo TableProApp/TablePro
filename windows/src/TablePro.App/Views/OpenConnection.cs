@@ -22,6 +22,8 @@ internal sealed class OpenConnection
     private CancellationTokenSource? _connecting;
     private SessionConnection? _restore;
     private SessionShare? _share;
+    // A reconnect's tabs wait in _restore, so cancelling its connect keeps the item to retry instead of closing it.
+    private bool _keepOnCancel;
 
     public OpenConnection(Workbench workbench, SessionConnection origin)
     {
@@ -121,6 +123,7 @@ internal sealed class OpenConnection
             SetState(ConnectionState.Connected);
             View.ShowConnected(_share, _restore);
             _restore = null;
+            _keepOnCancel = false;
             if (Origin.ConnectionId is not null)
             {
                 _workbench.NotifyLibraryChanged();
@@ -129,7 +132,15 @@ internal sealed class OpenConnection
         catch (OperationCanceledException)
         {
             SetState(ConnectionState.NotConnected);
-            Cancelled?.Invoke(this, EventArgs.Empty);
+            if (_keepOnCancel)
+            {
+                var message = Strings.Get("ConnectCancelledKeepsTabs");
+                View.ShowFailed(message, message);
+            }
+            else
+            {
+                Cancelled?.Invoke(this, EventArgs.Empty);
+            }
         }
         catch (TableProException exception)
         {
@@ -232,12 +243,20 @@ internal sealed class OpenConnection
         }
     }
 
-    public async Task DisconnectAsync()
+    // A reconnect keeps the tabs, their text and the tabs closed before, to open again on the next session; only
+    // what their own connections held ends with this one.
+    public async Task DisconnectAsync(bool keepTabs = false)
     {
         CancelConnect();
+        _keepOnCancel = keepTabs;
+        if (keepTabs && State == ConnectionState.Connected && Snapshot() is { Tabs.Count: > 0 } tabs)
+        {
+            _restore = tabs;
+        }
+
         var share = _share;
         _share = null;
-        await View.CloseTabsAsync().ConfigureAwait(true);
+        await View.CloseTabsAsync(keepClosed: keepTabs).ConfigureAwait(true);
         if (share is not null)
         {
             await share.ReleaseAsync().ConfigureAwait(true);

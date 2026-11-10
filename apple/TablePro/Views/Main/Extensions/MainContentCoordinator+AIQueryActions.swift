@@ -43,7 +43,7 @@ extension MainContentCoordinator {
             target: AssistantEditorTarget(
                 tabId: tab.id,
                 scope: scope(for: tab),
-                errorMessage: tab.latestError?.message,
+                errorMessage: externalErrorText(tab.latestError?.message),
                 errorQuery: tab.latestError?.query
             )
         )
@@ -67,7 +67,7 @@ extension MainContentCoordinator {
             scope: scope(for: tab),
             databaseType: connection.type,
             source: source,
-            errorMessage: error
+            errorMessage: externalErrorText(error)
         )
         presentIdleAssistant()?.runQueryAction(request)
     }
@@ -99,8 +99,14 @@ extension MainContentCoordinator {
             scope: scope(for: tab),
             databaseType: connection.type,
             source: QueryEditorAnchor(tabId: tab.id, range: range),
-            explainPlan: explainPlan(in: tab, covering: range)
+            explainPlan: externalPlanText(explainPlan(in: tab, covering: range))
         )
+    }
+
+    // A plan can hold values the planner read, as MySQL's does from a const table; see `ExternalRowMasking.plan(in:)`.
+    private func externalPlanText(_ plan: String?) -> String? {
+        guard plan != nil, !maskingPolicy.isEmpty else { return plan }
+        return ExternalRowMasking.plan(in: connection.type.explainVariants.first?.format) == .byName ? plan : nil
     }
 
     func editorText(for target: AIQueryTarget, in fullQuery: String) -> (sql: String, offset: Int) {

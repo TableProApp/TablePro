@@ -7,6 +7,7 @@ mod combo_value;
 mod connect_dialog;
 mod connection_appearance;
 mod connection_list_banner;
+mod context_menu;
 pub(crate) mod credential_prompt;
 pub(crate) mod data_grid;
 mod definition_dialog;

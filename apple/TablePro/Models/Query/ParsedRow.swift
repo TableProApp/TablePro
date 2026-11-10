@@ -22,6 +22,9 @@ struct ParsedRow {
     /// The columns holding SQL the grid staged, which only the grid's own copy carries.
     var expressionColumns: Set<Int> = []
 
+    // Pasted text left these cells blank or had no field for them; their values are NULL until a paste fills them.
+    var blankColumns: Set<Int> = []
+
     /// Check if row has valid data
     var isValid: Bool {
         !values.isEmpty

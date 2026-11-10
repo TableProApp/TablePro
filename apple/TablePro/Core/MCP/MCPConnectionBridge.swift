@@ -86,6 +86,10 @@ public actor MCPConnectionBridge {
         return .object(result)
     }
 
+    func maskingPolicy(for connectionId: UUID) async -> MaskingPolicy {
+        await access.maskingPolicy(for: connectionId)
+    }
+
     func resolveScope(connectionId: UUID, database: String?, schema: String?) async throws -> DatabaseScope {
         try await access.resolveScope(connectionId: connectionId, database: database, schema: schema)
     }
@@ -121,14 +125,14 @@ public actor MCPConnectionBridge {
         maxRows: Int,
         timeoutSeconds: Int,
         cancellation: MCPCancellationToken?,
-        maskingTable: String? = nil
+        masking: ExternalRowMasking = .byOrigin
     ) async throws -> JsonValue {
         let outcome = try await runStatement(
             operation,
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
             cancellation: cancellation,
-            maskingTable: maskingTable
+            masking: masking
         )
         return Self.encode(
             result: outcome.result,
@@ -157,14 +161,14 @@ public actor MCPConnectionBridge {
         maxRows: Int,
         timeoutSeconds: Int,
         cancellation: MCPCancellationToken?,
-        maskingTable: String? = nil
+        masking: ExternalRowMasking = .byOrigin
     ) async throws -> (result: QueryResult, executionTimeMs: Double) {
         let outcome = try await access.runStatement(
             operation,
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
             cancellation: cancellation,
-            maskingTable: maskingTable
+            masking: masking
         )
         return (outcome.result, outcome.executionTimeMs)
     }
@@ -173,13 +177,15 @@ public actor MCPConnectionBridge {
         _ operation: ApprovedOperation,
         step: ExplainRequest.DriverStep,
         timeoutSeconds: Int,
-        cancellation: MCPCancellationToken?
+        cancellation: MCPCancellationToken?,
+        masking: ExternalRowMasking = .byOrigin
     ) async throws -> (result: QueryResult, executionTimeMs: Double) {
         let outcome = try await access.runExplainPlan(
             operation,
             step: step,
             timeoutSeconds: timeoutSeconds,
-            cancellation: cancellation
+            cancellation: cancellation,
+            masking: masking
         )
         return (outcome.result, outcome.executionTimeMs)
     }

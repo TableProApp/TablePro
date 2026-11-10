@@ -72,6 +72,7 @@ fn more_menu(page_sizes: &[u64]) -> gio::Menu {
     actions.append(Some(&gettext("Col_umns…")), Some("grid.columns"));
     actions.append_item(&export);
     actions.append(Some(&gettext("_Count Rows")), Some("browse.count-rows"));
+    actions.append(Some(&gettext("_Highlight Rules…")), Some("grid.highlight-rules"));
     let sizes = gio::Menu::new();
     for size in page_sizes {
         let item = gio::MenuItem::new(Some(&format_thousands(*size)), None);
@@ -317,6 +318,18 @@ mod tests {
             .expect("Export Rows in the More menu");
 
         assert_eq!(read(export, "accel").as_deref(), Some("<Primary><Shift>e"));
+    }
+
+    #[test]
+    fn the_narrow_menu_keeps_highlight_rules_available() {
+        let actions = more_menu(&[]).item_link(0, "section").expect("actions");
+        assert!((0..actions.n_items()).any(|item| {
+            actions
+                .item_attribute_value(item, "action", None)
+                .and_then(|value| value.get::<String>())
+                .as_deref()
+                == Some("grid.highlight-rules")
+        }));
     }
 
     #[gtk4::test]

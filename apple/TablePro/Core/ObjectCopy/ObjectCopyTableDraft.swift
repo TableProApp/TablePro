@@ -30,6 +30,8 @@ internal struct ObjectCopyTableDraft {
     /// column, and each side has to be quoted the way its own server spells it.
     let sourceColumns: [String]
     let targetColumns: [String]
+    // Keyed by target column. The INSERT binds a MySQL BIT as a number, not as text whose bytes it would store.
+    let targetColumnTypeNames: [String: String]
     let writesStructure: Bool
     let dropsFirst: Bool
     let emptiesFirst: Bool
@@ -110,6 +112,9 @@ internal struct ObjectCopyTableDraft {
         )
         self.sourceColumns = pairs.map(\.source)
         self.targetColumns = pairs.map(\.target)
+        self.targetColumnTypeNames = Self.typeNames(
+            of: pairs.map(\.target), in: writesStructure ? translation.snapshot : targetSnapshot
+        )
         let copiesData = request.content.includesData && !pairs.isEmpty && (writesStructure || existsInTarget)
         self.copiesData = copiesData
 
@@ -185,6 +190,19 @@ internal struct ObjectCopyTableDraft {
         }
     }
 
+    static func typeNames(of targetColumns: [String], in structure: TableStructureSnapshot?) -> [String: String] {
+        guard let structure else { return [:] }
+        var declared: [String: String] = [:]
+        for column in structure.columns where declared[column.name] == nil {
+            declared[column.name] = column.typeNameForClassification
+        }
+        var names: [String: String] = [:]
+        for column in targetColumns {
+            names[column] = declared[column]
+        }
+        return names
+    }
+
     /// Nil where the two engines share a type family, and nil where the columns that are written
     /// hold nothing whose spelling differs between them. A copy that needs no reshaping runs the
     /// loop it ran before this existed.
@@ -212,7 +230,9 @@ internal struct ObjectCopyTableDraft {
                 target: targetKinds[$0.target.lowercased()]
             )
         }
-        let coercer = CrossEngineValueCoercer(pairs: columnPairs, from: source)
+        let coercer = CrossEngineValueCoercer(
+            pairs: columnPairs, from: source, to: SQLTypeFamily.of(request.target.databaseType)
+        )
         return coercer.isNeeded ? coercer : nil
     }
 

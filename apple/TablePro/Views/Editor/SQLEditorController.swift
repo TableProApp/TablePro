@@ -100,6 +100,9 @@ final class SQLEditorController {
     func apply(_ newInput: SQLEditorInput) {
         guard !isTornDown else { return }
         let old = input
+        if newInput.tabID != old.tabID {
+            handOverPendingText(to: old.text)
+        }
         input = newInput
         applyInput(newInput)
         pushEditor()
@@ -132,12 +135,20 @@ final class SQLEditorController {
     func teardown() {
         guard !isTornDown else { return }
         isTornDown = true
+        handOverPendingText(to: input.text)
         profileTask?.cancel()
         profileTask = nil
         revisionSubscription = nil
         favoritesCancellables.removeAll()
         cancellables.removeAll()
         host?.dismantle()
+    }
+
+    // A large document's last keys are still on their way to the binding when the editor moves to another tab or
+    // goes away. Both run inside a SwiftUI update, where writing the tab would publish mid-update, so it lands next turn.
+    private func handOverPendingText(to binding: Binding<String>) {
+        guard let text = host?.takePendingTextWriteback() else { return }
+        Task { @MainActor in binding.wrappedValue = text }
     }
 
     private func applyInput(_ input: SQLEditorInput) {

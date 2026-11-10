@@ -28,6 +28,11 @@ nonisolated protocol CertificateMaterialStoring: Sendable {
 nonisolated final class CertificateMaterialStore: CertificateMaterialStoring {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CertificateMaterialStore")
     private let serviceName = "com.TablePro.clientCertificates"
+    private let items: any KeychainItemStore
+
+    init(items: any KeychainItemStore = SystemKeychainItemStore()) {
+        self.items = items
+    }
 
     private func account(_ role: CertificateRole, _ connectionId: UUID) -> String {
         "\(connectionId.uuidString).\(role.rawValue)"
@@ -38,21 +43,27 @@ nonisolated final class CertificateMaterialStore: CertificateMaterialStoring {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
             kSecAttrAccount as String: account(role, connectionId),
+            kSecAttrSynchronizable as String: false,
             kSecUseDataProtectionKeychain as String: true,
         ]
     }
 
+    // Updated in place: a delete then a failed add would lose the certificate the connection already uses.
     func store(_ pem: String, role: CertificateRole, for connectionId: UUID) throws {
         guard let data = pem.data(using: .utf8) else { return }
 
-        SecItemDelete(baseQuery(role, connectionId) as CFDictionary)
-
-        var addQuery = baseQuery(role, connectionId)
-        addQuery[kSecValueData as String] = data
-        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        addQuery[kSecAttrSynchronizable as String] = false
-
-        let status = SecItemAdd(addQuery as CFDictionary, nil)
+        let target = baseQuery(role, connectionId)
+        let accessible = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        var status = items.update(target, attributes: [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: accessible,
+        ])
+        if status == errSecItemNotFound {
+            var attributes = target
+            attributes[kSecValueData as String] = data
+            attributes[kSecAttrAccessible as String] = accessible
+            status = items.add(attributes)
+        }
         guard status == errSecSuccess else {
             Self.logger.error("Storing \(role.rawValue, privacy: .public) failed with \(status)")
             throw CertificateStoreError.writeFailed(status)
@@ -60,18 +71,13 @@ nonisolated final class CertificateMaterialStore: CertificateMaterialStoring {
     }
 
     func pem(role: CertificateRole, for connectionId: UUID) -> String? {
-        var query = baseQuery(role, connectionId)
-        query[kSecReturnData as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
-
-        var result: AnyObject?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else { return nil }
+        let found = items.copyItem(baseQuery(role, connectionId))
+        guard found.status == errSecSuccess, let data = found.data else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
     func delete(role: CertificateRole, for connectionId: UUID) {
-        SecItemDelete(baseQuery(role, connectionId) as CFDictionary)
+        _ = items.delete(baseQuery(role, connectionId))
     }
 
     func deleteAll(for connectionId: UUID) {

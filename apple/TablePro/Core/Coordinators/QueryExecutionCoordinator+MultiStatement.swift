@@ -79,7 +79,8 @@ extension QueryExecutionCoordinator {
             absentCells: result.absentCells,
             masks: parent.columnMasks(forTabId: tabId, table: tableName, columns: columns, columnTypes: result.columnTypes),
             exportPolicy: parent.exportMaskingPolicy(forTabId: tabId),
-            exportTable: tableName
+            exportTable: tableName,
+            columnOrigins: result.columnOrigins
         )
         let resultSet = ResultSet(
             label: ResultSet.label(tableName: tableName, anchor: anchor, index: index),

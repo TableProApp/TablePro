@@ -40,6 +40,12 @@ public final class SourceEditorHost {
         SourceEditor.dismantleNSViewController(controller, coordinator: coordinator)
     }
 
+    // A large document's edit reaches the binding on a delay; nil when nothing is waiting.
+    public func takePendingTextWriteback() -> String? {
+        guard let textView = controller.textView else { return nil }
+        return coordinator.textSync.takePendingWriteback(from: textView)
+    }
+
     // A SwiftUI state write leads to an update pass that consumes the editor's change latch; without one the latch
     // would swallow the next text the owner pushes.
     private func stateDidChange(from old: SourceEditorState, to new: SourceEditorState) {

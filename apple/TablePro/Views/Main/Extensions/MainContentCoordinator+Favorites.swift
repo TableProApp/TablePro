@@ -32,6 +32,7 @@ extension MainContentCoordinator {
     }
 
     func saveCurrentQueryAsFavorite() {
+        if let tabId = tabManager.selectedTabId { flushEditorText(forTab: tabId) }
         guard let tab = tabManager.selectedTab,
               tab.tabType == .query else { return }
         let query = tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines)

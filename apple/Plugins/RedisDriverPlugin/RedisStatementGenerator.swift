@@ -26,6 +26,8 @@ struct RedisStatementGenerator {
     var deleteBatching: RedisDeleteBatching = .singleCommand
     // `SET ... KEEPTTL` needs Redis 6.0. An older server gets the expiry put back from the grid.
     var keepsTTLOnSet = true
+    var partitionsKeyspace = false
+    var stagingToken: @Sendable () -> String = { UUID().uuidString.lowercased() }
 
     static func serverKeepsTTLOnSet(version: String?) -> Bool {
         guard let major = version?.split(separator: ".").first.flatMap({ Int($0) }) else { return true }
@@ -146,13 +148,7 @@ struct RedisStatementGenerator {
 
         let typeName = type?.lowercased() ?? "string"
         guard typeName.isEmpty || Self.insertableTypes.contains(typeName) else {
-            throw PluginRowWriteRefusal(
-                rowIndex: change.rowIndex,
-                reason: String(
-                    format: String(localized: "A %@ key cannot be added from the grid. Add it with a command in the query editor."),
-                    typeName
-                )
-            )
+            throw Self.notAddable(typeName, rowIndex: change.rowIndex)
         }
 
         var ttl: Int?
@@ -165,19 +161,42 @@ struct RedisStatementGenerator {
 
         let encodedValue = value ?? RedisArgumentCodec.quote("")
         let expiry = ttl.flatMap { $0 > 0 ? $0 : nil }
-        guard let collectionCommand = collectionInsertCommand(key: k, encodedValue: encodedValue, type: typeName) else {
+        guard Self.collectionTypes.contains(typeName) else {
             let expiryOption = expiry.map { " EX \($0)" } ?? ""
             let set = "SET \(RedisArgumentCodec.quote(k)) \(encodedValue)\(expiryOption) NX"
             return [RedisConditionalWrite.statement(set)]
         }
+        guard let staging = RedisConditionalWrite.stagingKey(
+                  for: k, token: stagingToken(), partitioned: partitionsKeyspace
+              ),
+              let collectionCommand = collectionInsertCommand(key: staging, encodedValue: encodedValue, type: typeName)
+        else {
+            throw Self.notAddable(typeName, rowIndex: change.rowIndex)
+        }
+        // RENAMENX carries the staging key's TTL over. In a block the DEL drops a staging key the rename
+        // refused; run a statement at a time, the driver drops it before it fails the save.
+        let quotedStaging = RedisArgumentCodec.quote(staging)
         var commands = [collectionCommand]
         if let expiry {
-            commands.append("EXPIRE \(RedisArgumentCodec.quote(k)) \(expiry)")
+            commands.append("EXPIRE \(quotedStaging) \(expiry)")
         }
+        commands.append(RedisConditionalWrite.statement("RENAMENX \(quotedStaging) \(RedisArgumentCodec.quote(k))"))
+        commands.append("DEL \(quotedStaging)")
         return commands
     }
 
-    // Nil for a string, which is written by a `SET` that carries its own expiry and key check.
+    private static let collectionTypes: Set<String> = ["hash", "list", "set", "zset"]
+
+    private static func notAddable(_ typeName: String, rowIndex: Int) -> PluginRowWriteRefusal {
+        PluginRowWriteRefusal(
+            rowIndex: rowIndex,
+            reason: String(
+                format: String(localized: "A %@ key cannot be added from the grid. Add it with a command in the query editor."),
+                typeName
+            )
+        )
+    }
+
     private func collectionInsertCommand(key: String, encodedValue: String, type: String) -> String? {
         let quotedKey = RedisArgumentCodec.quote(key)
         switch type {

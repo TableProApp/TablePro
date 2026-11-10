@@ -66,6 +66,8 @@ final class ConnectionFormCoordinator: ObservableObject {
 
     // Filled by the reads that prefill the form: a field left empty because its secret could not be read is not a cleared one.
     private var unreadableSecretKeys: Set<String> = []
+    // What those reads found. A save leaves a secret the user did not change as it is in the Keychain.
+    private var loadedSecrets: [String: String] = [:]
 
     private var childChangeForwarding: AnyCancellable?
 
@@ -225,7 +227,7 @@ final class ConnectionFormCoordinator: ObservableObject {
                 "[trace] load found existing id=\(existing.id.uuidString, privacy: .public) name='\(existing.name, privacy: .private(mask: .hash))' promptForPassword=\(existing.promptForPassword)"
             )
             originalConnection = existing
-            unreadableSecretKeys = storage.recordingUnreadableSecrets {
+            let reads = storage.recordingSecretReads {
                 network.load(from: existing)
                 auth.load(from: existing, storage: storage)
                 ssh.load(from: existing, storage: storage)
@@ -239,6 +241,8 @@ final class ConnectionFormCoordinator: ObservableObject {
                 aiRules.load(from: existing)
                 maskingRules.load(from: existing)
             }
+            unreadableSecretKeys = reads.unreadable
+            loadedSecrets = reads.loaded
             normalizeTransport()
         }
         hasLoadedData = true
@@ -458,7 +462,8 @@ final class ConnectionFormCoordinator: ObservableObject {
         let stagedSecrets = storage.stagingSecretEdits(
             for: finalId,
             deviceOnly: !connectionToSave.participatesInSync,
-            keeping: unreadableSecretKeys
+            keeping: unreadableSecretKeys,
+            unchanged: loadedSecrets
         ) {
             for field in secureFieldValues {
                 if field.value.isEmpty {
@@ -523,6 +528,8 @@ final class ConnectionFormCoordinator: ObservableObject {
             cloudSQLProxy.save(to: finalId, storage: storage)
             socksProxy.save(to: finalId, storage: storage)
         }
+        // The Keychain may hold this save's values now, whether or not the record saves.
+        loadedSecrets = [:]
         guard !stagedSecrets.writeFailed else {
             saveError = String(localized: "Could not save this connection's passwords to the Keychain. Your changes were not saved.")
             return
