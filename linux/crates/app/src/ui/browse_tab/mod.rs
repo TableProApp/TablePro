@@ -177,20 +177,13 @@ impl BrowseTab {
             },
         );
         if let Some(state_key) = init.state_key.clone() {
-            let rules = init
-                .highlight_rules
-                .rules(&state_key, init.schema.as_deref(), &init.table);
-            if !rules.is_empty() {
-                grid.set_highlight_rules(rules);
-            }
-            let store = init.highlight_rules.clone();
-            // The grid's table, not the opening one, so a rename moves the rules with it.
-            grid.connect_highlight_rules_changed(move |grid| {
-                let Some(table) = grid.config().and_then(|config| config.table.clone()) else {
-                    return;
-                };
-                store.set_rules(&state_key, table.schema.as_deref(), &table.name, grid.highlight_rules());
-            });
+            keep_highlight_rules(
+                &grid,
+                &init.highlight_rules,
+                state_key,
+                init.schema.as_deref(),
+                &init.table,
+            );
         }
         let link_changes = init.session.link_changes();
         let model = BrowseModel {
@@ -700,6 +693,27 @@ impl BrowseModel {
     fn has_primary_key(&self) -> bool {
         self.current_columns.iter().any(|c| c.primary_key)
     }
+}
+
+fn keep_highlight_rules(
+    grid: &DataGrid,
+    store: &crate::persistence::HighlightRulesStore,
+    state_key: crate::persistence::TableStateKey,
+    schema: Option<&str>,
+    table: &str,
+) {
+    let rules = store.rules(&state_key, schema, table);
+    if !rules.is_empty() {
+        grid.set_highlight_rules(rules);
+    }
+    let store = store.clone();
+    // The grid's table, not the opening one, so a rename moves the rules with it.
+    grid.connect_highlight_rules_changed(move |grid| {
+        let Some(table) = grid.config().and_then(|config| config.table.clone()) else {
+            return;
+        };
+        store.set_rules(&state_key, table.schema.as_deref(), &table.name, grid.highlight_rules());
+    });
 }
 
 /// Whether a page of a table can be sorted on its engine. Without a
