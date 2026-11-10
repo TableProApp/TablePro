@@ -118,14 +118,19 @@ internal enum ConnectionWindowPaneResolver {
     /// with no renderable session behind it, so `empty` cannot be asked which of those it is.
     /// Laying a switcher over a window that is going away and stranding a window that is not are
     /// the same mistake read from the same value.
+    ///
+    /// A tree that lists the saved connections already names every connection the window has, so
+    /// the preference yields to it and the sidebar stays one tree. A pane with no content draws no
+    /// tree, which brings the strip back as it does for the preference.
     internal static func showsWorkspaceRail(
         preferenceEnabled: Bool,
         workspaceCount: Int,
         pane: ConnectionWindowPane,
-        isClosing: Bool
+        isClosing: Bool,
+        treeListsConnections: Bool = false
     ) -> Bool {
         guard workspaceCount > 1, !isClosing else { return false }
-        return preferenceEnabled || !pane.hasContent
+        return (preferenceEnabled && !treeListsConnections) || !pane.hasContent
     }
 
     /// Whether the column stands when it holds the navigator instead of the strip.

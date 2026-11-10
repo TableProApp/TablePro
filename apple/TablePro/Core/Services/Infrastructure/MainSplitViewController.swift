@@ -326,6 +326,11 @@ internal final class MainSplitViewController: NSSplitViewController {
         navigationSidebar.objectBrowser.onScopeSelection = { [weak self] tab in
             self?.setSidebarTab(tab)
         }
+        /// The layout and the setting move without the pane moving, so the strip is settled again
+        /// whenever the tree starts or stops listing the connections.
+        navigationSidebar.objectBrowser.onTreeListsConnectionsChange = { [weak self] in
+            self?.applyPaneChrome()
+        }
         sidebarSplitItem = NSSplitViewItem(sidebarWithViewController: navigationSidebar)
         sidebarSplitItem.canCollapse = true
         sidebarSplitItem.minimumThickness = Self.resolveSidebarMinimumThickness(railAllowance: 0)
@@ -1241,7 +1246,8 @@ internal final class MainSplitViewController: NSSplitViewController {
                     preferenceEnabled: general.showWorkspaceRail,
                     workspaceCount: workspaceCount,
                     pane: currentPane,
-                    isClosing: phase == .closing
+                    isClosing: phase == .closing,
+                    treeListsConnections: navigationSidebar?.objectBrowser.treeListsConnections ?? false
                 )
         )
         applyChromeStandingOnRail()

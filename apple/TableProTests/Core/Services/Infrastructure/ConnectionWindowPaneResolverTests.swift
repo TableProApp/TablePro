@@ -134,6 +134,35 @@ struct ConnectionWindowPaneResolverTests {
         }
     }
 
+    // MARK: - Connections in the tree
+
+    /// The tree names every connection the window has, so a strip beside it would put the window
+    /// back at two lists of the same connections.
+    @Test("A tree listing the saved connections keeps the strip away while the pane has content")
+    func treeListingConnectionsKeepsTheStripAway() {
+        #expect(!ConnectionWindowPaneResolver.showsWorkspaceRail(
+            preferenceEnabled: true,
+            workspaceCount: 2,
+            pane: .content,
+            isClosing: false,
+            treeListsConnections: true
+        ))
+    }
+
+    /// A pane with no content draws no tree, and the strip is then the window's way to the others.
+    @Test("A pane with no content brings the strip back even when the tree lists connections")
+    func emptyPaneBringsTheStripBackOverTheTree() {
+        for pane in Self.everyPane where !pane.hasContent {
+            #expect(ConnectionWindowPaneResolver.showsWorkspaceRail(
+                preferenceEnabled: true,
+                workspaceCount: 2,
+                pane: pane,
+                isClosing: false,
+                treeListsConnections: true
+            ))
+        }
+    }
+
     // MARK: - Navigator
 
     /// The navigator lists saved connections, not open ones, so a window with one connection still
