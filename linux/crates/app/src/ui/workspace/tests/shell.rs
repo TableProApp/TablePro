@@ -904,7 +904,8 @@ fn the_schemas_button_chooses_what_the_sidebar_lists_and_keeps_it() {
             .find(|check| check.label().as_deref() == Some(name))
     };
     wait_until(WAIT, || check("sales").is_some()).expect("a check for each schema");
-    check("sales").expect("the sales check").set_active(false);
+    let sales = check("sales").expect("the sales check");
+    sales.set_active(false);
     wait_until(WAIT, || banner.is_revealed()).expect("the banner");
     assert_eq!(banner.title(), "Showing 1 of 2 schemas");
     let (id, database) = (session.metadata().id, session.database().unwrap_or_default().to_owned());
@@ -915,6 +916,7 @@ fn the_schemas_button_chooses_what_the_sidebar_lists_and_keeps_it() {
     );
     wait_until(WAIT, || check("public").is_some_and(|check| !check.is_sensitive()))
         .expect("the last schema listed stays");
+    assert_eq!(check("sales"), Some(sales), "the row and its focus stay");
 
     banner.emit_by_name::<()>("button-clicked", &[]);
     wait_until(WAIT, || !banner.is_revealed()).expect("Show All");
