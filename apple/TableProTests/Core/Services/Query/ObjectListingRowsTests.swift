@@ -130,6 +130,35 @@ struct ObjectListingRowsTests {
         #expect(items[.existing(0)] == .relation(name: "orders", schema: nil, type: .table))
     }
 
+    @Test("A Tables listing keeps tables and leaves views and sequences to their own kinds")
+    func tablesListingKeepsOnlyTables() throws {
+        let columns = try #require(ObjectListingColumns(columns: ["schema", "name", "kind"]))
+        let rows: [[PluginCellValue]] = [
+            [.text("shop"), .text("orders"), .text("BASE TABLE")],
+            [.text("shop"), .text("v_orders"), .text("VIEW")],
+            [.text("shop"), .text("order_ids"), .text("SEQUENCE")],
+            [.text("shop"), .text("events"), .text("MergeTree")],
+        ]
+
+        #expect(columns.tableRows(of: rows).map { $0[1].asText } == ["orders", "events"])
+    }
+
+    @Test("A listing without a kind column keeps every row")
+    func listingWithoutKindKeepsEveryRow() throws {
+        let columns = try #require(ObjectListingColumns(columns: ["name"]))
+        let rows: [[PluginCellValue]] = [[.text("orders")], [.text("v_orders")]]
+
+        #expect(columns.tableRows(of: rows).count == 2)
+    }
+
+    @Test("A known listing alias reads as words and an unknown one keeps the plugin's spelling")
+    func listingAliasesReadAsWords() {
+        #expect(ObjectListingColumns.displayTitle(for: "estimated_rows") == "Rows")
+        #expect(ObjectListingColumns.displayTitle(for: "SCHEMA_NAME") == "Schema")
+        #expect(ObjectListingColumns.displayTitle(for: "update_time") == "Updated")
+        #expect(ObjectListingColumns.displayTitle(for: "total_rows") == "total_rows")
+    }
+
     static let kindWords: [(String?, TableInfo.TableType)] = [
         ("VIEW", .view), ("view", .view), ("SYSTEM VIEW", .view), ("MATERIALIZED VIEW", .materializedView),
         ("FOREIGN TABLE", .foreignTable), ("SEQUENCE", .sequence), ("BASE TABLE", .table), ("MergeTree", .table), (nil, .table),

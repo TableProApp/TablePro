@@ -37,8 +37,13 @@ internal struct TableListingLoader: Sendable {
                 }
                 return try await driver.executeCatalogRead(query: statement)
             }
-            let rows = TableRows.from(queryRows: result.rows, columns: result.columns, columnTypes: result.columnTypes)
-            let items = ObjectListingColumns(columns: result.columns)?.items(
+            let listingColumns = ObjectListingColumns(columns: result.columns)
+            let rows = TableRows.from(
+                queryRows: listingColumns?.tableRows(of: result.rows) ?? result.rows,
+                columns: listingColumns == nil ? result.columns : result.columns.map(ObjectListingColumns.displayTitle(for:)),
+                columnTypes: result.columnTypes
+            )
+            let items = listingColumns?.items(
                 in: rows,
                 containerSchema: scope.schema,
                 readsSchemaColumn: slot == .schema

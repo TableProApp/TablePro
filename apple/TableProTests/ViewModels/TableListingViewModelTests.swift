@@ -190,7 +190,7 @@ struct TableListingViewModelTests {
         await viewModel.reload().value
 
         #expect(names(viewModel.state) == ["customers", "orders"])
-        #expect(viewModel.state.value?.rows.columns == ["name"])
+        #expect(viewModel.state.value?.rows.columns == ["Name"])
         #expect(viewModel.state.value?.isIncomplete == false)
         #expect(viewModel.state.value?.notice == nil)
         #expect(provider.requestedScopes == [scope])

@@ -105,6 +105,37 @@ internal struct ObjectListingColumns: Equatable {
         return items
     }
 
+    /// The Tables kind lists tables only. Views, sequences and the other relations each have a kind of
+    /// their own, as they have a group in the sidebar, and a listing without a kind column keeps every row.
+    func tableRows(of rows: [[PluginCellValue]]) -> [[PluginCellValue]] {
+        guard let kind else { return rows }
+        return rows.filter { row in
+            let word = row.indices.contains(kind) ? row[kind].asText : nil
+            return SidebarObjectKind.resolve(tableType: Self.relationType(word)) == .table
+        }
+    }
+
+    /// The plugins alias their listing columns for SQL, not for reading, so a known alias reads as words.
+    /// An alias this does not know keeps the plugin's spelling.
+    static func displayTitle(for column: String) -> String {
+        switch column.lowercased() {
+        case "schema", "schema_name": String(localized: "Schema")
+        case "name": String(localized: "Name")
+        case "kind": String(localized: "Type")
+        case "charset": String(localized: "Charset")
+        case "collation": String(localized: "Collation")
+        case "estimated_rows": String(localized: "Rows")
+        case "total_size": String(localized: "Total Size")
+        case "data_size": String(localized: "Data Size")
+        case "index_size": String(localized: "Index Size")
+        case "engine": String(localized: "Engine")
+        case "create_time": String(localized: "Created")
+        case "update_time": String(localized: "Updated")
+        case "comment": String(localized: "Comment")
+        default: column
+        }
+    }
+
     /// An unknown word, such as a ClickHouse engine name, reads as a table: only a view must not
     /// open as an editable grid.
     static func relationType(_ kind: String?) -> TableInfo.TableType {
