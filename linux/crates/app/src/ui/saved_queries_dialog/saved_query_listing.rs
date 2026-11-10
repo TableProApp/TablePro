@@ -83,6 +83,9 @@ mod tests {
             query: query.to_owned(),
             connection_id,
             connection_name: connection.to_owned(),
+            keyword: None,
+            folder_id: None,
+            order: 0,
             created_at: SystemTime::UNIX_EPOCH,
             updated_at: SystemTime::UNIX_EPOCH,
         }

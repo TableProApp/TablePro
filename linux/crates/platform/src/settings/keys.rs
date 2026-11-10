@@ -1,11 +1,16 @@
 pub const DEFAULT_PAGE_SIZE: &str = "default-page-size";
 pub const CONFIRM_BULK_DELETE: &str = "confirm-bulk-delete";
 pub const SHOW_ALTERNATE_ROWS: &str = "show-alternate-rows";
+pub const SHOW_ROW_NUMBERS: &str = "show-row-numbers";
+pub const GRID_ROW_HEIGHT: &str = "grid-row-height";
+pub const NULL_DISPLAY: &str = "null-display";
 pub const SAVE_QUERY_HISTORY: &str = "save-query-history";
 pub const HISTORY_RETENTION_DAYS: &str = "history-retention-days";
 pub const QUERY_TIMEOUT_SECS: &str = "query-timeout-secs";
 pub const USE_SYSTEM_FONT: &str = "use-system-font";
 pub const CUSTOM_FONT: &str = "custom-font";
+pub const GRID_USE_SYSTEM_FONT: &str = "grid-use-system-font";
+pub const GRID_FONT: &str = "grid-font";
 pub const STYLE_SCHEME: &str = "style-scheme";
 pub const VIM_KEYBINDINGS: &str = "vim-keybindings";
 pub const CONNECT_DIALOG_DRIVER: &str = "connect-dialog-driver";

@@ -11,12 +11,13 @@ use tablepro_core::Value;
 use super::grid_cell::{GridCell, TextAttributes};
 use super::server_sorter::ServerSorter;
 use super::{DataGrid, GridRow, GridSorting, TrackedValues, client_sorter, grid_menu, row_number_column};
-use crate::services::grid::display_text::editable_null_sentinel;
 use crate::services::grid::{
     CellDisplay, ColumnLayout, GridColumn, LayoutSlot, Placement, default_width_chars, header_text, merge_order,
     number_width_chars, sampled_texts, typical_texts, typical_width_chars,
 };
 use crate::ui::handler_guard::HandlerGuard;
+use tablepro_linux_platform::EditorFont;
+use tablepro_linux_platform::settings::GridPreferences;
 
 /// Rows sampled for a column's opening width.
 const WIDTH_SAMPLE: usize = 200;
@@ -49,6 +50,7 @@ pub struct ColumnPaint {
     pub column: GridColumn,
     pub tracked: TrackedValues,
     pub attributes: Rc<TextAttributes>,
+    pub preferences: GridPreferences,
     /// The column lines its values up on the last digit. An untyped column
     /// does once every value it holds is a number.
     pub numbers: Cell<bool>,
@@ -141,7 +143,7 @@ impl DataGrid {
         while let Some(column) = view.columns().item(0).and_downcast::<gtk::ColumnViewColumn>() {
             view.remove_column(&column);
         }
-        let layout = match self.config().and_then(|config| config.layout.as_ref()) {
+        let layout = match self.config().and_then(|config| config.layout.clone()) {
             Some(binding) => binding.load(),
             None if same_names(&old_layout, &columns) => old_layout,
             None => ColumnLayout::default(),
@@ -159,6 +161,10 @@ impl DataGrid {
                 column: column.clone(),
                 tracked: tracked.clone(),
                 attributes: attributes.clone(),
+                preferences: self
+                    .config()
+                    .map(|config| config.settings.grid_preferences().clone())
+                    .unwrap_or_default(),
                 numbers: Cell::new(column.display() == CellDisplay::Number),
             });
             built.view_columns.push(self.build_column(&paint, sorting));
@@ -192,6 +198,7 @@ impl DataGrid {
         self.size_unsized_columns();
         self.watch_layout_changes();
         self.wire_sorting(sorting);
+        self.apply_display_settings();
     }
 
     fn build_column(&self, paint: &Rc<ColumnPaint>, sorting: GridSorting) -> gtk::ColumnViewColumn {
@@ -271,7 +278,7 @@ impl DataGrid {
     /// before it had a window measured in no theme's font.
     pub(super) fn rooted(&self) {
         let measured_in = self.imp().columns.borrow().measured_in.clone();
-        if measured_in.is_some_and(|fonts| fonts != fonts_now(&self.column_view())) {
+        if measured_in.is_some_and(|fonts| fonts != self.fonts_now()) {
             self.fonts_changed();
         }
     }
@@ -288,9 +295,20 @@ impl DataGrid {
         self.imp().font_watch.replace(Some(HandlerGuard::new(&style, handler)));
     }
 
+    pub(super) fn cell_font(&self) -> Option<String> {
+        match self.config()?.settings.grid_font() {
+            EditorFont::Custom(description) => Some(description),
+            EditorFont::System => None,
+        }
+    }
+
+    fn fonts_now(&self) -> String {
+        fonts_now(&self.column_view(), self.cell_font().as_deref())
+    }
+
     fn size_columns(&self, measure: Measure) {
         let widths = self.opening_widths(measure);
-        self.imp().columns.borrow_mut().measured_in = Some(fonts_now(&self.column_view()));
+        self.imp().columns.borrow_mut().measured_in = Some(self.fonts_now());
         for (index, view_column, width) in widths {
             self.imp().columns.borrow_mut().auto_widths.insert(index, width);
             view_column.set_fixed_width(width);
@@ -303,10 +321,9 @@ impl DataGrid {
         let by_type = set.pages == Pages::Empty;
         let view = self.column_view();
         let context = view.create_pango_context();
-        let font = value_font(&context);
+        let font = value_font(&context, self.cell_font().as_deref());
         let metrics = context.metrics(Some(&font), None);
         let char_px = pango::units_to_double(metrics.approximate_char_width());
-        let null = editable_null_sentinel();
         let mut widths = Vec::new();
         for (paint, view_column) in set.paints.iter().zip(&set.view_columns) {
             let index = paint.column.index;
@@ -351,9 +368,12 @@ impl DataGrid {
                 None => 0,
             };
             let header = header_width(&context, header_text(column)) + indicator;
-            // A NULL the user can replace draws as `<NULL>`, wider than the
-            // fewest cells a column takes.
-            let placeholder = match paint.tracked.tracks_changes() && values.iter().any(|value| value.is_null()) {
+            let preferences = paint.preferences.snapshot();
+            let null = crate::services::grid::display_text::null_text(
+                &preferences.null_display,
+                paint.tracked.tracks_changes(),
+            );
+            let placeholder = match values.iter().any(|value| value.is_null()) {
                 true => drawn_width(&context, &font, &null),
                 false => 0,
             };
@@ -560,7 +580,7 @@ impl DataGrid {
             ));
         }
         if layout != before
-            && let Some(binding) = self.config().and_then(|config| config.layout.as_ref())
+            && let Some(binding) = self.config().and_then(|config| config.layout.clone())
         {
             binding.save(&layout.rebased(&before, &binding.load()));
         }
@@ -580,7 +600,7 @@ impl DataGrid {
         };
         let view = self.column_view();
         let context = view.create_pango_context();
-        let metrics = context.metrics(Some(&value_font(&context)), None);
+        let metrics = context.metrics(Some(&value_font(&context, self.cell_font().as_deref())), None);
         let step = (pango::units_to_double(metrics.approximate_digit_width()) * f64::from(STEP_DIGITS)).ceil() as i32;
         let width = column.fixed_width();
         let width = match wider {
@@ -711,7 +731,7 @@ impl DataGrid {
             set.layout = ColumnLayout::default();
             (set.columns.clone(), set.sorting())
         };
-        if let Some(binding) = self.config().and_then(|config| config.layout.as_ref()) {
+        if let Some(binding) = self.config().and_then(|config| config.layout.clone()) {
             binding.save(&ColumnLayout::default());
         }
         let rows: Vec<_> = self.store().rows().map(|row| row.data()).collect();
@@ -891,12 +911,17 @@ fn same_names(layout: &ColumnLayout, columns: &[GridColumn]) -> bool {
     names.len() == columns.len() && names.iter().zip(columns).all(|(name, column)| *name == column.name)
 }
 
-// Libadwaita's monospace class overrides only family and size.
-pub(super) fn value_font(context: &pango::Context) -> pango::FontDescription {
-    let mut monospace = pango::FontDescription::from_string(&adw::StyleManager::default().monospace_font_name());
-    monospace.unset_fields(!(pango::FontMask::FAMILY | pango::FontMask::SIZE));
+pub(super) fn value_font(context: &pango::Context, custom: Option<&str>) -> pango::FontDescription {
+    let selected = match custom {
+        Some(description) => super::cell_font::custom_font(description),
+        None => {
+            let mut system = pango::FontDescription::from_string(&adw::StyleManager::default().monospace_font_name());
+            system.unset_fields(!(pango::FontMask::FAMILY | pango::FontMask::SIZE));
+            system
+        }
+    };
     let mut font = context.font_description().unwrap_or_default();
-    font.merge(Some(&monospace), true);
+    font.merge(Some(&selected), true);
     font
 }
 
@@ -916,13 +941,17 @@ fn header_width(context: &pango::Context, title: &str) -> i32 {
 /// The grid's font, the text size in it, and the monospace font. A
 /// widget's own context follows a change only at the next frame, so a
 /// fresh one is read.
-fn fonts_now(view: &gtk::ColumnView) -> String {
+fn fonts_now(view: &gtk::ColumnView, custom: Option<&str>) -> String {
     let grid = view
         .create_pango_context()
         .font_description()
         .map(|font| font.to_string())
         .unwrap_or_default();
-    format!("{grid}; {}", adw::StyleManager::default().monospace_font_name())
+    let cells = custom.map_or_else(
+        || adw::StyleManager::default().monospace_font_name().to_string(),
+        str::to_owned,
+    );
+    format!("{grid}; {cells}")
 }
 
 /// How wide `text` is in the tabular figures libadwaita's `numeric`
@@ -942,4 +971,19 @@ fn drawn_width(context: &pango::Context, font: &pango::FontDescription, text: &s
     layout.set_text(text);
     layout.set_font_description(Some(font));
     layout.pixel_size().0
+}
+
+#[cfg(test)]
+mod font_tests {
+    use super::*;
+
+    #[test]
+    fn custom_font_measurement_preserves_weight_style_and_stretch() {
+        let context = pango::Context::new();
+        let font = value_font(&context, Some("Sans Bold Italic Condensed 18"));
+        assert_eq!(font.weight(), pango::Weight::Bold);
+        assert_eq!(font.style(), pango::Style::Italic);
+        assert_eq!(font.stretch(), pango::Stretch::Condensed);
+        assert_eq!(font.size(), 18 * pango::SCALE);
+    }
 }

@@ -71,6 +71,30 @@
       <description>Shade every other row of a data grid so a row reads across its columns.</description>
     </key>
 
+    <key name="show-row-numbers" type="b">
+      <default>true</default>
+      <summary>Show row numbers</summary>
+      <description>Show each row's number in the first column of a data grid.</description>
+    </key>
+
+    <key name="grid-row-height" type="s">
+      <choices>
+        <choice value="compact"/>
+        <choice value="normal"/>
+        <choice value="comfortable"/>
+        <choice value="spacious"/>
+      </choices>
+      <default>"normal"</default>
+      <summary>Data grid row height</summary>
+      <description>How much room a data grid row takes around its text.</description>
+    </key>
+
+    <key name="null-display" type="s">
+      <default>"NULL"</default>
+      <summary>Text for a NULL value</summary>
+      <description>What a data grid cell shows for a value that is NULL.</description>
+    </key>
+
     <key name="save-query-history" type="b">
       <default>true</default>
       <summary>Save query history</summary>
@@ -101,6 +125,18 @@
       <default>'Monospace 12'</default>
       <summary>Custom editor font</summary>
       <description>Pango font description the SQL editor uses when the system font is turned off.</description>
+    </key>
+
+    <key name="grid-use-system-font" type="b">
+      <default>true</default>
+      <summary>Use the system monospace font in the data grid</summary>
+      <description>Whether the data grid follows the desktop monospace font instead of a custom one.</description>
+    </key>
+
+    <key name="grid-font" type="s">
+      <default>'Monospace 10'</default>
+      <summary>Custom data grid font</summary>
+      <description>Pango font description the data grid uses when the system font is turned off.</description>
     </key>
 
     <key name="style-scheme" type="s">

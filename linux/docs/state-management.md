@@ -79,6 +79,10 @@ The closure holds only the sender, so a window that closed before the read ends 
 
 A browse or structure tab is a subclass whose model sits in its `imp` struct. `send` hands the model one input and handles it at once; an input a widget signal sets off while another is being handled waits in the tab's queue until that one finishes. The model's update returns effects: more inputs for the queue, and outputs the tab emits as signals. The workspace connects those signals, tags them with the tab's id and queues them as `WorkspaceInput`, so the tabs never call each other.
 
+A table tab owns Data and Structure pages in one `AdwViewStack`, selected by an `AdwInlineViewSwitcher` in its bottom bar. Structure is built on first selection. Data banners, filters and pending edits stay inside the Data page. Save and Refresh route from the selected page, including when focus is on the switch. Row actions are unavailable while Structure is selected.
+
+The workspace registers both trackers under the same tab id. A close considers both, with an unknown save outcome taking precedence over pending changes. A row save and a structure save cannot run together on that tab. Rename keeps the tab, its row drafts and its selection, and updates the grid and persistence keys to the new table name.
+
 A tab belongs to its session, and a session to one window ([decisions/0028-sessions-share-a-window.md](decisions/0028-sessions-share-a-window.md)). libadwaita 1.9 lets every tab bar of the process take a dragged tab, so the shell holds a tab to that while the drag moves it:
 
 - When a drag takes a tab out of the view, the shell of its session's window records the position it left (`Departure`, from `page-detached`).
@@ -86,6 +90,12 @@ A tab belongs to its session, and a session to one window ([decisions/0028-sessi
 - Dropped on another window's bar, that window sends it back (`SessionWindowInput::ReturnTab`), into its session's view at the position it left.
 - Dropped outside every window, `create-window` declines a new window and the tab goes back to that position ([toolkit-workarounds.md](toolkit-workarounds.md#a-tab-dropped-outside-every-window)).
 - `ReturnTab` runs from the window's queue, after libadwaita finishes attaching the page. A tab whose session closed while it was out closes where it is; the session's close already asked about it, and its view no longer holds the page to close it.
+
+## Grid preferences
+
+`AppSettings` owns one `GridPreferences` object. It reads the grid keys from GSettings and announces each changed snapshot. Every grid holds that object through its settings and follows its change signal. Preferences rows bind directly to GSettings, including both directions for choices stored as strings. Each grid owns its font CSS provider, scoped to that grid and removed when the grid closes. Its custom font description supplies both the rendered font and column width measurement.
+
+The snapshot belongs to its settings backend, so isolated test settings cannot change another grid. A display change redraws the existing row slots and resizes automatic columns. It keeps row selection, user column widths and active editor drafts. The formatting helpers receive display choices explicitly and keep no global preference state.
 
 ## The SQL editor
 

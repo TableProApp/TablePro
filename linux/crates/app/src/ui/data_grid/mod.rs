@@ -1,10 +1,12 @@
 //! The data grid every surface shows rows in: the table tab, the SQL
 //! editor's results and a key-value engine's key tab.
 
+mod cell_font;
 mod client_sorter;
 mod column_chooser;
 mod columns;
 mod copy;
+mod display_settings;
 mod edit;
 mod find_bar;
 mod grid_actions;
@@ -78,7 +80,7 @@ impl DataGrid {
         let rules = config.rules.clone();
         imp.column_view
             .update_property(&[gtk::accessible::Property::Label(&config.label)]);
-        let _ = imp.config.set(config);
+        imp.config.replace(Some(config));
         grid.build_models();
         imp.edit.attach(&grid);
         grid.insert_action_group("grid", Some(&imp.actions));
@@ -90,15 +92,48 @@ impl DataGrid {
         pinned_numbers::install(&grid);
         find_bar::install(&grid);
         imp.detail_pane.attach(&grid);
+        grid.watch_display_settings();
         grid.set_columns(columns, sorting, rules);
         grid.watch_fonts();
-        grid.watch_stripes();
         grid
     }
 
     /// `None` only inside `glib::Object::new`, before `new` sets it.
-    pub(crate) fn config(&self) -> Option<&GridConfig> {
-        self.imp().config.get()
+    pub(crate) fn config(&self) -> Option<std::cell::Ref<'_, GridConfig>> {
+        std::cell::Ref::filter_map(self.imp().config.borrow(), Option::as_ref).ok()
+    }
+
+    pub(crate) fn rename_table(&self, name: &str) {
+        let imp = self.imp();
+        let renamed = {
+            let mut config = imp.config.borrow_mut();
+            let Some(config) = config.as_mut() else {
+                return;
+            };
+            let Some(table) = config.table.as_mut() else {
+                return;
+            };
+            table.name = name.to_owned();
+            config.label = match table.schema.as_deref() {
+                Some(schema) => format!("{schema}.{name}"),
+                None => name.to_owned(),
+            };
+            if let Some(binding) = config.layout.as_mut() {
+                binding.table = name.to_owned();
+            }
+            if let Some(keys) = config.references.as_ref() {
+                keys.set(TableKeys::none(table.clone()));
+            }
+            (config.label.clone(), config.layout.clone())
+        };
+        self.arm_references(None);
+        self.keys_changed();
+        imp.column_view
+            .update_property(&[gtk::accessible::Property::Label(&renamed.0)]);
+        // A metadata refresh rebuilds columns from this key, so preserve their current arrangement.
+        if let Some(binding) = renamed.1 {
+            binding.save(imp.columns.borrow().layout());
+        }
     }
 
     /// The connection's dialect, where the rows have an SQL spelling.
@@ -187,8 +222,6 @@ impl DataGrid {
         self.imp().columns.borrow().columns()
     }
 
-    /// Build the columns for another column set, with what may change in
-    /// its rows. The rows go, since they were read under the old columns.
     pub fn set_columns(&self, columns: Arc<[GridColumn]>, sorting: GridSorting, rules: Option<EditRules>) {
         self.commit_editors();
         self.store().clear();
