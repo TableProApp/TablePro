@@ -162,6 +162,25 @@ struct UnloadedValuePlanTests {
         #expect(tableRows.unloadedByteCount(row: 0, column: 1) == 70_000)
         #expect(tableRows.hasUnloadedValues)
     }
+
+    @Test("A folded page keeps the origins of the columns it keeps")
+    func foldedPageKeepsColumnOrigins() {
+        let id = PluginColumnOrigin(schema: "main", table: "files", column: "id")
+        let data = PluginColumnOrigin(schema: "main", table: "files", column: "data")
+        var fetched = QueryFetchResult(
+            columns: ["id", "data", "__tablepro_byte_length_1"],
+            columnTypes: [.integer(rawType: "INT"), .blob(rawType: "LONGBLOB"), .integer(rawType: "BIGINT")],
+            rows: [["1", .null, "70000"]],
+            executionTime: 0,
+            rowsAffected: 0,
+            statusMessage: nil,
+            isTruncated: false,
+            resultColumnMeta: nil
+        )
+        fetched.columnOrigins = [id, data, nil]
+        let folded = fetched.foldingUnloadedValues(lengthColumns: ["__tablepro_byte_length_1"])
+        #expect(folded.columnOrigins == [id, data])
+    }
 }
 
 struct TableRowsUnloadedValueTests {

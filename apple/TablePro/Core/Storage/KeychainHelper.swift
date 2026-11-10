@@ -48,10 +48,17 @@ extension KeychainStoring {
     }
 }
 
+struct KeychainCopiedItem: Sendable {
+    let status: OSStatus
+    let data: Data?
+    let modified: Date?
+}
+
 protocol KeychainItemStore: Sendable {
     func add(_ attributes: [String: Any]) -> OSStatus
     func update(_ query: [String: Any], attributes: [String: Any]) -> OSStatus
-    func copyData(_ query: [String: Any]) -> (status: OSStatus, data: Data?)
+    // The first item the query matches, with its data and modification date.
+    func copyItem(_ query: [String: Any]) -> KeychainCopiedItem
     func delete(_ query: [String: Any]) -> OSStatus
 }
 
@@ -64,10 +71,19 @@ struct SystemKeychainItemStore: KeychainItemStore {
         SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
     }
 
-    func copyData(_ query: [String: Any]) -> (status: OSStatus, data: Data?) {
+    func copyItem(_ query: [String: Any]) -> KeychainCopiedItem {
+        var query = query
+        query[kSecReturnData as String] = true
+        query[kSecReturnAttributes as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        return (status, result as? Data)
+        let item = result as? [String: Any]
+        return KeychainCopiedItem(
+            status: status,
+            data: item?[kSecValueData as String] as? Data,
+            modified: item?[kSecAttrModificationDate as String] as? Date
+        )
     }
 
     func delete(_ query: [String: Any]) -> OSStatus {
@@ -166,23 +182,30 @@ final class KeychainHelper: KeychainStoring {
         read(forKey: key, deviceOnly: false)
     }
 
+    // With sync on, a newer local item is a save made while sync was off; with sync off, this Mac's own item always wins.
     func read(forKey key: String, deviceOnly: Bool) -> KeychainResult {
-        var preferred = itemQuery(forKey: key, synchronizable: !deviceOnly && isPasswordSyncEnabled)
-        preferred[kSecReturnData as String] = true
-        preferred[kSecMatchLimit as String] = kSecMatchLimitOne
-        let first = items.copyData(preferred)
+        let prefersSynced = !deviceOnly && isPasswordSyncEnabled
+        let first = items.copyItem(itemQuery(forKey: key, synchronizable: prefersSynced))
         guard first.status == errSecItemNotFound else {
-            return result(for: first, key: key)
+            guard first.status == errSecSuccess, prefersSynced else {
+                return result(for: first, key: key)
+            }
+            let other = items.copyItem(itemQuery(forKey: key, synchronizable: !prefersSynced))
+            return result(for: Self.isNewer(other, than: first) ? other : first, key: key)
         }
 
         var fallback = baseQuery(forKey: key)
         fallback[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
-        fallback[kSecReturnData as String] = true
-        fallback[kSecMatchLimit as String] = kSecMatchLimitOne
-        return result(for: items.copyData(fallback), key: key)
+        return result(for: items.copyItem(fallback), key: key)
     }
 
-    private func result(for copied: (status: OSStatus, data: Data?), key: String) -> KeychainResult {
+    private static func isNewer(_ candidate: KeychainCopiedItem, than current: KeychainCopiedItem) -> Bool {
+        guard candidate.status == errSecSuccess, let candidateDate = candidate.modified,
+              let currentDate = current.modified else { return false }
+        return candidateDate > currentDate
+    }
+
+    private func result(for copied: KeychainCopiedItem, key: String) -> KeychainResult {
         switch copied.status {
         case errSecSuccess:
             if let data = copied.data {

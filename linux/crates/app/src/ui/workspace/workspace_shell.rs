@@ -52,6 +52,7 @@ glib::wrapper! {
 pub(super) fn describe_buttons(shell: &WorkspaceShell) {
     let imp = shell.imp();
     describe_icon_button(&imp.table_search_toggle.get(), &gettext("Search"), None);
+    describe_icon_button(&imp.safe_mode_button.get(), &gettext("Safe Mode"), None);
     describe_icon_button(
         &imp.refresh_tables_button.get(),
         &gettext("Refresh"),
@@ -61,6 +62,11 @@ pub(super) fn describe_buttons(shell: &WorkspaceShell) {
         &imp.sidebar_toggle.get(),
         &gettext("Show Sidebar"),
         Some("win.show-sidebar"),
+    );
+    describe_icon_button(
+        &imp.save_changes_button.get(),
+        &gettext("Save Changes"),
+        Some("table.save"),
     );
     describe_icon_button(
         &imp.refresh_page_button.get(),
@@ -154,6 +160,7 @@ impl WorkspaceShell {
             None => session_menu.set_sensitive(false),
         }
         imp.content_header.pack_end(&session_menu);
+        imp.safe_mode_button.set_menu_model(Some(&safe_mode_levels()));
 
         super::workspace_actions::install(window, &shell);
         imp.history_gate
@@ -576,12 +583,86 @@ impl WorkspaceShell {
     /// The tab on screen changed: its session comes to the front. With
     /// no tab the front stays where it was.
     pub(super) fn follow_selected_page(&self) {
+        self.refresh_save_changes();
         let Some(page) = self.imp().tab_view.selected_page() else {
             return;
         };
         self.note_shown_tab();
         if let Some((owner, _)) = self.owner_of(&page) {
             self.set_front(Some(&owner));
+        }
+    }
+
+    fn selected_save_action(&self) -> Option<gio::SimpleAction> {
+        let child = self.imp().tab_view.selected_page()?.child();
+        if let Some(tab) = child.downcast_ref::<crate::ui::browse_tab::BrowseTab>() {
+            return tab.shown_save_action();
+        }
+        if let Some(tab) = child.downcast_ref::<crate::ui::structure_tab::StructureTab>() {
+            return tab.save_action();
+        }
+        child
+            .downcast_ref::<crate::ui::editor::SqlEditor>()?
+            .save_changes_action()
+    }
+
+    pub(super) fn refresh_save_changes(&self) {
+        self.forget_table_view();
+        let imp = self.imp();
+        if let Some(tab) = imp
+            .tab_view
+            .selected_page()
+            .and_then(|page| page.child().downcast::<crate::ui::browse_tab::BrowseTab>().ok())
+        {
+            // Data and Structure save different things, so a switch rebinds.
+            let shell = self.downgrade();
+            let handler = tab.connect_save_action_changed(move |_| {
+                if let Some(shell) = shell.upgrade() {
+                    shell.bind_save_changes();
+                }
+            });
+            imp.save_changes_view.replace(Some((tab.downgrade(), handler)));
+        }
+        self.bind_save_changes();
+    }
+
+    fn forget_table_view(&self) {
+        if let Some((tab, handler)) = self.imp().save_changes_view.take()
+            && let Some(tab) = tab.upgrade()
+        {
+            tab.disconnect(handler);
+        }
+    }
+
+    fn bind_save_changes(&self) {
+        let imp = self.imp();
+        if let Some(binding) = imp.save_changes_binding.take() {
+            binding.unbind();
+        }
+        let Some(action) = imp
+            .window
+            .upgrade()
+            .and_then(|window| window.lookup_action("save-changes"))
+            .and_downcast::<gio::SimpleAction>()
+        else {
+            return;
+        };
+        match self.selected_save_action() {
+            Some(source) => {
+                imp.save_changes_binding.replace(Some(
+                    source
+                        .bind_property("enabled", &action, "enabled")
+                        .sync_create()
+                        .build(),
+                ));
+            }
+            None => action.set_enabled(false),
+        }
+    }
+
+    pub(super) fn save_changes(&self) {
+        if let Some(action) = self.selected_save_action() {
+            action.activate(None);
         }
     }
 
@@ -599,6 +680,22 @@ impl WorkspaceShell {
         }
         imp.front.replace(workspace.cloned());
         self.notify_front();
+    }
+
+    pub(crate) fn show_safe_mode(&self, level: Option<tablepro_core::SafeModeLevel>) {
+        let button = self.imp().safe_mode_button.get();
+        button.set_visible(level.is_some());
+        let Some(level) = level else {
+            return;
+        };
+        button.set_icon_name(match level {
+            tablepro_core::SafeModeLevel::Off => crate::ui::icons::CHANGES_ALLOW,
+            tablepro_core::SafeModeLevel::ConfirmWrites | tablepro_core::SafeModeLevel::ReadOnly => {
+                crate::ui::icons::CHANGES_PREVENT
+            }
+        });
+        let said = gettext_f("Safe Mode: {level}", &[("level", &crate::ui::safe_mode::label(level))]);
+        describe_icon_button(&button, &said, None);
     }
 
     fn on_scope_changed(&self) {
@@ -971,6 +1068,10 @@ impl WorkspaceShell {
     /// names itself again from here on.
     pub(crate) fn shutdown(&self) {
         let imp = self.imp();
+        self.forget_table_view();
+        if let Some(binding) = imp.save_changes_binding.take() {
+            binding.unbind();
+        }
         imp.favorites_generation
             .set(imp.favorites_generation.get().wrapping_add(1));
         imp.favorites_watch.take();
@@ -1068,7 +1169,7 @@ fn tab_menu() -> gio::Menu {
     menu
 }
 
-fn with_safe_mode(menu: &gio::MenuModel) -> gio::Menu {
+fn safe_mode_levels() -> gio::Menu {
     let levels = gio::Menu::new();
     for level in tablepro_core::SafeModeLevel::ALL {
         let item = gio::MenuItem::new(Some(&crate::ui::safe_mode::menu_label(level)), None);
@@ -1078,6 +1179,11 @@ fn with_safe_mode(menu: &gio::MenuModel) -> gio::Menu {
         );
         levels.append_item(&item);
     }
+    levels
+}
+
+fn with_safe_mode(menu: &gio::MenuModel) -> gio::Menu {
+    let levels = safe_mode_levels();
     let section = gio::Menu::new();
     section.append_submenu(Some(&gettext("_Safe Mode")), &levels);
     let whole = gio::Menu::new();

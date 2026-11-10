@@ -76,6 +76,68 @@ struct RowPasteForeignTextTests {
 
         #expect(result.pastedRows.first?.values == [.text("__DEFAULT__"), .text("Ann"), .text("ann@x.com")])
     }
+
+    @Test("A blank pasted cell takes the column's default, an empty string where NULL is refused, else NULL")
+    func blankCellsFollowTheColumn() {
+        let columns = ["id", "name", "status", "note", "born", "nickname"]
+        let changeManager = DataChangeManager()
+        changeManager.configureForTable(
+            tableName: "people",
+            columns: columns,
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql,
+            generatedColumns: []
+        )
+        let manager = RowOperationsManager(changeManager: changeManager)
+        let clipboard = RecordingClipboard()
+        clipboard.text = "\tAnn\t\t\t\t\n\tBob"
+        var rows = TableRows.from(
+            queryRows: [],
+            columns: columns,
+            columnTypes: [
+                .integer(rawType: "INT"), .text(rawType: "VARCHAR"), .text(rawType: "VARCHAR"),
+                .text(rawType: "TEXT"), .date(rawType: "DATE"), .text(rawType: "VARCHAR"),
+            ],
+            columnDefaults: ["status": "'active'"],
+            columnNullable: ["name": false, "status": false, "note": false, "born": false, "nickname": true],
+            hasAuthoritativeSchema: true
+        )
+
+        let result = manager.pasteRowsFromClipboard(
+            columns: columns, primaryKeyColumns: ["id"], tableRows: &rows, clipboard: clipboard
+        )
+
+        let unfilled: [PluginCellValue] = [.text("__DEFAULT__"), .text(""), .null, .null]
+        #expect(result.pastedRows.map { $0.values } == [
+            [.text("__DEFAULT__"), .text("Ann")] + unfilled,
+            [.text("__DEFAULT__"), .text("Bob")] + unfilled,
+        ])
+    }
+
+    @Test("A pasted NULL stays NULL in a column with a default")
+    func nullWordIsNotABlankCell() {
+        let columns = ["id", "status"]
+        let changeManager = DataChangeManager()
+        changeManager.configureForTable(
+            tableName: "people", columns: columns, primaryKeyColumns: ["id"], databaseType: .mysql, generatedColumns: []
+        )
+        let manager = RowOperationsManager(changeManager: changeManager)
+        let clipboard = RecordingClipboard()
+        clipboard.text = "1\tNULL"
+        var rows = TableRows.from(
+            queryRows: [],
+            columns: columns,
+            columnTypes: [.integer(rawType: "INT"), .text(rawType: "VARCHAR")],
+            columnDefaults: ["status": "'active'"],
+            hasAuthoritativeSchema: true
+        )
+
+        let result = manager.pasteRowsFromClipboard(
+            columns: columns, primaryKeyColumns: ["id"], tableRows: &rows, clipboard: clipboard
+        )
+
+        #expect(result.pastedRows.first?.values == [.text("__DEFAULT__"), .null])
+    }
 }
 
 @MainActor

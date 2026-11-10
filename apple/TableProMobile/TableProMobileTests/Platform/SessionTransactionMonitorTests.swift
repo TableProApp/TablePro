@@ -218,6 +218,39 @@ struct SessionTransactionMonitorTests {
         #expect(monitor.hold(for: id) == nil)
     }
 
+    @Test("A session that ends with a transaction open keeps what it held for the window still on it")
+    func endedSessionKeepsItsHold() async {
+        let driver = attach(.explicitTransaction)
+        await monitor.refresh(id)
+
+        live.drivers[id] = nil
+        monitor.sessionEnded(id, driver: driver)
+
+        #expect(monitor.endedHold(for: id, on: driver) == SessionTransactionMonitor.EndedHold(hold: .open, duringWork: false))
+        #expect(monitor.endedHold(for: id, on: MockDatabaseDriver()) == nil)
+
+        attach(.idle)
+        await monitor.refresh(id)
+        #expect(monitor.endedHold(for: id, on: driver) == nil)
+    }
+
+    @Test("A session that ends under a running statement is kept as ended during work, whichever notices first")
+    func sessionEndedUnderAStatement() async {
+        let driver = attach(.explicitTransaction)
+        await monitor.refresh(id)
+        let gate = TestGate()
+
+        let work = Task { await monitor.track(id) { await gate.enter() } }
+        await gate.waitUntilEntered()
+        live.drivers[id] = nil
+        await gate.open()
+        await work.value
+        monitor.sessionEnded(id, driver: driver)
+
+        #expect(monitor.hold(for: id) == nil)
+        #expect(monitor.endedHold(for: id, on: driver) == SessionTransactionMonitor.EndedHold(hold: .open, duringWork: true))
+    }
+
     @Test("An unknown answer keeps what the session last reported")
     func unknownKeepsTheEntry() async {
         let driver = attach(.explicitTransaction)

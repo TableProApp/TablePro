@@ -763,7 +763,8 @@ extension QueryExecutionCoordinator {
                 source: install.source,
                 serverOutput: fetchResult.serverOutput,
                 exportDocuments: fetchResult.exportDocuments,
-                absentCells: fetchResult.absentCells
+                absentCells: fetchResult.absentCells,
+                columnOrigins: fetchResult.columnOrigins
             )
 
             let parameterValues = nativeParameters.map { $0 as? String }

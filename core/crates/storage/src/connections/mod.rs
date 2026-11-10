@@ -1,7 +1,8 @@
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
+use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -416,19 +417,18 @@ pub enum RemoveOutcome {
     NotPresent,
 }
 
+// The file's bytes when the cache was read from it or written to it, `None` for no file.
+type FileBytes = Option<Vec<u8>>;
+
 #[derive(Debug)]
 enum StoreState {
     Unloaded,
-    Ready(ConnectionsDocument),
-    Unavailable(DocumentProblem),
+    Ready(ConnectionsDocument, FileBytes),
+    // `None` when the file could not be read at all.
+    Unavailable(DocumentProblem, Option<FileBytes>),
 }
 
-/// The saved-connection list on disk. One store per storage root, so a
-/// development build and an installed build never share a file.
-///
-/// Every mutation holds the mutex across read, apply, encode and write,
-/// so two threads cannot interleave a read-modify-write and lose an
-/// entry.
+// A write holds the mutex and a lock file from its re-read of the list to its rename, so no writer loses an entry.
 #[derive(Clone)]
 pub struct ConnectionStore {
     inner: Arc<StoreInner>,
@@ -438,6 +438,25 @@ struct StoreInner {
     path: PathBuf,
     state: Mutex<StoreState>,
     snapshot: watch::Sender<ConnectionListSnapshot>,
+}
+
+struct WriteGuard<'a> {
+    state: MutexGuard<'a, StoreState>,
+    _file: Option<std::fs::File>,
+}
+
+impl Deref for WriteGuard<'_> {
+    type Target = StoreState;
+
+    fn deref(&self) -> &StoreState {
+        &self.state
+    }
+}
+
+impl DerefMut for WriteGuard<'_> {
+    fn deref_mut(&mut self) -> &mut StoreState {
+        &mut self.state
+    }
 }
 
 impl ConnectionStore {
@@ -479,8 +498,8 @@ impl ConnectionStore {
 
     /// A new entry, or one that changed group, goes last in its group.
     pub fn upsert_blocking(&self, connection: SavedConnection) -> Result<(), StorageError> {
-        let mut state = self.lock();
-        let mut document = self.ensure_loaded(&mut state)?;
+        let mut state = self.lock_to_write();
+        let mut document = self.ensure_current(&mut state)?;
         let mut connection = connection;
         let stored = document
             .connections
@@ -495,8 +514,8 @@ impl ConnectionStore {
 
     // One write, so no publish shows a copy at the end of its group before it moves up.
     pub fn insert_after_blocking(&self, connection: SavedConnection, after: Uuid) -> Result<(), StorageError> {
-        let mut state = self.lock();
-        let mut document = self.ensure_loaded(&mut state)?;
+        let mut state = self.lock_to_write();
+        let mut document = self.ensure_current(&mut state)?;
         let mut connection = connection;
         let stored = document
             .connections
@@ -528,8 +547,8 @@ impl ConnectionStore {
     }
 
     pub fn remove_blocking(&self, id: Uuid) -> Result<RemoveOutcome, StorageError> {
-        let mut state = self.lock();
-        let mut document = self.ensure_loaded(&mut state)?;
+        let mut state = self.lock_to_write();
+        let mut document = self.ensure_current(&mut state)?;
         let before = document.connections.len();
         document.connections.retain(|saved| saved.id != id);
         if document.connections.len() == before {
@@ -546,8 +565,8 @@ impl ConnectionStore {
         name: ConnectionTagName,
         color: crate::ConnectionColor,
     ) -> Result<ConnectionTag, StorageError> {
-        let mut state = self.lock();
-        let mut document = self.ensure_loaded(&mut state)?;
+        let mut state = self.lock_to_write();
+        let mut document = self.ensure_current(&mut state)?;
         if document.tags.iter().any(|tag| tag.name.same_name(name.as_str())) {
             return Err(StorageError::TagNameTaken);
         }
@@ -560,8 +579,8 @@ impl ConnectionStore {
     /// Rename or recolour the tag with `changed`'s id, on every
     /// connection that carries it.
     pub fn update_tag_blocking(&self, changed: ConnectionTag) -> Result<(), StorageError> {
-        let mut state = self.lock();
-        let mut document = self.ensure_loaded(&mut state)?;
+        let mut state = self.lock_to_write();
+        let mut document = self.ensure_current(&mut state)?;
         if document
             .tags
             .iter()
@@ -581,8 +600,8 @@ impl ConnectionStore {
 
     /// Delete a tag and take it off every connection, in one write.
     pub fn delete_tag_blocking(&self, id: Uuid) -> Result<RemoveOutcome, StorageError> {
-        let mut state = self.lock();
-        let mut document = self.ensure_loaded(&mut state)?;
+        let mut state = self.lock_to_write();
+        let mut document = self.ensure_current(&mut state)?;
         let before = document.tags.len();
         document.tags.retain(|tag| tag.id != id);
         if document.tags.len() == before {
@@ -601,8 +620,8 @@ impl ConnectionStore {
         id: Uuid,
         change: impl FnOnce(&mut SavedConnection),
     ) -> Result<Option<SavedConnection>, StorageError> {
-        let mut state = self.lock();
-        let mut document = self.ensure_loaded(&mut state)?;
+        let mut state = self.lock_to_write();
+        let mut document = self.ensure_current(&mut state)?;
         let Some(index) = document.connections.iter().position(|saved| saved.id == id) else {
             return Ok(None);
         };
@@ -624,8 +643,8 @@ impl ConnectionStore {
 
     // For the picker's Recent section. A connection opened without saving has no entry, so nothing is written.
     pub fn touch_last_opened_blocking(&self, id: Uuid) -> Result<(), StorageError> {
-        let mut state = self.lock();
-        let mut document = self.ensure_loaded(&mut state)?;
+        let mut state = self.lock_to_write();
+        let mut document = self.ensure_current(&mut state)?;
         let Some(connection) = document.connections.iter_mut().find(|saved| saved.id == id) else {
             return Ok(());
         };
@@ -733,8 +752,8 @@ impl ConnectionStore {
     /// refused, since the user agreed to that preview and not another.
     pub fn apply_import_blocking(&self, preview: &ImportPreview) -> Result<ImportReport, StorageError> {
         let report = preview.report();
-        let mut state = self.lock();
-        let current = self.ensure_loaded(&mut state)?;
+        let mut state = self.lock_to_write();
+        let current = self.ensure_current(&mut state)?;
         if current != preview.before {
             return Err(StorageError::ImportOutdated);
         }
@@ -747,23 +766,25 @@ impl ConnectionStore {
         Ok(report)
     }
 
-    /// Move the unreadable file aside and start from an empty list,
-    /// returning the name the old file now has so the user can find it.
-    /// Only valid while the list is unavailable.
+    // Returns the name the unreadable file was moved to. Another process may have reset or rewritten it since.
     pub fn reset_unreadable_blocking(&self, now: std::time::SystemTime) -> Result<PathBuf, StorageError> {
-        let mut state = self.lock();
-        if !matches!(*state, StoreState::Unavailable(_)) {
-            return Err(StorageError::Schema(
-                "the saved connections are readable; there is nothing to reset".to_owned(),
-            ));
+        let mut state = self.lock_to_write();
+        match self.ensure_current(&mut state) {
+            Err(StorageError::DocumentUnavailable(_)) => {}
+            Ok(_) => {
+                return Err(StorageError::Schema(
+                    "the saved connections are readable; there is nothing to reset".to_owned(),
+                ));
+            }
+            Err(error) => return Err(error),
         }
         let moved = crate::fs::move_aside_blocking(&self.inner.path, now)?;
-        *state = StoreState::Ready(ConnectionsDocument::default());
+        *state = StoreState::Ready(ConnectionsDocument::default(), None);
         self.publish(&state);
         Ok(moved)
     }
 
-    fn lock(&self) -> std::sync::MutexGuard<'_, StoreState> {
+    fn lock(&self) -> MutexGuard<'_, StoreState> {
         match self.inner.state.lock() {
             Ok(guard) => guard,
             // A panic mid-mutation leaves the cache suspect, so drop it
@@ -776,29 +797,74 @@ impl ConnectionStore {
         }
     }
 
-    /// A copy of the list to change, read from disk the first time.
+    fn lock_to_write(&self) -> WriteGuard<'_> {
+        let state = self.lock();
+        let file = crate::fs::lock_beside_blocking(&self.inner.path);
+        WriteGuard { state, _file: file }
+    }
+
     fn ensure_loaded(&self, state: &mut StoreState) -> Result<ConnectionsDocument, StorageError> {
-        if let StoreState::Unloaded = state {
-            *state = match read_document(&self.inner.path) {
-                Ok(document) => StoreState::Ready(document),
-                Err(problem) => StoreState::Unavailable(problem),
-            };
-            self.publish(state);
+        self.refresh(state, false)
+    }
+
+    fn ensure_current(&self, state: &mut WriteGuard<'_>) -> Result<ConnectionsDocument, StorageError> {
+        self.refresh(state, true)
+    }
+
+    // A file that cannot be read keeps the list for a read and refuses a write, which would land over unseen bytes.
+    fn refresh(&self, state: &mut StoreState, writing: bool) -> Result<ConnectionsDocument, StorageError> {
+        let path = self.inner.path.as_path();
+        match read_bytes(path) {
+            Ok(found) => {
+                let unchanged = match &*state {
+                    StoreState::Ready(_, seen) | StoreState::Unavailable(_, Some(seen)) => *seen == found,
+                    StoreState::Unloaded | StoreState::Unavailable(_, None) => false,
+                };
+                if !unchanged {
+                    let decoded = decode(path, found.as_deref());
+                    *state = match decoded {
+                        Ok(document) => StoreState::Ready(document, found),
+                        Err(problem) => StoreState::Unavailable(problem, Some(found)),
+                    };
+                    self.publish(state);
+                }
+            }
+            Err(source) => {
+                if let StoreState::Ready(document, _) = &*state {
+                    if writing {
+                        return Err(StorageError::Io {
+                            path: path.to_owned(),
+                            source,
+                        });
+                    }
+                    return Ok(document.clone());
+                }
+                let problem = DocumentProblem::new(
+                    path,
+                    DocumentProblemKind::Unreadable {
+                        detail: source.to_string(),
+                    },
+                );
+                if !matches!(&*state, StoreState::Unavailable(held, None) if *held == problem) {
+                    *state = StoreState::Unavailable(problem, None);
+                    self.publish(state);
+                }
+            }
         }
         match state {
-            StoreState::Ready(document) => Ok(document.clone()),
-            StoreState::Unavailable(problem) => Err(StorageError::DocumentUnavailable(problem.clone())),
+            StoreState::Ready(document, _) => Ok(document.clone()),
+            StoreState::Unavailable(problem, _) => Err(StorageError::DocumentUnavailable(problem.clone())),
             StoreState::Unloaded => unreachable!("just loaded"),
         }
     }
 
-    /// A change that changes nothing writes nothing.
+    // A change that changes nothing writes nothing.
     fn edit<T>(
         &self,
         change: impl FnOnce(&mut ConnectionsDocument) -> Result<T, StorageError>,
     ) -> Result<T, StorageError> {
-        let mut state = self.lock();
-        let before = self.ensure_loaded(&mut state)?;
+        let mut state = self.lock_to_write();
+        let before = self.ensure_current(&mut state)?;
         let mut document = before.clone();
         let outcome = change(&mut document)?;
         document.tidy();
@@ -808,9 +874,8 @@ impl ConnectionStore {
         Ok(outcome)
     }
 
-    /// Write first, then adopt. A failed write leaves both the file and
-    /// the cached list exactly as they were.
-    fn commit(&self, state: &mut StoreState, mut document: ConnectionsDocument) -> Result<(), StorageError> {
+    // Write first, then adopt, so a failed write leaves the file and the cache as they were.
+    fn commit(&self, state: &mut WriteGuard<'_>, mut document: ConnectionsDocument) -> Result<(), StorageError> {
         // A connection saved with a tag deleted meanwhile drops it here.
         document.tidy();
         let bytes = crate::document::encode_document(&document)?;
@@ -820,7 +885,7 @@ impl ConnectionStore {
         let kept = document.connections.iter().map(|saved| saved.id.to_string()).collect();
         crate::upgrade_copies::trim_connection_copies_blocking(&self.inner.path, &kept)?;
         crate::fs::write_private_blocking(&self.inner.path, &bytes)?;
-        *state = StoreState::Ready(document);
+        **state = StoreState::Ready(document, Some(bytes));
         self.publish(state);
         Ok(())
     }
@@ -828,8 +893,8 @@ impl ConnectionStore {
     fn publish(&self, state: &StoreState) {
         let next = match state {
             StoreState::Unloaded => ConnectionListState::Loading,
-            StoreState::Ready(document) => ConnectionListState::Ready(document.list()),
-            StoreState::Unavailable(problem) => ConnectionListState::Unavailable(Arc::new(problem.clone())),
+            StoreState::Ready(document, _) => ConnectionListState::Ready(document.list()),
+            StoreState::Unavailable(problem, _) => ConnectionListState::Unavailable(Arc::new(problem.clone())),
         };
         let revision = self.inner.snapshot.borrow().revision + 1;
         // send() drops the value when no receiver is alive, which would
@@ -848,24 +913,20 @@ impl std::fmt::Debug for ConnectionStore {
     }
 }
 
-fn read_document(path: &Path) -> Result<ConnectionsDocument, DocumentProblem> {
-    let bytes = match std::fs::read(path) {
-        Ok(bytes) => bytes,
-        // No file is an empty list, not a problem: a first run has none.
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(ConnectionsDocument::default()),
-        Err(error) => {
-            return Err(DocumentProblem::new(
-                path,
-                DocumentProblemKind::Unreadable {
-                    detail: error.to_string(),
-                },
-            ));
-        }
-    };
-    if bytes.iter().all(u8::is_ascii_whitespace) {
-        return Ok(ConnectionsDocument::default());
+fn read_bytes(path: &Path) -> std::io::Result<FileBytes> {
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
     }
-    let mut document = crate::document::decode_document::<ConnectionsDocument>(path, &bytes)?;
+}
+
+// No file is an empty list, not a problem: a first run has none.
+fn decode(path: &Path, bytes: Option<&[u8]>) -> Result<ConnectionsDocument, DocumentProblem> {
+    let Some(bytes) = bytes.filter(|bytes| !bytes.iter().all(u8::is_ascii_whitespace)) else {
+        return Ok(ConnectionsDocument::default());
+    };
+    let mut document = crate::document::decode_document::<ConnectionsDocument>(path, bytes)?;
     document.tidy();
     Ok(document)
 }
@@ -1290,6 +1351,123 @@ mod tests {
 
         let list = store.load_blocking().expect("load");
         assert_eq!(list.len(), 16, "an interleaved read-modify-write lost entries");
+    }
+
+    // Two stores on one root stand for two app processes.
+    #[test]
+    fn a_connect_keeps_a_connection_another_process_saved_after_this_one_read_the_list() {
+        let root = TempDir::new().expect("tempdir");
+        let mine = store(&root);
+        let theirs = store(&root);
+        let opened = sample_connection();
+        mine.upsert_blocking(opened.clone()).expect("upsert");
+        let added = SavedConnection {
+            name: "Added elsewhere".to_owned(),
+            ..sample_connection()
+        };
+        theirs.upsert_blocking(added.clone()).expect("their save");
+
+        mine.touch_last_opened_blocking(opened.id).expect("touch");
+
+        let saved = store(&root).load_blocking().expect("load");
+        assert!(
+            saved.iter().any(|connection| connection.id == added.id),
+            "the connect wrote over the other process's save"
+        );
+        let ConnectionListState::Ready(list) = mine.snapshot().state else {
+            panic!("expected Ready");
+        };
+        assert_eq!(list.connections.len(), 2, "the list read again was not published");
+    }
+
+    #[test]
+    fn two_stores_on_one_file_writing_at_once_lose_nothing() {
+        let root = TempDir::new().expect("tempdir");
+        let stores = [store(&root), store(&root)];
+
+        let handles: Vec<_> = (0..16)
+            .map(|index| {
+                let store = stores[index % 2].clone();
+                std::thread::spawn(move || {
+                    let mut connection = sample_connection();
+                    connection.name = format!("connection {index}");
+                    store.upsert_blocking(connection).expect("upsert");
+                })
+            })
+            .collect();
+        for handle in handles {
+            handle.join().expect("join");
+        }
+
+        assert_eq!(
+            store(&root).load_blocking().expect("load").len(),
+            16,
+            "one store's write went over the other's"
+        );
+    }
+
+    #[test]
+    fn a_save_goes_ahead_when_the_lock_file_cannot_be_opened() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let mut lock = store.path().as_os_str().to_owned();
+        lock.push(".lock");
+        std::fs::create_dir_all(PathBuf::from(lock)).expect("a directory in its place");
+
+        store.upsert_blocking(sample_connection()).expect("the save");
+
+        assert_eq!(store.load_blocking().expect("load").len(), 1);
+    }
+
+    #[test]
+    fn a_file_broken_by_hand_after_the_list_was_read_is_never_written_over() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        store.upsert_blocking(sample_connection()).expect("upsert");
+        std::fs::write(store.path(), b"{ half an edit").expect("the hand edit");
+
+        let refused = store.upsert_blocking(sample_connection());
+
+        assert!(
+            matches!(refused, Err(StorageError::DocumentUnavailable(_))),
+            "{refused:?}"
+        );
+        assert_eq!(std::fs::read(store.path()).expect("read"), b"{ half an edit");
+        assert!(matches!(store.snapshot().state, ConnectionListState::Unavailable(_)));
+    }
+
+    #[test]
+    fn a_list_that_cannot_be_read_again_still_shows_and_refuses_writes() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        store.upsert_blocking(sample_connection()).expect("upsert");
+        let revision = store.snapshot().revision;
+        std::fs::remove_file(store.path()).expect("remove");
+        std::fs::create_dir(store.path()).expect("a directory in its place");
+
+        assert_eq!(store.load_blocking().expect("the list read before").len(), 1);
+        let refused = store.upsert_blocking(sample_connection());
+
+        assert!(matches!(refused, Err(StorageError::Io { .. })), "{refused:?}");
+        assert_eq!(store.snapshot().revision, revision);
+    }
+
+    #[test]
+    fn a_reset_another_process_already_made_moves_nothing_aside() {
+        let root = TempDir::new().expect("tempdir");
+        seed(&root, "not json at all");
+        let mine = store(&root);
+        let theirs = store(&root);
+        mine.load_blocking().expect_err("unavailable");
+        theirs
+            .reset_unreadable_blocking(std::time::SystemTime::now())
+            .expect("their reset");
+        theirs.upsert_blocking(sample_connection()).expect("their save");
+
+        let refused = mine.reset_unreadable_blocking(std::time::SystemTime::now());
+
+        assert!(refused.is_err(), "{refused:?}");
+        assert_eq!(mine.load_blocking().expect("the list").len(), 1);
     }
 
     #[test]

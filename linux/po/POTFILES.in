@@ -252,6 +252,7 @@ crates/app/src/ui/connect_dialog/tests.rs
 crates/app/src/ui/connect_dialog/tls_section.rs
 crates/app/src/ui/connection_appearance.rs
 crates/app/src/ui/connection_list_banner.rs
+crates/app/src/ui/context_menu.rs
 crates/app/src/ui/credential_prompt/mod.rs
 crates/app/src/ui/credential_prompt/presenter.rs
 crates/app/src/ui/credential_prompt/prompt_form.rs

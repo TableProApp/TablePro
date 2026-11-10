@@ -168,8 +168,7 @@ impl ConnectionTree {
             let tree_pane = Pane::new(&rows, &crate::i18n::gettext("Connections"));
             let found_pane = Pane::new(&results, &crate::i18n::gettext("Search Results"));
             let root = pages(&tree_pane, &found_pane);
-            let popover = gtk::PopoverMenu::from_model(None::<&gio::MenuModel>);
-            popover.set_has_arrow(true);
+            let popover = crate::ui::context_menu::context_menu(None::<&gio::MenuModel>);
             popover.set_parent(&root);
             TreeInner {
                 root,
@@ -1178,8 +1177,7 @@ impl TreeInner {
             return;
         };
         self.popover.set_menu_model(Some(&menu));
-        self.popover.set_pointing_to(pointing.as_ref());
-        self.popover.popup();
+        crate::ui::context_menu::popup_at(&self.popover, pointing);
     }
 
     /// The Menu key and Shift+F10: the menu of the row the keyboard is
@@ -1240,8 +1238,7 @@ impl TreeInner {
 
     fn popup_library_menu(&self, pointing: Option<gdk::Rectangle>) {
         self.popover.set_menu_model(Some(&crate::ui::picker::library_menu()));
-        self.popover.set_pointing_to(pointing.as_ref());
-        self.popover.popup();
+        crate::ui::context_menu::popup_at(&self.popover, pointing);
     }
 
     // Only a library item moves: a group, or a saved connection's own row while the list has it.
