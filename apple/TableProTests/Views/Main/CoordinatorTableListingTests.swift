@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import TableProTestSupport
 import Testing
 
 @testable import TablePro
@@ -256,5 +257,59 @@ struct CoordinatorTableListingTests {
         #expect(payload.databaseName == "archive")
         #expect(!payload.isPreview)
         #expect(tabManager.tabs.first { $0.id == listing }?.isPreview == false)
+    }
+
+    // MARK: - The browse cursor
+
+    /// Each database is an entry of its own on the strip, so a listing tab names the entry it shows in.
+    private func withConnectedCoordinator(
+        _ body: (MainContentCoordinator, QueryTabManager) async throws -> Void
+    ) async throws {
+        let connection = TestFixtures.makeConnection(database: "shop", type: .mysql)
+        let driver = PluginDriverAdapter(connection: connection, pluginDriver: SwitchingDriverStub())
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let tabManager = QueryTabManager(containerTarget: .database, visibleContainer: "shop")
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try await body(coordinator, tabManager)
+    }
+
+    @Test("A selection in the browsed database leaves the browse cursor where it is")
+    func selectionInTheBrowsedContainerKeepsTheCursor() async throws {
+        try await withConnectedCoordinator { coordinator, tabManager in
+            #expect(coordinator.browseCursorCoordinator.browsedContainer == "shop")
+
+            coordinator.showObjects(group("shop", .view), asPreview: true)
+
+            #expect(tabManager.selectedTab?.tabType == .tableListing)
+            #expect(tabManager.selectedTab?.tableContext.databaseName == "shop")
+            #expect(tabManager.visibleContainer == "shop")
+            #expect(coordinator.browseCursorCoordinator.pendingRequest == nil)
+            #expect(coordinator.browseCursorCoordinator.browsedContainer == "shop")
+        }
+    }
+
+    /// Accepted: tabs are per database, so showing another database's objects shows its entry, and
+    /// the connection follows the entry on screen.
+    @Test("A selection in another database takes the browse cursor there")
+    func selectionInAnotherContainerMovesTheCursor() async throws {
+        try await withConnectedCoordinator { coordinator, tabManager in
+            coordinator.showObjects(group("archive", .view), asPreview: true)
+
+            #expect(tabManager.selectedTab?.tableContext.databaseName == "archive")
+            #expect(tabManager.visibleContainer == "archive")
+            try await waitUntil { coordinator.browseCursorCoordinator.browsedContainer == "archive" }
+            #expect(coordinator.browseCursorCoordinator.pendingRequest == nil)
+        }
     }
 }
