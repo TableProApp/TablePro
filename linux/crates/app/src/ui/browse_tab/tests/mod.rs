@@ -324,6 +324,7 @@ impl Drop for Shown {
 
 // GTK fits a default size to the monitor, which xvfb-run makes narrower than 1200 px; a size request it keeps.
 pub(super) fn hold_size(window: &impl IsA<gtk4::Window>, width: i32, height: i32) {
+    let window = window.upcast_ref::<gtk4::Window>();
     window.set_size_request(width, height);
     window.set_default_size(width, height);
 }
