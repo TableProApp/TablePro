@@ -520,3 +520,31 @@ async fn an_explicit_adwaita_choice_is_distinct_from_the_system_default() -> Tes
     assert_eq!(fixture.settings.style_scheme(), "");
     Ok(())
 }
+
+#[glib::async_test]
+async fn grid_font_uses_the_shared_snapshot_and_preserves_the_editor_font() -> TestResult {
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    let fixture = Fixture::new()?;
+    let preferences = fixture.settings.grid_preferences();
+    let calls = Rc::new(Cell::new(0));
+    let observed = calls.clone();
+    preferences.connect_changed(move |_| observed.set(observed.get() + 1));
+    let editor_font = fixture.settings.editor_font();
+    let custom = EditorFont::Custom("Sans Bold Italic 15".into());
+
+    fixture.settings.set_grid_font(&custom)?;
+    assert_eq!(preferences.snapshot().font, custom);
+    assert_eq!(fixture.settings.grid_font(), custom);
+    assert_eq!(calls.get(), 1);
+    assert_eq!(fixture.settings.editor_font(), editor_font);
+
+    fixture.settings.set_grid_font(&EditorFont::System)?;
+    assert_eq!(preferences.snapshot().font, EditorFont::System);
+    assert_eq!(calls.get(), 2);
+    fixture.settings.set_grid_font(&custom)?;
+    assert_eq!(preferences.snapshot().font, custom);
+    assert_eq!(calls.get(), 3);
+    Ok(())
+}

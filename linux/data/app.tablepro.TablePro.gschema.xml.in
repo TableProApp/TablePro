@@ -134,6 +134,18 @@
       <description>Pango font description the SQL editor uses when the system font is turned off.</description>
     </key>
 
+    <key name="grid-use-system-font" type="b">
+      <default>true</default>
+      <summary>Use the system monospace font in the data grid</summary>
+      <description>Whether the data grid follows the desktop monospace font instead of a custom one.</description>
+    </key>
+
+    <key name="grid-font" type="s">
+      <default>'Monospace 10'</default>
+      <summary>Custom data grid font</summary>
+      <description>Pango font description the data grid uses when the system font is turned off.</description>
+    </key>
+
     <key name="style-scheme" type="s">
       <default>''</default>
       <summary>Editor style scheme</summary>
