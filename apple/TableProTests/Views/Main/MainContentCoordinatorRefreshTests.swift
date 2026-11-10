@@ -386,7 +386,7 @@ struct MainContentCoordinatorRefreshTests {
         defer { subscription.cancel() }
 
         var expected: [UUID] = []
-        for tabType in [TabType.serverDashboard, .insights, .tableHealth] {
+        for tabType in [TabType.serverDashboard, .insights] {
             tabManager.addSingletonTab(tabType)
             expected += [tabManager.selectedTabId].compactMap { $0 }
             coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
@@ -396,6 +396,152 @@ struct MainContentCoordinatorRefreshTests {
         coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
 
         #expect(requested == expected)
+    }
+
+    @Test("Refresh on a Table Health tab refreshes its model on the tab's own database, with no broadcast")
+    func refreshOnTableHealthRefreshesItsModel() async throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        var requested: [UUID] = []
+        let subscription = AppEvents.shared.tabRefreshRequested.sink { requested.append($0) }
+        defer { subscription.cancel() }
+        let tabId = try #require(tabManager.addTableHealthTab(databaseName: "shop"))
+        let metadata = RefreshLeaseRecorder()
+        coordinator.tableHealthModels[tabId] = TableHealthViewModel(
+            connectionId: coordinator.connectionId,
+            provider: TableHealthProviderFactory.provider(for: .postgresql),
+            history: RefreshUnusedHistory(),
+            lease: .metadata(metadata),
+            database: { "shop" }
+        )
+
+        coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
+
+        try await waitUntil { metadata.databases == ["shop"] }
+        #expect(requested.isEmpty)
+    }
+
+    @Test("Closing a Table Health tab drops its model")
+    func closingTableHealthDropsItsModel() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = try #require(tabManager.addTableHealthTab(databaseName: "shop"))
+        coordinator.tableHealthModel(for: tabId)
+
+        coordinator.cleanupTabCaches(openTabIds: [])
+
+        #expect(coordinator.tableHealthModels[tabId] == nil)
+    }
+
+    @Test("A database rename reloads a Table Health tab's history from the new name")
+    func renameReloadsTableHealthHistory() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = try #require(tabManager.addTableHealthTab(databaseName: "shop"))
+        let logs = TableHealthFindingID(kind: .missingPrimaryKey, schema: "public", table: "logs", object: nil)
+        let history = RenamedHistory(database: "shop_v2", ledger: TableHealthLedger().ignoring([logs], at: Date()))
+        let model = TableHealthViewModel(
+            connectionId: coordinator.connectionId,
+            provider: TableHealthProviderFactory.provider(for: .postgresql),
+            history: history,
+            lease: .metadata(RefreshLeaseRecorder()),
+            database: { tabManager.tabs.first { $0.id == tabId }?.tableContext.databaseName ?? "" }
+        )
+        coordinator.tableHealthModels[tabId] = model
+
+        coordinator.retargetTabs(database: "shop", schema: nil, toDatabase: "shop_v2", toSchema: nil)
+
+        #expect(model.databaseName == "shop_v2")
+        #expect(model.ledger.isIgnored(logs))
+    }
+
+    @Test("A table rename refreshes the Table Health tabs on its database and no other")
+    func tableRenameRefreshesTableHealth() async throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let shop = RefreshLeaseRecorder()
+        let archive = RefreshLeaseRecorder()
+        let shopModel = try makeTableHealthTab("shop", metadata: shop, coordinator: coordinator, tabManager: tabManager)
+        let archiveModel = try makeTableHealthTab("archive", metadata: archive, coordinator: coordinator, tabManager: tabManager)
+        await shopModel.refresh()
+        await archiveModel.refresh()
+
+        coordinator.applyObjectChange(DatabaseObjectChange(
+            connectionId: coordinator.connectionId,
+            scope: DatabaseScope(connectionId: coordinator.connectionId, database: "shop", schema: "public"),
+            name: "orders",
+            kind: .renamed(to: "orders_v2")
+        ))
+
+        try await waitUntil { shop.databases.count == 2 }
+        #expect(archive.databases == ["archive"])
+    }
+
+    @Test("A schema rename refreshes the Table Health tabs on its database")
+    func schemaRenameRefreshesTableHealth() async throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let shop = RefreshLeaseRecorder()
+        let model = try makeTableHealthTab("shop", metadata: shop, coordinator: coordinator, tabManager: tabManager)
+        await model.refresh()
+
+        coordinator.applyContainerChange(DatabaseContainerChange(
+            connectionId: coordinator.connectionId,
+            container: .schema(database: "shop", schema: "billing"),
+            kind: .renamed(to: "finance")
+        ))
+
+        try await waitUntil { shop.databases.count == 2 }
+    }
+
+    @Test("A table drop refreshes the Table Health tabs on its database and no other")
+    func tableDropRefreshesTableHealth() async throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let shop = RefreshLeaseRecorder()
+        let archive = RefreshLeaseRecorder()
+        let shopModel = try makeTableHealthTab("shop", metadata: shop, coordinator: coordinator, tabManager: tabManager)
+        let archiveModel = try makeTableHealthTab("archive", metadata: archive, coordinator: coordinator, tabManager: tabManager)
+        await shopModel.refresh()
+        await archiveModel.refresh()
+
+        coordinator.applyObjectChange(DatabaseObjectChange(
+            connectionId: coordinator.connectionId,
+            scope: DatabaseScope(connectionId: coordinator.connectionId, database: "shop", schema: "public"),
+            name: "orders",
+            kind: .dropped
+        ))
+
+        try await waitUntil { shop.databases.count == 2 }
+        #expect(archive.databases == ["archive"])
+    }
+
+    @Test("A schema drop refreshes the Table Health tabs on its database")
+    func schemaDropRefreshesTableHealth() async throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let shop = RefreshLeaseRecorder()
+        let model = try makeTableHealthTab("shop", metadata: shop, coordinator: coordinator, tabManager: tabManager)
+        await model.refresh()
+
+        coordinator.applyContainerChange(DatabaseContainerChange(
+            connectionId: coordinator.connectionId,
+            container: .schema(database: "shop", schema: "billing"),
+            kind: .dropped
+        ))
+
+        try await waitUntil { shop.databases.count == 2 }
+    }
+
+    private func makeTableHealthTab(
+        _ database: String,
+        metadata: RefreshLeaseRecorder,
+        coordinator: MainContentCoordinator,
+        tabManager: QueryTabManager
+    ) throws -> TableHealthViewModel {
+        let tabId = try #require(tabManager.addTableHealthTab(databaseName: database))
+        let model = TableHealthViewModel(
+            connectionId: coordinator.connectionId,
+            provider: TableHealthProviderFactory.provider(for: .postgresql),
+            history: RefreshUnusedHistory(),
+            lease: .metadata(metadata),
+            database: { database }
+        )
+        coordinator.tableHealthModels[tabId] = model
+        return model
     }
 
     @Test("Refresh on Users & Roles reloads the principals through the tab's own handler")
@@ -410,5 +556,104 @@ struct MainContentCoordinatorRefreshTests {
         coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
 
         #expect(reloads == 1)
+    }
+}
+
+private struct RefreshLeaseRefused: Error {}
+
+@MainActor
+private final class RefreshLeaseRecorder: ScopedMetadataProviding {
+    private(set) var databases: [String] = []
+
+    func withMetadataDriver<T: Sendable>(
+        scope: DatabaseScope,
+        workload: MetadataConnectionPool.Workload,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
+    ) async throws -> T {
+        databases.append(scope.database)
+        throw RefreshLeaseRefused()
+    }
+
+    func browseScope(for connectionId: UUID) -> DatabaseScope? {
+        nil
+    }
+}
+
+@MainActor
+private final class RefreshUnusedHistory: TableHealthHistoryStoring {
+    func ledger(connectionId: UUID, database: String) throws -> TableHealthLedger {
+        TableHealthLedger()
+    }
+
+    func generation(connectionId: UUID, database: String) -> Int {
+        0
+    }
+
+    func record(
+        _ report: TableHealthReport,
+        connectionId: UUID,
+        database: String,
+        generation: Int,
+        at date: Date
+    ) throws -> TableHealthLedger {
+        TableHealthLedger()
+    }
+
+    func setIgnored(
+        _ ids: Set<TableHealthFindingID>,
+        ignored: Bool,
+        connectionId: UUID,
+        database: String,
+        at date: Date
+    ) throws -> TableHealthLedger {
+        TableHealthLedger()
+    }
+
+    func clearResolved(connectionId: UUID, database: String) throws -> TableHealthLedger {
+        TableHealthLedger()
+    }
+}
+
+// Holds one database's ledger, the way the store holds a ledger moved by a database rename.
+@MainActor
+private final class RenamedHistory: TableHealthHistoryStoring {
+    private let database: String
+    private let stored: TableHealthLedger
+
+    init(database: String, ledger: TableHealthLedger) {
+        self.database = database
+        stored = ledger
+    }
+
+    func ledger(connectionId: UUID, database: String) throws -> TableHealthLedger {
+        database == self.database ? stored : TableHealthLedger()
+    }
+
+    func generation(connectionId: UUID, database: String) -> Int {
+        0
+    }
+
+    func record(
+        _ report: TableHealthReport,
+        connectionId: UUID,
+        database: String,
+        generation: Int,
+        at date: Date
+    ) throws -> TableHealthLedger {
+        try ledger(connectionId: connectionId, database: database)
+    }
+
+    func setIgnored(
+        _ ids: Set<TableHealthFindingID>,
+        ignored: Bool,
+        connectionId: UUID,
+        database: String,
+        at date: Date
+    ) throws -> TableHealthLedger {
+        try ledger(connectionId: connectionId, database: database)
+    }
+
+    func clearResolved(connectionId: UUID, database: String) throws -> TableHealthLedger {
+        try ledger(connectionId: connectionId, database: database)
     }
 }

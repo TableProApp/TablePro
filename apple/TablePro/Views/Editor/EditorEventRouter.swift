@@ -7,6 +7,7 @@
 //
 
 @preconcurrency import AppKit
+import TableProEditorKit
 import TableProTextEngine
 
 @MainActor
@@ -155,6 +156,15 @@ internal final class EditorEventRouter {
     internal func runStatementAtCursorAndAdvanceForKeyWindow() {
         guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
         coordinator.runStatementAtCursorAndAdvance()
+    }
+
+    // A large document writes its text to the tab on a delay; a run or an AI action reads the tab.
+    internal func flushPendingText(forTab tabId: UUID, connectionId: UUID) {
+        for ref in editors.values {
+            guard let coordinator = ref.coordinator,
+                  coordinator.tabID == tabId, coordinator.connectionId == connectionId else { continue }
+            coordinator.controller?.flushPendingTextWriteback()
+        }
     }
 
     /// Called when the Edit menu's "Clear Selection" item is chosen with the pointer.

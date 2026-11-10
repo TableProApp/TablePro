@@ -2,10 +2,12 @@ import Foundation
 
 public struct MCPUpstreamCredentials: Sendable, Equatable {
     public let socketPath: String
+    public let serverPID: Int32
     public let bearerToken: String
 
-    public init(socketPath: String, bearerToken: String) {
+    public init(socketPath: String, serverPID: Int32, bearerToken: String) {
         self.socketPath = socketPath
+        self.serverPID = serverPID
         self.bearerToken = bearerToken
     }
 }

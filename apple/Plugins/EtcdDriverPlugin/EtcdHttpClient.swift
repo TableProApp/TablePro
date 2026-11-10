@@ -561,6 +561,10 @@ internal final class EtcdHttpClient: @unchecked Sendable {
         try await post(path: apiPath("kv/deleterange"), body: req)
     }
 
+    func txnRequest(_ req: EtcdTxnRequest) async throws -> EtcdTxnResponse {
+        try await post(path: apiPath("kv/txn"), body: req)
+    }
+
     // MARK: - Lease Operations
 
     func leaseGrant(ttl: Int64) async throws -> EtcdLeaseGrantResponse {

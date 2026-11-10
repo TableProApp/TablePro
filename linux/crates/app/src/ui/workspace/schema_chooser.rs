@@ -148,10 +148,10 @@ impl WorkspaceModel {
 struct Chooser {
     choices: RefCell<SchemaChoices>,
     input: WorkspaceSender,
-    names: gtk::StringList,
     // Weak, since the widgets' handlers hold the chooser.
     summary: glib::WeakRef<gtk::Label>,
     show_all: glib::WeakRef<gtk::Button>,
+    checks: RefCell<Vec<glib::WeakRef<gtk::CheckButton>>>,
 }
 
 impl Chooser {
@@ -177,25 +177,40 @@ impl Chooser {
         self.refresh();
     }
 
-    // Rebound from idle: a toggle or a refused hide must not rebind the row
-    // that is still emitting its signal.
+    // From idle, as the check that was toggled is still emitting its signal. The rows
+    // change in place: a new list would drop the row that holds the focus.
     fn refresh(self: &Rc<Self>) {
         self.show_summary();
         let chooser = Rc::downgrade(self);
         glib::idle_add_local_once(move || {
             if let Some(chooser) = chooser.upgrade() {
-                let names = chooser.names.n_items();
-                let listed: Vec<String> = chooser
-                    .choices
+                let checks: Vec<gtk::CheckButton> = chooser
+                    .checks
                     .borrow()
-                    .schemas
                     .iter()
-                    .map(|schema| schema.name.clone())
+                    .filter_map(glib::WeakRef::upgrade)
                     .collect();
-                let listed: Vec<&str> = listed.iter().map(String::as_str).collect();
-                chooser.names.splice(0, names, &listed);
+                for check in checks {
+                    chooser.show_state(&check);
+                }
             }
         });
+    }
+
+    fn show_state(&self, check: &gtk::CheckButton) {
+        let Some(name) = check.label() else {
+            return;
+        };
+        let choices = self.choices.borrow();
+        let shows = choices.shows(&name);
+        check.set_active(shows);
+        // The last schema listed stays listed.
+        let last = shows
+            && choices
+                .filter
+                .summary(&choices.schemas)
+                .is_some_and(|(shown, _)| shown == 1);
+        check.set_sensitive(!last);
     }
 
     fn show_summary(&self) {
@@ -233,9 +248,9 @@ pub(super) fn popover(choices: SchemaChoices, input: WorkspaceSender) -> gtk::Po
     let chooser = Rc::new(Chooser {
         choices: RefCell::new(choices),
         input,
-        names: names.clone(),
         summary: summary.downgrade(),
         show_all: show_all.downgrade(),
+        checks: RefCell::default(),
     });
     chooser.show_summary();
     show_all.connect_clicked(glib::clone!(
@@ -325,6 +340,10 @@ fn check(chooser: &Rc<Chooser>, item: &gtk::ListItem) -> gtk::CheckButton {
     item.set_focusable(false);
     item.set_activatable(false);
     let check = gtk::CheckButton::new();
+    let mut checks = chooser.checks.borrow_mut();
+    checks.retain(|check| check.upgrade().is_some());
+    checks.push(check.downgrade());
+    drop(checks);
     check.connect_toggled(glib::clone!(
         #[strong]
         chooser,
@@ -348,18 +367,8 @@ fn show_check(chooser: &Chooser, item: &gtk::ListItem) {
     ) else {
         return;
     };
-    let name = name.string();
-    let choices = chooser.choices.borrow();
-    let shows = choices.shows(&name);
-    check.set_label(Some(&name));
-    check.set_active(shows);
-    // The last schema listed stays listed.
-    let last = shows
-        && choices
-            .filter
-            .summary(&choices.schemas)
-            .is_some_and(|(shown, _)| shown == 1);
-    check.set_sensitive(!last);
+    check.set_label(Some(&name.string()));
+    chooser.show_state(&check);
 }
 
 impl SchemaChoices {

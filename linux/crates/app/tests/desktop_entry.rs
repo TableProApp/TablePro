@@ -1,5 +1,5 @@
-//! The desktop entry offers TablePro for SQLite files and SQL scripts
-//! and hands them over the way the application expects.
+//! The desktop entry offers TablePro for SQLite files, SQL scripts and
+//! connection links, and hands them over the way the application expects.
 
 use std::path::Path;
 
@@ -43,6 +43,23 @@ fn sql_scripts_are_offered_to_tablepro() {
         types.contains(&"application/sql".to_owned()),
         "the entry does not take SQL scripts: {types:?}"
     );
+}
+
+// xdg-open and browsers hand a postgresql:// link to the app that claims x-scheme-handler/postgresql.
+#[test]
+fn connection_links_are_offered_to_tablepro() {
+    let entry = entry().expect("the desktop entry parses");
+
+    let types = list(&entry, MAIN, "MimeType").expect("a MimeType list");
+    let mut claimed: Vec<&str> = types
+        .iter()
+        .filter_map(|kind| kind.strip_prefix("x-scheme-handler/"))
+        .collect();
+    claimed.sort_unstable();
+    let mut expected = tablepro_app::LINK_SCHEMES.to_vec();
+    expected.sort_unstable();
+
+    assert_eq!(claimed, expected);
 }
 
 #[test]

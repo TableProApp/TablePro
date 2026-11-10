@@ -250,6 +250,22 @@ fn wide_window_shows_tab_bar() {
     assert!(!imp.split_view.is_collapsed());
 }
 
+#[gtk4::test]
+fn save_changes_leaves_the_narrow_header() {
+    for (name, width, height, shown) in [("NarrowSave", 360, 294, false), ("WideSave", 1200, 760, true)] {
+        let test = sized(name, width, height);
+        let workspace = test.workspace();
+        let shell = shell_of(&workspace);
+        let imp = shell.imp();
+        let narrow = (!shown).then(|| imp.narrow_breakpoint.get());
+        wait_until(Duration::from_secs(2), || {
+            imp.breakpoint_bin.width() > 0 && imp.breakpoint_bin.current_breakpoint() == narrow
+        })
+        .expect("the breakpoint for the width");
+        assert_eq!(imp.save_changes_button.is_visible(), shown, "{name}");
+    }
+}
+
 fn fits_the_floor(root: &gtk::Widget) {
     let (min_width, ..) = root.measure(gtk::Orientation::Horizontal, -1);
     let (min_height, ..) = root.measure(gtk::Orientation::Vertical, 360);
@@ -716,6 +732,38 @@ fn collect_actions(menu: &gio::MenuModel, actions: &mut Vec<String>) {
 }
 
 #[gtk4::test]
+fn open_quickly_closes_when_another_session_comes_forward() {
+    let sessions = super::two_sessions("QuickOpenFollowsFront", "Other");
+    super::open_editor(&sessions.first);
+    let dialog = sessions
+        .first
+        .with_model(|model| {
+            model.on_show_quick_open();
+            model.quick_open_dialog.clone().expect("quick open")
+        })
+        .expect("workspace");
+    wait_until(WAIT, || dialog.parent().is_some()).expect("shown");
+    super::open_editor(&sessions.second);
+    wait_until(WAIT, || dialog.parent().is_none()).expect("old session dialog closed");
+    assert_eq!(sessions.shell.front().as_ref(), Some(&sessions.second));
+}
+
+#[gtk4::test]
+fn a_queued_quick_open_pick_does_not_reopen_a_background_session() {
+    let sessions = super::two_sessions("QuickOpenQueuedPick", "Other");
+    super::open_editor(&sessions.second);
+    let before = sessions.shell.tab_view().n_pages();
+    sessions.first.with_model(|model| {
+        model.on_quick_open_chosen(crate::ui::quick_open::Pick::Table {
+            table: tablepro_core::meta::TableRef::new(None, "orders"),
+            structure: false,
+        })
+    });
+    assert_eq!(sessions.shell.front().as_ref(), Some(&sessions.second));
+    assert_eq!(sessions.shell.tab_view().n_pages(), before);
+}
+
+#[gtk4::test]
 fn the_header_refresh_follows_the_selected_tabs_capability() {
     use super::super::structure_target::StructureTarget;
     use super::super::tab_spec::{TabSpec, TablePage};
@@ -814,8 +862,9 @@ fn a_read_only_connection_has_no_add_menu() {
     });
     let shell = shell_of(&test.workspace());
     let imp = shell.imp();
-    crate::test_support::drain_main_context();
+    wait_until(WAIT, || test.workspace().creation_menu().is_some()).expect("the session's Add menu");
 
+    assert_eq!(test.workspace().creation_menu().map(|menu| menu.n_items()), Some(0));
     assert!(!imp.sidebar_add_button.is_visible());
     assert!(!imp.sidebar_bar.is_revealed());
 }
@@ -855,7 +904,8 @@ fn the_schemas_button_chooses_what_the_sidebar_lists_and_keeps_it() {
             .find(|check| check.label().as_deref() == Some(name))
     };
     wait_until(WAIT, || check("sales").is_some()).expect("a check for each schema");
-    check("sales").expect("the sales check").set_active(false);
+    let sales = check("sales").expect("the sales check");
+    sales.set_active(false);
     wait_until(WAIT, || banner.is_revealed()).expect("the banner");
     assert_eq!(banner.title(), "Showing 1 of 2 schemas");
     let (id, database) = (session.metadata().id, session.database().unwrap_or_default().to_owned());
@@ -866,6 +916,7 @@ fn the_schemas_button_chooses_what_the_sidebar_lists_and_keeps_it() {
     );
     wait_until(WAIT, || check("public").is_some_and(|check| !check.is_sensitive()))
         .expect("the last schema listed stays");
+    assert_eq!(check("sales"), Some(sales), "the row and its focus stay");
 
     banner.emit_by_name::<()>("button-clicked", &[]);
     wait_until(WAIT, || !banner.is_revealed()).expect("Show All");

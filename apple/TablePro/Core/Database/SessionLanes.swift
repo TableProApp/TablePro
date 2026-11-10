@@ -37,6 +37,21 @@ internal final class SessionLanes {
     /// is refused once, so work meant to continue that transaction does not carry on without it.
     private var lostTransactions: [UUID: Set<String>] = [:]
 
+    private struct Opened {
+        weak var driver: AnyObject?
+        var lastUsed: Date
+    }
+
+    /// Connections opened for SQL on a database the user never browsed. Unlike a database the user
+    /// switched away from, nothing on screen closes one, so it is closed once idle. Browsing its
+    /// database takes it off this list.
+    private var opened: [UUID: [String: Opened]] = [:]
+    /// Databases whose opened connection was closed for being idle. Work queued for one reopens it:
+    /// no transaction was lost. The session's temp tables, `SET` values and advisory locks were.
+    private var closedIdle: [UUID: Set<String>] = [:]
+
+    internal static let openedIdleTimeout: TimeInterval = MetadataConnectionPool.idleTimeout
+
     /// Opens the connection for a database the session has not browsed yet. Replaced under test,
     /// where plugins never load and no server is there to dial.
     internal var opener: Opener
@@ -67,6 +82,10 @@ internal final class SessionLanes {
     internal func park(_ driver: DatabaseDriver, database: String, for connectionId: UUID) {
         let replaced = parked[connectionId]?[database].flatMap { $0 !== driver ? $0 : nil }
         parked[connectionId, default: [:]][database] = driver
+        closedIdle[connectionId]?.remove(database)
+        if opened[connectionId]?[database]?.driver !== driver {
+            opened[connectionId]?.removeValue(forKey: database)
+        }
         if let replaced {
             replaced.disconnect()
             onClose?(connectionId)
@@ -79,6 +98,7 @@ internal final class SessionLanes {
         if parked[connectionId]?.isEmpty == true {
             parked.removeValue(forKey: connectionId)
         }
+        opened[connectionId]?.removeValue(forKey: database)
         return driver
     }
 
@@ -91,6 +111,7 @@ internal final class SessionLanes {
         if supersedingOpens {
             generations[connectionId, default: 0] &+= 1
         }
+        closedIdle[connectionId]?.remove(database)
         guard let driver = unpark(database: database, for: connectionId) else { return }
         Self.logger.info("closing parked connection connId=\(connectionId, privacy: .public)")
         verifiedAt.removeValue(forKey: ObjectIdentifier(driver))
@@ -104,6 +125,8 @@ internal final class SessionLanes {
     internal func closeAll(for connectionId: UUID, keepingLostTransactions: Bool = false) {
         generations[connectionId, default: 0] &+= 1
         let drivers = parked.removeValue(forKey: connectionId) ?? [:]
+        opened.removeValue(forKey: connectionId)
+        closedIdle.removeValue(forKey: connectionId)
         if !keepingLostTransactions {
             lostTransactions.removeValue(forKey: connectionId)
         }
@@ -197,5 +220,42 @@ internal final class SessionLanes {
     /// Reports a lost transaction once, clearing it.
     internal func takeTransactionLoss(database: String, for connectionId: UUID) -> Bool {
         lostTransactions[connectionId]?.remove(database) != nil
+    }
+
+    // A connection with one driver for every database lost the transaction whichever name it was noted under.
+    internal func takeAnyTransactionLoss(for connectionId: UUID) -> String? {
+        lostTransactions.removeValue(forKey: connectionId)?.min()
+    }
+
+    internal func markOpened(_ driver: DatabaseDriver, database: String, for connectionId: UUID, at date: Date = Date()) {
+        guard parked[connectionId]?[database] === driver else { return }
+        opened[connectionId, default: [:]][database] = Opened(driver: driver, lastUsed: date)
+    }
+
+    internal func isOpened(database: String, for connectionId: UUID) -> Bool {
+        opened[connectionId]?[database] != nil
+    }
+
+    internal func noteOpenedUse(database: String, for connectionId: UUID, at date: Date = Date()) {
+        opened[connectionId]?[database]?.lastUsed = date
+    }
+
+    /// Least recently used first.
+    internal func openedLanes(for connectionId: UUID) -> [(database: String, driver: DatabaseDriver, lastUsed: Date)] {
+        (opened[connectionId] ?? [:])
+            .compactMap { database, entry in
+                guard let driver = parked[connectionId]?[database], entry.driver === driver else { return nil }
+                return (database, driver, entry.lastUsed)
+            }
+            .sorted { $0.lastUsed < $1.lastUsed }
+    }
+
+    internal func closeIdle(database: String, for connectionId: UUID) {
+        close(database: database, for: connectionId, supersedingOpens: false)
+        closedIdle[connectionId, default: []].insert(database)
+    }
+
+    internal func wasClosedIdle(database: String, for connectionId: UUID) -> Bool {
+        closedIdle[connectionId]?.contains(database) ?? false
     }
 }

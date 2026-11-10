@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import os
 @testable import TablePro
 import TableProPluginKit
 import Testing
@@ -92,6 +93,31 @@ struct MaskingExportTests {
     func noRuleIsUnwrapped() {
         let base = FixedRowsDataSource.customers
         #expect(MaskingExportDataSource.wrapping(base, policy: .none) === base)
+    }
+
+    @Test("A masked stream reads a row batch only when its consumer asks for one")
+    func maskedStreamPullsOnDemand() async throws {
+        let pulls = OSAllocatedUnfairLock(initialState: 0)
+        let endless = AsyncThrowingStream<PluginStreamElement, Error>(unfolding: {
+            let pull = pulls.withLock { count -> Int in
+                count += 1
+                return count
+            }
+            return pull == 1
+                ? .header(PluginStreamHeader(columns: ["id", "email"], columnTypeNames: ["INT", "VARCHAR"]))
+                : .rows([[.text("1"), .text("a@example.com")]])
+        })
+        var iterator = MaskingExportDataSource.masking(endless, table: "customers", policy: policy).makeAsyncIterator()
+        _ = try await iterator.next()
+        let batch = try await iterator.next()
+        guard case .rows(let rows)? = batch else {
+            Issue.record("expected rows")
+            return
+        }
+        #expect(rows == [[.text("1"), .text("••••")]])
+        // A pump would have run ahead of a consumer that stopped here.
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(pulls.withLock { $0 } == 2)
     }
 
     @Test("Rows that arrive before their header are refused rather than let through")

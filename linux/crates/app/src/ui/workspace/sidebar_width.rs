@@ -53,7 +53,7 @@ pub(super) fn follow(split: &adw::OverlaySplitView, handle: &gtk::Box, settings:
         glib::Propagation::Proceed,
         move |_, key, _, _| match step(key, split.direction() == gtk::TextDirection::Rtl) {
             Some(step) => {
-                keep(&settings, shown_width(&split) + step);
+                keep(&settings, stepped(shown_width(&split), split.max_sidebar_width(), step));
                 glib::Propagation::Stop
             }
             None => glib::Propagation::Proceed,
@@ -71,6 +71,13 @@ fn step(key: gdk::Key, rtl: bool) -> Option<f64> {
     }
 }
 
+// A window under twice the width kept shows the sidebar at half its width, which
+// a wider window still gives it, so widening there keeps that width.
+fn stepped(shown: f64, kept: f64, step: f64) -> f64 {
+    let width = shown + step;
+    if step > 0.0 { width.max(kept) } else { width }
+}
+
 fn keep(settings: &gio::Settings, width: f64) {
     if let Err(error) = settings.set_double(SIDEBAR_WIDTH, width.round().clamp(NARROWEST, WIDEST)) {
         tracing::warn!(%error, "the sidebar's width was not kept");
@@ -86,7 +93,8 @@ fn shown_width(split: &adw::OverlaySplitView) -> f64 {
 
 // Measured in the split view, which stays put while the handle moves with the edge.
 fn pointer_width(split: &adw::OverlaySplitView, handle: &gtk::Box, drag: &gtk::GestureDrag) -> Option<f64> {
-    let (x, y) = drag.point(None)?;
+    // A touch has its own sequence; only a pointer's is none.
+    let (x, y) = drag.point(drag.current_sequence().as_ref())?;
     let point = handle.compute_point(split, &graphene::Point::new(x as f32, y as f32))?;
     let pixels = match split.direction() {
         gtk::TextDirection::Rtl => f64::from(split.width()) - f64::from(point.x()),
@@ -105,5 +113,12 @@ mod tests {
         assert_eq!(step(gdk::Key::Left, false), Some(-STEP));
         assert_eq!(step(gdk::Key::Left, true), Some(STEP), "the sidebar is on the right");
         assert_eq!(step(gdk::Key::Up, false), None);
+    }
+
+    #[test]
+    fn widening_a_sidebar_the_window_holds_at_half_keeps_the_width_kept() {
+        assert_eq!(stepped(280.0, 280.0, STEP), 296.0);
+        assert_eq!(stepped(500.0, 600.0, STEP), 600.0, "the window is 1000 wide");
+        assert_eq!(stepped(500.0, 600.0, -STEP), 484.0);
     }
 }

@@ -194,7 +194,7 @@ extension AIChatViewModel {
                 let toolSpecs = await MainActor.run {
                     (registry ?? ChatToolRegistry.shared).specs(in: scope)
                 }
-                var workingTurns = chatMessages
+                var workingTurns = ChatToolCallRepair.answeringEveryToolCall(chatMessages)
                 var executedRoundtrips = 0
 
                 while true {
@@ -236,7 +236,13 @@ extension AIChatViewModel {
                         assistantID: currentAssistantID,
                         registry: registry
                     )
-                    guard !Task.isCancelled else { return }
+                    guard !Task.isCancelled else {
+                        await self.closeInterruptedToolRound(
+                            assistantID: currentAssistantID,
+                            results: ChatToolCallRepair.interruptedResults(for: approvals.blocks)
+                        )
+                        return
+                    }
 
                     let toolUseBlocks = approvals.blocks
                     let approvedBlocks = toolUseBlocks.filter {
@@ -250,12 +256,18 @@ extension AIChatViewModel {
                         explicitlyApproved: approvals.explicitlyApproved,
                         registry: registry
                     )
-                    guard !Task.isCancelled else { return }
-
                     let toolResultBlocks = Self.synthesizeResults(
                         for: toolUseBlocks,
                         executed: executedResults
                     )
+                    // A statement that ran before Stop still ran: its result stays in the transcript.
+                    guard !Task.isCancelled else {
+                        await self.closeInterruptedToolRound(
+                            assistantID: currentAssistantID,
+                            results: toolResultBlocks
+                        )
+                        return
+                    }
                     let continuation = await self.completeToolRoundtrip(
                         assistantIDForRound: currentAssistantID,
                         toolUseBlocks: toolUseBlocks,
@@ -364,7 +376,8 @@ extension AIChatViewModel {
                 systemPrompt: systemPrompt,
                 tools: toolSpecs,
                 reasoningEffort: resolved.config.reasoningEffort,
-                sessionId: sessionId
+                sessionId: sessionId,
+                connectionId: connection?.id
             )
         )
 
@@ -576,6 +589,15 @@ extension AIChatViewModel {
                 String(format: String(localized: "Paused after %d tool calls."), count)
             )
         }
+    }
+
+    // Placed right after the calls it answers: the user may already have sent the next message.
+    func closeInterruptedToolRound(assistantID: UUID, results: [ToolResultBlock]) {
+        guard !results.isEmpty, let index = messages.firstIndex(where: { $0.id == assistantID }) else { return }
+        finalizeStreamingMessage(id: assistantID)
+        let turn = ChatTurn(wire: ChatTurnWire(role: .user, blocks: results.map { .toolResult($0) }))
+        messages.insert(turn, at: index + 1)
+        persistCurrentConversation()
     }
 
     func completeToolRoundtrip(
