@@ -5,6 +5,7 @@ use std::time::Duration;
 use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{ObjectInfo, ObjectScope, SchemaInfo};
+use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::{
     CallOptions, ColumnInfo, DriverError, EditorSession, EditorSessionOptions, SafeModeLevel, TableRef,
     UnsupportedFeature, WorkspaceSettings,
@@ -35,6 +36,8 @@ pub struct Session {
     metadata: ConnectionMetadata,
     workspace_settings: WorkspaceSettings,
     safe_mode: Mutex<SafeModeLevel>,
+    // The engine's own, from the connection the session opened on, for SQL read while no connection is current.
+    grammar: SqlGrammar,
     reachability: Arc<Mutex<ReachabilityTarget>>,
     last_rejection: Arc<Mutex<Option<Arc<ConnectError>>>>,
     trusted_host_key: Arc<Mutex<Option<ReviewedHostKey>>>,
@@ -81,6 +84,7 @@ impl Session {
             &parts.request,
             &parts.established,
         )));
+        let grammar = parts.established.connection.dialect().grammar();
         let link = Arc::new(ConnectionLink::new(parts.established));
         let last_rejection = Arc::new(Mutex::new(None));
         let trusted_host_key = Arc::new(Mutex::new(None));
@@ -128,6 +132,7 @@ impl Session {
             metadata: parts.request.metadata,
             workspace_settings: parts.request.workspace_settings,
             safe_mode: Mutex::new(parts.request.safe_mode),
+            grammar,
             reachability,
             last_rejection,
             trusted_host_key,
@@ -198,6 +203,11 @@ impl Session {
     /// matches the connection it runs on.
     pub fn current_dialect(&self) -> Option<Arc<dyn SqlDialect>> {
         self.link.lease().map(|lease| lease.dialect())
+    }
+
+    // Also while the link is down, since an editor tab's own connection can still be up and run what it is sent.
+    pub fn grammar(&self) -> SqlGrammar {
+        self.current_dialect().map_or(self.grammar, |dialect| dialect.grammar())
     }
 
     /// Which connection is current. A request issued under an older one
