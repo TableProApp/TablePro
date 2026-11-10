@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import TableProMCP
 import TableProMCPTestSupport
@@ -336,6 +337,7 @@ final class MCPBridgeIntegrationTests: XCTestCase {
     private func startBridge(socketPath: String? = nil) async throws -> BridgeHarness {
         let credentials = MCPUpstreamCredentials(
             socketPath: socketPath ?? upstream.socketPath,
+            serverPID: getpid(),
             bearerToken: "integration-token"
         )
         let transport = MCPStreamableHttpClientTransport(

@@ -217,6 +217,7 @@ final class SyncCoordinator: ObservableObject {
         /// save into a zone another device recreated fail as an unknown record.
         if nextZone == .removed, zone != .removed {
             recordCache.removeAll()
+            metadataStorage.deferredDeletions = []
             metadataStorage.saveToken(nil)
         }
         metadataStorage.zoneState = nextZone
@@ -374,6 +375,7 @@ final class SyncCoordinator: ObservableObject {
 
         // Clear token to force a full fetch on first sync after enabling
         metadataStorage.saveToken(nil)
+        metadataStorage.deferredDeletions = []
         /// Turning sync on is the person's choice to upload, a removed zone included.
         metadataStorage.zoneState = .unknown
 
@@ -400,6 +402,7 @@ final class SyncCoordinator: ObservableObject {
         }
         metadataStorage.zoneState = .unknown
         metadataStorage.saveToken(nil)
+        metadataStorage.deferredDeletions = []
         recordCache.removeAll()
         markAllLocalDataDirty()
         await markSQLFavoritesDirty()
@@ -725,7 +728,9 @@ final class SyncCoordinator: ObservableObject {
         echoGuard: SyncEchoGuard? = nil
     ) async -> Bool {
         let settings = settings ?? services.appSettingsStorage.loadSync()
-        let deletedRecordIDs = result.deletedRecordIDs.filter { recordID in
+        let zoneID = await transport.currentZoneID
+        let deferred = deferredDeletions(dueIn: result, settings: settings, zoneID: zoneID)
+        let deletedRecordIDs = (result.deletedRecordIDs + deferred.due).filter { recordID in
             echoGuard?.withholdsDeletion(recordID, tracker: changeTracker) != true
         }
         let pendingEdits = await recordNamesWithPendingEdits()
@@ -764,7 +769,8 @@ final class SyncCoordinator: ObservableObject {
             echoGuard?.withholds(record.recordID, tracker: changeTracker) != true
                 && SyncRecordType(rawValue: record.recordType).map { settings.syncs($0) } == true
         })
-        recordCache.remove(result.deletedRecordIDs)
+        recordCache.remove(result.deletedRecordIDs + deferred.due)
+        settleDeferredDeletions(deferred, after: result, settings: settings)
 
         Self.logger.info(
             "Pull completed: \(result.changedRecords.count) changed, \(result.deletedRecordIDs.count) deleted"

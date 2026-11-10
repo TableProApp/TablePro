@@ -487,7 +487,10 @@ final class RowOperationsManager {
         into tableRows: inout TableRows
     ) -> PasteRowsResult {
         var pastedRowInfo: [PastedRowInfo] = []
-        var insertedIndices = IndexSet()
+        var recorded: [DataChangeManager.InsertedRow] = []
+        pastedRowInfo.reserveCapacity(parsedRows.count)
+        recorded.reserveCapacity(parsedRows.count)
+        let firstIndex = tableRows.count
 
         // Pasted server-owned values skip the cell-edit check and the generator drops them, so the grid showed unsaved values.
         let serverOwned = tableRows.columns.enumerated().filter { _, name in
@@ -508,14 +511,18 @@ final class RowOperationsManager {
                 absentColumns.remove(index)
                 expressionColumns.remove(index)
             }
-            insertedIndices.insert(tableRows.count)
-            let inserted = appendInsertedRow(
-                values: rowValues, absentColumns: absentColumns, expressionColumns: expressionColumns, to: &tableRows
-            )
-            pastedRowInfo.append(PastedRowInfo(rowID: inserted.rowID, values: rowValues))
+            let rowID = RowID.inserted(UUID())
+            let storageIndex = tableRows.count
+            tableRows.appendInsertedRow(id: rowID, values: rowValues, absentColumns: absentColumns)
+            recorded.append(DataChangeManager.InsertedRow(
+                location: InsertedRowLocation(rowID: rowID, storageIndex: storageIndex),
+                values: rowValues, absentColumns: absentColumns, expressionColumns: expressionColumns
+            ))
+            pastedRowInfo.append(PastedRowInfo(rowID: rowID, values: rowValues))
         }
+        changeManager.recordBatchRowInsertion(rows: recorded)
 
-        let delta: Delta = insertedIndices.isEmpty ? .none : .rowsInserted(insertedIndices)
+        let delta: Delta = recorded.isEmpty ? .none : .rowsInserted(IndexSet(integersIn: firstIndex..<tableRows.count))
         return PasteRowsResult(pastedRows: pastedRowInfo, delta: delta)
     }
 }

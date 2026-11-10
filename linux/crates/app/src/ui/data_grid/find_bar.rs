@@ -208,13 +208,17 @@ impl DataGrid {
         let rows: Vec<PinnedRow> = shown.iter().map(GridRow::pin).collect();
         let columns = self.grid_columns();
         let order = self.shown_columns();
+        let date_format = self
+            .config()
+            .map(|config| config.settings.date_format())
+            .unwrap_or_default();
         let cancelled = Arc::new(AtomicBool::new(false));
         state.running.replace(Some(cancelled.clone()));
         let grid = self.downgrade();
         glib::spawn_future_local(async move {
             let answer = tasks
                 .spawn_blocking_task(move || {
-                    find_matches(&query, &snapshots, &columns, &order, &|| {
+                    find_matches(&query, &snapshots, &columns, &order, date_format, &|| {
                         cancelled.load(Ordering::Relaxed)
                     })
                 })
@@ -656,5 +660,27 @@ mod tests {
         wait_until(WAIT, || focus_in_grid(&grid)).expect("the focus is back in the rows");
         let focused = grid.focused_cell().expect("a focused cell");
         assert_eq!((focused.position(), focused.column()), (Some(1), 2), "on row 2's note");
+    }
+    #[gtk4::test]
+    fn find_searches_the_current_date_display_and_repeats_after_format_changes() {
+        use tablepro_core::value::Temporal;
+
+        let day = chrono::NaiveDate::from_ymd_opt(2026, 11, 8).expect("a date");
+        let grid = Grid::build(
+            GridSpec::results(vec![named("id", "integer", false), named("day", "date", false)]),
+            results(&[vec![Value::Int(1), Value::Date(Temporal::Finite(day))]]),
+        );
+        let settings = grid.grid.config().expect("configured grid").settings.clone();
+        settings.set_date_format("eu-short").expect("European dates");
+        search(&grid, "08/11/2026");
+        wait_for_label(&grid, "1 of 1");
+        assert_eq!(on_match(&grid), Some((1, 1)));
+
+        settings.set_date_format("iso").expect("ISO dates");
+        wait_for_label(&grid, "No results");
+        assert_eq!(grid.grid.imp().search_entry.text(), "08/11/2026");
+        settings.set_date_format("eu-short").expect("European dates again");
+        wait_for_label(&grid, "1 of 1");
+        assert_eq!(on_match(&grid), Some((1, 1)));
     }
 }

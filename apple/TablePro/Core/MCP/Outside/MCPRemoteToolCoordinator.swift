@@ -95,6 +95,16 @@ internal final class MCPRemoteToolCoordinator {
             let adapter = MCPRemoteToolAdapter(server: configuration, tool: tool) { remoteName, arguments in
                 try await client.callTool(name: remoteName, arguments: arguments)
             }
+            // Two remote tools under one name would leave the model calling whichever registered last.
+            guard !registered.contains(adapter.name) else {
+                Self.logger.error(
+                    """
+                    Skipped a tool of MCP server \(configuration.id, privacy: .public): \
+                    its name is already taken by another tool of that server
+                    """
+                )
+                continue
+            }
             guard registry.register(adapter) else { continue }
             registered.insert(adapter.name)
         }

@@ -164,6 +164,14 @@ public actor MCPAuthPolicy {
         return readable
     }
 
+    // For a caller that cannot wait on a prompt: anything short of an outright allow is a no.
+    func isAllowedWithoutPrompt(principal: MCPPrincipal, connectionId: UUID) async -> Bool {
+        guard let decision = try? await authorize(principal: principal, tool: "", connectionId: connectionId),
+              case .allowed = decision
+        else { return false }
+        return true
+    }
+
     func resolveAndAuthorize(
         principal: MCPPrincipal,
         tool: MCPToolName,

@@ -17,6 +17,7 @@ core/crates/
 ├── ai/                            the AI assistant's providers, prompts and replies
 ├── account/                       the TablePro account: sign-in, device, entitlement and the feature gate
 ├── mcp/                           the MCP server: transport, token and tools
+├── cli/                           the tablepro command line: parsing, the MCP client and the output formats
 ├── ffi/                           the library C# and Swift load: one UniFFI API and the grid's C ABI
 ├── bindgen/                       uniffi-bindgen-swift, which writes the Swift bindings from a built ffi
 ├── test-fixtures/                 dev-only container fixtures with a generated PKI
@@ -45,6 +46,7 @@ core/crates/
 | `drivers/sqlite`, `drivers/duckdb` | `core` |
 | `session` | `core`, `net`, `ssh`, `storage` |
 | `mcp` | `core`, `session`, `storage` |
+| `cli` | no workspace crate |
 | `ai` | `core`, `net` |
 | `account` | `core`, `storage` |
 | `ffi` | `core`, `session`, `ssh`, `storage`, and every driver behind its default `engines` feature |
@@ -58,6 +60,7 @@ Rules, enforced by review:
 - Each `drivers/<engine>` crate depends on `core`, and on `net` when it speaks TLS or dials TCP. **Drivers never depend on each other, on `session` or on `ssh`.**
 - `session` depends on `core`, `net`, `ssh` and `storage`, and on no driver outside its tests: it reaches drivers through `DriverRegistry`, and SSH through the `SshTunnels` the app passes in. Its Docker tests take `tablepro-driver-postgres`, `tablepro-driver-redis` and `tablepro-driver-mongodb` as dev-dependencies.
 - `mcp` depends on `core`, `session` and `storage`, and on no driver outside its tests. It reaches the windows and the user through the `McpHost` trait the app implements.
+- `cli` depends on no workspace crate: it speaks to the app's MCP server over HTTP and reaches the port, the token and the app's state through the `Host` trait the app implements ([0018](docs/decisions/0018-command-line.md)).
 - `ai` depends on `core` and `net`. It speaks the providers' protocols and builds the prompts from what the app hands it; the app decides what a prompt may carry.
 - `account` depends on `core` and `storage`. It reaches the browser, the keyring and the machine ID through what the app passes in ([0016](docs/decisions/0016-tablepro-accounts.md)).
 - `ffi` stands in for an app outside Rust: it names every driver and passes the host's services in. No other core crate depends on it.
@@ -82,6 +85,7 @@ A value or a trait the app passes in:
 | `SshTunnels` | `tablepro_ssh::SshServices`, the system OpenSSH client | `tablepro_ssh::InProcessSsh`, behind `tablepro-session`'s `in-process-ssh` feature ([ADR 0009](docs/decisions/0009-in-process-ssh-on-windows.md)) |
 | `ProcessHold` | `gio::Application::hold` | none |
 | `RefreshTokenVault`, `BrowserLauncher`, `MachineId` and `AppClient` (`tablepro-account`) | the keyring through `SecretStore`, `gtk::UriLauncher`, `MachineId::derive` of what `tablepro_linux_platform::read_machine_id` reads, `AppClient::LINUX` | none yet |
+| `Host` (`tablepro-cli`) | `LinuxHost` in the app crate: the port and switch from GSettings, the token read from the keyring, `NameHasOwner` for a running app, each connection's peer checked by `Host::verify_peer` through `tablepro_net::loopback_peer_is_ours` | none yet |
 | `ForeignAppDirs` and `ForeignHost` (`tablepro-foreign-import`) | `tablepro_linux_platform::foreign_app_dirs`, the host's XDG directories inside a Flatpak, and `PlainHost`: no other app's keychain | none yet |
 
 A `cfg` split inside a crate:

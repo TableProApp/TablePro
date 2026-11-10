@@ -74,6 +74,7 @@ extension MainContentCoordinator {
         prune(&createTableDrafts, keeping: openTabIds)
         prune(&userTypeEditors, keeping: openTabIds)
         prune(&erDiagramModels, keeping: openTabIds)
+        discardTableHealthModels(tableHealthModels.keys.filter { !openTabIds.contains($0) })
         prune(&navigationHistories, keeping: openTabIds)
         toolbarState.forgetQueryTimings(keeping: openTabIds)
         for (tabId, session) in structureSessions where !openTabIds.contains(tabId) {
@@ -95,6 +96,7 @@ extension MainContentCoordinator {
         structureSessions.removeValue(forKey: tabId)?.releaseViewWiring()
         createTableDrafts.removeValue(forKey: tabId)
         erDiagramModels.removeValue(forKey: tabId)
+        discardTableHealthModels([tabId])
         tabsWithStagedPrincipals.remove(tabId)
         toolbarState.hasCreateTablePending = false
         toolbarState.hasPrincipalChanges = false
@@ -108,6 +110,7 @@ extension MainContentCoordinator {
         createTableDrafts.removeValue(forKey: tab.id)
         userTypeEditors.removeValue(forKey: tab.id)
         erDiagramModels.removeValue(forKey: tab.id)
+        discardTableHealthModels([tab.id])
         navigationHistories.removeValue(forKey: tab.id)
         releaseGridModel(forTab: tab.id)
         tableMetadataCache.removeValue(forKey: tab.id)

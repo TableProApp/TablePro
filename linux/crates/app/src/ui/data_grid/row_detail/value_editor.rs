@@ -246,12 +246,13 @@ impl RowDetailPane {
         }
     }
 
-    fn is_editing_value(&self) -> bool {
+    pub(super) fn is_editing_value(&self) -> bool {
         self.imp().edit.borrow().is_some()
     }
 
     fn text_changed(&self) {
         self.update_placeholder();
+        self.mark_special_characters();
         if !self.imp().loading.get() {
             self.begin_edit();
         }

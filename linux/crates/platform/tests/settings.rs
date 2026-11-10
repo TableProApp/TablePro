@@ -533,3 +533,148 @@ async fn grid_font_uses_the_shared_snapshot_and_preserves_the_editor_font() -> T
     assert_eq!(calls.get(), 3);
     Ok(())
 }
+
+#[glib::async_test]
+async fn row_copy_format_publishes_every_format_through_the_shared_model() -> TestResult {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    use tablepro_linux_platform::settings::RowCopyFormat;
+
+    let fixture = Fixture::new()?;
+    let preferences = fixture.settings.grid_preferences();
+    let original = preferences.snapshot();
+    let observed = Rc::new(RefCell::new(Vec::new()));
+    let updates = observed.clone();
+    preferences.connect_changed(move |preferences| updates.borrow_mut().push(preferences.snapshot().row_copy_format));
+
+    assert_eq!(fixture.settings.row_copy_format(), RowCopyFormat::Rows);
+    for format in RowCopyFormat::ALL {
+        fixture.settings.set_row_copy_format(format.nick())?;
+        assert_eq!(fixture.settings.row_copy_format(), format);
+        assert_eq!(preferences.snapshot().row_copy_format, format);
+        assert_eq!(RowCopyFormat::from_nick(format.nick()), format);
+    }
+    assert_eq!(observed.borrow().as_slice(), &RowCopyFormat::ALL[1..]);
+    assert_eq!(original.row_copy_format, RowCopyFormat::Rows);
+    assert_eq!(RowCopyFormat::from_nick("unknown"), RowCopyFormat::Rows);
+    Ok(())
+}
+
+#[glib::async_test]
+async fn automatic_details_preference_is_published_in_the_shared_snapshot() -> TestResult {
+    use gio::prelude::SettingsExt;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    let fixture = Fixture::new()?;
+    let preferences = fixture.settings.grid_preferences();
+    let original = preferences.snapshot();
+    let observed = Rc::new(RefCell::new(Vec::new()));
+    let changes = observed.clone();
+    preferences.connect_changed(move |preferences| {
+        changes.borrow_mut().push(preferences.snapshot().auto_show_inspector);
+    });
+    assert!(!fixture.settings.auto_show_inspector());
+
+    fixture.settings.set_auto_show_inspector(true)?;
+    assert!(fixture.settings.auto_show_inspector());
+    fixture.settings.gio().set_boolean(keys::AUTO_SHOW_INSPECTOR, false)?;
+    assert!(!fixture.settings.auto_show_inspector());
+    assert_eq!(observed.borrow().as_slice(), &[true, false]);
+    assert!(!original.auto_show_inspector);
+    Ok(())
+}
+
+#[glib::async_test]
+async fn default_sort_choices_and_direction_share_the_grid_snapshot() -> TestResult {
+    use tablepro_linux_platform::settings::{DefaultSort, GridSortDirection};
+
+    let fixture = Fixture::new()?;
+    let preferences = fixture.settings.grid_preferences();
+    assert_eq!(preferences.snapshot().default_sort, DefaultSort::None);
+    assert_eq!(
+        preferences.snapshot().default_sort_direction,
+        GridSortDirection::Ascending
+    );
+    for choice in DefaultSort::ALL {
+        fixture.settings.set_default_sort(choice.nick())?;
+        assert_eq!(preferences.snapshot().default_sort, choice);
+    }
+    for direction in GridSortDirection::ALL {
+        fixture.settings.set_default_sort_direction(direction.nick())?;
+        assert_eq!(preferences.snapshot().default_sort_direction, direction);
+    }
+    assert!(fixture.settings.set_default_sort("unknown").is_err());
+    assert!(fixture.settings.set_default_sort_direction("sideways").is_err());
+    Ok(())
+}
+
+#[glib::async_test]
+async fn invisible_characters_preference_uses_the_shared_snapshot_and_external_updates() -> TestResult {
+    use gio::prelude::SettingsExt;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    let fixture = Fixture::new()?;
+    let preferences = fixture.settings.grid_preferences();
+    let original = preferences.snapshot();
+    let observed = Rc::new(RefCell::new(Vec::new()));
+    let changes = observed.clone();
+    preferences.connect_changed(move |preferences| {
+        changes
+            .borrow_mut()
+            .push(preferences.snapshot().show_invisible_characters);
+    });
+    assert!(fixture.settings.show_invisible_characters());
+
+    fixture.settings.set_show_invisible_characters(false)?;
+    assert!(!fixture.settings.show_invisible_characters());
+    fixture
+        .settings
+        .gio()
+        .set_boolean(keys::SHOW_INVISIBLE_CHARACTERS, true)?;
+    assert!(fixture.settings.show_invisible_characters());
+    assert_eq!(observed.borrow().as_slice(), &[false, true]);
+    assert!(original.show_invisible_characters);
+    Ok(())
+}
+
+#[glib::async_test]
+async fn date_format_publishes_all_choices_without_changing_other_backends() -> TestResult {
+    use gio::prelude::SettingsExt;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    use tablepro_linux_platform::settings::DateFormat;
+
+    let fixture = Fixture::new()?;
+    let isolated = Fixture::new()?;
+    let preferences = fixture.settings.grid_preferences();
+    let original = preferences.snapshot();
+    let observed = Rc::new(RefCell::new(Vec::new()));
+    let changes = observed.clone();
+    preferences.connect_changed(move |preferences| changes.borrow_mut().push(preferences.snapshot().date_format));
+
+    assert_eq!(fixture.settings.date_format(), DateFormat::Iso);
+    for format in DateFormat::ALL.into_iter().skip(1).chain([DateFormat::Iso]) {
+        fixture.settings.gio().set_string(keys::DATE_FORMAT, format.nick())?;
+        assert_eq!(fixture.settings.date_format(), format);
+        assert_eq!(preferences.snapshot().date_format, format);
+        assert_eq!(DateFormat::from_nick(format.nick()), format);
+        assert_eq!(isolated.settings.date_format(), DateFormat::Iso);
+    }
+    assert_eq!(
+        observed.borrow().as_slice(),
+        &[
+            DateFormat::IsoDate,
+            DateFormat::UsLong,
+            DateFormat::UsShort,
+            DateFormat::EuLong,
+            DateFormat::EuShort,
+            DateFormat::Iso,
+        ]
+    );
+    assert_eq!(original.date_format, DateFormat::Iso);
+    assert_eq!(DateFormat::from_nick("unknown"), DateFormat::Iso);
+    assert!(fixture.settings.set_date_format("unknown").is_err());
+    Ok(())
+}

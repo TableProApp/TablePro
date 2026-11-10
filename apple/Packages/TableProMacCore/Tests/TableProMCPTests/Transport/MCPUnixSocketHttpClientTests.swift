@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 @testable import TableProMCP
 import TableProMCPTestSupport
@@ -17,7 +18,7 @@ private func withServer(_ body: (MockHttpServer) async throws -> Void) async thr
 }
 
 private func upstream(_ server: MockHttpServer) -> MCPStreamableHttpClientTransport {
-    let credentials = MCPUpstreamCredentials(socketPath: server.socketPath, bearerToken: "tp_bridge")
+    let credentials = MCPUpstreamCredentials(socketPath: server.socketPath, serverPID: getpid(), bearerToken: "tp_bridge")
     return MCPStreamableHttpClientTransport(
         configuration: MCPStreamableHttpClientConfiguration(requestTimeout: .seconds(10)),
         credentialsProvider: MCPCachedUpstreamCredentialsProvider(initial: credentials) { credentials }
@@ -74,7 +75,7 @@ struct MCPUnixSocketHttpClientTests {
                 framing: .chunked(size: 4_096)
             ))
 
-            let response = try await MCPUnixSocketHttpClient.send(request(), socketPath: server.socketPath, idleTimeout: .seconds(10))
+            let response = try await MCPUnixSocketHttpClient.send(request(), socketPath: server.socketPath, expectedPID: getpid(), idleTimeout: .seconds(10))
             #expect(response.status == 200)
             #expect(response.headers.value(for: "Transfer-Encoding") == "chunked")
             #expect(try await response.collectBody() == body)
@@ -111,11 +112,95 @@ struct MCPUnixSocketHttpClientTests {
         }
     }
 
+    @Test("Discovery accepts its answer before an event stream closes")
+    func discoveryOnOpenEventStream() async throws {
+        let folder = try MCPTestSocketFolder.make()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let held = HeldConnections()
+        defer { held.closeAll() }
+        let response = JsonRpcSuccessResponse(id: .string("tablepro-bridge-discover"), result: .object([
+            "supportedVersions": .array([.string(MCPProtocolVersion.latest.rawValue)]),
+            "capabilities": .object([:]),
+            "_meta": .object([MCPServerInstanceIdentity.metaKey: .string("test-instance")])
+        ]))
+        let payload = try JsonRpcCodec.encode(.successResponse(response))
+        let reply = Data("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\ndata: ".utf8)
+            + payload + Data("\n\n".utf8)
+        let listener = MCPUnixSocketListener(path: MCPSocketLocation.primarySocket(in: folder).path) { connection in
+            held.keep(connection)
+            connection.start { _ in }
+            connection.receive(maximumLength: 65_536) { _, _, _ in
+                connection.send(reply) { _ in }
+            }
+        }
+        try listener.start()
+        defer { listener.stop() }
+        let handshake = MCPHandshakePayload(
+            socketPath: listener.path, token: "tp_bridge", pid: getpid(), instanceId: "test-instance",
+            protocolVersion: MCPProtocolVersion.latest.rawValue, expiresAt: Date().addingTimeInterval(60)
+        )
+        let discovery = try await BridgeUpstreamHandshake.verifiedDiscovery(
+            handshake: handshake, credentials: handshake.credentials(), logger: RecordingBridgeLogger()
+        )
+        #expect(discovery.instanceId == "test-instance")
+    }
+
+    @Test("A changed peer is refused before the listener receives any bytes")
+    func changedPeerReceivesNothing() async throws {
+        let folder = try MCPTestSocketFolder.make()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let (received, continuation) = AsyncStream<Data>.makeStream()
+        let listener = MCPUnixSocketListener(path: MCPSocketLocation.primarySocket(in: folder).path) { connection in
+            connection.start { _ in }
+            connection.receive(maximumLength: 65_536) { bytes, _, _ in
+                continuation.yield(bytes ?? Data())
+                continuation.finish()
+                connection.cancel()
+            }
+        }
+        try listener.start()
+        defer { listener.stop() }
+
+        await #expect(throws: MCPSocketHttpError.peerChanged) {
+            _ = try await MCPUnixSocketHttpClient.send(
+                request(headers: [("Authorization", "Bearer tp_secret")]),
+                socketPath: listener.path,
+                expectedPID: getpid() + 1,
+                idleTimeout: .seconds(5)
+            )
+        }
+        var iterator = received.makeAsyncIterator()
+        #expect(await iterator.next() == Data())
+    }
+
+    @Test("Cancelling a request before its headers arrive closes the socket")
+    func cancelPendingResponse() async throws {
+        let folder = try MCPTestSocketFolder.make()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let (accepted, continuation) = AsyncStream<MCPUnixSocketConnection>.makeStream()
+        let listener = MCPUnixSocketListener(path: MCPSocketLocation.primarySocket(in: folder).path) { connection in
+            continuation.yield(connection)
+            continuation.finish()
+        }
+        try listener.start()
+        defer { listener.stop() }
+        let task = Task {
+            try await MCPUnixSocketHttpClient.send(
+                request(), socketPath: listener.path, expectedPID: getpid(), idleTimeout: .seconds(10)
+            )
+        }
+        var iterator = accepted.makeAsyncIterator()
+        let connection = try #require(await iterator.next())
+        defer { connection.cancel() }
+        task.cancel()
+        await #expect(throws: CancellationError.self) { try await task.value }
+    }
+
     @Test("A socket nobody listens on is a connect failure, so nothing was sent")
     func missingSocket() async throws {
         let path = MCPSocketLocation.primarySocket(in: MCPTestSocketFolder.url()).path
         await #expect {
-            _ = try await MCPUnixSocketHttpClient.send(request(), socketPath: path, idleTimeout: .seconds(5))
+            _ = try await MCPUnixSocketHttpClient.send(request(), socketPath: path, expectedPID: getpid(), idleTimeout: .seconds(5))
         } throws: { error in
             guard case MCPSocketHttpError.connectFailed = error else { return false }
             return true
@@ -126,7 +211,7 @@ struct MCPUnixSocketHttpClientTests {
     func overlongPath() async throws {
         let path = "/" + String(repeating: "a", count: MCPSocketLocation.maxPathBytes)
         await #expect(throws: MCPSocketHttpError.invalidSocketPath(path)) {
-            _ = try await MCPUnixSocketHttpClient.send(request(), socketPath: path, idleTimeout: .seconds(5))
+            _ = try await MCPUnixSocketHttpClient.send(request(), socketPath: path, expectedPID: getpid(), idleTimeout: .seconds(5))
         }
     }
 
@@ -137,7 +222,7 @@ struct MCPUnixSocketHttpClientTests {
                 _ = try await MCPUnixSocketHttpClient.send(
                     request(headers: [("Mcp-Method", "tools/list\r\nX-Injected: 1")]),
                     socketPath: server.socketPath,
-                    idleTimeout: .seconds(5)
+                    expectedPID: getpid(), idleTimeout: .seconds(5)
                 )
             }
             #expect(await server.requests.isEmpty)
@@ -156,7 +241,7 @@ struct MCPUnixSocketHttpClientTests {
         defer { listener.stop() }
 
         await #expect(throws: MCPSocketHttpError.timedOut) {
-            _ = try await MCPUnixSocketHttpClient.send(request(), socketPath: listener.path, idleTimeout: .milliseconds(200))
+            _ = try await MCPUnixSocketHttpClient.send(request(), socketPath: listener.path, expectedPID: getpid(), idleTimeout: .milliseconds(200))
         }
         held.closeAll()
     }

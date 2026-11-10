@@ -2,6 +2,7 @@
 pub enum ShortcutOwner {
     WorkspaceShell,
     BrowseTab,
+    QuickOpen,
     /// A data grid's column view, ahead of the list's own key bindings.
     GridCell,
     /// A data grid's column view, after a focused editor had its turn.

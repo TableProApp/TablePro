@@ -236,7 +236,7 @@ struct MainContentView: View {
             }
         case .generateRows(let session):
             GenerateRowsSheet(session: session)
-        case .exportDialog, .exportQueryResults, .importDialog, .rowImport, .rowImportBatch,
+        case .exportDialog, .exportQueryResults, .exportDataSource, .importDialog, .rowImport, .rowImportBatch,
              .transferTables, .backupDatabase, .restoreDatabase:
             transferSheetContent(for: sheet, dismiss: dismissBinding)
         case .maintenance(let operation, let tableName, let database, let schema):

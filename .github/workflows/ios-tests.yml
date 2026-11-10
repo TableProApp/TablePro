@@ -70,7 +70,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO COMPILATION_CACHE_ENABLE_CACHING=NO \
             | xcbeautify --renderer github-actions
 
-      # Saved by a push or the nightly only: a cache saved on a pull request or merge group ref is visible to it alone.
+      # Saved by a push or the nightly only: a cache saved on a pull request ref is visible to it alone.
       - name: Save Swift package checkouts
         if: (github.event_name == 'push' || github.event_name == 'schedule') && steps.tests.outcome == 'success' && steps.spm.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

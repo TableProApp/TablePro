@@ -21,21 +21,36 @@ import Testing
 private final class InMemoryCredentialStore: MCPTokenCredentialStoring, @unchecked Sendable {
     private let lock = NSLock()
     private var stored: Data?
+    private var refusesWrites = false
 
     init(seed: Data? = Data("[]".utf8)) {
         self.stored = seed
     }
 
-    func read() -> Data? {
+    var failsWrites: Bool {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return refusesWrites
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            refusesWrites = newValue
+        }
+    }
+
+    func read() -> MCPTokenBlob {
         lock.lock()
         defer { lock.unlock() }
-        return stored
+        return stored.map(MCPTokenBlob.found) ?? .missing
     }
 
     @discardableResult
     func write(_ data: Data) -> Bool {
         lock.lock()
         defer { lock.unlock() }
+        guard !refusesWrites else { return false }
         stored = data
         return true
     }
@@ -363,6 +378,81 @@ struct MCPTokenStoreTests {
         try await waitUntil { await recorder.keys().contains(key) }
 
         #expect(await recorder.keys().contains(key))
+    }
+
+    @Test("Revoking by id reports whether the Keychain took the change")
+    func revokeByIdReportsPersistence() async throws {
+        let credentials = InMemoryCredentialStore()
+        let store = makeStore(credentials)
+        let result = try await store.generate(
+            name: "settings",
+            permissions: .readOnly,
+            connectionAccess: .all,
+            expiresAt: nil,
+            isBridgeCredential: false,
+            extraScopes: []
+        )
+
+        credentials.failsWrites = true
+        #expect(await store.revoke(tokenId: result.token.id) == false)
+        #expect(await store.validate(bearerToken: result.plaintext) == nil)
+
+        credentials.failsWrites = false
+        #expect(await store.revoke(tokenId: result.token.id))
+        let reloaded = makeStore(credentials)
+        await reloaded.loadFromDisk()
+        #expect(await reloaded.token(id: result.token.id)?.isActive == false)
+    }
+
+    @Test("A presented token whose revoke the Keychain refused reports it, and a retry saves it as already revoked")
+    func unsavedRevocationIsRetried() async throws {
+        let credentials = InMemoryCredentialStore()
+        let store = makeStore(credentials)
+        let result = try await store.generate(
+            name: "tablepro command",
+            permissions: .readOnly,
+            connectionAccess: .all,
+            expiresAt: nil,
+            isBridgeCredential: false,
+            extraScopes: []
+        )
+
+        credentials.failsWrites = true
+        #expect(await store.revoke(presentedToken: result.plaintext) == .notPersisted)
+        #expect(await store.validate(bearerToken: result.plaintext) == nil)
+        #expect(await store.revoke(presentedToken: result.plaintext) == .notPersisted)
+
+        let afterFailure = makeStore(credentials)
+        await afterFailure.loadFromDisk()
+        #expect(await afterFailure.token(id: result.token.id)?.isActive == true)
+
+        credentials.failsWrites = false
+        #expect(await store.revoke(presentedToken: result.plaintext) == .alreadyRevoked)
+
+        let afterRetry = makeStore(credentials)
+        await afterRetry.loadFromDisk()
+        #expect(await afterRetry.token(id: result.token.id)?.isActive == false)
+        #expect(await afterRetry.validate(bearerToken: result.plaintext) == nil)
+    }
+
+    @Test("A presented active token whose revoke the Keychain took reports revoked")
+    func savedRevocationReportsRevoked() async throws {
+        let credentials = InMemoryCredentialStore()
+        let store = makeStore(credentials)
+        let result = try await store.generate(
+            name: "tablepro command",
+            permissions: .readOnly,
+            connectionAccess: .all,
+            expiresAt: nil,
+            isBridgeCredential: false,
+            extraScopes: []
+        )
+
+        #expect(await store.revoke(presentedToken: result.plaintext) == .revoked)
+
+        let reloaded = makeStore(credentials)
+        await reloaded.loadFromDisk()
+        #expect(await reloaded.token(id: result.token.id)?.isActive == false)
     }
 
     @Test("Deleting drops the token from the list entirely")

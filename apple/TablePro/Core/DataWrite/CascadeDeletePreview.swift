@@ -238,7 +238,9 @@ extension CascadeDeletePreviewer.Environment {
 
         @MainActor
         func scalar(_ query: String, on route: ScopedDriverRoute) async throws -> String? {
-            try await manager.withCancellableRead(scope: scope, route: route) { driver in
+            try await manager.withCancellableRead(
+                scope: scope, route: route, ownsSessionState: route != countRoute
+            ) { driver in
                 try await driver.execute(query: query).rows.first?.first?.asText
             }
         }

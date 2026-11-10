@@ -250,6 +250,22 @@ fn wide_window_shows_tab_bar() {
     assert!(!imp.split_view.is_collapsed());
 }
 
+#[gtk4::test]
+fn save_changes_leaves_the_narrow_header() {
+    for (name, width, height, shown) in [("NarrowSave", 360, 294, false), ("WideSave", 1200, 760, true)] {
+        let test = sized(name, width, height);
+        let workspace = test.workspace();
+        let shell = shell_of(&workspace);
+        let imp = shell.imp();
+        let narrow = (!shown).then(|| imp.narrow_breakpoint.get());
+        wait_until(Duration::from_secs(2), || {
+            imp.breakpoint_bin.width() > 0 && imp.breakpoint_bin.current_breakpoint() == narrow
+        })
+        .expect("the breakpoint for the width");
+        assert_eq!(imp.save_changes_button.is_visible(), shown, "{name}");
+    }
+}
+
 fn fits_the_floor(root: &gtk::Widget) {
     let (min_width, ..) = root.measure(gtk::Orientation::Horizontal, -1);
     let (min_height, ..) = root.measure(gtk::Orientation::Vertical, 360);
@@ -713,6 +729,38 @@ fn collect_actions(menu: &gio::MenuModel, actions: &mut Vec<String>) {
             }
         }
     }
+}
+
+#[gtk4::test]
+fn open_quickly_closes_when_another_session_comes_forward() {
+    let sessions = super::two_sessions("QuickOpenFollowsFront", "Other");
+    super::open_editor(&sessions.first);
+    let dialog = sessions
+        .first
+        .with_model(|model| {
+            model.on_show_quick_open();
+            model.quick_open_dialog.clone().expect("quick open")
+        })
+        .expect("workspace");
+    wait_until(WAIT, || dialog.parent().is_some()).expect("shown");
+    super::open_editor(&sessions.second);
+    wait_until(WAIT, || dialog.parent().is_none()).expect("old session dialog closed");
+    assert_eq!(sessions.shell.front().as_ref(), Some(&sessions.second));
+}
+
+#[gtk4::test]
+fn a_queued_quick_open_pick_does_not_reopen_a_background_session() {
+    let sessions = super::two_sessions("QuickOpenQueuedPick", "Other");
+    super::open_editor(&sessions.second);
+    let before = sessions.shell.tab_view().n_pages();
+    sessions.first.with_model(|model| {
+        model.on_quick_open_chosen(crate::ui::quick_open::Pick::Table {
+            table: tablepro_core::meta::TableRef::new(None, "orders"),
+            structure: false,
+        })
+    });
+    assert_eq!(sessions.shell.front().as_ref(), Some(&sessions.second));
+    assert_eq!(sessions.shell.tab_view().n_pages(), before);
 }
 
 #[gtk4::test]
