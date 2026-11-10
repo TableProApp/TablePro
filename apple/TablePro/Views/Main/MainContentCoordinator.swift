@@ -202,6 +202,8 @@ final class MainContentCoordinator: ObservableObject {
     @Published var userTypeEditors: [UUID: UserTypeEditorModel] = [:]
     // Held here for the same reason: the diagram stages schema edits that Save and the close gate reach.
     @Published var erDiagramModels: [UUID: ERDiagramViewModel] = [:]
+    // Here rather than in the view, so a command can reach a listing's model before the view next draws it.
+    let tableListingModels = TableListingModelStore()
 
     // The cached view model keeps staged work after `usersRolesActions` is nilled; without this a background tab closes silently.
     internal var tabsWithStagedPrincipals: Set<UUID> = []
@@ -878,6 +880,7 @@ final class MainContentCoordinator: ObservableObject {
         createTableDrafts.removeAll()
         userTypeEditors.removeAll()
         erDiagramModels.removeAll()
+        tableListingModels.retainTabs([])
         displayFormatsCache.removeAll()
         tableMetadataCache.removeAll()
         schemaColumns.removeAll()

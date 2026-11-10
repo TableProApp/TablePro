@@ -42,6 +42,7 @@ internal final class TableListingViewModel: ObservableObject {
     private var loadTask: Task<Void, Never>?
     private var generation = 0
     private var refreshSubscription: AnyCancellable?
+    private var firstLoadRereads = false
 
     init(
         tabId: UUID,
@@ -79,7 +80,13 @@ internal final class TableListingViewModel: ObservableObject {
     @discardableResult
     func loadIfNeeded() -> Task<Void, Never>? {
         guard case .idle = state else { return nil }
-        return load(rereading: false)
+        return load(rereading: firstLoadRereads)
+    }
+
+    /// The tab was asked for fresh rows before this model existed, so its first load asks the server
+    /// rather than taking the list the sidebar holds.
+    func rereadOnFirstLoad() {
+        firstLoadRereads = true
     }
 
     // Refresh and Try Again ask the server again; the first load takes a list the sidebar already holds.
@@ -196,6 +203,7 @@ internal final class TableListingViewModel: ObservableObject {
 @MainActor
 internal final class TableListingModelStore {
     private var models: [UUID: TableListingViewModel] = [:]
+    private var pendingRereads: [UUID: DatabaseTreeObjectGroup] = [:]
 
     /// A tab keeps its model while it lists the same container and kind. A retarget gets a fresh one,
     /// so another kind's rows never stand in for the new kind's while it loads.
@@ -211,8 +219,20 @@ internal final class TableListingModelStore {
             existing.retire()
         }
         let model = make()
+        if pendingRereads.removeValue(forKey: tabId) == target {
+            model.rereadOnFirstLoad()
+        }
         models[tabId] = model
         return model
+    }
+
+    /// A command asked the tab for fresh rows of `target`. A model already listing it takes the
+    /// request as a refresh event. Any other model goes now, so that event does not reach it, and the
+    /// model the tab's next draw makes for `target` reads it again rather than taking the sidebar's list.
+    func expectReread(forTab tabId: UUID, target: DatabaseTreeObjectGroup) {
+        guard models[tabId]?.target != target else { return }
+        models.removeValue(forKey: tabId)?.retire()
+        pendingRereads[tabId] = target
     }
 
     func retainTabs(_ openTabIds: Set<UUID>) {
@@ -220,5 +240,6 @@ internal final class TableListingModelStore {
             model.cancel()
         }
         models = models.filter { openTabIds.contains($0.key) }
+        pendingRereads = pendingRereads.filter { openTabIds.contains($0.key) }
     }
 }

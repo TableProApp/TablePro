@@ -10,6 +10,26 @@ import Testing
 
 @testable import TablePro
 
+private struct ObjectListRead: Equatable {
+    let category: SidebarObjectCategory
+    let rereading: Bool
+}
+
+/// Answers every kind with nothing and records each read, so a case sees which read a model made.
+@MainActor
+private final class RecordingObjectSource: CatalogObjectListSource {
+    private(set) var reads: [ObjectListRead] = []
+
+    func objects(
+        _ category: SidebarObjectCategory,
+        in scope: DatabaseScope,
+        rereading: Bool
+    ) async -> MetadataFetchOutcome<CatalogObjectList> {
+        reads.append(ObjectListRead(category: category, rereading: rereading))
+        return .fetched(category == .table ? .relations([]) : .routines([]))
+    }
+}
+
 /// Show All Tables used to open the listing statement in an editor tab, "Query 1", that nothing ran.
 @MainActor
 struct CoordinatorTableListingTests {
@@ -210,6 +230,66 @@ struct CoordinatorTableListingTests {
         #expect(tabManager.selectedTab?.display.listingKind == .function)
         #expect(tabManager.selectedTab?.isPreview == false)
         #expect(refreshed == [kept])
+    }
+
+    /// What the view hands the store when it draws the tab, with reads that go to `source`.
+    private func drawnModel(
+        _ coordinator: MainContentCoordinator,
+        tab tabId: UUID,
+        _ target: DatabaseTreeObjectGroup,
+        source: RecordingObjectSource
+    ) -> TableListingViewModel {
+        coordinator.tableListingModels.model(forTab: tabId, target: target) {
+            TableListingViewModel(
+                tabId: tabId,
+                scope: DatabaseScope(connectionId: coordinator.connectionId, database: target.database, schema: target.schema),
+                kind: target.kind,
+                loader: TableListingLoader(databaseType: .mysql, slot: .database),
+                objectSource: source
+            )
+        }
+    }
+
+    /// The view draws a retargeted tab's new model only after Show Objects returns, so the refresh it
+    /// sent reached the model being replaced, and the new kind showed the sidebar's list unread.
+    @Test("Show Objects of another kind on an open tab reads the new kind again, and the old kind's model takes no refresh")
+    func showObjectsRereadsTheNewKind() async throws {
+        let (coordinator, tabManager, _) = makeCoordinator()
+        defer { coordinator.teardown() }
+        let source = RecordingObjectSource()
+        coordinator.showObjects(group("shop", .view), asPreview: false)
+        let id = try #require(tabManager.selectedTabId)
+        let views = drawnModel(coordinator, tab: id, group("shop", .view), source: source)
+        await views.loadIfNeeded()?.value
+
+        coordinator.showObjects(group("shop", .function), asPreview: false)
+        #expect(!views.isRefreshing)
+        let functions = drawnModel(coordinator, tab: id, group("shop", .function), source: source)
+        await functions.loadIfNeeded()?.value
+
+        #expect(functions !== views)
+        #expect(source.reads == [
+            ObjectListRead(category: .table, rereading: false),
+            ObjectListRead(category: .routine, rereading: true),
+        ])
+    }
+
+    @Test("Picking another kind takes the sidebar's list, as a tab opened fresh does")
+    func pickingAKindTakesTheSidebarsList() async throws {
+        let (coordinator, tabManager, _) = makeCoordinator()
+        defer { coordinator.teardown() }
+        let source = RecordingObjectSource()
+        coordinator.showObjects(group("shop", .view), asPreview: false)
+        let id = try #require(tabManager.selectedTabId)
+        await drawnModel(coordinator, tab: id, group("shop", .view), source: source).loadIfNeeded()?.value
+
+        coordinator.selectListingKind(.function, inTab: id)
+        await drawnModel(coordinator, tab: id, group("shop", .function), source: source).loadIfNeeded()?.value
+
+        #expect(source.reads == [
+            ObjectListRead(category: .table, rereading: false),
+            ObjectListRead(category: .routine, rereading: false),
+        ])
     }
 
     @Test("Picking a kind retargets the tab, relabels it and keeps the preview")

@@ -34,6 +34,15 @@ extension MainContentCoordinator {
         guard !asPreview else { return }
         /// Asking again for a listing already open brings it up to date, the way Refresh would. A tab
         /// opened just now loads when its view first appears, and nothing is listening for this yet.
+        /// One moved to another kind draws that kind's model only after this returns, so the store
+        /// holds the request for that model instead of letting the outgoing one take it.
+        if landing != nil {
+            let kind = ObjectListingKinds.effective(target.kind, declared: connection.type.declaredObjectKinds)
+            tableListingModels.expectReread(
+                forTab: tabId,
+                target: DatabaseTreeObjectGroup(database: target.database, schema: schemaName, kind: kind)
+            )
+        }
         AppEvents.shared.tabRefreshRequested.send(tabId)
     }
 

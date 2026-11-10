@@ -56,7 +56,6 @@ struct MainEditorContentView: View {
     @State private var usersRolesViewModels: [UUID: UsersRolesViewModel] = [:]
     @State private var queryInsightsViewModels: [UUID: QueryInsightsViewModel] = [:]
     @State private var tableHealthViewModels: [UUID: TableHealthViewModel] = [:]
-    @State private var tableListingModels = TableListingModelStore()
 
     @ObservedObject private var treeService = DatabaseTreeMetadataService.shared
     // Table highlight rules live here, not on the tab; unobserved, Add Rule on a table tab changed nothing on screen.
@@ -157,7 +156,7 @@ struct MainEditorContentView: View {
             queryInsightsViewModels = queryInsightsViewModels.filter { openTabIds.contains($0.key) }
             tableHealthViewModels = tableHealthViewModels.filter { openTabIds.contains($0.key) }
             // A listing a table click took over keeps its id, and its model must go with the listing.
-            tableListingModels.retainTabs(Set(tabManager.tabs.filter { $0.tabType == .tableListing }.map(\.id)))
+            coordinator.tableListingModels.retainTabs(Set(tabManager.tabs.filter { $0.tabType == .tableListing }.map(\.id)))
             SchemaProviderRegistry.shared.reclaimUnheldProviders(for: connectionId)
         }
         .onChange(of: tabManager.selectedTabId) { _ in
@@ -236,7 +235,7 @@ struct MainEditorContentView: View {
         )
         let target = DatabaseTreeObjectGroup(database: scope.database, schema: scope.schema, kind: kind)
         let tabId = tab.id
-        let model = tableListingModels.model(forTab: tabId, target: target) {
+        let model = coordinator.tableListingModels.model(forTab: tabId, target: target) {
             TableListingViewModel(
                 tabId: tabId,
                 scope: scope,
