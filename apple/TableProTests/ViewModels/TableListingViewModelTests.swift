@@ -148,6 +148,12 @@ struct TableListingViewModelTests {
 
     private let tabId = UUID()
     private let refreshRequests = PassthroughSubject<UUID, Never>()
+    // The list reads the reader's column choices; each case gets its own, so none leaks into the next.
+    private let defaults: EphemeralDefaults
+
+    init() throws {
+        defaults = try EphemeralDefaults()
+    }
 
     private func makeViewModel(
         databaseType: DatabaseType = .postgresql,
@@ -157,6 +163,7 @@ struct TableListingViewModelTests {
         kind: SidebarObjectKind = .table,
         objectSource: ScriptedObjectSource? = nil,
         perform: @escaping (ObjectListingAction) -> Void = { _ in },
+        commandFacts: @escaping ([ObjectListingItem]) -> ObjectListingCommandFacts = { _ in ObjectListingCommandFacts() },
         onInteraction: @escaping () -> Void = {}
     ) -> (TableListingViewModel, ScriptedListingProvider) {
         let provider = ScriptedListingProvider(
@@ -171,6 +178,8 @@ struct TableListingViewModelTests {
             objectSource: objectSource ?? ScriptedObjectSource(),
             refreshRequests: refreshRequests.eraseToAnyPublisher(),
             perform: perform,
+            commandFacts: commandFacts,
+            columnVisibility: ObjectListingColumnVisibilityStore(defaults: defaults.defaults),
             onInteraction: onInteraction
         )
         return (viewModel, provider)
@@ -405,65 +414,70 @@ struct TableListingViewModelTests {
         #expect(store.model(forTab: openId, target: open.target) { closing } === open)
     }
 
-    // MARK: - Grid
+    // MARK: - List
+
+    private func listNames(_ viewModel: TableListingViewModel) -> [String] {
+        viewModel.list.rows.map { $0.item.name }
+    }
 
     private func gridNames(_ viewModel: TableListingViewModel) -> [String] {
         viewModel.grid.model.rows.rows.map { $0.values.first.flatMap { $0.asText } ?? "" }
     }
 
-    @Test("A landed listing reaches the tab's grid")
-    func listingReachesTheGrid() async {
+    private func table(_ name: String) -> ObjectListingItem {
+        .relation(name: name, schema: "sales", type: .table)
+    }
+
+    private func nameSort(ascending: Bool) -> ObjectListingSort {
+        ObjectListingSort(columnID: "name", ascending: ascending)
+    }
+
+    @Test("A landed listing of objects reaches the tab's list, and the grid stays empty")
+    func listingReachesTheList() async {
         let (viewModel, provider) = makeViewModel()
         provider.answer(with: .names(["orders", "customers"]))
 
         await viewModel.reload().value
 
-        #expect(gridNames(viewModel) == ["orders", "customers"])
-        #expect(viewModel.grid.model.rowCount == 2)
-        #expect(viewModel.grid.model.store.layoutScope == .ephemeral)
+        #expect(listNames(viewModel) == ["orders", "customers"])
+        #expect(viewModel.list.columns.map { $0.id } == ["name"])
+        #expect(viewModel.grid.model.rowCount == 0)
     }
 
     @Test("A header sort orders the listed tables, and the selection stays on the same table")
-    func headerSortOrdersTheHeldRows() async throws {
+    func headerSortOrdersTheRows() async {
         let (viewModel, provider) = makeViewModel()
         provider.answer(with: .names(["orders", "customers", "accounts"]))
         await viewModel.reload().value
-        let model = viewModel.grid.model
-        let orders = try #require(model.rowID(at: 0))
-        model.selectRows([orders])
+        viewModel.list.select([table("orders").key])
 
-        model.setSort(SortState(columns: [SortColumn(columnIndex: 0, direction: .ascending)], source: .user))
+        viewModel.list.setSort(nameSort(ascending: true))
 
-        #expect(gridNames(viewModel) == ["accounts", "customers", "orders"])
-        #expect(model.selectedRowIDs == [orders])
-        #expect(model.displayIndex(of: orders) == 2)
+        #expect(listNames(viewModel) == ["accounts", "customers", "orders"])
+        #expect(viewModel.list.selectedItems == [table("orders")])
     }
 
-    // Row ids are positions, so without this a table created above the selected one moved the highlight
-    // to its neighbour, and Return or the menu acted on the wrong table.
+    // Row ids are positions, so a selection held by them moved to a neighbour when a table was created
+    // above the selected one, and Return or the menu acted on the wrong table.
     @Test("A refresh keeps the selection on the same object, and clears it when the object went")
-    func selectionFollowsItsObjectAcrossARefresh() async throws {
+    func selectionFollowsItsObjectAcrossARefresh() async {
         var actions: [ObjectListingAction] = []
         let (viewModel, provider) = makeViewModel(perform: { actions.append($0) })
         provider.answer(with: .names(["customers", "orders"]))
         await viewModel.reload().value
-        let model = viewModel.grid.model
-        model.selectCell(GridCoord(row: 1, displayColumn: 0))
-        #expect(model.selectedRowIDs == [.existing(1)])
+        viewModel.list.select([table("orders").key])
 
         provider.answer(with: .names(["accounts", "customers", "orders"]))
         await viewModel.reload().value
 
-        let selected = try #require(model.selectedRowIDs.first)
-        #expect(model.selectedRowIDs.count == 1)
-        #expect(viewModel.state.value?.items[selected]?.name == "orders")
-        viewModel.grid.gridOpenRow(selected)
-        #expect(actions == [.open(.relation(name: "orders", schema: "sales", type: .table))])
+        #expect(viewModel.list.selectedItems == [table("orders")])
+        viewModel.openSelection()
+        #expect(actions == [.open(table("orders"))])
 
         provider.answer(with: .names(["accounts", "customers"]))
         await viewModel.reload().value
 
-        #expect(model.selectedRowIDs.isEmpty)
+        #expect(viewModel.list.selection.isEmpty)
     }
 
     @Test("The sort the reader chose orders the next listing too")
@@ -471,15 +485,15 @@ struct TableListingViewModelTests {
         let (viewModel, provider) = makeViewModel()
         provider.answer(with: .names(["orders", "customers"]))
         await viewModel.reload().value
-        let descending = SortState(columns: [SortColumn(columnIndex: 0, direction: .descending)], source: .user)
-        viewModel.grid.model.setSort(descending)
+        viewModel.list.setSort(nameSort(ascending: false))
 
         provider.answer(with: .names(["accounts", "orders", "zones"]))
         await viewModel.reload().value
 
-        #expect(gridNames(viewModel) == ["zones", "orders", "accounts"])
-        #expect(viewModel.grid.model.store.sortState == descending)
+        #expect(listNames(viewModel) == ["zones", "orders", "accounts"])
+        #expect(viewModel.list.sort == nameSort(ascending: false))
     }
+
     // MARK: - Other kinds
 
     private func functions(_ names: String...) -> CatalogObjectList {
@@ -567,37 +581,36 @@ struct TableListingViewModelTests {
         source.reply = .fetched(functions("touch", "audit", "archive_orders"))
         let (viewModel, _) = makeViewModel(kind: .function, objectSource: source)
         await viewModel.loadIfNeeded()?.value
-        let model = viewModel.grid.model
-        model.setSort(SortState(columns: [SortColumn(columnIndex: 0, direction: .ascending)], source: .user))
+        viewModel.list.setSort(nameSort(ascending: true))
         viewModel.filterText = "a"
-        #expect(gridNames(viewModel) == ["archive_orders", "audit"])
-        model.selectCell(GridCoord(row: 1, displayColumn: 0))
+        #expect(listNames(viewModel) == ["archive_orders", "audit"])
+        let audit = try #require(viewModel.list.rows.last?.item)
+        viewModel.list.select([audit.key])
 
         // A statement created two functions, one of them listed before the selected one.
         source.changes.send(functions("purge", "touch", "audit", "archive_orders", "alert"))
 
-        #expect(gridNames(viewModel) == ["alert", "archive_orders", "audit"])
+        #expect(listNames(viewModel) == ["alert", "archive_orders", "audit"])
         #expect(viewModel.count == ObjectListingCount(shown: 3, total: 5))
-        let selected = try #require(model.selectedRowIDs.first)
-        #expect(viewModel.state.value?.items[selected]?.name == "audit")
+        #expect(viewModel.list.selectedItems.map { $0.name } == ["audit"])
 
         source.changes.send(functions("touch", "archive_orders"))
 
-        #expect(gridNames(viewModel) == ["archive_orders"])
-        #expect(model.selectedRowIDs.isEmpty)
+        #expect(listNames(viewModel) == ["archive_orders"])
+        #expect(viewModel.list.selection.isEmpty)
     }
 
-    @Test("A list the sidebar commits again unchanged leaves the grid as it is")
-    func unchangedListLeavesTheGrid() async {
+    @Test("A list the sidebar commits again unchanged leaves the list as it is")
+    func unchangedListLeavesTheList() async {
         let source = ScriptedObjectSource()
         source.reply = .fetched(functions("touch", "audit"))
         let (viewModel, _) = makeViewModel(kind: .function, objectSource: source)
         await viewModel.loadIfNeeded()?.value
-        let revision = viewModel.grid.model.displayRevision
+        let revision = viewModel.list.revision
 
         source.changes.send(functions("touch", "audit"))
 
-        #expect(viewModel.grid.model.displayRevision == revision)
+        #expect(viewModel.list.revision == revision)
     }
 
     @Test("The sidebar's list leaves a tab with nothing loaded to its own first load")
@@ -625,7 +638,7 @@ struct TableListingViewModelTests {
 
         viewModel.filterText = "ORDER"
 
-        #expect(gridNames(viewModel) == ["orders", "order_items"])
+        #expect(listNames(viewModel) == ["orders", "order_items"])
         #expect(viewModel.count == ObjectListingCount(shown: 2, total: 3))
         #expect(provider.executedQueries.count == 1)
         #expect(interactions == 1)
@@ -644,7 +657,7 @@ struct TableListingViewModelTests {
         provider.answer(with: .names(["orders", "customers", "customer_notes"]))
         await viewModel.reload().value
 
-        #expect(gridNames(viewModel) == ["customers", "customer_notes"])
+        #expect(listNames(viewModel) == ["customers", "customer_notes"])
         #expect(viewModel.count == ObjectListingCount(shown: 2, total: 3))
     }
 
@@ -655,7 +668,7 @@ struct TableListingViewModelTests {
         provider.answer(with: .names(["orders", "customers"]))
         await viewModel.reload().value
 
-        viewModel.grid.model.setSort(SortState(columns: [SortColumn(columnIndex: 0, direction: .ascending)], source: .user))
+        viewModel.list.setSort(nameSort(ascending: true))
 
         #expect(interactions == 1)
     }
@@ -680,10 +693,10 @@ struct TableListingViewModelTests {
         let (viewModel, provider) = makeViewModel(perform: { actions.append($0) }, onInteraction: { interactions += 1 })
         provider.answer(with: .names(["orders"]))
         await viewModel.reload().value
-        let orders = ObjectListingItem.relation(name: "orders", schema: "sales", type: .table)
+        let orders = table("orders")
 
-        viewModel.grid.gridOpenRow(.existing(0))
-        let titles = viewModel.grid.gridRowMenuItems(for: [.existing(0)], clickedRow: .existing(0)).map(\.title)
+        viewModel.open(orders)
+        let titles = viewModel.menuItems(clicked: orders, targets: [orders]).map { $0.title }
 
         #expect(actions == [.open(orders)])
         #expect(interactions == 1)
@@ -692,23 +705,24 @@ struct TableListingViewModelTests {
         ])
     }
 
-    @Test("After a sort and a filter, a row's command acts on the object that row shows")
+    @Test("After a sort and a filter, Return acts on the object the selected row shows")
     func rowActionsFollowTheShownRow() async throws {
         var actions: [ObjectListingAction] = []
         let (viewModel, provider) = makeViewModel(perform: { actions.append($0) })
         provider.answer(with: .names(["orders", "customers", "order_items"]))
         await viewModel.reload().value
-        viewModel.grid.model.setSort(SortState(columns: [SortColumn(columnIndex: 0, direction: .descending)], source: .user))
+        viewModel.list.setSort(nameSort(ascending: false))
         viewModel.filterText = "order"
 
-        let second = try #require(viewModel.grid.model.rowID(at: 1))
-        viewModel.grid.gridOpenRow(second)
+        let second = try #require(viewModel.list.rows.dropFirst().first)
+        viewModel.list.select([second.item.key])
+        viewModel.openSelection()
 
-        #expect(gridNames(viewModel) == ["orders", "order_items"])
-        #expect(actions == [.open(.relation(name: "order_items", schema: "sales", type: .table))])
+        #expect(listNames(viewModel) == ["orders", "order_items"])
+        #expect(actions == [.open(table("order_items"))])
     }
 
-    @Test("A listing with no name column has no filter and no row commands")
+    @Test("A listing with no name column stays in the grid, with no filter, no list and no commands")
     func listingWithoutNamesHasNoRowActions() async {
         var actions: [ObjectListingAction] = []
         let (viewModel, provider) = makeViewModel(
@@ -718,10 +732,82 @@ struct TableListingViewModelTests {
         provider.answer(with: .names(["session:1"]))
         await viewModel.reload().value
 
-        viewModel.grid.gridOpenRow(.existing(0))
+        viewModel.openSelection()
+        viewModel.exportSelection()
 
         #expect(!viewModel.rowsNameObjects)
-        #expect(viewModel.grid.gridRowMenuItems(for: [.existing(0)], clickedRow: .existing(0)).isEmpty)
+        #expect(gridNames(viewModel) == ["session:1"])
+        #expect(viewModel.list.rows.isEmpty)
+        #expect(viewModel.commandAvailability == .none)
+        #expect(actions.isEmpty)
+    }
+
+    // MARK: - Tool strip
+
+    private func allowingFacts(_ items: [ObjectListingItem]) -> ObjectListingCommandFacts {
+        ObjectListingCommandFacts(isReadOnly: false, canCreateTable: true, canImport: true, canDropSelection: !items.isEmpty)
+    }
+
+    @Test("The tool strip offers what the selection, the kind and the connection allow")
+    func toolStripFollowsTheSelection() async {
+        let (viewModel, provider) = makeViewModel(commandFacts: allowingFacts)
+        provider.answer(with: .names(["orders", "customers"]))
+        await viewModel.reload().value
+
+        #expect(viewModel.commandAvailability == ObjectListingCommandAvailability(canCreate: true, canImport: true))
+
+        viewModel.list.select([table("orders").key])
+        #expect(viewModel.commandAvailability == ObjectListingCommandAvailability(
+            canOpen: true, canDesign: true, canCreate: true, canDelete: true, canImport: true, canExport: true
+        ))
+
+        viewModel.list.select([table("orders").key, table("customers").key])
+        #expect(viewModel.commandAvailability == ObjectListingCommandAvailability(
+            canCreate: true, canDelete: true, canImport: true, canExport: true
+        ))
+    }
+
+    @Test("Each tool strip command runs the coordinator's action on the selection, in the list's order, and keeps the preview")
+    func toolStripCommandsRunTheirActions() async {
+        var actions: [ObjectListingAction] = []
+        var interactions = 0
+        let (viewModel, provider) = makeViewModel(
+            perform: { actions.append($0) }, commandFacts: allowingFacts, onInteraction: { interactions += 1 }
+        )
+        provider.answer(with: .names(["orders", "customers"]))
+        await viewModel.reload().value
+        viewModel.list.select([table("customers").key, table("orders").key])
+
+        viewModel.deleteSelection()
+        viewModel.exportSelection()
+        viewModel.createObject()
+        viewModel.importData()
+        viewModel.list.select([table("orders").key])
+        viewModel.designSelection()
+
+        #expect(actions == [
+            .drop([table("orders"), table("customers")]),
+            .export([table("orders"), table("customers")]),
+            .createTable,
+            .importData,
+            .showStructure(table("orders")),
+        ])
+        #expect(interactions == 5)
+    }
+
+    @Test("A command the strip does not offer runs nothing, as on a read-only connection")
+    func refusedCommandsRunNothing() async {
+        var actions: [ObjectListingAction] = []
+        let (viewModel, provider) = makeViewModel(perform: { actions.append($0) })
+        provider.answer(with: .names(["orders"]))
+        await viewModel.reload().value
+        viewModel.list.select([table("orders").key])
+
+        viewModel.deleteSelection()
+        viewModel.createObject()
+        viewModel.importData()
+
+        #expect(viewModel.commandAvailability.canDelete == false)
         #expect(actions.isEmpty)
     }
 

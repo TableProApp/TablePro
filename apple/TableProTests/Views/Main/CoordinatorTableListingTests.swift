@@ -343,6 +343,52 @@ struct CoordinatorTableListingTests {
         #expect(tabManager.tabs.first { $0.id == listing }?.isPreview == false)
     }
 
+    // MARK: - Tool strip
+
+    @Test("The strip's drops and exports name the listing's own database, and only its relations")
+    func stripRefsNameTheListingsDatabase() throws {
+        let (coordinator, tabManager, _) = makeCoordinator()
+        defer { coordinator.teardown() }
+        coordinator.showObjects(group("archive"), asPreview: false)
+        let tab = try #require(tabManager.selectedTab)
+
+        let refs = coordinator.listingTableRefs([
+            .relation(name: "orders", schema: nil, type: .table),
+            .sourced(DatabaseObjectRef(kind: .function, name: "touch", database: "archive", schema: nil)),
+        ], in: tab)
+
+        #expect(refs.count == 1)
+        #expect(refs.first?.database == "archive")
+        #expect(refs.first?.table.name == "orders")
+        #expect(refs.first?.table.type == .table)
+    }
+
+    @Test("A read-only connection's strip offers no write")
+    func readOnlyOffersNoWrite() throws {
+        let (coordinator, tabManager, _) = makeCoordinator()
+        defer { coordinator.teardown() }
+        coordinator.toolbarState.safeModeLevel = .readOnly
+        coordinator.showObjects(group("shop"), asPreview: false)
+        let id = try #require(tabManager.selectedTabId)
+
+        let facts = coordinator.listingCommandFacts(for: [.relation(name: "orders", schema: nil, type: .table)], inTab: id)
+
+        #expect(facts == ObjectListingCommandFacts(isReadOnly: true))
+    }
+
+    @Test("New Table on a connection whose driver cannot create one opens nothing")
+    func createTableNeedsADriverThatCreates() throws {
+        let (coordinator, tabManager, log) = makeCoordinator()
+        defer { coordinator.teardown() }
+        coordinator.showObjects(group("archive"), asPreview: false)
+        let listing = try #require(tabManager.selectedTabId)
+
+        coordinator.performListingAction(.createTable, fromTab: listing)
+
+        #expect(log.payloads.isEmpty)
+        #expect(tabManager.tabs.count == 1)
+    }
+
     // MARK: - The browse cursor
 
     /// Each database is an entry of its own on the strip, so a listing tab names the entry it shows in.

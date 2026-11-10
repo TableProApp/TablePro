@@ -24,12 +24,14 @@ internal final class TableListingViewModel: ObservableObject {
     @Published var filterText = "" {
         didSet {
             guard filterText != oldValue else { return }
-            showRows()
+            showRows(listingChanged: false)
             onInteraction()
         }
     }
 
-    // Outlives the tab's view, so the sort, the selection and the column widths survive a tab switch.
+    // Both outlive the tab's view, so the sort, the selection and the column widths survive a tab switch.
+    // The list shows rows that name objects; the grid shows a shell command's plain rows.
+    let list: ObjectListingList
     let grid = HeldRowsGridAdapter(configuration: DataGridConfiguration(), sortsHeldRows: true)
     let target: DatabaseTreeObjectGroup
 
@@ -38,6 +40,7 @@ internal final class TableListingViewModel: ObservableObject {
     private let metadataProvider: any ScopedMetadataProviding
     private let objectSource: any CatalogObjectListSource
     private let perform: (ObjectListingAction) -> Void
+    private let commandFacts: ([ObjectListingItem]) -> ObjectListingCommandFacts
     private let onInteraction: () -> Void
     private var loadTask: Task<Void, Never>?
     private var generation = 0
@@ -54,10 +57,18 @@ internal final class TableListingViewModel: ObservableObject {
         objectSource: any CatalogObjectListSource = DatabaseTreeMetadataService.shared,
         refreshRequests: AnyPublisher<UUID, Never> = AppEvents.shared.tabRefreshRequested.eraseToAnyPublisher(),
         perform: @escaping (ObjectListingAction) -> Void = { _ in },
+        commandFacts: @escaping ([ObjectListingItem]) -> ObjectListingCommandFacts = { _ in ObjectListingCommandFacts() },
+        columnVisibility: ObjectListingColumnVisibilityStore = .shared,
         onInteraction: @escaping () -> Void = {}
     ) {
         self.scope = scope
         self.target = DatabaseTreeObjectGroup(database: scope.database, schema: scope.schema, kind: kind)
+        self.list = ObjectListingList(
+            kind: kind,
+            containerName: scope.schema.flatMap { $0.isEmpty ? nil : $0 } ?? scope.database,
+            visibility: columnVisibility
+        )
+        self.commandFacts = commandFacts
         self.loader = loader
         self.metadataProvider = metadataProvider
         self.objectSource = objectSource
@@ -67,10 +78,7 @@ internal final class TableListingViewModel: ObservableObject {
             .filter { $0 == tabId }
             .sink { [weak self] _ in self?.reload() }
         grid.onSortChange = { [weak self] _ in self?.onInteraction() }
-        grid.rowMenuItems = { [weak self] rowIDs, clicked in
-            self?.menuItems(for: rowIDs, clicked: clicked) ?? []
-        }
-        grid.opensRow = { [weak self] rowID in self?.open(rowID) }
+        list.onSortChange = { [weak self] in self?.onInteraction() }
         // Tables come from the plugin's listing statement; every other kind is the sidebar's own list.
         if kind != .table {
             listSubscription = objectSource.objectListChanges(kind.category, in: scope)
@@ -78,9 +86,16 @@ internal final class TableListingViewModel: ObservableObject {
         }
     }
 
-    /// Whether each row names an object, which the name filter and the row commands need.
+    /// Whether each row names an object, which the name filter, the list and the row commands need.
     var rowsNameObjects: Bool {
         state.value.map { !$0.items.isEmpty } ?? false
+    }
+
+    /// The tool strip's buttons for what the list has selected now.
+    var commandAvailability: ObjectListingCommandAvailability {
+        guard rowsNameObjects else { return .none }
+        let selection = list.selectedItems
+        return ObjectListingCommandAvailability.resolve(kind: target.kind, selection: selection, facts: commandFacts(selection))
     }
 
     @discardableResult
@@ -167,13 +182,12 @@ internal final class TableListingViewModel: ObservableObject {
     private func commit(_ outcome: MetadataFetchOutcome<TableListing>, token: Int) {
         guard token == generation else { return }
         isRefreshing = false
-        let previous = state.value
         state = state.settled(by: outcome, discardingValue: false)
         // A cancel from here bumps the generation, so this one came from elsewhere and nothing else is coming.
         if case .cancelled = outcome, case .idle = state {
             wasInterrupted = true
         }
-        showRows(replacing: previous)
+        showRows()
     }
 
     /// The sidebar committed this kind's list, after a refresh, a statement or a drop there: rows on
@@ -183,32 +197,68 @@ internal final class TableListingViewModel: ObservableObject {
         let listing = ObjectListingRows.listing(kind: target.kind, from: list, scope: scope)
         guard !listing.showsSameRows(as: shown) else { return }
         state = .loaded(listing)
-        showRows(replacing: shown)
+        showRows()
     }
 
-    /// The grid keeps its selection by row id, which is a position here, so rows replacing `previous`
-    /// carry it to the same objects: Return and the menu act on what the reader picked.
-    private func showRows(replacing previous: TableListing? = nil) {
+    /// A filter change only narrows the rows on hand, so the list formats nothing again.
+    private func showRows(listingChanged: Bool = true) {
         guard let listing = state.value else {
             count = nil
             return
         }
         let shown = ObjectListingFilter.rows(of: listing, matching: filterText)
         count = ObjectListingCount(shown: shown.count, total: listing.rows.count)
-        grid.setRows(shown, carryingSelection: previous.flatMap { listing.rowIDs(carriedFrom: $0) })
+        if listing.items.isEmpty {
+            grid.setRows(shown)
+        } else if listingChanged {
+            list.show(listing, filterText: filterText)
+        } else {
+            list.applyFilter(filterText)
+        }
     }
 
-    private func menuItems(for rowIDs: [RowID], clicked: RowID) -> [NSMenuItem] {
-        guard let items = state.value?.items, let clickedItem = items[clicked] else { return [] }
-        let targets = rowIDs.compactMap { items[$0] }
-        return ObjectListingMenu.commands(clicked: clickedItem, targets: targets).map { command in
+    // MARK: - Commands
+
+    /// A double click or Return on a row.
+    func open(_ item: ObjectListingItem) {
+        run(ObjectListingMenu.primaryAction(for: item))
+    }
+
+    /// The clicked row's menu, acting on the whole selection when the clicked row is part of it.
+    func menuItems(clicked: ObjectListingItem, targets: [ObjectListingItem]) -> [NSMenuItem] {
+        ObjectListingMenu.commands(clicked: clicked, targets: targets).map { command in
             ClosureMenuTarget.item(title: command.title) { [weak self] in self?.run(command.action) }
         }
     }
 
-    private func open(_ rowID: RowID) {
-        guard let item = state.value?.items[rowID] else { return }
-        run(ObjectListingMenu.primaryAction(for: item))
+    func openSelection() {
+        guard commandAvailability.canOpen, let item = list.selectedItems.first else { return }
+        open(item)
+    }
+
+    func designSelection() {
+        guard commandAvailability.canDesign, let item = list.selectedItems.first else { return }
+        run(.showStructure(item))
+    }
+
+    func createObject() {
+        guard commandAvailability.canCreate else { return }
+        run(.createTable)
+    }
+
+    func deleteSelection() {
+        guard commandAvailability.canDelete else { return }
+        run(.drop(list.selectedItems))
+    }
+
+    func importData() {
+        guard commandAvailability.canImport else { return }
+        run(.importData)
+    }
+
+    func exportSelection() {
+        guard commandAvailability.canExport else { return }
+        run(.export(list.selectedItems))
     }
 
     private func run(_ action: ObjectListingAction) {

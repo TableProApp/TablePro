@@ -5,13 +5,18 @@
 
 import Foundation
 
-/// What a row of the Objects tab does, routed to the coordinator commands the sidebar's rows run.
+/// What a row or the tool strip of the Objects tab does, routed to the coordinator commands the
+/// sidebar's rows and the menu bar run.
 internal enum ObjectListingAction: Equatable {
     case open(ObjectListingItem)
     case openInNewTab(ObjectListingItem)
     case showStructure(ObjectListingItem)
     case showSource(ObjectListingItem)
     case copyNames([String])
+    case createTable
+    case importData
+    case export([ObjectListingItem])
+    case drop([ObjectListingItem])
 }
 
 internal struct ObjectListingMenuCommand: Equatable {
@@ -55,5 +60,50 @@ internal enum ObjectListingMenu {
 
     private static func copyNamesTitle(count: Int) -> String {
         count == 1 ? String(localized: "Copy Name") : String(format: String(localized: "Copy %lld Names"), count)
+    }
+}
+
+/// What the coordinator knows about the connection that the tool strip's buttons depend on.
+internal struct ObjectListingCommandFacts: Equatable {
+    /// Safe mode blocks every write.
+    var isReadOnly = true
+    var canCreateTable = false
+    /// The connection imports at least one format.
+    var canImport = false
+    /// The engine has a drop statement for every selected object.
+    var canDropSelection = false
+}
+
+/// Which of the tool strip's buttons apply to the selection, the kind and the connection.
+internal struct ObjectListingCommandAvailability: Equatable {
+    var canOpen = false
+    var canDesign = false
+    var canCreate = false
+    var canDelete = false
+    var canImport = false
+    var canExport = false
+
+    internal static let none = ObjectListingCommandAvailability()
+
+    /// Open and Design act on one object, as a double click does. Delete and Export act on tables and
+    /// other relations only: a routine or a type has its own drop path in the sidebar, and nothing exports one.
+    internal static func resolve(
+        kind: SidebarObjectKind,
+        selection: [ObjectListingItem],
+        facts: ObjectListingCommandFacts
+    ) -> ObjectListingCommandAvailability {
+        let relations = selection.filter { item in
+            if case .relation = item { return true }
+            return false
+        }
+        let selectsOnlyRelations = !selection.isEmpty && relations.count == selection.count
+        return ObjectListingCommandAvailability(
+            canOpen: selection.count == 1,
+            canDesign: selection.count == 1 && selectsOnlyRelations,
+            canCreate: kind == .table && facts.canCreateTable && !facts.isReadOnly,
+            canDelete: selectsOnlyRelations && facts.canDropSelection && !facts.isReadOnly,
+            canImport: kind == .table && facts.canImport && !facts.isReadOnly,
+            canExport: selectsOnlyRelations
+        )
     }
 }

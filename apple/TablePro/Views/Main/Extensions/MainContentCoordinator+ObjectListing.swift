@@ -63,6 +63,7 @@ extension MainContentCoordinator {
         guard let tab = tabManager.tabs.first(where: { $0.id == tabId && $0.tabType == .tableListing }) else { return }
         tabManager.promotePreviewTab(id: tabId)
         let database = tab.tableContext.databaseName
+        let schema = tab.tableContext.schemaName
         switch action {
         case .open(let item):
             openListedRelation(item, database: database, showStructure: false, forceNewTab: false)
@@ -75,6 +76,73 @@ extension MainContentCoordinator {
             showObjectSource(objectRef)
         case .copyNames(let names):
             ClipboardService.shared.writeText(names.joined(separator: ","))
+        case .createTable:
+            createNewTable(databaseName: database, schemaName: schema)
+        case .importData:
+            // An import writes into the browsed container, so the tab's container is reached first,
+            // as the sidebar's own Import does.
+            Task { @MainActor [weak self] in
+                await self?.switchContainers(database: database, schema: schema)
+                self?.openImportPanel()
+            }
+        case .export(let items):
+            let refs = listingTableRefs(items, in: tab)
+            guard let first = refs.first else { return }
+            let scope = ExportPreselection.scope(
+                for: first,
+                grouping: PluginManager.shared.databaseGroupingStrategy(for: connection.type)
+            )
+            Task { @MainActor [weak self] in
+                await self?.switchContainers(database: database, schema: schema)
+                self?.openExportDialog(preselectedTableNames: Set(refs.map(\.table.name)), scope: scope)
+            }
+        case .drop(let items):
+            let refs = listingTableRefs(items, in: tab)
+            guard !refs.isEmpty, !safeModeLevel.blocksAllWrites else { return }
+            // The sidebar's own path: it asks before it queues the drop, and Save runs it against the
+            // browsed database, so the tab's container is reached first.
+            Task { @MainActor [weak self] in
+                await self?.switchContainers(database: database, schema: schema)
+                self?.sidebarViewModel?.batchToggleDelete(refs: refs)
+            }
+        }
+    }
+
+    /// What the tool strip of `tabId` can offer for `items`, its selected objects.
+    func listingCommandFacts(for items: [ObjectListingItem], inTab tabId: UUID) -> ObjectListingCommandFacts {
+        let isReadOnly = safeModeLevel.blocksAllWrites
+        guard !isReadOnly else { return ObjectListingCommandFacts(isReadOnly: true) }
+        let driver = DatabaseManager.shared.driver(for: connectionId)
+        var facts = ObjectListingCommandFacts(isReadOnly: false)
+        facts.canCreateTable = CreateTableEligibility.canCreateTable(with: driver)
+        facts.canImport = importFormatLookup.supportsImport(connection.type)
+            && !importFormatLookup.offeredFormats(connection.type).isEmpty
+        if let adapter = driver as? PluginDriverAdapter,
+           let tab = tabManager.tabs.first(where: { $0.id == tabId && $0.tabType == .tableListing }) {
+            let refs = listingTableRefs(items, in: tab)
+            facts.canDropSelection = refs.count == items.count && TableOperationEligibility.canDrop(
+                refs,
+                context: adapter.tableOperationEligibility(for: refs, isReadOnly: false)
+            )
+        }
+        return facts
+    }
+
+    /// The refs the sidebar's commands take for the listed relations. Where the sidebar lists the
+    /// object, its own `TableInfo` is used, so a queued drop marks the same row there.
+    func listingTableRefs(_ items: [ObjectListingItem], in tab: QueryTab) -> [DatabaseTreeTableRef] {
+        let database = tab.tableContext.databaseName
+        let schema = tab.tableContext.schemaName
+        let listed = DatabaseTreeMetadataService.shared.tables(connectionId: connectionId, database: database, schema: schema)
+        return items.compactMap { item in
+            guard case .relation(let name, let itemSchema, let type) = item else { return nil }
+            let kind = SidebarObjectKind.resolve(tableType: type)
+            let table = listed.first { candidate in
+                candidate.name == name
+                    && SidebarObjectKind.resolve(tableType: candidate.type) == kind
+                    && (candidate.schema == nil || itemSchema == nil || candidate.schema == itemSchema)
+            } ?? TableInfo(name: name, type: type, rowCount: nil, schema: itemSchema)
+            return DatabaseTreeTableRef(database: database, schema: schema ?? table.schema, table: table)
         }
     }
 

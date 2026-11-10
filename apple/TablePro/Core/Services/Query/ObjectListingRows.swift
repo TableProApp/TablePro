@@ -59,23 +59,6 @@ extension TableListing {
         rows.columns == other.rows.columns && columnKeys == other.columnKeys
             && rows.rows == other.rows.rows && items == other.items
     }
-
-    /// Where each object `previous` listed sits in this listing, by row id. Row ids are positions, so
-    /// an object created or dropped above another moves it to another id. Nil when `previous` names no
-    /// objects: its rows are plain values with nothing to follow.
-    func rowIDs(carriedFrom previous: TableListing) -> [RowID: RowID]? {
-        guard !previous.items.isEmpty else { return nil }
-        var rowIDsByKey: [ObjectListingItem.Key: RowID] = [:]
-        for row in rows.rows {
-            guard let item = items[row.id], rowIDsByKey[item.key] == nil else { continue }
-            rowIDsByKey[item.key] = row.id
-        }
-        var carried: [RowID: RowID] = [:]
-        for (rowID, item) in previous.items {
-            carried[rowID] = rowIDsByKey[item.key]
-        }
-        return carried
-    }
 }
 
 /// Where a plugin's table listing names its objects: the plugins alias the columns `name`,

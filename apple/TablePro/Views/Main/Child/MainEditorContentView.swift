@@ -247,6 +247,9 @@ struct MainEditorContentView: View {
                 perform: { [weak coordinator = self.coordinator] action in
                     coordinator?.performListingAction(action, fromTab: tabId)
                 },
+                commandFacts: { [weak coordinator = self.coordinator] items in
+                    coordinator?.listingCommandFacts(for: items, inTab: tabId) ?? ObjectListingCommandFacts()
+                },
                 onInteraction: { [weak tabManager = self.tabManager] in
                     tabManager?.promotePreviewTab(id: tabId)
                 }

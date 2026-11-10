@@ -62,4 +62,64 @@ struct ObjectListingMenuTests {
             action: .copyNames(["orders", "recent_orders"])
         ))
     }
+
+    // MARK: - Tool strip
+
+    private let writable = ObjectListingCommandFacts(isReadOnly: false, canCreateTable: true, canImport: true, canDropSelection: true)
+
+    @Test("Open and Design act on one object; Delete and Export on every selected relation")
+    func selectionDecidesTheObjectCommands() {
+        let one = ObjectListingCommandAvailability.resolve(kind: .table, selection: [orders], facts: writable)
+        let two = ObjectListingCommandAvailability.resolve(kind: .table, selection: [orders, recent], facts: writable)
+        let none = ObjectListingCommandAvailability.resolve(kind: .table, selection: [], facts: writable)
+
+        #expect(one == ObjectListingCommandAvailability(
+            canOpen: true, canDesign: true, canCreate: true, canDelete: true, canImport: true, canExport: true
+        ))
+        #expect(two == ObjectListingCommandAvailability(canCreate: true, canDelete: true, canImport: true, canExport: true))
+        #expect(none == ObjectListingCommandAvailability(canCreate: true, canImport: true))
+    }
+
+    @Test("A routine opens as its source, but has no structure, no drop here and nothing to export")
+    func sourcedObjectsOnlyOpen() {
+        let function = ObjectListingCommandAvailability.resolve(kind: .function, selection: [touch], facts: writable)
+
+        #expect(function == ObjectListingCommandAvailability(canOpen: true))
+    }
+
+    @Test("New and Import are for tables; another kind's strip offers neither")
+    func creationAndImportAreForTables() {
+        let views = ObjectListingCommandAvailability.resolve(kind: .view, selection: [recent], facts: writable)
+
+        #expect(!views.canCreate)
+        #expect(!views.canImport)
+        #expect(views.canDelete)
+        #expect(views.canExport)
+    }
+
+    @Test("Safe mode turns off every write and keeps reading", arguments: [true, false])
+    func readOnlyKeepsOnlyReads(isReadOnly: Bool) {
+        var facts = writable
+        facts.isReadOnly = isReadOnly
+
+        let availability = ObjectListingCommandAvailability.resolve(kind: .table, selection: [orders], facts: facts)
+
+        #expect(availability.canCreate == !isReadOnly)
+        #expect(availability.canDelete == !isReadOnly)
+        #expect(availability.canImport == !isReadOnly)
+        #expect(availability.canOpen && availability.canDesign && availability.canExport)
+    }
+
+    @Test("Each write needs the connection to support it", arguments: [
+        ObjectListingCommandFacts(isReadOnly: false, canCreateTable: false, canImport: true, canDropSelection: true),
+        ObjectListingCommandFacts(isReadOnly: false, canCreateTable: true, canImport: false, canDropSelection: true),
+        ObjectListingCommandFacts(isReadOnly: false, canCreateTable: true, canImport: true, canDropSelection: false),
+    ])
+    func writesNeedSupport(facts: ObjectListingCommandFacts) {
+        let availability = ObjectListingCommandAvailability.resolve(kind: .table, selection: [orders], facts: facts)
+
+        #expect(availability.canCreate == facts.canCreateTable)
+        #expect(availability.canImport == facts.canImport)
+        #expect(availability.canDelete == facts.canDropSelection)
+    }
 }

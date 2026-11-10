@@ -6,6 +6,7 @@
 import SwiftUI
 
 // Read-only and complete, so a header click sorts the rows on hand rather than re-running anything.
+// Rows that name objects show in the list; anything else keeps the data grid.
 internal struct TableListingTabView: View {
     @ObservedObject var model: TableListingViewModel
     let databaseType: DatabaseType
@@ -17,6 +18,7 @@ internal struct TableListingTabView: View {
         VStack(spacing: 0) {
             ObjectListingBar(
                 model: model,
+                list: model.list,
                 kinds: kinds,
                 kindTitle: kindTitle,
                 onSelectKind: onSelectKind
@@ -43,7 +45,13 @@ internal struct TableListingTabView: View {
             emptyState(listing)
         case .loaded(let listing):
             VStack(spacing: 0) {
-                rowsGrid
+                if model.rowsNameObjects {
+                    // A retarget hands this view a new list, which a new table shows from scratch.
+                    ObjectListingTableView(list: model.list, model: model)
+                        .id(ObjectIdentifier(model.list))
+                } else {
+                    rowsGrid
+                }
                 if let notice = listing.notice {
                     noticeBar(notice)
                 }
@@ -92,22 +100,19 @@ internal struct TableListingTabView: View {
             .statusBarChrome()
     }
 
+    // A shell command's rows, such as a Redis SCAN page, name no object: they stay plain values in the grid.
     private var rowsGrid: some View {
         DataGridView(model: model.grid.model)
-            .onAppear { model.grid.model.configuration = configuration(opensRows: model.rowsNameObjects) }
-            .onChange(of: model.rowsNameObjects) { opensRows in
-                model.grid.model.configuration = configuration(opensRows: opensRows)
-            }
+            .onAppear { model.grid.model.configuration = configuration }
     }
 
-    // A row that names an object opens it; a shell command's rows keep the cell viewer.
-    private func configuration(opensRows: Bool) -> DataGridConfiguration {
+    private var configuration: DataGridConfiguration {
         var configuration = DataGridConfiguration()
         configuration.traits = DataGridEngineTraits(databaseType: databaseType)
         configuration.showRowNumbers = true
         configuration.supportsValueFilter = false
         configuration.appliesRowCopyFormat = true
-        configuration.commands = opensRows ? [.freezeColumns, .displayAs, .openRow] : [.freezeColumns, .displayAs]
+        configuration.commands = [.freezeColumns, .displayAs]
         return configuration
     }
 }
