@@ -18,6 +18,7 @@ mod mcp_bridge;
 #[cfg(test)]
 mod metainfo_release;
 mod open_files;
+mod open_links;
 mod quit_sequence;
 mod runtime_versions;
 mod session_signals;
@@ -49,6 +50,7 @@ pub use accelerators::{
 pub use app_actions::install_app_actions;
 pub use app_services::{AppServices, AppServicesParts};
 pub use app_window_host::AppWindowHost;
+pub use open_files::Placement;
 pub use quit_sequence::QuitSequence;
 pub use shortcut_listing::ShortcutListing;
 pub use shortcut_owner::ShortcutOwner;
@@ -184,8 +186,8 @@ impl TableProApplication {
     /// filed under its window as soon as the window has an id, so the
     /// record never groups them under a window that is gone.
     fn finish_restore(&self, windows: Vec<Vec<SessionKey>>) {
-        let files = self.imp().pending_files.take();
-        if windows.is_empty() && files.is_empty() {
+        let pending = self.imp().pending_files.take();
+        if windows.is_empty() && pending.is_empty() {
             self.open_window(WindowLaunch::Picker);
         }
         let open_sessions = self.services().map(|services| services.open_sessions().clone());
@@ -197,7 +199,9 @@ impl TableProApplication {
                 open_sessions.assign(&keys, window.id());
             }
         }
-        self.open_files(&files);
+        for (files, placement) in pending {
+            self.open_files(&files, placement);
+        }
     }
 
     /// Ask every window to close, in turn. While one is asking, another

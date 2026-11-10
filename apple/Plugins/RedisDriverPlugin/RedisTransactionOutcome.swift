@@ -58,11 +58,19 @@ enum RedisTransactionOutcome {
     /// refusal, `-ERR EXEC without MULTI` for one `RESET` already ended, and a nil reply for one
     /// whose `WATCH` was broken. None of them applied anything, so none of them names a failure
     /// here.
-    static func failures(inExecReply reply: RedisReply, queuedCommands: [String]) -> [RedisFailedCommand] {
+    static func failures(
+        inExecReply reply: RedisReply,
+        queuedCommands: [String],
+        conditionalPositions: Set<Int> = []
+    ) -> [RedisFailedCommand] {
         guard case .array(let elements) = reply else { return [] }
         return elements.enumerated().compactMap { index, element in
-            guard let message = element.errorMessage else { return nil }
-            return RedisFailedCommand(label: label(at: index, in: queuedCommands), message: message)
+            let label = label(at: index, in: queuedCommands)
+            if let message = element.errorMessage {
+                return RedisFailedCommand(label: label, message: message)
+            }
+            guard conditionalPositions.contains(index), !RedisConditionalWrite.applied(element) else { return nil }
+            return RedisFailedCommand(label: label, message: RedisConditionalWrite.refusedMessage)
         }
     }
 

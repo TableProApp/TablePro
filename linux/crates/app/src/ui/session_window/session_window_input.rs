@@ -1,6 +1,7 @@
 use gtk4::glib;
 use libadwaita as adw;
 use tablepro_core::SafeModeLevel;
+use tablepro_core::connection_url::ConnectionUrl;
 use tablepro_core::credentials::SecretKind;
 use tablepro_core::ddl::DropDatabaseOptions;
 use tablepro_session::SessionKey;
@@ -42,6 +43,8 @@ pub(crate) enum SessionWindowInput {
         saved: Option<Box<SavedConnection>>,
     },
     OpenConnectDialog,
+    /// A connection link no saved connection matches, for the connect dialog to show.
+    ConnectFromLink(Box<ConnectionUrl>),
     /// The connect dialog's Connect: connect, then save the entry.
     ConnectFromDialog(Box<ConnectSubmission>),
     DialogClosed,

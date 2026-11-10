@@ -634,6 +634,10 @@
         }
       }
     },
+    "'%@' is a field of an array of objects in this document. Change it with a query." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "'%@' is document metadata and cannot be edited." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -7845,6 +7849,10 @@
           }
         }
       }
+    },
+    "%1$@.%2$@ was written as text: %3$lld values do not fit %4$@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "%1$@/%2$@ rows" : {
       "localizations" : {
@@ -15851,6 +15859,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "A document with this _id already exists." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "A domain's base type, or a range's subtype" : {
       "localizations" : {
         "fr" : {
@@ -16186,6 +16198,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "A key named '%@' already exists." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "A key needs a name." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -16199,6 +16215,10 @@
       }
     },
     "A key range cannot be ORed with a column filter. Use =, STARTS WITH or REGEX on _key, or AND." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "A key with this name already exists." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -17564,6 +17584,9 @@
       }
     },
     "A transaction is open on this connection, and its uncommitted rows aren't in these counts." : {
+
+    },
+    "A transaction is open on this connection, and this change cannot run inside it. Nothing was run. Commit or roll back the transaction, then try again." : {
 
     },
     "A transaction is open on this connection. Commit or roll it back in TablePro, then run the shortcut again." : {
@@ -51891,6 +51914,9 @@
         }
       }
     },
+    "Copy Original Definition" : {
+
+    },
     "Copy Output" : {
       "localizations" : {
         "fr" : {
@@ -54711,6 +54737,9 @@
         }
       }
     },
+    "Could not save this connection's passwords to the Keychain. Your changes were not saved." : {
+
+    },
     "Could not search the referenced table" : {
       "localizations" : {
         "fr" : {
@@ -55356,6 +55385,9 @@
           }
         }
       }
+    },
+    "Couldn't Save the Revocation" : {
+
     },
     "Couldn't start" : {
 
@@ -113087,6 +113119,10 @@
         }
       }
     },
+    "MUSTAPPLY takes only RENAMENX or SET with NX" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "My Queries" : {
       "localizations" : {
         "fr" : {
@@ -129663,6 +129699,9 @@
         }
       }
     },
+    "Opens database URLs and files, runs queries and exports tables from the terminal. Run `tablepro help` to see every command." : {
+
+    },
     "Opens database URLs from the terminal, such as a DDEV project database." : {
       "localizations" : {
         "fr" : {
@@ -145189,6 +145228,16 @@
     "Record %@ has no fields list." : {
 
     },
+    "Record %lld of the CSV data has %lld fields, but the header has %lld." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Record %1$lld of the CSV data has %2$lld fields, but the header has %3$lld."
+          }
+        }
+      }
+    },
     "Record Access" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -156145,6 +156194,9 @@
       }
     },
     "Running query in “%1$@” on %2$@" : {
+
+    },
+    "Running the query will replace this result and discard all unsaved changes." : {
 
     },
     "Running Threads" : {
@@ -170568,6 +170620,9 @@
         }
       }
     },
+    "Some of these changes were applied before the save failed. The table was read again, and only the changes that were not applied are still staged." : {
+
+    },
     "Some passwords were not read. You can enter them in the connection editor after import." : {
       "localizations" : {
         "fr" : {
@@ -181393,6 +181448,9 @@
     "TablePro could not read your saved connections, so it did not save over them." : {
 
     },
+    "TablePro could not save the change to the Keychain. The token works again after TablePro restarts." : {
+
+    },
     "TablePro could not save the Table Health history: %@" : {
 
     },
@@ -181981,6 +182039,9 @@
     "TablePro is reading or writing rows on this connection with settings of its own." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "TablePro is running from a disk image or a temporary location. Move it to the Applications folder first, then open it from there." : {
+
     },
     "TablePro is still trying to reconnect." : {
       "localizations" : {
@@ -188059,6 +188120,16 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The definition of trigger “%@” could not be read, so it cannot be edited: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The definition of trigger “%1$@” could not be read, so it cannot be edited: %2$@"
+          }
+        }
+      }
+    },
     "The descriptor set names an unknown field type %llu." : {
 
     },
@@ -188230,6 +188301,10 @@
           }
         }
       }
+    },
+    "The document changed on the server after it was read. Refresh and try again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The document has not loaded, so there is nothing to save it over." : {
       "localizations" : {
@@ -189448,6 +189523,10 @@
     },
     "The key %1$@ matched %2$@ rows, so the row was not written." : {
 
+    },
+    "The key changed on the server after it was read. Refresh and try again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The key that protects your save history is not available." : {
       "localizations" : {
@@ -191315,6 +191394,12 @@
         }
       }
     },
+    "The provider ended the response without sending any content." : {
+
+    },
+    "The provider reported an error." : {
+
+    },
     "The query contains a NUL character (U+0000) and was not run. Remove it and try again." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -191984,6 +192069,10 @@
           }
         }
       }
+    },
+    "The row has %1$lld fields where %2$lld are expected. A field that holds the delimiter must be quoted." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The row has no __name__, so the document it came from is unknown. Reload the collection." : {
       "extractionState" : "manual",
@@ -194262,6 +194351,9 @@
         }
       }
     },
+    "The statement did not finish within %d seconds and is still running. It may have been applied; check before running it again." : {
+
+    },
     "The statement has %1$lld placeholders but %2$lld values were given." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -194474,6 +194566,9 @@
           }
         }
       }
+    },
+    "The tab or its edits changed while the save waited for approval. Nothing was saved." : {
+
     },
     "The table %@ was already created with different columns. Choose another name." : {
       "localizations" : {
@@ -195229,6 +195324,9 @@
     "The text encoding is invalid." : {
 
     },
+    "The text has no CREATE TRIGGER statement. Saving it would drop the trigger without creating it again, so nothing was run." : {
+
+    },
     "The text is not valid JSON." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -195505,6 +195603,12 @@
           }
         }
       }
+    },
+    "The trigger was dropped, the new definition failed, and the original could not be created again. The trigger no longer exists. Copy the original definition to recreate it. Error: %@" : {
+
+    },
+    "The trigger's full definition could not be read, so it could not be restored if the edit failed. Nothing was run." : {
+
     },
     "The triggers on %1$@ in %2$@ could not be listed: %3$@" : {
       "localizations" : {
@@ -202130,6 +202234,9 @@
           }
         }
       }
+    },
+    "This tab moved to another database while the query waited for approval. Run it again." : {
+
     },
     "This table has no options to change." : {
 

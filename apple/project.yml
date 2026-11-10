@@ -296,7 +296,7 @@ targets:
         excludes:
           # main() for the tablepro-mcp helper.
           - CLI/BridgeMain.swift
-          # main() for the tablepro-cli helper behind `tablepro query`.
+          # main() for the tablepro-cli helper behind the tablepro command.
           - CLI/CLIMain.swift
           # main() for the tablepro-imagerender helper, which is a whole executable on
           # its own: nothing in it is reachable from the app.
@@ -530,7 +530,7 @@ targets:
         SWIFT_APPROACHABLE_CONCURRENCY: YES
         SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
 
-  # ─── tablepro query and tablepro connections, embedded as Contents/MacOS/tablepro-cli ─
+  # ─── The tablepro command, embedded as Contents/MacOS/tablepro-cli ───────────
 
   command-line:
     type: tool
@@ -539,7 +539,7 @@ targets:
       - TablePro/CLI/CLIMain.swift
     dependencies:
       - package: TableProMacCore
-        products: [TableProMCP, TableProUtilities]
+        products: [TableProCommandLine]
     scheme: {}
     settings:
       base:

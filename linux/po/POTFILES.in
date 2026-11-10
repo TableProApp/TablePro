@@ -15,6 +15,7 @@ crates/app/src/application/mcp_bridge.rs
 crates/app/src/application/metainfo_release.rs
 crates/app/src/application/mod.rs
 crates/app/src/application/open_files.rs
+crates/app/src/application/open_links.rs
 crates/app/src/application/quit_sequence.rs
 crates/app/src/application/runtime_versions.rs
 crates/app/src/application/session_signals.rs
@@ -26,6 +27,8 @@ crates/app/src/application/third_party_licenses.rs
 crates/app/src/application/window_host.rs
 crates/app/src/application/window_launch.rs
 crates/app/src/application/window_registry.rs
+crates/app/src/command_line/linux_host.rs
+crates/app/src/command_line/mod.rs
 crates/app/src/config.rs
 crates/app/src/crash_report.rs
 crates/app/src/i18n.rs
@@ -67,6 +70,7 @@ crates/app/src/services/change_tracker.rs
 crates/app/src/services/change_tracker_registry.rs
 crates/app/src/services/column_relayout.rs
 crates/app/src/services/connection_deletion.rs
+crates/app/src/services/connection_link.rs
 crates/app/src/services/connection_search.rs
 crates/app/src/services/deletion_error.rs
 crates/app/src/services/deletion_report.rs
@@ -497,6 +501,14 @@ crates/app/src/ui/preferences_dialog/history_group.rs
 crates/app/src/ui/preferences_dialog/imp.rs
 crates/app/src/ui/preferences_dialog/mcp_page.rs
 crates/app/src/ui/preferences_dialog/mod.rs
+crates/app/src/ui/quick_open/matching.rs
+crates/app/src/ui/quick_open/mod.rs
+crates/app/src/ui/quick_open/past_source.rs
+crates/app/src/ui/quick_open/past_tests.rs
+crates/app/src/ui/quick_open/query_source.rs
+crates/app/src/ui/quick_open/search_index.rs
+crates/app/src/ui/quick_open/tests.rs
+crates/app/src/ui/quick_open/tests/queries.rs
 crates/app/src/ui/result_pane/mod.rs
 crates/app/src/ui/result_pane/result_limit_banner.rs
 crates/app/src/ui/result_pane/result_set_view.rs
@@ -613,6 +625,7 @@ crates/app/src/ui/workspace/database_transfer.rs
 crates/app/src/ui/workspace/definitions.rs
 crates/app/src/ui/workspace/diagram.rs
 crates/app/src/ui/workspace/editor_label.rs
+crates/app/src/ui/workspace/favorite_folders.rs
 crates/app/src/ui/workspace/finished_work.rs
 crates/app/src/ui/workspace/health_banner.rs
 crates/app/src/ui/workspace/imp.rs
@@ -625,7 +638,10 @@ crates/app/src/ui/workspace/saves.rs
 crates/app/src/ui/workspace/session_watches.rs
 crates/app/src/ui/workspace/sidebar/catalog_watch.rs
 crates/app/src/ui/workspace/sidebar/connection_tree.rs
+crates/app/src/ui/workspace/sidebar/favorites_index.rs
 crates/app/src/ui/workspace/sidebar/favorites_pane.rs
+crates/app/src/ui/workspace/sidebar/favorites_pane_tests.rs
+crates/app/src/ui/workspace/sidebar/favorites_rows.rs
 crates/app/src/ui/workspace/sidebar/key_listing.rs
 crates/app/src/ui/workspace/sidebar/mod.rs
 crates/app/src/ui/workspace/sidebar/object_key.rs

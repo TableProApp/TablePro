@@ -298,6 +298,49 @@ struct SessionRecoveryLoopTests {
         await cleanUp(fixture)
     }
 
+    @Test("A recovery that replaces a driver holding a transaction refuses the next statement once")
+    func recoveryReportsTheTransactionItEnded() async throws {
+        let fixture = makeFixture()
+        let manager = fixture.manager
+        let scope = DatabaseScope(connectionId: fixture.id, database: "app", schema: nil)
+        fixture.driver.sessionTransactionStateToReturn = .inTransaction
+        try await manager.withScopedDriver(scope: scope, route: .sessionDriver, cancellation: .untracked) { _ in () }
+        #expect(manager.sessionTransactions.holdsTransaction(connectionId: fixture.id, container: "app"))
+
+        manager.beginRecovery(for: fixture.id, cause: .stoppedResponding)
+        let loop = try loopTask(fixture)
+        await runNextAttempt(fixture)
+        await loop.value
+
+        #expect(fixture.session?.driver !== fixture.driver)
+        #expect(!manager.sessionTransactions.holdsTransaction(connectionId: fixture.id, container: "app"))
+        #expect(manager.sessionLanes.hasTransactionLoss(database: "app", for: fixture.id))
+        let error = await #expect(throws: DatabaseError.self) {
+            try await manager.withScopedDriver(scope: scope, route: .sessionDriver, cancellation: .untracked) { _ in () }
+        }
+        #expect(error?.localizedDescription.contains(DatabaseManager.parkedTransactionLostMessage(database: "app")) == true)
+        #expect(!manager.sessionLanes.hasTransactionLoss(database: "app", for: fixture.id))
+        await cleanUp(fixture)
+    }
+
+    @Test("A recovery that replaces an idle driver refuses nothing")
+    func recoveryOfAnIdleDriverReportsNothing() async throws {
+        let fixture = makeFixture()
+        let manager = fixture.manager
+        let scope = DatabaseScope(connectionId: fixture.id, database: "app", schema: nil)
+        fixture.driver.sessionTransactionStateToReturn = .idle
+        try await manager.withScopedDriver(scope: scope, route: .sessionDriver, cancellation: .untracked) { _ in () }
+
+        manager.beginRecovery(for: fixture.id, cause: .stoppedResponding)
+        let loop = try loopTask(fixture)
+        await runNextAttempt(fixture)
+        await loop.value
+
+        #expect(fixture.session?.driver !== fixture.driver)
+        #expect(!manager.sessionLanes.hasTransactionLoss(database: "app", for: fixture.id))
+        await cleanUp(fixture)
+    }
+
     @Test("Cancel during the backoff stops the loop before it dials and marks the session lost")
     func cancelDuringBackoffStopsTheLoop() async throws {
         let fixture = makeFixture()

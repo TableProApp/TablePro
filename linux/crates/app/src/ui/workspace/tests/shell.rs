@@ -716,6 +716,38 @@ fn collect_actions(menu: &gio::MenuModel, actions: &mut Vec<String>) {
 }
 
 #[gtk4::test]
+fn open_quickly_closes_when_another_session_comes_forward() {
+    let sessions = super::two_sessions("QuickOpenFollowsFront", "Other");
+    super::open_editor(&sessions.first);
+    let dialog = sessions
+        .first
+        .with_model(|model| {
+            model.on_show_quick_open();
+            model.quick_open_dialog.clone().expect("quick open")
+        })
+        .expect("workspace");
+    wait_until(WAIT, || dialog.parent().is_some()).expect("shown");
+    super::open_editor(&sessions.second);
+    wait_until(WAIT, || dialog.parent().is_none()).expect("old session dialog closed");
+    assert_eq!(sessions.shell.front().as_ref(), Some(&sessions.second));
+}
+
+#[gtk4::test]
+fn a_queued_quick_open_pick_does_not_reopen_a_background_session() {
+    let sessions = super::two_sessions("QuickOpenQueuedPick", "Other");
+    super::open_editor(&sessions.second);
+    let before = sessions.shell.tab_view().n_pages();
+    sessions.first.with_model(|model| {
+        model.on_quick_open_chosen(crate::ui::quick_open::Pick::Table {
+            table: tablepro_core::meta::TableRef::new(None, "orders"),
+            structure: false,
+        })
+    });
+    assert_eq!(sessions.shell.front().as_ref(), Some(&sessions.second));
+    assert_eq!(sessions.shell.tab_view().n_pages(), before);
+}
+
+#[gtk4::test]
 fn the_header_refresh_follows_the_selected_tabs_capability() {
     use super::super::structure_target::StructureTarget;
     use super::super::tab_spec::{TabSpec, TablePage};

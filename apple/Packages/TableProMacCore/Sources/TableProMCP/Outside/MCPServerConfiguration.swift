@@ -30,9 +30,42 @@ public struct MCPServerConfiguration: Codable, Equatable, Identifiable, Sendable
         self.allowedConnectionIds = allowedConnectionIds
     }
 
-    public var toolNamespace: String { "ext__\(id.uuidString.lowercased())__" }
+    // Provider APIs take a function name of at most 64 characters from letters, digits, "_" and "-".
+    public static let maxToolNameLength = 64
 
-    public func toolName(for remoteName: String) -> String { toolNamespace + remoteName }
+    public var toolNamespace: String {
+        "ext__\(id.uuidString.lowercased().replacingOccurrences(of: "-", with: ""))_"
+    }
+
+    // The name a provider sees. A remote name that already fits is kept as it is; any other is cut
+    // down to the allowed characters and tagged with a hash of the original, so the same remote
+    // tool gets the same name in every session and two remote names never fold into one silently.
+    public func toolName(for remoteName: String) -> String {
+        let budget = Self.maxToolNameLength - toolNamespace.count
+        let allowed = String(remoteName.unicodeScalars.map { Self.isToolNameScalar($0) ? Character($0) : "_" })
+        if allowed == remoteName, !remoteName.isEmpty, remoteName.count <= budget {
+            return toolNamespace + remoteName
+        }
+        let tag = "_" + Self.nameTag(remoteName)
+        return toolNamespace + allowed.prefix(budget - tag.count) + tag
+    }
+
+    private static func isToolNameScalar(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar {
+        case "a"..."z", "A"..."Z", "0"..."9", "_", "-": return true
+        default: return false
+        }
+    }
+
+    // FNV-1a, 32 bit: stable across launches, which `Hasher` is not.
+    private static func nameTag(_ name: String) -> String {
+        var hash: UInt32 = 2_166_136_261
+        for byte in name.utf8 {
+            hash = (hash ^ UInt32(byte)) &* 16_777_619
+        }
+        let hex = String(hash, radix: 16)
+        return String(repeating: "0", count: 8 - hex.count) + hex
+    }
 
     public func allows(connectionId: UUID?) -> Bool {
         guard let connectionId else { return false }

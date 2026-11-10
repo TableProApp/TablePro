@@ -150,6 +150,28 @@ Every `RunSummary` carries the session's `TransactionState`, and the last one a 
 
 The tab emits `transaction-changed` when that flips, and the workspace reads `WorkspaceHandle::dirty_tabs` again. Through `TabDirectory::tabs` it lists the tab as `DirtyKind::OpenTransaction` when the tab has nothing else pending, so the page shows the unsaved icon and the close prompts ask about it. A close asks once: the tabs the user agreed to lose are not asked about again in that close.
 
+## Open Quickly
+
+`QuickOpen` owns its session's catalog watch and explicitly reads all schemas when it opens.
+Its pure `SearchIndex` prepares names and ranks candidates on a blocking worker, with a limit of
+200 displayed results. Request stamps discard older index and search replies. A changed search
+cannot activate the old selection; Enter waits for the current results. Catalog updates preserve
+the selected object's identity, and failed reads retain the displayed content with Retry.
+
+The workspace closes the dialog when another session comes forward or the workspace shuts down.
+Closing stops watches and cancels delivery even while the workspace still retains the widget.
+Saved queries load independently for the active connection, through the same index and ranking.
+Each source retains its own error, so a successful catalog refresh cannot hide a query read failure.
+Choosing a saved query reads its current SQL by id, checks its connection, and opens a new editor
+without running it. A reply after closing or switching connections is discarded.
+Past queries load independently from the first 100 successful history entries for that connection,
+in the history store's pinned-first order. Repeated SQL has one row. The same matcher searches its
+full SQL, while the list shows a first-line preview of at most 120 characters. Choosing a past query
+reads it by id again, so a deleted entry cannot reopen from the search snapshot.
+Ctrl+Shift+O opens it, matching Open Quickly on macOS; Ctrl+Alt+O opens the tab overview.
+Up and Down keep focus in the search entry and scroll the selection into view. Ctrl+Enter opens
+structure only for objects and dialects that support it.
+
 ## The query history dialog
 
 `HistoryDialog` reads the history a page of 100 at a time off the GTK thread, by the keyset [storage.md](storage.md#searching-the-history) describes.

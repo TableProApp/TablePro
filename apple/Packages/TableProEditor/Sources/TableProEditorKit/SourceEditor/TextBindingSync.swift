@@ -60,8 +60,20 @@ final class TextBindingSync {
             guard case .binding(let currentBinding) = self.text else { return }
             let newText = textView.string
             self.lastSyncedText = newText
+            self.writebackTask = nil
             currentBinding.wrappedValue = newText
         }
+    }
+
+    // A run or save reads the binding, which trails the editor by the debounce on a large document.
+    func flushPendingWriteback(from textView: TextView) {
+        guard let pending = writebackTask else { return }
+        pending.cancel()
+        writebackTask = nil
+        guard case .binding(let binding) = text else { return }
+        let newText = textView.string
+        lastSyncedText = newText
+        binding.wrappedValue = newText
     }
 
     /// Pushes an external binding change down into the text view. The editor's
@@ -82,9 +94,21 @@ final class TextBindingSync {
         if let lastSyncedText, (newValue as NSString).isEqual(to: lastSyncedText) { return }
 
         writebackTask?.cancel()
+        writebackTask = nil
         phase.applyRepresentableValue {
             controller.setText(newValue)
         }
         lastSyncedText = newValue
+    }
+}
+
+public extension TextViewController {
+    static let flushTextWritebackNotification = Notification.Name(
+        "TableProEditorKit.flushTextWritebackNotification"
+    )
+
+    func flushPendingTextWriteback() {
+        guard let textView else { return }
+        NotificationCenter.default.post(name: Self.flushTextWritebackNotification, object: textView)
     }
 }

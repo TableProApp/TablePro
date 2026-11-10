@@ -50,11 +50,21 @@ extension DatabaseManager {
         metadataRoute(for: scope)
     }
 
-    /// SQL the user owns stays on the session driver, which holds their transaction,
-    /// their temp tables and the handle Stop cancels. The pool is the fallback only for
-    /// engines that cannot change database on a live connection, where the alternative
-    /// is querying whichever database the connection happens to be on.
+    /// SQL the user owns stays on a session connection, which holds their transaction, their temp
+    /// tables and the handle Stop cancels. It never runs on a pooled connection: the pool closes an
+    /// idle entry, and a transaction the user left open there is rolled back with it. A database
+    /// with no session connection yet gets one when its turn comes.
     func executionRoute(for scope: DatabaseScope) -> ScopedDriverRoute {
+        route(for: scope, opensLane: true)
+    }
+
+    /// A table read holds nothing between statements, so a database nobody has run SQL on is read
+    /// from the pool instead of opening a session connection for it.
+    func tableReadRoute(for scope: DatabaseScope) -> ScopedDriverRoute {
+        route(for: scope, opensLane: false)
+    }
+
+    private func route(for scope: DatabaseScope, opensLane: Bool) -> ScopedDriverRoute {
         guard let session = activeSessions[scope.connectionId] else {
             return .unavailable(String(localized: "Not connected to database"))
         }
@@ -70,10 +80,18 @@ extension DatabaseManager {
         /// the transaction, temp tables and settings they left there.
         /// A database whose connection ended with a transaction still open takes the session path
         /// once more, where that loss is reported before anything runs on a replacement.
-        if usesDatabaseLanes(session),
-           sessionLanes.parkedDriver(for: scope.connectionId, database: scope.database) != nil
-            || sessionLanes.hasTransactionLoss(database: scope.database, for: scope.connectionId) {
-            return .sessionDriver
+        if usesDatabaseLanes(session) {
+            if sessionLanes.parkedDriver(for: scope.connectionId, database: scope.database) != nil {
+                return .sessionDriver
+            }
+            // A table read depends on no transaction, so a lost one is not its to hear about.
+            if opensLane, sessionLanes.hasTransactionLoss(database: scope.database, for: scope.connectionId) {
+                return .sessionDriver
+            }
+            // A temporary table lives in the session that made it, which a new connection is not.
+            if opensLane, !scope.isSessionBound {
+                return .sessionDriver
+            }
         }
         guard canPool(session), !scope.isSessionBound else {
             return .unavailable(
@@ -97,6 +115,7 @@ extension DatabaseManager {
         route: ScopedDriverRoute,
         workload: MetadataConnectionPool.Workload = .interactive,
         cancellation: DriverCancellationPolicy,
+        ownsSessionState: Bool = true,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
         let leased = trackedLease(for: scope.connectionId, cancellation: cancellation, body)
@@ -108,7 +127,7 @@ extension DatabaseManager {
                 scope: scope, workload: workload, leased
             )
         case .sessionDriver:
-            return try await withPinnedSessionDriver(scope: scope, leased)
+            return try await withPinnedSessionDriver(scope: scope, ownsSessionState: ownsSessionState, leased)
         }
     }
 
@@ -118,13 +137,19 @@ extension DatabaseManager {
         scope: DatabaseScope,
         route: ScopedDriverRoute,
         workload: MetadataConnectionPool.Workload = .interactive,
+        ownsSessionState: Bool = true,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
         let owner = DriverLeaseOwner()
         let connectionId = scope.connectionId
         return try await withTaskCancellationHandler {
             try await withScopedDriver(
-                scope: scope, route: route, workload: workload, cancellation: .cancellableRead(owner), body
+                scope: scope,
+                route: route,
+                workload: workload,
+                cancellation: .cancellableRead(owner),
+                ownsSessionState: ownsSessionState,
+                body
             )
         } onCancel: {
             Task { @MainActor in
@@ -148,7 +173,7 @@ extension DatabaseManager {
         guard rowCountRunsWithPage(scope, filtered: filtered) else {
             return try await withMetadataDriver(scope: scope, workload: .bulk, body)
         }
-        return try await withCancellableRead(scope: scope, route: executionRoute(for: scope), body)
+        return try await withCancellableRead(scope: scope, route: tableReadRoute(for: scope), body)
     }
 
     /// A table tab's read is a SELECT the app built from the tab's own table, so it depends on
@@ -168,7 +193,7 @@ extension DatabaseManager {
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
         let leased = trackedLease(for: scope.connectionId, cancellation: cancellation, body)
-        var route = executionRoute(for: scope)
+        var route = tableReadRoute(for: scope)
         while true {
             switch route {
             case .unavailable(let message):
@@ -346,36 +371,46 @@ extension DatabaseManager {
 
     private func withPinnedSessionDriver<T: Sendable>(
         scope: DatabaseScope,
+        ownsSessionState: Bool,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
-        try await withSessionDriverTurn(scope: scope) { driver in
+        try await withSessionDriverTurn(scope: scope, ownsSessionState: ownsSessionState) { driver in
             try await pin(driver, to: scope)
             return try await body(driver)
         }
     }
 
-    /// The route is asked again through `executionRoute` itself, so it reads the same inputs the
+    /// The route is asked again through `tableReadRoute` itself, so it reads the same inputs the
     /// caller's first answer did, the browsed database among them. The driver's own connection is no
     /// substitute: it carries the database name the connection resolved to, not the one browsed.
     private func withTableReadSessionDriver<T: Sendable>(
         scope: DatabaseScope,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> TableReadTurn<T> {
-        try await withSessionDriverTurn(scope: scope) { driver in
-            let route = executionRoute(for: scope)
+        try await withSessionDriverTurn(scope: scope, ownsSessionState: false) { driver in
+            let route = tableReadRoute(for: scope)
             guard route == .sessionDriver else { return .moved(route) }
             try await pin(driver, to: scope)
             return .ran(try await body(driver))
         }
     }
 
+    /// `ownsSessionState` is false for a table read or a metadata read, which depend on nothing the
+    /// session holds. Such a turn neither opens a session connection nor takes the report of a lost
+    /// transaction, which is kept for the user's next statement.
     private func withSessionDriverTurn<R>(
         scope: DatabaseScope,
+        ownsSessionState: Bool,
         _ turn: (DatabaseDriver) async throws -> R
     ) async throws -> R {
         let connectionId = scope.connectionId
         let lane = activeSessions[connectionId].flatMap { laneDatabase(for: scope, in: $0) }
         let startsOnBrowsed = lane == nil || lane == activeSessions[connectionId]?.resolvedBrowseDatabase
+        /// Decided before the turn is queued. Work written against a connection that was there when
+        /// it queued and is gone when its turn comes is refused, never moved onto a new one: the
+        /// transaction it meant to continue ended with the connection it was on.
+        let startsWithoutLane = !startsOnBrowsed && !scope.isSessionBound
+            && lane.flatMap { sessionLanes.parkedDriver(for: connectionId, database: $0) } == nil
         if startsOnBrowsed {
             /// Outside the gate on purpose. A verification that has to reconnect runs the whole
             /// reconnect, which restores the schema and the database on the new driver, and doing that
@@ -399,28 +434,36 @@ extension DatabaseManager {
                 /// A database whose own connection is gone, its entry closed, falls back to the browsed
                 /// driver only to be turned away: a table read re-routes to the pool and anything else
                 /// is refused by `pin` before it runs a statement there.
-                guard isUsable(connectionId),
-                      let driver = sessionDriver(for: connectionId, laneDatabase: lane)
-                        ?? activeSessions[connectionId]?.driver
-                else {
+                guard isUsable(connectionId), let browsedDriver = activeSessions[connectionId]?.driver else {
                     throw DatabaseError.notConnected
                 }
                 guard let lane else {
-                    // A driver replaced while it held a transaction, which a Vault lease rotation can do.
-                    if let browsed = activeSessions[connectionId]?.resolvedBrowseDatabase,
-                       sessionLanes.takeTransactionLoss(database: browsed, for: connectionId) {
-                        throw DatabaseError.connectionFailed(Self.parkedTransactionLostMessage(database: browsed))
+                    // A driver replaced while it held a transaction, by a reconnect or a Vault lease rotation.
+                    if ownsSessionState, let lost = sessionLanes.takeAnyTransactionLoss(for: connectionId) {
+                        throw DatabaseError.connectionFailed(Self.parkedTransactionLostMessage(database: lost))
                     }
-                    return try await recordingTransaction(on: driver, for: .init(connectionId: connectionId, lane: nil)) {
-                        try await turn(driver)
+                    return try await recordingTransaction(on: browsedDriver, for: .init(connectionId: connectionId, lane: nil)) {
+                        try await turn(browsedDriver)
                     }
+                }
+                let driver: DatabaseDriver
+                if let held = sessionDriver(for: connectionId, laneDatabase: lane) {
+                    driver = held
+                } else if ownsSessionState, !scope.isSessionBound,
+                          startsWithoutLane || sessionLanes.wasClosedIdle(database: lane, for: connectionId),
+                          !sessionLanes.hasTransactionLoss(database: lane, for: connectionId) {
+                    driver = try await openedLaneDriver(database: lane, for: connectionId)
+                } else {
+                    driver = browsedDriver
                 }
                 let laneDriver = sessionLanes.isParked(driver, for: connectionId)
                     ? try await verifiedParkedDriver(driver, database: lane, for: connectionId)
                     : driver
-                if sessionLanes.takeTransactionLoss(database: lane, for: connectionId) {
+                if ownsSessionState, sessionLanes.takeTransactionLoss(database: lane, for: connectionId) {
                     throw DatabaseError.connectionFailed(Self.parkedTransactionLostMessage(database: lane))
                 }
+                sessionLanes.noteOpenedUse(database: lane, for: connectionId)
+                defer { sessionLanes.noteOpenedUse(database: lane, for: connectionId) }
                 return try await recordingTransaction(on: laneDriver, for: .init(connectionId: connectionId, lane: lane)) {
                     try await turn(laneDriver)
                 }
@@ -498,6 +541,7 @@ extension DatabaseManager {
         /// Read before the ping: a ping that finds the socket closed leaves libpq reporting no
         /// transaction state at all, which would read as nothing to lose.
         let held = await driver.heldSessionTransactionState()
+        let wasOpened = sessionLanes.isOpened(database: database, for: connectionId)
         sessionLanes.beginVerifying(driver)
         defer { sessionLanes.endVerifying(driver) }
         do {
@@ -523,8 +567,92 @@ extension DatabaseManager {
             }
             sessionLanes.park(reopened, database: database, for: connectionId)
             sessionLanes.markVerified(reopened)
+            if wasOpened {
+                sessionLanes.markOpened(reopened, database: database, for: connectionId)
+            }
             return reopened
         }
+    }
+
+    /// Opens the session connection of a database the user runs SQL on without having browsed it.
+    /// It is parked like a database the user switched away from, so the transaction bar, the close
+    /// warnings and the loss report all cover it.
+    ///
+    /// A switch or a closed entry elsewhere on the connection supersedes the open, which is then
+    /// tried once more. A switch onto this very database that finished first is the connection to
+    /// run on, and the one opened here is closed.
+    private func openedLaneDriver(database: String, for connectionId: UUID) async throws -> DatabaseDriver {
+        // Here as well as on the health tick, which does not run with health checks set to Never.
+        await closeIdleOpenedLanes(for: connectionId)
+        let sessionStartedAt = activeSessions[connectionId]?.connectedAt
+        for _ in 0 ..< 2 {
+            guard !MetadataConnectionPool.shared.isReplacingTransport(for: connectionId) else {
+                throw DatabaseError.connectionFailed(Self.recoveringConnectMessage)
+            }
+            let generation = sessionLanes.generation(for: connectionId)
+            let opened = try await sessionLanes.open(
+                DatabaseScope(connectionId: connectionId, database: database, schema: nil)
+            )
+            guard !MetadataConnectionPool.shared.isReplacingTransport(for: connectionId),
+                  let session = activeSessions[connectionId],
+                  session.connectedAt == sessionStartedAt,
+                  session.driver != nil
+            else {
+                opened.disconnect()
+                throw DatabaseError.notConnected
+            }
+            if let current = sessionDriver(for: connectionId, laneDatabase: database) {
+                opened.disconnect()
+                return current
+            }
+            guard sessionLanes.generation(for: connectionId) == generation else {
+                opened.disconnect()
+                continue
+            }
+            sessionLanes.park(opened, database: database, for: connectionId)
+            sessionLanes.markVerified(opened)
+            sessionLanes.markOpened(opened, database: database, for: connectionId)
+            return opened
+        }
+        throw DatabaseError.notConnected
+    }
+
+    /// Closes the connections opened for SQL on databases the user never browsed that nobody has
+    /// used for `idleFor`. One that is running work or holds a transaction stays. Whatever else the
+    /// session held goes with it unreported: on PostgreSQL its temp tables, `SET` values and
+    /// advisory locks.
+    internal func closeIdleOpenedLanes(
+        for connectionId: UUID,
+        idleFor: TimeInterval = SessionLanes.openedIdleTimeout,
+        now: Date = Date()
+    ) async {
+        for lane in sessionLanes.openedLanes(for: connectionId) where now.timeIntervalSince(lane.lastUsed) >= idleFor {
+            _ = await closeOpenedLaneIfIdle(lane.database, driver: lane.driver, for: connectionId)
+        }
+    }
+
+    /// Asked inside the lane's own turn, so no statement runs between the answer and the close. Only
+    /// a driver that says it is idle is closed: one that cannot say may be holding a transaction.
+    private func closeOpenedLaneIfIdle(
+        _ database: String,
+        driver: DatabaseDriver,
+        for connectionId: UUID
+    ) async -> Bool {
+        let key = SessionDriverGate.Key(connectionId: connectionId, database: database)
+        guard !sessionDriverGate.isHeld(key) else { return false }
+        let closed = try? await sessionDriverGate.withExclusiveAccess(key) { () async -> Bool in
+            guard sessionLanes.isOpened(database: database, for: connectionId),
+                  sessionLanes.parkedDriver(for: connectionId, database: database) === driver,
+                  !sessionTransactions.holdsTransaction(connectionId: connectionId, container: database)
+            else { return false }
+            let state = await Self.boundedTransactionState(of: driver, clock: ContinuousClock())
+            guard state == .idle,
+                  sessionLanes.parkedDriver(for: connectionId, database: database) === driver
+            else { return false }
+            sessionLanes.closeIdle(database: database, for: connectionId)
+            return true
+        }
+        return closed ?? false
     }
 
     static func parkedTransactionLostMessage(database: String) -> String {
