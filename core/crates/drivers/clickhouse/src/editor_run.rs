@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 use crate::call_client::whole_seconds;
 use crate::cancel::{acknowledges_stop, kill_query, wait_until_ended};
+use crate::client_factory::{MAX_EXECUTION_TIME, TIMEOUT_OVERFLOW_MODE};
 use crate::errors::{code, server_code};
 use crate::lingering_query::LingeringQuery;
 use crate::result_origin::{TracedTable, source, traced_table, with_origins};
@@ -35,6 +36,8 @@ pub(crate) struct EditorRun {
     pub(crate) session: clickhouse::Client,
     pub(crate) control: clickhouse::Client,
     pub(crate) statement_timeout: Option<Duration>,
+    // Whether the login may set the bound; the run's own deadline holds it to it either way.
+    pub(crate) bounds_on_server: bool,
     pub(crate) grace: Duration,
     pub(crate) shutdown: CancellationToken,
     pub(crate) lingering: Arc<LingeringQuery>,
@@ -191,16 +194,15 @@ impl EditorRun {
         }
     }
 
-    /// Send `sql` as `query_id`, which the server ends at `bound`.
     fn open(&self, sql: &UserSql, query_id: Uuid, bound: Option<Duration>) -> Result<ResultReader, DriverError> {
         let mut query = self
             .session
             .query_raw(sql.as_str())
             .with_setting("query_id", query_id.to_string());
-        if bound.is_some() {
+        if bound.is_some() && self.bounds_on_server {
             query = query
-                .with_setting("max_execution_time", whole_seconds(bound).to_string())
-                .with_setting("timeout_overflow_mode", "throw");
+                .with_setting(MAX_EXECUTION_TIME, whole_seconds(bound).to_string())
+                .with_setting(TIMEOUT_OVERFLOW_MODE, "throw");
         }
         ResultReader::open(query)
     }
@@ -438,11 +440,40 @@ impl Emitter {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Mutex, PoisonError};
+
     use async_trait::async_trait;
     use tablepro_core::{ServerCode, ServerDiagnostics};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::task::JoinHandle;
 
     use super::*;
+
+    // Answers each request with an empty result and keeps the request's head.
+    async fn recording_route() -> (String, Arc<Mutex<Vec<String>>>, JoinHandle<()>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("a listener");
+        let address = listener.local_addr().expect("an address");
+        let heads = Arc::new(Mutex::new(Vec::new()));
+        let kept = heads.clone();
+        let answering = tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let mut request = Vec::new();
+                let mut chunk = [0; 4096];
+                while !request.windows(4).any(|end| end == b"\r\n\r\n") {
+                    match socket.read(&mut chunk).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(read) => request.extend_from_slice(&chunk[..read]),
+                    }
+                }
+                kept.lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .push(String::from_utf8_lossy(&request).into_owned());
+                let answer = b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                let _ = socket.write_all(answer).await;
+            }
+        });
+        (format!("http://{address}"), heads, answering)
+    }
 
     /// A route that takes every request and never answers one.
     async fn silent_route() -> (clickhouse::Client, JoinHandle<()>) {
@@ -502,6 +533,7 @@ mod tests {
             session: closed_route().await,
             control,
             statement_timeout: None,
+            bounds_on_server: true,
             grace: Duration::from_millis(200),
             shutdown: CancellationToken::new(),
             lingering,
@@ -522,6 +554,34 @@ mod tests {
             "the run waited past the grace for a query the server never ended"
         );
         silent.abort();
+    }
+
+    #[tokio::test]
+    async fn a_run_bound_the_login_may_not_set_goes_out_without_it() {
+        let (url, heads, answering) = recording_route().await;
+        for bounds_on_server in [false, true] {
+            let run = EditorRun {
+                session: clickhouse::Client::default().with_url(url.clone()),
+                control: closed_route().await,
+                statement_timeout: None,
+                bounds_on_server,
+                grace: Duration::from_millis(200),
+                shutdown: CancellationToken::new(),
+                lingering: Arc::new(LingeringQuery::default()),
+            };
+            let mut reader = run
+                .open(&UserSql::new("SELECT 1"), Uuid::new_v4(), Some(Duration::from_secs(3)))
+                .expect("a request");
+            assert!(matches!(reader.next_event().await, Ok(ReadEvent::End)));
+        }
+
+        let heads = heads.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        let bounded: Vec<bool> = heads
+            .iter()
+            .map(|head| head.contains("max_execution_time=") || head.contains("timeout_overflow_mode="))
+            .collect();
+        assert_eq!(bounded, vec![false, true]);
+        answering.abort();
     }
 
     #[test]

@@ -21,6 +21,9 @@ public struct PluginQueryResult: Codable, Sendable {
     /// document store sets it, because a missing field and a field holding null both read `.null`.
     public var absentCells: [Int: Set<Int>]?
     public var exportDocuments: [PluginExportDocument]?
+    // Per column, nil where the column is an expression or the driver cannot vouch for what it reads. Nil when the
+    // driver reports no origins; the host then masks every unknown column on a connection with masking rules.
+    public var columnOrigins: [PluginColumnOrigin?]?
 
     public init(
         columns: [String],
@@ -108,6 +111,7 @@ public struct PluginQueryResult: Codable, Sendable {
         rowLocators = try container.decodeIfPresent([String?].self, forKey: .rowLocators)
         absentCells = try container.decodeIfPresent([Int: Set<Int>].self, forKey: .absentCells)
         exportDocuments = try container.decodeIfPresent([PluginExportDocument].self, forKey: .exportDocuments)
+        columnOrigins = try container.decodeIfPresent([PluginColumnOrigin?].self, forKey: .columnOrigins)
     }
 
     public static let empty = PluginQueryResult(

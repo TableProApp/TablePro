@@ -145,8 +145,7 @@ impl Parts {
         let finding = view.downgrade();
         let found_filter = gtk::CustomFilter::new(move |item| finding.upgrade().is_some_and(|view| view.finds(item)));
         let found_rows = gtk::FilterListModel::new(Some(found.clone()), Some(found_filter.clone()));
-        let menu = gtk::PopoverMenu::from_model(Some(&library_menu()));
-        menu.set_has_arrow(true);
+        let menu = crate::ui::context_menu::context_menu(Some(&library_menu()));
         Self {
             list,
             tasks,
@@ -518,8 +517,7 @@ impl WelcomeView {
         let stack = self.imp().stack.get();
         let at = list_view.compute_point(&stack, &graphene::Point::new(x as f32, y as f32));
         let pointing = at.map(|point| gdk::Rectangle::new(point.x() as i32, point.y() as i32, 1, 1));
-        parts.menu.set_pointing_to(pointing.as_ref());
-        parts.menu.popup();
+        crate::ui::context_menu::popup_at(&parts.menu, pointing);
     }
 
     fn activate(&self, which: Which, position: u32) {

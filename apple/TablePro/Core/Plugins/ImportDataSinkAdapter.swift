@@ -30,6 +30,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     private let sourceFields: Set<String>
     private let sourceFieldsPerFoldedName: [String: Int]
     private let rowGenerator: SQLStatementGenerator?
+    private let typedRowGenerator = OSAllocatedUnfairLock<SQLStatementGenerator?>(uncheckedState: nil)
     private let rowWriting: ImportRowWriting
     private let tally: OSAllocatedUnfairLock<ImportRowTally>
     private let immutableColumns = OSAllocatedUnfairLock<Set<String>?>(initialState: nil)
@@ -94,21 +95,55 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         self.sourceFieldsPerFoldedName = Dictionary(sourceFields.map { ($0.lowercased(), 1) }, uniquingKeysWith: +)
         self.foldedMapping = Dictionary(grouping: columnMapping, by: { $0.key.lowercased() })
             .compactMapValues { $0.count == 1 ? $0.first?.value : nil }
-        // The driver's quoting, not the dialect's: ClickHouse reads a backslash escape inside backquotes.
         if let targetTable, Self.canWriteRows(into: databaseType) {
-            self.rowGenerator = try? SQLStatementGenerator(
-                tableName: targetTable,
-                schemaName: targetSchema,
-                columns: [],
-                primaryKeyColumns: [],
-                databaseType: databaseType,
-                quoteIdentifier: driver.quoteIdentifier,
-                rowUpdateStatement: driver.rowUpdateStatement,
-                rowDeleteStatement: driver.rowDeleteStatement
+            self.rowGenerator = Self.makeRowGenerator(
+                table: targetTable, schema: targetSchema, databaseType: databaseType, driver: driver
             )
         } else {
             self.rowGenerator = nil
         }
+    }
+
+    // The driver's quoting, not the dialect's: ClickHouse reads a backslash escape inside backquotes.
+    private static func makeRowGenerator(
+        table: String,
+        schema: String?,
+        databaseType: DatabaseType,
+        driver: DatabaseDriver,
+        columnTypeNames: [String: String] = [:]
+    ) -> SQLStatementGenerator? {
+        try? SQLStatementGenerator(
+            tableName: table,
+            schemaName: schema,
+            columns: [],
+            primaryKeyColumns: [],
+            databaseType: databaseType,
+            columnTypeNames: columnTypeNames,
+            quoteIdentifier: driver.quoteIdentifier,
+            rowUpdateStatement: driver.rowUpdateStatement,
+            rowDeleteStatement: driver.rowDeleteStatement
+        )
+    }
+
+    // MySQL stores text bound to a BIT column as its bytes, so a 5 lands as 53 unless the INSERT knows the column is BIT.
+    private func writingGenerator() async throws -> SQLStatementGenerator? {
+        guard let rowGenerator, let targetTable, SQLTypeFamily.of(databaseType).readsBitsAsDecimal else {
+            return rowGenerator
+        }
+        if let typed = typedRowGenerator.withLockUnchecked({ $0 }) { return typed }
+        let columns = try await importedData {
+            try await self.driver.fetchColumns(table: targetTable, schema: self.targetSchema)
+        }
+        var typeNames: [String: String] = [:]
+        for column in columns where typeNames[column.name] == nil {
+            typeNames[column.name] = column.typeNameForClassification
+        }
+        let typed = Self.makeRowGenerator(
+            table: targetTable, schema: targetSchema, databaseType: databaseType, driver: driver,
+            columnTypeNames: typeNames
+        ) ?? rowGenerator
+        typedRowGenerator.withLockUnchecked { $0 = typed }
+        return typed
     }
 
     func execute(statement: String) async throws {
@@ -189,7 +224,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         guard let targetTable else {
             throw PluginImportError.importFailed("No target table configured for row import")
         }
-        guard let rowGenerator else {
+        guard let rowGenerator = try await writingGenerator() else {
             throw PluginImportError.importFailed("Could not resolve SQL dialect for \(targetTable)")
         }
 
@@ -220,7 +255,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         guard targetTable != nil else {
             throw PluginImportError.importFailed("No target table configured for row import")
         }
-        guard let rowGenerator else {
+        guard let rowGenerator = try await writingGenerator() else {
             throw PluginImportError.importFailed("Could not resolve SQL dialect for row import")
         }
 
@@ -269,11 +304,11 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         values rows: [[PluginCellValue]],
         onWrite: (Int) -> Void = { _ in }
     ) async throws {
-        guard let rowGenerator else {
+        guard rowGenerator != nil else {
             throw PluginImportError.importFailed("No target table configured for row import")
         }
-        guard !columns.isEmpty, !rows.isEmpty else { return }
-        try await insertGroup(rows, columns: columns, generator: rowGenerator, onWrite: onWrite)
+        guard !columns.isEmpty, !rows.isEmpty, let generator = try await writingGenerator() else { return }
+        try await insertGroup(rows, columns: columns, generator: generator, onWrite: onWrite)
     }
 
     private func insertGroup(

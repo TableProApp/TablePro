@@ -12,11 +12,24 @@ import Foundation
 /// ask to be the bridge and inherit every grant the bridge had earned.
 public enum MCPGrantSubject: Sendable, Equatable {
     case bridge
+    // The Claude Agent chat mints a token for every turn and deletes it after, the way the bridge rotates.
+    case claudeAgent
     case token(UUID)
+
+    public init(tokenId: UUID, isBridgeCredential: Bool, isClaudeAgentCredential: Bool) {
+        if isBridgeCredential {
+            self = .bridge
+        } else if isClaudeAgentCredential {
+            self = .claudeAgent
+        } else {
+            self = .token(tokenId)
+        }
+    }
 
     public var storageKey: String {
         switch self {
         case .bridge: return "bridge"
+        case .claudeAgent: return "claude-agent"
         case .token(let id): return id.uuidString
         }
     }
@@ -24,6 +37,10 @@ public enum MCPGrantSubject: Sendable, Equatable {
 
 public extension MCPPrincipal {
     var grantSubject: MCPGrantSubject {
-        metadata.isBridgeCredential ? .bridge : .token(tokenId)
+        MCPGrantSubject(
+            tokenId: tokenId,
+            isBridgeCredential: metadata.isBridgeCredential,
+            isClaudeAgentCredential: metadata.isClaudeAgentCredential
+        )
     }
 }

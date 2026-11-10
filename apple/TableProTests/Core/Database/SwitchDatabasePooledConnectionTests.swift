@@ -93,8 +93,8 @@ struct SwitchDatabasePooledConnectionTests {
         #expect(!MetadataConnectionPool.shared.isReplacingTransport(for: connection.id))
     }
 
-    @Test("A switch that reconnects reports the transaction the connection it closed was holding")
-    func reconnectingSwitchReportsTheTransactionItEnded() async throws {
+    @Test("A switch that would reconnect over an open transaction is refused and the transaction stays")
+    func reconnectingSwitchKeepsAnOpenTransaction() async throws {
         let connection = makeSession()
         defer { cleanUp(connection) }
         let manager = DatabaseManager.shared
@@ -103,6 +103,44 @@ struct SwitchDatabasePooledConnectionTests {
         let scope = DatabaseScope(connectionId: connection.id, database: "app", schema: nil)
         try await manager.withScopedDriver(scope: scope, route: .sessionDriver, cancellation: .untracked) { _ in }
         #expect(manager.sessionTransactions.holdsTransaction(connectionId: connection.id, container: "app"))
+
+        await #expect(throws: DatabaseError.self) {
+            try await manager.switchDatabase(to: "reports", for: connection.id, persist: false)
+        }
+
+        #expect(driver.disconnectCallCount == 0)
+        #expect(manager.sessionTransactions.holdsTransaction(connectionId: connection.id, container: "app"))
+        #expect(!manager.sessionLanes.hasTransactionLoss(database: "app", for: connection.id))
+        #expect(manager.session(for: connection.id)?.resolvedBrowseDatabase == "app")
+        #expect(manager.session(for: connection.id)?.status == .connected)
+    }
+
+    @Test("A switch is refused when the driver reports a transaction the tracker has not recorded")
+    func reconnectingSwitchAsksTheDriver() async throws {
+        let connection = makeSession()
+        defer { cleanUp(connection) }
+        let manager = DatabaseManager.shared
+        let driver = try #require(manager.session(for: connection.id)?.driver as? MockDatabaseDriver)
+        driver.sessionTransactionStateToReturn = .abortedTransaction
+
+        await #expect(throws: DatabaseError.self) {
+            try await manager.switchDatabase(to: "reports", for: connection.id, persist: false)
+        }
+
+        #expect(driver.disconnectCallCount == 0)
+        #expect(manager.session(for: connection.id)?.resolvedBrowseDatabase == "app")
+    }
+
+    @Test("A switch over a connection that stopped answering goes ahead and reports the transaction it held")
+    func reconnectingSwitchReportsALostTransaction() async throws {
+        let connection = makeSession()
+        defer { cleanUp(connection) }
+        let manager = DatabaseManager.shared
+        let driver = try #require(manager.session(for: connection.id)?.driver as? MockDatabaseDriver)
+        driver.sessionTransactionStateToReturn = .inTransaction
+        let scope = DatabaseScope(connectionId: connection.id, database: "app", schema: nil)
+        try await manager.withScopedDriver(scope: scope, route: .sessionDriver, cancellation: .untracked) { _ in }
+        manager.updateSession(connection.id) { $0.liveness = .unreachable(nil) }
 
         try? await manager.switchDatabase(to: "unreachable", for: connection.id, persist: false)
 

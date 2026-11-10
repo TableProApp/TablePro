@@ -1284,6 +1284,36 @@
   <data name="CloseHeldTabButton" xml:space="preserve">
     <value>Close and roll back</value>
   </data>
+  <data name="ConfirmRunTitleOne" xml:space="preserve">
+    <value>Run this statement?</value>
+  </data>
+  <data name="ConfirmRunTitleMany" xml:space="preserve">
+    <value>Run these {0} statements?</value>
+  </data>
+  <data name="ConfirmRunWriteOne" xml:space="preserve">
+    <value>It changes the database on {0}, which asks before every write.</value>
+  </data>
+  <data name="ConfirmRunWriteMany" xml:space="preserve">
+    <value>They change the database on {0}, which asks before every write.</value>
+  </data>
+  <data name="ConfirmRunDestructiveOne" xml:space="preserve">
+    <value>It drops or empties a table, or changes every row of one, on {0}.</value>
+  </data>
+  <data name="ConfirmRunDestructiveMany" xml:space="preserve">
+    <value>Some of them drop or empty a table, or change every row of one, on {0}.</value>
+  </data>
+  <data name="ConfirmRunButton" xml:space="preserve">
+    <value>Run</value>
+  </data>
+  <data name="ConnectCancelledKeepsTabs" xml:space="preserve">
+    <value>Connecting was cancelled. Retry opens the tabs again.</value>
+  </data>
+  <data name="ChangesOnConnectTitle" xml:space="preserve">
+    <value>Changes apply the next time you connect</value>
+  </data>
+  <data name="ChangesOnConnectAsks" xml:space="preserve">
+    <value>Until then, this connection asks before every write.</value>
+  </data>
   <data name="HealthReconnecting" xml:space="preserve">
     <value>Connection lost. Reconnecting, attempt {0}...</value>
   </data>

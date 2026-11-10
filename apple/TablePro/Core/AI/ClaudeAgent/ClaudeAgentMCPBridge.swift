@@ -47,11 +47,12 @@ struct ClaudeAgentMCPBridge: ClaudeAgentMCPBridging {
             connectionAccess: connectionAccess,
             expiresAt: Date.now.addingTimeInterval(Self.tokenLifetime),
             isBridgeCredential: false,
+            isClaudeAgentCredential: true,
             extraScopes: []
         ) else { return nil }
 
         guard let configPath = Self.writeConfig(endpoint: endpoint, token: generated.plaintext) else {
-            await tokenStore.delete(tokenId: generated.token.id)
+            await tokenStore.retire(tokenId: generated.token.id)
             return nil
         }
 
@@ -63,7 +64,7 @@ struct ClaudeAgentMCPBridge: ClaudeAgentMCPBridging {
         guard let grant else { return }
         try? FileManager.default.removeItem(atPath: grant.configPath)
         guard let tokenStore = await MCPServerManager.shared.tokenStore else { return }
-        await tokenStore.delete(tokenId: grant.tokenId)
+        await tokenStore.retire(tokenId: grant.tokenId)
         Self.logger.debug("Released Claude Agent MCP grant")
     }
 

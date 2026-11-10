@@ -1359,7 +1359,8 @@ final class MainContentCoordinator: ObservableObject {
                         rowLocators: isTableTab ? fetchResult.rowLocators : nil,
                         exportDocuments: fetchResult.exportDocuments,
                         absentCells: fetchResult.absentCells,
-                        unloadedCells: fetchResult.unloadedCells
+                        unloadedCells: fetchResult.unloadedCells,
+                        columnOrigins: fetchResult.columnOrigins
                     )
 
                     scheduleTraceCompletion(traceToken, outcome: .completed)

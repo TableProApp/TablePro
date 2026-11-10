@@ -928,6 +928,9 @@ final class MainContentCommandActions: ObservableObject {
 
     @discardableResult
     func saveFileAsAwaiting() async -> Bool {
+        if let tabId = coordinator?.tabManager.selectedTabId {
+            coordinator?.flushEditorText(forTab: tabId)
+        }
         guard let tab = coordinator?.tabManager.selectedTab,
               tab.tabType == .query else { return false }
         let content = tab.content.query

@@ -10,6 +10,15 @@ public extension DriverFactory {
         try createDriver(for: connection, password: password)
     }
 
+    func createDriver(
+        for connection: DatabaseConnection,
+        password: String?,
+        preTunnelHost: String?,
+        refreshPassword: (@Sendable () async throws -> String?)?
+    ) throws -> any DatabaseDriver {
+        try createDriver(for: connection, password: password, preTunnelHost: preTunnelHost)
+    }
+
     func resolvePassword(
         for connection: DatabaseConnection,
         stored: String?,

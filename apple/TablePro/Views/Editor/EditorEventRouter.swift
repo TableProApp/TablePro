@@ -158,12 +158,18 @@ internal final class EditorEventRouter {
         coordinator.runStatementAtCursorAndAdvance()
     }
 
-    // A large document writes its text to the tab on a delay; a run or an AI action reads the tab.
+    // A large document writes its text to the tab on a delay; a run, save, close or quit reads the tab.
     internal func flushPendingText(forTab tabId: UUID, connectionId: UUID) {
         for ref in editors.values {
             guard let coordinator = ref.coordinator,
                   coordinator.tabID == tabId, coordinator.connectionId == connectionId else { continue }
             coordinator.controller?.flushPendingTextWriteback()
+        }
+    }
+
+    internal func flushAllPendingText() {
+        for ref in editors.values {
+            ref.coordinator?.controller?.flushPendingTextWriteback()
         }
     }
 

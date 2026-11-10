@@ -196,18 +196,35 @@ struct SQLStatementGenerator {
         return Set(bitColumns.keys)
     }
 
+    // Blank text goes as '', which the server stores as 0: cast, strict mode refuses it as a truncated integer, and a
+    // space bound as it is would be its byte, 32.
     private func bind(_ value: PluginCellValue, toColumn column: String?, into parameters: inout [Any?]) -> String {
         guard let column, numberBitColumns.contains(column), case .text(let text) = value else {
             parameters.append(value.asAny)
+            return placeholder(at: parameters.count - 1)
+        }
+        guard !text.trimmingCharacters(in: .whitespaces).isEmpty else {
+            parameters.append("")
             return placeholder(at: parameters.count - 1)
         }
         parameters.append(Self.decimalBitText(text))
         return "CAST(\(placeholder(at: parameters.count - 1)) AS UNSIGNED)"
     }
 
-    // b'101' and 0b101 are SQL, not values: bound as text they would cast to 0.
+    // b'101' and 0b101 are SQL, not values, and a boolean word is no number: cast as text, each is 0 or an error.
     static func decimalBitText(_ text: String) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
+        switch PluginSQLLiteral.booleanSynonym(for: trimmed) {
+        case .isTrue: return "1"
+        case .isFalse: return "0"
+        case nil: break
+        @unknown default: break
+        }
+        switch trimmed.lowercased() {
+        case "t": return "1"
+        case "f": return "0"
+        default: break
+        }
         let digits: Substring
         if trimmed.count > 3, trimmed.hasPrefix("b'") || trimmed.hasPrefix("B'"), trimmed.hasSuffix("'") {
             digits = trimmed.dropFirst(2).dropLast()
