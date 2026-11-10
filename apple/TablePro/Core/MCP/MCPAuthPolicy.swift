@@ -274,7 +274,11 @@ public actor MCPAuthPolicy {
     /// passes the token's name and the bridge's own rotation is skipped.
     func clearApprovals(tokenId: UUID, wasBridgeCredential: Bool = false) async {
         guard !wasBridgeCredential else { return }
-        await approvalLedger.clear(subject: .token(tokenId))
+        await clearApprovals(subject: .token(tokenId))
+    }
+
+    func clearApprovals(subject: MCPGrantSubject) async {
+        await approvalLedger.clear(subject: subject)
     }
 
     func forgetEveryGrant() async {

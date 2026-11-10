@@ -65,6 +65,7 @@ extension SurrealDBPluginDriver {
         )
 
         var columns = SurrealInfoParser.columns(from: value, isRelation: descriptor?.isRelation ?? false)
+        rememberDeclaredKinds(Self.kinds(from: columns), for: table)
         if columns.count <= 1 || !(descriptor?.isSchemafull ?? false) {
             columns = try await sampledColumns(table: table, scope: scope, declared: columns)
         }

@@ -55,6 +55,16 @@ pub enum SafeModeTag {
     ReadOnly,
 }
 
+impl From<SafeModeTag> for SafeModeLevel {
+    fn from(tag: SafeModeTag) -> Self {
+        match tag {
+            SafeModeTag::Off => Self::Off,
+            SafeModeTag::ConfirmWrites => Self::ConfirmWrites,
+            SafeModeTag::ReadOnly => Self::ReadOnly,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct TlsSettings {
     pub mode: TlsModeTag,
@@ -543,11 +553,7 @@ pub(crate) fn apply(record: &ConnectionRecord, name: String, group_id: Option<Uu
     };
     saved.tls = tls_config(&record.tls);
     saved.ssh = record.ssh.as_ref().map(ssh_config);
-    saved.safe_mode = match record.safe_mode {
-        SafeModeTag::Off => SafeModeLevel::Off,
-        SafeModeTag::ConfirmWrites => SafeModeLevel::ConfirmWrites,
-        SafeModeTag::ReadOnly => SafeModeLevel::ReadOnly,
-    };
+    saved.safe_mode = record.safe_mode.into();
     saved.query_timeout_secs = record.query_timeout_secs;
     saved.color = record.color.as_deref().and_then(ConnectionColor::from_id);
     saved.group_id = group_id;

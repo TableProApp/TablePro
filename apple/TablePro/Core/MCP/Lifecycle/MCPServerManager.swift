@@ -168,8 +168,14 @@ internal final class MCPServerManager: ObservableObject {
             return true
         }
 
+        var withdrawn: MCPGrantSubject? = .token(tokenId)
+        if let ended = await tokenStore?.token(id: tokenId) {
+            withdrawn = ended.subjectWithdrawnWhenEnded
+        }
         let persisted = await revokeToken(id: tokenId)
-        await composition.authPolicy.clearApprovals(tokenId: tokenId)
+        if let withdrawn {
+            await composition.authPolicy.clearApprovals(subject: withdrawn)
+        }
         await composition.activityLedger.forget(tokenId: tokenId)
         await refreshClients()
         return persisted
@@ -318,6 +324,7 @@ internal final class MCPServerManager: ObservableObject {
                 connectionAccess: .all,
                 expiresAt: expiresAt,
                 isBridgeCredential: true,
+                isClaudeAgentCredential: false,
                 extraScopes: []
             )
             return BridgeCredential(
@@ -418,11 +425,11 @@ internal final class MCPServerManager: ObservableObject {
         store: MCPTokenStore,
         generation: Int
     ) async {
-        revocationObserverId = await store.addRevocationObserver { [weak self] rawTokenId, wasBridge in
+        revocationObserverId = await store.addRevocationObserver { [weak self] rawTokenId, withdrawn in
             guard let tokenId = UUID(uuidString: rawTokenId), let self else { return }
             await self.handleTokenRevoked(
                 tokenId: tokenId,
-                wasBridgeCredential: wasBridge,
+                withdrawing: withdrawn,
                 dispatcher: built.dispatcher,
                 generation: generation
             )
@@ -431,16 +438,15 @@ internal final class MCPServerManager: ObservableObject {
 
     private func handleTokenRevoked(
         tokenId: UUID,
-        wasBridgeCredential: Bool,
+        withdrawing subject: MCPGrantSubject?,
         dispatcher: MCPProtocolDispatcher,
         generation: Int
     ) async {
         guard isCurrent(generation) else { return }
         let cancelled = await dispatcher.cancelInflight(matchingTokenId: tokenId)
-        await composition?.authPolicy.clearApprovals(
-            tokenId: tokenId,
-            wasBridgeCredential: wasBridgeCredential
-        )
+        if let subject {
+            await composition?.authPolicy.clearApprovals(subject: subject)
+        }
         guard cancelled > 0 else { return }
         Self.logger.info(
             "Token \(tokenId.uuidString, privacy: .public) revoked: cancelled \(cancelled, privacy: .public) request(s)"

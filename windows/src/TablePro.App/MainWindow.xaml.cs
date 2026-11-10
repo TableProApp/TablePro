@@ -575,6 +575,11 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             return;
         }
 
+        if (!await ConfirmDisconnectAsync(open))
+        {
+            return;
+        }
+
         DropSpare();
         var wasShown = ReferenceEquals(Rail.Content, open.View);
         if (wasShown)
@@ -648,18 +653,109 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             open.Rename(result.Saved.Name);
         }
 
+        // An edited connection that is open connects again with what was saved, and keeps its tabs.
+        var reconnecting = result.Connect && open is { State: ConnectionState.Connected or ConnectionState.Failed }
+            ? open
+            : null;
+        await ApplySafeModeAsync(result.Saved, reconnecting);
         if (!result.Connect)
         {
             return;
         }
 
-        // An edited connection that is open connects again with what was saved.
-        if (open is not null && open.State is ConnectionState.Connected or ConnectionState.Failed)
+        if (reconnecting is not null)
         {
-            await open.DisconnectAsync();
+            if (!await ConfirmDisconnectAsync(reconnecting))
+            {
+                ShowChangesOnConnect(reconnecting, result.Saved);
+                return;
+            }
+
+            await reconnecting.DisconnectAsync(keepTabs: true);
         }
 
         Connect(result.Saved);
+    }
+
+    // A saved level reaches every window's open sessions of the connection at once, as on Linux. Read only is set
+    // as a connection opens, so a change across it reconnects once held transactions may go, or waits for the next
+    // connect.
+    private async Task ApplySafeModeAsync(SavedConnection saved, OpenConnection? reconnecting)
+    {
+        var crossed = new List<(MainWindow Window, OpenConnection Open)>();
+        List<MainWindow> windows = [this, .. _tabWindows];
+        foreach (var window in windows)
+        {
+            foreach (var each in window._open.Where(item => item.Matches(saved.Id, null)))
+            {
+                if (each.Session is not { } session)
+                {
+                    continue;
+                }
+
+                if (session.SetSafeMode(saved.SafeMode))
+                {
+                    each.View.HideChangesOnConnect();
+                    continue;
+                }
+
+                // Until a new connection opens read only, every write on this one is asked about.
+                if (saved.SafeMode == SafeMode.ReadOnly)
+                {
+                    _ = session.SetSafeMode(SafeMode.ConfirmWrites);
+                }
+
+                if (!ReferenceEquals(each, reconnecting))
+                {
+                    crossed.Add((window, each));
+                }
+            }
+        }
+
+        foreach (var (window, each) in crossed)
+        {
+            if (each.State != ConnectionState.Connected)
+            {
+                continue;
+            }
+
+            if (await window.ConfirmDisconnectAsync(each))
+            {
+                DropSpare();
+                await each.DisconnectAsync(keepTabs: true);
+                await each.ConnectAsync();
+            }
+            else
+            {
+                ShowChangesOnConnect(each, saved);
+            }
+        }
+    }
+
+    private static void ShowChangesOnConnect(OpenConnection open, SavedConnection saved) =>
+        open.View.ShowChangesOnConnect(saved.SafeMode == SafeMode.ReadOnly && open.Session is { IsReadOnly: false });
+
+    // Disconnecting ends each tab's own connection, so a held transaction is asked about first, as closing its tab
+    // asks. The connection shows first, since the question names one of its tabs.
+    private async Task<bool> ConfirmDisconnectAsync(OpenConnection open)
+    {
+        var confirmed = new HashSet<ITabContent>();
+        if (!open.View.HasUnconfirmedTransactions(confirmed))
+        {
+            return true;
+        }
+
+        Activate();
+        if (IsPrimary)
+        {
+            Select(open);
+        }
+        else
+        {
+            Show(open);
+        }
+
+        return await open.View.ConfirmCloseAsync(confirmed);
     }
 
     private void OnRailSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -1003,10 +1099,10 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private async void OnReconnect(object sender, RoutedEventArgs e)
     {
-        if (_front is { } open)
+        if (_front is { } open && await ConfirmDisconnectAsync(open))
         {
             _primary.DropSpare();
-            await open.DisconnectAsync();
+            await open.DisconnectAsync(keepTabs: true);
             await open.ConnectAsync();
         }
     }

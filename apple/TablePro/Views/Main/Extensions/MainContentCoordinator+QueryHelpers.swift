@@ -135,7 +135,8 @@ extension MainContentCoordinator {
         rowLocators: [String?]? = nil,
         exportDocuments: [PluginExportDocument]? = nil,
         absentCells: [Int: Set<Int>] = [:],
-        unloadedCells: [Int: [Int: Int]] = [:]
+        unloadedCells: [Int: [Int: Int]] = [:],
+        columnOrigins: [PluginColumnOrigin?]? = nil
     ) {
         queryExecutionCoordinator.applyPhase1Result(
             tabId: tabId,
@@ -162,7 +163,8 @@ extension MainContentCoordinator {
             rowLocators: rowLocators,
             exportDocuments: exportDocuments,
             absentCells: absentCells,
-            unloadedCells: unloadedCells
+            unloadedCells: unloadedCells,
+            columnOrigins: columnOrigins
         )
     }
 

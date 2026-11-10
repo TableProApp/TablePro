@@ -88,7 +88,7 @@ extension DatabaseAccessBridge {
         maxRows: Int,
         timeoutSeconds: Int,
         cancellation: (any StatementCancellationSignal)?,
-        maskingTable: String? = nil
+        masking: ExternalRowMasking = .byOrigin
     ) async throws -> StatementOutcome {
         let statement = try await plannedStatement(scope: scope, query: query, maxRows: maxRows)
         let databaseType = try await ensureConnected(scope.connectionId)
@@ -98,7 +98,7 @@ extension DatabaseAccessBridge {
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
             cancellation: cancellation,
-            maskingTable: maskingTable
+            masking: masking
         )
     }
 

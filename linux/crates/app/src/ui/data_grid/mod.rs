@@ -16,6 +16,8 @@ mod grid_menu;
 mod grid_request;
 mod grid_row;
 mod grid_store;
+mod highlight;
+mod highlight_dialog;
 mod imp;
 mod keys;
 mod layout_binding;
@@ -232,6 +234,7 @@ impl DataGrid {
         self.imp().summary.forget_column();
         self.edit().set_rules(self, rules);
         self.rebuild_columns(columns, sorting);
+        self.compile_highlights();
         self.show_rows_or_empty();
         self.refresh_actions();
     }

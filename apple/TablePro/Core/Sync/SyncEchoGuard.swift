@@ -8,6 +8,8 @@ struct SyncEchoGuard: Sendable {
     let snapshot: SyncEditSnapshot
     let savedRecords: [CKRecord.ID: SyncRecordIdentity]
     let deletedRecords: [CKRecord.ID: SyncRecordIdentity]
+    // Every record the push saved, connections included, which a fetch right after it may not list yet.
+    let pushedRecordIDs: Set<CKRecord.ID>
     private let savedIdentities: Set<SyncRecordIdentity>
 
     init(
@@ -17,6 +19,7 @@ struct SyncEchoGuard: Sendable {
     ) {
         let guarded = savedRecords.filter { !Self.typesMergedOnPull.contains($0.value.type) }
         self.snapshot = snapshot
+        self.pushedRecordIDs = Set(savedRecords.keys)
         self.savedRecords = guarded
         self.deletedRecords = deletedRecords
         self.savedIdentities = Set(guarded.values)
