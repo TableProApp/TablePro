@@ -38,6 +38,7 @@ struct DataGridColumnWidthCalculator {
     let nullDisplayString: String
     let revealsInvisibleCharacters: Bool
     let fonts: DataGridFontCache
+    var showsTypeLine = false
 
     static func fitToContentCap(availableWidth: CGFloat) -> CGFloat {
         let proportional = availableWidth * fitToContentViewportFraction
@@ -69,6 +70,9 @@ struct DataGridColumnWidthCalculator {
         let dataIndex = input.column.dataIndex
         let headerCharCount = (input.column.name as NSString).length
         var maxWidth = CGFloat(headerCharCount) * charWidth * Self.headerCharWidthRatio + Self.headerPadding
+        if showsTypeLine, let typeLine = DataGridHeaderTypeLine(input.column.type) {
+            maxWidth = max(maxWidth, typeLine.width)
+        }
 
         let totalRows = rows.count
         let step = max(1, totalRows / max(1, budget.sampledRows))

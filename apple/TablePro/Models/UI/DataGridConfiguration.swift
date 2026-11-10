@@ -13,6 +13,9 @@ struct DataGridConfiguration: Equatable {
     var primaryKeyColumns: [String] = []
     var showRowNumbers: Bool = true
 
+    // A second header line under each column name with the column's type; the data tabs follow the Data Grid setting.
+    var showsColumnTypes = false
+
     // Keyed by index: the column is the grid's own and has no name a table column could share.
     var checkboxColumns: Set<Int> = []
 

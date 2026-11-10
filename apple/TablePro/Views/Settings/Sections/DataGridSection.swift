@@ -34,6 +34,7 @@ struct DataGridSection: View {
 
             Toggle("Show alternate row backgrounds", isOn: $settings.showAlternateRows)
             Toggle("Show row numbers", isOn: $settings.showRowNumbers)
+            Toggle("Show column types in the header", isOn: $settings.showsColumnTypesInHeader)
             Toggle("Auto-show inspector on row select", isOn: $settings.autoShowInspector)
             Toggle("Smart value detection", isOn: $settings.enableSmartValueDetection)
             Toggle("Show invisible characters", isOn: $settings.showInvisibleCharacters)

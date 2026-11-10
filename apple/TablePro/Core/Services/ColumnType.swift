@@ -120,7 +120,7 @@ enum ColumnType: Equatable, Sendable {
     }
 
     /// Whether this type is a very large text type that should be excluded from browse queries.
-    /// Only MEDIUMTEXT (16MB), LONGTEXT (4GB), and CLOB — not plain TEXT (65KB) or TINYTEXT (255B).
+    /// Only MEDIUMTEXT (16MB), LONGTEXT (4GB) and CLOB, not plain TEXT (65KB) or TINYTEXT (255B).
     var isVeryLongText: Bool {
         guard let raw = rawType?.uppercased() else { return false }
         return raw == "MEDIUMTEXT" || raw == "LONGTEXT" || raw == "CLOB"
@@ -206,7 +206,7 @@ enum ColumnType: Equatable, Sendable {
     private static let uuidTypeNames: Set<String> = ["UUID", "UNIQUEIDENTIFIER", "TIMEUUID"]
 
     /// `Nullable(UUID)`, `year(4)` and `INTERVAL DAY TO SECOND` all name their type in the first word.
-    private static func baseTypeName(_ rawType: String?) -> String {
+    static func baseTypeName(_ rawType: String?) -> String {
         guard var name = rawType?.uppercased() else { return "" }
         while let wrapper = ["NULLABLE(", "LOWCARDINALITY("].first(where: { name.hasPrefix($0) }) {
             name.removeFirst(wrapper.count)

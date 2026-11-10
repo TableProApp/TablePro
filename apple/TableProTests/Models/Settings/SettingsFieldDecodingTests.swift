@@ -66,6 +66,23 @@ struct SettingsFieldDecodingTests {
         #expect(decoded.rowCopyFormat == .csvWithHeaders)
     }
 
+    @Test("Data Grid settings saved before column types in the header load with them off, and an explicit on round-trips")
+    func columnTypesInHeaderDefaultsOff() throws {
+        #expect(DataGridSettings.default.showsColumnTypesInHeader == false)
+        let legacy = try decode(DataGridSettings.self, #"{"showRowNumbers":false}"#)
+        #expect(legacy.showsColumnTypesInHeader == false)
+        #expect(legacy.showRowNumbers == false)
+
+        let malformed = try decode(DataGridSettings.self, #"{"showsColumnTypesInHeader":"yes","showRowNumbers":false}"#)
+        #expect(malformed.showsColumnTypesInHeader == false)
+        #expect(malformed.showRowNumbers == false)
+
+        var chosen = DataGridSettings.default
+        chosen.showsColumnTypesInHeader = true
+        let decoded = try decode(DataGridSettings.self, String(decoding: try JSONEncoder().encode(chosen), as: UTF8.self))
+        #expect(decoded.showsColumnTypesInHeader == true)
+    }
+
     @Test("A bad MCP value falls back alone and keeps the secure default")
     func mcpKeepsOtherFields() throws {
         let settings = try decode(

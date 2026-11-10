@@ -222,7 +222,8 @@ extension DataGridViewController {
             databaseType: model.configuration.traits.databaseType,
             nullDisplayString: presenter.registry.nullDisplayString,
             revealsInvisibleCharacters: presenter.registry.showsInvisibleCharacters,
-            fonts: ThemeEngine.shared.dataGridFonts
+            fonts: ThemeEngine.shared.dataGridFonts,
+            showsTypeLine: model.configuration.showsColumnTypes
         )
     }
 
