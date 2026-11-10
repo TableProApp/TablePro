@@ -22,6 +22,12 @@ mod imp {
         #[template_child]
         pub confirm_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
+        pub grid_system_font_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub grid_font_row: TemplateChild<adw::ActionRow>,
+        #[template_child]
+        pub grid_font_button: TemplateChild<gtk4::FontDialogButton>,
+        #[template_child]
         pub row_numbers_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
         pub row_height_row: TemplateChild<adw::ComboRow>,
@@ -90,6 +96,21 @@ impl DataBrowserGroup {
             .build();
         gio_settings
             .bind(keys::NULL_DISPLAY, &imp.null_display_row.get(), "text")
+            .build();
+        gio_settings
+            .bind(keys::GRID_USE_SYSTEM_FONT, &imp.grid_system_font_row.get(), "active")
+            .build();
+        gio_settings
+            .bind(keys::GRID_USE_SYSTEM_FONT, &imp.grid_font_row.get(), "sensitive")
+            .flags(gio::SettingsBindFlags::GET | gio::SettingsBindFlags::INVERT_BOOLEAN)
+            .build();
+        gio_settings
+            .bind(keys::GRID_FONT, &imp.grid_font_button.get(), "font-desc")
+            .mapping(|variant, _| Some(gtk4::pango::FontDescription::from_string(variant.str()?).to_value()))
+            .set_mapping(|value, _| {
+                let description = value.get::<gtk4::pango::FontDescription>().ok()?;
+                Some(description.to_str().to_variant())
+            })
             .build();
         gio_settings
             .bind(keys::GRID_ROW_HEIGHT, &imp.row_height_row.get(), "selected")
@@ -207,5 +228,34 @@ mod tests {
 
         assert_eq!(group.imp().null_display_row.text(), "界".repeat(20));
         assert_eq!(settings.get().null_display(), "界".repeat(20));
+    }
+    #[gtk4::test]
+    fn cell_font_rows_bind_both_ways_across_windows() {
+        use tablepro_linux_platform::EditorFont;
+        let settings = MemorySettings::new();
+        let first = bound_group(&settings);
+        let second = bound_group(&settings);
+        assert!(!first.imp().grid_font_row.is_sensitive());
+        assert_eq!(
+            first.imp().grid_font_row.activatable_widget(),
+            Some(first.imp().grid_font_button.get().upcast())
+        );
+
+        first.imp().grid_system_font_row.set_active(false);
+        first
+            .imp()
+            .grid_font_button
+            .set_font_desc(&gtk4::pango::FontDescription::from_string("Sans Bold 15"));
+        assert_eq!(settings.get().grid_font(), EditorFont::Custom("Sans Bold 15".into()));
+        assert!(!second.imp().grid_system_font_row.is_active());
+        assert!(second.imp().grid_font_row.is_sensitive());
+        assert_eq!(
+            first.imp().grid_font_button.font_desc(),
+            second.imp().grid_font_button.font_desc()
+        );
+
+        settings.get().set_grid_font(&EditorFont::System).expect("system font");
+        assert!(first.imp().grid_system_font_row.is_active());
+        assert!(!second.imp().grid_font_row.is_sensitive());
     }
 }

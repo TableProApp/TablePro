@@ -343,6 +343,8 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `default-page-size` | `u` | `1000` | 100 to 100000 |
 | `show-alternate-rows` | `b` | `true` | |
 | `show-row-numbers` | `b` | `true` | |
+| `grid-use-system-font` | `b` | `true` | |
+| `grid-font` | `s` | `Monospace 10` | |
 | `grid-row-height` | `s` | `normal` | compact, normal, comfortable, spacious |
 | `null-display` | `s` | `NULL` | Displayed as at most 20 characters, without control characters; blank uses NULL |
 | `confirm-bulk-delete` | `b` | `true` | |
