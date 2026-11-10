@@ -60,6 +60,14 @@ struct DataGridSection: View {
         }
 
         Section {
+            Toggle("Show sort criteria in the filter panel", isOn: $settings.showsSortInFilterPanel)
+                .help(String(localized: "Edit the filters and the sort together, write the filter as text, and apply both at once"))
+            Toggle("Open the filter panel with each table", isOn: $settings.opensFilterPanelForTables)
+        } header: {
+            Text("Filter Panel")
+        }
+
+        Section {
             Picker("Copy rows as:", selection: $settings.rowCopyFormat) {
                 ForEach(RowCopyFormat.allCases) { format in
                     Text(format.displayName).tag(format)

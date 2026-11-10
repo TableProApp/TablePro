@@ -44,6 +44,31 @@ internal protocol FilterPresetStoring: AnyObject {
 
 extension FilterPresetStorage: FilterPresetStoring {}
 
+/// What a panel that holds the sort as well asks of its host.
+@MainActor
+internal protocol FilterCriteriaActions: AnyObject {
+    /// Runs the panel's rows and its sort draft in one reload.
+    func applyFiltersAndSort()
+    /// The condition these rows produce, without the WHERE keyword: empty when none is complete,
+    /// nil when one cannot be written for this engine.
+    func filterConditionText(for filters: [TableFilter], logicMode: FilterLogicMode) -> String?
+}
+
+/// The Builder | Text switch, the Sort By section and the combined Apply, for a table tab under
+/// `DataGridSettings.showsSortInFilterPanel`.
+internal struct FilterCriteriaConfiguration {
+    /// Text mode needs a WHERE condition the engine runs as written.
+    var offersTextMode: Bool
+    /// Nil on an engine that cannot order a table by a column, which hides the section.
+    var sortColumns: [String]?
+    /// The tab's sort, which the section shows until it is edited.
+    var appliedSort: [FilterSortCriterion]
+    var newSortDirection: SortDirection
+    let actions: any FilterCriteriaActions
+
+    var showsSort: Bool { sortColumns != nil }
+}
+
 internal struct FilterPanelConfiguration {
     var columns: [String]
     var primaryKeyColumn: String?
@@ -57,4 +82,6 @@ internal struct FilterPanelConfiguration {
     var offersMatchAny = true
     var sqlPreview: (any FilterSQLPreviewing)?
     var presetStore: (any FilterPresetStoring)?
+    /// Nil draws the filter-only panel.
+    var criteria: FilterCriteriaConfiguration?
 }

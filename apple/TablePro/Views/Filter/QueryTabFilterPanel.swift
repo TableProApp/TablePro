@@ -16,6 +16,8 @@ internal struct QueryTabFilterPanel: View {
     /// is what the two closures this view used to carry were hiding, because a closure is never
     /// equal to another one and forced a re-evaluation on every parent render. (#3026)
     @ObservedObject var tabManager: QueryTabManager
+    /// Settings > Data Grid decides whether the panel holds the sort too.
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     let columns: [String]
     let primaryKeyColumn: String?
     let databaseType: DatabaseType
@@ -75,7 +77,39 @@ internal struct QueryTabFilterPanel: View {
             caseMatching: .engine(PluginManager.shared.caseSensitivityStyle(for: databaseType)),
             offersMatchAny: PluginManager.shared.supportsMatchAnyFilters(for: databaseType),
             sqlPreview: coordinator.filterCoordinator,
-            presetStore: FilterPresetStorage.shared
+            presetStore: FilterPresetStorage.shared,
+            criteria: Self.criteriaConfiguration(
+                settings: settingsManager.dataGrid,
+                offersRawFilter: PluginManager.shared.supportsRawFilter(for: databaseType),
+                isSQLDialect: isSQLDialect,
+                supportsColumnSort: coordinator.supportsColumnSort,
+                columns: columns,
+                appliedSort: coordinator.filterCoordinator.selectedTabAppliedSortCriteria,
+                actions: coordinator.filterCoordinator
+            )
+        )
+    }
+
+    /// Nil while the setting is off, which leaves the filter-only panel. Text mode is a WHERE
+    /// condition, so it needs an engine that takes a raw filter and speaks SQL; a document store's
+    /// raw filter is not a WHERE condition. The section is hidden where a table cannot be sorted by
+    /// a column, and a new key sorts the way a first header click does.
+    static func criteriaConfiguration(
+        settings: DataGridSettings,
+        offersRawFilter: Bool,
+        isSQLDialect: Bool,
+        supportsColumnSort: Bool,
+        columns: [String],
+        appliedSort: [FilterSortCriterion],
+        actions: any FilterCriteriaActions
+    ) -> FilterCriteriaConfiguration? {
+        guard settings.showsSortInFilterPanel else { return nil }
+        return FilterCriteriaConfiguration(
+            offersTextMode: offersRawFilter && isSQLDialect,
+            sortColumns: supportsColumnSort ? columns : nil,
+            appliedSort: supportsColumnSort ? appliedSort : [],
+            newSortDirection: settings.defaultSortDirection,
+            actions: actions
         )
     }
 

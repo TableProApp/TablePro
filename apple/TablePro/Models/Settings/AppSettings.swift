@@ -128,6 +128,10 @@ struct DataGridSettings: Codable, Equatable {
     var showInvisibleCharacters: Bool
     var showsColumnTypesInHeader: Bool
     var resultBarAtTop: Bool
+    /// The filter panel of a table tab also edits the sort, offers a Text mode and applies both at once.
+    var showsSortInFilterPanel: Bool
+    /// A table tab opens with its filter panel showing.
+    var opensFilterPanelForTables: Bool
 
     static let `default` = DataGridSettings(
         rowHeight: .normal,
@@ -146,7 +150,9 @@ struct DataGridSettings: Codable, Equatable {
         rowCopyFormat: .rows,
         showInvisibleCharacters: true,
         showsColumnTypesInHeader: false,
-        resultBarAtTop: false
+        resultBarAtTop: false,
+        showsSortInFilterPanel: false,
+        opensFilterPanelForTables: false
     )
 
     init(
@@ -166,7 +172,9 @@ struct DataGridSettings: Codable, Equatable {
         rowCopyFormat: RowCopyFormat = .rows,
         showInvisibleCharacters: Bool = true,
         showsColumnTypesInHeader: Bool = false,
-        resultBarAtTop: Bool = false
+        resultBarAtTop: Bool = false,
+        showsSortInFilterPanel: Bool = false,
+        opensFilterPanelForTables: Bool = false
     ) {
         self.rowHeight = rowHeight
         self.dateFormat = dateFormat
@@ -185,6 +193,8 @@ struct DataGridSettings: Codable, Equatable {
         self.showInvisibleCharacters = showInvisibleCharacters
         self.showsColumnTypesInHeader = showsColumnTypesInHeader
         self.resultBarAtTop = resultBarAtTop
+        self.showsSortInFilterPanel = showsSortInFilterPanel
+        self.opensFilterPanelForTables = opensFilterPanelForTables
     }
 
     init(from decoder: Decoder) throws {
@@ -216,6 +226,12 @@ struct DataGridSettings: Codable, Equatable {
             .showsColumnTypesInHeader, default: fallback.showsColumnTypesInHeader
         )
         resultBarAtTop = container.decodeSetting(.resultBarAtTop, default: fallback.resultBarAtTop)
+        showsSortInFilterPanel = container.decodeSetting(
+            .showsSortInFilterPanel, default: fallback.showsSortInFilterPanel
+        )
+        opensFilterPanelForTables = container.decodeSetting(
+            .opensFilterPanelForTables, default: fallback.opensFilterPanelForTables
+        )
     }
 
     // MARK: - Validated Properties

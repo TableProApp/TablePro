@@ -1440,6 +1440,9 @@ final class MainContentCoordinator: ObservableObject {
                 tab.sortState = capturedSort
                 tab.hasUserInteraction = true
                 tab.pagination.reset()
+                // A header sort runs at once, so the filter panel's Sort By section shows it rather
+                // than an edit made before it.
+                tab.filterState.sortDraft = nil
             }) else { return }
             guard let tabIndex = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
             self.rebuildTableQuery(at: tabIndex)

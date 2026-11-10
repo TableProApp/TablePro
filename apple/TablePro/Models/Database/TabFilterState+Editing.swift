@@ -66,6 +66,7 @@ internal extension TabFilterState {
             filterOperator: settings.defaultOperator.toFilterOperator()
         ))
         isVisible = true
+        leaveTextMode()
     }
 
     static func crossColumnSearchFilters(term: String, columns: [String]) -> [TableFilter] {
@@ -79,6 +80,7 @@ internal extension TabFilterState {
         commit = .all
         isVisible = true
         filterLogicMode = .and
+        leaveTextMode()
     }
 
     mutating func applySingleFilter(_ filter: TableFilter) {
@@ -86,6 +88,7 @@ internal extension TabFilterState {
         filters = [filter]
         commit = .all
         isVisible = true
+        leaveTextMode()
     }
 
     @discardableResult
@@ -156,13 +159,17 @@ internal extension TabFilterState {
         }
     }
 
+    /// The tab moves to another table, so a sort draft on this one's columns goes too.
     mutating func clearFilters() {
         filters = []
         commit = nil
+        sortDraft = nil
+        leaveTextMode()
     }
 
     mutating func loadPreset(_ preset: FilterPreset) {
         filters = preset.filters
+        leaveTextMode()
     }
 
     static func filterMove(
@@ -247,6 +254,7 @@ internal extension TabFilterState {
         }
         next.commit = .all
         next.isVisible = true
+        next.leaveTextMode()
         return next
     }
 }

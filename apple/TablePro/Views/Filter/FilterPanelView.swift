@@ -12,9 +12,23 @@ struct FilterPanelView: View {
     @State private var showSavePresetAlert = false
     @State private var newPresetName = ""
     @State private var focusedFilterId: UUID?
+    @State private var textModeRefusal: String?
 
     private let maxFilterListHeight: CGFloat = 200
     @State private var filterRowsHeight: CGFloat = 0
+
+    /// Three lines of the value font, so a condition written over several lines stays readable.
+    private let textConditionHeight: CGFloat = 60
+
+    private var criteria: FilterCriteriaConfiguration? {
+        configuration.criteria
+    }
+
+    /// Text mode only where the host offers it. Any other panel shows the rows, whatever the state
+    /// says, so turning the setting off brings back the panel as it was.
+    private var editMode: FilterEditMode {
+        criteria?.offersTextMode == true ? state.effectiveEditMode : .builder
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -22,8 +36,21 @@ struct FilterPanelView: View {
 
             Divider()
 
-            if !state.filters.isEmpty {
+            if editMode == .text {
+                textConditionEditor
+            } else if !state.filters.isEmpty {
                 filterList
+            }
+
+            if let criteria, let sortColumns = criteria.sortColumns {
+                Divider()
+
+                FilterSortSection(
+                    state: $state,
+                    columns: sortColumns,
+                    appliedSort: criteria.appliedSort,
+                    newSortDirection: criteria.newSortDirection
+                )
             }
         }
         .paneBarBackground(Color(nsColor: .windowBackgroundColor))
@@ -51,7 +78,7 @@ struct FilterPanelView: View {
 
     private var filterHeader: some View {
         HStack(spacing: 8) {
-            if !state.filters.isEmpty {
+            if editMode == .builder, !state.filters.isEmpty {
                 TristateCheckbox(
                     state: TristateCheckbox.State(allEnabled: state.allEnabledState),
                     action: toggleAllFiltersEnabled
@@ -77,6 +104,13 @@ struct FilterPanelView: View {
 
             Spacer()
 
+            if let criteria, state.criteriaDiffer(fromAppliedSort: criteria.appliedSort) {
+                Text("Criteria Edited")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .help(String(localized: "The rows on screen were fetched with different filters or sorting"))
+            }
+
             filterOptionsMenu
 
             Button("Clear") {
@@ -88,14 +122,22 @@ struct FilterPanelView: View {
             .disabled(!state.hasAppliedFilters)
             .help(String(localized: "Clear applied filters without removing filter rows"))
 
-            Button("Apply") {
-                applyAllValidFilters()
+            if let criteria {
+                criteriaApplyButton(criteria)
+
+                if criteria.offersTextMode {
+                    editModePicker(criteria)
+                }
+            } else {
+                Button("Apply") {
+                    applyAllValidFilters()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .keyboardShortcut(.return, modifiers: .command)
+                .disabled(enabledValidFilterCount == 0 && !state.hasAppliedFilters)
+                .help(String(localized: "Apply active filters (Cmd+Return)"))
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .keyboardShortcut(.return, modifiers: .command)
-            .disabled(enabledValidFilterCount == 0 && !state.hasAppliedFilters)
-            .help(String(localized: "Apply active filters (Cmd+Return)"))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -111,6 +153,123 @@ struct FilterPanelView: View {
         } message: {
             Text("Enter a name for this filter preset")
         }
+    }
+
+    /// Enabled whenever pressing it would change the rows, and whenever filters run, as the plain Apply is.
+    private func criteriaApplyButton(_ criteria: FilterCriteriaConfiguration) -> some View {
+        let changesRows = state.criteriaDiffer(fromAppliedSort: criteria.appliedSort)
+        return Button {
+            applyAllValidFilters()
+        } label: {
+            if criteria.showsSort {
+                Text("Apply Filter & Sort")
+            } else {
+                Text("Apply")
+            }
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.small)
+        .keyboardShortcut(.return, modifiers: .command)
+        .disabled(!changesRows && enabledValidFilterCount == 0 && !state.hasAppliedFilters)
+        .help(criteria.showsSort
+            ? String(localized: "Apply the filters and the sort (Cmd+Return)")
+            : String(localized: "Apply active filters (Cmd+Return)"))
+    }
+
+    private func editModePicker(_ criteria: FilterCriteriaConfiguration) -> some View {
+        Picker(String(localized: "Filter editing mode"), selection: editModeBinding(criteria)) {
+            Text("Builder").tag(FilterEditMode.builder)
+            Text("Text").tag(FilterEditMode.text)
+        }
+        .pickerStyle(.segmented)
+        .controlSize(.small)
+        .labelsHidden()
+        .fixedSize()
+        .help(String(localized: "Edit the filter as rows or as one WHERE condition"))
+        .alert(
+            String(localized: "Can't Switch to Text"),
+            isPresented: Binding(
+                get: { textModeRefusal != nil },
+                set: { if !$0 { textModeRefusal = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(textModeRefusal ?? "")
+        }
+    }
+
+    private func editModeBinding(_ criteria: FilterCriteriaConfiguration) -> Binding<FilterEditMode> {
+        Binding(
+            get: { editMode },
+            set: { switchEditMode(to: $0, criteria: criteria) }
+        )
+    }
+
+    /// Builder to Text starts the editor from the enabled rows' WHERE condition; Text to Builder
+    /// keeps the text as one raw row. Nothing is parsed, so neither direction can lose a condition.
+    private func switchEditMode(to mode: FilterEditMode, criteria: FilterCriteriaConfiguration) {
+        guard mode != editMode else { return }
+        var next = state
+        switch mode {
+        case .text:
+            let logicMode = configuration.offersMatchAny ? next.filterLogicMode : .and
+            guard let condition = criteria.actions.filterConditionText(for: next.filters, logicMode: logicMode) else {
+                textModeRefusal = String(localized: "These filters cannot be written as one condition for this database.")
+                return
+            }
+            focusedFilterId = next.enterTextMode(condition: condition)
+        case .builder:
+            next.enterBuilderMode()
+            focusedFilterId = next.filters.last?.id
+        }
+        state = next
+    }
+
+    @ViewBuilder
+    private var textConditionEditor: some View {
+        if let row = state.filters.first {
+            HStack(alignment: .top, spacing: 8) {
+                Text(verbatim: "WHERE")
+                    .font(.callout.monospaced())
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 3)
+
+                FilterValueTextField(
+                    text: textConditionBinding,
+                    focusedId: $focusedFilterId,
+                    identity: row.id,
+                    placeholder: "e.g. id = 1",
+                    completionSource: textCompletionSource,
+                    allowsMultiLine: true,
+                    onSubmit: { applyAllValidFilters() },
+                    onCancel: { closePanelAndFocusGrid() }
+                )
+                .frame(height: textConditionHeight)
+                .accessibilityLabel(String(localized: "WHERE clause"))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
+    }
+
+    private var textConditionBinding: Binding<String> {
+        let stateBinding = $state
+        return Binding(
+            get: { stateBinding.wrappedValue.textCondition },
+            set: { text in
+                var next = stateBinding.wrappedValue
+                next.setTextCondition(text)
+                stateBinding.wrappedValue = next
+            }
+        )
+    }
+
+    private var textCompletionSource: FilterCompletionSource {
+        if let provider = configuration.rawSQLCompletionProvider {
+            return .sqlTokens(provider)
+        }
+        return .staticValues(completionItems)
     }
 
     private var filterOptionsMenu: some View {
@@ -316,8 +475,13 @@ struct FilterPanelView: View {
         }
     }
 
+    /// Return in a row and Cmd-Return both run what the Apply button runs.
     private func applyAllValidFilters() {
-        actions.applyAllFilters()
+        if let criteria {
+            criteria.actions.applyFiltersAndSort()
+        } else {
+            actions.applyAllFilters()
+        }
         actions.focusGrid()
     }
 
