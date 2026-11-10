@@ -402,13 +402,13 @@ impl SqlEditor {
     }
 
     /// The grammar of the server the editor is pointed at, which decides
-    /// where statements begin and end. With no connection the split
-    /// still has to work, and PostgreSQL's is the strictest.
+    /// where statements begin and end, also while the window's link is
+    /// down and the tab's own connection still runs. With no session the
+    /// split still has to work, and PostgreSQL's is the strictest.
     fn grammar(&self) -> SqlGrammar {
         self.deps()
             .and_then(|deps| deps.session.get())
-            .and_then(|session| session.current_dialect())
-            .map_or(SqlGrammar::PostgreSql, |dialect| dialect.grammar())
+            .map_or(SqlGrammar::PostgreSql, |session| session.grammar())
     }
 
     /// A one-line message where the run summary goes.

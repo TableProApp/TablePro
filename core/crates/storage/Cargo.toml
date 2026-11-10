@@ -18,6 +18,7 @@ uuid.workspace = true
 sqlx = { workspace = true, features = ["migrate", "macros"] }
 chrono.workspace = true
 tempfile.workspace = true
+tracing.workspace = true
 
 # Linux links the distribution's SQLite, so its security fixes arrive
 # through the distribution; the other targets build the copy sqlx ships.

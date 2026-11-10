@@ -105,7 +105,11 @@ public sealed partial class ResultsPane : UserControl
     }
 
     // The rows shown stay until the new set has rows or ends, so a sort or a refresh never blanks the grid.
-    internal async Task ShowRunAsync(QueryRun run, GridSort sort, int visibleColumns = int.MaxValue)
+    internal async Task ShowRunAsync(
+        QueryRun run,
+        GridSort sort,
+        int visibleColumns = int.MaxValue,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(run);
         ErrorBar.IsOpen = false;
@@ -134,7 +138,7 @@ public sealed partial class ResultsPane : UserControl
 
         try
         {
-            await foreach (var queryEvent in run.ReadEventsAsync().ConfigureAwait(true))
+            await foreach (var queryEvent in run.ReadEventsAsync(cancellationToken).ConfigureAwait(true))
             {
                 switch (queryEvent)
                 {

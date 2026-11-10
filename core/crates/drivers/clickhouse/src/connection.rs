@@ -16,12 +16,12 @@ use tablepro_core::{
     CallOptions, CommitResolution, CommitToken, Connection, DriverError, EditorSession, EditorSessionOptions,
     ErrorCategory, ForeignKeyInfo, LinkState, LinkWatch, LivenessPolicy, LossPhase, OwnedCalls, QueryResult,
     ReadStatement, ResultSink, RowLimit, ServerInfo, StreamSummary, TimeoutPhase, WorkspaceSettings, WriteAtomicity,
-    WriteBatch, WriteLedger, WriteReport,
+    WriteBatch, WriteKind, WriteLedger, WriteReport,
 };
 use tokio::time::Instant;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 
-use crate::call_client::{CallClient, read_bound, reading};
+use crate::call_client::{CallClient, read_bound};
 use crate::cancel::{ClickHouseStop, StopProgress};
 use crate::catalog::{self, CatalogTable};
 use crate::commit_resolution::resolve;
@@ -122,17 +122,13 @@ impl ClickHouseConnection {
         self.ensure_open()?;
         let stop = Arc::new(ClickHouseStop::new(self.endpoint.control().clone()));
         let base = match client {
-            Client::Reads => reading(
-                self.endpoint.workspace(),
-                read_bound(options.deadline(), bound),
-                self.endpoint.read_level(false),
-            ),
-            Client::UserReads => reading(
-                self.endpoint.workspace(),
-                read_bound(options.deadline(), bound),
-                self.endpoint.read_level(true),
-            ),
+            Client::Reads => self.endpoint.reading(read_bound(options.deadline(), bound), false),
+            Client::UserReads => self.endpoint.reading(read_bound(options.deadline(), bound), true),
             Client::Control => self.endpoint.control().clone(),
+        };
+        let options = match client {
+            Client::Reads | Client::UserReads if !self.endpoint.bounds_reads() => held_to(options, bound),
+            Client::Reads | Client::UserReads | Client::Control => options,
         };
         let work_stop = stop.clone();
         let outcome = self
@@ -194,6 +190,26 @@ impl ClickHouseConnection {
             other => other,
         })
     }
+}
+
+// Where the login may not ask the server to bound a read, the call's own deadline holds it to its bound and stops it
+// with a KILL.
+fn held_to(options: CallOptions, bound: Option<Duration>) -> CallOptions {
+    let Some(at) = bound.and_then(|bound| Instant::now().checked_add(bound)) else {
+        return options;
+    };
+    let deadline = options.deadline().map_or(at, |deadline| deadline.min(at));
+    CallOptions::new(Some(deadline), options.cancel().clone())
+}
+
+// A row change is an INSERT or a mutation, `ALTER TABLE ... UPDATE` or `... DELETE`. A schema change waits by
+// `alter_sync`, not `mutations_sync`.
+fn holds_mutation(batch: &WriteBatch) -> bool {
+    batch.kind == WriteKind::RowChanges
+        && batch.steps.iter().any(|step| {
+            let sql = step.statement.sql().trim_start();
+            sql.get(..6).is_some_and(|word| word.eq_ignore_ascii_case("ALTER "))
+        })
 }
 
 /// A failure that may mean the route is gone rather than one statement.
@@ -461,13 +477,8 @@ impl Connection for ClickHouseConnection {
             batch: batch.clone(),
             table: TableRef::new(Some(written.database), written.name),
             ledger: ledger.clone(),
-            probes: reading(self.endpoint.workspace(), probe_bound, self.endpoint.read_level(false)),
-            writes: self
-                .endpoint
-                .workspace()
-                .clone()
-                .with_setting("wait_end_of_query", "1")
-                .with_setting("max_execution_time", "0"),
+            probes: self.endpoint.reading(probe_bound, false),
+            writes: self.endpoint.writing(holds_mutation(batch)),
         };
         let work_stop = stop.clone();
         let outcome = self
@@ -516,6 +527,9 @@ impl Connection for ClickHouseConnection {
 
 #[cfg(test)]
 mod tests {
+    use tablepro_core::ForeignKeyMode;
+    use tablepro_core::statement::{GuardedStatement, StatementBuilder};
+
     use super::*;
 
     #[test]
@@ -528,5 +542,61 @@ mod tests {
         assert_eq!(known_lost(StopProgress::Delivered, false), Some(false));
         assert_eq!(known_lost(StopProgress::NotSent, false), None);
         assert_eq!(known_lost(StopProgress::NothingToStop, false), None);
+    }
+
+    fn batch(kind: WriteKind, statements: &[&str]) -> WriteBatch {
+        let steps = statements
+            .iter()
+            .map(|sql| {
+                let mut builder = StatementBuilder::new();
+                builder.push_sql(sql);
+                GuardedStatement::unguarded(builder.finish())
+            })
+            .collect();
+        WriteBatch::new(kind, TableRef::unqualified("t"), steps, ForeignKeyMode::Enforced)
+    }
+
+    #[test]
+    fn only_a_row_change_holding_an_alter_waits_for_a_mutation() {
+        let mixed = ["INSERT INTO t VALUES (1)", "ALTER TABLE t UPDATE a = 1 WHERE id = 2"];
+
+        assert!(holds_mutation(&batch(WriteKind::RowChanges, &mixed)));
+        assert!(holds_mutation(&batch(
+            WriteKind::RowChanges,
+            &["  alter table t DELETE WHERE id = 1"]
+        )));
+        assert!(!holds_mutation(&batch(
+            WriteKind::RowChanges,
+            &["INSERT INTO t VALUES (1)"]
+        )));
+        assert!(!holds_mutation(&batch(
+            WriteKind::SchemaChanges,
+            &["ALTER TABLE t ADD COLUMN b Int32"]
+        )));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_read_the_server_cannot_bound_ends_at_the_nearer_of_its_bound_and_the_call_deadline() {
+        let cancel = CancellationToken::new();
+        let minute = Duration::from_secs(60);
+        let sooner = Instant::now() + Duration::from_secs(5);
+        let later = Instant::now() + Duration::from_secs(90);
+
+        assert_eq!(
+            held_to(CallOptions::new(None, cancel.clone()), Some(minute)).deadline(),
+            Some(Instant::now() + minute)
+        );
+        assert_eq!(
+            held_to(CallOptions::new(Some(later), cancel.clone()), Some(minute)).deadline(),
+            Some(Instant::now() + minute)
+        );
+        assert_eq!(
+            held_to(CallOptions::new(Some(sooner), cancel.clone()), Some(minute)).deadline(),
+            Some(sooner)
+        );
+        let unbounded = held_to(CallOptions::new(None, cancel.clone()), None);
+        assert_eq!(unbounded.deadline(), None);
+        cancel.cancel();
+        assert!(unbounded.cancel().is_cancelled());
     }
 }
