@@ -203,8 +203,7 @@ fn add_choice(grid: &DataGrid, name: &str, act: impl Fn(&DataGrid, usize) + 'sta
 impl DataGrid {
     pub(crate) fn is_foreign_key_column(&self, name: &str) -> bool {
         self.config()
-            .and_then(|config| config.references.as_ref())
-            .map(KeysHandle::get)
+            .and_then(|config| config.references.as_ref().map(KeysHandle::get))
             .is_some_and(|keys| {
                 keys.outbound
                     .iter()
