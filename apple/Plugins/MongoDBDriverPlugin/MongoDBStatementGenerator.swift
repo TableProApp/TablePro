@@ -590,7 +590,7 @@ nonisolated struct MongoDBStatementGenerator {
     /// strict JSON. A stored string that merely starts with `[` and ends with `]` would otherwise run
     /// as code the moment its row is duplicated or its delete is undone.
     private func jsonValue(for value: String, field: String, provenance: Provenance) throws -> String {
-        if declaredKinds[field] == .string {
+        if declaredKinds[field] == .string || spellsAnotherKindInAStringField(value, field: field) {
             return "\"\(escapeJsonString(value))\""
         }
         if value == "true" || value == "false" || value == "null" {
@@ -609,6 +609,23 @@ nonisolated struct MongoDBStatementGenerator {
             return container
         }
         return "\"\(escapeJsonString(value))\""
+    }
+
+    // A cell shows the string "90210" and the number 90210 as the same text. In a field that held
+    // strings and never a number, boolean or null, text of that shape is a string like the rest.
+    private func spellsAnotherKindInAStringField(_ value: String, field: String) -> Bool {
+        guard let held = heldKinds(of: field), held.contains(.string) else { return false }
+        let spelled: Set<BsonValueKind>
+        if value == "true" || value == "false" {
+            spelled = [.boolean]
+        } else if value == "null" {
+            spelled = [.null]
+        } else if MongoDBJsonNumber.isValid(value) {
+            spelled = [.int32, .int64, .double, .decimal128]
+        } else {
+            return false
+        }
+        return held.isDisjoint(with: spelled)
     }
 
     /// A bare JSON number is stored as int32 or double, which silently retypes a column that

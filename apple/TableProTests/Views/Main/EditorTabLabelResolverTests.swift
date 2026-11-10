@@ -87,6 +87,35 @@ struct EditorTabLabelResolverTests {
         #expect(labels[other.id]?.text == "Server Dashboard")
     }
 
+    // One per database, all titled alike: the strip shows one entry's, but the tooltip and Control-Tab list them all.
+    @Test("A Table Health tab keeps its title and names its database beside it")
+    func tableHealthNamesItsDatabaseBesideTheTitle() {
+        var shop = QueryTab(title: "Table Health", tabType: .tableHealth)
+        shop.tableContext.databaseName = "shop"
+        var archive = QueryTab(title: "Table Health", tabType: .tableHealth)
+        archive.tableContext.databaseName = "archive"
+        let labels = EditorTabLabelResolver.resolve(tabs: [shop, archive], target: .database)
+
+        #expect(labels[shop.id]?.text == "Table Health")
+        #expect(labels[shop.id]?.description == "Table Health: shop")
+        #expect(labels[shop.id]?.container == "shop")
+        #expect(labels[archive.id]?.text == "Table Health")
+        #expect(labels[archive.id]?.container == "archive")
+    }
+
+    @Test("The container beside a label is left out once the label already carries it")
+    func containerIsLeftOutOfAQualifiedLabel() {
+        let tabs = [
+            tableTab("orders", database: "app"),
+            tableTab("orders", database: "logs"),
+            tableTab("customers", database: "app"),
+        ]
+        let labels = EditorTabLabelResolver.resolve(tabs: tabs, target: .database)
+
+        #expect(labels[tabs[0].id]?.container == nil)
+        #expect(labels[tabs[2].id]?.container == "app")
+    }
+
     @Test("A collision between a bound and an unbound tab qualifies only the one that can be")
     func qualifiesOnlyTheTabWithAContainer() {
         let tabs = [tableTab("orders", database: "app"), tableTab("orders")]

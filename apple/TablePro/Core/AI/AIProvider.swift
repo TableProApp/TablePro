@@ -83,6 +83,21 @@ enum AIProviderError: Error, LocalizedError {
         return message
     }
 
+    static func streamError(in json: [String: Any]) -> AIProviderError? {
+        guard let error = json["error"], !(error is NSNull) else { return nil }
+        if let message = error as? String {
+            return .streamingFailed(message)
+        }
+        let fields = error as? [String: Any]
+        if let message = fields?["message"] as? String, !message.isEmpty {
+            return .streamingFailed(message)
+        }
+        if let status = (fields?["status"] ?? fields?["code"] ?? fields?["type"]) as? String, !status.isEmpty {
+            return .streamingFailed(status)
+        }
+        return .streamingFailed(String(localized: "The provider reported an error."))
+    }
+
     var isRetryable: Bool {
         switch self {
         case .invalidEndpoint, .authenticationFailed, .notFound:

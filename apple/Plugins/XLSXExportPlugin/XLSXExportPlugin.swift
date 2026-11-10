@@ -43,7 +43,7 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
         destination: URL,
         progress: PluginExportProgress
     ) async throws -> ExportFormatResult {
-        let writer = XLSXWriter()
+        let writer = XLSXWriter(databaseTypeId: dataSource.databaseTypeId)
         var didSplitSheets = false
 
         for (index, table) in tables.enumerated() {
@@ -55,6 +55,7 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
             var rowBatch: [[PluginCellValue]] = []
             var currentSheetRowCount = 0
             var columns: [String] = []
+            var columnTypeNames: [String] = []
             let headerRowCount = settings.includeHeaderRow ? 1 : 0
 
             let stream = dataSource.streamRows(for: table)
@@ -64,9 +65,11 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
                 switch element {
                 case .header(let header):
                     columns = header.columns
+                    columnTypeNames = header.columnTypeNames
                     writer.beginSheet(
                         name: table.name,
                         columns: columns,
+                        columnTypeNames: columnTypeNames,
                         includeHeader: settings.includeHeaderRow,
                         convertNullToEmpty: settings.convertNullToEmpty
                     )
@@ -95,6 +98,7 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
                             writer.continueSheet(
                                 baseName: table.name,
                                 columns: columns,
+                                columnTypeNames: columnTypeNames,
                                 includeHeader: settings.includeHeaderRow,
                                 convertNullToEmpty: settings.convertNullToEmpty
                             )
@@ -134,6 +138,7 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
                     writer.continueSheet(
                         baseName: table.name,
                         columns: columns,
+                        columnTypeNames: columnTypeNames,
                         includeHeader: settings.includeHeaderRow,
                         convertNullToEmpty: settings.convertNullToEmpty
                     )

@@ -89,6 +89,7 @@ pub struct BrowseTab {
     /// The tab's one grid, reachable while an input is being handled
     /// and the model is borrowed.
     pub(super) grid: OnceCell<DataGrid>,
+    pub(super) save_action: OnceCell<gio::SimpleAction>,
     pub(super) browse_actions: OnceCell<gtk::gio::SimpleActionGroup>,
     pub(super) structure_requested: Cell<bool>,
     pub(super) model: RefCell<Option<BrowseModel>>,
@@ -138,6 +139,7 @@ impl ObjectImpl for BrowseTab {
                     .build(),
                 Signal::builder("save-requested").build(),
                 Signal::builder("structure-requested").build(),
+                Signal::builder("save-action-changed").build(),
                 Signal::builder("loading-changed")
                     .param_types([bool::static_type()])
                     .build(),

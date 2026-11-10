@@ -41,6 +41,7 @@ internal struct SQLExportRowValueEncoder {
     internal let unrepresentableValues = UnrepresentableValueCount()
 
     private let numericIndices: Set<Int>
+    private let bitIndices: Set<Int>
     private let databaseTypeId: String
     private let escapeStringLiteral: (String) -> String
 
@@ -58,8 +59,23 @@ internal struct SQLExportRowValueEncoder {
             index < columnTypeNames.count
                 && PluginExportUtilities.isNumericColumnType(columnTypeNames[index])
         })
+        let readsBitAsNumber = SqlDialect.from(databaseTypeId: databaseTypeId) == .mysql
+        bitIndices = Set(includedColumnIndices.filter { index in
+            readsBitAsNumber && index < columnTypeNames.count && Self.isBitType(columnTypeNames[index])
+        })
         self.databaseTypeId = databaseTypeId
         self.escapeStringLiteral = escapeStringLiteral
+    }
+
+    // MySQL stores a quoted literal's bytes in a BIT column, so '5' restores as 53. The driver reads the value as a
+    // decimal number, which the server takes back bare. StarRocks' BITMAP is not this type.
+    private static func isBitType(_ typeName: String) -> Bool {
+        let upper = typeName.uppercased()
+        return upper == "BIT" || upper.hasPrefix("BIT(")
+    }
+
+    private static func isUnsignedInteger(_ value: String) -> Bool {
+        !value.isEmpty && value.utf8.allSatisfy { $0 >= UInt8(ascii: "0") && $0 <= UInt8(ascii: "9") }
     }
 
     // SQL Server reads '...' in the database's code page, so 日本 in an nvarchar restored as ??, and db-lib reports an
@@ -88,6 +104,9 @@ internal struct SQLExportRowValueEncoder {
                 return SQLExportBinaryLiteral.render(data, databaseTypeId: databaseTypeId)
             case .text(let value):
                 if numericIndices.contains(columnIndex), PluginNumericLiteral.isValid(value) {
+                    return value
+                }
+                if bitIndices.contains(columnIndex), Self.isUnsignedInteger(value) {
                     return value
                 }
                 return "\(stringLiteralPrefix)'\(escapeStringLiteral(value))'"

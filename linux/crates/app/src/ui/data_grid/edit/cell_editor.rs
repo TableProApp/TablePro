@@ -13,6 +13,7 @@ use crate::services::grid::{
     empty_placeholder, next_edit_target, opening_text,
 };
 use crate::ui::data_grid::grid_cell::holds_window_focus;
+use crate::ui::data_grid::special_marks::mark_field;
 use crate::ui::data_grid::{DataGrid, GridCell, GridRow, PinnedRow};
 use crate::ui::error_text::edit_parse_message;
 
@@ -335,6 +336,7 @@ impl EditController {
             commit_when_composed: Cell::new(false),
         })));
         connect(grid, &text, id);
+        mark_field(&text, grid.marks_special_characters());
         text.grab_focus();
         if opened == Opened::ToEdit {
             text.select_region(0, -1);
@@ -552,7 +554,6 @@ impl EditController {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn open_text(&self) -> Option<gtk::Text> {
         self.open.borrow().as_ref().map(|edit| edit.text.clone())
     }
@@ -572,7 +573,11 @@ fn connect(grid: &DataGrid, text: &gtk::Text, id: u64) {
             grid.edit().on_activate(id);
         }
     });
-    text.connect_changed(|text| text.remove_css_class("error"));
+    let weak = grid.downgrade();
+    text.connect_changed(move |text| {
+        text.remove_css_class("error");
+        mark_field(text, weak.upgrade().is_some_and(|grid| grid.marks_special_characters()));
+    });
     // Capture phase, so Escape cancels before the GtkText takes it to
     // clear its own buffer, and Tab commits before the window moves the
     // focus.

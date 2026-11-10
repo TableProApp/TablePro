@@ -9,9 +9,11 @@ struct MCPHttpRequestRouter: Sendable {
 
     static let mcpPath = "/mcp"
     static let pairingPath = "/v1/integrations/exchange"
+    static let revocationPath = "/v1/integrations/revoke"
 
     let authenticator: any MCPAuthenticator
     let pairingService: MCPPairingService
+    let tokenRevoker: any MCPTokenRevoking
     let clock: any MCPClock
     let boundPort: UInt16
     let emitInbound: InboundEmitter
@@ -54,6 +56,10 @@ struct MCPHttpRequestRouter: Sendable {
             await handlePairingExchange(body: body, context: context)
             return
         }
+        if await servesRevocation(path: path, context: context) {
+            await handleTokenRevocation(body: body, context: context)
+            return
+        }
         guard Self.isMcpPath(path) else {
             await respondNotFound(context: context)
             return
@@ -62,7 +68,8 @@ struct MCPHttpRequestRouter: Sendable {
     }
 
     private func respondMethodNotAllowedOrNotFound(path: String, context: HttpConnectionContext) async {
-        guard Self.isMcpPath(path) || path == Self.pairingPath else {
+        let isRevocation = await servesRevocation(path: path, context: context)
+        guard Self.isMcpPath(path) || path == Self.pairingPath || isRevocation else {
             await respondNotFound(context: context)
             return
         }
@@ -72,6 +79,12 @@ struct MCPHttpRequestRouter: Sendable {
 
     static func isMcpPath(_ path: String) -> Bool {
         path == mcpPath || path == mcpPath + "/"
+    }
+
+    // Only the Unix socket, which admits this user's processes alone; over TCP the path does not exist.
+    private func servesRevocation(path: String, context: HttpConnectionContext) async -> Bool {
+        guard path == Self.revocationPath else { return false }
+        return await context.clientAddress() == .localSocket
     }
 
     func authenticate(

@@ -44,8 +44,13 @@ extension MainContentCoordinator {
     ) {
         guard let (tab, _) = tabManager.selectedTabAndIndex else { return }
         switch tab.tabType {
-        case .versionHistory, .tableListing, .serverDashboard, .insights, .tableHealth, .objectSource:
+        case .versionHistory, .tableListing, .serverDashboard, .insights, .objectSource:
             AppEvents.shared.tabRefreshRequested.send(tab.id)
+            return
+        case .tableHealth:
+            if let model = tableHealthModels[tab.id] {
+                Task { await model.refresh() }
+            }
             return
         case .erDiagram:
             if let diagram = erDiagramModels[tab.id] {

@@ -9,6 +9,7 @@ mod cell_preset;
 mod column_layout;
 mod column_width;
 mod copy_scope;
+mod date_display;
 mod delete_availability;
 pub mod display_text;
 mod edit_navigation;
@@ -22,6 +23,7 @@ mod result_refusal;
 mod row_key_builder;
 mod row_snapshot;
 mod selection_summary;
+pub mod special_characters;
 #[cfg(test)]
 mod test_columns;
 
