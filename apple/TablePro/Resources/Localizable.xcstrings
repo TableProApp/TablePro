@@ -21161,6 +21161,9 @@
         }
       }
     },
+    "Adds Tables, Views, Functions, Users, Query and Backup buttons to the connection window's toolbar. Customize Toolbar can move or remove them." : {
+
+    },
     "Adjust Limit" : {
       "localizations" : {
         "fr" : {
@@ -30795,6 +30798,9 @@
           }
         }
       }
+    },
+    "Backup" : {
+
     },
     "Backup Database" : {
       "localizations" : {
@@ -166323,6 +166329,9 @@
         }
       }
     },
+    "Show object buttons in the toolbar" : {
+
+    },
     "Show object comments" : {
       "localizations" : {
         "fr" : {
@@ -211460,6 +211469,9 @@
           }
         }
       }
+    },
+    "Users" : {
+
     },
     "Users & Roles" : {
       "localizations" : {
