@@ -336,6 +336,15 @@ fn a_safe_mode_level_goes_to_the_session_it_was_picked_for() {
         Some(tablepro_core::SafeModeLevel::Off),
         "the level moved another connection"
     );
+    let button = shell.imp().safe_mode_button.get();
+    wait_until(WAIT, || button.tooltip_text().as_deref() == Some("Safe Mode: Off"))
+        .expect("the header to keep naming the other session");
+    shell.tab_view().set_selected_page(&first_tab);
+    wait_until(WAIT, || {
+        button.tooltip_text().as_deref() == Some("Safe Mode: Confirm Writes")
+    })
+    .expect("the header to follow the selected session");
+    assert_eq!(super::ticked_level(&test).as_deref(), Some("confirm-writes"));
 }
 
 #[gtk4::test]
