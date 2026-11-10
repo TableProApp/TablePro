@@ -127,6 +127,7 @@ struct DataGridSettings: Codable, Equatable {
     var rowCopyFormat: RowCopyFormat
     var showInvisibleCharacters: Bool
     var showsColumnTypesInHeader: Bool
+    var resultBarAtTop: Bool
 
     static let `default` = DataGridSettings(
         rowHeight: .normal,
@@ -144,7 +145,8 @@ struct DataGridSettings: Codable, Equatable {
         defaultSortDirection: .ascending,
         rowCopyFormat: .rows,
         showInvisibleCharacters: true,
-        showsColumnTypesInHeader: false
+        showsColumnTypesInHeader: false,
+        resultBarAtTop: false
     )
 
     init(
@@ -163,7 +165,8 @@ struct DataGridSettings: Codable, Equatable {
         defaultSortDirection: SortDirection = .ascending,
         rowCopyFormat: RowCopyFormat = .rows,
         showInvisibleCharacters: Bool = true,
-        showsColumnTypesInHeader: Bool = false
+        showsColumnTypesInHeader: Bool = false,
+        resultBarAtTop: Bool = false
     ) {
         self.rowHeight = rowHeight
         self.dateFormat = dateFormat
@@ -181,6 +184,7 @@ struct DataGridSettings: Codable, Equatable {
         self.rowCopyFormat = rowCopyFormat
         self.showInvisibleCharacters = showInvisibleCharacters
         self.showsColumnTypesInHeader = showsColumnTypesInHeader
+        self.resultBarAtTop = resultBarAtTop
     }
 
     init(from decoder: Decoder) throws {
@@ -211,6 +215,7 @@ struct DataGridSettings: Codable, Equatable {
         showsColumnTypesInHeader = container.decodeSetting(
             .showsColumnTypesInHeader, default: fallback.showsColumnTypesInHeader
         )
+        resultBarAtTop = container.decodeSetting(.resultBarAtTop, default: fallback.resultBarAtTop)
     }
 
     // MARK: - Validated Properties

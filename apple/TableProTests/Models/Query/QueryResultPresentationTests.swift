@@ -416,4 +416,44 @@ struct QueryResultPresentationTests {
 
         #expect(!seen.isEmpty)
     }
+
+    @Test("The result bar sits below the result unless the setting moves it")
+    func statusBarBelowByDefault() {
+        var inputs = QueryResultInputs()
+        inputs.tabType = .table
+        inputs.tableName = "orders"
+        inputs.isFilterPanelVisible = true
+        let presentation = QueryResultPresentation(inputs: inputs)
+
+        #expect(presentation.statusBarPlacement == .bottom)
+        #expect(presentation.showsStatusBar(at: .bottom))
+        #expect(!presentation.showsStatusBar(at: .top))
+    }
+
+    @Test("Moved above the grid, the result bar is drawn at the top edge only and nothing else changes")
+    func statusBarMovesAboveTheGrid() {
+        for tabType in [TabType.table, .query] {
+            var inputs = QueryResultInputs()
+            inputs.tabType = tabType
+            inputs.tableName = "orders"
+            inputs.hasExecuted = true
+            inputs.hasActiveResultSet = true
+            inputs.activeResultHasColumns = true
+            inputs.loadedColumnCount = 3
+            inputs.loadedRowCount = 5
+            inputs.resultSetCount = 1
+            inputs.isFilterPanelVisible = true
+            let below = QueryResultPresentation(inputs: inputs)
+            inputs.prefersStatusBarAtTop = true
+            let above = QueryResultPresentation(inputs: inputs)
+
+            #expect(above.statusBarPlacement == .top)
+            #expect(above.showsStatusBar(at: .top))
+            #expect(!above.showsStatusBar(at: .bottom))
+            #expect(above.content == below.content)
+            #expect(above.showsFilterChrome == below.showsFilterChrome)
+            #expect(above.resultSetChooser == below.resultSetChooser)
+            #expect(above.showsErrorBanner == below.showsErrorBanner)
+        }
+    }
 }

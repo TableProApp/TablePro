@@ -710,6 +710,12 @@ struct MainEditorContentView: View {
                 )
             }
 
+            /// Above the error banner, so a failure appearing or being dismissed moves the grid and
+            /// never the bar. Below the result set tabs, which choose the result this bar describes.
+            if presentation.showsStatusBar(at: .top) {
+                statusBarSection(tab: tab, placement: .top)
+            }
+
             if presentation.showsErrorBanner {
                 executionErrorBanner(tab: tab)
             }
@@ -721,17 +727,24 @@ struct MainEditorContentView: View {
             resultContent(presentation.content, tab: tab, rows: rows)
                 .gridStandInBackground(isActive: presentation.content.standsInForGrid)
 
-            if presentation.showsStatusBar {
-                if let model = coordinator.activeGridModel {
-                    DataGridModelReader(model: model) { model in
-                        statusBar(tab: tab, selectedRowCount: model.selection.affectedRows.count)
-                    }
-                } else {
-                    statusBar(tab: tab, selectedRowCount: 0)
-                }
+            if presentation.showsStatusBar(at: .bottom) {
+                statusBarSection(tab: tab, placement: .bottom)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func statusBarSection(tab: QueryTab, placement: StatusBarPlacement) -> some View {
+        Group {
+            if let model = coordinator.activeGridModel {
+                DataGridModelReader(model: model) { model in
+                    statusBar(tab: tab, selectedRowCount: model.selection.affectedRows.count)
+                }
+            } else {
+                statusBar(tab: tab, selectedRowCount: 0)
+            }
+        }
+        .environment(\.statusBarPlacement, placement)
     }
 
     @ViewBuilder
@@ -856,6 +869,7 @@ struct MainEditorContentView: View {
         inputs.executionStatusMessage = tab.execution.statusMessage
         inputs.hasAppliedFilters = tab.filterState.hasAppliedFilters
         inputs.isFilterPanelVisible = tab.filterState.isVisible
+        inputs.prefersStatusBarAtTop = settingsManager.dataGrid.resultBarAtTop
         return QueryResultPresentation(inputs: inputs)
     }
 

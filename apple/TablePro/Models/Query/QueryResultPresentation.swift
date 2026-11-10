@@ -39,6 +39,13 @@ enum ResultSetChooserPlacement: Equatable {
     case tabRow
 }
 
+// Below the result is the window's bottom-bar convention. Above it is a setting, for a reader who wants the
+// row count and pages beside the filters rather than at the far end of a tall grid.
+enum StatusBarPlacement: Equatable, Sendable {
+    case top
+    case bottom
+}
+
 // A plain struct, not a `QueryTab`, so tests reach every state without a tab manager, coordinator or session registry.
 struct QueryResultInputs: Equatable {
     var tabType: TabType = .query
@@ -65,6 +72,7 @@ struct QueryResultInputs: Equatable {
     var executionStatusMessage: String?
     var hasAppliedFilters = false
     var isFilterPanelVisible = false
+    var prefersStatusBarAtTop = false
 }
 
 // Pure: every branch is decidable from `QueryResultInputs` alone, like `ResultStatusModel` and `ResultSetPolicy`.
@@ -74,15 +82,22 @@ struct QueryResultPresentation: Equatable {
     let showsFilterChrome: Bool
     // Always: a plan without the bar can't be switched away from or pinned. Its row readout hides via `StatusBarSnapshot.isQueryPlan`.
     let showsStatusBar: Bool
+    let statusBarPlacement: StatusBarPlacement
     let showsErrorBanner: Bool
 
     var showsResultSetSelector: Bool { resultSetChooser != .hidden }
+
+    // One question per edge, so the pane cannot draw the bar at both or at neither.
+    func showsStatusBar(at placement: StatusBarPlacement) -> Bool {
+        showsStatusBar && statusBarPlacement == placement
+    }
 
     init(inputs: QueryResultInputs) {
         content = Self.resolveContent(inputs)
         resultSetChooser = Self.resolveResultSetChooser(inputs)
         showsFilterChrome = Self.resolvesFilterChrome(inputs)
         showsStatusBar = true
+        statusBarPlacement = inputs.prefersStatusBarAtTop ? .top : .bottom
         showsErrorBanner = Self.resolvedError(inputs) != nil
     }
 

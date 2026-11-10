@@ -83,6 +83,23 @@ struct SettingsFieldDecodingTests {
         #expect(decoded.showsColumnTypesInHeader == true)
     }
 
+    @Test("Data Grid settings saved before the result bar could move keep it below the grid")
+    func resultBarAtTopDefaultsOff() throws {
+        let legacy = try decode(DataGridSettings.self, #"{"showRowNumbers":false}"#)
+        #expect(legacy.resultBarAtTop == false)
+        #expect(legacy.showRowNumbers == false)
+        #expect(DataGridSettings.default.resultBarAtTop == false)
+
+        let bad = try decode(DataGridSettings.self, #"{"resultBarAtTop":"yes","showRowNumbers":false}"#)
+        #expect(bad.resultBarAtTop == false)
+        #expect(bad.showRowNumbers == false)
+
+        var chosen = DataGridSettings.default
+        chosen.resultBarAtTop = true
+        let decoded = try decode(DataGridSettings.self, String(decoding: try JSONEncoder().encode(chosen), as: UTF8.self))
+        #expect(decoded.resultBarAtTop == true)
+    }
+
     @Test("Tab settings saved before located titles keep bare table names, and the choice round-trips")
     func titleShowsLocationDefaultsOff() throws {
         let legacy = try decode(TabSettings.self, #"{"enablePreviewTabs":false,"overflow":"rows"}"#)

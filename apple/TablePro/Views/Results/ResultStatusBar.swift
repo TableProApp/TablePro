@@ -60,6 +60,7 @@ struct ResultStatusBar: View {
     @State private var highlightPopoverTabId: UUID?
     @State private var revealedExecutionTabId: UUID?
     @State private var showSelectionSummaryPopover = false
+    @Environment(\.statusBarPlacement) private var placement
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -343,7 +344,7 @@ struct ResultStatusBar: View {
         .accessibilityLabel(String(localized: "Columns"))
         .accessibilityValue(columnsAccessibilityValue)
         .accessibilityIdentifier("result-status-columns")
-        .popover(isPresented: $showColumnPopover, arrowEdge: .top) {
+        .popover(isPresented: $showColumnPopover, arrowEdge: placement.popoverArrowEdge) {
             ColumnVisibilityPopover(
                 columns: columnState.visibilityColumns,
                 hiddenColumns: columnState.hidden,
@@ -382,7 +383,7 @@ struct ResultStatusBar: View {
         .accessibilityLabel(String(localized: "Highlight Rules"))
         .accessibilityValue(highlightAccessibilityValue)
         .accessibilityIdentifier("result-status-highlight")
-        .popover(isPresented: $showHighlightPopover, arrowEdge: .top) {
+        .popover(isPresented: $showHighlightPopover, arrowEdge: placement.popoverArrowEdge) {
             HighlightRulesPopover(
                 columns: highlightState.columns,
                 rules: highlightState.rules,
