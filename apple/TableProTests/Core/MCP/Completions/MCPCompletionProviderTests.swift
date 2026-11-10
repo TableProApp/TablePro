@@ -687,6 +687,8 @@ actor RecordingCompletionSource: MCPCompletionSchemaSource {
     private var storedSchemas: [String] = []
     private var storedTables: [String] = []
 
+    private var unapproved: Set<UUID> = []
+
     private(set) var databaseCalls: [DatabaseCall] = []
     private(set) var schemaCalls: [SchemaCall] = []
     private(set) var tableCalls: [TableCall] = []
@@ -697,6 +699,14 @@ actor RecordingCompletionSource: MCPCompletionSchemaSource {
 
     func setConnections(_ connections: [MCPConnectionDescriptor]) {
         storedConnections = connections
+    }
+
+    func setUnapproved(_ connectionIds: Set<UUID>) {
+        unapproved = connectionIds
+    }
+
+    func isApproved(principal: MCPPrincipal, connectionId: UUID) async -> Bool {
+        !unapproved.contains(connectionId)
     }
 
     func setDatabases(_ databases: [String]) {

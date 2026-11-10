@@ -195,6 +195,20 @@ public final class SyncMetadataStorage: @unchecked Sendable {
         userDefaults.set(owners.map(\.uuidString).sorted(), forKey: key("ownersKeptOffSync"))
     }
 
+    // MARK: - Deferred Deletions
+
+    // Record names the server reported deleted while this device did not read their type.
+    public var deferredDeletions: Set<String> {
+        get { Set(userDefaults.stringArray(forKey: key("deferredDeletions")) ?? []) }
+        set {
+            guard !newValue.isEmpty else {
+                userDefaults.removeObject(forKey: key("deferredDeletions"))
+                return
+            }
+            userDefaults.set(newValue.sorted(), forKey: key("deferredDeletions"))
+        }
+    }
+
     // MARK: - Last Sync Date
 
     public var lastSyncDate: Date? {
@@ -237,6 +251,7 @@ public final class SyncMetadataStorage: @unchecked Sendable {
 
     private func forgetServerPosition() {
         saveToken(nil)
+        deferredDeletions = []
         userDefaults.removeObject(forKey: key("lastSyncDate"))
     }
 
@@ -262,6 +277,7 @@ public final class SyncMetadataStorage: @unchecked Sendable {
 
     public func clearAll() {
         saveToken(nil)
+        deferredDeletions = []
         zoneState = .unknown
         userDefaults.removeObject(forKey: key("lastSyncDate"))
         userDefaults.removeObject(forKey: key("lastAccountId"))

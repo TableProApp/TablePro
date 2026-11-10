@@ -14,6 +14,7 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var namespace: String
     private var database: String?
     private var kindCache: [String: [String: SurrealFieldKind]] = [:]
+    private var heldKindCache: [String: [String: Set<SurrealFieldKind.Base>]] = [:]
 
     init(config: DriverConnectionConfig) {
         let settings = SurrealDBConnectionConfig(config: config)
@@ -65,7 +66,10 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func disconnect() {
         client.stop()
-        lock.withLock { kindCache.removeAll() }
+        lock.withLock {
+            kindCache.removeAll()
+            heldKindCache.removeAll()
+        }
     }
 
     func ping() async throws {
@@ -113,6 +117,7 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             namespace = database
             self.database = nil
             kindCache.removeAll()
+            heldKindCache.removeAll()
         }
     }
 
@@ -120,7 +125,12 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         lock.withLock {
             database = schema
             kindCache.removeAll()
+            heldKindCache.removeAll()
         }
+    }
+
+    func cachedHeldKinds(for table: String) -> [String: Set<SurrealFieldKind.Base>] {
+        lock.withLock { heldKindCache[table] ?? [:] }
     }
 
     func cachedKinds(for table: String) -> [String: SurrealFieldKind] {
@@ -146,17 +156,27 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         var learned: [String: [String: SurrealFieldKind]] = [:]
+        var held: [String: [String: Set<SurrealFieldKind.Base>]] = [:]
         for row in rows {
             guard let pairs = row.objectPairs,
                   case let .recordId(record)? = row[SurrealInfoParser.recordIdColumn] else { continue }
             for pair in pairs where !SurrealInfoParser.isReservedColumn(pair.key) {
-                guard learned[record.table]?[pair.key] == nil,
-                      let kind = SurrealFieldKind.infer(from: pair.value) else { continue }
+                guard let kind = SurrealFieldKind.infer(from: pair.value) else { continue }
+                held[record.table, default: [:]][pair.key, default: []].insert(kind.base)
+                guard learned[record.table]?[pair.key] == nil else { continue }
                 learned[record.table, default: [:]][pair.key] = kind
             }
         }
         for (table, kinds) in learned {
             mergeKinds(kinds, for: table)
+        }
+        guard !held.isEmpty else { return }
+        lock.withLock {
+            for (table, fields) in held {
+                for (field, bases) in fields {
+                    heldKindCache[table, default: [:]][field, default: []].formUnion(bases)
+                }
+            }
         }
     }
 
@@ -352,6 +372,7 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             scope: scope(forSchema: schema),
             columns: columns,
             kinds: cachedKinds(for: table),
+            heldKinds: cachedHeldKinds(for: table),
             changes: changes,
             insertedRowData: insertedRowData,
             deletedRowIndices: deletedRowIndices,

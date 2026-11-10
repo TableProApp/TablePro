@@ -174,6 +174,15 @@ extension QueryExecutionCoordinator {
         return definitionChanged ? [] : previous
     }
 
+    private func storeKeys(_ keys: [String], viewRowEditing: PluginViewRowEditing?, sameRelation: Bool, at index: Int) {
+        parent.tabManager.mutate(at: index) { tab in
+            tab.tableContext.primaryKeyColumns = keys
+            // Cached and inline metadata carry no answer, so the last one stands unless the relation changed.
+            let kept = sameRelation ? tab.tableContext.viewRowEditing : nil
+            tab.tableContext.adoptViewAnswer(viewRowEditing ?? kept, tabType: tab.tabType)
+        }
+    }
+
     func applyPhase1Result( // swiftlint:disable:this function_parameter_count
         tabId: UUID,
         columns: [String],
@@ -334,12 +343,7 @@ extension QueryExecutionCoordinator {
             definitionChanged: definitionChanged
         )
 
-        parent.tabManager.mutate(at: idx) { tab in
-            tab.tableContext.primaryKeyColumns = resolvedPKs
-            // Cached and inline metadata carry no answer, so the last one stands unless the relation changed.
-            let kept = tableName == previousTableName ? tab.tableContext.viewRowEditing : nil
-            tab.tableContext.adoptViewAnswer(metadata?.viewRowEditing ?? kept, tabType: tab.tabType)
-        }
+        storeKeys(resolvedPKs, viewRowEditing: metadata?.viewRowEditing, sameRelation: tableName == previousTableName, at: idx)
         captureOrigin(
             tabIndex: idx,
             tabId: tabId,
@@ -359,7 +363,9 @@ extension QueryExecutionCoordinator {
                 rowMatchPolicy: resolved.rowMatchPolicy,
                 columnTypeNames: newTableRows.columnTypeNames
             )
+            parent.changeManagerMatchesSelectedResult()
         }
+        parent.dropParkedEdits(ofBackgroundTab: tabId)
 
         recordHistory(
             QueryHistoryRecordRequest(
@@ -436,6 +442,7 @@ extension QueryExecutionCoordinator {
             }
         }
         parent.seedBufferFromActiveResult(tabId: tabId)
+        parent.dropParkedEdits(ofBackgroundTab: tabId)
         parent.toolbarState.isResultsCollapsed = false
 
         recordHistory(

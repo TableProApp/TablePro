@@ -23,10 +23,10 @@ private final class MemoryTokenCredentials: MCPTokenCredentialStoring, @unchecke
         }
     }
 
-    func read() -> Data? {
+    func read() -> MCPTokenBlob {
         lock.lock()
         defer { lock.unlock() }
-        return stored
+        return stored.map(MCPTokenBlob.found) ?? .missing
     }
 
     @discardableResult

@@ -12,6 +12,9 @@ enum EtcdOperation {
     // KV
     case get(key: Data, prefix: Bool, limit: Int64?, keysOnly: Bool, sortOrder: EtcdSortOrder?, sortTarget: EtcdSortTarget?)
     case put(key: Data, value: Data, leaseId: Int64?)
+    // Not etcdctl verbs. A put that refuses an existing key, and a rename that refuses a taken name.
+    case create(key: Data, value: Data, leaseId: Int64?)
+    case move(from: Data, to: Data, value: Data, leaseId: Int64?, modRevision: Int64?)
     case del(key: Data, prefix: Bool)
     case watch(key: Data, prefix: Bool, timeout: TimeInterval)
 
@@ -57,9 +60,11 @@ extension EtcdOperation {
         case .get, .watch, .leaseTimetolive, .leaseList, .memberList, .endpointStatus, .endpointHealth,
              .userList, .roleList:
             return .read
-        case .put, .leaseGrant, .leaseKeepAlive, .authEnable, .userAdd, .roleAdd, .userGrantRole, .userRevokeRole:
+        case .put, .create, .leaseGrant, .leaseKeepAlive, .authEnable, .userAdd, .roleAdd,
+             .userGrantRole, .userRevokeRole:
             return .write
-        case .del, .compaction, .leaseRevoke, .authDisable, .userDelete, .roleDelete:
+        // A move takes the key away from its name, as a del does.
+        case .move, .del, .compaction, .leaseRevoke, .authDisable, .userDelete, .roleDelete:
             return .destructive
         case .unknown:
             return nil
@@ -82,6 +87,8 @@ extension EtcdOperation {
         switch self {
         case .get: return "get"
         case .put: return "put"
+        case .create: return "create"
+        case .move: return "mv"
         case .del: return "del"
         case .watch: return "watch"
         case .leaseGrant: return "lease grant"
@@ -173,6 +180,8 @@ struct EtcdCommandParser {
         switch command {
         case "get": return try parseGet(remaining)
         case "put": return try parsePut(remaining)
+        case "create": return try parseCreate(remaining)
+        case "mv": return try parseMove(remaining)
         case "del", "delete": return try parseDel(remaining)
         case "watch": return try parseWatch(remaining)
         case "lease": return try parseLease(remaining)
@@ -256,6 +265,41 @@ struct EtcdCommandParser {
         }
 
         return .put(key: key, value: value, leaseId: leaseId)
+    }
+
+    private static func parseCreate(_ tokens: [EtcdCommandToken]) throws -> EtcdOperation {
+        var flags = ParsedFlags()
+        let positional = flags.parse(from: tokens)
+        guard positional.count >= 2 else {
+            throw EtcdParseError.missingArgument("create requires key and value")
+        }
+        return .create(
+            key: positional[0].bytes,
+            value: positional[1].bytes,
+            leaseId: try flags.value(for: "lease").map(parseLeaseId)
+        )
+    }
+
+    private static func parseMove(_ tokens: [EtcdCommandToken]) throws -> EtcdOperation {
+        var flags = ParsedFlags()
+        let positional = flags.parse(from: tokens)
+        guard positional.count >= 3 else {
+            throw EtcdParseError.missingArgument("mv requires the key, its new name and the value")
+        }
+        var modRevision: Int64?
+        if let text = flags.value(for: "mod-rev") {
+            guard let parsed = Int64(text) else {
+                throw EtcdParseError.invalidArgument("--mod-rev must be an integer")
+            }
+            modRevision = parsed
+        }
+        return .move(
+            from: positional[0].bytes,
+            to: positional[1].bytes,
+            value: positional[2].bytes,
+            leaseId: try flags.value(for: "lease").map(parseLeaseId),
+            modRevision: modRevision
+        )
     }
 
     private static func parseDel(_ tokens: [EtcdCommandToken]) throws -> EtcdOperation {

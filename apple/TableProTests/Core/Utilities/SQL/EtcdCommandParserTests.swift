@@ -265,6 +265,64 @@ struct EtcdCommandParserPutTests {
     }
 }
 
+struct EtcdCommandParserGuardedWriteTests {
+    @Test("create parses the key, the value and the lease")
+    func create() throws {
+        let op = try EtcdCommandParser.parse("create /app/b value --lease=7b")
+        guard case .create(let key, let value, let leaseId) = op else {
+            Issue.record("Expected .create, got \(op)")
+            return
+        }
+        #expect(key == Data("/app/b".utf8))
+        #expect(value == Data("value".utf8))
+        #expect(leaseId == 0x7b)
+    }
+
+    @Test("mv parses both keys, the value, the lease and the revision the source was read at")
+    func move() throws {
+        let line = EtcdCommandText.command(
+            "mv",
+            arguments: [Data("/app/a".utf8), Data("/app/b b".utf8), Data()],
+            flags: ["--mod-rev=17", "--lease=123"]
+        )
+        guard case .move(let source, let target, let value, let leaseId, let modRevision) = try EtcdCommandParser.parse(line) else {
+            Issue.record("Expected .move for \(line)")
+            return
+        }
+        #expect(source == Data("/app/a".utf8))
+        #expect(target == Data("/app/b b".utf8))
+        #expect(value.isEmpty)
+        #expect(leaseId == 123)
+        #expect(modRevision == 17)
+    }
+
+    @Test("mv keeps a key that starts with two dashes as a key")
+    func moveDashedKey() throws {
+        let line = EtcdCommandText.command(
+            "mv", arguments: [Data("--a".utf8), Data("b".utf8), Data("v".utf8)], flags: ["--mod-rev=2"]
+        )
+        guard case .move(let source, let target, _, _, let modRevision) = try EtcdCommandParser.parse(line) else {
+            Issue.record("Expected .move for \(line)")
+            return
+        }
+        #expect(source == Data("--a".utf8))
+        #expect(target == Data("b".utf8))
+        #expect(modRevision == 2)
+    }
+
+    @Test("mv without a revision carries none, and a malformed one is refused")
+    func moveRevision() throws {
+        guard case .move(_, _, _, _, let modRevision) = try EtcdCommandParser.parse("mv a b v") else {
+            Issue.record("Expected .move")
+            return
+        }
+        #expect(modRevision == nil)
+        #expect(throws: EtcdParseError.self) { try EtcdCommandParser.parse("mv a b v --mod-rev=x") }
+        #expect(throws: EtcdParseError.self) { try EtcdCommandParser.parse("mv a b") }
+        #expect(throws: EtcdParseError.self) { try EtcdCommandParser.parse("create a") }
+    }
+}
+
 struct EtcdCommandParserDelTests {
     @Test("Basic del parses key")
     func basicDel() throws {
@@ -1104,11 +1162,11 @@ private let etcdReadLines = [
 ]
 private let etcdWriteLines = [
     "put /a v", "lease grant 60", "lease keep-alive 1", "auth enable", "user add bob pw", "role add readers",
-    "user grant-role bob readers", "user revoke-role bob readers",
+    "user grant-role bob readers", "user revoke-role bob readers", "create /a v",
 ]
 private let etcdDeleteLines = [
     "del /a", #"del "" --prefix"#, "del /app/ --prefix", "compaction 5", "lease revoke 1", "auth disable",
-    "user delete bob", "role delete readers",
+    "user delete bob", "role delete readers", "mv /a /b v --mod-rev=3", "mv /a /b v",
 ]
 
 struct EtcdCommandParserStatementPolicyTests {
