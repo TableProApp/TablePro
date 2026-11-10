@@ -28,6 +28,12 @@ actor StubAlwaysAllowAuthenticator: MCPAuthenticator {
     }
 }
 
+struct StubUnknownTokenRevoker: MCPTokenRevoking {
+    func revoke(presentedToken: String) async -> MCPTokenRevocationOutcome {
+        .unknown
+    }
+}
+
 actor StubBearerAuthenticator: MCPAuthenticator {
     private let validToken: String
     private let principal: MCPPrincipal
@@ -419,6 +425,7 @@ enum MCPTransportTestHarness {
         port requestedPort: UInt16 = 0,
         authenticator: any MCPAuthenticator = StubAlwaysAllowAuthenticator(),
         pairingService: MCPPairingService? = nil,
+        tokenRevoker: any MCPTokenRevoking = StubUnknownTokenRevoker(),
         limits: MCPHttpServerLimits = .standard,
         clock: any MCPClock = MCPSystemClock(),
         timeout: Duration = .seconds(5)
@@ -434,6 +441,7 @@ enum MCPTransportTestHarness {
             configuration: MCPHttpServerConfiguration.loopback(port: requestedPort, limits: limits),
             authenticator: authenticator,
             pairingService: pairing,
+            tokenRevoker: tokenRevoker,
             clock: clock
         )
         try await transport.start()
@@ -467,6 +475,7 @@ enum MCPTransportTestHarness {
         port requestedPort: UInt16 = 0,
         authenticator: any MCPAuthenticator = StubAlwaysAllowAuthenticator(),
         pairingService: MCPPairingService? = nil,
+        tokenRevoker: any MCPTokenRevoking = StubUnknownTokenRevoker(),
         limits: MCPHttpServerLimits = .standard,
         handler: @escaping @Sendable (MCPInboundExchange) async -> Void = MCPTransportTestHandlers.echo,
         body: (UInt16) async throws -> Void
@@ -475,6 +484,7 @@ enum MCPTransportTestHarness {
             port: requestedPort,
             authenticator: authenticator,
             pairingService: pairingService,
+            tokenRevoker: tokenRevoker,
             limits: limits
         )
         let consumer = StubExchangeConsumer()

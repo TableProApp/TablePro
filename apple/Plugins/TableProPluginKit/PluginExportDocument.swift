@@ -54,63 +54,66 @@ public enum PluginExportStreamElement: Sendable {
     case header(PluginStreamHeader)
     case rows([PluginRow], documents: [PluginExportDocument]?)
 
+    // Both adapters read the inner stream only when their own consumer asks for an element. A task pumping one stream
+    // into another kept every row a slow writer had not taken yet.
     public static func wrapping(
         _ stream: AsyncThrowingStream<PluginStreamElement, Error>
     ) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    for try await element in stream {
-                        switch element {
-                        case .header(let header): continuation.yield(.header(header))
-                        case .rows(let rows): continuation.yield(.rows(rows, documents: nil))
-                        }
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
+        let source = PulledStream(stream)
+        return AsyncThrowingStream(unfolding: {
+            guard let element = try await source.next() else { return nil }
+            switch element {
+            case .header(let header): return .header(header)
+            case .rows(let rows): return .rows(rows, documents: nil)
             }
-            continuation.onTermination = { _ in task.cancel() }
-        }
+        })
     }
 
     public static func cells(
         _ stream: AsyncThrowingStream<PluginExportStreamElement, Error>
     ) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                var columns: Set<Data>?
-                var columnCount = 0
-                do {
-                    for try await element in stream {
-                        switch element {
-                        case .header(let header):
-                            columns = Set(header.columns.map { Data($0.utf8) })
-                            columnCount = header.columns.count
-                            continuation.yield(.header(header))
-                        case .rows(let rows, let documents):
-                            if let documents {
-                                guard let columns, documents.count == rows.count,
-                                      rows.allSatisfy({ $0.count == columnCount }) else {
-                                    throw PluginExportError.exportFailed(String(localized: "Export documents do not match their columns and rows", bundle: .main))
-                                }
-                                // Fixed columns cannot carry a field the cursor first returned after its sample.
-                                guard documents.allSatisfy({ document in
-                                    document.fields.allSatisfy { columns.contains(Data($0.name.utf8)) }
-                                }) else {
-                                    throw PluginExportError.exportFailed(String(localized: "The column stream cannot represent every document field", bundle: .main))
-                                }
-                            }
-                            continuation.yield(.rows(rows))
-                        }
+        let source = PulledStream(stream)
+        let shape = CellStreamShape()
+        return AsyncThrowingStream(unfolding: {
+            guard let element = try await source.next() else { return nil }
+            switch element {
+            case .header(let header):
+                shape.columns = Set(header.columns.map { Data($0.utf8) })
+                shape.columnCount = header.columns.count
+                return .header(header)
+            case .rows(let rows, let documents):
+                if let documents {
+                    guard let columns = shape.columns, documents.count == rows.count,
+                          rows.allSatisfy({ $0.count == shape.columnCount }) else {
+                        throw PluginExportError.exportFailed(String(localized: "Export documents do not match their columns and rows", bundle: .main))
                     }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
+                    // Fixed columns cannot carry a field the cursor first returned after its sample.
+                    guard documents.allSatisfy({ document in
+                        document.fields.allSatisfy { columns.contains(Data($0.name.utf8)) }
+                    }) else {
+                        throw PluginExportError.exportFailed(String(localized: "The column stream cannot represent every document field", bundle: .main))
+                    }
                 }
+                return .rows(rows)
             }
-            continuation.onTermination = { _ in task.cancel() }
-        }
+        })
     }
+}
+
+// One consumer reads the adapter, so one call at a time reaches the iterator.
+private final class PulledStream<Element: Sendable>: @unchecked Sendable {
+    private var iterator: AsyncThrowingStream<Element, Error>.AsyncIterator
+
+    init(_ stream: AsyncThrowingStream<Element, Error>) {
+        iterator = stream.makeAsyncIterator()
+    }
+
+    func next() async throws -> Element? {
+        try await iterator.next()
+    }
+}
+
+private final class CellStreamShape: @unchecked Sendable {
+    var columns: Set<Data>?
+    var columnCount = 0
 }

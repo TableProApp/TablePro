@@ -63,7 +63,8 @@ final class SSLPaneViewModel: ObservableObject {
         caCertPath = connection.sslConfig.caCertificatePath
         clientCertPath = connection.sslConfig.clientCertificatePath
         clientKeyPath = connection.sslConfig.clientKeyPath
-        clientKeyPassphrase = ConnectionStorage.shared.loadSSLClientKeyPassphrase(for: connection.id) ?? ""
+        let storage = coordinator?.value?.storage ?? .shared
+        clientKeyPassphrase = storage.loadSSLClientKeyPassphrase(for: connection.id) ?? ""
     }
 
     func resetForType(_ type: DatabaseType) {

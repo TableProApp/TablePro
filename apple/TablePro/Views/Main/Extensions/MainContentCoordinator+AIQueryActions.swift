@@ -50,6 +50,7 @@ extension MainContentCoordinator {
     }
 
     func runAIQueryAction(_ action: AIQueryAction, target: AIQueryTarget = .selectionOrStatementAtCursor) {
+        if let tabId = tabManager.selectedTabId { flushEditorText(forTab: tabId) }
         guard aiQueryActionAvailability.isEnabled,
               let tab = tabManager.selectedTab,
               let request = aiQueryRequest(for: action, in: tab, target: target) else { return }

@@ -288,6 +288,9 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         if let splitVC = window.contentViewController as? MainSplitViewController {
             for workspace in splitVC.workspaces.workspaces {
                 workspace.sessionState?.coordinator.handleWindowWillClose()
+                if workspace.sessionState == nil {
+                    MainContentCoordinator.endTabSessionIfUnhosted(for: workspace.connectionId, closing: workspace)
+                }
             }
         }
         Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) handleWindowWillClose ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")

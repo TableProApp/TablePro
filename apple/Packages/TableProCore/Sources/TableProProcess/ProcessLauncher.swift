@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(AppKit)
+import AppKit
+#endif
 
 public enum ProcessLaunchError: Error, Equatable, Sendable, LocalizedError {
     case executableNotAbsolute(String)
@@ -36,6 +39,18 @@ private extension String {
 #endif
 
 public enum ProcessLauncher {
+    #if canImport(AppKit)
+    public static func openConfiguration(
+        environment: [String: String],
+        activates: Bool = true
+    ) -> NSWorkspace.OpenConfiguration {
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.environment = environment
+        configuration.activates = activates
+        return configuration
+    }
+    #endif
+
     static let shellNames: Set<String> = ["sh", "bash", "zsh", "dash", "ksh", "csh", "tcsh", "fish", "env"]
 
     // The only place production code makes a `Process`. It comes back configured and not yet running,

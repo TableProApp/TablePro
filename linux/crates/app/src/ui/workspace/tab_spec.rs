@@ -2,7 +2,7 @@ use tablepro_core::meta::TableRef;
 use tablepro_storage::DraftId;
 
 use super::structure_target::StructureTarget;
-use crate::ui::browse_tab::TableFilter;
+use crate::ui::browse_tab::{InitialSort, TableFilter};
 use crate::workspace::{DiagramPlace, EditorFileRecord};
 
 /// A tab to open. Every way a tab opens builds one of these: the sidebar,
@@ -45,8 +45,7 @@ pub(crate) enum TabSpec {
 pub(crate) struct TablePage {
     pub offset: u64,
     pub page_size: u64,
-    /// The column index and whether it sorts ascending.
-    pub sort: Option<(usize, bool)>,
+    pub sort: InitialSort,
 }
 
 impl TablePage {
@@ -54,7 +53,7 @@ impl TablePage {
         Self {
             offset: 0,
             page_size,
-            sort: None,
+            sort: InitialSort::Default,
         }
     }
 }

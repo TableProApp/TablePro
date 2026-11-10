@@ -39,17 +39,96 @@ final class XLSXWriter {
     /// Whether the current sheet has a header row (used for bold styling)
     private var currentSheetHasHeader: Bool = false
 
-    enum CellValue {
+    enum CellValue: Equatable {
         case string(String)
         case number(String)
         case empty
     }
 
+    enum ColumnNumbers: Equatable {
+        case text
+        case exact
+        case approximate
+        case untyped
+
+        init(typeName: String, bitsAreStrings: Bool = false) {
+            let base = Self.baseName(typeName)
+            if base.isEmpty {
+                self = .untyped
+            } else if Self.bitTypes.contains(base) {
+                self = bitsAreStrings ? .text : .exact
+            } else if Self.approximateTypes.contains(base) {
+                self = .approximate
+            } else if Self.exactTypes.contains(base) {
+                self = .exact
+            } else if Self.textTypes.contains(base) || Self.textMarkers.contains(where: { base.contains($0) }) {
+                self = .text
+            } else {
+                self = .untyped
+            }
+        }
+
+        // `Nullable(UInt64)` and `LowCardinality(Nullable(Int32))` name the type inside. The base is the
+        // first word without its width: `int4`, `Int64` and `INT UNSIGNED` are all `int`.
+        private static func baseName(_ typeName: String) -> String {
+            var name = typeName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            while name.hasSuffix(")"), let open = name.firstIndex(of: "("),
+                  ["nullable", "lowcardinality"].contains(String(name[..<open])) {
+                name = String(name[name.index(after: open)...].dropLast())
+                    .trimmingCharacters(in: .whitespaces)
+            }
+            return String(name.prefix { $0.isLetter || $0 == "_" })
+        }
+
+        private static let exactTypes: Set<String> = [
+            "int", "uint", "integer", "bigint", "smallint", "tinyint", "mediumint", "hugeint",
+            "uinteger", "ubigint", "usmallint", "utinyint", "uhugeint", "decimal", "dec", "numeric",
+            "number", "bignumeric", "serial", "bigserial", "smallserial", "money", "smallmoney", "year", "oid"
+        ]
+
+        private static let approximateTypes: Set<String> = [
+            "float", "double", "real", "binary_float", "binary_double"
+        ]
+
+        private static let textTypes: Set<String> = ["enum", "set", "json", "jsonb", "name"]
+
+        private static let bitTypes: Set<String> = ["bit", "varbit"]
+
+        // PostgreSQL's `bit(n)` is a string of 0 and 1. SQL Server's is a flag and MySQL's reads as a number.
+        static func bitsAreStrings(databaseTypeId: String) -> Bool {
+            enginesWithBitStrings.contains(databaseTypeId)
+        }
+
+        private static let enginesWithBitStrings: Set<String> = [
+            "PostgreSQL", "Redshift", "CockroachDB", "PGlite", "AlloyDB", "Citus", "Greenplum", "KingbaseES"
+        ]
+
+        private static let textMarkers = ["char", "text", "string", "clob"]
+    }
+
+    // Excel keeps 15 significant digits of a number.
+    private static let maximumExactDigits = 15
+
+    private var currentColumnNumbers: [ColumnNumbers] = []
+
+    private let bitsAreStrings: Bool
+
+    init(databaseTypeId: String = "") {
+        bitsAreStrings = ColumnNumbers.bitsAreStrings(databaseTypeId: databaseTypeId)
+    }
+
     // MARK: - Sheet Building API
 
     /// Begin a new worksheet. Must be followed by `addRows` calls and then `finishSheet`.
-    func beginSheet(name: String, columns: [String], includeHeader: Bool, convertNullToEmpty: Bool) {
+    func beginSheet(
+        name: String,
+        columns: [String],
+        columnTypeNames: [String] = [],
+        includeHeader: Bool,
+        convertNullToEmpty: Bool
+    ) {
         let sheetName = unusedSheetName(for: name)
+        currentColumnNumbers = columnTypeNames.map { ColumnNumbers(typeName: $0, bitsAreStrings: bitsAreStrings) }
         currentRowNumber = 0
         currentSheetHasHeader = includeHeader
 
@@ -82,7 +161,7 @@ final class XLSXWriter {
 
         for row in rows {
             autoreleasepool {
-                let cellRow: [CellValue] = row.map { value -> CellValue in
+                let cellRow: [CellValue] = row.enumerated().map { index, value -> CellValue in
                     switch value {
                     case .null:
                         return convertNullToEmpty ? .empty : .string("NULL")
@@ -91,13 +170,8 @@ final class XLSXWriter {
                         let hex = data.map { String(format: "%02X", $0) }.joined()
                         return .string("0x" + hex)
                     case .text(let val):
-                        if val.isEmpty {
-                            return .empty
-                        }
-                        if Double(val) != nil, !val.hasPrefix("0") || val == "0" || val.contains(".") {
-                            return .number(val)
-                        }
-                        return .string(val)
+                        let numbers = index < currentColumnNumbers.count ? currentColumnNumbers[index] : .untyped
+                        return Self.cell(forText: val, numbers: numbers)
                     }
                 }
                 appendRow(cellRow, isHeader: false, to: &sheetData)
@@ -105,6 +179,45 @@ final class XLSXWriter {
         }
 
         sheets[sheets.count - 1].data = sheetData
+    }
+
+    // A text column writes text whatever its values look like. A numeric column writes a number
+    // unless Excel cannot hold it exactly. A column with no usable type name writes a number only
+    // for a plain decimal of at most 15 digits, so ids, codes and padded values stay text.
+    static func cell(forText text: String, numbers: ColumnNumbers) -> CellValue {
+        guard !text.isEmpty else { return .empty }
+        guard numbers != .text,
+              !hasPaddingZero(text),
+              let literal = JsonNumberNormalizer.numberLiteral(from: text),
+              let value = Double(literal), value.isFinite else {
+            return .string(text)
+        }
+        switch numbers {
+        case .text:
+            return .string(text)
+        case .approximate:
+            return .number(literal)
+        case .exact:
+            return significantDigitCount(of: literal) <= maximumExactDigits ? .number(literal) : .string(text)
+        case .untyped:
+            let isPlain = literal == text && !literal.contains("e")
+            let digitCount = literal.filter { $0.isNumber }.count
+            return isPlain && digitCount <= maximumExactDigits ? .number(literal) : .string(text)
+        }
+    }
+
+    // ZEROFILL pads an integer for display, and a number cell would drop the padding.
+    private static func hasPaddingZero(_ text: String) -> Bool {
+        let digits = text.drop { $0 == "-" || $0 == "+" }
+        guard digits.first == "0", let second = digits.dropFirst().first else { return false }
+        return second.isNumber
+    }
+
+    private static func significantDigitCount(of literal: String) -> Int {
+        let mantissa = literal.prefix { $0 != "e" && $0 != "E" }
+        let digits = mantissa.filter(\.isNumber).drop { $0 == "0" }
+        guard let last = digits.lastIndex(where: { $0 != "0" }) else { return 0 }
+        return digits[...last].count
     }
 
     /// Finish the current sheet by closing the XML tags.
@@ -118,6 +231,7 @@ final class XLSXWriter {
     func continueSheet(
         baseName: String,
         columns: [String],
+        columnTypeNames: [String] = [],
         includeHeader: Bool,
         convertNullToEmpty: Bool
     ) {
@@ -125,6 +239,7 @@ final class XLSXWriter {
         beginSheet(
             name: baseName,
             columns: columns,
+            columnTypeNames: columnTypeNames,
             includeHeader: includeHeader,
             convertNullToEmpty: convertNullToEmpty
         )
@@ -134,8 +249,21 @@ final class XLSXWriter {
 
     /// Add a complete worksheet with all rows at once (legacy compatibility).
     /// For better memory usage, prefer `beginSheet` / `addRows` / `finishSheet`.
-    func addSheet(name: String, columns: [String], rows: [[PluginCellValue]], includeHeader: Bool, convertNullToEmpty: Bool) {
-        beginSheet(name: name, columns: columns, includeHeader: includeHeader, convertNullToEmpty: convertNullToEmpty)
+    func addSheet(
+        name: String,
+        columns: [String],
+        columnTypeNames: [String] = [],
+        rows: [[PluginCellValue]],
+        includeHeader: Bool,
+        convertNullToEmpty: Bool
+    ) {
+        beginSheet(
+            name: name,
+            columns: columns,
+            columnTypeNames: columnTypeNames,
+            includeHeader: includeHeader,
+            convertNullToEmpty: convertNullToEmpty
+        )
         addRows(rows, convertNullToEmpty: convertNullToEmpty)
         finishSheet()
     }

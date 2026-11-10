@@ -153,6 +153,20 @@ impl DataGrid {
         self.target()?.cell.map(|(_, column)| column)
     }
 
+    pub(super) fn open_details_for_selection(&self) {
+        let wanted = self
+            .config()
+            .is_some_and(|config| config.settings.auto_show_inspector());
+        // Action targets include a focused row after Escape clears the selection.
+        let selected = !self.selection().selection().is_empty();
+        if wanted
+            && selected
+            && let Some(details) = self.imp().actions.lookup_action("show-details")
+        {
+            details.change_state(&true.to_variant());
+        }
+    }
+
     /// Open the detail pane on the focused row, with `column`'s field.
     pub(crate) fn show_details_for(&self, column: usize) {
         self.imp().detail_pane.select_field(column);

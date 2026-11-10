@@ -268,3 +268,172 @@ struct TriggerApplyExecutionTests {
         #expect(sessionStub.executedQueries.isEmpty)
     }
 }
+
+struct TriggerStatementShapeTests {
+    @Test("A trigger's action body is not a CREATE TRIGGER statement")
+    func actionBodyIsRefused() {
+        #expect(!TriggerStatementShape.createsTrigger("UPDATE stats SET n = n + 1", databaseType: .mysql))
+        #expect(!TriggerStatementShape.createsTrigger("BEGIN\n  UPDATE stats SET n = n + 1;\nEND", databaseType: .mysql))
+        #expect(!TriggerStatementShape.createsTrigger("CREATE PROCEDURE p() SELECT 'create trigger'", databaseType: .mysql))
+        #expect(!TriggerStatementShape.createsTrigger("-- CREATE TRIGGER t\nUPDATE stats SET n = 1", databaseType: .mysql))
+    }
+
+    @Test("A full definition is accepted, with a definer, a replace clause or a function ahead of it")
+    func fullDefinitionIsAccepted() {
+        #expect(TriggerStatementShape.createsTrigger(
+            "CREATE DEFINER=`root`@`localhost` TRIGGER `bump` AFTER INSERT ON `orders` FOR EACH ROW\nUPDATE stats SET n = n + 1",
+            databaseType: .mysql
+        ))
+        #expect(TriggerStatementShape.createsTrigger("create or replace trigger t before insert on x begin null; end;", databaseType: .oracle))
+        #expect(TriggerStatementShape.createsTrigger("CREATE TEMP TRIGGER t AFTER INSERT ON x BEGIN SELECT 1; END", databaseType: .sqlite))
+        #expect(TriggerStatementShape.createsTrigger(
+            """
+            CREATE OR REPLACE FUNCTION f() RETURNS trigger AS $$ BEGIN RETURN NEW; END $$ LANGUAGE plpgsql;
+            CREATE TRIGGER t BEFORE INSERT ON x FOR EACH ROW EXECUTE FUNCTION f();
+            """,
+            databaseType: .postgresql
+        ))
+    }
+}
+
+@MainActor
+struct TriggerEditSafetyTests {
+    private static let fullDefinition = "CREATE TRIGGER bump AFTER INSERT ON orders FOR EACH ROW\nUPDATE stats SET n = n + 1"
+    private static let body = "UPDATE stats SET n = n + 1"
+
+    private func makeStubAndAdapter() -> (StubTriggerDriver, PluginDriverAdapter) {
+        let stub = StubTriggerDriver()
+        let connection = DatabaseConnection(name: "Test", type: .mysql)
+        return (stub, PluginDriverAdapter(connection: connection, pluginDriver: stub))
+    }
+
+    @Test("The editor is seeded with the full definition, never the action body")
+    func editorSourceIsTheFullDefinition() async throws {
+        let (_, adapter) = makeStubAndAdapter()
+        let trigger = TriggerInfo(
+            name: "bump", timing: "AFTER", event: "INSERT", statement: Self.body, table: "orders",
+            definition: Self.fullDefinition
+        )
+        let source = try await TriggerEditSource.resolve(trigger, table: "orders", databaseType: .mysql, on: adapter)
+        #expect(source == Self.fullDefinition)
+    }
+
+    @Test("A trigger with only an action body cannot be opened for editing")
+    func bodyOnlyTriggerIsRefused() async {
+        let (_, adapter) = makeStubAndAdapter()
+        let trigger = TriggerInfo(name: "bump", timing: "AFTER", event: "INSERT", statement: Self.body, table: "orders")
+        await #expect(throws: (any Error).self) {
+            _ = try await TriggerEditSource.resolve(trigger, table: "orders", databaseType: .mysql, on: adapter)
+        }
+    }
+
+    @Test("A statement that is itself the full CREATE is still editable")
+    func fullStatementIsEditable() async throws {
+        let (_, adapter) = makeStubAndAdapter()
+        let trigger = TriggerInfo(name: "bump", timing: "AFTER", event: "INSERT", statement: Self.fullDefinition, table: "orders")
+        let source = try await TriggerEditSource.resolve(trigger, table: "orders", databaseType: .mysql, on: adapter)
+        #expect(source == Self.fullDefinition)
+    }
+
+    @Test("A drop-first edit refuses text that would not recreate the trigger")
+    func dropFirstRefusesANonCreate() {
+        let plan = TriggerApplyPlan(strategy: .dropThenCreate, dropSQL: "DROP TRIGGER bump")
+        #expect(throws: TriggerEditingError.self) {
+            _ = try TriggerEditing.restoreDefinition(
+                for: plan, sql: Self.body, originalDefinition: Self.fullDefinition, databaseType: .mysql
+            )
+        }
+        let transactional = TriggerApplyPlan(strategy: .transactional(dropFirst: true), dropSQL: "DROP TRIGGER bump")
+        #expect(throws: TriggerEditingError.self) {
+            _ = try TriggerEditing.restoreDefinition(
+                for: transactional, sql: Self.body, originalDefinition: nil, databaseType: .sqlite
+            )
+        }
+    }
+
+    @Test("A drop-then-create edit refuses to run without a definition to restore")
+    func dropThenCreateNeedsARestorableOriginal() throws {
+        let plan = TriggerApplyPlan(strategy: .dropThenCreate, dropSQL: "DROP TRIGGER bump")
+        #expect(throws: TriggerEditingError.self) {
+            _ = try TriggerEditing.restoreDefinition(
+                for: plan, sql: Self.fullDefinition, originalDefinition: Self.body, databaseType: .mysql
+            )
+        }
+        #expect(throws: TriggerEditingError.self) {
+            _ = try TriggerEditing.restoreDefinition(
+                for: plan, sql: Self.fullDefinition, originalDefinition: nil, databaseType: .mysql
+            )
+        }
+        let restore = try TriggerEditing.restoreDefinition(
+            for: plan, sql: Self.fullDefinition, originalDefinition: Self.fullDefinition, databaseType: .mysql
+        )
+        #expect(restore == Self.fullDefinition)
+    }
+
+    @Test("A replace or a create runs without a restore check")
+    func directNeedsNoRestore() throws {
+        let plan = TriggerApplyPlan(strategy: .direct, dropSQL: nil)
+        let restore = try TriggerEditing.restoreDefinition(
+            for: plan, sql: Self.body, originalDefinition: nil, databaseType: .oracle
+        )
+        #expect(restore == nil)
+        #expect(plan.gatedStatements(for: Self.fullDefinition).isEmpty)
+    }
+
+    @Test("The gate is shown the DROP ahead of the CREATE")
+    func gateSeesTheDrop() {
+        let plan = TriggerApplyPlan(strategy: .dropThenCreate, dropSQL: "DROP TRIGGER bump")
+        #expect(plan.gatedStatements(for: Self.fullDefinition) == ["DROP TRIGGER bump", Self.fullDefinition])
+    }
+
+    @Test("A failed restore reports that the trigger is gone and carries its definition")
+    func failedRestoreIsReported() async {
+        let (stub, adapter) = makeStubAndAdapter()
+        stub.throwOnQueryContaining = "CREATE TRIGGER"
+        var dropped: String?
+        do {
+            try await TriggerEditing.runDropThenCreate(
+                driver: adapter, dropSQL: "DROP TRIGGER bump", sql: "CREATE TRIGGER bump broken", rollback: Self.fullDefinition
+            )
+            Issue.record("The edit was expected to fail")
+        } catch {
+            dropped = (error as? TriggerEditingError)?.droppedDefinition
+        }
+        #expect(dropped == Self.fullDefinition)
+        #expect(stub.executedQueries == ["DROP TRIGGER bump", "CREATE TRIGGER bump broken", Self.fullDefinition])
+    }
+
+    @Test("Saving an action body as an edit drops nothing")
+    func applyRunsNothingForAnActionBody() async throws {
+        let connection = TestFixtures.makeConnection(database: "app", type: .mysql)
+        let stub = StubTriggerDriver()
+        stub.dropToReturn = "DROP TRIGGER bump"
+        let adapter = PluginDriverAdapter(connection: connection, pluginDriver: stub)
+        try await adapter.connect()
+        let session = ConnectionSession(connection: connection, driver: adapter)
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        let scope = DatabaseScope(connectionId: connection.id, database: "app", schema: nil)
+        MetadataConnectionPool.shared.injectEntry(adapter, scope: scope)
+        defer {
+            MetadataConnectionPool.shared.closeAll(connectionId: connection.id)
+            DatabaseManager.shared.removeSession(for: connection.id)
+        }
+        let gate = RequestRecordingGate(allows: true)
+
+        await #expect(throws: TriggerEditingError.self) {
+            try await TriggerEditing.apply(
+                scope: scope,
+                connection: connection,
+                tableName: "orders",
+                sql: Self.body,
+                isEdit: true,
+                originalName: "bump",
+                originalDefinition: Self.body,
+                gate: gate
+            )
+        }
+        #expect(stub.executedQueries.isEmpty)
+        let requests = await gate.requests
+        #expect(requests.isEmpty)
+    }
+}

@@ -172,6 +172,41 @@ internal extension StructureEditingSession {
         editor.refresh()
     }
 
+    // After a save that stopped part way: what the read shows as done is dropped, the rest stays staged.
+    func rebaseStagedChangesOntoFetchedDefinitions() -> Bool {
+        let pkFromIndexes = indexes.first(where: { $0.isPrimary })?.columns ?? []
+        let pkFromColumns = columns.filter { $0.isPrimaryKey }.map { $0.name }
+        let moved = changeManager.rebaseStagedChanges(
+            onto: StructureRebase.Baseline(
+                columns: columns,
+                indexes: indexes,
+                foreignKeys: foreignKeys,
+                checkConstraints: checkConstraints,
+                primaryKey: pkFromIndexes.isEmpty ? pkFromColumns : pkFromIndexes,
+                tableComment: loadedTableComment,
+                tableOptions: loadedTableOptions,
+                autoIncrementConfirmed: autoIncrementRead == .confirmed
+            )
+        )
+        if moved {
+            editor.refresh()
+        }
+        return moved
+    }
+
+    func rebaseAfterFailedSave() async -> Bool {
+        // Where DDL rolls back with its transaction, a failed save wrote nothing and the baseline still holds.
+        let rolledBack = try? await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+            DatabaseManager.wrapsDDLInTransaction(driver)
+        }
+        guard rolledBack == false else { return false }
+        isReloadingAfterSave = true
+        await reloadDefinitions()
+        isReloadingAfterSave = false
+        guard definitionsAreCurrent else { return false }
+        return rebaseStagedChangesOntoFetchedDefinitions()
+    }
+
     func adoptFetchedBaseline() {
         guard !changeManager.hasChanges else {
             markStructureStale()
