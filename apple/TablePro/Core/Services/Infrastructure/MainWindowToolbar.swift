@@ -572,7 +572,9 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         for window in NSApp.windows {
             guard let owner = window.toolbar?.delegate as? MainWindowToolbar else { continue }
             owner.reconcileObjectKindsGroup()
-            // A group inserted now takes its enabled state at once rather than on the next window update.
+            // A group inserted now takes its enabled state at once rather than on the next window update. AppKit places
+            // an inserted item at the next layout and a pass validates only placed items, so the window lays out first.
+            window.layoutIfNeeded()
             owner.managedToolbar.validateVisibleItems()
         }
     }

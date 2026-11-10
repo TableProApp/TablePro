@@ -557,6 +557,47 @@ struct ObjectKindsToolbarTests {
         #expect(Self.groupCount(in: owner.managedToolbar) == 1)
     }
 
+    /// The resolver answering is not enough: AppKit has to ask it for each subitem and write the
+    /// answer. This is the pass a window update runs, through the window's own toolbar.
+    @Test("A validation pass writes each button's enabled state")
+    func aValidationPassWritesEachButton() throws {
+        let fixture = try OffscreenConnectionWindow(
+            size: CGSize(width: 1_512, height: 861),
+            connectedTo: TestFixtures.makeConnection(name: "Objects validation", type: .sqlite)
+        )
+        defer { fixture.tearDown() }
+        let storage = try EphemeralDefaults()
+        let owner = fixture.toolbarOwner
+        owner.objectKindsRecord = ToolbarObjectKindsRecord(defaults: storage.defaults)
+        owner.objectKindsEnabled = { true }
+        owner.reconcileObjectKindsGroup()
+        // AppKit places an inserted item at the next layout, and validates only what it has placed.
+        fixture.window.layoutIfNeeded()
+        let toolbar = try #require(fixture.window.toolbar)
+        let group = try #require(
+            toolbar.items.first { $0.itemIdentifier == MainWindowToolbar.objectKindsGroup } as? NSToolbarItemGroup
+        )
+        let drawn = (toolbar.visibleItems ?? []).map { $0.itemIdentifier }
+        #expect(drawn.contains(MainWindowToolbar.objectKindsGroup), "The group went to the overflow menu")
+        let state = try #require(owner.coordinator?.toolbarState)
+        let enabled = { Set(group.subitems.filter { $0.isEnabled }.map { $0.itemIdentifier }) }
+
+        state.connectionState = .disconnected
+        toolbar.validateVisibleItems()
+        #expect(enabled().isEmpty, "A dropped session dims every button")
+
+        // SQLite's test session has no listing and no views or functions loaded, so the pass writes both answers.
+        state.connectionState = .connected
+        toolbar.validateVisibleItems()
+        let answered = owner.currentContext()
+        let expected = Set(MainWindowToolbar.objectKindItemIdentifiers.filter { identifier in
+            ToolbarContextResolver.isEnabled(identifier, context: answered)
+        })
+        #expect(enabled() == expected)
+        #expect(enabled().contains(MainWindowToolbar.objectQuery))
+        #expect(!enabled().contains(MainWindowToolbar.objectTables))
+    }
+
     @Test("Without the sidebar tracking separator the group goes in at the leading edge")
     func insertsAtTheLeadingEdgeWithoutTheSeparator() throws {
         let storage = try EphemeralDefaults()
@@ -612,6 +653,14 @@ extension GlobalStateSuites {
             let identifiers = toolbar.items.map { $0.itemIdentifier }
             let separator = try #require(identifiers.firstIndex(of: .sidebarTrackingSeparator))
             #expect(identifiers.dropFirst(separator + 1).first == MainWindowToolbar.objectKindsGroup)
+            // This window has no connection, so the group arrives dimmed rather than live until the next update.
+            let group = try #require(
+                toolbar.items.first { $0.itemIdentifier == MainWindowToolbar.objectKindsGroup } as? NSToolbarItemGroup
+            )
+            #expect(!group.subitems.isEmpty)
+            for subitem in group.subitems {
+                #expect(!subitem.isEnabled, "\(subitem.itemIdentifier.rawValue) is live with no connection")
+            }
 
             AppSettingsManager.shared.general.showsObjectToolbar = false
             #expect(!hasGroup(), "Turning it off takes the group away")
