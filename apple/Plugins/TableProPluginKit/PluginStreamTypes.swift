@@ -6,6 +6,8 @@ public struct PluginStreamHeader: Sendable {
     public let columns: [String]
     public let columnTypeNames: [String]
     public let estimatedRowCount: Int?
+    // See `PluginQueryResult.columnOrigins`.
+    public var columnOrigins: [PluginColumnOrigin?]?
 
     public init(columns: [String], columnTypeNames: [String], estimatedRowCount: Int? = nil) {
         self.columns = columns

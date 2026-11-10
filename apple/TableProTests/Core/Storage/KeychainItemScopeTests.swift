@@ -3,26 +3,39 @@ import Security
 @testable import TablePro
 import Testing
 
-// Models the one rule the helper depends on: synchronizable is part of an item's identity.
+// Models what the helper depends on: synchronizable is part of an item's identity, and each write dates its item.
 private final class ScopedItemStore: KeychainItemStore, @unchecked Sendable {
     struct ItemID: Hashable {
         let account: String
         let synchronizable: Bool
     }
 
+    private struct Item {
+        let data: Data
+        let modified: Date
+    }
+
     private let lock = NSLock()
-    private var items: [ItemID: Data] = [:]
+    private var items: [ItemID: Item] = [:]
+    private var writes = 0
+
+    private func nextDate() -> Date {
+        writes += 1
+        return Date(timeIntervalSinceReferenceDate: TimeInterval(writes))
+    }
 
     func seed(_ value: String, account: String, synchronizable: Bool) {
         lock.lock()
         defer { lock.unlock() }
-        items[ItemID(account: account, synchronizable: synchronizable)] = Data(value.utf8)
+        items[ItemID(account: account, synchronizable: synchronizable)] = Item(data: Data(value.utf8), modified: nextDate())
     }
 
     func value(account: String, synchronizable: Bool) -> String? {
         lock.lock()
         defer { lock.unlock() }
-        return items[ItemID(account: account, synchronizable: synchronizable)].map { String(decoding: $0, as: UTF8.self) }
+        return items[ItemID(account: account, synchronizable: synchronizable)].map {
+            String(decoding: $0.data, as: UTF8.self)
+        }
     }
 
     private func matches(_ query: [String: Any]) -> [ItemID] {
@@ -46,7 +59,7 @@ private final class ScopedItemStore: KeychainItemStore, @unchecked Sendable {
             synchronizable: attributes[kSecAttrSynchronizable as String] as? Bool ?? false
         )
         guard items[id] == nil else { return errSecDuplicateItem }
-        items[id] = attributes[kSecValueData as String] as? Data
+        items[id] = Item(data: attributes[kSecValueData as String] as? Data ?? Data(), modified: nextDate())
         return errSecSuccess
     }
 
@@ -60,16 +73,18 @@ private final class ScopedItemStore: KeychainItemStore, @unchecked Sendable {
             return errSecDuplicateItem
         }
         for id in found {
-            items[id] = attributes[kSecValueData as String] as? Data
+            items[id] = Item(data: attributes[kSecValueData as String] as? Data ?? Data(), modified: nextDate())
         }
         return errSecSuccess
     }
 
-    func copyData(_ query: [String: Any]) -> (status: OSStatus, data: Data?) {
+    func copyItem(_ query: [String: Any]) -> KeychainCopiedItem {
         lock.lock()
         defer { lock.unlock() }
-        guard let id = matches(query).first else { return (errSecItemNotFound, nil) }
-        return (errSecSuccess, items[id])
+        guard let id = matches(query).first, let item = items[id] else {
+            return KeychainCopiedItem(status: errSecItemNotFound, data: nil, modified: nil)
+        }
+        return KeychainCopiedItem(status: errSecSuccess, data: item.data, modified: item.modified)
     }
 
     func delete(_ query: [String: Any]) -> OSStatus {
@@ -179,13 +194,46 @@ struct KeychainItemScopeTests {
         #expect(store.value(account: key, synchronizable: true) == nil)
     }
 
-    @Test("A read returns the item the setting selects when both exist")
-    func readPrefersTheSelectedItem() {
+    @Test("With password sync on the newer item wins; with it off this Mac's own item does")
+    func readReturnsTheNewerItem() {
+        store.seed("synced", account: key, synchronizable: true)
+        store.seed("local", account: key, synchronizable: false)
+
+        #expect(helper(passwordSync: true).readString(forKey: key) == "local")
+        #expect(helper(passwordSync: false).readString(forKey: key) == "local")
+
+        store.seed("newer-synced", account: key, synchronizable: true)
+
+        #expect(helper(passwordSync: true).readString(forKey: key) == "newer-synced")
+        #expect(helper(passwordSync: false).readString(forKey: key) == "local")
+    }
+
+    @Test("With password sync off, a newer item another device synced never replaces this Mac's own key")
+    func syncOffKeepsTheLocalItemOverANewerSyncedOne() {
+        store.seed("this-mac-key", account: key, synchronizable: false)
+        store.seed("other-mac-key", account: key, synchronizable: true)
+
+        #expect(helper(passwordSync: false).readString(forKey: key) == "this-mac-key")
+        #expect(helper(passwordSync: false).readStringResult(forKey: key) == .found("this-mac-key"))
+    }
+
+    @Test("A password saved with password sync off is the one read once sync is back on")
+    func localSaveSurvivesTurningSyncBackOn() {
+        store.seed("from-another-device", account: key, synchronizable: true)
+
+        #expect(helper(passwordSync: false).writeString("new", forKey: key))
+
+        #expect(helper(passwordSync: true).readString(forKey: key) == "new")
+        #expect(store.value(account: key, synchronizable: true) == "from-another-device")
+    }
+
+    @Test("A credential bound to this Mac reads its own item over a newer synced one")
+    func boundCredentialIgnoresANewerSyncedItem() {
         store.seed("local", account: key, synchronizable: false)
         store.seed("synced", account: key, synchronizable: true)
 
-        #expect(helper(passwordSync: true).readString(forKey: key) == "synced")
-        #expect(helper(passwordSync: false).readString(forKey: key) == "local")
+        #expect(helper(passwordSync: true, followsPasswordSync: false).readString(forKey: key) == "local")
+        #expect(helper(passwordSync: true).readStringResult(forKey: key, deviceOnly: true) == .found("local"))
     }
 
     @Test("Delete removes both items")

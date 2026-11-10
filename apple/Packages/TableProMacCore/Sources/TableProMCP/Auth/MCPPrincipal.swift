@@ -5,12 +5,20 @@ public struct MCPPrincipalMetadata: Sendable, Equatable {
     public let issuedAt: Date
     public let expiresAt: Date?
     public let isBridgeCredential: Bool
+    public let isClaudeAgentCredential: Bool
 
-    public init(label: String?, issuedAt: Date, expiresAt: Date?, isBridgeCredential: Bool = false) {
+    public init(
+        label: String?,
+        issuedAt: Date,
+        expiresAt: Date?,
+        isBridgeCredential: Bool = false,
+        isClaudeAgentCredential: Bool = false
+    ) {
         self.label = label
         self.issuedAt = issuedAt
         self.expiresAt = expiresAt
         self.isBridgeCredential = isBridgeCredential
+        self.isClaudeAgentCredential = isClaudeAgentCredential
     }
 }
 

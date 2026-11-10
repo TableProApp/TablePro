@@ -96,7 +96,7 @@ internal enum WorkspaceCloseAction {
             return
         }
         // Taken after the transaction prompt: the tabs stay editable while it is answered.
-        let victims = coordinators.flatMap { tabs(in: workspace.container, of: $0) }
+        let victims = committedTabs(in: workspace.container, across: coordinators)
         // Closing a tab stops its query, so a yes needs no cancel of its own.
         let running = RunningWorkRegistry.shared.items(in: .tabs(Set(victims.map(\.id))))
         let holdsUnsavedWork = coordinators.contains { coordinator in
@@ -350,6 +350,17 @@ internal enum WorkspaceCloseAction {
         WorkspaceRailStore.entries
             .filter { $0.workspace.connectionId == connectionId }
             .map(\.container)
+    }
+
+    // An open cell editor or the editor's pending text in a window's selected tab is unsaved work too, so it lands
+    // before the tabs are read.
+    internal static func committedTabs(in container: String, across coordinators: [MainContentCoordinator]) -> [QueryTab] {
+        for coordinator in coordinators {
+            let selected = coordinator.tabManager.selectedTabId
+            guard tabs(in: container, of: coordinator).contains(where: { $0.id == selected }) else { continue }
+            coordinator.commitActiveGridEdit()
+        }
+        return coordinators.flatMap { tabs(in: container, of: $0) }
     }
 
     private static func tabs(in container: String, of coordinator: MainContentCoordinator?) -> [QueryTab] {

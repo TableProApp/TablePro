@@ -109,6 +109,8 @@ extension MainContentView {
         guard let tab = currentTab else { return nil }
         let tableRows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
         guard !tableRows.columns.isEmpty, !tableRows.rows.isEmpty else { return nil }
+        // The summary goes to the provider, so it is masked as an external caller's result is.
+        let overlay = coordinator.externalOverlay(forTab: tab.id)
 
         let columns = tableRows.columns
         let rows = tableRows.rows
@@ -125,7 +127,7 @@ extension MainContentView {
                     return DataGridCellContent.unloadedSpokenText(byteCount: byteCount)
                 }
                 let raw: String
-                switch row.values[i] {
+                switch overlay.value(row.values[i], column: i) {
                 case .null:
                     raw = "NULL"
                 case .text(let s):

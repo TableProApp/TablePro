@@ -44,6 +44,30 @@ struct CompareSQLLiteralTests {
         #expect(literal == #"'x\'"#)
     }
 
+    // Quoted, MySQL stores and compares a BIT value as its characters' bytes, so a synced 5 lands as 53.
+    @Test
+    func mysqlBitIsWrittenAsItsNumber() {
+        let driver = NoBackslashEscapesDriver()
+        let bit = ColumnType.boolean(rawType: "bit(8)")
+        for type in [DatabaseType.mysql, .mariadb] {
+            #expect(CompareSQLLiteral.textLiteral("5", columnType: bit, databaseType: type, driver: driver) == "5")
+            #expect(CompareSQLLiteral.literal(
+                for: .text("170"), columnType: bit, databaseType: type, driver: driver, keptInScript: false
+            ) == "170")
+        }
+        #expect(CompareSQLLiteral.textLiteral("abc", columnType: bit, databaseType: .mysql, driver: driver) == "'abc'")
+        #expect(CompareSQLLiteral.textLiteral("+5", columnType: bit, databaseType: .mysql, driver: driver) == "'+5'")
+    }
+
+    @Test
+    func otherBooleansAndBitStringsStayQuoted() {
+        let driver = NoBackslashEscapesDriver()
+        let tinyint = ColumnType.boolean(rawType: "tinyint(1)")
+        #expect(CompareSQLLiteral.textLiteral("1", columnType: tinyint, databaseType: .mysql, driver: driver) == "'1'")
+        let bit = ColumnType.boolean(rawType: "bit(8)")
+        #expect(CompareSQLLiteral.textLiteral("5", columnType: bit, databaseType: .postgresql, driver: driver) != "5")
+    }
+
     @Test
     func bitStringEnginesKeepTheDefaultSpelling() throws {
         for type in [DatabaseType.mysql, .mariadb, .tidb, .databend, .oceanbase, .sqlite, .clickhouse, .libsql, .turso, .cloudflareD1] {

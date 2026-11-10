@@ -145,6 +145,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .limited(allowed),
             expiresAt: expiry,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -172,6 +173,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
         let second = try await store.generate(
@@ -180,6 +182,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -200,6 +203,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -218,6 +222,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -235,6 +240,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: Date.now.addingTimeInterval(-1),
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -251,6 +257,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -270,6 +277,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: Date.now.addingTimeInterval(-1),
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -286,6 +294,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -304,6 +313,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: Date.now.addingTimeInterval(-1),
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
         let authenticator = MCPBearerTokenAuthenticator(
@@ -333,6 +343,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -349,6 +360,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -366,6 +378,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
         let recorder = RevocationRecorder()
@@ -390,6 +403,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -414,6 +428,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -445,6 +460,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -464,6 +480,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -482,6 +499,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -491,6 +509,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -510,6 +529,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .limited([UUID()]),
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -533,6 +553,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: Date.now.addingTimeInterval(3_600),
             isBridgeCredential: true,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
         let survivor = try await writer.generate(
@@ -541,6 +562,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -562,6 +584,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: [.connectionsDisplay]
         )
 
@@ -584,6 +607,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
         #expect(credentials.storedText.contains("extraScopes") == false)
@@ -626,6 +650,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: true,
+            isClaudeAgentCredential: false,
             extraScopes: [.connectionsDisplay]
         )
         #expect(result.token.extraScopes.isEmpty)
@@ -640,6 +665,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
         let launcher = try await store.generate(
@@ -648,6 +674,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: [.connectionsDisplay]
         )
 

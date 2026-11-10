@@ -209,7 +209,8 @@ extension QueryExecutionCoordinator {
         rowLocators: [String?]? = nil,
         exportDocuments: [PluginExportDocument]? = nil,
         absentCells: [Int: Set<Int>] = [:],
-        unloadedCells: [Int: [Int: Int]] = [:]
+        unloadedCells: [Int: [Int: Int]] = [:],
+        columnOrigins: [PluginColumnOrigin?]? = nil
     ) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
@@ -272,7 +273,8 @@ extension QueryExecutionCoordinator {
             unloadedCells: unloadedCells,
             masks: masks,
             exportPolicy: parent.exportMaskingPolicy(forTabId: tabId),
-            exportTable: tableName
+            exportTable: tableName,
+            columnOrigins: columnOrigins
         )
         let previousTableName = parent.tabManager.tabs[idx].tableContext.tableName
         let definitionChanged = parent.tabSessionRegistry.needsDefinition(existingTabId)

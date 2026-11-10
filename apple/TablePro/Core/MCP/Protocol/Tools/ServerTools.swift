@@ -215,7 +215,8 @@ public struct StopServerSessionTool: MCPToolImplementation {
             maxRows: 1,
             timeoutSeconds: settings.validatedQueryTimeoutSeconds,
             context: context,
-            secrets: meta.redactionSecrets
+            secrets: meta.redactionSecrets,
+            masking: .byName
         )
         return .structured(result)
     }

@@ -52,6 +52,12 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var queuedCount = 0
     private var conditionalPositions: Set<Int> = []
 
+    // Only a staging key this driver generated is ever deleted on a failed write: a leftover one the
+    // user renames from the grid is their data.
+    private let stagingLock = NSLock()
+    private var issuedStagingTokens: Set<String> = []
+    private static let maxIssuedStagingTokens = 10_000
+
     var serverVersion: String? {
         redisConnection?.serverVersion()
     }
@@ -221,6 +227,20 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         queuedCount += 1
         if queuedCommands.count < Self.maxRecordedQueuedCommands { queuedCommands.append(command) }
         queuedCommandsLock.unlock()
+    }
+
+    func issueStagingToken() -> String {
+        let token = UUID().uuidString.lowercased()
+        stagingLock.withLock {
+            if issuedStagingTokens.count >= Self.maxIssuedStagingTokens { issuedStagingTokens.removeAll() }
+            issuedStagingTokens.insert(token)
+        }
+        return token
+    }
+
+    func isIssuedStagingKey(_ key: String) -> Bool {
+        guard let token = RedisConditionalWrite.stagingToken(in: key) else { return false }
+        return stagingLock.withLock { issuedStagingTokens.contains(token) }
     }
 
     private func takeQueuedCommands() -> (labels: [String], conditional: Set<Int>) {
@@ -635,11 +655,14 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) throws -> [PluginRowWrite]? {
+        let partitioned = redisConnection?.partitionsKeyspace == true
         let generator = RedisStatementGenerator(
             namespaceName: table,
             columns: columns,
-            deleteBatching: redisConnection?.partitionsKeyspace == true ? .perHashSlot : .singleCommand,
-            keepsTTLOnSet: RedisStatementGenerator.serverKeepsTTLOnSet(version: redisConnection?.serverVersion())
+            deleteBatching: partitioned ? .perHashSlot : .singleCommand,
+            keepsTTLOnSet: RedisStatementGenerator.serverKeepsTTLOnSet(version: redisConnection?.serverVersion()),
+            partitionsKeyspace: partitioned,
+            stagingToken: { [weak self] in self?.issueStagingToken() ?? UUID().uuidString.lowercased() }
         )
         let writes = try generator.generateRowWrites(
             from: changes, insertedRowData: insertedRowData,

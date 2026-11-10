@@ -6,11 +6,19 @@ public struct PullResult: Sendable {
     public let changedRecords: [CKRecord]
     public let deletedRecordIDs: [CKRecord.ID]
     public let newToken: CKServerChangeToken?
+    // Records the zone holds that the fetch could not read, so their absence from `changedRecords` proves nothing.
+    public let unreadRecordIDs: [CKRecord.ID]
 
-    public init(changedRecords: [CKRecord], deletedRecordIDs: [CKRecord.ID], newToken: CKServerChangeToken?) {
+    public init(
+        changedRecords: [CKRecord],
+        deletedRecordIDs: [CKRecord.ID],
+        newToken: CKServerChangeToken?,
+        unreadRecordIDs: [CKRecord.ID] = []
+    ) {
         self.changedRecords = changedRecords
         self.deletedRecordIDs = deletedRecordIDs
         self.newToken = newToken
+        self.unreadRecordIDs = unreadRecordIDs
     }
 }
 
@@ -228,6 +236,7 @@ public actor CloudKitSyncEngine {
     public func pull(since token: CKServerChangeToken?) async throws -> PullResult {
         var changedRecords: [CKRecord] = []
         var deletedRecordIDs: [CKRecord.ID] = []
+        var unreadRecordIDs: [CKRecord.ID] = []
         var cursor = token
 
         while true {
@@ -237,13 +246,15 @@ public actor CloudKitSyncEngine {
 
             changedRecords.append(contentsOf: page.result.changedRecords)
             deletedRecordIDs.append(contentsOf: page.result.deletedRecordIDs)
+            unreadRecordIDs.append(contentsOf: page.result.unreadRecordIDs)
             cursor = page.result.newToken ?? cursor
 
             guard page.moreComing, page.result.newToken != nil else {
                 return PullResult(
                     changedRecords: changedRecords,
                     deletedRecordIDs: deletedRecordIDs,
-                    newToken: cursor
+                    newToken: cursor,
+                    unreadRecordIDs: unreadRecordIDs
                 )
             }
         }
@@ -266,14 +277,19 @@ public actor CloudKitSyncEngine {
 
         var changedRecords: [CKRecord] = []
         var deletedRecordIDs: [CKRecord.ID] = []
+        var unreadRecordIDs: [CKRecord.ID] = []
         var newToken: CKServerChangeToken?
         var moreComing = false
         var zoneError: Error?
 
         return try await withCheckedThrowingContinuation { continuation in
-            operation.recordWasChangedBlock = { _, result in
-                if case .success(let record) = result {
+            operation.recordWasChangedBlock = { recordID, result in
+                switch result {
+                case .success(let record):
                     changedRecords.append(record)
+                case .failure(let error):
+                    Self.logger.warning("Record fetch error: \(error.localizedDescription)")
+                    unreadRecordIDs.append(recordID)
                 }
             }
 
@@ -310,7 +326,8 @@ public actor CloudKitSyncEngine {
                         result: PullResult(
                             changedRecords: changedRecords,
                             deletedRecordIDs: deletedRecordIDs,
-                            newToken: newToken
+                            newToken: newToken,
+                            unreadRecordIDs: unreadRecordIDs
                         ),
                         moreComing: moreComing
                     ))

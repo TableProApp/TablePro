@@ -67,13 +67,27 @@ final class TextBindingSync {
 
     // A run or save reads the binding, which trails the editor by the debounce on a large document.
     func flushPendingWriteback(from textView: TextView) {
-        guard let pending = writebackTask else { return }
-        pending.cancel()
-        writebackTask = nil
+        guard writebackTask != nil else { return }
+        let newText = endPendingWriteback(from: textView)
         guard case .binding(let binding) = text else { return }
+        binding.wrappedValue = newText
+    }
+
+    // For an owner about to point the binding at another document, or to drop the editor: the debounced edit goes
+    // to the caller, and the edit latch is released so the next document's text is applied.
+    func takePendingWriteback(from textView: TextView) -> String? {
+        guard writebackTask != nil else { return nil }
+        let newText = endPendingWriteback(from: textView)
+        phase.consumePendingEditorChange()
+        return newText
+    }
+
+    private func endPendingWriteback(from textView: TextView) -> String {
+        writebackTask?.cancel()
+        writebackTask = nil
         let newText = textView.string
         lastSyncedText = newText
-        binding.wrappedValue = newText
+        return newText
     }
 
     /// Pushes an external binding change down into the text view. The editor's

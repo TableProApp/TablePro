@@ -35,6 +35,25 @@ extension RedisPluginDriver {
         connection conn: any RedisCommandChannel,
         startTime: Date
     ) async throws -> PluginQueryResult {
+        guard let staging = RedisConditionalWrite.stagingKey(written: operation), isIssuedStagingKey(staging) else {
+            return try await dispatchOperation(operation, connection: conn, startTime: startTime)
+        }
+        do {
+            return try await dispatchOperation(operation, connection: conn, startTime: startTime)
+        } catch let queued as RedisQueuedCommand {
+            throw queued
+        } catch {
+            // Sent outside any block: inside one it would be queued with the rest, and EXEC drops it there anyway.
+            _ = try? await conn.run(["DEL", staging], scope: .outsideBlock)
+            throw error
+        }
+    }
+
+    private func dispatchOperation(
+        _ operation: RedisOperation,
+        connection conn: any RedisCommandChannel,
+        startTime: Date
+    ) async throws -> PluginQueryResult {
         switch operation {
         case .get, .set, .del, .keys, .scan, .type, .ttl, .pttl, .expire, .persist, .rename, .exists:
             return try await executeKeyOperation(operation, connection: conn, startTime: startTime)
