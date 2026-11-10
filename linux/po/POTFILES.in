@@ -249,6 +249,7 @@ crates/app/src/ui/credential_prompt/presenter.rs
 crates/app/src/ui/credential_prompt/prompt_form.rs
 crates/app/src/ui/credential_prompt/prompt_text.rs
 crates/app/src/ui/credential_prompt/prompter.rs
+crates/app/src/ui/data_grid/cell_font.rs
 crates/app/src/ui/data_grid/client_sorter.rs
 crates/app/src/ui/data_grid/column_chooser.rs
 crates/app/src/ui/data_grid/columns.rs
