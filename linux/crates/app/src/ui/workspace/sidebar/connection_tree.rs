@@ -1746,8 +1746,6 @@ fn top_rows(tree: &gtk::TreeListModel) -> Vec<gtk::TreeListRow> {
     (0..count).filter_map(|position| tree.child_row(position)).collect()
 }
 
-/// The rows under an open row, which never holds a schema's tables when
-/// walked from the roots.
 // A schema's rows below its groups are objects, which may be many thousands.
 fn rows_holding_nodes(row: &gtk::TreeListRow, node: &TreeNode) -> Vec<gtk::TreeListRow> {
     match node.kind() {

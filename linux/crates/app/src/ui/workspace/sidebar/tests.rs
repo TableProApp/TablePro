@@ -1277,6 +1277,20 @@ fn a_row_tells_a_screen_reader_its_kind() {
     assert_eq!(description("Views").as_deref(), Some("1 object"));
     assert_eq!(description("Alpha").as_deref(), Some("Connection, connected"));
     assert_eq!(description("Beta").as_deref(), Some("Connection"));
+
+    let view_named = |name: &str| ObjectInfo {
+        kind: ObjectKind::View,
+        ..object("public", name)
+    };
+    view.show(SidebarIndex::build(
+        &[object("public", "orders"), view_named("totals"), view_named("weekly")],
+        &public(),
+    ));
+    assert_eq!(
+        description("Views").as_deref(),
+        Some("2 objects"),
+        "a new list recounts the group"
+    );
 }
 
 #[gtk4::test]

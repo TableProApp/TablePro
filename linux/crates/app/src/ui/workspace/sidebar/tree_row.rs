@@ -7,6 +7,7 @@ use gtk4::{glib, pango};
 use libadwaita as adw;
 use tablepro_session::SessionKey;
 
+use super::sidebar_list::SidebarList;
 use super::sidebar_object::SidebarObject;
 use super::tree_menu::DISCONNECT_SESSION;
 use super::tree_node::{NodeKind, TreeNode};
@@ -32,6 +33,8 @@ mod imp {
         pub(super) bindings: RefCell<Vec<glib::Binding>>,
         pub(super) expansion: RefCell<Option<(gtk::TreeListRow, glib::SignalHandlerId)>>,
         pub(super) emptiness: RefCell<Option<(gtk::gio::ListStore, glib::SignalHandlerId)>>,
+        // A new list changes the count of a kind's group whose row stays bound.
+        pub(super) counted: RefCell<Option<(SidebarList, glib::SignalHandlerId)>>,
         // The expander still says open or folded from an earlier row, which GTK leaves on it.
         pub(super) stated: Cell<bool>,
     }
@@ -57,6 +60,7 @@ mod imp {
                 bindings: RefCell::new(Vec::new()),
                 expansion: RefCell::new(None),
                 emptiness: RefCell::new(None),
+                counted: RefCell::new(None),
                 stated: Cell::new(false),
             }
         }
@@ -214,6 +218,9 @@ impl TreeRow {
         if let Some((store, watch)) = imp.emptiness.take() {
             store.disconnect(watch);
         }
+        if let Some((rows, watch)) = imp.counted.take() {
+            rows.disconnect(watch);
+        }
     }
 
     // GTK updates the expanded state on the expander's arrow, not on the expander a screen reader reads.
@@ -303,18 +310,25 @@ impl TreeRow {
             NodeKind::Schema => {
                 self.show_plain(item, crate::ui::icons::DRIVE_HARDDISK, &crate::i18n::gettext("Schema"));
             }
-            NodeKind::ObjectGroup => {
-                let count = node.rows().map_or(0, |rows| rows.n_items());
-                let description = crate::i18n::ngettext_f(
-                    "{count} object",
-                    "{count} objects",
-                    count,
-                    &[("count", &count.to_string())],
-                );
-                self.show_plain(item, crate::ui::icons::FOLDER, &description);
-            }
+            NodeKind::ObjectGroup => self.show_object_group(item, node),
             NodeKind::Placeholder => self.show_plain(item, crate::ui::icons::VIEW_GRID, ""),
             NodeKind::Connection => self.show_connection(node),
+        }
+    }
+
+    fn show_object_group(&self, item: &gtk::ListItem, node: &TreeNode) {
+        let Some(rows) = node.rows() else {
+            return;
+        };
+        self.show_plain(item, crate::ui::icons::FOLDER, &objects_description(rows.n_items()));
+        let item = item.downgrade();
+        let watch = rows.connect_items_changed(move |rows, _, _, _| {
+            if let Some(item) = item.upgrade() {
+                describe(&item, &objects_description(rows.n_items()));
+            }
+        });
+        if let Some((rows, watch)) = self.imp().counted.replace(Some((rows, watch))) {
+            rows.disconnect(watch);
         }
     }
 
@@ -402,6 +416,15 @@ impl TreeRow {
             kind.set_visible(false);
         }
     }
+}
+
+fn objects_description(count: u32) -> String {
+    crate::i18n::ngettext_f(
+        "{count} object",
+        "{count} objects",
+        count,
+        &[("count", &count.to_string())],
+    )
 }
 
 fn group_description(group: &TreeNode) -> String {
