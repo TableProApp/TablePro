@@ -245,11 +245,12 @@ fn the_safe_mode_lock_leaves_the_narrow_header_to_the_session_menu() {
             imp.breakpoint_bin.width() > 0 && imp.breakpoint_bin.current_breakpoint() == narrow
         })
         .expect("the breakpoint for the width");
-        wait_until(WAIT, || imp.safe_mode_button.is_visible()).expect("the connection's level");
-        assert_eq!(imp.safe_mode_slot.is_visible(), shown, "{name}");
+        // is_visible also reads the slot, which the narrow breakpoint hides.
+        wait_until(WAIT, || imp.safe_mode_button.get_visible()).expect("the connection's level");
+        assert_eq!(imp.safe_mode_button.is_visible(), shown, "{name}");
         shell.show_safe_mode(Some(tablepro_core::SafeModeLevel::ReadOnly));
         assert_eq!(
-            imp.safe_mode_slot.is_visible(),
+            imp.safe_mode_button.is_visible(),
             shown,
             "a level change kept the {name} layout"
         );
