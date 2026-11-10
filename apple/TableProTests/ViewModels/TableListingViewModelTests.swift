@@ -433,6 +433,33 @@ struct TableListingViewModelTests {
         #expect(model.displayIndex(of: orders) == 2)
     }
 
+    // Row ids are positions, so without this a table created above the selected one moved the highlight
+    // to its neighbour, and Return or the menu acted on the wrong table.
+    @Test("A refresh keeps the selection on the same object, and clears it when the object went")
+    func selectionFollowsItsObjectAcrossARefresh() async throws {
+        var actions: [ObjectListingAction] = []
+        let (viewModel, provider) = makeViewModel(perform: { actions.append($0) })
+        provider.answer(with: .names(["customers", "orders"]))
+        await viewModel.reload().value
+        let model = viewModel.grid.model
+        model.selectCell(GridCoord(row: 1, displayColumn: 0))
+        #expect(model.selectedRowIDs == [.existing(1)])
+
+        provider.answer(with: .names(["accounts", "customers", "orders"]))
+        await viewModel.reload().value
+
+        let selected = try #require(model.selectedRowIDs.first)
+        #expect(model.selectedRowIDs.count == 1)
+        #expect(viewModel.state.value?.items[selected]?.name == "orders")
+        viewModel.grid.gridOpenRow(selected)
+        #expect(actions == [.open(.relation(name: "orders", schema: "sales", type: .table))])
+
+        provider.answer(with: .names(["accounts", "customers"]))
+        await viewModel.reload().value
+
+        #expect(model.selectedRowIDs.isEmpty)
+    }
+
     @Test("The sort the reader chose orders the next listing too")
     func sortSurvivesARefresh() async {
         let (viewModel, provider) = makeViewModel()

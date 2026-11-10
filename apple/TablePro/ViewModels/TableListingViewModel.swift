@@ -153,22 +153,25 @@ internal final class TableListingViewModel: ObservableObject {
     private func commit(_ outcome: MetadataFetchOutcome<TableListing>, token: Int) {
         guard token == generation else { return }
         isRefreshing = false
+        let previous = state.value
         state = state.settled(by: outcome, discardingValue: false)
         // A cancel from here bumps the generation, so this one came from elsewhere and nothing else is coming.
         if case .cancelled = outcome, case .idle = state {
             wasInterrupted = true
         }
-        showRows()
+        showRows(replacing: previous)
     }
 
-    private func showRows() {
+    /// The grid keeps its selection by row id, which is a position here, so rows replacing `previous`
+    /// carry it to the same objects: Return and the menu act on what the reader picked.
+    private func showRows(replacing previous: TableListing? = nil) {
         guard let listing = state.value else {
             count = nil
             return
         }
         let shown = ObjectListingFilter.rows(of: listing, matching: filterText)
         count = ObjectListingCount(shown: shown.count, total: listing.rows.count)
-        grid.setRows(shown)
+        grid.setRows(shown, carryingSelection: previous.flatMap { listing.rowIDs(carriedFrom: $0) })
     }
 
     private func menuItems(for rowIDs: [RowID], clicked: RowID) -> [NSMenuItem] {

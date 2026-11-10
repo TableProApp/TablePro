@@ -32,6 +32,46 @@ internal enum ObjectListingItem: Hashable, Sendable {
     }
 }
 
+extension ObjectListingItem {
+    /// One object from one read to the next. Counts and comments change between reads, and overloads
+    /// or triggers on different tables share a name, so the key is the name, the schema and what
+    /// tells those apart.
+    struct Key: Hashable {
+        let name: String
+        let schema: String?
+        let table: String?
+        let argumentSignature: String?
+    }
+
+    var key: Key {
+        switch self {
+        case .relation(let name, let schema, _):
+            return Key(name: name, schema: schema, table: nil, argumentSignature: nil)
+        case .sourced(let ref):
+            return Key(name: ref.name, schema: ref.schema, table: ref.table, argumentSignature: ref.argumentSignature)
+        }
+    }
+}
+
+extension TableListing {
+    /// Where each object `previous` listed sits in this listing, by row id. Row ids are positions, so
+    /// an object created or dropped above another moves it to another id. Nil when `previous` names no
+    /// objects: its rows are plain values with nothing to follow.
+    func rowIDs(carriedFrom previous: TableListing) -> [RowID: RowID]? {
+        guard !previous.items.isEmpty else { return nil }
+        var rowIDsByKey: [ObjectListingItem.Key: RowID] = [:]
+        for row in rows.rows {
+            guard let item = items[row.id], rowIDsByKey[item.key] == nil else { continue }
+            rowIDsByKey[item.key] = row.id
+        }
+        var carried: [RowID: RowID] = [:]
+        for (rowID, item) in previous.items {
+            carried[rowID] = rowIDsByKey[item.key]
+        }
+        return carried
+    }
+}
+
 /// Where a plugin's table listing names its objects: the plugins alias the columns `name`,
 /// `schema` or `schema_name`, and `kind`. A shell command's listing has none of them.
 internal struct ObjectListingColumns: Equatable {

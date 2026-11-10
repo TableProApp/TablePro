@@ -55,8 +55,11 @@ final class HeldRowsGridAdapter: ObservableObject {
             }
     }
 
-    // The rows were replaced.
-    func setRows(_ rows: TableRows) {
+    // The rows were replaced. An owner whose row ids are positions passes where each selected row went.
+    func setRows(_ rows: TableRows, carryingSelection rowMap: [RowID: RowID]? = nil) {
+        if let rowMap {
+            model.carrySelection(rowMap)
+        }
         let previousColumns = displayedRows.columns
         heldRows = rows
         displayedRows = sortsHeldRows ? TableRowsSorting.sorted(rows, by: model.store.sortState) : rows
