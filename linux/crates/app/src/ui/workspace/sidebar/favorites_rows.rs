@@ -188,8 +188,7 @@ pub(super) fn install_menu(
         actions.add_action(&action);
     }
     list.insert_action_group("favorite", Some(&actions));
-    let menu = gtk::PopoverMenu::from_model(None::<&gio::MenuModel>);
-    menu.set_has_arrow(false);
+    let menu = crate::ui::context_menu::context_menu(None::<&gio::MenuModel>);
     menu.set_parent(list);
     let click = gtk::GestureClick::builder().button(gtk::gdk::BUTTON_SECONDARY).build();
     click.connect_pressed({
