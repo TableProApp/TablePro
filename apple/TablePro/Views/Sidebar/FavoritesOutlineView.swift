@@ -51,12 +51,9 @@ internal struct FavoritesOutlineActions {
     internal let performMenuCommand: (FavoritesMenuCommand) -> Void
 }
 
-/// The Favorites list as an `NSOutlineView`.
-///
-/// A SwiftUI `List` here could not draw an emphasized selection or answer an arrow key, because the
-/// app hosts it in a bare `NSHostingController` with no SwiftUI scene above it. Rows stay SwiftUI:
-/// AppKit publishes `NSTableCellView.backgroundStyle` into the hosted view's environment, so the
-/// existing row content keeps working with no emphasis plumbing of its own.
+/// The Favorites list as an `NSOutlineView`, for dragging a favorite out and in-place rename.
+/// Rows stay SwiftUI: AppKit publishes `NSTableCellView.backgroundStyle` into the hosted view's
+/// environment, so the row content needs no emphasis plumbing of its own.
 internal struct FavoritesOutlineView<Row: View>: NSViewRepresentable {
     internal let input: FavoritesOutlineInput
     @Binding internal var selection: FavoriteSelection?

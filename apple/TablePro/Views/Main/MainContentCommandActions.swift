@@ -468,6 +468,12 @@ final class MainContentCommandActions: ObservableObject {
         return !coordinator.tabSessionRegistry.tableRows(for: tab.id).rows.isEmpty
     }
 
+    // Export Results on a Table Health tab exports its findings, which are not a result set.
+    var hasTableHealthFindings: Bool {
+        guard let coordinator, let tab = coordinator.tabManager.selectedTab, tab.tabType == .tableHealth else { return false }
+        return coordinator.tableHealthModels[tab.id]?.hasExportableRows == true
+    }
+
     var hasRowSelection: Bool {
         selectionOwner != .none && coordinator?.activeGridModel?.selection.isEmpty == false
     }
@@ -752,6 +758,8 @@ final class MainContentCommandActions: ObservableObject {
             return await withCheckedContinuation { continuation in
                 coordinator.saveCompletionContinuation = continuation
                 saveChanges()
+                // Still there when the command went somewhere other than the grid save, which reports nothing back.
+                coordinator.takeSaveCompletion()?.resume(returning: false)
             }
         }
 
@@ -976,8 +984,12 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func exportQueryResults() {
-        guard coordinator?.admitsSheetCommand() == true else { return }
-        coordinator?.openExportQueryResultsDialog()
+        guard let coordinator, coordinator.admitsSheetCommand() else { return }
+        if let tab = coordinator.tabManager.selectedTab, tab.tabType == .tableHealth {
+            coordinator.openTableHealthExport(forTab: tab.id)
+            return
+        }
+        coordinator.openExportQueryResultsDialog()
     }
 
     func importData() {

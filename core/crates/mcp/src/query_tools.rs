@@ -5,7 +5,7 @@ use serde::Serialize;
 use tablepro_core::browse::{DeclaredPrecisionSink, ExportRequest, build_count, build_export};
 use tablepro_core::meta::{ObjectScope, RowIdentity};
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan};
-use tablepro_core::sql_syntax::{SqlGrammar, changes_catalog, statement_access};
+use tablepro_core::sql_syntax::{SqlGrammar, StatementAccess, changes_catalog, statement_access};
 use tablepro_core::{
     CallOptions, ColumnInfo, EditorSessionOptions, ExternalGate, ExternalRefusal, ReadStatement, ResultSink, RowLimit,
     RunEnd, RunOptions, TableRef, TransactionState, UserSql,
@@ -21,7 +21,7 @@ use crate::connection_tools::to_json;
 use crate::mcp_host::WriteApproval;
 use crate::schema_tools::no_such_table;
 use crate::tool_args::{BrowseArgs, CountArgs, QueryArgs};
-use crate::tool_context::ToolContext;
+use crate::tool_context::{HeldSession, ToolContext};
 use crate::tool_error::ToolError;
 
 pub const DEFAULT_ROWS: u32 = 100;
@@ -47,13 +47,19 @@ pub async fn execute_query(
             args.query.len()
         )));
     }
-    let session = context.session(&connection).await?;
+    let HeldSession { session, database } = context.held_session(&connection, args.database.as_deref()).await?;
     let dialect = session
         .current_dialect()
         .ok_or_else(|| ToolError::NotConnected(format!("“{}” has no connection right now", connection.name)))?;
     let grammar = dialect.grammar();
     let text = single_batch(&args.query, grammar)?;
     let access = statement_access(&text, grammar);
+    // Before the gate, so a client that asked for a read never puts a write to the user.
+    if args.read_only && access != StatementAccess::Read {
+        return Err(ToolError::Denied(
+            "the call set read_only, and the statement can change the database".to_owned(),
+        ));
+    }
     let (ran, executed_at, elapsed) = match connection.external_access.gate(session.safe_mode(), access) {
         ExternalGate::Refuse(reason) => return Err(refusal(&connection, reason)),
         ExternalGate::Run => {
@@ -65,6 +71,7 @@ pub async fn execute_query(
             let approval = WriteApproval {
                 connection_id: connection.id,
                 connection_name: connection.name.clone(),
+                database,
                 sql: text.clone(),
                 destructive,
                 cancel: cancel.clone(),
@@ -235,7 +242,7 @@ async fn run_write(session: &Session, text: &str, limit: usize, timeout: Duratio
 /// `limit` rows of each result set and stopping at the row past them.
 /// A table's rows pass through `precision`, so a decimal keeps the scale
 /// its column declares, as in an export.
-async fn stream<F>(
+pub(crate) async fn stream<F>(
     session: &Session,
     limit: usize,
     timeout: Duration,
@@ -313,7 +320,10 @@ pub async fn browse_table(
 }
 
 /// The table's columns and how its rows are told apart, read together.
-async fn table_shape(session: &Session, table: &TableRef) -> Result<(Vec<ColumnInfo>, RowIdentity), ToolError> {
+pub(crate) async fn table_shape(
+    session: &Session,
+    table: &TableRef,
+) -> Result<(Vec<ColumnInfo>, RowIdentity), ToolError> {
     let read = session
         .run(OperationKind::Metadata, |lease, call| {
             let table = table.clone();
@@ -362,7 +372,7 @@ pub async fn count_rows(context: &ToolContext, args: CountArgs) -> Result<String
     })
 }
 
-fn row_limit(asked: Option<u32>, name: &str) -> Result<usize, ToolError> {
+pub(crate) fn row_limit(asked: Option<u32>, name: &str) -> Result<usize, ToolError> {
     match asked.unwrap_or(DEFAULT_ROWS) {
         rows @ 1..=MAX_ROWS => Ok(rows as usize),
         rows => Err(ToolError::InvalidArgument(format!(

@@ -294,9 +294,8 @@ final class OpenAIResponsesProvider: ChatTransport {
     }
 
     static func decodeStreamLine(_ line: String) -> [String: Any]? {
-        guard line.hasPrefix("data: ") else { return nil }
-        let payload = String(line.dropFirst(6))
-        guard payload != "[DONE]",
+        guard let payload = SSEEventStream.dataPayload(line),
+              payload != "[DONE]",
               let data = payload.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }

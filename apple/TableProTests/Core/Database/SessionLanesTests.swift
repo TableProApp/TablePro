@@ -22,6 +22,8 @@ struct SessionLanesTests {
         var openCount = 0
         var failure: Error?
         var schemaForNextOpen: String?
+        var inOrder: [MockDatabaseDriver] = []
+        var holdsNextOpen: AsyncGate?
 
         func open(_ scope: DatabaseScope) async throws -> DatabaseDriver {
             openCount += 1
@@ -29,6 +31,11 @@ struct SessionLanesTests {
             let driver = MockDatabaseDriver()
             driver.currentSchema = schemaForNextOpen
             opened[scope.database] = driver
+            inOrder.append(driver)
+            if let gate = holdsNextOpen {
+                holdsNextOpen = nil
+                await gate.wait()
+            }
             return driver
         }
     }
@@ -207,7 +214,226 @@ struct SessionLanesTests {
 
         #expect(harness.home.disconnectCallCount == 1)
         let scope = DatabaseScope(connectionId: harness.connection.id, database: "app", schema: nil)
-        #expect(DatabaseManager.shared.executionRoute(for: scope) == .pooled)
+        #expect(DatabaseManager.shared.sessionLanes.parkedDriver(for: harness.connection.id, database: "app") == nil)
+        #expect(DatabaseManager.shared.tableReadRoute(for: scope) == .pooled)
+    }
+
+    @Test("SQL on a database never browsed runs on a session connection of its own, which tracks its transaction")
+    func userSQLOpensItsOwnSessionConnection() async throws {
+        let harness = makeHarness()
+        defer { cleanUp(harness) }
+        let manager = DatabaseManager.shared
+        let scope = DatabaseScope(connectionId: harness.connection.id, database: "logs", schema: nil)
+
+        let route = manager.executionRoute(for: scope)
+        let ranOn = try await manager.withScopedDriver(
+            scope: scope, route: route, cancellation: .untracked
+        ) { driver -> ObjectIdentifier in
+            (driver as? MockDatabaseDriver)?.sessionTransactionStateToReturn = .inTransaction
+            return ObjectIdentifier(driver)
+        }
+
+        let logs = try #require(harness.opener.opened["logs"])
+        #expect(route == .sessionDriver)
+        #expect(ranOn == ObjectIdentifier(logs))
+        #expect(manager.sessionLanes.parkedDriver(for: harness.connection.id, database: "logs") === logs)
+        #expect(manager.sessionTransactions.holdsTransaction(connectionId: harness.connection.id, container: "logs"))
+        #expect(session(harness)?.driver === harness.home)
+        #expect(session(harness)?.resolvedBrowseDatabase == "app")
+
+        let ranAgainOn = try await manager.withScopedDriver(
+            scope: scope, route: manager.executionRoute(for: scope), cancellation: .untracked
+        ) { driver in ObjectIdentifier(driver) }
+
+        #expect(ranAgainOn == ObjectIdentifier(logs))
+        #expect(harness.opener.openCount == 1)
+        #expect(logs.disconnectCallCount == 0)
+    }
+
+    private func run(
+        _ harness: Harness,
+        on database: String,
+        leaving state: PluginSessionTransactionState
+    ) async throws -> ObjectIdentifier {
+        let scope = DatabaseScope(connectionId: harness.connection.id, database: database, schema: nil)
+        return try await DatabaseManager.shared.withScopedDriver(
+            scope: scope, route: DatabaseManager.shared.executionRoute(for: scope), cancellation: .untracked
+        ) { driver -> ObjectIdentifier in
+            (driver as? MockDatabaseDriver)?.sessionTransactionStateToReturn = state
+            return ObjectIdentifier(driver)
+        }
+    }
+
+    @Test("A connection opened for SQL on a database never browsed is closed once idle, and reopened on the next use")
+    func openedConnectionClosesWhenIdle() async throws {
+        let harness = makeHarness()
+        defer { cleanUp(harness) }
+        let manager = DatabaseManager.shared
+        _ = try await run(harness, on: "logs", leaving: .idle)
+        let logs = try #require(harness.opener.opened["logs"])
+
+        await manager.closeIdleOpenedLanes(for: harness.connection.id)
+        #expect(logs.disconnectCallCount == 0)
+
+        await manager.closeIdleOpenedLanes(for: harness.connection.id, idleFor: 0)
+        #expect(logs.disconnectCallCount == 1)
+        #expect(manager.sessionLanes.parkedDriver(for: harness.connection.id, database: "logs") == nil)
+
+        let reopenedOn = try await run(harness, on: "logs", leaving: .idle)
+        #expect(harness.opener.openCount == 2)
+        #expect(reopenedOn != ObjectIdentifier(logs))
+    }
+
+    @Test("An idle connection that holds a transaction, or cannot say, is never closed")
+    func openedConnectionHoldingATransactionStays() async throws {
+        let harness = makeHarness()
+        defer { cleanUp(harness) }
+        let manager = DatabaseManager.shared
+        _ = try await run(harness, on: "logs", leaving: .inTransaction)
+        _ = try await run(harness, on: "audit", leaving: .unknown)
+
+        await manager.closeIdleOpenedLanes(for: harness.connection.id, idleFor: 0)
+
+        #expect(harness.opener.opened["logs"]?.disconnectCallCount == 0)
+        #expect(harness.opener.opened["audit"]?.disconnectCallCount == 0)
+        #expect(manager.sessionLanes.parkedDatabases(for: harness.connection.id).sorted() == ["audit", "logs"])
+    }
+
+    @Test("The connection of a database the user browsed and left is not closed for being idle")
+    func browsedConnectionIsNotClosedWhenIdle() async throws {
+        let harness = makeHarness()
+        defer { cleanUp(harness) }
+        let manager = DatabaseManager.shared
+        harness.home.sessionTransactionStateToReturn = .idle
+        try await manager.switchDatabase(to: "logs", for: harness.connection.id, persist: false)
+        _ = try await run(harness, on: "app", leaving: .idle)
+
+        await manager.closeIdleOpenedLanes(for: harness.connection.id, idleFor: 0)
+
+        #expect(harness.home.disconnectCallCount == 0)
+        #expect(manager.sessionLanes.parkedDriver(for: harness.connection.id, database: "app") === harness.home)
+    }
+
+    @Test("A switch that lands while the database's first statement holds a new connection browses on that connection")
+    func switchAdoptsTheConnectionAStatementOpened() async throws {
+        let harness = makeHarness()
+        defer { cleanUp(harness) }
+        let manager = DatabaseManager.shared
+        let connectionId = harness.connection.id
+        let hold = AsyncGate()
+        harness.opener.holdsNextOpen = hold
+        let switching = Task { @MainActor in
+            try await manager.switchDatabase(to: "logs", for: connectionId, persist: false)
+        }
+        await hold.arrived(1)
+
+        let ranOn = try await run(harness, on: "logs", leaving: .inTransaction)
+        await hold.open()
+        try await switching.value
+
+        let switchOpened = try #require(harness.opener.inOrder.first)
+        let statementOpened = try #require(harness.opener.inOrder.last)
+        #expect(harness.opener.inOrder.count == 2)
+        #expect(ranOn == ObjectIdentifier(statementOpened))
+        #expect(session(harness)?.driver === statementOpened)
+        #expect(statementOpened.disconnectCallCount == 0)
+        #expect(switchOpened.disconnectCallCount == 1)
+        #expect(manager.sessionTransactions.holdsTransaction(connectionId: connectionId, container: "logs"))
+        #expect(manager.sessionLanes.parkedDriver(for: connectionId, database: "app") === harness.home)
+    }
+
+    @Test("A statement whose database became the browsed one while it opened a connection runs on the browsed one")
+    func statementRunsOnTheConnectionASwitchInstalled() async throws {
+        let harness = makeHarness()
+        defer { cleanUp(harness) }
+        let manager = DatabaseManager.shared
+        let connectionId = harness.connection.id
+        let hold = AsyncGate()
+        harness.opener.holdsNextOpen = hold
+        let statement = Task { @MainActor in
+            try await self.run(harness, on: "logs", leaving: .idle)
+        }
+        await hold.arrived(1)
+
+        try await manager.switchDatabase(to: "logs", for: connectionId, persist: false)
+        await hold.open()
+        let ranOn = try await statement.value
+
+        let statementOpened = try #require(harness.opener.inOrder.first)
+        let switchOpened = try #require(harness.opener.inOrder.last)
+        #expect(ranOn == ObjectIdentifier(switchOpened))
+        #expect(session(harness)?.driver === switchOpened)
+        #expect(statementOpened.disconnectCallCount == 1)
+        #expect(switchOpened.disconnectCallCount == 0)
+    }
+
+    @Test("A switch elsewhere on the connection while a statement opens its connection does not fail the statement")
+    func unrelatedSwitchDoesNotFailTheStatement() async throws {
+        let harness = makeHarness()
+        defer { cleanUp(harness) }
+        let manager = DatabaseManager.shared
+        let hold = AsyncGate()
+        harness.opener.holdsNextOpen = hold
+        let statement = Task { @MainActor in
+            try await self.run(harness, on: "logs", leaving: .idle)
+        }
+        await hold.arrived(1)
+
+        _ = manager.sessionLanes.beginSwitch(for: harness.connection.id)
+        await hold.open()
+        let ranOn = try await statement.value
+
+        let superseded = try #require(harness.opener.inOrder.first)
+        let parked = try #require(manager.sessionLanes.parkedDriver(for: harness.connection.id, database: "logs"))
+        #expect(harness.opener.openCount == 2)
+        #expect(superseded.disconnectCallCount == 1)
+        #expect(ranOn == ObjectIdentifier(parked))
+    }
+
+    @Test("A server that refuses the session connection fails the statement and parks nothing")
+    func refusedSessionConnectionFailsTheStatement() async throws {
+        let harness = makeHarness()
+        defer { cleanUp(harness) }
+        harness.opener.failure = DatabaseError.connectionFailed("too many connections")
+        let scope = DatabaseScope(connectionId: harness.connection.id, database: "logs", schema: nil)
+
+        await #expect(throws: DatabaseError.self) {
+            try await DatabaseManager.shared.withScopedDriver(
+                scope: scope, route: .sessionDriver, cancellation: .untracked
+            ) { _ in () }
+        }
+
+        #expect(DatabaseManager.shared.sessionLanes.parkedDatabases(for: harness.connection.id).isEmpty)
+    }
+
+    @Test("A statement queued for a connection that is gone by its turn is refused, not moved onto a new one")
+    func statementQueuedForAGoneConnectionIsRefused() async throws {
+        let harness = makeHarness()
+        defer { cleanUp(harness) }
+        let manager = DatabaseManager.shared
+        try await manager.switchDatabase(to: "logs", for: harness.connection.id, persist: false)
+        let scope = DatabaseScope(connectionId: harness.connection.id, database: "app", schema: nil)
+        let key = SessionDriverGate.Key(connectionId: harness.connection.id, database: "app")
+        let acquired = AsyncGate()
+        let release = AsyncGate()
+        let holder = Task { @MainActor in
+            try await manager.sessionDriverGate.withExclusiveAccess(key) {
+                await acquired.open()
+                await release.wait()
+            }
+        }
+        await acquired.wait()
+        let queued = Task { @MainActor in
+            try await manager.withScopedDriver(scope: scope, route: .sessionDriver, cancellation: .untracked) { _ in () }
+        }
+        try await waitUntil { manager.sessionDriverGate.waiterCount(for: harness.connection.id) >= 1 }
+
+        manager.sessionLanes.close(database: "app", for: harness.connection.id)
+        await release.open()
+        try await holder.value
+
+        await #expect(throws: (any Error).self) { try await queued.value }
+        #expect(harness.opener.opened["app"] == nil)
     }
 
     @Test("Ending the session closes every database's connection")
@@ -419,7 +645,26 @@ struct SessionLanesTests {
                 cancellation: .untracked
             ) { _ in () }
         }
-        #expect(DatabaseManager.shared.executionRoute(for: scope) == .pooled)
+        #expect(!DatabaseManager.shared.sessionLanes.hasTransactionLoss(database: "app", for: harness.connection.id))
+    }
+
+    @Test("A table read leaves a lost transaction's report for the user's next statement")
+    func tableReadLeavesTheLossReport() async throws {
+        let harness = makeHarness()
+        defer { cleanUp(harness) }
+        let manager = DatabaseManager.shared
+        manager.sessionLanes.markTransactionLost(database: "app", for: harness.connection.id)
+        let scope = DatabaseScope(connectionId: harness.connection.id, database: "app", schema: nil)
+
+        let ranOn = try await manager.withTableReadDriver(scope: scope, cancellation: .untracked) { driver in
+            ObjectIdentifier(driver)
+        }
+
+        #expect(ranOn == ObjectIdentifier(harness.home))
+        #expect(manager.sessionLanes.hasTransactionLoss(database: "app", for: harness.connection.id))
+        await #expect(throws: DatabaseError.self) {
+            try await manager.withScopedDriver(scope: scope, route: .sessionDriver, cancellation: .untracked) { _ in () }
+        }
     }
 
     @Test("Closing a database supersedes a reopen of it still in flight")

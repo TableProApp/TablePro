@@ -176,7 +176,7 @@ struct RedisCommandParserKeyCommandTests {
 
     @Test(
         "A SET option the parser does not model goes out verbatim",
-        arguments: ["SET k v KEEPTTL", "SET k v GET"]
+        arguments: ["SET k v GET", "SET k v EX 5 GET"]
     )
     func setWithUnmodelledOptionIsVerbatim(input: String) throws {
         let op = try RedisCommandParser.parse(input)
@@ -186,6 +186,44 @@ struct RedisCommandParserKeyCommandTests {
         }
         let texts = args.map(\.text)
         #expect(texts == input.split(separator: " ").map(String.init))
+    }
+
+    @Test("SET with KEEPTTL stays typed and carries the option")
+    func setWithKeepTTL() throws {
+        let op = try RedisCommandParser.parse("SET k v KEEPTTL")
+        guard case .set(_, _, let options) = op else {
+            Issue.record("Expected .set, got \(op)")
+            return
+        }
+        #expect(options?.keepTTL == true)
+    }
+
+    @Test("MUSTAPPLY carries the command it wraps, bytes intact")
+    func mustApplyCarriesItsCommand() throws {
+        let op = try RedisCommandParser.parse("MUSTAPPLY RENAMENX \"old key\" new")
+        guard case .mustApply(let args) = op else {
+            Issue.record("Expected .mustApply, got \(op)")
+            return
+        }
+        #expect(args.map(\.text) == ["RENAMENX", "old key", "new"])
+        #expect(op.mustApply)
+        #expect(try RedisCommandParser.parse("DB 2 MUSTAPPLY SET k v NX").mustApply)
+        #expect(try !RedisCommandParser.parse("SET k v NX").mustApply)
+        #expect(try RedisCommandParser.parse("MUSTAPPLY SET k v EX 60 NX").mustApply)
+    }
+
+    @Test(
+        "MUSTAPPLY refuses every command but RENAMENX and SET with NX",
+        arguments: [
+            "MUSTAPPLY", "MUSTAPPLY FLUSHALL", "MUSTAPPLY EVAL \"return 1\" 0", "MUSTAPPLY CONFIG SET dir /tmp",
+            "MUSTAPPLY SHUTDOWN", "DB 0 MUSTAPPLY FLUSHDB", "MUSTAPPLY SELECT 1", "MUSTAPPLY MULTI",
+            "MUSTAPPLY RENAME a b", "MUSTAPPLY RENAMENX a", "MUSTAPPLY RENAMENX a b c",
+            "MUSTAPPLY SET k v", "MUSTAPPLY SET k v XX", "MUSTAPPLY SET k v EX NX", "MUSTAPPLY SET k v NX GET",
+            "MUSTAPPLY MUSTAPPLY RENAMENX a b", "MUSTAPPLY DB 0 RENAMENX a b",
+        ]
+    )
+    func mustApplyRefusesOtherCommands(input: String) {
+        #expect(throws: RedisParseError.self) { try RedisCommandParser.parse(input) }
     }
 
     @Test("SET with EXAT carries the timestamp")
@@ -1042,7 +1080,7 @@ struct RedisCommandParserAppStatementTests {
     func insertsStayTyped(type: String) throws {
         let value = type == "hash" ? #"{"f":"v w"}"# : "a \"quoted\" value"
         let statements = try insertStatements(key: "user:1 x", type: type, value: value)
-        #expect(statements.count == 2)
+        #expect(statements.count == (type == "string" ? 1 : 2))
         for statement in statements {
             #expect(try !isVerbatim(statement), "\(statement)")
         }

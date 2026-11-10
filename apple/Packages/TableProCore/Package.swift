@@ -578,6 +578,11 @@ let package = Package(
             swiftSettings: pluginCoreSettings
         ),
         .testTarget(
+            name: "TableProDocumentPathTests",
+            dependencies: ["TableProDocumentPath"],
+            path: "Tests/TableProDocumentPathTests"
+        ),
+        .testTarget(
             name: "TableProRedisCoreTests",
             dependencies: ["TableProRedisCore"],
             path: "Tests/TableProRedisCoreTests",

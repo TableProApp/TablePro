@@ -341,13 +341,18 @@ struct AIChatWalkthroughBlockView: View {
             .clipShape(RoundedRectangle(cornerRadius: 4))
     }
 
+    private static var askSymbol: String {
+        if #available(macOS 15.0, *) { return "bubble.and.pencil" }
+        return "text.bubble"
+    }
+
     @ViewBuilder
     private func followUpControls(for step: SqlWalkthroughStep, index: Int) -> some View {
         Button {
             followUpText = ""
             activeFollowUpStepID = step.id
         } label: {
-            Label(String(localized: "Ask about this change"), systemImage: "bubble.and.pencil")
+            Label(String(localized: "Ask about this change"), systemImage: Self.askSymbol)
                 .font(.caption)
         }
         .buttonStyle(.link)

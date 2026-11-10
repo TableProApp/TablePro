@@ -64,7 +64,7 @@ private struct GeometryMapWindowContent: View {
             Button {
                 fitToken &+= 1
             } label: {
-                Label(String(localized: "Fit to Geometry"), systemImage: "arrow.down.left.and.arrow.up.right")
+                Label(String(localized: "Fit to Geometry"), systemImage: "arrow.up.left.and.arrow.down.right")
             }
             .buttonStyle(.borderless)
             .controlSize(.small)

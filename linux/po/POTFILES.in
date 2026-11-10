@@ -15,6 +15,7 @@ crates/app/src/application/mcp_bridge.rs
 crates/app/src/application/metainfo_release.rs
 crates/app/src/application/mod.rs
 crates/app/src/application/open_files.rs
+crates/app/src/application/open_links.rs
 crates/app/src/application/quit_sequence.rs
 crates/app/src/application/runtime_versions.rs
 crates/app/src/application/session_signals.rs
@@ -26,6 +27,8 @@ crates/app/src/application/third_party_licenses.rs
 crates/app/src/application/window_host.rs
 crates/app/src/application/window_launch.rs
 crates/app/src/application/window_registry.rs
+crates/app/src/command_line/linux_host.rs
+crates/app/src/command_line/mod.rs
 crates/app/src/config.rs
 crates/app/src/crash_report.rs
 crates/app/src/i18n.rs
@@ -70,6 +73,7 @@ crates/app/src/services/change_tracker.rs
 crates/app/src/services/change_tracker_registry.rs
 crates/app/src/services/column_relayout.rs
 crates/app/src/services/connection_deletion.rs
+crates/app/src/services/connection_link.rs
 crates/app/src/services/connection_search.rs
 crates/app/src/services/deletion_error.rs
 crates/app/src/services/deletion_report.rs
@@ -86,6 +90,7 @@ crates/app/src/services/grid/cell_preset.rs
 crates/app/src/services/grid/column_layout.rs
 crates/app/src/services/grid/column_width.rs
 crates/app/src/services/grid/copy_scope.rs
+crates/app/src/services/grid/date_display.rs
 crates/app/src/services/grid/delete_availability.rs
 crates/app/src/services/grid/display_text.rs
 crates/app/src/services/grid/edit_navigation.rs
@@ -101,6 +106,7 @@ crates/app/src/services/grid/result_refusal.rs
 crates/app/src/services/grid/row_key_builder.rs
 crates/app/src/services/grid/row_snapshot.rs
 crates/app/src/services/grid/selection_summary.rs
+crates/app/src/services/grid/special_characters.rs
 crates/app/src/services/grid/test_columns.rs
 crates/app/src/services/history_availability.rs
 crates/app/src/services/history_preferences.rs
@@ -197,6 +203,7 @@ crates/app/src/ui/browse_tab/count_failure_text.rs
 crates/app/src/ui/browse_tab/count_policy.rs
 crates/app/src/ui/browse_tab/data_handlers.rs
 crates/app/src/ui/browse_tab/data_input.rs
+crates/app/src/ui/browse_tab/default_sort.rs
 crates/app/src/ui/browse_tab/fetch.rs
 crates/app/src/ui/browse_tab/grid_handlers.rs
 crates/app/src/ui/browse_tab/grid_input.rs
@@ -215,6 +222,7 @@ crates/app/src/ui/browse_tab/row_total.rs
 crates/app/src/ui/browse_tab/save_handlers.rs
 crates/app/src/ui/browse_tab/save_input.rs
 crates/app/src/ui/browse_tab/table_filter.rs
+crates/app/src/ui/browse_tab/tests/default_sort.rs
 crates/app/src/ui/browse_tab/tests/load.rs
 crates/app/src/ui/browse_tab/tests/mod.rs
 crates/app/src/ui/browse_tab/tests/references.rs
@@ -292,15 +300,19 @@ crates/app/src/ui/data_grid/row_detail/calendar.rs
 crates/app/src/ui/data_grid/row_detail/clock.rs
 crates/app/src/ui/data_grid/row_detail/fields.rs
 crates/app/src/ui/data_grid/row_detail/imp.rs
+crates/app/src/ui/data_grid/row_detail/invisibles.rs
 crates/app/src/ui/data_grid/row_detail/mod.rs
 crates/app/src/ui/data_grid/row_detail/picture.rs
 crates/app/src/ui/data_grid/row_detail/tests.rs
 crates/app/src/ui/data_grid/row_detail/value_editor.rs
 crates/app/src/ui/data_grid/row_json_dialog.rs
 crates/app/src/ui/data_grid/row_number_column.rs
+crates/app/src/ui/data_grid/scheme_colors/mod.rs
+crates/app/src/ui/data_grid/scheme_colors/tests.rs
 crates/app/src/ui/data_grid/selection.rs
 crates/app/src/ui/data_grid/selection_summary.rs
 crates/app/src/ui/data_grid/server_sorter.rs
+crates/app/src/ui/data_grid/special_marks.rs
 crates/app/src/ui/data_grid/stripes.rs
 crates/app/src/ui/data_grid/table_keys.rs
 crates/app/src/ui/data_grid/test_grid.rs
@@ -503,6 +515,14 @@ crates/app/src/ui/preferences_dialog/history_group.rs
 crates/app/src/ui/preferences_dialog/imp.rs
 crates/app/src/ui/preferences_dialog/mcp_page.rs
 crates/app/src/ui/preferences_dialog/mod.rs
+crates/app/src/ui/quick_open/matching.rs
+crates/app/src/ui/quick_open/mod.rs
+crates/app/src/ui/quick_open/past_source.rs
+crates/app/src/ui/quick_open/past_tests.rs
+crates/app/src/ui/quick_open/query_source.rs
+crates/app/src/ui/quick_open/search_index.rs
+crates/app/src/ui/quick_open/tests.rs
+crates/app/src/ui/quick_open/tests/queries.rs
 crates/app/src/ui/result_pane/mod.rs
 crates/app/src/ui/result_pane/result_limit_banner.rs
 crates/app/src/ui/result_pane/result_set_view.rs
@@ -620,6 +640,7 @@ crates/app/src/ui/workspace/database_transfer.rs
 crates/app/src/ui/workspace/definitions.rs
 crates/app/src/ui/workspace/diagram.rs
 crates/app/src/ui/workspace/editor_label.rs
+crates/app/src/ui/workspace/favorite_folders.rs
 crates/app/src/ui/workspace/finished_work.rs
 crates/app/src/ui/workspace/health_banner.rs
 crates/app/src/ui/workspace/imp.rs
@@ -632,7 +653,10 @@ crates/app/src/ui/workspace/saves.rs
 crates/app/src/ui/workspace/session_watches.rs
 crates/app/src/ui/workspace/sidebar/catalog_watch.rs
 crates/app/src/ui/workspace/sidebar/connection_tree.rs
+crates/app/src/ui/workspace/sidebar/favorites_index.rs
 crates/app/src/ui/workspace/sidebar/favorites_pane.rs
+crates/app/src/ui/workspace/sidebar/favorites_pane_tests.rs
+crates/app/src/ui/workspace/sidebar/favorites_rows.rs
 crates/app/src/ui/workspace/sidebar/key_listing.rs
 crates/app/src/ui/workspace/sidebar/mod.rs
 crates/app/src/ui/workspace/sidebar/object_key.rs
