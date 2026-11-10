@@ -16,6 +16,8 @@ nonisolated final class IOSDriverFactory: DriverFactory {
     private let secureStore: any SecureStore
     // The session configuration of an engine reached over HTTPS, which a test points at its own URLProtocol.
     private let apiSessionConfiguration: @Sendable () -> URLSessionConfiguration
+    // Times how long a MySQL kill may reuse the token its session signed in with.
+    private let clock: any Clock<Duration>
 
     init(
         bookmarkStore: FileBookmarkStore = FileBookmarkStore(),
@@ -23,7 +25,8 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         localFiles: LocalDatabaseFileLocator = .live,
         mint: IAMPasswordMint = IAMPasswordMint(),
         secureStore: any SecureStore = KeychainSecureStore(),
-        apiSessionConfiguration: @escaping @Sendable () -> URLSessionConfiguration = { .default }
+        apiSessionConfiguration: @escaping @Sendable () -> URLSessionConfiguration = { .default },
+        clock: any Clock<Duration> = ContinuousClock()
     ) {
         self.bookmarkStore = bookmarkStore
         self.materializer = materializer
@@ -31,6 +34,7 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         self.mint = mint
         self.secureStore = secureStore
         self.apiSessionConfiguration = apiSessionConfiguration
+        self.clock = clock
     }
 
     private func sqliteSource(for connection: DatabaseConnection) throws -> LocalDatabaseFileSource {
@@ -120,6 +124,15 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         password: String?,
         preTunnelHost: String?
     ) throws -> any DatabaseDriver {
+        try createDriver(for: connection, password: password, preTunnelHost: preTunnelHost, refreshPassword: nil)
+    }
+
+    func createDriver(
+        for connection: DatabaseConnection,
+        password: String?,
+        preTunnelHost: String?,
+        refreshPassword: (@Sendable () async throws -> String?)?
+    ) throws -> any DatabaseDriver {
         switch connection.type {
         case .sqlite where connection.isSample:
             return SQLiteDriver(source: .file(try SampleDatabaseInstaller.live.installIfNeeded()))
@@ -140,7 +153,11 @@ nonisolated final class IOSDriverFactory: DriverFactory {
                 ssl: try ssl(for: connection, serverName: preTunnelHost),
                 databaseType: connection.type,
                 connectionEncoding: MySQLConnectionEncoding(additionalFields: connection.additionalFields),
-                signsInWithToken: connection.iamSignIn != nil
+                signsInWithToken: connection.iamSignIn != nil,
+                queryTimeoutSeconds: connection.queryTimeoutSeconds,
+                // Only a token expires; a password session signs in again with the password it has.
+                refreshPassword: connection.iamSignIn == nil ? nil : refreshPassword,
+                clock: clock
             )
         case .postgresql, .redshift:
             guard connection.macSocketPath == nil else {
