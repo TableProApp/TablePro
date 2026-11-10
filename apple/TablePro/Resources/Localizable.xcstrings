@@ -56488,6 +56488,9 @@
         }
       }
     },
+    "Created Date" : {
+
+    },
     "Created the database %@." : {
       "localizations" : {
         "fr" : {
@@ -58455,6 +58458,9 @@
     "Data Grid Text" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Data Length" : {
+
     },
     "Data loss" : {
       "localizations" : {
@@ -93246,6 +93252,9 @@
         }
       }
     },
+    "In the Tree layout, lists every saved connection in its groups at the top of the sidebar, with the connection on screen opened to its databases. Double-click another one to open it." : {
+
+    },
     "In-memory data store and cache" : {
       "localizations" : {
         "fr" : {
@@ -111173,6 +111182,9 @@
         }
       }
     },
+    "Modified Date" : {
+
+    },
     "Modified:" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -113734,6 +113746,9 @@
       }
     },
     "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons and the connections list, and makes Tree the default sidebar layout. Standard Layout turns them off again. Open connections switch layout too." : {
+
+    },
+    "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the tree, and makes Tree the default sidebar layout. Standard Layout turns them off again. Open connections switch layout too." : {
 
     },
     "Navigator Layout turns on table details, the Objects tab on selection, the Objects toolbar buttons and the connections list, and makes Tree the default sidebar layout. Standard Layout turns them off again. Open connections switch layout too." : {
@@ -166869,6 +166884,9 @@
       }
     },
     "Show rows in %@" : {
+
+    },
+    "Show saved connections in the database tree" : {
 
     },
     "Show Sidebar" : {
