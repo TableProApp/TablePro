@@ -84,8 +84,8 @@ internal enum DatabaseTreeSelection {
         case .containerObjectKindSection(let group):
             return group
         case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
-             .table, .partition, .routine, .trigger, .userType, .status, .objectKindSection, .redisKeysSection,
-             .redisNode:
+             .table, .partition, .tableDetailGroup, .tableDetail, .routine, .trigger, .userType, .status,
+             .objectKindSection, .redisKeysSection, .redisNode:
             return nil
         }
     }

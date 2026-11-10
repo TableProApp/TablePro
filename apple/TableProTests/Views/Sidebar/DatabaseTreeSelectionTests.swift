@@ -128,4 +128,16 @@ struct DatabaseTreeObjectsTargetTests {
         #expect(target([.recentSection]) == nil)
         #expect(target([.schema(database: "shop", schema: "a"), .schema(database: "shop", schema: "b")]) == nil)
     }
+
+    @Test("A table's detail group or detail row lists nothing")
+    func tableDetailRowsListNothing() {
+        let table = DatabaseTreeTableRef(
+            database: "shop", schema: nil, table: TableInfo(name: "orders", type: .table, rowCount: nil)
+        )
+        let group = DatabaseTreeTableDetailGroupRef(table: table, kind: .indexes)
+        let detail = DatabaseTreeTableDetailRef(table: table, item: .column(TestFixtures.makeColumnInfo(name: "total")))
+
+        #expect(target([.tableDetailGroup(group)]) == nil)
+        #expect(target([.tableDetail(detail)]) == nil)
+    }
 }
