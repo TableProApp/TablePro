@@ -47,9 +47,11 @@ internal struct ToolbarContext: Equatable {
     internal let canStopDebugging: Bool
     internal let isPresentingSheet: Bool
 
-    // What the connection supports, for the Objects group's buttons. Enablement only, never visibility.
-    internal let canListObjects: Bool
-    internal let supportsRoutines: Bool
+    // What the connection supports and the browsed container offers, for the Objects group's buttons.
+    // Enablement only, never visibility.
+    internal let canListTables: Bool
+    internal let offersViews: Bool
+    internal let offersFunctions: Bool
     internal let supportsUserManagement: Bool
     internal let supportsBackup: Bool
 
@@ -107,8 +109,9 @@ internal struct ToolbarContext: Equatable {
         debugCommands: Set<PluginDebugCommand> = [],
         canStopDebugging: Bool = false,
         isPresentingSheet: Bool = false,
-        canListObjects: Bool = false,
-        supportsRoutines: Bool = false,
+        canListTables: Bool = false,
+        offersViews: Bool = false,
+        offersFunctions: Bool = false,
         supportsUserManagement: Bool = false,
         supportsBackup: Bool = false
     ) {
@@ -136,8 +139,9 @@ internal struct ToolbarContext: Equatable {
         self.debugCommands = debugCommands
         self.canStopDebugging = canStopDebugging
         self.isPresentingSheet = isPresentingSheet
-        self.canListObjects = canListObjects
-        self.supportsRoutines = supportsRoutines
+        self.canListTables = canListTables
+        self.offersViews = offersViews
+        self.offersFunctions = offersFunctions
         self.supportsUserManagement = supportsUserManagement
         self.supportsBackup = supportsBackup
     }
@@ -159,8 +163,9 @@ internal struct ToolbarContext: Equatable {
         debugCommands: Set<PluginDebugCommand> = [],
         canStopDebugging: Bool = false,
         isPresentingSheet: Bool = false,
-        canListObjects: Bool = false,
-        supportsRoutines: Bool = false,
+        canListTables: Bool = false,
+        offersViews: Bool = false,
+        offersFunctions: Bool = false,
         supportsUserManagement: Bool = false,
         supportsBackup: Bool = false
     ) {
@@ -189,8 +194,9 @@ internal struct ToolbarContext: Equatable {
             debugCommands: debugCommands,
             canStopDebugging: canStopDebugging,
             isPresentingSheet: isPresentingSheet,
-            canListObjects: canListObjects,
-            supportsRoutines: supportsRoutines,
+            canListTables: canListTables,
+            offersViews: offersViews,
+            offersFunctions: offersFunctions,
             supportsUserManagement: supportsUserManagement,
             supportsBackup: supportsBackup
         )

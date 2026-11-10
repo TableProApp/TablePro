@@ -439,10 +439,34 @@ extension MainContentCoordinator {
 
     /// The flat list's sections are the browsed container's, so their Show Objects lists that one.
     func showBrowsedObjects(_ kind: SidebarObjectKind) {
-        let schemaName = EngineNamespaceSlot(databaseType: connection.type) == .schema ? browseSchemaName : nil
+        let scope = browsedObjectsScope
         showObjects(
-            DatabaseTreeObjectGroup(database: browseDatabaseName, schema: schemaName, kind: kind),
+            DatabaseTreeObjectGroup(database: scope.database, schema: scope.schema, kind: kind),
             asPreview: false
+        )
+    }
+
+    /// The container `showBrowsedObjects` opens, which the toolbar's object buttons also read.
+    var browsedObjectsScope: DatabaseScope {
+        let schemaName = EngineNamespaceSlot(databaseType: connection.type) == .schema ? browseSchemaName : nil
+        return DatabaseScope(connectionId: connectionId, database: browseDatabaseName, schema: schemaName)
+    }
+
+    /// The kinds an Objects tab on the browsed container offers, from the lists the sidebar holds for
+    /// it, so a toolbar button is live exactly where the sidebar has a group to show.
+    func browsedObjectKinds() -> [SidebarObjectKind] {
+        let scope = browsedObjectsScope
+        let tree = DatabaseTreeMetadataService.shared
+        let counts = ObjectListingKinds.itemCounts(
+            tables: tree.tables(connectionId: connectionId, database: scope.database, schema: scope.schema),
+            routines: tree.routines(connectionId: connectionId, database: scope.database, schema: scope.schema),
+            triggers: tree.triggers(connectionId: connectionId, database: scope.database, schema: scope.schema),
+            types: tree.userDefinedTypes(connectionId: connectionId, database: scope.database, schema: scope.schema)
+        )
+        return ObjectListingKinds.available(
+            itemCounts: counts,
+            declared: connection.type.declaredObjectKinds,
+            current: .table
         )
     }
 

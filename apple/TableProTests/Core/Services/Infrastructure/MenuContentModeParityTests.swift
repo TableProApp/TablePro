@@ -306,8 +306,9 @@ struct MenuContentModeParityTests {
                         isConnected: connected,
                         hasSelectedWorkspace: true,
                         isPresentingSheet: sheet,
-                        canListObjects: true,
-                        supportsRoutines: true,
+                        canListTables: true,
+                        offersViews: true,
+                        offersFunctions: true,
                         supportsUserManagement: true,
                         supportsBackup: true
                     )

@@ -6,6 +6,7 @@
 import AppKit
 import SwiftUI
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 /// The optional Objects group: six buttons that reach each kind of object in one click.
@@ -186,13 +187,15 @@ struct ObjectKindsToolbarTests {
     @Test("While the group is on, the context reads what the engine supports")
     func contextReadsTheEngineWhileTheGroupIsOn() {
         let postgres = Self.context(for: .postgresql, objectsOn: true)
-        #expect(postgres.supportsRoutines)
         #expect(postgres.supportsBackup)
-        #expect(!postgres.canListObjects, "With no driver the engine builds no listing")
+        #expect(!postgres.canListTables, "With no driver the engine builds no listing")
         #expect(!postgres.supportsUserManagement, "With no driver there is no capability to read")
+        #expect(!postgres.offersFunctions, "No routine list is loaded for the browsed schema")
 
-        #expect(Self.context(for: .mongodb, objectsOn: true).canListObjects, "MongoDB lists through its own command")
-        #expect(!Self.context(for: .sqlite, objectsOn: true).supportsRoutines)
+        let mongo = Self.context(for: .mongodb, objectsOn: true)
+        #expect(mongo.canListTables, "MongoDB lists through its own command")
+        #expect(!mongo.offersViews, "A table listing says nothing about views")
+        #expect(!Self.context(for: .sqlite, objectsOn: true).offersFunctions)
     }
 
     /// Nothing but the group reads these, and the listing is a plugin call on every validation pass.
@@ -200,11 +203,127 @@ struct ObjectKindsToolbarTests {
     func contextAsksNothingWhileTheGroupIsOff() {
         for type in [DatabaseType.postgresql, .mongodb] {
             let context = Self.context(for: type, objectsOn: false)
-            #expect(!context.canListObjects, "\(type.rawValue)")
-            #expect(!context.supportsRoutines, "\(type.rawValue)")
+            #expect(!context.canListTables, "\(type.rawValue)")
+            #expect(!context.offersViews, "\(type.rawValue)")
+            #expect(!context.offersFunctions, "\(type.rawValue)")
             #expect(!context.supportsUserManagement, "\(type.rawValue)")
             #expect(!context.supportsBackup, "\(type.rawValue)")
         }
+    }
+
+    // MARK: - What the browsed container offers
+
+    /// An engine with no table listing that fetches routines and keeps every read on the session's
+    /// own driver, as PGlite does: the shape Trino and Snowflake take for these buttons.
+    private static func registerListlessEngine() -> DatabaseType {
+        let typeId = "ObjectKindsToolbarListless-\(UUID().uuidString)"
+        let defaults = PluginMetadataSnapshot.CapabilityFlags.defaults
+        var capabilities = PluginMetadataSnapshot.CapabilityFlags(
+            supportsSchemaSwitching: true,
+            supportsImport: defaults.supportsImport,
+            supportsExport: defaults.supportsExport,
+            supportsSSH: defaults.supportsSSH,
+            supportsSSL: defaults.supportsSSL,
+            supportsCascadeDrop: defaults.supportsCascadeDrop,
+            supportsForeignKeyDisable: defaults.supportsForeignKeyDisable,
+            supportsReadOnlyMode: defaults.supportsReadOnlyMode,
+            supportsQueryProgress: defaults.supportsQueryProgress,
+            requiresReconnectForDatabaseSwitch: defaults.requiresReconnectForDatabaseSwitch,
+            supportsDropDatabase: defaults.supportsDropDatabase
+        )
+        capabilities.supportsRoutines = true
+        capabilities.supportsConnectionPooling = false
+        let snapshot = PluginMetadataSnapshot(
+            displayName: typeId, iconName: "cylinder", defaultPort: 1_234,
+            requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,
+            isDownloadable: false, primaryUrlScheme: "objectkindslistless", parameterStyle: .questionMark,
+            navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
+            supportsHealthMonitor: false, urlSchemes: ["objectkindslistless"], postConnectActions: [],
+            brandColorHex: "#000000", queryLanguageName: "SQL", editorLanguage: .sql,
+            connectionMode: .network, supportsDatabaseSwitching: true,
+            capabilities: capabilities, schema: .defaults, editor: .defaults, connection: .defaults
+        )
+        PluginMetadataRegistry.shared.register(snapshot: snapshot, forTypeId: typeId)
+        return DatabaseType(rawValue: typeId)
+    }
+
+    /// A live session browsing `shop.public`, whose lists the sidebar has already read.
+    private static func browsing(
+        tables: [TableInfo],
+        routines: [RoutineInfo],
+        on engine: DatabaseType
+    ) async -> DatabaseConnection {
+        let connection = TestFixtures.makeConnection(database: "shop", type: engine)
+        let driver = MockDatabaseDriver(connection: connection)
+        driver.schemaTablesToReturn = ["public": tables]
+        driver.schemaRoutinesToReturn = ["public": routines]
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
+        session.browseSchema = "public"
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        let tree = DatabaseTreeMetadataService.shared
+        await tree.loadTables(connectionId: connection.id, database: "shop", schema: "public")
+        await tree.loadRoutines(connectionId: connection.id, database: "shop", schema: "public")
+        return connection
+    }
+
+    private static func leave(_ connection: DatabaseConnection) async {
+        await DatabaseTreeMetadataService.shared.handleDisconnect(connectionId: connection.id)
+        DatabaseManager.shared.removeSession(for: connection.id)
+    }
+
+    private static func enabledButtons(browsing connection: DatabaseConnection) -> Set<NSToolbarItem.Identifier> {
+        let fixture = CoordinatorFixture(connection: connection)
+        fixture.coordinator.toolbarState.connectionState = .connected
+        let owner = owner()
+        owner.repoint(to: fixture.coordinator)
+        let context = withExtendedLifetime(fixture) { owner.currentContext() }
+        return Set(MainWindowToolbar.objectKindItemIdentifiers.filter { identifier in
+            ToolbarContextResolver.isEnabled(identifier, context: context)
+        })
+    }
+
+    /// The sidebar offers Show Objects on a Views or Functions group from its own lists, so the
+    /// buttons do too, on an engine that builds no table listing.
+    @Test("Views and Functions open from the sidebar's lists on an engine with no table listing")
+    func viewsAndFunctionsFollowTheSidebarsLists() async {
+        let engine = Self.registerListlessEngine()
+        let connection = await Self.browsing(
+            tables: [
+                TestFixtures.makeTableInfo(name: "orders", schema: "public"),
+                TestFixtures.makeTableInfo(name: "open_orders", type: .view, schema: "public"),
+            ],
+            routines: [RoutineInfo(name: "order_total", kind: .function, schema: "public")],
+            on: engine
+        )
+
+        let enabled = Self.enabledButtons(browsing: connection)
+
+        #expect(enabled.contains(MainWindowToolbar.objectViews))
+        #expect(enabled.contains(MainWindowToolbar.objectFunctions))
+        #expect(!enabled.contains(MainWindowToolbar.objectTables), "Tables still need the engine's listing")
+        await Self.leave(connection)
+        PluginMetadataRegistry.shared.unregister(typeId: engine.rawValue)
+    }
+
+    /// The Objects tab offers a kind only where the container holds some, so a button that opened
+    /// an empty list of a kind the sidebar never shows stays dim.
+    @Test("A container with no views or functions dims Views and Functions")
+    func emptyKindsDimTheirButtons() async {
+        let engine = Self.registerListlessEngine()
+        let connection = await Self.browsing(
+            tables: [TestFixtures.makeTableInfo(name: "orders", schema: "public")],
+            routines: [RoutineInfo(name: "archive_orders", kind: .procedure, schema: "public")],
+            on: engine
+        )
+
+        let enabled = Self.enabledButtons(browsing: connection)
+
+        #expect(!enabled.contains(MainWindowToolbar.objectViews))
+        #expect(!enabled.contains(MainWindowToolbar.objectFunctions), "A procedure is not a function")
+        #expect(enabled.contains(MainWindowToolbar.objectQuery))
+        await Self.leave(connection)
+        PluginMetadataRegistry.shared.unregister(typeId: engine.rawValue)
     }
 
     @Test("A button pressed with no connection behind the toolbar does nothing")

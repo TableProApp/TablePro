@@ -474,8 +474,9 @@ struct ToolbarContextResolverTests {
     private static func objectsContext(
         connected: Bool = true,
         contentMode: ConnectionWorkspaceContentMode = .browse,
-        canListObjects: Bool = true,
-        supportsRoutines: Bool = true,
+        canListTables: Bool = true,
+        offersViews: Bool = true,
+        offersFunctions: Bool = true,
         supportsUserManagement: Bool = true,
         supportsBackup: Bool = true,
         isPresentingSheet: Bool = false
@@ -488,8 +489,9 @@ struct ToolbarContextResolverTests {
             hasSelectedWorkspace: true,
             supportsContainerSwitching: true,
             isPresentingSheet: isPresentingSheet,
-            canListObjects: canListObjects,
-            supportsRoutines: supportsRoutines,
+            canListTables: canListTables,
+            offersViews: offersViews,
+            offersFunctions: offersFunctions,
             supportsUserManagement: supportsUserManagement,
             supportsBackup: supportsBackup
         )
@@ -510,14 +512,14 @@ struct ToolbarContextResolverTests {
         )
     }
 
+    /// Views and Functions come from the sidebar's own lists, so an engine with no table listing
+    /// still opens them, and one with a listing but no views does not light Views.
     @Test("Each object button dims for its own missing capability and no other")
     func objectButtonsFollowTheirCapability() {
+        #expect(Self.dimmedObjectButtons(Self.objectsContext(canListTables: false)) == [MainWindowToolbar.objectTables])
+        #expect(Self.dimmedObjectButtons(Self.objectsContext(offersViews: false)) == [MainWindowToolbar.objectViews])
         #expect(
-            Self.dimmedObjectButtons(Self.objectsContext(canListObjects: false))
-                == [MainWindowToolbar.objectTables, MainWindowToolbar.objectViews]
-        )
-        #expect(
-            Self.dimmedObjectButtons(Self.objectsContext(supportsRoutines: false)) == [MainWindowToolbar.objectFunctions]
+            Self.dimmedObjectButtons(Self.objectsContext(offersFunctions: false)) == [MainWindowToolbar.objectFunctions]
         )
         #expect(
             Self.dimmedObjectButtons(Self.objectsContext(supportsUserManagement: false)) == [MainWindowToolbar.objectUsers]
@@ -544,8 +546,9 @@ struct ToolbarContextResolverTests {
     func objectFactsStayOutOfTheVisibilityKey() {
         let capable = Self.objectsContext()
         let bare = Self.objectsContext(
-            canListObjects: false,
-            supportsRoutines: false,
+            canListTables: false,
+            offersViews: false,
+            offersFunctions: false,
             supportsUserManagement: false,
             supportsBackup: false
         )

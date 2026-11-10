@@ -44,6 +44,7 @@ internal extension MainWindowToolbar {
         let debugger = (host?.contentMode ?? .browse) == .browse ? coordinator?.frontRoutineDebugController : nil
         // Only the Objects group reads these, and the listing is a plugin call, so a pass without the group skips them.
         let showsObjects = objectKindsEnabled()
+        let offered = showsObjects ? coordinator?.browsedObjectKinds() ?? [] : []
         return ToolbarContext(
             key: currentVisibilityKey(),
             pane: host?.currentPane ?? .empty,
@@ -62,8 +63,9 @@ internal extension MainWindowToolbar {
             } ?? [],
             canStopDebugging: debugger?.canStop ?? false,
             isPresentingSheet: coordinator?.isPresentingSheet ?? false,
-            canListObjects: showsObjects && coordinator?.allTablesListing() != nil,
-            supportsRoutines: showsObjects && databaseType?.supportsRoutines == true,
+            canListTables: showsObjects && coordinator?.allTablesListing() != nil,
+            offersViews: offered.contains(.view),
+            offersFunctions: offered.contains(.function),
             supportsUserManagement: showsObjects && coordinator?.commandActions?.supportsUserManagement == true,
             supportsBackup: showsObjects && coordinator?.commandActions?.supportsBackup == true
         )

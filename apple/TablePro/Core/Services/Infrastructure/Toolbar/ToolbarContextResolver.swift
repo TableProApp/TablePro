@@ -163,10 +163,13 @@ internal enum ToolbarContextResolver {
             return context.debugCommands.contains(.stepOut)
         case MainWindowToolbar.debugStop:
             return context.canStopDebugging
-        case MainWindowToolbar.objectTables, MainWindowToolbar.objectViews:
-            return context.isConnected && context.canListObjects
+        case MainWindowToolbar.objectTables:
+            return context.isConnected && context.canListTables
+        // The sidebar's own lists hold these, so they need no listing statement, only objects to list.
+        case MainWindowToolbar.objectViews:
+            return context.isConnected && context.offersViews
         case MainWindowToolbar.objectFunctions:
-            return context.isConnected && context.supportsRoutines
+            return context.isConnected && context.offersFunctions
         case MainWindowToolbar.objectUsers:
             return context.isConnected && context.supportsUserManagement
         case MainWindowToolbar.objectQuery:
