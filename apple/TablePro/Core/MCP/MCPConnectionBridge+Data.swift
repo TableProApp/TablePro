@@ -107,7 +107,7 @@ extension MCPConnectionBridge {
             maxRows: limit,
             timeoutSeconds: timeoutSeconds,
             cancellation: cancellation,
-            maskingTable: request.table
+            masking: .table(request.table)
         )
         if case .object(var fields) = payload {
             fields["table"] = .string(request.table)
@@ -285,6 +285,8 @@ struct MCPExplainRequest: Equatable {
 
     let subjectSQL: String
     let driverStep: ExplainRequest.DriverStep?
+    // The plan's shape: the variant's, or for a statement the caller wrote as EXPLAIN, the engine's first variant's.
+    var format: ExplainPlanFormat?
 }
 
 extension MCPConnectionBridge {
@@ -295,6 +297,7 @@ extension MCPConnectionBridge {
         cancellation: MCPCancellationToken?
     ) async throws -> JsonValue {
         let databaseType = operation.databaseType
+        let masking = ExternalRowMasking.plan(in: request.format)
         let outcome: (result: QueryResult, executionTimeMs: Double)
         let routed: ExplainResultRouter.RoutedPlan?
         if let step = request.driverStep {
@@ -302,7 +305,8 @@ extension MCPConnectionBridge {
                 operation,
                 step: step,
                 timeoutSeconds: timeoutSeconds,
-                cancellation: cancellation
+                cancellation: cancellation,
+                masking: masking
             )
             routed = ExplainResultRouter.routeDriverPlan(
                 rows: outcome.result.rows,
@@ -316,7 +320,8 @@ extension MCPConnectionBridge {
                 operation,
                 maxRows: Self.explainRowLimit,
                 timeoutSeconds: timeoutSeconds,
-                cancellation: cancellation
+                cancellation: cancellation,
+                masking: masking
             )
             routed = ExplainResultRouter.route(
                 sql: request.statement,
@@ -333,6 +338,9 @@ extension MCPConnectionBridge {
             "columns": .array(outcome.result.columns.map { .string($0) }),
             "rows": .array(outcome.result.rows.map { row in .array(row.map(Self.cellValue)) })
         ]
+        if let statusMessage = outcome.result.statusMessage {
+            payload["status_message"] = .string(statusMessage)
+        }
         if let routed {
             payload["plan_text"] = .string(routed.rawText)
             if let plan = routed.plan {
@@ -380,7 +388,9 @@ extension MCPConnectionBridge {
             throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
         }
         guard !QueryClassifier.isExplainStatement(trimmed, grammar: databaseType.lexicalGrammar) else {
-            return MCPExplainRequest(statement: trimmed, gatedSQL: trimmed, subjectSQL: trimmed, driverStep: nil)
+            return MCPExplainRequest(
+                statement: trimmed, gatedSQL: trimmed, subjectSQL: trimmed, driverStep: nil, format: variants.first?.format
+            )
         }
         guard let first = variants.first else {
             throw DatabaseAccessError.invalidArgument(String(localized: "This database does not explain statements."))
@@ -389,7 +399,9 @@ extension MCPConnectionBridge {
         switch variant.step {
         case .sqlPrefix:
             let prefixed = "\(variant.sqlPrefix) \(trimmed)"
-            return MCPExplainRequest(statement: prefixed, gatedSQL: prefixed, subjectSQL: trimmed, driverStep: nil)
+            return MCPExplainRequest(
+                statement: prefixed, gatedSQL: prefixed, subjectSQL: trimmed, driverStep: nil, format: variant.format
+            )
         case .driver(let runsStatement):
             return MCPExplainRequest(
                 statement: trimmed,
@@ -397,7 +409,8 @@ extension MCPConnectionBridge {
                     subject: trimmed, runsStatement: runsStatement, databaseType: databaseType
                 ),
                 subjectSQL: trimmed,
-                driverStep: ExplainRequest.DriverStep(variantId: variant.id, runsStatement: runsStatement)
+                driverStep: ExplainRequest.DriverStep(variantId: variant.id, runsStatement: runsStatement),
+                format: variant.format
             )
         @unknown default:
             throw DatabaseAccessError.invalidArgument(

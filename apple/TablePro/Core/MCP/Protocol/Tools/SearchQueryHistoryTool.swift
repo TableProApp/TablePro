@@ -107,9 +107,17 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
             return .structured(.object(["entries": .array([])]))
         }
 
+        var anyMasksValues = false
+        for allowed in allowlist {
+            if await !services.connectionBridge.maskingPolicy(for: allowed).isEmpty {
+                anyMasksValues = true
+                break
+            }
+        }
         let page = await services.queryHistoryManager.fetch(
             QueryHistoryFilter(
                 scope: connectionId.map { .connection($0) } ?? .all,
+                sources: MCPConnectionBridge.searchableSources(by: query, masksValues: anyMasksValues),
                 searchText: query.isEmpty ? nil : query,
                 since: since,
                 until: until,
@@ -118,10 +126,20 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
             limit: limit
         )
 
-        let payload = page.entries.map { entry -> JsonValue in
+        var masksValues: [UUID: Bool] = [:]
+        for entryConnection in Set(page.entries.map(\.connectionId)) {
+            masksValues[entryConnection] = await !services.connectionBridge.maskingPolicy(for: entryConnection).isEmpty
+        }
+
+        let entries = page.entries.filter {
+            MCPConnectionBridge.isSearchable($0, by: query, masksValues: masksValues[$0.connectionId] == true)
+        }
+        let payload = entries.map { entry -> JsonValue in
             var fields: [String: JsonValue] = [
                 "id": .string(entry.id.uuidString),
-                "query": .string(entry.query),
+                "query": .string(
+                    MCPConnectionBridge.externalQueryText(of: entry, masksValues: masksValues[entry.connectionId] == true)
+                ),
                 "connection_id": .string(entry.connectionId.uuidString),
                 "database_name": .string(entry.databaseName),
                 "database_type": .string(entry.databaseType.rawValue),
@@ -136,7 +154,9 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
                 fields["schema_name"] = .string(schemaName)
             }
             if let error = entry.errorMessage {
-                fields["error_message"] = .string(MCPErrorRedactor.redact(error))
+                fields["error_message"] = .string(
+                    MCPConnectionBridge.externalErrorText(error, masksValues: masksValues[entry.connectionId] == true)
+                )
             }
             return .object(fields)
         }

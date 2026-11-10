@@ -60,6 +60,11 @@ enum SQLParameterExtractor {
                 values.append(nil)
             }
 
+            // `LIMIT:n` becomes `LIMIT $1`: PostgreSQL reads `$` inside a name, so `LIMIT$1` would be one identifier.
+            if range.location > 0, SQLNonCodeSpan.isWordUnit(nsSQL.character(at: range.location - 1)) {
+                resultSQL += " "
+            }
+
             switch style {
             case .questionMark:
                 resultSQL += "?"
@@ -81,10 +86,35 @@ enum SQLParameterExtractor {
     // MARK: - Private
 
     private static let colon = UInt16(UnicodeScalar(":").value)
+    private static let dot = UInt16(UnicodeScalar(".").value)
+    private static let openBrace = UInt16(UnicodeScalar("{").value)
     private static let closeBracket = UInt16(UnicodeScalar("]").value)
+
+    // Reserved on every engine that takes `:name`, Snowflake included, and always followed by an operand, so a `:`
+    // glued to one starts a bind: `IN:ids`, `BETWEEN:a AND:b`, `THEN:p`.
+    private static let operandKeywords: Set<String> = [
+        "AND", "BETWEEN", "ELSE", "HAVING", "ILIKE", "IN", "LIKE", "NOT", "OR", "SELECT", "THEN", "WHEN", "WHERE",
+    ]
+
+    // Snowflake leaves both unreserved, so `SELECT limit:currency` there is a path into a column. Each is the
+    // row-limit clause, and the `:` after it a bind, only right after an operand: `FROM t LIMIT:n`, `10 OFFSET:m`.
+    private static let rowLimitKeywords: Set<String> = ["LIMIT", "OFFSET"]
+
+    // An operand comes next after one of these, so a `limit` there is a column. `ALL` is one only after `SELECT`
+    // (`LIMIT ALL OFFSET:m` is the clause) and `TOP n` is checked two tokens back.
+    private static let operandStarters: Set<String> = operandKeywords.union([
+        "AS", "BY", "CASE", "DISTINCT", "FROM", "ON", "QUALIFY", "RETURNING", "SET",
+    ])
+
+    private enum PrecedingToken {
+        case operandStart
+        case operandEnd
+        case word(NSRange)
+    }
 
     // A `:` written against the end of a name, a literal, a subscript, a call or another `:` is the engine's own
     // syntax: a cast (`a::int`), a path (`src:customer`), a slice (`arr[lo:hi]`), a typed slot (`{id:UInt32}`).
+    // Against a keyword that takes an operand it is a bind.
     private static func scan(
         sql: String,
         grammar: SQLLexicalGrammar,
@@ -94,16 +124,56 @@ enum SQLParameterExtractor {
         let length = text.length
         var index = 0
         var followsOperand = false
+        var precedingToken = PrecedingToken.operandStart
+        var tokenBeforePreceding = PrecedingToken.operandStart
+        var wordStart: Int?
+        var tokenBeforeWord = PrecedingToken.operandStart
+        var tokenTwoBeforeWord = PrecedingToken.operandStart
+        var wordFollowsPath = false
+
+        func push(_ token: PrecedingToken) {
+            tokenBeforePreceding = precedingToken
+            precedingToken = token
+        }
+
+        func endWord(at end: Int) {
+            guard let start = wordStart else { return }
+            wordStart = nil
+            push(.word(NSRange(location: start, length: end - start)))
+        }
+
+        func upperWord(_ range: NSRange) -> String {
+            text.substring(with: range).uppercased()
+        }
+
+        func keywordBeforeTakesBind(colonAt colonIndex: Int) -> Bool {
+            guard let start = wordStart, !wordFollowsPath else { return false }
+            let word = upperWord(NSRange(location: start, length: colonIndex - start))
+            if operandKeywords.contains(word) { return true }
+            guard rowLimitKeywords.contains(word) else { return false }
+            switch tokenBeforeWord {
+            case .operandStart: return false
+            case .operandEnd: return true
+            case .word(let range):
+                let previous = upperWord(range)
+                if operandStarters.contains(previous) { return false }
+                guard case .word(let earlierRange) = tokenTwoBeforeWord else { return true }
+                let earlier = upperWord(earlierRange)
+                return earlier != "TOP" && !(previous == "ALL" && earlier == "SELECT")
+            }
+        }
 
         while index < length {
             if let span = SQLNonCodeSpan.span(at: index, in: text, grammar: grammar) {
+                endWord(at: index)
                 index = max(span.end, index + 1)
                 followsOperand = !span.kind.isComment
+                if followsOperand { push(.operandEnd) }
                 continue
             }
             let unit = text.character(at: index)
-            if unit == colon, !followsOperand, index + 1 < length,
-               SqlDollarQuote.isIdentifierStart(text.character(at: index + 1)) {
+            if unit == colon, index + 1 < length, SqlDollarQuote.isIdentifierStart(text.character(at: index + 1)),
+               !followsOperand || keywordBeforeTakesBind(colonAt: index) {
                 var nameEnd = index + 2
                 while nameEnd < length, SqlDollarQuote.isIdentifierPart(text.character(at: nameEnd)) {
                     nameEnd += 1
@@ -112,11 +182,36 @@ enum SQLParameterExtractor {
                 onParameter(name, NSRange(location: index, length: nameEnd - index))
                 index = nameEnd
                 followsOperand = true
+                wordStart = nil
+                push(.operandEnd)
                 continue
             }
-            followsOperand = unit == colon || unit == closeBracket || unit == SqlLexer.closeParen
-                || SQLNonCodeSpan.isWordUnit(unit)
+            if SQLNonCodeSpan.isWordUnit(unit) {
+                if wordStart == nil {
+                    wordStart = index
+                    tokenBeforeWord = precedingToken
+                    tokenTwoBeforeWord = tokenBeforePreceding
+                    // A path step (`src:in`, `t.limit`) or a typed slot's name (`{limit:UInt32}`) is never a keyword.
+                    let before = index > 0 ? text.character(at: index - 1) : 0
+                    wordFollowsPath = before == dot || before == colon || before == openBrace
+                }
+                followsOperand = true
+            } else {
+                endWord(at: index)
+                let closes = unit == closeBracket || unit == SqlLexer.closeParen
+                followsOperand = unit == colon || closes
+                if closes {
+                    push(.operandEnd)
+                } else if !isSpace(unit) {
+                    push(.operandStart)
+                }
+            }
             index += 1
         }
+    }
+
+    private static func isSpace(_ unit: UInt16) -> Bool {
+        if unit < 0x80 { return unit == 0x20 || (unit >= 0x09 && unit <= 0x0D) }
+        return UnicodeScalar(unit).map { CharacterSet.whitespacesAndNewlines.contains($0) } ?? false
     }
 }

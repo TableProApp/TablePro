@@ -160,6 +160,7 @@ struct MCPSection: View {
                 connectionAccess: access,
                 expiresAt: expiresAt,
                 isBridgeCredential: false,
+                isClaudeAgentCredential: false,
                 extraScopes: []
             ) else { return }
             revealedToken = result.token

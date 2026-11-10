@@ -179,6 +179,7 @@ final class MCPPairingService {
             connectionAccess: connectionAccess,
             expiresAt: approval.expiresAt,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: extraScopes
         )
 
