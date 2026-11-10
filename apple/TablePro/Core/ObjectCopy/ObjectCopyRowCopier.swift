@@ -163,6 +163,7 @@ internal struct ObjectCopyRowCopier: Sendable {
             columns: step.columns,
             primaryKeyColumns: step.primaryKeyColumns,
             databaseType: targetDatabaseType,
+            columnTypeNames: step.targetColumnTypeNames,
             parameterStyle: targetDriver.parameterStyle,
             quoteIdentifier: targetDriver.quoteIdentifier
         )

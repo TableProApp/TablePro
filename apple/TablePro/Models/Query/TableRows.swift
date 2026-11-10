@@ -39,6 +39,13 @@ struct TableRows: Sendable {
     private(set) var masks: ColumnMasks = .none
     private var exportPolicy: MaskingPolicy = .none
     private var exportTable: String?
+    private var reportedOrigins: (columns: [String], origins: [PluginColumnOrigin?])?
+
+    // What the driver said each column reads, while the columns are still the ones it said it for.
+    var columnOrigins: [PluginColumnOrigin?]? {
+        guard let reportedOrigins, reportedOrigins.columns == columns else { return nil }
+        return reportedOrigins.origins
+    }
 
     var maskedColumnNames: Set<String> {
         Set(masks.maskedColumns.compactMap { columns.indices.contains($0) ? columns[$0] : nil })
@@ -182,6 +189,31 @@ struct TableRows: Sendable {
         }
         masks = ColumnMasks(styles: masks.styles.merging(added) { current, _ in current })
         return .fullReplace
+    }
+
+    // What to lay over the held values for a reader outside the app, `external` being the bridge's masking of these
+    // columns. A column the grid masked another way takes the stricter style, over what the grid already hid.
+    func externalOverlay(_ external: ColumnMasks) -> ColumnMasks {
+        var styles: [Int: MaskingStyle] = [:]
+        for (column, style) in external.styles where column < columns.count {
+            let shown = masks.styles[column]
+            guard shown != style else { continue }
+            styles[column] = MaskingStyle.strictest(shown, style)
+        }
+        return ColumnMasks(styles: styles)
+    }
+
+    func externallyMasked(by external: ColumnMasks) -> TableRows {
+        let overlay = externalOverlay(external)
+        guard !overlay.isEmpty else { return self }
+        var copy = self
+        for index in copy.rows.indices {
+            for column in overlay.styles.keys where column < copy.rows[index].values.count {
+                copy.rows[index].values[column] = overlay.value(copy.rows[index].values[column], column: column)
+            }
+        }
+        copy.masks = ColumnMasks(styles: masks.styles.merging(overlay.styles) { _, stricter in stricter })
+        return copy
     }
 
     // A cell an edit or an earlier load already filled keeps what it holds.
@@ -475,7 +507,8 @@ struct TableRows: Sendable {
         unloadedCells: [Int: [Int: Int]] = [:],
         masks: ColumnMasks = .none,
         exportPolicy: MaskingPolicy = .none,
-        exportTable: String? = nil
+        exportTable: String? = nil,
+        columnOrigins: [PluginColumnOrigin?]? = nil
     ) -> TableRows {
         var rows = ContiguousArray<Row>()
         rows.reserveCapacity(queryRows.count)
@@ -513,6 +546,7 @@ struct TableRows: Sendable {
         tableRows.masks = masks
         tableRows.exportPolicy = exportPolicy
         tableRows.exportTable = exportTable
+        tableRows.reportedOrigins = columnOrigins.map { (columns: columns, origins: $0) }
         return tableRows
     }
 

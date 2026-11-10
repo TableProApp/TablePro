@@ -224,6 +224,53 @@ struct CrossEngineValueCoercerTests {
         #expect(subject.coerce([.text("{a,b}")]) == [.text("{a,b}")])
     }
 
+    // MARK: - Bit strings
+
+    private func bitCoercer(
+        source: CanonicalTypeKind,
+        target: CanonicalTypeKind,
+        from sourceFamily: SQLTypeFamily,
+        to targetFamily: SQLTypeFamily
+    ) -> CrossEngineValueCoercer {
+        CrossEngineValueCoercer(pairs: [.init(source: source, target: target)], from: sourceFamily, to: targetFamily)
+    }
+
+    @Test
+    func aPostgresBitStringBecomesTheNumberMySQLReads() {
+        let subject = bitCoercer(source: .bitString(length: 8), target: .bitString(length: 8), from: .postgres, to: .mysql)
+        #expect(subject.coerce([.text("00000101")]) == [.text("5")])
+        #expect(subject.coerce([.text("00000000")]) == [.text("0")])
+        #expect(subject.coerce([.null]) == [.null])
+    }
+
+    @Test
+    func aMySQLBitBecomesDigitsPaddedToTheTargetLength() {
+        let subject = bitCoercer(source: .bitString(length: 8), target: .bitString(length: 8), from: .mysql, to: .postgres)
+        #expect(subject.coerce([.text("5")]) == [.text("00000101")])
+        #expect(subject.coerce([.text("170")]) == [.text("10101010")])
+    }
+
+    @Test
+    func aVaryingTargetTakesTheSourceLength() {
+        let subject = bitCoercer(source: .bitString(length: 4), target: .bitString(length: nil), from: .mysql, to: .duckdb)
+        #expect(subject.coerce([.text("5")]) == [.text("0101")])
+    }
+
+    @Test
+    func bitTextThatIsNotABitValueIsLeftAlone() {
+        let toMySQL = bitCoercer(source: .bitString(length: 8), target: .bitString(length: 8), from: .postgres, to: .mysql)
+        #expect(toMySQL.coerce([.text("0012")]) == [.text("0012")])
+        let toPostgres = bitCoercer(source: .bitString(length: 8), target: .bitString(length: 8), from: .mysql, to: .postgres)
+        #expect(toPostgres.coerce([.text("b'101'")]) == [.text("b'101'")])
+    }
+
+    @Test
+    func twoEnginesThatReadBitsAlikeKeepTheValue() {
+        let subject = bitCoercer(source: .bitString(length: 8), target: .bitString(length: 8), from: .postgres, to: .duckdb)
+        #expect(!subject.isNeeded)
+        #expect(!coercer([.bitString(length: 8)], from: .mysql).isNeeded)
+    }
+
     // MARK: - Shape
 
     /// The width is checked before the coercion, so a short row can never reach it. Guarded here

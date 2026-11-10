@@ -1,13 +1,17 @@
 import CRedis
 import Darwin
 import Foundation
+import os
 import TableProTLSTestFixtures
 
 // Loopback sessions that accept any login. With a certificate it upgrades after the client's SSL
 // request; with `asksForCleartext` it answers the login with a switch to mysql_clear_password, as RDS
 // does; with `asksForFullSHA2Auth` it switches to caching_sha2_password and asks for full authentication,
 // which a client sends as the typed password once it thinks the session is secure; with `breaksHandshake`
-// it answers the SSL request with bytes that are not TLS.
+// it answers the SSL request with bytes that are not TLS. A query starting with `holdsQueriesStarting` waits
+// up to `holdSeconds` for `KILL QUERY <its session id>` from another session, then fails with 1317 as a killed
+// statement does, or with `killedQueriesComplete` succeeds as one that finished before the kill landed. Unkilled,
+// or after `release`, it succeeds. A cleartext password passed to `refuse` is answered with 1045, as an expired token is.
 final class FakeMySQLServer: @unchecked Sendable {
     struct SetupFailure: Error {}
 
@@ -29,6 +33,7 @@ final class FakeMySQLServer: @unchecked Sendable {
         var loggedIn = false
         var queries: [String] = []
         var quit = false
+        var connectionId: UInt32 = 0
 
         func sawInPlaintext(_ secret: String) -> Bool {
             let needle = Array(secret.utf8)
@@ -63,25 +68,53 @@ final class FakeMySQLServer: @unchecked Sendable {
     private static let switchToSHA2: [UInt8] = [0xFE] + Array("caching_sha2_password".utf8) + [0]
         + Array("abcdefghijklmnopqrst".utf8) + [0]
     private static let performFullAuthentication: [UInt8] = [0x01, 0x04]
+    // ER_QUERY_INTERRUPTED (1317), SQLSTATE 70100.
+    private static let interruptedPacket: [UInt8] = [0xFF, 0x25, 0x05] + Array("#70100".utf8)
+        + Array("Query execution was interrupted".utf8)
+    // ER_ACCESS_DENIED_ERROR (1045), SQLSTATE 28000.
+    private static let accessDeniedPacket: [UInt8] = [0xFF, 0x15, 0x04] + Array("#28000".utf8)
+        + Array("Access denied for user (using password: YES)".utf8)
 
     let port: Int
     private let listener: Int32
     private let asksForCleartext: Bool
     private let asksForFullSHA2Auth: Bool
     private let breaksHandshake: Bool
+    private let heldPrefix: String?
+    private let holdSeconds: TimeInterval
+    private let killedQueriesComplete: Bool
     private let fixtures: URL?
+    private let kills = KillBoard()
+    private let refusedPasswords = OSAllocatedUnfairLock<Set<String>>(initialState: [])
 
     var offersTLS: Bool { fixtures != nil || breaksHandshake }
+
+    var heldQueries: Int { kills.heldQueries }
+
+    // Lets a held query on that session answer as completed.
+    func release(_ connectionId: UInt32) {
+        kills.release(connectionId)
+    }
+
+    func refuse(_ password: String) {
+        refusedPasswords.withLock { _ = $0.insert(password) }
+    }
 
     init(
         identity: Identity?,
         asksForCleartext: Bool = false,
         asksForFullSHA2Auth: Bool = false,
-        breaksHandshake: Bool = false
+        breaksHandshake: Bool = false,
+        holdsQueriesStarting heldPrefix: String? = nil,
+        holdSeconds: TimeInterval = 10,
+        killedQueriesComplete: Bool = false
     ) throws {
         self.asksForCleartext = asksForCleartext
         self.asksForFullSHA2Auth = asksForFullSHA2Auth
         self.breaksHandshake = breaksHandshake
+        self.heldPrefix = heldPrefix
+        self.holdSeconds = holdSeconds
+        self.killedQueriesComplete = killedQueriesComplete
         if let identity {
             let directory = FileManager.default.temporaryDirectory
                 .appendingPathComponent("FakeMySQLServer-\(UUID().uuidString)", isDirectory: true)
@@ -143,14 +176,38 @@ final class FakeMySQLServer: @unchecked Sendable {
     func serve(sessions count: Int) async -> [Session] {
         await withCheckedContinuation { continuation in
             DispatchQueue(label: "com.TablePro.tests.fake-mysql").async {
-                continuation.resume(returning: (0..<count).map { _ in self.runSession() })
+                continuation.resume(returning: (0..<count).map { index in
+                    guard let client = self.acceptClient() else { return Session() }
+                    return self.runSession(on: client, connectionId: UInt32(index + 1))
+                })
             }
         }
     }
 
-    private func runSession() -> Session {
-        var session = Session()
-        guard let client = acceptClient() else { return session }
+    // Each session on its own thread, so one can hold a statement while another sends the kill. A session that has
+    // not arrived within `acceptingWithin` milliseconds of the one before it is served as empty.
+    func serveConcurrently(sessions count: Int, acceptingWithin milliseconds: Int32? = nil) async -> [Session] {
+        await withCheckedContinuation { continuation in
+            DispatchQueue(label: "com.TablePro.tests.fake-mysql.accept").async {
+                let served = SessionList(count: count)
+                let group = DispatchGroup()
+                for index in 0..<count {
+                    let wait = index == 0 ? ServerChannel.pollMilliseconds : milliseconds ?? ServerChannel.pollMilliseconds
+                    guard let client = self.acceptClient(within: wait) else { break }
+                    group.enter()
+                    DispatchQueue(label: "com.TablePro.tests.fake-mysql.session.\(index)").async {
+                        served.set(self.runSession(on: client, connectionId: UInt32(index + 1)), at: index)
+                        group.leave()
+                    }
+                }
+                group.wait()
+                continuation.resume(returning: served.sessions)
+            }
+        }
+    }
+
+    private func runSession(on client: Int32, connectionId: UInt32) -> Session {
+        var session = Session(connectionId: connectionId)
         let channel = ServerChannel(socket: client)
         serve(on: channel, into: &session)
         session.plaintext = channel.plaintext
@@ -159,7 +216,8 @@ final class FakeMySQLServer: @unchecked Sendable {
     }
 
     private func serve(on channel: ServerChannel, into session: inout Session) {
-        guard channel.send(handshake, sequence: 0), var login = channel.readPacket() else { return }
+        guard channel.send(handshake(connectionId: session.connectionId), sequence: 0),
+              var login = channel.readPacket() else { return }
 
         if offersTLS, login.payload.count == Self.sslRequestLength {
             session.askedForTLS = true
@@ -193,8 +251,13 @@ final class FakeMySQLServer: @unchecked Sendable {
             guard channel.send(Self.switchToCleartext, sequence: sequence &+ 1),
                   let answer = channel.readPacket()
             else { return }
-            session.cleartextPassword = String(decoding: answer.payload.prefix { $0 != 0 }, as: UTF8.self)
+            let password = String(decoding: answer.payload.prefix { $0 != 0 }, as: UTF8.self)
+            session.cleartextPassword = password
             sequence = answer.sequence
+            if refusedPasswords.withLock({ $0.contains(password) }) {
+                _ = channel.send(Self.accessDeniedPacket, sequence: sequence &+ 1)
+                return
+            }
         }
         guard channel.send(Self.okPacket, sequence: sequence &+ 1) else { return }
         session.loggedIn = true
@@ -204,14 +267,28 @@ final class FakeMySQLServer: @unchecked Sendable {
                 session.quit = true
                 return
             }
+            var reply = Self.okPacket
             if command.payload.first == Self.comQuery {
-                session.queries.append(String(decoding: command.payload.dropFirst(), as: UTF8.self))
+                let query = String(decoding: command.payload.dropFirst(), as: UTF8.self)
+                session.queries.append(query)
+                if let killed = Self.killedSession(in: query) {
+                    kills.kill(killed)
+                } else if let heldPrefix, query.hasPrefix(heldPrefix),
+                          kills.hold(session.connectionId, seconds: holdSeconds) == .killed, !killedQueriesComplete {
+                    reply = Self.interruptedPacket
+                }
             }
-            guard channel.send(Self.okPacket, sequence: command.sequence &+ 1) else { return }
+            guard channel.send(reply, sequence: command.sequence &+ 1) else { return }
         }
     }
 
-    private var handshake: [UInt8] {
+    private static func killedSession(in query: String) -> UInt32? {
+        let words = query.split(separator: " ")
+        guard words.count == 3, words[0] == "KILL", words[1] == "QUERY" else { return nil }
+        return UInt32(words[2])
+    }
+
+    private func handshake(connectionId: UInt32) -> [UInt8] {
         var capabilities = Capability.longPassword | Capability.connectWithDB | Capability.protocol41
             | Capability.transactions | Capability.secureConnection | Capability.multiResults | Capability.pluginAuth
         if offersTLS {
@@ -219,7 +296,7 @@ final class FakeMySQLServer: @unchecked Sendable {
         }
         var payload: [UInt8] = [10]
         payload += Array("8.0.36".utf8) + [0]
-        payload += [1, 0, 0, 0]
+        payload += (0..<4).map { UInt8((connectionId >> ($0 * 8)) & 0xFF) }
         payload += Array("abcdefgh".utf8) + [0]
         payload += [UInt8(capabilities & 0xFF), UInt8((capabilities >> 8) & 0xFF)]
         payload += [45, 0x02, 0x00]
@@ -230,9 +307,9 @@ final class FakeMySQLServer: @unchecked Sendable {
         return payload
     }
 
-    private func acceptClient() -> Int32? {
+    private func acceptClient(within milliseconds: Int32 = ServerChannel.pollMilliseconds) -> Int32? {
         var pollFD = pollfd(fd: listener, events: Int16(POLLIN), revents: 0)
-        guard poll(&pollFD, 1, ServerChannel.pollMilliseconds) > 0 else { return nil }
+        guard poll(&pollFD, 1, milliseconds) > 0 else { return nil }
         let client = accept(listener, nil, nil)
         guard client >= 0 else { return nil }
         var noSignal: Int32 = 1
@@ -241,6 +318,66 @@ final class FakeMySQLServer: @unchecked Sendable {
         setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
         setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
         return client
+    }
+
+    // Where a held statement and the kill from another session meet.
+    private final class KillBoard: @unchecked Sendable {
+        enum HoldEnd {
+            case killed
+            case released
+            case timedOut
+        }
+
+        private let condition = NSCondition()
+        private var ends: [UInt32: HoldEnd] = [:]
+        private var holds = 0
+
+        var heldQueries: Int {
+            condition.lock()
+            defer { condition.unlock() }
+            return holds
+        }
+
+        func kill(_ connectionId: UInt32) {
+            end(connectionId, as: .killed)
+        }
+
+        func release(_ connectionId: UInt32) {
+            end(connectionId, as: .released)
+        }
+
+        func hold(_ connectionId: UInt32, seconds: TimeInterval) -> HoldEnd {
+            condition.lock()
+            defer { condition.unlock() }
+            holds += 1
+            let deadline = Date(timeIntervalSinceNow: seconds)
+            while ends[connectionId] == nil, condition.wait(until: deadline) {}
+            return ends.removeValue(forKey: connectionId) ?? .timedOut
+        }
+
+        private func end(_ connectionId: UInt32, as end: HoldEnd) {
+            condition.lock()
+            ends[connectionId] = end
+            condition.broadcast()
+            condition.unlock()
+        }
+    }
+
+    private final class SessionList: @unchecked Sendable {
+        private let lock = NSLock()
+        private var list: [Session]
+
+        init(count: Int) {
+            list = Array(repeating: Session(), count: count)
+        }
+
+        var sessions: [Session] {
+            lock.withLock { list }
+        }
+
+        func set(_ session: Session, at index: Int) {
+            lock.withLock { list[index] = session }
+        }
     }
 
     // Reads and writes MySQL packets on the socket, or inside TLS once `startTLS` succeeds.

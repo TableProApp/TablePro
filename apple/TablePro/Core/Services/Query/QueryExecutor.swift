@@ -27,6 +27,8 @@ struct QueryFetchResult {
     var exportDocuments: [PluginExportDocument]?
     var absentCells: [Int: Set<Int>] = [:]
     var unloadedCells: [Int: [Int: Int]] = [:]
+    // See `PluginQueryResult.columnOrigins`.
+    var columnOrigins: [PluginColumnOrigin?]?
 
     var resolvedTiming: PluginQueryTiming {
         timing ?? PluginQueryTiming(total: executionTime)
@@ -171,7 +173,8 @@ final class QueryExecutor {
             timing: result.timing,
             rowLocators: result.rowLocators,
             exportDocuments: result.exportDocuments,
-            absentCells: result.absentCells
+            absentCells: result.absentCells,
+            columnOrigins: result.columnOrigins
         )
     }
 
@@ -219,7 +222,8 @@ final class QueryExecutor {
             timing: result.timing,
             rowLocators: result.rowLocators,
             exportDocuments: result.exportDocuments,
-            absentCells: result.absentCells
+            absentCells: result.absentCells,
+            columnOrigins: result.columnOrigins
         )
     }
 
@@ -246,7 +250,8 @@ final class QueryExecutor {
             timing: result.timing,
             rowLocators: result.rowLocators,
             exportDocuments: result.exportDocuments,
-            absentCells: result.absentCells
+            absentCells: result.absentCells,
+            columnOrigins: result.columnOrigins
         )
     }
 

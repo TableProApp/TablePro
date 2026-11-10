@@ -53,6 +53,7 @@ pub(super) fn describe_buttons(shell: &WorkspaceShell) {
     let imp = shell.imp();
     describe_icon_button(&imp.table_search_toggle.get(), &gettext("Search"), None);
     describe_icon_button(&imp.sidebar_add_button.get(), &gettext("Add"), None);
+    describe_icon_button(&imp.safe_mode_button.get(), &gettext("Safe Mode"), None);
     describe_icon_button(
         &imp.refresh_tables_button.get(),
         &gettext("Refresh"),
@@ -161,6 +162,7 @@ impl WorkspaceShell {
             None => session_menu.set_sensitive(false),
         }
         imp.content_header.pack_end(&session_menu);
+        imp.safe_mode_button.set_menu_model(Some(&safe_mode_levels()));
 
         super::workspace_actions::install(window, &shell);
         imp.history_gate
@@ -690,6 +692,22 @@ impl WorkspaceShell {
         self.notify_front();
     }
 
+    pub(crate) fn show_safe_mode(&self, level: Option<tablepro_core::SafeModeLevel>) {
+        let button = self.imp().safe_mode_button.get();
+        button.set_visible(level.is_some());
+        let Some(level) = level else {
+            return;
+        };
+        button.set_icon_name(match level {
+            tablepro_core::SafeModeLevel::Off => crate::ui::icons::CHANGES_ALLOW,
+            tablepro_core::SafeModeLevel::ConfirmWrites | tablepro_core::SafeModeLevel::ReadOnly => {
+                crate::ui::icons::CHANGES_PREVENT
+            }
+        });
+        let said = gettext_f("Safe Mode: {level}", &[("level", &crate::ui::safe_mode::label(level))]);
+        describe_icon_button(&button, &said, None);
+    }
+
     fn on_scope_changed(&self) {
         let imp = self.imp();
         let favorites = imp.scope_toggle.active_name().as_deref() == Some(FAVORITES);
@@ -1178,7 +1196,7 @@ fn tab_menu() -> gio::Menu {
     menu
 }
 
-fn with_safe_mode(menu: &gio::MenuModel) -> gio::Menu {
+fn safe_mode_levels() -> gio::Menu {
     let levels = gio::Menu::new();
     for level in tablepro_core::SafeModeLevel::ALL {
         let item = gio::MenuItem::new(Some(&crate::ui::safe_mode::menu_label(level)), None);
@@ -1188,6 +1206,11 @@ fn with_safe_mode(menu: &gio::MenuModel) -> gio::Menu {
         );
         levels.append_item(&item);
     }
+    levels
+}
+
+fn with_safe_mode(menu: &gio::MenuModel) -> gio::Menu {
+    let levels = safe_mode_levels();
     let section = gio::Menu::new();
     section.append_submenu(Some(&gettext("_Safe Mode")), &levels);
     let whole = gio::Menu::new();

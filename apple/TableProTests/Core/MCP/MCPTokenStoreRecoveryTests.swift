@@ -101,6 +101,7 @@ struct MCPTokenStoreRecoveryTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: bridge,
+            isClaudeAgentCredential: false,
             extraScopes: []
         ).plaintext
     }
@@ -220,6 +221,7 @@ struct MCPTokenStoreRecoveryTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: true,
+            isClaudeAgentCredential: false,
             extraScopes: []
         ).token
 

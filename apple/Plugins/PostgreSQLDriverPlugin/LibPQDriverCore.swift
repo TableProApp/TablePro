@@ -288,6 +288,45 @@ final class LibPQDriverCore: @unchecked Sendable {
         )
     }
 
+    // The statement an external caller approved, sent as `executeReadOnly`, `executeParameterized` or
+    // `executeSingleStatement` sends it, with the relation column each result column reads.
+    func executeExternalStatement(
+        query: String,
+        parameters: [PluginCellValue]?,
+        readOnly: Bool
+    ) async throws -> PluginQueryResult {
+        let pqConn = try connection()
+        let startTime = Date()
+        let result: LibPQPluginQueryResult
+        if readOnly {
+            result = try await pqConn.executeReadOnlyStatement(query, parameters: parameters)
+        } else if let parameters {
+            result = try await pqConn.executeParameterizedQuery(query, parameters: parameters)
+        } else {
+            result = try await pqConn.executeSingleStatement(query)
+        }
+        var answer = PluginQueryResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: result.rows,
+            rowsAffected: result.affectedRows,
+            executionTime: Date().timeIntervalSince(startTime),
+            isTruncated: result.isTruncated
+        )
+        answer.columnOrigins = await columnOrigins(for: result.columnSources)
+        return answer
+    }
+
+    // Unpinned (Redshift, CockroachDB) the lookup would run unscoped inside the user's transaction, so it reports none.
+    private func columnOrigins(for sources: [PostgreSQLColumnOrigins.Source?]) async -> [PluginColumnOrigin?]? {
+        guard pinsCatalogSearchPath else { return nil }
+        guard let query = PostgreSQLColumnOrigins.lookupQuery(for: sources) else {
+            return Array(repeating: nil, count: sources.count)
+        }
+        guard let lookup = try? await executeCatalogRead(query) else { return Array(repeating: nil, count: sources.count) }
+        return PostgreSQLColumnOrigins.origins(for: sources, rows: lookup.rows)
+    }
+
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
         let pqConn = try connection()
         let startTime = Date()
@@ -490,6 +529,12 @@ extension LibPQBackedDriver {
         parameters: [PluginCellValue]?,
         context: PluginStatementContext
     ) async throws -> PluginQueryResult {
+        if context.origin == .external {
+            let answer = try await core.executeExternalStatement(
+                query: query, parameters: parameters, readOnly: runsReadOnly(context)
+            )
+            return Self.capped(answer, rowCap: rowCap)
+        }
         guard runsReadOnly(context) else {
             return try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
         }
@@ -518,7 +563,7 @@ extension LibPQBackedDriver {
 
     private static func capped(_ raw: PluginQueryResult, rowCap: Int?) -> PluginQueryResult {
         guard let cap = rowCap, cap > 0, raw.rows.count > cap else { return raw }
-        return PluginQueryResult(
+        var kept = PluginQueryResult(
             columns: raw.columns,
             columnTypeNames: raw.columnTypeNames,
             rows: Array(raw.rows.prefix(cap)),
@@ -526,6 +571,8 @@ extension LibPQBackedDriver {
             executionTime: raw.executionTime,
             isTruncated: true
         )
+        kept.columnOrigins = raw.columnOrigins
+        return kept
     }
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {

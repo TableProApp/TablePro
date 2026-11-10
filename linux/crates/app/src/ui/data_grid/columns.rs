@@ -48,6 +48,7 @@ enum Measure {
 #[derive(Debug)]
 pub struct ColumnPaint {
     pub column: GridColumn,
+    pub grid: glib::WeakRef<DataGrid>,
     pub tracked: TrackedValues,
     pub attributes: Rc<TextAttributes>,
     pub preferences: GridPreferences,
@@ -159,6 +160,7 @@ impl DataGrid {
         for column in columns.iter() {
             let paint = Rc::new(ColumnPaint {
                 column: column.clone(),
+                grid: self.downgrade(),
                 tracked: tracked.clone(),
                 attributes: attributes.clone(),
                 preferences: self

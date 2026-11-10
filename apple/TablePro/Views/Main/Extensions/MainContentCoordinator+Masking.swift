@@ -21,6 +21,32 @@ extension MainContentCoordinator {
         tabManager.tabs.first(where: { $0.id == tabId })?.revealsMaskedValues == true ? .none : maskingPolicy
     }
 
+    // The grid matched only the names a statement chose, so a tab's rows leave for the assistant or a script masked
+    // the way the bridge masks an external caller's result, whatever the person revealed in the grid.
+    func externalOverlay(forTab tabId: UUID) -> ColumnMasks {
+        let policy = maskingPolicy
+        guard !policy.isEmpty else { return .none }
+        let rows = tabSessionRegistry.tableRows(for: tabId)
+        let tab = tabManager.tabs.first { $0.id == tabId }
+        let table = tab?.tabType == .table ? tab?.tableContext.tableName : nil
+        let external = policy.externalColumnMasks(
+            table: table, columns: rows.columns, typeNames: rows.columnTypes.map(\.rawType), origins: rows.columnOrigins
+        )
+        return rows.externalOverlay(external)
+    }
+
+    func externallyMaskedRows(forTab tabId: UUID) -> TableRows {
+        let rows = tabSessionRegistry.tableRows(for: tabId)
+        let overlay = externalOverlay(forTab: tabId)
+        return overlay.isEmpty ? rows : rows.externallyMasked(by: overlay)
+    }
+
+    // A failed statement's text can repeat a value the server read.
+    func externalErrorText(_ message: String?) -> String? {
+        guard let message, !maskingPolicy.isEmpty else { return message }
+        return ServerErrorText.withheldMessage
+    }
+
     func observeMaskingRuleChanges() -> AnyCancellable {
         services.appEvents.connectionUpdated
             .filter { [connectionId] changed in changed == nil || changed == connectionId }
