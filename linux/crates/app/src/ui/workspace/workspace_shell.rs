@@ -139,11 +139,7 @@ impl WorkspaceShell {
             shell,
             move |_| shell.on_scope_changed()
         ));
-        imp.sidebar_add_button.connect_visible_notify(glib::clone!(
-            #[weak]
-            shell,
-            move |_| shell.show_sidebar_bar()
-        ));
+        shell.connect_sidebar_bar();
         tree.follow_search(&imp.table_search);
         let _ = imp.tree.set(tree);
         crate::ui::picker::install_picker_actions(&shell, services.saved_connections.clone(), sender.clone());
@@ -625,6 +621,14 @@ impl WorkspaceShell {
         }
         self.show_sidebar_bar();
         self.reload_favorites();
+    }
+
+    fn connect_sidebar_bar(&self) {
+        self.imp().sidebar_add_button.connect_visible_notify(glib::clone!(
+            #[weak(rename_to = shell)]
+            self,
+            move |_| shell.show_sidebar_bar()
+        ));
     }
 
     // Its commands make objects in the tree, which the Favorites scope does not list.
