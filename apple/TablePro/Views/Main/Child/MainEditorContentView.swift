@@ -260,12 +260,12 @@ struct MainEditorContentView: View {
             kindTitle: { $0.title(tableEntityName: tableEntityName) },
             onSelectKind: { coordinator.selectListingKind($0, inTab: tabId) }
         )
+        // The model reads the tab's own kind, and Tables reads none of the sidebar's lists. The picker
+        // offers the groups the sidebar shows, from the lists it already holds, so nothing else is read.
         .task(id: target) {
             if (tab.display.listingKind ?? .table) != kind {
                 coordinator.adoptListingKind(kind, inTab: tabId)
             }
-            // The picker offers the groups the sidebar shows, so the container's lists are read once here.
-            await treeService.loadObjects(connectionId: scope.connectionId, database: scope.database, schema: scope.schema)
         }
         .id(tab.id)
     }

@@ -502,6 +502,20 @@ struct TableListingViewModelTests {
         #expect(provider.executedQueries.isEmpty)
     }
 
+    // The view reads no list for the picker, so the model's own read is all an open tab costs.
+    @Test("A Tables listing reads none of the sidebar's lists, on its first load or a refresh")
+    func tablesReadNoSidebarList() async {
+        let source = ScriptedObjectSource()
+        let (viewModel, provider) = makeViewModel(objectSource: source)
+        provider.answer(with: .names(["orders"]))
+
+        await viewModel.loadIfNeeded()?.value
+        await viewModel.reload().value
+
+        #expect(source.requests.isEmpty)
+        #expect(provider.executedQueries.count == 2)
+    }
+
     @Test("The first load takes the list the sidebar holds, and a refresh reads it again")
     func firstLoadTakesTheListAndRefreshRereads() async {
         let source = ScriptedObjectSource()
