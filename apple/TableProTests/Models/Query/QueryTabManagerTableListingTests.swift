@@ -76,8 +76,114 @@ struct QueryTabManagerTableListingTests {
         #expect(tab.display.listingKind == .view)
         #expect(tab.title == "Views: sales")
         #expect(manager.tabStructureVersion > version)
-        #expect(manager.tableListingTab(databaseName: "shop", schemaName: "sales")?.id == first)
-        #expect(manager.tableListingTab(databaseName: "shop", schemaName: "") == nil)
+        #expect(
+            manager.tableListingLanding(databaseName: "shop", schemaName: "sales", kind: .function, isPreview: false)?.tabId
+                == first
+        )
+        #expect(manager.tableListingLanding(databaseName: "shop", schemaName: "", kind: .view, isPreview: false) == nil)
+    }
+
+    // MARK: - A kept listing and a preview beside it
+
+    @Test("A preview of another kind opens beside a kept listing and leaves it as it was")
+    func previewOpensBesideTheKeptListing() throws {
+        let manager = QueryTabManager()
+        let kept = manager.addTableListingTab(title: "Tables: sales", databaseName: "shop", schemaName: "sales")
+        let version = manager.tabStructureVersion
+
+        let preview = manager.addTableListingTab(
+            title: "Views: sales", databaseName: "shop", schemaName: "sales", kind: .view, isPreview: true
+        )
+
+        let keptTab = try #require(manager.tabs.first { $0.id == kept })
+        let previewTab = try #require(manager.tabs.first { $0.id == preview })
+        #expect(preview != kept)
+        #expect(manager.tabs.map(\.id) == [kept, preview])
+        #expect(manager.selectedTabId == preview)
+        #expect(keptTab.display.listingKind == nil)
+        #expect(keptTab.title == "Tables: sales")
+        #expect(!keptTab.isPreview)
+        #expect(previewTab.display.listingKind == .view)
+        #expect(previewTab.isPreview)
+        #expect(manager.tabStructureVersion > version)
+    }
+
+    @Test("A preview asking for the kind a kept listing shows selects that listing")
+    func previewSelectsTheKeptListingShowingItsKind() throws {
+        let manager = QueryTabManager()
+        let kept = manager.addTableListingTab(title: "Views", databaseName: "shop", schemaName: nil, kind: .view)
+        manager.addTab(initialQuery: "SELECT 1", databaseName: "shop")
+        let count = manager.tabs.count
+
+        let landed = manager.addTableListingTab(
+            title: "Views", databaseName: "shop", schemaName: nil, kind: .view, isPreview: true
+        )
+
+        #expect(landed == kept)
+        #expect(manager.tabs.count == count)
+        #expect(manager.selectedTabId == kept)
+        #expect(manager.tabs.first { $0.id == kept }?.isPreview == false)
+    }
+
+    @Test("Another preview kind retargets the preview beside the kept listing, never the kept one")
+    func previewRetargetsOnlyThePreview() throws {
+        let manager = QueryTabManager()
+        let kept = manager.addTableListingTab(title: "Tables", databaseName: "shop", schemaName: nil)
+        let preview = manager.addTableListingTab(
+            title: "Views", databaseName: "shop", schemaName: nil, kind: .view, isPreview: true
+        )
+
+        let landed = manager.addTableListingTab(
+            title: "Functions", databaseName: "shop", schemaName: nil, kind: .function, isPreview: true
+        )
+
+        #expect(landed == preview)
+        #expect(manager.tabs.map(\.id) == [kept, preview])
+        #expect(manager.tabs.first { $0.id == kept }?.display.listingKind == nil)
+        #expect(manager.tabs.first { $0.id == preview }?.display.listingKind == .function)
+        #expect(manager.tabs.first { $0.id == preview }?.title == "Functions")
+        #expect(manager.tabs.first { $0.id == preview }?.isPreview == true)
+    }
+
+    @Test("A request to keep retargets the kept listing and closes the preview beside it")
+    func keepRequestRetargetsTheKeptListingAndClosesThePreview() throws {
+        let manager = QueryTabManager()
+        let kept = manager.addTableListingTab(title: "Tables", databaseName: "shop", schemaName: nil)
+        let preview = manager.addTableListingTab(
+            title: "Views", databaseName: "shop", schemaName: nil, kind: .view, isPreview: true
+        )
+        let landing = try #require(
+            manager.tableListingLanding(databaseName: "shop", schemaName: nil, kind: .function, isPreview: false)
+        )
+        #expect(landing.tabId == kept)
+        #expect(landing.closesPreviewId == preview)
+
+        let landed = manager.addTableListingTab(
+            title: "Functions", databaseName: "shop", schemaName: nil, kind: .function
+        )
+
+        #expect(landed == kept)
+        #expect(manager.tabs.map(\.id) == [kept])
+        #expect(manager.selectedTabId == kept)
+        #expect(manager.selectedTab?.display.listingKind == .function)
+        #expect(manager.selectedTab?.title == "Functions")
+        #expect(manager.selectedTab?.isPreview == false)
+    }
+
+    @Test("Each container keeps its own kept listing and preview")
+    func otherContainersKeepTheirOwnPair() throws {
+        let manager = QueryTabManager()
+        let shop = manager.addTableListingTab(title: "Tables", databaseName: "shop", schemaName: nil)
+        let archive = manager.addTableListingTab(title: "Tables", databaseName: "archive", schemaName: nil)
+        let shopViews = manager.addTableListingTab(
+            title: "Views", databaseName: "shop", schemaName: nil, kind: .view, isPreview: true
+        )
+
+        manager.addTableListingTab(title: "Functions", databaseName: "archive", schemaName: nil, kind: .function)
+
+        #expect(manager.tabs.map(\.id) == [shop, archive, shopViews])
+        #expect(manager.tabs.first { $0.id == archive }?.display.listingKind == .function)
+        #expect(manager.tabs.first { $0.id == shopViews }?.display.listingKind == .view)
     }
 
     @Test("Tables is stored as no kind, so it reads like a tab saved before kinds existed")

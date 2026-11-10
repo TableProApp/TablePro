@@ -12,10 +12,16 @@ extension MainContentCoordinator {
     /// menu command opens them to keep, and brings a tab already open up to date.
     func showObjects(_ target: DatabaseTreeObjectGroup, asPreview: Bool) {
         let schemaName = target.schema?.nilIfEmpty
-        let isOpen = tabManager.tableListingTab(databaseName: target.database, schemaName: schemaName) != nil
-        let replaced = asPreview && !isOpen ? replaceablePreview : nil
+        let landing = tabManager.tableListingLanding(
+            databaseName: target.database, schemaName: schemaName, kind: target.kind, isPreview: asPreview
+        )
+        let replaced = asPreview && landing == nil ? replaceablePreview : nil
         if let replaced {
             releasePreviewForReplacement(replaced)
+        }
+        // The kept listing takes a request to keep, so the preview beside it goes the way a replaced one does.
+        if let closing = landing?.closesPreviewId.flatMap({ id in tabManager.tabs.first { $0.id == id } }) {
+            releasePreviewForReplacement(closing)
         }
         let tabId = tabManager.addTableListingTab(
             title: listingTitle(kind: target.kind, schemaName: schemaName),

@@ -548,8 +548,9 @@ final class QueryTabManager: ObservableObject {
         selectedTabId = newTab.id
     }
 
-    // One listing per container: asking again selects it, and another kind retargets it rather than opening a second
-    // tab. A preview takes the strip slot of the preview it replaces, so browsing the sidebar does not grow the strip.
+    // A container holds at most one kept listing and one preview, the way a table preview sits beside kept table tabs.
+    // Asking again lands on one of them and another kind retargets it, rather than opening a third. A new preview takes
+    // the strip slot of the preview it replaces, so browsing the sidebar does not grow the strip.
     @discardableResult
     func addTableListingTab(
         title: String,
@@ -560,13 +561,20 @@ final class QueryTabManager: ObservableObject {
         replacing previewId: UUID? = nil
     ) -> UUID {
         let schemaName = schemaName.flatMap { $0.isEmpty ? nil : $0 }
-        if let existing = tableListingTab(databaseName: databaseName, schemaName: schemaName) {
-            setTableListingKind(kind, title: title, tabId: existing.id)
-            if !isPreview {
-                promotePreviewTab(id: existing.id)
+        if let landing = tableListingLanding(
+            databaseName: databaseName, schemaName: schemaName, kind: kind, isPreview: isPreview
+        ) {
+            if landing.retargets {
+                setTableListingKind(kind, title: title, tabId: landing.tabId)
             }
-            selectedTabId = existing.id
-            return existing.id
+            if !isPreview {
+                promotePreviewTab(id: landing.tabId)
+            }
+            selectedTabId = landing.tabId
+            if let closing = landing.closesPreviewId {
+                closeTab(id: closing)
+            }
+            return landing.tabId
         }
         var newTab = QueryTab(title: title, tabType: .tableListing)
         newTab.tableContext.isEditable = false
@@ -587,13 +595,36 @@ final class QueryTabManager: ObservableObject {
         return newTab.id
     }
 
-    func tableListingTab(databaseName: String, schemaName: String?) -> QueryTab? {
+    /// Where a request for a container's objects lands among the listings open for it, nil for a new
+    /// tab. A preview never changes a kept listing, so its kind, filter and sort survive browsing: it
+    /// returns to one showing the kind, else it takes the container's preview. A request to keep takes
+    /// the kept listing, else the preview, and the preview beside a kept listing goes.
+    func tableListingLanding(
+        databaseName: String,
+        schemaName: String?,
+        kind: SidebarObjectKind,
+        isPreview: Bool
+    ) -> TableListingLanding? {
         let schemaName = schemaName.flatMap { $0.isEmpty ? nil : $0 }
-        return tabs.first {
+        let listings = tabs.filter {
             $0.tabType == .tableListing
                 && $0.tableContext.databaseName == databaseName
                 && $0.tableContext.schemaName == schemaName
         }
+        let kept = listings.filter { !$0.isPreview }
+        // A preview the user kept, or one a relaunch restored as kept, can make a second kept listing.
+        let keptShowingKind = kept.first { ($0.display.listingKind ?? .table) == kind }
+        let preview = listings.first { $0.isPreview }
+        if isPreview {
+            if let keptShowingKind {
+                return TableListingLanding(tabId: keptShowingKind.id, retargets: false, closesPreviewId: nil)
+            }
+            return preview.map { TableListingLanding(tabId: $0.id, retargets: true, closesPreviewId: nil) }
+        }
+        if let keptTab = keptShowingKind ?? kept.first {
+            return TableListingLanding(tabId: keptTab.id, retargets: true, closesPreviewId: preview?.id)
+        }
+        return preview.map { TableListingLanding(tabId: $0.id, retargets: true, closesPreviewId: nil) }
     }
 
     func setTableListingKind(_ kind: SidebarObjectKind, title: String, tabId: UUID) {
@@ -906,4 +937,13 @@ extension QueryTabManager {
         _visibleTabs = nil
         AppEvents.shared.visibleContainerChanged.send()
     }
+}
+
+/// The open listing a request for a container's objects selects.
+internal struct TableListingLanding: Equatable {
+    let tabId: UUID
+    /// False for a kept listing a preview returns to: it keeps its kind, filter and sort.
+    let retargets: Bool
+    /// The preview beside the kept listing a request to keep lands on, which closes.
+    let closesPreviewId: UUID?
 }

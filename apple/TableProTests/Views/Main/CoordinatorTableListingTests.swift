@@ -158,6 +158,59 @@ struct CoordinatorTableListingTests {
         #expect(tabManager.tabs.count == 2)
     }
 
+    @Test("A selection of another kind in a kept listing's container previews it beside the kept tab")
+    func selectionBesideAKeptListingLeavesItAlone() throws {
+        let (coordinator, tabManager, _) = makeCoordinator()
+        defer { coordinator.teardown() }
+        coordinator.showObjects(group("shop"), asPreview: false)
+        let kept = try #require(tabManager.selectedTabId)
+
+        coordinator.showObjects(group("shop", .view), asPreview: true)
+
+        let preview = try #require(tabManager.selectedTab)
+        let keptTab = try #require(tabManager.tabs.first { $0.id == kept })
+        #expect(tabManager.tabs.map(\.id) == [kept, preview.id])
+        #expect(preview.isPreview)
+        #expect(preview.display.listingKind == .view)
+        #expect(keptTab.display.listingKind == nil)
+        #expect(keptTab.title == "Tables")
+        #expect(!keptTab.isPreview)
+    }
+
+    @Test("A selection of the kind a kept listing shows returns to it")
+    func selectionReturnsToTheKeptListing() throws {
+        let (coordinator, tabManager, _) = makeCoordinator()
+        defer { coordinator.teardown() }
+        coordinator.showObjects(group("shop", .view), asPreview: false)
+        let kept = try #require(tabManager.selectedTabId)
+        tabManager.addTab(initialQuery: "SELECT 1", databaseName: "shop")
+
+        coordinator.showObjects(group("shop", .view), asPreview: true)
+
+        #expect(tabManager.selectedTabId == kept)
+        #expect(tabManager.tabs.filter { $0.tabType == .tableListing }.count == 1)
+        #expect(tabManager.selectedTab?.isPreview == false)
+    }
+
+    @Test("Show Objects retargets the kept listing, closes the preview beside it and refreshes the kept one")
+    func showObjectsTakesTheKeptListing() throws {
+        let (coordinator, tabManager, _) = makeCoordinator()
+        defer { coordinator.teardown() }
+        coordinator.showObjects(group("shop"), asPreview: false)
+        let kept = try #require(tabManager.selectedTabId)
+        coordinator.showObjects(group("shop", .view), asPreview: true)
+        var refreshed: [UUID] = []
+        let subscription = AppEvents.shared.tabRefreshRequested.sink { refreshed.append($0) }
+        defer { subscription.cancel() }
+
+        coordinator.showObjects(group("shop", .function), asPreview: false)
+
+        #expect(tabManager.tabs.map(\.id) == [kept])
+        #expect(tabManager.selectedTab?.display.listingKind == .function)
+        #expect(tabManager.selectedTab?.isPreview == false)
+        #expect(refreshed == [kept])
+    }
+
     @Test("Picking a kind retargets the tab, relabels it and keeps the preview")
     func pickingAKindKeepsThePreview() throws {
         let (coordinator, tabManager, _) = makeCoordinator()
