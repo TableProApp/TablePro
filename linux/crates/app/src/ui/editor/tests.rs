@@ -3277,6 +3277,45 @@ mod result_edits {
     }
 
     #[gtk4::test]
+    fn header_save_action_commits_result_inline_edits_and_follows_save_state() {
+        let (harness, tracker) = editing(
+            rows_of(vec![traced("id", "id"), traced("x", "a")], TransactionState::Idle),
+            "SELECT id, a AS x FROM t",
+        );
+        let _window = shown(&harness);
+        run_and_wait(&harness);
+        assert_eq!(settled(&harness), None);
+        let grid = shown_grid(&harness);
+        let action = harness.editor.save_changes_action().expect("the data save action");
+        assert!(!action.is_enabled(), "clean rows have nothing to save");
+        let mut cell = None;
+        wait_until(WAIT, || {
+            cell = grid.focus_cell(0, 1);
+            cell.is_some()
+        })
+        .expect("the cell");
+        let cell = cell.expect("the cell");
+        assert!(grid.edit().edit_cell(&cell));
+        grid.edit().open_text().expect("inline field").set_text("changed");
+        assert_eq!(tracker.pending_count(), 0);
+        assert!(action.is_enabled(), "the first inline edit enables Save Changes");
+        let saves = SignalLog::connect(&harness.editor, "save-rows", |_| ());
+
+        action.activate(None);
+
+        assert_eq!(tracker.pending_count(), 1);
+        assert_eq!(saves.count(), 1);
+        assert!(!cell.is_editing());
+        harness.editor.rows_save_started();
+        assert!(!action.is_enabled());
+        harness.editor.rows_save_failed(None);
+        assert!(action.is_enabled());
+        let _ = tracker.discard();
+        harness.editor.rows_discarded(false);
+        assert!(!action.is_enabled());
+    }
+
+    #[gtk4::test]
     fn a_join_stays_read_only_and_says_why() {
         let (harness, _) = editing(
             rows_of(vec![traced("id", "id"), traced("a", "a")], TransactionState::Idle),
