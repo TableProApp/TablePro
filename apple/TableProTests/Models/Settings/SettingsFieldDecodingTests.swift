@@ -83,6 +83,23 @@ struct SettingsFieldDecodingTests {
         #expect(decoded.showsColumnTypesInHeader == true)
     }
 
+    @Test("Tab settings saved before located titles keep bare table names, and the choice round-trips")
+    func titleShowsLocationDefaultsOff() throws {
+        let legacy = try decode(TabSettings.self, #"{"enablePreviewTabs":false,"overflow":"rows"}"#)
+        #expect(legacy.titleShowsLocation == false)
+        #expect(legacy.enablePreviewTabs == false)
+        #expect(legacy.overflow == .rows)
+        #expect(TabSettings.default.titleShowsLocation == false)
+
+        let bad = try decode(TabSettings.self, #"{"titleShowsLocation":3,"enablePreviewTabs":false}"#)
+        #expect(bad.titleShowsLocation == false)
+        #expect(bad.enablePreviewTabs == false)
+
+        let chosen = TabSettings(titleShowsLocation: true)
+        let decoded = try decode(TabSettings.self, String(decoding: try JSONEncoder().encode(chosen), as: UTF8.self))
+        #expect(decoded.titleShowsLocation == true)
+    }
+
     @Test("A bad MCP value falls back alone and keeps the secure default")
     func mcpKeepsOtherFields() throws {
         let settings = try decode(

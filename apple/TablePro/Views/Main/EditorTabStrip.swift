@@ -39,6 +39,9 @@ internal struct EditorTabStrip: View {
     /// shares a title with. Resolved by the window, because a view has no business asking the
     /// plugin registry what kind of container a connection has.
     internal let containerTarget: ContainerSwitchTarget?
+    /// Named in a table tab's title when Settings asks for the location. Passed in rather than read
+    /// from the session, for the reason `containerTarget` is.
+    internal var connectionName = ""
     /// Which tabs are running something. Observed rather than pushed in, so a claim opening or
     /// settling redraws this strip the same way it redraws the result pane. A tab that is not the
     /// selected one has no status bar on screen, and its progress used to show as the window-wide
@@ -157,7 +160,11 @@ internal struct EditorTabStrip: View {
     }
 
     private var labels: [UUID: EditorTabLabelResolver.Label] {
-        EditorTabLabelResolver.resolve(tabs: displayedTabs, target: containerTarget)
+        EditorTabLabelResolver.resolve(tabs: displayedTabs, target: containerTarget, style: titleStyle)
+    }
+
+    private var titleStyle: EditorTabTitleStyle {
+        EditorTabTitleStyle(showsLocation: settings.tabs.titleShowsLocation, connectionName: connectionName)
     }
 
     @ViewBuilder
@@ -341,6 +348,12 @@ private struct EditorTabStripItem: View {
                 if tab.isPinned {
                     Image(systemName: "pin.fill")
                         .font(.system(size: EditorTabStripLayout.pinGlyphSize))
+                        .foregroundStyle(titleColor)
+                        .accessibilityHidden(true)
+                }
+                if let symbolName = label.symbolName {
+                    Image(systemName: symbolName)
+                        .font(.system(size: EditorTabStripLayout.objectGlyphSize))
                         .foregroundStyle(titleColor)
                         .accessibilityHidden(true)
                 }

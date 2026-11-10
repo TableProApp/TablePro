@@ -58,6 +58,9 @@ struct GeneralSettingsView: View {
                     }
                 }
                 .help("Scrolling keeps one row of tabs, the way every macOS tab bar does. Rows wraps them so nothing is off screen.")
+
+                Toggle("Show database and connection in table tab titles", isOn: $tabSettings.titleShowsLocation)
+                    .help("Titles a table tab orders@shop (Shop Demo), with a table or view icon, so each tab says where its rows come from. Query tabs keep their names.")
             }
 
             Section {

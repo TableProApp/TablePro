@@ -30,6 +30,7 @@ internal enum EditorTabStripLayout {
     internal static let accessoryInset: CGFloat = 5
     internal static let fontSize: CGFloat = 11
     internal static let pinGlyphSize: CGFloat = 9
+    internal static let objectGlyphSize: CGFloat = 10
     internal static let pinSpacing: CGFloat = 3
 
     /// One device pixel on the 2x displays this chrome is drawn for, which is what the system uses

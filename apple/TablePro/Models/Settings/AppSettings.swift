@@ -350,11 +350,19 @@ struct TabSettings: Codable, Equatable {
     /// What the strip does once the tabs stop fitting. `scroll` is the system's answer and the
     /// default: every tab bar Apple ships keeps one row and scrolls it.
     var overflow: EditorTabStripOverflow = .scroll
+    /// Off by default: the location makes a table tab's title several times longer than the
+    /// table's name, and a tab at its minimum width then truncates it.
+    var titleShowsLocation: Bool = false
     static let `default` = TabSettings()
 
-    init(enablePreviewTabs: Bool = true, overflow: EditorTabStripOverflow = .scroll) {
+    init(
+        enablePreviewTabs: Bool = true,
+        overflow: EditorTabStripOverflow = .scroll,
+        titleShowsLocation: Bool = false
+    ) {
         self.enablePreviewTabs = enablePreviewTabs
         self.overflow = overflow
+        self.titleShowsLocation = titleShowsLocation
     }
 
     init(from decoder: Decoder) throws {
@@ -362,5 +370,6 @@ struct TabSettings: Codable, Equatable {
         let fallback = Self.default
         enablePreviewTabs = container.decodeSetting(.enablePreviewTabs, default: fallback.enablePreviewTabs)
         overflow = container.decodeSetting(.overflow, default: fallback.overflow)
+        titleShowsLocation = container.decodeSetting(.titleShowsLocation, default: fallback.titleShowsLocation)
     }
 }
