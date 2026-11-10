@@ -124,22 +124,15 @@ final class TableHealthRowsTableCoordinator: NSObject, NSTableViewDataSource, NS
     TableHealthCopySource, TableHealthPrimaryActionSource {
     private static let cellIdentifier = NSUserInterfaceItemIdentifier("TableHealthTextCell")
 
-    // What a reload has to redraw. Rows equal in all of it keep their views and the selection.
+    // What a reload has to redraw: each row's id and the text its columns show. Rows equal in all of it keep their
+    // views and the selection.
     private struct RowKey: Equatable {
         let id: TableHealthFindingID
-        let status: TableHealthRowStatus
-        let checkTitle: String
-        let size: Int64
-        let detail: String
-        let lastSeen: Date
+        let texts: [String]
 
-        init(_ row: TableHealthFindingRow) {
+        init(_ row: TableHealthFindingRow, columns: [TableHealthColumn]) {
             id = row.id
-            status = row.status
-            checkTitle = row.checkTitle
-            size = row.sizeSortKey
-            detail = row.detail
-            lastSeen = row.lastSeenSortKey
+            texts = columns.map { $0.text(for: row) }
         }
     }
 
@@ -167,7 +160,8 @@ final class TableHealthRowsTableCoordinator: NSObject, NSTableViewDataSource, NS
         defer { isSyncing = false }
 
         rows = owner.rows
-        let keys = owner.rows.map(RowKey.init)
+        let columns = columnKinds
+        let keys = owner.rows.map { RowKey($0, columns: columns) }
         if keys != rowKeys {
             rowKeys = keys
             tableView.reloadData()
