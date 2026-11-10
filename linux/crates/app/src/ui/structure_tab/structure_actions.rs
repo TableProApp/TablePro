@@ -35,4 +35,8 @@ impl StructureTab {
     pub(crate) fn command_actions(&self) -> Option<&gio::SimpleActionGroup> {
         self.imp().actions.get()
     }
+
+    pub(crate) fn save_action(&self) -> Option<gio::SimpleAction> {
+        self.command_actions()?.lookup_action("save").and_downcast()
+    }
 }

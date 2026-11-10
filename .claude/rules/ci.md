@@ -16,9 +16,9 @@ paths:
 
 ## Required checks
 
-- main requires `CI`, the last job of `ci.yml`, and merges through GitHub's merge queue, which builds up to five pull requests at once, each on top of those ahead of it, and squashes. Strict is off. Admins can bypass in pull_request mode.
+- main requires `CI`, the last job of `ci.yml`. There is no merge queue and strict is off: a pull request squash-merges on its own green run, and the main push tests what changed again. Admins can bypass in pull_request mode.
 - `release/*` requires `CI` and `PR title` (ruleset 25435242). `release/0.82` was cut before `ci.yml`: it keeps its own workflow files and the old per-workflow checks (ruleset 23957966).
-- `PR title` (`pr-title.yml`) is advisory on main: the reviewer reads the squash subject. It also runs the changelog check, since a title edit starts no CI run; on main the merge group's Lint job runs it again with the current title.
+- `PR title` (`pr-title.yml`) is advisory on main: the reviewer reads the squash subject. It also runs the changelog check, since a title edit starts no CI run.
 - `CI` fails when a job it needs failed or was cancelled, or when the plan selected a job that did not succeed. A job the plan left out is skipped, which passes.
 - Tags never move (ruleset 25308039, no bypass). Only admins create `release/*` and the `v*`, `ios-v*`, `linux-v*`, `windows-v*`, `libs-*` and `plugin-*` tags.
 
@@ -26,16 +26,16 @@ paths:
 
 - Open the CI run and read the red job under it. `CI` only lists the results.
 - PR CI tests the merge with main as of the trigger. After main is fixed, merge main in instead of re-running.
-- A merge group runs `CI` again on the squash of the pull request onto main; a red one drops the pull request from the queue.
 - Artifacts, annotations and summaries: `.claude/skills/fix-issue/references/verification-apple.md`, Reading CI.
 
 ## What runs where
 
-- `ci.yml` runs on every PR, every merge group, pushes to main and `release/**`, and by dispatch. `Plan` runs the detector per suite, then calls each workflow when its suite is true: `ci-lint.yml` (always; SwiftLint with `swiftlint`, the HANA helper with `hana`), `macos-tests.yml` (`macos`, plugins with `plugins`), `ios-tests.yml` (`ios`, TableProOracle with `oracle`), `build-linux.yml` (`linux-docs`, docs job only unless `linux`; `linux-deps` adds the minimum Rust version, the aarch64 Flatpak and the advisory database), `linux-packages.yml` (`packages`, x86_64), `core.yml` (`core`) and `windows.yml` (`windows`).
+- `ci.yml` runs on every PR, pushes to main and `release/**`, and by dispatch. `Plan` runs the detector per suite, then calls each workflow when its suite is true: `ci-lint.yml` (always; SwiftLint with `swiftlint`, the HANA helper with `hana`), `macos-tests.yml` (`macos`, plugins with `plugins`), `ios-tests.yml` (`ios`, TableProOracle with `oracle`), `build-linux.yml` (`linux-docs`, docs job only unless `linux`; `linux-deps` adds the minimum Rust version, the aarch64 Flatpak and the advisory database), `linux-packages.yml` (`packages`, x86_64), `core.yml` (`core`) and `windows.yml` (`windows`).
 - `build-linux.yml` on a change runs the fast job, the default server releases, the x86_64 Flatpak Devel build and its tests, translations and supply chain; no job waits for the fast job. `extended` adds every other server release, the minimum Rust version, the aarch64 Flatpak, paths with spaces and the advisory database. The em dash check warns and never fails.
 - A `release/**` push, or a PR into one, runs no Linux, core or Windows job: Linux ships from main or `linux-X.Y`, and the core and the Windows app have no release line.
-- The base is a PR's base SHA, a merge group's base SHA, or on a main push the head SHA of the last green CI push run on main. No such run, or a dispatch, runs everything. A main push runs no suite when its parent is that last green commit and the commit itself already passed `CI` in a merge group. A dispatch never counts as main's last green run or for a tag.
-- Concurrency in `ci.yml`: a PR keeps its newest run, main pushes run one at a time and a newer pending run replaces the older, and each merge group, `release/**` commit and dispatch has its own group. `linux-packages.yml` runs only when called or dispatched, under its caller's concurrency.
+- The base is a PR's base SHA, or on a push the head SHA of the last green CI push run on the same branch. No such run, as on the first push of a release line, or a dispatch, runs everything. A dispatch never counts as a branch's last green run or for a tag.
+- A release PR changes only the changelog, which no suite reads, so its merge runs Lint only. `version.py check` then takes each test job from the line's last run that passed it (`apple/RELEASING.md`, Branches).
+- Concurrency in `ci.yml`: a PR keeps its newest run, main pushes run one at a time and a newer pending run replaces the older, and each `release/**` commit and dispatch has its own group. `linux-packages.yml` runs only when called or dispatched, under its caller's concurrency.
 - `nightly.yml` is the one schedule, at 19:17 UTC: every suite in full on main, with core's Arm64 SSH tunnel tests and `build-linux.yml` extended, then `linux-packages.yml` with the Flatpak repository (arm64 too on Sundays, the second cron line), and the Release Build job, which builds and packages the app and every registry plugin as a tag does, unsigned, on `xcode-27`. No tag waits for it. GitHub mails a red run to whoever last edited the schedule.
 - macOS Tests runs the Unit and UI plans in full, with no shard, parallel, iteration or retry flag.
 - `core.yml` runs the core on Windows x64 and Arm64 and on macOS, where the same job builds and tests the Swift bindings, and SQL Server's integrated login on Windows x64. The SSH tunnel tests through Windows' OpenSSH Server run on x64; Arm64, whose image installs the server in about 20 minutes, runs them nightly.
@@ -44,8 +44,8 @@ paths:
 
 ## Change detector
 
-- `scripts/ci/detect-changed-paths.sh [--base <sha>] [--head <rev>] [--ref <ref>] <suite>` prints `true` or `false`. No base prints true; an all-zero base diffs from the merge base with `origin/main`; `--ref refs/heads/release/*` prints true.
-- Suites: `macos`, `plugins`, `ios`, `oracle`, `hana`, `swiftlint`, `linux` (`linux/`, `core/` and the Cargo workspace files at the top; no Markdown but `linux/CHANGELOG.md`, `linux/docs/regression-tests.md` and `linux/data/`), `linux-docs`, `linux-deps` (Cargo manifests and lock, toolchain, `deny.toml`, the Flatpak manifests, the Debian build dependencies), `packages` (Cargo manifests and lock, toolchain, Meson files, `linux/build-aux/` but its tests, `po/LINGUAS`; no Markdown), `core` (`core/`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, the FFI Swift package and what builds it; no Markdown), `windows` (`windows/`, `core/`, `Cargo.toml`, `Cargo.lock` and `rust-toolchain.toml` at the top; no Markdown), `release` (what the Release Build job reads) and `shipped` (`release` without `.github/`; `version.py check` reads it).
+- `scripts/ci/detect-changed-paths.sh [--base <sha>] [--head <rev>] <suite>` prints `true` or `false`. No base prints true; an all-zero base diffs from the merge base with `origin/main`.
+- Suites: `macos`, `plugins`, `ios`, `oracle`, `hana`, `swiftlint`, `linux` (`linux/`, `core/` and the Cargo workspace files at the top; no Markdown but `linux/CHANGELOG.md`, `linux/docs/regression-tests.md` and `linux/data/`), `linux-docs`, `linux-deps` (Cargo manifests and lock, toolchain, `deny.toml`, the Flatpak manifests, the Debian build dependencies), `packages` (Cargo manifests and lock, toolchain, Meson files, `linux/build-aux/` but its tests, `po/LINGUAS`; no Markdown), `core` (`core/`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, the FFI Swift package and what builds it; no Markdown), `windows` (`windows/`, `core/`, `Cargo.toml`, `Cargo.lock` and `rust-toolchain.toml` at the top; no Markdown), `release` (what the Release Build job reads) and `shipped` (`release` without `.github/`; `version.py check` reads it, and `macos` and `ios` for a test job a tag's run left out).
 - Every suite but `shipped` watches `ci.yml` and its own workflow. A path a suite newly reads joins its pattern in the same change.
 
 ## Runners

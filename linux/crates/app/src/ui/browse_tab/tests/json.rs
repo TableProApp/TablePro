@@ -53,7 +53,9 @@ fn the_bottom_bar_shows_the_rows_as_json_without_structure_support() {
     assert!(imp.rows_start.is_visible() && imp.json_end.is_visible());
     assert!(tab.activate_action("grid.insert-row", None).is_err());
     assert!(tab.activate_action("grid.delete-rows", None).is_err());
+    assert!(tab.shown_save_action().is_none(), "the header's Save has nothing to save in JSON");
     imp.view_stack.set_visible_child_name("data");
+    assert!(tab.shown_save_action().is_some());
     // At 600 px the narrow layout hides the row actions, so Insert's own flag is what Data restores.
     assert!(imp.data_start.get_visible() && imp.data_end.get_visible());
     assert!(imp.insert_button.get_visible());

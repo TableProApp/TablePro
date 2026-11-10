@@ -149,6 +149,7 @@ impl BrowseTab {
             filter_strip.set_revealed(true);
         }
         let actions = browse_actions::install_browse_actions(&tab, init.page_size);
+        let _ = tab.imp().save_action.set(actions.save.clone());
         // A sort saved with the tab cannot reach an engine that reads
         // in its own order.
         let preferences = init.settings.grid_preferences().snapshot();
@@ -219,6 +220,17 @@ impl BrowseTab {
         tab.imp().model.replace(Some(model));
         tab.start(link_changes, init.first_load);
         tab
+    }
+
+    pub(crate) fn shown_save_action(&self) -> Option<gio::SimpleAction> {
+        if self.shows_structure() {
+            return self.structure_tab()?.save_action();
+        }
+        // The JSON preview edits nothing, so Save stays with the grid's own view.
+        if self.shows_json() {
+            return None;
+        }
+        self.imp().save_action.get().cloned()
     }
 
     /// Follow reconnects for as long as the tab is open, and read the
@@ -416,6 +428,14 @@ impl BrowseTab {
         )
     }
 
+    pub fn connect_save_action_changed<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "save-action-changed",
+            false,
+            glib::closure_local!(move |tab: &Self| f(tab)),
+        )
+    }
+
     pub fn offer_structure(&self) {
         let imp = self.imp();
         imp.view_stack.page(&*imp.structure_host).set_visible(true);
@@ -426,6 +446,7 @@ impl BrowseTab {
         let imp = self.imp();
         structure.dock_actions(&imp.structure_details, &imp.structure_secondary, &imp.structure_primary);
         self.sync_structure_actions();
+        self.emit_by_name::<()>("save-action-changed", &[]);
     }
 
     pub fn structure_tab(&self) -> Option<crate::ui::structure_tab::StructureTab> {
@@ -476,6 +497,7 @@ impl BrowseTab {
             model.show_grid_actions();
         }
         self.refresh_json();
+        self.emit_by_name::<()>("save-action-changed", &[]);
     }
 
     fn sync_structure_actions(&self) {
@@ -484,12 +506,8 @@ impl BrowseTab {
     }
 
     fn save_selected_view(&self) {
-        if self.shows_structure() {
-            if let Some(structure) = self.structure_tab() {
-                let _ = structure.activate_action("structure.save", None);
-            }
-        } else if self.shows_data() {
-            let _ = self.activate_action("browse.save", None);
+        if let Some(action) = self.shown_save_action() {
+            action.activate(None);
         }
     }
 
