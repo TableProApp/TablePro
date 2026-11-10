@@ -77,8 +77,8 @@ fn is_primary_key(column: &GridColumn) -> bool {
     column.catalog.as_ref().is_some_and(|catalog| catalog.primary_key)
 }
 
-// The key has no role of its own, so the label is where a screen reader hears it.
-pub(super) fn field_label(column: &GridColumn) -> String {
+// Markers have no role of their own, so the label names both key roles.
+pub(super) fn field_label(column: &GridColumn, foreign: bool) -> String {
     let mut parts = vec![column.name.clone()];
     let type_name = &column.value_type().name;
     if !type_name.is_empty() {
@@ -86,6 +86,9 @@ pub(super) fn field_label(column: &GridColumn) -> String {
     }
     if is_primary_key(column) {
         parts.push(gettext("primary key"));
+    }
+    if foreign {
+        parts.push(gettext("foreign key"));
     }
     parts.join(", ")
 }
@@ -290,7 +293,7 @@ impl RowDetailPane {
         factory
     }
 
-    pub(super) fn redraw_fields(&self) {
+    pub(in crate::ui::data_grid) fn redraw_fields(&self) {
         self.refilter_fields();
         let bound: Vec<gtk::ListItem> = self.imp().bound.borrow().clone();
         for item in &bound {
@@ -371,10 +374,20 @@ impl RowDetailPane {
         else {
             return;
         };
-        key.set_visible(is_primary_key(&column));
+        let primary = is_primary_key(&column);
+        let foreign = grid.is_foreign_key_column(&column.name);
+        key.set_visible(primary || foreign);
+        key.set_icon_name(Some(if primary { icons::PRIMARY_KEY } else { icons::GO_UP }));
+        let key_tip = match (primary, foreign) {
+            (true, true) => Some(gettext("Primary and foreign key")),
+            (true, false) => Some(gettext("Primary key")),
+            (false, true) => Some(gettext("Foreign key")),
+            (false, false) => None,
+        };
+        key.set_tooltip_text(key_tip.as_deref());
         name.set_label(&column.name);
         kind.set_label(&column.value_type().name);
-        item.set_accessible_label(&field_label(&column));
+        item.set_accessible_label(&field_label(&column, foreign));
         let Some(row) = self.current_row() else {
             edited.set_visible(false);
             shown.set_text(None);
