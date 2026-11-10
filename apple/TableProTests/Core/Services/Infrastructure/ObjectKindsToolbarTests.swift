@@ -105,6 +105,40 @@ struct ObjectKindsToolbarTests {
         }
     }
 
+    // MARK: - Selection
+
+    @Test("The button for the front tab's kind draws in the accent color and the others stay template glyphs")
+    func frontKindDrawsInAccent() throws {
+        let fixture = CoordinatorFixture(connection: TestFixtures.makeConnection(database: "shop", type: .mysql))
+        let owner = Self.owner()
+        owner.repoint(to: fixture.coordinator)
+        let group = try Self.group(from: owner)
+
+        try Self.press(MainWindowToolbar.objectViews, on: owner)
+        group.subitems.forEach { $0.validate() }
+
+        func image(_ identifier: NSToolbarItem.Identifier) -> NSImage? {
+            group.subitems.first { $0.itemIdentifier == identifier }?.image
+        }
+        #expect(owner.selectedObjectKindItem() == MainWindowToolbar.objectViews)
+        #expect(image(MainWindowToolbar.objectViews)?.isTemplate == false)
+        #expect(image(MainWindowToolbar.objectTables)?.isTemplate == true)
+        #expect(image(MainWindowToolbar.objectFunctions)?.isTemplate == true)
+    }
+
+    @Test("The selected button is the kind the front tab shows, and none for a tab no button opens")
+    func selectionFollowsTheFrontTab() {
+        let select = MainWindowToolbar.selectedObjectKindItem
+        #expect(select(.tableListing, nil) == MainWindowToolbar.objectTables)
+        #expect(select(.tableListing, .table) == MainWindowToolbar.objectTables)
+        #expect(select(.tableListing, .view) == MainWindowToolbar.objectViews)
+        #expect(select(.tableListing, .function) == MainWindowToolbar.objectFunctions)
+        #expect(select(.tableListing, .procedure) == nil)
+        #expect(select(.usersRoles, nil) == MainWindowToolbar.objectUsers)
+        #expect(select(.query, nil) == nil)
+        #expect(select(nil, nil) == nil)
+    }
+
     // MARK: - Routing
 
     @Test("Tables, Views and Functions open the browsed container's objects on their kind", arguments: [

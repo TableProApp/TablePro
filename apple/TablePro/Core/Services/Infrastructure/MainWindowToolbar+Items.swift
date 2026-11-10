@@ -367,25 +367,53 @@ extension MainWindowToolbar {
                     id: Self.objectTables,
                     label: String(localized: "Tables"),
                     symbol: SidebarObjectKind.table.iconName,
-                    action: #selector(performShowTables(_:))
+                    action: #selector(performShowTables(_:)),
+                    glyphProvider: { [weak self] in
+                        Self.objectKindGlyph(
+                            symbol: SidebarObjectKind.table.iconName,
+                            label: String(localized: "Tables"),
+                            isSelected: self?.selectedObjectKindItem() == Self.objectTables
+                        )
+                    }
                 ),
                 menuOnlyItem(
                     id: Self.objectViews,
                     label: String(localized: "Views"),
                     symbol: SidebarObjectKind.view.iconName,
-                    action: #selector(performShowViews(_:))
+                    action: #selector(performShowViews(_:)),
+                    glyphProvider: { [weak self] in
+                        Self.objectKindGlyph(
+                            symbol: SidebarObjectKind.view.iconName,
+                            label: String(localized: "Views"),
+                            isSelected: self?.selectedObjectKindItem() == Self.objectViews
+                        )
+                    }
                 ),
                 menuOnlyItem(
                     id: Self.objectFunctions,
                     label: String(localized: "Functions"),
                     symbol: SidebarObjectKind.function.iconName,
-                    action: #selector(performShowFunctions(_:))
+                    action: #selector(performShowFunctions(_:)),
+                    glyphProvider: { [weak self] in
+                        Self.objectKindGlyph(
+                            symbol: SidebarObjectKind.function.iconName,
+                            label: String(localized: "Functions"),
+                            isSelected: self?.selectedObjectKindItem() == Self.objectFunctions
+                        )
+                    }
                 ),
                 menuOnlyItem(
                     id: Self.objectUsers,
                     label: String(localized: "Users"),
                     symbol: "person.2",
-                    action: #selector(performShowUsers(_:))
+                    action: #selector(performShowUsers(_:)),
+                    glyphProvider: { [weak self] in
+                        Self.objectKindGlyph(
+                            symbol: "person.2",
+                            label: String(localized: "Users"),
+                            isSelected: self?.selectedObjectKindItem() == Self.objectUsers
+                        )
+                    }
                 ),
                 menuOnlyItem(
                     id: Self.objectQuery,
@@ -402,6 +430,41 @@ extension MainWindowToolbar {
                 ),
             ]
         )
+    }
+
+    /// The button for what the front tab shows. Query and Backup start something new, so neither stays selected.
+    static func selectedObjectKindItem(tabType: TabType?, listingKind: SidebarObjectKind?) -> NSToolbarItem.Identifier? {
+        switch tabType {
+        case .tableListing:
+            switch listingKind ?? .table {
+            case .table: return objectTables
+            case .view: return objectViews
+            case .function: return objectFunctions
+            default: return nil
+            }
+        case .usersRoles:
+            return objectUsers
+        default:
+            return nil
+        }
+    }
+
+    func selectedObjectKindItem() -> NSToolbarItem.Identifier? {
+        let tab = coordinator?.tabManager.selectedTab
+        return Self.selectedObjectKindItem(tabType: tab?.tabType, listingKind: tab?.display.listingKind)
+    }
+
+    /// The selected kind draws its glyph in the accent color, the way Xcode's navigator bar marks the navigator on
+    /// screen. Measured on macOS 27, a toolbar item group draws no selected state for the buttons it holds, whatever
+    /// its selection mode.
+    static func objectKindGlyph(symbol: String, label: String, isSelected: Bool) -> ToolbarGlyph {
+        ToolbarGlyph(key: isSelected ? "selected" : "plain") {
+            let image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+            guard isSelected else { return image }
+            let tinted = image?.withSymbolConfiguration(NSImage.SymbolConfiguration(paletteColors: [.controlAccentColor]))
+            tinted?.isTemplate = false
+            return tinted
+        }
     }
 
     // MARK: - Helpers
