@@ -21001,6 +21001,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Adds a Favorites section above Recent with the tables you starred in the database you are browsing. Each table also stays in its own place." : {
+
+    },
     "Adds a narrow strip on the window's leading edge listing every connection and database you have open, so one click switches to it." : {
       "localizations" : {
         "fr" : {
@@ -58629,6 +58632,9 @@
         }
       }
     },
+    "Data Size" : {
+
+    },
     "Data type" : {
 
     },
@@ -94534,6 +94540,9 @@
         }
       }
     },
+    "Index Size" : {
+
+    },
     "Index type reported by the engine" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -113723,6 +113732,9 @@
           }
         }
       }
+    },
+    "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons and the connections list, and makes Tree the default sidebar layout. Standard Layout turns them off again. Open connections switch layout too." : {
+
     },
     "Navigator Layout turns on table details, the Objects tab on selection, the Objects toolbar buttons and the connections list, and makes Tree the default sidebar layout. Standard Layout turns them off again. Open connections switch layout too." : {
 
@@ -165924,6 +165936,9 @@
         }
       }
     },
+    "Show favorite tables at the top of the tree" : {
+
+    },
     "Show Favorites" : {
       "localizations" : {
         "fr" : {
@@ -204719,6 +204734,9 @@
           }
         }
       }
+    },
+    "Total Size" : {
+
     },
     "Total size in bytes" : {
       "localizations" : {
