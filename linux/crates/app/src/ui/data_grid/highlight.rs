@@ -5,6 +5,7 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use tablepro_core::Value;
+use tablepro_linux_platform::settings::DateFormat;
 
 use super::{DataGrid, GridRow};
 use crate::services::grid::display_text::whole_text;
@@ -63,8 +64,9 @@ impl DataGrid {
                     Value::Null => HighlightValue::Null,
                     Value::Bytes(_) => HighlightValue::NonText,
                     Value::Undecodable(_) => HighlightValue::Unavailable,
+                    // Rules match the stored value, so the display's date format never changes which rows light up.
                     value => HighlightValue::Text(Cow::Owned(
-                        whole_text(value, &definition.column_type, &mut scratch).to_owned(),
+                        whole_text(value, &definition.column_type, DateFormat::Iso, &mut scratch).to_owned(),
                     )),
                 }
             });
