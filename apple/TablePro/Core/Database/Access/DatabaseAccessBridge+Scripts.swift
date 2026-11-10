@@ -111,7 +111,8 @@ extension DatabaseAccessBridge {
                 route: route,
                 policy: policy,
                 owner: owner,
-                timeoutSeconds: timeoutSeconds
+                timeoutSeconds: timeoutSeconds,
+                onLateCompletion: { CatalogChangeService.post(statementsRan) }
             ) { driver in
                 try await ScriptBatchRun.run(
                     batches, startLines: startLines, rowCap: rowCap, driver: driver, progress: progress, context: context

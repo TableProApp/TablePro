@@ -28,6 +28,7 @@ struct TriggerEditorView: View {
     @State private var editorConfiguration: SourceEditorConfiguration
     @State private var isApplying = false
     @State private var errorMessage: String?
+    @State private var droppedDefinition: String?
     @AppStorage("structureCodeFontSize", store: AppStorageEnvironment.shared.defaults) private var fontSize: Double = 13
 
     init(
@@ -71,6 +72,13 @@ struct TriggerEditorView: View {
                 .font(.callout)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(8)
+                if let droppedDefinition {
+                    Button("Copy Original Definition") {
+                        ClipboardService.shared.writeText(droppedDefinition)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding([.horizontal, .bottom], 8)
+                }
             }
         }
         .frame(minWidth: 560, idealWidth: 680, minHeight: 360, idealHeight: 460)
@@ -84,7 +92,7 @@ struct TriggerEditorView: View {
 
     private var header: some View {
         HStack {
-            Text(isEdit ? "Edit Trigger" : "New Trigger")
+            Text(isOriginalEdit ? "Edit Trigger" : "New Trigger")
                 .font(.headline)
             Spacer()
             Button("Cancel", role: .cancel) { onClose() }
@@ -97,9 +105,14 @@ struct TriggerEditorView: View {
         .padding()
     }
 
-    private var isEdit: Bool {
+    private var isOriginalEdit: Bool {
         if case .edit = mode { return true }
         return false
+    }
+
+    // Once a failed save has left the trigger dropped, the next save creates it; a second DROP would fail.
+    private var isEdit: Bool {
+        isOriginalEdit && droppedDefinition == nil
     }
 
     private func apply() {
@@ -108,12 +121,12 @@ struct TriggerEditorView: View {
         let originalName: String?
         let originalDefinition: String?
         switch mode {
-        case .create:
-            originalName = nil
-            originalDefinition = nil
-        case let .edit(name, definition):
+        case let .edit(name, definition) where droppedDefinition == nil:
             originalName = name
             originalDefinition = definition
+        case .create, .edit:
+            originalName = nil
+            originalDefinition = nil
         }
         Task {
             defer { isApplying = false }
@@ -129,6 +142,9 @@ struct TriggerEditorView: View {
                 )
                 onClose()
             } catch {
+                if let dropped = (error as? TriggerEditingError)?.droppedDefinition {
+                    droppedDefinition = dropped
+                }
                 errorMessage = error.localizedDescription
             }
         }

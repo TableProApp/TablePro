@@ -752,6 +752,8 @@ final class MainContentCommandActions: ObservableObject {
             return await withCheckedContinuation { continuation in
                 coordinator.saveCompletionContinuation = continuation
                 saveChanges()
+                // Still there when the command went somewhere other than the grid save, which reports nothing back.
+                coordinator.takeSaveCompletion()?.resume(returning: false)
             }
         }
 

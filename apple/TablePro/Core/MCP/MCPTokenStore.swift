@@ -8,6 +8,7 @@ import TableProUtilities
 enum MCPTokenStoreError: Error, Sendable, Equatable {
     case randomGenerationFailed(OSStatus)
     case keychainUnavailable(OSStatus)
+    case storedTokensUnreadable
 
     var message: String {
         switch self {
@@ -15,6 +16,8 @@ enum MCPTokenStoreError: Error, Sendable, Equatable {
             return "Secure random generation failed (OSStatus \(status))"
         case .keychainUnavailable(let status):
             return "Keychain unavailable (OSStatus \(status))"
+        case .storedTokensUnreadable:
+            return "The saved MCP tokens could not be read, so a new token cannot be saved"
         }
     }
 }
@@ -172,6 +175,10 @@ actor MCPTokenStore {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPTokenStore")
 
     private var tokens: [MCPAuthToken] = []
+    // Stored entries this build cannot decode, kept as JSON so a save writes them back.
+    private var undecodedEntries: [Data] = []
+    // Set while the stored list could not be read: saving then would replace tokens nobody loaded.
+    private var storedTokensUnread = false
     private let credentialStore: any MCPTokenCredentialStoring
     private let legacyStorageUrl: URL
     private var lastSavedAt: ContinuousClock.Instant = .now
@@ -210,6 +217,11 @@ actor MCPTokenStore {
         let name = (!isBridgeCredential && name == Self.stdioBridgeTokenName)
             ? name + " (client)"
             : name
+        // The bridge credential is dropped at every load, so it alone may live in memory only.
+        if !isBridgeCredential, !adoptStoredTokensIfUnread() {
+            Self.logger.error("Refused to mint an MCP token: the stored list is still unreadable")
+            throw MCPTokenStoreError.storedTokensUnreadable
+        }
         let plaintext = "tp_" + Self.base64UrlEncode(try Self.randomBytes(count: 32))
         let saltBase64 = try Self.randomBytes(count: 16).base64EncodedString()
         let hash = Self.computeHash(salt: saltBase64, plaintext: plaintext)
@@ -239,6 +251,7 @@ actor MCPTokenStore {
     }
 
     func resolve(bearerToken: String) -> Result<MCPAuthToken, MCPTokenValidationError> {
+        adoptStoredTokensIfUnread()
         let match = tokens.firstIndex { token in
             Self.constantTimeCompare(Self.computeHash(salt: token.salt, plaintext: bearerToken), token.tokenHash)
         }
@@ -307,28 +320,89 @@ actor MCPTokenStore {
     }
 
     func loadFromDisk() {
-        tokens = readCredentialStore() ?? migrateLegacyFileIfPresent()
-
-        let isStaleBridge: (MCPAuthToken) -> Bool = {
-            $0.isBridgeCredential || $0.name == Self.stdioBridgeTokenName
+        undecodedEntries = []
+        switch credentialStore.read() {
+        case .found(let data):
+            storedTokensUnread = false
+            let stored = Self.decodeStored(data)
+            tokens = stored.tokens
+            undecodedEntries = stored.undecoded
+            Self.logger.info("Loaded \(stored.tokens.count) MCP tokens from the keychain")
+        case .missing:
+            storedTokensUnread = false
+            tokens = migrateLegacyFileIfPresent()
+        case .unreadable:
+            storedTokensUnread = true
+            tokens = []
+            Self.logger.error("MCP tokens could not be read; keeping new tokens in memory until they can")
+            return
         }
-        let staleCount = tokens.filter(isStaleBridge).count
+
+        let staleCount = tokens.filter(Self.isStaleBridge).count
         guard staleCount > 0 else { return }
-        tokens.removeAll(where: isStaleBridge)
+        tokens.removeAll(where: Self.isStaleBridge)
         save()
         Self.logger.info("Cleaned up \(staleCount) stale bridge token(s)")
     }
 
-    private func readCredentialStore() -> [MCPAuthToken]? {
-        guard let data = credentialStore.read() else { return nil }
-        do {
-            let decoded = try Self.decoder.decode([MCPAuthToken].self, from: data)
-            Self.logger.info("Loaded \(decoded.count) MCP tokens from the keychain")
-            return decoded
-        } catch {
-            Self.logger.error("Failed to decode MCP tokens: \(error.publicLogShape, privacy: .public)")
-            return []
+    private static func isStaleBridge(_ token: MCPAuthToken) -> Bool {
+        token.isBridgeCredential || token.name == stdioBridgeTokenName
+    }
+
+    // One entry this build cannot decode costs that entry only, and it is written back untouched.
+    static func decodeStored(_ data: Data) -> (tokens: [MCPAuthToken], undecoded: [Data]) {
+        guard let entries = try? JSONSerialization.jsonObject(with: data) as? [Any] else {
+            logger.error("Stored MCP tokens are not a JSON list; nothing in them can be recovered")
+            return ([], [])
         }
+        var tokens: [MCPAuthToken] = []
+        var undecoded: [Data] = []
+        for entry in entries {
+            guard let fields = entry as? [String: Any],
+                  let entryData = try? JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys])
+            else { continue }
+            do {
+                tokens.append(try decoder.decode(MCPAuthToken.self, from: entryData))
+            } catch {
+                logger.error("Kept an MCP token this build cannot decode: \(error.publicLogShape, privacy: .public)")
+                if fields["isBridgeCredential"] as? Bool != true {
+                    undecoded.append(entryData)
+                }
+            }
+        }
+        return (tokens, undecoded)
+    }
+
+    static func encodeStored(tokens: [MCPAuthToken], undecoded: [Data]) throws -> Data {
+        let data = try encoder.encode(tokens)
+        guard !undecoded.isEmpty else { return data }
+        var entries = try JSONSerialization.jsonObject(with: data) as? [Any] ?? []
+        for entry in undecoded {
+            entries.append(try JSONSerialization.jsonObject(with: entry))
+        }
+        return try JSONSerialization.data(withJSONObject: entries, options: [.sortedKeys])
+    }
+
+    // Returns false while the stored list is still unreadable. Once it reads, the tokens minted in
+    // the meantime are merged over it, so neither side is lost.
+    @discardableResult
+    private func adoptStoredTokensIfUnread() -> Bool {
+        guard storedTokensUnread else { return true }
+        let stored: (tokens: [MCPAuthToken], undecoded: [Data])
+        switch credentialStore.read() {
+        case .unreadable:
+            return false
+        case .missing:
+            stored = ([], [])
+        case .found(let data):
+            stored = Self.decodeStored(data)
+        }
+        storedTokensUnread = false
+        let minted = Set(tokens.map(\.id))
+        tokens = stored.tokens.filter { !minted.contains($0.id) && !Self.isStaleBridge($0) } + tokens
+        undecodedEntries = stored.undecoded
+        Self.logger.info("Read the stored MCP tokens after an earlier failure")
+        return true
     }
 
     private func migrateLegacyFileIfPresent() -> [MCPAuthToken] {
@@ -358,8 +432,12 @@ actor MCPTokenStore {
 
     private func save() {
         lastSavedAt = .now
+        guard adoptStoredTokensIfUnread() else {
+            Self.logger.error("MCP tokens not saved: the stored list is still unreadable")
+            return
+        }
         do {
-            let data = try Self.encoder.encode(tokens)
+            let data = try Self.encodeStored(tokens: tokens, undecoded: undecodedEntries)
             guard credentialStore.write(data) else {
                 Self.logger.error("Failed to write MCP tokens to the keychain")
                 return
@@ -419,8 +497,14 @@ actor MCPTokenStore {
     }
 }
 
+enum MCPTokenBlob: Sendable, Equatable {
+    case found(Data)
+    case missing
+    case unreadable
+}
+
 protocol MCPTokenCredentialStoring: Sendable {
-    func read() -> Data?
+    func read() -> MCPTokenBlob
     @discardableResult
     func write(_ data: Data) -> Bool
     func delete()
@@ -436,12 +520,17 @@ struct MCPTokenKeychainStore: MCPTokenCredentialStoring {
         AppStorageEnvironment.shared.isIsolated ? AppStorageEnvironment.shared.keychain : nil
     }
 
-    func read() -> Data? {
+    func read() -> MCPTokenBlob {
         if let isolatedStore = Self.isolatedStore {
-            guard case .found(let encoded) = isolatedStore.readStringResult(forKey: Self.isolatedKey) else {
-                return nil
+            switch isolatedStore.readStringResult(forKey: Self.isolatedKey) {
+            case .found(let encoded):
+                // A value that is not base64 never becomes readable; treat it like any other corrupt blob.
+                return .found(Data(base64Encoded: encoded) ?? Data())
+            case .notFound:
+                return .missing
+            case .locked, .userCancelled, .authFailed, .error:
+                return .unreadable
             }
-            return Data(base64Encoded: encoded)
         }
 
         var query = Self.baseQuery()
@@ -450,13 +539,12 @@ struct MCPTokenKeychainStore: MCPTokenCredentialStoring {
 
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess else {
-            if status != errSecItemNotFound {
-                Self.logger.error("Keychain read failed (OSStatus \(status, privacy: .public))")
-            }
-            return nil
+        if status == errSecItemNotFound { return .missing }
+        guard status == errSecSuccess, let data = result as? Data else {
+            Self.logger.error("Keychain read failed (OSStatus \(status, privacy: .public))")
+            return .unreadable
         }
-        return result as? Data
+        return .found(data)
     }
 
     @discardableResult

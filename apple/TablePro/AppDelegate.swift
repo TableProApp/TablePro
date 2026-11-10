@@ -149,6 +149,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             store.migrateIfNeeded()
         }
         ConnectionStorage.shared.moveMongoURISecretsToKeychain()
+        ConnectionStorage.shared.keepLocalOnlySecretsOnDeviceIfNeeded()
         FavoriteTablesStorage.shared.migrateSyncIdentityIfNeeded()
         SoftwareUpdater.shared.start()
         // Before the account starts, so a stored key's migration reaches it as a sign-in.

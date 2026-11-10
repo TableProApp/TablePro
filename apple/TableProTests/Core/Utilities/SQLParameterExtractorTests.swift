@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
 struct SQLParameterExtractorTests {
@@ -233,5 +234,62 @@ struct SQLParameterExtractorTests {
         )
         #expect(result.sql == "$$ :id $$ WHERE id = ?")
         #expect(result.values.count == 1)
+    }
+
+    // MARK: - Engine grammar
+
+    @Test(
+        "A colon written against a name, a literal, a subscript or a call is the engine's own syntax",
+        arguments: [
+            "SELECT src:customer.name FROM raw",
+            "SELECT arr[lo:hi] FROM t",
+            "SELECT {id:UInt32}",
+            "SELECT \"src\":customer FROM raw",
+            "SELECT f(x):y FROM t",
+            "SELECT '{}'::jsonb, a::int",
+        ]
+    )
+    func colonAfterOperandIsNotAParameter(sql: String) {
+        #expect(SQLParameterExtractor.extractParameters(from: sql, grammar: .ansi) == [])
+    }
+
+    @Test
+    func parameterBesidePathAndCast() {
+        let sql = "SELECT src:customer, :id::int FROM raw WHERE a = :id AND b IN (:b, :c)"
+        #expect(SQLParameterExtractor.extractParameters(from: sql, grammar: .ansi) == ["id", "b", "c"])
+        let result = SQLParameterExtractor.convertToNativeStyle(
+            sql: sql,
+            parameters: [QueryParameter(name: "id", value: "1")],
+            style: .dollar,
+            grammar: .ansi
+        )
+        #expect(result.sql == "SELECT src:customer, $1::int FROM raw WHERE a = $2 AND b IN ($3, $4)")
+    }
+
+    @Test
+    func backslashEndsALiteralOnlyWhereTheEngineEscapesWithIt() {
+        let sql = "SELECT 'C:\\' AS p, :id"
+        #expect(SQLParameterExtractor.extractParameters(from: sql, grammar: .ansi) == ["id"])
+        #expect(SQLParameterExtractor.extractParameters(from: sql, grammar: .backslashEscapesInSingleQuotes) == [])
+    }
+
+    @Test
+    func bracketNameHidesAColonOnlyWhereBracketsQuote() {
+        #expect(SQLParameterExtractor.extractParameters(from: "SELECT [a :b] FROM t", grammar: .bracketQuotedIdentifiers) == [])
+        #expect(SQLParameterExtractor.extractParameters(from: "SELECT x[ :b] FROM t", grammar: .ansi) == ["b"])
+    }
+
+    @Test
+    func hashCommentHidesAColonOnlyWhereTheEngineReadsOne() {
+        let sql = "SELECT 1 # :a\n, :b"
+        #expect(SQLParameterExtractor.extractParameters(from: sql, grammar: .hashLineComments) == ["b"])
+        #expect(SQLParameterExtractor.extractParameters(from: sql, grammar: .ansi) == ["a", "b"])
+    }
+
+    @Test
+    func nestedCommentHidesAColon() {
+        let sql = "/* a /* b */ :x */ SELECT :y"
+        #expect(SQLParameterExtractor.extractParameters(from: sql, grammar: .nestedBlockComments) == ["y"])
+        #expect(SQLParameterExtractor.extractParameters(from: sql, grammar: .ansi) == ["x", "y"])
     }
 }

@@ -218,8 +218,7 @@
       "values": [{"sql": "NULL", "cell": null}, {"sql": "b'10101010'", "cell": "170"}, {"sql": "b'1'", "cell": "1"}],
       "edit": {"row": 2, "text": "5", "cell": "5"},
       "known": {
-        "edit": {"defect": "the grid saves a BIT cell as text, and the server stores the text's bytes: 5 saves as 53", "matches": "reads back \"53\""},
-        "sql": {"defect": "the dump writes a BIT value as quoted text, which restores as the text's bytes", "matches": "the replayed dump reads"}
+        "edit": {"defect": "the grid saves a BIT cell as text, and the server stores the text's bytes: 5 saves as 53", "matches": "reads back \"53\""}
       }
     },
     {

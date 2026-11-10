@@ -633,7 +633,7 @@ internal final class MainSplitViewController: NSSplitViewController {
         /// the coordinator itself rather than which workspace is on screen keeps this exact when a
         /// background workspace loses its session.
         let releasedCoordinator = workspace.sessionState?.coordinator
-        workspace.sessionState?.coordinator.teardown()
+        workspace.sessionState?.coordinator.teardown(endsTabSession: false)
         workspace.sessionState = nil
         workspace.session = nil
         if let releasedCoordinator, toolbarOwner?.coordinator === releasedCoordinator {
