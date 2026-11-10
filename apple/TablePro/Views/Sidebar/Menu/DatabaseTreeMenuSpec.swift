@@ -72,6 +72,10 @@ internal enum DatabaseTreeMenuSpec {
         // sidebar's own menu, as a status row does.
         case .status, .recentSection, .favoritesSection, .temporarySection, .tableDetailGroup:
             return backgroundSections(context)
+        // A saved connection's menu is the connections column's, which the coordinator fills before this
+        // spec is asked. Nothing here acts on a connection, so none of the sidebar's own items apply.
+        case .connectionGroup, .savedConnection:
+            return []
         }
     }
 

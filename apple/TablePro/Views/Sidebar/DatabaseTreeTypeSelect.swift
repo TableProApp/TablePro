@@ -55,6 +55,10 @@ internal enum DatabaseTreeTypeSelect {
         case .recentSection, .favoritesSection, .temporarySection, .foldersSection, .status, .objectKindSection,
              .redisKeysSection:
             return nil
+        case .connectionGroup(let group):
+            return group.name
+        case .savedConnection(let ref):
+            return ref.row.connection.name
         case .tableFolder(let ref):
             return ref.folder.name
         case .containerObjectKindSection(let group):

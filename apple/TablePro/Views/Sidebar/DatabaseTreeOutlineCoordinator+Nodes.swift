@@ -44,6 +44,10 @@ extension DatabaseTreeOutlineCoordinator {
     private func buildChildren(of node: DatabaseTreeNode?) -> [DatabaseTreeNode] {
         guard let node else { return rootNodes() }
         switch node.kind {
+        case .connectionGroup(let group):
+            return connectionLevelNodes(group.children)
+        case .savedConnection(let ref):
+            return ref.ownsTree ? shapeRootNodes() : []
         case .recentSection:
             return recentTableRefs().map {
                 self.node(id: DatabaseTreeNode.recentTableId($0), kind: .recentTable($0))
@@ -145,6 +149,12 @@ extension DatabaseTreeOutlineCoordinator {
     }
 
     private func rootNodes() -> [DatabaseTreeNode] {
+        listsConnections ? connectionLevelNodes(connectionTreeRows()) : shapeRootNodes()
+    }
+
+    /// What the shape lists at its top: the root itself, or the own connection's row when the tree
+    /// lists the saved connections above it.
+    internal func shapeRootNodes() -> [DatabaseTreeNode] {
         switch rootShape {
         case .databaseTree: return databaseTreeRootNodes()
         case .flat: return flatRootNodes()
@@ -166,7 +176,25 @@ extension DatabaseTreeOutlineCoordinator {
         nodes += matched
             .filter { seen.insert($0.id).inserted }
             .map { node(id: DatabaseTreeNode.databaseId($0.name), kind: .database($0)) }
+        if matched.isEmpty, let status = ownDatabaseListStatus() {
+            nodes.append(statusNode(parentId: DatabaseTreeNode.savedConnectionId(connectionId), status: status))
+        }
         return nodes
+    }
+
+    /// Under its connection's row the tree stands whatever the database list is doing, so the
+    /// connections above stay on screen. The states the view showed in the outline's place say
+    /// themselves here. A search that matches nothing lists nothing, as it does without the row.
+    private func ownDatabaseListStatus() -> DatabaseTreeNode.Status? {
+        guard listsConnections, searchText.isEmpty else { return nil }
+        switch service.databaseListState(for: connectionId) {
+        case .idle, .loading:
+            return .loading
+        case .failed(let message):
+            return .error(message)
+        case .loaded:
+            return .empty
+        }
     }
 
     internal var browsingDatabase: String? {

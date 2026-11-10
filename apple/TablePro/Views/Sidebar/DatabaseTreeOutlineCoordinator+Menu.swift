@@ -14,6 +14,7 @@ import TableProPluginKit
 /// replaced, never let the table see the click at all.
 extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
     internal func menuNeedsUpdate(_ menu: NSMenu) {
+        if fillConnectionMenu(menu, clicked: clickedNode()) { return }
         SidebarMenuBuilder.fill(
             menu,
             with: DatabaseTreeMenuSpec.sections(for: menuContext()),

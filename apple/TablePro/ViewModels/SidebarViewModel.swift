@@ -173,6 +173,14 @@ final class SidebarViewModel: ObservableObject {
             )
         }
     }
+    @Published var isOwnConnectionExpanded: Bool {
+        didSet {
+            defaults.set(
+                isOwnConnectionExpanded,
+                forKey: SidebarPersistenceKey.ownConnectionExpanded(connectionId: connectionId)
+            )
+        }
+    }
     @Published var isFoldersExpanded: Bool {
         didSet {
             defaults.set(
@@ -273,6 +281,11 @@ final class SidebarViewModel: ObservableObject {
         )
         self.isFavoritesExpanded = Self.loadExpansion(
             perConnectionKey: SidebarPersistenceKey.favoritesExpanded(connectionId: connectionId),
+            defaultValue: true,
+            defaults: defaults
+        )
+        self.isOwnConnectionExpanded = Self.loadExpansion(
+            perConnectionKey: SidebarPersistenceKey.ownConnectionExpanded(connectionId: connectionId),
             defaultValue: true,
             defaults: defaults
         )

@@ -34,6 +34,7 @@ struct DatabaseTreeOutlineView: NSViewRepresentable {
     let showsTableDetails: Bool
     let rowSizePreference: SidebarRowSizePreference
     var showsFavoritesSection = false
+    var showsConnectionsInTree = false
 
     /// The size the rows are actually drawn at, which is the system's unless the user overrode it.
     var resolvedRowSize: SidebarRowSize {
@@ -60,7 +61,7 @@ struct DatabaseTreeOutlineView: NSViewRepresentable {
         outlineView.target = context.coordinator
         /// No `action`: it arrives on mouse up, a whole gesture after the selection the user can
         /// already see. Opening follows the selection instead, so `doubleAction` is free to mean
-        /// "keep this one" on a table row and to disclose on a container.
+        /// "keep this one" on a table row, to disclose on a container and to open a saved connection.
         outlineView.doubleAction = #selector(DatabaseTreeOutlineCoordinator.handleDoubleClick)
         outlineView.selectionClearing = context.coordinator
         outlineView.primaryActionTarget = context.coordinator

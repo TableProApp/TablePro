@@ -76,6 +76,10 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
     }
 
     enum Kind {
+        /// A group of saved connections, at the top of a tree that lists them.
+        case connectionGroup(ConnectionNavigatorGroupRow)
+        /// A saved connection. The tree's own one holds everything the tree lists without connections.
+        case savedConnection(DatabaseTreeSavedConnectionRef)
         case recentSection
         case recentTable(DatabaseTreeTableRef)
         /// The browsed database's favorite tables, above Recent. Each table also keeps its own row.
@@ -137,6 +141,10 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
         case .redisNode(let node):
             guard case .namespace = node else { return false }
             return true
+        case .connectionGroup(let group):
+            return !group.children.isEmpty
+        case .savedConnection(let ref):
+            return ref.ownsTree
         case .recentTable, .favoriteTable, .temporaryTable, .routine, .trigger, .userType, .status, .tableDetail:
             return false
         }
@@ -167,7 +175,11 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
             return !showsTableDetails
         case .tableDetailGroup:
             return false
-        case .recentSection, .recentTable, .favoritesSection, .favoriteTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+        // Opening a group with Option held must not open every database of the connection inside it,
+        // each of which reads its schemas as it opens.
+        case .savedConnection:
+            return false
+        case .connectionGroup, .recentSection, .recentTable, .favoritesSection, .favoriteTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
              .database, .schema, .partition, .tableDetail, .routine, .trigger, .userType, .status,
              .objectKindSection, .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection,
              .redisNode:
@@ -198,6 +210,11 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
         return nil
     }
 
+    var savedConnectionRef: DatabaseTreeSavedConnectionRef? {
+        if case .savedConnection(let ref) = kind { return ref }
+        return nil
+    }
+
     var temporaryTableRef: DatabaseTreeTableRef? {
         if case .temporaryTable(let ref) = kind { return ref }
         return nil
@@ -214,7 +231,7 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
         case .recentSection, .favoritesSection, .temporarySection, .foldersSection, .objectKindSection,
              .redisKeysSection:
             return true
-        case .database, .schema, .containerObjectKindSection, .tableFolder,
+        case .connectionGroup, .savedConnection, .database, .schema, .containerObjectKindSection, .tableFolder,
              .hierarchicalSchemaSection, .recentTable, .favoriteTable, .temporaryTable, .table, .partition,
              .routine, .trigger, .userType, .status, .redisNode, .tableDetailGroup, .tableDetail:
             return false
@@ -225,7 +242,8 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
         switch kind {
         case .database, .schema:
             return true
-        case .recentSection, .recentTable, .favoritesSection, .favoriteTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+        case .connectionGroup, .savedConnection, .recentSection, .recentTable, .favoritesSection, .favoriteTable,
+             .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
              .table, .partition, .routine, .trigger, .userType, .status, .objectKindSection,
              .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode,
              .tableDetailGroup, .tableDetail:
@@ -239,7 +257,7 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
             return .database(metadata.name, isSystem: metadata.isSystemDatabase)
         case .schema(let database, let schema):
             return .schema(database: database, schema: schema, isSystem: systemSchemas.contains(schema))
-        case .recentSection, .recentTable, .favoritesSection, .favoriteTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+        case .connectionGroup, .savedConnection, .recentSection, .recentTable, .favoritesSection, .favoriteTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
              .table, .partition, .routine, .trigger, .userType, .status, .objectKindSection,
              .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode,
              .tableDetailGroup, .tableDetail:
@@ -252,6 +270,8 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
         return nil
     }
 
+    static func connectionGroupId(_ groupId: UUID) -> String { "conngroup\u{1}\(groupId.uuidString)" }
+    static func savedConnectionId(_ connectionId: UUID) -> String { "savedconn\u{1}\(connectionId.uuidString)" }
     static let recentSectionId = "recent-section"
     static let favoritesSectionId = "favorites-section"
     /// The flat shape's root, which has no row of its own; its status row hangs off this id.

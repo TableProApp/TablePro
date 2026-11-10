@@ -38,8 +38,10 @@ final class DatabaseTreeCellView: RenamableSidebarCellView<DatabaseTreeRowView> 
             return SidebarPartitionRow.iconName
         case .database(let metadata):
             return metadata.isSystemDatabase ? "gearshape" : "cylinder"
-        case .schema, .tableFolder:
+        case .schema, .tableFolder, .connectionGroup:
             return "folder"
+        case .savedConnection:
+            return "server.rack"
         case .routine, .trigger, .userType, .status, .recentSection, .favoritesSection, .temporarySection,
              .foldersSection,
              .objectKindSection, .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode,

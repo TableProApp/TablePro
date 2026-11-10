@@ -38,6 +38,20 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     private var pendingDeletes: Set<DatabaseTreeTableRef> = []
     internal var showRecentTables = true
     internal var showsFavoritesSection = false
+    /// The setting as the view passes it. `listsConnections` is what the outline draws from, since
+    /// only the database tree takes the connections.
+    internal var showsConnectionsInTree = false
+    /// Settled once per reload, because AppKit asks `isGroupItem` of every row it lays out.
+    internal private(set) var listsConnections = false
+    /// The saved connections and what a row of them does. Built when the tree first lists them, or
+    /// handed in by a test, and kept while it does.
+    internal var connectionsModel: ConnectionNavigatorModel?
+    internal var connectionsModelObservations: [AnyCancellable] = []
+    /// Groups opened to show this tree's own connection. The outline holds them open and the stored
+    /// expansion never hears of them, as the connections column treats its reveal.
+    internal var revealedConnectionGroupIds: Set<UUID> = []
+    internal var hasRevealedOwnConnection = false
+    internal var connectionGroupSheet: NSViewController?
     internal var showSystemContainers = false
     internal var showsPartitions = true
     /// Off, no row draws a detail list, so the loaded ones go and nothing reads them again: the
@@ -232,6 +246,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             || pendingDeletes != view.pendingDeletes
             || showRecentTables != view.showRecentTables
             || showsFavoritesSection != view.showsFavoritesSection
+            || showsConnectionsInTree != view.showsConnectionsInTree
             || showSystemContainers != view.showSystemContainers
             || showsPartitions != view.showsPartitions
             || showsTableDetails != view.showsTableDetails
@@ -245,6 +260,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         pendingDeletes = view.pendingDeletes
         showRecentTables = view.showRecentTables
         showsFavoritesSection = view.showsFavoritesSection
+        showsConnectionsInTree = view.showsConnectionsInTree
         showSystemContainers = view.showSystemContainers
         showsPartitions = view.showsPartitions
         showsTableDetails = view.showsTableDetails
@@ -294,7 +310,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         ].compactMap { $0 }
     }
 
-    private func scheduleReconcile(forcing: Bool = false) {
+    internal func scheduleReconcile(forcing: Bool = false) {
         isReconcileForced = isReconcileForced || forcing
         guard !reconcileScheduled else { return }
         reconcileScheduled = true
@@ -331,6 +347,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             return
         }
         isReloading = true
+        listsConnections = DatabaseTreeConnectionRows.applies(settingEnabled: showsConnectionsInTree, rootShape: rootShape)
+        syncConnectionsModel()
         renderedInputs = currentRenderInputs()
         dropUnusedMemos()
         childrenCache.removeAll()
@@ -672,7 +690,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             },
             showsPartitions: showsPartitions,
             listsAttachedSchemas: listsAttachedSchemas,
-            tableDetailCount: { [weak self] group in self?.tableDetailCount(group) }
+            tableDetailCount: { [weak self] group in self?.tableDetailCount(group) },
+            drawsSectionsAsRows: listsConnections
         )
     }
 
@@ -804,6 +823,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             mainCoordinator?.showObjectSource(objectRef)
         case .showStructure(let ref):
             perform(SidebarMenuCommand.showStructure(ref))
+        case .activateConnection(let ref):
+            activateConnection(ref)
         case .toggleDisclosure:
             if outlineView.isItemExpanded(node) {
                 outlineView.collapseItem(node)
@@ -913,8 +934,12 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
     /// depth the group itself sits at rather than one level in. That last part is what makes a
     /// table under "Tables" line up with a database, the way a package lines up with the project
     /// in Xcode's navigator.
+    ///
+    /// Under a saved connection's row nothing is a group row: AppKit lays a group out at its own depth
+    /// and would pull a section out from under the connection that holds it.
     func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {
-        (item as? DatabaseTreeNode)?.isGroupRow ?? false
+        guard !listsConnections else { return false }
+        return (item as? DatabaseTreeNode)?.isGroupRow ?? false
     }
 
     func outlineView(
@@ -1009,6 +1034,13 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
     func outlineViewSelectionDidChange(_ notification: Notification) {
         guard !isSyncingSelection, !isReloading, !isCollapsingItem else { return }
         let nodes = selectedNodes()
+        /// A click on another connection open here moves the window to it. The highlight goes back to
+        /// what this tree had, so the row is not left selected for when the user comes back.
+        if let target = connectionClickTarget(selected: nodes) {
+            scheduleSelectionSync(force: true)
+            connectionsModel?.perform(.switchTo(target), presentingWindow: outlineView?.window)
+            return
+        }
         lastSelectedNodeIds = nodes.map(\.id)
         let refs = Set(DatabaseTreeSelection.openableRefs(of: nodes))
         let target = DatabaseTreeSelection.navigationTarget(

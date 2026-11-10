@@ -57,6 +57,9 @@ struct DatabaseTreeRowContext {
     var listsAttachedSchemas: Bool = false
     /// A group's count comes from the list its table read, which only the coordinator holds.
     var tableDetailCount: @MainActor (DatabaseTreeTableDetailGroupRef) -> Int? = { _ in nil }
+    /// Under a saved connection's row the sections are ordinary rows: AppKit lays a source list group
+    /// out at the root's own depth, which would pull them out from under the connection.
+    var drawsSectionsAsRows = false
 }
 
 struct DatabaseTreeRowView: View {
@@ -87,14 +90,18 @@ struct DatabaseTreeRowView: View {
     @ViewBuilder
     private var rowContent: some View {
         switch node.kind {
+        case .connectionGroup(let group):
+            ConnectionNavigatorGroupLabel(group: group)
+        case .savedConnection(let ref):
+            ConnectionNavigatorConnectionLabel(row: ref.row, glyphSide: context.rowSize.iconPointSize)
         case .recentSection:
-            sectionHeader(String(localized: "Recent"))
+            sectionHeader(String(localized: "Recent"), systemImage: "clock")
         case .recentTable(let ref), .favoriteTable(let ref):
             tableRow(ref)
         case .favoritesSection:
-            sectionHeader(String(localized: "Favorites"))
+            sectionHeader(String(localized: "Favorites"), systemImage: "star")
         case .temporarySection:
-            sectionHeader(String(localized: "Temporary"))
+            sectionHeader(String(localized: "Temporary"), systemImage: "hourglass")
         case .temporaryTable(let ref):
             TableRow(
                 table: ref.table,
@@ -104,7 +111,7 @@ struct DatabaseTreeRowView: View {
                 accessibilityKind: String(localized: "Temporary Table")
             )
         case .foldersSection:
-            sectionHeader(String(localized: "Folders"))
+            sectionHeader(String(localized: "Folders"), systemImage: "folder")
         case .tableFolder(let ref):
             folderRow(ref)
         case .database(let metadata):
@@ -136,7 +143,7 @@ struct DatabaseTreeRowView: View {
         case .status(let status):
             statusRow(status)
         case .objectKindSection(let kind):
-            sectionHeader(context.objectKindTitle(kind))
+            sectionHeader(context.objectKindTitle(kind), systemImage: kind.iconName)
         case .containerObjectKindSection(let group):
             objectGroupRow(group.kind)
         case .hierarchicalSchemaSection(let schema):
@@ -147,7 +154,7 @@ struct DatabaseTreeRowView: View {
                 isSystem: false
             )
         case .redisKeysSection:
-            sectionHeader(String(localized: "Keys"))
+            sectionHeader(String(localized: "Keys"), systemImage: "key")
         case .redisNode(let redisNode):
             redisRow(redisNode)
         }
@@ -155,12 +162,20 @@ struct DatabaseTreeRowView: View {
 
     /// A source list section title carries no icon and no chevron of its own: AppKit draws the
     /// group row's background and its collapse control, and an icon here would be a second glyph
-    /// competing with the one on every object below it.
-    private func sectionHeader(_ text: String) -> some View {
-        Text(text)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
+    /// competing with the one on every object below it. Drawn as an ordinary row it takes the icon
+    /// every other row at its depth has.
+    @ViewBuilder
+    private func sectionHeader(_ text: String, systemImage: String) -> some View {
+        if context.drawsSectionsAsRows {
+            Label(text, systemImage: systemImage)
+                .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
+                .lineLimit(1)
+        } else {
+            Text(text)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
     }
 
     private func folderRow(_ ref: DatabaseTreeFolderRef) -> some View {

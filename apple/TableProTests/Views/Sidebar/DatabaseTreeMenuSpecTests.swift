@@ -972,17 +972,20 @@ struct DatabaseTreeMenuSpecTests {
         table: TableInfo(name: "orders", type: .table, rowCount: nil, schema: "public")
     )
 
-    private static let everyKind: [DatabaseTreeNode.Kind?] = [
-        nil,
-        .table(DatabaseTreeMenuSpecTests.sampleRef),
-        .recentTable(DatabaseTreeMenuSpecTests.sampleRef),
-        .schema(database: "app", schema: "billing"),
-        .database(DatabaseMetadata.minimal(name: "app", isSystem: false)),
-        .objectKindSection(.table),
-        .objectKindSection(.type),
-        .hierarchicalSchemaSection(schema: "billing"),
-        .status(.loading)
-    ]
+    // Computed: a saved connection's kind carries a `DatabaseConnection`, which is not `Sendable`.
+    private static var everyKind: [DatabaseTreeNode.Kind?] {
+        [
+            nil,
+            .table(DatabaseTreeMenuSpecTests.sampleRef),
+            .recentTable(DatabaseTreeMenuSpecTests.sampleRef),
+            .schema(database: "app", schema: "billing"),
+            .database(DatabaseMetadata.minimal(name: "app", isSystem: false)),
+            .objectKindSection(.table),
+            .objectKindSection(.type),
+            .hierarchicalSchemaSection(schema: "billing"),
+            .status(.loading)
+        ]
+    }
 
     /// The Keys section's error row said what went wrong but left nothing to do about it, since the
     /// tree only loaded again on a database switch.

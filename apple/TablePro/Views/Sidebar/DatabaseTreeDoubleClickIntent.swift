@@ -19,6 +19,8 @@ internal enum DatabaseTreeDoubleClickIntent: Equatable {
     case openObjectSource(DatabaseObjectRef)
     /// A column, index, foreign key or check is read in its table's Structure tab.
     case showStructure(DatabaseTreeTableRef)
+    /// Switch to or open a saved connection other than the tree's own.
+    case activateConnection(DatabaseTreeSavedConnectionRef)
     /// Expand or collapse a container row.
     case toggleDisclosure
     case ignore
@@ -41,6 +43,8 @@ internal enum DatabaseTreeDoubleClickResolver {
             return .openObjectSource(ref.objectRef)
         case .tableDetail(let ref):
             return .showStructure(ref.table)
+        case .savedConnection(let ref) where !ref.ownsTree:
+            return .activateConnection(ref)
         default:
             return node.isExpandable ? .toggleDisclosure : .ignore
         }

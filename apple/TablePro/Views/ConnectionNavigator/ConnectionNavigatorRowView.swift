@@ -41,7 +41,8 @@ internal struct ConnectionNavigatorRowView: View {
     }
 }
 
-private struct ConnectionNavigatorGroupLabel: View {
+/// Shared with the database tree, which lists the same rows above its own connection's databases.
+internal struct ConnectionNavigatorGroupLabel: View {
     let group: ConnectionNavigatorGroupRow
 
     var body: some View {
@@ -61,7 +62,7 @@ private struct ConnectionNavigatorGroupLabel: View {
     }
 }
 
-private struct ConnectionNavigatorConnectionLabel: View {
+internal struct ConnectionNavigatorConnectionLabel: View {
     let row: ConnectionNavigatorConnectionRow
     let glyphSide: CGFloat
 

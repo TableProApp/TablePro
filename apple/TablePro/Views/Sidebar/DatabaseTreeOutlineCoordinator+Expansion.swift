@@ -10,12 +10,24 @@ import TableProUtilities
 /// Which rows are disclosed, where that is remembered, and the loads a disclosure triggers.
 extension DatabaseTreeOutlineCoordinator {
     internal func applyDesiredExpansion() {
-        guard let outlineView = self.outlineView else { return }
+        guard self.outlineView != nil else { return }
         seedExpansionFromSession()
         isApplyingExpansion = true
         defer { isApplyingExpansion = false }
+        guard listsConnections else {
+            applyShapeExpansion(roots: resolvedChildren(of: nil))
+            return
+        }
+        // Rows under a closed connection or group are restored when it opens.
+        guard let ownConnection = applyConnectionExpansion(under: nil) else { return }
+        applyShapeExpansion(roots: resolvedChildren(of: ownConnection))
+    }
+
+    /// The rows the shape lists at its top, wherever they hang: the root, or the own connection.
+    private func applyShapeExpansion(roots: [DatabaseTreeNode]) {
+        guard let outlineView = self.outlineView else { return }
         let searching = !searchText.isEmpty
-        for rootNode in resolvedChildren(of: nil) {
+        for rootNode in roots {
             switch rootNode.kind {
             case .recentSection:
                 setExpanded(rootNode, searching || (viewModel?.isRecentsExpanded ?? true))
@@ -27,7 +39,7 @@ extension DatabaseTreeOutlineCoordinator {
                 break
             }
         }
-        for sectionNode in resolvedChildren(of: nil) {
+        for sectionNode in roots {
             switch sectionNode.kind {
             case .objectKindSection(let kind):
                 let hasMatches = flatItemCount(for: kind) > 0
@@ -66,7 +78,7 @@ extension DatabaseTreeOutlineCoordinator {
                 break
             }
         }
-        for databaseNode in resolvedChildren(of: nil) {
+        for databaseNode in roots {
             guard case .database(let metadata) = databaseNode.kind else { continue }
             let want = searching
                 ? databaseMatchesSearch(metadata)
@@ -156,7 +168,8 @@ extension DatabaseTreeOutlineCoordinator {
             case .table, .partition, .tableDetailGroup:
                 triggerLoad(for: node)
                 readOpenDetailRows(under: node)
-            case .recentSection, .recentTable, .favoritesSection, .favoriteTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+            case .connectionGroup, .savedConnection, .recentSection, .recentTable, .favoritesSection, .favoriteTable,
+                 .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
                  .database, .schema, .tableDetail, .routine, .trigger, .userType, .status, .objectKindSection,
                  .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
                 continue
@@ -220,6 +233,11 @@ extension DatabaseTreeOutlineCoordinator {
         isApplyingExpansion = true
         defer { isApplyingExpansion = wasApplyingExpansion }
         switch node.kind {
+        case .connectionGroup:
+            guard let ownConnection = applyConnectionExpansion(under: node) else { break }
+            applyShapeExpansion(roots: resolvedChildren(of: ownConnection))
+        case .savedConnection(let ref) where ref.ownsTree:
+            applyShapeExpansion(roots: resolvedChildren(of: node))
         case .database where !supportsSchemaLevel:
             restoreObjectGroupExpansion(under: node)
         case .schema, .hierarchicalSchemaSection:
@@ -228,13 +246,14 @@ extension DatabaseTreeOutlineCoordinator {
             restoreFolderExpansion(under: node)
         case .objectKindSection, .containerObjectKindSection, .tableFolder, .table, .partition, .tableDetailGroup:
             restoreTableExpansion(under: node)
-        case .recentSection, .recentTable, .favoritesSection, .favoriteTable, .temporarySection, .temporaryTable, .database, .routine, .trigger,
-             .userType, .status, .redisKeysSection, .redisNode, .tableDetail:
+        case .savedConnection, .recentSection, .recentTable, .favoritesSection, .favoriteTable, .temporarySection,
+             .temporaryTable, .database, .routine, .trigger, .userType, .status, .redisKeysSection, .redisNode,
+             .tableDetail:
             break
         }
     }
 
-    private func setExpanded(_ node: DatabaseTreeNode, _ expanded: Bool) {
+    internal func setExpanded(_ node: DatabaseTreeNode, _ expanded: Bool) {
         guard let outlineView = self.outlineView else { return }
         if expanded, !outlineView.isItemExpanded(node) {
             outlineView.expandItem(node)
@@ -245,6 +264,12 @@ extension DatabaseTreeOutlineCoordinator {
 
     internal func recordExpansion(_ node: DatabaseTreeNode, expanded: Bool) {
         switch node.kind {
+        case .connectionGroup(let group):
+            if !expanded { revealedConnectionGroupIds.remove(group.id) }
+            connectionsModel?.setGroupExpanded(group.id, expanded)
+        case .savedConnection(let ref):
+            guard ref.ownsTree else { break }
+            viewModel?.isOwnConnectionExpanded = expanded
         case .recentSection:
             viewModel?.isRecentsExpanded = expanded
         case .favoritesSection:
@@ -330,7 +355,8 @@ extension DatabaseTreeOutlineCoordinator {
                 || !hierarchicalSearchSkipsRead(schema)
             else { return }
             loadHierarchicalSchemaObjects(schema)
-        case .recentSection, .recentTable, .favoritesSection, .favoriteTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+        case .connectionGroup, .savedConnection, .recentSection, .recentTable, .favoritesSection, .favoriteTable,
+             .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
              .routine, .trigger, .userType, .status, .objectKindSection, .containerObjectKindSection,
              .redisKeysSection, .redisNode, .tableDetail:
             break

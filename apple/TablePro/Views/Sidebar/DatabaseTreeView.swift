@@ -123,7 +123,32 @@ struct DatabaseTreeView: View {
         }
     }
 
+    /// Listing the saved connections, the outline stands whatever the database list is doing, so
+    /// the connections above it stay on screen. Its own connection's row says loading, failed or
+    /// empty in the states that replace the outline otherwise.
+    private var listsConnections: Bool {
+        settingsManager.general.showsConnectionsInTree
+    }
+
     var body: some View {
+        Group {
+            if listsConnections {
+                VStack(spacing: 0) {
+                    filterBanner
+                    outline
+                }
+            } else {
+                databaseListContent
+            }
+        }
+        .loadingRevealGate(isActive: isLoadingDatabases && !listsConnections, isRevealed: $showsDatabaseProgress)
+        .task(id: isConnected) {
+            await treeService.loadDatabases(connectionId: connectionId, databaseType: databaseType)
+        }
+    }
+
+    @ViewBuilder
+    private var databaseListContent: some View {
         Group {
             switch treeService.databaseListState(for: connectionId) {
             case .failed(let message):
@@ -144,10 +169,6 @@ struct DatabaseTreeView: View {
                     Color.clear
                 }
             }
-        }
-        .loadingRevealGate(isActive: isLoadingDatabases, isRevealed: $showsDatabaseProgress)
-        .task(id: isConnected) {
-            await treeService.loadDatabases(connectionId: connectionId, databaseType: databaseType)
         }
     }
 
@@ -193,7 +214,8 @@ struct DatabaseTreeView: View {
             showsPartitions: settingsManager.general.showPartitions,
             showsTableDetails: settingsManager.general.showTableDetails,
             rowSizePreference: settingsManager.general.sidebarRowSize,
-            showsFavoritesSection: settingsManager.general.showsFavoritesSection
+            showsFavoritesSection: settingsManager.general.showsFavoritesSection,
+            showsConnectionsInTree: listsConnections
         )
     }
 
