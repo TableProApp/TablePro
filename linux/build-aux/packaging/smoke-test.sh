@@ -19,6 +19,7 @@ fi
 
 case "$package" in
 *.deb)
+    zsh_completion=/usr/share/zsh/vendor-completions/_tablepro
     export DEBIAN_FRONTEND=noninteractive
     # The Ubuntu image skips every .mo dpkg unpacks; a desktop install keeps them.
     if [ -f /etc/dpkg/dpkg.cfg.d/excludes ]; then
@@ -34,6 +35,7 @@ case "$package" in
     }
     ;;
 *.rpm)
+    zsh_completion=/usr/share/zsh/site-functions/_tablepro
     # The Fedora image installs en_US translations only; a desktop install takes all of them.
     rm -f /etc/rpm/macros.image-language-conf
     dnf install -y --setopt=install_weak_deps=False "$package"
@@ -50,18 +52,28 @@ case "$package" in
 esac
 
 # Before anything else is installed, so the package's own dependencies are
-# all it has. The binary opens its settings before it reads the command
-# line, so this also proves the schema was installed and compiled.
-help="$(tablepro --help)"
+# all it has. The GUI opens its settings before GApplication reads the
+# command line, so this also proves the schema was installed and compiled.
+# --help is the command line's own, which runs before the GUI's setup.
+help="$(tablepro --help-all)"
 case "$help" in
 *--help-gapplication*) ;;
 *)
-    echo "smoke-test.sh: tablepro --help did not list the GApplication options:" >&2
+    echo "smoke-test.sh: tablepro --help-all did not list the GApplication options:" >&2
     echo "$help" >&2
     exit 1
     ;;
 esac
 test -x /usr/libexec/tablepro-askpass
+# The command line's help and version, with no display.
+tablepro --help >/dev/null
+tablepro --version
+for completion in /usr/share/bash-completion/completions/tablepro /usr/share/fish/vendor_completions.d/tablepro.fish "$zsh_completion"; do
+    if ! grep -qF tablepro "$completion"; then
+        echo "smoke-test.sh: the package installed no completion at $completion" >&2
+        exit 1
+    fi
+done
 
 install_tools
 desktop-file-validate /usr/share/applications/app.tablepro.TablePro.desktop
@@ -71,6 +83,7 @@ glib-compile-schemas --strict --dry-run /usr/share/glib-2.0/schemas
 # glibc loads no catalogue under C or C.UTF-8, so LANGUAGE picks each
 # language under a real locale. The --new-window help text is the app's
 # own string, so finding its translation shows the app read the catalogue.
+# GApplication lists it under --help-all.
 if [ -n "$linguas" ]; then
     languages="$(sed 's/#.*//' "$linguas")"
 else
@@ -86,9 +99,9 @@ for lang in $languages; do
         echo "smoke-test.sh: the $lang catalogue does not translate \"Open a new window\"" >&2
         exit 1
     fi
-    translated="$(LC_ALL=en_US.UTF-8 LANGUAGE="$lang" tablepro --help)"
+    translated="$(LC_ALL=en_US.UTF-8 LANGUAGE="$lang" tablepro --help-all)"
     if ! printf '%s\n' "$translated" | grep -qF -- "$expected"; then
-        echo "smoke-test.sh: tablepro --help under $lang did not show \"$expected\":" >&2
+        echo "smoke-test.sh: tablepro --help-all under $lang did not show \"$expected\":" >&2
         echo "$translated" >&2
         exit 1
     fi

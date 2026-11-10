@@ -76,6 +76,11 @@ internal final class WorkspaceRailTableView: NSTableView {
         )
     }
 
+    override internal func keyDown(with event: NSEvent) {
+        guard !interpretCommandKey(event) else { return }
+        super.keyDown(with: event)
+    }
+
     override internal func otherMouseUp(with event: NSEvent) {
         guard event.isMiddleButton else {
             super.otherMouseUp(with: event)
@@ -485,8 +490,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         commit(row: tableView.clickedRow)
     }
 
-    /// Return opens the highlighted row, the same contract every AppKit list keeps. `NSTableView`
-    /// routes it here through the responder chain, so no key handling of the rail's own is needed.
+    /// Return opens the highlighted row, the same contract every AppKit list keeps.
     override func insertNewline(_ sender: Any?) {
         commit(row: tableView.selectedRow)
     }

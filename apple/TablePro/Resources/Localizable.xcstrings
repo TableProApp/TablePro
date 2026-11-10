@@ -55269,6 +55269,9 @@
         }
       }
     },
+    "Couldn't Save the Revocation" : {
+
+    },
     "Couldn't start" : {
 
     },
@@ -129375,6 +129378,9 @@
         }
       }
     },
+    "Opens database URLs and files, runs queries and exports tables from the terminal. Run `tablepro help` to see every command." : {
+
+    },
     "Opens database URLs from the terminal, such as a DDEV project database." : {
       "localizations" : {
         "fr" : {
@@ -181013,6 +181019,9 @@
     "TablePro could not read your saved connections, so it did not save over them." : {
 
     },
+    "TablePro could not save the change to the Keychain. The token works again after TablePro restarts." : {
+
+    },
     "TablePro could not tell how this Dameng server treats backslashes, so it will not send a value that contains one. Reconnect, then try again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -181595,6 +181604,9 @@
     "TablePro is reading or writing rows on this connection with settings of its own." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "TablePro is running from a disk image or a temporary location. Move it to the Applications folder first, then open it from there." : {
+
     },
     "TablePro is still trying to reconnect." : {
       "localizations" : {

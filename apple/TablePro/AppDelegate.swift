@@ -83,6 +83,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WindowOpener.shared.setSettingsPresenter { SettingsWindowController.present(pane: $0) }
         WindowOpener.shared.setCompareSyncPresenter { CompareSyncWindowController.present(prefillSource: $0) }
         KeyRepeatFilter.shared.install()
+        TableClickFocus.shared.install()
         RecentTabSwitcherController.installEditorKeyClaim()
         let syncSettings = AppSettingsStorage.shared.loadSync()
         let passwordSyncExpected = syncSettings.enabled && syncSettings.syncConnections && syncSettings.syncPasswords

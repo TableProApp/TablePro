@@ -82,6 +82,7 @@ public enum BridgeUpstreamHandshake {
         logger: any MCPBridgeLogger
     ) async throws -> BridgeDiscovery {
         let transport = MCPStreamableHttpClientTransport(
+            configuration: MCPStreamableHttpClientConfiguration(requestTimeout: probeTimeout),
             credentialsProvider: MCPCachedUpstreamCredentialsProvider(initial: credentials) { credentials },
             errorLogger: logger
         )
@@ -111,11 +112,13 @@ public enum BridgeUpstreamHandshake {
         ])
         let request = JsonRpcRequest(id: probeRequestId, method: "server/discover", params: params)
         let body = try JsonRpcCodec.encode(.request(request))
-        try await transport.send(
-            MCPUpstreamFrame(body: body, method: "server/discover", requestId: probeRequestId)
-        )
-
-        return try await withThrowingTaskGroup(of: BridgeDiscovery.self) { group in
+        return try await withThrowingTaskGroup(of: BridgeDiscovery?.self) { group in
+            group.addTask {
+                try await transport.sendAndWait(
+                    MCPUpstreamFrame(body: body, method: "server/discover", requestId: probeRequestId)
+                )
+                return nil
+            }
             group.addTask {
                 for try await payload in transport.inbound {
                     guard let message = try? JsonRpcCodec.decode(payload) else { continue }
@@ -134,11 +137,13 @@ public enum BridgeUpstreamHandshake {
                 try await Task.sleep(for: probeTimeout)
                 throw MCPBridgeStartupError.discoveryFailed("timed out")
             }
-            guard let first = try await group.next() else {
-                throw MCPBridgeStartupError.discoveryFailed("no answer")
+            while let result = try await group.next() {
+                if let discovery = result {
+                    group.cancelAll()
+                    return discovery
+                }
             }
-            group.cancelAll()
-            return first
+            throw MCPBridgeStartupError.discoveryFailed("no answer")
         }
     }
 

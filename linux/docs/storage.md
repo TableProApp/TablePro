@@ -269,14 +269,13 @@ can tell whether a re-pinned entry falls in the pages already read.
 
 ### Following the saved queries
 
-`SavedQueries::changes` is a watch of a revision that every handle of one
-database shares. A save, a save of a new name, a rename, a delete and a
-connection's queries going move it on once they landed; a read, and a write
-that changed nothing, leave it. The sidebar's Favorites and the Saved Queries
-dialog read again on each revision, so a write from any window, an import or
-a deleted connection reaches every list. Each list rejects replies from an
-older read and keeps selection by saved-query id. Confirmed saves, renames
-and deletions hold the process until the write finishes.
+The Favorites sidebar and Saved Queries dialog follow the shared revision
+feed from one `QueryHistory` ([core ADR 0017](../../core/docs/decisions/0017-favourites.md)).
+A write from any window, an import or a deleted connection refreshes every list.
+The sidebar reads queries and folders as one snapshot. Each list rejects replies
+from an older read. Selection and folder expansion stay with their record IDs
+during a refresh and clear when the front connection changes. Confirmed saves,
+renames, moves and deletions hold the process until the write finishes.
 
 The editor first inserts without replacement and asks for confirmation if the
 name is taken. Confirmed replacement updates the same row id. The existence check

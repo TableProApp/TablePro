@@ -34,8 +34,7 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
     var lastUsedAt: Date?
     let expiresAt: Date?
     var isActive: Bool
-    /// Set only by the bundled bridge's own mint. Never derived from the token's name, which a
-    /// pairing request supplies and could therefore claim.
+    // Set only by the bridge's own mint, never from the name, which a pairing request supplies.
     let isBridgeCredential: Bool
     let extraScopes: Set<MCPScope>
 
@@ -110,8 +109,7 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         self.isActive = try container.decode(Bool.self, forKey: .isActive)
         self.connectionAccess = try container.decodeIfPresent(ConnectionAccess.self, forKey: .connectionAccess) ?? .all
         self.isBridgeCredential = try container.decodeIfPresent(Bool.self, forKey: .isBridgeCredential) ?? false
-        /// Lenient: a bad value here must cost this grant, not every saved token. Filtering to
-        /// `optionalGrants` keeps a tier scope such as `admin` from ever arriving through this field.
+        // Lenient, so a bad value costs this grant only; the filter keeps a tier scope such as admin out.
         let storedExtraScopes = (try? container.decodeIfPresent([String].self, forKey: .extraScopes)) ?? []
         self.extraScopes = Set(storedExtraScopes.compactMap(MCPScope.init(rawValue:)))
             .intersection(MCPScope.optionalGrants)
@@ -203,9 +201,7 @@ actor MCPTokenStore {
         revocationObservers.removeValue(forKey: id)
     }
 
-    /// The bridge's reserved name carries no privilege, and nothing but the bridge's own mint may
-    /// claim it: a pairing request supplies its client name, so a caller could otherwise ask to be
-    /// called the bridge and inherit every grant the bridge had earned.
+    // Only the bridge's own mint may take its name: a pairing client could otherwise claim the bridge's grants.
     func generate(
         name: String,
         permissions: TokenPermissions,
@@ -251,11 +247,7 @@ actor MCPTokenStore {
     }
 
     func resolve(bearerToken: String) -> Result<MCPAuthToken, MCPTokenValidationError> {
-        adoptStoredTokensIfUnread()
-        let match = tokens.firstIndex { token in
-            Self.constantTimeCompare(Self.computeHash(salt: token.salt, plaintext: bearerToken), token.tokenHash)
-        }
-        guard let index = match else { return .failure(.unknownToken) }
+        guard let index = index(presenting: bearerToken) else { return .failure(.unknownToken) }
         if tokens[index].isExpired { return .failure(.expired) }
         if !tokens[index].isActive { return .failure(.revoked) }
 
@@ -268,20 +260,35 @@ actor MCPTokenStore {
         try? resolve(bearerToken: bearerToken).get()
     }
 
-    func revoke(tokenId: UUID) {
+    @discardableResult
+    func revoke(tokenId: UUID) -> Bool {
         guard let index = tokens.firstIndex(where: { $0.id == tokenId }) else {
             Self.logger.warning("Attempted to revoke non-existent token \(tokenId.uuidString, privacy: .public)")
-            return
+            // A token the store no longer holds leaves nothing unsaved to warn about.
+            return true
         }
 
         tokens[index].isActive = false
         let revokedName = tokens[index].name
         let wasBridge = tokens[index].isBridgeCredential
-        save()
+        let persisted = save()
         notifyRevocationObservers(tokenId: tokenId, wasBridgeCredential: wasBridge)
 
         Self.logger.info("Revoked MCP token '\(revokedName, privacy: .private(mask: .hash))'")
         MCPAuditLogger.logTokenRevoked(tokenId: tokenId, tokenName: revokedName)
+        return persisted
+    }
+
+    // The shared bridge credential is refused: any process that reads the handshake file holds it.
+    func revoke(presentedToken: String) -> MCPTokenRevocationOutcome {
+        guard let index = index(presenting: presentedToken) else { return .unknown }
+        let token = tokens[index]
+        if token.isBridgeCredential { return .bridgeCredential }
+        guard token.isActive else {
+            // An earlier revoke may have failed to save, so a retry saves again before it confirms.
+            return save() ? .alreadyRevoked : .notPersisted
+        }
+        return revoke(tokenId: token.id) ? .revoked : .notPersisted
     }
 
     func delete(tokenId: UUID) {
@@ -304,6 +311,13 @@ actor MCPTokenStore {
         let key = tokenId.uuidString
         for observer in observers {
             Task { await observer(key, wasBridgeCredential) }
+        }
+    }
+
+    private func index(presenting plaintext: String) -> Int? {
+        adoptStoredTokensIfUnread()
+        return tokens.firstIndex { token in
+            Self.constantTimeCompare(Self.computeHash(salt: token.salt, plaintext: plaintext), token.tokenHash)
         }
     }
 
@@ -430,20 +444,23 @@ actor MCPTokenStore {
         save()
     }
 
-    private func save() {
+    @discardableResult
+    private func save() -> Bool {
         lastSavedAt = .now
         guard adoptStoredTokensIfUnread() else {
             Self.logger.error("MCP tokens not saved: the stored list is still unreadable")
-            return
+            return false
         }
         do {
             let data = try Self.encodeStored(tokens: tokens, undecoded: undecodedEntries)
             guard credentialStore.write(data) else {
                 Self.logger.error("Failed to write MCP tokens to the keychain")
-                return
+                return false
             }
+            return true
         } catch {
             Self.logger.error("Failed to encode MCP tokens: \(error.publicLogShape, privacy: .public)")
+            return false
         }
     }
 
@@ -502,6 +519,21 @@ enum MCPTokenBlob: Sendable, Equatable {
     case missing
     case unreadable
 }
+
+enum MCPTokenRevocationOutcome: Sendable, Equatable {
+    case revoked
+    case alreadyRevoked
+    case unknown
+    case bridgeCredential
+    // Revoked in memory only: the Keychain write failed, so a restart brings the token back.
+    case notPersisted
+}
+
+protocol MCPTokenRevoking: Sendable {
+    func revoke(presentedToken: String) async -> MCPTokenRevocationOutcome
+}
+
+extension MCPTokenStore: MCPTokenRevoking {}
 
 protocol MCPTokenCredentialStoring: Sendable {
     func read() -> MCPTokenBlob
