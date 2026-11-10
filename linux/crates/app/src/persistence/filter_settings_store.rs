@@ -240,11 +240,9 @@ mod tests {
         let root = tempfile::tempdir().expect("tempdir");
         let path = root.path().join("filter-settings.json");
         let id = Uuid::new_v4();
-        let written = serde_json::json!({
-            "version": 1,
-            "connections": { id.to_string(): { "": { "users": sample_set() } } },
-        });
-        std::fs::write(&path, written.to_string()).expect("the old file");
+        let filter = serde_json::to_string(&sample_set()).expect("the filter");
+        let written = format!(r#"{{"version": 1, "connections": {{"{id}": {{"": {{"users": {filter}}}}}}}}}"#);
+        std::fs::write(&path, written).expect("the old file");
 
         let store = FilterSettingsStore::load(path, &paused_tasks());
 

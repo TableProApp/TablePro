@@ -5,12 +5,43 @@ use std::sync::Arc;
 use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
-use tablepro_core::meta::SchemaInfo;
+use gtk4::subclass::prelude::*;
+use libadwaita as adw;
+use tablepro_core::meta::{ObjectInfo, SchemaInfo};
 
 use super::schema_filter::SchemaFilter;
-use super::{WorkspaceInput, WorkspaceModel, WorkspaceSender};
+use super::{Workspace, WorkspaceInput, WorkspaceModel, WorkspaceSender};
 use crate::i18n::{gettext, ngettext_f};
 use crate::runtime::DeliverInput;
+
+pub(super) struct SidebarFilter {
+    filter: SchemaFilter,
+    banner: adw::Banner,
+    // A change of filter lists these again.
+    objects: Arc<[ObjectInfo]>,
+}
+
+impl SidebarFilter {
+    pub(super) fn new(workspace: &Workspace) -> Self {
+        let banner = workspace.imp().schema_filter_banner.get();
+        if let Some(input) = workspace.sender() {
+            banner.connect_button_clicked(move |_| input.deliver(WorkspaceInput::ShowAllSchemas));
+        }
+        Self {
+            filter: SchemaFilter::default(),
+            banner,
+            objects: Arc::from([]),
+        }
+    }
+
+    pub(super) fn filter(&self) -> SchemaFilter {
+        self.filter.clone()
+    }
+
+    pub(super) fn remember(&mut self, objects: &Arc<[ObjectInfo]>) {
+        self.objects = objects.clone();
+    }
+}
 
 pub(crate) struct SchemaChoices {
     schemas: Arc<[SchemaInfo]>,
@@ -53,19 +84,29 @@ impl WorkspaceModel {
     pub(super) fn schema_choices(&self) -> SchemaChoices {
         SchemaChoices {
             schemas: self.catalog_schemas.clone(),
-            filter: self.schema_filter.clone(),
+            filter: self.schema_filter.filter(),
             databases: self.sidebar.affordances().lists_databases,
         }
     }
 
+    pub(super) fn load_schema_filter(&mut self) {
+        if let Some(session) = self.context.active.get() {
+            let kept = self
+                .storage
+                .filter_settings()
+                .sidebar_schemas(session.metadata().id, session.database().unwrap_or_default());
+            self.schema_filter.filter = SchemaFilter::new(kept);
+        }
+    }
+
     pub(super) fn on_schema_shown(&mut self, name: &str, shown: bool) {
-        if self.schema_filter.set_shown(&self.catalog_schemas, name, shown) {
+        if self.schema_filter.filter.set_shown(&self.catalog_schemas, name, shown) {
             self.keep_schema_filter();
         }
     }
 
     pub(super) fn on_all_schemas_shown(&mut self) {
-        if self.schema_filter.show_all() {
+        if self.schema_filter.filter.show_all() {
             self.keep_schema_filter();
         }
     }
@@ -75,11 +116,11 @@ impl WorkspaceModel {
             self.storage.filter_settings().set_sidebar_schemas(
                 session.metadata().id,
                 session.database().unwrap_or_default(),
-                self.schema_filter.kept(),
+                self.schema_filter.filter.kept(),
             );
         }
         self.show_schema_filter();
-        self.read_sidebar(self.sidebar_objects.clone());
+        self.read_sidebar(self.schema_filter.objects.clone());
     }
 
     // A filtered list looks like a short one, so the banner says it is filtered.
@@ -88,10 +129,11 @@ impl WorkspaceModel {
         let offered = self.keys.is_none() && choices.schemas.len() > 1;
         let summary = choices.filter.summary(&choices.schemas).filter(|_| offered);
         if let Some((shown, total)) = summary {
-            self.schema_filter_banner
+            self.schema_filter
+                .banner
                 .set_title(&showing(choices.databases, shown, total));
         }
-        self.schema_filter_banner.set_revealed(summary.is_some());
+        self.schema_filter.banner.set_revealed(summary.is_some());
         let label = match (offered, choices.databases) {
             (false, _) => String::new(),
             (true, true) => gettext("Databases"),
@@ -201,7 +243,36 @@ pub(super) fn popover(choices: SchemaChoices, input: WorkspaceSender) -> gtk::Po
         chooser,
         move |_| chooser.show_all()
     ));
+    let (search, filter) = search_over_names(databases);
+    let list = gtk::ListView::builder()
+        .model(&gtk::NoSelection::new(Some(gtk::FilterListModel::new(
+            Some(names),
+            Some(filter),
+        ))))
+        .factory(&check_factory(&chooser))
+        .build();
+    let scrolled = gtk::ScrolledWindow::builder()
+        .child(&list)
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .propagate_natural_height(true)
+        .max_content_height(320)
+        .min_content_width(240)
+        .build();
+    let footer = gtk::Box::builder().spacing(12).build();
+    footer.append(&summary);
+    footer.append(&show_all);
+    let content = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(6)
+        .build();
+    content.append(&search);
+    content.append(&scrolled);
+    content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    content.append(&footer);
+    gtk::Popover::builder().child(&content).build()
+}
 
+fn search_over_names(databases: bool) -> (gtk::SearchEntry, gtk::StringFilter) {
     let searching = if databases {
         gettext("Search databases")
     } else {
@@ -223,89 +294,72 @@ pub(super) fn popover(choices: SchemaChoices, input: WorkspaceSender) -> gtk::Po
         filter,
         move |search| filter.set_search(Some(&search.text()))
     ));
+    (search, filter)
+}
 
+fn check_factory(chooser: &Rc<Chooser>) -> gtk::SignalListItemFactory {
     let factory = gtk::SignalListItemFactory::new();
     factory.connect_setup(glib::clone!(
         #[strong]
         chooser,
         move |_, item| {
-            let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
-                return;
-            };
-            // The check takes the focus, so Space toggles it and the arrows move between rows.
-            item.set_focusable(false);
-            item.set_activatable(false);
-            let check = gtk::CheckButton::new();
-            check.connect_toggled(glib::clone!(
-                #[strong]
-                chooser,
-                move |check| {
-                    let Some(name) = check.label() else {
-                        return;
-                    };
-                    let shown = chooser.choices.borrow().shows(&name);
-                    if check.is_active() != shown {
-                        chooser.toggle(&name, check.is_active());
-                    }
-                }
-            ));
-            item.set_child(Some(&check));
+            if let Some(item) = item.downcast_ref::<gtk::ListItem>() {
+                item.set_child(Some(&check(&chooser, item)));
+            }
         }
     ));
     factory.connect_bind(glib::clone!(
         #[strong]
         chooser,
         move |_, item| {
-            let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
-                return;
-            };
-            let (Some(check), Some(name)) = (
-                item.child().and_downcast::<gtk::CheckButton>(),
-                item.item().and_downcast::<gtk::StringObject>(),
-            ) else {
-                return;
-            };
-            let name = name.string();
-            let choices = chooser.choices.borrow();
-            let shows = choices.shows(&name);
-            check.set_label(Some(&name));
-            check.set_active(shows);
-            // The last schema listed stays listed.
-            let last = shows
-                && choices
-                    .filter
-                    .summary(&choices.schemas)
-                    .is_some_and(|(shown, _)| shown == 1);
-            check.set_sensitive(!last);
+            if let Some(item) = item.downcast_ref::<gtk::ListItem>() {
+                show_check(&chooser, item);
+            }
         }
     ));
-    let list = gtk::ListView::builder()
-        .model(&gtk::NoSelection::new(Some(gtk::FilterListModel::new(
-            Some(names),
-            Some(filter),
-        ))))
-        .factory(&factory)
-        .build();
-    let scrolled = gtk::ScrolledWindow::builder()
-        .child(&list)
-        .hscrollbar_policy(gtk::PolicyType::Never)
-        .propagate_natural_height(true)
-        .max_content_height(320)
-        .min_content_width(240)
-        .build();
+    factory
+}
 
-    let footer = gtk::Box::builder().spacing(12).build();
-    footer.append(&summary);
-    footer.append(&show_all);
-    let content = gtk::Box::builder()
-        .orientation(gtk::Orientation::Vertical)
-        .spacing(6)
-        .build();
-    content.append(&search);
-    content.append(&scrolled);
-    content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-    content.append(&footer);
-    gtk::Popover::builder().child(&content).build()
+fn check(chooser: &Rc<Chooser>, item: &gtk::ListItem) -> gtk::CheckButton {
+    // The check takes the focus, so Space toggles it and the arrows move between rows.
+    item.set_focusable(false);
+    item.set_activatable(false);
+    let check = gtk::CheckButton::new();
+    check.connect_toggled(glib::clone!(
+        #[strong]
+        chooser,
+        move |check| {
+            let Some(name) = check.label() else {
+                return;
+            };
+            let shown = chooser.choices.borrow().shows(&name);
+            if check.is_active() != shown {
+                chooser.toggle(&name, check.is_active());
+            }
+        }
+    ));
+    check
+}
+
+fn show_check(chooser: &Chooser, item: &gtk::ListItem) {
+    let (Some(check), Some(name)) = (
+        item.child().and_downcast::<gtk::CheckButton>(),
+        item.item().and_downcast::<gtk::StringObject>(),
+    ) else {
+        return;
+    };
+    let name = name.string();
+    let choices = chooser.choices.borrow();
+    let shows = choices.shows(&name);
+    check.set_label(Some(&name));
+    check.set_active(shows);
+    // The last schema listed stays listed.
+    let last = shows
+        && choices
+            .filter
+            .summary(&choices.schemas)
+            .is_some_and(|(shown, _)| shown == 1);
+    check.set_sensitive(!last);
 }
 
 impl SchemaChoices {
