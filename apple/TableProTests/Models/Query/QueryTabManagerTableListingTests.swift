@@ -53,11 +53,12 @@ struct QueryTabManagerTableListingTests {
         #expect(manager.tabs.first { $0.id == unscoped }?.tableContext.schemaName == nil)
     }
 
-    @Test("The title names the schema only where tables are listed per schema")
+    @Test("The title reads Objects, naming the schema only where objects are listed per schema")
     func titleNamesTheSchema() {
-        #expect(QueryTabManager.tableListingTitle(kindTitle: "Tables", schemaName: "public") == "Tables: public")
-        #expect(QueryTabManager.tableListingTitle(kindTitle: "Collections", schemaName: nil) == "Collections")
-        #expect(QueryTabManager.tableListingTitle(kindTitle: "Tables", schemaName: "") == "Tables")
+        let objects = String(localized: "Objects")
+        #expect(QueryTabManager.tableListingTitle(schemaName: "public") == String(format: String(localized: "%@: %@"), objects, "public"))
+        #expect(QueryTabManager.tableListingTitle(schemaName: nil) == objects)
+        #expect(QueryTabManager.tableListingTitle(schemaName: "") == objects)
     }
 
     @Test("A new kind retargets the container's tab and relabels it, never opening another")

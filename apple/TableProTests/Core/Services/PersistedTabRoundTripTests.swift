@@ -575,10 +575,20 @@ struct PersistedTabRoundTripTests {
 
         #expect(persisted.query.isEmpty)
         #expect(restored.tabType == .tableListing)
-        #expect(restored.title == "Tables: sales")
+        #expect(restored.title == QueryTabManager.tableListingTitle(schemaName: "sales"))
         #expect(restored.tableContext.databaseName == "shop")
         #expect(restored.tableContext.schemaName == "sales")
         #expect(restored.tableContext.isEditable == false)
+    }
+
+    /// Titles are drawn for background tabs that never activate, so a listing an older build titled
+    /// after its kind reads Objects from the moment it is restored.
+    @Test("A listing saved under its kind's title restores titled Objects")
+    func olderListingTitleRestoresAsObjects() throws {
+        let json = #"{"id":"\#(UUID().uuidString)","title":"Views: sales","query":"","tabType":{"tableListing":{}},"schemaName":"sales"}"#
+        let decoded = try JSONDecoder().decode(PersistedTab.self, from: Data(json.utf8))
+
+        #expect(QueryTab(from: decoded, defaultPageSize: 1_000).title == QueryTabManager.tableListingTitle(schemaName: "sales"))
     }
 
     @Test("A tab written before history tabs existed decodes with no subject")

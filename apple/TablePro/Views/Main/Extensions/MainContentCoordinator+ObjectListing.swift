@@ -24,7 +24,7 @@ extension MainContentCoordinator {
             releasePreviewForReplacement(closing)
         }
         let tabId = tabManager.addTableListingTab(
-            title: listingTitle(kind: target.kind, schemaName: schemaName),
+            title: QueryTabManager.tableListingTitle(schemaName: schemaName),
             databaseName: target.database,
             schemaName: schemaName,
             kind: target.kind,
@@ -165,15 +165,8 @@ extension MainContentCoordinator {
         guard let tab = tabManager.tabs.first(where: { $0.id == tabId && $0.tabType == .tableListing }) else { return }
         tabManager.setTableListingKind(
             kind,
-            title: listingTitle(kind: kind, schemaName: tab.tableContext.schemaName),
+            title: QueryTabManager.tableListingTitle(schemaName: tab.tableContext.schemaName),
             tabId: tabId
-        )
-    }
-
-    private func listingTitle(kind: SidebarObjectKind, schemaName: String?) -> String {
-        QueryTabManager.tableListingTitle(
-            kindTitle: kind.title(tableEntityName: PluginManager.shared.tableEntityName(for: connection.type)),
-            schemaName: schemaName
         )
     }
 

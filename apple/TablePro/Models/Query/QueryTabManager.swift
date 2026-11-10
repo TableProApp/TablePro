@@ -670,10 +670,12 @@ final class QueryTabManager: ObservableObject {
         return newTab.id
     }
 
-    // Qualified by schema where tables are listed per schema, or two listings in one database would share a label.
-    static func tableListingTitle(kindTitle: String, schemaName: String?) -> String {
-        guard let schemaName, !schemaName.isEmpty else { return kindTitle }
-        return String(format: String(localized: "%@: %@"), kindTitle, schemaName)
+    // The kind picker inside the tab names the kind, so the title stays put when the kind changes. It is
+    // qualified by schema where objects are listed per schema, or two listings in one database would share a label.
+    nonisolated static func tableListingTitle(schemaName: String?) -> String {
+        let title = String(localized: "Objects")
+        guard let schemaName, !schemaName.isEmpty else { return title }
+        return String(format: String(localized: "%@: %@"), title, schemaName)
     }
 
     static var versionHistoryFallbackTitle: String {

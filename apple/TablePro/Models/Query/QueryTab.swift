@@ -166,7 +166,10 @@ struct QueryTab: Identifiable, Equatable {
 
     init(from persisted: PersistedTab, defaultPageSize: Int) {
         self.id = persisted.id
-        self.title = persisted.title
+        // A listing saved by an older build is titled after its kind ("Tables: sales"); every listing now reads Objects.
+        self.title = persisted.tabType == .tableListing
+            ? QueryTabManager.tableListingTitle(schemaName: persisted.schemaName)
+            : persisted.title
         self.tabType = persisted.tabType
         self.isPreview = false
         self.isPinned = persisted.isPinned

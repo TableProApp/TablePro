@@ -64,7 +64,7 @@ struct CoordinatorTableListingTests {
 
         let tab = try #require(tabManager.selectedTab)
         #expect(tab.tabType == .tableListing)
-        #expect(tab.title == "Tables")
+        #expect(tab.title == String(localized: "Objects"))
         #expect(tab.tableContext.databaseName == coordinator.browseDatabaseName)
         #expect(tab.tableContext.isEditable == false)
         #expect(tab.content.query.isEmpty)
@@ -120,7 +120,7 @@ struct CoordinatorTableListingTests {
         #expect(tab.tabType == .tableListing)
         #expect(tab.tableContext.databaseName == "archive")
         #expect(tab.display.listingKind == .view)
-        #expect(tab.title == "Views")
+        #expect(tab.title == String(localized: "Objects"))
         #expect(!tab.isPreview)
     }
 
@@ -198,7 +198,7 @@ struct CoordinatorTableListingTests {
         #expect(preview.isPreview)
         #expect(preview.display.listingKind == .view)
         #expect(keptTab.display.listingKind == nil)
-        #expect(keptTab.title == "Tables")
+        #expect(keptTab.title == String(localized: "Objects"))
         #expect(!keptTab.isPreview)
     }
 
@@ -296,7 +296,7 @@ struct CoordinatorTableListingTests {
         ])
     }
 
-    @Test("Picking a kind retargets the tab, relabels it and keeps the preview")
+    @Test("Picking a kind retargets the tab, keeps its Objects title and keeps the preview")
     func pickingAKindKeepsThePreview() throws {
         let (coordinator, tabManager, _) = makeCoordinator()
         defer { coordinator.teardown() }
@@ -308,11 +308,11 @@ struct CoordinatorTableListingTests {
         let tab = try #require(tabManager.selectedTab)
         #expect(tab.id == id)
         #expect(tab.display.listingKind == .view)
-        #expect(tab.title == "Views")
+        #expect(tab.title == String(localized: "Objects"))
         #expect(!tab.isPreview)
     }
 
-    @Test("Falling back to Tables relabels the tab and leaves a preview a preview")
+    @Test("Falling back to Tables keeps the Objects title and leaves a preview a preview")
     func fallbackKeepsThePreview() throws {
         let (coordinator, tabManager, _) = makeCoordinator()
         defer { coordinator.teardown() }
@@ -323,7 +323,7 @@ struct CoordinatorTableListingTests {
 
         let tab = try #require(tabManager.selectedTab)
         #expect(tab.display.listingKind == nil)
-        #expect(tab.title == "Tables")
+        #expect(tab.title == String(localized: "Objects"))
         #expect(tab.isPreview)
     }
 
