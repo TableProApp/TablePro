@@ -193,12 +193,15 @@ fn quit(connection: &gio::DBusConnection) -> Result<(), String> {
 
 fn quit_all_windows(connection: &gio::DBusConnection) -> Result<(), String> {
     let deadline = Instant::now() + WAIT;
+    let mut refused = None;
     while name_has_owner(connection) {
         if Instant::now() >= deadline {
-            return Err("timed out waiting for TablePro to exit after app.quit".to_owned());
+            let reason = refused.map(|error| format!(": {error}")).unwrap_or_default();
+            return Err(format!("timed out waiting for TablePro to exit after app.quit{reason}"));
         }
         // A link's modal dialog takes the first quit, so its window needs another once the dialog closes.
-        quit(connection)?;
+        // An exiting GApplication drops its actions before its name, so a quit sent then fails.
+        refused = quit(connection).err();
         std::thread::sleep(Duration::from_millis(50));
     }
     Ok(())
