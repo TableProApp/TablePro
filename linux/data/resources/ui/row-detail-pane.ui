@@ -170,6 +170,10 @@
                                         <property name="min-content-height">120</property>
                                         <property name="child">
                                           <object class="GtkListView" id="field_list">
+                                            <!-- Each field has buttons of its own, so Tab
+                                                 leaves the list after them, and the
+                                                 arrows go from field to field. -->
+                                            <property name="tab-behavior">item</property>
                                             <accessibility>
                                               <property name="label" translatable="yes">Fields</property>
                                             </accessibility>

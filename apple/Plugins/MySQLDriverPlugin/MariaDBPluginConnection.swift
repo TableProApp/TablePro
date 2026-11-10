@@ -81,6 +81,8 @@ struct MariaDBPluginQueryResult {
     /// Send to first row, measured from just before the statement goes out. Separates the server's
     /// own work from the time spent pulling the rest of the result across the wire.
     var firstRowTime: TimeInterval?
+
+    var columnOrigins: [PluginColumnOrigin?]?
 }
 
 // MARK: - Connection Class
@@ -1018,6 +1020,13 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             flavor: sessionFlavor,
             binaryStringsAreText: binaryStringsAreText(in: query, flavor: sessionFlavor)
         )
+        let origins = MySQLColumnOrigins.origins(
+            of: mysql_fetch_fields(resultPtr),
+            count: Int(mysql_num_fields(resultPtr)),
+            encoding: connectionEncoding,
+            flavor: sessionFlavor,
+            statement: query
+        )
 
         var rows: [[PluginCellValue]] = []
         rows.reserveCapacity(min(1_000, PluginRowLimits.emergencyMax))
@@ -1100,7 +1109,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             columns: columns.names, columnTypes: columns.typeCodes, columnTypeNames: columns.typeNames,
             rows: rows, affectedRows: UInt64(rows.count), insertId: 0, isTruncated: truncated,
             columnMeta: columns.metadata,
-            firstRowTime: firstRowTime ?? Date().timeIntervalSince(sentAt)
+            firstRowTime: firstRowTime ?? Date().timeIntervalSince(sentAt),
+            columnOrigins: origins
         )
     }
 
@@ -1406,7 +1416,14 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             rows: fetchResult.rows, affectedRows: UInt64(fetchResult.rows.count),
             insertId: 0, isTruncated: fetchResult.isTruncated,
             columnMeta: columns.metadata,
-            firstRowTime: fetchResult.firstRowTime
+            firstRowTime: fetchResult.firstRowTime,
+            columnOrigins: MySQLColumnOrigins.origins(
+                of: mysql_fetch_fields(metadata),
+                count: Int(mysql_num_fields(metadata)),
+                encoding: connectionEncoding,
+                flavor: sessionFlavor,
+                statement: query
+            )
         )
     }
 

@@ -9,6 +9,15 @@ public protocol DriverFactory: Sendable {
         password: String?,
         preTunnelHost: String?
     ) throws -> any DatabaseDriver
+    // `refreshPassword` resolves the password again for the connection as saved, whose endpoint a tunnel hides from
+    // `connection`. A driver that signs in a second time later, such as to stop a statement, calls it once a minted
+    // token may have expired.
+    func createDriver(
+        for connection: DatabaseConnection,
+        password: String?,
+        preTunnelHost: String?,
+        refreshPassword: (@Sendable () async throws -> String?)?
+    ) throws -> any DatabaseDriver
     // Runs before the tunnel, on the connection as saved, so a sign-in failure comes before any SSH prompt.
     func resolvePassword(
         for connection: DatabaseConnection,

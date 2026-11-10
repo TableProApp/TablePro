@@ -27,6 +27,7 @@ fn paint() -> Rc<ColumnPaint> {
     let columns = grid_columns(&[info.result_column()], &[info], |_| true);
     Rc::new(ColumnPaint {
         column: columns[0].clone(),
+        grid: glib::WeakRef::new(),
         tracked: TrackedValues::untracked(),
         attributes: Rc::new(TextAttributes::new()),
         preferences: Default::default(),
@@ -521,6 +522,125 @@ fn cells_are_freed_with_the_grid() {
 
     let alive = freed.iter().filter(|cell| cell.upgrade().is_some()).count();
     assert_eq!(alive, 0, "cells outlived their grid");
+}
+
+#[gtk4::test]
+fn highlight_rules_tint_the_rows_and_cells_that_meet_them() {
+    use crate::services::grid::{HighlightColor, HighlightRule, HighlightTarget};
+    use tablepro_core::filter::{FilterOp, FilterValue};
+
+    let grid = Grid::open(two_text_columns(), two_text_values());
+    let mut row_rule = HighlightRule::new("name");
+    row_rule.op = FilterOp::Eq;
+    row_rule.value = Some(FilterValue::Single("B".to_owned()));
+    row_rule.color = HighlightColor::Red;
+    let mut cell_rule = HighlightRule::new("id");
+    cell_rule.op = FilterOp::Eq;
+    cell_rule.value = Some(FilterValue::Single("1".to_owned()));
+    cell_rule.color = HighlightColor::Green;
+    cell_rule.target = HighlightTarget::Cell;
+
+    grid.grid.set_highlight_rules(vec![row_rule, cell_rule]);
+    drain_main_context();
+
+    let tint = |id: i64, column: usize| {
+        let cell = grid.cell_of(id, column);
+        HighlightColor::ALL
+            .into_iter()
+            .find(|color| cell.has_css_class(color.css_class()))
+    };
+    assert_eq!(tint(2, 0), Some(HighlightColor::Red), "the row that meets the rule");
+    assert_eq!(tint(2, 1), Some(HighlightColor::Red));
+    assert!(described(&grid.cell_of(2, 1)), "a highlight needs a spoken description");
+    assert_eq!(
+        tint(1, 0),
+        Some(HighlightColor::Green),
+        "the cell that meets its own rule"
+    );
+    assert_eq!(tint(1, 1), None, "a cell rule leaves the row's other cells");
+
+    grid.grid.set_highlight_rules(Vec::new());
+    drain_main_context();
+    assert_eq!(tint(2, 1), None, "the tint outlived its rule");
+    assert!(!described(&grid.cell_of(2, 1)));
+}
+
+#[gtk4::test]
+fn highlights_announce_their_colour_and_keep_modified_text_readable() {
+    use crate::services::grid::{HighlightColor, HighlightRule};
+    use tablepro_core::filter::FilterValue;
+
+    let grid = two_text_rows();
+    let mut rule = HighlightRule::new("name");
+    rule.value = Some(FilterValue::Single("edited".to_owned()));
+    rule.color = HighlightColor::Red;
+    grid.grid.set_highlight_rules(vec![rule]);
+    rename_first(&grid, "edited");
+    let cell = grid.cell_of(1, 1);
+    assert!(cell.has_css_class(HighlightColor::Red.css_class()));
+    assert!(has_attribute(&cell, pango::AttrType::Weight));
+    assert!(!has_class(&cell, "warning"));
+    assert!(described(&cell));
+    grid.grid.set_highlight_rules(Vec::new());
+    assert!(has_class(&cell, "warning"));
+}
+
+#[gtk4::test]
+fn restored_highlights_apply_to_the_first_rows_without_a_refresh() {
+    use crate::services::grid::{HighlightColor, HighlightRule, HighlightTarget};
+    use tablepro_core::filter::FilterValue;
+
+    let grid = Grid::open(two_text_columns(), Vec::new());
+    grid.grid
+        .set_columns([].into(), crate::ui::data_grid::GridSorting::None, None);
+    let mut row_rule = HighlightRule::new("name");
+    row_rule.value = Some(FilterValue::Single("B".to_owned()));
+    row_rule.color = HighlightColor::Red;
+    let mut cell_rule = HighlightRule::new("id");
+    cell_rule.value = Some(FilterValue::Single("1".to_owned()));
+    cell_rule.target = HighlightTarget::Cell;
+    cell_rule.color = HighlightColor::Green;
+    grid.grid.set_highlight_rules(vec![row_rule, cell_rule]);
+    grid.grid
+        .set_columns(grid.columns.clone(), crate::ui::data_grid::GridSorting::None, None);
+    grid.grid
+        .replace_rows(crate::ui::data_grid::test_grid::persisted(&two_text_values()), 0);
+    wait_until(WAIT, || grid.cells().len() == 4).expect("first rows bind");
+
+    assert!(grid.cell_of(2, 0).has_css_class(HighlightColor::Red.css_class()));
+    assert!(grid.cell_of(2, 1).has_css_class(HighlightColor::Red.css_class()));
+    assert!(grid.cell_of(1, 0).has_css_class(HighlightColor::Green.css_class()));
+    assert!(!grid.cell_of(1, 1).has_css_class(HighlightColor::Green.css_class()));
+    assert!(described(&grid.cell_of(2, 1)));
+}
+
+#[gtk4::test]
+fn a_cell_can_read_highlights_when_bound_before_it_is_parented() {
+    use crate::services::grid::{HighlightColor, HighlightRule};
+    use tablepro_core::filter::FilterValue;
+
+    let grid = Grid::open(two_text_columns(), two_text_values());
+    let mut rule = HighlightRule::new("name");
+    rule.value = Some(FilterValue::Single("A".to_owned()));
+    rule.color = HighlightColor::Red;
+    grid.grid.set_highlight_rules(vec![rule]);
+    let cell = GridCell::new(Rc::new(ColumnPaint {
+        column: grid.columns[1].clone(),
+        grid: grid.grid.downgrade(),
+        tracked: grid.grid.tracked(),
+        attributes: Rc::new(TextAttributes::new()),
+        preferences: Default::default(),
+        numbers: Cell::new(false),
+    }));
+    assert!(cell.parent().is_none());
+    cell.bind(&grid.grid.store().row(0).expect("first row"));
+    assert!(cell.has_css_class(HighlightColor::Red.css_class()));
+    assert!(described(&cell));
+    cell.unbind();
+    let owner = grid.grid.downgrade();
+    drop(grid);
+    drain_main_context();
+    assert!(owner.upgrade().is_none(), "cell paint kept the grid alive");
 }
 
 #[gtk4::test]

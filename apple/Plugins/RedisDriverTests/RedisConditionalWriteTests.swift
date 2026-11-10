@@ -99,6 +99,78 @@ struct RedisConditionalWriteTests {
         #expect(channel.sentCommands == [["RENAMENX", "old", "new"]])
     }
 
+    // Outside a block the save stops at the failed statement, so the DEL after the rename never runs.
+    @Test("A staged insert refused because the key exists drops its staging key")
+    func refusedStagedInsertDropsItsStagingKey() async throws {
+        let driver = self.driver()
+        let staging = "queue:tablepro-staging:\(driver.issueStagingToken())"
+        let channel = StubRedisChannel([.integer(0), .integer(1)])
+        await #expect(throws: RedisPluginError.self) {
+            _ = try await driver.executeOperation(
+                try RedisCommandParser.parse("MUSTAPPLY RENAMENX \(staging) queue"), connection: channel, startTime: Date()
+            )
+        }
+        #expect(channel.sentCommands == [["RENAMENX", staging, "queue"], ["DEL", staging]])
+        #expect(channel.sentScopes.last == .outsideBlock)
+    }
+
+    @Test("A staged rename the server answers with an error drops its staging key")
+    func failedStagedRenameDropsItsStagingKey() async throws {
+        let driver = self.driver()
+        let staging = "queue:tablepro-staging:\(driver.issueStagingToken())"
+        let channel = StubRedisChannel(outcomes: [
+            .failure(RedisPluginError(code: 0, message: "NOPERM No permissions to access a key")),
+            .success(.integer(1))
+        ])
+        await #expect(throws: RedisPluginError.self) {
+            _ = try await driver.executeOperation(
+                try RedisCommandParser.parse("MUSTAPPLY RENAMENX \(staging) queue"), connection: channel, startTime: Date()
+            )
+        }
+        #expect(channel.sentCommands == [["RENAMENX", staging, "queue"], ["DEL", staging]])
+    }
+
+    @Test("A refused expiry on a staging key drops it before the save stops")
+    func failedStagingExpiryDropsItsStagingKey() async throws {
+        let driver = self.driver()
+        let staging = "queue:tablepro-staging:\(driver.issueStagingToken())"
+        let channel = StubRedisChannel(outcomes: [
+            .failure(RedisPluginError(code: 0, message: "NOPERM this user has no permissions to run the 'expire' command")),
+            .success(.integer(1))
+        ])
+        await #expect(throws: RedisPluginError.self) {
+            _ = try await driver.executeOperation(
+                try RedisCommandParser.parse("EXPIRE \(staging) 60"), connection: channel, startTime: Date()
+            )
+        }
+        #expect(channel.sentCommands == [["EXPIRE", staging, "60"], ["DEL", staging]])
+    }
+
+    // A leftover staging key shows in the grid, and renaming it onto a taken name must not delete it.
+    @Test("A refused rename of a staging key this driver did not generate keeps it")
+    func refusedRenameOfALeftoverKeepsIt() async throws {
+        let channel = StubRedisChannel([.integer(0)])
+        await #expect(throws: RedisPluginError.self) {
+            _ = try await driver().executeOperation(
+                try RedisCommandParser.parse("MUSTAPPLY RENAMENX queue:tablepro-staging:old queue"),
+                connection: channel,
+                startTime: Date()
+            )
+        }
+        #expect(channel.sentCommands == [["RENAMENX", "queue:tablepro-staging:old", "queue"]])
+    }
+
+    @Test("A staged insert onto a free name leaves nothing to drop")
+    func appliedStagedInsertSendsNoDelete() async throws {
+        let driver = self.driver()
+        let staging = "queue:tablepro-staging:\(driver.issueStagingToken())"
+        let channel = StubRedisChannel([.integer(1)])
+        _ = try await driver.executeOperation(
+            try RedisCommandParser.parse("MUSTAPPLY RENAMENX \(staging) queue"), connection: channel, startTime: Date()
+        )
+        #expect(channel.sentCommands == [["RENAMENX", staging, "queue"]])
+    }
+
     @Test("A rename onto a free name succeeds")
     func appliedRenameSucceeds() async throws {
         let channel = StubRedisChannel([.integer(1)])

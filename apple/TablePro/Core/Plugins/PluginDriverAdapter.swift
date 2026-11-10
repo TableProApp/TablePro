@@ -1340,6 +1340,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             ResultColumnMeta(isPrimaryKey: $0.isPrimaryKey, isNullable: $0.isNullable, isAutoIncrement: $0.isIdentity)
         }
         result.rowLocators = pluginResult.rowLocators
+        result.columnOrigins = pluginResult.columnOrigins
         result.exportDocuments = pluginResult.exportDocuments
         result.absentCells = pluginResult.absentCells ?? [:]
         return result

@@ -61,7 +61,13 @@ public enum PostgreSQLCatalogTypeNames {
         case 1_083: return "time"
         case 1_114: return "timestamp"
         case 1_184: return "timestamptz"
+        case 1_186: return "interval"
         case 1_266: return "timetz"
+        // The names the catalog lookup gives them, so a fresh session's stream header reads a bit string as one.
+        case 1_560: return "bit"
+        case 1_561: return "bit[]"
+        case 1_562: return "varbit"
+        case 1_563: return "varbit[]"
         case 1_700: return "numeric"
         case 2_950: return "uuid"
         case 3_802: return "jsonb"

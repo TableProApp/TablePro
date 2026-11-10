@@ -151,6 +151,9 @@ pub(super) fn show_safe_mode(window: &adw::ApplicationWindow, level: Option<Safe
         return;
     };
     action.set_enabled(level.is_some());
+    if let Some(shell) = window.downcast_ref::<SessionWindow>().and_then(SessionWindow::shell) {
+        shell.show_safe_mode(level);
+    }
     if let Some(level) = level {
         action.set_state(&crate::ui::safe_mode::action_target(level).to_variant());
     }

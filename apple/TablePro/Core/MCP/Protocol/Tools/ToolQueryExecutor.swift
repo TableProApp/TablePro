@@ -8,7 +8,8 @@ enum ToolQueryExecutor {
         maxRows: Int,
         timeoutSeconds: Int,
         context: MCPRequestContext,
-        secrets: [String]
+        secrets: [String],
+        masking: ExternalRowMasking = .byOrigin
     ) async throws -> JsonValue {
         try await context.cancellation.throwIfCancelled()
         return try await executeAndLog(
@@ -19,7 +20,8 @@ enum ToolQueryExecutor {
             principal: context.principal,
             cancellation: context.cancellation,
             secrets: secrets,
-            source: historySource(for: context)
+            source: historySource(for: context),
+            masking: masking
         )
     }
 
@@ -36,7 +38,8 @@ enum ToolQueryExecutor {
         principal: MCPPrincipal,
         cancellation: MCPCancellationToken? = nil,
         secrets: [String] = [],
-        source: QueryHistorySource = .mcp
+        source: QueryHistorySource = .mcp,
+        masking: ExternalRowMasking = .byOrigin
     ) async throws -> JsonValue {
         try await logged(
             services: services,
@@ -50,7 +53,8 @@ enum ToolQueryExecutor {
                 services: services,
                 maxRows: maxRows,
                 timeoutSeconds: timeoutSeconds,
-                cancellation: cancellation
+                cancellation: cancellation,
+                masking: masking
             )
         }
     }
@@ -61,7 +65,8 @@ enum ToolQueryExecutor {
         maxRows: Int,
         timeoutSeconds: Int,
         context: MCPRequestContext,
-        secrets: [String]
+        secrets: [String],
+        masking: ExternalRowMasking = .byOrigin
     ) async throws -> QueryResult {
         try await context.cancellation.throwIfCancelled()
         return try await logged(
@@ -75,7 +80,8 @@ enum ToolQueryExecutor {
                 operation,
                 maxRows: maxRows,
                 timeoutSeconds: timeoutSeconds,
-                cancellation: context.cancellation
+                cancellation: context.cancellation,
+                masking: masking
             )
             return (outcome.result, outcome.result.rows.count)
         }
@@ -163,7 +169,8 @@ enum ToolQueryExecutor {
         services: MCPToolServices,
         maxRows: Int,
         timeoutSeconds: Int,
-        cancellation: MCPCancellationToken?
+        cancellation: MCPCancellationToken?,
+        masking: ExternalRowMasking
     ) async throws -> (payload: JsonValue, rowsReturned: Int) {
         switch operation.unit {
         case .statement:
@@ -171,7 +178,8 @@ enum ToolQueryExecutor {
                 operation,
                 maxRows: maxRows,
                 timeoutSeconds: timeoutSeconds,
-                cancellation: cancellation
+                cancellation: cancellation,
+                masking: masking
             )
             return (payload, payload["row_count"]?.intValue ?? 0)
         case .script:

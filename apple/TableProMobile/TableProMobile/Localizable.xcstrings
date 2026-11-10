@@ -9874,6 +9874,9 @@
         }
       }
     },
+    "Failed to configure the connection timeout" : {
+
+    },
     "Failed to decode the SSO portal response for profile \"%@\"." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -23232,6 +23235,12 @@
       }
     },
     "TablePro cannot upload changes until there is space in iCloud. Changes on this device are kept here and upload once you free up space or add storage." : {
+
+    },
+    "TablePro closed %@ when it went to the background while a statement was running, so its open transaction may have been committed or rolled back. It has been reopened; check which of its changes were saved before running them again." : {
+
+    },
+    "TablePro closed %@ when it went to the background, which rolled back its open transaction. It has been reopened; run the statements again, and commit before you leave the app." : {
 
     },
     "TablePro could not read that file." : {

@@ -1664,6 +1664,38 @@ fn the_selection_follows_the_tab_and_survives_a_new_list() {
 }
 
 #[gtk4::test]
+fn a_rows_menu_opens_beside_the_pointer_so_a_long_one_slides_instead_of_shrinking() {
+    let alpha = connection("Alpha", None);
+    let shown = Shown::new(std::slice::from_ref(&alpha));
+    let (view, _) = session(&[object("public", "a")], every_affordance());
+    shown.open(&alpha, &view);
+    let pointer = gdk::Rectangle::new(40, 60, 1, 1);
+
+    shown.inner().pressed(
+        Which::Tree,
+        shown.position("a"),
+        gdk::BUTTON_SECONDARY,
+        gdk::ModifierType::empty(),
+        Some(pointer),
+    );
+
+    let popover = shown.popover();
+    assert!(popover.is_visible(), "the menu did not open");
+    assert!(
+        matches!(popover.position(), gtk::PositionType::Left | gtk::PositionType::Right),
+        "opened above or below, a long menu cannot slide"
+    );
+    assert_eq!(
+        popover.valign(),
+        gtk::Align::Start,
+        "the menu does not start at the pointer"
+    );
+    assert!(!popover.has_arrow(), "a context menu has no arrow");
+    assert_eq!(popover.pointing_to(), (true, pointer));
+    popover.popdown();
+}
+
+#[gtk4::test]
 fn secondary_press_selects_the_row_and_opens_its_menu() {
     let alpha = connection("Alpha", None);
     let shown = Shown::new(std::slice::from_ref(&alpha));

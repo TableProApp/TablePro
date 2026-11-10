@@ -832,6 +832,11 @@ final class ConnectionStorage {
     @discardableResult
     private func writeSecret(_ value: String, forKey key: String, connectionId: UUID) -> Bool {
         let staged = staging?.connectionId == connectionId
+        // Writing it again would date the item as a new save, and a newer copy on another device would lose to it.
+        if staged, staging?.loaded[key] == value {
+            staging?.edits.deletedKeys.removeAll { $0 == key }
+            return true
+        }
         let deviceOnly = staged ? staging?.deviceOnly ?? false : keepsSecretsOnDevice(connectionId)
         let written = keychain.writeString(value, forKey: key, deviceOnly: deviceOnly)
         if staged {
@@ -915,34 +920,51 @@ final class ConnectionStorage {
         let connectionId: UUID
         let deviceOnly: Bool
         let keptKeys: Set<String>
+        let loaded: [String: String]
         var edits = StagedSecretEdits()
     }
 
     private var staging: SecretStaging?
 
     private var unreadableSecretsSeen: Set<String>?
+    private var loadedSecretsSeen: [String: String]?
+
+    struct SecretReads {
+        var unreadable: Set<String> = []
+        var loaded: [String: String] = [:]
+    }
 
     // The keys a read inside `body` could not read. A form runs its prefill here, so the field left empty and the
     // key it must not clear come from one read.
     func recordingUnreadableSecrets(_ body: () -> Void) -> Set<String> {
-        let outer = unreadableSecretsSeen
+        recordingSecretReads(body).unreadable
+    }
+
+    // Also the values the reads found, so a save can leave alone what the form loaded and did not change.
+    func recordingSecretReads(_ body: () -> Void) -> SecretReads {
+        let outerUnreadable = unreadableSecretsSeen
+        let outerLoaded = loadedSecretsSeen
         unreadableSecretsSeen = []
+        loadedSecretsSeen = [:]
         body()
-        let seen = unreadableSecretsSeen ?? []
-        unreadableSecretsSeen = outer.map { $0.union(seen) }
-        return seen
+        let reads = SecretReads(unreadable: unreadableSecretsSeen ?? [], loaded: loadedSecretsSeen ?? [:])
+        unreadableSecretsSeen = outerUnreadable.map { $0.union(reads.unreadable) }
+        loadedSecretsSeen = outerLoaded.map { $0.merging(reads.loaded) { _, inner in inner } }
+        return reads
     }
 
     // Inside `body`, this connection's secret writes take `deviceOnly` and report a failure, and its deletes wait
-    // for `applyStagedDeletions`, which the caller runs once the record is on disk. A key in `keeping` is never deleted.
+    // for `applyStagedDeletions`, which the caller runs once the record is on disk. A key in `keeping` is never deleted,
+    // and a write of the value `unchanged` holds for its key is skipped.
     func stagingSecretEdits(
         for connectionId: UUID,
         deviceOnly: Bool,
         keeping keptKeys: Set<String> = [],
+        unchanged loaded: [String: String] = [:],
         _ body: () -> Void
     ) -> StagedSecretEdits {
         let outer = staging
-        staging = SecretStaging(connectionId: connectionId, deviceOnly: deviceOnly, keptKeys: keptKeys)
+        staging = SecretStaging(connectionId: connectionId, deviceOnly: deviceOnly, keptKeys: keptKeys, loaded: loaded)
         body()
         let edits = staging?.edits ?? StagedSecretEdits()
         staging = outer
@@ -995,7 +1017,9 @@ final class ConnectionStorage {
     private func readSecret(forKey key: String, connectionId: UUID) -> KeychainStringResult {
         let result = keychain.readStringResult(forKey: key, deviceOnly: readsOwnItemFirst(connectionId))
         switch result {
-        case .found, .notFound:
+        case .found(let value):
+            loadedSecretsSeen?[key] = value
+        case .notFound:
             break
         case .locked, .userCancelled, .authFailed, .error:
             unreadableSecretsSeen?.insert(key)

@@ -164,6 +164,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
@@ -191,12 +192,21 @@
                     </InfoBar.ActionButton>
                 </InfoBar>
 
+                <InfoBar
+                    x:Name="ChangesBar"
+                    Grid.Row="2"
+                    Margin="8,8,8,0"
+                    AutomationProperties.AutomationId="ChangesBar"
+                    IsOpen="False"
+                    Visibility="Collapsed"
+                    Severity="Warning" />
+
                 <!-- TabView's style sets VerticalAlignment to Top, which sizes a tab's content to its smallest. -->
                 <!-- CanTearOutTabs is set once the strip is on screen and cleared before it leaves (WorkspaceView.Leave). -->
                 <TabView
                     x:Name="Tabs"
                     x:Uid="Tabs"
-                    Grid.Row="2"
+                    Grid.Row="3"
                     AddTabButtonClick="OnAddTab"
                     AutomationProperties.AutomationId="Tabs"
                     CanDragTabs="False"

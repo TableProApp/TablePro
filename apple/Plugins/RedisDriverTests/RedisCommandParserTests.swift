@@ -1080,7 +1080,7 @@ struct RedisCommandParserAppStatementTests {
     func insertsStayTyped(type: String) throws {
         let value = type == "hash" ? #"{"f":"v w"}"# : "a \"quoted\" value"
         let statements = try insertStatements(key: "user:1 x", type: type, value: value)
-        #expect(statements.count == (type == "string" ? 1 : 2))
+        #expect(statements.count == (type == "string" ? 1 : 4))
         for statement in statements {
             #expect(try !isVerbatim(statement), "\(statement)")
         }
