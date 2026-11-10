@@ -207,6 +207,28 @@ fn shift_f10_opens_menu_anchored_to_focused_cell() {
 }
 
 #[gtk4::test]
+fn the_keyboard_menu_of_a_cell_wider_than_the_grid_opens_beside_its_part_in_view() {
+    let grid = two_text_rows();
+    let wide = grid.grid.width() * 3;
+    grid.grid
+        .data_view_column(1)
+        .expect("the name column")
+        .set_fixed_width(wide);
+    let cell = grid.focus(1, 1);
+    wait_until(WAIT, || cell.width() > grid.grid.width()).expect("the cell is wider than the grid");
+
+    assert!(press(&grid, gdk::Key::F10, gdk::ModifierType::SHIFT_MASK));
+
+    let (pointed, rect) = shown_menu(&grid).pointing_to();
+    assert!(pointed);
+    assert!(
+        rect.x() >= 0 && rect.x() + rect.width() <= grid.grid.width(),
+        "the menu points past the grid at {rect:?}"
+    );
+    close_menus(&grid);
+}
+
+#[gtk4::test]
 fn a_result_grid_opens_its_read_only_menu_from_the_keyboard() {
     let grid = Grid::build(
         GridSpec::results(vec![named("id", "integer", true)]),
