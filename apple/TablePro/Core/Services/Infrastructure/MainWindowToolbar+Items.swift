@@ -533,7 +533,21 @@ extension MainWindowToolbar {
     /// menu. A truncated container name is a worse loss than Refresh and Save.
     func applyVisibilityPriority(to item: NSToolbarItem) {
         guard item.itemIdentifier != Self.connection, item.itemIdentifier != Self.database else { return }
-        item.visibilityPriority = .high
+        item.visibilityPriority = Self.visibilityPriority(for: item.itemIdentifier)
+    }
+
+    /// The Objects buttons are the widest items once labels show, and each one reaches something the sidebar
+    /// or a menu also reaches, so they give way first: Query and Backup, which repeat New Tab and Backup, then the
+    /// four kinds, which give way before the connection and its container.
+    nonisolated static func visibilityPriority(for identifier: NSToolbarItem.Identifier) -> NSToolbarItem.VisibilityPriority {
+        switch identifier {
+        case objectQuery, objectBackup:
+            return .low
+        case objectTables, objectViews, objectFunctions, objectUsers:
+            return NSToolbarItem.VisibilityPriority(rawValue: NSToolbarItem.VisibilityPriority.low.rawValue / 2)
+        default:
+            return .high
+        }
     }
 }
 

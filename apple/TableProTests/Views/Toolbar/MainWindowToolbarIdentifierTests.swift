@@ -109,6 +109,7 @@ struct MainWindowToolbarIdentifierTests {
         }
         let allowed = owner.toolbarAllowedItemIdentifiers(owner.managedToolbar)
         #expect(Array(allowed.suffix(objectKinds.count)) == objectKinds)
+        #expect(MainWindowToolbar.allowedItemIdentifiers.contains(.space), "The space the buttons come with")
         #expect(owner.toolbarDefaultItemIdentifiers(owner.managedToolbar) == defaultsWhileOff)
         #expect(Set(defaultsWhileOff).isDisjoint(with: objectKinds))
         #expect(MainWindowToolbar.toolbarIdentifier == "com.TablePro.main.toolbar.v4")

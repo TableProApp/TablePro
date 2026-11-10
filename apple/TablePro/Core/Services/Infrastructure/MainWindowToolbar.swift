@@ -535,7 +535,12 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// Every identifier here must be one the delegate can build. Asked for one it cannot, the
     /// delegate answers nil, and with `autosavesConfiguration` on AppKit prunes it from the saved
     /// arrangement.
+    ///
+    /// `.space` is here for the Objects buttons, which are inserted with one: toolbars sharing the identifier replay
+    /// each other's edits by index, and one that refused the space would hold an item fewer and fault on the next
+    /// removal.
     nonisolated internal static let allowedItemIdentifiers: [NSToolbarItem.Identifier] = defaultItemIdentifiers + [
+        .space,
         backForwardGroup,
         previewSQL,
         results,
@@ -607,6 +612,19 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         }
     }
 
+    // Only the space that sits where the Objects buttons put it, so a space the user placed elsewhere stays.
+    nonisolated internal static func isObjectKindsSpace(at index: Int, in items: [NSToolbarItem.Identifier]) -> Bool {
+        items[index] == .space && index > 0 && index + 1 < items.count
+            && items[index - 1] == objectUsers && items[index + 1] == objectQuery
+    }
+
+    /// With labels the titlebar has no room for the window title as well. It names the front tab, which the
+    /// tab strip and the selected Objects button already show, and it pushed the connection and its container
+    /// into the overflow menu. The title stays set for the Window menu and VoiceOver; it only stops drawing.
+    nonisolated internal static func titleVisibility(showsLabels: Bool) -> NSWindow.TitleVisibility {
+        showsLabels ? .hidden : .visible
+    }
+
     nonisolated internal static func displayMode(showsLabels: Bool) -> NSToolbar.DisplayMode {
         showsLabels ? .iconAndLabel : .iconOnly
     }
@@ -618,6 +636,13 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     internal func reconcileDisplayMode() {
         guard windowController?.view.window != nil || isInWindow() else { return }
         let wanted = labelsEnabled()
+        // Follows the setting every time, unlike the mode, which the user can still pick from the toolbar's menu.
+        if let window = windowController?.view.window {
+            let visibility = Self.titleVisibility(showsLabels: wanted)
+            if window.titleVisibility != visibility {
+                window.titleVisibility = visibility
+            }
+        }
         guard labelsRecord.isApplied != wanted else { return }
         labelsRecord.record(wanted)
         managedToolbar.displayMode = Self.displayMode(showsLabels: wanted)
@@ -661,12 +686,20 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             let separator = managedToolbar.items.firstIndex { $0.itemIdentifier == .sidebarTrackingSeparator }
             var index = separator.map { $0 + 1 } ?? 0
             for identifier in Self.objectKindItemIdentifiers where !present.contains(identifier) {
+                // Tables, Views, Functions and Users pick what the tab shows; Query and Backup start something.
+                // A space keeps the two runs apart, so the actions do not read as two more kinds.
+                if identifier == Self.objectQuery, index > 0,
+                   managedToolbar.items[index - 1].itemIdentifier == Self.objectUsers {
+                    managedToolbar.insertItem(withItemIdentifier: .space, at: index)
+                    index += 1
+                }
                 managedToolbar.insertItem(withItemIdentifier: identifier, at: index)
                 index += 1
             }
         } else {
-            for index in managedToolbar.items.indices.reversed()
-            where objectKinds.contains(managedToolbar.items[index].itemIdentifier) {
+            let items = managedToolbar.items.map(\.itemIdentifier)
+            for index in items.indices.reversed()
+            where objectKinds.contains(items[index]) || Self.isObjectKindsSpace(at: index, in: items) {
                 managedToolbar.removeItem(at: index)
             }
         }

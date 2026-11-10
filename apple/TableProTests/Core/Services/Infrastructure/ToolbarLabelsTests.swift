@@ -109,6 +109,12 @@ struct ToolbarLabelsTests {
         #expect(record.isApplied)
     }
 
+    @Test("With labels the window title stops drawing, and without them it draws again")
+    func labelsHideTheTitle() {
+        #expect(MainWindowToolbar.titleVisibility(showsLabels: true) == .hidden)
+        #expect(MainWindowToolbar.titleVisibility(showsLabels: false) == .visible)
+    }
+
     @Test("The record sits beside the toolbar's arrangement, which keeps its v4 identifier")
     func recordKeyFollowsTheArrangement() {
         #expect(ToolbarLabelsRecord.key == "com.TablePro.main.toolbar.v4.labels")

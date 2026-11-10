@@ -73,7 +73,10 @@ struct ObjectKindsToolbarTests {
             #expect(item.image != nil, "\(name) names no symbol that exists")
             #expect(item.target === owner, "\(name) must route through the toolbar")
             #expect(item.action != nil, "\(name) has no action")
-            #expect(item.visibilityPriority == .high, "\(name) leaves the titlebar before the commands")
+            #expect(
+                item.visibilityPriority == MainWindowToolbar.visibilityPriority(for: item.itemIdentifier),
+                "\(name) leaves the titlebar before the commands"
+            )
             #expect(!item.isBordered, "\(name) must match the selectable buttons, which AppKit draws without a bezel")
         }
     }
@@ -549,6 +552,12 @@ struct ObjectKindsToolbarTests {
         return (owner, toolbar)
     }
 
+    // The six buttons as a change of the setting inserts them, with the space that parts the kinds from the actions.
+    static let insertedRun: [NSToolbarItem.Identifier] = [
+        MainWindowToolbar.objectTables, MainWindowToolbar.objectViews, MainWindowToolbar.objectFunctions,
+        MainWindowToolbar.objectUsers, .space, MainWindowToolbar.objectQuery, MainWindowToolbar.objectBackup,
+    ]
+
     private static func identifiers(of toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         toolbar.items.map { $0.itemIdentifier }
     }
@@ -569,6 +578,10 @@ struct ObjectKindsToolbarTests {
 
         #expect(Self.buttons(in: toolbar) == MainWindowToolbar.objectKindItemIdentifiers)
         #expect(ToolbarObjectKindsRecord(defaults: storage.defaults).isApplied)
+        let placed = Self.identifiers(of: toolbar)
+        let query = try #require(placed.firstIndex(of: MainWindowToolbar.objectQuery))
+        #expect(placed[query - 1] == .space, "A space parts the four kinds from Query and Backup")
+        #expect(placed[query - 2] == MainWindowToolbar.objectUsers)
 
         let (laterOwner, laterToolbar) = Self.restoredToolbar(settingOn: true, record: record)
         laterOwner.reconcileObjectKindItems()
@@ -606,6 +619,39 @@ struct ObjectKindsToolbarTests {
 
         #expect(Self.buttons(in: toolbar).isEmpty)
         #expect(!record.isApplied)
+    }
+
+    @Test("Turning the setting off takes out the space the buttons came with, and only that one")
+    func turningOffRemovesOnlyTheButtonsSpace() throws {
+        let storage = try EphemeralDefaults()
+        let record = ToolbarObjectKindsRecord(defaults: storage.defaults)
+        record.record(true)
+        let (owner, toolbar) = Self.restoredToolbar(
+            including: [.space, MainWindowToolbar.objectTables, MainWindowToolbar.objectViews,
+                        MainWindowToolbar.objectFunctions, MainWindowToolbar.objectUsers, .space,
+                        MainWindowToolbar.objectQuery, MainWindowToolbar.objectBackup],
+            settingOn: false,
+            record: record
+        )
+
+        owner.reconcileObjectKindItems()
+
+        #expect(Self.buttons(in: toolbar).isEmpty)
+        #expect(Self.identifiers(of: toolbar).filter { $0 == .space }.count == 1, "The user's own space stays")
+    }
+
+    @Test("Query and Backup give way first, then the four kinds, before the connection and the commands")
+    func objectButtonsGiveWayFirst() {
+        func priority(_ identifier: NSToolbarItem.Identifier) -> Int {
+            MainWindowToolbar.visibilityPriority(for: identifier).rawValue
+        }
+        #expect(priority(MainWindowToolbar.objectQuery) == NSToolbarItem.VisibilityPriority.low.rawValue)
+        #expect(priority(MainWindowToolbar.objectBackup) == NSToolbarItem.VisibilityPriority.low.rawValue)
+        for kind in MainWindowToolbar.selectableObjectKindItemIdentifiers {
+            #expect(priority(kind) > priority(MainWindowToolbar.objectQuery))
+            #expect(priority(kind) < NSToolbarItem.VisibilityPriority.standard.rawValue, "The connection stays longer")
+        }
+        #expect(priority(MainWindowToolbar.refresh) == NSToolbarItem.VisibilityPriority.high.rawValue)
     }
 
     @Test("Buttons the user took out with Customize Toolbar stay out")
@@ -674,7 +720,7 @@ struct ObjectKindsToolbarTests {
 
         let identifiers = Self.identifiers(of: owner.managedToolbar)
         let separator = try #require(identifiers.firstIndex(of: .sidebarTrackingSeparator))
-        #expect(Array(identifiers.dropFirst(separator + 1).prefix(6)) == MainWindowToolbar.objectKindItemIdentifiers)
+        #expect(Array(identifiers.dropFirst(separator + 1).prefix(7)) == Self.insertedRun)
         #expect(Self.buttons(in: owner.managedToolbar) == MainWindowToolbar.objectKindItemIdentifiers)
     }
 
@@ -727,7 +773,7 @@ struct ObjectKindsToolbarTests {
 
         owner.reconcileObjectKindItems()
 
-        #expect(Array(Self.identifiers(of: toolbar).prefix(6)) == MainWindowToolbar.objectKindItemIdentifiers)
+        #expect(Array(Self.identifiers(of: toolbar).prefix(7)) == Self.insertedRun)
     }
 
     /// The pass a window update runs is what keeps the selection on the front tab's kind.
@@ -799,7 +845,7 @@ extension GlobalStateSuites {
             #expect(buttons().count == objectKinds.count, "Turning the setting on reaches the open window")
             let identifiers = toolbar.items.map { $0.itemIdentifier }
             let separator = try #require(identifiers.firstIndex(of: .sidebarTrackingSeparator))
-            #expect(Array(identifiers.dropFirst(separator + 1).prefix(6)) == MainWindowToolbar.objectKindItemIdentifiers)
+            #expect(Array(identifiers.dropFirst(separator + 1).prefix(7)) == ObjectKindsToolbarTests.insertedRun)
             // This window has no connection, so the buttons arrive dimmed rather than live until the next update.
             for button in buttons() {
                 #expect(!button.isEnabled, "\(button.itemIdentifier.rawValue) is live with no connection")
