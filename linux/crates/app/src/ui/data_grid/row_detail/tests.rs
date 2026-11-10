@@ -575,11 +575,19 @@ fn tab_leaves_the_field_list_after_the_focused_field() {
             .and_downcast::<gtk::Button>()
             .is_some_and(|button| button.icon_name().as_deref() == Some(crate::ui::icons::EDIT_COPY))
     };
+    let on_menu = || {
+        gtk::prelude::GtkWindowExt::focus(&grid.window)
+            .and_then(|focus| focus.ancestor(gtk::MenuButton::static_type()))
+            .and_downcast::<gtk::MenuButton>()
+            .is_some_and(|button| button.icon_name().as_deref() == Some(crate::ui::icons::VIEW_MORE))
+    };
 
     keys.press(gdk::Key::Tab, gdk::ModifierType::empty()).expect("Tab");
     wait_until(WAIT, || crate::ui::a11y::holds_focus(&list)).expect("Tab to the list");
     keys.press(gdk::Key::Tab, gdk::ModifierType::empty()).expect("Tab");
     wait_until(WAIT, on_copy).expect("Tab to the field's copy button");
+    keys.press(gdk::Key::Tab, gdk::ModifierType::empty()).expect("Tab");
+    wait_until(WAIT, on_menu).expect("Tab to the field's menu");
     keys.press(gdk::Key::Tab, gdk::ModifierType::empty()).expect("Tab");
     wait_until(WAIT, || !crate::ui::a11y::holds_focus(&list)).expect("Tab out of the list");
 }
