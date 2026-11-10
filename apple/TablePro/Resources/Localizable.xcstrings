@@ -16502,14 +16502,14 @@
         }
       }
     },
+    "A plan works on up to 3 devices at a time. Removing one signs TablePro out there." : {
+
+    },
     "A point's id cannot change. Insert a new row with the new id instead." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
     "A publish to the team library is still running. Try again when it finishes." : {
-
-    },
-    "A plan works on up to 3 devices at a time. Removing one signs TablePro out there." : {
 
     },
     "a query" : {
@@ -55239,6 +55239,9 @@
           }
         }
       }
+    },
+    "Couldn't Save the Revocation" : {
+
     },
     "Couldn't start" : {
 
@@ -129342,6 +129345,9 @@
         }
       }
     },
+    "Opens database URLs and files, runs queries and exports tables from the terminal. Run `tablepro help` to see every command." : {
+
+    },
     "Opens database URLs from the terminal, such as a DDEV project database." : {
       "localizations" : {
         "fr" : {
@@ -168746,13 +168752,13 @@
         }
       }
     },
-    "Signing in with credentials from this Mac was not approved." : {
-
-    },
     "Signing in" : {
 
     },
     "Signing in by email? Type the 6-digit code from the email in the sign-in sheet. The link in the email opens your browser instead." : {
+
+    },
+    "Signing in with credentials from this Mac was not approved." : {
 
     },
     "Signing in…" : {
@@ -180964,6 +180970,9 @@
     "TablePro could not read your saved connections, so it did not save over them." : {
 
     },
+    "TablePro could not save the change to the Keychain. The token works again after TablePro restarts." : {
+
+    },
     "TablePro could not tell how this Dameng server treats backslashes, so it will not send a value that contains one. Reconnect, then try again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -181546,6 +181555,9 @@
     "TablePro is reading or writing rows on this connection with settings of its own." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "TablePro is running from a disk image or a temporary location. Move it to the Applications folder first, then open it from there." : {
+
     },
     "TablePro is still trying to reconnect." : {
       "localizations" : {
@@ -194657,9 +194669,6 @@
         }
       }
     },
-    "The text at byte %lld is not valid UTF-8." : {
-
-    },
     "The team library asked TablePro to download it again." : {
 
     },
@@ -194673,6 +194682,9 @@
 
     },
     "The team library refused the change. It may be too large or hold a field the library never stores." : {
+
+    },
+    "The text at byte %lld is not valid UTF-8." : {
 
     },
     "The text could not be parsed as JSON." : {
@@ -217860,6 +217872,15 @@
         }
       }
     },
+    "You were signed out. Sign in again." : {
+
+    },
+    "You're on Free" : {
+
+    },
+    "You're signed in" : {
+
+    },
     "You've used TablePro on %lld days" : {
       "localizations" : {
         "fr" : {
@@ -217899,15 +217920,6 @@
           }
         }
       }
-    },
-    "You were signed out. Sign in again." : {
-
-    },
-    "You're on Free" : {
-
-    },
-    "You're signed in" : {
-
     },
     "Your account is not allowed to read the source of %@" : {
       "extractionState" : "manual",

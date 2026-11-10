@@ -216,6 +216,9 @@ export CARGO_BUILD_JOBS=%{_smp_build_ncpus}
 %doc linux/CHANGELOG.md
 %{_bindir}/tablepro
 %{_libexecdir}/tablepro-askpass
+%{_datadir}/bash-completion/completions/tablepro
+%{_datadir}/fish/vendor_completions.d/tablepro.fish
+%{_datadir}/zsh/site-functions/_tablepro
 %{_datadir}/applications/app.tablepro.TablePro.desktop
 %{_datadir}/dbus-1/services/app.tablepro.TablePro.service
 %{_datadir}/glib-2.0/schemas/app.tablepro.TablePro.gschema.xml

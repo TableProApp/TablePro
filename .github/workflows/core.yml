@@ -80,7 +80,7 @@ jobs:
         run: |
           cargo check --locked --target "$TARGET" --features "$FEATURES" --features "$IN_PROCESS_SSH" \
             -p tablepro-core -p tablepro-net -p tablepro-storage -p tablepro-ssh -p tablepro-session \
-            -p tablepro-foreign-import -p tablepro-ai -p tablepro-mcp -p tablepro-account \
+            -p tablepro-foreign-import -p tablepro-ai -p tablepro-mcp -p tablepro-account -p tablepro-cli \
             -p tablepro-test-support -p tablepro-test-fixtures \
             -p tablepro-driver-cassandra -p tablepro-driver-clickhouse -p tablepro-driver-duckdb \
             -p tablepro-driver-mongodb -p tablepro-driver-mssql -p tablepro-driver-mysql \

@@ -655,6 +655,21 @@
     SQLite and libSQL driver plugins, with its symbols hidden. The app itself still uses the macOS
     libsqlite3 for its own storage. Public domain; the SPDX id "blessing" names the notice the sources
     carry in place of a license.'
+- id: swift-argument-parser
+  name: swift-argument-parser
+  version: 1.8.2
+  spdx: Apache-2.0 WITH Swift-exception
+  copyrights:
+  - Copyright (c) 2020 Apple Inc. and the Swift project authors
+  homepageURL: https://github.com/apple/swift-argument-parser
+  licenseTextURL: https://github.com/apple/swift-argument-parser/blob/1.8.2/LICENSE.txt
+  textFile: texts/swift-argument-parser.txt
+  source: spm:swift-argument-parser
+  patched: false
+  platforms: [macos]
+  notes: '11751 bytes: Apache 2.0 plus the Runtime Library Exception section (verified by reading the
+    file). No NOTICE.txt. Linked only into Contents/MacOS/tablepro-cli through TableProCommandLine; the
+    app itself does not link it. Copyright line taken from the manifest header.'
 - id: swift-asn1
   name: swift-asn1
   version: 1.5.1, 1.7.1
