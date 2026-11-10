@@ -4,6 +4,7 @@ import SwiftUI
 struct GeneralSettingsView: View {
     @Binding var settings: GeneralSettings
     @Binding var tabSettings: TabSettings
+    @Binding var dataGridSettings: DataGridSettings
     @ObservedObject var updater: SoftwareUpdater
     var onResetAll: () -> Void
 
@@ -78,8 +79,10 @@ struct GeneralSettingsView: View {
                 Text(String(localized: """
                     Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects \
                     tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the \
-                    tree, and makes Tree the default sidebar layout. Standard Layout turns them off again. Open \
-                    connections switch layout too.
+                    tree, and makes Tree the default sidebar layout. In table tabs it shows column types in \
+                    the header, the sort and a Text mode in the filter panel, opens that panel with each table, \
+                    puts the result bar above the grid and names the database and connection in tab titles. \
+                    Standard Layout turns them off again. Open connections switch layout too.
                     """))
             }
 
@@ -202,8 +205,10 @@ struct GeneralSettingsView: View {
     private func useLayoutPreset(navigator: Bool) {
         if navigator {
             NavigatorLayoutPreset.apply(to: &settings, defaultLayout: &defaultSidebarLayout)
+            NavigatorLayoutPreset.applyDataView(tabs: &tabSettings, dataGrid: &dataGridSettings)
         } else {
             NavigatorLayoutPreset.restore(to: &settings, defaultLayout: &defaultSidebarLayout)
+            NavigatorLayoutPreset.restoreDataView(tabs: &tabSettings, dataGrid: &dataGridSettings)
         }
         NavigatorLayoutPreset.switchOpenConnections(to: defaultSidebarLayout)
     }
@@ -213,6 +218,7 @@ struct GeneralSettingsView: View {
     GeneralSettingsView(
         settings: .constant(.default),
         tabSettings: .constant(.default),
+        dataGridSettings: .constant(.default),
         updater: SoftwareUpdater.shared,
         onResetAll: {}
     )

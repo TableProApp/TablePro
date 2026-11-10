@@ -7,7 +7,8 @@ import Foundation
 
 /// The Layout buttons in Settings > General: table details, favorite tables at the top of the tree,
 /// the Objects tab on selection, the Objects toolbar buttons, labels under the toolbar's icons, the
-/// saved connections in the tree and Tree as the default sidebar layout, on or off in one step.
+/// saved connections in the tree and Tree as the default sidebar layout, on or off in one step. The
+/// same buttons switch the table tab's data view (`applyDataView`).
 ///
 /// The tree lists the saved connections itself, so the layout keeps the separate connections column
 /// off: the sidebar is one tree, with the connection on screen opened in it.
@@ -37,6 +38,27 @@ internal enum NavigatorLayoutPreset {
         settings.showsConnectionsInTree = standard.showsConnectionsInTree
         settings.showsConnectionNavigator = standard.showsConnectionNavigator
         defaultLayout = .flat
+    }
+
+    /// The table tab's half of the layout: types under the column names, the sort and a Text mode in
+    /// the filter panel, that panel open with each table, the result bar above the grid and tab titles
+    /// that name the database and connection. These live in the Data Grid and Tab settings, so the
+    /// caller passes those bindings beside the General one.
+    internal static func applyDataView(tabs: inout TabSettings, dataGrid: inout DataGridSettings) {
+        dataGrid.showsColumnTypesInHeader = true
+        dataGrid.showsSortInFilterPanel = true
+        dataGrid.opensFilterPanelForTables = true
+        dataGrid.resultBarAtTop = true
+        tabs.titleShowsLocation = true
+    }
+
+    internal static func restoreDataView(tabs: inout TabSettings, dataGrid: inout DataGridSettings) {
+        let standardGrid = DataGridSettings.default
+        dataGrid.showsColumnTypesInHeader = standardGrid.showsColumnTypesInHeader
+        dataGrid.showsSortInFilterPanel = standardGrid.showsSortInFilterPanel
+        dataGrid.opensFilterPanelForTables = standardGrid.opensFilterPanelForTables
+        dataGrid.resultBarAtTop = standardGrid.resultBarAtTop
+        tabs.titleShowsLocation = TabSettings.default.titleShowsLocation
     }
 
     /// The default layout reaches only connections opened later, so each open one is switched the way

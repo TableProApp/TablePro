@@ -102,6 +102,45 @@ struct NavigatorLayoutPresetTests {
         #expect(settings == before)
     }
 
+    @Test("Use Navigator Layout turns on the table tab's data view, and Standard Layout turns it off")
+    func dataViewFollowsTheButtons() {
+        var tabs = TabSettings.default
+        var grid = DataGridSettings.default
+
+        NavigatorLayoutPreset.applyDataView(tabs: &tabs, dataGrid: &grid)
+
+        #expect(grid.showsColumnTypesInHeader)
+        #expect(grid.showsSortInFilterPanel)
+        #expect(grid.opensFilterPanelForTables)
+        #expect(grid.resultBarAtTop)
+        #expect(tabs.titleShowsLocation)
+
+        NavigatorLayoutPreset.restoreDataView(tabs: &tabs, dataGrid: &grid)
+
+        #expect(grid == DataGridSettings.default)
+        #expect(tabs == TabSettings.default)
+    }
+
+    @Test("The data view buttons leave every other Data Grid and Tab setting alone")
+    func dataViewKeepsOtherSettings() {
+        var tabs = TabSettings.default
+        tabs.enablePreviewTabs = !tabs.enablePreviewTabs
+        var grid = DataGridSettings.default
+        grid.showRowNumbers = !grid.showRowNumbers
+        grid.defaultPageSize = 250
+        let tabsBefore = tabs
+        let gridBefore = grid
+
+        NavigatorLayoutPreset.applyDataView(tabs: &tabs, dataGrid: &grid)
+        #expect(tabs.enablePreviewTabs == tabsBefore.enablePreviewTabs)
+        #expect(grid.showRowNumbers == gridBefore.showRowNumbers)
+        #expect(grid.defaultPageSize == 250)
+
+        NavigatorLayoutPreset.restoreDataView(tabs: &tabs, dataGrid: &grid)
+        #expect(tabs == tabsBefore)
+        #expect(grid == gridBefore)
+    }
+
     /// The View menu switches one connection through its shared sidebar state; the preset does the
     /// same for each open one, and skips an engine that has no tree to switch to.
     @MainActor
