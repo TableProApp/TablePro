@@ -72,3 +72,9 @@ sqlx takes MySQL CA certificates only as PEM bytes and has no hook for a rustls 
 3. **Entitlement checks around jsonwebtoken** (`entitlement.rs`): jsonwebtoken cannot parse a header whose `alg` it does not know, such as `none`, so `alg`, `typ` and `kid` are read from the header first; and it reads `exp` and `nbf` against the system clock, so `mid`, `nbf` and `exp` are checked against the caller's time after it verified the signature and `aud`. tablepro-cloud's shared vectors cover every check.
 
 **Watch list**: oauth2 accepting an http revocation URL on a loopback or test host; jsonwebtoken validating against a caller's time. Each one deletes its piece.
+
+### Command-line output formats (`tablepro-cli`)
+
+The `tablepro` command prints rows as csv, tsv, json, jsonl and a padded table, from the JSON values the MCP server sends ([core ADR 0018](../../../core/docs/decisions/0018-command-line.md)). The `csv` crate quotes per writer, not per field, so it cannot write NULL as an empty field and an empty string as `""` in one record, which the format promises on every platform. `tablepro_core::export` renders typed driver values, which the command never holds. `unicode-width` measures the table's columns.
+
+**Watch list**: a `csv` writer option that quotes an empty field.

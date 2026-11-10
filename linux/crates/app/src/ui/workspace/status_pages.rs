@@ -382,6 +382,48 @@ mod tests {
     }
 
     #[gtk4::test]
+    fn favorites_are_filed_in_folders_and_a_deleted_folder_leaves_its_queries() {
+        use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+        let test = TestWindow::connected("FavoritesFolders");
+        let availability = test.services.history().availability();
+        wait_until(WAIT, || availability.borrow().is_ready()).expect("the query database to open");
+        let shell = test.window.shell().expect("the shell");
+        let favorites = shell.imp().favorites.get().cloned().expect("the favorites pane");
+        shell.imp().scope_toggle.set_active_name(Some("favorites"));
+        test.workspace()
+            .with_model(|model| model.on_save_query_named("Orders".to_owned(), "SELECT 1".to_owned()));
+        wait_until(WAIT, || favorites.names() == ["Orders"]).expect("the saved query to be listed");
+
+        shell.create_folder("Reports".to_owned(), None);
+        wait_until(WAIT, || favorites.folder_destinations().len() == 1).expect("the folder to be listed");
+        let folder = favorites.folder_destinations()[0].0;
+        let store = test.services.history().store().expect("history").saved_query_folders();
+        let owner = test.workspace().connection_id().expect("connection");
+        let work = test
+            .services
+            .tasks
+            .spawn_task(async move { store.create(owner, "Monthly", Some(folder)).await });
+        let child = finish_on_main(WAIT, work)
+            .expect("created")
+            .expect("task")
+            .expect("folder");
+        wait_until(WAIT, || favorites.folder_destinations().len() == 2).expect("external folder listed");
+        assert!(
+            favorites
+                .folder_destinations()
+                .contains(&(child, "/Reports/Monthly".to_owned()))
+        );
+        shell.move_favorite(favorites.ids()[0], Some(child));
+        wait_until(WAIT, || favorites.folder_of_first_query() == Some(child)).expect("the query filed in it");
+
+        shell.delete_folder(folder);
+        wait_until(WAIT, || favorites.folder_destinations().is_empty()).expect("the folder to go");
+        assert_eq!(favorites.names(), ["Orders"], "the query went with its folder");
+        assert_eq!(favorites.folder_of_first_query(), None);
+    }
+
+    #[gtk4::test]
     fn a_history_dialog_closed_by_hand_is_not_closed_again_on_disconnect() {
         use gtk4::glib;
         use gtk4::prelude::*;

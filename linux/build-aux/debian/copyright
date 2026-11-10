@@ -4761,6 +4761,7 @@ License: Apache-2.0
 
 Files: vendor/clap-4.6.7/*
  vendor/clap_builder-4.6.7/*
+ vendor/clap_complete-4.6.11/*
  vendor/clap_derive-4.6.7/*
  vendor/clap_lex-1.1.1/*
 Copyright: Individual contributors

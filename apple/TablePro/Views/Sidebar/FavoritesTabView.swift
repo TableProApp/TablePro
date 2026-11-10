@@ -329,10 +329,6 @@ internal struct FavoritesTabView: View {
         )
     }
 
-    /// The Favorites list is an `NSOutlineView`. A SwiftUI `List` here drew no emphasized selection
-    /// and answered no arrow key, because the app hosts it in a bare `NSHostingController` with no
-    /// SwiftUI scene above it. Rows, menus and actions stay exactly where they were; only the list
-    /// container changed.
     private func favoritesList(
         _ items: [FavoriteNode],
         databaseGroups: [FavoriteDatabaseGroup],
