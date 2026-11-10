@@ -1591,7 +1591,6 @@ impl SessionWindow {
         self.connects_changed();
     }
 
-    /// The key the failed page is about.
     // The failure page's buttons act on the connect that failed.
     fn on_failed(&self, act: impl FnOnce(&SessionKey)) {
         if let Some(key) = self.failed_key() {

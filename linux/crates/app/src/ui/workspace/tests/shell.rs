@@ -862,8 +862,9 @@ fn a_read_only_connection_has_no_add_menu() {
     });
     let shell = shell_of(&test.workspace());
     let imp = shell.imp();
-    crate::test_support::drain_main_context();
+    wait_until(WAIT, || test.workspace().creation_menu().is_some()).expect("the session's Add menu");
 
+    assert_eq!(test.workspace().creation_menu().map(|menu| menu.n_items()), Some(0));
     assert!(!imp.sidebar_add_button.is_visible());
     assert!(!imp.sidebar_bar.is_revealed());
 }
