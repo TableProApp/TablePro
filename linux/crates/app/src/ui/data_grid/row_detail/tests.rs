@@ -1806,7 +1806,139 @@ fn a_field_names_its_type_and_its_key_to_a_screen_reader() {
         catalog: None,
         ..column_of(named("id", "integer", true))
     };
-    assert_eq!(field_label(&result_column), "id, integer");
+    assert_eq!(field_label(&result_column, false), "id, integer");
+}
+
+fn composite_foreign_keys() -> crate::ui::data_grid::TableKeys {
+    use tablepro_core::ForeignKeyInfo;
+    use tablepro_core::ddl::OutboundForeignKey;
+    use tablepro_core::meta::TableRef;
+
+    crate::ui::data_grid::TableKeys {
+        table: TableRef::unqualified("orders"),
+        outbound: vec![OutboundForeignKey {
+            key: ForeignKeyInfo {
+                name: "customer_fkey".to_owned(),
+                columns: vec!["id".to_owned(), "tenant_id".to_owned(), "customer_id".to_owned()],
+                ref_schema: None,
+                ref_table: "customers".to_owned(),
+                ref_columns: vec!["id".to_owned(), "tenant_id".to_owned(), "customer_id".to_owned()],
+                on_delete: None,
+                on_update: None,
+            },
+            parent_compares_alike: true,
+        }],
+        inbound: Vec::new(),
+    }
+}
+
+fn foreign_key_grid(keys: crate::ui::data_grid::TableKeys) -> (Grid, RowDetailPane, crate::ui::data_grid::KeysHandle) {
+    let handle = crate::ui::data_grid::KeysHandle::new(keys.table.clone());
+    handle.set(keys);
+    let grid = Grid::build(
+        GridSpec {
+            references: Some(handle.clone()),
+            ..GridSpec::table(vec![
+                named("id", "integer", true),
+                named("tenant_id", "integer", false),
+                named("customer_id", "integer", false),
+                named("note", "text", false),
+            ])
+        },
+        persisted(&[vec![
+            Value::Int(1),
+            Value::Int(7),
+            Value::Int(42),
+            Value::Text("x".into()),
+        ]]),
+    );
+    grid.activate("show-details");
+    let pane = pane_of(&grid);
+    grid.focus(0, 1);
+    drain_main_context();
+    (grid, pane, handle)
+}
+
+#[gtk4::test]
+fn foreign_key_fields_announce_each_role_and_keep_the_primary_key_icon() {
+    let (_grid, pane, _handle) = foreign_key_grid(composite_foreign_keys());
+    let primary = crate::ui::icons::PRIMARY_KEY;
+    let foreign = crate::ui::icons::GO_UP;
+    assert!(marks(&pane, 0, primary));
+    assert!(!marks(&pane, 0, foreign));
+    assert_eq!(
+        drawn_field(&pane, 0).accessible_label().as_str(),
+        "id, integer, primary key, foreign key"
+    );
+    for (column, label) in [
+        (1, "tenant_id, integer, foreign key"),
+        (2, "customer_id, integer, foreign key"),
+    ] {
+        assert!(marks(&pane, column, foreign));
+        assert!(!marks(&pane, column, primary));
+        assert_eq!(drawn_field(&pane, column).accessible_label().as_str(), label);
+    }
+    assert!(!marks(&pane, 3, primary));
+    assert!(!marks(&pane, 3, foreign));
+    assert_eq!(drawn_field(&pane, 3).accessible_label().as_str(), "note, text");
+    for column in 0..4 {
+        assert!(marks(&pane, column, crate::ui::icons::TEXT_X_GENERIC));
+    }
+}
+
+#[gtk4::test]
+fn foreign_key_markers_follow_metadata_changes_without_disturbing_an_edit() {
+    let keys = composite_foreign_keys();
+    let empty = crate::ui::data_grid::TableKeys::none(keys.table.clone());
+    let (grid, pane, handle) = foreign_key_grid(empty.clone());
+    let primary = crate::ui::icons::PRIMARY_KEY;
+    let foreign = crate::ui::icons::GO_UP;
+    assert!(!marks(&pane, 1, foreign));
+    assert!(!marks(&pane, 2, foreign));
+    edit_field(&grid, &pane, 0, 3);
+    type_value(&pane, "still typing");
+    let focused = gtk::prelude::GtkWindowExt::focus(&grid.window);
+    let pending_before = grid.tracker.pending_count();
+
+    handle.set(keys);
+    grid.grid.keys_changed();
+    drain_main_context();
+
+    assert!(marks(&pane, 1, foreign));
+    assert!(marks(&pane, 2, foreign));
+    assert!(marks(&pane, 0, primary));
+    assert_eq!(
+        drawn_field(&pane, 0).accessible_label().as_str(),
+        "id, integer, primary key, foreign key"
+    );
+    assert_eq!(
+        drawn_field(&pane, 2).accessible_label().as_str(),
+        "customer_id, integer, foreign key"
+    );
+    assert_eq!(selected_field(&pane), Some(3));
+    assert_eq!(pane.typed_text(), "still typing");
+    assert_eq!(gtk::prelude::GtkWindowExt::focus(&grid.window), focused);
+    assert_eq!(grid.tracker.pending_count(), pending_before);
+
+    handle.set(empty);
+    grid.grid.keys_changed();
+    drain_main_context();
+
+    assert!(!marks(&pane, 1, foreign));
+    assert!(!marks(&pane, 2, foreign));
+    assert!(marks(&pane, 0, primary));
+    assert_eq!(
+        drawn_field(&pane, 0).accessible_label().as_str(),
+        "id, integer, primary key"
+    );
+    assert_eq!(
+        drawn_field(&pane, 2).accessible_label().as_str(),
+        "customer_id, integer"
+    );
+    assert_eq!(selected_field(&pane), Some(3));
+    assert_eq!(pane.typed_text(), "still typing");
+    assert_eq!(gtk::prelude::GtkWindowExt::focus(&grid.window), focused);
+    assert_eq!(grid.tracker.pending_count(), pending_before);
 }
 
 #[gtk4::test]

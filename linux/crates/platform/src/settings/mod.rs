@@ -172,6 +172,20 @@ impl AppSettings {
         }
     }
 
+    pub fn grid_font(&self) -> EditorFont {
+        self.grid_preferences().snapshot().font.clone()
+    }
+
+    pub fn set_grid_font(&self, font: &EditorFont) -> Result<(), SettingsError> {
+        match font {
+            EditorFont::System => self.set_boolean(keys::GRID_USE_SYSTEM_FONT, true),
+            EditorFont::Custom(description) => {
+                self.set_string(keys::GRID_FONT, description)?;
+                self.set_boolean(keys::GRID_USE_SYSTEM_FONT, false)
+            }
+        }
+    }
+
     pub fn style_scheme(&self) -> String {
         self.settings.string(keys::STYLE_SCHEME).into()
     }
