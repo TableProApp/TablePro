@@ -168,7 +168,7 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Team library, per team: pull cursor, items, unpushed edits, conflicts (synced with tablepro-cloud's `/v2`, never iCloud) | JSON, one file per team | `TeamLibraryStateStore` through `TeamLibrarySync` |
 | Sidebar database and schema filters, recent tables | UserDefaults, device-local | `DatabaseTreeFilterStorage`, `RecentTablesStore` |
 | Objects tab column choices, per object kind | UserDefaults `com.TablePro.objectsList.columns.<kind>`, device-local, never synced | `ObjectListingColumnVisibilityStore` |
-| Connection navigator group expansion | UserDefaults `com.TablePro.navigator.groupExpansion`, device-local, never synced | `ConnectionNavigatorExpansionStore` |
+| Connection navigator group expansion, shared with the database tree's connection groups | UserDefaults `com.TablePro.navigator.groupExpansion`, device-local, never synced | `ConnectionNavigatorExpansionStore` |
 | Connection navigator column width | AppKit split view autosave `com.TablePro.connectionNavigator`, device-local | `NavigationSidebarViewController` through `SplitViewAutosaveName.current(_:)` |
 | History drawer state | UserDefaults, device-local | `HistoryPanelPreferencesStorage` |
 | Server Dashboard tiles, per connection | UserDefaults, device-local | `ServerDashboardTileStorage` |
