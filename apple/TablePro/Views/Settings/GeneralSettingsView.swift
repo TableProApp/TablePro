@@ -73,9 +73,9 @@ struct GeneralSettingsView: View {
                 Text("Layout")
             } footer: {
                 Text(String(localized: """
-                    Navigator Layout turns on table details, the Objects tab on selection, the Objects toolbar \
-                    buttons and the connections list, and makes Tree the default sidebar layout. Standard Layout \
-                    turns them off again. Open connections switch layout too.
+                    Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects \
+                    tab on selection, the Objects toolbar buttons and the connections list, and makes Tree the \
+                    default sidebar layout. Standard Layout turns them off again. Open connections switch layout too.
                     """))
             }
 
@@ -88,6 +88,9 @@ struct GeneralSettingsView: View {
 
                 Toggle("Show recent tables", isOn: $settings.showRecentTables)
                     .help("Adds a Recent section at the top of the Tables sidebar with the last tables you opened per connection and database.")
+
+                Toggle("Show favorite tables at the top of the tree", isOn: $settings.showsFavoritesSection)
+                    .help("Adds a Favorites section above Recent with the tables you starred in the database you are browsing. Each table also stays in its own place.")
 
                 Toggle("Show objects when a database, schema or group is selected", isOn: $settings.showsObjectsOnSelection)
                     .help("Clicking a database, schema or object group in the sidebar lists its objects in the main area. Show Objects in the row's menu lists them either way.")

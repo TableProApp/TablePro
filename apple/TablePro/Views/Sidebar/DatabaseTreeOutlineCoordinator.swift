@@ -10,6 +10,7 @@ import os
 import SwiftUI
 import TableProPluginKit
 import TableProSQLGrammar
+import TableProUtilities
 
 @MainActor
 final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
@@ -36,6 +37,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     private var pendingTruncates: Set<DatabaseTreeTableRef> = []
     private var pendingDeletes: Set<DatabaseTreeTableRef> = []
     internal var showRecentTables = true
+    internal var showsFavoritesSection = false
     internal var showSystemContainers = false
     internal var showsPartitions = true
     /// Off, no row draws a detail list, so the loaded ones go and nothing reads them again: the
@@ -139,7 +141,12 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.reloadFavorites()
-                self.refreshVisibleRows()
+                // The Favorites section gains or loses a row, which a reconfigure in place cannot show.
+                if self.showsFavoritesSection {
+                    self.refresh()
+                } else {
+                    self.refreshVisibleRows()
+                }
             }
         }
         favoritesObservers.withLockUnchecked { $0.append(tableObserver) }
@@ -224,6 +231,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             || pendingTruncates != view.pendingTruncates
             || pendingDeletes != view.pendingDeletes
             || showRecentTables != view.showRecentTables
+            || showsFavoritesSection != view.showsFavoritesSection
             || showSystemContainers != view.showSystemContainers
             || showsPartitions != view.showsPartitions
             || showsTableDetails != view.showsTableDetails
@@ -236,6 +244,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         pendingTruncates = view.pendingTruncates
         pendingDeletes = view.pendingDeletes
         showRecentTables = view.showRecentTables
+        showsFavoritesSection = view.showsFavoritesSection
         showSystemContainers = view.showSystemContainers
         showsPartitions = view.showsPartitions
         showsTableDetails = view.showsTableDetails
@@ -387,6 +396,33 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             schema: ref.favoriteSchema,
             name: ref.table.name
         )
+    }
+
+    /// The browsed database's favorite tables by schema and name. A table whose list is loaded takes its
+    /// listed `TableInfo`, so a favorite view opens as a view; one not read yet stands as a table.
+    internal func favoriteTableRefs() -> [DatabaseTreeTableRef] {
+        guard showsFavoritesSection else { return [] }
+        let database = browsingDatabase
+        let search = SidebarSearch(searchText)
+        return favoriteTables
+            .filter { $0.database == database }
+            .sorted { ($0.schema ?? "", $0.name) < ($1.schema ?? "", $1.name) }
+            .compactMap { entry -> DatabaseTreeTableRef? in
+                if !search.isEmpty {
+                    guard search.matchesObject(named: entry.name, database: database, schema: entry.schema) else {
+                        return nil
+                    }
+                }
+                // The tree reads per container; the flat list reads the session's own database.
+                let listed = database.flatMap { database in
+                    service.tables(connectionId: connectionId, database: database, schema: entry.schema)
+                        .first { $0.name == entry.name }
+                } ?? schemaService.tables(for: connectionId).first { table in
+                    table.name == entry.name && table.schema?.nilIfEmpty == entry.schema
+                }
+                let table = listed ?? TableInfo(name: entry.name, type: .table, rowCount: nil, schema: entry.schema)
+                return DatabaseTreeTableRef(database: database, schema: entry.schema, table: table)
+            }
     }
 
     internal func isFavorite(_ ref: DatabaseTreeTableRef) -> Bool {

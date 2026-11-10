@@ -16,6 +16,10 @@ enum SidebarPersistenceKey {
         "sidebar.\(connectionId.uuidString).recents.expanded"
     }
 
+    static func favoritesExpanded(connectionId: UUID) -> String {
+        "sidebar.\(connectionId.uuidString).favorites.expanded"
+    }
+
     static func foldersExpanded(connectionId: UUID) -> String {
         "sidebar.\(connectionId.uuidString).folders.expanded"
     }

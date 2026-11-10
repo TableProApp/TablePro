@@ -61,6 +61,7 @@ struct GeneralSettings: Codable, Equatable {
     var queryTimeoutSeconds: Int
     var shareAnalytics: Bool
     var showRecentTables: Bool
+    var showsFavoritesSection: Bool
     var showsObjectsOnSelection: Bool
     var showsObjectToolbar: Bool
     var showObjectComments: Bool
@@ -79,6 +80,7 @@ struct GeneralSettings: Codable, Equatable {
         queryTimeoutSeconds: 60,
         shareAnalytics: true,
         showRecentTables: false,
+        showsFavoritesSection: false,
         showsObjectsOnSelection: false,
         showsObjectToolbar: false,
         showObjectComments: true,
@@ -98,6 +100,7 @@ struct GeneralSettings: Codable, Equatable {
         queryTimeoutSeconds: Int = 60,
         shareAnalytics: Bool = true,
         showRecentTables: Bool = false,
+        showsFavoritesSection: Bool = false,
         showsObjectsOnSelection: Bool = false,
         showsObjectToolbar: Bool = false,
         showObjectComments: Bool = true,
@@ -115,6 +118,7 @@ struct GeneralSettings: Codable, Equatable {
         self.queryTimeoutSeconds = queryTimeoutSeconds
         self.shareAnalytics = shareAnalytics
         self.showRecentTables = showRecentTables
+        self.showsFavoritesSection = showsFavoritesSection
         self.showsObjectsOnSelection = showsObjectsOnSelection
         self.showsObjectToolbar = showsObjectToolbar
         self.showObjectComments = showObjectComments
@@ -136,6 +140,7 @@ struct GeneralSettings: Codable, Equatable {
         queryTimeoutSeconds = container.decodeSetting(.queryTimeoutSeconds, default: fallback.queryTimeoutSeconds)
         shareAnalytics = container.decodeSetting(.shareAnalytics, default: fallback.shareAnalytics)
         showRecentTables = container.decodeSetting(.showRecentTables, default: fallback.showRecentTables)
+        showsFavoritesSection = container.decodeSetting(.showsFavoritesSection, default: fallback.showsFavoritesSection)
         showsObjectsOnSelection = container.decodeSetting(
             .showsObjectsOnSelection, default: fallback.showsObjectsOnSelection
         )

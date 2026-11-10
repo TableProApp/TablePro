@@ -5,9 +5,9 @@
 
 import Foundation
 
-/// The Layout buttons in Settings > General: table details, the Objects tab on selection, the
-/// Objects toolbar buttons, the connections list and Tree as the default sidebar layout, on or off
-/// in one step.
+/// The Layout buttons in Settings > General: table details, favorite tables at the top of the tree,
+/// the Objects tab on selection, the Objects toolbar buttons, the connections list and Tree as the
+/// default sidebar layout, on or off in one step.
 ///
 /// It edits the same values the separate controls edit and leaves the write to the caller. Settings
 /// passes its General settings binding, so the change lands on `AppSettingsManager.general` in one
@@ -15,6 +15,7 @@ import Foundation
 internal enum NavigatorLayoutPreset {
     internal static func apply(to settings: inout GeneralSettings, defaultLayout: inout SidebarLayout) {
         settings.showTableDetails = true
+        settings.showsFavoritesSection = true
         settings.showsObjectsOnSelection = true
         settings.showsObjectToolbar = true
         settings.showsConnectionNavigator = true
@@ -24,6 +25,7 @@ internal enum NavigatorLayoutPreset {
     internal static func restore(to settings: inout GeneralSettings, defaultLayout: inout SidebarLayout) {
         let standard = GeneralSettings.default
         settings.showTableDetails = standard.showTableDetails
+        settings.showsFavoritesSection = standard.showsFavoritesSection
         settings.showsObjectsOnSelection = standard.showsObjectsOnSelection
         settings.showsObjectToolbar = standard.showsObjectToolbar
         settings.showsConnectionNavigator = standard.showsConnectionNavigator

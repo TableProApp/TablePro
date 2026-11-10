@@ -112,7 +112,8 @@ struct SidebarTreeView: View {
             showSystemContainers: settingsManager.general.showSystemContainers,
             showsPartitions: settingsManager.general.showPartitions,
             showsTableDetails: settingsManager.general.showTableDetails,
-            rowSizePreference: settingsManager.general.sidebarRowSize
+            rowSizePreference: settingsManager.general.sidebarRowSize,
+            showsFavoritesSection: settingsManager.general.showsFavoritesSection
         )
     }
 

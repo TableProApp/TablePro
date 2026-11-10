@@ -19,6 +19,8 @@ extension DatabaseTreeOutlineCoordinator {
             switch rootNode.kind {
             case .recentSection:
                 setExpanded(rootNode, searching || (viewModel?.isRecentsExpanded ?? true))
+            case .favoritesSection:
+                setExpanded(rootNode, searching || (viewModel?.isFavoritesExpanded ?? true))
             case .temporarySection:
                 setExpanded(rootNode, searching || (viewModel?.isTemporaryExpanded ?? true))
             default:
@@ -154,7 +156,7 @@ extension DatabaseTreeOutlineCoordinator {
             case .table, .partition, .tableDetailGroup:
                 triggerLoad(for: node)
                 readOpenDetailRows(under: node)
-            case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+            case .recentSection, .recentTable, .favoritesSection, .favoriteTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
                  .database, .schema, .tableDetail, .routine, .trigger, .userType, .status, .objectKindSection,
                  .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
                 continue
@@ -226,7 +228,7 @@ extension DatabaseTreeOutlineCoordinator {
             restoreFolderExpansion(under: node)
         case .objectKindSection, .containerObjectKindSection, .tableFolder, .table, .partition, .tableDetailGroup:
             restoreTableExpansion(under: node)
-        case .recentSection, .recentTable, .temporarySection, .temporaryTable, .database, .routine, .trigger,
+        case .recentSection, .recentTable, .favoritesSection, .favoriteTable, .temporarySection, .temporaryTable, .database, .routine, .trigger,
              .userType, .status, .redisKeysSection, .redisNode, .tableDetail:
             break
         }
@@ -245,6 +247,8 @@ extension DatabaseTreeOutlineCoordinator {
         switch node.kind {
         case .recentSection:
             viewModel?.isRecentsExpanded = expanded
+        case .favoritesSection:
+            viewModel?.isFavoritesExpanded = expanded
         case .temporarySection:
             viewModel?.isTemporaryExpanded = expanded
         case .foldersSection:
@@ -291,7 +295,8 @@ extension DatabaseTreeOutlineCoordinator {
             } else {
                 windowState?.expandedTreeTableDetailGroups.remove(group.expansionKey)
             }
-        case .recentTable, .temporaryTable, .routine, .trigger, .userType, .status, .redisNode, .tableDetail:
+        case .recentTable, .favoriteTable, .temporaryTable, .routine, .trigger, .userType, .status, .redisNode,
+             .tableDetail:
             break
         }
     }
@@ -325,7 +330,7 @@ extension DatabaseTreeOutlineCoordinator {
                 || !hierarchicalSearchSkipsRead(schema)
             else { return }
             loadHierarchicalSchemaObjects(schema)
-        case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+        case .recentSection, .recentTable, .favoritesSection, .favoriteTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
              .routine, .trigger, .userType, .status, .objectKindSection, .containerObjectKindSection,
              .redisKeysSection, .redisNode, .tableDetail:
             break

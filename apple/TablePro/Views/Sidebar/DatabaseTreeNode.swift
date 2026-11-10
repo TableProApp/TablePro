@@ -78,6 +78,9 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
     enum Kind {
         case recentSection
         case recentTable(DatabaseTreeTableRef)
+        /// The browsed database's favorite tables, above Recent. Each table also keeps its own row.
+        case favoritesSection
+        case favoriteTable(DatabaseTreeTableRef)
         case temporarySection
         case temporaryTable(DatabaseTreeTableRef)
         /// Flat shape: the section the browsed schema's folders sit in, above the object kinds.
@@ -123,7 +126,7 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
 
     var isExpandable: Bool {
         switch kind {
-        case .recentSection, .temporarySection, .foldersSection, .tableFolder, .database, .schema,
+        case .recentSection, .favoritesSection, .temporarySection, .foldersSection, .tableFolder, .database, .schema,
              .objectKindSection, .containerObjectKindSection, .tableDetailGroup,
              .hierarchicalSchemaSection, .redisKeysSection:
             return true
@@ -134,7 +137,7 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
         case .redisNode(let node):
             guard case .namespace = node else { return false }
             return true
-        case .recentTable, .temporaryTable, .routine, .trigger, .userType, .status, .tableDetail:
+        case .recentTable, .favoriteTable, .temporaryTable, .routine, .trigger, .userType, .status, .tableDetail:
             return false
         }
     }
@@ -164,7 +167,7 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
             return !showsTableDetails
         case .tableDetailGroup:
             return false
-        case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+        case .recentSection, .recentTable, .favoritesSection, .favoriteTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
              .database, .schema, .partition, .tableDetail, .routine, .trigger, .userType, .status,
              .objectKindSection, .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection,
              .redisNode:
@@ -190,6 +193,11 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
         return nil
     }
 
+    var favoriteTableRef: DatabaseTreeTableRef? {
+        if case .favoriteTable(let ref) = kind { return ref }
+        return nil
+    }
+
     var temporaryTableRef: DatabaseTreeTableRef? {
         if case .temporaryTable(let ref) = kind { return ref }
         return nil
@@ -203,10 +211,11 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
     /// children, so it stays an ordinary container row the way a folder does in Xcode's navigator.
     var isGroupRow: Bool {
         switch kind {
-        case .recentSection, .temporarySection, .foldersSection, .objectKindSection, .redisKeysSection:
+        case .recentSection, .favoritesSection, .temporarySection, .foldersSection, .objectKindSection,
+             .redisKeysSection:
             return true
         case .database, .schema, .containerObjectKindSection, .tableFolder,
-             .hierarchicalSchemaSection, .recentTable, .temporaryTable, .table, .partition,
+             .hierarchicalSchemaSection, .recentTable, .favoriteTable, .temporaryTable, .table, .partition,
              .routine, .trigger, .userType, .status, .redisNode, .tableDetailGroup, .tableDetail:
             return false
         }
@@ -216,7 +225,7 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
         switch kind {
         case .database, .schema:
             return true
-        case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+        case .recentSection, .recentTable, .favoritesSection, .favoriteTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
              .table, .partition, .routine, .trigger, .userType, .status, .objectKindSection,
              .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode,
              .tableDetailGroup, .tableDetail:
@@ -230,7 +239,7 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
             return .database(metadata.name, isSystem: metadata.isSystemDatabase)
         case .schema(let database, let schema):
             return .schema(database: database, schema: schema, isSystem: systemSchemas.contains(schema))
-        case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+        case .recentSection, .recentTable, .favoritesSection, .favoriteTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
              .table, .partition, .routine, .trigger, .userType, .status, .objectKindSection,
              .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode,
              .tableDetailGroup, .tableDetail:
@@ -244,6 +253,7 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
     }
 
     static let recentSectionId = "recent-section"
+    static let favoritesSectionId = "favorites-section"
     /// The flat shape's root, which has no row of its own; its status row hangs off this id.
     static let flatRootId = "flat-root"
     static let foldersSectionId = "folders-section"
@@ -302,6 +312,7 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
     }
 
     static func recentTableId(_ ref: DatabaseTreeTableRef) -> String { "recent\u{1}table\u{1}\(ref.id)" }
+    static func favoriteTableId(_ ref: DatabaseTreeTableRef) -> String { "favorite\u{1}table\u{1}\(ref.id)" }
     static let temporarySectionId = "temporary-section"
     static func temporaryTableId(_ ref: DatabaseTreeTableRef) -> String { "temporary\u{1}table\u{1}\(ref.id)" }
     static func routineId(_ ref: DatabaseTreeRoutineRef) -> String { "routine\u{1}\(ref.id)" }

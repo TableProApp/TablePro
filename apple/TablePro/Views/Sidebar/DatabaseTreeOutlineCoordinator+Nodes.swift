@@ -48,6 +48,10 @@ extension DatabaseTreeOutlineCoordinator {
             return recentTableRefs().map {
                 self.node(id: DatabaseTreeNode.recentTableId($0), kind: .recentTable($0))
             }
+        case .favoritesSection:
+            return favoriteTableRefs().map {
+                self.node(id: DatabaseTreeNode.favoriteTableId($0), kind: .favoriteTable($0))
+            }
         case .temporarySection:
             return temporaryTableRefs().map {
                 self.node(id: DatabaseTreeNode.temporaryTableId($0), kind: .temporaryTable($0))
@@ -81,7 +85,7 @@ extension DatabaseTreeOutlineCoordinator {
             return redisChildren(of: redisNode)
         case .tableDetailGroup(let group):
             return tableDetailNodes(in: group)
-        case .recentTable, .temporaryTable, .routine, .trigger, .userType, .status, .tableDetail:
+        case .recentTable, .favoriteTable, .temporaryTable, .routine, .trigger, .userType, .status, .tableDetail:
             return []
         }
     }
@@ -460,6 +464,9 @@ extension DatabaseTreeOutlineCoordinator {
 
     private func sessionSectionNodes() -> [DatabaseTreeNode] {
         var nodes: [DatabaseTreeNode] = []
+        if !favoriteTableRefs().isEmpty {
+            nodes.append(node(id: DatabaseTreeNode.favoritesSectionId, kind: .favoritesSection))
+        }
         if !recentTableRefs().isEmpty {
             nodes.append(node(id: DatabaseTreeNode.recentSectionId, kind: .recentSection))
         }

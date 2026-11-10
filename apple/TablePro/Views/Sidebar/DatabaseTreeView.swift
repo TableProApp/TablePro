@@ -192,7 +192,8 @@ struct DatabaseTreeView: View {
             showSystemContainers: showsSystemContainers,
             showsPartitions: settingsManager.general.showPartitions,
             showsTableDetails: settingsManager.general.showTableDetails,
-            rowSizePreference: settingsManager.general.sidebarRowSize
+            rowSizePreference: settingsManager.general.sidebarRowSize,
+            showsFavoritesSection: settingsManager.general.showsFavoritesSection
         )
     }
 

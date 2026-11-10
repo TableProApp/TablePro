@@ -89,8 +89,10 @@ struct DatabaseTreeRowView: View {
         switch node.kind {
         case .recentSection:
             sectionHeader(String(localized: "Recent"))
-        case .recentTable(let ref):
+        case .recentTable(let ref), .favoriteTable(let ref):
             tableRow(ref)
+        case .favoritesSection:
+            sectionHeader(String(localized: "Favorites"))
         case .temporarySection:
             sectionHeader(String(localized: "Temporary"))
         case .temporaryTable(let ref):

@@ -23,7 +23,7 @@ internal enum DatabaseTreeMenuSpec {
                     .command(String(localized: "Clear Recent Tables"), .clearRecents)
                 ])
             ]
-        case .table(let ref):
+        case .table(let ref), .favoriteTable(let ref):
             return tableSections(ref, context: context)
         case .temporaryTable(let ref):
             return temporaryTableSections(ref)
@@ -70,7 +70,7 @@ internal enum DatabaseTreeMenuSpec {
             return [DatabaseTreeMenuSection([.command(String(localized: "Refresh"), .refreshRedisKeys)])]
         // A group stands for no object. An empty menu still opens as an empty frame, so it gets the
         // sidebar's own menu, as a status row does.
-        case .status, .recentSection, .temporarySection, .tableDetailGroup:
+        case .status, .recentSection, .favoritesSection, .temporarySection, .tableDetailGroup:
             return backgroundSections(context)
         }
     }

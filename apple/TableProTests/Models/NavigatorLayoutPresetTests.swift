@@ -14,13 +14,14 @@ struct NavigatorLayoutPresetTests {
     private static func navigatorLayout(from settings: GeneralSettings) -> GeneralSettings {
         var expected = settings
         expected.showTableDetails = true
+        expected.showsFavoritesSection = true
         expected.showsObjectsOnSelection = true
         expected.showsObjectToolbar = true
         expected.showsConnectionNavigator = true
         return expected
     }
 
-    @Test("Use Navigator Layout turns on all four features and makes Tree the default layout")
+    @Test("Use Navigator Layout turns on all five features and makes Tree the default layout")
     func applyTurnsEverythingOn() {
         var settings = GeneralSettings.default
         var layout = SidebarLayout.flat
@@ -28,13 +29,14 @@ struct NavigatorLayoutPresetTests {
         NavigatorLayoutPreset.apply(to: &settings, defaultLayout: &layout)
 
         #expect(settings.showTableDetails)
+        #expect(settings.showsFavoritesSection)
         #expect(settings.showsObjectsOnSelection)
         #expect(settings.showsObjectToolbar)
         #expect(settings.showsConnectionNavigator)
         #expect(layout == .tree)
     }
 
-    @Test("Use Standard Layout puts all five back to their defaults")
+    @Test("Use Standard Layout puts all six back to their defaults")
     func restorePutsTheDefaultsBack() {
         var settings = Self.navigatorLayout(from: .default)
         var layout = SidebarLayout.tree
@@ -42,6 +44,7 @@ struct NavigatorLayoutPresetTests {
         NavigatorLayoutPreset.restore(to: &settings, defaultLayout: &layout)
 
         #expect(settings.showTableDetails == GeneralSettings.default.showTableDetails)
+        #expect(settings.showsFavoritesSection == GeneralSettings.default.showsFavoritesSection)
         #expect(settings.showsObjectsOnSelection == GeneralSettings.default.showsObjectsOnSelection)
         #expect(settings.showsObjectToolbar == GeneralSettings.default.showsObjectToolbar)
         #expect(settings.showsConnectionNavigator == GeneralSettings.default.showsConnectionNavigator)

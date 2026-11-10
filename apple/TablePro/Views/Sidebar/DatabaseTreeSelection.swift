@@ -15,10 +15,11 @@ import Foundation
 internal enum DatabaseTreeSelection {
     internal static func isSelectable(_ kind: DatabaseTreeNode.Kind) -> Bool {
         switch kind {
-        case .status, .recentSection, .temporarySection, .foldersSection, .objectKindSection, .redisKeysSection:
+        case .status, .recentSection, .favoritesSection, .temporarySection, .foldersSection, .objectKindSection,
+             .redisKeysSection:
             return false
         case .database, .schema, .hierarchicalSchemaSection, .table, .partition, .routine, .trigger, .userType,
-             .recentTable, .temporaryTable, .containerObjectKindSection, .tableFolder, .redisNode,
+             .recentTable, .favoriteTable, .temporaryTable, .containerObjectKindSection, .tableFolder, .redisNode,
              .tableDetailGroup, .tableDetail:
             return true
         }
@@ -33,7 +34,7 @@ internal enum DatabaseTreeSelection {
     // A temporary table opens but takes no Table menu command: those run on a pooled connection, where its name
     // reaches the database's own table of that name, if any.
     private static func commandableRef(of node: DatabaseTreeNode) -> DatabaseTreeTableRef? {
-        node.tableRef ?? node.recentTableRef
+        node.tableRef ?? node.recentTableRef ?? node.favoriteTableRef
     }
 
     /// What the Table menu acts on, and what a queued Truncate or Drop is keyed by. The tree
@@ -83,7 +84,7 @@ internal enum DatabaseTreeSelection {
             return DatabaseTreeObjectGroup(database: hierarchicalDatabase, schema: schema, kind: .table)
         case .containerObjectKindSection(let group):
             return group
-        case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+        case .recentSection, .recentTable, .favoritesSection, .favoriteTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
              .table, .partition, .tableDetailGroup, .tableDetail, .routine, .trigger, .userType, .status,
              .objectKindSection, .redisKeysSection, .redisNode:
             return nil

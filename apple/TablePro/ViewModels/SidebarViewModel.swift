@@ -165,6 +165,14 @@ final class SidebarViewModel: ObservableObject {
             )
         }
     }
+    @Published var isFavoritesExpanded: Bool {
+        didSet {
+            defaults.set(
+                isFavoritesExpanded,
+                forKey: SidebarPersistenceKey.favoritesExpanded(connectionId: connectionId)
+            )
+        }
+    }
     @Published var isFoldersExpanded: Bool {
         didSet {
             defaults.set(
@@ -260,6 +268,11 @@ final class SidebarViewModel: ObservableObject {
         )
         self.isRecentsExpanded = Self.loadExpansion(
             perConnectionKey: SidebarPersistenceKey.recentsExpanded(connectionId: connectionId),
+            defaultValue: true,
+            defaults: defaults
+        )
+        self.isFavoritesExpanded = Self.loadExpansion(
+            perConnectionKey: SidebarPersistenceKey.favoritesExpanded(connectionId: connectionId),
             defaultValue: true,
             defaults: defaults
         )
