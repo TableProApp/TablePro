@@ -47,7 +47,7 @@ internal struct ToolbarContext: Equatable {
     internal let canStopDebugging: Bool
     internal let isPresentingSheet: Bool
 
-    // What the connection supports and the browsed container offers, for the Objects group's buttons.
+    // What the connection supports and the browsed container offers, for the Objects buttons.
     // Enablement only, never visibility.
     internal let canListTables: Bool
     internal let offersViews: Bool

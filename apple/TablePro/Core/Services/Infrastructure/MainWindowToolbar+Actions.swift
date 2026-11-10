@@ -87,7 +87,7 @@ extension MainWindowToolbar {
         coordinator?.frontRoutineDebugController?.stop()
     }
 
-    // The Objects group. Each button has its own action: the overflow menu validates an entry by its action.
+    // The Objects buttons. Each has its own action: the overflow menu validates an entry by its action.
     @objc func performShowTables(_ sender: Any?) {
         coordinator?.showBrowsedObjects(.table)
     }

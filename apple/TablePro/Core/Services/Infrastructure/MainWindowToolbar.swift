@@ -91,14 +91,14 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 
     internal var debugItemsRecord = ToolbarDebugItemsRecord()
 
-    // Whether Settings puts the Objects group in the toolbar; it is vended only then, so turning it off prunes it.
+    // Whether Settings puts the Objects buttons in the toolbar; they are vended only then, so turning it off prunes them.
     internal var objectKindsEnabled: @MainActor () -> Bool = {
         AppSettingsManager.shared.general.showsObjectToolbar
     }
 
     internal var objectKindsRecord = ToolbarObjectKindsRecord()
 
-    // The Objects group's facts and what they were read from, kept from one validation pass to the next.
+    // The Objects buttons' facts and what they were read from, kept from one validation pass to the next.
     internal var objectKindFactsCache: ObjectKindFactsCache?
 
     /// `NSMenu.delegate` is weak, and the safe-mode control's menu is built here rather than by the
@@ -244,6 +244,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         tabStateObservation = coordinator.tabManager.onMainActorChange { [weak self] in
             guard let self, self.isObserving(generation, coordinatorIdentifier) else { return }
             self.refreshContext()
+            self.refreshObjectKindSelection()
         }
         rewindAvailabilityObservation = coordinator.services.queryHistoryManager.rewindAvailability
             .onMainActorChange { [weak self] in
@@ -444,8 +445,11 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     ]
     // Xcode's pair. The steps live in the debug tab's own bar and the palette, which keeps a debug tab at eight hit targets.
     nonisolated static let debugDefaultItemIdentifiers: [NSToolbarItem.Identifier] = [debugContinue, debugStop]
-    // The Objects group a General setting adds. Its own identifiers, so Query never collides with New Tab in one toolbar.
-    nonisolated static let objectKindsGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.objectKinds")
+    // The Objects buttons a General setting adds. Their own identifiers, so Query never collides with New Tab in one
+    // toolbar. Top-level items, not one group: measured on macOS 27, a toolbar draws the selected item and a label under
+    // each icon only for a top-level item. A group of items draws its own label alone and no selection, whatever its
+    // selection mode, and the segmented group that does draw a selection has no label per segment. An arrangement saved
+    // with the former group identifier drops it, since no delegate vends it now.
     nonisolated static let objectTables = NSToolbarItem.Identifier("com.TablePro.toolbar.objectKinds.tables")
     nonisolated static let objectViews = NSToolbarItem.Identifier("com.TablePro.toolbar.objectKinds.views")
     nonisolated static let objectFunctions = NSToolbarItem.Identifier("com.TablePro.toolbar.objectKinds.functions")
@@ -454,6 +458,10 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     nonisolated static let objectBackup = NSToolbarItem.Identifier("com.TablePro.toolbar.objectKinds.backup")
     nonisolated static let objectKindItemIdentifiers: [NSToolbarItem.Identifier] = [
         objectTables, objectViews, objectFunctions, objectUsers, objectQuery, objectBackup,
+    ]
+    // The buttons that name what the front tab shows. Query and Backup start something new, so neither stays selected.
+    nonisolated static let selectableObjectKindItemIdentifiers: [NSToolbarItem.Identifier] = [
+        objectTables, objectViews, objectFunctions, objectUsers,
     ]
 
     // MARK: - NSToolbarDelegate
@@ -550,9 +558,15 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             allowed += Self.debugItemIdentifiers
         }
         if objectKindsEnabled() {
-            allowed.append(Self.objectKindsGroup)
+            allowed += Self.objectKindItemIdentifiers
         }
         return allowed
+    }
+
+    // Always the four, so the answer holds however early AppKit asks. An identifier with no item in the toolbar draws
+    // nothing, and `refreshObjectKindSelection()` selects one only while the setting is on.
+    internal func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        Self.selectableObjectKindItemIdentifiers
     }
 
     // Replaced under test, where no window hosts the toolbar.
@@ -571,56 +585,46 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     internal static func applyObjectToolbarSettingChange() {
         for window in NSApp.windows {
             guard let owner = window.toolbar?.delegate as? MainWindowToolbar else { continue }
-            owner.reconcileObjectKindsGroup()
-            // A group inserted now takes its enabled state at once rather than on the next window update. AppKit places
+            owner.reconcileObjectKindItems()
+            // Buttons inserted now take their enabled state at once rather than on the next window update. AppKit places
             // an inserted item at the next layout and a pass validates only placed items, so the window lays out first.
             window.layoutIfNeeded()
             owner.managedToolbar.validateVisibleItems()
         }
     }
 
-    // Run when the module changes and when the toolbar reaches a window, after it restored its saved arrangement: a
-    // change made while no connection window was open would otherwise never reach the arrangement. Inserted or removed
-    // in place, because reassigning the toolbar rebuilds the whole titlebar.
-    internal func reconcileDebugItems() {
+    // The debug items' rule for the Objects buttons: written once per change of the setting, so a button the user took
+    // out stays out. They go first in the content area, after the sidebar's strip, or first of all without that divider.
+    internal func reconcileObjectKindItems() {
         guard windowController?.view.window != nil || isInWindow() else { return }
-        let wanted = debugItemsEnabled()
-        guard debugItemsRecord.isApplied != wanted else { return }
-        debugItemsRecord.record(wanted)
-        let debugIdentifiers = Set(Self.debugItemIdentifiers)
+        let wanted = objectKindsEnabled()
+        guard objectKindsRecord.isApplied != wanted else { return }
+        objectKindsRecord.record(wanted)
+        let objectKinds = Set(Self.objectKindItemIdentifiers)
         if wanted {
-            let present = managedToolbar.items.contains { debugIdentifiers.contains($0.itemIdentifier) }
-            if !present, let index = managedToolbar.items.firstIndex(where: { $0.itemIdentifier == Self.actions }) {
-                for (offset, identifier) in Self.debugDefaultItemIdentifiers.enumerated() {
-                    managedToolbar.insertItem(withItemIdentifier: identifier, at: index + offset)
-                }
+            // AppKit throws on a second item with an identifier the toolbar already holds.
+            let present = Set(managedToolbar.items.map { $0.itemIdentifier })
+            let separator = managedToolbar.items.firstIndex { $0.itemIdentifier == .sidebarTrackingSeparator }
+            var index = separator.map { $0 + 1 } ?? 0
+            for identifier in Self.objectKindItemIdentifiers where !present.contains(identifier) {
+                managedToolbar.insertItem(withItemIdentifier: identifier, at: index)
+                index += 1
             }
         } else {
             for index in managedToolbar.items.indices.reversed()
-            where debugIdentifiers.contains(managedToolbar.items[index].itemIdentifier) {
+            where objectKinds.contains(managedToolbar.items[index].itemIdentifier) {
                 managedToolbar.removeItem(at: index)
             }
         }
     }
 
-    // The debug items' rule for the Objects group: written once per change of the setting, so a group the user took out
-    // stays out. It goes first in the content area, after the sidebar's strip, or first of all without that divider.
-    internal func reconcileObjectKindsGroup() {
-        guard windowController?.view.window != nil || isInWindow() else { return }
-        let wanted = objectKindsEnabled()
-        guard objectKindsRecord.isApplied != wanted else { return }
-        objectKindsRecord.record(wanted)
-        if wanted {
-            // AppKit throws on a second item with an identifier the toolbar already holds.
-            guard !managedToolbar.items.contains(where: { $0.itemIdentifier == Self.objectKindsGroup }) else { return }
-            let separator = managedToolbar.items.firstIndex { $0.itemIdentifier == .sidebarTrackingSeparator }
-            managedToolbar.insertItem(withItemIdentifier: Self.objectKindsGroup, at: separator.map { $0 + 1 } ?? 0)
-        } else {
-            for index in managedToolbar.items.indices.reversed()
-            where managedToolbar.items[index].itemIdentifier == Self.objectKindsGroup {
-                managedToolbar.removeItem(at: index)
-            }
-        }
+    // AppKit draws the toolbar's selected item on a rounded highlight and reports it to VoiceOver as the toolbar's
+    // selected child. AppKit also selects a selectable button when it is clicked, so the front tab decides here, and a
+    // click whose tab did not follow is put right on the next pass. Written only when it moves.
+    internal func refreshObjectKindSelection() {
+        let selected = objectKindsEnabled() ? selectedObjectKindItem() : nil
+        guard managedToolbar.selectedItemIdentifier != selected else { return }
+        managedToolbar.selectedItemIdentifier = selected
     }
 }
 
@@ -648,8 +652,10 @@ internal struct ToolbarDebugItemsRecord {
 }
 
 // The General setting last written into the shared arrangement, kept for the same reasons as the debug items' record.
+// Not the former group's key: an arrangement that recorded the group lost it when the group stopped being vended, so it
+// takes the buttons once.
 internal struct ToolbarObjectKindsRecord {
-    static let key = "com.TablePro.main.toolbar.v4.objectKinds"
+    static let key = "com.TablePro.main.toolbar.v4.objectKindItems"
 
     let defaults: UserDefaults
 

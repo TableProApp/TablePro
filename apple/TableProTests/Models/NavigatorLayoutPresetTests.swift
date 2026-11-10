@@ -133,7 +133,8 @@ extension GlobalStateSuites {
             let storage = try EphemeralDefaults()
             fixture.toolbarOwner.objectKindsRecord = ToolbarObjectKindsRecord(defaults: storage.defaults)
             let toolbar = try #require(fixture.window.toolbar)
-            let hasGroup = { toolbar.items.contains { $0.itemIdentifier == MainWindowToolbar.objectKindsGroup } }
+            let objectKinds = Set(MainWindowToolbar.objectKindItemIdentifiers)
+            let hasButtons = { toolbar.items.contains { objectKinds.contains($0.itemIdentifier) } }
             var railChanges = 0
             let subscription = AppEvents.shared.workspaceRailVisibilityChanged.sink { railChanges += 1 }
             defer { subscription.cancel() }
@@ -141,12 +142,12 @@ extension GlobalStateSuites {
 
             NavigatorLayoutPreset.apply(to: &AppSettingsManager.shared.general, defaultLayout: &layout)
 
-            #expect(hasGroup(), "The Objects buttons reach the open window")
+            #expect(hasButtons(), "The Objects buttons reach the open window")
             #expect(railChanges == 1, "The connections column is told to swap in the navigator")
 
             NavigatorLayoutPreset.restore(to: &AppSettingsManager.shared.general, defaultLayout: &layout)
 
-            #expect(!hasGroup(), "The Objects buttons leave the open window")
+            #expect(!hasButtons(), "The Objects buttons leave the open window")
             #expect(railChanges == 2, "The connections column is told to swap the navigator out")
         }
     }

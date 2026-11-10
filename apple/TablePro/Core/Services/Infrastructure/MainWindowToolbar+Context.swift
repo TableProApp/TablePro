@@ -70,10 +70,11 @@ internal extension MainWindowToolbar {
     }
 
     // Every window update runs a validation pass, keystrokes included, and the listing is a plugin call that builds
-    // the whole statement. So the facts are read only while the group is in this toolbar, where a button shows them,
+    // the whole statement. So the facts are read only while an Objects button is in this toolbar, where it shows them,
     // and then once per browsed container and session.
     func objectKindFacts() -> ObjectKindFacts {
-        guard let coordinator, managedToolbar.items.contains(where: { $0.itemIdentifier == Self.objectKindsGroup })
+        let objectKinds = Set(Self.objectKindItemIdentifiers)
+        guard let coordinator, managedToolbar.items.contains(where: { objectKinds.contains($0.itemIdentifier) })
         else { return ObjectKindFacts() }
         let source = ObjectKindFactsSource(coordinator: coordinator)
         if let cached = objectKindFactsCache, cached.source.matches(source) {
@@ -92,7 +93,7 @@ internal extension MainWindowToolbar {
     }
 }
 
-// What the Objects group's buttons ask of the connection and the browsed container.
+// What the Objects buttons ask of the connection and the browsed container.
 internal struct ObjectKindFacts: Equatable {
     var canListTables = false
     var offersViews = false

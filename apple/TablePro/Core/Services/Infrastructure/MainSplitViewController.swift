@@ -525,7 +525,7 @@ internal final class MainSplitViewController: NSSplitViewController {
         guard window.toolbar !== owner.managedToolbar else { return }
         window.toolbar = owner.managedToolbar
         owner.reconcileDebugItems()
-        owner.reconcileObjectKindsGroup()
+        owner.reconcileObjectKindItems()
         /// The item set every window starts from is the full one, because `isHidden` is never
         /// persisted, so the context is applied the moment the items exist rather than on the first
         /// change to it. Measured on macOS 27, that moment is this assignment: `NSToolbar.items` is

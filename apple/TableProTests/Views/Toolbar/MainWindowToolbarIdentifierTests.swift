@@ -83,39 +83,54 @@ struct MainWindowToolbarIdentifierTests {
         }
     }
 
-    /// The Objects group is never in the default set, so leaving the setting off changes nobody's
-    /// saved arrangement, and the delegate's nil answer is what prunes the group once it goes off.
-    @Test("The delegate builds the Objects group only while its setting is on")
-    func delegateBuildsTheGroupOnlyWhileTheSettingIsOn() throws {
+    /// The Objects buttons are never in the default set, so leaving the setting off changes nobody's
+    /// saved arrangement, and the delegate's nil answer is what prunes them once it goes off.
+    @Test("The delegate builds the Objects buttons only while their setting is on")
+    func delegateBuildsTheButtonsOnlyWhileTheSettingIsOn() throws {
         let owner = MainWindowToolbar()
-        let vend = {
-            owner.toolbar(
-                owner.managedToolbar,
-                itemForItemIdentifier: MainWindowToolbar.objectKindsGroup,
-                willBeInsertedIntoToolbar: true
-            )
+        let vend = { (identifier: NSToolbarItem.Identifier) in
+            owner.toolbar(owner.managedToolbar, itemForItemIdentifier: identifier, willBeInsertedIntoToolbar: true)
         }
+        let objectKinds = MainWindowToolbar.objectKindItemIdentifiers
         owner.objectKindsEnabled = { false }
         let defaultsWhileOff = owner.toolbarDefaultItemIdentifiers(owner.managedToolbar)
-        #expect(vend() == nil)
-        #expect(!owner.toolbarAllowedItemIdentifiers(owner.managedToolbar).contains(MainWindowToolbar.objectKindsGroup))
+        let allowedWhileOff = owner.toolbarAllowedItemIdentifiers(owner.managedToolbar)
+        for identifier in objectKinds {
+            #expect(vend(identifier) == nil, "\(identifier.rawValue) is vended with the setting off")
+            #expect(!allowedWhileOff.contains(identifier))
+        }
 
         owner.objectKindsEnabled = { true }
-        let first = try #require(vend() as? NSToolbarItemGroup)
-        let second = try #require(vend())
-        #expect(first.subitems.map { $0.itemIdentifier } == MainWindowToolbar.objectKindItemIdentifiers)
-        #expect(first !== second, "A fresh group on every vend, like every other item")
-        #expect(owner.toolbarAllowedItemIdentifiers(owner.managedToolbar).contains(MainWindowToolbar.objectKindsGroup))
+        for identifier in objectKinds {
+            let first = try #require(vend(identifier))
+            let second = try #require(vend(identifier))
+            #expect(first.itemIdentifier == identifier)
+            #expect(first !== second, "A fresh item on every vend, like every other item")
+        }
+        let allowed = owner.toolbarAllowedItemIdentifiers(owner.managedToolbar)
+        #expect(Array(allowed.suffix(objectKinds.count)) == objectKinds)
         #expect(owner.toolbarDefaultItemIdentifiers(owner.managedToolbar) == defaultsWhileOff)
-        #expect(!defaultsWhileOff.contains(MainWindowToolbar.objectKindsGroup))
+        #expect(Set(defaultsWhileOff).isDisjoint(with: objectKinds))
         #expect(MainWindowToolbar.toolbarIdentifier == "com.TablePro.main.toolbar.v4")
     }
 
-    /// A user can have New Tab and the Objects group in one toolbar, and AppKit throws on a second
+    /// The buttons replaced a group of the same six. An arrangement that saved the group drops it
+    /// because nothing vends that identifier any more.
+    @Test("The former Objects group identifier is no longer vended")
+    func theFormerGroupIsNotVended() {
+        let owner = MainWindowToolbar()
+        owner.objectKindsEnabled = { true }
+        let former = NSToolbarItem.Identifier("com.TablePro.toolbar.objectKinds")
+
+        #expect(owner.toolbar(owner.managedToolbar, itemForItemIdentifier: former, willBeInsertedIntoToolbar: true) == nil)
+        #expect(!owner.toolbarAllowedItemIdentifiers(owner.managedToolbar).contains(former))
+    }
+
+    /// A user can have New Tab and the Objects buttons in one toolbar, and AppKit throws on a second
     /// item with an identifier already there.
     @Test("The Objects identifiers collide with nothing else the toolbar offers")
     func objectKindIdentifiersAreTheirOwn() {
-        let own = [MainWindowToolbar.objectKindsGroup] + MainWindowToolbar.objectKindItemIdentifiers
+        let own = MainWindowToolbar.objectKindItemIdentifiers
         let others = Set(
             MainWindowToolbar.allowedItemIdentifiers + MainWindowToolbar.debugItemIdentifiers
                 + [MainWindowToolbar.navigateBack, MainWindowToolbar.navigateForward]

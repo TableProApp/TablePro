@@ -9,7 +9,7 @@ import SwiftUI
 import TableProPluginKit
 import Testing
 
-/// The optional Objects group: six buttons that reach each kind of object in one click.
+/// The optional Objects buttons: six top-level items that reach each kind of object in one click.
 @MainActor
 struct ObjectKindsToolbarTests {
     /// A private identifier with autosave off: the test host shares the app's defaults, so a toolbar
@@ -22,26 +22,23 @@ struct ObjectKindsToolbarTests {
         return owner
     }
 
-    private static func group(from owner: MainWindowToolbar) throws -> NSToolbarItemGroup {
-        try #require(
-            owner.toolbar(
-                owner.managedToolbar,
-                itemForItemIdentifier: MainWindowToolbar.objectKindsGroup,
-                willBeInsertedIntoToolbar: true
-            ) as? NSToolbarItemGroup
-        )
-    }
-
-    private static func subitem(
+    /// The item the delegate vends, as Customize Toolbar and a restored arrangement ask for it.
+    private static func item(
         _ identifier: NSToolbarItem.Identifier,
         of owner: MainWindowToolbar
     ) throws -> NSToolbarItem {
-        try #require(group(from: owner).subitems.first { $0.itemIdentifier == identifier })
+        try #require(
+            owner.toolbar(owner.managedToolbar, itemForItemIdentifier: identifier, willBeInsertedIntoToolbar: true)
+        )
+    }
+
+    private static func items(of owner: MainWindowToolbar) throws -> [NSToolbarItem] {
+        try MainWindowToolbar.objectKindItemIdentifiers.map { try item($0, of: owner) }
     }
 
     /// What a click does: the button's own action, sent to the button's own target.
     private static func press(_ identifier: NSToolbarItem.Identifier, on owner: MainWindowToolbar) throws {
-        let item = try subitem(identifier, of: owner)
+        let item = try item(identifier, of: owner)
         let action = try #require(item.action)
         #expect(NSApp.sendAction(action, to: item.target, from: item), "\(identifier.rawValue) reached no target")
     }
@@ -60,33 +57,32 @@ struct ObjectKindsToolbarTests {
         return actions
     }
 
-    // MARK: - The group
+    // MARK: - The buttons
 
-    /// A group with real subitems and no view is drawn by AppKit, so it dims a button, answers the
-    /// display mode and collapses into one overflow entry when the window narrows.
-    @Test("Each button is a named AppKit glyph routed to the toolbar")
-    func subitemsAreDrawnByAppKit() throws {
+    /// An image item with no view is drawn by AppKit, so it dims, answers the display mode with a
+    /// label under its icon, shows the toolbar's selection and goes to the overflow menu on its own.
+    @Test("Each button is a named, borderless AppKit glyph routed to the toolbar")
+    func buttonsAreDrawnByAppKit() throws {
         let owner = Self.owner()
-        let group = try Self.group(from: owner)
 
-        #expect(group.label == String(localized: "Objects"))
-        #expect(group.controlRepresentation == .automatic)
-        #expect(group.visibilityPriority == .high)
-        for item in group.subitems {
+        for item in try Self.items(of: owner) {
             let name = item.itemIdentifier.rawValue
+            #expect(!(item is NSToolbarItemGroup), "\(name) must be a top-level item, or no label or selection draws")
             #expect(item.view == nil, "\(name) must not be view-backed")
             #expect(!item.label.isEmpty, "\(name) needs a label")
             #expect(item.image != nil, "\(name) names no symbol that exists")
             #expect(item.target === owner, "\(name) must route through the toolbar")
             #expect(item.action != nil, "\(name) has no action")
+            #expect(item.visibilityPriority == .high, "\(name) leaves the titlebar before the commands")
+            #expect(!item.isBordered, "\(name) must match the selectable buttons, which AppKit draws without a bezel")
         }
     }
 
     @Test("Query advertises its shortcut, and every button its name")
     func queryAdvertisesItsShortcut() throws {
         let owner = Self.owner()
-        let query = try Self.subitem(MainWindowToolbar.objectQuery, of: owner)
-        let tables = try Self.subitem(MainWindowToolbar.objectTables, of: owner)
+        let query = try Self.item(MainWindowToolbar.objectQuery, of: owner)
+        let tables = try Self.item(MainWindowToolbar.objectTables, of: owner)
 
         #expect(query.toolTip == AppSettingsManager.shared.keyboard.shortcutHint(String(localized: "Query"), for: .newTab))
         #expect(query.toolTip != String(localized: "Query"), "The hint adds the key that runs the command")
@@ -98,7 +94,7 @@ struct ObjectKindsToolbarTests {
     @Test("Each overflow entry validates as its own button")
     func overflowEntriesValidateAsTheirButtons() throws {
         let owner = Self.owner()
-        for item in try Self.group(from: owner).subitems {
+        for item in try Self.items(of: owner) {
             let entry = try #require(item.menuFormRepresentation)
             #expect(owner.itemIdentifier(forMenuFormAction: item.action) == item.itemIdentifier)
             #expect(!owner.validateMenuItem(entry), "\(item.itemIdentifier.rawValue) is live with no session")
@@ -107,23 +103,54 @@ struct ObjectKindsToolbarTests {
 
     // MARK: - Selection
 
-    @Test("The button for the front tab's kind draws in the accent color and the others stay template glyphs")
-    func frontKindDrawsInAccent() throws {
-        let fixture = CoordinatorFixture(connection: TestFixtures.makeConnection(database: "shop", type: .mysql))
+    /// AppKit draws the toolbar's selected item on a rounded highlight and reports it to VoiceOver as
+    /// the toolbar's selected child, so the selected identifier is the whole visual state.
+    @Test("The toolbar selects the button for the front tab's kind, and none once a query tab is in front")
+    func theFrontKindIsSelected() throws {
+        let fixture = CoordinatorFixture(connection: TestFixtures.makeConnection(database: "shop", type: .postgresql))
+        let actions = Self.makeActions(for: fixture)
         let owner = Self.owner()
         owner.repoint(to: fixture.coordinator)
-        let group = try Self.group(from: owner)
+
+        // Users first: with a tab already open, Users & Roles opens through the window manager, which this fixture lacks.
+        try Self.press(MainWindowToolbar.objectUsers, on: owner)
+        owner.refreshObjectKindSelection()
+        #expect(owner.managedToolbar.selectedItemIdentifier == MainWindowToolbar.objectUsers)
 
         try Self.press(MainWindowToolbar.objectViews, on: owner)
-        group.subitems.forEach { $0.validate() }
+        owner.refreshObjectKindSelection()
+        #expect(owner.managedToolbar.selectedItemIdentifier == MainWindowToolbar.objectViews)
 
-        func image(_ identifier: NSToolbarItem.Identifier) -> NSImage? {
-            group.subitems.first { $0.itemIdentifier == identifier }?.image
-        }
-        #expect(owner.selectedObjectKindItem() == MainWindowToolbar.objectViews)
-        #expect(image(MainWindowToolbar.objectViews)?.isTemplate == false)
-        #expect(image(MainWindowToolbar.objectTables)?.isTemplate == true)
-        #expect(image(MainWindowToolbar.objectFunctions)?.isTemplate == true)
+        try Self.press(MainWindowToolbar.objectQuery, on: owner)
+        owner.refreshObjectKindSelection()
+        #expect(owner.managedToolbar.selectedItemIdentifier == nil, "Query starts something new, so nothing stays selected")
+        withExtendedLifetime(actions) {}
+    }
+
+    @Test("With the setting off the toolbar selects nothing")
+    func settingOffSelectsNothing() throws {
+        let fixture = CoordinatorFixture(connection: TestFixtures.makeConnection(database: "shop", type: .mysql))
+        let owner = Self.owner(objectsOn: false)
+        owner.repoint(to: fixture.coordinator)
+
+        fixture.coordinator.showBrowsedObjects(.table)
+        owner.refreshObjectKindSelection()
+
+        #expect(owner.selectedObjectKindItem() == MainWindowToolbar.objectTables)
+        #expect(owner.managedToolbar.selectedItemIdentifier == nil)
+    }
+
+    @Test("Only the four kinds a tab can show are selectable")
+    func onlyTheKindsAreSelectable() {
+        let owner = Self.owner()
+        let selectable = owner.toolbarSelectableItemIdentifiers(owner.managedToolbar)
+
+        #expect(selectable == [
+            MainWindowToolbar.objectTables, MainWindowToolbar.objectViews,
+            MainWindowToolbar.objectFunctions, MainWindowToolbar.objectUsers,
+        ])
+        #expect(!selectable.contains(MainWindowToolbar.objectQuery))
+        #expect(!selectable.contains(MainWindowToolbar.objectBackup))
     }
 
     @Test("The selected button is the kind the front tab shows, and none for a tab no button opens")
@@ -137,6 +164,41 @@ struct ObjectKindsToolbarTests {
         #expect(select(.usersRoles, nil) == MainWindowToolbar.objectUsers)
         #expect(select(.query, nil) == nil)
         #expect(select(nil, nil) == nil)
+    }
+
+    // MARK: - Colors
+
+    /// Each kind wears a system hue, so the run reads at a glance; every other control keeps the
+    /// system's monochrome template glyph.
+    @Test("Only the Objects buttons draw in color")
+    func onlyTheObjectButtonsDrawInColor() throws {
+        let owner = Self.owner()
+        let objectKinds = Set(MainWindowToolbar.objectKindItemIdentifiers)
+        let vended = owner.toolbarAllowedItemIdentifiers(owner.managedToolbar)
+            .filter { !$0.rawValue.hasPrefix("NSToolbar") }
+            .compactMap { owner.toolbar(owner.managedToolbar, itemForItemIdentifier: $0, willBeInsertedIntoToolbar: true) }
+            .flatMap { item -> [NSToolbarItem] in [item] + ((item as? NSToolbarItemGroup)?.subitems ?? []) }
+
+        #expect(objectKinds.isSubset(of: Set(vended.map { $0.itemIdentifier })))
+        for item in vended {
+            guard let image = item.image else { continue }
+            let name = item.itemIdentifier.rawValue
+            if objectKinds.contains(item.itemIdentifier) {
+                #expect(!image.isTemplate, "\(name) should draw in its hue")
+                #expect(MainWindowToolbar.objectKindTint(for: item.itemIdentifier) != nil, "\(name) has no hue")
+            } else {
+                #expect(image.isTemplate, "\(name) should stay a monochrome template")
+                #expect(MainWindowToolbar.objectKindTint(for: item.itemIdentifier) == nil, "\(name) should have no hue")
+            }
+        }
+    }
+
+    @Test("Each kind has a hue of its own")
+    func eachKindHasItsOwnHue() {
+        let tints = MainWindowToolbar.objectKindItemIdentifiers.compactMap { MainWindowToolbar.objectKindTint(for: $0) }
+
+        #expect(tints.count == MainWindowToolbar.objectKindItemIdentifiers.count)
+        #expect(Set(tints).count == tints.count)
     }
 
     // MARK: - Routing
@@ -206,23 +268,25 @@ struct ObjectKindsToolbarTests {
 
     // MARK: - What the connection supports
 
-    /// Where Settings puts the group: what the toolbar's own facts are read for.
-    private static func insertGroup(into owner: MainWindowToolbar) {
-        owner.managedToolbar.insertItem(withItemIdentifier: MainWindowToolbar.objectKindsGroup, at: 0)
+    /// Where Settings puts the buttons: what the toolbar's own facts are read for.
+    private static func insertButtons(into owner: MainWindowToolbar) {
+        for (index, identifier) in MainWindowToolbar.objectKindItemIdentifiers.enumerated() {
+            owner.managedToolbar.insertItem(withItemIdentifier: identifier, at: index)
+        }
     }
 
     /// The context a toolbar pointed at a connection of this engine answers from. No driver is
     /// installed, so the engine's curated capabilities are what the context can see.
     private static func context(
         for type: DatabaseType,
-        groupInToolbar: Bool = true,
+        buttonsInToolbar: Bool = true,
         settingOn: Bool = true
     ) -> ToolbarContext {
         let fixture = CoordinatorFixture(connection: TestFixtures.makeConnection(database: "shop", type: type))
         let actions = makeActions(for: fixture)
         let owner = owner()
-        if groupInToolbar {
-            insertGroup(into: owner)
+        if buttonsInToolbar {
+            insertButtons(into: owner)
         }
         owner.objectKindsEnabled = { settingOn }
         owner.repoint(to: fixture.coordinator)
@@ -231,8 +295,8 @@ struct ObjectKindsToolbarTests {
         return context
     }
 
-    @Test("With the group in the toolbar, the context reads what the engine supports")
-    func contextReadsTheEngineWhileTheGroupIsShown() {
+    @Test("With the buttons in the toolbar, the context reads what the engine supports")
+    func contextReadsTheEngineWhileTheButtonsAreShown() {
         let postgres = Self.context(for: .postgresql)
         #expect(postgres.supportsBackup)
         #expect(!postgres.canListTables, "With no driver the engine builds no listing")
@@ -245,12 +309,12 @@ struct ObjectKindsToolbarTests {
         #expect(!Self.context(for: .sqlite).offersFunctions)
     }
 
-    /// Nothing but the group reads these, and the listing is a plugin call on every validation pass.
-    /// The setting is not enough: a group taken out with Customize Toolbar has no button to validate.
-    @Test("Without the group in the toolbar, the context asks the connection nothing for it", arguments: [true, false])
-    func contextAsksNothingWithoutTheGroup(settingOn: Bool) {
+    /// Nothing but the buttons read these, and the listing is a plugin call on every validation pass.
+    /// The setting is not enough: buttons taken out with Customize Toolbar have nothing to validate.
+    @Test("Without the buttons in the toolbar, the context asks the connection nothing for them", arguments: [true, false])
+    func contextAsksNothingWithoutTheButtons(settingOn: Bool) {
         for type in [DatabaseType.postgresql, .mongodb] {
-            let context = Self.context(for: type, groupInToolbar: false, settingOn: settingOn)
+            let context = Self.context(for: type, buttonsInToolbar: false, settingOn: settingOn)
             #expect(!context.canListTables, "\(type.rawValue)")
             #expect(!context.offersViews, "\(type.rawValue)")
             #expect(!context.offersFunctions, "\(type.rawValue)")
@@ -275,7 +339,7 @@ struct ObjectKindsToolbarTests {
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
         let fixture = CoordinatorFixture(connection: connection)
         let owner = Self.owner()
-        Self.insertGroup(into: owner)
+        Self.insertButtons(into: owner)
         owner.repoint(to: fixture.coordinator)
 
         #expect(owner.currentContext().canListTables)
@@ -370,7 +434,7 @@ struct ObjectKindsToolbarTests {
         let fixture = CoordinatorFixture(connection: connection)
         fixture.coordinator.toolbarState.connectionState = .connected
         let owner = owner()
-        insertGroup(into: owner)
+        insertButtons(into: owner)
         owner.repoint(to: fixture.coordinator)
         let context = withExtendedLifetime(fixture) { owner.currentContext() }
         return Set(MainWindowToolbar.objectKindItemIdentifiers.filter { identifier in
@@ -433,7 +497,7 @@ struct ObjectKindsToolbarTests {
         let fixture = CoordinatorFixture(connection: connection)
         fixture.coordinator.toolbarState.connectionState = .connected
         let owner = Self.owner()
-        Self.insertGroup(into: owner)
+        Self.insertButtons(into: owner)
         owner.repoint(to: fixture.coordinator)
         #expect(!owner.currentContext().offersViews)
 
@@ -464,9 +528,9 @@ struct ObjectKindsToolbarTests {
     // MARK: - Insert and remove
 
     /// A restored arrangement: the app's own items, without spaces, on a private identifier that
-    /// never autosaves. Built with the group allowed, so `extra` can hold it, then switched to the
+    /// never autosaves. Built with the buttons allowed, so `extra` can hold them, then switched to the
     /// setting the case names. AppKit builds the sidebar tracking separator only over a split view
-    /// in a window, so this arrangement has none; `separatorPlacesTheGroupInAWindow` covers it.
+    /// in a window, so this arrangement has none; `separatorPlacesTheButtonsInAWindow` covers it.
     private static func restoredToolbar(
         including extra: [NSToolbarItem.Identifier] = [],
         settingOn: Bool,
@@ -489,55 +553,75 @@ struct ObjectKindsToolbarTests {
         toolbar.items.map { $0.itemIdentifier }
     }
 
-    private static func groupCount(in toolbar: NSToolbar) -> Int {
-        identifiers(of: toolbar).filter { $0 == MainWindowToolbar.objectKindsGroup }.count
+    private static func buttons(in toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        let objectKinds = Set(MainWindowToolbar.objectKindItemIdentifiers)
+        return identifiers(of: toolbar).filter { objectKinds.contains($0) }
     }
 
-    @Test("Turning the setting on puts the group in once")
-    func turningOnInsertsTheGroupOnce() throws {
+    @Test("Turning the setting on puts the six buttons in once, in order")
+    func turningOnInsertsTheButtonsOnce() throws {
         let storage = try EphemeralDefaults()
         let record = ToolbarObjectKindsRecord(defaults: storage.defaults)
         #expect(!record.isApplied)
         let (owner, toolbar) = Self.restoredToolbar(settingOn: true, record: record)
 
-        owner.reconcileObjectKindsGroup()
+        owner.reconcileObjectKindItems()
 
-        #expect(Self.groupCount(in: toolbar) == 1)
+        #expect(Self.buttons(in: toolbar) == MainWindowToolbar.objectKindItemIdentifiers)
         #expect(ToolbarObjectKindsRecord(defaults: storage.defaults).isApplied)
 
         let (laterOwner, laterToolbar) = Self.restoredToolbar(settingOn: true, record: record)
-        laterOwner.reconcileObjectKindsGroup()
-        #expect(Self.groupCount(in: laterToolbar) == 0, "The change was already written into the arrangement")
+        laterOwner.reconcileObjectKindItems()
+        #expect(Self.buttons(in: laterToolbar).isEmpty, "The change was already written into the arrangement")
     }
 
-    @Test("Turning the setting off takes the group out")
-    func turningOffRemovesTheGroup() throws {
+    /// An arrangement saved with the former group recorded it under the former key, so the buttons
+    /// still arrive once in place of the group the delegate no longer vends.
+    @Test("The record is not the former group's, so an arrangement that held the group gets the buttons")
+    func theRecordIsTheButtonsOwn() throws {
+        let storage = try EphemeralDefaults()
+        storage.defaults.set(true, forKey: "com.TablePro.main.toolbar.v4.objectKinds")
+        let record = ToolbarObjectKindsRecord(defaults: storage.defaults)
+        #expect(!record.isApplied)
+        let (owner, toolbar) = Self.restoredToolbar(settingOn: true, record: record)
+
+        owner.reconcileObjectKindItems()
+
+        #expect(Self.buttons(in: toolbar) == MainWindowToolbar.objectKindItemIdentifiers)
+    }
+
+    @Test("Turning the setting off takes every button out")
+    func turningOffRemovesTheButtons() throws {
         let storage = try EphemeralDefaults()
         let record = ToolbarObjectKindsRecord(defaults: storage.defaults)
         record.record(true)
         let (owner, toolbar) = Self.restoredToolbar(
-            including: [MainWindowToolbar.objectKindsGroup],
+            including: MainWindowToolbar.objectKindItemIdentifiers,
             settingOn: false,
             record: record
         )
-        #expect(Self.groupCount(in: toolbar) == 1)
+        #expect(Self.buttons(in: toolbar).count == 6)
 
-        owner.reconcileObjectKindsGroup()
+        owner.reconcileObjectKindItems()
 
-        #expect(Self.groupCount(in: toolbar) == 0)
+        #expect(Self.buttons(in: toolbar).isEmpty)
         #expect(!record.isApplied)
     }
 
-    @Test("A group the user took out with Customize Toolbar stays out")
-    func aRemovedGroupStaysRemoved() throws {
+    @Test("Buttons the user took out with Customize Toolbar stay out")
+    func removedButtonsStayRemoved() throws {
         let storage = try EphemeralDefaults()
         let record = ToolbarObjectKindsRecord(defaults: storage.defaults)
         record.record(true)
-        let (owner, toolbar) = Self.restoredToolbar(settingOn: true, record: record)
+        let (owner, toolbar) = Self.restoredToolbar(
+            including: [MainWindowToolbar.objectTables, MainWindowToolbar.objectQuery],
+            settingOn: true,
+            record: record
+        )
 
-        owner.reconcileObjectKindsGroup()
+        owner.reconcileObjectKindItems()
 
-        #expect(Self.groupCount(in: toolbar) == 0)
+        #expect(Self.buttons(in: toolbar) == [MainWindowToolbar.objectTables, MainWindowToolbar.objectQuery])
         #expect(record.isApplied)
     }
 
@@ -548,7 +632,7 @@ struct ObjectKindsToolbarTests {
         let (owner, toolbar) = Self.restoredToolbar(settingOn: false, record: record)
         let before = Self.identifiers(of: toolbar)
 
-        owner.reconcileObjectKindsGroup()
+        owner.reconcileObjectKindItems()
 
         #expect(Self.identifiers(of: toolbar) == before)
         #expect(!record.isApplied)
@@ -556,26 +640,29 @@ struct ObjectKindsToolbarTests {
     }
 
     /// AppKit throws when a second item with an identifier already in the toolbar is added.
-    @Test("A group already in the arrangement is not added a second time")
-    func presentGroupIsNotInsertedAgain() throws {
+    @Test("A button already in the arrangement is not added a second time", arguments: [
+        [MainWindowToolbar.objectViews.rawValue],
+        MainWindowToolbar.objectKindItemIdentifiers.map(\.rawValue),
+    ])
+    func presentButtonsAreNotInsertedAgain(present: [String]) throws {
         let storage = try EphemeralDefaults()
         let record = ToolbarObjectKindsRecord(defaults: storage.defaults)
         let (owner, toolbar) = Self.restoredToolbar(
-            including: [MainWindowToolbar.objectKindsGroup],
+            including: present.map { NSToolbarItem.Identifier($0) },
             settingOn: true,
             record: record
         )
-        #expect(Self.groupCount(in: toolbar) == 1)
 
-        owner.reconcileObjectKindsGroup()
+        owner.reconcileObjectKindItems()
 
-        #expect(Self.groupCount(in: toolbar) == 1)
+        #expect(Set(Self.buttons(in: toolbar)) == Set(MainWindowToolbar.objectKindItemIdentifiers))
+        #expect(Self.buttons(in: toolbar).count == MainWindowToolbar.objectKindItemIdentifiers.count)
         #expect(record.isApplied)
     }
 
     /// The connection window's own toolbar, whose split view gives it the sidebar's divider.
-    @Test("In a connection window the group starts the content area, right after the sidebar's strip")
-    func separatorPlacesTheGroupInAWindow() throws {
+    @Test("In a connection window the buttons start the content area, right after the sidebar's strip")
+    func separatorPlacesTheButtonsInAWindow() throws {
         let fixture = try OffscreenConnectionWindow(size: CGSize(width: 1_512, height: 861))
         defer { fixture.tearDown() }
         let storage = try EphemeralDefaults()
@@ -583,12 +670,12 @@ struct ObjectKindsToolbarTests {
         owner.objectKindsRecord = ToolbarObjectKindsRecord(defaults: storage.defaults)
         owner.objectKindsEnabled = { true }
 
-        owner.reconcileObjectKindsGroup()
+        owner.reconcileObjectKindItems()
 
         let identifiers = Self.identifiers(of: owner.managedToolbar)
         let separator = try #require(identifiers.firstIndex(of: .sidebarTrackingSeparator))
-        #expect(identifiers.dropFirst(separator + 1).first == MainWindowToolbar.objectKindsGroup)
-        #expect(Self.groupCount(in: owner.managedToolbar) == 1)
+        #expect(Array(identifiers.dropFirst(separator + 1).prefix(6)) == MainWindowToolbar.objectKindItemIdentifiers)
+        #expect(Self.buttons(in: owner.managedToolbar) == MainWindowToolbar.objectKindItemIdentifiers)
     }
 
     /// The resolver answering is not enough: AppKit has to ask it for each subitem and write the
@@ -604,17 +691,17 @@ struct ObjectKindsToolbarTests {
         let owner = fixture.toolbarOwner
         owner.objectKindsRecord = ToolbarObjectKindsRecord(defaults: storage.defaults)
         owner.objectKindsEnabled = { true }
-        owner.reconcileObjectKindsGroup()
+        owner.reconcileObjectKindItems()
         // AppKit places an inserted item at the next layout, and validates only what it has placed.
         fixture.window.layoutIfNeeded()
         let toolbar = try #require(fixture.window.toolbar)
-        let group = try #require(
-            toolbar.items.first { $0.itemIdentifier == MainWindowToolbar.objectKindsGroup } as? NSToolbarItemGroup
-        )
-        let drawn = (toolbar.visibleItems ?? []).map { $0.itemIdentifier }
-        #expect(drawn.contains(MainWindowToolbar.objectKindsGroup), "The group went to the overflow menu")
+        let objectKinds = Set(MainWindowToolbar.objectKindItemIdentifiers)
+        let buttons = toolbar.items.filter { objectKinds.contains($0.itemIdentifier) }
+        #expect(buttons.count == objectKinds.count)
+        let drawn = Set((toolbar.visibleItems ?? []).map { $0.itemIdentifier })
+        #expect(objectKinds.isSubset(of: drawn), "A button went to the overflow menu")
         let state = try #require(owner.coordinator?.toolbarState)
-        let enabled = { Set(group.subitems.filter { $0.isEnabled }.map { $0.itemIdentifier }) }
+        let enabled = { Set(buttons.filter { $0.isEnabled }.map { $0.itemIdentifier }) }
 
         state.connectionState = .disconnected
         toolbar.validateVisibleItems()
@@ -632,16 +719,41 @@ struct ObjectKindsToolbarTests {
         #expect(!enabled().contains(MainWindowToolbar.objectTables))
     }
 
-    @Test("Without the sidebar tracking separator the group goes in at the leading edge")
+    @Test("Without the sidebar tracking separator the buttons go in at the leading edge")
     func insertsAtTheLeadingEdgeWithoutTheSeparator() throws {
         let storage = try EphemeralDefaults()
         let record = ToolbarObjectKindsRecord(defaults: storage.defaults)
         let (owner, toolbar) = Self.restoredToolbar(settingOn: true, record: record)
 
-        owner.reconcileObjectKindsGroup()
+        owner.reconcileObjectKindItems()
 
-        #expect(toolbar.items.first?.itemIdentifier == MainWindowToolbar.objectKindsGroup)
-        #expect(Self.groupCount(in: toolbar) == 1)
+        #expect(Array(Self.identifiers(of: toolbar).prefix(6)) == MainWindowToolbar.objectKindItemIdentifiers)
+    }
+
+    /// The pass a window update runs is what keeps the selection on the front tab's kind.
+    @Test("A validation pass selects the front tab's kind")
+    func aValidationPassSelectsTheFrontKind() throws {
+        let fixture = try OffscreenConnectionWindow(
+            size: CGSize(width: 1_512, height: 861),
+            connectedTo: TestFixtures.makeConnection(name: "Objects selection", database: "shop", type: .mysql)
+        )
+        defer { fixture.tearDown() }
+        let storage = try EphemeralDefaults()
+        let owner = fixture.toolbarOwner
+        owner.objectKindsRecord = ToolbarObjectKindsRecord(defaults: storage.defaults)
+        owner.objectKindsEnabled = { true }
+        owner.reconcileObjectKindItems()
+        fixture.window.layoutIfNeeded()
+        let toolbar = try #require(fixture.window.toolbar)
+        let coordinator = try #require(owner.coordinator)
+
+        coordinator.showBrowsedObjects(.function)
+        toolbar.validateVisibleItems()
+        #expect(toolbar.selectedItemIdentifier == MainWindowToolbar.objectFunctions)
+
+        coordinator.showBrowsedObjects(.table)
+        toolbar.validateVisibleItems()
+        #expect(toolbar.selectedItemIdentifier == MainWindowToolbar.objectTables)
     }
 
     /// A change made while no connection window is open is left for the first window that opens,
@@ -653,13 +765,13 @@ struct ObjectKindsToolbarTests {
         let (owner, toolbar) = Self.restoredToolbar(settingOn: true, record: record)
         owner.isInWindow = { false }
 
-        owner.reconcileObjectKindsGroup()
-        #expect(Self.groupCount(in: toolbar) == 0)
+        owner.reconcileObjectKindItems()
+        #expect(Self.buttons(in: toolbar).isEmpty)
         #expect(!record.isApplied)
 
         owner.isInWindow = { true }
-        owner.reconcileObjectKindsGroup()
-        #expect(Self.groupCount(in: toolbar) == 1)
+        owner.reconcileObjectKindItems()
+        #expect(Self.buttons(in: toolbar) == MainWindowToolbar.objectKindItemIdentifiers)
         #expect(record.isApplied)
     }
 }
@@ -670,7 +782,7 @@ extension GlobalStateSuites {
     @MainActor
     struct ObjectKindsSettingTests {
         @Test(
-            "The General setting adds the group to an open window and takes it away",
+            "The General setting adds the buttons to an open window and takes them away",
             .appSettings { $0.general.showsObjectToolbar = false }
         )
         func settingReachesAnOpenWindow() throws {
@@ -679,25 +791,22 @@ extension GlobalStateSuites {
             let storage = try EphemeralDefaults()
             fixture.toolbarOwner.objectKindsRecord = ToolbarObjectKindsRecord(defaults: storage.defaults)
             let toolbar = try #require(fixture.window.toolbar)
-            let hasGroup = { toolbar.items.contains { $0.itemIdentifier == MainWindowToolbar.objectKindsGroup } }
-            #expect(!hasGroup())
+            let objectKinds = Set(MainWindowToolbar.objectKindItemIdentifiers)
+            let buttons = { toolbar.items.filter { objectKinds.contains($0.itemIdentifier) } }
+            #expect(buttons().isEmpty)
 
             AppSettingsManager.shared.general.showsObjectToolbar = true
-            #expect(hasGroup(), "Turning the setting on reaches the open window")
+            #expect(buttons().count == objectKinds.count, "Turning the setting on reaches the open window")
             let identifiers = toolbar.items.map { $0.itemIdentifier }
             let separator = try #require(identifiers.firstIndex(of: .sidebarTrackingSeparator))
-            #expect(identifiers.dropFirst(separator + 1).first == MainWindowToolbar.objectKindsGroup)
-            // This window has no connection, so the group arrives dimmed rather than live until the next update.
-            let group = try #require(
-                toolbar.items.first { $0.itemIdentifier == MainWindowToolbar.objectKindsGroup } as? NSToolbarItemGroup
-            )
-            #expect(!group.subitems.isEmpty)
-            for subitem in group.subitems {
-                #expect(!subitem.isEnabled, "\(subitem.itemIdentifier.rawValue) is live with no connection")
+            #expect(Array(identifiers.dropFirst(separator + 1).prefix(6)) == MainWindowToolbar.objectKindItemIdentifiers)
+            // This window has no connection, so the buttons arrive dimmed rather than live until the next update.
+            for button in buttons() {
+                #expect(!button.isEnabled, "\(button.itemIdentifier.rawValue) is live with no connection")
             }
 
             AppSettingsManager.shared.general.showsObjectToolbar = false
-            #expect(!hasGroup(), "Turning it off takes the group away")
+            #expect(buttons().isEmpty, "Turning it off takes the buttons away")
         }
     }
 }

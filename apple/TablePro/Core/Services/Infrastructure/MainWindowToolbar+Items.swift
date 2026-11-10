@@ -355,81 +355,85 @@ extension MainWindowToolbar {
         }
     }
 
-    /// One click to each kind of object, built like the Back/Forward group so AppKit draws it, dims a
-    /// button that cannot open and folds all six into one overflow entry in a narrow window. Tables,
-    /// Views and Functions share the sidebar's glyphs for those kinds.
-    func makeObjectKindsGroup() -> NSToolbarItemGroup {
-        makeNativeGroup(
-            id: Self.objectKindsGroup,
-            label: String(localized: "Objects"),
-            subitems: [
-                menuOnlyItem(
-                    id: Self.objectTables,
-                    label: String(localized: "Tables"),
-                    symbol: SidebarObjectKind.table.iconName,
-                    action: #selector(performShowTables(_:)),
-                    glyphProvider: { [weak self] in
-                        Self.objectKindGlyph(
-                            symbol: SidebarObjectKind.table.iconName,
-                            label: String(localized: "Tables"),
-                            isSelected: self?.selectedObjectKindItem() == Self.objectTables
-                        )
-                    }
-                ),
-                menuOnlyItem(
-                    id: Self.objectViews,
-                    label: String(localized: "Views"),
-                    symbol: SidebarObjectKind.view.iconName,
-                    action: #selector(performShowViews(_:)),
-                    glyphProvider: { [weak self] in
-                        Self.objectKindGlyph(
-                            symbol: SidebarObjectKind.view.iconName,
-                            label: String(localized: "Views"),
-                            isSelected: self?.selectedObjectKindItem() == Self.objectViews
-                        )
-                    }
-                ),
-                menuOnlyItem(
-                    id: Self.objectFunctions,
-                    label: String(localized: "Functions"),
-                    symbol: SidebarObjectKind.function.iconName,
-                    action: #selector(performShowFunctions(_:)),
-                    glyphProvider: { [weak self] in
-                        Self.objectKindGlyph(
-                            symbol: SidebarObjectKind.function.iconName,
-                            label: String(localized: "Functions"),
-                            isSelected: self?.selectedObjectKindItem() == Self.objectFunctions
-                        )
-                    }
-                ),
-                menuOnlyItem(
-                    id: Self.objectUsers,
-                    label: String(localized: "Users"),
-                    symbol: "person.2",
-                    action: #selector(performShowUsers(_:)),
-                    glyphProvider: { [weak self] in
-                        Self.objectKindGlyph(
-                            symbol: "person.2",
-                            label: String(localized: "Users"),
-                            isSelected: self?.selectedObjectKindItem() == Self.objectUsers
-                        )
-                    }
-                ),
-                menuOnlyItem(
-                    id: Self.objectQuery,
-                    label: String(localized: "Query"),
-                    symbol: "doc.text",
-                    action: #selector(performNewQuery(_:)),
-                    shortcut: .newTab
-                ),
-                menuOnlyItem(
-                    id: Self.objectBackup,
-                    label: String(localized: "Backup"),
-                    symbol: "archivebox",
-                    action: #selector(performBackupDatabase(_:))
-                ),
-            ]
+    /// One click to each kind of object. Tables, Views and Functions share the sidebar's glyphs for those kinds.
+    static var objectKindButtons: [ObjectKindButton] {
+        [
+            ObjectKindButton(
+                identifier: objectTables,
+                label: String(localized: "Tables"),
+                symbol: SidebarObjectKind.table.iconName,
+                tint: .systemBlue,
+                action: #selector(MainWindowToolbar.performShowTables(_:))
+            ),
+            ObjectKindButton(
+                identifier: objectViews,
+                label: String(localized: "Views"),
+                symbol: SidebarObjectKind.view.iconName,
+                tint: .systemTeal,
+                action: #selector(MainWindowToolbar.performShowViews(_:))
+            ),
+            ObjectKindButton(
+                identifier: objectFunctions,
+                label: String(localized: "Functions"),
+                symbol: SidebarObjectKind.function.iconName,
+                tint: .systemPurple,
+                action: #selector(MainWindowToolbar.performShowFunctions(_:))
+            ),
+            ObjectKindButton(
+                identifier: objectUsers,
+                label: String(localized: "Users"),
+                symbol: "person.2",
+                tint: .systemOrange,
+                action: #selector(MainWindowToolbar.performShowUsers(_:))
+            ),
+            ObjectKindButton(
+                identifier: objectQuery,
+                label: String(localized: "Query"),
+                symbol: "doc.text",
+                tint: .systemGreen,
+                action: #selector(MainWindowToolbar.performNewQuery(_:)),
+                shortcut: .newTab
+            ),
+            ObjectKindButton(
+                identifier: objectBackup,
+                label: String(localized: "Backup"),
+                symbol: "archivebox",
+                tint: .systemBrown,
+                action: #selector(MainWindowToolbar.performBackupDatabase(_:))
+            ),
+        ]
+    }
+
+    /// The hue a button draws its glyph in, and nil for every item outside the Objects run, which stays a template.
+    static func objectKindTint(for identifier: NSToolbarItem.Identifier) -> NSColor? {
+        objectKindButtons.first { $0.identifier == identifier }?.tint
+    }
+
+    /// Built like every other command, so each button keeps its own action, tooltip and overflow entry and AppKit dims
+    /// it. Borderless because AppKit draws a selectable item without its bezel, and Query and Backup have to match.
+    func makeObjectKindItem(_ identifier: NSToolbarItem.Identifier) -> NSToolbarItem? {
+        guard let button = Self.objectKindButtons.first(where: { $0.identifier == identifier }) else { return nil }
+        let item = menuOnlyItem(
+            id: identifier,
+            label: button.label,
+            symbol: button.symbol,
+            action: button.action,
+            shortcut: button.shortcut,
+            glyphProvider: { Self.objectKindGlyph(button) }
         )
+        item.isBordered = false
+        return item
+    }
+
+    /// A system hue per kind, so the run reads at a glance. The color resolves when the glyph draws, in the toolbar's own
+    /// appearance, so it follows light and dark; an inactive window greys it as it greys every glyph.
+    static func objectKindGlyph(_ button: ObjectKindButton) -> ToolbarGlyph {
+        ToolbarGlyph(key: button.symbol) {
+            let image = NSImage(systemSymbolName: button.symbol, accessibilityDescription: button.label)?
+                .withSymbolConfiguration(NSImage.SymbolConfiguration(hierarchicalColor: button.tint))
+            image?.isTemplate = false
+            return image
+        }
     }
 
     /// The button for what the front tab shows. Query and Backup start something new, so neither stays selected.
@@ -452,19 +456,6 @@ extension MainWindowToolbar {
     func selectedObjectKindItem() -> NSToolbarItem.Identifier? {
         let tab = coordinator?.tabManager.selectedTab
         return Self.selectedObjectKindItem(tabType: tab?.tabType, listingKind: tab?.display.listingKind)
-    }
-
-    /// The selected kind draws its glyph in the accent color, the way Xcode's navigator bar marks the navigator on
-    /// screen. Measured on macOS 27, a toolbar item group draws no selected state for the buttons it holds, whatever
-    /// its selection mode.
-    static func objectKindGlyph(symbol: String, label: String, isSelected: Bool) -> ToolbarGlyph {
-        ToolbarGlyph(key: isSelected ? "selected" : "plain") {
-            let image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
-            guard isSelected else { return image }
-            let tinted = image?.withSymbolConfiguration(NSImage.SymbolConfiguration(paletteColors: [.controlAccentColor]))
-            tinted?.isTemplate = false
-            return tinted
-        }
     }
 
     // MARK: - Helpers
@@ -544,4 +535,15 @@ extension MainWindowToolbar {
         guard item.itemIdentifier != Self.connection, item.itemIdentifier != Self.database else { return }
         item.visibilityPriority = .high
     }
+}
+
+/// One button of the Objects run: what it draws and what it sends.
+@MainActor
+internal struct ObjectKindButton {
+    let identifier: NSToolbarItem.Identifier
+    let label: String
+    let symbol: String
+    let tint: NSColor
+    let action: Selector
+    var shortcut: ShortcutAction?
 }
