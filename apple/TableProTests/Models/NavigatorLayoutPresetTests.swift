@@ -1,0 +1,150 @@
+//
+//  NavigatorLayoutPresetTests.swift
+//  TableProTests
+//
+
+import AppKit
+import Combine
+import Foundation
+@testable import TablePro
+import TableProPluginKit
+import Testing
+
+struct NavigatorLayoutPresetTests {
+    private static func navigatorLayout(from settings: GeneralSettings) -> GeneralSettings {
+        var expected = settings
+        expected.showTableDetails = true
+        expected.showsObjectsOnSelection = true
+        expected.showsObjectToolbar = true
+        expected.showsConnectionNavigator = true
+        return expected
+    }
+
+    @Test("Use Navigator Layout turns on all four features and makes Tree the default layout")
+    func applyTurnsEverythingOn() {
+        var settings = GeneralSettings.default
+        var layout = SidebarLayout.flat
+
+        NavigatorLayoutPreset.apply(to: &settings, defaultLayout: &layout)
+
+        #expect(settings.showTableDetails)
+        #expect(settings.showsObjectsOnSelection)
+        #expect(settings.showsObjectToolbar)
+        #expect(settings.showsConnectionNavigator)
+        #expect(layout == .tree)
+    }
+
+    @Test("Use Standard Layout puts all five back to their defaults")
+    func restorePutsTheDefaultsBack() {
+        var settings = Self.navigatorLayout(from: .default)
+        var layout = SidebarLayout.tree
+
+        NavigatorLayoutPreset.restore(to: &settings, defaultLayout: &layout)
+
+        #expect(settings.showTableDetails == GeneralSettings.default.showTableDetails)
+        #expect(settings.showsObjectsOnSelection == GeneralSettings.default.showsObjectsOnSelection)
+        #expect(settings.showsObjectToolbar == GeneralSettings.default.showsObjectToolbar)
+        #expect(settings.showsConnectionNavigator == GeneralSettings.default.showsConnectionNavigator)
+        #expect(settings == GeneralSettings.default)
+        #expect(layout == .flat)
+    }
+
+    @Test("Using the navigator layout a second time changes nothing")
+    func applyingTwiceIsHarmless() {
+        var settings = GeneralSettings.default
+        var layout = SidebarLayout.flat
+        NavigatorLayoutPreset.apply(to: &settings, defaultLayout: &layout)
+        let once = settings
+
+        NavigatorLayoutPreset.apply(to: &settings, defaultLayout: &layout)
+
+        #expect(settings == once)
+        #expect(layout == .tree)
+    }
+
+    @Test("Neither button touches any other General setting")
+    func otherSettingsStayPut() {
+        var settings = GeneralSettings.default
+        settings.showRecentTables = true
+        settings.showWorkspaceRail = false
+        settings.showPartitions = false
+        settings.queryTimeoutSeconds = 90
+        let before = settings
+        var layout = SidebarLayout.flat
+
+        NavigatorLayoutPreset.apply(to: &settings, defaultLayout: &layout)
+        #expect(settings == Self.navigatorLayout(from: before))
+
+        NavigatorLayoutPreset.restore(to: &settings, defaultLayout: &layout)
+        #expect(settings == before)
+    }
+
+    /// The View menu switches one connection through its shared sidebar state; the preset does the
+    /// same for each open one, and skips an engine that has no tree to switch to.
+    @MainActor
+    @Test("Open connections that can show a tree switch layout, and the others keep theirs")
+    func openConnectionsSwitchLayout() {
+        let networked = TestFixtures.makeConnection(name: "Networked", type: .mysql)
+        let file = TestFixtures.makeConnection(name: "File", type: .sqlite)
+        let connections = [networked, file]
+        for connection in connections {
+            DatabaseManager.shared.injectSession(ConnectionSession(connection: connection), for: connection.id)
+        }
+        defer {
+            for connection in connections {
+                DatabaseManager.shared.removeSession(for: connection.id)
+                SharedSidebarState.removeConnection(connection.id)
+                SidebarPersistenceKey.removeAll(connectionId: connection.id)
+            }
+        }
+        let fileLayout = SharedSidebarState.forConnection(file.id).sidebarLayout
+
+        NavigatorLayoutPreset.switchOpenConnections(to: .tree)
+
+        #expect(SharedSidebarState.forConnection(networked.id).sidebarLayout == .tree)
+        #expect(SharedSidebarState.forConnection(file.id).sidebarLayout == fileLayout)
+
+        NavigatorLayoutPreset.switchOpenConnections(to: .flat)
+
+        #expect(SharedSidebarState.forConnection(networked.id).sidebarLayout == .flat)
+    }
+}
+
+extension GlobalStateSuites {
+    /// The preset written the way Settings writes it, through the General settings value in one
+    /// step, reaching what each toggle reaches when flipped by hand.
+    @MainActor
+    struct NavigatorLayoutPresetSettingTests {
+        @Test(
+            "Through the settings manager, the preset reaches the toolbar and the connections column",
+            .appSettings {
+                $0.general.showTableDetails = false
+                $0.general.showsObjectsOnSelection = false
+                $0.general.showsObjectToolbar = false
+                $0.general.showsConnectionNavigator = false
+            }
+        )
+        func presetReachesAnOpenWindow() throws {
+            let fixture = try OffscreenConnectionWindow(size: CGSize(width: 1_512, height: 861))
+            defer { fixture.tearDown() }
+            let storage = try EphemeralDefaults()
+            fixture.toolbarOwner.objectKindsRecord = ToolbarObjectKindsRecord(defaults: storage.defaults)
+            let toolbar = try #require(fixture.window.toolbar)
+            let hasGroup = { toolbar.items.contains { $0.itemIdentifier == MainWindowToolbar.objectKindsGroup } }
+            var railChanges = 0
+            let subscription = AppEvents.shared.workspaceRailVisibilityChanged.sink { railChanges += 1 }
+            defer { subscription.cancel() }
+            var layout = SidebarLayout.flat
+
+            NavigatorLayoutPreset.apply(to: &AppSettingsManager.shared.general, defaultLayout: &layout)
+
+            #expect(hasGroup(), "The Objects buttons reach the open window")
+            #expect(railChanges == 1, "The connections column is told to swap in the navigator")
+
+            NavigatorLayoutPreset.restore(to: &AppSettingsManager.shared.general, defaultLayout: &layout)
+
+            #expect(!hasGroup(), "The Objects buttons leave the open window")
+            #expect(railChanges == 2, "The connections column is told to swap the navigator out")
+        }
+    }
+}

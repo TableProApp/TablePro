@@ -60,6 +60,25 @@ struct GeneralSettingsView: View {
                 .help("Scrolling keeps one row of tabs, the way every macOS tab bar does. Rows wraps them so nothing is off screen.")
             }
 
+            Section {
+                HStack {
+                    Button(String(localized: "Use Navigator Layout")) {
+                        useLayoutPreset(navigator: true)
+                    }
+                    Button(String(localized: "Use Standard Layout")) {
+                        useLayoutPreset(navigator: false)
+                    }
+                }
+            } header: {
+                Text("Layout")
+            } footer: {
+                Text(String(localized: """
+                    Navigator Layout turns on table details, the Objects tab on selection, the Objects toolbar \
+                    buttons and the connections list, and makes Tree the default sidebar layout. Standard Layout \
+                    turns them off again. Open connections switch layout too.
+                    """))
+            }
+
             Section("Sidebar") {
                 Toggle("Show connections", isOn: $settings.showWorkspaceRail)
                     .help("Adds a narrow strip on the window's leading edge listing every connection and database you have open, so one click switches to it.")
@@ -163,6 +182,17 @@ struct GeneralSettingsView: View {
         .onAppear {
             if initialLanguage == nil { initialLanguage = settings.language }
         }
+    }
+
+    // Writes through the General settings binding and the same stored default the layout picker uses,
+    // so every control below shows the result and each setting's own observers fire.
+    private func useLayoutPreset(navigator: Bool) {
+        if navigator {
+            NavigatorLayoutPreset.apply(to: &settings, defaultLayout: &defaultSidebarLayout)
+        } else {
+            NavigatorLayoutPreset.restore(to: &settings, defaultLayout: &defaultSidebarLayout)
+        }
+        NavigatorLayoutPreset.switchOpenConnections(to: defaultSidebarLayout)
     }
 }
 
