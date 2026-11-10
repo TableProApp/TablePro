@@ -70,6 +70,7 @@ private struct RevocationServer {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: bridge,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
         return (minted.token.id, minted.plaintext)

@@ -47,6 +47,8 @@
                 <!-- The overview the tab button opens has New Tab, and the
                      header has to fit the window's floor. -->
                 <setter object="new_tab_button" property="visible">false</setter>
+                <!-- The Session Menu holds the Safe Mode levels. -->
+                <setter object="safe_mode_slot" property="visible">false</setter>
               </object>
             </child>
             <property name="child">
@@ -210,6 +212,18 @@
                                     </child>
                                   </object>
                                 </property>
+                                <child type="end">
+                                  <!-- The narrow layout hides the slot, and a window
+                                       with no session hides the lock itself. -->
+                                  <object class="AdwBin" id="safe_mode_slot">
+                                    <property name="child">
+                                      <object class="GtkMenuButton" id="safe_mode_button">
+                                        <property name="icon-name">changes-allow-symbolic</property>
+                                        <property name="visible">false</property>
+                                      </object>
+                                    </property>
+                                  </object>
+                                </child>
                                 <child type="end">
                                   <object class="GtkToggleButton" id="assistant_toggle">
                                     <property name="icon-name">assistant-symbolic</property>

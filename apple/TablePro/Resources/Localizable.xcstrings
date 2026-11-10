@@ -17583,6 +17583,9 @@
         }
       }
     },
+    "A transaction is open on %@. Switching databases reconnects, and the server would roll it back. Commit or roll back the transaction, then switch again." : {
+
+    },
     "A transaction is open on this connection, and its uncommitted rows aren't in these counts." : {
 
     },
@@ -107797,7 +107800,13 @@
     "Masked" : {
 
     },
+    "Masked %@: this connection has masking rules, and TablePro could not trace these columns to a table column." : {
+
+    },
     "Masked by a masking rule" : {
+
+    },
+    "Masked every column: this connection has masking rules, and TablePro could not trace any of them to a table column." : {
 
     },
     "Masking" : {
@@ -194354,6 +194363,12 @@
     "The statement did not finish within %d seconds and is still running. It may have been applied; check before running it again." : {
 
     },
+    "The statement failed with %@. Its message is withheld because this connection has masking rules, and the message can repeat a masked value." : {
+
+    },
+    "The statement failed. Its message is withheld because this connection has masking rules, and the message can repeat a masked value." : {
+
+    },
     "The statement has %1$lld placeholders but %2$lld values were given." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -194399,6 +194414,9 @@
           }
         }
       }
+    },
+    "The statement text is withheld because this connection has masking rules, and it can repeat a masked value." : {
+
     },
     "The statement that was sent, with its prefix" : {
       "extractionState" : "stale",
@@ -196701,6 +196719,12 @@
       }
     },
     "These rows show masked values, which cannot be written back. Reveal them to edit." : {
+
+    },
+    "These statements ran before the failure and were not rolled back:" : {
+
+    },
+    "These statements ran inside the transaction already open on this connection, so rolling it back undoes them:" : {
 
     },
     "These two engines cannot share a script." : {
@@ -207658,6 +207682,9 @@
         }
       }
     },
+    "Undoing what had already run also failed, so the table may be left part way. Run these statements to restore it:" : {
+
+    },
     "Unexpected “%@” in the .proto file." : {
 
     },
@@ -216961,6 +216988,9 @@
           }
         }
       }
+    },
+    "Why values are masked, when they are" : {
+
     },
     "Wi-Fi" : {
       "extractionState" : "manual",

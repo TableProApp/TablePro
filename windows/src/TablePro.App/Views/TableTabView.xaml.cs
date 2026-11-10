@@ -18,6 +18,7 @@ public sealed partial class TableTabView : UserControl, ITabContent
     private readonly DatabaseSession _session;
     private readonly string? _schema;
     private readonly string _table;
+    private readonly TabWork _work = new();
     private QueryEditor? _editor;
     private Task? _closing;
     private QueryRun? _run;
@@ -97,9 +98,11 @@ public sealed partial class TableTabView : UserControl, ITabContent
     // Once only, however often it is asked for: the tab lets go of its session exactly once.
     public Task CloseAsync() => _closing ??= CloseOnceAsync();
 
+    // The page in flight and its count stop and end before the run, the editor and the session they use are let go.
     private async Task CloseOnceAsync()
     {
-        _counting?.Cancel();
+        _run?.Cancel();
+        await _work.CloseAsync().ConfigureAwait(true);
         _run?.Dispose();
         _run = null;
         Results.Clear();
@@ -114,11 +117,14 @@ public sealed partial class TableTabView : UserControl, ITabContent
 
     private async Task LoadAsync(long offset)
     {
-        if (IsRunning)
+        if (!IsRunning)
         {
-            return;
+            await _work.RunAsync(token => LoadPageAsync(offset, token)).ConfigureAwait(true);
         }
+    }
 
+    private async Task LoadPageAsync(long offset, CancellationToken cancellationToken)
+    {
         _finished = null;
         SetRunning(true);
         try
@@ -129,7 +135,8 @@ public sealed partial class TableTabView : UserControl, ITabContent
                 await lost.DisposeAsync().ConfigureAwait(true);
             }
 
-            _editor ??= await _session.OpenEditorAsync().ConfigureAwait(true);
+            // An editor that opens as the tab closes stays in _editor, which the close disposes.
+            _editor ??= await _session.OpenEditorAsync(cancellationToken).ConfigureAwait(true);
             var page = _page.At(offset);
             // A default changed in Settings applies from the page holding the first row shown.
             if (_chosenSize is null && page.Size != PageSize)
@@ -140,23 +147,37 @@ public sealed partial class TableTabView : UserControl, ITabContent
             var sort = _sort.Direction == SortDirection.None
                 ? null
                 : new ColumnSort(_sort.Column, _sort.Direction == SortDirection.Ascending);
-            var query = await _session.GetTableQueryAsync(new TableName(_schema, _table), sort, page.Size, page.Offset)
+            var query = await _session.GetTableQueryAsync(
+                    new TableName(_schema, _table), sort, page.Size, page.Offset, cancellationToken)
                 .ConfigureAwait(true);
+            if (_work.IsClosed)
+            {
+                return;
+            }
+
             _run?.Dispose();
             _page = page with { CanSeek = query.CanSeek };
             // The statement holds the page; a run limit one past it keeps a full page from reading as cut short.
-            _run = _editor.Run(query.Sql, new QueryOptions(page.Size + 1));
-            await Results.ShowRunAsync(_run, _sort, query.VisibleColumns).ConfigureAwait(true);
+            _run = _editor.Run(query.Sql, new QueryOptions(page.Size + 1), cancellationToken);
+            await Results.ShowRunAsync(_run, _sort, query.VisibleColumns, cancellationToken).ConfigureAwait(true);
+            if (_work.IsClosed)
+            {
+                return;
+            }
+
             _shownSort = _sort;
             _page = _page with { Rows = Results.RowCount };
             CountIfNeeded();
         }
         catch (TableProException exception)
         {
-            // An engine that reads a table only in its own order refuses the sort; the rows shown keep theirs.
-            _sort = _shownSort;
-            Results.Sort = _shownSort;
-            Results.ShowError(Strings.Error(exception.Error));
+            if (!_work.IsClosed)
+            {
+                // An engine that reads a table only in its own order refuses the sort; the rows shown keep theirs.
+                _sort = _shownSort;
+                Results.Sort = _shownSort;
+                Results.ShowError(Strings.Error(exception.Error));
+            }
         }
         finally
         {
@@ -164,8 +185,10 @@ public sealed partial class TableTabView : UserControl, ITabContent
         }
     }
 
+    private async void CountIfNeeded() => await _work.RunAsync(CountAsync).ConfigureAwait(true);
+
     // A first page that is not full holds the whole table; otherwise the server counts it, in the background.
-    private async void CountIfNeeded()
+    private async Task CountAsync(CancellationToken closing)
     {
         if (_page.Total is not null || !_page.CanSeek)
         {
@@ -182,7 +205,7 @@ public sealed partial class TableTabView : UserControl, ITabContent
 
         UpdatePager();
         _counting?.Cancel();
-        using var counting = new CancellationTokenSource();
+        using var counting = CancellationTokenSource.CreateLinkedTokenSource(closing);
         _counting = counting;
         try
         {

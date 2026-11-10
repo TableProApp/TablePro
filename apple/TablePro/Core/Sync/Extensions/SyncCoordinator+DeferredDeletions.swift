@@ -6,7 +6,7 @@ import TableProSyncTransport
 // record name is kept until the category is read.
 extension SyncCoordinator {
     // Deleting a profile removes keychain secrets no pull can bring back, so a late deletion never does it.
-    private static let typesNeverDeletedLate: Set<SyncRecordType> = [.sshProfile, .credentialProfile]
+    static let typesNeverDeletedLate: Set<SyncRecordType> = [.sshProfile, .credentialProfile]
 
     struct DeferredDeletions {
         var due: [CKRecord.ID] = []

@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import Testing
 import XCTest
 
 @testable import TablePro
@@ -887,5 +888,59 @@ final class DataSyncScriptBuilderColumnTests: XCTestCase {
                 CompareColumn(name: "name", targetType: "NVARCHAR(50)")
             ]
         )
+    }
+}
+
+// PostgreSQL reads a bit string as its digits and MySQL a BIT as its number, so a source value is respelled for the
+// target: written as it came, 00000101 lands in MySQL as 101.
+struct DataSyncBitRespellingTests {
+    private func columns(from source: SQLTypeFamily, to target: SQLTypeFamily) -> [CompareColumn] {
+        [
+            CompareColumn(name: "id", sourceType: "int", targetType: "int", sourceFamily: source, targetFamily: target),
+            CompareColumn(name: "flags", sourceType: "bit(8)", targetType: "bit(8)", sourceFamily: source, targetFamily: target)
+        ]
+    }
+
+    @Test
+    func aPostgresBitStringIsWrittenIntoMySQLAsItsNumber() {
+        let statements = PlanSyncFixture.build(
+            [
+                PlanSyncFixture.insertEntry(["id": .text("1"), "flags": .text("00000101")]),
+                PlanSyncFixture.updateEntry(
+                    source: ["id": .text("2"), "flags": .text("00000110")],
+                    target: ["id": .text("2"), "flags": .text("5")],
+                    changed: ["flags"],
+                    key: "2"
+                )
+            ],
+            plan: PlanSyncFixture.makePlan(columns: columns(from: .postgres, to: .mysql)),
+            databaseType: .mysql
+        )
+        let sql = statements.map { $0.sql }
+        #expect(sql == [
+            "INSERT INTO `users` (`id`, `flags`) VALUES (1, 5)",
+            "UPDATE `users` SET `flags` = 6 WHERE `id` = 2"
+        ])
+    }
+
+    @Test
+    func aMySQLBitIsWrittenIntoPostgresAsItsDigits() {
+        let statements = PlanSyncFixture.build(
+            [PlanSyncFixture.insertEntry(["id": .text("1"), "flags": .text("5")])],
+            plan: PlanSyncFixture.makePlan(columns: columns(from: .mysql, to: .postgres)),
+            databaseType: .postgresql
+        )
+        #expect(statements.first?.sql.contains("'00000101'") == true)
+    }
+
+    @Test
+    func aKeyReadFromTheTargetIsNotRespelled() {
+        let plan = PlanSyncFixture.makePlan(columns: columns(from: .postgres, to: .mysql), keys: ["flags"])
+        let statements = PlanSyncFixture.build(
+            [PlanSyncFixture.deleteEntry(["id": .text("1"), "flags": .text("5")])],
+            plan: plan,
+            databaseType: .mysql
+        )
+        #expect(statements.first?.sql == "DELETE FROM `users` WHERE `flags` = 5")
     }
 }

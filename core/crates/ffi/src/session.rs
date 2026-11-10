@@ -12,7 +12,9 @@ use crate::cancel_token::{CancelToken, token};
 use crate::catalog::{ColumnEntry, ObjectEntry, ObjectScopeArg, SchemaEntry, TableName};
 use crate::editor::QueryEditor;
 use crate::error::{BoxedErrorInfo, CoreError};
+use crate::library::SafeModeTag;
 use crate::runtime::on_runtime;
+use crate::safe_mode_gate::{self, RunGate};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
 pub struct ColumnSort {
@@ -307,6 +309,17 @@ impl DatabaseSession {
         };
         let direction = if ascending { "ASC" } else { "DESC" };
         Ok(with_order_by(&sql, grammar, &format!("{target} {direction}")))
+    }
+
+    // At the session's level now, read by the engine's own rules also while the session's link is down.
+    pub fn gate_run(&self, sql: String) -> RunGate {
+        safe_mode_gate::gate(&sql, self.session.grammar(), self.session.safe_mode())
+    }
+
+    // A level saved while the session is open applies to it at once. False when `level` is on the other side of
+    // Read-only, which takes a new connection; the session keeps its level until then.
+    pub fn set_safe_mode(&self, level: SafeModeTag) -> bool {
+        self.session.set_safe_mode(level.into())
     }
 
     pub async fn open_editor(&self, cancel: Option<Arc<CancelToken>>) -> Result<Arc<QueryEditor>, CoreError> {

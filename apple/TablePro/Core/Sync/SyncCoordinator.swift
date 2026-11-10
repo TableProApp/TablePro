@@ -33,6 +33,7 @@ final class SyncCoordinator: ObservableObject {
     private let makeNetworkMonitor: () -> SyncNetworkMonitor?
     /// Why the license keeps sync off, or nil while it allows sync.
     private let licenseGate: @MainActor () -> DisableReason?
+    let recordCreationDate: (CKRecord) -> Date?
     private var triggers: SyncTriggers?
     private var licenseCancellable: AnyCancellable?
     private var debounceTask: Task<Void, Never>?
@@ -68,11 +69,13 @@ final class SyncCoordinator: ObservableObject {
         makeNetworkMonitor: @escaping () -> SyncNetworkMonitor? = { SyncNetworkMonitor() },
         columnLayouts: @escaping @autoclosure () -> FileColumnLayoutPersister = .shared,
         themeCatalog: ThemeCatalog = .shared,
-        licenseGate: (@MainActor () -> DisableReason?)? = nil
+        licenseGate: (@MainActor () -> DisableReason?)? = nil,
+        recordCreationDate: @escaping (CKRecord) -> Date? = { $0.creationDate }
     ) {
         self.services = services
         self.makeTransport = transport
         self.makeNetworkMonitor = makeNetworkMonitor
+        self.recordCreationDate = recordCreationDate
         self.changeTracker = services.syncTracker
         self.metadataStorage = services.syncMetadataStorage
         self.recordCache = recordCache
@@ -714,7 +717,9 @@ final class SyncCoordinator: ObservableObject {
         settings: SyncSettings,
         echoGuard: SyncEchoGuard?
     ) async -> Bool {
-        guard await applyPullResult(result, settings: settings, echoGuard: echoGuard) else { return false }
+        guard await applyPullResult(result, settings: settings, echoGuard: echoGuard, isFullFetch: isFullFetch) else {
+            return false
+        }
         if isFullFetch {
             seedLocalThemesIfPending(after: result)
         }
@@ -725,12 +730,18 @@ final class SyncCoordinator: ObservableObject {
     internal func applyPullResult(
         _ result: PullResult,
         settings: SyncSettings? = nil,
-        echoGuard: SyncEchoGuard? = nil
+        echoGuard: SyncEchoGuard? = nil,
+        isFullFetch: Bool = false
     ) async -> Bool {
         let settings = settings ?? services.appSettingsStorage.loadSync()
         let zoneID = await transport.currentZoneID
         let deferred = deferredDeletions(dueIn: result, settings: settings, zoneID: zoneID)
-        let deletedRecordIDs = (result.deletedRecordIDs + deferred.due).filter { recordID in
+        // Read before anything is applied, while the local stores still hold every record the fetch is checked against.
+        let pushed = echoGuard?.pushedRecordIDs ?? []
+        let missing = isFullFetch
+            ? await deletionsProvenByFullFetch(result, settings: settings, zoneID: zoneID, pushed: pushed)
+            : []
+        let deletedRecordIDs = (result.deletedRecordIDs + deferred.due + missing).filter { recordID in
             echoGuard?.withholdsDeletion(recordID, tracker: changeTracker) != true
         }
         let pendingEdits = await recordNamesWithPendingEdits()
@@ -769,7 +780,7 @@ final class SyncCoordinator: ObservableObject {
             echoGuard?.withholds(record.recordID, tracker: changeTracker) != true
                 && SyncRecordType(rawValue: record.recordType).map { settings.syncs($0) } == true
         })
-        recordCache.remove(result.deletedRecordIDs + deferred.due)
+        recordCache.remove(result.deletedRecordIDs + deferred.due + missing)
         settleDeferredDeletions(deferred, after: result, settings: settings)
 
         Self.logger.info(

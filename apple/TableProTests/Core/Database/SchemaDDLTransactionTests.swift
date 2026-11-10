@@ -145,6 +145,52 @@ struct SchemaDDLTransactionTests {
         #expect(pooled.executedQueries == ["BEGIN", Self.first, Self.second, "ROLLBACK"])
     }
 
+    @Test("A Structure save that fails partway where DDL is not transactional names the statements that stayed applied")
+    func failedSaveNamesTheStatementsThatRan() async throws {
+        let (connection, scope, pooled) = try await Self.inject(transactions: true, transactionalDDL: false)
+        defer { Self.tearDown(connection) }
+        pooled.failingStatement = Self.second
+
+        let message = await Self.failureMessage { try await Self.save(scope) }
+
+        #expect(message.contains("statement refused"))
+        #expect(message.contains(Self.first))
+        #expect(!message.contains(Self.second))
+    }
+
+    @Test("A Structure save whose first statement fails names no statement as applied")
+    func failedFirstStatementNamesNothing() async throws {
+        let (connection, scope, pooled) = try await Self.inject(transactions: true, transactionalDDL: false)
+        defer { Self.tearDown(connection) }
+        pooled.failingStatement = Self.first
+
+        let message = await Self.failureMessage { try await Self.save(scope) }
+
+        #expect(message.contains("statement refused"))
+        #expect(!message.contains(Self.first))
+    }
+
+    @Test("A Structure save rolled back where DDL is transactional names no statement as applied")
+    func rolledBackSaveNamesNothing() async throws {
+        let (connection, scope, pooled) = try await Self.inject(transactions: true, transactionalDDL: true)
+        defer { Self.tearDown(connection) }
+        pooled.failingStatement = Self.second
+
+        let message = await Self.failureMessage { try await Self.save(scope) }
+
+        #expect(message.contains("statement refused"))
+        #expect(!message.contains(Self.first))
+    }
+
+    private static func failureMessage(_ save: () async throws -> Void) async -> String {
+        do {
+            try await save()
+            return ""
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     @Test("Create Table opens no transaction where DDL is not transactional")
     func createSkipsTheTransactionWithoutTransactionalDDL() async throws {
         let (connection, scope, pooled) = try await Self.inject(transactions: true, transactionalDDL: false)

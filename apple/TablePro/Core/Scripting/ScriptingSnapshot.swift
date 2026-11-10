@@ -117,9 +117,12 @@ internal enum ScriptingSnapshot {
     }
 
     internal static func query(ofTab tabId: UUID, connectionId: UUID) -> String? {
-        guard isVisibleToScripts(connectionId: connectionId) else { return nil }
-        return coordinator(ofTab: tabId, connectionId: connectionId)?
-            .tabManager.tabs.first { $0.id == tabId }?.content.query
+        guard isVisibleToScripts(connectionId: connectionId),
+              let coordinator = coordinator(ofTab: tabId, connectionId: connectionId)
+        else { return nil }
+        // A large document's last keys reach its tab on a delay; a script reads what the editor shows.
+        coordinator.flushEditorText(forTab: tabId)
+        return coordinator.tabManager.tabs.first { $0.id == tabId }?.content.query
     }
 
     // MARK: - Results
@@ -150,7 +153,7 @@ internal enum ScriptingSnapshot {
             ? coordinator.changeManager.deletedRowIDs
             : tab.pendingChanges.deletedRowIDs
 
-        let tableRows = coordinator.tabSessionRegistry.tableRows(for: tabId)
+        let tableRows = coordinator.externallyMaskedRows(forTab: tabId)
         let read = DisplayedResultReader.read(
             tableRows: tableRows,
             displayIDs: coordinator.displayIDs(forTab: tabId),

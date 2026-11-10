@@ -81,6 +81,20 @@
                   </object>
                 </child>
                 <child>
+                  <object class="GtkButton" id="highlight_button">
+                    <property name="action-name">grid.highlight-rules</property>
+                    <property name="icon-name">document-edit-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Highlight Rules</property>
+                    <property name="visible">false</property>
+                    <style>
+                      <class name="flat"/>
+                    </style>
+                    <accessibility>
+                      <property name="label" translatable="yes">Highlight Rules</property>
+                    </accessibility>
+                  </object>
+                </child>
+                <child>
                   <object class="GtkButton" id="columns_button">
                     <property name="icon-name">view-reveal-symbolic</property>
                     <property name="tooltip-text" translatable="yes">Choose which columns the grid shows</property>

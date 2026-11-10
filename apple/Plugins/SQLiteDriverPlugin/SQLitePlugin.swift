@@ -246,7 +246,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private static func queryResult(_ rawResult: SQLiteRawResult) -> PluginQueryResult {
-        PluginQueryResult(
+        var result = PluginQueryResult(
             columns: rawResult.columns,
             columnTypeNames: rawResult.columnTypeNames,
             rows: rawResult.rows,
@@ -254,6 +254,8 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             executionTime: rawResult.executionTime,
             isTruncated: rawResult.isTruncated
         )
+        result.columnOrigins = rawResult.columnOrigins
+        return result
     }
 
     /// `sqlite3_interrupt` ends a statement that is running. A connection waiting for a lock is
@@ -366,7 +368,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private static func capped(_ raw: PluginQueryResult, to rowCap: Int?) -> PluginQueryResult {
         guard let cap = rowCap, cap > 0, raw.rows.count > cap else { return raw }
-        return PluginQueryResult(
+        var kept = PluginQueryResult(
             columns: raw.columns,
             columnTypeNames: raw.columnTypeNames,
             rows: Array(raw.rows.prefix(cap)),
@@ -375,6 +377,8 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             isTruncated: true,
             statusMessage: raw.statusMessage
         )
+        kept.columnOrigins = raw.columnOrigins
+        return kept
     }
 
     private static let rowReturningKeywords: Set<String> = ["SELECT", "WITH", "VALUES", "TABLE", "PRAGMA", "EXPLAIN"]

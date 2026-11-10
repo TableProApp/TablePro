@@ -131,6 +131,28 @@ struct SQLStatementGeneratorBitColumnTests {
         #expect(texts(statement) == ["5", "7"])
     }
 
+    // Cast as text, a boolean word is a truncated integer: 0 outside strict mode, an error inside it.
+    @Test("A boolean word, as JSON and PostgreSQL write one, is bound as 1 or 0")
+    func booleanWordsAreBoundAsBits() throws {
+        #expect(SQLStatementGenerator.decimalBitText("true") == "1")
+        #expect(SQLStatementGenerator.decimalBitText("FALSE") == "0")
+        #expect(SQLStatementGenerator.decimalBitText("t") == "1")
+        #expect(SQLStatementGenerator.decimalBitText("f") == "0")
+        #expect(SQLStatementGenerator.decimalBitText("yes") == "1")
+
+        let statement = try makeGenerator().insertStatement(columns: ["id", "flags"], values: ["1", "true"])
+        #expect(statement?.sql == "INSERT INTO `t` (`id`, `flags`) VALUES (?, CAST(? AS UNSIGNED))")
+        #expect(texts(statement) == ["1", "1"])
+    }
+
+    // Bound as it is, a space is its byte: 32 in a BIT(8), and too long for a BIT(1) in strict mode.
+    @Test("An empty or blank BIT value is bound as empty text, which the server stores as 0", arguments: ["", " ", "\t "])
+    func blankTextIsBoundEmpty(text: String) throws {
+        let statement = try makeGenerator().insertStatement(columns: ["id", "flags"], values: ["1", .text(text)])
+        #expect(statement?.sql == "INSERT INTO `t` (`id`, `flags`) VALUES (?, ?)")
+        #expect(texts(statement) == ["1", ""])
+    }
+
     @Test("Other columns, unknown types and engines whose BIT is a string of digits keep the plain placeholder")
     func everythingElseIsUnchanged() throws {
         let untyped = try makeGenerator(typeNames: [:]).generateUpdateSQL(for: flagsEdit(to: "5"))

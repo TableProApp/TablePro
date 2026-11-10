@@ -2,7 +2,7 @@ use std::fs::{DirBuilder, File, OpenOptions};
 use std::io::{ErrorKind, Write};
 #[cfg(unix)]
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::error::StorageError;
 
@@ -129,6 +129,37 @@ pub fn append_private_blocking(path: &Path, bytes: &[u8]) -> Result<(), StorageE
         .map_err(io_error)?;
     file.write_all(bytes).map_err(io_error)?;
     file.sync_all().map_err(io_error)
+}
+
+// A lock file the file system refuses (NFS without lockd, SMB) only warns: the caller's re-read still guards it.
+pub(crate) fn lock_beside_blocking(path: &Path) -> Option<File> {
+    let mut name = path.as_os_str().to_owned();
+    name.push(".lock");
+    let lock = PathBuf::from(name);
+    let opened = path
+        .parent()
+        .map_or(Ok(()), ensure_private_dir)
+        .map_err(|error| error.to_string())
+        .and_then(|()| {
+            private_file_options()
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(&lock)
+                .map_err(|error| error.to_string())
+        });
+    let file = match opened {
+        Ok(file) => file,
+        Err(error) => {
+            tracing::warn!(path = %lock.display(), %error, "no lock file; writing after a re-read alone");
+            return None;
+        }
+    };
+    if let Err(error) = file.lock() {
+        tracing::warn!(path = %lock.display(), %error, "the lock was refused; writing after a re-read alone");
+        return None;
+    }
+    Some(file)
 }
 
 /// Rename a file out of the way, returning the name it now has.
@@ -469,6 +500,43 @@ mod tests {
         assert_eq!(mode_of(&file), 0o600);
         assert_eq!(mode_of(file.parent().expect("parent")), 0o700);
         assert_eq!(std::fs::read(&file).expect("read"), b"first\nsecond\n");
+    }
+
+    #[test]
+    fn a_held_lock_makes_a_second_holder_wait_until_it_is_dropped() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let list = root.path().join("config").join("list.json");
+        let held = lock_beside_blocking(&list).expect("lock");
+        let (taken, waited) = std::sync::mpsc::channel();
+
+        let second = {
+            let list = list.clone();
+            std::thread::spawn(move || {
+                let lock = lock_beside_blocking(&list).expect("second lock");
+                taken.send(()).expect("send");
+                drop(lock);
+            })
+        };
+
+        assert!(
+            waited.recv_timeout(std::time::Duration::from_millis(200)).is_err(),
+            "a second holder took the lock while it was held"
+        );
+        drop(held);
+        waited
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("the lock once it was dropped");
+        second.join().expect("join");
+        assert_eq!(mode_of(&root.path().join("config").join("list.json.lock")), 0o600);
+    }
+
+    #[test]
+    fn a_lock_file_that_cannot_be_opened_is_no_lock_rather_than_an_error() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let list = root.path().join("list.json");
+        std::fs::create_dir(root.path().join("list.json.lock")).expect("a directory in its place");
+
+        assert!(lock_beside_blocking(&list).is_none());
     }
 
     #[test]

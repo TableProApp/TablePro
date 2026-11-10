@@ -7,6 +7,7 @@ pub const APPLICATIONS_ENGINEERING: &str = "applications-engineering-symbolic";
 pub const APPLICATIONS_SCIENCE: &str = "applications-science-symbolic";
 /// Bundled: a speech bubble, for the AI assistant.
 pub const ASSISTANT: &str = "assistant-symbolic";
+pub const CHANGES_ALLOW: &str = "changes-allow-symbolic";
 pub const CHANGES_PREVENT: &str = "changes-prevent-symbolic";
 pub const COMPUTER: &str = "computer-symbolic";
 pub const DIALOG_ERROR: &str = "dialog-error-symbolic";
@@ -90,6 +91,7 @@ pub const ALL: &[&str] = &[
     APPLICATIONS_ENGINEERING,
     APPLICATIONS_SCIENCE,
     ASSISTANT,
+    CHANGES_ALLOW,
     CHANGES_PREVENT,
     COMPUTER,
     DIALOG_ERROR,

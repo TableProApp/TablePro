@@ -658,6 +658,12 @@ extension DatabaseManager {
         guard let previous = session(for: connectionId) else {
             throw DatabaseError.notConnected
         }
+        // The reconnect would end a live transaction; one on a connection that already stopped answering is gone anyway.
+        if previous.liveness == .live, await browsedDriverHoldsTransaction(previous.driver, for: connectionId) {
+            throw DatabaseError.connectionFailed(
+                Self.switchEndsTransactionMessage(database: previous.resolvedBrowseDatabase)
+            )
+        }
         let previousDatabase = previous.connection.database
         let previousBrowseDatabase = previous.browseDatabase
         let previousBrowseSchema = previous.browseSchema
@@ -686,6 +692,27 @@ extension DatabaseManager {
             appSettingsStorage.saveLastSchema(previousSavedSchema, for: connectionId)
             throw error
         }
+    }
+
+    // The tracker's last answer, or the driver's own: a refusal over a transaction that is there is never wrong.
+    private func browsedDriverHoldsTransaction(_ driver: DatabaseDriver?, for connectionId: UUID) async -> Bool {
+        guard let driver, driver.supportsTransactions else { return false }
+        let tracked = sessionTransactions.holds(for: connectionId).contains { sessionTransactions.driver(for: $0) === driver }
+        if tracked { return true }
+        let state = await Self.boundedTransactionState(of: driver, clock: ContinuousClock())
+        return state == .inTransaction || state == .abortedTransaction
+    }
+
+    static func switchEndsTransactionMessage(database: String) -> String {
+        String(
+            format: String(
+                localized: """
+                    A transaction is open on %@. Switching databases reconnects, and the server would \
+                    roll it back. Commit or roll back the transaction, then switch again.
+                    """
+            ),
+            database
+        )
     }
 
     /// In the same turn as the session's browse cursor, so nothing reads one database's catalog under

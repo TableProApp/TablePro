@@ -30,6 +30,8 @@ internal struct DataSyncScriptBuilder {
     private let options: DataCompareOptions
     private let plan: DataComparePlan
     private let targetTypes: [String: ColumnType]
+    // Bit strings the two sides spell differently, so a source value is respelled before it is written.
+    private let bitRespellings: [String: (pair: CrossEngineValueCoercer.ColumnPair, from: SQLTypeFamily)]
     private let immutableColumns: Set<String>
 
     internal init(
@@ -45,11 +47,37 @@ internal struct DataSyncScriptBuilder {
         self.plan = plan
         self.immutableColumns = Set(immutableColumns.map { $0.lowercased() })
         var types: [String: ColumnType] = [:]
+        var respellings: [String: (pair: CrossEngineValueCoercer.ColumnPair, from: SQLTypeFamily)] = [:]
         for column in plan.columns {
+            if let respelling = Self.bitRespelling(of: column, targetDatabaseType: targetDatabaseType) {
+                respellings[column.name.lowercased()] = respelling
+            }
             guard let type = column.targetColumnType else { continue }
             types[column.name.lowercased()] = type
         }
         self.targetTypes = types
+        self.bitRespellings = respellings
+    }
+
+    private static func bitRespelling(
+        of column: CompareColumn,
+        targetDatabaseType: DatabaseType
+    ) -> (pair: CrossEngineValueCoercer.ColumnPair, from: SQLTypeFamily)? {
+        guard let sourceFamily = column.sourceFamily, let sourceType = column.sourceType else { return nil }
+        let targetFamily = column.targetFamily ?? SQLTypeFamily.of(targetDatabaseType)
+        let pair = CrossEngineValueCoercer.ColumnPair(
+            source: SQLTypeParser.parse(sourceType, family: sourceFamily).kind,
+            target: SQLTypeParser.parse(column.targetType ?? sourceType, family: targetFamily).kind
+        )
+        guard CrossEngineValueCoercer.respellsBits(pair, from: sourceFamily, to: targetFamily) else { return nil }
+        return (pair, sourceFamily)
+    }
+
+    // A value read from the source, which the target may spell differently.
+    private func sourceLiteral(_ value: PluginCellValue, column: String) -> String {
+        guard let respelling = bitRespellings[column.lowercased()] else { return literal(value, column: column) }
+        let respelled = CrossEngineValueCoercer.respelledBits(value, pair: respelling.pair, from: respelling.from)
+        return literal(respelled, column: column)
     }
 
     internal func build(entries: [RowDiffEntry]) -> [SyncStatement] {
@@ -132,7 +160,7 @@ internal struct DataSyncScriptBuilder {
     private func insertStatement(row: DataRow, entry: RowDiffEntry) -> SyncStatement {
         let columns = plan.writeColumns
         let columnList = columns.map { targetDriver.quoteIdentifier($0) }.joined(separator: ", ")
-        let valueList = columns.map { literal(row.value(for: $0), column: $0) }.joined(separator: ", ")
+        let valueList = columns.map { sourceLiteral(row.value(for: $0), column: $0) }.joined(separator: ", ")
         let override = identityInsertStyle == .overridingSystemValue ? " OVERRIDING SYSTEM VALUE" : ""
         return SyncStatement(
             sql: "INSERT INTO \(qualifiedTable) (\(columnList))\(override) VALUES (\(valueList))",
@@ -151,7 +179,7 @@ internal struct DataSyncScriptBuilder {
         } + changedKeys
         guard !assignable.isEmpty, let predicate = keyPredicate(row: target) else { return nil }
         let assignments = assignable
-            .map { "\(targetDriver.quoteIdentifier($0)) = \(literal(source.value(for: $0), column: $0))" }
+            .map { "\(targetDriver.quoteIdentifier($0)) = \(sourceLiteral(source.value(for: $0), column: $0))" }
             .joined(separator: ", ")
         let table = qualifiedTable
         return SyncStatement(
