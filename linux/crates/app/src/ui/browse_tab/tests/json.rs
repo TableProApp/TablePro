@@ -54,8 +54,10 @@ fn the_bottom_bar_shows_the_rows_as_json_without_structure_support() {
     assert!(tab.activate_action("grid.insert-row", None).is_err());
     assert!(tab.activate_action("grid.delete-rows", None).is_err());
     imp.view_stack.set_visible_child_name("data");
-    assert!(imp.insert_button.is_visible());
-    assert!(!imp.json_end.is_visible());
+    // At 600 px the narrow layout hides the row actions, so Insert's own flag is what Data restores.
+    assert!(imp.data_start.get_visible() && imp.data_end.get_visible());
+    assert!(imp.insert_button.get_visible());
+    assert!(!imp.json_end.get_visible());
 }
 
 #[gtk4::test]
