@@ -1,6 +1,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 private let queryExecutorLog = Logger(subsystem: "com.TablePro", category: "QueryExecutor")
 
@@ -472,9 +473,10 @@ final class QueryExecutor {
 
     static func detectAndReconcileParameters(
         sql: String,
-        existing: [QueryParameter]
+        existing: [QueryParameter],
+        grammar: SQLLexicalGrammar = SQLParameterExtractor.unspecifiedGrammar
     ) -> [QueryParameter] {
-        let detectedNames = SQLParameterExtractor.extractParameters(from: sql)
+        let detectedNames = SQLParameterExtractor.extractParameters(from: sql, grammar: grammar)
         guard !detectedNames.isEmpty else { return [] }
 
         let existingByName = Dictionary(

@@ -11,8 +11,8 @@ use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::{AdwDialogExt, AlertDialogExt, BinExt, PreferencesGroupExt};
 use tablepro_core::DataModel;
-use tablepro_storage::SavedQueries;
 use tablepro_storage::saved_queries::SavedQuery;
+use tablepro_storage::{QueryHistory, SavedQueriesSnapshot};
 use uuid::Uuid;
 
 use super::health_banner::REVIEW_HOST_KEY;
@@ -37,7 +37,7 @@ const FAVORITES: &str = "favorites";
 pub(super) const SHOW_ASSISTANT: &str = "show-assistant";
 
 type FavoritesRead = Result<
-    Option<Result<Vec<tablepro_storage::saved_queries::SavedQuery>, tablepro_storage::StorageError>>,
+    Option<Result<SavedQueriesSnapshot, tablepro_storage::StorageError>>,
     tablepro_session::runtime::TaskFailure,
 >;
 
@@ -590,6 +590,13 @@ impl WorkspaceShell {
         if imp.front.borrow().as_ref() == workspace {
             return;
         }
+        let previous = imp.front.borrow().clone();
+        if let Some(previous) = previous
+            && previous.with_model(|model| model.close_quick_open()).is_none()
+            && let Some(input) = previous.sender()
+        {
+            input.deliver(WorkspaceInput::Search(super::SearchInput::CloseQuickOpen));
+        }
         imp.front.replace(workspace.cloned());
         self.notify_front();
     }
@@ -658,7 +665,7 @@ impl WorkspaceShell {
             tasks,
             async move {
                 let history = ready.await?;
-                Some(history.saved_queries().list(Some(connection)).await)
+                Some(history.saved_queries().snapshot(connection).await)
             },
             glib::clone!(
                 #[weak(rename_to = shell)]
@@ -697,6 +704,10 @@ impl WorkspaceShell {
             }
             FavoriteAction::Rename(favorite) => self.ask_favorite_name(favorite),
             FavoriteAction::Delete(favorite) => self.ask_favorite_deletion(favorite),
+            FavoriteAction::MoveTo(favorite) => self.ask_folder_for(favorite),
+            FavoriteAction::NewFolder(parent) => self.ask_folder_name(parent, None),
+            FavoriteAction::RenameFolder(folder) => self.ask_folder_name(None, Some(folder)),
+            FavoriteAction::DeleteFolder(folder) => self.ask_folder_deletion(folder),
         }
     }
 
@@ -751,20 +762,31 @@ impl WorkspaceShell {
 
     pub(crate) fn rename_favorite(&self, id: i64, name: String) {
         self.change_favorites(
-            async move |store| store.rename(id, &name).await,
+            async move |history| history.saved_queries().rename(id, &name).await,
             gettext("Could not rename that saved query."),
         );
     }
 
     pub(crate) fn delete_favorite(&self, id: i64) {
         self.change_favorites(
-            async move |store| store.delete(id).await,
+            async move |history| history.saved_queries().delete(id).await,
             gettext("Could not delete that saved query."),
         );
     }
 
-    fn change_favorites<W>(&self, change: impl FnOnce(SavedQueries) -> W + Send + 'static, failure: String)
+    pub(super) fn change_favorites<W>(&self, change: impl FnOnce(QueryHistory) -> W + Send + 'static, failure: String)
     where
+        W: std::future::Future<Output = Result<(), tablepro_storage::StorageError>> + Send + 'static,
+    {
+        self.change_favorites_with(change, failure, favorite_failure_text);
+    }
+
+    pub(super) fn change_favorites_with<W>(
+        &self,
+        change: impl FnOnce(QueryHistory) -> W + Send + 'static,
+        failure: String,
+        describe: fn(&tablepro_storage::StorageError, &str) -> String,
+    ) where
         W: std::future::Future<Output = Result<(), tablepro_storage::StorageError>> + Send + 'static,
     {
         let imp = self.imp();
@@ -778,7 +800,7 @@ impl WorkspaceShell {
         let (send, received) = tokio::sync::oneshot::channel();
         crate::runtime::spawn_held(tasks, hold.as_ref(), async move {
             let result = match ready.await {
-                Some(history) => change(history.saved_queries()).await,
+                Some(history) => change(history).await,
                 None => Err(tablepro_storage::StorageError::NotInitialised),
             };
             let _ = send.send(result);
@@ -793,7 +815,7 @@ impl WorkspaceShell {
                 Ok(Ok(())) => return,
                 Ok(Err(error)) => {
                     tracing::warn!(%error, "could not change a favorite");
-                    favorite_failure_text(&error, &failure)
+                    describe(&error, &failure)
                 }
                 Err(error) => {
                     tracing::warn!(%error, "favorite change did not finish");
@@ -1106,7 +1128,7 @@ mod tests {
         shell.change_favorites(
             move |store| async move {
                 released.await.expect("release write");
-                store.rename(id, "After close").await
+                store.saved_queries().rename(id, "After close").await
             },
             "Rename failed".to_owned(),
         );
@@ -1223,15 +1245,43 @@ mod tests {
             created_at: std::time::SystemTime::UNIX_EPOCH,
             updated_at: std::time::SystemTime::UNIX_EPOCH,
         };
-        shell.favorites_arrived(current, connection, Ok(Some(Ok(vec![saved.clone()]))));
+        shell.favorites_arrived(
+            current,
+            connection,
+            Ok(Some(Ok(SavedQueriesSnapshot {
+                queries: vec![saved.clone()],
+                folders: vec![],
+            }))),
+        );
         let pane = shell.imp().favorites.get().expect("pane");
-        shell.favorites_arrived(old, connection, Ok(Some(Ok(vec![]))));
+        shell.favorites_arrived(
+            old,
+            connection,
+            Ok(Some(Ok(SavedQueriesSnapshot {
+                queries: vec![],
+                folders: vec![],
+            }))),
+        );
         assert_eq!(pane.names(), ["Current"]);
-        shell.favorites_arrived(current, Uuid::new_v4(), Ok(Some(Ok(vec![]))));
+        shell.favorites_arrived(
+            current,
+            Uuid::new_v4(),
+            Ok(Some(Ok(SavedQueriesSnapshot {
+                queries: vec![],
+                folders: vec![],
+            }))),
+        );
         assert_eq!(pane.names(), ["Current"]);
         shell.set_front(None);
         assert!(pane.names().is_empty());
-        shell.favorites_arrived(current, connection, Ok(Some(Ok(vec![saved]))));
+        shell.favorites_arrived(
+            current,
+            connection,
+            Ok(Some(Ok(SavedQueriesSnapshot {
+                queries: vec![saved],
+                folders: vec![],
+            }))),
+        );
         assert!(pane.names().is_empty());
     }
 

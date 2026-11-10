@@ -91,6 +91,7 @@ pub struct SessionWindow {
     /// The connect dialog was asked for and opens once the SSH keys are
     /// looked for.
     pub(super) dialog_opening: Cell<bool>,
+    pub(super) link_queued: Cell<bool>,
     pub(super) shut_down: Cell<bool>,
     pub(super) launch_notices: RefCell<Vec<Said>>,
     pub(super) unsaved_secrets: crate::ui::UnsavedSecretToasts,

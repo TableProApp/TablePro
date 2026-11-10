@@ -25,6 +25,7 @@ use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use secrecy::SecretString;
+use tablepro_core::connection_url::ConnectionUrl;
 use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::{
     AiPolicy, AuthMode, ConfigError, DatabaseDriver, DriverCapabilities, DriverRegistry, ExternalAccess, LocalSocket,
@@ -396,9 +397,20 @@ impl ConnectDialog {
         }
     }
 
+    // The link's text never reaches the URL row, so its password stays in the Password row alone.
+    pub fn fill_from_link(&self, url: ConnectionUrl) {
+        if let Err(message) = self.fill_from_parsed(url) {
+            self.show_toast(&message, None);
+        }
+    }
+
     fn fill_from_url(&self, text: &str) -> Result<(), String> {
         let url = tablepro_core::connection_url::parse(text)
             .map_err(|error| crate::ui::error_text::connection_url_message(&error))?;
+        self.fill_from_parsed(url)
+    }
+
+    fn fill_from_parsed(&self, url: ConnectionUrl) -> Result<(), String> {
         let index = self
             .imp()
             .drivers

@@ -66,6 +66,7 @@ enum RedisOperation {
     case configSet(parameter: String, value: String)
     case slowlogGet(count: Int?)
     case command(args: [RedisArgument])
+    case mustApply(args: [RedisArgument])
 
     // Multi
     case multi
@@ -89,13 +90,14 @@ struct RedisSetOptions {
     var pxat: Int?
     var nx: Bool = false
     var xx: Bool = false
+    var keepTTL: Bool = false
 
     static let valueOptions: Set<String> = ["EX", "PX", "EXAT", "PXAT"]
-    static let flagOptions: Set<String> = ["NX", "XX"]
+    static let flagOptions: Set<String> = ["NX", "XX", "KEEPTTL"]
 
     /// The driver rebuilds SET from the parsed options alone, so an option this type cannot carry
-    /// would be dropped on the way to the server: `SET k v KEEPTTL` would clear the very TTL it
-    /// asks to keep, and report OK. Anything unrecognised is sent verbatim instead.
+    /// would be dropped on the way to the server: `SET k v GET` would answer OK in place of the
+    /// old value. Anything unrecognised is sent verbatim instead.
     static func modelsEveryOption(in tokens: [RedisArgument]) -> Bool {
         var index = 0
         while index < tokens.count {
@@ -166,6 +168,7 @@ struct RedisCommandParser {
         let args = Array(tokens.dropFirst())
         if command == "DB" { return try parseInDatabase(args) }
         if command == "OUTSIDEBLOCK" { return try parseOutsideBlock(args) }
+        if command == RedisConditionalWrite.keyword { return try parseMustApply(args) }
 
         if let typedCount = typedArgumentCount[command], args.count > typedCount {
             return .command(args: tokens)
@@ -256,6 +259,25 @@ struct RedisCommandParser {
             database: try databaseIndex(indexArgument),
             operation: try parse(tokens: Array(args.dropFirst()))
         )
+    }
+
+    // The wrapper sends its command straight to the server, past every typed case and past the
+    // host's tiering of the command word, so it takes only the two writes whose reply it reads.
+    private static func parseMustApply(_ args: [RedisArgument]) throws -> RedisOperation {
+        let refusal = RedisParseError.invalidArgument(
+            String(localized: "MUSTAPPLY takes only RENAMENX or SET with NX")
+        )
+        switch args.first?.text.uppercased() {
+        case "RENAMENX":
+            guard args.count == 3 else { throw refusal }
+        case "SET":
+            let options = Array(args.dropFirst(3))
+            guard args.count > 3, RedisSetOptions.modelsEveryOption(in: options),
+                  try parseSetOptions(options)?.nx == true else { throw refusal }
+        default:
+            throw refusal
+        }
+        return .mustApply(args: args)
     }
 
     /// Only INFO and SLOWLOG GET keep their own grids; anything else goes to the server as typed.
@@ -1114,6 +1136,9 @@ struct RedisCommandParser {
                 hasOption = true
             case "XX":
                 options.xx = true
+                hasOption = true
+            case "KEEPTTL":
+                options.keepTTL = true
                 hasOption = true
             default:
                 break

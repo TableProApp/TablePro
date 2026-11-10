@@ -30,6 +30,7 @@ mod scheme_colors;
 mod selection;
 mod selection_summary;
 mod server_sorter;
+mod special_marks;
 mod stripes;
 mod table_keys;
 #[cfg(test)]
@@ -419,6 +420,7 @@ impl DataGrid {
     fn selection_moved(&self) {
         self.refresh_actions();
         self.imp().detail_pane.follow_focus();
+        self.open_details_for_selection();
         self.emit_by_name::<()>("selection-changed", &[]);
     }
 

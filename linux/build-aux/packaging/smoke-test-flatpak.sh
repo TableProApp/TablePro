@@ -75,11 +75,13 @@ in_app() {
 }
 
 check_app() {
-    help="$(dbus-run-session -- flatpak run "$1" --help)"
+    help="$(dbus-run-session -- flatpak run "$1" --help-all)"
     case "$help" in
     *--help-gapplication*) ;;
-    *) fail "$1 --help did not list the GApplication options: $help" ;;
+    *) fail "$1 --help-all did not list the GApplication options: $help" ;;
     esac
+    # The command line runs inside the sandbox, as Flatpak users reach it.
+    dbus-run-session -- flatpak run "$1" --version || fail "$1 --version failed"
     files="$(flatpak info --user --show-location "$1")/files"
     for lang in $languages; do
         [ -f "$files/share/locale/$lang/LC_MESSAGES/tablepro.mo" ] || fail "$1 has no $lang catalogue"

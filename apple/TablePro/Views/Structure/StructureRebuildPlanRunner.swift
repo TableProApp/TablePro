@@ -34,9 +34,17 @@ enum StructureRebuildPlanRunner {
         case schemaChanged
         case verificationFailed(String)
         case executionFailed(String)
+        case sessionTransactionOpen
 
         var errorDescription: String? {
             switch self {
+            case .sessionTransactionOpen:
+                return String(
+                    localized: """
+                        A transaction is open on this connection, and this change cannot run inside it. \
+                        Nothing was run. Commit or roll back the transaction, then try again.
+                        """
+                )
             case .schemaChanged:
                 return String(
                     localized: """
@@ -138,10 +146,6 @@ enum StructureRebuildPlanRunner {
                 throw RunError.schemaChanged
             }
 
-            for sql in plan.prologue {
-                _ = try? await driver.execute(query: sql)
-            }
-
             /// Only the transaction this plan opened is ever rolled back, and none is opened over a
             /// transaction the session already holds: on the same shared session an app-owned
             /// `COMMIT` commits the user's pending work, and MySQL's `START TRANSACTION` commits it
@@ -151,6 +155,15 @@ enum StructureRebuildPlanRunner {
                 supportsTransactions: driver.supportsTransactions,
                 sessionState: await driver.heldSessionTransactionState()
             )
+            // Inside a transaction SQLite ignores `PRAGMA foreign_keys = off`, so the rebuild's DROP TABLE cascades.
+            if !plan.prologue.isEmpty, plan.isTransactional, owner == .session {
+                throw RunError.sessionTransactionOpen
+            }
+
+            for sql in plan.prologue {
+                _ = try? await driver.execute(query: sql)
+            }
+
             let usesTransaction = plan.isTransactional && owner.opensTransaction
             if usesTransaction {
                 try await driver.beginTransaction(mode: .readWrite)

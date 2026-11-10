@@ -25,10 +25,12 @@ class DebianInstallTest(unittest.TestCase):
                 "command: ['sh', files('build.sh'), '@OUTPUT0@', '@OUTPUT1@'], "
                 "install: true, install_dir: ['bin', 'libexec'])\n"
                 "install_data('data.txt', install_dir: 'share/tablepro')\n"
+                "install_data('_tablepro', install_dir: 'share/zsh/site-functions')\n"
             )
             builder = source / "build.sh"
             builder.write_text('printf app > "$1"\nprintf askpass > "$2"\n')
             (source / "data.txt").write_text("package data")
+            (source / "_tablepro").write_text("#compdef tablepro")
             triple = subprocess.check_output(["dpkg-architecture", "-qDEB_HOST_GNU_TYPE"], text=True).strip()
             build = root / f"obj-{triple}"
             subprocess.run(["meson", "setup", str(build), str(source), "--prefix=/usr"], check=True)
@@ -41,6 +43,10 @@ class DebianInstallTest(unittest.TestCase):
             self.assertEqual((staged / "bin" / "tablepro").read_text(), "app")
             self.assertEqual((staged / "libexec" / "tablepro-askpass").read_text(), "askpass")
             self.assertEqual((staged / "share" / "tablepro" / "data.txt").read_text(), "package data")
+            self.assertEqual(
+                (staged / "share" / "zsh" / "vendor-completions" / "_tablepro").read_text(), "#compdef tablepro"
+            )
+            self.assertFalse((staged / "share" / "zsh" / "site-functions").exists())
 
 
 if __name__ == "__main__":
