@@ -220,7 +220,17 @@ fn narrow_window_swaps_tab_bar_for_tab_button() {
 
     assert!(!imp.tab_bar.is_visible(), "the tab bar stayed");
     assert!(imp.tab_button.is_visible(), "no tab button took its place");
+    assert!(
+        !imp.new_tab_button.is_visible(),
+        "New Query stayed beside the tab button"
+    );
+    assert!(imp.tab_overview.property::<bool>("enable-new-tab"));
     assert!(imp.split_view.is_collapsed());
+    let button = session_menu_button(&test);
+    wait_until(WAIT, || button.is_mapped()).expect("Session Menu at the window floor");
+    assert!(imp.content_header.measure(gtk::Orientation::Horizontal, -1).0 <= 360);
+    button.popup();
+    wait_until(WAIT, || button.popover().is_some_and(|menu| menu.is_mapped())).expect("the narrow menu opens");
 }
 
 #[gtk4::test]
@@ -289,16 +299,28 @@ fn every_page_fits_the_window_floor() {
     fits_the_floor(&content());
 }
 
-/// The floor measured on the tab's own content, with its widest
-/// bars up: the pager's longest label, pending changes and the
-/// filter strip.
 #[gtk4::test]
 fn an_open_table_tab_fits_the_window_floor() {
+    table_tab_fits_the_window_floor(false);
+}
+
+#[gtk4::test]
+fn a_table_tab_with_structure_switch_fits_the_window_floor() {
+    table_tab_fits_the_window_floor(true);
+}
+
+fn table_tab_fits_the_window_floor(with_structure: bool) {
     use crate::ui::browse_tab::{BrowseTab, PagingInput};
+    let mut connection = served_table();
+    if with_structure {
+        connection.dialect = Arc::new(tablepro_driver_postgres::PgDialect::new(
+            &tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0),
+        ));
+    }
     let test = TestWindow::with_script(
         "TableFloor",
         Script {
-            connection: served_table(),
+            connection,
             window_size: Some((360, 294)),
             ..Script::default()
         },
@@ -405,6 +427,106 @@ fn primary_menu_has_no_quit() {
         test.app.menu_by_id("tab_overview_menu").is_some(),
         "the overview's menu is missing"
     );
+}
+
+#[gtk4::test]
+fn application_and_session_commands_have_separate_native_menus() {
+    let test = TestWindow::connected("NativeMenus");
+    assert!(
+        test.app.menubar().is_none(),
+        "AdwApplicationWindow does not support a menu bar"
+    );
+    let primary = test.app.menu_by_id("primary_menu").expect("the primary menu");
+    let mut app_actions = Vec::new();
+    collect_actions(primary.upcast_ref(), &mut app_actions);
+    assert_eq!(app_actions.len(), 10);
+    let button = session_menu_button(&test);
+    assert!(!button.is_primary(), "F10 belongs to Main Menu");
+    crate::test_support::assert_labelled(&button).expect("the menu's accessible name");
+    let mut session_actions = Vec::new();
+    collect_actions(&button.menu_model().expect("the session menu"), &mut session_actions);
+    for expected in [
+        "win.safe-mode",
+        "win.show-history",
+        "win.show-saved-queries",
+        "win.export-database",
+        "win.import-sql-file",
+        "win.disconnect",
+    ] {
+        assert!(
+            session_actions.iter().any(|action| action == expected),
+            "{expected} is missing"
+        );
+        assert!(
+            !app_actions.iter().any(|action| action == expected),
+            "{expected} is duplicated"
+        );
+    }
+    for action in &app_actions {
+        assert!(!session_actions.contains(action), "{action} belongs to Main Menu");
+    }
+}
+
+fn session_menu_button(test: &TestWindow) -> gtk::MenuButton {
+    let shell = test.window.shell().expect("the workspace shell");
+    descendants(&shell.imp().content_header.get())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::MenuButton>().ok())
+        .find(|button| button.tooltip_text().as_deref() == Some("Session Menu"))
+        .expect("Session Menu in the content header")
+}
+
+fn click_menu_item(menu: &gtk::Popover, label: &str) {
+    let mut found = None;
+    wait_until(WAIT, || {
+        found = descendants(menu).into_iter().find(|widget| {
+            widget.type_().name() == "GtkModelButton"
+                && widget.property::<Option<String>>("text").as_deref() == Some(label)
+                && widget.is_mapped()
+                && widget.is_sensitive()
+        });
+        found.is_some()
+    })
+    .unwrap_or_else(|_| panic!("no enabled menu item {label}"));
+    found.expect("the item").emit_by_name::<()>("clicked", &[]);
+}
+
+#[gtk4::test]
+fn the_session_menu_changes_safe_mode_through_its_radio_item() {
+    let test = TestWindow::connected("SessionMenuSafeMode");
+    let button = session_menu_button(&test);
+    button.popup();
+    let menu = button.popover().expect("the session menu");
+    click_menu_item(&menu, "Safe Mode");
+    click_menu_item(&menu, "Confirm Writes");
+    wait_until(WAIT, || {
+        test.window
+            .front_session()
+            .is_some_and(|(_, session)| session.safe_mode() == tablepro_core::SafeModeLevel::ConfirmWrites)
+    })
+    .expect("the selected level to reach the session");
+    assert_eq!(
+        test.window
+            .lookup_action("safe-mode")
+            .and_then(|action| action.state())
+            .and_then(|state| state.get::<String>()),
+        Some("confirm-writes".to_owned())
+    );
+}
+
+#[gtk4::test]
+fn the_session_menu_disconnects_the_session_in_front() {
+    let test = TestWindow::connected("SessionMenuDisconnect");
+    let button = session_menu_button(&test);
+    button.popup();
+    click_menu_item(&button.popover().expect("the menu"), "Disconnect");
+    test.wait_for_page("picker");
+    assert!(test.window.front_session().is_none());
+    assert!(!descendants(&test.window).iter().any(|widget| {
+        widget
+            .downcast_ref::<gtk::MenuButton>()
+            .is_some_and(|button| button.tooltip_text().as_deref() == Some("Session Menu"))
+    }));
 }
 
 #[gtk4::test]
@@ -575,6 +697,22 @@ fn the_main_menu_adds_a_connection_with_none_open() {
     );
 
     choose_new_connection(&test, &test.window.content().expect("the picker"));
+}
+
+fn collect_actions(menu: &gio::MenuModel, actions: &mut Vec<String>) {
+    for item in 0..menu.n_items() {
+        if let Some(action) = menu
+            .item_attribute_value(item, "action", None)
+            .and_then(|value| value.get::<String>())
+        {
+            actions.push(action);
+        }
+        for link in ["section", "submenu"] {
+            if let Some(inner) = menu.item_link(item, link) {
+                collect_actions(&inner, actions);
+            }
+        }
+    }
 }
 
 #[gtk4::test]

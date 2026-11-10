@@ -24,7 +24,7 @@ use crate::i18n::{gettext, gettext_f};
 use crate::runtime::{DeliverInput, InputSender};
 use crate::ui::SessionWindowInput;
 use crate::ui::a11y::describe_icon_button;
-use crate::ui::shell::{PRIMARY_MENU, TAB_OVERVIEW_MENU, app_menu, primary_menu_button};
+use crate::ui::shell::{SESSION_MENU, TAB_OVERVIEW_MENU, app_menu, primary_menu_button};
 
 /// The window action that shows and hides the sidebar, as GNOME Files
 /// names it.
@@ -144,11 +144,16 @@ impl WorkspaceShell {
         let _ = imp.sender.set(sender);
 
         let app = window.application();
-        let menu_button = primary_menu_button(app.as_ref());
-        if let Some(menu) = app_menu(app.as_ref(), PRIMARY_MENU) {
-            menu_button.set_menu_model(Some(&with_safe_mode(&menu)));
+        imp.sidebar_header.pack_end(&primary_menu_button(app.as_ref()));
+        let session_menu = gtk::MenuButton::builder()
+            .icon_name(crate::ui::icons::VIEW_MORE)
+            .build();
+        crate::ui::a11y::describe_icon_button(&session_menu, &gettext("Session Menu"), None);
+        match app_menu(app.as_ref(), SESSION_MENU) {
+            Some(menu) => session_menu.set_menu_model(Some(&with_safe_mode(&menu))),
+            None => session_menu.set_sensitive(false),
         }
-        imp.sidebar_header.pack_end(&menu_button);
+        imp.content_header.pack_end(&session_menu);
 
         super::workspace_actions::install(window, &shell);
         imp.history_gate
@@ -1056,8 +1061,6 @@ fn tab_menu() -> gio::Menu {
     menu
 }
 
-/// The main menu with the session's Safe Mode levels on top, as radio
-/// items of the window's stateful `safe-mode` action.
 fn with_safe_mode(menu: &gio::MenuModel) -> gio::Menu {
     let levels = gio::Menu::new();
     for level in tablepro_core::SafeModeLevel::ALL {
@@ -1276,12 +1279,12 @@ mod tests {
     }
 
     #[gtk4::test]
-    fn the_tab_menu_and_the_main_menu_give_each_item_its_own_access_key() {
+    fn the_tab_and_session_menus_give_each_item_its_own_access_key() {
         crate::register_test_resources();
         let builder = gtk::Builder::from_resource(&format!("{RESOURCE_BASE_PATH}/gtk/menus.ui"));
-        let main: gio::MenuModel = builder.object(PRIMARY_MENU).expect("the main menu");
+        let session: gio::MenuModel = builder.object(SESSION_MENU).expect("the session menu");
 
         assert_access_keys(&tab_menu());
-        assert_access_keys(&with_safe_mode(&main));
+        assert_access_keys(&with_safe_mode(&session));
     }
 }

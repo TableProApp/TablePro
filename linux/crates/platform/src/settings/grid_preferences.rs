@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 use gio::prelude::*;
 use glib::subclass::prelude::*;
 
-use super::keys;
+use super::{EditorFont, keys};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum GridRowHeight {
@@ -53,6 +53,7 @@ pub struct GridPreferenceValues {
     pub show_alternate_rows: bool,
     pub row_height: GridRowHeight,
     pub null_display: String,
+    pub font: EditorFont,
 }
 
 impl Default for GridPreferenceValues {
@@ -62,6 +63,7 @@ impl Default for GridPreferenceValues {
             show_alternate_rows: true,
             row_height: GridRowHeight::Normal,
             null_display: "NULL".to_owned(),
+            font: EditorFont::System,
         }
     }
 }
@@ -73,6 +75,11 @@ impl GridPreferenceValues {
             show_alternate_rows: settings.boolean(keys::SHOW_ALTERNATE_ROWS),
             row_height: GridRowHeight::from_nick(&settings.string(keys::GRID_ROW_HEIGHT)),
             null_display: null_display_text(&settings.string(keys::NULL_DISPLAY)),
+            font: if settings.boolean(keys::GRID_USE_SYSTEM_FONT) {
+                EditorFont::System
+            } else {
+                EditorFont::Custom(settings.string(keys::GRID_FONT).into())
+            },
         }
     }
 }
@@ -135,7 +142,12 @@ impl GridPreferences {
         let handler = settings.connect_changed(None, move |settings, key| {
             if matches!(
                 key,
-                keys::SHOW_ROW_NUMBERS | keys::SHOW_ALTERNATE_ROWS | keys::GRID_ROW_HEIGHT | keys::NULL_DISPLAY
+                keys::SHOW_ROW_NUMBERS
+                    | keys::SHOW_ALTERNATE_ROWS
+                    | keys::GRID_ROW_HEIGHT
+                    | keys::NULL_DISPLAY
+                    | keys::GRID_USE_SYSTEM_FONT
+                    | keys::GRID_FONT
             ) && let Some(preferences) = weak.upgrade()
             {
                 preferences.update(GridPreferenceValues::read(settings));

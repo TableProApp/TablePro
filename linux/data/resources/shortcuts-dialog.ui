@@ -147,13 +147,13 @@
           </object>
         </child>
         <child>
-          <object class="AdwShortcutsItem" id="browse-refresh">
+          <object class="AdwShortcutsItem" id="table-refresh">
             <property name="title" translatable="yes">Read the Table Again</property>
             <property name="accelerator">F5 &lt;Primary&gt;r</property>
           </object>
         </child>
         <child>
-          <object class="AdwShortcutsItem" id="browse-save">
+          <object class="AdwShortcutsItem" id="table-save">
             <property name="title" translatable="yes">Save Pending Changes</property>
             <property name="accelerator">&lt;Primary&gt;s</property>
           </object>
