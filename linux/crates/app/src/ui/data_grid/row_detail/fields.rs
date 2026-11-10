@@ -181,6 +181,7 @@ fn field_parts(row: &gtk::Widget) -> Option<FieldParts> {
     let edited = name.next_sibling()?;
     let kind = edited.next_sibling()?.last_child()?;
     let tools = content.next_sibling()?.first_child()?;
+    let copy = tools.next_sibling()?;
     Some(FieldParts {
         key: key.downcast().ok()?,
         name: name.downcast().ok()?,
@@ -188,7 +189,7 @@ fn field_parts(row: &gtk::Widget) -> Option<FieldParts> {
         kind: kind.downcast().ok()?,
         value: top.next_sibling()?.downcast().ok()?,
         tools: tools.downcast().ok()?,
-        copy: tools.next_sibling()?.downcast().ok()?,
+        copy: copy.downcast().ok()?,
         slot: line.next_sibling()?.downcast().ok()?,
     })
 }
