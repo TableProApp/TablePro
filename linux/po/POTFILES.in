@@ -301,6 +301,8 @@ crates/app/src/ui/data_grid/row_detail/tests.rs
 crates/app/src/ui/data_grid/row_detail/value_editor.rs
 crates/app/src/ui/data_grid/row_json_dialog.rs
 crates/app/src/ui/data_grid/row_number_column.rs
+crates/app/src/ui/data_grid/scheme_colors/mod.rs
+crates/app/src/ui/data_grid/scheme_colors/tests.rs
 crates/app/src/ui/data_grid/selection.rs
 crates/app/src/ui/data_grid/selection_summary.rs
 crates/app/src/ui/data_grid/server_sorter.rs

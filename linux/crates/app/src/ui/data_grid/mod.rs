@@ -26,6 +26,7 @@ mod reversed_list;
 mod row_detail;
 mod row_json_dialog;
 mod row_number_column;
+mod scheme_colors;
 mod selection;
 mod selection_summary;
 mod server_sorter;
@@ -95,6 +96,7 @@ impl DataGrid {
         imp.detail_pane.attach(&grid);
         grid.watch_display_settings();
         grid.set_columns(columns, sorting, rules);
+        scheme_colors::follow(&grid);
         grid.watch_fonts();
         grid
     }
