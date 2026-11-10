@@ -57,6 +57,8 @@ enum ActiveSheet: Identifiable {
     // The files are in `importBatch`, each imported into its own table.
     case rowImportBatch
     case exportQueryResults
+    // Carries its rows: Table Health exports the findings it lists, not a result set.
+    case exportDataSource(DataSourceExportRequest)
     // Carries the right-clicked tables: the object browser may point elsewhere by the time the sheet appears.
     case transferTables(tables: Set<String>, schema: String?)
     // Carries the right-clicked databases, not the object browser's current one. Empty means the browse database.
@@ -96,6 +98,7 @@ enum ActiveSheet: Identifiable {
         case .rowImport(let formatId): "rowImport-\(formatId)"
         case .rowImportBatch: "rowImportBatch"
         case .exportQueryResults: "exportQueryResults"
+        case .exportDataSource: "exportDataSource"
         case .transferTables(let tables, let schema):
             "transferTables-\(schema ?? "")-\(tables.sorted().joined(separator: ","))"
         case .backupDatabase: "backupDatabase"
@@ -203,6 +206,8 @@ final class MainContentCoordinator: ObservableObject {
     @Published var userTypeEditors: [UUID: UserTypeEditorModel] = [:]
     // Held here for the same reason: the diagram stages schema edits that Save and the close gate reach.
     @Published var erDiagramModels: [UUID: ERDiagramViewModel] = [:]
+    // Held here so Refresh, File > Export and a tab close reach the model; a close cancels its report.
+    @Published var tableHealthModels: [UUID: TableHealthViewModel] = [:]
 
     // The cached view model keeps staged work after `usersRolesActions` is nilled; without this a background tab closes silently.
     internal var tabsWithStagedPrincipals: Set<UUID> = []
@@ -909,6 +914,7 @@ final class MainContentCoordinator: ObservableObject {
         createTableDrafts.removeAll()
         userTypeEditors.removeAll()
         erDiagramModels.removeAll()
+        discardTableHealthModels(Array(tableHealthModels.keys))
         displayFormatsCache.removeAll()
         tableMetadataCache.removeAll()
         schemaColumns.removeAll()
