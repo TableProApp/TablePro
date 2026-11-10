@@ -3,7 +3,9 @@
 //  TableProTests
 //
 
+import Combine
 import Foundation
+import TableProTestSupport
 import Testing
 
 @testable import TablePro
@@ -85,6 +87,57 @@ struct CatalogObjectListSourceTests {
         let outcome = await service.objects(.routine, in: scope(connection), rereading: false)
 
         #expect(fetched(outcome) == .routines([touch]))
+        await disconnect(connection)
+    }
+
+    @Test("A tab follows the sidebar's own list: a read the sidebar commits reaches it")
+    func changesFollowTheSidebarsList() async {
+        let (connection, driver) = connect()
+        let touch = RoutineInfo(name: "touch", kind: .function, schema: "public")
+        let audit = RoutineInfo(name: "audit", kind: .function, schema: "public")
+        driver.schemaRoutinesToReturn = ["public": [touch]]
+        var seen: [CatalogObjectList] = []
+        let subscription = service.objectListChanges(.routine, in: scope(connection)).sink { seen.append($0) }
+        defer { subscription.cancel() }
+
+        _ = await service.objects(.routine, in: scope(connection), rereading: false)
+        #expect(seen.last == .routines([touch]))
+
+        driver.schemaRoutinesToReturn = ["public": [touch, audit]]
+        await service.refreshRoutineObjects(connectionId: connection.id, database: connection.database, schema: "public")
+
+        #expect(seen.last == .routines([touch, audit]))
+        await disconnect(connection)
+    }
+
+    /// The list keeps its rows while a newer read runs, so taking it as it stood handed the tab the
+    /// rows from before either read began, as if they were fresh.
+    @Test("A refresh a newer sidebar read overtakes waits for that read and returns its rows")
+    func overtakenRefreshTakesTheNewerRead() async {
+        let (connection, driver) = connect()
+        let touch = RoutineInfo(name: "touch", kind: .function, schema: "public")
+        let audit = RoutineInfo(name: "audit", kind: .function, schema: "public")
+        let purge = RoutineInfo(name: "purge", kind: .function, schema: "public")
+        driver.schemaRoutinesToReturn = ["public": [touch]]
+        _ = await service.objects(.routine, in: scope(connection), rereading: false)
+        let tabRead = HeldDriverRead()
+        let sidebarRead = HeldDriverRead()
+        driver.routineFetchHolds = [tabRead, sidebarRead]
+
+        driver.schemaRoutinesToReturn = ["public": [touch, audit]]
+        let refresh = Task { await service.objects(.routine, in: scope(connection), rereading: true) }
+        await tabRead.reached.wait()
+        driver.schemaRoutinesToReturn = ["public": [touch, audit, purge]]
+        let sidebar = Task {
+            await service.refreshRoutineObjects(connectionId: connection.id, database: connection.database, schema: "public")
+        }
+        await tabRead.cancelled.wait()
+        await tabRead.release.open()
+        await sidebarRead.reached.wait()
+        await sidebarRead.release.open()
+
+        #expect(fetched(await refresh.value) == .routines([touch, audit, purge]))
+        _ = await sidebar.value
         await disconnect(connection)
     }
 

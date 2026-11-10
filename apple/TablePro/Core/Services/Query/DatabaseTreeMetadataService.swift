@@ -611,39 +611,46 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     /// The schema's trigger list alone beside the tables: the table refresh already reads every detail
     /// list, the per-table Triggers among them, and reading one twice at once cancels the first read.
     func refreshObjects(connectionId: UUID, database: String, schema: String?) async {
-        async let tables: Void = refreshTableObjects(connectionId: connectionId, database: database, schema: schema)
-        async let routines: Void = refreshRoutineObjects(connectionId: connectionId, database: database, schema: schema)
-        async let triggers: Void = rereadTriggers(
+        async let tables = refreshTableObjects(connectionId: connectionId, database: database, schema: schema)
+        async let routines = refreshRoutineObjects(connectionId: connectionId, database: database, schema: schema)
+        async let triggers = rereadTriggers(
             Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
         )
-        async let types: Void = refreshUserDefinedTypeObjects(
+        async let types = refreshUserDefinedTypeObjects(
             connectionId: connectionId, database: database, schema: schema
         )
         _ = await (tables, routines, triggers, types)
     }
 
     /// A row refreshes only the fetch its kind comes from. Partitions and a table's detail lists ride
-    /// with the tables, because their rows are drawn as children of a table.
-    func refreshTableObjects(connectionId: UUID, database: String, schema: String?) async {
+    /// with the tables, because their rows are drawn as children of a table. Each says whether a newer
+    /// read overtook it, for a reader that needs that read's rows rather than the ones the list kept
+    /// meanwhile.
+    @discardableResult
+    func refreshTableObjects(connectionId: UUID, database: String, schema: String?) async -> Bool {
         let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
-        async let tables: Void = rereadTables(key)
+        async let tables = rereadTables(key)
         async let partitions: Void = refreshPartitions(under: key)
         async let details: Void = refreshTableDetails(under: key)
-        _ = await (tables, partitions, details)
+        let (overtaken, _, _) = await (tables, partitions, details)
+        return overtaken
     }
 
-    func refreshRoutineObjects(connectionId: UUID, database: String, schema: String?) async {
+    @discardableResult
+    func refreshRoutineObjects(connectionId: UUID, database: String, schema: String?) async -> Bool {
         let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
-        await reread(key, connectionId: connectionId, in: routineLists, fetch: routineListFetch(key))
+        return await reread(key, connectionId: connectionId, in: routineLists, fetch: routineListFetch(key))
     }
 
     /// A table's Triggers group lists the same triggers one table at a time, so it reads again with
     /// the schema's list rather than staying stale beside it.
-    func refreshTriggerObjects(connectionId: UUID, database: String, schema: String?) async {
+    @discardableResult
+    func refreshTriggerObjects(connectionId: UUID, database: String, schema: String?) async -> Bool {
         let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
-        async let triggers: Void = rereadTriggers(key)
+        async let triggers = rereadTriggers(key)
         async let details: Void = refreshTableDetails(under: key, kinds: [.triggers])
-        _ = await (triggers, details)
+        let (overtaken, _) = await (triggers, details)
+        return overtaken
     }
 
     /// The hierarchical layout reloads a schema through `SchemaService`, which holds no detail list,
@@ -652,19 +659,20 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         await refreshTableDetails(under: Self.objectsKey(connectionId: connectionId, database: database, schema: schema))
     }
 
-    func refreshUserDefinedTypeObjects(connectionId: UUID, database: String, schema: String?) async {
-        guard browsesUserDefinedTypes(connectionId) else { return }
+    @discardableResult
+    func refreshUserDefinedTypeObjects(connectionId: UUID, database: String, schema: String?) async -> Bool {
+        guard browsesUserDefinedTypes(connectionId) else { return false }
         let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
-        await reread(key, connectionId: connectionId, in: typeLists, fetch: typeListFetch(key))
+        return await reread(key, connectionId: connectionId, in: typeLists, fetch: typeListFetch(key))
     }
 
-    private func rereadTables(_ key: ObjectsKey) async {
+    private func rereadTables(_ key: ObjectsKey) async -> Bool {
         await reread(key, connectionId: key.connectionId, in: tableLists, fetch: tableListFetch(key))
     }
 
-    private func rereadTriggers(_ key: ObjectsKey) async {
-        guard browsesTriggers(key.connectionId) else { return }
-        await reread(key, connectionId: key.connectionId, in: triggerLists, fetch: triggerListFetch(key))
+    private func rereadTriggers(_ key: ObjectsKey) async -> Bool {
+        guard browsesTriggers(key.connectionId) else { return false }
+        return await reread(key, connectionId: key.connectionId, in: triggerLists, fetch: triggerListFetch(key))
     }
 
     /// A list that is not loaded is dropped and read by its next reader rather than now.
@@ -811,17 +819,20 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
 
     /// Refresh and Retry: supersede before the first suspension, so a fetch still in flight cannot
     /// commit, and a reread superseded meanwhile stops rather than committing under the newer token.
+    /// Returns whether it was superseded so.
+    @discardableResult
     private func reread<Key: Hashable & Sendable, Value: Sendable & Equatable>(
         _ key: Key,
         connectionId: UUID,
         in list: TreeList<Key, Value>,
         fetch: @Sendable @escaping () async throws -> Value
-    ) async {
+    ) async -> Bool {
         let token = self[keyPath: list.commit].fence.supersede(key)
         self[keyPath: list.commit].freshness.markChanged(key)
         let revision = self[keyPath: list.commit].freshness.revision(for: key)
         await list.dedup.cancel { $0.key == key && $0.revision != revision }
         await read(key, connectionId: connectionId, in: list, token: token, fetch: fetch)
+        return !self[keyPath: list.commit].fence.isCurrent(token, for: key)
     }
 
     private func schemaListFetch(_ key: DatabaseKey) -> @Sendable () async throws -> [String] {

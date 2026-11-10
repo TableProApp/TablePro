@@ -105,6 +105,8 @@ private struct ObjectSourceRequest: Equatable {
 @MainActor
 private final class ScriptedObjectSource: CatalogObjectListSource {
     var reply: MetadataFetchOutcome<CatalogObjectList> = .fetched(.routines([]))
+    // The sidebar committing a list, which an open tab of another kind follows.
+    let changes = PassthroughSubject<CatalogObjectList, Never>()
     // Taken in order before `reply`, for a read that answers differently the next time.
     var replies: [MetadataFetchOutcome<CatalogObjectList>] = []
     private(set) var requests: [ObjectSourceRequest] = []
@@ -129,6 +131,10 @@ private final class ScriptedObjectSource: CatalogObjectListSource {
             await hold.release.wait()
         }
         return reply
+    }
+
+    func objectListChanges(_ category: SidebarObjectCategory, in scope: DatabaseScope) -> AnyPublisher<CatalogObjectList, Never> {
+        changes.eraseToAnyPublisher()
     }
 }
 
@@ -537,6 +543,60 @@ struct TableListingViewModelTests {
         await viewModel.reload().value
 
         #expect(viewModel.state.erased == .failed("permission denied for schema sales"))
+    }
+
+    // MARK: - Following the sidebar
+
+    @Test("Another kind's open tab follows the sidebar's list, keeping its filter, sort and selection")
+    func otherKindFollowsTheSidebarsList() async throws {
+        let source = ScriptedObjectSource()
+        source.reply = .fetched(functions("touch", "audit", "archive_orders"))
+        let (viewModel, _) = makeViewModel(kind: .function, objectSource: source)
+        await viewModel.loadIfNeeded()?.value
+        let model = viewModel.grid.model
+        model.setSort(SortState(columns: [SortColumn(columnIndex: 0, direction: .ascending)], source: .user))
+        viewModel.filterText = "a"
+        #expect(gridNames(viewModel) == ["archive_orders", "audit"])
+        model.selectCell(GridCoord(row: 1, displayColumn: 0))
+
+        // A statement created two functions, one of them listed before the selected one.
+        source.changes.send(functions("purge", "touch", "audit", "archive_orders", "alert"))
+
+        #expect(gridNames(viewModel) == ["alert", "archive_orders", "audit"])
+        #expect(viewModel.count == ObjectListingCount(shown: 3, total: 5))
+        let selected = try #require(model.selectedRowIDs.first)
+        #expect(viewModel.state.value?.items[selected]?.name == "audit")
+
+        source.changes.send(functions("touch", "archive_orders"))
+
+        #expect(gridNames(viewModel) == ["archive_orders"])
+        #expect(model.selectedRowIDs.isEmpty)
+    }
+
+    @Test("A list the sidebar commits again unchanged leaves the grid as it is")
+    func unchangedListLeavesTheGrid() async {
+        let source = ScriptedObjectSource()
+        source.reply = .fetched(functions("touch", "audit"))
+        let (viewModel, _) = makeViewModel(kind: .function, objectSource: source)
+        await viewModel.loadIfNeeded()?.value
+        let revision = viewModel.grid.model.displayRevision
+
+        source.changes.send(functions("touch", "audit"))
+
+        #expect(viewModel.grid.model.displayRevision == revision)
+    }
+
+    @Test("The sidebar's list leaves a tab with nothing loaded to its own first load")
+    func followingWaitsForTheFirstLoad() async {
+        let source = ScriptedObjectSource()
+        source.reply = .fetched(functions("touch"))
+        let (viewModel, _) = makeViewModel(kind: .function, objectSource: source)
+
+        source.changes.send(functions("touch", "audit"))
+        #expect(viewModel.state.erased == .idle)
+
+        await viewModel.loadIfNeeded()?.value
+        #expect(names(viewModel.state) == ["touch"])
     }
 
     // MARK: - Filter and count

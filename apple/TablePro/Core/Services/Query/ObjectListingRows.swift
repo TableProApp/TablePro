@@ -54,6 +54,11 @@ extension ObjectListingItem {
 }
 
 extension TableListing {
+    /// A list the sidebar commits again unchanged has nothing for the grid to redraw.
+    func showsSameRows(as other: TableListing) -> Bool {
+        rows.columns == other.rows.columns && rows.rows == other.rows.rows && items == other.items
+    }
+
     /// Where each object `previous` listed sits in this listing, by row id. Row ids are positions, so
     /// an object created or dropped above another moves it to another id. Nil when `previous` names no
     /// objects: its rows are plain values with nothing to follow.

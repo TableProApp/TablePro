@@ -42,6 +42,7 @@ internal final class TableListingViewModel: ObservableObject {
     private var loadTask: Task<Void, Never>?
     private var generation = 0
     private var refreshSubscription: AnyCancellable?
+    private var listSubscription: AnyCancellable?
     private var firstLoadRereads = false
 
     init(
@@ -70,6 +71,11 @@ internal final class TableListingViewModel: ObservableObject {
             self?.menuItems(for: rowIDs, clicked: clicked) ?? []
         }
         grid.opensRow = { [weak self] rowID in self?.open(rowID) }
+        // Tables come from the plugin's listing statement; every other kind is the sidebar's own list.
+        if kind != .table {
+            listSubscription = objectSource.objectListChanges(kind.category, in: scope)
+                .sink { [weak self] list in self?.follow(list) }
+        }
     }
 
     /// Whether each row names an object, which the name filter and the row commands need.
@@ -110,6 +116,7 @@ internal final class TableListingViewModel: ObservableObject {
         loadTask?.cancel()
         generation &+= 1
         refreshSubscription = nil
+        listSubscription = nil
     }
 
     private func load(rereading: Bool) -> Task<Void, Never> {
@@ -167,6 +174,16 @@ internal final class TableListingViewModel: ObservableObject {
             wasInterrupted = true
         }
         showRows(replacing: previous)
+    }
+
+    /// The sidebar committed this kind's list, after a refresh, a statement or a drop there: rows on
+    /// screen follow it, so the tab and the tree never disagree. A first load on its way brings its own.
+    private func follow(_ list: CatalogObjectList) {
+        guard let shown = state.value else { return }
+        let listing = ObjectListingRows.listing(kind: target.kind, from: list, scope: scope)
+        guard !listing.showsSameRows(as: shown) else { return }
+        state = .loaded(listing)
+        showRows(replacing: shown)
     }
 
     /// The grid keeps its selection by row id, which is a position here, so rows replacing `previous`

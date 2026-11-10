@@ -28,6 +28,10 @@ private final class RecordingObjectSource: CatalogObjectListSource {
         reads.append(ObjectListRead(category: category, rereading: rereading))
         return .fetched(category == .table ? .relations([]) : .routines([]))
     }
+
+    func objectListChanges(_ category: SidebarObjectCategory, in scope: DatabaseScope) -> AnyPublisher<CatalogObjectList, Never> {
+        Empty().eraseToAnyPublisher()
+    }
 }
 
 /// Show All Tables used to open the listing statement in an editor tab, "Query 1", that nothing ran.
