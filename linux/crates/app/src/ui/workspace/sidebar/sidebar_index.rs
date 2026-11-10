@@ -344,7 +344,8 @@ impl ObjectGroup {
             ObjectKind::Procedure => Some(Self::Procedures),
             ObjectKind::Function => Some(Self::Functions),
             ObjectKind::Trigger => Some(Self::Triggers),
-            ObjectKind::Table | ObjectKind::PartitionedTable | ObjectKind::Dictionary | ObjectKind::Key(_) => None,
+            // A kind the core adds later stays with the tables until it has a group.
+            _ => None,
         }
     }
 
@@ -608,6 +609,19 @@ mod tests {
                 (Some(ObjectGroup::Triggers), 6, 8),
             ]
         );
+    }
+
+    #[test]
+    fn tables_partitions_dictionaries_and_keys_have_no_group() {
+        for kind in [
+            ObjectKind::Table,
+            ObjectKind::PartitionedTable,
+            ObjectKind::Dictionary,
+            ObjectKind::Key(tablepro_core::meta::KeyKind::Hash),
+        ] {
+            assert_eq!(ObjectGroup::of(kind), None, "{kind:?}");
+            assert_eq!(kind_rank(kind), 0, "{kind:?} sorts with the tables");
+        }
     }
 
     #[test]
