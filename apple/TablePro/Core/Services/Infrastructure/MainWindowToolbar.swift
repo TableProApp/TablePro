@@ -101,6 +101,13 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     // The Objects buttons' facts and what they were read from, kept from one validation pass to the next.
     internal var objectKindFactsCache: ObjectKindFactsCache?
 
+    // Whether the Navigator Layout asks for labels under the icons.
+    internal var labelsEnabled: @MainActor () -> Bool = {
+        AppSettingsManager.shared.general.showsToolbarLabels
+    }
+
+    internal var labelsRecord = ToolbarLabelsRecord()
+
     /// `NSMenu.delegate` is weak, and the safe-mode control's menu is built here rather than by the
     /// menu bar, so this toolbar is what keeps its delegate alive.
     internal let safeModeMenuDelegate = SafeModeMenuDelegate()
@@ -593,6 +600,53 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         }
     }
 
+    // Pushed by the General setting's own write, like the Objects buttons.
+    internal static func applyToolbarLabelsSettingChange() {
+        for window in NSApp.windows {
+            (window.toolbar?.delegate as? MainWindowToolbar)?.reconcileDisplayMode()
+        }
+    }
+
+    nonisolated internal static func displayMode(showsLabels: Bool) -> NSToolbar.DisplayMode {
+        showsLabels ? .iconAndLabel : .iconOnly
+    }
+
+    // The layout's labels are written into the display mode once per change of the setting, so a mode the user picks
+    // later from the toolbar's own menu stays. AppKit autosaves the mode and copies it to every toolbar sharing the
+    // identifier, which is how windows opened later get it. Run when the toolbar reaches a window too, after it restored
+    // its saved mode, so a change made while no connection window was open still lands.
+    internal func reconcileDisplayMode() {
+        guard windowController?.view.window != nil || isInWindow() else { return }
+        let wanted = labelsEnabled()
+        guard labelsRecord.isApplied != wanted else { return }
+        labelsRecord.record(wanted)
+        managedToolbar.displayMode = Self.displayMode(showsLabels: wanted)
+    }
+
+    // Run when the module changes and when the toolbar reaches a window, after it restored its saved arrangement: a
+    // change made while no connection window was open would otherwise never reach the arrangement. Inserted or removed
+    // in place, because reassigning the toolbar rebuilds the whole titlebar.
+    internal func reconcileDebugItems() {
+        guard windowController?.view.window != nil || isInWindow() else { return }
+        let wanted = debugItemsEnabled()
+        guard debugItemsRecord.isApplied != wanted else { return }
+        debugItemsRecord.record(wanted)
+        let debugIdentifiers = Set(Self.debugItemIdentifiers)
+        if wanted {
+            let present = managedToolbar.items.contains { debugIdentifiers.contains($0.itemIdentifier) }
+            if !present, let index = managedToolbar.items.firstIndex(where: { $0.itemIdentifier == Self.actions }) {
+                for (offset, identifier) in Self.debugDefaultItemIdentifiers.enumerated() {
+                    managedToolbar.insertItem(withItemIdentifier: identifier, at: index + offset)
+                }
+            }
+        } else {
+            for index in managedToolbar.items.indices.reversed()
+            where debugIdentifiers.contains(managedToolbar.items[index].itemIdentifier) {
+                managedToolbar.removeItem(at: index)
+            }
+        }
+    }
+
     // The debug items' rule for the Objects buttons: written once per change of the setting, so a button the user took
     // out stays out. They go first in the content area, after the sidebar's strip, or first of all without that divider.
     internal func reconcileObjectKindItems() {
@@ -656,6 +710,26 @@ internal struct ToolbarDebugItemsRecord {
 // takes the buttons once.
 internal struct ToolbarObjectKindsRecord {
     static let key = "com.TablePro.main.toolbar.v4.objectKindItems"
+
+    let defaults: UserDefaults
+
+    init(defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
+        self.defaults = defaults
+    }
+
+    var isApplied: Bool {
+        defaults.bool(forKey: Self.key)
+    }
+
+    func record(_ applied: Bool) {
+        defaults.set(applied, forKey: Self.key)
+    }
+}
+
+// The Navigator Layout's labels last written into the shared display mode, kept for the same reasons as the debug items'
+// record: a mode the user picks afterwards from the toolbar's menu outlives the next launch.
+internal struct ToolbarLabelsRecord {
+    static let key = "com.TablePro.main.toolbar.v4.labels"
 
     let defaults: UserDefaults
 

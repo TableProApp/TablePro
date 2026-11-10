@@ -64,6 +64,8 @@ struct GeneralSettings: Codable, Equatable {
     var showsFavoritesSection: Bool
     var showsObjectsOnSelection: Bool
     var showsObjectToolbar: Bool
+    // Written only by the Layout buttons. The toolbar's own menu is where a person picks labels, so there is no toggle.
+    var showsToolbarLabels: Bool
     var showObjectComments: Bool
     var showObjectIcons: Bool
     var showSystemContainers: Bool
@@ -83,6 +85,7 @@ struct GeneralSettings: Codable, Equatable {
         showsFavoritesSection: false,
         showsObjectsOnSelection: false,
         showsObjectToolbar: false,
+        showsToolbarLabels: false,
         showObjectComments: true,
         showObjectIcons: true,
         showSystemContainers: false,
@@ -103,6 +106,7 @@ struct GeneralSettings: Codable, Equatable {
         showsFavoritesSection: Bool = false,
         showsObjectsOnSelection: Bool = false,
         showsObjectToolbar: Bool = false,
+        showsToolbarLabels: Bool = false,
         showObjectComments: Bool = true,
         showObjectIcons: Bool = true,
         showSystemContainers: Bool = false,
@@ -121,6 +125,7 @@ struct GeneralSettings: Codable, Equatable {
         self.showsFavoritesSection = showsFavoritesSection
         self.showsObjectsOnSelection = showsObjectsOnSelection
         self.showsObjectToolbar = showsObjectToolbar
+        self.showsToolbarLabels = showsToolbarLabels
         self.showObjectComments = showObjectComments
         self.showObjectIcons = showObjectIcons
         self.showSystemContainers = showSystemContainers
@@ -145,6 +150,7 @@ struct GeneralSettings: Codable, Equatable {
             .showsObjectsOnSelection, default: fallback.showsObjectsOnSelection
         )
         showsObjectToolbar = container.decodeSetting(.showsObjectToolbar, default: fallback.showsObjectToolbar)
+        showsToolbarLabels = container.decodeSetting(.showsToolbarLabels, default: fallback.showsToolbarLabels)
         showObjectComments = container.decodeSetting(.showObjectComments, default: fallback.showObjectComments)
         showObjectIcons = container.decodeSetting(.showObjectIcons, default: fallback.showObjectIcons)
         showSystemContainers = container.decodeSetting(.showSystemContainers, default: fallback.showSystemContainers)

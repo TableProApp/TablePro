@@ -175,6 +175,7 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Routine debugger start options, per connection and field | UserDefaults, device-local | `RoutineDebugOptionStore` |
 | Whether the toolbar arrangement already carries the debug items | UserDefaults, device-local | `MainWindowToolbar` |
 | Whether the toolbar arrangement already carries the Objects buttons | UserDefaults, device-local | `MainWindowToolbar` |
+| Whether the toolbar display mode already carries the Navigator Layout's labels | UserDefaults, device-local | `MainWindowToolbar` |
 | Trusted external links (loopback only) | UserDefaults | `ExternalConnectionTrustStore` |
 | Reopen the last session once after Relaunch to Update | UserDefaults, device-local, never synced, cleared by the next launch | `AppRelauncher` |
 | Highest plugin manifest `serial` accepted, so an older signed manifest is refused | UserDefaults, device-local, never synced | `RegistryManifestVerifier` through `RegistryClient` |

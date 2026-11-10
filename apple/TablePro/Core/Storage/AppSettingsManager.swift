@@ -22,6 +22,9 @@ final class AppSettingsManager: ObservableObject {
             if oldValue.showsObjectToolbar != general.showsObjectToolbar {
                 MainWindowToolbar.applyObjectToolbarSettingChange()
             }
+            if oldValue.showsToolbarLabels != general.showsToolbarLabels {
+                MainWindowToolbar.applyToolbarLabelsSettingChange()
+            }
             syncTracker.markDirty(.settings, id: AppSettingsCategory.general)
         }
     }

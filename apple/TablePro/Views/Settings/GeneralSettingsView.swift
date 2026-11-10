@@ -74,8 +74,9 @@ struct GeneralSettingsView: View {
             } footer: {
                 Text(String(localized: """
                     Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects \
-                    tab on selection, the Objects toolbar buttons and the connections list, and makes Tree the \
-                    default sidebar layout. Standard Layout turns them off again. Open connections switch layout too.
+                    tab on selection, the Objects toolbar buttons, toolbar labels and the connections list, and makes \
+                    Tree the default sidebar layout. Standard Layout turns them off again. Open connections switch \
+                    layout too.
                     """))
             }
 

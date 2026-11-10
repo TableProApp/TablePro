@@ -6,8 +6,8 @@
 import Foundation
 
 /// The Layout buttons in Settings > General: table details, favorite tables at the top of the tree,
-/// the Objects tab on selection, the Objects toolbar buttons, the connections list and Tree as the
-/// default sidebar layout, on or off in one step.
+/// the Objects tab on selection, the Objects toolbar buttons, labels under the toolbar's icons, the
+/// connections list and Tree as the default sidebar layout, on or off in one step.
 ///
 /// It edits the same values the separate controls edit and leaves the write to the caller. Settings
 /// passes its General settings binding, so the change lands on `AppSettingsManager.general` in one
@@ -18,6 +18,7 @@ internal enum NavigatorLayoutPreset {
         settings.showsFavoritesSection = true
         settings.showsObjectsOnSelection = true
         settings.showsObjectToolbar = true
+        settings.showsToolbarLabels = true
         settings.showsConnectionNavigator = true
         defaultLayout = .tree
     }
@@ -28,6 +29,7 @@ internal enum NavigatorLayoutPreset {
         settings.showsFavoritesSection = standard.showsFavoritesSection
         settings.showsObjectsOnSelection = standard.showsObjectsOnSelection
         settings.showsObjectToolbar = standard.showsObjectToolbar
+        settings.showsToolbarLabels = standard.showsToolbarLabels
         settings.showsConnectionNavigator = standard.showsConnectionNavigator
         defaultLayout = .flat
     }

@@ -67,6 +67,7 @@ struct GeneralSettingsBoolSettingTests {
         BoolSetting(key: "showRecentTables", defaultValue: false),
         BoolSetting(key: "showsObjectsOnSelection", defaultValue: false),
         BoolSetting(key: "showsObjectToolbar", defaultValue: false),
+        BoolSetting(key: "showsToolbarLabels", defaultValue: false),
         BoolSetting(key: "showObjectComments", defaultValue: true),
         BoolSetting(key: "showObjectIcons", defaultValue: true),
         BoolSetting(key: "showSystemContainers", defaultValue: false),
