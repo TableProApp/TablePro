@@ -60,7 +60,7 @@ use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 
-use tablepro_core::meta::{ObjectInfo, SchemaInfo};
+use tablepro_core::meta::SchemaInfo;
 use tablepro_core::{DataModel, EditorSession};
 use tablepro_session::{ObjectListSnapshot, Session, SessionHealth, SessionKey};
 use uuid::Uuid;
@@ -135,10 +135,7 @@ pub(crate) struct WorkspaceModel {
     /// The last schema read the sidebar asked for; an older one landing
     /// late is not shown.
     sidebar_read: u64,
-    // A change of schema filter lists these again.
-    sidebar_objects: Arc<[ObjectInfo]>,
-    schema_filter: schema_filter::SchemaFilter,
-    schema_filter_banner: adw::Banner,
+    schema_filter: schema_chooser::SidebarFilter,
     definition_reads: u64,
     /// The Show Definition read in flight, which a newer one supersedes.
     definition_read: Option<definitions::DefinitionRead>,
@@ -825,11 +822,7 @@ impl Workspace {
         } = init;
         let workspace: Self = glib::Object::new();
         let imp = workspace.imp();
-        imp.shell.set(Some(&shell));
-        let input = workspace.pump_inputs();
-        let _ = imp.sender.set(input.clone());
-        let _ = imp.key.set(key.clone());
-        let _ = imp.connection_id.set(session.metadata().id);
+        let input = workspace.adopt(&shell, &key, &session);
         let context = session_slot(&context, &session);
         let storage = services.storage.clone();
         let tasks = services.tasks.clone();
@@ -861,15 +854,7 @@ impl Workspace {
         let watches = SessionWatches::new(&session, &services.saved_connections, &input);
         let draft_failures = draft_failure_watch(&drafts, &input);
         transaction_banner::connect_show(&imp.transaction_banner, &input);
-        let showing = input.clone();
-        imp.schema_filter_banner
-            .connect_button_clicked(move |_| showing.deliver(WorkspaceInput::ShowAllSchemas));
 
-        let schema_filter = schema_filter::SchemaFilter::new(
-            storage
-                .filter_settings()
-                .sidebar_schemas(session.metadata().id, session.database().unwrap_or_default()),
-        );
         let model = WorkspaceModel {
             assistant,
             driver_name: driver_display_name(&context, &session.metadata().driver_id),
@@ -890,9 +875,7 @@ impl Workspace {
             sidebar,
             catalog_schemas: Arc::from([]),
             sidebar_read: 0,
-            sidebar_objects: Arc::from([]),
-            schema_filter,
-            schema_filter_banner: imp.schema_filter_banner.get(),
+            schema_filter: schema_chooser::SidebarFilter::new(&workspace),
             definition_reads: 0,
             definition_read: None,
             all_schemas_listed: false,
@@ -939,6 +922,17 @@ impl Workspace {
         for blocker in blockers {
             self.register_close_blocker(blocker);
         }
+    }
+
+    // What the shell and the tabs read of the workspace before its model exists.
+    fn adopt(&self, shell: &WorkspaceShell, key: &SessionKey, session: &Session) -> WorkspaceSender {
+        let imp = self.imp();
+        imp.shell.set(Some(shell));
+        let input = self.pump_inputs();
+        let _ = imp.sender.set(input.clone());
+        let _ = imp.key.set(key.clone());
+        let _ = imp.connection_id.set(session.metadata().id);
+        input
     }
 
     fn pump_inputs(&self) -> WorkspaceSender {
@@ -1208,6 +1202,7 @@ impl WorkspaceModel {
     fn open(&mut self) {
         self.reconnect_banner.set_revealed(false);
         tracing::info!(driver = %self.driver_id, "workspace ready");
+        self.load_schema_filter();
         self.open_sidebar();
         self.refresh_title();
         self.restore_workspace_tabs(self.key.clone());
