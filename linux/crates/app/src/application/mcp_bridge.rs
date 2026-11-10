@@ -15,6 +15,7 @@ use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use super::{AppServices, TableProApplication, WindowLaunch};
+use crate::i18n::gettext_f;
 use crate::runtime::{InputSender, input_queue, pump_inputs};
 use crate::services::history_service::HistoryService;
 use crate::ui::write_confirmation::{WriteConfirmation, confirm_until};
@@ -30,6 +31,11 @@ const OPEN_POLL: Duration = Duration::from_millis(200);
 pub(crate) enum McpRequest {
     Session {
         id: Uuid,
+        reply: oneshot::Sender<Option<Arc<Session>>>,
+    },
+    SessionIn {
+        id: Uuid,
+        database: String,
         reply: oneshot::Sender<Option<Arc<Session>>>,
     },
     OpenConnections {
@@ -63,6 +69,13 @@ impl GtkMcpHost {
 impl McpHost for GtkMcpHost {
     async fn session(&self, id: Uuid) -> Option<Arc<Session>> {
         self.ask(|reply| McpRequest::Session { id, reply }).await.flatten()
+    }
+
+    async fn session_in(&self, id: Uuid, database: &str) -> Option<Arc<Session>> {
+        let database = database.to_owned();
+        self.ask(|reply| McpRequest::SessionIn { id, database, reply })
+            .await
+            .flatten()
     }
 
     async fn open_connections(&self) -> Vec<Uuid> {
@@ -130,6 +143,10 @@ fn answer(app: &TableProApplication, request: McpRequest) {
     match request {
         McpRequest::Session { id, reply } => {
             let _ = reply.send(services.sessions.session(&SessionKey::Saved(id)));
+        }
+        // Only a database the window opened beside the connection; a client never opens one.
+        McpRequest::SessionIn { id, database, reply } => {
+            let _ = reply.send(services.sessions.session(&SessionKey::SavedIn { id, database }));
         }
         McpRequest::OpenConnections { reply } => {
             let open = services
@@ -234,14 +251,30 @@ fn approve(
     approval: WriteApproval,
     mut reply: oneshot::Sender<bool>,
 ) {
-    let key = SessionKey::Saved(approval.connection_id);
+    let (key, connection) = match &approval.database {
+        Some(database) => (
+            SessionKey::SavedIn {
+                id: approval.connection_id,
+                database: database.clone(),
+            },
+            // Translators: a connection and another of its server's databases, open beside it.
+            gettext_f(
+                "{connection} · {database}",
+                &[("connection", &approval.connection_name), ("database", database)],
+            ),
+        ),
+        None => (
+            SessionKey::Saved(approval.connection_id),
+            approval.connection_name.clone(),
+        ),
+    };
     let owner = services.sessions.window_for(&key);
     let window = owner.and_then(|id| app.window_by_id(id));
     let (Some(owner), Some(window)) = (owner, window) else {
         let _ = reply.send(false);
         return;
     };
-    let confirmation = WriteConfirmation::external(&approval.connection_name, &approval.sql, approval.destructive);
+    let confirmation = WriteConfirmation::external(&connection, &approval.sql, approval.destructive);
     // The question comes over the connection it is about, which may be
     // behind another session of the window.
     app.present_session(owner, &key);

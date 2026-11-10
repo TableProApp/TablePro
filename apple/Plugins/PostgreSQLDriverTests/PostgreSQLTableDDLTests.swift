@@ -1,0 +1,170 @@
+import Foundation
+import TableProPluginKit
+import TableProPostgreSQLCore
+import Testing
+
+struct PostgreSQLTableDDLTests {
+    private static let modern = PostgreSQLCapabilities(serverVersion: 170_011)
+    private static let columns = ["id integer NOT NULL", "created_at date NOT NULL"]
+
+    @Test("A plain table keeps the statement it always had")
+    func plainTable() {
+        let ddl = PostgreSQLTableDDL.script(
+            name: "\"public\".\"orders\"", definitions: Self.columns, shape: PostgreSQLTableDDL.Shape(), partitions: []
+        )
+        #expect(ddl == """
+            CREATE TABLE "public"."orders" (
+              id integer NOT NULL,
+              created_at date NOT NULL
+            );
+            """)
+    }
+
+    @Test("A partitioned table says how it is partitioned and creates its partitions")
+    func partitionedTable() {
+        let shape = PostgreSQLTableDDL.shape(from: ["p", "RANGE (created_at)", nil, nil])
+        let partitions = [
+            ["public.events_2024", "public.events", "FOR VALUES FROM ('2024-01-01') TO ('2025-01-01')", nil, "p"],
+            ["public.events_rest", "public.events", "DEFAULT", nil, "p"]
+        ].compactMap { PostgreSQLTableDDL.partition(from: $0) }
+
+        let ddl = PostgreSQLTableDDL.script(
+            name: "\"public\".\"events\"", definitions: Self.columns, shape: shape, partitions: partitions
+        )
+
+        #expect(ddl == """
+            CREATE TABLE "public"."events" (
+              id integer NOT NULL,
+              created_at date NOT NULL
+            ) PARTITION BY RANGE (created_at);
+
+            CREATE TABLE public.events_2024 PARTITION OF public.events FOR VALUES FROM ('2024-01-01') TO ('2025-01-01');
+
+            CREATE TABLE public.events_rest PARTITION OF public.events DEFAULT;
+            """)
+    }
+
+    @Test("A partition that is partitioned again carries its own key")
+    func subPartition() throws {
+        let partition = try #require(PostgreSQLTableDDL.partition(
+            from: ["public.events_eu", "public.events", "FOR VALUES IN ('eu')", "HASH (id)", "p"]
+        ))
+        #expect(PostgreSQLTableDDL.createPartition(partition)
+            == "CREATE TABLE public.events_eu PARTITION OF public.events FOR VALUES IN ('eu') PARTITION BY HASH (id);")
+    }
+
+    @Test("A partition asked for by name is created as a partition of its parent")
+    func partitionByName() {
+        let shape = PostgreSQLTableDDL.shape(
+            from: ["p", nil, "FOR VALUES FROM (1) TO (100)", "public.events"]
+        )
+        let ddl = PostgreSQLTableDDL.script(
+            name: "\"public\".\"events_1\"", definitions: Self.columns, shape: shape, partitions: []
+        )
+        #expect(ddl == "CREATE TABLE \"public\".\"events_1\" PARTITION OF public.events FOR VALUES FROM (1) TO (100);")
+    }
+
+    @Test("An unlogged table and an unlogged partition stay unlogged")
+    func unlogged() throws {
+        let shape = PostgreSQLTableDDL.shape(from: ["u", nil, nil, nil])
+        #expect(PostgreSQLTableDDL.createTable(name: "t", definitions: ["id integer"], shape: shape)
+            == "CREATE UNLOGGED TABLE t (\n  id integer\n);")
+        let partition = try #require(PostgreSQLTableDDL.partition(from: ["s.p1", "s.p", "DEFAULT", "", "u"]))
+        #expect(PostgreSQLTableDDL.createPartition(partition) == "CREATE UNLOGGED TABLE s.p1 PARTITION OF s.p DEFAULT;")
+    }
+
+    @Test("A partitioned table is never written unlogged, and its partitions keep theirs")
+    func unloggedPartitionedParent() throws {
+        let shape = PostgreSQLTableDDL.shape(from: ["u", "RANGE (id)", nil, nil])
+        #expect(PostgreSQLTableDDL.createTable(name: "t", definitions: ["id integer"], shape: shape)
+            == "CREATE TABLE t (\n  id integer\n) PARTITION BY RANGE (id);")
+
+        let leaf = try #require(PostgreSQLTableDDL.partition(from: ["s.p1", "s.p", "DEFAULT", nil, "u"]))
+        #expect(PostgreSQLTableDDL.createPartition(leaf) == "CREATE UNLOGGED TABLE s.p1 PARTITION OF s.p DEFAULT;")
+
+        let branch = try #require(PostgreSQLTableDDL.partition(from: ["s.p2", "s.p", "DEFAULT", "HASH (id)", "u"]))
+        #expect(PostgreSQLTableDDL.createPartition(branch)
+            == "CREATE TABLE s.p2 PARTITION OF s.p DEFAULT PARTITION BY HASH (id);")
+    }
+
+    @Test("A shape read that failed or found nothing leaves a plain table")
+    func failedShapeRead() {
+        #expect(PostgreSQLTableDDL.shape(fromRows: nil) == PostgreSQLTableDDL.Shape())
+        #expect(PostgreSQLTableDDL.shape(fromRows: []) == PostgreSQLTableDDL.Shape())
+        #expect(PostgreSQLTableDDL.shape(fromRows: [["u", nil, nil, nil]]).isUnlogged)
+    }
+
+    @Test("A row with no catalog answer reads as a plain table")
+    func missingShape() {
+        #expect(PostgreSQLTableDDL.shape(from: []) == PostgreSQLTableDDL.Shape())
+        #expect(PostgreSQLTableDDL.shape(from: ["p", "", "", ""]) == PostgreSQLTableDDL.Shape())
+        #expect(PostgreSQLTableDDL.partition(from: ["s.p1", "s.p", nil, nil, "p"]) == nil)
+    }
+
+    @Test("Before PostgreSQL 10 the shape read names no partition catalog")
+    func legacyShapeQuery() {
+        let sql = PostgreSQLTableDDL.shapeQuery(
+            schema: "public", table: "orders", capabilities: PostgreSQLCapabilities(serverVersion: 90_124)
+        )
+        #expect(sql.contains("c.relpersistence"))
+        #expect(!sql.contains("relispartition"))
+        #expect(!sql.contains("pg_get_partkeydef"))
+        #expect(!sql.contains("relpartbound"))
+    }
+
+    @Test("The shape read asks for the key, the bound and the parent")
+    func modernShapeQuery() {
+        let sql = PostgreSQLTableDDL.shapeQuery(schema: "public", table: "orders", capabilities: Self.modern)
+        #expect(sql.contains("pg_catalog.pg_get_partkeydef(c.oid)"))
+        #expect(sql.contains("pg_catalog.pg_get_expr(c.relpartbound, c.oid)"))
+        #expect(sql.contains("i.inhrelid = c.oid"))
+    }
+
+    @Test("Both reads call built-ins through pg_catalog and quote the names they are given")
+    func readsAreQualifiedAndQuoted() {
+        let hostile = "o'rders"
+        let statements = [
+            PostgreSQLTableDDL.shapeQuery(schema: hostile, table: hostile, capabilities: Self.modern),
+            PostgreSQLTableDDL.partitionTreeQuery(schema: hostile, table: hostile)
+        ]
+        for sql in statements {
+            #expect(PostgreSQLCatalogQualificationTests.unqualifiedCalls(in: sql).isEmpty, "\(sql)")
+            #expect(sql.contains("'o''rders'"))
+            #expect(!sql.contains("'o'rders'"))
+        }
+    }
+
+    @Test("The partition tree lists a parent before its own partitions")
+    func partitionTreeOrder() {
+        let sql = PostgreSQLTableDDL.partitionTreeQuery(schema: "public", table: "events")
+        #expect(sql.contains("WITH RECURSIVE"))
+        #expect(sql.contains("ORDER BY parts.depth"))
+        #expect(sql.contains("c.relkind IN ('r', 'p')"))
+    }
+
+    @Test("An index over a partitioned table is written so the server builds it on every partition")
+    func indexCoversPartitions() {
+        #expect(PostgreSQLTableDDL.indexCoveringPartitions(
+            "CREATE INDEX events_created_idx ON ONLY public.events USING btree (created_at)"
+        ) == "CREATE INDEX events_created_idx ON public.events USING btree (created_at)")
+        #expect(PostgreSQLTableDDL.indexCoveringPartitions(
+            "CREATE UNIQUE INDEX \"Events Key\" ON ONLY public.events USING btree (id, created_at)"
+        ) == "CREATE UNIQUE INDEX \"Events Key\" ON public.events USING btree (id, created_at)")
+    }
+
+    @Test("Only the ONLY the server wrote is removed")
+    func indexNamesAreNotRewritten() {
+        let plain = "CREATE INDEX orders_idx ON public.orders USING btree (id)"
+        #expect(PostgreSQLTableDDL.indexCoveringPartitions(plain) == plain)
+
+        let named = "CREATE INDEX \"i ON ONLY x\" ON public.orders USING btree (id)"
+        #expect(PostgreSQLTableDDL.indexCoveringPartitions(named) == named)
+
+        let quoted = "CREATE INDEX \"a\"\"b ON ONLY c\" ON ONLY public.events USING btree (id)"
+        #expect(PostgreSQLTableDDL.indexCoveringPartitions(quoted)
+            == "CREATE INDEX \"a\"\"b ON ONLY c\" ON public.events USING btree (id)")
+
+        let predicate = "CREATE INDEX i ON public.orders USING btree (id) WHERE (note = ' ON ONLY ')"
+        #expect(PostgreSQLTableDDL.indexCoveringPartitions(predicate) == predicate)
+    }
+}

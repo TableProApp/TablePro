@@ -4,6 +4,7 @@ members = [
     "core/crates/account",
     "core/crates/ai",
     "core/crates/bindgen",
+    "core/crates/cli",
     "core/crates/core",
     "core/crates/ffi",
     "core/crates/foreign-import",
@@ -36,6 +37,7 @@ publish = false
 [workspace.dependencies]
 tablepro-account = { path = "core/crates/account" }
 tablepro-ai = { path = "core/crates/ai" }
+tablepro-cli = { path = "core/crates/cli" }
 tablepro-core = { path = "core/crates/core" }
 tablepro-driver-cassandra = { path = "core/crates/drivers/cassandra" }
 tablepro-driver-clickhouse = { path = "core/crates/drivers/clickhouse" }

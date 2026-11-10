@@ -66,6 +66,32 @@ enum CSVImportParsing {
         return row
     }
 
+    struct RowShapeError: LocalizedError, Equatable {
+        let fieldCount: Int
+        let columnCount: Int
+
+        var errorDescription: String? {
+            String(
+                format: String(
+                    localized: "The row has %1$lld fields where %2$lld are expected. A field that holds the delimiter must be quoted.",
+                    bundle: .main
+                ),
+                Int64(fieldCount),
+                Int64(columnCount)
+            )
+        }
+    }
+
+    // A short row is padded, as it always was: nothing in the file is lost. Only a surplus field
+    // that still holds something after trimming would be cut.
+    static func shapeError(fields: [String], columnCount: Int, options: CSVImportOptions) -> RowShapeError? {
+        guard fields.count > columnCount else { return nil }
+        let surplusIsEmpty = fields[columnCount...].allSatisfy { field in
+            options.trimWhitespace ? field.trimmingCharacters(in: .whitespaces).isEmpty : field.isEmpty
+        }
+        return surplusIsEmpty ? nil : RowShapeError(fieldCount: fields.count, columnCount: columnCount)
+    }
+
     static func importFieldType(for type: CSVTypeInferrer.InferredType) -> PluginImportFieldType {
         switch type {
         case .integer: return .integer

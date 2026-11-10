@@ -8,7 +8,26 @@ use super::{WorkspaceInput, WorkspaceModel};
 use crate::runtime::DeliverInput;
 use crate::ui::plain_toast;
 
+#[derive(Debug)]
+pub(crate) enum SearchInput {
+    History,
+    SavedQueries,
+    QuickOpen,
+    CloseQuickOpen,
+    QuickOpenChosen(crate::ui::quick_open::Pick),
+}
+
 impl WorkspaceModel {
+    pub(super) fn on_search(&mut self, input: SearchInput) {
+        match input {
+            SearchInput::History => self.on_show_history(),
+            SearchInput::SavedQueries => self.on_show_saved_queries(),
+            SearchInput::QuickOpen => self.on_show_quick_open(),
+            SearchInput::CloseQuickOpen => self.close_quick_open(),
+            SearchInput::QuickOpenChosen(pick) => self.on_quick_open_chosen(pick),
+        }
+    }
+
     pub(super) fn show_toast(&self, msg: &str) {
         self.add_toast(plain_toast(msg));
     }
@@ -83,6 +102,49 @@ impl WorkspaceModel {
         });
         dialog.present(self.dialog_parent().as_ref());
         self.saved_queries_dialog = Some(dialog);
+    }
+
+    pub(super) fn close_quick_open(&mut self) {
+        if let Some(dialog) = self.quick_open_dialog.take() {
+            dialog.dismiss();
+        }
+    }
+
+    pub(super) fn on_show_quick_open(&mut self) {
+        let Some(session) = self.context.active.get() else {
+            return;
+        };
+        self.close_quick_open();
+        let input = self.input.clone();
+        let dialog = crate::ui::quick_open::QuickOpen::new(session, self.tasks.clone(), move |pick| {
+            input.deliver(WorkspaceInput::Search(SearchInput::QuickOpenChosen(pick)));
+        });
+        if let Some(metadata) = self.context.active.metadata() {
+            dialog.include_queries(self.history.clone(), metadata.id);
+        }
+        dialog.present(self.dialog_parent().as_ref());
+        self.quick_open_dialog = Some(dialog);
+    }
+
+    pub(super) fn on_quick_open_chosen(&mut self, pick: crate::ui::quick_open::Pick) {
+        if !self.is_front() {
+            return;
+        }
+        use crate::ui::quick_open::Pick;
+        self.update(match pick {
+            Pick::Query(sql) => WorkspaceInput::OpenHistoryQuery(sql),
+            Pick::Table {
+                table: tablepro_core::meta::TableRef { schema, name },
+                structure,
+            } => match structure {
+                true => WorkspaceInput::EditStructureTab { schema, table: name },
+                false => WorkspaceInput::SelectTable {
+                    schema,
+                    name,
+                    open_mode: super::OpenMode::SwitchOrAppend,
+                },
+            },
+        });
     }
 
     /// Ask what to call the SQL in front of the user, then keep it.
@@ -242,6 +304,23 @@ mod tests {
     use crate::ui::session_window::tests::{TestWindow, WAIT};
 
     #[gtk4::test]
+    fn open_quickly_closes_on_disconnect() {
+        use gtk4::prelude::*;
+        let test = TestWindow::connected("QuickOpenDisconnect");
+        let dialog = test
+            .workspace()
+            .with_model(|model| {
+                model.on_show_quick_open();
+                model.quick_open_dialog.clone().expect("quick open")
+            })
+            .expect("workspace");
+        wait_until(WAIT, || dialog.parent().is_some()).expect("shown");
+        test.window.send(crate::ui::SessionWindowInput::Disconnect);
+        wait_until(WAIT, || dialog.parent().is_none()).expect("dialog closed");
+        wait_until(WAIT, || test.window.page_name() == "picker").expect("disconnected");
+    }
+
+    #[gtk4::test]
     fn a_saved_query_is_written_under_a_hold() {
         let test = TestWindow::connected("SaveQueryHeld");
         let history = test.services.history();
@@ -379,6 +458,48 @@ mod tests {
         shell.delete_favorite(id);
         assert_eq!(test.hold.live(), 1);
         wait_until(WAIT, || favorites.names().is_empty()).expect("the favorite to go");
+    }
+
+    #[gtk4::test]
+    fn favorites_are_filed_in_folders_and_a_deleted_folder_leaves_its_queries() {
+        use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+        let test = TestWindow::connected("FavoritesFolders");
+        let availability = test.services.history().availability();
+        wait_until(WAIT, || availability.borrow().is_ready()).expect("the query database to open");
+        let shell = test.window.shell().expect("the shell");
+        let favorites = shell.imp().favorites.get().cloned().expect("the favorites pane");
+        shell.imp().scope_toggle.set_active_name(Some("favorites"));
+        test.workspace()
+            .with_model(|model| model.on_save_query_named("Orders".to_owned(), "SELECT 1".to_owned()));
+        wait_until(WAIT, || favorites.names() == ["Orders"]).expect("the saved query to be listed");
+
+        shell.create_folder("Reports".to_owned(), None);
+        wait_until(WAIT, || favorites.folder_destinations().len() == 1).expect("the folder to be listed");
+        let folder = favorites.folder_destinations()[0].0;
+        let store = test.services.history().store().expect("history").saved_query_folders();
+        let owner = test.workspace().connection_id().expect("connection");
+        let work = test
+            .services
+            .tasks
+            .spawn_task(async move { store.create(owner, "Monthly", Some(folder)).await });
+        let child = finish_on_main(WAIT, work)
+            .expect("created")
+            .expect("task")
+            .expect("folder");
+        wait_until(WAIT, || favorites.folder_destinations().len() == 2).expect("external folder listed");
+        assert!(
+            favorites
+                .folder_destinations()
+                .contains(&(child, "/Reports/Monthly".to_owned()))
+        );
+        shell.move_favorite(favorites.ids()[0], Some(child));
+        wait_until(WAIT, || favorites.folder_of_first_query() == Some(child)).expect("the query filed in it");
+
+        shell.delete_folder(folder);
+        wait_until(WAIT, || favorites.folder_destinations().is_empty()).expect("the folder to go");
+        assert_eq!(favorites.names(), ["Orders"], "the query went with its folder");
+        assert_eq!(favorites.folder_of_first_query(), None);
     }
 
     #[gtk4::test]

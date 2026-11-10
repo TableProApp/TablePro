@@ -249,7 +249,12 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
         insertedRowIndices: Set<Int>
     ) throws -> [PluginRowWrite]? {
         let typeNames = columnTypeNames(for: columns, index: table)
-        let generator = ElasticsearchStatementGenerator(index: table, columns: columns, columnTypeNames: typeNames)
+        let generator = ElasticsearchStatementGenerator(
+            index: table,
+            columns: columns,
+            columnTypeNames: typeNames,
+            columnPathKeys: columnPathKeys(index: table)
+        )
         return try generator.generateRowWrites(
             from: changes,
             insertedRowData: insertedRowData,
@@ -276,6 +281,11 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
     /// wildcard or an alias, and refilling it costs one `GET /<index>/_mapping` per index reopened.
     func invalidateMappingCache() {
         lock.withLock { _mappingCache.removeAll() }
+    }
+
+    private func columnPathKeys(index: String) -> [String: [String]] {
+        let cached = lock.withLock { _mappingCache[index] } ?? []
+        return Dictionary(cached.map { ($0.name, $0.pathKeys) }) { first, _ in first }
     }
 
     private func columnTypeNames(for columns: [String], index: String) -> [String] {

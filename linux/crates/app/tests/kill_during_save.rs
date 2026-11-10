@@ -71,7 +71,7 @@ fn app(markers: PathBuf) -> ExitCode {
             std::process::exit(1);
         }
     });
-    match tablepro_app::run() {
+    match tablepro_app::run(std::env::args_os().collect()) {
         Ok(code) => code.into(),
         Err(error) => {
             eprintln!("TablePro did not start: {error}");

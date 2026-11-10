@@ -169,6 +169,7 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Sidebar database and schema filters, recent tables | UserDefaults, device-local | `DatabaseTreeFilterStorage`, `RecentTablesStore` |
 | History drawer state | UserDefaults, device-local | `HistoryPanelPreferencesStorage` |
 | Server Dashboard tiles, per connection | UserDefaults, device-local | `ServerDashboardTileStorage` |
+| Table Health history, per connection and database: when each finding was first and last seen, resolved findings, ignored findings | JSON, one file per connection under `TableHealth/`, device-local, never synced | `TableHealthHistoryStorage` |
 | Module on/off (Settings > Extensions) | UserDefaults, device-local, never synced | `AppModuleSettings` |
 | Routine debugger start options, per connection and field | UserDefaults, device-local | `RoutineDebugOptionStore` |
 | Whether the toolbar arrangement already carries the debug items | UserDefaults, device-local | `MainWindowToolbar` |
@@ -178,6 +179,9 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Approved environment variable references, per connection, names and destination digest | UserDefaults, device-local, never synced | `ConnectionApprovalStore.envVarReferences` |
 | Approved sign-ins with this Mac's own credentials (Entra, AWS profile or SSO, Google ADC or OAuth, Kerberos, `~/.pgpass`), per connection, field values and destination digest | UserDefaults `com.TablePro.localCredentialApprovals`, plus `com.TablePro.localCredentialApprovalsMigrated` for the one-time approval of this Mac's rows; device-local, never synced | `ConnectionApprovalStore.localCredentials` |
 | Snowflake SSO and MFA tokens, per host and user. A bare account's `NAME.USER` item stays for 0.83.1, which reads only that key | Keychain, device-local | `SnowflakeTokenCache` |
+| Whether `connections.json` was ever given an integrity tag, so a deleted tag reads as modified | Keychain `com.TablePro.connectionStoreStamped.<sha256 of path>`, device-local | `ConnectionStoreIntegrity` |
+| Whether Local only connections' secrets were copied to device-only items | UserDefaults `com.TablePro.localOnlySecretsKeptOnDevice`, device-local, never synced | `ConnectionStorage` |
+| Deletions the server reported for a sync category that is off, applied when the category is next read | UserDefaults, device-local, never synced | `SyncMetadataStorage.deferredDeletions` |
 | Where a connection came from (`origin`): this Mac, imported, iCloud | `connections.json`, never synced or exported | `ConnectionStorage` |
 | Table load timings (no identifying data, never uploaded) | JSON lines | `TableLoadHistoryStore` |
 | Reopen Last Session list (`LastSession.json`, plus `LastOpenConnections.json` holding only the ids that reconnect, which older builds read) | JSON | `LastOpenConnectionsStorage` |

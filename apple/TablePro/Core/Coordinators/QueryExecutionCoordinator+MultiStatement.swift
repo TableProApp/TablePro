@@ -10,9 +10,12 @@ import TableProSQLGrammar
 extension QueryExecutionCoordinator {
     func executeMultipleStatements(
         _ statements: [SQLStatementScanner.ExecutableStatement],
-        bypassRowLimit: Bool = false
+        bypassRowLimit: Bool = false,
+        onTab target: UUID? = nil
     ) {
-        executeMultipleStatementsWithParameters(statements, parameters: [], bypassRowLimit: bypassRowLimit)
+        executeMultipleStatementsWithParameters(
+            statements, parameters: [], bypassRowLimit: bypassRowLimit, onTab: target
+        )
     }
 
     // The rest of a run, cut again once a statement changed how the session reads literals, in tab coordinates.
@@ -220,6 +223,9 @@ extension QueryExecutionCoordinator {
 
         if parent.tabManager.selectedTabId == tabId {
             parent.changeManager.clearChangesAndUndoHistory()
+            parent.changeManagerMatchesSelectedResult()
+        } else {
+            parent.dropParkedEdits(ofBackgroundTab: tabId)
         }
     }
 }

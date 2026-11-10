@@ -102,6 +102,58 @@ struct QueryTabManagerVisibleContainerTests {
         #expect(manager.tabs.map(\.tableContext.databaseName) == ["tenant_b", ""])
     }
 
+    // MARK: - Table Health
+
+    // It used to belong to every entry, so a refresh after a browse switch reported on the other database.
+    @Test("A Table Health tab keeps its database while another entry is shown")
+    func tableHealthStaysOnItsDatabase() throws {
+        let manager = makeManager()
+
+        let id = try #require(manager.addTableHealthTab(databaseName: "tenant_a"))
+        manager.show(container: "tenant_b")
+
+        #expect(manager.tabs.first?.tableContext.databaseName == "tenant_a")
+        #expect(manager.visibleTabs.isEmpty)
+
+        manager.show(container: "tenant_a")
+
+        #expect(manager.selectedTabId == id)
+    }
+
+    @Test("Table Health opens once per database")
+    func tableHealthOpensOncePerDatabase() throws {
+        let manager = makeManager()
+
+        let first = try #require(manager.addTableHealthTab(databaseName: "tenant_a"))
+        let again = try #require(manager.addTableHealthTab(databaseName: "tenant_a"))
+        let other = try #require(manager.addTableHealthTab(databaseName: "tenant_b"))
+
+        let databases = manager.tabs.map { $0.tableContext.databaseName }
+        #expect(again == first)
+        #expect(other != first)
+        #expect(databases == ["tenant_a", "tenant_b"])
+        #expect(manager.selectedTabId == other)
+    }
+
+    @Test("Table Health opens nothing without a database")
+    func tableHealthNeedsADatabase() {
+        let manager = makeManager()
+
+        #expect(manager.addTableHealthTab(databaseName: "") == nil)
+        #expect(manager.tabs.isEmpty)
+    }
+
+    @Test("A restore binds a Table Health tab saved before it had a database")
+    func restoreBindsLegacyTableHealthTab() {
+        let manager = makeManager(visible: "tenant_b")
+        manager.tabs = [QueryTab(title: "Table Health", tabType: .tableHealth), dashboardTab()]
+
+        manager.bindUnboundTabs()
+
+        let databases = manager.tabs.map { $0.tableContext.databaseName }
+        #expect(databases == ["tenant_b", ""])
+    }
+
     @Test("A tab opened without a database goes to the entry on screen, not the browse cursor")
     func openingDatabaseIsTheShownEntry() {
         #expect(makeManager().openingDatabase(browsing: "tenant_b") == "tenant_a")

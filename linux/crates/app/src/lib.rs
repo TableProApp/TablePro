@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -7,6 +8,7 @@ use tablepro_core::DriverRegistry;
 use tablepro_linux_platform::AppSettings;
 
 pub mod application;
+pub mod command_line;
 pub mod config;
 pub mod crash_report;
 pub mod i18n;
@@ -17,6 +19,8 @@ mod services;
 pub mod storage;
 // Public for the save tests that run a tracker against a real server.
 pub use services::{change_tracker, tab_tracker_handle, tracker_edit};
+// Public for the desktop entry's test, which claims each of them.
+pub use services::connection_link::LINK_SCHEMES;
 #[cfg(test)]
 mod test_support;
 mod ui;
@@ -32,13 +36,15 @@ pub enum StartupError {
     Runtime(#[source] std::io::Error),
     #[error("could not register the embedded resources: {0}")]
     Resources(#[source] glib::Error),
+    #[error("could not register connection links: {0}")]
+    ConnectionLinks(#[source] glib::BoolError),
     #[error("could not open the settings schema: {0}")]
     Settings(#[from] tablepro_linux_platform::SettingsError),
 }
 
 /// Start the application and return its exit code once the last window
 /// and the last background close are gone.
-pub fn run() -> Result<glib::ExitCode, StartupError> {
+pub fn run(args: Vec<OsString>) -> Result<glib::ExitCode, StartupError> {
     // SAFETY: nothing above spawns a thread; the tokio runtime and GTK start later.
     let translations = unsafe { i18n::init() };
     logging::init(config::profile())?;
@@ -55,8 +61,9 @@ pub fn run() -> Result<glib::ExitCode, StartupError> {
     let drivers = build_registry();
     tracing::info!(drivers = drivers.len(), "starting tablepro");
 
+    services::connection_link::register_link_schemes().map_err(StartupError::ConnectionLinks)?;
     let application = TableProApplication::new(AppServices::production(drivers, settings, paths, runtime.tasks()));
-    let code = gio::prelude::ApplicationExtManual::run(&application);
+    let code = gio::prelude::ApplicationExtManual::run_with_args_os(&application, &args);
     drop(application);
 
     // The main loop has returned, so nothing is producing work any

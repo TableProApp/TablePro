@@ -43,8 +43,12 @@ extension MainContentCoordinator {
            let oldIndex = tabManager.tabs.firstIndex(where: { $0.id == oldId })
         {
             // Also checks the tab's snapshot: on `hasChanges` alone an undo kept a stale snapshot that restored the undone edit on return.
-            if changeManager.hasChanges || tabManager.tabs[oldIndex].pendingChanges.hasChanges {
-                let savedState = changeManager.saveState()
+            // Only on the switch the result landed in: a mark left by a reselect this handler never saw is dropped.
+            if let selectedAtLanding = tabsGivenResultOffScreen.removeValue(forKey: oldId), selectedAtLanding == newTabId {
+                tabManager.mutate(at: oldIndex) { $0.pendingChanges = TabChangeSnapshot() }
+            } else if changeManager.hasChanges || tabManager.tabs[oldIndex].pendingChanges.hasChanges {
+                var savedState = changeManager.saveState()
+                savedState.resultSetId = tabManager.tabs[oldIndex].display.activeResultSetId
                 tabManager.mutate(at: oldIndex) { $0.pendingChanges = savedState }
             }
             // One editor serves every query tab with no `.id(tab.id)`, so write only once this tab's restored caret has been consumed.
@@ -72,13 +76,18 @@ extension MainContentCoordinator {
            let newIndex = tabManager.tabs.firstIndex(where: { $0.id == newId }) {
             let newTab = tabManager.tabs[newIndex]
             let newRows = tabSessionRegistry.tableRows(for: newId)
+            tabsGivenResultOffScreen.removeValue(forKey: newId)
 
             toolbarState.isTableTab = newTab.tabType == .table
             toolbarState.isResultsCollapsed = newTab.display.isResultsCollapsed
             syncQueryToolbarState(for: newTab)
 
             // Consumed once restored: a copy left on the tab went stale with the first undo and kept reporting undone edits.
-            let pendingState = newTab.pendingChanges
+            var pendingState = newTab.pendingChanges
+            if pendingState.hasChanges, pendingState.resultSetId != newTab.display.activeResultSetId {
+                pendingState = TabChangeSnapshot()
+                tabManager.mutate(at: newIndex) { $0.pendingChanges = pendingState }
+            }
             if pendingState.hasChanges {
                 changeManager.restoreState(
                     from: pendingState,
@@ -135,6 +144,22 @@ extension MainContentCoordinator {
             toolbarState.isQueryTab = false
             toolbarState.hasQueryText = false
         }
+    }
+
+    // Edits parked on a background tab name rows of the result it held; a result installed meanwhile makes them
+    // another table's on return.
+    func dropParkedEdits(ofBackgroundTab tabId: UUID) {
+        guard tabManager.selectedTabId != tabId else { return }
+        tabsGivenResultOffScreen[tabId] = .some(tabManager.selectedTabId)
+        tabManager.mutate(tabId: tabId) { tab in
+            if tab.pendingChanges.hasChanges { tab.pendingChanges = TabChangeSnapshot() }
+        }
+    }
+
+    // The selected tab's change manager now describes the result on screen.
+    func changeManagerMatchesSelectedResult() {
+        guard let selected = tabManager.selectedTabId else { return }
+        tabsGivenResultOffScreen.removeValue(forKey: selected)
     }
 
     private func commitGridEdit(ofTab tabId: UUID) {

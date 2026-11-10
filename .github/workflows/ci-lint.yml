@@ -109,35 +109,17 @@ jobs:
           "$RUNNER_TEMP/release-venv/bin/towncrier" build --draft --dir linux --version 0.0.0
 
       # pr-title.yml runs the same check on a title edit, which starts no CI run. The title is read now, not from the
-      # event, so a merge group or a re-run after a retitle sees the current one.
+      # event, so a re-run after a retitle sees the current one.
       - name: Check only a release pull request edits a CHANGELOG.md
+        if: github.event_name == 'pull_request'
         env:
-          EVENT: ${{ github.event_name }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          GROUP_REF: ${{ github.event.merge_group.head_ref }}
-          GROUP_BASE: ${{ github.event.merge_group.base_sha }}
           REPOSITORY: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          case "$EVENT" in
-            pull_request)
-              number="$PR_NUMBER"
-              base="$(git rev-parse HEAD^1)"
-              ;;
-            merge_group)
-              number="${GROUP_REF##*/pr-}"
-              number="${number%%-*}"
-              base="$GROUP_BASE"
-              ;;
-            *)
-              echo "Not a pull request or a merge group, so nothing to check."
-              exit 0
-              ;;
-          esac
-          case "$number" in '' | *[!0-9]*) echo "::error::no pull request number for this $EVENT"; exit 1 ;; esac
-          title="$(gh api "repos/$REPOSITORY/pulls/$number" --jq .title)"
-          scripts/ci/check-changelog-edits.sh "$base" "$title"
+          title="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq .title)"
+          scripts/ci/check-changelog-edits.sh "$(git rev-parse HEAD^1)" "$title"
 
       # shellcheck cannot tell a library function from a command, so a missing source is exit 127
       # at release time (v0.67.1).

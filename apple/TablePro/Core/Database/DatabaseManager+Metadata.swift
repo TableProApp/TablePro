@@ -55,6 +55,7 @@ extension DatabaseManager {
             route: metadataRoute(for: scope),
             workload: workload,
             cancellation: .untracked,
+            ownsSessionState: false,
             body
         )
     }

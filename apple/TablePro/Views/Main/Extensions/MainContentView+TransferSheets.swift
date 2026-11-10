@@ -52,6 +52,12 @@ extension MainContentView {
                     )
                 }
             }
+        case .exportDataSource(let request):
+            ExportDialog(
+                isPresented: dismissBinding,
+                mode: .dataSource(request),
+                sheetWork: coordinator.sheetWork
+            )
         case .importDialog(let formatId):
             ImportDialog(
                 isPresented: dismissBinding,

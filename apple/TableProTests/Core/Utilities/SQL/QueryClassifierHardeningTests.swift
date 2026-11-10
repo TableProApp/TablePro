@@ -644,6 +644,19 @@ struct QueryClassifierNonSqlTests {
 
     /// `OUTSIDEBLOCK` is the Server Dashboard's prefix for a command held out of the user's MULTI
     /// block. Read as the bare word, `OUTSIDEBLOCK FLUSHALL` passed as an ordinary write.
+    @Test("Redis MUSTAPPLY prefix is classified by the command it wraps")
+    func redisMustApplyPrefixIsClassifiedByItsCommand() {
+        #expect(QueryClassifier.classifyTier("MUSTAPPLY FLUSHALL", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("MUSTAPPLY SHUTDOWN", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("MUSTAPPLY CONFIG SET dir /tmp", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("DB 0 MUSTAPPLY FLUSHDB", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("MUSTAPPLY DB 0 FLUSHDB", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode("MUSTAPPLY EVAL \"return 1\" 0", databaseType: .redis))
+        #expect(QueryClassifier.classifyTier("MUSTAPPLY RENAMENX a b", databaseType: .redis) == .write)
+        #expect(QueryClassifier.classifyTier("MUSTAPPLY SET k v NX", databaseType: .redis) == .write)
+        #expect(QueryClassifier.isWriteQuery("MUSTAPPLY", databaseType: .redis))
+    }
+
     @Test("Redis OUTSIDEBLOCK prefix is classified by the command it wraps")
     func redisOutsideBlockPrefix() {
         #expect(QueryClassifier.classifyTier("OUTSIDEBLOCK FLUSHALL", databaseType: .redis) == .destructive)

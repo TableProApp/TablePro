@@ -28,10 +28,8 @@ internal enum AppActivationRole: Equatable, Sendable {
 /// The decisions, separated from acting on them so they can be tested without a running
 /// `NSApplication`. `AppActivationPolicyController` is the only place that applies them.
 internal enum AppActivationPolicyDecision {
-    /// `BackgroundLaunchFlag` is set by `MCPHandshakeAcquirer.launchHostApp` on the `open` process it
-    /// spawns, and read here before `NSApplicationMain` runs. That timing is the whole point:
-    /// deciding any later, even in `application(_:open:)`, still leaves the app registered with
-    /// LaunchServices as a foreground app for ~160ms, which is a Dock icon the person can see.
+    // Read before NSApplicationMain: deciding later, even in application(_:open:), leaves the app
+    // registered as a foreground app for about 160 ms, a Dock icon the person can see.
     internal static func launchOrigin(for environment: [String: String]) -> AppSessionOrigin {
         BackgroundLaunchFlag.isSet(in: environment) ? .machine : .user
     }

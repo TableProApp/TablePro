@@ -1,5 +1,5 @@
-//! One TablePro per session: a second launch forwards its activation to
-//! the running one over D-Bus and exits.
+//! One TablePro per session: a second launch forwards its activation, or
+//! its files with `--new-window`, to the running one over D-Bus and exits.
 
 #![expect(
     clippy::print_stderr,
@@ -103,6 +103,29 @@ fn with_primary(sandbox: &Sandbox, address: &str, connection: &gio::DBusConnecti
     if windows != 2 {
         return Err(format!("{windows} windows after one plain launch and one --new-window"));
     }
+    new_window_with_a_file(sandbox, address, connection)
+}
+
+// A second `--new-window FILE` once opened an empty window and dropped the file.
+fn new_window_with_a_file(sandbox: &Sandbox, address: &str, connection: &gio::DBusConnection) -> Result<(), String> {
+    let database = sandbox.root().join("shop.sqlite3");
+    std::fs::write(&database, b"").map_err(|error| format!("could not create {}: {error}", database.display()))?;
+    let database = database.to_string_lossy().into_owned();
+
+    let status = launch(sandbox, address, &["--new-window", database.as_str()])?;
+    if !status.success() {
+        return Err(format!("a launch with --new-window and a file exited with {status}"));
+    }
+
+    wait_until("a window on the file", || {
+        window_ids(connection)
+            .iter()
+            .any(|window| shows_workspace(connection, window))
+    })?;
+    let windows = window_count(connection);
+    if windows != 3 {
+        return Err(format!("{windows} windows after --new-window with a file, not 3"));
+    }
     Ok(())
 }
 
@@ -164,6 +187,50 @@ fn window_count(connection: &gio::DBusConnection) -> usize {
         .ok()
         .and_then(|reply| reply.get::<(String,)>())
         .map_or(0, |(xml,)| xml.matches("<node name=").count())
+}
+
+fn window_ids(connection: &gio::DBusConnection) -> Vec<String> {
+    let Some((xml,)) = connection
+        .call_sync(
+            Some(APP_ID),
+            &format!("{}/window", object_path()),
+            "org.freedesktop.DBus.Introspectable",
+            "Introspect",
+            None,
+            None,
+            gio::DBusCallFlags::NONE,
+            CALL_TIMEOUT_MS,
+            gio::Cancellable::NONE,
+        )
+        .ok()
+        .and_then(|reply| reply.get::<(String,)>())
+    else {
+        return Vec::new();
+    };
+    xml.split("<node name=\"")
+        .skip(1)
+        .filter_map(|rest| rest.split('"').next())
+        .map(str::to_owned)
+        .collect()
+}
+
+// Disconnect is enabled only while a window shows a workspace.
+fn shows_workspace(connection: &gio::DBusConnection, window: &str) -> bool {
+    connection
+        .call_sync(
+            Some(APP_ID),
+            &format!("{}/window/{window}", object_path()),
+            "org.gtk.Actions",
+            "Describe",
+            Some(&("disconnect",).to_variant()),
+            None,
+            gio::DBusCallFlags::NONE,
+            CALL_TIMEOUT_MS,
+            gio::Cancellable::NONE,
+        )
+        .ok()
+        .and_then(|reply| reply.child_value(0).child_value(0).get::<bool>())
+        .unwrap_or(false)
 }
 
 /// GApplication's object path: the id with dots as slashes.

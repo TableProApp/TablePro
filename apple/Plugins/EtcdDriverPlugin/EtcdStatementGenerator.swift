@@ -14,6 +14,7 @@ struct EtcdStatementGenerator {
     var keyColumnIndex: Int? { columns.firstIndex(of: "Key") }
     private var valueColumnIndex: Int? { columns.firstIndex(of: "Value") }
     private var leaseColumnIndex: Int? { columns.firstIndex(of: "Lease") }
+    private var modRevisionColumnIndex: Int? { columns.firstIndex(of: "ModRevision") }
 
     // etcd stores no NULL, so a NULL written to Value means an empty value, and to Lease, no lease.
     private static let writableColumns: Set<String> = ["Key", "Value", "Lease"]
@@ -82,7 +83,7 @@ struct EtcdStatementGenerator {
 
         // A key typed without a leading slash lands under the table's prefix.
         let fullKey = !prefix.isEmpty && k.first != UInt8(ascii: "/") ? Data(prefix.utf8) + k : k
-        return [Self.putCommand(key: fullKey, value: value ?? Data(), lease: leaseId)]
+        return [Self.writeCommand("create", arguments: [fullKey, value ?? Data()], lease: leaseId)]
     }
 
     private func updateCommands(for change: PluginRowChange) throws -> [String] {
@@ -93,8 +94,6 @@ struct EtcdStatementGenerator {
         if let column = serverOwnedColumn(in: change) {
             throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.serverOwnedReason(column))
         }
-
-        var commands: [String] = []
 
         let keyChange = change.cellChanges.first { $0.columnName == "Key" }
         let valueChange = change.cellChanges.first { $0.columnName == "Value" }
@@ -109,24 +108,29 @@ struct EtcdStatementGenerator {
         let editedLease = leaseChange.map { $0.newValue.asText ?? "" }
         let lease = editedLease ?? originalCell(at: leaseColumnIndex, of: change)?.asText
 
-        if valueChange != nil || shouldDeleteOriginalKey {
-            let newValue = valueChange.map { $0.newValue.etcdBytes ?? Data() } ?? originalValue(of: change)
-            commands.append(Self.putCommand(key: newKey, value: newValue, lease: lease))
-            if shouldDeleteOriginalKey {
-                commands.append(EtcdCommandText.command("del", arguments: [originalKey]))
-            }
-        } else if editedLease != nil {
-            commands.append(Self.putCommand(key: newKey, value: originalValue(of: change), lease: lease))
+        let newValue = valueChange.map { $0.newValue.etcdBytes ?? Data() } ?? originalValue(of: change)
+        if shouldDeleteOriginalKey {
+            // One transaction: a put and a del sent apart replace a key already at the new name
+            // and leave both keys behind when the del fails.
+            let revision = originalCell(at: modRevisionColumnIndex, of: change)?.asText.flatMap { Int64($0) }
+            return [Self.writeCommand(
+                "mv",
+                arguments: [originalKey, newKey, newValue],
+                lease: lease,
+                flags: revision.map { ["--mod-rev=\($0)"] } ?? []
+            )]
         }
-
-        return commands
+        guard valueChange != nil || editedLease != nil else { return [] }
+        return [Self.writeCommand("put", arguments: [newKey, newValue], lease: lease)]
     }
 
-    private static func putCommand(key: Data, value: Data, lease: String?) -> String {
+    private static func writeCommand(_ name: String, arguments: [Data], lease: String?, flags: [String] = []) -> String {
         guard let lease, !lease.isEmpty, lease != "0" else {
-            return EtcdCommandText.command("put", arguments: [key, value])
+            return EtcdCommandText.command(name, arguments: arguments, flags: flags)
         }
-        return EtcdCommandText.command("put", arguments: [key, value], flags: ["--lease=" + EtcdCommandText.quoted(lease)])
+        return EtcdCommandText.command(
+            name, arguments: arguments, flags: flags + ["--lease=" + EtcdCommandText.quoted(lease)]
+        )
     }
 
     // A new row's NULL in a server-owned column leaves the value to etcd, so only a value set in one counts.
@@ -164,4 +168,10 @@ struct EtcdStatementGenerator {
               columnIndex < originalRow.count else { return nil }
         return originalRow[columnIndex]
     }
+}
+
+struct EtcdGuardedWriteRefusal: Error, PluginDriverError {
+    let message: String
+
+    var pluginErrorMessage: String { message }
 }

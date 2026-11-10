@@ -606,6 +606,7 @@ struct RowChangeStatementFactory {
             databaseType: databaseType,
             generatedColumns: generatedColumns ?? self.generatedColumns,
             rowMatchPolicy: rowMatchPolicy,
+            columnTypeNames: columnTypeNames,
             insertOverridesSystemValue: insertOverridesSystemValue,
             dialect: PluginManager.shared.sqlDialect(for: databaseType),
             quoteIdentifier: pluginDriver?.quoteIdentifier

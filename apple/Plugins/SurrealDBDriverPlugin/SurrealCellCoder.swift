@@ -31,21 +31,31 @@ public enum SurrealCellCoder {
         }
     }
 
-    public static func value(from cell: PluginCellValue, kind: SurrealFieldKind?) -> SurrealValue {
+    // `held` is every kind of value the field was read holding. It decides text typed into a
+    // field with no declared type, where the shape of the text alone would retype a string.
+    public static func value(
+        from cell: PluginCellValue,
+        kind: SurrealFieldKind?,
+        held: Set<SurrealFieldKind.Base> = []
+    ) -> SurrealValue {
         switch cell {
         case .null:
             return (kind?.isOptional ?? true) ? .none : .null
         case let .bytes(data):
             return .bytes(data)
         case let .text(text):
-            return value(fromText: text, kind: kind)
+            return value(fromText: text, kind: kind, held: held)
         }
     }
 
     // MARK: - Text coercion
 
-    private static func value(fromText text: String, kind: SurrealFieldKind?) -> SurrealValue {
-        guard let kind else { return inferred(from: text) }
+    private static func value(
+        fromText text: String,
+        kind: SurrealFieldKind?,
+        held: Set<SurrealFieldKind.Base>
+    ) -> SurrealValue {
+        guard let kind else { return inferred(from: text, held: held) }
 
         if text.isEmpty, kind.base != .string, kind.base != .any {
             return kind.isOptional ? .none : .null
@@ -89,8 +99,29 @@ public enum SurrealCellCoder {
             guard let data = Data(base64Encoded: text) else { return .string(text) }
             return .bytes(data)
         case .any:
-            return inferred(from: text)
+            return inferred(from: text, held: held)
         }
+    }
+
+    // A cell shows the string '1001' and the int 1001 as the same text. In a field that held
+    // strings and never a value of the kind the text is shaped like, the text is a string too.
+    private static func inferred(from text: String, held: Set<SurrealFieldKind.Base>) -> SurrealValue {
+        let shaped = inferred(from: text)
+        guard held.contains(.string) else { return shaped }
+        let shapedKinds: Set<SurrealFieldKind.Base>
+        switch shaped {
+        case .int:
+            shapedKinds = [.int, .float, .decimal, .number]
+        case .bool:
+            shapedKinds = [.bool]
+        case .array:
+            shapedKinds = [.array, .set]
+        case .object:
+            shapedKinds = [.object, .geometry]
+        default:
+            return shaped
+        }
+        return held.isDisjoint(with: shapedKinds) ? .string(text) : shaped
     }
 
     private static func inferred(from text: String) -> SurrealValue {
