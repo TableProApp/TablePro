@@ -13,7 +13,7 @@ import Testing
 struct RedisStatementGeneratorTests {
     // MARK: - INSERT
 
-    @Test("Basic insert generates SET command")
+    @Test("Basic insert generates a SET that refuses an existing key")
     func basicInsert() throws {
         let gen = RedisStatementGenerator(
             namespaceName: "cache:",
@@ -39,10 +39,10 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement == "SET cache:mykey hello")
+        #expect(results[0].statement == "MUSTAPPLY SET cache:mykey hello NX")
     }
 
-    @Test("Insert with TTL generates SET and EXPIRE")
+    @Test("Insert with TTL sets the expiry in the same SET, so a refused insert never touches the existing key's TTL")
     func insertWithTtl() throws {
         let gen = RedisStatementGenerator(
             namespaceName: "",
@@ -67,9 +67,8 @@ struct RedisStatementGeneratorTests {
             insertedRowIndices: [0]
         )
 
-        #expect(results.count == 2)
-        #expect(results[0].statement == "SET session:abc data")
-        #expect(results[1].statement == "EXPIRE session:abc 3600")
+        #expect(results.count == 1)
+        #expect(results[0].statement == "MUSTAPPLY SET session:abc data EX 3600 NX")
     }
 
     @Test("Insert with TTL=0 generates SET only")
@@ -98,7 +97,7 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement == "SET mykey value")
+        #expect(results[0].statement == "MUSTAPPLY SET mykey value NX")
     }
 
     @Test("Insert with a negative TTL other than -1 is refused, not written without its expiry")
@@ -134,7 +133,7 @@ struct RedisStatementGeneratorTests {
             insertedRowIndices: [0]
         )
 
-        #expect(results.map(\.statement) == ["SET mykey value"])
+        #expect(results.map(\.statement) == ["MUSTAPPLY SET mykey value NX"])
     }
 
     @Test("Insert without key is refused")
@@ -219,7 +218,7 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement == "SET mykey \"\"")
+        #expect(results[0].statement == "MUSTAPPLY SET mykey \"\" NX")
     }
 
     @Test("Insert uses cellChanges as fallback")
@@ -247,7 +246,7 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement == "SET newkey newval")
+        #expect(results[0].statement == "MUSTAPPLY SET newkey newval NX")
     }
 
     @Test("Insert not in insertedRowIndices is skipped")
@@ -276,7 +275,7 @@ struct RedisStatementGeneratorTests {
 
     // MARK: - UPDATE
 
-    @Test("Update value generates SET with new value")
+    @Test("Update value generates a SET that keeps the key's TTL")
     func updateValue() throws {
         let gen = RedisStatementGenerator(
             namespaceName: "",
@@ -300,10 +299,10 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement == "SET mykey new")
+        #expect(results[0].statement == "SET mykey new KEEPTTL")
     }
 
-    @Test("Update key generates RENAME then SET")
+    @Test("Update key writes the value to the old key, then renames only onto a free name")
     func updateKey() throws {
         let gen = RedisStatementGenerator(
             namespaceName: "",
@@ -328,11 +327,11 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 2)
-        #expect(results[0].statement == "RENAME oldkey newkey")
-        #expect(results[1].statement == "SET newkey val2")
+        #expect(results[0].statement == "SET oldkey val2 KEEPTTL")
+        #expect(results[1].statement == "MUSTAPPLY RENAMENX oldkey newkey")
     }
 
-    @Test("Update key only (no value change) generates just RENAME")
+    @Test("Update key only (no value change) generates just the guarded rename")
     func updateKeyOnly() throws {
         let gen = RedisStatementGenerator(
             namespaceName: "",
@@ -356,7 +355,7 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement == "RENAME oldkey newkey")
+        #expect(results[0].statement == "MUSTAPPLY RENAMENX oldkey newkey")
     }
 
     @Test("Update TTL generates EXPIRE")
@@ -686,7 +685,7 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement == "SET \"my key\" \"hello world\"")
+        #expect(results[0].statement == "MUSTAPPLY SET \"my key\" \"hello world\" NX")
     }
 
     @Test("Values with quotes are escaped")
@@ -715,7 +714,7 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement == "SET key \"say \\\"hello\\\"\"")
+        #expect(results[0].statement == "MUSTAPPLY SET key \"say \\\"hello\\\"\" NX")
     }
 
     // MARK: - Mixed Operations
@@ -762,8 +761,8 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 3)
-        #expect(results[0].statement == "SET newkey newval")
-        #expect(results[1].statement == "SET existingkey new")
+        #expect(results[0].statement == "MUSTAPPLY SET newkey newval NX")
+        #expect(results[1].statement == "SET existingkey new KEEPTTL")
         #expect(results[2].statement == "DEL delkey")
     }
 
@@ -792,7 +791,7 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 2)
-        #expect(results[0].statement == "SET mykey new")
+        #expect(results[0].statement == "SET mykey new KEEPTTL")
         #expect(results[1].statement == "EXPIRE mykey 300")
     }
 
@@ -822,9 +821,9 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 3)
-        #expect(results[0].statement == "RENAME oldkey newkey")
-        #expect(results[1].statement == "SET newkey new")
-        #expect(results[2].statement == "EXPIRE newkey 600")
+        #expect(results[0].statement == "SET oldkey new KEEPTTL")
+        #expect(results[1].statement == "EXPIRE oldkey 600")
+        #expect(results[2].statement == "MUSTAPPLY RENAMENX oldkey newkey")
     }
 }
 
@@ -852,7 +851,7 @@ struct RedisStatementGeneratorBrowseColumnTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement == "SET mykey new")
+        #expect(results[0].statement == "SET mykey new KEEPTTL")
     }
 
     @Test("A whole string value is written back, however long it is")
@@ -877,7 +876,7 @@ struct RedisStatementGeneratorBrowseColumnTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement == "SET mykey \(long)")
+        #expect(results[0].statement == "SET mykey \(long) KEEPTTL")
     }
 
     @Test("A collection value update is refused so the structure survives")
@@ -974,9 +973,8 @@ struct RedisStatementGeneratorBrowseColumnTests {
             insertedRowIndices: [0]
         )
 
-        #expect(results.count == 2)
-        #expect(results[0].statement == "SET mykey hello")
-        #expect(results[1].statement == "EXPIRE mykey 600")
+        #expect(results.count == 1)
+        #expect(results[0].statement == "MUSTAPPLY SET mykey hello EX 600 NX")
     }
 
     @Test("A new hash stores each JSON field value as the text it was written as")

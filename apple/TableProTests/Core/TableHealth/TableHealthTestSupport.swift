@@ -19,10 +19,45 @@ enum TableHealthFixture {
     }
 
     static func postgresContext(database: String = "shop") -> TableHealthQueryContext {
-        TableHealthQueryContext(database: database) { "\"" + $0.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
+        TableHealthQueryContext(
+            database: database,
+            quote: { "\"" + $0.replacingOccurrences(of: "\"", with: "\"\"") + "\"" },
+            literal: { "'" + $0.replacingOccurrences(of: "'", with: "''") + "'" }
+        )
     }
 
     static func mysqlContext(database: String = "shop") -> TableHealthQueryContext {
-        TableHealthQueryContext(database: database) { "`" + $0.replacingOccurrences(of: "`", with: "``") + "`" }
+        TableHealthQueryContext(
+            database: database,
+            quote: { "`" + $0.replacingOccurrences(of: "`", with: "``") + "`" },
+            literal: {
+                "'" + $0.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "'", with: "''") + "'"
+            }
+        )
+    }
+
+    static func finding(
+        _ kind: TableHealthCheckKind = .missingPrimaryKey,
+        schema: String? = "public",
+        table: String?,
+        object: String? = nil,
+        fixSQL: String? = "SELECT 1;"
+    ) -> TableHealthFinding {
+        TableHealthFinding(
+            kind: kind, schema: schema, table: table, objectName: object, detail: "", fixSQL: fixSQL
+        )
+    }
+
+    static func report(
+        _ checks: [(kind: TableHealthCheckKind, outcome: TableHealthCheckResult.Outcome, findings: [TableHealthFinding])],
+        generatedAt: Date = Date(timeIntervalSince1970: 0)
+    ) -> TableHealthReport {
+        TableHealthReport(
+            database: "shop",
+            checks: checks.map {
+                TableHealthCheckResult(check: TableHealthCheck(kind: $0.kind, summary: ""), findings: $0.findings, outcome: $0.outcome)
+            },
+            generatedAt: generatedAt
+        )
     }
 }

@@ -1,7 +1,9 @@
+import Darwin
 import Foundation
 @testable import TableProMCP
 import TableProMCPTestSupport
 import TableProTestSupport
+import Testing
 import XCTest
 
 final class MCPStreamableHttpClientTransportTests: XCTestCase {
@@ -257,10 +259,11 @@ final class MCPStreamableHttpClientTransportTests: XCTestCase {
     func testUnauthorizedRefreshesCredentialsAndRetriesExactlyOnce() async throws {
         let refreshed = MCPUpstreamCredentials(
             socketPath: server.socketPath,
+            serverPID: getpid(),
             bearerToken: "refreshed-token"
         )
         let provider = QueuedCredentialsProvider(
-            initial: MCPUpstreamCredentials(socketPath: server.socketPath, bearerToken: "stale-token"),
+            initial: MCPUpstreamCredentials(socketPath: server.socketPath, serverPID: getpid(), bearerToken: "stale-token"),
             queued: [refreshed]
         )
         await server.setResponses([
@@ -293,8 +296,8 @@ final class MCPStreamableHttpClientTransportTests: XCTestCase {
 
     func testASecondUnauthorizedIsReportedRatherThanRetriedAgain() async throws {
         let provider = QueuedCredentialsProvider(
-            initial: MCPUpstreamCredentials(socketPath: server.socketPath, bearerToken: "stale-token"),
-            queued: [MCPUpstreamCredentials(socketPath: server.socketPath, bearerToken: "still-stale")]
+            initial: MCPUpstreamCredentials(socketPath: server.socketPath, serverPID: getpid(), bearerToken: "stale-token"),
+            queued: [MCPUpstreamCredentials(socketPath: server.socketPath, serverPID: getpid(), bearerToken: "still-stale")]
         )
         await server.setResponse(MockHttpResponse(
             status: 401,
@@ -321,7 +324,7 @@ final class MCPStreamableHttpClientTransportTests: XCTestCase {
 
     func testAFailedRefreshSurfacesAnErrorRatherThanHanging() async throws {
         let provider = QueuedCredentialsProvider(
-            initial: MCPUpstreamCredentials(socketPath: server.socketPath, bearerToken: "stale-token"),
+            initial: MCPUpstreamCredentials(socketPath: server.socketPath, serverPID: getpid(), bearerToken: "stale-token"),
             queued: []
         )
         await server.setResponse(MockHttpResponse(
@@ -345,6 +348,7 @@ final class MCPStreamableHttpClientTransportTests: XCTestCase {
     func testAnUnreachableEndpointTellsTheUserToStartTablePro() async throws {
         let credentials = MCPUpstreamCredentials(
             socketPath: MCPSocketLocation.primarySocket(in: MCPTestSocketFolder.url()).path,
+            serverPID: getpid(),
             bearerToken: "token"
         )
         let transport = MCPStreamableHttpClientTransport(
@@ -436,7 +440,7 @@ final class MCPStreamableHttpClientTransportTests: XCTestCase {
         credentialsProvider: (any MCPUpstreamCredentialsProviding)? = nil,
         errorLogger: (any MCPBridgeLogger)? = nil
     ) -> MCPStreamableHttpClientTransport {
-        let credentials = MCPUpstreamCredentials(socketPath: server.socketPath, bearerToken: "test-token")
+        let credentials = MCPUpstreamCredentials(socketPath: server.socketPath, serverPID: getpid(), bearerToken: "test-token")
         let provider = credentialsProvider
             ?? MCPCachedUpstreamCredentialsProvider(initial: credentials) { credentials }
         return MCPStreamableHttpClientTransport(
@@ -532,5 +536,39 @@ actor QueuedCredentialsProvider: MCPUpstreamCredentialsProviding {
         guard !queued.isEmpty else { throw TransportTestError.noQueuedCredentials }
         current = queued.removeFirst()
         return current
+    }
+}
+
+struct MCPStreamableHttpPeerTests {
+    @Test("A changed PID refreshes credentials once before sending to the verified process")
+    func changedPeerRefreshesOnce() async throws {
+        let server = MockHttpServer()
+        try await server.start()
+        do {
+            let credentials = MCPUpstreamCredentials(socketPath: server.socketPath, serverPID: getpid(), bearerToken: "new-token")
+            let provider = QueuedCredentialsProvider(
+                initial: MCPUpstreamCredentials(socketPath: server.socketPath, serverPID: getpid() + 1, bearerToken: "old-token"),
+                queued: [credentials]
+            )
+            let response = try JsonRpcCodec.encode(.successResponse(JsonRpcSuccessResponse(id: .number(1), result: .object([:]))))
+            await server.respondWithJson(response)
+            let transport = MCPStreamableHttpClientTransport(credentialsProvider: provider)
+            var inbound = transport.inbound.makeAsyncIterator()
+            try await transport.send(MCPUpstreamFrame(
+                body: Data(#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#.utf8),
+                method: "tools/list",
+                requestId: .number(1)
+            ))
+            #expect(try await inbound.next() == response)
+            #expect(await provider.refreshCount == 1)
+            let requests = await server.requests
+            #expect(requests.count == 1)
+            #expect(requests.first?.header("Authorization") == "Bearer new-token")
+            await transport.close()
+        } catch {
+            await server.stop()
+            throw error
+        }
+        await server.stop()
     }
 }

@@ -4,11 +4,14 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, glib, pango};
 use tablepro_core::Value;
+use tablepro_linux_platform::settings::DateFormat;
 
 use super::RowDetailPane;
 use crate::i18n::gettext;
 use crate::services::change_tracker::CellState;
-use crate::services::grid::{GridColumn, auto_filled_sentinel, display_text};
+use crate::services::grid::display_text::display_text_formatted;
+use crate::services::grid::{GridColumn, auto_filled_sentinel};
+use crate::ui::data_grid::special_marks::show_value;
 use crate::ui::data_grid::tracked_values::cell_description;
 use crate::ui::data_grid::{DataGrid, GridRow, ServerValue, TrackedValues};
 use crate::ui::handler_guard::HandlerGuard;
@@ -42,7 +45,13 @@ pub struct FieldValue {
     pub deleted: bool,
 }
 
-pub fn field_value(tracked: &TrackedValues, row: &GridRow, column: &GridColumn, null_display: &str) -> FieldValue {
+pub fn field_value(
+    tracked: &TrackedValues,
+    row: &GridRow,
+    column: &GridColumn,
+    null_display: &str,
+    date_format: DateFormat,
+) -> FieldValue {
     let mark = tracked.mark(row, column.index);
     let (text, placeholder, null) = tracked.with_value(row, column.index, |value, computed| match (computed, value) {
         (Some(ServerValue::Default), _) if column.auto_filled() => (auto_filled_sentinel(), true, false),
@@ -51,7 +60,7 @@ pub fn field_value(tracked: &TrackedValues, row: &GridRow, column: &GridColumn, 
         (None, Value::Null) => (null_display.to_owned(), true, true),
         (None, value) => {
             let mut scratch = String::new();
-            let shown = display_text(value, &column.column_type, &mut scratch);
+            let shown = display_text_formatted(value, &column.column_type, date_format, &mut scratch);
             (shown.text.to_owned(), shown.placeholder, false)
         }
     });
@@ -408,7 +417,13 @@ impl RowDetailPane {
             return false;
         };
         let preferences = config.settings.grid_preferences().snapshot();
-        let value = field_value(&grid.tracked(), &row, &column, &preferences.null_display);
+        let value = field_value(
+            &grid.tracked(),
+            &row,
+            &column,
+            &preferences.null_display,
+            preferences.date_format,
+        );
         !value.null && value.text.to_lowercase().contains(&wanted)
     }
 
@@ -456,10 +471,20 @@ impl RowDetailPane {
             return;
         };
         let preferences = config.settings.grid_preferences().snapshot();
-        let value = field_value(&grid.tracked(), &row, &column, &preferences.null_display);
+        let value = field_value(
+            &grid.tracked(),
+            &row,
+            &column,
+            &preferences.null_display,
+            preferences.date_format,
+        );
         edited.set_visible(value.modified);
-        shown.set_text(Some(&value.text));
-        shown.set_attributes(Some(&value_attributes(&value)));
+        show_value(
+            &shown,
+            &value.text,
+            Some(&value_attributes(&value)),
+            preferences.show_invisible_characters && !value.placeholder,
+        );
         set_class(&shown, "dimmed", value.placeholder || value.deleted);
         // Adwaita's own warning colour beside the bold, as the grid's
         // cells mark a pending value.

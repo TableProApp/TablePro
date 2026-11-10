@@ -27,9 +27,9 @@ struct TSVRowParser: RowDataParser {
             return .failure(.emptyClipboard)
         }
 
+        // Only tested for blankness: trimming the line itself drops a leading empty field and shifts the row left.
         let lines = text.components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
 
         guard !lines.isEmpty else {
             return .failure(.noValidRows)
@@ -67,6 +67,7 @@ struct TSVRowParser: RowDataParser {
         return .success(parsedRows)
     }
 
+    // A cell's own leading and trailing spaces are data; only a blank or NULL cell reads as no value.
     private func normalizeValue(_ rawValue: String) -> String? {
         let trimmed = rawValue.trimmingCharacters(in: .whitespaces)
 
@@ -74,7 +75,7 @@ struct TSVRowParser: RowDataParser {
             return nil
         }
 
-        return trimmed
+        return rawValue
     }
 }
 

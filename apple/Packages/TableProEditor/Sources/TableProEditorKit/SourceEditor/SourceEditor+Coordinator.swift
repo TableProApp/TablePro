@@ -78,6 +78,12 @@ public extension SourceEditor {
                 name: TextView.textDidChangeNotification,
                 object: controller.textView
             )
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(textViewShouldFlushWriteback(_:)),
+                name: TextViewController.flushTextWritebackNotification,
+                object: controller.textView
+            )
 
             // Needs to be put on the main runloop or SwiftUI gets mad about updating state during view updates.
             NotificationCenter.default
@@ -153,6 +159,13 @@ public extension SourceEditor {
                 return
             }
             textSync.editorTextDidChange(textView)
+        }
+
+        @objc func textViewShouldFlushWriteback(_ notification: Notification) {
+            guard let textView = notification.object as? TextView else {
+                return
+            }
+            textSync.flushPendingWriteback(from: textView)
         }
 
         @objc func textControllerCursorsDidUpdate(_ notification: Notification) {

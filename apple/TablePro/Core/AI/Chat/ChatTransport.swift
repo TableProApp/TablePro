@@ -32,6 +32,9 @@ struct ChatTransportOptions: Sendable {
     /// was answered with the other's context, across connections included, while their local
     /// transcripts stayed correctly separate.
     var sessionId: UUID
+    // The connection the conversation is attached to. A transport that hands the model its own
+    // database tools scopes them to this one, and hands out none without it.
+    var connectionId: UUID?
 
     init(
         model: String,
@@ -40,7 +43,8 @@ struct ChatTransportOptions: Sendable {
         temperature: Double? = nil,
         tools: [ChatToolSpec] = [],
         reasoningEffort: ReasoningEffort? = nil,
-        sessionId: UUID = UUID()
+        sessionId: UUID = UUID(),
+        connectionId: UUID? = nil
     ) {
         self.model = model
         self.systemPrompt = systemPrompt
@@ -49,6 +53,7 @@ struct ChatTransportOptions: Sendable {
         self.tools = tools
         self.reasoningEffort = reasoningEffort
         self.sessionId = sessionId
+        self.connectionId = connectionId
     }
 }
 

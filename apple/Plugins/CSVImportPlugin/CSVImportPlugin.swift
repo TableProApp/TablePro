@@ -46,6 +46,8 @@ final class CSVImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
         AnyView(CSVImportOptionsView(plugin: self))
     }
 
+    private typealias MalformedRow = (line: Int, error: CSVImportParsing.RowShapeError)
+
     private static let detectionPrefixBytes = 1_048_576
     private static let batchSize = 500
 
@@ -91,14 +93,19 @@ final class CSVImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
 
         let lineOffset = hasHeader ? 2 : 1
         var cursor = 0
+        let configuration = runConfiguration
+        var pendingFailure: PluginImportError?
+        var malformedCount = 0
+        var malformedErrors: [PluginImportResult.ImportStatementError] = []
         let outcome = try await RowImportRunner.run(
-            configuration: runConfiguration,
+            configuration: configuration,
             sink: sink,
             progress: progress
         ) {
+            if let pendingFailure { throw pendingFailure }
             guard cursor < dataRanges.count else { return nil }
             let end = min(cursor + Self.batchSize, dataRanges.count)
-            let batch = self.parseBatch(
+            let parsed = self.parseBatch(
                 in: data,
                 parser: parser,
                 ranges: dataRanges[cursor..<end],
@@ -106,19 +113,35 @@ final class CSVImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
                 lineOffset: lineOffset,
                 columnNames: columnNames
             )
+            var batch = parsed.rows
+            let malformed = parsed.malformed
             let blankRows = (end - cursor) - batch.count
             if blankRows > 0 {
                 progress.incrementStatement(by: blankRows)
             }
             cursor = end
+            guard let first = malformed.first else { return batch }
+            guard configuration.errorHandling == .skipAndContinue else {
+                // The rows above the malformed one go in first, as they do when the database refuses a row.
+                batch.removeAll { $0.line > first.line }
+                pendingFailure = .statementFailed(
+                    statement: "row \(first.line)", line: first.line, underlyingError: first.error)
+                return batch
+            }
+            malformedCount += malformed.count
+            for entry in malformed where malformedErrors.count < configuration.maxRecordedErrors {
+                malformedErrors.append(.init(
+                    statement: "row \(entry.line)", line: entry.line, errorMessage: entry.error.localizedDescription))
+            }
             return batch
         }
 
+        let errors = (outcome.errors + malformedErrors).sorted { $0.line < $1.line }
         return PluginImportResult(
             executedStatements: outcome.inserted,
             executionTime: Date().timeIntervalSince(startTime),
-            skippedStatements: outcome.skipped,
-            errors: outcome.errors
+            skippedStatements: outcome.skipped + malformedCount,
+            errors: Array(errors.prefix(configuration.maxRecordedErrors))
         )
     }
 
@@ -150,19 +173,26 @@ final class CSVImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
         startIndex: Int,
         lineOffset: Int,
         columnNames: [String]
-    ) -> [(line: Int, row: [String: PluginCellValue])] {
-        data.withUnsafeBytes { raw -> [(line: Int, row: [String: PluginCellValue])] in
-            guard let base = raw.bindMemory(to: UInt8.self).baseAddress else { return [] }
+    ) -> (rows: [RowImportRunner.Entry], malformed: [MalformedRow]) {
+        data.withUnsafeBytes { raw -> (rows: [RowImportRunner.Entry], malformed: [MalformedRow]) in
+            guard let base = raw.bindMemory(to: UInt8.self).baseAddress else { return ([], []) }
             let buffer = UnsafeBufferPointer(start: base, count: raw.count)
-            var out: [(line: Int, row: [String: PluginCellValue])] = []
+            var out: [RowImportRunner.Entry] = []
+            var malformed: [MalformedRow] = []
             out.reserveCapacity(ranges.count)
             for (offset, range) in ranges.enumerated() {
                 let fields = parser.parseRow(buffer, range: range)
                 if CSVImportParsing.isBlank(fields) { continue }
                 let line = startIndex + offset + lineOffset
+                if let error = CSVImportParsing.shapeError(
+                    fields: fields, columnCount: columnNames.count, options: settings
+                ) {
+                    malformed.append((line, error))
+                    continue
+                }
                 out.append((line, CSVImportParsing.row(fields: fields, columnNames: columnNames, options: settings)))
             }
-            return out
+            return (out, malformed)
         }
     }
 

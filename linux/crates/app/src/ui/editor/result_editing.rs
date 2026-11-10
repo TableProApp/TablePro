@@ -51,6 +51,7 @@ pub(super) struct EditTarget {
 #[derive(Debug)]
 struct ResultActions {
     save: gio::SimpleAction,
+    save_changes: gio::SimpleAction,
     undo: gio::SimpleAction,
     redo: gio::SimpleAction,
 }
@@ -75,6 +76,14 @@ pub struct ResultEditing {
 }
 
 impl SqlEditor {
+    pub(crate) fn save_changes_action(&self) -> Option<gio::SimpleAction> {
+        self.imp()
+            .editing
+            .actions
+            .get()
+            .map(|actions| actions.save_changes.clone())
+    }
+
     pub(crate) fn attach_row_tracker(&self, tracker: TabTrackerHandle) {
         if self.imp().editing.tracker.set(tracker).is_err() {
             return;
@@ -95,6 +104,7 @@ impl SqlEditor {
         };
         let actions = ResultActions {
             save: action("save", SqlEditor::save_rows),
+            save_changes: action("save-changes", SqlEditor::save_rows),
             undo: action("undo", |editor| {
                 if let Some(grid) = editor.owner_grid() {
                     grid.undo();
@@ -421,6 +431,13 @@ impl SqlEditor {
             && tracker
                 .as_ref()
                 .is_some_and(|tracker| tracker.pending_state() != PendingState::Saving);
+        actions.save_changes.set_enabled(
+            !self.imp().editing.saving.get()
+                && tracker.as_ref().is_some_and(|tracker| {
+                    matches!(tracker.pending_state(), PendingState::Clean | PendingState::Unsaved)
+                        && (tracker.pending_count() > 0 || grid.as_ref().is_some_and(DataGrid::is_editing))
+                }),
+        );
         actions
             .undo
             .set_enabled(idle && tracker.as_ref().is_some_and(TabTrackerHandle::can_undo));

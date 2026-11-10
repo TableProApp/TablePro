@@ -31,7 +31,7 @@ final class ClaudeAgentProvider: ChatTransport {
             let task = Task {
                 var grant: ClaudeAgentToolGrant?
                 do {
-                    grant = await toolBridge.makeGrant()
+                    grant = await toolBridge.makeGrant(connectionId: options.connectionId)
                     let prompt = AgentPromptRenderer.renderPrompt(turns: turns, includingSystemPrompt: nil)
                     let lines = try cli.streamLines(
                         arguments: Self.inferenceArguments(

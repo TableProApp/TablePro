@@ -307,6 +307,14 @@ struct ConnectionActionsMenuResolverTests {
         #expect(titles.contains(String(localized: "Forward")) == (tabKind == .table))
     }
 
+    @Test("A Table Health tab offers Export Results for its findings and nothing that reads rows")
+    func tableHealthOffersExportResults() {
+        let titles = Self.titles(Self.context(tabKind: .tableHealth))
+        #expect(titles.contains(String(localized: "Export Results…")))
+        #expect(titles.contains(String(localized: "Add Row")) == false)
+        #expect(titles.contains(String(localized: "Preview SQL")) == false)
+    }
+
     @Test("An unsaved definition offers its preview but nothing that reads rows")
     func createTableOffersPreviewOnly() {
         let titles = Self.titles(Self.context(tabKind: .createTable))

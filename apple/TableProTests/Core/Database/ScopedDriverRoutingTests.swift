@@ -127,14 +127,25 @@ struct ScopedDriverRoutingTests {
         }
     }
 
-    @Test("A reconnect-required engine runs a foreign database on a pooled connection")
-    func reconnectRequiredEngineOnAForeignDatabasePools() throws {
+    @Test("A reconnect-required engine never runs the user's SQL on a pooled connection")
+    func reconnectRequiredEngineKeepsUserSQLOffThePool() throws {
         let connection = Self.makeSession(type: .postgresql, browseDatabase: "inventory")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
         let foreign = Self.scope(connection, database: "orders")
 
-        #expect(DatabaseManager.shared.executionRoute(for: foreign) == .pooled)
+        #expect(DatabaseManager.shared.executionRoute(for: foreign) == .sessionDriver)
+    }
+
+    @Test("A table read of a database with no session connection is served by the pool")
+    func tableReadOfAForeignDatabasePools() throws {
+        let connection = Self.makeSession(type: .postgresql, browseDatabase: "inventory")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let foreign = Self.scope(connection, database: "orders")
+
+        #expect(DatabaseManager.shared.tableReadRoute(for: foreign) == .pooled)
+        #expect(DatabaseManager.shared.tableReadRoute(for: Self.scope(connection, database: "inventory")) == .sessionDriver)
     }
 
     @Test("An engine that can neither pin nor pool reports the tab's database instead of guessing")

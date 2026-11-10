@@ -13,6 +13,7 @@ mod database_transfer;
 mod definitions;
 mod diagram;
 mod editor_label;
+mod favorite_folders;
 mod finished_work;
 mod health_banner;
 mod imp;
@@ -66,6 +67,7 @@ pub(crate) use self::catalog_ops::DatabaseDrop;
 pub(crate) use self::database_transfer::TransferInput;
 pub(crate) use self::saves::SaveRequest;
 use self::session_watches::SessionWatches;
+pub(crate) use self::status_pages::SearchInput;
 use self::tab_title::ConnectionLabel;
 pub(crate) use self::workspace_actions::show_transfer_actions;
 pub(crate) use self::workspace_shell::WorkspaceShell;
@@ -180,6 +182,7 @@ pub(crate) struct WorkspaceModel {
     /// The CSV imports running into this workspace's tables.
     imports: Rc<import_ledger::ImportLedger>,
     history_dialog: Option<HistoryDialog>,
+    quick_open_dialog: Option<super::quick_open::QuickOpen>,
     saved_queries_dialog: Option<super::saved_queries_dialog::SavedQueriesDialog>,
     import_dialog: Option<super::import_dialog::ImportCsvDialog>,
     driver_id: String,
@@ -544,8 +547,7 @@ pub(crate) enum WorkspaceInput {
     WorkspaceLayoutReset(Result<Option<std::path::PathBuf>, crate::workspace::WorkspaceSaveError>),
     /// An editor draft failed to land after the last one did.
     DraftsNotSaved,
-    ShowHistory,
-    ShowSavedQueries,
+    Search(SearchInput),
     ActiveTab(workspace_tabs::ActiveTabCommand),
     ConfirmReplaceSavedQuery(tablepro_storage::saved_queries::NewSavedQuery),
     ReplaceSavedQuery(tablepro_storage::saved_queries::NewSavedQuery),
@@ -813,11 +815,7 @@ impl Workspace {
         } = init;
         let workspace: Self = glib::Object::new();
         let imp = workspace.imp();
-        imp.shell.set(Some(&shell));
-        let input = workspace.pump_inputs();
-        let _ = imp.sender.set(input.clone());
-        let _ = imp.key.set(key.clone());
-        let _ = imp.connection_id.set(session.metadata().id);
+        let input = workspace.bind(&shell, &key, &session);
         let context = session_slot(&context, &session);
         let storage = services.storage.clone();
         let tasks = services.tasks.clone();
@@ -894,6 +892,7 @@ impl Workspace {
             exports: exports.clone(),
             imports: imports.clone(),
             history_dialog: None,
+            quick_open_dialog: None,
             saved_queries_dialog: None,
             import_dialog: None,
             workspace: persistence,
@@ -903,6 +902,16 @@ impl Workspace {
         };
         workspace.hold(model, [exports, imports]);
         workspace
+    }
+
+    fn bind(&self, shell: &WorkspaceShell, key: &SessionKey, session: &Session) -> WorkspaceSender {
+        let imp = self.imp();
+        imp.shell.set(Some(shell));
+        let input = self.pump_inputs();
+        let _ = imp.sender.set(input.clone());
+        let _ = imp.key.set(key.clone());
+        let _ = imp.connection_id.set(session.metadata().id);
+        input
     }
 
     /// Hold the model, and have every close of the window ask the
@@ -1273,6 +1282,7 @@ impl WorkspaceModel {
             keys.stop_listing();
         }
         self.sidebar.shutdown();
+        self.close_quick_open();
         // Their entries name this session's tables and queries.
         if let Some(dialog) = self.history_dialog.take() {
             close_if_presented(dialog.upcast_ref());
@@ -1397,8 +1407,7 @@ impl WorkspaceModel {
             WorkspaceInput::SavedConnectionsChanged => self.on_saved_connections_changed(),
             WorkspaceInput::WorkspaceLayoutReset(outcome) => self.on_workspace_layout_reset(outcome),
             WorkspaceInput::DraftsNotSaved => self.on_drafts_not_saved(),
-            WorkspaceInput::ShowHistory => self.on_show_history(),
-            WorkspaceInput::ShowSavedQueries => self.on_show_saved_queries(),
+            WorkspaceInput::Search(input) => self.on_search(input),
             WorkspaceInput::ImportCsvRequested { schema, table } => self.on_import_csv_requested(schema, table),
             WorkspaceInput::Transfer(input) => self.on_transfer(input),
             WorkspaceInput::ImportCsvReady {

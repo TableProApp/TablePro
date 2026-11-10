@@ -1409,6 +1409,22 @@ final class LibPQPluginConnection: @unchecked Sendable {
         let cancelsOutput: Bool
     }
 
+    // In single-row mode a result with no rows arrives as one zero-row PGRES_TUPLES_OK, which carries the same row
+    // description every PGRES_SINGLE_TUPLE does.
+    static func carriesRowDescription(_ status: ExecStatusType) -> Bool {
+        status == PGRES_SINGLE_TUPLE || status == PGRES_TUPLES_OK
+    }
+
+    func streamHeader(from result: OpaquePointer) -> (header: PluginStreamHeader, columnOids: [UInt32]) {
+        let metadata = readColumnMetadata(from: result)
+        let header = PluginStreamHeader(
+            columns: metadata.columns,
+            columnTypeNames: metadata.columnTypeNames,
+            estimatedRowCount: nil
+        )
+        return (header, metadata.columnOids)
+    }
+
     private func streamResults(_ run: StreamRun, singleStatement: Bool) throws {
         let conn = run.conn
         let continuation = run.continuation
@@ -1441,19 +1457,14 @@ final class LibPQPluginConnection: @unchecked Sendable {
         while let result = PQgetResult(conn) {
             let status = PQresultStatus(result)
 
+            if !headerSent, Self.carriesRowDescription(status) {
+                let described = streamHeader(from: result)
+                columnOids = described.columnOids
+                continuation.yield(.header(described.header))
+                headerSent = true
+            }
+
             if status == PGRES_SINGLE_TUPLE {
-                if !headerSent {
-                    let metadata = readColumnMetadata(from: result)
-                    columnOids = metadata.columnOids
-
-                    continuation.yield(.header(PluginStreamHeader(
-                        columns: metadata.columns,
-                        columnTypeNames: metadata.columnTypeNames,
-                        estimatedRowCount: nil
-                    )))
-                    headerSent = true
-                }
-
                 let numFields = Int(PQnfields(result))
                 var row: [PluginCellValue] = []
                 row.reserveCapacity(numFields)

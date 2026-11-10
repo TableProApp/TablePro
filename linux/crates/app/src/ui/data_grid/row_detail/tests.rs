@@ -1676,6 +1676,45 @@ fn a_page_that_takes_the_row_closes_its_clock_and_writes_nothing() {
     assert!(!pane.imp().clock_popover.is_visible());
 }
 
+fn tagged(pane: &RowDetailPane) -> Vec<(i32, i32)> {
+    crate::ui::data_grid::special_marks::tagged_ranges(pane.imp().value_buffer.upcast_ref())
+}
+
+fn field_texts(pane: &RowDetailPane) -> Vec<String> {
+    descendants(&pane.imp().field_list.get())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Inscription>().ok())
+        .filter_map(|inscription| inscription.text().map(|text| text.to_string()))
+        .collect()
+}
+
+#[gtk4::test]
+fn the_value_editor_marks_invisible_characters_while_preferences_ask() {
+    let value = "a\u{200b}b c\td\u{a0}e\u{1}";
+    let (grid, pane) = opened(two_text_columns(), vec![vec![Value::Int(1), Value::Text(value.into())]]);
+    grid.focus(0, 1);
+    drain_main_context();
+    let settings = grid.grid.config().expect("a configured grid").settings.clone();
+
+    assert_eq!(pane.typed_text(), value);
+    assert_eq!(
+        tagged(&pane),
+        [(1, 2), (7, 8), (9, 10)],
+        "a space and a tab are not marked"
+    );
+    assert!(field_texts(&pane).contains(&"aZWSPb c\td\u{a0}eSOH".to_owned()));
+
+    settings.set_show_invisible_characters(false).expect("store the flag");
+    drain_main_context();
+    assert!(tagged(&pane).is_empty());
+    assert!(field_texts(&pane).contains(&value.to_owned()));
+    assert_eq!(pane.typed_text(), value);
+
+    settings.set_show_invisible_characters(true).expect("store the flag");
+    drain_main_context();
+    assert_eq!(tagged(&pane), [(1, 2), (7, 8), (9, 10)]);
+}
+
 #[gtk4::test]
 fn null_preferences_update_details_without_replacing_a_draft() {
     let (grid, pane) = opened(two_text_columns(), vec![vec![Value::Int(1), Value::Null]]);
@@ -2101,4 +2140,117 @@ fn search_keys_and_tab_order_reach_the_filter_list_and_value() {
     keys.press(gdk::Key::Escape, gdk::ModifierType::empty())
         .expect("Escape");
     wait_until(WAIT, || !grid.grid.imp().split_view.shows_sidebar()).expect("Escape closes the empty overlay search");
+}
+
+#[gtk4::test]
+fn changing_automatic_details_opening_keeps_an_active_value_draft() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    edit_field(&grid, &pane, 0, 1);
+    type_value(&pane, "unfinished");
+    let settings = grid.grid.config().expect("a configured grid").settings.clone();
+
+    settings
+        .set_auto_show_inspector(true)
+        .expect("enable automatic opening");
+    settings
+        .set_auto_show_inspector(false)
+        .expect("disable automatic opening");
+    drain_main_context();
+
+    assert!(pane.is_open());
+    assert!(pane.is_editing_value());
+    assert_eq!(pane.typed_text(), "unfinished");
+    assert_eq!(pending(&grid, 1, 1), None);
+}
+
+#[gtk4::test]
+fn a_closed_pane_marks_its_value_once_it_opens() {
+    let settings = crate::test_support::MemorySettings::new();
+    settings
+        .get()
+        .set_show_invisible_characters(false)
+        .expect("start without marks");
+    let grid = Grid::build(
+        GridSpec {
+            settings: Some(settings.get().clone()),
+            ..GridSpec::table(two_text_columns())
+        },
+        persisted(&[vec![Value::Int(1), Value::Text("a\u{200b}b".into())]]),
+    );
+    let pane = pane_of(&grid);
+    settings.get().set_show_invisible_characters(true).expect("show marks");
+    drain_main_context();
+    assert!(!pane.is_open());
+
+    grid.activate("show-details");
+    grid.focus(0, 1);
+    drain_main_context();
+
+    assert_eq!(pane.typed_text(), "a\u{200b}b");
+    assert_eq!(tagged(&pane), [(1, 2)]);
+    assert!(field_texts(&pane).contains(&"aZWSPb".to_owned()));
+}
+
+#[gtk4::test]
+fn marks_leave_the_value_draft_and_its_selection_alone() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    edit_field(&grid, &pane, 0, 1);
+    let typed = "one\u{200b}two\u{a0}three";
+    type_value(&pane, typed);
+    let buffer = pane.imp().value_buffer.get();
+    buffer.select_range(&buffer.iter_at_offset(2), &buffer.iter_at_offset(9));
+    let selection = || {
+        buffer
+            .selection_bounds()
+            .map(|(start, end)| (start.offset(), end.offset()))
+    };
+    let settings = grid.grid.config().expect("configured grid").settings.clone();
+    assert_eq!(tagged(&pane), [(3, 4), (7, 8)]);
+
+    for show in [false, true] {
+        settings.set_show_invisible_characters(show).expect("change the marks");
+        drain_main_context();
+        assert_eq!(tagged(&pane).is_empty(), !show);
+        assert_eq!(pane.typed_text(), typed);
+        assert_eq!(selection(), Some((2, 9)));
+        assert!(pane.is_editing_value());
+        assert!(grid.grid.is_editing());
+        assert_eq!(pending(&grid, 1, 1), None);
+    }
+}
+
+#[gtk4::test]
+fn date_format_updates_detail_fields_without_reformatting_the_value_draft() {
+    let (grid, pane) = date_grid(a_date(2026, 11, 8));
+    let settings = grid.grid.config().expect("configured grid").settings.clone();
+    assert_eq!(pane.typed_text(), "2026-11-08");
+    let field_texts = || {
+        descendants(&pane.imp().field_list.get())
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk::Inscription>().ok())
+            .filter_map(|inscription| inscription.text().map(|text| text.to_string()))
+            .collect::<Vec<_>>()
+    };
+
+    settings.set_date_format("eu-short").expect("European date display");
+    drain_main_context();
+    assert!(field_texts().contains(&"08/11/2026".to_owned()));
+    assert_eq!(pane.typed_text(), "2026-11-08", "the editor keeps its parseable form");
+    edit_field(&grid, &pane, 0, 1);
+    type_value(&pane, "2026-11-09");
+    let buffer = pane.imp().value_buffer.get();
+    buffer.select_range(&buffer.iter_at_offset(5), &buffer.iter_at_offset(7));
+
+    settings.set_date_format("us-short").expect("US date display");
+    drain_main_context();
+    assert!(field_texts().contains(&"11/08/2026".to_owned()));
+    assert_eq!(pane.typed_text(), "2026-11-09");
+    assert_eq!(
+        buffer
+            .selection_bounds()
+            .map(|(start, end)| (start.offset(), end.offset())),
+        Some((5, 7))
+    );
+    assert!(pane.is_editing_value());
+    assert_eq!(pending(&grid, 1, 1), None);
 }

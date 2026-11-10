@@ -11,6 +11,7 @@ struct MCPSection: View {
     @State private var showRevealSheet = false
     @State private var revealedToken: MCPAuthToken?
     @State private var revealedPlaintext: String = ""
+    @State private var revocationNotSaved = false
 
     var body: some View {
         Section {
@@ -104,7 +105,14 @@ struct MCPSection: View {
             MCPTokenListView(
                 tokens: tokenList,
                 onGenerate: { showCreateSheet = true },
-                onRevoke: { id in Task { await manager.tokenStore?.revoke(tokenId: id); await refreshTokens() } },
+                onRevoke: { id in
+                    Task {
+                        if !(await manager.revokeToken(id: id)) {
+                            revocationNotSaved = true
+                        }
+                        await refreshTokens()
+                    }
+                },
                 onDelete: { id in Task { await manager.tokenStore?.delete(tokenId: id); await refreshTokens() } }
             )
         }
@@ -120,6 +128,11 @@ struct MCPSection: View {
                     port: manager.listeningPort ?? settings.port
                 )
             }
+        }
+        .alert(String(localized: "Couldn't Save the Revocation"), isPresented: $revocationNotSaved) {
+            Button(String(localized: "OK")) {}
+        } message: {
+            Text(String(localized: "TablePro could not save the change to the Keychain. The token works again after TablePro restarts."))
         }
     }
 
