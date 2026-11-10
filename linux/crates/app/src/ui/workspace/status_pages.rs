@@ -8,7 +8,26 @@ use super::{WorkspaceInput, WorkspaceModel};
 use crate::runtime::DeliverInput;
 use crate::ui::plain_toast;
 
+#[derive(Debug)]
+pub(crate) enum SearchInput {
+    History,
+    SavedQueries,
+    QuickOpen,
+    CloseQuickOpen,
+    QuickOpenChosen(crate::ui::quick_open::Pick),
+}
+
 impl WorkspaceModel {
+    pub(super) fn on_search(&mut self, input: SearchInput) {
+        match input {
+            SearchInput::History => self.on_show_history(),
+            SearchInput::SavedQueries => self.on_show_saved_queries(),
+            SearchInput::QuickOpen => self.on_show_quick_open(),
+            SearchInput::CloseQuickOpen => self.close_quick_open(),
+            SearchInput::QuickOpenChosen(pick) => self.on_quick_open_chosen(pick),
+        }
+    }
+
     pub(super) fn show_toast(&self, msg: &str) {
         self.add_toast(plain_toast(msg));
     }
@@ -83,6 +102,49 @@ impl WorkspaceModel {
         });
         dialog.present(self.dialog_parent().as_ref());
         self.saved_queries_dialog = Some(dialog);
+    }
+
+    pub(super) fn close_quick_open(&mut self) {
+        if let Some(dialog) = self.quick_open_dialog.take() {
+            dialog.dismiss();
+        }
+    }
+
+    pub(super) fn on_show_quick_open(&mut self) {
+        let Some(session) = self.context.active.get() else {
+            return;
+        };
+        self.close_quick_open();
+        let input = self.input.clone();
+        let dialog = crate::ui::quick_open::QuickOpen::new(session, self.tasks.clone(), move |pick| {
+            input.deliver(WorkspaceInput::Search(SearchInput::QuickOpenChosen(pick)));
+        });
+        if let Some(metadata) = self.context.active.metadata() {
+            dialog.include_queries(self.history.clone(), metadata.id);
+        }
+        dialog.present(self.dialog_parent().as_ref());
+        self.quick_open_dialog = Some(dialog);
+    }
+
+    pub(super) fn on_quick_open_chosen(&mut self, pick: crate::ui::quick_open::Pick) {
+        if !self.is_front() {
+            return;
+        }
+        use crate::ui::quick_open::Pick;
+        self.update(match pick {
+            Pick::Query(sql) => WorkspaceInput::OpenHistoryQuery(sql),
+            Pick::Table {
+                table: tablepro_core::meta::TableRef { schema, name },
+                structure,
+            } => match structure {
+                true => WorkspaceInput::EditStructureTab { schema, table: name },
+                false => WorkspaceInput::SelectTable {
+                    schema,
+                    name,
+                    open_mode: super::OpenMode::SwitchOrAppend,
+                },
+            },
+        });
     }
 
     /// Ask what to call the SQL in front of the user, then keep it.
@@ -240,6 +302,23 @@ mod tests {
     use super::suggested_query_name;
     use crate::test_support::{finish_on_main, wait_until};
     use crate::ui::session_window::tests::{TestWindow, WAIT};
+
+    #[gtk4::test]
+    fn open_quickly_closes_on_disconnect() {
+        use gtk4::prelude::*;
+        let test = TestWindow::connected("QuickOpenDisconnect");
+        let dialog = test
+            .workspace()
+            .with_model(|model| {
+                model.on_show_quick_open();
+                model.quick_open_dialog.clone().expect("quick open")
+            })
+            .expect("workspace");
+        wait_until(WAIT, || dialog.parent().is_some()).expect("shown");
+        test.window.send(crate::ui::SessionWindowInput::Disconnect);
+        wait_until(WAIT, || dialog.parent().is_none()).expect("dialog closed");
+        wait_until(WAIT, || test.window.page_name() == "picker").expect("disconnected");
+    }
 
     #[gtk4::test]
     fn a_saved_query_is_written_under_a_hold() {

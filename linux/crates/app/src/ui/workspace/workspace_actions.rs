@@ -23,7 +23,7 @@ type ActionInput = fn() -> WorkspaceInput;
 /// they are not left greyed out with no reason.
 const HISTORY_ACTIONS: [&str; 2] = ["show-history", "show-saved-queries"];
 
-const ENTRIES: [(&str, ActionInput); 9] = [
+const ENTRIES: [(&str, ActionInput); 10] = [
     ("new-editor-tab", || WorkspaceInput::NewEditorTab),
     (EXPORT_DATABASE, || {
         WorkspaceInput::Transfer(TransferInput::ExportDatabase)
@@ -36,8 +36,11 @@ const ENTRIES: [(&str, ActionInput); 9] = [
     ("export-results", || {
         WorkspaceInput::ActiveTab(ActiveTabCommand::ExportResults)
     }),
-    ("show-history", || WorkspaceInput::ShowHistory),
-    ("show-saved-queries", || WorkspaceInput::ShowSavedQueries),
+    ("show-history", || WorkspaceInput::Search(super::SearchInput::History)),
+    ("show-saved-queries", || {
+        WorkspaceInput::Search(super::SearchInput::SavedQueries)
+    }),
+    ("quick-open", || WorkspaceInput::Search(super::SearchInput::QuickOpen)),
     (super::health_banner::REVIEW_HOST_KEY, || WorkspaceInput::ReviewHostKey),
 ];
 

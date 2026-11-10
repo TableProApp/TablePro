@@ -501,6 +501,14 @@ crates/app/src/ui/preferences_dialog/history_group.rs
 crates/app/src/ui/preferences_dialog/imp.rs
 crates/app/src/ui/preferences_dialog/mcp_page.rs
 crates/app/src/ui/preferences_dialog/mod.rs
+crates/app/src/ui/quick_open/matching.rs
+crates/app/src/ui/quick_open/mod.rs
+crates/app/src/ui/quick_open/past_source.rs
+crates/app/src/ui/quick_open/past_tests.rs
+crates/app/src/ui/quick_open/query_source.rs
+crates/app/src/ui/quick_open/search_index.rs
+crates/app/src/ui/quick_open/tests.rs
+crates/app/src/ui/quick_open/tests/queries.rs
 crates/app/src/ui/result_pane/mod.rs
 crates/app/src/ui/result_pane/result_limit_banner.rs
 crates/app/src/ui/result_pane/result_set_view.rs

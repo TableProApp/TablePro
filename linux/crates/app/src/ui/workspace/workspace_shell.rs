@@ -590,6 +590,13 @@ impl WorkspaceShell {
         if imp.front.borrow().as_ref() == workspace {
             return;
         }
+        let previous = imp.front.borrow().clone();
+        if let Some(previous) = previous
+            && previous.with_model(|model| model.close_quick_open()).is_none()
+            && let Some(input) = previous.sender()
+        {
+            input.deliver(WorkspaceInput::Search(super::SearchInput::CloseQuickOpen));
+        }
         imp.front.replace(workspace.cloned());
         self.notify_front();
     }
