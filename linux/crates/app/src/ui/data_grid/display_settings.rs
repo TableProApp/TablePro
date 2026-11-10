@@ -30,6 +30,12 @@ impl DataGrid {
         };
         let values = config.settings.grid_preferences().snapshot();
         let view = self.column_view();
+        let font_changed = {
+            let mut installed = self.imp().cell_font.borrow_mut();
+            installed
+                .get_or_insert_with(|| super::cell_font::CellFont::new(&view))
+                .apply(&values.font)
+        };
         for height in GridRowHeight::ALL {
             set_class(&view, height.css_class(), height == values.row_height);
         }
@@ -42,6 +48,8 @@ impl DataGrid {
         if changed {
             self.imp().applied_null.replace(Some(values.null_display.clone()));
             self.redraw();
+        }
+        if changed || font_changed {
             self.fonts_changed();
         }
     }

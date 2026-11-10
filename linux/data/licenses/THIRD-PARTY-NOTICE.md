@@ -1287,7 +1287,7 @@ Used by:
 
 Used by:
 
-- rmcp 3.6.0
+- rmcp 3.9.0
 
 ~~~~text
                                  Apache License
@@ -8112,7 +8112,7 @@ DEALINGS IN THE SOFTWARE.
 
 Used by:
 
-- rmcp 3.6.0
+- rmcp 3.9.0
 
 ~~~~text
 Copyright (c) 2024-2025 Model Context Protocol a Series of LF Projects, LLC.
