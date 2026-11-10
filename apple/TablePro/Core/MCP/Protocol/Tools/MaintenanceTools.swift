@@ -215,7 +215,8 @@ public struct RunMaintenanceTool: MCPToolImplementation {
                 maxRows: Self.rowLimit,
                 timeoutSeconds: timeoutSeconds,
                 context: context,
-                secrets: meta.redactionSecrets
+                secrets: meta.redactionSecrets,
+                masking: .byName
             )
             results.append(result)
         }

@@ -7,7 +7,7 @@
 //  Values cross as `PluginCellValue`, which is text, bytes or null, and each
 //  one is bound as a parameter rather than written into SQL. That is already
 //  enough for almost everything: a number, a string and a blob all mean the
-//  same thing to both sides. Three things do not, and each of them fails in a
+//  same thing to both sides. A few things do not, and each of them fails in a
 //  way that is hard to read from the far end of a long copy.
 //
 //  PostgreSQL renders a boolean as `t` and `f`. Bound into a MySQL
@@ -38,13 +38,15 @@ internal struct CrossEngineValueCoercer: Sendable {
 
     private let pairs: [ColumnPair]
     private let sourceFamily: SQLTypeFamily
+    private let targetFamily: SQLTypeFamily?
     private let positions: [Int]
 
-    internal init(pairs: [ColumnPair], from sourceFamily: SQLTypeFamily) {
+    internal init(pairs: [ColumnPair], from sourceFamily: SQLTypeFamily, to targetFamily: SQLTypeFamily? = nil) {
         self.pairs = pairs
         self.sourceFamily = sourceFamily
+        self.targetFamily = targetFamily
         self.positions = pairs.enumerated()
-            .filter { Self.needsCoercion($0.element) }
+            .filter { Self.needsCoercion($0.element, from: sourceFamily, to: targetFamily) }
             .map(\.offset)
     }
 
@@ -65,6 +67,9 @@ internal struct CrossEngineValueCoercer: Sendable {
 
     private func coerce(_ value: PluginCellValue, pair: ColumnPair) -> PluginCellValue {
         if Self.carriesBoolean(pair) { return boolean(value) }
+        if Self.respellsBits(pair, from: sourceFamily, to: targetFamily) {
+            return Self.respelledBits(value, pair: pair, from: sourceFamily)
+        }
         switch pair.target {
         case .date, .time, .timestamp:
             return temporal(value, kind: pair.target)
@@ -121,6 +126,34 @@ internal struct CrossEngineValueCoercer: Sendable {
         }
     }
 
+    // MySQL reads a BIT as the number it holds, PostgreSQL and DuckDB as its digits, and each reads the other's
+    // spelling as another value: '5' is no bit string, and 101 is not 0b101.
+    internal static func respellsBits(_ pair: ColumnPair, from source: SQLTypeFamily, to target: SQLTypeFamily?) -> Bool {
+        guard let target, case .bitString = pair.source, case .bitString = pair.target else { return false }
+        return source.readsBitsAsDecimal != target.readsBitsAsDecimal
+    }
+
+    // Only for a pair `respellsBits` accepts. Text that is no bit value of the source's reading is left as it came.
+    internal static func respelledBits(_ value: PluginCellValue, pair: ColumnPair, from sourceFamily: SQLTypeFamily) -> PluginCellValue {
+        guard case .text(let text) = value else { return value }
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard sourceFamily.readsBitsAsDecimal else {
+            guard !trimmed.isEmpty, trimmed.allSatisfy({ $0 == "0" || $0 == "1" }),
+                  let number = UInt64(trimmed, radix: 2) else { return value }
+            return .text(String(number))
+        }
+        guard let number = UInt64(trimmed) else { return value }
+        let digits = String(number, radix: 2)
+        // A fixed-width bit string takes only its own length, so the digits are padded to it.
+        let width = Self.bitLength(pair.target) ?? Self.bitLength(pair.source) ?? digits.count
+        return .text(String(repeating: "0", count: max(0, width - digits.count)) + digits)
+    }
+
+    private static func bitLength(_ kind: CanonicalTypeKind?) -> Int? {
+        guard case .bitString(let length) = kind else { return nil }
+        return length
+    }
+
     private func temporal(_ value: PluginCellValue, kind: CanonicalTypeKind?) -> PluginCellValue {
         guard case .text(let text) = value else { return value }
         if sourceFamily == .mysql, Self.isZeroDate(text) { return .null }
@@ -167,8 +200,8 @@ internal struct CrossEngineValueCoercer: Sendable {
 
     // MARK: - Shapes
 
-    private static func needsCoercion(_ pair: ColumnPair) -> Bool {
-        if carriesBoolean(pair) { return true }
+    private static func needsCoercion(_ pair: ColumnPair, from source: SQLTypeFamily, to target: SQLTypeFamily?) -> Bool {
+        if carriesBoolean(pair) || respellsBits(pair, from: source, to: target) { return true }
         switch pair.target {
         case .date, .time, .timestamp, .json: return true
         default: return false

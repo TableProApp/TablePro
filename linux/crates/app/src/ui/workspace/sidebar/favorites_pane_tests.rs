@@ -210,6 +210,35 @@ fn a_secondary_click_targets_the_clicked_favorite() {
 }
 
 #[gtk4::test]
+fn a_favorites_menu_opens_beside_the_pointer_like_every_sidebar_menu() {
+    let (pane, _window, _) = shown();
+    let list = list(&pane);
+    let row = find_row(&list, Key::Query(1)).expect("first row");
+    let bounds = row.compute_bounds(&list).expect("row bounds");
+    let controllers = list.observe_controllers();
+    let click = (0..controllers.n_items())
+        .filter_map(|position| controllers.item(position).and_downcast::<gtk::GestureClick>())
+        .find(|click| click.button() == gtk::gdk::BUTTON_SECONDARY)
+        .expect("secondary click");
+    let (x, y) = (bounds.x() + 4.0, bounds.y() + 4.0);
+
+    click.emit_by_name::<()>("pressed", &[&1i32, &f64::from(x), &f64::from(y)]);
+
+    assert!(pane.menu.is_visible());
+    assert!(matches!(
+        pane.menu.position(),
+        gtk::PositionType::Left | gtk::PositionType::Right
+    ));
+    assert_eq!(pane.menu.valign(), gtk::Align::Start);
+    assert!(!pane.menu.has_arrow());
+    assert_eq!(
+        pane.menu.pointing_to(),
+        (true, gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1))
+    );
+    pane.menu.popdown();
+}
+
+#[gtk4::test]
 fn reordered_menu_targets_keep_their_id_and_removed_targets_do_nothing() {
     let (pane, _window, actions) = shown();
     let list = list(&pane);

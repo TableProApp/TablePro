@@ -5,9 +5,13 @@
 
 import CMariaDB
 import Foundation
+import os
+import TableProMySQLCore
 import TableProPluginKit
 
 enum MySQLTransport: Sendable, Equatable {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "MySQLTransport")
+
     case tcp(host: String, port: UInt32)
     case unixSocket(path: String)
 
@@ -44,7 +48,12 @@ enum MySQLTransport: Sendable, Equatable {
     ) -> UnsafeMutablePointer<MYSQL>? {
         switch self {
         case .tcp(let host, let port):
-            return mysql_real_connect(handle, host, user, password, database, port, nil, 0)
+            let connected = mysql_real_connect(handle, host, user, password, database, port, nil, 0)
+            // Every session and kill connection dials through here, and a session's socket outlives the connect.
+            if connected != nil, !MySQLSocketKeepalive.enable(on: mysql_get_socket(handle)) {
+                Self.logger.warning("TCP keepalive could not be set: errno \(errno, privacy: .public)")
+            }
+            return connected
         case .unixSocket(let path):
             return mysql_real_connect(handle, "localhost", user, password, database, 0, path, 0)
         }

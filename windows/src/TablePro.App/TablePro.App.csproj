@@ -28,6 +28,8 @@
     <UapAppxPackageBuildMode>SideloadOnly</UapAppxPackageBuildMode>
     <AppxBundle>Never</AppxBundle>
     <AppxSymbolPackageEnabled>false</AppxSymbolPackageEnabled>
+    <!-- Program.cs is the entry point, so a second launch on one data folder hands over before XAML starts. -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

@@ -382,6 +382,10 @@ private actor PostgreSQLActor {
         }
 
         try await pollUntilConnected(connection)
+        // This libpq is built without `__darwin__`, so it takes keepalives_idle and never sets it on the socket.
+        guard SessionSocketKeepalive.enable(on: PQsocket(connection)) else {
+            throw PostgreSQLError.connectionFailed(String(localized: "Failed to configure the connection timeout"))
+        }
 
         self.conn = connection
         adopted = true

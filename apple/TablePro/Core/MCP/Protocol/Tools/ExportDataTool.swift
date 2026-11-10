@@ -197,7 +197,8 @@ public struct ExportDataTool: MCPToolImplementation {
                 maxRows: maxRows + 1,
                 timeoutSeconds: timeoutSeconds,
                 context: context,
-                secrets: meta.redactionSecrets
+                secrets: meta.redactionSecrets,
+                masking: statement.masking
             )
 
             let rowCount = min(result.rows.count, maxRows)
@@ -260,6 +261,7 @@ public struct ExportDataTool: MCPToolImplementation {
     struct ExportStatement {
         let label: String
         let sql: String
+        var masking: ExternalRowMasking = .byOrigin
     }
 
     static func buildStatements(
@@ -294,7 +296,8 @@ public struct ExportDataTool: MCPToolImplementation {
                 .joined(separator: ".")
             return ExportStatement(
                 label: table,
-                sql: limitedSelect(from: quoted, limit: maxRows + 1, style: dialect.autoLimitStyle)
+                sql: limitedSelect(from: quoted, limit: maxRows + 1, style: dialect.autoLimitStyle),
+                masking: .table(table)
             )
         }
     }

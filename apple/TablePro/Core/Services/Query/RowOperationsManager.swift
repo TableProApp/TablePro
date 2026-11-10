@@ -366,8 +366,10 @@ final class RowOperationsManager {
 
         switch parseResult {
         case .success(let parsedRows):
+            let unfilled = Self.unfilledCellValues(columns: columns, tableRows: tableRows)
+            let filled = parsedRows.map { Self.fillingBlankCells($0, with: unfilled) }
             return insertParsedRows(
-                keepsMissingFields ? parsedRows.map(Self.nullsAsMissingFields) : parsedRows,
+                keepsMissingFields ? filled.map(Self.nullsAsMissingFields) : filled,
                 uuidKeyForms: uuidKeyForms,
                 into: &tableRows
             )
@@ -441,6 +443,33 @@ final class RowOperationsManager {
             }
             return ParsedRow(values: values, sourceLineNumber: index + 1, expressionColumns: expressionColumns)
         }
+    }
+
+    // A blank cell of pasted text was left unfilled, so it takes what a new row's cell does: the server's value where
+    // the column has a default, else NULL. A NOT NULL text column with no default takes the empty string it can hold.
+    private static func unfilledCellValues(columns: [String], tableRows: TableRows) -> [PluginCellValue] {
+        columns.map { name in
+            guard let index = tableRows.columns.firstIndex(of: name) else { return .null }
+            if tableRows.generatedColumns.contains(name) || tableRows.serverAssignsValue(forColumn: name) {
+                return .text("__DEFAULT__")
+            }
+            if tableRows.refusesNull(columnAt: index), tableRows.editingColumnType(at: index)?.hasEmptyValue == true {
+                return .text("")
+            }
+            return .null
+        }
+    }
+
+    private static func fillingBlankCells(_ row: ParsedRow, with unfilled: [PluginCellValue]) -> ParsedRow {
+        guard !row.blankColumns.isEmpty else { return row }
+        var values = row.values
+        for index in row.blankColumns where index < values.count && index < unfilled.count {
+            values[index] = unfilled[index]
+        }
+        var filled = ParsedRow(values: values, sourceLineNumber: row.sourceLineNumber)
+        filled.absentColumns = row.absentColumns
+        filled.expressionColumns = row.expressionColumns
+        return filled
     }
 
     // Text can't say which fields a row lacks, so a pasted NULL leaves the field out, as a new row does.

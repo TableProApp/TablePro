@@ -120,6 +120,8 @@ public final class SQLiteAuthorizerPolicy: @unchecked Sendable {
         "table_info", "table_xinfo", "table_list", "index_info", "index_xinfo", "index_list",
         "foreign_key_list", "foreign_key_check", "integrity_check", "quick_check", "function_list",
         "pragma_list", "module_list", "collation_list", "database_list", "compile_options",
+        // FTS5 runs it on every read of its table.
+        "data_version",
     ]
 
     static func decision(

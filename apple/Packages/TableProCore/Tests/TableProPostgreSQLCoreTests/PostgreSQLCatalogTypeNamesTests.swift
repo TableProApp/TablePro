@@ -109,7 +109,12 @@ struct PostgreSQLCatalogTypeNamesTests {
             1_009: "text[]",
             3_807: "jsonb[]",
             2_950: "uuid",
-            701: "double precision"
+            701: "double precision",
+            1_560: "bit",
+            1_561: "bit[]",
+            1_562: "varbit",
+            1_563: "varbit[]",
+            1_186: "interval"
         ]
         for (oid, name) in expected {
             #expect(PostgreSQLCatalogTypeNames.builtinTypeName(for: oid) == name, "oid \(oid)")
