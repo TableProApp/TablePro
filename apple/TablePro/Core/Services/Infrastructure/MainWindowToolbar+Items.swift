@@ -363,6 +363,7 @@ extension MainWindowToolbar {
                 label: String(localized: "Tables"),
                 symbol: SidebarObjectKind.table.iconName,
                 tint: .systemBlue,
+                iconKind: ObjectIconKind(.table),
                 action: #selector(MainWindowToolbar.performShowTables(_:))
             ),
             ObjectKindButton(
@@ -370,6 +371,7 @@ extension MainWindowToolbar {
                 label: String(localized: "Views"),
                 symbol: SidebarObjectKind.view.iconName,
                 tint: .systemTeal,
+                iconKind: ObjectIconKind(.view),
                 action: #selector(MainWindowToolbar.performShowViews(_:))
             ),
             ObjectKindButton(
@@ -377,6 +379,7 @@ extension MainWindowToolbar {
                 label: String(localized: "Functions"),
                 symbol: SidebarObjectKind.function.iconName,
                 tint: .systemPurple,
+                iconKind: ObjectIconKind(.function),
                 action: #selector(MainWindowToolbar.performShowFunctions(_:))
             ),
             ObjectKindButton(
@@ -384,6 +387,7 @@ extension MainWindowToolbar {
                 label: String(localized: "Users"),
                 symbol: "person.2",
                 tint: .systemOrange,
+                iconKind: .user,
                 action: #selector(MainWindowToolbar.performShowUsers(_:))
             ),
             ObjectKindButton(
@@ -391,6 +395,7 @@ extension MainWindowToolbar {
                 label: String(localized: "Query"),
                 symbol: "doc.text",
                 tint: .systemGreen,
+                iconKind: .query,
                 action: #selector(MainWindowToolbar.performNewQuery(_:)),
                 shortcut: .newTab
             ),
@@ -405,8 +410,35 @@ extension MainWindowToolbar {
     }
 
     /// The hue a button draws its glyph in, and nil for every item outside the Objects run, which stays a template.
-    static func objectKindTint(for identifier: NSToolbarItem.Identifier) -> NSColor? {
-        objectKindButtons.first { $0.identifier == identifier }?.tint
+    static func objectKindTint(
+        for identifier: NSToolbarItem.Identifier,
+        style: ObjectIconStyle = AppSettingsManager.shared.appearance.objectIconStyle
+    ) -> NSColor? {
+        objectKindButtons.first { $0.identifier == identifier }.map { objectKindIcon($0, style: style).tint }
+    }
+
+    /// The glyph and hue a button draws in an icon style. The standard style keeps the button's own pair, which is what
+    /// the run drew before the style existed; the colorful one draws the kind as the sidebar does. Backup opens no kind
+    /// of object, so it keeps its own pair in both.
+    static func objectKindIcon(_ button: ObjectKindButton, style: ObjectIconStyle) -> (symbolName: String, tint: NSColor) {
+        guard let kind = button.iconKind else { return (button.symbol, button.tint) }
+        let icon = ObjectIconProvider.icon(for: kind, style: style, standard: button.symbol)
+        return (icon.symbolName, icon.tint?.nsColor ?? button.tint)
+    }
+
+    /// Pushed by the Appearance setting's own write, as the General settings push theirs. A validation pass redraws only
+    /// the buttons placed in the bar, so each one, the overflowed included, takes its new glyph here.
+    internal static func applyObjectIconStyleChange() {
+        for window in NSApp.windows {
+            (window.toolbar?.delegate as? MainWindowToolbar)?.refreshObjectKindGlyphs()
+        }
+    }
+
+    internal func refreshObjectKindGlyphs() {
+        let objectKinds = Set(Self.objectKindItemIdentifiers)
+        for item in managedToolbar.items where objectKinds.contains(item.itemIdentifier) {
+            (item as? StatefulToolbarItem)?.refreshGlyph()
+        }
     }
 
     /// Built like every other command, so each button keeps its own action, tooltip and overflow entry and AppKit dims
@@ -426,11 +458,16 @@ extension MainWindowToolbar {
     }
 
     /// A system hue per kind, so the run reads at a glance. The color resolves when the glyph draws, in the toolbar's own
-    /// appearance, so it follows light and dark; an inactive window greys it as it greys every glyph.
-    static func objectKindGlyph(_ button: ObjectKindButton) -> ToolbarGlyph {
-        ToolbarGlyph(key: button.symbol) {
-            let image = NSImage(systemSymbolName: button.symbol, accessibilityDescription: button.label)?
-                .withSymbolConfiguration(NSImage.SymbolConfiguration(hierarchicalColor: button.tint))
+    /// appearance, so it follows light and dark; an inactive window greys it as it greys every glyph. The style is read
+    /// on every pass and names the glyph's key, so a pass after the setting changes draws the new one.
+    static func objectKindGlyph(
+        _ button: ObjectKindButton,
+        style: ObjectIconStyle = AppSettingsManager.shared.appearance.objectIconStyle
+    ) -> ToolbarGlyph {
+        let icon = objectKindIcon(button, style: style)
+        return ToolbarGlyph(key: style.rawValue + "/" + icon.symbolName) {
+            let image = NSImage(systemSymbolName: icon.symbolName, accessibilityDescription: button.label)?
+                .withSymbolConfiguration(NSImage.SymbolConfiguration(hierarchicalColor: icon.tint))
             image?.isTemplate = false
             return image
         }
@@ -556,8 +593,11 @@ extension MainWindowToolbar {
 internal struct ObjectKindButton {
     let identifier: NSToolbarItem.Identifier
     let label: String
+    /// The glyph and hue the standard icon style draws.
     let symbol: String
     let tint: NSColor
+    /// What the button opens, which decides its glyph and hue in the colorful style. Nil for Backup, which opens none.
+    var iconKind: ObjectIconKind?
     let action: Selector
     var shortcut: ShortcutAction?
 }

@@ -6,7 +6,7 @@
 import Foundation
 
 /// What an object glyph stands for, on every surface that draws one: the sidebar, the editor tabs,
-/// the Objects list, the quick switcher and the recent tab switcher.
+/// the Objects list, the quick switcher, the recent tab switcher and the toolbar's Objects buttons.
 internal enum ObjectIconKind: Hashable, Sendable {
     case database
     case systemDatabase
@@ -23,6 +23,18 @@ internal enum ObjectIconKind: Hashable, Sendable {
     case query
     case savedQuery
     case user
+    /// The sidebar sections that list tables by how the reader came to them rather than by kind.
+    case recentSection
+    case temporarySection
+    case favoritesSection
+    /// What an expanded table lists under it: its columns, its indexes and its constraints, and the
+    /// group that holds each kind. A primary key's column and its index share one glyph.
+    case column
+    case primaryKey
+    case index
+    case foreignKey
+    case checkConstraint
+    case tableDetailGroup(TableDetailGroupKind)
 
     /// The kind a section, an Objects tab or a menu of one kind of object stands for.
     internal init(_ kind: SidebarObjectKind) {
@@ -47,6 +59,15 @@ internal enum ObjectIconKind: Hashable, Sendable {
         case .userType: self = .userType(ref.typeKind ?? .other)
         case .view: self = .relation(.view)
         case .materializedView: self = .relation(.materializedView)
+        }
+    }
+
+    internal init(_ item: TableDetailItem) {
+        switch item {
+        case .column(let column): self = column.isPrimaryKey ? .primaryKey : .column
+        case .index(let index): self = index.isPrimary ? .primaryKey : .index
+        case .foreignKey: self = .foreignKey
+        case .check: self = .checkConstraint
         }
     }
 
@@ -136,6 +157,16 @@ internal enum ObjectIconProvider {
         case .query: return "doc.text"
         case .savedQuery: return "star"
         case .user: return "person.2"
+        case .recentSection: return "clock"
+        case .temporarySection: return "hourglass"
+        case .favoritesSection: return "star"
+        case .column: return "rectangle.portrait"
+        case .primaryKey: return "key"
+        case .index: return "list.bullet"
+        case .foreignKey: return "link"
+        case .checkConstraint: return "checkmark.shield"
+        case .tableDetailGroup(.columns): return "tablecells"
+        case .tableDetailGroup(let group): return standardSymbolName(for: Self.detailKind(of: group))
         }
     }
 
@@ -157,6 +188,29 @@ internal enum ObjectIconProvider {
         case .tableFolder: return ObjectIcon(symbolName: "folder.fill", tint: .blue)
         case .query, .savedQuery: return ObjectIcon(symbolName: "doc.text.fill", tint: .orange)
         case .user: return ObjectIcon(symbolName: "person.fill", tint: .brown)
+        case .recentSection: return ObjectIcon(symbolName: "clock.fill", tint: .indigo)
+        case .temporarySection: return ObjectIcon(symbolName: "hourglass.bottomhalf.filled", tint: .orange)
+        case .favoritesSection: return ObjectIcon(symbolName: "star.fill", tint: .yellow)
+        case .column: return ObjectIcon(symbolName: "rectangle.portrait.fill", tint: .teal)
+        case .primaryKey: return ObjectIcon(symbolName: "key.fill", tint: .yellow)
+        case .index: return ObjectIcon(symbolName: "list.bullet.rectangle.fill", tint: .mint)
+        case .foreignKey: return ObjectIcon(symbolName: "link.circle.fill", tint: .indigo)
+        case .checkConstraint: return ObjectIcon(symbolName: "checkmark.shield.fill", tint: .green)
+        // A group under a table is drawn like a section: a folder in the hue of what it holds.
+        case .tableDetailGroup(let group):
+            return ObjectIcon(symbolName: "folder.fill", tint: colorfulIcon(for: Self.detailKind(of: group)).tint)
+        }
+    }
+
+    /// The kind of row a detail group under a table holds.
+    private static func detailKind(of group: TableDetailGroupKind) -> ObjectIconKind {
+        switch group {
+        case .columns: return .column
+        case .indexes: return .index
+        case .foreignKeys: return .foreignKey
+        case .checks: return .checkConstraint
+        case .triggers: return .trigger
+        case .partitions: return .partition
         }
     }
 

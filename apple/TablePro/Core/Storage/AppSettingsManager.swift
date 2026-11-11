@@ -43,6 +43,7 @@ final class AppSettingsManager: ObservableObject {
             )
             if oldValue.objectIconStyle != appearance.objectIconStyle {
                 appEvents.objectIconStyleChanged.send(appearance.objectIconStyle)
+                MainWindowToolbar.applyObjectIconStyleChange()
             }
             syncTracker.markDirty(.settings, id: AppSettingsCategory.appearance)
         }

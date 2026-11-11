@@ -99,13 +99,13 @@ struct DatabaseTreeRowView: View {
         case .savedConnection(let ref):
             ConnectionNavigatorConnectionLabel(row: ref.row, glyphSide: context.rowSize.iconPointSize)
         case .recentSection:
-            sectionHeader(String(localized: "Recent"), icon: ObjectIcon(symbolName: "clock"))
+            sectionHeader(String(localized: "Recent"), icon: objectIcon(.recentSection))
         case .recentTable(let ref), .favoriteTable(let ref):
             tableRow(ref)
         case .favoritesSection:
-            sectionHeader(String(localized: "Favorites"), icon: ObjectIcon(symbolName: "star"))
+            sectionHeader(String(localized: "Favorites"), icon: objectIcon(.favoritesSection))
         case .temporarySection:
-            sectionHeader(String(localized: "Temporary"), icon: ObjectIcon(symbolName: "hourglass"))
+            sectionHeader(String(localized: "Temporary"), icon: objectIcon(.temporarySection))
         case .temporaryTable(let ref):
             TableRow(
                 table: ref.table,
@@ -115,7 +115,7 @@ struct DatabaseTreeRowView: View {
                 accessibilityKind: String(localized: "Temporary Table")
             )
         case .foldersSection:
-            sectionHeader(String(localized: "Folders"), icon: ObjectIcon(symbolName: "folder"))
+            sectionHeader(String(localized: "Folders"), icon: objectIcon(.tableFolder))
         case .tableFolder(let ref):
             folderRow(ref)
         case .database(let metadata):

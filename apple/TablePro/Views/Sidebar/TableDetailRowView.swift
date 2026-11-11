@@ -20,24 +20,13 @@ internal enum TableDetailRowLogic {
         }
     }
 
+    /// The standard style's glyph, which `ObjectIconProvider` owns with every other object's.
     static func iconName(for kind: TableDetailGroupKind) -> String {
-        switch kind {
-        case .columns: "tablecells"
-        case .indexes: "list.bullet"
-        case .foreignKeys: "link"
-        case .checks: "checkmark.shield"
-        case .triggers: SidebarObjectKind.trigger.iconName
-        case .partitions: SidebarPartitionRow.iconName
-        }
+        ObjectIconProvider.standardSymbolName(for: .tableDetailGroup(kind))
     }
 
     static func iconName(for item: TableDetailItem) -> String {
-        switch item {
-        case .column(let column): column.isPrimaryKey ? "key" : "rectangle.portrait"
-        case .index(let index): index.isPrimary ? "key" : iconName(for: .indexes)
-        case .foreignKey: iconName(for: .foreignKeys)
-        case .check: iconName(for: .checks)
-        }
+        ObjectIconProvider.standardSymbolName(for: ObjectIconKind(item))
     }
 
     static func caption(for item: TableDetailItem) -> String? {
@@ -105,7 +94,11 @@ struct TableDetailGroupRowView: View {
                 }
             }
         } icon: {
-            Image(systemName: TableDetailRowLogic.iconName(for: kind))
+            let icon = ObjectIconProvider.icon(
+                for: .tableDetailGroup(kind),
+                style: settingsManager.appearance.objectIconStyle
+            )
+            icon.image.objectIconTint(icon)
         }
         .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
         .accessibilityElement(children: .combine)
@@ -136,7 +129,9 @@ struct TableDetailRowView: View {
                 }
             }
         } icon: {
-            Image(systemName: TableDetailRowLogic.iconName(for: item))
+            let icon = ObjectIconProvider.icon(for: ObjectIconKind(item), style: settingsManager.appearance.objectIconStyle)
+            icon.image
+                .objectIconTint(icon)
                 .frame(width: 16)
         }
         .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)

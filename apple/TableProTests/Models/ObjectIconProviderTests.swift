@@ -50,6 +50,20 @@ struct ObjectIconProviderTests {
         (.query, "doc.text"),
         (.savedQuery, "star"),
         (.user, "person.2"),
+        (.recentSection, "clock"),
+        (.temporarySection, "hourglass"),
+        (.favoritesSection, "star"),
+        (.column, "rectangle.portrait"),
+        (.primaryKey, "key"),
+        (.index, "list.bullet"),
+        (.foreignKey, "link"),
+        (.checkConstraint, "checkmark.shield"),
+        (.tableDetailGroup(.columns), "tablecells"),
+        (.tableDetailGroup(.indexes), "list.bullet"),
+        (.tableDetailGroup(.foreignKeys), "link"),
+        (.tableDetailGroup(.checks), "checkmark.shield"),
+        (.tableDetailGroup(.triggers), "bolt"),
+        (.tableDetailGroup(.partitions), "rectangle.split.3x1.fill"),
     ]
 
     private static let colorfulIcons: [(ObjectIconKind, ObjectIcon)] = [
@@ -79,18 +93,30 @@ struct ObjectIconProviderTests {
         (.query, ObjectIcon(symbolName: "doc.text.fill", tint: .orange)),
         (.savedQuery, ObjectIcon(symbolName: "doc.text.fill", tint: .orange)),
         (.user, ObjectIcon(symbolName: "person.fill", tint: .brown)),
+        (.recentSection, ObjectIcon(symbolName: "clock.fill", tint: .indigo)),
+        (.temporarySection, ObjectIcon(symbolName: "hourglass.bottomhalf.filled", tint: .orange)),
+        (.favoritesSection, ObjectIcon(symbolName: "star.fill", tint: .yellow)),
+        (.column, ObjectIcon(symbolName: "rectangle.portrait.fill", tint: .teal)),
+        (.primaryKey, ObjectIcon(symbolName: "key.fill", tint: .yellow)),
+        (.index, ObjectIcon(symbolName: "list.bullet.rectangle.fill", tint: .mint)),
+        (.foreignKey, ObjectIcon(symbolName: "link.circle.fill", tint: .indigo)),
+        (.checkConstraint, ObjectIcon(symbolName: "checkmark.shield.fill", tint: .green)),
+        (.tableDetailGroup(.columns), ObjectIcon(symbolName: "folder.fill", tint: .teal)),
+        (.tableDetailGroup(.triggers), ObjectIcon(symbolName: "folder.fill", tint: .yellow)),
     ]
 
     /// Every kind there is, so a glyph added to either style is checked against the system.
     private static var everyKind: [ObjectIconKind] {
         var kinds: [ObjectIconKind] = [
             .database, .systemDatabase, .schema, .externalSchema, .partition, .trigger, .tableFolder,
-            .query, .savedQuery, .user,
+            .query, .savedQuery, .user, .recentSection, .temporarySection, .favoritesSection,
+            .column, .primaryKey, .index, .foreignKey, .checkConstraint,
         ]
         kinds += TableInfo.TableType.allCases.map { .relation($0) }
         kinds += RoutineInfo.Kind.allCases.map { .routine($0) }
         kinds += UserDefinedTypeInfo.Kind.allCases.map { .userType($0) }
         kinds += SidebarObjectKind.allCases.map { .section($0) }
+        kinds += TableDetailGroupKind.allCases.map { .tableDetailGroup($0) }
         return kinds
     }
 
@@ -133,6 +159,37 @@ struct ObjectIconProviderTests {
             #expect(section.symbolName == "folder.fill")
             #expect(section.tint == object.tint, "\(kind)")
         }
+    }
+
+    @Test("A group under a table is a folder in the hue of the rows it holds")
+    func detailGroupsTakeTheirRowsHue() {
+        let rows: [(TableDetailGroupKind, ObjectIconKind)] = [
+            (.columns, .column), (.indexes, .index), (.foreignKeys, .foreignKey),
+            (.checks, .checkConstraint), (.triggers, .trigger), (.partitions, .partition),
+        ]
+        #expect(rows.count == TableDetailGroupKind.allCases.count)
+        for (group, row) in rows {
+            let folder = ObjectIconProvider.icon(for: .tableDetailGroup(group), style: .colorful)
+            #expect(folder.symbolName == "folder.fill")
+            #expect(folder.tint == ObjectIconProvider.icon(for: row, style: .colorful).tint, "\(group)")
+        }
+    }
+
+    @Test("A column or index that is the primary key draws the key, in both styles")
+    func detailRowsNameTheirKind() {
+        let column = TestFixtures.makeColumnInfo(name: "total", isPrimaryKey: false)
+        let key = TestFixtures.makeColumnInfo(name: "id", isPrimaryKey: true)
+        let primary = IndexInfo(name: "orders_pkey", columns: ["id"], isUnique: true, isPrimary: true, type: "BTREE")
+        let plain = IndexInfo(name: "by_total", columns: ["total"], isUnique: false, isPrimary: false, type: "BTREE")
+
+        #expect(ObjectIconKind(TableDetailItem.column(column)) == .column)
+        #expect(ObjectIconKind(TableDetailItem.column(key)) == .primaryKey)
+        #expect(ObjectIconKind(TableDetailItem.index(primary)) == .primaryKey)
+        #expect(ObjectIconKind(TableDetailItem.index(plain)) == .index)
+        #expect(ObjectIconProvider.icon(for: ObjectIconKind(TableDetailItem.column(key)), style: .colorful)
+            == ObjectIcon(symbolName: "key.fill", tint: .yellow))
+        #expect(ObjectIconProvider.icon(for: ObjectIconKind(TableDetailItem.column(column)), style: .standard)
+            == ObjectIcon(symbolName: "rectangle.portrait"))
     }
 
     @Test("Every glyph in both styles is a symbol the system has")
