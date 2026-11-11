@@ -362,6 +362,7 @@ impl AppServices {
             )),
             column_layouts: self.storage.column_layouts().clone(),
             filters: self.storage.filter_settings().clone(),
+            highlight_rules: self.storage.highlight_rules().clone(),
             workspaces: self.storage.workspaces().clone(),
             history,
             spawner: self.tasks.clone(),

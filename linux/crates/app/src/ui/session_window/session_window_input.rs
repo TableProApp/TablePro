@@ -22,6 +22,8 @@ use crate::workspace::{CloseReason, CompletedWork};
 
 #[derive(Debug)]
 pub(crate) enum SessionWindowInput {
+    StateFileStatus(super::state_file_status::StateFileKind),
+    RetryStateFile(super::state_file_status::StateFileKind),
     /// Open a saved connection, beside the sessions the window holds.
     OpenSaved(Box<SavedConnection>),
     /// Open a database file, as the file manager or the command line

@@ -35,12 +35,18 @@ impl BrowseModel {
                 self.grid.commit_edit();
                 self.sequencer.cancel_all();
                 self.table = name;
-                if let Some(connection) = self.connection_id {
+                if let Some(state_key) = self.state_key.as_ref() {
                     self.filter_settings.set_filters(
-                        connection,
+                        state_key,
                         self.schema.as_deref(),
                         &self.table,
                         self.current_filter.clone(),
+                    );
+                    self.highlight_rules.set_rules(
+                        state_key,
+                        self.schema.as_deref(),
+                        &self.table,
+                        self.grid.highlight_rules(),
                     );
                 }
                 self.grid.rename_table(&self.table);
@@ -135,7 +141,7 @@ impl BrowseModel {
     /// on screen: rows behind the loading or the error page are not what
     /// the table holds under the tab's filter.
     pub(super) fn show_grid_actions(&mut self) {
-        let shown = self.load.has_content() && self.this.upgrade().is_some_and(|tab| !tab.shows_structure());
+        let shown = self.load.has_content() && self.this.upgrade().is_some_and(|tab| tab.shows_data());
         if self.grid_actions_shown == shown {
             return;
         }
