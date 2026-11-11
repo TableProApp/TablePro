@@ -238,7 +238,7 @@ mod tests {
         let store = FilterSettingsStore::load(path.clone(), &paused_tasks());
         store.set_sidebar_schemas(id, "shop", &kept);
         store.set_filters(id, None, "users", sample_set());
-        store.flush().await;
+        store.flush().await.expect("saved");
 
         let reopened = FilterSettingsStore::load(path.clone(), &paused_tasks());
         assert_eq!(reopened.sidebar_schemas(id, "shop"), kept);
@@ -248,7 +248,7 @@ mod tests {
         assert!(reopened.sidebar_schemas(id, "shop").is_empty());
         reopened.set_sidebar_schemas(id, "shop", &kept);
         reopened.forget_connection(id);
-        reopened.flush().await;
+        reopened.flush().await.expect("saved");
         let written = std::fs::read_to_string(&path).expect("the file");
         assert!(
             !written.contains("sales"),
