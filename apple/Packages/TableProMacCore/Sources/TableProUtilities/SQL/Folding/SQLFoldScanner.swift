@@ -40,6 +40,12 @@ private struct Scan {
     /// in the same gutter agree about where a statement stops.
     private var boundaries: any SQLStatementBoundaryTracking
 
+    // A `;` that ended the statement while the tracker could still take it back at the next token, and its line.
+    private var heldEnd: (index: Int, line: Int)?
+
+    // The client delimiter a `DELIMITER` line set, which ends a statement wherever it stands in code.
+    private var delimiter: SQLClientDelimiter?
+
     init(text: NSString, grammar: SQLLexicalGrammar) {
         self.text = text
         self.length = text.length
@@ -53,16 +59,33 @@ private struct Scan {
         while index < length {
             step()
         }
+        settleHeldEnd(word: nil)
         closeFramesAtEndOfDocument()
+    }
+
+    private mutating func settleHeldEnd(word: String?) {
+        guard let held = heldEnd else { return }
+        heldEnd = nil
+        guard !boundaries.continuesStatement(with: word) else { return }
+        boundaries.reset()
+        if frames.last?.kind == .statement {
+            popFrame(.statement, end: held.index, endLine: held.line)
+        }
     }
 
     private mutating func step() {
         let character = text.character(at: index)
 
         if consumeTrivia(character) { return }
+        if consumeClientLine(character) { return }
+        if consumeDelimiter() { return }
         if consumeNonCode() { return }
         if consumeSlashLine(character) { return }
 
+        if heldEnd != nil, character != SqlLexer.semicolon {
+            let word = SqlBlockStructure.readKeyword(text, at: index, length: length, grammar: grammar).text
+            settleHeldEnd(word: word.isEmpty ? nil : word)
+        }
         openStatementIfNeeded()
         consumeStructure(character)
     }
@@ -161,6 +184,22 @@ private struct Scan {
     /// frame of their own: when it ends the unit, whatever the fold still holds open ends with it.
     private mutating func consumeSemicolon() {
         let endsStatement = boundaries.observeSemicolon()
+        if heldEnd != nil || (endsStatement && boundaries.awaitsContinuation) {
+            heldEnd = heldEnd ?? (index, line)
+            index += 1
+            return
+        }
+        // The rows after a `COPY ... FROM STDIN` belong to it, so its fold runs through them.
+        if endsStatement, boundaries.copiesFromStandardInput {
+            let rows = SQLPsqlScript.copyRows(afterSemicolonAt: index, in: text, length: length)
+            boundaries.reset()
+            line += newlines(in: rows)
+            index = NSMaxRange(rows)
+            if frames.last?.kind == .statement {
+                popFrame(.statement, end: index)
+            }
+            return
+        }
         if endsStatement {
             boundaries.reset()
             if grammar.contains(.plsqlBlocks) {
@@ -182,7 +221,8 @@ private struct Scan {
     }
 
     private mutating func consumeKeyword(_ character: UInt16) {
-        let word = SqlBlockStructure.readKeyword(text, at: index, length: length, grammar: grammar)
+        let read = SqlBlockStructure.readKeyword(text, at: index, length: length, grammar: grammar)
+        let word = read.text.isEmpty ? read : delimiter?.cut(read, readAt: index, in: text, length: length) ?? read
         guard !word.text.isEmpty else {
             if !SqlLexer.isWhitespace(character) {
                 boundaries.observeSymbol(character)
@@ -211,6 +251,50 @@ private struct Scan {
         }
     }
 
+    // MARK: - Client lines
+
+    /// A `DELIMITER` line or a psql `\restrict` line, where no statement is open, runs nothing and folds nothing.
+    private mutating func consumeClientLine(_ character: UInt16) -> Bool {
+        guard frames.isEmpty else { return false }
+        if grammar.contains(.delimiterDirective), character | 0x20 == Self.smallD,
+           let directive = SQLDelimiterDirective.line(at: index, in: text, length: length) {
+            if let set = directive.delimiter {
+                delimiter = SQLClientDelimiter(set)
+            }
+            index = NSMaxRange(directive.range)
+            return true
+        }
+        if grammar.contains(.psqlScripts), character == SqlLexer.backslash,
+           let restrict = SQLPsqlScript.restrictLine(at: index, in: text, length: length) {
+            index = NSMaxRange(restrict)
+            return true
+        }
+        return false
+    }
+
+    /// A client delimiter ends the statement whatever the fold still holds open, as it does for the mysql client.
+    private mutating func consumeDelimiter() -> Bool {
+        guard let delimiter, delimiter.starts(in: text, at: index, length: length) else { return false }
+        settleHeldEnd(word: nil)
+        closeFramesThroughStatement(end: index)
+        if frames.last?.kind == .statement {
+            popFrame(.statement, end: index)
+        }
+        boundaries.reset()
+        index += delimiter.units.count
+        return true
+    }
+
+    private func newlines(in range: NSRange) -> Int {
+        var count = 0
+        for offset in range.location..<NSMaxRange(range) where text.character(at: offset) == SqlLexer.newline {
+            count += 1
+        }
+        return count
+    }
+
+    private static let smallD = UInt16(UnicodeScalar("d").value)
+
     // MARK: - Trivia
 
     private mutating func consumeTrivia(_ character: UInt16) -> Bool {
@@ -234,6 +318,8 @@ private struct Scan {
         let startLine = line
         if span.kind.isComment {
             boundaries.observeGap()
+        } else {
+            settleHeldEnd(word: nil)
         }
         switch span.kind {
         case .lineComment:

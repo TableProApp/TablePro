@@ -7,6 +7,17 @@ public enum SQLStatementScanner {
         public let hasContent: Bool
         public let terminator: SQLStatementTerminator
         public let acceptsBindParameters: Bool
+
+        /// How many units at the end of ``sql`` are a client delimiter such as `//`, which no server receives. Zero when
+        /// a `;` or nothing ends the statement.
+        public let delimiterLength: Int
+
+        /// For a `COPY ... FROM STDIN`, everything after its `;` that a psql script holds as rows, in the document's
+        /// coordinates. None of it is SQL.
+        public let copyRows: NSRange?
+
+        /// The client delimiter in force once the statement ends.
+        public let clientDelimiter: SQLClientDelimiter?
         private let isAllContent: Bool
 
         public init(
@@ -14,13 +25,19 @@ public enum SQLStatementScanner {
             offset: Int,
             hasContent: Bool = true,
             terminator: SQLStatementTerminator = .separator,
-            acceptsBindParameters: Bool = true
+            acceptsBindParameters: Bool = true,
+            delimiterLength: Int = 0,
+            copyRows: NSRange? = nil,
+            clientDelimiter: SQLClientDelimiter? = nil
         ) {
             self.sql = sql
             self.offset = offset
             self.hasContent = hasContent
             self.terminator = terminator
             self.acceptsBindParameters = acceptsBindParameters
+            self.delimiterLength = delimiterLength
+            self.copyRows = copyRows
+            self.clientDelimiter = clientDelimiter
             isAllContent = false
         }
 
@@ -31,6 +48,9 @@ public enum SQLStatementScanner {
             hasContent = true
             terminator = .separator
             acceptsBindParameters = true
+            delimiterLength = 0
+            copyRows = nil
+            clientDelimiter = nil
             isAllContent = true
         }
 
@@ -44,9 +64,13 @@ public enum SQLStatementScanner {
         /// `offset` is the index just past the previous semicolon, so in a script written one statement per line it
         /// lands on the newline that ended the previous line. A decoration or a gutter anchor placed from ``range``
         /// therefore starts a line early, and uses this instead.
+        ///
+        /// A client delimiter is left out: Run Current scans the text again on its own, where no `DELIMITER` line
+        /// precedes it, so the delimiter would reach the server.
         public var contentRange: NSRange {
             guard !isAllContent else { return range }
-            let content = StatementBlank.contentRange(of: sql)
+            let text = sql as NSString
+            let content = StatementBlank.contentRange(of: text.substring(to: max(0, text.length - delimiterLength)))
             return NSRange(location: offset + content.location, length: content.length)
         }
     }
@@ -60,7 +84,7 @@ public enum SQLStatementScanner {
     /// The range is relative to the text the scan was given. A run started from a selection or from a single
     /// statement scans a fragment, so those callers shift the range onto the tab's whole query with ``offset(by:)``
     /// before it travels any further. Everything downstream may then assume tab coordinates.
-    public struct ExecutableStatement: Sendable {
+    public struct ExecutableStatement: Sendable, Equatable {
         public let sql: String
         public let range: NSRange
 
@@ -68,10 +92,23 @@ public enum SQLStatementScanner {
         /// ``SQLStatementBoundaryTracking/acceptsBindParameters``.
         public let acceptsBindParameters: Bool
 
-        public init(sql: String, range: NSRange, acceptsBindParameters: Bool = true) {
+        /// Where the scan went on after this statement: past its `;`, a client delimiter or a `COPY`'s rows. A run
+        /// that splits the rest of a script again starts there, with ``clientDelimiter`` in force.
+        public let segmentEnd: Int
+        public let clientDelimiter: SQLClientDelimiter?
+
+        public init(
+            sql: String,
+            range: NSRange,
+            acceptsBindParameters: Bool = true,
+            segmentEnd: Int? = nil,
+            clientDelimiter: SQLClientDelimiter? = nil
+        ) {
             self.sql = sql
             self.range = range
             self.acceptsBindParameters = acceptsBindParameters
+            self.segmentEnd = segmentEnd ?? NSMaxRange(range)
+            self.clientDelimiter = clientDelimiter
         }
 
         public func offset(by delta: Int) -> ExecutableStatement {
@@ -79,7 +116,9 @@ public enum SQLStatementScanner {
             return ExecutableStatement(
                 sql: sql,
                 range: NSRange(location: range.location + delta, length: range.length),
-                acceptsBindParameters: acceptsBindParameters
+                acceptsBindParameters: acceptsBindParameters,
+                segmentEnd: segmentEnd + delta,
+                clientDelimiter: clientDelimiter
             )
         }
     }
@@ -179,6 +218,16 @@ public enum SQLStatementScanner {
         return separators
     }
 
+    /// The text of a psql script a formatter keeps as written, in document order: each `COPY ... FROM STDIN` with the
+    /// rows after it through the `\.` line, and pg_dump's `\restrict` and `\unrestrict` lines. Empty for an engine
+    /// whose scripts are not psql's.
+    public static func psqlScriptText(in sql: String, grammar: SQLLexicalGrammar) -> [NSRange] {
+        guard grammar.contains(.psqlScripts) else { return [] }
+        var ranges: [NSRange] = []
+        scan(sql: sql, cursorPosition: nil, grammar: grammar, onScriptText: { ranges.append($0) }) { _ in true }
+        return ranges
+    }
+
     /// Returns statements as the driver receives them, for driver execution.
     public static func allStatements(in sql: String, grammar: SQLLexicalGrammar) -> [String] {
         executableStatements(in: sql, grammar: grammar).map(\.sql)
@@ -215,10 +264,13 @@ public enum SQLStatementScanner {
     ///
     /// A `;` that belongs to the statement stays, but only when there is something before it: a unit reduced to its
     /// terminator is as empty as any other.
+    ///
+    /// A client delimiter never reaches the server, and a `COPY ... FROM STDIN` is sent without its rows.
     public static func executableStatement(from located: LocatedStatement) -> ExecutableStatement? {
+        guard located.hasContent else { return nil }
         let rawSQL = located.sql
-        var content = StatementBlank.trimming(rawSQL[...])
-        if content.last == ";" {
+        var content = StatementBlank.trimming(rawSQL[..<sentEnd(of: located)])
+        if content.last == ";", located.delimiterLength == 0 {
             let body = StatementBlank.trimming(content.dropLast())
             guard !body.isEmpty else { return nil }
             if located.terminator == .separator {
@@ -231,8 +283,45 @@ public enum SQLStatementScanner {
         return ExecutableStatement(
             sql: String(content),
             range: NSRange(location: located.offset + range.location, length: range.length),
-            acceptsBindParameters: located.acceptsBindParameters
+            acceptsBindParameters: located.acceptsBindParameters,
+            segmentEnd: NSMaxRange(located.range),
+            clientDelimiter: located.clientDelimiter
         )
+    }
+
+    /// The statements after `ran`, one of those `sql` was split into, split again under `grammar`, up to `end`: once
+    /// a statement changes how the session reads literals, the rest no longer splits as planned. The split starts at
+    /// ``ExecutableStatement/segmentEnd``, so a `COPY`'s rows are never read as statements, and keeps the client
+    /// delimiter in force there.
+    public static func executableStatements(
+        in sql: String,
+        after ran: ExecutableStatement,
+        through end: Int,
+        grammar: SQLLexicalGrammar
+    ) -> [ExecutableStatement] {
+        let text = sql as NSString
+        let limit = min(end, text.length)
+        guard ran.segmentEnd < limit else { return [] }
+        let resume = Checkpoint(
+            offset: ran.segmentEnd,
+            decidedThrough: ran.segmentEnd,
+            endedStatement: nil,
+            delimiter: ran.clientDelimiter
+        )
+        var results: [ExecutableStatement] = []
+        scan(sql: text.substring(to: limit), cursorPosition: nil, grammar: grammar, resumingAt: resume) { located in
+            if located.hasContent, let statement = executableStatement(from: located) {
+                results.append(statement)
+            }
+            return true
+        }
+        return results
+    }
+
+    private static func sentEnd(of located: LocatedStatement) -> String.Index {
+        let length = located.sql.utf16.count
+        let end = located.copyRows.map { $0.location - located.offset } ?? length - located.delimiterLength
+        return String.Index(utf16Offset: min(max(0, end), length), in: located.sql)
     }
 
     /// Whether the text ends inside a block it opened, so the last statement swallowed everything after its opener.
@@ -248,7 +337,7 @@ public enum SQLStatementScanner {
         var results: [String] = []
         scan(sql: sql, cursorPosition: nil, grammar: grammar) { statement in
             guard statement.hasContent else { return true }
-            let trimmed = StatementBlank.trimming(statement.sql)
+            let trimmed = StatementBlank.trimming(String(statement.sql[..<sentEnd(of: statement)]))
             let withoutSemicolon = trimmed.hasSuffix(";")
                 ? StatementBlank.trimming(String(trimmed.dropLast()))
                 : trimmed
@@ -281,6 +370,9 @@ public enum SQLStatementScanner {
         let range: NSRange
         let terminator: SQLStatementTerminator
         let acceptsBindParameters: Bool
+        let delimiterLength: Int
+        let copyRows: NSRange?
+        let clientDelimiter: SQLClientDelimiter?
 
         func located(in text: NSString) -> LocatedStatement {
             LocatedStatement(
@@ -288,187 +380,56 @@ public enum SQLStatementScanner {
                 offset: range.location,
                 hasContent: true,
                 terminator: terminator,
-                acceptsBindParameters: acceptsBindParameters
+                acceptsBindParameters: acceptsBindParameters,
+                delimiterLength: delimiterLength,
+                copyRows: copyRows,
+                clientDelimiter: clientDelimiter
             )
         }
     }
 
-    // A point where the scan holds no state but the last statement with content, so it can start again there.
+    // A point where the scan holds no state but the last statement with content and the client delimiter in force,
+    // so it can start again there.
     struct Checkpoint: Sendable, Equatable {
         let offset: Int
         // The last offset whose text decided this boundary: an edit there or earlier moves it.
         let decidedThrough: Int
         let endedStatement: EndedStatement?
+        var delimiter: SQLClientDelimiter?
     }
 
     // MARK: - Scanning
 
     // Segments tile the document: each runs from the end of the previous one to its terminator, whitespace included.
     // With a cursor only the segment holding it is reported, or the last one when it sits past every terminator.
-    // Where a statement ends is the tracker's decision, except at a `GO` line, which ends the batch whatever the
-    // tracker thinks and is a segment of its own that runs nothing.
+    // See ``SQLStatementScan`` for where a segment ends.
     static func scan(
         sql: String,
         cursorPosition: Int?,
         grammar: SQLLexicalGrammar,
         resumingAt resume: Checkpoint? = nil,
-        onCheckpoint: (Checkpoint) -> Void = { _ in },
-        onBatchSeparator: (SQLBatchSeparator) -> Void = { _ in },
+        onCheckpoint: @escaping (Checkpoint) -> Void = { _ in },
+        onBatchSeparator: @escaping (SQLBatchSeparator) -> Void = { _ in },
+        onScriptText: @escaping (NSRange) -> Void = { _ in },
         onFinish: (_ holdsOpenBlock: Bool) -> Void = { _ in },
-        onStatement: (LocatedStatement) -> Bool
+        onStatement: @escaping (LocatedStatement) -> Bool
     ) {
-        let nsQuery = sql as NSString
-        let length = nsQuery.length
-        guard length > 0 else { return }
-
-        let safePosition = cursorPosition.map { min(max(0, $0), length) }
-
-        var tracker = SQLStatementBoundaries.makeTracker(for: grammar)
-        var currentStart = min(max(0, resume?.offset ?? 0), length)
-        var hasStatementContent = false
-        var i = currentStart
-
-        var lastEndedStatement = resume?.endedStatement
-
-        // A caret on a SQL*Plus `/` line stands for the statement the slash ends, where `Cmd+Enter` is expected to act.
-        // A caret on a `GO` line stands for the last statement of its batch, and for nothing when the batch is empty.
-        func finishSegment(at end: Int, hasContent: Bool, standsForEndedStatement: Bool = false) -> Bool {
-            let range = NSRange(location: currentStart, length: end - currentStart)
-            if hasContent {
-                lastEndedStatement = EndedStatement(
-                    range: range,
-                    terminator: tracker.terminator,
-                    acceptsBindParameters: tracker.acceptsBindParameters
-                )
-            }
-            if let cursor = safePosition {
-                guard cursor >= currentStart, cursor <= end else {
-                    currentStart = end
-                    return true
-                }
-                if standsForEndedStatement, let ended = lastEndedStatement {
-                    _ = onStatement(ended.located(in: nsQuery))
-                    return false
-                }
-            }
-            let statement = LocatedStatement(
-                sql: nsQuery.substring(with: range),
-                offset: currentStart,
-                hasContent: hasContent,
-                terminator: tracker.terminator,
-                acceptsBindParameters: tracker.acceptsBindParameters
+        let text = sql as NSString
+        guard text.length > 0 else { return }
+        var scan = SQLStatementScan(
+            text: text,
+            cursorPosition: cursorPosition,
+            grammar: grammar,
+            resume: resume,
+            events: SQLStatementScan.Events(
+                checkpoint: onCheckpoint,
+                batchSeparator: onBatchSeparator,
+                scriptText: onScriptText,
+                statement: onStatement
             )
-            if safePosition != nil {
-                _ = onStatement(statement)
-                return false
-            }
-            currentStart = end
-            return onStatement(statement)
-        }
-
-        while i < length {
-            let ch = nsQuery.character(at: i)
-
-            if let span = SQLNonCodeSpan.span(at: i, in: nsQuery, grammar: grammar) {
-                switch span.kind {
-                case .lineComment, .blockComment:
-                    tracker.observeGap()
-                case .executableComment:
-                    hasStatementContent = true
-                case .quoted:
-                    hasStatementContent = true
-                    tracker.observeQuotedToken(opener: nsQuery.character(at: span.start))
-                case .parameter:
-                    hasStatementContent = true
-                    tracker.observeOpaqueToken()
-                }
-                i = max(span.end, i + 1)
-                continue
-            }
-
-            if grammar.contains(.batchSeparatorLines),
-               let separator = SQLBatchSeparator.line(at: i, in: nsQuery, length: length, grammar: grammar) {
-                onBatchSeparator(separator)
-                if hasStatementContent {
-                    guard finishSegment(at: i, hasContent: true) else { return }
-                }
-                let separatorEnd = NSMaxRange(separator.range)
-                guard finishSegment(at: separatorEnd, hasContent: false, standsForEndedStatement: true) else { return }
-                lastEndedStatement = nil
-                tracker.reset()
-                hasStatementContent = false
-                onCheckpoint(Checkpoint(offset: separatorEnd, decidedThrough: separatorEnd, endedStatement: nil))
-                i = separatorEnd
-                continue
-            }
-
-            if SqlBlockStructure.startsWord(nsQuery, at: i, length: length, grammar: grammar) {
-                hasStatementContent = true
-                if tracker.needsWords {
-                    let word = SqlBlockStructure.readKeyword(nsQuery, at: i, length: length, grammar: grammar)
-                    tracker.observeWord(word.text)
-                    i = word.end
-                } else {
-                    i += 1
-                    while i < length, SqlBlockStructure.continuesWord(nsQuery.character(at: i), grammar: grammar) {
-                        i += 1
-                    }
-                }
-                continue
-            }
-
-            if ch == SqlLexer.semicolon {
-                guard tracker.observeSemicolon() else {
-                    hasStatementContent = true
-                    i += 1
-                    continue
-                }
-                guard finishSegment(at: i + 1, hasContent: hasStatementContent) else { return }
-                tracker.reset()
-                hasStatementContent = false
-                onCheckpoint(Checkpoint(offset: i + 1, decidedThrough: i, endedStatement: lastEndedStatement))
-                i += 1
-                continue
-            }
-
-            if grammar.contains(.slashLineTerminators), ch == SqlLexer.slash, isSlashLine(nsQuery, at: i, length: length) {
-                if hasStatementContent {
-                    guard finishSegment(at: i, hasContent: true) else { return }
-                }
-                guard finishSegment(at: i + 1, hasContent: false, standsForEndedStatement: true) else { return }
-                tracker.reset()
-                hasStatementContent = false
-                onCheckpoint(Checkpoint(
-                    offset: i + 1,
-                    decidedThrough: endOfSlashLine(nsQuery, at: i, length: length),
-                    endedStatement: lastEndedStatement
-                ))
-                i += 1
-                continue
-            }
-
-            let blankLength = StatementBlank.blankLength(in: nsQuery, at: i)
-            if blankLength > 0 {
-                tracker.observeGap()
-                i += blankLength
-                continue
-            }
-            hasStatementContent = true
-            tracker.observeSymbol(ch)
-            i += 1
-        }
-
-        if currentStart < length {
-            let statement = LocatedStatement(
-                sql: nsQuery.substring(with: NSRange(location: currentStart, length: length - currentStart)),
-                offset: currentStart,
-                hasContent: hasStatementContent,
-                terminator: tracker.terminator,
-                acceptsBindParameters: tracker.acceptsBindParameters
-            )
-            _ = onStatement(statement)
-        }
-        onFinish(tracker.holdsOpenBlock)
+        )
+        guard scan.run() else { return }
+        onFinish(scan.holdsOpenBlock)
     }
 
     /// Whether the `/` at `offset` stands alone on its line, which is what makes it SQL*Plus's terminator rather than
@@ -484,7 +445,7 @@ public enum SQLStatementScanner {
     }
 
     // The last offset `isSlashLine` reads after the slash: its line break, or the end of the text.
-    private static func endOfSlashLine(_ text: NSString, at offset: Int, length: Int) -> Int {
+    static func endOfSlashLine(_ text: NSString, at offset: Int, length: Int) -> Int {
         var after = offset + 1
         while after < length, isLineBlank(text.character(at: after)) {
             after += 1

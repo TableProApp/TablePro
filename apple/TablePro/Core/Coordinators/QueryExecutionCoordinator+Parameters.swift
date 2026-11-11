@@ -44,6 +44,8 @@ private struct PreparedStatement: @unchecked Sendable {
     let parameterValues: [Any?]?
     let rowCap: Int?
     let anchor: StatementAnchor?
+    /// Where the script was cut after this statement, which a replan of the rest starts from.
+    let statement: SQLStatementScanner.ExecutableStatement?
     /// Whether this is the script's own `COMMIT`, read from the text before the lease is taken so
     /// the run never lexes inside it.
     let isCommitPoint: Bool
@@ -74,10 +76,10 @@ private final class RunningStatements {
 
     func replanned(after ran: Int, session: SQLLexicalGrammar) -> [PreparedStatement]? {
         guard session != grammar, let script, prepared.indices.contains(ran - 1),
-              let last = prepared[ran - 1].anchor
+              let last = prepared[ran - 1].statement
         else { return nil }
         let rest = QueryExecutionCoordinator.remainingStatements(
-            in: script, after: last.range, through: end, grammar: session
+            in: script, after: last, through: end, grammar: session
         ).map { prepare($0, session) }
         grammar = session
         prepared = Array(prepared.prefix(ran)) + rest
@@ -513,6 +515,7 @@ extension QueryExecutionCoordinator {
             parameterValues: conversion?.values,
             rowCap: bounded.rowCap,
             anchor: StatementAnchor(statement),
+            statement: statement,
             isCommitPoint: BatchCommitStatement.matches(sql, grammar: grammar)
         )
     }
