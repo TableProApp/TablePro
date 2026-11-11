@@ -127,6 +127,7 @@ impl DocumentEngine for MongoEngine {
         }
         match rows(&events).first().and_then(|row| row.first()) {
             None => Ok(0),
+            Some(Value::Int32(count)) => u64::try_from(*count).map_err(ConformanceFailure::setup),
             Some(Value::Int(count)) => u64::try_from(*count).map_err(ConformanceFailure::setup),
             Some(other) => Err(ConformanceFailure::setup(format!("$currentOp counted {other:?}"))),
         }

@@ -31,6 +31,7 @@ fn bind_one<'q>(
     Ok(match param.value() {
         Value::Null => query.bind(None::<i64>),
         Value::Bool(flag) => query.bind(i64::from(*flag)),
+        Value::Int32(integer) => query.bind(i64::from(*integer)),
         Value::Int(integer) => query.bind(*integer),
         // SQLite has no unsigned integer. Past i64 the digits are bound
         // as text, which keeps them exact where a real would round.

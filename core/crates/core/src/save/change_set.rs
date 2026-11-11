@@ -34,6 +34,8 @@ pub struct RowUpdate {
     pub key: Vec<Value>,
     /// Column position and its new input. Only the cells that moved.
     pub assignments: Vec<(usize, CellInput)>,
+    // A document engine writes an edited number back in the type the cell was read as; SQL engines ignore it.
+    pub read: Vec<(usize, Value)>,
 }
 
 impl ChangeSet {
@@ -70,6 +72,7 @@ mod tests {
                 RowChange::Update(RowUpdate {
                     key: vec![Value::Int(1)],
                     assignments: vec![(1, CellInput::Value(Value::Text("x".to_owned())))],
+                    read: vec![(1, Value::Text("w".to_owned()))],
                 }),
                 RowChange::Delete {
                     key: vec![Value::Int(2)],

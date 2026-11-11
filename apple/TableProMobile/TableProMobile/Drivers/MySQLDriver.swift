@@ -1094,12 +1094,7 @@ private actor MySQLActor {
             case .bytes(let data):
                 return .binary(byteCount: data.count, ref: ref)
             case .text(let text):
-                return Cell.from(
-                    legacyValue: text,
-                    columnTypeName: column.typeName,
-                    options: options,
-                    ref: ref
-                )
+                return Cell.from(text: text, options: options, ref: ref)
             @unknown default:
                 return .null
             }

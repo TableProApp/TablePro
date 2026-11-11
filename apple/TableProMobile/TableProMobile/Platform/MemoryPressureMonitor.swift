@@ -56,4 +56,18 @@ final class MemoryPressureMonitor {
         guard available > 0 else { return true }
         return available > requiredBytes
     }
+
+    nonisolated func textBudgetBytes() -> Int {
+        Self.textBudgetBytes(availableBytes: availableMemoryBytes())
+    }
+
+    // A sixth of the headroom past the margin: the kept text, the four copies `exportFits` wants room for, and a
+    // share for the rest of the app. The call answers 0 outside an app, where only the ceiling bounds it.
+    nonisolated static func textBudgetBytes(availableBytes: Int) -> Int {
+        guard availableBytes > 0 else { return textBudgetCeilingBytes }
+        return min(textBudgetCeilingBytes, max(0, availableBytes - textBudgetMarginBytes) / 6)
+    }
+
+    nonisolated private static let textBudgetCeilingBytes = 64 * 1_024 * 1_024
+    nonisolated private static let textBudgetMarginBytes = 64 * 1_024 * 1_024
 }

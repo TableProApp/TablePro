@@ -50,8 +50,34 @@ public sealed class RunResultsTests
 
         Assert.True(counted.Truncated);
         Assert.True(uncounted.Truncated);
+        Assert.False(counted.StoppedOnServer);
+        Assert.True(uncounted.StoppedOnServer);
         Assert.Equal("Result 1 (25000)", results.Label(counted));
         Assert.Equal("Result 2 (10000+)", results.Label(uncounted));
+    }
+
+    [Fact]
+    public void ASetCutForSizeKeepsTheRunsLimitAndShowsAPlusWhenNobodyCounted()
+    {
+        var results = New();
+        var uncounted = results.Add(0, Columns);
+        var counted = results.Add(1, Columns);
+        var rowLimited = results.Add(2, Columns);
+
+        results.Apply(new QueryEvent.RowsAppended(0, 16));
+        results.Apply(new QueryEvent.ByteLimitReached(0, 16, 256_000_000));
+        results.Apply(new QueryEvent.ResultSetFinished(0, 16, null, Truncation.ByteLimit));
+        results.Apply(new QueryEvent.ByteLimitReached(1, 0, 256_000_000));
+        results.Apply(new QueryEvent.ResultSetFinished(1, 0, 100, Truncation.ByteLimit));
+        results.Apply(new QueryEvent.ResultSetFinished(2, 10_000, 25_000, Truncation.ReadPastLimit));
+
+        Assert.True(uncounted.Truncated);
+        Assert.Equal(256_000_000, uncounted.SizeLimit);
+        Assert.False(uncounted.StoppedOnServer);
+        Assert.Equal(256_000_000, counted.SizeLimit);
+        Assert.Null(rowLimited.SizeLimit);
+        Assert.Equal("Result 1 (16+)", results.Label(uncounted));
+        Assert.Equal("Result 2 (100)", results.Label(counted));
     }
 
     [Fact]

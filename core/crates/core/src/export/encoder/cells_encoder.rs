@@ -77,7 +77,7 @@ impl RowEncoder for CellsEncoder {
 /// The storage a value's text does not carry.
 fn stored_as(value: &Value) -> Option<&'static str> {
     match value {
-        Value::Int(_) | Value::UInt(_) | Value::WideInt(_) => Some("int"),
+        Value::Int32(_) | Value::Int(_) | Value::UInt(_) | Value::WideInt(_) => Some("int"),
         // A decimal's text is exact, which a binary float is not.
         Value::Float32(_) | Value::Float64(_) => Some("real"),
         Value::Bytes(_) => Some("bytes"),

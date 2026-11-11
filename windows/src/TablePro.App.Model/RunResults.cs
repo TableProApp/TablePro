@@ -15,6 +15,12 @@ public sealed class RunResult(int setIndex, IReadOnlyList<ResultColumn> columns)
     public long? TotalRows { get; internal set; }
 
     public bool Truncated { get; internal set; }
+
+    // The server stopped the statement, so work it does per row may have run for only part of the rows.
+    public bool StoppedOnServer { get; internal set; }
+
+    // Set from ByteLimitReached alone, since a finish carries no limit.
+    public long? SizeLimit { get; internal set; }
 }
 
 // Each result set of a run in the order it started, labelled "Result {n} ({rows})" as the Linux app lists them.
@@ -42,10 +48,15 @@ public sealed class RunResults(string label, string labelMore)
             case QueryEvent.RowLimitReached limit when Find(limit.SetIndex) is { } cut:
                 cut.Truncated = true;
                 return cut;
+            case QueryEvent.ByteLimitReached bytes when Find(bytes.SetIndex) is { } full:
+                full.Truncated = true;
+                full.SizeLimit = bytes.LimitBytes;
+                return full;
             case QueryEvent.ResultSetFinished finished when Find(finished.SetIndex) is { } ended:
                 ended.Rows = finished.RowCount;
                 ended.TotalRows = finished.TotalRows;
                 ended.Truncated |= finished.Truncation != Truncation.Complete;
+                ended.StoppedOnServer = finished.Truncation == Truncation.ServerStopped;
                 return ended;
             default:
                 return null;

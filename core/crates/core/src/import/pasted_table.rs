@@ -422,7 +422,7 @@ fn pasted_cell(field: Option<&PastedField>, column: &ColumnInfo) -> Result<CellI
         {
             return Ok(CellInput::Value(value));
         }
-        return parse_edit_text(&field.text, column, EditContext::InsertDraft);
+        return parse_edit_text(&field.text, column, EditContext::InsertDraft, None);
     }
     if column.nullable {
         return Ok(CellInput::Value(Value::Null));

@@ -10,7 +10,15 @@ public enum ConnectionState
     Failed,
 }
 
-public sealed record SecretAnswer(string Secret, bool Save);
+public sealed record SecretAnswer(string Secret, bool Save)
+{
+    // A record's ToString prints every property, and this one holds a password.
+    private bool PrintMembers(System.Text.StringBuilder builder)
+    {
+        builder.Append("Secret = [REDACTED], Save = ").Append(Save);
+        return true;
+    }
+}
 
 // The core calls a connect makes.
 public interface IConnector<TSession>

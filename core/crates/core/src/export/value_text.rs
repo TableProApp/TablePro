@@ -131,6 +131,7 @@ pub fn value_to_text(v: &Value) -> Option<String> {
     match v {
         Value::Null => None,
         Value::Bool(b) => Some(if *b { "true".to_string() } else { "false".to_string() }),
+        Value::Int32(i) => Some(i.to_string()),
         Value::Int(i) => Some(i.to_string()),
         Value::UInt(i) => Some(i.to_string()),
         Value::WideInt(i) => Some(i.to_string()),
@@ -299,6 +300,7 @@ mod tests {
         assert_eq!(value_to_text(&Value::Bool(true)), Some("true".to_string()));
         assert_eq!(value_to_text(&Value::Bool(false)), Some("false".to_string()));
         assert_eq!(value_to_text(&Value::Int(42)), Some("42".to_string()));
+        assert_eq!(value_to_text(&Value::Int32(-42)), Some("-42".to_string()));
         assert_eq!(value_to_text(&Value::UInt(u64::MAX)), Some(u64::MAX.to_string()));
         assert_eq!(value_to_text(&Value::Float64(1.5)), Some("1.5".to_string()));
         assert_eq!(value_to_text(&Value::Text("hi".into())), Some("hi".to_string()));

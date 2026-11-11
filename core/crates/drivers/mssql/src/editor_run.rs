@@ -4,8 +4,8 @@ use tablepro_core::column::ResultColumn;
 use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::{BatchErrorPolicy, LexicalSettings, ScriptPlan};
 use tablepro_core::{
-    DriverError, ResultEvent, ResultSink, RowLimit, RunEnd, SinkFlow, StopReason, StopRequest, TransactionState,
-    Truncation, Value,
+    DriverError, ResultEvent, ResultSink, RowBatch, RowLimit, RunEnd, SinkFlow, StopReason, StopRequest,
+    TransactionState, Truncation, Value,
 };
 use tiberius::QueryItem;
 
@@ -17,10 +17,6 @@ use crate::in_band_request::{Interrupt, StopPolicy, Watch, conclude, cut_short};
 use crate::physical::MssqlClient;
 use crate::result_origin::describe;
 use crate::transport_io::ReadTally;
-
-/// Rows per `ResultEvent::Rows`. The sink is awaited per batch, so a slow
-/// grid slows the read instead of growing a queue.
-const BATCH_ROWS: usize = 256;
 
 /// How a run ended, and whether its connection can take the next one.
 #[derive(Debug)]
@@ -44,7 +40,7 @@ pub(crate) struct EditorRun<'a> {
 struct OpenSet {
     retained: u64,
     total: u64,
-    batch: Vec<Vec<Value>>,
+    batch: RowBatch,
     limit_reported: bool,
 }
 
@@ -190,20 +186,18 @@ async fn keep(
 ) -> SinkFlow {
     set.total += 1;
     if set.retained < limit {
-        set.batch.push(values());
+        let full = set.batch.push(values());
         set.retained += 1;
-        if set.batch.len() < BATCH_ROWS {
+        if !full {
             return SinkFlow::Continue;
         }
-        return sink.accept(ResultEvent::Rows(std::mem::take(&mut set.batch))).await;
+        return sink.accept(ResultEvent::Rows(set.batch.take())).await;
     }
     if set.limit_reported {
         return SinkFlow::Continue;
     }
     set.limit_reported = true;
-    if !set.batch.is_empty()
-        && sink.accept(ResultEvent::Rows(std::mem::take(&mut set.batch))).await == SinkFlow::ConsumerGone
-    {
+    if !set.batch.is_empty() && sink.accept(ResultEvent::Rows(set.batch.take())).await == SinkFlow::ConsumerGone {
         return SinkFlow::ConsumerGone;
     }
     sink.accept(ResultEvent::RowLimitReached { retained: set.retained })
@@ -211,9 +205,7 @@ async fn keep(
 }
 
 async fn finish(sink: &mut dyn ResultSink, mut set: OpenSet) -> SinkFlow {
-    if !set.batch.is_empty()
-        && sink.accept(ResultEvent::Rows(std::mem::take(&mut set.batch))).await == SinkFlow::ConsumerGone
-    {
+    if !set.batch.is_empty() && sink.accept(ResultEvent::Rows(set.batch.take())).await == SinkFlow::ConsumerGone {
         return SinkFlow::ConsumerGone;
     }
     sink.accept(ResultEvent::ResultSetFinished {

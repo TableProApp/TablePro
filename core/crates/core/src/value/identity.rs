@@ -35,6 +35,9 @@ impl Hash for ValueIdentity {
 
 pub fn same_value(left: &Value, right: &Value) -> bool {
     match (left, right) {
+        (Value::Int32(narrow), Value::Int(wide)) | (Value::Int(wide), Value::Int32(narrow)) => {
+            i64::from(*narrow) == *wide
+        }
         (Value::Float32(left), Value::Float32(right)) => left.to_bits() == right.to_bits(),
         (Value::Float64(left), Value::Float64(right)) => left.to_bits() == right.to_bits(),
         (Value::Array(left), Value::Array(right)) => {
@@ -45,10 +48,14 @@ pub fn same_value(left: &Value, right: &Value) -> bool {
 }
 
 fn hash_value<H: Hasher>(value: &Value, state: &mut H) {
+    if let Value::Int32(narrow) = value {
+        return hash_value(&Value::Int(i64::from(*narrow)), state);
+    }
     std::mem::discriminant(value).hash(state);
     match value {
         Value::Null => {}
         Value::Bool(value) => value.hash(state),
+        Value::Int32(value) => value.hash(state),
         Value::Int(value) => value.hash(state),
         Value::UInt(value) => value.hash(state),
         Value::WideInt(value) => value.hash(state),
@@ -116,5 +123,19 @@ mod tests {
         .map(ValueIdentity::new)
         .collect();
         assert_eq!(identities.len(), 5);
+    }
+
+    #[test]
+    fn an_int32_is_the_long_of_the_same_number() {
+        assert!(same_value(&Value::Int32(7), &Value::Int(7)));
+        assert!(same_value(&Value::Int(7), &Value::Int32(7)));
+        assert!(!same_value(&Value::Int32(7), &Value::Int(8)));
+        assert!(!same_value(&Value::Int32(7), &Value::Float64(7.0)));
+
+        let identities: HashSet<ValueIdentity> = [Value::Int32(7), Value::Int(7), Value::Int(8)]
+            .into_iter()
+            .map(ValueIdentity::new)
+            .collect();
+        assert_eq!(identities.len(), 2);
     }
 }

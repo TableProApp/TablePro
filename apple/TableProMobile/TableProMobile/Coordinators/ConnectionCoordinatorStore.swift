@@ -72,9 +72,11 @@ final class ConnectionCoordinatorStore {
     }
 
     private func rebuild(_ id: UUID, droppingSession: Bool) {
-        coordinators.removeValue(forKey: id)?.retire()
+        let retired = coordinators.removeValue(forKey: id)
+        retired?.retire()
         generations[id, default: 0] += 1
         guard droppingSession else { return }
+        retired?.dropSession()
         disconnect(id)
     }
 
@@ -83,6 +85,7 @@ final class ConnectionCoordinatorStore {
         if let retired = coordinators.removeValue(forKey: id) {
             removedRecords[id] = retired.connection
             retired.retire()
+            retired.dropSession()
         }
         disconnect(id)
     }
