@@ -152,6 +152,29 @@ struct ToolbarLocationItemsTests {
         #expect(index(Self.connection, [.toggleSidebar, MainWindowToolbar.actions]) == 2)
     }
 
+    /// A toolbar left on its window after its owner went holds only the items AppKit draws itself. AppKit copies a
+    /// removal into it at the same index and raises when it holds fewer items, which took the unit host down from
+    /// inside a setting's write.
+    @Test("The change waits while another toolbar of the identifier is out of step, and lands once it is back")
+    func outOfStepFamilyDefersTheChange() throws {
+        let storage = try EphemeralDefaults()
+        let record = ToolbarLocationItemsRecord(defaults: storage.defaults)
+        let owner = Self.restoredToolbar(settingOn: false, record: record)
+        let before = Self.identifiers(of: owner)
+        owner.familyArrangements = { _ in [before, [.toggleSidebar, .sidebarTrackingSeparator]] }
+
+        #expect(!owner.familyIsInStep())
+        owner.reconcileLocationItems()
+        #expect(Self.identifiers(of: owner) == before, "No edit AppKit would copy into the short toolbar")
+        #expect(!record.isApplied, "Nothing is recorded, so the next reconcile makes the change")
+
+        owner.familyArrangements = { _ in [before] }
+        #expect(owner.familyIsInStep())
+        owner.reconcileLocationItems()
+        #expect(!Self.holdsThePair(owner))
+        #expect(record.isApplied)
+    }
+
     @Test("A toolbar outside a window leaves the change for the next one")
     func noWindowLeavesTheChangeForTheNextOne() throws {
         let storage = try EphemeralDefaults()

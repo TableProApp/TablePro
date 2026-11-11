@@ -601,6 +601,29 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     // Replaced under test, where no window hosts the toolbar.
     internal var isInWindow: @MainActor () -> Bool = { false }
 
+    // The arrangement of every open window's toolbar that carries `identifier`, this one's included. Replaced under test.
+    internal var familyArrangements: @MainActor (NSToolbar.Identifier) -> [[NSToolbarItem.Identifier]] = { identifier in
+        NSApp.windows.compactMap(\.toolbar)
+            .filter { $0.identifier == identifier }
+            .map { toolbar in toolbar.items.map(\.itemIdentifier) }
+    }
+
+    /// Whether an insertion or a removal can be made now. AppKit copies each one into every other toolbar of this
+    /// identifier at the same index, and raises `_itemAtIndex` when one of them holds fewer items. A toolbar whose
+    /// owner went while it stayed on its window builds nothing for those copies and falls out of step, which the
+    /// unit host's window tests leave behind: the raise went up through the setting's write and took the process
+    /// down. Out of step, the change is not recorded, so the next reconcile, with the family back in step, makes it.
+    internal func familyIsInStep() -> Bool {
+        let own = managedToolbar.items.map(\.itemIdentifier)
+        let inStep = familyArrangements(managedToolbar.identifier).allSatisfy { $0 == own }
+        if !inStep {
+            Self.lifecycleLogger.error(
+                "toolbar arrangement edit skipped: another toolbar of \(self.managedToolbar.identifier, privacy: .public) is out of step"
+            )
+        }
+        return inStep
+    }
+
     // Pushed by the one writer of a module's state, so no toolbar listens for module changes while the module is off.
     internal static func applyModuleChange() {
         for window in NSApp.windows {
@@ -685,7 +708,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     internal func reconcileDebugItems() {
         guard windowController?.view.window != nil || isInWindow() else { return }
         let wanted = debugItemsEnabled()
-        guard debugItemsRecord.isApplied != wanted else { return }
+        guard debugItemsRecord.isApplied != wanted, familyIsInStep() else { return }
         debugItemsRecord.record(wanted)
         let debugIdentifiers = Set(Self.debugItemIdentifiers)
         if wanted {
@@ -708,7 +731,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     internal func reconcileObjectKindItems() {
         guard windowController?.view.window != nil || isInWindow() else { return }
         let wanted = objectKindsEnabled()
-        guard objectKindsRecord.isApplied != wanted else { return }
+        guard objectKindsRecord.isApplied != wanted, familyIsInStep() else { return }
         objectKindsRecord.record(wanted)
         let objectKinds = Set(Self.objectKindItemIdentifiers)
         if wanted {
@@ -744,7 +767,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     internal func reconcileLocationItems() {
         guard windowController?.view.window != nil || isInWindow() else { return }
         let hidden = !locationItemsEnabled()
-        guard locationItemsRecord.isApplied != hidden else { return }
+        guard locationItemsRecord.isApplied != hidden, familyIsInStep() else { return }
         locationItemsRecord.record(hidden)
         if hidden {
             let items = managedToolbar.items.map(\.itemIdentifier)

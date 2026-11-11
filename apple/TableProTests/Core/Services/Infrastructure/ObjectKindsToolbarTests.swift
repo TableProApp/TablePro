@@ -802,6 +802,31 @@ struct ObjectKindsToolbarTests {
         #expect(toolbar.selectedItemIdentifier == MainWindowToolbar.objectTables)
     }
 
+    /// Removing the buttons from a toolbar whose family held one toolbar left without its owner raised
+    /// `_itemAtIndex` in AppKit's copy of the removal and took the unit host down.
+    @Test("The buttons wait while another toolbar of the identifier is out of step")
+    func outOfStepFamilyDefersTheButtons() throws {
+        let storage = try EphemeralDefaults()
+        let record = ToolbarObjectKindsRecord(defaults: storage.defaults)
+        record.record(true)
+        let (owner, toolbar) = Self.restoredToolbar(
+            including: MainWindowToolbar.objectKindItemIdentifiers,
+            settingOn: false,
+            record: record
+        )
+        let before = Self.identifiers(of: toolbar)
+        owner.familyArrangements = { _ in [before, [.toggleSidebar]] }
+
+        owner.reconcileObjectKindItems()
+        #expect(Self.identifiers(of: toolbar) == before)
+        #expect(record.isApplied, "Still recorded as in, so the next reconcile takes them out")
+
+        owner.familyArrangements = { _ in [] }
+        owner.reconcileObjectKindItems()
+        #expect(Self.buttons(in: toolbar).isEmpty)
+        #expect(!record.isApplied)
+    }
+
     /// A change made while no connection window is open is left for the first window that opens,
     /// which restores its arrangement before it reconciles.
     @Test("A toolbar outside a window leaves the change for the next one")
