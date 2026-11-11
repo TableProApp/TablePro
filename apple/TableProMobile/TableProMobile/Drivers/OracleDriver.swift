@@ -170,7 +170,6 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
                                 let cells = zip(headerColumns, row).map { columnInfo, rawCell in
                                     cell(
                                         from: rawCell,
-                                        columnTypeName: columnInfo.typeName,
                                         options: options,
                                         ref: rowKey?.ref(column: columnInfo.name, primaryKey: primaryKey)
                                     )
@@ -198,12 +197,12 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     // A binary value reads back through `execute` as text, not its bytes, so it offers no full value to load.
-    private func cell(from raw: OracleRawCell, columnTypeName: String, options: StreamOptions, ref: CellRef?) -> Cell {
+    private func cell(from raw: OracleRawCell, options: StreamOptions, ref: CellRef?) -> Cell {
         switch raw {
         case .null:
             return .null
         case .string(let value):
-            return Cell.from(legacyValue: value, columnTypeName: columnTypeName, options: options, ref: ref)
+            return Cell.from(text: value, options: options, ref: ref)
         case .bytes(let data):
             return .binary(byteCount: data.count, ref: nil)
         }

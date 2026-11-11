@@ -750,6 +750,15 @@
   <data name="StatusRowsLimited" xml:space="preserve">
     <value>Rows: {0:N0}, the row limit · {1:N0} ms</value>
   </data>
+  <data name="StatusRowsStopped" xml:space="preserve">
+    <value>Rows: {0:N0}, the server stopped the statement at the row limit, before its end · {1:N0} ms</value>
+  </data>
+  <data name="StatusRowsSizeLimited" xml:space="preserve">
+    <value>Rows: {0:N0}, a run stops keeping rows past {2:N0} MB · {1:N0} ms</value>
+  </data>
+  <data name="StatusRowsSizeLimitedStopped" xml:space="preserve">
+    <value>Rows: {0:N0}, a run stops keeping rows past {2:N0} MB, and the server stopped the statement at the row limit, before its end · {1:N0} ms</value>
+  </data>
   <data name="StatusNoStatement" xml:space="preserve">
     <value>No statement at the cursor</value>
   </data>

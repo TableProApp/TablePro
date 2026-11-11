@@ -15,6 +15,8 @@ use super::ValueKind;
 
 // Outside every `ValueKind`.
 const NULL_CELL: u8 = u8::MAX;
+// Also outside: an int32 crosses as an `Integer`, and the store keeps its width for an edit to write back.
+const INT32_CELL: u8 = u8::MAX - 1;
 
 // A value is formatted once, on arrival, into the text the core's export writes; a binary value keeps its bytes.
 #[derive(Debug, Clone, Default)]
@@ -31,6 +33,7 @@ pub(super) struct Cell<'a> {
     pub kind: Option<ValueKind>,
     pub raw: i64,
     pub bytes: &'a [u8],
+    pub int32: bool,
 }
 
 impl ColumnCells {
@@ -44,6 +47,11 @@ impl ColumnCells {
             Value::Bool(flag) => {
                 self.bytes.extend_from_slice(if *flag { b"true" } else { b"false" });
                 i64::from(*flag)
+            }
+            Value::Int32(number) => {
+                let _ = write!(self.bytes, "{number}");
+                self.close(INT32_CELL, i64::from(*number));
+                return;
             }
             Value::Int(number) => {
                 let _ = write!(self.bytes, "{number}");
@@ -78,9 +86,14 @@ impl ColumnCells {
         };
         let kind = self.kinds[index];
         Cell {
-            kind: (kind != NULL_CELL).then(|| ValueKind::from_byte(kind)),
+            kind: match kind {
+                NULL_CELL => None,
+                INT32_CELL => Some(ValueKind::Integer),
+                kind => Some(ValueKind::from_byte(kind)),
+            },
             raw: self.raw[index],
             bytes: &self.bytes[start..self.ends[index]],
+            int32: kind == INT32_CELL,
         }
     }
 
@@ -130,6 +143,7 @@ pub(super) fn cell_value(cell: Cell<'_>) -> Value {
     let raw = cell.raw;
     let parsed = match kind {
         ValueKind::Bool => Some(Value::Bool(raw != 0)),
+        ValueKind::Integer if cell.int32 => i32::try_from(raw).ok().map(Value::Int32),
         ValueKind::Integer => Some(Value::Int(raw)),
         ValueKind::UnsignedInteger => Some(Value::UInt(u64::from_ne_bytes(raw.to_ne_bytes()))),
         ValueKind::Float => Some(Value::Float64(f64::from_bits(u64::from_ne_bytes(raw.to_ne_bytes())))),
@@ -315,6 +329,7 @@ mod tests {
         };
         let groups: Vec<Vec<Value>> = vec![
             vec![Value::Int(-5), Value::Int(3)],
+            vec![Value::Int32(-5), Value::Int(-4), Value::Int32(3)],
             vec![Value::UInt(7), Value::UInt(u64::MAX)],
             vec![Value::Float64(-0.5), Value::Float64(f64::NAN)],
             vec![
@@ -388,6 +403,23 @@ mod tests {
             }
         }
         assert_eq!(cell_value(cells(&[Value::Null]).cell(0)), Value::Null);
+    }
+
+    #[test]
+    fn an_int32_crosses_as_an_integer_and_reads_back_as_an_int32() {
+        let mut target = cells(&[Value::Int(1)]);
+        let source = cells(&[Value::Int32(-7), Value::Int(-7), Value::Int32(i32::MAX)]);
+        target.extend_from(&source, 0..3);
+
+        let int32 = target.cell(1);
+        assert_eq!(
+            (int32.kind, int32.raw, text(int32)),
+            (Some(ValueKind::Integer), -7, "-7")
+        );
+        assert_eq!(cell_value(int32), Value::Int32(-7));
+        assert_eq!(cell_value(target.cell(2)), Value::Int(-7));
+        assert_eq!(cell_value(target.cell(3)), Value::Int32(i32::MAX));
+        assert_eq!(target.cell(2).kind, Some(ValueKind::Integer));
     }
 
     #[test]

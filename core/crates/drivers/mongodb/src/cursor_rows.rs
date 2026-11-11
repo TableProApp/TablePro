@@ -1,10 +1,17 @@
 use bson::Document;
 use mongodb::{ClientSession, SessionCursor};
-use tablepro_core::{DriverError, LossPhase, ResultEvent, ResultSink, RowLimit, SinkFlow, Truncation};
+use tablepro_core::{ByteLimit, DriverError, LossPhase, ResultEvent, ResultSink, RowLimit, SinkFlow, Truncation};
 
 use crate::endpoint::MongoEndpoint;
 use crate::rows::{BATCH_ROWS, Layout};
 use crate::shell_command::Columns;
+
+// A cursor's kept documents are all held before the first event, so no sink can stop it at the byte limit.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct EditorLimits {
+    pub(crate) rows: RowLimit,
+    pub(crate) bytes: ByteLimit,
+}
 
 /// Stream a cursor into `sink`. With a `limit`, as an editor reads, the
 /// documents kept are all read before the first row is shown, so the
@@ -17,7 +24,7 @@ pub(crate) async fn stream(
     columns: Columns,
     session: &mut ClientSession,
     sink: &mut dyn ResultSink,
-    limit: Option<RowLimit>,
+    limit: Option<EditorLimits>,
 ) -> Result<(SinkFlow, u64), DriverError> {
     match limit {
         Some(limit) => kept(endpoint, cursor, columns, session, sink, limit).await,
@@ -34,16 +41,25 @@ async fn kept(
     columns: Columns,
     session: &mut ClientSession,
     sink: &mut dyn ResultSink,
-    limit: RowLimit,
+    limit: EditorLimits,
 ) -> Result<(SinkFlow, u64), DriverError> {
     let mut documents = Vec::new();
-    let mut more = false;
+    // The document that crosses the byte limit is kept whole, as the session's sink keeps a row.
+    let mut held: u64 = 0;
+    let mut cut = None;
     loop {
         match cursor.advance(session).await {
-            Ok(true) if (documents.len() as u64) < limit.get() => documents.push(current(&cursor)?),
-            Ok(true) => {
-                more = true;
+            Ok(true) if (documents.len() as u64) >= limit.rows.get() => {
+                cut = Some(Truncation::ReadPastLimit);
                 break;
+            }
+            Ok(true) if held >= limit.bytes.get() => {
+                cut = Some(Truncation::ByteLimit);
+                break;
+            }
+            Ok(true) => {
+                held = held.saturating_add(cursor.current().as_bytes().len() as u64);
+                documents.push(current(&cursor)?);
             }
             Ok(false) => break,
             Err(error) => return Err(endpoint.explain(&error, LossPhase::Statement).await),
@@ -67,16 +83,20 @@ async fn kept(
             return Ok((SinkFlow::ConsumerGone, retained));
         }
     }
-    if !more {
+    let Some(truncation) = cut else {
         return Ok((
             finish(sink, retained, Some(retained), Truncation::Complete).await,
             retained,
         ));
-    }
-    if sink.accept(ResultEvent::RowLimitReached { retained }).await == SinkFlow::ConsumerGone {
+    };
+    let reached = match truncation {
+        Truncation::ByteLimit => ResultEvent::ByteLimitReached { retained },
+        _ => ResultEvent::RowLimitReached { retained },
+    };
+    if sink.accept(reached).await == SinkFlow::ConsumerGone {
         return Ok((SinkFlow::ConsumerGone, retained));
     }
-    Ok((finish(sink, retained, None, Truncation::ReadPastLimit).await, retained))
+    Ok((finish(sink, retained, None, truncation).await, retained))
 }
 
 /// Every document, a batch at a time. The columns are set before the

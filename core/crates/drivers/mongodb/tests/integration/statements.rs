@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 use secrecy::SecretString;
 use tablepro_core::browse::{PageRead, PageRequest, read_page};
-use tablepro_core::edit::CellInput;
+use tablepro_core::edit::{CellInput, EditContext, parse_edit_text};
 use tablepro_core::filter::FilterSet;
 use tablepro_core::meta::{ObjectKind, ObjectScope, PagePosition, RowIdentity, TableRef};
 use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
@@ -98,8 +98,8 @@ async fn a_find_reads_the_fields_it_projects_in_the_order_it_sorts() {
     assert_eq!(
         rows(&events),
         [
-            vec![Value::Int(3), Value::Text("three".to_owned())],
-            vec![Value::Int(2), Value::Text("two".to_owned())],
+            vec![Value::Int32(3), Value::Text("three".to_owned())],
+            vec![Value::Int32(2), Value::Text("two".to_owned())],
         ]
     );
 
@@ -272,7 +272,7 @@ async fn values_reach_the_grid_as_their_own_types() {
     );
     let row = rows(&events).pop().expect("the document");
     let at = chrono::DateTime::parse_from_rfc3339("2024-05-06T07:08:09.010Z").expect("a time");
-    assert_eq!(row[0], Value::Int(1));
+    assert_eq!(row[0], Value::Int32(1));
     assert_eq!(
         row[1],
         Value::Other(Box::new(OtherValue {
@@ -338,11 +338,12 @@ async fn a_nested_field_edited_as_json_keeps_its_types() {
         &identity,
         &ChangeSet {
             changes: vec![RowChange::Update(RowUpdate {
-                key: vec![Value::Int(1)],
+                key: vec![Value::Int32(1)],
                 assignments: vec![(
                     nested,
                     CellInput::Value(Value::Json(JsonText::parse(edited.to_owned()).expect("JSON"))),
                 )],
+                read: Vec::new(),
             })],
         },
     )
@@ -369,6 +370,107 @@ async fn a_nested_field_edited_as_json_keeps_its_types() {
     .await;
     assert_eq!(typed.end, RunEnd::Completed);
     assert_eq!(rows(&events), [vec![Value::Int(1)]], "the edit kept the BSON types");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn an_edited_number_keeps_its_own_bson_type() {
+    let fixture = start().await;
+    let connection = connect(&fixture).await;
+    let session = editor(connection.as_ref()).await;
+    let collection = unique("widths");
+    let (inserted, _) = run(
+        session.as_ref(),
+        &format!(
+            "db.getCollection('{collection}').insertMany([\
+             {{_id: 1, qty: NumberInt(3), price: 3, amount: NumberInt(2)}}, \
+             {{_id: 2, qty: NumberLong(5), price: 2.5, amount: NumberDecimal('1.5')}}, \
+             {{_id: 3, qty: NumberInt(4), price: 1.5, amount: NumberDecimal('0.5')}}])"
+        ),
+    )
+    .await;
+    assert_eq!(inserted.end, RunEnd::Completed);
+    let table = TableRef::new(Some(DATABASE.to_owned()), collection.clone());
+    let columns = connection
+        .fetch_columns(&table, within(CALL))
+        .await
+        .expect("the fields");
+    let types: Vec<&str> = columns.iter().map(|column| column.column_type.name.as_str()).collect();
+    assert_eq!(
+        types,
+        ["int", "long", "double", "decimal"],
+        "the sample widened each field"
+    );
+    let identity = connection
+        .row_identity(&table, within(CALL))
+        .await
+        .expect("an identity");
+    let read = page(connection.as_ref(), &table).await;
+    let edits = [
+        (1, [(1, "7"), (2, "8"), (3, "9")]),
+        (2, [(1, "6"), (2, "3.5"), (3, "2.5")]),
+        (3, [(1, "3000000000"), (2, "4.5"), (3, "0.75")]),
+    ];
+    let mut changes = Vec::new();
+    for (id, cells) in edits {
+        let row = read
+            .result
+            .rows
+            .iter()
+            .find(|row| row.first() == Some(&Value::Int32(id)))
+            .expect("the document");
+        let mut assignments = Vec::new();
+        let mut read_values = Vec::new();
+        for (column, text) in cells {
+            let edited =
+                parse_edit_text(text, &columns[column], EditContext::UpdateRow, Some(&row[column])).expect("a number");
+            assignments.push((column, edited));
+            read_values.push((column, row[column].clone()));
+        }
+        changes.push(RowChange::Update(RowUpdate {
+            key: vec![row[0].clone()],
+            assignments,
+            read: read_values,
+        }));
+    }
+    let plan = plan_save(
+        &*connection.dialect(),
+        &table,
+        &columns,
+        &identity,
+        &ChangeSet { changes },
+    )
+    .expect("a save plan");
+    let report = connection
+        .write_batch(&plan.batch, within(CALL))
+        .await
+        .expect("the save");
+    assert_eq!(report.rows_affected, [Some(1), Some(1), Some(1)]);
+
+    for (conditions, why) in [
+        (
+            "{_id: 1}, {qty: 7}, {qty: {$type: 'int'}}, {price: 8}, {price: {$type: 'int'}}, \
+             {amount: 9}, {amount: {$type: 'int'}}",
+            "an int32 took its column's wider type",
+        ),
+        (
+            "{_id: 2}, {qty: 6}, {qty: {$type: 'long'}}, {price: 3.5}, {price: {$type: 'double'}}, \
+             {amount: {$type: 'decimal'}}",
+            "a number of its column's own type changed type",
+        ),
+        (
+            "{_id: 3}, {qty: NumberLong('3000000000')}, {qty: {$type: 'long'}}, {price: {$type: 'double'}}",
+            "an int32 edited past its range did not become a long",
+        ),
+    ] {
+        let (typed, events) = run(
+            session.as_ref(),
+            &format!("db.getCollection('{collection}').countDocuments({{$and: [{conditions}]}})"),
+        )
+        .await;
+        assert_eq!(typed.end, RunEnd::Completed);
+        assert_eq!(rows(&events), [vec![Value::Int(1)]], "{why}");
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

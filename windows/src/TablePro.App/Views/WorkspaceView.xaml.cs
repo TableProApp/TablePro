@@ -14,7 +14,15 @@ using Windows.System;
 
 namespace TablePro.App.Views;
 
-internal sealed record SecretAnswer(string Secret, bool Save);
+internal sealed record SecretAnswer(string Secret, bool Save)
+{
+    // A record's ToString prints every property, and this one holds a password.
+    private bool PrintMembers(System.Text.StringBuilder builder)
+    {
+        builder.Append("Secret = [REDACTED], Save = ").Append(Save);
+        return true;
+    }
+}
 
 public sealed partial class WorkspaceView : UserControl
 {

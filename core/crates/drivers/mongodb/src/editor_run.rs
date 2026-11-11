@@ -15,6 +15,7 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::call::{SessionKill, release, remaining_millis, session};
+use crate::cursor_rows::EditorLimits;
 use crate::endpoint::MongoEndpoint;
 use crate::errors::{stopped_by_kill, syntax_error};
 use crate::execute::{Source, start};
@@ -143,9 +144,15 @@ impl EditorRun {
                                 .await
                                 .map(|(flow, _)| flow)
                         }
-                        source => emit(&self.endpoint, source, &mut session, sink, Some(options.row_limit))
-                            .await
-                            .map(|(flow, _)| flow),
+                        source => {
+                            let limits = EditorLimits {
+                                rows: options.row_limit,
+                                bytes: options.byte_limit,
+                            };
+                            emit(&self.endpoint, source, &mut session, sink, Some(limits))
+                                .await
+                                .map(|(flow, _)| flow)
+                        }
                     }
                 };
                 let mut work = std::pin::pin!(work);

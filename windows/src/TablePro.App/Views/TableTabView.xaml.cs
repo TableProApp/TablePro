@@ -13,6 +13,9 @@ namespace TablePro.App.Views;
 // A sort is an ORDER BY in the page's statement, so it orders the whole table, not the rows already read.
 public sealed partial class TableTabView : UserControl, ITabContent
 {
+    // A page is bounded by its size, and the pager reads a short page as the last, so no byte limit cuts one.
+    private const long PageByteLimit = long.MaxValue;
+
     private readonly Workbench _workbench;
     private readonly SessionShare _share;
     private readonly DatabaseSession _session;
@@ -158,7 +161,7 @@ public sealed partial class TableTabView : UserControl, ITabContent
             _run?.Dispose();
             _page = page with { CanSeek = query.CanSeek };
             // The statement holds the page; a run limit one past it keeps a full page from reading as cut short.
-            _run = _editor.Run(query.Sql, new QueryOptions(page.Size + 1), cancellationToken);
+            _run = _editor.Run(query.Sql, new QueryOptions(page.Size + 1, ByteLimit: PageByteLimit), cancellationToken);
             await Results.ShowRunAsync(_run, _sort, query.VisibleColumns, cancellationToken).ConfigureAwait(true);
             if (_work.IsClosed)
             {

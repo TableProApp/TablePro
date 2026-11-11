@@ -1,6 +1,6 @@
 # 0014: Lossless values and engine dialects
 
-- **Status**: Accepted
+- **Status**: Accepted; the integer values amended by core 0020
 - **Date**: 2026-10-15
 
 ## Context

@@ -240,6 +240,7 @@ pub(crate) async fn run_completed(
 /// The single integer a count query returned.
 pub(crate) fn single_count(rows: &[Vec<Value>]) -> Option<u64> {
     match rows.first()?.first()? {
+        Value::Int32(count) => u64::try_from(*count).ok(),
         Value::Int(count) => u64::try_from(*count).ok(),
         Value::UInt(count) => Some(*count),
         Value::Text(count) => count.trim().parse().ok(),

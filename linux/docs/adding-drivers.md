@@ -293,7 +293,7 @@ An editor tab holds one session for as long as it is open, because the state a u
 - It is never pooled and never reopened behind the user's back. `state()` is `Ready`, `Running` or `Lost`. A lost connection is `EditorSessionState::Lost`, and the tab opens a new session on its next run.
 - One run at a time: a second `run` fails with `EditorSessionBusy`.
 - `transaction_state(options)` answers what the session holds now, outside a run.
-- `run(sql, options, sink)` takes `UserSql` as typed and `RunOptions`: `row_limit`, `deadline` and `cancel`. A caller stops a run through `RunOptions::cancel`.
+- `run(sql, options, sink)` takes `UserSql` as typed and `RunOptions`: `row_limit`, `byte_limit`, `deadline` and `cancel`. A caller stops a run through `RunOptions::cancel`.
 - A dropped caller is a cancel. The run goes on a task of its own, or an actor's, and `run` arms `options.cancel.clone().drop_guard()` until the outcome arrives, so the stop still goes out and the session settles to `Ready` or `Lost`. `MysqlEditorSession::run` is the shape to copy.
 - The app's editor splits a script with the engine's grammar and sends one statement per run, or one `GO` batch on SQL Server. A driver still runs whatever text it is given, a whole script included.
 - A stopped run sends nothing more, whether or not the stop reached the server: the statement running, or the batch the server runs as one (a `GO` batch on SQL Server, text MySQL has to send whole), is its last. `TimedOut { server_cancelled: true }` means the server said it stopped the statement, never only that the stop went out.
@@ -307,9 +307,10 @@ A run streams `ResultEvent`s into a `ResultSink`:
 
 - `ResultSetStarted { columns }` opens a result set.
 - `ColumnsResolved { set_index, columns }` replaces the columns of a set whose types the driver could only learn from its rows (SQLite).
-- `Rows` carries a batch of rows, 256 in the shipped drivers.
+- `Rows` carries a batch of rows. `RowBatch` sends one at 256 rows or 4 MiB of `Value::retained_bytes`, whichever comes first.
 - `RowLimitReached { retained }` comes once per set, before `ResultSetFinished`.
-- `ResultSetFinished { retained, total_rows, truncation }` closes the set. `Truncation` is `Complete`, `ServerStopped` or `ReadPastLimit`, and `total_rows` is `None` when the driver did not read the rest.
+- `ByteLimitReached { retained }` comes once per set the run's byte limit cut, before `ResultSetFinished`. The session's `ByteLimitSink` sends it; a driver sends it only when it holds a set before its first event (The row-limit rule, below).
+- `ResultSetFinished { retained, total_rows, truncation }` closes the set. `Truncation` is `Complete`, `ServerStopped`, `ReadPastLimit` or `ByteLimit`, and `total_rows` is `None` when the driver did not read the rest.
 - `CommandCompleted { rows_affected }` reports a statement that returned no rows; `None` is "not reported", not zero.
 - `Notice` passes on a server notice or warning.
 - `NoticeLimitReached { retained }` comes once per run when the driver kept fewer notices than the server sent, after the `retained` ones it passed on.
@@ -325,6 +326,8 @@ A run streams `ResultEvent`s into a `ResultSink`:
 - The limit never ends the script, the user's transaction or the statements after the limited one. The conformance case `row_limit_keeps_transaction_and_later_statements` checks this on every engine with editor transactions.
 - The driver never rewrites the user's SQL to add a `LIMIT`.
 - `stream_read` has no limit.
+
+`RunOptions::byte_limit` bounds the bytes of rows a whole run keeps, `ByteLimit::EDITOR_DEFAULT` (256,000,000) unless the caller sets one (core ADR 0019, `core/docs/decisions/0019-a-run-keeps-a-byte-limit-of-rows.md`). The driver does not enforce it: `Session::open_editor_session` wraps every editor session so its runs go through `ByteLimitSink`. The sink keeps the row that crosses the limit whole, sends `ByteLimitReached`, drops the run's later rows and finishes a cut set as `Truncation::ByteLimit` with the driver's `total_rows`, or keeps the driver's `ServerStopped`, which says more. It answers `Continue` for the rows it drops, never `ConsumerGone`, so the limit ends neither the statement nor the user's transaction, and rows past the cut are still read up to the row limit. A driver that holds a set before its first event, as MongoDB holds a cursor's documents, stops holding at the limit itself, ends the set with `ByteLimitReached` and `Truncation::ByteLimit`, and the sink passes them on. The conformance case `byte_limit_keeps_whole_rows_and_later_statements` checks the sink on every engine with an editor, and `a_document_read_stops_at_the_byte_limit` the driver's own stop.
 
 ## 7. Dialects
 

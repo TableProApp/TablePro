@@ -107,7 +107,8 @@ internal static class Mapping
 
     public static Native.RunSettings Settings(QueryOptions options) => new(
         options.RowLimit is { } limit ? checked((ulong)limit) : null,
-        options.Timeout is { } timeout ? checked((ulong)timeout.TotalMilliseconds) : null);
+        options.Timeout is { } timeout ? checked((ulong)timeout.TotalMilliseconds) : null,
+        options.ByteLimit is { } bytes ? checked((ulong)bytes) : null);
 
     public static QueryEvent Event(Native.RunEvent nativeEvent) => nativeEvent switch
     {
@@ -118,15 +119,22 @@ internal static class Mapping
         Native.RunEvent.RowsAppended rows => new QueryEvent.RowsAppended(Index(rows.SetIndex), Count(rows.RowCount)),
         Native.RunEvent.RowLimitReached limit =>
             new QueryEvent.RowLimitReached(Index(limit.SetIndex), Count(limit.Retained)),
+        Native.RunEvent.ByteLimitReached bytes => new QueryEvent.ByteLimitReached(
+            Index(bytes.SetIndex),
+            Count(bytes.Retained),
+            Count(bytes.LimitBytes)),
         Native.RunEvent.ResultSetFinished finished => new QueryEvent.ResultSetFinished(
             Index(finished.SetIndex),
             Count(finished.RowCount),
             finished.TotalRows is { } total ? Count(total) : null,
             finished.Truncation switch
             {
+                Native.TruncationTag.Complete => Truncation.Complete,
                 Native.TruncationTag.ServerStopped => Truncation.ServerStopped,
                 Native.TruncationTag.ReadPastLimit => Truncation.ReadPastLimit,
-                _ => Truncation.Complete,
+                Native.TruncationTag.ByteLimit => Truncation.ByteLimit,
+                _ => throw new InvalidOperationException(
+                    $"The core sent a truncation this build does not know: {finished.Truncation}"),
             }),
         Native.RunEvent.CommandCompleted command =>
             new QueryEvent.CommandCompleted(command.RowsAffected is { } affected ? Count(affected) : null),

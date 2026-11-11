@@ -490,6 +490,7 @@ async fn stale_ctid_edit_after_vacuum_reuse_row_guard_failed() {
         changes: vec![RowChange::Update(RowUpdate {
             key: before[0].clone(),
             assignments: vec![(0, CellInput::Value(Value::Text("changed".to_owned())))],
+            read: Vec::new(),
         })],
     };
     let plan = plan_save(dialect.as_ref(), &target, &columns, &identity, &changes).expect("a plan");
@@ -1370,6 +1371,7 @@ async fn a_save_casts_to_the_built_in_type_a_lookalike_shares_a_name_with() {
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![Value::Int(1)],
             assignments: vec![(1, CellInput::Value(Value::Text("10.0.0.2".to_owned())))],
+            read: Vec::new(),
         })],
     };
     let dialect = connection.dialect();

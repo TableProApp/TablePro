@@ -77,6 +77,7 @@ async fn duplicate_sorting_key_edit_sends_no_mutation_row_guard_failed() {
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![Value::Int(1)],
             assignments: vec![(1, CellInput::Value(Value::Text("x".to_owned())))],
+            read: Vec::new(),
         })],
     };
     let batch = planned(connection.as_ref(), &table(&name), &changes).await;
@@ -128,6 +129,7 @@ async fn an_insert_then_an_update_of_the_same_key_stops_the_update() {
             RowChange::Update(RowUpdate {
                 key: vec![Value::Int(5)],
                 assignments: vec![(1, CellInput::Value(Value::Text("edited".to_owned())))],
+                read: Vec::new(),
             }),
         ],
     };
@@ -216,6 +218,7 @@ async fn write_statements_never_carry_max_execution_time() {
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![Value::Int(1)],
             assignments: vec![(1, CellInput::Value(Value::Text("b".to_owned())))],
+            read: Vec::new(),
         })],
     };
     let batch = planned(connection.as_ref(), &table(&name), &changes).await;

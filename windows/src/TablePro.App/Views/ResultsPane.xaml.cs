@@ -161,12 +161,15 @@ public sealed partial class ResultsPane : UserControl
                         }
 
                         break;
-                    case QueryEvent.RowsAppended or QueryEvent.RowLimitReached or QueryEvent.ResultSetFinished:
+                    case QueryEvent.RowsAppended
+                        or QueryEvent.RowLimitReached
+                        or QueryEvent.ByteLimitReached
+                        or QueryEvent.ResultSetFinished:
                         if (results.Apply(queryEvent) is { } changed
                             && incoming.Find(entry => ReferenceEquals(entry.Result, changed)) is { } grown)
                         {
                             grown.Item.Content = results.Label(changed);
-                            if (queryEvent is not QueryEvent.RowLimitReached)
+                            if (queryEvent is QueryEvent.RowsAppended or QueryEvent.ResultSetFinished)
                             {
                                 RowsArrived(grown, ended: queryEvent is QueryEvent.ResultSetFinished);
                             }
@@ -380,7 +383,18 @@ public sealed partial class ResultsPane : UserControl
 
     private string RowsText(RunResult result, long milliseconds) =>
         RowsStatus?.Invoke(result.Rows, milliseconds, result.Truncated)
-        ?? Strings.Format(result.Truncated ? "StatusRowsLimited" : "StatusRows", result.Rows, milliseconds);
+        ?? Strings.Format(
+            result switch
+            {
+                { SizeLimit: not null, StoppedOnServer: true } => "StatusRowsSizeLimitedStopped",
+                { SizeLimit: not null } => "StatusRowsSizeLimited",
+                { StoppedOnServer: true } => "StatusRowsStopped",
+                { Truncated: true } => "StatusRowsLimited",
+                _ => "StatusRows",
+            },
+            result.Rows,
+            milliseconds,
+            result.SizeLimit / 1_000_000.0);
 
     // Notices that arrive together are laid out once, after the batch: a TextBox lays out all its text on each change.
     private void QueueMessages()

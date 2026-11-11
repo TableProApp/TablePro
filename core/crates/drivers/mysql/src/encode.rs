@@ -27,6 +27,7 @@ fn bind_one<'q>(query: MySqlQuery<'q>, param: &BoundParam) -> Result<MySqlQuery<
     Ok(match (param.param_type(), value) {
         (_, Value::Null) => query.bind(None::<String>),
         (_, Value::Bool(flag)) => query.bind(*flag),
+        (_, Value::Int32(integer)) => query.bind(*integer),
         (_, Value::Int(integer)) => query.bind(*integer),
         (_, Value::UInt(integer)) => query.bind(*integer),
         (ParamType::Float32, Value::Float32(real)) => query.bind(*real),

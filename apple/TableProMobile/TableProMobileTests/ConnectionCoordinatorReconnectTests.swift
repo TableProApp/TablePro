@@ -339,21 +339,22 @@ struct ConnectionCoordinatorReconnectTests {
         #expect(following.tablePlacement != chosen)
     }
 
+    // The connection reads the new schema's tables once, for both windows.
     @Test("A window following a schema switch keeps its old placement until the new schema's tables arrive")
     func followCommitsPlacementWithItsTables() async throws {
         let first = driver(tables: ["facts"])
         first.currentSchema = "public"
         let (switching, following) = try await warehouseCoordinators(on: first)
-        await switching.switchSchema(to: "staging")
 
         let fetch = TestGate()
         first.scriptedTables = [TableInfo(name: "staging_facts")]
         first.beforeFetchTables = { await fetch.enter() }
-        let follow = Task { await following.followLiveSession() }
+        let switched = Task { await switching.switchSchema(to: "staging") }
         await fetch.waitUntilEntered()
         let duringFetch = (following.tablePlacement.schema, tableNames(following))
         await fetch.open()
-        await follow.value
+        await switched.value
+        await following.followLiveSession()
 
         #expect(duringFetch.0 == "public")
         #expect(duringFetch.1 == ["facts"])
@@ -366,18 +367,18 @@ struct ConnectionCoordinatorReconnectTests {
         let first = driver(tables: ["facts"])
         first.currentSchema = "public"
         let (switching, following) = try await warehouseCoordinators(on: first)
-        await switching.switchSchema(to: "staging")
 
         let fetch = TestGate()
         first.scriptedTables = [TableInfo(name: "staging_facts")]
         first.beforeFetchTables = { await fetch.enter() }
-        let follow = Task { await following.followLiveSession() }
+        let switched = Task { await switching.switchSchema(to: "staging") }
         await fetch.waitUntilEntered()
         following.isHeldByEditor = true
         first.beforeFetchTables = nil
         await fetch.open()
-        await follow.value
+        await switched.value
 
+        #expect(switching.tablePlacement.schema == "staging")
         #expect(following.tablePlacement.schema == "public")
         #expect(tableNames(following) == ["facts"])
 
@@ -387,28 +388,138 @@ struct ConnectionCoordinatorReconnectTests {
         #expect(tableNames(following) == ["staging_facts"])
     }
 
-    @Test("A follow that another switch overtakes while its tables load lands on the newer placement")
-    func followOvertakenBySecondSwitchFollowsTheNewest() async throws {
+    @Test("A switch that another window's switch overtakes while its tables load never lands")
+    func overtakenSwitchNeverLands() async throws {
         let first = driver(tables: ["facts"])
         first.currentSchema = "public"
         let (switching, following) = try await warehouseCoordinators(on: first)
-        await switching.switchSchema(to: "staging")
 
         let fetch = TestGate()
         first.scriptedTables = [TableInfo(name: "staging_facts")]
         first.beforeFetchTables = { await fetch.enter() }
-        let follow = Task { await following.followLiveSession() }
+        let overtaken = Task { await switching.switchSchema(to: "staging") }
         await fetch.waitUntilEntered()
         first.beforeFetchTables = nil
-        first.currentSchema = "archive"
         first.scriptedTables = [TableInfo(name: "archive_facts")]
+        await following.switchSchema(to: "archive")
         await fetch.open()
-        await follow.value
-        let afterOvertaken = following.tablePlacement.schema
-        await following.resumedFollow?.value
+        await overtaken.value
 
-        #expect(afterOvertaken == "public")
+        #expect(switching.tablePlacement.schema == "archive")
         #expect(following.tablePlacement.schema == "archive")
+        #expect(tableNames(following) == ["archive_facts"])
+    }
+
+    @Test("A database switch asked during a check over an open transaction waits for it, so the loss is still reported")
+    func switchDuringACheckKeepsTheLossNotice() async throws {
+        let first = driver(tables: ["facts"], state: .explicitTransaction)
+        first.currentSchema = "public"
+        let (coordinator, _) = try await warehouseCoordinators(on: first)
+        #expect(coordinator.transactionHold == .open)
+
+        first.pingError = MockDatabaseDriver.MockError.scripted
+        let redialed = driver(tables: ["facts"])
+        redialed.currentSchema = "public"
+        let loading = TestGate()
+        redialed.beforeFetchTables = { await loading.enter() }
+        factory.queue(redialed)
+        let staging = driver(tables: ["staging_facts"])
+        staging.currentSchema = "public"
+        factory.queue(staging)
+
+        let check = Task { await coordinator.reconnectIfNeeded() }
+        await loading.waitUntilEntered()
+        let switched = Task { await coordinator.switchDatabase(to: "staging") }
+        await ObservedCondition.wait { coordinator.isSwitching }
+        redialed.beforeFetchTables = nil
+        await loading.open()
+        await check.value
+        await switched.value
+
+        #expect(
+            coordinator.failureAlertMessage
+                == ConnectionCoordinator.lostTransactionMessage(.whileIdle, connectionName: "Warehouse")
+        )
+        #expect(monitor.rollBackCount(for: coordinator.connection.id) == 1)
+        #expect(coordinator.activeDatabase == "staging")
+        #expect(coordinator.session?.driver === staging)
+    }
+
+    @Test("A PostgreSQL switch asked while another window's runs lands after it, so the newest switch wins")
+    func overlappingPostgreSQLSwitchesKeepTheNewest() async throws {
+        let first = driver(tables: ["facts"])
+        first.currentSchema = "public"
+        let (busy, other) = try await warehouseCoordinators(on: first)
+        let staging = driver(tables: ["staging_facts"])
+        staging.currentSchema = "public"
+        let dialing = TestGate()
+        staging.beforeConnect = { await dialing.enter() }
+        factory.queue(staging)
+        let archive = driver(tables: ["archive_facts"])
+        archive.currentSchema = "public"
+        factory.queue(archive)
+
+        let busySwitch = Task { await busy.switchDatabase(to: "staging") }
+        await dialing.waitUntilEntered()
+        let otherSwitch = Task { await other.switchDatabase(to: "archive") }
+        await ObservedCondition.wait { other.isSwitching }
+        await dialing.open()
+        await busySwitch.value
+        await otherSwitch.value
+
+        #expect(factory.dialed.suffix(2).map { $0.database } == ["staging", "archive"])
+        #expect(busy.session?.driver === archive)
+        #expect(other.activeDatabase == "archive")
+        #expect(tableNames(busy) == ["archive_facts"])
+    }
+
+    @Test("A catalog reload held back while another window switches schema runs once the switch ends")
+    func catalogReloadHeldBackBySwitchRunsAfterIt() async throws {
+        let first = driver(tables: ["facts"])
+        first.currentSchema = "public"
+        first.scriptedSchemas = ["public", "sales"]
+        let (posting, switching) = try await warehouseCoordinators(on: first)
+        let fetch = TestGate()
+        first.beforeFetchTables = { await fetch.enter() }
+        let switched = Task { await switching.switchSchema(to: "sales") }
+        await fetch.waitUntilEntered()
+
+        first.scriptedSchemas = ["public", "sales", "reporting"]
+        posting.noteCatalogChanged(.schemas)
+        await posting.reloadChangedCatalog()
+        let whileSwitching = posting.schemas
+        await fetch.open()
+        await switched.value
+
+        #expect(whileSwitching == ["public", "sales"])
+        #expect(posting.schemas == ["public", "sales", "reporting"])
+    }
+
+    @Test("A follow asked while another window switches runs once the switch ends")
+    func followAskedDuringASwitchRunsAfterIt() async throws {
+        let first = driver(tables: ["facts"])
+        first.currentSchema = "public"
+        let (switching, following) = try await warehouseCoordinators(on: first)
+        let fetch = TestGate()
+        first.beforeFetchTables = { await fetch.enter() }
+        let switched = Task { await switching.switchSchema(to: "staging") }
+        await fetch.waitUntilEntered()
+
+        let replacement = driver(tables: ["archive_facts"])
+        replacement.currentSchema = "public"
+        factory.queue(replacement)
+        var archive = following.connection
+        archive.database = "archive"
+        _ = try await appState.connectionManager.connect(archive)
+        await following.followLiveSession()
+        let whileSwitching = following.session?.driver
+        first.beforeFetchTables = nil
+        await fetch.open()
+        await switched.value
+
+        #expect(whileSwitching === first)
+        #expect(following.session?.driver === replacement)
+        #expect(following.activeDatabase == "archive")
         #expect(tableNames(following) == ["archive_facts"])
     }
 
@@ -461,6 +572,25 @@ struct ConnectionCoordinatorReconnectTests {
 
         #expect(following.activeDatabase == "history")
         #expect(following.schemas == ["dbo", "archive"])
+    }
+
+    // The list the switching window had belongs to the database it left.
+    @Test("A window that switches a SQL Server database lists the new database's schemas")
+    func switchReloadsSchemasForTheNewDatabase() async {
+        let first = driver(tables: ["orders"])
+        first.currentSchema = "dbo"
+        first.scriptedSchemas = ["dbo", "sales"]
+        let ledger = DatabaseConnection(name: "Ledger", type: .mssql, host: "sql.example.com", port: 1_433, database: "app")
+        factory.queue(first)
+        let switching = ConnectionCoordinator(connection: ledger, appState: appState)
+        await switching.connect()
+        #expect(switching.schemas == ["dbo", "sales"])
+
+        first.scriptedSchemas = ["dbo", "archive"]
+        await switching.switchDatabase(to: "history")
+
+        #expect(switching.activeDatabase == "history")
+        #expect(switching.schemas == ["dbo", "archive"])
     }
 
     @Test("A PostgreSQL database switch in one window moves the other window onto the new session")

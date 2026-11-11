@@ -132,6 +132,7 @@ impl SqlDialect for MssqlDialect {
             Value::Null => Ok("NULL".to_owned()),
             // BIT takes 0 or 1; there is no boolean literal.
             Value::Bool(flag) => Ok(if *flag { "1" } else { "0" }.to_owned()),
+            Value::Int32(integer) => Ok(integer.to_string()),
             Value::Int(integer) => Ok(integer.to_string()),
             Value::UInt(integer) => Ok(integer.to_string()),
             Value::WideInt(integer) => Ok(integer.to_string()),
