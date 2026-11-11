@@ -44,9 +44,7 @@ final class DataBrowserViewModel {
     @ObservationIgnored private var session: ConnectionSession?
     @ObservationIgnored private var table: TableInfo?
     @ObservationIgnored private var databaseType: DatabaseType = .mysql
-    /// The schema the rows on screen were fetched with. Every statement the browser and its
-    /// children issue reads this one value, so an edit cannot target a schema the visible rows did
-    /// not come from.
+    // The schema the rows on screen came from. Every statement reads it, so an edit cannot target another schema.
     private(set) var schema: String?
     @ObservationIgnored private var host: String = ""
     @ObservationIgnored private var trackRead: SessionReadTracker?
@@ -92,8 +90,9 @@ final class DataBrowserViewModel {
 
     var paginationLabel: String {
         guard !legacyRows.isEmpty else { return "" }
-        let start = pagination.currentOffset + 1
-        let end = pagination.currentOffset + legacyRows.count
+        // A memory trim drops rows from the head of the page, so the range starts at the first row still held.
+        let start = pagination.currentOffset + window.firstAbsoluteIndex + 1
+        let end = start + legacyRows.count - 1
         guard let total = pagination.totalRows else { return "\(start)-\(end)" }
         return Self.pageRangeLabel(start: start, end: end, total: total)
     }
@@ -328,9 +327,7 @@ final class DataBrowserViewModel {
         )
     }
 
-    /// SQL Server's `OFFSET FETCH` requires `ORDER BY`. When the user has not picked an explicit
-    /// sort, inject a stable order (first primary-key column, falling back to the first column)
-    /// so paging is deterministic across requests. Other databases tolerate an empty ORDER BY.
+    // SQL Server's `OFFSET FETCH` requires `ORDER BY`. Without a user sort, a key column keeps paging stable.
     private func effectiveSortState() -> SortState {
         if sortState.isSorting { return sortState }
         guard databaseType == .mssql || databaseType == .oracle else { return sortState }
@@ -726,6 +723,8 @@ final class DataBrowserViewModel {
         buffer.reset()
         pageEndedOnItsOwn = false
         pageWasTrimmed = false
+        // The notice belongs to the page that was trimmed, not to the empty result of a later load.
+        memoryWarning = nil
 
         let task = Task { [weak self] in
             guard let self else { return }

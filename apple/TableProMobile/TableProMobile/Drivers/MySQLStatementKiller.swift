@@ -302,9 +302,13 @@ nonisolated final class MySQLStatementKiller: @unchecked Sendable {
     func readerLeft(_ statement: UInt64) {
         deliver(lock.withLock { () -> Accepted? in
             requests.readerLeft(statement)
-            guard target?.killsWhenReaderLeaves == true else { return nil }
-            return accepted(requests.kill(statement) ? statement : nil)
+            return acceptedReaderKill(statement)
         })
+    }
+
+    // The reader has every row it keeps, and the statement may still be sending the rest.
+    func rowCapReached(_ statement: UInt64) {
+        deliver(lock.withLock { acceptedReaderKill(statement) })
     }
 
     func stop() {
@@ -317,6 +321,11 @@ nonisolated final class MySQLStatementKiller: @unchecked Sendable {
         queue.async {
             _ = target.dial.send(target.statement)
         }
+    }
+
+    private func acceptedReaderKill(_ statement: UInt64) -> Accepted? {
+        guard target?.killsWhenReaderLeaves == true else { return nil }
+        return accepted(requests.kill(statement) ? statement : nil)
     }
 
     // Entered in the same critical section that takes the kill, so a statement that ends right after still finds the

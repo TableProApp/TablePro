@@ -440,6 +440,9 @@ impl BrowseTab {
 
     pub fn set_structure(&self, structure: &crate::ui::structure_tab::StructureTab) {
         libadwaita::prelude::BinExt::set_child(&*self.imp().structure_host, Some(structure));
+        let imp = self.imp();
+        structure.dock_actions(&imp.structure_details, &imp.structure_secondary, &imp.structure_primary);
+        self.sync_structure_actions();
         self.emit_by_name::<()>("save-action-changed", &[]);
     }
 
@@ -465,12 +468,20 @@ impl BrowseTab {
         }
         imp.data_start.set_visible(!structure);
         imp.data_end.set_visible(!structure);
+        imp.structure_start.set_visible(structure);
+        imp.structure_end.set_visible(structure);
+        self.sync_structure_actions();
         let actions = imp.browse_actions.get().filter(|_| !structure);
         self.insert_action_group("browse", actions);
         if let Some(model) = imp.model.borrow_mut().as_mut() {
             model.show_grid_actions();
         }
         self.emit_by_name::<()>("save-action-changed", &[]);
+    }
+
+    fn sync_structure_actions(&self) {
+        let structure = self.structure_tab().filter(|_| self.shows_structure());
+        self.insert_action_group("structure", structure.as_ref().and_then(|tab| tab.command_actions()));
     }
 
     fn save_selected_view(&self) {

@@ -200,8 +200,12 @@ extension DuckDBActor {
         for index in 0..<columns.count {
             vectors.append(duckdb_data_chunk_get_vector(chunk, idx_t(index)))
         }
+        let rowKey = LazyCellKey(options.lazyContext, columnNames: columns.map(\.name))
 
         for row in 0..<rowCount {
+            let primaryKey = rowKey?.primaryKey { index in
+                Self.keyText(vector: vectors[index], row: row, column: columns[index])
+            }
             var cells: [Cell] = []
             cells.reserveCapacity(columns.count)
             for index in 0..<columns.count {
@@ -209,11 +213,27 @@ extension DuckDBActor {
                     cells.append(.null)
                     continue
                 }
-                cells.append(Self.decodeCell(vector: vector, row: row, column: columns[index], options: options))
+                cells.append(Self.decodeCell(
+                    vector: vector,
+                    row: row,
+                    column: columns[index],
+                    options: options,
+                    ref: rowKey?.ref(column: columns[index].name, primaryKey: primaryKey)
+                ))
             }
             rows.append(cells)
         }
         return rows
+    }
+
+    private static let wholeText = StreamOptions(textTruncationBytes: .max)
+
+    // Read whole, so a key cut for display still finds its row. A BLOB reads as base64, which no key predicate matches.
+    private static func keyText(vector: duckdb_vector?, row: idx_t, column: DuckDBStreamColumn) -> String? {
+        guard let vector, column.castToText || column.type != DUCKDB_TYPE_BLOB,
+              case .text(let value) = decodeCell(vector: vector, row: row, column: column, options: wholeText)
+        else { return nil }
+        return value
     }
 
     func endStream(_ stream: UInt64) {

@@ -376,6 +376,22 @@ impl StructureTab {
         )
     }
 
+    pub(crate) fn dock_actions(&self, details: &gtk::Box, secondary: &gtk::Box, primary: &gtk::Box) {
+        let imp = self.imp();
+        imp.action_bar.set_visible(false);
+        for (control, target) in [
+            (imp.pending_label.get().upcast::<gtk::Widget>(), details),
+            (imp.drop_button.get().upcast(), details),
+            (imp.stop_button.get().upcast(), secondary),
+            (imp.discard_button.get().upcast(), secondary),
+            (imp.saving_spinner.get().upcast(), primary),
+            (imp.save_button.get().upcast(), primary),
+        ] {
+            imp.action_bar.remove(&control);
+            target.append(&control);
+        }
+    }
+
     /// A read of the table's definition is running.
     pub fn is_loading(&self) -> bool {
         self.imp()
