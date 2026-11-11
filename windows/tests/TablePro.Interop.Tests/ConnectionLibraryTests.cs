@@ -102,6 +102,22 @@ public sealed class ConnectionLibraryTests : IDisposable
     }
 
     [Fact]
+    public async Task ATypedPasswordToKeepIsStoredOnceItLogsIn()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var database = await SqliteDatabase.CreateAsync();
+        var saved = await _core.Library.SaveAsync(
+            new SavedConnection(null, "app", "sqlite", string.Empty, 0, database.Path, string.Empty, TlsSettings.Disabled),
+            ConnectionSecrets.None);
+        var typed = new ConnectionSecrets(DatabasePassword: "typed");
+
+        await using var session = await _core.ConnectAsync(
+            saved.Id!.Value, typed, keep: typed, cancellationToken: cancellationToken);
+
+        Assert.Equal("typed", _secrets.Load(saved.Id.Value, SecretKind.DatabasePassword));
+    }
+
+    [Fact]
     public async Task ALoginWithNoSavedPasswordFailsByCode()
     {
         var saved = await _core.Library.SaveAsync(Network("shop") with { Host = "127.0.0.1", Port = 1 }, ConnectionSecrets.None);

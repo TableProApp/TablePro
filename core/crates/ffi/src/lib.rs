@@ -7,6 +7,8 @@ mod connection_url;
 mod core_handle;
 #[cfg(windows)]
 mod credential_manager;
+#[cfg(any(windows, test))]
+mod credential_parts;
 mod drivers;
 mod editor;
 mod error;

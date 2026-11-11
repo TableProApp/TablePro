@@ -1302,6 +1302,15 @@
   <data name="CloseHeldTabButton" xml:space="preserve">
     <value>Close and roll back</value>
   </data>
+  <data name="ShutdownBlockedUnsaved" xml:space="preserve">
+    <value>Table changes are not saved.</value>
+  </data>
+  <data name="ShutdownBlockedTransaction" xml:space="preserve">
+    <value>A transaction is open.</value>
+  </data>
+  <data name="ShutdownBlockedBoth" xml:space="preserve">
+    <value>Table changes are not saved, and a transaction is open.</value>
+  </data>
   <data name="ConfirmRunTitleOne" xml:space="preserve">
     <value>Run this statement?</value>
   </data>

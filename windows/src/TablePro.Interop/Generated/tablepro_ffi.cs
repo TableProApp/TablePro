@@ -1168,7 +1168,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_core_connect_saved(ulong @ptr,RustBuffer @id,RustBuffer @secrets,RustBuffer @prompter,RustBuffer @cancel
+     ulong uniffi_tablepro_ffi_fn_method_core_connect_saved(ulong @ptr,RustBuffer @id,RustBuffer @secrets,RustBuffer @keep,RustBuffer @prompter,RustBuffer @cancel
     );
 
     #if NET8_0_OR_GREATER
@@ -3664,8 +3664,8 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_core_connect_saved();
-            if (checksum != 10354) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_core_connect_saved` checksum `10354`, library returned `{checksum}`");
+            if (checksum != 5649) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_core_connect_saved` checksum `5649`, library returned `{checksum}`");
             }
         }
         {
@@ -5035,7 +5035,7 @@ class FfiConverterTypeConnectionLibrary: FfiConverter<ConnectionLibrary, ulong> 
 /// </summary>
 internal interface ICore {
     /// <exception cref="CoreException"></exception>
-    Task<DatabaseSession> ConnectSaved(string @id, ConnectionSecrets @secrets, HostPrompter? @prompter, CancelToken? @cancel);
+    Task<DatabaseSession> ConnectSaved(string @id, ConnectionSecrets @secrets, ConnectionSecrets @keep, HostPrompter? @prompter, CancelToken? @cancel);
     /// <summary>
     /// Every engine linked in, by name.
     /// </summary>
@@ -5148,11 +5148,11 @@ internal class Core : ICore, IDisposable {
 
     
     /// <exception cref="CoreException"></exception>
-    public async Task<DatabaseSession> ConnectSaved(string @id, ConnectionSecrets @secrets, HostPrompter? @prompter, CancelToken? @cancel) {
+    public async Task<DatabaseSession> ConnectSaved(string @id, ConnectionSecrets @secrets, ConnectionSecrets @keep, HostPrompter? @prompter, CancelToken? @cancel) {
     return await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_core_connect_saved(thisPtr, FfiConverterString.INSTANCE.Lower(@id), FfiConverterTypeConnectionSecrets.INSTANCE.Lower(@secrets), FfiConverterOptionalTypeHostPrompter.INSTANCE.Lower(@prompter), FfiConverterOptionalTypeCancelToken.INSTANCE.Lower(@cancel));
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_core_connect_saved(thisPtr, FfiConverterString.INSTANCE.Lower(@id), FfiConverterTypeConnectionSecrets.INSTANCE.Lower(@secrets), FfiConverterTypeConnectionSecrets.INSTANCE.Lower(@keep), FfiConverterOptionalTypeHostPrompter.INSTANCE.Lower(@prompter), FfiConverterOptionalTypeCancelToken.INSTANCE.Lower(@cancel));
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_u64(future, continuation, data),
