@@ -22,6 +22,7 @@ internal struct ObjectCopyObjectOutcome: Identifiable, Sendable {
     internal let selection: ObjectCopySelection
     internal let rowsCopied: Int
     internal let error: String?
+    internal var warning: String?
 
     internal var id: String { selection.id }
     internal var succeeded: Bool { error == nil }
@@ -66,6 +67,8 @@ internal struct ObjectCopyRunResult: Sendable {
     }
 
     internal var firstError: String? { outcomes.compactMap(\.error).first }
+
+    internal var warnings: [String] { outcomes.compactMap(\.warning) }
 
     /// Every failure, each with an identity of its own.
     ///
@@ -507,9 +510,14 @@ internal struct ObjectCopyRunner {
         /// would send a retry over them.
         var rowsCopied = 0
 
-        mutating func recordCopy(of step: ObjectCopyTableStep, inserted: Int) {
+        mutating func recordCopy(of step: ObjectCopyTableStep, inserted: Int, rowCut: Int? = nil) {
             rowsCopied += inserted
-            outcomes.append(ObjectCopyObjectOutcome(selection: step.selection, rowsCopied: inserted, error: nil))
+            outcomes.append(ObjectCopyObjectOutcome(
+                selection: step.selection,
+                rowsCopied: inserted,
+                error: nil,
+                warning: rowCut.map { StreamRowCutWarning.text(table: step.selection.qualifiedName, limit: $0) }
+            ))
         }
 
         /// Stop reaching the driver mid-stream is the user stopping, not the copy failing, and the
@@ -702,7 +710,7 @@ internal struct ObjectCopyRunner {
                     result.recordStop(of: step, inserted: outcome.inserted, progress: progress)
                     break
                 }
-                result.recordCopy(of: step, inserted: outcome.inserted)
+                result.recordCopy(of: step, inserted: outcome.inserted, rowCut: outcome.rowCut)
             } catch is CancellationError {
                 result.recordStop(of: step, inserted: 0, progress: progress)
                 break
@@ -748,7 +756,7 @@ internal struct ObjectCopyRunner {
                     result.recordStop(of: step, inserted: outcome.inserted, progress: progress)
                     break
                 }
-                result.recordCopy(of: step, inserted: outcome.inserted)
+                result.recordCopy(of: step, inserted: outcome.inserted, rowCut: outcome.rowCut)
             } catch is CancellationError {
                 result.recordStop(of: step, inserted: 0, progress: progress)
                 break

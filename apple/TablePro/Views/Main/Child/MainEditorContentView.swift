@@ -734,6 +734,7 @@ struct MainEditorContentView: View {
                     selectedRowIDs: Set(model.selectedRowIDs),
                     displayIDs: model.displayedRowIDs,
                     deletedRowIDs: changeManager.deletedRowIDs,
+                    defaultedCells: changeManager.defaultedCells(in: rows),
                     valueFilter: tab.valueFilter,
                     dataRevision: coordinator.tabSessionRegistry.session(for: tab.id)?.dataRevision ?? 0,
                     displayRevision: coordinator.gridDisplayRevision,

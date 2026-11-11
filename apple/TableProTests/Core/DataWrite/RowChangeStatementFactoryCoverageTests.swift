@@ -255,8 +255,8 @@ struct RowChangeStatementFactoryCoverageTests {
         let engine = DatabaseType(rawValue: "ProbeEngine")
         let hostOnly = LegacyStatementStubDriver { _, _, _, _ in nil }
         let inserted = RowID.inserted(UUID())
-        let allDefaults: [PluginCellValue] = [.text("__DEFAULT__"), .text("__DEFAULT__")]
-        let changes = [nameEdit(), RowChange(rowID: inserted, type: .insert)]
+        let allDefaults: [PluginCellValue] = [.columnDefault, .columnDefault]
+        let changes = [nameEdit(), RowChange(rowID: inserted, type: .insert, expressionColumns: [0, 1])]
 
         let generator = try SQLStatementGenerator(
             tableName: "t", columns: columns, primaryKeyColumns: ["_id"], databaseType: engine,

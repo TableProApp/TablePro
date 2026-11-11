@@ -180,6 +180,25 @@ struct RedisConditionalWriteTests {
         #expect(result.rows.first?.first?.asText == "OK")
     }
 
+    @Test("A SET that NX or XX kept from writing shows nil, as the server answered")
+    func skippedSetShowsNil() async throws {
+        let channel = StubRedisChannel([.null])
+        let result = try await driver().executeOperation(
+            try RedisCommandParser.parse("SET lock:job 1 NX"), connection: channel, startTime: Date()
+        )
+        #expect(result.rows.first?.first?.asText == "(nil)")
+        #expect(channel.sentCommands == [["SET", "lock:job", "1", "NX"]])
+    }
+
+    @Test("A SET that wrote the key shows OK")
+    func appliedSetShowsOK() async throws {
+        let channel = StubRedisChannel([.status("OK")])
+        let result = try await driver().executeOperation(
+            try RedisCommandParser.parse("SET lock:job 1 XX EX 60"), connection: channel, startTime: Date()
+        )
+        #expect(result.rows.first?.first?.asText == "OK")
+    }
+
     @Test("A conditional write the server refused outright keeps the server's message")
     func execKeepsServerErrorForConditionalWrite() {
         let reply = RedisReply.array([.error("ERR no such key")])

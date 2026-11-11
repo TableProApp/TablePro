@@ -176,7 +176,7 @@ struct SelectionSummaryTrackerTests {
         defer { grid.close() }
         grid.model.setSelection(Self.block(rows: 0...1, columns: 0...0))
 
-        grid.edit(row: 1, to: .value(.text(PluginCellValue.defaultMarkerText), isExpression: false))
+        grid.edit(row: 1, to: .value(.columnDefault, isExpression: true))
         await grid.tracker.pendingTask?.value
 
         #expect(state.summary?.emptyCount == 1)

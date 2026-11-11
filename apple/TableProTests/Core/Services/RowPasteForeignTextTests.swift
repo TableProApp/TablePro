@@ -22,8 +22,8 @@ struct RowPasteForeignTextTests {
         let rows = try parse("\tAnn\tann@x.com\n\tBob\tbob@x.com")
 
         #expect(rows == [
-            [.text("__DEFAULT__"), .text("Ann"), .text("ann@x.com")],
-            [.text("__DEFAULT__"), .text("Bob"), .text("bob@x.com")]
+            [.columnDefault, .text("Ann"), .text("ann@x.com")],
+            [.columnDefault, .text("Bob"), .text("bob@x.com")]
         ])
     }
 
@@ -74,7 +74,8 @@ struct RowPasteForeignTextTests {
             columns: Self.columns, primaryKeyColumns: ["id"], tableRows: &rows, clipboard: clipboard
         )
 
-        #expect(result.pastedRows.first?.values == [.text("__DEFAULT__"), .text("Ann"), .text("ann@x.com")])
+        #expect(result.pastedRows.first?.values == [.columnDefault, .text("Ann"), .text("ann@x.com")])
+        #expect(result.pastedRows.first.map { changeManager.expressionColumns(forRow: $0.rowID) } == [0])
     }
 
     @Test("A blank pasted cell takes the column's default, an empty string where NULL is refused, else NULL")
@@ -107,11 +108,12 @@ struct RowPasteForeignTextTests {
             columns: columns, primaryKeyColumns: ["id"], tableRows: &rows, clipboard: clipboard
         )
 
-        let unfilled: [PluginCellValue] = [.text("__DEFAULT__"), .text(""), .null, .null]
+        let unfilled: [PluginCellValue] = [.columnDefault, .text(""), .null, .null]
         #expect(result.pastedRows.map { $0.values } == [
-            [.text("__DEFAULT__"), .text("Ann")] + unfilled,
-            [.text("__DEFAULT__"), .text("Bob")] + unfilled,
+            [.columnDefault, .text("Ann")] + unfilled,
+            [.columnDefault, .text("Bob")] + unfilled,
         ])
+        #expect(result.pastedRows.map { changeManager.expressionColumns(forRow: $0.rowID) } == [[0, 2], [0, 2]])
     }
 
     @Test("A pasted NULL stays NULL in a column with a default")
@@ -136,7 +138,7 @@ struct RowPasteForeignTextTests {
             columns: columns, primaryKeyColumns: ["id"], tableRows: &rows, clipboard: clipboard
         )
 
-        #expect(result.pastedRows.first?.values == [.text("__DEFAULT__"), .null])
+        #expect(result.pastedRows.first?.values == [.columnDefault, .null])
     }
 }
 

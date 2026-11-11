@@ -75,7 +75,7 @@ pub struct RowDetailPane {
     #[template_child]
     pub clock_set: TemplateChild<gtk::Button>,
     #[template_child]
-    pub value_menu_button: TemplateChild<gtk::MenuButton>,
+    pub value_menu: TemplateChild<gio::Menu>,
     #[template_child]
     pub value_scroller: TemplateChild<gtk::ScrolledWindow>,
     #[template_child]

@@ -11,13 +11,27 @@ nonisolated enum RowPayload {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw IntentDataError.emptyPayload }
 
-        let rows = trimmed.hasPrefix("{") || trimmed.hasPrefix("[")
-            ? try parseJSON(trimmed)
-            : try parseCSV(raw)
+        let rows = try sniffedRows(raw: raw, trimmed: trimmed)
 
         guard !rows.isEmpty else { throw IntentDataError.emptyPayload }
         guard rows.count <= maxRows else { throw IntentDataError.tooManyRows(maxRows) }
         return rows
+    }
+
+    // A CSV header can open with `[` or `{`, as SQL Server's `[id],[name]` does, so only text that parses as JSON is
+    // JSON. Text that is neither keeps the JSON error, which names what broke in a payload meant as JSON. So does JSON
+    // that still splits into even CSV records, one object per line with a trailing comma: its headers hold `":`.
+    private static func sniffedRows(raw: String, trimmed: String) throws -> [PayloadRow] {
+        guard trimmed.hasPrefix("{") || trimmed.hasPrefix("[") else { return try parseCSV(raw) }
+        do {
+            return try parseJSON(trimmed)
+        } catch IntentDataError.malformedPayload(let reason) {
+            guard let rows = try? parseCSV(raw), !rows.isEmpty,
+                  !rows.contains(where: { row in row.keys.contains { $0.contains("\":") } }) else {
+                throw IntentDataError.malformedPayload(reason)
+            }
+            return rows
+        }
     }
 
     static func parseSingle(data: String?, file: IntentFile?) async throws -> [PayloadRow] {

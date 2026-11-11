@@ -302,7 +302,7 @@ final class UserTypeEditorModel: ObservableObject {
         do {
             outcome = try await UserTypeChangeRunner.run(plan, in: scope, connection: connection, gate: gate)
         } catch {
-            let failure = StructureApplyFailure(error)
+            let failure = GatedOperationFailure(error)
             if let message = failure.message {
                 AlertHelper.showErrorSheet(
                     title: String(localized: "Error Applying Changes"),

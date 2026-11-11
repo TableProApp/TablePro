@@ -88,7 +88,19 @@ struct MariaDBPluginQueryResult {
 // MARK: - Connection Class
 
 final class MariaDBPluginConnection: @unchecked Sendable {
-    private var mysql: UnsafeMutablePointer<MYSQL>?
+    // Under stateLock, which disconnect() clears it under. Only `queue` may call into the handle: the close is queued there.
+    private var _mysql: UnsafeMutablePointer<MYSQL>?
+    private var _serverThreadId: UInt = 0
+
+    private var mysql: UnsafeMutablePointer<MYSQL>? {
+        stateLock.withLock { _mysql }
+    }
+
+    // Read from the snapshot taken at connect: Stop runs off `queue`, where the handle may already be freed.
+    private var connectedThreadId: UInt? {
+        stateLock.withLock { _mysql == nil ? nil : _serverThreadId }
+    }
+
     private let queue = DispatchQueue(label: "com.TablePro.mariadb.plugin", qos: .userInitiated)
 
     /// Serial, and separate from `queue`, which the read being cancelled is sitting on. Serial so a
@@ -342,9 +354,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         if let cachePath = kerberos?.cachePath {
             KerberosTicket.discard(cachePath)
         }
-        let handle = mysql
+        let handle = _mysql
         let cleanupQueue = queue
-        mysql = nil
+        _mysql = nil
         if let handle = handle {
             cleanupQueue.async {
                 mysql_close(handle)
@@ -390,8 +402,10 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             self.baselineSelectLimit = nil
             self.hasCapturedBaselineSelectLimit = false
 
+            let threadId = mysql_thread_id(handle)
             self.stateLock.lock()
-            self.mysql = handle
+            self._mysql = handle
+            self._serverThreadId = threadId
             self._isConnected = true
             self._errorLanguage = session.errorLanguage
             self._sessionEndedByKill = false
@@ -600,10 +614,10 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             KerberosTicket.discard(cachePath)
         }
 
-        let handle = mysql
-        mysql = nil
-
         stateLock.lock()
+        let handle = _mysql
+        _mysql = nil
+        _serverThreadId = 0
         _isConnected = false
         stateLock.unlock()
 
@@ -635,7 +649,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
         let target = killTarget
         guard mayEndSession || !target.endsSession else { return }
-        guard let mysql = mysql, let statement = target.statement(threadId: mysql_thread_id(mysql)) else { return }
+        guard let threadId = connectedThreadId, let statement = target.statement(threadId: threadId) else { return }
         cancelQueue.async { [self] in
             guard deliverKill(statement) else { return }
             if target.endsSession {
@@ -657,11 +671,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         recordKillDelivered(generation: generation)
     }
 
-    /// The server thread this connection is on, read before a statement goes out so a kill still
-    /// has somewhere to go once the handle itself is unusable.
+    // Read before a statement goes out, so a kill still has somewhere to go once the handle itself is unusable.
     internal var currentThreadId: UInt {
-        guard let mysql = self.mysql else { return 0 }
-        return mysql_thread_id(mysql)
+        connectedThreadId ?? 0
     }
 
     /// The kill has to reach the server the query is running on, which means repeating the transport

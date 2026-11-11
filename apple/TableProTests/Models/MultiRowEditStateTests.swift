@@ -95,14 +95,14 @@ struct MultiRowEditStateTests {
             #expect(field.effectiveValue == nil)
         }
 
-        @Test("effectiveValue returns __DEFAULT__ when isPendingDefault")
+        @Test("effectiveValue returns the DEFAULT keyword when isPendingDefault")
         func effectiveValueReturnsDefaultWhenPendingDefault() {
             let field = FieldEditState(
                 columnIndex: 0, columnName: "id", columnTypeEnum: .text(rawType: nil),
                 isLongText: false, isJson: false, originalValue: "1", hasMultipleValues: false,
                 pendingValue: nil, isPendingNull: false, isPendingDefault: true
             )
-            #expect(field.effectiveValue == "__DEFAULT__")
+            #expect(field.effectiveValue == "DEFAULT")
         }
 
         @Test("effectiveValue returns nil when no edit is pending")
@@ -644,13 +644,14 @@ struct MultiRowEditStateTests {
             #expect(edited[0].newValue == nil)
         }
 
-        @Test("Returns __DEFAULT__ for default edit")
+        @Test("Returns the DEFAULT keyword marked as SQL for a default edit")
         func returnsDefaultForDefaultEdit() {
             let sut = makeSUT()
             sut.setFieldToDefault(at: 0)
             let edited = sut.getEditedFields()
             #expect(edited.count == 1)
-            #expect(edited[0].newValue == "__DEFAULT__")
+            #expect(edited[0].newValue == "DEFAULT")
+            #expect(edited[0].isExpression)
         }
 
         @Test("Returns empty array when no edits")
@@ -774,18 +775,22 @@ struct MultiRowEditStateTests {
             #expect(callbackCalls[0].value == nil)
         }
 
-        @Test("setFieldToDefault fires callback with __DEFAULT__")
+        // Through `onFieldChanged` the keyword would be a literal, which a stored value can also be.
+        @Test("setFieldToDefault sends the DEFAULT keyword through the expression callback")
         func setFieldToDefaultFiresCallback() {
             let sut = makeSUT()
-            var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value, _ in
-                callbackCalls.append((index, value.asText))
+            var literals: [PluginCellValue] = []
+            var callbackCalls: [(index: Int, sql: String)] = []
+            sut.onFieldChanged = { _, value, _ in literals.append(value) }
+            sut.onFieldExpressionChanged = { index, sql, _ in
+                callbackCalls.append((index, sql))
             }
 
             sut.setFieldToDefault(at: 0)
+            #expect(literals.isEmpty)
             #expect(callbackCalls.count == 1)
             #expect(callbackCalls[0].index == 0)
-            #expect(callbackCalls[0].value == "__DEFAULT__")
+            #expect(callbackCalls[0].sql == "DEFAULT")
         }
 
         // `onFieldChanged` carries a literal, so an expression sent through it would be saved as quoted text.

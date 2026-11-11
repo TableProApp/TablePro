@@ -103,6 +103,18 @@ struct RedisCommandSplitterTests {
         }
     }
 
+    @Test("Each command's caret reach gives every caret the command command(at:) gives it", arguments: [
+        "GET a; GET b\n\nGET c  \n", "GET a\n", "GET a; ", "SET k \"a\nb\"\nGET k", "  GET a  ;", "SET 😀 1\r\nGET 😀", "",
+    ])
+    func caretReachMatchesCommandAt(script: String) {
+        let reached = RedisCommandSplitter.commandsWithCaretReach(in: script)
+        #expect(reached.map { $0.command } == RedisCommandSplitter.commands(in: script))
+        for caret in 0...((script as NSString).length + 1) {
+            let viaReach = reached.first { caret <= $0.reach }?.command
+            #expect(viaReach == RedisCommandSplitter.command(at: caret, in: script), "caret \(caret)")
+        }
+    }
+
     @Test("A caret after the last command, or in text with none, has no command")
     func caretPastEveryCommand() {
         #expect(command(at: 6, in: "GET a\n") == nil)

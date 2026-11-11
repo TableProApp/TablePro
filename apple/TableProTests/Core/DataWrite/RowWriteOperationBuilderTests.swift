@@ -78,14 +78,14 @@ struct RowWriteOperationBuilderTests {
         #expect(now.first?.refusal == .serverComputedValue)
 
         let marker = operations(
-            changes: [
-                cellEdit(
-                    column: "updated_at", index: 2, from: "2026-01-01",
-                    to: .text(PluginCellValue.defaultMarkerText)
-                ),
-            ]
+            changes: [cellEdit(column: "updated_at", index: 2, from: "2026-01-01", to: .columnDefault, isExpression: true)]
         )
         #expect(marker.first?.refusal == .serverComputedValue)
+
+        let text = operations(
+            changes: [cellEdit(column: "updated_at", index: 2, from: "2026-01-01", to: "__DEFAULT__")]
+        )
+        #expect(text.first?.refusal == nil)
     }
 
     @Test("A generated column cannot be written back")
@@ -136,8 +136,8 @@ struct RowWriteOperationBuilderTests {
     func serverAssignedKeyIsRefused() {
         let change = RowChange(rowID: .existing(0), type: .insert)
         let withMarker = operations(
-            changes: [change],
-            insertedRowData: [.existing(0): [.text(PluginCellValue.defaultMarkerText), "Ada", "2026-01-01"]],
+            changes: [RowChange(rowID: .existing(0), type: .insert, expressionColumns: [0])],
+            insertedRowData: [.existing(0): [.columnDefault, "Ada", "2026-01-01"]],
             insertedRowIDs: [.existing(0)]
         )
         #expect(withMarker.first?.refusal == .serverAssignedKey)
@@ -182,6 +182,31 @@ struct RowWriteOperationBuilderTests {
             insertedRowIDs: [.existing(0)]
         )
         #expect(literal.first?.refusal == nil)
+    }
+
+    @Test("The record keeps the order the rows were changed in after an earlier change is cancelled")
+    func recordFollowsEditOrder() {
+        var pending = PendingChanges()
+        pending.recordCellChange(
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
+            oldValue: "Ada", newValue: "Grace", originalRow: ["7", "Ada", "2026-01-01"]
+        )
+        pending.recordRowDeletion(rowID: .existing(1), originalRow: ["8", "Bo", "2026-01-01"])
+        let inserted = RowID.inserted(UUID())
+        pending.recordRowInsertion(rowID: inserted, values: ["9", "Bo", "2026-01-01"])
+        pending.recordCellChange(
+            rowID: .existing(0), columnIndex: 1, columnName: "name", oldValue: "Grace", newValue: "Ada"
+        )
+        #expect(pending.changes.map { $0.type } == [.insert, .delete])
+
+        let result = operations(
+            changes: pending.changes,
+            insertedRowData: pending.insertedRowData,
+            deletedRowIDs: pending.deletedRowIDs,
+            insertedRowIDs: pending.insertedRowIDs
+        )
+
+        #expect(result.map { $0.kind } == [.delete, .insert])
     }
 
     @Test("An insert carrying its own key is reversible")

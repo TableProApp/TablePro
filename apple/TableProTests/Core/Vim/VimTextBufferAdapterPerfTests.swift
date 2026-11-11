@@ -2,8 +2,7 @@
 //  VimTextBufferAdapterPerfTests.swift
 //  TableProTests
 //
-//  Regression tests for VimTextBufferAdapter incremental lineCount
-//  and setSelectedRange guard
+//  Regression tests for VimTextBufferAdapter lineCount and setSelectedRange guard
 //
 
 import AppKit
@@ -65,83 +64,29 @@ struct VimTextBufferAdapterPerfTests {
         #expect(adapter.lineCount == 2)
     }
 
-    // MARK: - textDidChange incremental (pure insertion)
+    // MARK: - Line count after an edit
 
-    @Test("textDidChange with pure insertion updates line count incrementally")
-    func insertionUpdatesLineCount() {
-        let (adapter, textView) = makeAdapter(string: "hello")
+    // The editor drops the cache on every edit, so the next count reads the text as it is now.
+    @Test("After an edit the line count matches a fresh count of the new text", arguments: [
+        (NSRange(location: 5, length: 0), "\nworld", "hello", 2),
+        (NSRange(location: 5, length: 0), "\n\n\n", "hello", 3),
+        (NSRange(location: 1, length: 2), "", "a\nb\nc", 2),
+        (NSRange(location: 2, length: 3), "x", "a\nb\nc", 2),
+        (NSRange(location: 1, length: 1), "x\ny\nz", "abc", 3),
+        (NSRange(location: 1, length: 0), "\r", "ab", 2),
+    ])
+    func lineCountAfterAnEdit(range: NSRange, replacement: String, original: String, expected: Int) {
+        let (adapter, textView) = makeAdapter(string: original)
+        _ = adapter.lineCount
 
-        // Prime the cache
-        let initial = adapter.lineCount
-        #expect(initial == 1)
+        textView.replaceCharacters(in: range, with: replacement)
+        adapter.invalidateLineCache()
 
-        // Simulate inserting "\nworld" at offset 5
-        textView.replaceCharacters(in: NSRange(location: 5, length: 0), with: "\nworld")
-        adapter.textDidChange(in: NSRange(location: 5, length: 0), replacementLength: 6)
-
-        #expect(adapter.lineCount == 2)
-    }
-
-    @Test("textDidChange with multi-newline insertion")
-    func multiNewlineInsertion() {
-        let (adapter, textView) = makeAdapter(string: "hello")
-
-        _ = adapter.lineCount // prime cache
-
-        textView.replaceCharacters(in: NSRange(location: 5, length: 0), with: "\n\n\n")
-        adapter.textDidChange(in: NSRange(location: 5, length: 0), replacementLength: 3)
-
-        #expect(adapter.lineCount == 4)
-    }
-
-    // MARK: - textDidChange fallback on deletion
-
-    @Test("textDidChange with deletion invalidates cache")
-    func deletionInvalidatesCache() {
-        let (adapter, textView) = makeAdapter(string: "a\nb\nc")
-
-        let initial = adapter.lineCount
-        #expect(initial == 3)
-
-        // Simulate deleting "\nb" (range.length > 0 means it's not pure insertion)
-        textView.replaceCharacters(in: NSRange(location: 1, length: 2), with: "")
-        adapter.textDidChange(in: NSRange(location: 1, length: 2), replacementLength: 0)
-
-        // Cache should be invalidated; next access does a full recount
-        #expect(adapter.lineCount == 2)
-    }
-
-    // MARK: - textDidChange(oldText:...) incremental replacement
-
-    @Test("textDidChange with oldText correctly computes delta for replacement")
-    func oldTextReplacementDelta() {
-        let originalText = "a\nb\nc"
-        let (adapter, textView) = makeAdapter(string: originalText)
-
-        let initial = adapter.lineCount
-        #expect(initial == 3)
-
-        // Replace "b\nc" (range 2..4, contains 1 newline) with "x" (0 newlines)
-        textView.replaceCharacters(in: NSRange(location: 2, length: 3), with: "x")
-        adapter.textDidChange(oldText: originalText, in: NSRange(location: 2, length: 3), replacementLength: 1)
-
-        // 3 original - 1 removed newline + 0 added = 2
-        #expect(adapter.lineCount == 2)
-    }
-
-    @Test("textDidChange with oldText adding newlines")
-    func oldTextAddingNewlines() {
-        let originalText = "abc"
-        let (adapter, textView) = makeAdapter(string: originalText)
-
-        _ = adapter.lineCount // prime: 1
-
-        // Replace "b" with "x\ny\nz" (adding 2 newlines)
-        textView.replaceCharacters(in: NSRange(location: 1, length: 1), with: "x\ny\nz")
-        adapter.textDidChange(oldText: originalText, in: NSRange(location: 1, length: 1), replacementLength: 5)
-
-        // 1 original - 0 removed + 2 added = 3
-        #expect(adapter.lineCount == 3)
+        let counted = withExtendedLifetime(textView) { adapter.lineCount }
+        let (fresh, freshTextView) = makeAdapter(string: textView.string)
+        let freshCount = withExtendedLifetime(freshTextView) { fresh.lineCount }
+        #expect(counted == expected)
+        #expect(counted == freshCount)
     }
 
     // MARK: - setSelectedRange guard
