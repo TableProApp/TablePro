@@ -101,12 +101,21 @@ extension DataGridModel {
             atOrAfter: selection.activeCell,
             in: GridFindEngine.positions(of: result.matches, in: source)
         )
-        find.setResults(result.matches, current: current, problem: result.problem)
+        find.setResults(result.matches, current: current, problem: result.problem, basis: findBasis(of: source))
         revealCurrentFindMatch()
     }
 
     // The rows changed under the bar: keep the current match when it survives and leave the selection alone.
     func refreshFind() {
+        refreshFind(rereading: nil)
+    }
+
+    // Only these cells (by data index) were written and these rows added, and others may have left.
+    func refreshFind(writtenCells: [RowID: IndexSet], addedRows: [RowID] = []) {
+        refreshFind(rereading: (writtenCells: writtenCells, addedRows: addedRows))
+    }
+
+    private func refreshFind(rereading changes: (writtenCells: [RowID: IndexSet], addedRows: [RowID])?) {
         guard find.isVisible else { return }
         if datasetFinder != nil {
             // Another page changes the grid's rows, not the owner's; only another column set searches again.
@@ -115,8 +124,22 @@ extension DataGridModel {
             return
         }
         let source = findSource
+        let basis = findBasis(of: source)
         let previous = find.currentMatch
-        let result = GridFindEngine.search(find.term, options: find.options, in: source)
+        let result: GridFindEngine.Result
+        if let changes, find.loadedRowsBasis == basis,
+           let refreshed = GridFindEngine.refreshed(
+               find.matches,
+               writtenCells: changes.writtenCells,
+               addedRows: changes.addedRows,
+               term: find.term,
+               options: find.options,
+               in: source
+           ) {
+            result = refreshed
+        } else {
+            result = GridFindEngine.search(find.term, options: find.options, in: source)
+        }
         let current: Int?
         if let previous, let kept = result.matches.firstIndex(of: previous) {
             current = kept
@@ -126,7 +149,7 @@ extension DataGridModel {
                 in: GridFindEngine.positions(of: result.matches, in: source)
             )
         }
-        find.setResults(result.matches, current: current, problem: result.problem)
+        find.setResults(result.matches, current: current, problem: result.problem, basis: basis)
     }
 
     // The owner's rows changed (an edit, an undo, a filter): search them again, keeping the current match.
@@ -212,7 +235,7 @@ extension DataGridModel {
         }
         let replaced = GridFindEngine.position(of: match, in: source)
         guard commit(replacement.edits, actionName: String(localized: "Replace")) else { return }
-        refreshFind()
+        refreshFind(writtenCells: writtenCells(of: replacement.edits))
         guard !find.matches.isEmpty else { return }
         let positions = GridFindEngine.positions(of: find.matches, in: findSource)
         find.setCurrentIndex(replaced.flatMap { GridFindEngine.index(after: $0, in: positions) } ?? 0)
@@ -241,7 +264,7 @@ extension DataGridModel {
         )
         guard !replacement.edits.isEmpty else { return replacement }
         guard commit(replacement.edits, actionName: String(localized: "Replace All")) else { return nil }
-        refreshFind()
+        refreshFind(writtenCells: writtenCells(of: replacement.edits))
         return replacement
     }
 
@@ -255,6 +278,27 @@ extension DataGridModel {
             displayFormats: store.displayFormats,
             databaseType: configuration.traits.databaseType,
             revealsInvisibleCharacters: AppSettingsManager.shared.dataGrid.showInvisibleCharacters
+        )
+    }
+
+    // A replacement writes only cells the bar found, all in presented columns.
+    private func writtenCells(of edits: [DataGridCellEdit]) -> [RowID: IndexSet] {
+        var written: [RowID: IndexSet] = [:]
+        for edit in edits {
+            guard let column = columns.column(id: edit.columnID) else { continue }
+            written[edit.rowID, default: []].insert(column.dataIndex)
+        }
+        return written
+    }
+
+    private func findBasis(of source: GridFindEngine.Source) -> GridFindEngine.Basis {
+        GridFindEngine.Basis(
+            term: find.term,
+            options: find.options,
+            source: source,
+            valueFilter: store.valueFilter,
+            gridSettings: AppSettingsManager.shared.dataGrid,
+            timeZoneGeneration: DateFormattingService.shared.systemTimeZoneGeneration
         )
     }
 

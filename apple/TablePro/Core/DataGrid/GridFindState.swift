@@ -31,16 +31,19 @@ final class GridFindState: ObservableObject {
     private(set) var datasetQuery: GridDatasetFindQuery?
     private(set) var datasetSearch: Task<Void, Never>?
     private var datasetGeneration = 0
+    // What the matches were searched on, while they came from the loaded rows; nil once anything else set them.
+    private(set) var loadedRowsBasis: GridFindEngine.Basis?
 
     var currentMatch: Match? {
         guard let currentIndex, matches.indices.contains(currentIndex) else { return nil }
         return matches[currentIndex]
     }
 
-    func setResults(_ matches: [Match], current: Int?, problem: String?) {
+    func setResults(_ matches: [Match], current: Int?, problem: String?, basis: GridFindEngine.Basis? = nil) {
         self.matches = matches
         self.currentIndex = current.flatMap { matches.indices.contains($0) ? $0 : nil }
         self.problem = problem
+        loadedRowsBasis = basis
     }
 
     func setCurrentIndex(_ index: Int?) {
@@ -51,6 +54,7 @@ final class GridFindState: ObservableObject {
     func removeMatch(at index: Int) {
         guard matches.indices.contains(index) else { return }
         matches.remove(at: index)
+        loadedRowsBasis = nil
         currentIndex = matches.isEmpty ? nil : (index < matches.count ? index : 0)
     }
 
@@ -61,6 +65,7 @@ final class GridFindState: ObservableObject {
         term = ""
         replacement = ""
         matches = []
+        loadedRowsBasis = nil
         currentIndex = nil
         problem = nil
     }
@@ -73,6 +78,7 @@ final class GridFindState: ObservableObject {
         datasetQuery = query
         searchStopped = false
         problem = nil
+        loadedRowsBasis = nil
         if clearsResults {
             matches = []
             currentIndex = nil

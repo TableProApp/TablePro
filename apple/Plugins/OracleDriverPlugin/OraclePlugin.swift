@@ -444,28 +444,36 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Streaming
 
-    /// The stream header has no field for classification hints, so they are added to the collected result.
+    // The stream header has no field for classification hints, so they are added to the collected result.
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
-        let result = try await boundedQueryFromStream(query: query, rowCap: rowCap)
+        // The collector needs one row past the cap to tell a full result from a truncated one.
+        let cap = max(rowCap, 1)
+        let result = try await PluginBoundedStream.collect(
+            rowStream(query: query, rowBudget: cap < Int.max ? cap + 1 : nil),
+            rowCap: cap,
+            startedAt: Date()
+        )
         try await reportCompilationErrors(of: query)
         return result.withOracleClassificationHints()
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        rowStream(query: query, rowBudget: nil)
+    }
+
+    private func rowStream(query: String, rowBudget: Int?) -> AsyncThrowingStream<PluginStreamElement, Error> {
         guard let core else {
             return AsyncThrowingStream { $0.finish(throwing: OraclePluginError(core: .notConnected)) }
         }
+        let batching = OracleRowBatcher(rowsPerBatch: OracleRowBatcher.batchRows, rowBudget: rowBudget)
 
         return PluginRowStream.make { continuation, abort in
             let streamTask = Task {
-                /// The core read runs in its own unstructured task, which the outer one cannot
-                /// cancel: a plain `Task {}` inherits context but is not a child. Cancelling it
-                /// explicitly on abort is what stops oracle-nio, whose own loop already checks
-                /// cancellation once it is reachable.
+                // A plain `Task {}` is not a child of this one, so only the explicit cancel on abort stops oracle-nio.
                 let coreStream = AsyncThrowingStream<OracleStreamElement, Error> { coreContinuation in
                     let coreTask = Task {
                         do {
-                            try await core.streamQuery(query, continuation: coreContinuation)
+                            try await core.streamQuery(query, batching: batching, continuation: coreContinuation)
                         } catch {
                             coreContinuation.finish(throwing: error)
                         }

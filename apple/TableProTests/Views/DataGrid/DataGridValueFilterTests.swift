@@ -343,6 +343,52 @@ struct DataGridValueFilterTests {
         #expect(grid.owner.displayOrderRequests == 2)
     }
 
+    // The click returns before the list is sorted, so the main actor never waits on the comparisons.
+    @Test("Filter Values sorts its list away from the click, and a reload while it sorts opens nothing")
+    func valueListSortsBeforeThePopoverOpens() async throws {
+        var configuration = DataGridConfiguration()
+        configuration.commands = [.valueFilter]
+        let grid = HostedDataGrid(rows: Self.statuses, configuration: configuration)
+        defer { grid.close() }
+        let status = try #require(grid.model.columns.columns.first { $0.name == "status" })
+
+        grid.controller.presentValueFilter(for: status)
+
+        let listing = try #require(grid.controller.menuState.valueFilterListing)
+        #expect(grid.controller.menuState.valueFilterPopover == nil)
+
+        grid.model.reloadRows()
+        await listing.value
+
+        #expect(grid.controller.menuState.valueFilterListing == nil)
+        #expect(grid.controller.menuState.valueFilterPopover == nil)
+    }
+
+    // A connection switch unparents the grid without dismantling it, and NSPopover raises on a view with no window.
+    @Test("A list that finishes after the grid left its window, or while the window is off screen, opens nothing")
+    func valueListOpensOnlyInAVisibleWindow() async throws {
+        var configuration = DataGridConfiguration()
+        configuration.commands = [.valueFilter]
+        let grid = HostedDataGrid(rows: Self.statuses, configuration: configuration)
+        defer { grid.close() }
+        let status = try #require(grid.model.columns.columns.first { $0.name == "status" })
+        #expect(!grid.window.isVisible)
+
+        grid.controller.presentValueFilter(for: status)
+        let offScreen = try #require(grid.controller.menuState.valueFilterListing)
+        await offScreen.value
+        #expect(grid.controller.menuState.valueFilterPopover == nil)
+
+        grid.controller.presentValueFilter(for: status)
+        let unparented = try #require(grid.controller.menuState.valueFilterListing)
+        grid.controller.view.removeFromSuperview()
+        await unparented.value
+
+        #expect(grid.controller.view.window == nil)
+        #expect(grid.controller.menuState.valueFilterListing == nil)
+        #expect(grid.controller.menuState.valueFilterPopover == nil)
+    }
+
     @Test("Replacing the rows closes an open value filter, whose values were the old rows'")
     func replacingTheRowsClosesTheValueFilter() {
         let grid = HostedDataGrid(rows: Self.statuses)

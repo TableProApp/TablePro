@@ -134,6 +134,38 @@ enum GridFindEngine {
         var problem: String?
     }
 
+    // Everything a loaded-rows search read besides the rows themselves, the settings the cell text follows included.
+    struct Basis: Equatable {
+        let term: String
+        let options: GridFindState.Options
+        let columns: DataGridColumnSet
+        let displayFormats: [ValueDisplayFormat?]
+        let databaseType: DatabaseType?
+        let revealsInvisibleCharacters: Bool
+        let valueFilter: GridValueFilterState
+        let gridSettings: DataGridSettings
+        let timeZoneGeneration: Int
+
+        init(
+            term: String,
+            options: GridFindState.Options,
+            source: Source,
+            valueFilter: GridValueFilterState,
+            gridSettings: DataGridSettings,
+            timeZoneGeneration: Int
+        ) {
+            self.term = term
+            self.options = options
+            columns = source.columns
+            displayFormats = source.displayFormats
+            databaseType = source.databaseType
+            revealsInvisibleCharacters = source.revealsInvisibleCharacters
+            self.valueFilter = valueFilter
+            self.gridSettings = gridSettings
+            self.timeZoneGeneration = timeZoneGeneration
+        }
+    }
+
     struct Replacement: Equatable {
         var edits: [DataGridCellEdit] = []
         var replacements = 0
@@ -176,6 +208,68 @@ enum GridFindEngine {
             }
         }
         return Result(matches: found)
+    }
+
+    // What `search` finds after only these cells (by data index) were written and these rows added, others having
+    // left, on the same basis. Nil when the term cannot match, which `search` answers as cheaply.
+    static func refreshed(
+        _ matches: [GridFindState.Match],
+        writtenCells: [RowID: IndexSet],
+        addedRows: [RowID],
+        term: String,
+        options: GridFindState.Options,
+        in source: Source
+    ) -> Result? {
+        guard let matcher = try? GridFindMatcher.make(term: term, options: options) else { return nil }
+        let searched = searchedColumns(options: options, in: source)
+        guard !searched.isEmpty else { return nil }
+
+        let added = Set(addedRows)
+        let reread = added.union(writtenCells.keys)
+        var keptByRow: [RowID: [GridFindState.Match]] = [:]
+        for match in matches where writtenCells[match.rowID] != nil && !added.contains(match.rowID) {
+            keptByRow[match.rowID, default: []].append(match)
+        }
+
+        var rereadMatches: [(displayRow: Int, matches: [GridFindState.Match])] = []
+        for rowID in reread {
+            guard let displayRow = source.order.displayIndex(of: rowID, in: source.rows),
+                  let row = source.rows.row(withID: rowID) else { continue }
+            let written = added.contains(rowID) ? nil : writtenCells[rowID]
+            let kept = keptByRow[rowID] ?? []
+            var found: [GridFindState.Match] = []
+            for column in searched {
+                if let written, !written.contains(column.dataIndex) {
+                    if kept.contains(where: { $0.columnID == column.id }) {
+                        found.append(GridFindState.Match(rowID: rowID, columnID: column.id))
+                    }
+                    continue
+                }
+                guard let text = searchableText(in: row, column: column, source: source),
+                      matcher.matches(text) else { continue }
+                found.append(GridFindState.Match(rowID: rowID, columnID: column.id))
+            }
+            if !found.isEmpty {
+                rereadMatches.append((displayRow: displayRow, matches: found))
+            }
+        }
+        rereadMatches.sort { $0.displayRow < $1.displayRow }
+
+        var merged: [GridFindState.Match] = []
+        merged.reserveCapacity(matches.count + rereadMatches.count)
+        var next = rereadMatches.startIndex
+        for match in matches where !reread.contains(match.rowID) {
+            guard let displayRow = source.order.displayIndex(of: match.rowID, in: source.rows) else { continue }
+            while next < rereadMatches.endIndex, rereadMatches[next].displayRow < displayRow {
+                merged.append(contentsOf: rereadMatches[next].matches)
+                next += 1
+            }
+            merged.append(match)
+        }
+        for entry in rereadMatches[next...] {
+            merged.append(contentsOf: entry.matches)
+        }
+        return Result(matches: merged)
     }
 
     // A scope naming a column that is no longer presented searches every presented column.

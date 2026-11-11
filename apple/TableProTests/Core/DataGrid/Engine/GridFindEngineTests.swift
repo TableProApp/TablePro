@@ -169,6 +169,97 @@ struct GridFindEngineTests {
         #expect(search("a b", in: source(rows, revealsInvisibleCharacters: true)).matches.isEmpty)
     }
 
+    // MARK: - Refreshing
+
+    @Test("Reading only the written cells and the added rows again finds what a full search finds")
+    func refreshMatchesAFullSearch() throws {
+        var rows = Self.people
+        let before = search("act", in: source(rows)).matches
+        rows.edit(row: 1, column: 2, value: .text("acting"))
+        rows.edit(row: 2, column: 0, value: .text("done"))
+        rows.appendInsertedRow(values: [.text("react"), .text("Dee"), .null])
+        let inserted = try #require(rows.rows.last?.id)
+        rows.remove(at: IndexSet(integer: 0))
+
+        let refreshed = GridFindEngine.refreshed(
+            before,
+            writtenCells: [.existing(1): IndexSet(integer: 2), .existing(2): IndexSet(integer: 0)],
+            addedRows: [inserted],
+            term: "act",
+            options: GridFindState.Options(),
+            in: source(rows)
+        )
+
+        let expected = [
+            match(1, Self.status),
+            match(1, Self.remark),
+            match(2, Self.remark),
+            GridFindState.Match(rowID: inserted, columnID: Self.status)
+        ]
+        #expect(refreshed?.matches == expected)
+        #expect(search("act", in: source(rows)).matches == expected)
+    }
+
+    @Test("Under a value filter a refresh keeps the filter's order and leaves out a hidden row it rereads")
+    func refreshFollowsTheFilteredOrder() {
+        let order = DataGridRowOrder(filteredIDs: [.existing(2), .existing(0)], revision: 1)
+        var rows = Self.people
+        let before = search("act", in: source(rows, order: order)).matches
+        rows.edit(row: 0, column: 2, value: .text("react"))
+        rows.edit(row: 1, column: 1, value: .text("Actor"))
+
+        let refreshed = GridFindEngine.refreshed(
+            before,
+            writtenCells: [.existing(0): IndexSet(integer: 2), .existing(1): IndexSet(integer: 1)],
+            addedRows: [],
+            term: "act",
+            options: GridFindState.Options(),
+            in: source(rows, order: order)
+        )
+
+        #expect(refreshed?.matches == search("act", in: source(rows, order: order)).matches)
+        #expect(refreshed?.matches == [match(2, Self.status), match(2, Self.remark), match(0, Self.status), match(0, Self.remark)])
+    }
+
+    @Test("A term that cannot match leaves the refresh to a full search")
+    func refreshWithoutATerm() {
+        let blank = GridFindEngine.refreshed(
+            [], writtenCells: [:], addedRows: [.existing(0)], term: " ", options: GridFindState.Options(), in: source()
+        )
+        let invalid = GridFindEngine.refreshed(
+            [], writtenCells: [:], addedRows: [], term: "(", options: options(regex: true), in: source()
+        )
+
+        #expect(blank == nil)
+        #expect(invalid == nil)
+    }
+
+    // The cost pin: the caller names the written cells, and every other cell keeps its match without being read.
+    @Test("Only the written cells of a row are read again")
+    func refreshReadsOnlyTheWrittenCells() {
+        var rows = Self.people
+        let before = search("act", in: source(rows)).matches
+        rows.edit(row: 2, column: 0, value: .text("done"))
+        rows.edit(row: 2, column: 1, value: .text("Actor"))
+
+        let refreshed = GridFindEngine.refreshed(
+            before,
+            writtenCells: [.existing(2): IndexSet(integer: 1)],
+            addedRows: [],
+            term: "act",
+            options: GridFindState.Options(),
+            in: source(rows)
+        )
+
+        #expect(refreshed?.matches == [
+            match(0, Self.status),
+            match(1, Self.status),
+            match(2, Self.status),
+            match(2, Self.name),
+            match(2, Self.remark)
+        ])
+    }
+
     // MARK: - Binary columns
 
     private static let payload = TableRows(
@@ -360,6 +451,11 @@ struct DataGridModelFindTests {
     )
 
     private static let company = DataGridColumnID(name: "company", occurrence: 0)
+    private static let city = DataGridColumnID(name: "city", occurrence: 0)
+
+    private func match(_ row: Int, _ column: DataGridColumnID) -> GridFindState.Match {
+        GridFindState.Match(rowID: .existing(row), columnID: column)
+    }
 
     private func mount(
         _ configure: (inout DataGridConfiguration) -> Void = { _ in }
@@ -553,6 +649,92 @@ struct DataGridModelFindTests {
         model.reloadRows()
 
         #expect(model.find.matches.count == 1)
+    }
+
+    private func fullSearch(_ model: DataGridModel, _ owner: FindGridOwner) -> [GridFindState.Match] {
+        let source = GridFindEngine.Source(rows: owner.tableRows, order: model.order, columns: model.columns)
+        return GridFindEngine.search(model.find.term, options: model.find.options, in: source).matches
+    }
+
+    @Test("Edits under an open bar keep the matches a full search finds")
+    func editsKeepTheMatchesInStep() {
+        let (model, owner) = mount()
+        search(model, "acme")
+
+        owner.tableRows.rows[2].values[1] = .text("Umbrella")
+        model.apply(.cellChanged(row: 2, column: 1))
+        owner.tableRows.rows[0].values[2] = .text("Acme Heights")
+        owner.tableRows.rows[1].values[2] = .text("Falls")
+        model.apply(.cellsChanged([CellPosition(row: 0, column: 2), CellPosition(row: 1, column: 2)]))
+
+        #expect(model.find.matches == [match(0, Self.city), match(3, Self.company), match(3, Self.city)])
+        #expect(model.find.matches == fullSearch(model, owner))
+    }
+
+    @Test("Rows added or removed under an open bar keep the matches a full search finds")
+    func insertsAndRemovalsKeepTheMatchesInStep() {
+        let (model, owner) = mount()
+        search(model, "acme")
+
+        let inserted = owner.tableRows.appendInsertedRow(values: [.text("5"), .text("Acme East"), .text("Oslo")])
+        model.apply(inserted)
+        let insertedID = owner.tableRows.rows[4].id
+        #expect(model.find.matches.last == GridFindState.Match(rowID: insertedID, columnID: Self.company))
+        #expect(model.find.matches == fullSearch(model, owner))
+
+        let removed = owner.tableRows.remove(at: IndexSet(integer: 1))
+        model.apply(removed)
+
+        #expect(model.find.matches == [
+            match(2, Self.company),
+            match(3, Self.company),
+            match(3, Self.city),
+            GridFindState.Match(rowID: insertedID, columnID: Self.company)
+        ])
+        #expect(model.find.matches == fullSearch(model, owner))
+    }
+
+    // An edit keeps its row on screen (#2667); an insert hides it, and once undone and inserted again it shows again.
+    @Test("A row a value filter shows again after an insert is searched again")
+    func rowBackInTheFilteredOrderIsSearched() {
+        let (model, owner) = mount()
+        var filter = GridValueFilterState()
+        filter.set(
+            ColumnValueFilter(selectedValues: ["Acme Falls", "Paris", "Acme"], includesNull: false),
+            columnName: "city",
+            forColumn: 2
+        )
+        model.setValueFilter(filter)
+        search(model, "acme")
+        #expect(model.find.matches == [match(1, Self.city), match(2, Self.company), match(3, Self.company), match(3, Self.city)])
+
+        owner.tableRows.rows[2].values[2] = .text("Lyon")
+        model.apply(.cellChanged(row: 2, column: 2))
+        let firstRow = owner.tableRows.appendInsertedRow(values: [.text("5"), .text("Nova"), .text("Oslo")])
+        model.apply(firstRow)
+        #expect(model.displayIndex(of: .existing(2)) == nil)
+        let firstRowID = owner.tableRows.rows[4].id
+        model.apply(owner.tableRows.remove(rowIDs: [firstRowID]))
+        owner.tableRows.rows[2].values[2] = .text("Paris")
+        model.apply(.cellChanged(row: 2, column: 2))
+        let secondRow = owner.tableRows.appendInsertedRow(values: [.text("6"), .text("Vega"), .text("Oslo")])
+        model.apply(secondRow)
+
+        #expect(model.displayIndex(of: .existing(2)) != nil)
+        #expect(model.find.matches == [match(1, Self.city), match(2, Self.company), match(3, Self.company), match(3, Self.city)])
+        #expect(model.find.matches == fullSearch(model, owner))
+    }
+
+    @Test("A term typed but not yet searched makes the next refresh search every row")
+    func changedTermSearchesEveryRow() {
+        let (model, owner) = mount()
+        search(model, "acme")
+
+        model.find.term = "paris"
+        owner.tableRows.rows[0].values[2] = .text("Paris")
+        model.apply(.cellChanged(row: 3, column: 1))
+
+        #expect(model.find.matches == [match(0, Self.city), match(2, Self.city)])
     }
 
     @Test("The counter names the page whenever the owner holds more rows, Search All Rows offered or not")

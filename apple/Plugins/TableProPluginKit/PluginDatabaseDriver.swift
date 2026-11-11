@@ -1027,6 +1027,7 @@ public extension PluginDatabaseDriver {
         let tables = try await fetchTables(schema: schema)
         var result: [String: [PluginColumnInfo]] = [:]
         for table in tables {
+            try Task.checkCancellation()
             result[table.name] = try await fetchColumns(table: table.name, schema: schema)
         }
         return result
@@ -1061,6 +1062,7 @@ public extension PluginDatabaseDriver {
         let tables = try await fetchTables(schema: schema)
         var result: [String: [PluginForeignKeyInfo]] = [:]
         for table in tables {
+            try Task.checkCancellation()
             let fks = try await fetchForeignKeys(table: table.name, schema: schema)
             if !fks.isEmpty { result[table.name] = fks }
         }
@@ -1090,6 +1092,7 @@ public extension PluginDatabaseDriver {
         let tables = try await fetchTables(schema: schema)
         var result: [String: [PluginIndexInfo]] = [:]
         for table in tables {
+            try Task.checkCancellation()
             let indexes = try await fetchIndexes(table: table.name, schema: schema)
             if !indexes.isEmpty { result[table.name] = indexes }
         }
@@ -1108,6 +1111,7 @@ public extension PluginDatabaseDriver {
         let tables = try await fetchTables(schema: schema)
         var result: [String: PluginTableMetadata] = [:]
         for table in tables {
+            try Task.checkCancellation()
             guard let metadata = try? await fetchTableMetadata(table: table.name, schema: schema) else { continue }
             result[table.name] = metadata
         }
@@ -1118,6 +1122,7 @@ public extension PluginDatabaseDriver {
         let dbs = try await fetchDatabases()
         var result: [PluginDatabaseMetadata] = []
         for db in dbs {
+            try Task.checkCancellation()
             do {
                 result.append(try await fetchDatabaseMetadata(db))
             } catch {
@@ -1500,13 +1505,15 @@ public extension PluginDatabaseDriver {
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         AsyncThrowingStream { continuation in
-            Task {
+            let producer = Task {
                 do {
+                    try Task.checkCancellation()
                     let result = try await self.execute(query: query)
-                    let header = PluginStreamHeader(
+                    var header = PluginStreamHeader(
                         columns: result.columns,
                         columnTypeNames: result.columnTypeNames
                     )
+                    if result.isTruncated { header.rowLimit = result.rows.count }
                     continuation.yield(.header(header))
                     if !result.rows.isEmpty {
                         continuation.yield(.rows(result.rows))
@@ -1516,6 +1523,8 @@ public extension PluginDatabaseDriver {
                     continuation.finish(throwing: error)
                 }
             }
+            // An unstructured task is no child of the consumer, so its cancel reaches execute only through here.
+            continuation.onTermination = { @Sendable _ in producer.cancel() }
         }
     }
 

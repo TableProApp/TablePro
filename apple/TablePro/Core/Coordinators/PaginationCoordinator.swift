@@ -347,6 +347,15 @@ final class PaginationCoordinator: ObservableObject {
                 let fetchTime = CFAbsoluteTimeGetCurrent() - start
                 progressLog.info("[fetchAll] rows=\(result.rows.count) fetchTime=\(String(format: "%.3f", fetchTime))s")
 
+                let prepared = await TableRows.preparing(
+                    result.rows,
+                    rowLocators: isTableTab ? result.rowLocators : nil,
+                    exportDocuments: result.exportDocuments,
+                    absentCells: result.absentCells,
+                    unloadedCells: result.unloadedCells,
+                    shape: parent.tabSessionRegistry.tableRows(for: tabId).rowShape
+                )
+
                 guard !Task.isCancelled else {
                     // Clears the flag like every exit: a bare return stuck the tab on Loading after a late cancel (no-op `cancelQuery()` drivers).
                     await MainActor.run { [weak self] in
@@ -368,7 +377,8 @@ final class PaginationCoordinator: ObservableObject {
                     guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
                     parent.mutateActiveTableRows(for: tabId) { rows in
-                        rows.replace(
+                        if let installed = rows.install(prepared) { return installed }
+                        return rows.replace(
                             rows: result.rows,
                             rowLocators: isTableTab ? result.rowLocators : nil,
                             exportDocuments: result.exportDocuments,
