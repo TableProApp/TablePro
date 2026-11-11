@@ -43,7 +43,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     // The primary's alone: it writes the session for every window.
     private readonly SessionWriter? _saves;
-    private readonly DispatcherQueueTimer? _saveTimer;
+    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer? _saveTimer;
     private TimeSpan _nextRetry = SaveDelay;
     private SettingsView? _settings;
     private OpenConnection? _front;
