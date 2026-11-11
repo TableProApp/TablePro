@@ -9,6 +9,7 @@ use tablepro_core::browse::{PageRead, PageRequest, read_page};
 use tablepro_core::column::ColumnKind;
 use tablepro_core::edit::CellInput;
 use tablepro_core::filter::FilterSet;
+use tablepro_core::import::CsvImportOptions;
 use tablepro_core::meta::{ObjectKind, ObjectScope, PagePosition, RowIdentity, TableRef};
 use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
 use tablepro_core::value::{JsonText, OtherValue, SqlDecimal, Temporal};
@@ -17,6 +18,7 @@ use tablepro_core::{
     RunOptions, ServerCode, Truncation, Value, WorkspaceSettings,
 };
 use tablepro_driver_mongodb::MongoDriver;
+use tablepro_test_support::import_csv;
 use tokio_util::sync::CancellationToken;
 
 use crate::support::{
@@ -629,4 +631,44 @@ async fn page_with(connection: &dyn Connection, table: &TableRef, columns: &[Col
     read_page::<Box<dyn std::error::Error + Send + Sync>>(connection, &request, &within(CALL))
         .await
         .expect("a page")
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn an_imported_null_leaves_its_field_out_of_a_sparse_unique_index() {
+    let fixture = start().await;
+    let connection = connect(&fixture).await;
+    let collection = unique("sparse_import");
+    let filled = fixture
+        .shell(&format!(
+            "const target = db.getSiblingDB('{DATABASE}').getCollection('{collection}');\n\
+             target.createIndex({{email: 1}}, {{unique: true, sparse: true}});\n\
+             target.insertOne({{_id: 0, email: 'ann@example.com'}}).acknowledged"
+        ))
+        .await
+        .expect("mongosh ran");
+    assert!(filled.succeeded(), "{}", filled.stderr_text());
+    let table = TableRef::new(Some(DATABASE.to_owned()), collection.clone());
+    let options = CsvImportOptions {
+        null_marker: "NULL".to_owned(),
+        ..CsvImportOptions::default()
+    };
+
+    let report = import_csv(
+        connection.as_ref(),
+        &table,
+        b"_id,email\n1,NULL\n2,NULL\n",
+        &options,
+        within(CALL),
+    )
+    .await;
+
+    assert!(report.is_ok(), "{report:?}");
+    let missing = fixture
+        .shell(&format!(
+            "db.getSiblingDB('{DATABASE}').getCollection('{collection}').countDocuments({{email: {{$exists: false}}}})"
+        ))
+        .await
+        .expect("mongosh ran");
+    assert_eq!(missing.stdout_text().trim(), "2", "{}", missing.stderr_text());
 }

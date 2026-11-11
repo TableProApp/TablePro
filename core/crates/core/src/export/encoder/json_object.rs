@@ -51,13 +51,17 @@ impl JsonObjectWriter {
             }
             out.extend_from_slice(key);
             match cells.get(index).copied() {
-                Some(value) => write_json(
-                    out,
-                    &JsonCell {
-                        value,
-                        kind: &column_type(&self.columns, index).kind,
-                    },
-                ),
+                Some(value) => {
+                    let column = column_type(&self.columns, index);
+                    let value = crate::document::json_number(value, column);
+                    write_json(
+                        out,
+                        &JsonCell {
+                            value: &value,
+                            kind: &column.kind,
+                        },
+                    );
+                }
                 // A row shorter than its header: the cell is missing,
                 // which is not the same as a NULL the row holds.
                 None => out.extend_from_slice(b"null"),

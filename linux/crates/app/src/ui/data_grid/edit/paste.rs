@@ -2,7 +2,7 @@ use gtk4::prelude::*;
 use gtk4::{gdk, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use tablepro_core::edit::{CellInput, EditParseError};
+use tablepro_core::edit::{CellInput, EditParseError, read_cell};
 use tablepro_core::import::{CsvRowError, ImportError, PastedRows, PastedTable};
 use tablepro_core::{ColumnInfo, Value};
 
@@ -160,7 +160,17 @@ impl EditController {
     }
 
     fn insert_pasted(&self, grid: &DataGrid, pasted: PastedRows) {
-        let PastedRows { rows, skipped } = pasted;
+        let PastedRows { mut rows, skipped } = pasted;
+        // A pasted NULL is a value read elsewhere, which a document engine reads for a field a row lacks.
+        if let (Some(dialect), Some(columns)) = (grid.dialect(), catalog_columns(grid)) {
+            for row in &mut rows {
+                for (cell, column) in row.iter_mut().zip(&columns) {
+                    if matches!(cell, CellInput::Value(Value::Null)) {
+                        *cell = read_cell(Value::Null, column, &*dialect);
+                    }
+                }
+            }
+        }
         let count = rows.len();
         if count == 0 {
             grid.toast(gettext("The clipboard has no rows to paste."));

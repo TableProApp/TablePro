@@ -928,6 +928,23 @@ fn mongo_what_replaces_a_collection_is_destructive() {
 }
 
 #[test]
+fn mongo_a_merge_into_its_own_collection_is_destructive() {
+    for text in [
+        "db.users.aggregate([{$match: {}}, {$merge: {into: 'users', whenMatched: 'replace'}}])",
+        "db.users.aggregate([{$merge: 'users'}])",
+        "db.getSiblingDB('shop').users.aggregate([{$merge: {into: {db: 'shop', coll: 'users'}}}])",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Destructive, "{text}");
+    }
+    for text in [
+        "db.users.aggregate([{$merge: {into: 'users_archive', whenMatched: 'replace'}}])",
+        "db.getSiblingDB('shop').users.aggregate([{$merge: {into: {db: 'archive', coll: 'users'}}}])",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Write, "{text}");
+    }
+}
+
+#[test]
 fn mongo_a_bulk_write_that_reaches_every_document_is_destructive() {
     for ops in [
         "{delete: 0, filter: {}, multi: true}",

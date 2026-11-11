@@ -14,7 +14,7 @@ use crate::support::{CALL, DATABASE, connect_to, direct, editor, first_page, pas
 const MEMBER: &str = "localhost.test.build.10gen.cc:27017";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires docker"]
+#[ignore = "requires docker, public DNS and host port 27017"]
 async fn a_replica_set_is_found_from_its_seeds_and_read_through_its_primary() {
     let fixture = MongoFixture::start_on_test_records()
         .await

@@ -2,7 +2,7 @@ use gtk4::prelude::*;
 use gtk4::{self as gtk, glib};
 use tablepro_core::Value;
 use tablepro_core::column::{BoolStorage, ColumnKind};
-use tablepro_core::edit::{CellInput, EditParseError, new_draft_cell, parse_edit_text};
+use tablepro_core::edit::{CellInput, EditParseError, new_draft_cell, parse_edit_text, read_cell};
 
 use super::{EditController, edit_start};
 use crate::i18n::{gettext, ngettext_f};
@@ -148,7 +148,8 @@ impl EditController {
     }
 
     /// Copies of the rows as the user sees them, pending edits included.
-    /// What the database owns (key, identity, generated) is left to it.
+    /// What the database owns (key, identity, generated) is left to it,
+    /// and so is a NULL read where it can stand for a missing value.
     pub(super) fn duplicate_rows(&self, grid: &DataGrid) {
         if self.policy().is_none_or(|policy| policy.duplicate.is_err()) {
             return;
@@ -158,6 +159,7 @@ impl EditController {
         };
         let columns = grid.grid_columns();
         let tracked = self.tracked();
+        let dialect = grid.dialect();
         let copies = target
             .rows
             .iter()
@@ -165,14 +167,24 @@ impl EditController {
                 let source = tracked.inputs(row);
                 columns
                     .iter()
-                    .map(|column| match &column.catalog {
-                        Some(catalog) if catalog.primary_key || catalog.is_auto_increment || catalog.is_generated => {
-                            new_draft_cell(catalog)
-                        }
-                        Some(_) | None => source
+                    .map(|column| {
+                        let input = source
                             .get(column.index)
                             .cloned()
-                            .unwrap_or(CellInput::Value(Value::Null)),
+                            .unwrap_or(CellInput::Value(Value::Null));
+                        match (&column.catalog, input, dialect.as_deref()) {
+                            (Some(catalog), _, _)
+                                if catalog.primary_key || catalog.is_auto_increment || catalog.is_generated =>
+                            {
+                                new_draft_cell(catalog)
+                            }
+                            (Some(catalog), CellInput::Value(value), Some(dialect))
+                                if tracked.shows_read_value(row, column.index) =>
+                            {
+                                read_cell(value, catalog, dialect)
+                            }
+                            (_, input, _) => input,
+                        }
                     })
                     .collect()
             })

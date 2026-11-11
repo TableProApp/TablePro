@@ -4,6 +4,7 @@ use std::sync::Arc;
 use bson::{Bson, Document};
 use mongodb::ClientSession;
 use tablepro_core::column::{ColumnType, ResultColumn};
+use tablepro_core::document::NUMBER_TYPE;
 use tablepro_core::value::Value;
 use tablepro_core::{DriverError, QueryResult, ResultEvent, ResultSink, RowLimit, ServerNotice, SinkFlow, Truncation};
 
@@ -29,6 +30,8 @@ pub(crate) struct Layout {
     names: Vec<String>,
     /// Each column shown as Extended JSON whatever its value's type.
     json: Vec<bool>,
+    /// Each JSON column of numbers of more than one type.
+    numbers: Vec<bool>,
     /// Each column's types so far, for the type the column shows.
     types: Vec<BTreeSet<&'static str>>,
     discovered: bool,
@@ -44,6 +47,7 @@ impl Layout {
         Self {
             types: vec![BTreeSet::new(); named.len()],
             json: named.iter().map(|column| column.json).collect(),
+            numbers: named.iter().map(|column| column.numbers).collect(),
             names: named.iter().map(|column| column.name.clone()).collect(),
             keys: named.into_iter().map(|column| column.key).collect(),
             discovered: matches!(columns, Columns::Discovered),
@@ -62,6 +66,7 @@ impl Layout {
                     self.keys.push(key.clone());
                     self.names.push(key.clone());
                     self.json.push(false);
+                    self.numbers.push(false);
                     self.types.push(BTreeSet::new());
                     outside = true;
                     self.keys.len() - 1
@@ -93,10 +98,11 @@ impl Layout {
         self.names
             .iter()
             .zip(&self.types)
-            .zip(&self.json)
-            .map(|((name, types), json)| match json {
-                true => ResultColumn::new(name.clone(), column_type("object")),
-                false => ResultColumn::new(name.clone(), column_kind(types)),
+            .zip(self.json.iter().zip(&self.numbers))
+            .map(|((name, types), shown)| match shown {
+                (true, true) => ResultColumn::new(name.clone(), column_type(NUMBER_TYPE)),
+                (true, false) => ResultColumn::new(name.clone(), column_type("object")),
+                (false, _) => ResultColumn::new(name.clone(), column_kind(types)),
             })
             .collect()
     }
@@ -301,18 +307,23 @@ mod tests {
     fn a_named_layout_keeps_its_columns() {
         let aliased = NamedColumn {
             key: "__field_2".to_owned(),
-            name: "a.b".to_owned(),
-            json: false,
+            ..NamedColumn::field("a.b")
         };
         let nested = NamedColumn {
             json: true,
             ..NamedColumn::field("n")
+        };
+        let numbers = NamedColumn {
+            json: true,
+            numbers: true,
+            ..NamedColumn::field("q")
         };
         let mut layout = Layout::new(&Columns::Named(vec![
             NamedColumn::field("b"),
             NamedColumn::field("a"),
             aliased,
             nested,
+            numbers,
         ]));
 
         assert!(layout.learn(&doc! { "a": 1_i32, "c": 2_i32 }), "c is outside");
@@ -323,10 +334,14 @@ mod tests {
                 Value::Null,
                 Value::Int(1),
                 Value::Int(3),
-                Value::Json(tablepro_core::value::JsonText::parse(r#"{"$numberLong": "4"}"#.to_owned()).expect("JSON"))
+                Value::Json(tablepro_core::value::JsonText::parse(r#"{"$numberLong": "4"}"#.to_owned()).expect("JSON")),
+                Value::Null,
             ]
         );
-        let names: Vec<String> = layout.columns().iter().map(|column| column.name.clone()).collect();
-        assert_eq!(names, ["b", "a", "a.b", "n"]);
+        let columns = layout.columns();
+        let names: Vec<&str> = columns.iter().map(|column| column.name.as_str()).collect();
+        assert_eq!(names, ["b", "a", "a.b", "n", "q"]);
+        let types: Vec<&str> = columns.iter().map(|column| column.column_type.name.as_str()).collect();
+        assert_eq!(types[3..], ["object", NUMBER_TYPE]);
     }
 }

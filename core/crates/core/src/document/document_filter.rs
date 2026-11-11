@@ -26,14 +26,30 @@ const JSON_OPERATORS: &[FilterOp] = &[
     FilterOp::IsNotNull,
 ];
 
+/// A pattern is a `$regex`, which never matches a number.
+const NUMBER_OPERATORS: &[FilterOp] = &[
+    FilterOp::Eq,
+    FilterOp::NotEq,
+    FilterOp::Lt,
+    FilterOp::LtEq,
+    FilterOp::Gt,
+    FilterOp::GtEq,
+    FilterOp::Between,
+    FilterOp::In,
+    FilterOp::NotIn,
+    FilterOp::IsNull,
+    FilterOp::IsNotNull,
+];
+
 /// The operators a filter rule takes on a field, in the order the filter
 /// strip lists them. A JSON column compares as well as matching text: a
 /// value typed for it binds as the BSON its Extended JSON names, and the
 /// server compares it with the field's values of that type, numbers of
 /// every type with each other, so a field of ints and doubles keeps `<`
-/// and Between.
+/// and Between. A field of numbers only compares.
 pub fn filter_operators(column: &ColumnInfo) -> &'static [FilterOp] {
     match column.column_type.kind {
+        ColumnKind::Json { .. } if super::json_cells::holds_numbers(&column.column_type) => NUMBER_OPERATORS,
         ColumnKind::Json { .. } => JSON_OPERATORS,
         _ => operators_for(&column.column_type.kind),
     }

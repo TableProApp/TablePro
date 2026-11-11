@@ -21,13 +21,17 @@ impl Serialize for JsonRow<'_> {
         let mut map = serializer.serialize_map(Some(self.names.len()))?;
         for (index, name) in self.names.iter().enumerate() {
             match self.row.get(index) {
-                Some(value) => map.serialize_entry(
-                    name,
-                    &JsonCell {
-                        value,
-                        kind: &column_type(self.columns, index).kind,
-                    },
-                )?,
+                Some(value) => {
+                    let column = column_type(self.columns, index);
+                    let value = crate::document::json_number(value, column);
+                    map.serialize_entry(
+                        name,
+                        &JsonCell {
+                            value: &value,
+                            kind: &column.kind,
+                        },
+                    )?;
+                }
                 // A row shorter than its header: the cell is missing,
                 // which is not the same as a NULL the row holds.
                 None => map.serialize_entry(name, &Option::<()>::None)?,
@@ -154,6 +158,20 @@ mod tests {
                 column: "body".to_owned()
             })
         );
+    }
+
+    #[test]
+    fn a_number_fields_json_goes_out_as_the_number_and_other_json_as_it_is() {
+        let (columns, rows) = super::super::test_columns::mixed_json();
+
+        let text = render_json(&columns, &rows).expect("the array");
+        let json: serde_json::Value = serde_json::from_str(&text).expect("JSON");
+
+        assert_eq!(json[0]["long"], serde_json::json!(3_000_000_000_i64));
+        assert!(text.contains(r#""price":19.90,"#), "{text}");
+        assert_eq!(json[0]["doc"]["$oid"], serde_json::json!("5f1d7a0c9b1e8b2a3c4d5e6f"));
+        assert!(text.contains(r#""pg_price":19.90,"#), "{text}");
+        assert_eq!(json[0]["pg_long"]["$numberLong"], serde_json::json!("7"));
     }
 
     #[test]

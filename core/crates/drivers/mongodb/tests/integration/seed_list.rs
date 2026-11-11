@@ -12,7 +12,7 @@ use crate::support::{CALL, connect_to, direct, editor, first_page, password, run
 const SEED_LIST: &str = "test5.test.build.10gen.cc";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires docker"]
+#[ignore = "requires docker, public DNS and host port 27017"]
 async fn a_seed_list_logs_in_where_its_txt_record_says_then_pages_and_saves() {
     let fixture = MongoFixture::start_on_test_records()
         .await

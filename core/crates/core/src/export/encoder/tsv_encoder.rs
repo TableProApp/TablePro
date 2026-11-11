@@ -42,7 +42,8 @@ impl RowEncoder for TsvEncoder {
         self.writer.write(
             out,
             cells.iter().enumerate().map(|(index, value)| {
-                value_text(value, column_type(&self.columns, index)).unwrap_or_else(|| TSV_NULL.to_owned())
+                let column = column_type(&self.columns, index);
+                value_text(&crate::document::json_number(value, column), column).unwrap_or_else(|| TSV_NULL.to_owned())
             }),
         );
         Ok(())
