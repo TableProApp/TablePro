@@ -379,10 +379,10 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         return structure;
     }
 
-    private async void LoadFilters(FilterBar filters, bool focus) =>
+    private static async void LoadFilters(FilterBar filters, bool focus) =>
         await filters.LoadAsync(focus).ConfigureAwait(true);
 
-    private async void LoadStructure(StructureView structure) =>
+    private static async void LoadStructure(StructureView structure) =>
         await structure.LoadAsync(refresh: false).ConfigureAwait(true);
 
     // A refresh leaves the structure and the filter choices stale, so the ones on screen are read again.
