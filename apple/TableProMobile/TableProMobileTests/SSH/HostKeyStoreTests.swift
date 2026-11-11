@@ -1,8 +1,3 @@
-//
-//  HostKeyStoreTests.swift
-//  TableProMobileTests
-//
-
 import Foundation
 import TableProSSHTransport
 import Testing
@@ -116,6 +111,49 @@ struct HostKeyStoreTests {
         store.remove(hostname: "db.example.com", port: 22)
 
         #expect(store.trustedHosts().isEmpty)
+    }
+
+    @Test("A saved key file that cannot be read checks no key and is never written over")
+    func unreadableFileChecksNothing() throws {
+        let path = makeTempFilePath()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+
+        let store = HostKeyStore(filePath: path)
+        store.trust(hostname: "db.example.com", port: 22, key: makeTestKey(0x31), keyType: "ssh-ed25519")
+        let saved = try String(contentsOfFile: path, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: path)
+
+        #expect(
+            store.verify(keyData: makeTestKey(0x32), keyType: "ssh-ed25519", hostname: "db.example.com", port: 22)
+                == .unreadable
+        )
+        store.trust(hostname: "other.example.com", port: 22, key: makeTestKey(0x33), keyType: "ssh-ed25519")
+        store.remove(hostname: "db.example.com", port: 22)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
+        let after = try String(contentsOfFile: path, encoding: .utf8)
+        #expect(after == saved)
+        #expect(store.verify(keyData: makeTestKey(0x31), keyType: "ssh-ed25519", hostname: "db.example.com", port: 22) == .trusted)
+    }
+
+    @Test("A saved line that cannot be parsed keeps its host from looking new, and stays in the file")
+    func unparsedLineIsKept() throws {
+        let path = makeTempFilePath()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+
+        let unparsed = "[db.example.com]:22 ssh-ed25519 !!not-base64!!"
+        try (unparsed + "\n").write(toFile: path, atomically: true, encoding: .utf8)
+        let store = HostKeyStore(filePath: path)
+
+        #expect(
+            store.verify(keyData: makeTestKey(0x41), keyType: "ssh-ed25519", hostname: "db.example.com", port: 22)
+                == .unreadable
+        )
+        store.trust(hostname: "other.example.com", port: 22, key: makeTestKey(0x42), keyType: "ssh-ed25519")
+
+        let contents = try String(contentsOfFile: path, encoding: .utf8)
+        #expect(contents.hasPrefix(unparsed + "\n"))
+        #expect(store.verify(keyData: makeTestKey(0x42), keyType: "ssh-ed25519", hostname: "other.example.com", port: 22) == .trusted)
     }
 
     @Test("Fingerprints use the OpenSSH SHA256 form")
