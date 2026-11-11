@@ -218,9 +218,15 @@ impl TableEditor {
             .map(|(_, column)| column.name.clone())
     }
 
-    fn input(&self, column: &ColumnInfo, edit: &CellEdit, context: EditContext) -> Result<CellInput, CoreError> {
+    fn input(
+        &self,
+        column: &ColumnInfo,
+        edit: &CellEdit,
+        context: EditContext,
+        read: Option<&Value>,
+    ) -> Result<CellInput, CoreError> {
         let input = match edit {
-            CellEdit::Text { text } => parse_edit_text(text, column, context).map_err(parse_error)?,
+            CellEdit::Text { text } => parse_edit_text(text, column, context, read).map_err(parse_error)?,
             CellEdit::Null if column.nullable => CellInput::Value(Value::Null),
             CellEdit::Null => return Err(parse_error(EditParseError::Required)),
             CellEdit::Default => CellInput::Default,
@@ -284,6 +290,7 @@ impl TableEditor {
         column: &ColumnInfo,
         edit: &CellEdit,
         new_row: bool,
+        read: Option<&Value>,
     ) -> Result<CellInput, CoreError> {
         let open = match new_row {
             true => editable_in_new_row(column),
@@ -304,7 +311,7 @@ impl TableEditor {
             true => EditContext::InsertDraft,
             false => EditContext::UpdateRow,
         };
-        self.input(column, edit, context)
+        self.input(column, edit, context, read)
     }
 
     fn update(
@@ -316,13 +323,14 @@ impl TableEditor {
         cells: &[CellChange],
     ) -> Result<Option<RowChange>, CoreError> {
         let mut assignments: Vec<(usize, CellInput)> = Vec::with_capacity(cells.len());
+        let mut originals: Vec<(usize, Value)> = Vec::with_capacity(cells.len());
         for cell in cells {
             let column = self.column(cell.column)?;
             let index = cell.column as usize;
-            let input = self.check_cell(Some(dialect), column, &cell.edit, false)?;
             let original = rows
                 .stored_value(row, index)
                 .and_then(|value| value_for_column(&value, &read[index].column_type, &column.column_type));
+            let input = self.check_cell(Some(dialect), column, &cell.edit, false, original.as_ref())?;
             let unchanged = match (&input, &original) {
                 (CellInput::Value(edited), Some(original)) => is_unchanged(original, edited, &column.column_type),
                 _ => false,
@@ -332,13 +340,20 @@ impl TableEditor {
             if !unchanged {
                 assignments.push((index, input));
             }
+            if let Some(original) = original {
+                originals.retain(|(position, _)| *position != index);
+                originals.push((index, original));
+            }
         }
         if assignments.is_empty() {
             return Ok(None);
         }
+        // A document engine saves an edited number in the type it was read as, which the store keeps.
+        originals.retain(|(position, _)| assignments.iter().any(|(assigned, _)| assigned == position));
         Ok(Some(RowChange::Update(RowUpdate {
             key: self.key(rows, read, row)?,
             assignments,
+            read: originals,
         })))
     }
 
@@ -362,8 +377,8 @@ impl TableEditor {
             }
             // A column with no text to type, such as a blob, still takes NULL or the server's value in a new row.
             let input = match edit {
-                CellEdit::Text { .. } => self.check_cell(None, column, edit, true)?,
-                CellEdit::Null | CellEdit::Default => self.input(column, edit, EditContext::InsertDraft)?,
+                CellEdit::Text { .. } => self.check_cell(None, column, edit, true, None)?,
+                CellEdit::Null | CellEdit::Default => self.input(column, edit, EditContext::InsertDraft, None)?,
             };
             inputs.push(input);
         }
@@ -441,7 +456,8 @@ impl TableEditor {
     pub fn check(&self, column: u32, edit: CellEdit, new_row: bool) -> Result<(), CoreError> {
         let info = self.column(column)?;
         let dialect = self.session.current_dialect();
-        self.check_cell(dialect.as_deref(), info, &edit, new_row).map(|_| ())
+        self.check_cell(dialect.as_deref(), info, &edit, new_row, None)
+            .map(|_| ())
     }
 
     // The statements the edits save as, at the session's Safe Mode level now. `rows` is the result set the rows were

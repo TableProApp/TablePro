@@ -9,18 +9,13 @@ import Foundation
 import TableProPluginKit
 
 enum BlobDisplayContext {
-    /// Data grid cell: compact single-line "0x48656C6C6F..."
     case grid
-    /// Sidebar detail view: full multi-line hex dump
     case detail
-    /// Copy to clipboard: compact hex
     case copy
-    /// Editable hex in sidebar: space-separated hex bytes "48 65 6C 6C 6F"
     case edit
 }
 
-@MainActor
-final class BlobFormattingService {
+final class BlobFormattingService: Sendable {
     static let shared = BlobFormattingService()
 
     private init() {}
@@ -68,12 +63,10 @@ final class BlobFormattingService {
         return String(data: data, encoding: .isoLatin1)
     }
 
-    /// Whether the given column type requires BLOB formatting.
     func requiresFormatting(columnType: ColumnType) -> Bool {
         columnType.isBlobType
     }
 
-    /// Format a value if the column type is a BLOB type; otherwise return the original value.
     func formatIfNeeded(_ value: String, columnType: ColumnType?, for context: BlobDisplayContext) -> String {
         guard let columnType, requiresFormatting(columnType: columnType) else {
             return value

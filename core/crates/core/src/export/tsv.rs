@@ -72,6 +72,16 @@ mod tests {
     }
 
     #[test]
+    fn a_number_fields_json_is_written_as_the_number_and_other_json_as_it_is() {
+        let (columns, rows) = super::super::test_columns::mixed_json();
+
+        assert_eq!(
+            render_tsv(&columns, &rows, false).unwrap(),
+            "3000000000\t19.90\t\"{\"\"$oid\"\": \"\"5f1d7a0c9b1e8b2a3c4d5e6f\"\"}\"\t19.90\t\"{\"\"$numberLong\"\": \"\"7\"\"}\"\n"
+        );
+    }
+
+    #[test]
     fn tsv_leaves_ordinary_values_bare() {
         let columns = cols(&["a"]);
         let rows = vec![vec![Value::Text("plain, value".into())]];

@@ -186,17 +186,25 @@ extension DatabaseManager {
         }
     }
 
-    // Read before the driver is closed and replaced, which prunes the hold. The user's next statement there
-    // is refused once, as on a lane, instead of running outside the transaction it was written for.
-    internal func noteTransactionLost(with driver: DatabaseDriver?, for connectionId: UUID) {
+    // Read before the driver is closed and replaced, which prunes the hold and the ledger. The user's next statement
+    // there is refused once, as on a lane, instead of running without the transaction or session it was written for.
+    // A switch the user asked for passes `includingState: false`: they chose to leave that session.
+    internal func noteSessionLost(with driver: DatabaseDriver?, for connectionId: UUID, includingState: Bool = true) {
         guard let driver, let session = activeSessions[connectionId] else { return }
         let lost = sessionTransactions.holds(for: connectionId).filter { sessionTransactions.driver(for: $0) === driver }
         for hold in lost {
-            sessionLanes.markTransactionLost(
+            sessionLanes.markLost(
                 database: hold.key.lane ?? session.resolvedBrowseDatabase,
+                transaction: true,
                 for: connectionId
             )
         }
+        guard includingState else { return }
+        sessionLanes.markLost(
+            database: session.resolvedBrowseDatabase,
+            state: sessionStateLedger.state(heldBy: driver, for: connectionId),
+            for: connectionId
+        )
     }
 
     internal func reconnectVerdict(for error: Error) -> ConnectionFailureClassifier.ReconnectVerdict {
@@ -259,7 +267,7 @@ extension DatabaseManager {
         generation: Int
     ) async throws -> ReconnectResult? {
         let connectionId = session.connection.id
-        noteTransactionLost(with: session.driver, for: connectionId)
+        noteSessionLost(with: session.driver, for: connectionId)
         session.driver?.disconnect()
         // Resolved as the connect resolved it; a reference that lost its approval needs a person.
         let resolved = try await envVarReferenceConsent.resolve(session.connection, trigger: .background)
@@ -415,7 +423,8 @@ extension DatabaseManager {
             // A debug target dialed through this transport would be left holding its locks once it goes.
             await RoutineDebugSessions.shared.stopAll(connectionId: sessionId)
             MetadataConnectionPool.shared.beginTransportReplacement(connectionId: sessionId)
-            await closeTransportLanes(for: sessionId) { self.isCurrentAttempt(generation, for: sessionId) }
+            // The user asked for this reconnect, so what the lanes' sessions set up is not reported as lost.
+            await closeTransportLanes(for: sessionId, includingState: false) { self.isCurrentAttempt(generation, for: sessionId) }
         }
         defer {
             if replacesPooledTransport {
@@ -467,7 +476,9 @@ extension DatabaseManager {
             if movesPooledEndpoint {
                 await RoutineDebugSessions.shared.stopAll(connectionId: sessionId)
                 MetadataConnectionPool.shared.beginTransportReplacement(connectionId: sessionId)
-                await closeTransportLanes(for: sessionId) { self.isCurrentAttempt(generation, for: sessionId) }
+                await closeTransportLanes(for: sessionId, includingState: false) {
+                    self.isCurrentAttempt(generation, for: sessionId)
+                }
             }
             defer {
                 if movesPooledEndpoint {

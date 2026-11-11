@@ -21,6 +21,8 @@ using System.Threading.Tasks;
 namespace TablePro.Interop.Native;
 using BoxedErrorInfo = ErrorInfo;
 using FfiConverterTypeBoxedErrorInfo = FfiConverterTypeErrorInfo;
+using FfiConverterTypeSecretString = FfiConverterString;
+using SecretString = String;
 
 
 
@@ -3644,8 +3646,8 @@ static class _UniFFILib {
     static void uniffiCheckApiChecksums() {
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_func_parse_connection_url();
-            if (checksum != 61414) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_func_parse_connection_url` checksum `61414`, library returned `{checksum}`");
+            if (checksum != 48047) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_func_parse_connection_url` checksum `48047`, library returned `{checksum}`");
             }
         }
         {
@@ -4094,14 +4096,14 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_hostsecrets_load();
-            if (checksum != 5070) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostsecrets_load` checksum `5070`, library returned `{checksum}`");
+            if (checksum != 39136) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostsecrets_load` checksum `39136`, library returned `{checksum}`");
             }
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_hostsecrets_store();
-            if (checksum != 47632) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostsecrets_store` checksum `47632`, library returned `{checksum}`");
+            if (checksum != 40708) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostsecrets_store` checksum `40708`, library returned `{checksum}`");
             }
         }
         {
@@ -4124,14 +4126,14 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_hostsecrets_load_item();
-            if (checksum != 18393) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostsecrets_load_item` checksum `18393`, library returned `{checksum}`");
+            if (checksum != 56817) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostsecrets_load_item` checksum `56817`, library returned `{checksum}`");
             }
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_hostsecrets_store_item();
-            if (checksum != 44779) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostsecrets_store_item` checksum `44779`, library returned `{checksum}`");
+            if (checksum != 48405) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostsecrets_store_item` checksum `48405`, library returned `{checksum}`");
             }
         }
         {
@@ -7045,9 +7047,9 @@ class FfiConverterTypeConnectionRecord: FfiConverterRustBuffer<ConnectionRecord>
 
 
 internal record ConnectionSecrets (
-    string? DatabasePassword, 
-    string? SshPassword, 
-    string? SshPassphrase
+    SecretString? DatabasePassword, 
+    SecretString? SshPassword, 
+    SecretString? SshPassphrase
 ) {
 }
 
@@ -7056,23 +7058,23 @@ class FfiConverterTypeConnectionSecrets: FfiConverterRustBuffer<ConnectionSecret
 
     public override ConnectionSecrets Read(BigEndianStream stream) {
         return new ConnectionSecrets(
-            DatabasePassword: FfiConverterOptionalString.INSTANCE.Read(stream),
-            SshPassword: FfiConverterOptionalString.INSTANCE.Read(stream),
-            SshPassphrase: FfiConverterOptionalString.INSTANCE.Read(stream)
+            DatabasePassword: FfiConverterOptionalTypeSecretString.INSTANCE.Read(stream),
+            SshPassword: FfiConverterOptionalTypeSecretString.INSTANCE.Read(stream),
+            SshPassphrase: FfiConverterOptionalTypeSecretString.INSTANCE.Read(stream)
         );
     }
 
     public override int AllocationSize(ConnectionSecrets value) {
         return 0
-            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.DatabasePassword)
-            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.SshPassword)
-            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.SshPassphrase);
+            + FfiConverterOptionalTypeSecretString.INSTANCE.AllocationSize(value.DatabasePassword)
+            + FfiConverterOptionalTypeSecretString.INSTANCE.AllocationSize(value.SshPassword)
+            + FfiConverterOptionalTypeSecretString.INSTANCE.AllocationSize(value.SshPassphrase);
     }
 
     public override void Write(ConnectionSecrets value, BigEndianStream stream) {
-            FfiConverterOptionalString.INSTANCE.Write(value.DatabasePassword, stream);
-            FfiConverterOptionalString.INSTANCE.Write(value.SshPassword, stream);
-            FfiConverterOptionalString.INSTANCE.Write(value.SshPassphrase, stream);
+            FfiConverterOptionalTypeSecretString.INSTANCE.Write(value.DatabasePassword, stream);
+            FfiConverterOptionalTypeSecretString.INSTANCE.Write(value.SshPassword, stream);
+            FfiConverterOptionalTypeSecretString.INSTANCE.Write(value.SshPassphrase, stream);
     }
 }
 
@@ -7589,7 +7591,7 @@ internal record ParsedConnectionUrl (
     string Host, 
     ushort? Port, 
     string Username, 
-    string? Password, 
+    SecretString? Password, 
     string Database, 
     TlsModeTag? TlsMode, 
     string? CaFile, 
@@ -7608,7 +7610,7 @@ class FfiConverterTypeParsedConnectionUrl: FfiConverterRustBuffer<ParsedConnecti
             Host: FfiConverterString.INSTANCE.Read(stream),
             Port: FfiConverterOptionalUInt16.INSTANCE.Read(stream),
             Username: FfiConverterString.INSTANCE.Read(stream),
-            Password: FfiConverterOptionalString.INSTANCE.Read(stream),
+            Password: FfiConverterOptionalTypeSecretString.INSTANCE.Read(stream),
             Database: FfiConverterString.INSTANCE.Read(stream),
             TlsMode: FfiConverterOptionalTypeTlsModeTag.INSTANCE.Read(stream),
             CaFile: FfiConverterOptionalString.INSTANCE.Read(stream),
@@ -7624,7 +7626,7 @@ class FfiConverterTypeParsedConnectionUrl: FfiConverterRustBuffer<ParsedConnecti
             + FfiConverterString.INSTANCE.AllocationSize(value.Host)
             + FfiConverterOptionalUInt16.INSTANCE.AllocationSize(value.Port)
             + FfiConverterString.INSTANCE.AllocationSize(value.Username)
-            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Password)
+            + FfiConverterOptionalTypeSecretString.INSTANCE.AllocationSize(value.Password)
             + FfiConverterString.INSTANCE.AllocationSize(value.Database)
             + FfiConverterOptionalTypeTlsModeTag.INSTANCE.AllocationSize(value.TlsMode)
             + FfiConverterOptionalString.INSTANCE.AllocationSize(value.CaFile)
@@ -7638,7 +7640,7 @@ class FfiConverterTypeParsedConnectionUrl: FfiConverterRustBuffer<ParsedConnecti
             FfiConverterString.INSTANCE.Write(value.Host, stream);
             FfiConverterOptionalUInt16.INSTANCE.Write(value.Port, stream);
             FfiConverterString.INSTANCE.Write(value.Username, stream);
-            FfiConverterOptionalString.INSTANCE.Write(value.Password, stream);
+            FfiConverterOptionalTypeSecretString.INSTANCE.Write(value.Password, stream);
             FfiConverterString.INSTANCE.Write(value.Database, stream);
             FfiConverterOptionalTypeTlsModeTag.INSTANCE.Write(value.TlsMode, stream);
             FfiConverterOptionalString.INSTANCE.Write(value.CaFile, stream);
@@ -7817,12 +7819,14 @@ class FfiConverterTypeRunGate: FfiConverterRustBuffer<RunGate> {
 
 
 /// <summary>
-/// What one run may do. `None` takes the editor's defaults: 10,000 rows
-/// and no deadline beyond the connection's.
+/// What one run may do. `None` takes the editor's defaults: 10,000 rows,
+/// 256,000,000 bytes of rows across the run, and no deadline beyond the
+/// connection's.
 /// </summary>
 internal record RunSettings (
     ulong? RowLimit, 
-    ulong? TimeoutMs
+    ulong? TimeoutMs, 
+    ulong? ByteLimit
 ) {
 }
 
@@ -7832,19 +7836,22 @@ class FfiConverterTypeRunSettings: FfiConverterRustBuffer<RunSettings> {
     public override RunSettings Read(BigEndianStream stream) {
         return new RunSettings(
             RowLimit: FfiConverterOptionalUInt64.INSTANCE.Read(stream),
-            TimeoutMs: FfiConverterOptionalUInt64.INSTANCE.Read(stream)
+            TimeoutMs: FfiConverterOptionalUInt64.INSTANCE.Read(stream),
+            ByteLimit: FfiConverterOptionalUInt64.INSTANCE.Read(stream)
         );
     }
 
     public override int AllocationSize(RunSettings value) {
         return 0
             + FfiConverterOptionalUInt64.INSTANCE.AllocationSize(value.RowLimit)
-            + FfiConverterOptionalUInt64.INSTANCE.AllocationSize(value.TimeoutMs);
+            + FfiConverterOptionalUInt64.INSTANCE.AllocationSize(value.TimeoutMs)
+            + FfiConverterOptionalUInt64.INSTANCE.AllocationSize(value.ByteLimit);
     }
 
     public override void Write(RunSettings value, BigEndianStream stream) {
             FfiConverterOptionalUInt64.INSTANCE.Write(value.RowLimit, stream);
             FfiConverterOptionalUInt64.INSTANCE.Write(value.TimeoutMs, stream);
+            FfiConverterOptionalUInt64.INSTANCE.Write(value.ByteLimit, stream);
     }
 }
 
@@ -8927,7 +8934,7 @@ class FfiConverterTypeObjectScopeArg : FfiConverterRustBuffer<ObjectScopeArg>{
 internal record PromptAnswer {
     
     public record Submitted (
-        string[] Values,
+        SecretString[] Values,
         bool Remember
     ) : PromptAnswer {}
     
@@ -8946,7 +8953,7 @@ class FfiConverterTypePromptAnswer : FfiConverterRustBuffer<PromptAnswer>{
         switch (value) {
             case 1:
                 return new PromptAnswer.Submitted(
-                    FfiConverterSequenceString.INSTANCE.Read(stream),
+                    FfiConverterSequenceTypeSecretString.INSTANCE.Read(stream),
                     FfiConverterBoolean.INSTANCE.Read(stream)
                 );
             case 2:
@@ -8961,7 +8968,7 @@ class FfiConverterTypePromptAnswer : FfiConverterRustBuffer<PromptAnswer>{
         switch (value) {
             case PromptAnswer.Submitted variant_value:
                 return 4
-                    + FfiConverterSequenceString.INSTANCE.AllocationSize(variant_value.Values)
+                    + FfiConverterSequenceTypeSecretString.INSTANCE.AllocationSize(variant_value.Values)
                     + FfiConverterBoolean.INSTANCE.AllocationSize(variant_value.Remember);
             case PromptAnswer.Cancelled variant_value:
                 return 4;
@@ -8974,7 +8981,7 @@ class FfiConverterTypePromptAnswer : FfiConverterRustBuffer<PromptAnswer>{
         switch (value) {
             case PromptAnswer.Submitted variant_value:
                 stream.WriteInt(1);
-                FfiConverterSequenceString.INSTANCE.Write(variant_value.Values, stream);
+                FfiConverterSequenceTypeSecretString.INSTANCE.Write(variant_value.Values, stream);
                 FfiConverterBoolean.INSTANCE.Write(variant_value.Remember, stream);
                 break;
             case PromptAnswer.Cancelled variant_value:
@@ -9431,6 +9438,12 @@ internal record RunEvent {
         ulong Retained
     ) : RunEvent {}
     
+    public record ByteLimitReached (
+        uint SetIndex,
+        ulong Retained,
+        ulong LimitBytes
+    ) : RunEvent {}
+    
     public record ResultSetFinished (
         uint SetIndex,
         ulong RowCount,
@@ -9499,27 +9512,33 @@ class FfiConverterTypeRunEvent : FfiConverterRustBuffer<RunEvent>{
                     FfiConverterUInt64.INSTANCE.Read(stream)
                 );
             case 5:
+                return new RunEvent.ByteLimitReached(
+                    FfiConverterUInt32.INSTANCE.Read(stream),
+                    FfiConverterUInt64.INSTANCE.Read(stream),
+                    FfiConverterUInt64.INSTANCE.Read(stream)
+                );
+            case 6:
                 return new RunEvent.ResultSetFinished(
                     FfiConverterUInt32.INSTANCE.Read(stream),
                     FfiConverterUInt64.INSTANCE.Read(stream),
                     FfiConverterOptionalUInt64.INSTANCE.Read(stream),
                     FfiConverterTypeTruncationTag.INSTANCE.Read(stream)
                 );
-            case 6:
+            case 7:
                 return new RunEvent.CommandCompleted(
                     FfiConverterOptionalUInt64.INSTANCE.Read(stream)
                 );
-            case 7:
+            case 8:
                 return new RunEvent.Notice(
                     FfiConverterString.INSTANCE.Read(stream),
                     FfiConverterString.INSTANCE.Read(stream),
                     FfiConverterOptionalString.INSTANCE.Read(stream)
                 );
-            case 8:
+            case 9:
                 return new RunEvent.NoticeLimitReached(
                     FfiConverterUInt64.INSTANCE.Read(stream)
                 );
-            case 9:
+            case 10:
                 return new RunEvent.Finished(
                     FfiConverterTypeRunOutcome.INSTANCE.Read(stream),
                     FfiConverterTypeTransactionStateTag.INSTANCE.Read(stream)
@@ -9547,6 +9566,11 @@ class FfiConverterTypeRunEvent : FfiConverterRustBuffer<RunEvent>{
                 return 4
                     + FfiConverterUInt32.INSTANCE.AllocationSize(variant_value.SetIndex)
                     + FfiConverterUInt64.INSTANCE.AllocationSize(variant_value.Retained);
+            case RunEvent.ByteLimitReached variant_value:
+                return 4
+                    + FfiConverterUInt32.INSTANCE.AllocationSize(variant_value.SetIndex)
+                    + FfiConverterUInt64.INSTANCE.AllocationSize(variant_value.Retained)
+                    + FfiConverterUInt64.INSTANCE.AllocationSize(variant_value.LimitBytes);
             case RunEvent.ResultSetFinished variant_value:
                 return 4
                     + FfiConverterUInt32.INSTANCE.AllocationSize(variant_value.SetIndex)
@@ -9595,29 +9619,35 @@ class FfiConverterTypeRunEvent : FfiConverterRustBuffer<RunEvent>{
                 FfiConverterUInt32.INSTANCE.Write(variant_value.SetIndex, stream);
                 FfiConverterUInt64.INSTANCE.Write(variant_value.Retained, stream);
                 break;
-            case RunEvent.ResultSetFinished variant_value:
+            case RunEvent.ByteLimitReached variant_value:
                 stream.WriteInt(5);
+                FfiConverterUInt32.INSTANCE.Write(variant_value.SetIndex, stream);
+                FfiConverterUInt64.INSTANCE.Write(variant_value.Retained, stream);
+                FfiConverterUInt64.INSTANCE.Write(variant_value.LimitBytes, stream);
+                break;
+            case RunEvent.ResultSetFinished variant_value:
+                stream.WriteInt(6);
                 FfiConverterUInt32.INSTANCE.Write(variant_value.SetIndex, stream);
                 FfiConverterUInt64.INSTANCE.Write(variant_value.RowCount, stream);
                 FfiConverterOptionalUInt64.INSTANCE.Write(variant_value.TotalRows, stream);
                 FfiConverterTypeTruncationTag.INSTANCE.Write(variant_value.Truncation, stream);
                 break;
             case RunEvent.CommandCompleted variant_value:
-                stream.WriteInt(6);
+                stream.WriteInt(7);
                 FfiConverterOptionalUInt64.INSTANCE.Write(variant_value.RowsAffected, stream);
                 break;
             case RunEvent.Notice variant_value:
-                stream.WriteInt(7);
+                stream.WriteInt(8);
                 FfiConverterString.INSTANCE.Write(variant_value.Severity, stream);
                 FfiConverterString.INSTANCE.Write(variant_value.Message, stream);
                 FfiConverterOptionalString.INSTANCE.Write(variant_value.Code, stream);
                 break;
             case RunEvent.NoticeLimitReached variant_value:
-                stream.WriteInt(8);
+                stream.WriteInt(9);
                 FfiConverterUInt64.INSTANCE.Write(variant_value.Retained, stream);
                 break;
             case RunEvent.Finished variant_value:
-                stream.WriteInt(9);
+                stream.WriteInt(10);
                 FfiConverterTypeRunOutcome.INSTANCE.Write(variant_value.Outcome, stream);
                 FfiConverterTypeTransactionStateTag.INSTANCE.Write(variant_value.Transaction, stream);
                 break;
@@ -10285,7 +10315,8 @@ internal enum TruncationTag: int {
     /// <summary>
     /// There were rows past the limit, which were not kept.
     /// </summary>
-    ReadPastLimit
+    ReadPastLimit,
+    ByteLimit
 }
 
 class FfiConverterTypeTruncationTag: FfiConverterRustBuffer<TruncationTag> {
@@ -10297,6 +10328,7 @@ class FfiConverterTypeTruncationTag: FfiConverterRustBuffer<TruncationTag> {
             case 1: return TruncationTag.Complete;
             case 2: return TruncationTag.ServerStopped;
             case 3: return TruncationTag.ReadPastLimit;
+            case 4: return TruncationTag.ByteLimit;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeTruncationTag.Read()", value));
         }
     }
@@ -10310,6 +10342,7 @@ class FfiConverterTypeTruncationTag: FfiConverterRustBuffer<TruncationTag> {
             case TruncationTag.Complete: stream.WriteInt(1); break;
             case TruncationTag.ServerStopped: stream.WriteInt(2); break;
             case TruncationTag.ReadPastLimit: stream.WriteInt(3); break;
+            case TruncationTag.ByteLimit: stream.WriteInt(4); break;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeTruncationTag.Write()", value));
         }
     }
@@ -10630,9 +10663,9 @@ class FfiConverterTypeHostPrompter: FfiConverter<HostPrompter, ulong> {
 /// </summary>
 internal interface HostSecrets {
     /// <exception cref="HostSecretException"></exception>
-    string? Load(string @connectionId, SecretKindTag @kind);
+    SecretString? Load(string @connectionId, SecretKindTag @kind);
     /// <exception cref="HostSecretException"></exception>
-    void Store(string @connectionId, SecretKindTag @kind, string @secret, string @label);
+    void Store(string @connectionId, SecretKindTag @kind, SecretString @secret, string @label);
     /// <exception cref="HostSecretException"></exception>
     void Relabel(string @connectionId, SecretKindTag @kind, string @label);
     /// <exception cref="HostSecretException"></exception>
@@ -10640,12 +10673,12 @@ internal interface HostSecrets {
     /// <exception cref="HostSecretException"></exception>
     void DeleteConnection(string @connectionId);
     /// <exception cref="HostSecretException"></exception>
-    string? LoadItem(SecretItemTag @item);
+    SecretString? LoadItem(SecretItemTag @item);
     /// <summary>
     /// The app names the item in its own words.
     /// </summary>
     /// <exception cref="HostSecretException"></exception>
-    void StoreItem(SecretItemTag @item, string @secret);
+    void StoreItem(SecretItemTag @item, SecretString @secret);
     /// <exception cref="HostSecretException"></exception>
     void DeleteItem(SecretItemTag @item);
 }
@@ -10662,7 +10695,7 @@ class UniffiCallbackInterfaceHostSecrets {
                 FfiConverterString.INSTANCE.Lift(@connectionId), 
                 FfiConverterTypeSecretKindTag.INSTANCE.Lift(@kind));
             unsafe {
-                *(RustBuffer*)uniffiOutReturn = FfiConverterOptionalString.INSTANCE.Lower(result);
+                *(RustBuffer*)uniffiOutReturn = FfiConverterOptionalTypeSecretString.INSTANCE.Lower(result);
             }
 
             _uniffi_out_err.code = UniffiCallbackResponseStatus.SUCCESS;
@@ -10693,7 +10726,7 @@ class UniffiCallbackInterfaceHostSecrets {
             uniffiObject.Store(
                 FfiConverterString.INSTANCE.Lift(@connectionId), 
                 FfiConverterTypeSecretKindTag.INSTANCE.Lift(@kind), 
-                FfiConverterString.INSTANCE.Lift(@secret), 
+                FfiConverterTypeSecretString.INSTANCE.Lift(@secret), 
                 FfiConverterString.INSTANCE.Lift(@label));
 
             _uniffi_out_err.code = UniffiCallbackResponseStatus.SUCCESS;
@@ -10812,7 +10845,7 @@ class UniffiCallbackInterfaceHostSecrets {
             uniffiObject.LoadItem(
                 FfiConverterTypeSecretItemTag.INSTANCE.Lift(@item));
             unsafe {
-                *(RustBuffer*)uniffiOutReturn = FfiConverterOptionalString.INSTANCE.Lower(result);
+                *(RustBuffer*)uniffiOutReturn = FfiConverterOptionalTypeSecretString.INSTANCE.Lower(result);
             }
 
             _uniffi_out_err.code = UniffiCallbackResponseStatus.SUCCESS;
@@ -10842,7 +10875,7 @@ class UniffiCallbackInterfaceHostSecrets {
             }
             uniffiObject.StoreItem(
                 FfiConverterTypeSecretItemTag.INSTANCE.Lift(@item), 
-                FfiConverterString.INSTANCE.Lift(@secret));
+                FfiConverterTypeSecretString.INSTANCE.Lift(@secret));
 
             _uniffi_out_err.code = UniffiCallbackResponseStatus.SUCCESS;
         }
@@ -11660,6 +11693,37 @@ class FfiConverterOptionalTypeBoxedErrorInfo: FfiConverterRustBuffer<BoxedErrorI
         } else {
             stream.WriteByte(1);
             FfiConverterTypeBoxedErrorInfo.INSTANCE.Write((BoxedErrorInfo)value, stream);
+        }
+    }
+}
+
+
+
+
+class FfiConverterOptionalTypeSecretString: FfiConverterRustBuffer<SecretString?> {
+    public static FfiConverterOptionalTypeSecretString INSTANCE = new FfiConverterOptionalTypeSecretString();
+
+    public override SecretString? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeSecretString.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(SecretString? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeSecretString.INSTANCE.AllocationSize((SecretString)value);
+        }
+    }
+
+    public override void Write(SecretString? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeSecretString.INSTANCE.Write((SecretString)value, stream);
         }
     }
 }
@@ -12586,6 +12650,62 @@ class FfiConverterSequenceTypeTlsModeTag: FfiConverterRustBuffer<TlsModeTag[]> {
 
 
 
+
+class FfiConverterSequenceTypeSecretString: FfiConverterRustBuffer<SecretString[]> {
+    public static FfiConverterSequenceTypeSecretString INSTANCE = new FfiConverterSequenceTypeSecretString();
+
+    public override SecretString[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new SecretString[length];
+        var readFn = FfiConverterTypeSecretString.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(SecretString[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeSecretString.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(SecretString[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeSecretString.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+/**
+ * Typealias from the type name used in the UDL file to the builtin type.  This
+ * is needed because the UDL type name is used in function/method signatures.
+ * It's also what we have an external type that references a custom type.
+ */
+
+
+
+
+
 /**
  * Typealias from the type name used in the UDL file to the builtin type.  This
  * is needed because the UDL type name is used in function/method signatures.
@@ -12725,10 +12845,10 @@ internal static class _UniFFIAsync {
 #pragma warning restore 8625
 internal static class CoreMethods {
     /// <exception cref="CoreException"></exception>
-    public static ParsedConnectionUrl ParseConnectionUrl(string @url) {
+    public static ParsedConnectionUrl ParseConnectionUrl(SecretString @url) {
         return FfiConverterTypeParsedConnectionUrl.INSTANCE.Lift(
     _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
-    _UniFFILib.uniffi_tablepro_ffi_fn_func_parse_connection_url(FfiConverterString.INSTANCE.Lower(@url), ref _status)
+    _UniFFILib.uniffi_tablepro_ffi_fn_func_parse_connection_url(FfiConverterTypeSecretString.INSTANCE.Lower(@url), ref _status)
 ));
     }
 

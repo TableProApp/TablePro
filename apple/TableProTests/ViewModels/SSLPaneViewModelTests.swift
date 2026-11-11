@@ -55,9 +55,13 @@ struct SSLPaneViewModelTests {
     }
 
     private func verifyIdentityIssues(for type: DatabaseType, caCertPath: String = "") -> [String] {
+        issues(for: type, mode: .verifyIdentity, caCertPath: caCertPath)
+    }
+
+    private func issues(for type: DatabaseType, mode: SSLMode, caCertPath: String = "") -> [String] {
         let coordinator = ConnectionFormCoordinator(connectionId: nil)
         coordinator.network.type = type
-        coordinator.ssl.select(.verifyIdentity)
+        coordinator.ssl.select(mode)
         coordinator.ssl.caCertPath = caCertPath
         return coordinator.ssl.validationIssues
     }
@@ -72,9 +76,20 @@ struct SSLPaneViewModelTests {
 
     @Test("Verify Identity without a CA file is refused for engines that need one")
     func fileTrustEnginesStillRequireACAFile() {
-        #expect(!DatabaseType.postgresql.verifiesServerWithSystemTrust)
-        #expect(verifyIdentityIssues(for: .postgresql).count == 1)
-        #expect(verifyIdentityIssues(for: .postgresql, caCertPath: "/tmp/ca.pem").isEmpty)
+        #expect(!DatabaseType.mysql.verifiesServerWithSystemTrust)
+        #expect(verifyIdentityIssues(for: .mysql).count == 1)
+        #expect(verifyIdentityIssues(for: .mysql, caCertPath: "/tmp/ca.pem").isEmpty)
+    }
+
+    @Test(
+        "The libpq engines save Verify Identity without a CA file and still need one for Verify CA",
+        arguments: [DatabaseType.postgresql, .redshift, .cockroachdb, .kingbasees]
+    )
+    func libpqEnginesNeedACAFileOnlyForVerifyCA(type: DatabaseType) {
+        #expect(type.verifiesServerWithSystemTrust)
+        #expect(verifyIdentityIssues(for: type).isEmpty)
+        #expect(issues(for: type, mode: .verifyCa).count == 1)
+        #expect(issues(for: type, mode: .verifyCa, caCertPath: "/tmp/ca.pem").isEmpty)
     }
 
     @Test("A Trino port of 443 escalates the type default to Verify Identity, and another port reverts it")

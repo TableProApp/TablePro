@@ -131,22 +131,22 @@ struct RowChangeStatementFactory {
         }
     }
 
-    /// Every statement the changes need, or a throw naming the changes that would be left out.
-    ///
-    /// The host's statements carry the rows they touch, so the executor can hold the server to that
-    /// count. A driver's carry one only for a keyless update or delete of one row.
+    // Split into save steps first, so the refusals, every writer, the preview and the coverage see what runs.
     func rowWriteStatements(
         for changes: [RowChange],
         insertedRowData: [RowID: [PluginCellValue]] = [:],
         deletedRowIDs: Set<RowID> = [],
         insertedRowIDs: Set<RowID> = []
     ) throws -> RowWriteStatements {
-        try refuseServerOwnedEdits(in: changes)
-        try refuseDefaultOnUpdate(in: changes)
-        try refuseUnwritableExpressions(in: changes, insertedRowData: insertedRowData)
-        try refuseMisdimensionedVectors(in: changes, insertedRowData: insertedRowData)
+        let steps = RowChange.saveSteps(
+            changes, keyColumns: Set(primaryKeyColumns.compactMap { columns.firstIndex(of: $0) })
+        )
+        try refuseServerOwnedEdits(in: steps)
+        try refuseDefaultOnUpdate(in: steps)
+        try refuseUnwritableExpressions(in: steps, insertedRowData: insertedRowData)
+        try refuseMisdimensionedVectors(in: steps, insertedRowData: insertedRowData)
         let insertedRowData = insertedRowData.mapValues(leavingServerOwnedColumnsToTheServer)
-        let changes = changes.map { markingServerOwnedDefaults($0, in: insertedRowData) }
+        let changes = steps.map { markingServerOwnedDefaults($0, in: insertedRowData) }
         if let driverStatements = try pluginRowWrites(
             for: changes,
             insertedRowData: insertedRowData,
@@ -399,7 +399,7 @@ struct RowChangeStatementFactory {
             changes,
             deletedRowIDs: deletedRowIDs,
             insertedRowIDs: insertedRowIDs,
-            writtenRowIDs: Set(statements.flatMap(\.rowIDs))
+            writtenChangeIDs: Set(statements.flatMap(\.changeIDs))
         )
         if let kind = UnwrittenRowCounts(unwritten).leadingKind {
             throw DataWriteError.rowsNotIdentifiable(tableName, kind)
@@ -584,7 +584,7 @@ struct RowChangeStatementFactory {
             changes,
             deletedRowIDs: deletedRowIDs,
             insertedRowIDs: insertedRowIDs,
-            writtenRowIDs: Set(writes.flatMap(\.rowIndices).compactMap(keyed.rowID(forIndex:)))
+            writtenChangeIDs: Set(writes.flatMap(\.rowIndices).compactMap { keyed.change(forIndex: $0)?.id })
         )
         guard unwritten.isEmpty else {
             throw DataWriteError.changesNotWritable(table: tableName, unwritten: UnwrittenRowCounts(unwritten))
@@ -709,13 +709,15 @@ struct RowChangeStatementFactory {
     }
 }
 
+// One key per change, so a row written in two steps reaches the driver as two changes.
 struct PluginKeyedChanges {
     let changes: [PluginRowChange]
     let insertedRowData: [Int: [PluginCellValue]]
     let deletedRowIndices: Set<Int>
     let insertedRowIndices: Set<Int>
-    /// The row each key stands for, indexed by key.
+    // Indexed by key.
     let rowIDs: [RowID]
+    private let steps: [RowChange]
 
     init(
         changes: [RowChange],
@@ -725,23 +727,27 @@ struct PluginKeyedChanges {
         defaultColumns: [RowID: Set<Int>] = [:]
     ) {
         let ordered = changes.sorted { $0.sequence < $1.sequence }
-        var keys: [RowID: Int] = [:]
-        var rowIDs: [RowID] = []
-        for change in ordered where keys[change.rowID] == nil {
-            keys[change.rowID] = rowIDs.count
-            rowIDs.append(change.rowID)
+        var insertKeys: [RowID: Int] = [:]
+        var deleteKeys: [RowID: Int] = [:]
+        for (key, change) in ordered.enumerated() {
+            switch change.type {
+            case .insert: insertKeys[change.rowID] = key
+            case .delete: deleteKeys[change.rowID] = key
+            case .update: break
+            }
         }
-        self.rowIDs = rowIDs
-        self.changes = ordered.compactMap { change in
-            keys[change.rowID].map { PluginRowChange(change, key: $0, defaultColumns: defaultColumns[change.rowID]) }
+        self.steps = ordered
+        self.rowIDs = ordered.map(\.rowID)
+        self.changes = ordered.enumerated().map { key, change in
+            PluginRowChange(change, key: key, defaultColumns: defaultColumns[change.rowID])
         }
         self.insertedRowData = Dictionary(
             uniqueKeysWithValues: insertedRowData.compactMap { rowID, values in
-                keys[rowID].map { ($0, values) }
+                insertKeys[rowID].map { ($0, values) }
             }
         )
-        self.deletedRowIndices = Set(deletedRowIDs.compactMap { keys[$0] })
-        self.insertedRowIndices = Set(insertedRowIDs.compactMap { keys[$0] })
+        self.deletedRowIndices = Set(deletedRowIDs.compactMap { deleteKeys[$0] })
+        self.insertedRowIndices = Set(insertedRowIDs.compactMap { insertKeys[$0] })
     }
 
     func locators(_ byRow: [RowID: String]) -> [Int: String] {
@@ -752,14 +758,14 @@ struct PluginKeyedChanges {
         return keyed
     }
 
-    /// The row a driver's `rowIndex` names, or nil when it names none of these changes.
-    func rowID(forIndex index: Int) -> RowID? {
-        rowIDs.indices.contains(index) ? rowIDs[index] : nil
+    // Nil when a driver's `rowIndex` names none of these changes.
+    func change(forIndex index: Int) -> RowChange? {
+        steps.indices.contains(index) ? steps[index] : nil
     }
 
     func writeKind(ofRowIndex index: Int) -> RowWriteKind? {
-        guard let change = changes.first(where: { $0.rowIndex == index }) else { return nil }
-        switch change.type {
+        guard let type = change(forIndex: index)?.type else { return nil }
+        switch type {
         case .insert: return .insert
         case .update: return .update
         case .delete: return .delete

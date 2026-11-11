@@ -18,6 +18,7 @@ struct DataGridInvisibleCharacterTests {
         placeholderText: .secondaryLabelColor,
         booleanTrueText: .black,
         booleanFalseText: .black,
+        valueColors: DataGridValueColors(all: .black),
         rowNumberText: .secondaryLabelColor,
         deletedRowText: .systemRed,
         modifiedColumnTint: .systemYellow,

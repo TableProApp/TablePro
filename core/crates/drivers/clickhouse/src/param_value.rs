@@ -30,6 +30,7 @@ impl Serialize for ParamValue<'_> {
         match self.0 {
             Value::Null => serializer.serialize_none(),
             Value::Bool(flag) => serializer.serialize_bool(*flag),
+            Value::Int32(int) => serializer.serialize_i32(*int),
             Value::Int(int) => serializer.serialize_i64(*int),
             Value::UInt(int) => serializer.serialize_u64(*int),
             Value::WideInt(int) => serializer.serialize_str(&int.to_string()),

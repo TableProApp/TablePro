@@ -137,7 +137,7 @@ impl ResultCollector {
             }
             ResultEvent::Rows(_) if state.sets_left_out => {}
             ResultEvent::Rows(rows) => return self.keep_rows(&mut state, rows),
-            ResultEvent::RowLimitReached { .. } => {
+            ResultEvent::RowLimitReached { .. } | ResultEvent::ByteLimitReached { .. } => {
                 if !state.sets_left_out
                     && let Some(set) = state.sets.last_mut()
                 {

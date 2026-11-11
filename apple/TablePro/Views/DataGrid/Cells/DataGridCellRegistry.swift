@@ -20,7 +20,7 @@ final class DataGridCellRegistry {
         let appearance: NSAppearance.Name
     }
 
-    init(scope: ThemeScope = .live, valueColors: ValueColorSettings = AppSettingsManager.shared.valueColors) {
+    init(scope: ThemeScope, valueColors: ValueColorSettings) {
         self.scope = scope
         let settings = AppSettingsManager.shared.dataGrid
         nullDisplayString = settings.nullDisplay
@@ -31,12 +31,12 @@ final class DataGridCellRegistry {
         palette = scope.dataGridCellPalette(in: appearance)
     }
 
-    func reloadSettings(_ settings: DataGridSettings = AppSettingsManager.shared.dataGrid) {
+    func reloadSettings(_ settings: DataGridSettings) {
         nullDisplayString = settings.nullDisplay
         showsInvisibleCharacters = settings.showInvisibleCharacters
     }
 
-    func reloadValueColors(_ settings: ValueColorSettings = AppSettingsManager.shared.valueColors) {
+    func reloadValueColors(_ settings: ValueColorSettings) {
         colorsValuesByType = settings.colorsValuesByType
     }
 

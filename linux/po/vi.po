@@ -7488,11 +7488,15 @@ msgstr[0] "Đang hiện {shown} dòng đầu tiên"
 
 #: crates/app/src/ui/result_pane/result_summary.rs
 #, rust-format
-msgid "Stopped after the first {shown} row: the statement did not run past it"
+msgid ""
+"Showing the first {shown} row: the server stopped the statement at the row "
+"limit, before its end"
 msgid_plural ""
-"Stopped after the first {shown} rows: the statement did not run past them"
+"Showing the first {shown} rows: the server stopped the statement at the row "
+"limit, before its end"
 msgstr[0] ""
-"Đã dừng sau {shown} dòng đầu tiên: câu lệnh không chạy tiếp quá các dòng đó"
+"Đang hiện {shown} dòng đầu tiên: máy chủ đã dừng câu lệnh ở giới hạn số dòng, "
+"trước khi chạy hết"
 
 #: crates/app/src/ui/result_pane/result_summary.rs
 #, rust-format

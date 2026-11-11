@@ -76,4 +76,12 @@ struct ConnectionFormChildObservationTests {
         replacement.type = .postgresql
         #expect(counter.sends == 1)
     }
+
+    @Test("a new connection saved Local only has nothing in iCloud Keychain to remove")
+    func newLocalOnlyConnectionRemovesNothing() {
+        let coordinator = ConnectionFormCoordinator(connectionId: nil)
+        coordinator.advanced.localOnly = true
+
+        #expect(!coordinator.removesSyncedSecretsOnSave)
+    }
 }

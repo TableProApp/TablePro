@@ -15,6 +15,7 @@ struct RowDetailView: View {
     @State private var showSaveConfirmation = false
     @State private var jsonEditorField: IndexedRow<String>?
     @State private var jsonViewerRoute: JSONValueViewer.Route?
+    @State private var fullValueRoute: FullValueRoute?
     private let coordinator: ConnectionCoordinator?
 
     init(
@@ -88,6 +89,12 @@ struct RowDetailView: View {
         // A NavigationLink inside the paged TabView cannot reach the stack: it pushes a blank screen.
         .navigationDestination(item: $jsonViewerRoute) { route in
             JSONValueViewer(route: route)
+        }
+        .navigationDestination(item: $fullValueRoute) { route in
+            FullValueScreen(
+                title: viewModel.columns.indices.contains(route.column) ? viewModel.columns[route.column].name : "",
+                text: viewModel.completeValue(forRow: route.row, at: route.column) ?? ""
+            )
         }
         .toolbar { rowDetailToolbar }
         // An unsaved edit keeps this screen up over a lost session, so the state and Reconnect show here.
@@ -238,7 +245,11 @@ struct RowDetailView: View {
                         }
                     } else {
                         let jsonText = viewModel.jsonText(forRow: rowIndex, at: index)
-                        fieldContent(value: value, jsonPreview: viewModel.isJSON(at: index) ? jsonText : nil)
+                        let longValue = viewModel.longValue(forRow: rowIndex, at: index)
+                        fieldContent(
+                            value: longValue.map { RowDetailViewModel.excerpt(of: $0) } ?? value,
+                            jsonPreview: viewModel.isJSON(at: index) ? jsonText : nil
+                        )
                             .contextMenu {
                                 if let value = viewModel.completeValue(forRow: rowIndex, at: index) {
                                     Button {
@@ -259,6 +270,17 @@ struct RowDetailView: View {
                             } label: {
                                 Label("View as JSON", systemImage: "curlybraces")
                             }
+                        } else if longValue != nil {
+                            Button {
+                                fullValueRoute = FullValueRoute(row: rowIndex, column: index)
+                            } label: {
+                                Label("View Full Value", systemImage: "doc.plaintext")
+                            }
+                        }
+                        if viewModel.isShownInPart(forRow: rowIndex, at: index) {
+                            Text("Shown in part. Run a query that returns fewer rows or columns to see it in full.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
                         }
                         if index < cells.count, cells[index].isLoadable,
                            !viewModel.hasOverride(forRow: rowIndex, cellIndex: index) {
@@ -423,5 +445,30 @@ struct RowDetailView: View {
         } else {
             hapticError.toggle()
         }
+    }
+
+    // Names the cell rather than carrying its text, so the route stays cheap to compare.
+    private struct FullValueRoute: Hashable {
+        let row: Int
+        let column: Int
+    }
+}
+
+private struct FullValueScreen: View {
+    let title: String
+    let text: String
+
+    var body: some View {
+        JSONTextView(readOnlyText: text)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Copy", systemImage: "doc.on.doc") {
+                        ClipboardExporter.copyToClipboard(text)
+                    }
+                }
+            }
     }
 }

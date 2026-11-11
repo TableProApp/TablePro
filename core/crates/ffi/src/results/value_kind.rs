@@ -90,7 +90,7 @@ impl ValueKind {
     pub fn of_value(value: &Value) -> Self {
         match value {
             Value::Bool(_) => Self::Bool,
-            Value::Int(_) => Self::Integer,
+            Value::Int32(_) | Value::Int(_) => Self::Integer,
             Value::UInt(_) => Self::UnsignedInteger,
             Value::WideInt(_) => Self::WideInteger,
             Value::Float32(_) | Value::Float64(_) => Self::Float,

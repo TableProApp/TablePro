@@ -415,6 +415,8 @@ internal actor DatabaseAccessBridge {
                 onLateCompletion: { CatalogChangeService.post(statementRan) }
             ) { driver in
                 reach.mark()
+                // Before it runs, so a statement that fails or a connection lost under it is still noted.
+                await manager.noteSessionStatements([sql], ranOn: driver, scope: scope)
                 let answer = try await driver.executeUserQuery(
                     query: sql,
                     rowCap: fetchCap,

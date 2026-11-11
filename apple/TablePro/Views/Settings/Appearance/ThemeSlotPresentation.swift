@@ -83,32 +83,44 @@ internal enum ThemeContrastNote {
     internal static let minimumRatio = 4.5
 
     // NULL draws a placeholder, not a value. An unset value color is the grid text, which the Data Grid note checks.
-    internal static func checks(
+    private static func checks(
         for section: ThemeSlotSection,
         in theme: ThemeDefinition
-    ) -> (texts: [ThemeSlot], background: ThemeSlot)? {
+    ) -> (texts: [ThemeSlot], surfaces: [ThemeColor])? {
         switch section {
         case .editor:
-            return ([.editorText], .editorBackground)
+            return ([.editorText], [color(.editorBackground, in: theme).opaque])
         case .dataGrid:
-            return ([.gridText], .gridBackground)
+            return ([.gridText], [color(.gridBackground, in: theme).opaque])
         case .values:
             let explicit = ThemeSlotSection.values.slots.filter { $0 != .gridNullValue && theme.hasExplicitColor($0) }
-            return (explicit, .gridBackground)
+            return (explicit, rowSurfaces(in: theme))
         case .window, .syntax, .selection, .changes:
             return nil
         }
     }
 
+    // Alternate rows are on by default, and a modified cell or an inserted row washes either row.
+    private static func rowSurfaces(in theme: ThemeDefinition) -> [ThemeColor] {
+        let background = color(.gridBackground, in: theme).opaque
+        let rows = [background, color(.gridAlternateRow, in: theme).composited(over: background)]
+        let washes = [color(.gridModified, in: theme), color(.gridInserted, in: theme)]
+        return rows + washes.flatMap { wash in rows.map { wash.composited(over: $0) } }
+    }
+
     internal static func lowest(for section: ThemeSlotSection, in theme: ThemeDefinition) -> (slot: ThemeSlot, ratio: Double)? {
         guard let checks = checks(for: section, in: theme) else { return nil }
-        let background = ThemeSlotPresentation.displayColor(for: checks.background, in: theme).opaque
         return checks.texts
             .map { slot in
-                let text = ThemeSlotPresentation.displayColor(for: slot, in: theme).composited(over: background)
-                return (slot: slot, ratio: text.contrastRatio(with: background))
+                let text = color(slot, in: theme)
+                let ratios = checks.surfaces.map { text.composited(over: $0).contrastRatio(with: $0) }
+                return (slot: slot, ratio: ratios.min() ?? .infinity)
             }
             .min { $0.ratio < $1.ratio }
+    }
+
+    private static func color(_ slot: ThemeSlot, in theme: ThemeDefinition) -> ThemeColor {
+        ThemeSlotPresentation.displayColor(for: slot, in: theme)
     }
 
     internal static func message(for section: ThemeSlotSection, in theme: ThemeDefinition) -> String? {

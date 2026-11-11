@@ -105,6 +105,7 @@ final class ChatTurn: ObservableObject, Identifiable {
     @Published var usage: AITokenUsage?
     @Published var modelId: String?
     @Published var providerId: String?
+    @Published var outputLimit: ChatOutputLimit?
 
     init(
         id: UUID = UUID(),
@@ -113,7 +114,8 @@ final class ChatTurn: ObservableObject, Identifiable {
         timestamp: Date = Date(),
         usage: AITokenUsage? = nil,
         modelId: String? = nil,
-        providerId: String? = nil
+        providerId: String? = nil,
+        outputLimit: ChatOutputLimit? = nil
     ) {
         self.id = id
         self.role = role
@@ -122,6 +124,7 @@ final class ChatTurn: ObservableObject, Identifiable {
         self.usage = usage
         self.modelId = modelId
         self.providerId = providerId
+        self.outputLimit = outputLimit
     }
 
     init(wire: ChatTurnWire) {
@@ -132,6 +135,7 @@ final class ChatTurn: ObservableObject, Identifiable {
         self.usage = wire.usage
         self.modelId = wire.modelId
         self.providerId = wire.providerId
+        self.outputLimit = wire.outputLimit
     }
 
     var plainText: String {
@@ -152,7 +156,8 @@ final class ChatTurn: ObservableObject, Identifiable {
             timestamp: timestamp,
             usage: usage,
             modelId: modelId,
-            providerId: providerId
+            providerId: providerId,
+            outputLimit: outputLimit
         )
     }
 
@@ -337,6 +342,7 @@ struct ChatTurnWire: Codable, Equatable, Sendable, Identifiable {
     var usage: AITokenUsage?
     var modelId: String?
     var providerId: String?
+    var outputLimit: ChatOutputLimit?
 
     init(
         id: UUID = UUID(),
@@ -345,7 +351,8 @@ struct ChatTurnWire: Codable, Equatable, Sendable, Identifiable {
         timestamp: Date = Date(),
         usage: AITokenUsage? = nil,
         modelId: String? = nil,
-        providerId: String? = nil
+        providerId: String? = nil,
+        outputLimit: ChatOutputLimit? = nil
     ) {
         self.id = id
         self.role = role
@@ -354,6 +361,7 @@ struct ChatTurnWire: Codable, Equatable, Sendable, Identifiable {
         self.usage = usage
         self.modelId = modelId
         self.providerId = providerId
+        self.outputLimit = outputLimit
     }
 
     init(from decoder: Decoder) throws {
@@ -364,6 +372,10 @@ struct ChatTurnWire: Codable, Equatable, Sendable, Identifiable {
         usage = try container.decodeIfPresent(AITokenUsage.self, forKey: .usage)
         modelId = try container.decodeIfPresent(String.self, forKey: .modelId)
         providerId = try container.decodeIfPresent(String.self, forKey: .providerId)
+        // A value a later version wrote reads as no note rather than failing the conversation.
+        outputLimit = (try? container.decodeIfPresent(String.self, forKey: .outputLimit)).flatMap {
+            $0.flatMap(ChatOutputLimit.init(rawValue:))
+        }
 
         if let decodedBlocks = try container.decodeIfPresent([LossyContentBlockWire].self, forKey: .blocks) {
             blocks = decodedBlocks.compactMap(\.block)
@@ -386,6 +398,7 @@ struct ChatTurnWire: Codable, Equatable, Sendable, Identifiable {
         try container.encodeIfPresent(usage, forKey: .usage)
         try container.encodeIfPresent(modelId, forKey: .modelId)
         try container.encodeIfPresent(providerId, forKey: .providerId)
+        try container.encodeIfPresent(outputLimit, forKey: .outputLimit)
     }
 
     var plainText: String {
@@ -399,7 +412,7 @@ struct ChatTurnWire: Codable, Equatable, Sendable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, role, blocks, timestamp, usage, modelId, providerId
+        case id, role, blocks, timestamp, usage, modelId, providerId, outputLimit
     }
 
     private enum LegacyKeys: String, CodingKey {

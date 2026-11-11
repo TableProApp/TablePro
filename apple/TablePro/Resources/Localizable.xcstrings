@@ -4382,6 +4382,9 @@
     "%@ May Still Be Running" : {
 
     },
+    "%@ more messages." : {
+
+    },
     "%@ more, in the script beside this" : {
       "localizations" : {
         "fr" : {
@@ -5472,6 +5475,9 @@
 
     },
     "%@ statements" : {
+
+    },
+    "%@ Statements" : {
 
     },
     "%@ stops being a computed column" : {
@@ -13649,6 +13655,9 @@
           }
         }
       }
+    },
+    "1 more message." : {
+
     },
     "1 new column" : {
 
@@ -54684,6 +54693,10 @@
     "Could not read the table." : {
 
     },
+    "Could not read this Mac's trusted certificates to verify the server. Choose the server's CA certificate under SSL, then connect again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Could not read which rows are already in the table" : {
 
     },
@@ -57802,6 +57815,9 @@
           }
         }
       }
+    },
+    "cursors" : {
+
     },
     "CURTIME()" : {
       "extractionState" : "stale",
@@ -75924,6 +75940,9 @@
           }
         }
       }
+    },
+    "Exclude from iCloud Sync?" : {
+
     },
     "Exclude the AUTO_INCREMENT counter" : {
       "extractionState" : "stale",
@@ -105591,6 +105610,9 @@
 
     },
     "Listen for Notifications" : {
+
+    },
+    "LISTEN registrations" : {
 
     },
     "Listens on all interfaces (0.0.0.0), reachable from your local network." : {
@@ -137278,6 +137300,9 @@
         }
       }
     },
+    "prepared statements" : {
+
+    },
     "Preparing Import…" : {
       "localizations" : {
         "fr" : {
@@ -143242,6 +143267,9 @@
           }
         }
       }
+    },
+    "Ran %@ statements that returned no rows." : {
+
     },
     "ran %@×" : {
       "comment" : "Run count in a detail line, %@ is a count",
@@ -158495,6 +158523,9 @@
         }
       }
     },
+    "Saved passwords are removed from iCloud Keychain, and your other devices will need them entered again." : {
+
+    },
     "Saved passwords can only be exported to an encrypted file." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -158690,6 +158721,9 @@
           }
         }
       }
+    },
+    "Saving removes its passwords from iCloud Keychain. Your other devices will need them entered again." : {
+
     },
     "Saving your choice" : {
 
@@ -164690,6 +164724,12 @@
         }
       }
     },
+    "session locks" : {
+
+    },
+    "session settings" : {
+
+    },
     "Session SID %1$d, SERIAL# %2$d. %3$@ A user with ALTER SYSTEM can end it now with %4$@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -168352,6 +168392,9 @@
           }
         }
       }
+    },
+    "Showing the last %1$@ of %2$@ results that returned rows." : {
+
     },
     "Shown beside each key" : {
       "localizations" : {
@@ -184185,6 +184228,9 @@
     "Temporary Table" : {
 
     },
+    "temporary tables" : {
+
+    },
     "Teradata uses TLS on its HTTPS port, which the tunnel does not forward. Set SSL Mode to Disabled or Preferred to connect through the tunnel, or turn the tunnel off." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -187693,6 +187739,12 @@
         }
       }
     },
+    "The connection to %1$@ was lost while it waited and has been reconnected. The new session does not have what the old one set up: %2$@. Set it up again, then run the statements." : {
+
+    },
+    "The connection to %1$@ was lost while it waited, and the server rolled back its open transaction. The new session does not have what the old one set up either: %2$@. Set it up again, then run the statements." : {
+
+    },
     "The connection to Redis dropped after EXEC was sent, so whether the block ran is unknown." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -189880,6 +189932,10 @@
 
     },
     "The JSON file ends before its last value is complete." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The JSON file has text that is not valid in its encoding." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -192455,6 +192511,12 @@
           }
         }
       }
+    },
+    "The response stopped at the model's output token limit." : {
+
+    },
+    "The response stopped because the conversation filled the model's context window." : {
+
     },
     "The REST endpoint is not a valid URL." : {
       "extractionState" : "manual",
@@ -212326,6 +212388,9 @@
         }
       }
     },
+    "user variables" : {
+
+    },
     "User-Defined" : {
       "localizations" : {
         "fr" : {
@@ -214125,6 +214190,10 @@
           }
         }
       }
+    },
+    "Verify CA needs the server's CA certificate. Choose it under SSL, or use Verify Identity to check the server against this Mac's trusted certificates." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Verify certificate and hostname" : {
       "localizations" : {

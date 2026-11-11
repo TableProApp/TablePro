@@ -26,6 +26,14 @@ struct DataGridValueToneTests {
         (.text(rawType: "String"), .string),
         (.text(rawType: "Nullable(String)"), .string),
         (.text(rawType: "LowCardinality(Nullable(String))"), .string),
+        (.text(rawType: "keyword"), .string),
+        (.text(rawType: "wildcard"), .string),
+        (.text(rawType: "constant_keyword"), .string),
+        (.text(rawType: "ascii"), .string),
+        (.text(rawType: "long"), .string),
+        (.text(rawType: "sysname"), .string),
+        (.integer(rawType: "long"), .number),
+        (.blob(rawType: "long raw"), .binary),
         (.text(rawType: "UUID"), .uuid),
         (.text(rawType: "Nullable(UUID)"), .uuid),
         (.text(rawType: "UNIQUEIDENTIFIER"), .uuid),
@@ -45,6 +53,14 @@ struct DataGridValueToneTests {
     @Test("A column's type gives its tone", arguments: baseTones)
     func baseToneFollowsTheType(type: ColumnType?, expected: DataGridValueTone) {
         #expect(DataGridValueTone.base(of: type, declaresEnumLabels: false) == expected)
+    }
+
+    @Test("Character types only the tone knows leave a filter's LIKE operand cast", arguments: [
+        "keyword", "wildcard", "constant_keyword", "ascii", "long", "sysname",
+    ])
+    func toneOnlyCharacterTypesKeepTheirQuoting(rawType: String) {
+        #expect(DataGridValueTone.base(of: .text(rawType: rawType), declaresEnumLabels: false) == .string)
+        #expect(!ColumnTypeSQLQuoting.isCharacterType(.text(rawType: rawType)))
     }
 
     @Test("Declared labels make a text column an enum, never an array, vector or number")

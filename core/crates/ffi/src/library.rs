@@ -118,15 +118,14 @@ pub struct ConnectionRecord {
 }
 
 // Each secret as the form holds it: None keeps what is stored, an empty string is stored as one.
-#[derive(Clone, Default, PartialEq, Eq, uniffi::Record)]
+#[derive(Clone, Default, uniffi::Record)]
 pub struct ConnectionSecrets {
-    pub database_password: Option<String>,
-    pub ssh_password: Option<String>,
-    pub ssh_passphrase: Option<String>,
+    pub database_password: Option<SecretString>,
+    pub ssh_password: Option<SecretString>,
+    pub ssh_passphrase: Option<SecretString>,
 }
 
 impl ConnectionSecrets {
-    // Moves each string into a SecretString, which wipes it on drop, instead of leaving a plain copy behind.
     pub(crate) fn into_typed(self) -> Vec<(SecretKind, SecretString)> {
         [
             (SecretKind::DatabasePassword, self.database_password),
@@ -134,7 +133,7 @@ impl ConnectionSecrets {
             (SecretKind::SshPassphrase, self.ssh_passphrase),
         ]
         .into_iter()
-        .filter_map(|(kind, secret)| secret.map(|secret| (kind, SecretString::from(secret))))
+        .filter_map(|(kind, secret)| secret.map(|secret| (kind, secret)))
         .collect()
     }
 }
@@ -838,9 +837,9 @@ mod tests {
     #[test]
     fn debug_output_says_which_secrets_are_held_but_not_what_they_are() {
         let secrets = ConnectionSecrets {
-            database_password: Some("hunter2".to_owned()),
+            database_password: Some(SecretString::from("hunter2")),
             ssh_password: None,
-            ssh_passphrase: Some(String::new()),
+            ssh_passphrase: Some(SecretString::from("")),
         };
 
         assert_eq!(

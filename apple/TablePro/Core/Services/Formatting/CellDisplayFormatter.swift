@@ -2,24 +2,62 @@
 //  CellDisplayFormatter.swift
 //  TablePro
 //
-//  Pure formatter that transforms raw cell values into display-ready strings.
-//  Used by the data grid coordinator's display cache to compute values once per cell.
-//
 
 import Foundation
 import TableProPluginKit
 
-@MainActor
 enum CellDisplayFormatter {
     static let maxDisplayLength = 10_000
 
+    @MainActor
     static func format(
         _ rawValue: PluginCellValue,
         columnType: ColumnType?,
         displayFormat: ValueDisplayFormat? = nil,
         databaseType: DatabaseType? = nil
     ) -> String? {
-        display(rawValue, columnType: columnType, displayFormat: displayFormat, databaseType: databaseType).text
+        resolve(
+            rawValue,
+            columnType: columnType,
+            displayFormat: displayFormat,
+            databaseType: databaseType,
+            dates: DateFormattingService.shared.renderer,
+            checksRendering: false
+        ).text
+    }
+
+    static func format(
+        _ rawValue: PluginCellValue,
+        columnType: ColumnType?,
+        displayFormat: ValueDisplayFormat?,
+        databaseType: DatabaseType?,
+        dates: DateDisplayRenderer
+    ) -> String? {
+        resolve(
+            rawValue,
+            columnType: columnType,
+            displayFormat: displayFormat,
+            databaseType: databaseType,
+            dates: dates,
+            checksRendering: false
+        ).text
+    }
+
+    @MainActor
+    static func display(
+        _ rawValue: PluginCellValue,
+        columnType: ColumnType?,
+        displayFormat: ValueDisplayFormat?,
+        databaseType: DatabaseType?
+    ) -> (text: String?, isFormatted: Bool) {
+        resolve(
+            rawValue,
+            columnType: columnType,
+            displayFormat: displayFormat,
+            databaseType: databaseType,
+            dates: DateFormattingService.shared.renderer,
+            checksRendering: true
+        )
     }
 
     // `isFormatted` is false wherever the cell falls back to how its column reads without the display format.
@@ -27,7 +65,27 @@ enum CellDisplayFormatter {
         _ rawValue: PluginCellValue,
         columnType: ColumnType?,
         displayFormat: ValueDisplayFormat?,
-        databaseType: DatabaseType?
+        databaseType: DatabaseType?,
+        dates: DateDisplayRenderer
+    ) -> (text: String?, isFormatted: Bool) {
+        resolve(
+            rawValue,
+            columnType: columnType,
+            displayFormat: displayFormat,
+            databaseType: databaseType,
+            dates: dates,
+            checksRendering: true
+        )
+    }
+
+    // Find, the value filter and the display order discard the flag, and the JSON and PHP checks read the whole value.
+    private static func resolve(
+        _ rawValue: PluginCellValue,
+        columnType: ColumnType?,
+        displayFormat: ValueDisplayFormat?,
+        databaseType: DatabaseType?,
+        dates: DateDisplayRenderer,
+        checksRendering: Bool
     ) -> (text: String?, isFormatted: Bool) {
         switch rawValue {
         case .null:
@@ -43,16 +101,13 @@ enum CellDisplayFormatter {
             guard !value.isEmpty else { return (value, false) }
             if let displayFormat, displayFormat != .raw,
                displayFormat.isApplicable(to: columnType, databaseType: databaseType),
-               let formatted = ValueDisplayFormatter.apply(value, format: displayFormat, columnType: columnType) {
-                return (fitToCell(formatted), rendered(formatted, from: value, by: displayFormat))
+               let formatted = ValueDisplayFormatter.apply(value, format: displayFormat, columnType: columnType, dates: dates) {
+                return (fitToCell(formatted), checksRendering && rendered(formatted, from: value, by: displayFormat))
             }
             var displayValue = value
             if let columnType {
                 if columnType.isDateType {
-                    if let formatted = DateFormattingService.shared.format(
-                        dateString: displayValue,
-                        columnType: columnType
-                    ) {
+                    if let formatted = dates.format(dateString: displayValue, columnType: columnType) {
                         displayValue = formatted
                     }
                 } else if columnType.isVectorType {

@@ -95,12 +95,14 @@ struct FindCoordinatorRoutingTests {
     }
 
     @Test("Find Next and Find Previous step the selected tab's matches")
-    func stepsTheSelectedTabsMatches() throws {
+    func stepsTheSelectedTabsMatches() async throws {
         let (coordinator, first, _) = makeTabs()
         let model = coordinator.gridModel(forTab: first)
         coordinator.findCoordinator.showFind()
         model.find.term = "ali"
         model.findQueryDidChange()
+        #expect(coordinator.findCoordinator.hasActiveFind, "Find Next waits for the running search instead of going to the editor")
+        await model.findSearchSettled()
         #expect(model.find.matches.count == 2)
         #expect(coordinator.findCoordinator.hasActiveFind)
         let start = try #require(model.find.currentIndex)

@@ -273,7 +273,7 @@ final class TableTransferService: ObservableObject {
     // PostgreSQL and DuckDB read a BIT as its digits and MySQL as its number, so 00000101 bound to a MySQL BIT stores 101.
     // Read before the row stream opens: a catalog read queued behind the source's own open stream waits for the whole
     // table, and behind DuckDB's bounded one never ends. The catalog, because a fresh PostgreSQL session's header names
-    // a bit column `unknown` and MySQL's drops the width.
+    // a bit column `unknown` and MySQL's drops the width of a BIT(1).
     static func bitColumnKinds(
         for object: ExportObjectItem,
         source: ExportDataSourceAdapter,

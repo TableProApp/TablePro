@@ -628,4 +628,66 @@ struct DatabaseTreeMetadataServicePooledScopeTests {
         #expect(MetadataConnectionPool.shared.pooledDriverCount(for: connection.id) == 1)
         await tearDown(connection)
     }
+
+    // Completion reads on the interactive connection, so a Refresh of rows already on screen must not queue there.
+    private func twoWorkloadSession() -> (DatabaseConnection, interactive: MockDatabaseDriver, bulk: MockDatabaseDriver) {
+        let connection = TestFixtures.makeConnection(database: "shop", type: .postgresql)
+        var session = ConnectionSession(connection: connection, driver: MockDatabaseDriver(connection: connection))
+        session.status = .connected
+        session.browseDatabase = "shop"
+        session.browseSchema = "public"
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        let interactive = MockDatabaseDriver(connection: connection)
+        let bulk = MockDatabaseDriver(connection: connection)
+        for (driver, workload) in [(interactive, MetadataConnectionPool.Workload.interactive), (bulk, .bulk)] {
+            MetadataConnectionPool.shared.injectEntry(
+                driver, scope: DatabaseScope(connectionId: connection.id, database: "shop", schema: "public"), workload: workload
+            )
+            MetadataConnectionPool.shared.injectEntry(
+                driver, scope: DatabaseScope(connectionId: connection.id, database: "shop", schema: nil), workload: workload
+            )
+        }
+        return (connection, interactive, bulk)
+    }
+
+    @Test("A Refresh of tables already on screen reads on the bulk connection")
+    func refreshOfLoadedTablesReadsOnTheBulkConnection() async {
+        let (connection, interactive, bulk) = twoWorkloadSession()
+        let service = DatabaseTreeMetadataService.shared
+
+        await service.loadTables(connectionId: connection.id, database: "shop", schema: "public")
+        #expect(interactive.fetchScopedTablesCallCount == 1)
+        await service.refreshTableObjects(connectionId: connection.id, database: "shop", schema: "public")
+
+        #expect(interactive.fetchScopedTablesCallCount == 1)
+        #expect(bulk.fetchScopedTablesCallCount == 1)
+        await tearDown(connection)
+    }
+
+    @Test("A Refresh of a schema list already on screen reads on the bulk connection")
+    func refreshOfLoadedSchemaListReadsOnTheBulkConnection() async {
+        let (connection, interactive, bulk) = twoWorkloadSession()
+        let service = DatabaseTreeMetadataService.shared
+
+        await service.loadSchemas(connectionId: connection.id, database: "shop")
+        let firstReads = interactive.fetchSchemasCallCount
+        #expect(firstReads == 1)
+        await service.refreshSchemas(connectionId: connection.id, database: "shop")
+
+        #expect(interactive.fetchSchemasCallCount == firstReads)
+        #expect(bulk.fetchSchemasCallCount == 1)
+        await tearDown(connection)
+    }
+
+    @Test("A Retry with nothing on screen stays on the interactive connection")
+    func retryWithNothingOnScreenStaysInteractive() async {
+        let (connection, interactive, bulk) = twoWorkloadSession()
+        let service = DatabaseTreeMetadataService.shared
+
+        await service.refreshTableObjects(connectionId: connection.id, database: "shop", schema: "public")
+
+        #expect(interactive.fetchScopedTablesCallCount == 1)
+        #expect(bulk.fetchScopedTablesCallCount == 0)
+        await tearDown(connection)
+    }
 }
