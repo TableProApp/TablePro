@@ -40,6 +40,7 @@ public sealed partial class QueryTabView : UserControl, ITabContent
         AutomationProperties.SetName(SqlText, Strings.Format("EditorName", title));
         Results.StatusChanged += (_, status) => StatusText.Text = status;
         Results.SortRequested += OnSortRequested;
+        Results.ResultPicked += (_, _) => _sort = GridSort.None;
         SqlText.GotFocus += (_, _) => _target = EditTarget.Editor;
         Results.GridView.GotFocus += (_, _) => _target = EditTarget.Grid;
         Results.MessagesBox.GotFocus += (_, _) => _target = EditTarget.Messages;
@@ -63,6 +64,8 @@ public sealed partial class QueryTabView : UserControl, ITabContent
         _target == EditTarget.Messages && Results.MessagesBox.Visibility == Visibility.Visible ? Results.MessagesBox : null;
 
     public async void Run() => await RunAsync().ConfigureAwait(true);
+
+    public async void RunStatement() => await RunStatementAsync().ConfigureAwait(true);
 
     public void Stop() => _run?.Cancel();
 
@@ -104,6 +107,33 @@ public sealed partial class QueryTabView : UserControl, ITabContent
             sql = SqlText.Text;
         }
 
+        await RunTypedAsync(sql).ConfigureAwait(true);
+    }
+
+    // The statement is selected first so the tab shows which of its statements ran, as the Linux app does.
+    private async Task RunStatementAsync()
+    {
+        if (IsRunning || _confirming || _work.IsClosed)
+        {
+            return;
+        }
+
+        var text = SqlText.Document.Snapshot();
+        if (_session.StatementAt(text, SqlText.Model.Primary.Active) is not { } statement)
+        {
+            StatusText.Text = Strings.Get("StatusNoStatement");
+            return;
+        }
+
+        var (start, length) = statement.GetOffsetAndLength(text.Length);
+        SqlText.Model.SetSelection(start + length, start);
+        SqlText.EnsureCaretVisible();
+        await RunTypedAsync(text[statement]).ConfigureAwait(true);
+    }
+
+    // Safe Mode judges the text that is sent, whichever part of the editor it is.
+    private async Task RunTypedAsync(string sql)
+    {
         if (string.IsNullOrWhiteSpace(sql))
         {
             return;

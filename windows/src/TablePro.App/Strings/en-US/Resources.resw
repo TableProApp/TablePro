@@ -195,6 +195,12 @@
   <data name="MenuRun.AccessKey" xml:space="preserve">
     <value>R</value>
   </data>
+  <data name="MenuRunStatement.Text" xml:space="preserve">
+    <value>Run statement at cursor</value>
+  </data>
+  <data name="MenuRunStatement.AccessKey" xml:space="preserve">
+    <value>T</value>
+  </data>
   <data name="MenuStop.Text" xml:space="preserve">
     <value>Stop</value>
   </data>
@@ -743,6 +749,9 @@
   </data>
   <data name="StatusRowsLimited" xml:space="preserve">
     <value>Rows: {0:N0}, the row limit · {1:N0} ms</value>
+  </data>
+  <data name="StatusNoStatement" xml:space="preserve">
+    <value>No statement at the cursor</value>
   </data>
   <data name="StatusDone" xml:space="preserve">
     <value>Done · {0:N0} ms</value>
@@ -1574,5 +1583,35 @@ New fingerprint: {2}</value>
   </data>
   <data name="TlsFailure_ClientIdentityInvalid" xml:space="preserve">
     <value>The client certificate or key could not be read. Check both files.</value>
+  </data>
+  <data name="ResultSetItem" xml:space="preserve">
+    <value>Result {0:N0} ({1:N0})</value>
+  </data>
+  <data name="ResultSetItemMore" xml:space="preserve">
+    <value>Result {0:N0} ({1:N0}+)</value>
+  </data>
+  <data name="ResultPicker.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Result set</value>
+  </data>
+  <data name="CloseRunningTitleOne" xml:space="preserve">
+    <value>Stop the running query?</value>
+  </data>
+  <data name="CloseRunningTitleMany" xml:space="preserve">
+    <value>Stop {0} running queries?</value>
+  </data>
+  <data name="CloseRunningRollsBackOne" xml:space="preserve">
+    <value>Closing stops it before it finishes, and rolls back any transaction it has open.</value>
+  </data>
+  <data name="CloseRunningRollsBackMany" xml:space="preserve">
+    <value>Closing stops them before they finish, and rolls back any transaction they have open.</value>
+  </data>
+  <data name="CloseRunningTab" xml:space="preserve">
+    <value>{0} on {1}</value>
+  </data>
+  <data name="CloseRunningButton" xml:space="preserve">
+    <value>Stop and close</value>
+  </data>
+  <data name="Error_config_client_identity_incomplete" xml:space="preserve">
+    <value>A client certificate needs both a certificate file and a key file.</value>
   </data>
 </root>

@@ -5,7 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using TablePro.DataGrid.Automation;
 using TablePro.DataGrid.Model;
-using Windows.ApplicationModel.DataTransfer;
+using TablePro.Graphics;
 using Windows.Foundation;
 using Windows.System;
 using Windows.UI.Core;
@@ -164,15 +164,20 @@ public sealed partial class DataGridView
                 using var reader = data.OpenReader();
                 return GridCopy.Tsv(reader, range, cancel.Token);
             }, cancel.Token).ConfigureAwait(true);
-            var package = new DataPackage();
-            package.SetText(text);
-            Clipboard.SetContent(package);
-            Clipboard.Flush();
+            if (cancel.IsCancellationRequested || !ClipboardText.TrySet(text))
+            {
+                return false;
+            }
             Copies++;
             return true;
         }
         catch (OperationCanceledException)
         {
+            return false;
+        }
+        catch (ObjectDisposedException) when (cancel.IsCancellationRequested)
+        {
+            // The host let go of the data it replaced while this read it.
             return false;
         }
         finally
