@@ -31460,6 +31460,9 @@
         }
       }
     },
+    "Beautify SQL" : {
+
+    },
     "Before" : {
 
     },
@@ -43905,6 +43908,12 @@
           }
         }
       }
+    },
+    "Colorful" : {
+
+    },
+    "Colorful gives each kind of object its own filled, colored icon in the sidebar, the tabs and the object lists." : {
+
     },
     "Colors" : {
       "extractionState" : "stale",
@@ -95102,6 +95111,9 @@
         }
       }
     },
+    "Insert a saved query at the cursor" : {
+
+    },
     "Insert all rows in a single transaction. If any row fails, all changes are rolled back." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -113784,6 +113796,9 @@
     "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons and the connections list, and makes Tree the default sidebar layout. Standard Layout turns them off again. Open connections switch layout too." : {
 
     },
+    "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the tree, and makes Tree the default sidebar layout. In table tabs it shows column types in the header, the sort and a Text mode in the filter panel, opens that panel with each table, puts the result bar above the grid and names the database and connection in tab titles. In query tabs it shows the query bar on two rows, and object icons turn colorful. Standard Layout turns them off again. Open connections switch layout too." : {
+
+    },
     "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the tree, and makes Tree the default sidebar layout. In table tabs it shows column types in the header, the sort and a Text mode in the filter panel, opens that panel with each table, puts the result bar above the grid and names the database and connection in tab titles. Standard Layout turns them off again. Open connections switch layout too." : {
 
     },
@@ -125701,6 +125716,9 @@
           }
         }
       }
+    },
+    "Object Icons" : {
+
     },
     "Object Kind" : {
 
@@ -140388,6 +140406,9 @@
         }
       }
     },
+    "Puts Save, Query Builder, Format, Snippets and AI above the editor, and the connection, the database and the run controls on a second row." : {
+
+    },
     "Puzzle Piece" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -140682,6 +140703,9 @@
           }
         }
       }
+    },
+    "Query Builder" : {
+
     },
     "Query consoles import with their data source. Consoles with a default name start unchecked." : {
 
@@ -156072,6 +156096,9 @@
         }
       }
     },
+    "Runs on %@. Choose another connection to move this tab there." : {
+
+    },
     "Runs statements on the SSH server so a database file there can be read and written in place." : {
       "localizations" : {
         "fr" : {
@@ -157142,6 +157169,9 @@
           }
         }
       }
+    },
+    "Save Current Query as Favorite…" : {
+
     },
     "Save Failed" : {
       "localizations" : {
@@ -167132,6 +167162,9 @@
     "Show the messages that arrived while paused" : {
 
     },
+    "Show the query bar on two rows" : {
+
+    },
     "Show the result bar above the grid" : {
 
     },
@@ -170014,6 +170047,9 @@
           }
         }
       }
+    },
+    "Snippets" : {
+
     },
     "Snowflake" : {
       "extractionState" : "manual",
@@ -201829,6 +201865,9 @@
       }
     },
     "This Tab" : {
+
+    },
+    "This tab cannot move while its query runs or its grid edits are unsaved." : {
 
     },
     "This tab is on %@. Switch the connection to that database to run it." : {
