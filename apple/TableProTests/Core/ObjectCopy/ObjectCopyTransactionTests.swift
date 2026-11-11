@@ -289,7 +289,8 @@ struct ObjectCopyTransactionTests {
     // A held copy on a pooled lease would be rolled back when the pool closes it, after the sheet reported success.
     @Test("Copy To commits its own transaction even on a connection in Manual Commit")
     func manualCommitConnectionStillCommitsTheCopy() async throws {
-        var connection = TestFixtures.makeConnection(id: targetScope.connectionId, type: targetType)
+        // MySQL runs a stored Manual Commit as automatic, so the session is on an engine that holds.
+        var connection = TestFixtures.makeConnection(id: targetScope.connectionId, type: .postgresql)
         connection.commitMode = .manual
         DatabaseManager.shared.injectSession(ConnectionSession(connection: connection), for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }

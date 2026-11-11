@@ -12,12 +12,9 @@ private final class ImportHoldDriver: PluginDriverStub, @unchecked Sendable {
     private let lock = NSLock()
     private var current: PluginSessionTransactionState
     private var sent: [String] = []
-    private let ddlCommits: Bool
 
-    // `ddlCommits` answers as MySQL does: DDL and LOCK TABLES commit the open transaction.
-    init(state: PluginSessionTransactionState = .idle, ddlCommits: Bool = false) {
+    init(state: PluginSessionTransactionState = .idle) {
         current = state
-        self.ddlCommits = ddlCommits
     }
 
     var supportsSchemas: Bool { false }
@@ -29,13 +26,10 @@ private final class ImportHoldDriver: PluginDriverStub, @unchecked Sendable {
     func execute(query: String) async throws -> PluginQueryResult {
         lock.withLock {
             sent.append(query)
-            let upper = query.uppercased()
-            switch upper {
+            switch query.uppercased() {
             case "BEGIN": current = .inTransaction
             case "COMMIT", "ROLLBACK": current = .idle
-            default:
-                let head = upper.split(separator: " ").first.map(String.init) ?? ""
-                if ddlCommits, ["DROP", "CREATE", "ALTER", "LOCK"].contains(head) { current = .idle }
+            default: break
             }
         }
         return .empty
@@ -117,37 +111,18 @@ struct ImportManualCommitTests {
         #expect(driver.statements.isEmpty)
     }
 
-    // A mysqldump drops and creates each table before its rows; after that DDL the rows would autocommit.
-    @Test("A held MySQL import refuses the first row after the file's own DDL ended the hold")
-    func dumpRowsAfterDDLAreRefused() async throws {
-        let driver = ImportHoldDriver(ddlCommits: true)
-        let sink = sink(on: driver, type: .mysql)
+    @Test("A held import runs a dump's DDL inside its transaction, with no COMMIT")
+    func heldImportRunsDDL() async throws {
+        let driver = ImportHoldDriver()
+        let sink = sink(on: driver)
         try await sink.prepareImportRun()
         try await sink.beginTransaction()
 
-        for (line, statement) in ["DROP TABLE IF EXISTS t", "CREATE TABLE t (id INT)", "LOCK TABLES t WRITE"].enumerated() {
-            try await sink.execute(statement: statement, line: line + 1)
-        }
-        await #expect(throws: ManualCommitMixedRefusal()) {
-            try await sink.execute(statement: "INSERT INTO t VALUES (1)", line: 4)
-        }
+        try await sink.execute(statement: "DROP TABLE IF EXISTS t", line: 1)
+        try await sink.execute(statement: "INSERT INTO t VALUES (1)", line: 2)
+        try await sink.commitTransaction()
 
-        #expect(driver.statements == ["BEGIN", "DROP TABLE IF EXISTS t", "CREATE TABLE t (id INT)", "LOCK TABLES t WRITE"])
-    }
-
-    @Test("A held MySQL import refuses DDL once it has written rows, which stay held")
-    func ddlAfterHeldRowsIsRefused() async throws {
-        let driver = ImportHoldDriver(ddlCommits: true)
-        let sink = sink(on: driver, type: .mysql)
-        try await sink.prepareImportRun()
-        try await sink.beginTransaction()
-
-        try await sink.execute(statement: "INSERT INTO a VALUES (1)", line: 1)
-        await #expect(throws: ManualCommitMixedRefusal()) {
-            try await sink.execute(statement: "DROP TABLE IF EXISTS b", line: 2)
-        }
-
-        #expect(driver.statements == ["BEGIN", "INSERT INTO a VALUES (1)"])
+        #expect(driver.statements == ["BEGIN", "DROP TABLE IF EXISTS t", "INSERT INTO t VALUES (1)"])
     }
 
     @Test("A held import marks the turn's hold at its BEGIN")

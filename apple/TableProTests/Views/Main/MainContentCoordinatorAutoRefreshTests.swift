@@ -92,6 +92,37 @@ struct MainContentCoordinatorAutoRefreshTests {
         withExtendedLifetime(paneState) {}
     }
 
+    @Test("A tick's rows are dropped when a value window opens during its read, and the next tick applies its own")
+    func tickRowsWaitForAValueWindowOpenedMidRead() async {
+        let harness = AutoRefreshHarness()
+        defer { harness.tearDown() }
+        let paneState = TrailingPaneState()
+        harness.coordinator.trailingPaneState = paneState
+        let read = AsyncGate()
+        harness.driver.holdReads(on: read)
+
+        harness.start()
+        await harness.clock.waitUntilSleeping()
+        harness.clock.advance(by: .seconds(5))
+        await read.arrived(1)
+        var popOut: JSONViewerWindowController? = JSONViewerWindowController()
+        if let popOut { InspectorPopOutRegistry.record(popOut, openedFrom: paneState) }
+        await read.open()
+        await harness.clock.waitUntilSleeping()
+
+        #expect(harness.tableReads == 1)
+        #expect(harness.loadedRowCount == 1, "the held tick's two rows must not replace the one on screen")
+        #expect(harness.tab?.autoRefreshInterval == .fiveSeconds)
+
+        popOut = nil
+        harness.clock.advance(by: .seconds(5))
+        await harness.clock.waitUntilSleeping()
+
+        #expect(harness.tableReads == 2)
+        #expect(harness.loadedRowCount == 2, "with the window gone the next tick's rows land")
+        withExtendedLifetime(paneState) {}
+    }
+
     @Test("A tick waits while the tab's database holds an open transaction")
     func openTransactionPauses() async throws {
         let harness = AutoRefreshHarness()
@@ -219,6 +250,10 @@ private final class AutoRefreshHarness {
         driver.sentStatements.filter { $0.contains("jobs") }.count
     }
 
+    var loadedRowCount: Int {
+        coordinator.tabSessionRegistry.tableRows(for: tabId).rows.count
+    }
+
     var historyCount: Int {
         get async { await history.count(scope: .connection(connection.id)) }
     }
@@ -287,6 +322,7 @@ private final class AutoRefreshDriver: DatabaseDriver, @unchecked Sendable {
     private let lock = NSLock()
     private var statements: [String] = []
     private var fails = false
+    private var readGate: AsyncGate?
 
     init(connection: DatabaseConnection) {
         self.connection = connection
@@ -300,19 +336,26 @@ private final class AutoRefreshDriver: DatabaseDriver, @unchecked Sendable {
         lock.withLock { fails = true }
     }
 
-    private func answer(_ query: String) throws -> QueryResult {
-        let failing = lock.withLock { () -> Bool in
+    // Every later read of the table waits on the gate until the test opens it.
+    func holdReads(on gate: AsyncGate) {
+        lock.withLock { readGate = gate }
+    }
+
+    private func answer(_ query: String) async throws -> QueryResult {
+        let (failing, gate) = lock.withLock { () -> (Bool, AsyncGate?) in
             statements.append(query)
-            return fails && query.contains("jobs")
+            let readsTable = query.contains("jobs")
+            return (fails && readsTable, readsTable ? readGate : nil)
         }
+        if let gate { await gate.wait() }
         if failing { throw AutoRefreshReadFailure() }
         return ScriptAnsweringDriver.resultSet(columns: ["id", "name"], rows: [["1", "first"], ["2", "second"]])
     }
 
-    func execute(query: String) async throws -> QueryResult { try answer(query) }
-    func executeParameterized(query: String, parameters: [Any?]) async throws -> QueryResult { try answer(query) }
+    func execute(query: String) async throws -> QueryResult { try await answer(query) }
+    func executeParameterized(query: String, parameters: [Any?]) async throws -> QueryResult { try await answer(query) }
     func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult {
-        try answer(query)
+        try await answer(query)
     }
 
     func connect() async throws {}

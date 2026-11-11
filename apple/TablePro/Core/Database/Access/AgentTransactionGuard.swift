@@ -56,13 +56,9 @@ internal struct AgentTransactionGuard: Sendable {
            ManualCommit.startsTransaction(statements, databaseType: databaseType, grammar: grammar) {
             throw OpenTransactionRefusal()
         }
-        if commitMode == .manual, startState.holdsUserTransaction, unseen {
+        // On an idle session the statement's own COMMIT would end the hold this call opens for its write.
+        if commitMode == .manual, unseen, writes || startState.holdsUserTransaction {
             throw ManualCommitTransactionControlRefusal()
-        }
-        // An agent cannot answer the prompt the editor shows before an implicit commit.
-        if commitMode == .manual, startState.holdsUserTransaction,
-           ManualCommit.commitsHeldTransaction(statements, databaseType: databaseType, grammar: grammar) {
-            throw ManualCommitDDLRefusal()
         }
         let protection = Self.protection(family: family, sessionState: startState, controlsTransaction: controls)
         if protection == .refuse { throw AbortingTransactionRefusal() }
@@ -84,15 +80,19 @@ internal struct AgentTransactionGuard: Sendable {
         let pendingMatters = commitMode == .manual && writes
         guard pendingMatters || startState.holdsUserTransaction else { return (value, nil) }
         let endState = await driver.heldSessionTransactionState()
-        return (value, Self.notice(startState: startState, endState: endState, pendingMatters: pendingMatters))
+        let notice = Self.notice(
+            startState: startState, endState: endState, pendingMatters: pendingMatters, openedHold: opened
+        )
+        return (value, notice)
     }
 
     nonisolated internal static func notice(
         startState: PluginSessionTransactionState,
         endState: PluginSessionTransactionState,
-        pendingMatters: Bool
+        pendingMatters: Bool,
+        openedHold: Bool
     ) -> String? {
-        if startState.holdsUserTransaction, endState == .idle { return ManualCommit.transactionEndedNotice }
+        if startState.holdsUserTransaction || openedHold, endState == .idle { return ManualCommit.transactionEndedNotice }
         return pendingMatters && endState.holdsUserTransaction ? ManualCommit.pendingNotice : nil
     }
 

@@ -8,6 +8,8 @@ import TableProPluginKit
 
 // Read only when a transaction command is validated, as the Debug menu's state is.
 struct TransactionMenuState: Equatable {
+    // False on an engine that commits schema and maintenance statements on its own.
+    var isAvailable = false
     var isManualCommitOn = false
     // False for an engine with no transactions, or one whose live driver has only answered that it cannot say.
     var canHoldTransactions = false
@@ -381,7 +383,8 @@ extension MainSplitViewController: NSMenuItemValidation {
         guard context.isConnected else { return false }
         switch selector {
         case #selector(toggleManualCommit(_:)):
-            return context.transaction.isManualCommitOn || context.transaction.canHoldTransactions
+            return context.transaction.isAvailable
+                && (context.transaction.isManualCommitOn || context.transaction.canHoldTransactions)
         case #selector(commitOpenTransaction(_:)):
             return context.transaction.canCommit
         case #selector(rollBackOpenTransaction(_:)):
@@ -809,7 +812,7 @@ extension MainSplitViewController: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         applyDynamicTitle(to: menuItem)
         guard let action = menuItem.action else { return false }
-        if menuItem.identifier == DatabaseMenuBuilder.manualCommitFootnoteIdentifier { return false }
+        if let identifier = menuItem.identifier, Self.manualCommitFootnotes.contains(identifier) { return false }
         // AppKit asks this for the View menu and `validateUserInterfaceItem` for the rest, so a rule must live in both.
         if action == #selector(toggleSidebar(_:)) { return true }
         if action == #selector(toggleInspector(_:)) { return canToggleTrailingPane }
@@ -931,15 +934,28 @@ extension MainSplitViewController: NSMenuItemValidation {
     }
 
     private func applyManualCommitState(to menuItem: NSMenuItem) {
-        guard menuItem.identifier != DatabaseMenuBuilder.manualCommitFootnoteIdentifier else { return }
+        guard !Self.manualCommitFootnotes.contains(where: { $0 == menuItem.identifier }) else { return }
         let state = transactionMenuState
         setState(state.isManualCommitOn ? .on : .off, on: menuItem)
-        guard let footnote = menuItem.menu?.items.first(where: {
-            $0.identifier == DatabaseMenuBuilder.manualCommitFootnoteIdentifier
-        }) else { return }
-        // While on, a write is refused rather than committed, which the footnote's wording does not cover.
-        let hidden = !isConnected || state.canHoldTransactions || state.isManualCommitOn
-        if footnote.isHidden != hidden { footnote.isHidden = hidden }
+        let shown = Self.shownManualCommitFootnote(state, isConnected: isConnected)
+        for footnote in menuItem.menu?.items ?? [] {
+            guard let identifier = footnote.identifier, Self.manualCommitFootnotes.contains(identifier) else { continue }
+            let hidden = identifier != shown
+            if footnote.isHidden != hidden { footnote.isHidden = hidden }
+        }
+    }
+
+    static let manualCommitFootnotes = [
+        DatabaseMenuBuilder.manualCommitFootnoteIdentifier,
+        DatabaseMenuBuilder.manualCommitUnavailableFootnoteIdentifier,
+    ]
+
+    // While on, a write is refused rather than committed, which the reporting footnote's wording does not cover.
+    static func shownManualCommitFootnote(_ state: TransactionMenuState, isConnected: Bool) -> NSUserInterfaceItemIdentifier? {
+        guard isConnected else { return nil }
+        guard state.isAvailable else { return DatabaseMenuBuilder.manualCommitUnavailableFootnoteIdentifier }
+        guard !state.canHoldTransactions, !state.isManualCommitOn else { return nil }
+        return DatabaseMenuBuilder.manualCommitFootnoteIdentifier
     }
 
     // The mode is in `representedObject`, so enablement needs the item, not the selector the shared table keys on.

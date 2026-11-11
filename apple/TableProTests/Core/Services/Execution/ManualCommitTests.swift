@@ -74,16 +74,20 @@ struct ManualCommitTests {
         #expect(decision("VACUUM") == .runAsIs)
     }
 
-    @Test("DDL on an engine that commits it implicitly ends the open transaction, elsewhere it does not")
-    func implicitCommitDDL() {
-        let mysql = DatabaseType.mysql
-        #expect(ManualCommit.commitsHeldTransaction(["ALTER TABLE t ADD c INT"], databaseType: mysql, grammar: mysql.lexicalGrammar))
-        #expect(ManualCommit.commitsHeldTransaction(["TRUNCATE TABLE t"], databaseType: mysql, grammar: mysql.lexicalGrammar))
-        #expect(!ManualCommit.commitsHeldTransaction(["UPDATE t SET a = 1"], databaseType: mysql, grammar: mysql.lexicalGrammar))
-        let postgres = DatabaseType.postgresql
-        #expect(!ManualCommit.commitsHeldTransaction(
-            ["ALTER TABLE t ADD c INT"], databaseType: postgres, grammar: postgres.lexicalGrammar
-        ))
+    @Test("Manual Commit is offered where DDL waits for Commit", arguments: [
+        DatabaseType.postgresql, .sqlite, .mssql, .duckdb, .redshift,
+    ])
+    func availableWhereDDLWaits(type: DatabaseType) {
+        #expect(ManualCommit.isAvailable(for: type))
+        #expect(ManualCommit.effectiveMode(.manual, databaseType: type) == .manual)
+    }
+
+    @Test("Manual Commit is not offered where DDL commits on its own, and a stored one runs as automatic", arguments: [
+        DatabaseType.mysql, .mariadb, .oracle, .clickhouse,
+    ])
+    func unavailableWhereDDLCommits(type: DatabaseType) {
+        #expect(!ManualCommit.isAvailable(for: type))
+        #expect(ManualCommit.effectiveMode(.manual, databaseType: type) == .automatic)
     }
 
     @Test("A run that mixes a write with a statement that can't run inside a transaction is refused")
@@ -93,11 +97,12 @@ struct ManualCommitTests {
         #expect(decision(["VACUUM t"]) == .runAsIs)
     }
 
-    @Test("On MySQL a run that mixes a write with DDL is refused, and DDL alone runs as typed")
-    func implicitCommitBesideAWriteRefuses() {
-        #expect(decision(["UPDATE t SET a = 1", "ALTER TABLE u ADD c INT"], type: .mysql) == .refuseMixed)
-        #expect(decision(["ALTER TABLE u ADD c INT"], type: .mysql) == .runAsIs)
-        #expect(decision(["UPDATE t SET a = 1", "ALTER TABLE u ADD c INT"], type: .postgresql) == .hold)
+    @Test("DDL beside a write is held like the write where DDL waits for Commit", arguments: [
+        DatabaseType.postgresql, .sqlite, .mssql,
+    ])
+    func ddlBesideAWriteIsHeld(type: DatabaseType) {
+        #expect(decision(["UPDATE t SET a = 1", "ALTER TABLE u ADD c INT"], type: type) == .hold)
+        #expect(decision(["ALTER TABLE u ADD c INT"], type: type) == .hold)
     }
 
     @Test("Two reads in Manual Commit are not held: the run keeps the plan an automatic connection uses")
@@ -160,29 +165,28 @@ struct ManualCommitTests {
         }
     }
 
-    @Test("The editor never offers Commit and Run for a run Manual Commit refuses")
-    func noPromptForARefusedRun() {
-        let mysql = DatabaseType.mysql
-        let mixed = ["UPDATE a SET x = 1", "ALTER TABLE b ADD c INT"]
-        #expect(!ManualCommit.asksBeforeImplicitCommit(mixed, databaseType: mysql, grammar: mysql.lexicalGrammar, commitMode: .manual))
-        #expect(ManualCommit.asksBeforeImplicitCommit(mixed, databaseType: mysql, grammar: mysql.lexicalGrammar, commitMode: .automatic))
-        #expect(ManualCommit.asksBeforeImplicitCommit(
-            ["ALTER TABLE b ADD c INT"], databaseType: mysql, grammar: mysql.lexicalGrammar, commitMode: .manual
-        ))
-        #expect(!ManualCommit.asksBeforeImplicitCommit(
-            ["UPDATE a SET x = 1"], databaseType: mysql, grammar: mysql.lexicalGrammar, commitMode: .automatic
-        ))
+    @Test("Away from SQL Server, a column named like a transaction word is not transaction control", arguments: [
+        DatabaseType.postgresql, .mysql,
+    ])
+    func transactionWordsAsColumnsPass(type: DatabaseType) {
+        let sql = ["SELECT release, commit FROM t"]
+        #expect(!ManualCommit.mayEndTransactionUnseen(sql, databaseType: type, grammar: type.lexicalGrammar))
+        #expect(!ManualCommit.controlsTransaction(sql, databaseType: type, grammar: type.lexicalGrammar))
     }
 
     @Test("A reply says the transaction ended when it did, and that a held change is pending otherwise")
     func agentNoticeFollowsTheEndState() {
-        #expect(AgentTransactionGuard.notice(startState: .inTransaction, endState: .idle, pendingMatters: true)
+        #expect(AgentTransactionGuard.notice(startState: .inTransaction, endState: .idle, pendingMatters: true, openedHold: false)
             == ManualCommit.transactionEndedNotice)
-        #expect(AgentTransactionGuard.notice(startState: .inTransaction, endState: .idle, pendingMatters: false)
+        #expect(AgentTransactionGuard.notice(startState: .inTransaction, endState: .idle, pendingMatters: false, openedHold: false)
             == ManualCommit.transactionEndedNotice)
-        #expect(AgentTransactionGuard.notice(startState: .idle, endState: .inTransaction, pendingMatters: true)
+        #expect(AgentTransactionGuard.notice(startState: .idle, endState: .idle, pendingMatters: true, openedHold: true)
+            == ManualCommit.transactionEndedNotice)
+        #expect(AgentTransactionGuard.notice(startState: .idle, endState: .inTransaction, pendingMatters: true, openedHold: true)
             == ManualCommit.pendingNotice)
-        #expect(AgentTransactionGuard.notice(startState: .inTransaction, endState: .inTransaction, pendingMatters: false) == nil)
+        #expect(AgentTransactionGuard.notice(
+            startState: .inTransaction, endState: .inTransaction, pendingMatters: false, openedHold: false
+        ) == nil)
     }
 
     @Test("The refusal says how to run the change")
@@ -215,6 +219,24 @@ struct ConnectionCommitModeStorageTests {
         var connection = TestFixtures.makeConnection(type: .postgresql)
         connection.commitMode = .manual
         #expect(ConnectionSession(connection: connection).commitMode == .manual)
+    }
+
+    @MainActor
+    @Test("The form's Manual Commit toggle is off and refuses a change where the engine can't hold")
+    func formToggleIsDisabledWhereUnavailable() {
+        let coordinator = ConnectionFormCoordinator(connectionId: nil)
+        coordinator.network.type = .mysql
+        coordinator.customization.commitMode = .manual
+        #expect(!coordinator.isManualCommitAvailable)
+        #expect(!coordinator.effectiveManualCommit)
+        coordinator.effectiveManualCommit = false
+        #expect(coordinator.customization.commitMode == .manual)
+
+        coordinator.network.type = .postgresql
+        #expect(coordinator.isManualCommitAvailable)
+        #expect(coordinator.effectiveManualCommit)
+        coordinator.effectiveManualCommit = false
+        #expect(coordinator.customization.commitMode == .automatic)
     }
 
     @Test("The form writes Manual Commit into the saved fields, and turning it off removes the key")

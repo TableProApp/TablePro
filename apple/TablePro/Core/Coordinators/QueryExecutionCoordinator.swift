@@ -3,7 +3,6 @@
 //  TablePro
 //
 
-import AppKit
 import Combine
 import Foundation
 import TableProSQLGrammar
@@ -78,10 +77,8 @@ final class QueryExecutionCoordinator: ObservableObject {
             statements: batches.flatMap(\.statements),
             extraCapabilities: extraCapabilities
         )
-        let statementTexts = batches.flatMap(\.statements).map(\.sql)
         Task { [parent] in
             defer { parent.isShowingSafeModePrompt = false }
-            guard await confirmsImplicitCommit(of: statementTexts, onTab: target.tabId) else { return }
             switch await parent.executionGate.authorize(request) {
             case .authorized:
                 guard parent.rereadCanStart(install.source), stillHolds(target) else { return }
@@ -133,24 +130,6 @@ final class QueryExecutionCoordinator: ObservableObject {
         return true
     }
 
-    // Asked before the gate, for any open transaction, Manual Commit or a typed BEGIN.
-    private func confirmsImplicitCommit(of statements: [String], onTab tabId: UUID) async -> Bool {
-        let databaseType = parent.connection.type
-        let commitMode = DatabaseManager.shared.commitMode(for: parent.connectionId)
-        // A run Manual Commit refuses is refused in the lease, so it is never offered Commit and Run.
-        guard ManualCommit.asksBeforeImplicitCommit(
-            statements, databaseType: databaseType, grammar: parent.lexicalGrammar, commitMode: commitMode
-        ),
-              let tab = parent.tabManager.tabs.first(where: { $0.id == tabId }),
-              let scope = parent.scope(for: tab),
-              DatabaseManager.shared.sessionTransactions.holdsTransaction(
-                  connectionId: parent.connectionId, container: scope.database
-              )
-        else { return true }
-        let name = scope.database.isEmpty ? parent.connection.name : scope.database
-        return await ConnectionTransactionActions.confirmImplicitCommit(on: name, window: parent.contentWindow)
-    }
-
     private func makeExecuteRequest(
         statements: [SQLStatementScanner.ExecutableStatement],
         extraCapabilities: CallerCapabilities = []
@@ -182,10 +161,8 @@ final class QueryExecutionCoordinator: ObservableObject {
             statements: batches.flatMap(\.statements),
             extraCapabilities: extraCapabilities
         )
-        let statementTexts = batches.flatMap(\.statements).map(\.sql)
         Task { [parent] in
             defer { parent.isShowingSafeModePrompt = false }
-            guard await confirmsImplicitCommit(of: statementTexts, onTab: target.tabId) else { return }
             switch await parent.executionGate.authorize(request) {
             case .authorized:
                 guard parent.rereadCanStart(install.source), stillHolds(target) else { return }

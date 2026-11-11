@@ -62015,6 +62015,10 @@
         }
       }
     },
+    "Default Version" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Default view:" : {
       "localizations" : {
         "fr" : {
@@ -62105,6 +62109,10 @@
           }
         }
       }
+    },
+    "Definer" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Definition" : {
       "localizations" : {
@@ -65475,6 +65483,10 @@
           }
         }
       }
+    },
+    "Disabled on Replica" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Discard" : {
       "localizations" : {
@@ -72061,6 +72073,8 @@
       }
     },
     "Enabled" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -72366,6 +72380,10 @@
           }
         }
       }
+    },
+    "Ends" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Ends on %@" : {
 
@@ -74624,6 +74642,8 @@
       "generatesSymbol" : false
     },
     "Event" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -74662,6 +74682,10 @@
           }
         }
       }
+    },
+    "Event Scheduler" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Event Streaming" : {
       "localizations" : {
@@ -74744,6 +74768,8 @@
       }
     },
     "Events" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -79238,6 +79264,10 @@
           }
         }
       }
+    },
+    "Extension" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Extension File" : {
       "localizations" : {
@@ -101062,6 +101092,10 @@
         }
       }
     },
+    "Last Executed" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Last Hour" : {
       "localizations" : {
         "fr" : {
@@ -116128,7 +116162,8 @@
       }
     },
     "No" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "No %@" : {
       "localizations" : {
@@ -126457,6 +126492,10 @@
     "On a partitioned table the drop cannot run concurrently, and it removes the index from every partition." : {
 
     },
+    "On Completion" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "On Delete" : {
       "localizations" : {
         "fr" : {
@@ -127074,6 +127113,10 @@
           }
         }
       }
+    },
+    "One Time" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "One username and password, shared by any number of connections. Change it here and every connection using it signs in with the new one." : {
       "localizations" : {
@@ -131410,6 +131453,8 @@
       }
     },
     "Owner" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -145375,6 +145420,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Recurring" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Red" : {
       "localizations" : {
         "fr" : {
@@ -146977,6 +147026,10 @@
           }
         }
       }
+    },
+    "Relocatable" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Remote (Quack, experimental)" : {
       "extractionState" : "manual",
@@ -158550,6 +158603,10 @@
       }
     },
     "Scatter Plot" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Schedule" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -174160,6 +174217,10 @@
         }
       }
     },
+    "Starts" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "starts with" : {
       "localizations" : {
         "fr" : {
@@ -175022,6 +175083,8 @@
       }
     },
     "Status" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -213892,6 +213955,8 @@
       }
     },
     "Version" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -218428,7 +218493,8 @@
       }
     },
     "Yes" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Yesterday" : {
       "localizations" : {

@@ -69,18 +69,6 @@ internal enum ConnectionTransactionActions {
             )
         }
     }
-
-    // MySQL and Oracle commit before DDL runs, so the transaction the bar shows ends with no Commit pressed.
-    static func confirmImplicitCommit(on name: String, window: NSWindow?) async -> Bool {
-        await AlertHelper.confirm(
-            title: String(localized: "Commit the Open Transaction?"),
-            message: String(
-                format: String(localized: "This statement commits the transaction open on “%@” before it runs."), name
-            ),
-            confirmButton: String(localized: "Commit and Run"),
-            window: window
-        )
-    }
 }
 
 private struct SessionTransactionDenial: LocalizedError {

@@ -21,8 +21,6 @@ internal final class ImportSinkRun: @unchecked Sendable {
     private var leavesTransactionOpen = false
     private var disabledForeignKeys = false
     private var writesOutsideTransaction: Bool?
-    private var heldChanges = false
-    private var holdEndedByFile = false
     private var finalized = false
     private var acknowledgedEnding: ImportTransactionOutcome = .untracked
     private var fileCommittedEarly = false
@@ -105,10 +103,7 @@ internal final class ImportSinkRun: @unchecked Sendable {
         operation: () async throws -> T
     ) async throws -> T {
         try await admitted(.data) {
-            if writes, self.commitMode == .manual {
-                try self.refuseWriteOutsideTransaction()
-                if let statement { try self.refuseCommittingStatement(statement) }
-            }
+            if writes, self.commitMode == .manual { try self.refuseWriteOutsideTransaction() }
             if let statement { self.noteStatement(statement) }
             if writes, let index = self.fileIndex {
                 self.run.record { $0.effects[index]?.admittedWrite = true }
@@ -126,7 +121,6 @@ internal final class ImportSinkRun: @unchecked Sendable {
                 }
                 await self.observe()
                 if let statement { self.noteCompletedStatement(statement, before: before, wasOwned: hadAuthority) }
-                if writes, self.commitMode == .manual, let statement { self.noteHeldStatement(statement) }
                 return value
             } catch {
                 self.run.record {
@@ -147,31 +141,6 @@ internal final class ImportSinkRun: @unchecked Sendable {
             return writesOutsideTransaction == true
         }
         if outside { throw ManualCommitUnwrappedImportRefusal() }
-    }
-
-    // MySQL and Oracle commit a held import's rows at its next DDL, and the rows after that DDL would autocommit.
-    private func refuseCommittingStatement(_ statement: String) throws {
-        guard let commits = heldImplicitCommit(statement) else { return }
-        let (changed, ended) = lock.withLock { (heldChanges, holdEndedByFile) }
-        if commits ? changed : ended { throw ManualCommitMixedRefusal() }
-    }
-
-    private func noteHeldStatement(_ statement: String) {
-        guard let commits = heldImplicitCommit(statement) else { return }
-        let changes = !commits && OperationKind.worst(of: [statement], databaseType: databaseType).declaresWrite
-        lock.withLock {
-            if commits { holdEndedByFile = true }
-            if changes { heldChanges = true }
-        }
-    }
-
-    // Nil unless this import holds its transaction on an engine whose DDL commits it.
-    private func heldImplicitCommit(_ statement: String) -> Bool? {
-        guard lock.withLock({ leavesTransactionOpen }),
-              TableEditDialect.of(databaseType)?.commitsDDLImplicitly == true
-        else { return nil }
-        let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
-        return ManualCommit.commitsHeldTransaction([statement], databaseType: databaseType, grammar: grammar)
     }
 
     private func noteStatement(_ statement: String) {

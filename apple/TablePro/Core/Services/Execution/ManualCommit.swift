@@ -23,7 +23,7 @@ internal struct ManualCommitRefusal: ManualCommitRefusing, Equatable {
 internal struct ManualCommitMixedRefusal: ManualCommitRefusing, Equatable {
     var errorDescription: String? {
         String(
-            localized: "This run mixes changes with a statement that commits them or can't run inside a transaction, so they can't wait for Commit. Run that statement on its own, or turn off Manual Commit in the Database menu."
+            localized: "This run mixes changes with a statement that can't run in a transaction. Run that statement on its own, or turn off Manual Commit."
         )
     }
 }
@@ -47,15 +47,7 @@ internal struct ManualCommitForeignKeyRefusal: ManualCommitRefusing, Equatable {
 internal struct ManualCommitUnwrappedImportRefusal: ManualCommitRefusing, Equatable {
     var errorDescription: String? {
         String(
-            localized: "This import runs each statement on its own, so its changes can't wait for Commit. Turn on Wrap in transaction (BEGIN/COMMIT) or turn off Manual Commit to run it."
-        )
-    }
-}
-
-internal struct ManualCommitDDLRefusal: ManualCommitRefusing, Equatable {
-    var errorDescription: String? {
-        String(
-            localized: "This statement commits the transaction open on this connection before it runs. Commit or roll back in TablePro first."
+            localized: "This import runs each statement on its own, so nothing can wait for Commit. Turn on Wrap in transaction or turn off Manual Commit."
         )
     }
 }
@@ -133,6 +125,22 @@ internal enum ManualCommit {
         }
     }
 
+    // MySQL, Oracle and ClickHouse commit schema and maintenance statements on their own, so nothing can wait there.
+    nonisolated internal static func isAvailable(for databaseType: DatabaseType) -> Bool {
+        TableEditDialect.of(databaseType)?.commitsDDLImplicitly != true
+    }
+
+    nonisolated internal static func effectiveMode(
+        _ stored: ConnectionCommitMode,
+        databaseType: DatabaseType
+    ) -> ConnectionCommitMode {
+        isAvailable(for: databaseType) ? stored : .automatic
+    }
+
+    internal static var unavailableExplanation: String {
+        String(localized: "This database commits schema and maintenance statements on its own, so changes can't wait for Commit.")
+    }
+
     // Exactly `.idle` holds: `.unknown` and a table lock would let the write commit on its own.
     nonisolated internal static func decision(
         commitMode: ConnectionCommitMode,
@@ -156,9 +164,6 @@ internal enum ManualCommit {
             return mixed ? .refuseMixed : .runAsIs
         case .scriptTransaction, .sessionTransaction:
             return .runAsIs
-        }
-        if commitsHeldTransaction(statements, databaseType: databaseType, grammar: grammar) {
-            return mixesImplicitCommit(statements, databaseType: databaseType, grammar: grammar) ? .refuseMixed : .runAsIs
         }
         switch sessionState {
         case .idle:
@@ -244,53 +249,16 @@ internal enum ManualCommit {
         }
     }
 
-    // DDL on an engine that commits it implicitly ends a transaction already open on the session.
-    nonisolated internal static func commitsHeldTransaction(
-        _ statements: [String],
-        databaseType: DatabaseType,
-        grammar: SQLLexicalGrammar
-    ) -> Bool {
-        guard TableEditDialect.of(databaseType)?.commitsDDLImplicitly == true else { return false }
-        return statements.contains { commitsImplicitly($0, databaseType: databaseType, grammar: grammar) }
-    }
-
-    // On a `commitsDDLImplicitly` engine, an implicit-commit statement beside another write commits that write.
-    nonisolated internal static func mixesImplicitCommit(
-        _ statements: [String],
-        databaseType: DatabaseType,
-        grammar: SQLLexicalGrammar
-    ) -> Bool {
-        guard commitsHeldTransaction(statements, databaseType: databaseType, grammar: grammar) else { return false }
-        return statements.contains { statement in
-            !commitsImplicitly(statement, databaseType: databaseType, grammar: grammar)
-                && writes([statement], databaseType: databaseType)
-        }
-    }
-
-    // The editor asks before an implicit commit only for a run Manual Commit would then let through.
-    nonisolated internal static func asksBeforeImplicitCommit(
-        _ statements: [String],
-        databaseType: DatabaseType,
-        grammar: SQLLexicalGrammar,
-        commitMode: ConnectionCommitMode
-    ) -> Bool {
-        guard commitsHeldTransaction(statements, databaseType: databaseType, grammar: grammar) else { return false }
-        let decided = decision(
-            commitMode: commitMode, statements: statements, databaseType: databaseType, grammar: grammar,
-            supportsTransactions: true, sessionState: .inTransaction
-        )
-        return decided.refusal == nil
-    }
-
-    // A procedure, a dynamic batch or a T-SQL `IF ... ROLLBACK` can end the transaction without leading with the keyword.
+    // A procedure or dynamic batch can end the transaction unseen, and so can a T-SQL batch, which needs no `;` before COMMIT.
     nonisolated internal static func mayEndTransactionUnseen(
         _ statements: [String],
         databaseType: DatabaseType,
         grammar: SQLLexicalGrammar
     ) -> Bool {
-        statements.contains { statement in
+        let scansTokens = TransactionEngineFamily.of(databaseType) == .sqlServer
+        return statements.contains { statement in
             CatalogChangeClassifier.effect(of: statement, databaseType: databaseType, grammar: grammar).runsUnseenStatements
-                || mentionsTransactionControl(statement, grammar: grammar)
+                || (scansTokens && mentionsTransactionControl(statement, grammar: grammar))
         }
     }
 
@@ -346,19 +314,6 @@ internal enum ManualCommit {
     nonisolated private static func writes(_ statements: [String], databaseType: DatabaseType) -> Bool {
         OperationKind.worst(of: statements, databaseType: databaseType).declaresWrite
     }
-
-    nonisolated private static func commitsImplicitly(
-        _ statement: String,
-        databaseType: DatabaseType,
-        grammar: SQLLexicalGrammar
-    ) -> Bool {
-        let effect = CatalogChangeClassifier.effect(of: statement, databaseType: databaseType, grammar: grammar)
-        if !effect.kinds.isEmpty, !effect.runsUnseenStatements { return true }
-        return implicitCommitKeywords.contains(QueryClassifier.leadingKeyword(of: statement, grammar: grammar))
-    }
-
-    // Changes no catalog the sidebar lists, and still commits on MySQL and Oracle.
-    private static let implicitCommitKeywords: Set<String> = ["TRUNCATE", "RENAME", "GRANT", "REVOKE", "LOCK"]
 
     private static let transactionControlKeywords: Set<String> = [
         "COMMIT", "ROLLBACK", "END", "ABORT", "SAVEPOINT", "RELEASE", "XA",

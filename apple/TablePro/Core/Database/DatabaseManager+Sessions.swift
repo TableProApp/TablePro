@@ -1015,8 +1015,10 @@ extension DatabaseManager {
         connectionStorage.mutateConnections(ids: [connectionId]) { $0.commitMode = mode }
     }
 
+    // What writes run under: a stored Manual Commit on an engine that can't hold runs as automatic.
     func commitMode(for connectionId: UUID) -> ConnectionCommitMode {
-        activeSessions[connectionId]?.commitMode ?? .automatic
+        guard let session = activeSessions[connectionId] else { return .automatic }
+        return ManualCommit.effectiveMode(session.commitMode, databaseType: session.connection.type)
     }
 
     internal func setSession(_ session: ConnectionSession, for connectionId: UUID) {

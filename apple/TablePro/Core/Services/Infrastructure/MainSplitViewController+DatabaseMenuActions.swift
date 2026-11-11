@@ -127,7 +127,8 @@ extension MainSplitViewController {
     // Turning it off leaves a transaction already held open, and the bar with it.
     @objc func toggleManualCommit(_ sender: Any?) {
         guard let connectionId = workspaces.selectedConnectionId,
-              let session = DatabaseManager.shared.session(for: connectionId) else { return }
+              let session = DatabaseManager.shared.session(for: connectionId),
+              ManualCommit.isAvailable(for: session.connection.type) else { return }
         DatabaseManager.shared.setCommitMode(session.commitMode == .manual ? .automatic : .manual, for: connectionId)
     }
 
@@ -171,7 +172,8 @@ extension MainSplitViewController {
             )
         let hold = selectedTransactionHold
         return TransactionMenuState(
-            isManualCommitOn: session.commitMode == .manual,
+            isAvailable: ManualCommit.isAvailable(for: session.connection.type),
+            isManualCommitOn: DatabaseManager.shared.commitMode(for: coordinator.connectionId) == .manual,
             canHoldTransactions: reportsState,
             holdsTransaction: hold != nil,
             canCommit: hold.map { ConnectionTransactionActions.offersCommit($0, safeModeLevel: session.safeModeLevel) } ?? false

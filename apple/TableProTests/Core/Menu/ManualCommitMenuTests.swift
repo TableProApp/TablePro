@@ -18,20 +18,24 @@ struct ManualCommitMenuTests {
         MainSplitViewController.isEnabled(selector, context: context)
     }
 
-    @Test("Manual Commit, its footnote, Commit Transaction and Roll Back Transaction follow Safe Mode Level")
+    @Test("Manual Commit, its footnotes, Commit Transaction and Roll Back Transaction follow Safe Mode Level")
     func itemsFollowSafeModeLevel() throws {
         let items = try databaseMenu().items
         let safeMode = try #require(items.firstIndex { $0.title == String(localized: "Safe Mode Level") })
-        try #require(safeMode + 4 < items.count)
+        try #require(safeMode + 5 < items.count)
 
         #expect(items[safeMode + 1].title == String(localized: "Manual Commit"))
         #expect(items[safeMode + 1].action == #selector(MainSplitViewController.toggleManualCommit(_:)))
         #expect(items[safeMode + 2].identifier == DatabaseMenuBuilder.manualCommitFootnoteIdentifier)
         #expect(items[safeMode + 2].isHidden)
-        #expect(items[safeMode + 3].title == String(localized: "Commit Transaction"))
-        #expect(items[safeMode + 3].action == #selector(MainSplitViewController.commitOpenTransaction(_:)))
-        #expect(items[safeMode + 4].title == String(localized: "Roll Back Transaction"))
-        #expect(items[safeMode + 4].action == #selector(MainSplitViewController.rollBackOpenTransaction(_:)))
+        #expect(items[safeMode + 3].identifier == DatabaseMenuBuilder.manualCommitUnavailableFootnoteIdentifier)
+        #expect(items[safeMode + 3].attributedTitle?.string.replacingOccurrences(of: "\n", with: " ")
+            == ManualCommit.unavailableExplanation)
+        #expect(items[safeMode + 3].isHidden)
+        #expect(items[safeMode + 4].title == String(localized: "Commit Transaction"))
+        #expect(items[safeMode + 4].action == #selector(MainSplitViewController.commitOpenTransaction(_:)))
+        #expect(items[safeMode + 5].title == String(localized: "Roll Back Transaction"))
+        #expect(items[safeMode + 5].action == #selector(MainSplitViewController.rollBackOpenTransaction(_:)))
     }
 
     @Test("Commit and Roll Back Transaction are Keyboard rows with no default chord")
@@ -47,6 +51,7 @@ struct ManualCommitMenuTests {
     func manualCommitEnablement() {
         let toggle = #selector(MainSplitViewController.toggleManualCommit(_:))
         var context = MenuValidationContext()
+        context.transaction.isAvailable = true
         context.transaction.canHoldTransactions = true
         #expect(!enabled(toggle, context))
 
@@ -58,6 +63,32 @@ struct ManualCommitMenuTests {
 
         context.transaction.isManualCommitOn = true
         #expect(enabled(toggle, context))
+    }
+
+    @Test("Where DDL commits on its own, Manual Commit is disabled with its footnote, even when stored on")
+    func manualCommitUnavailable() {
+        let toggle = #selector(MainSplitViewController.toggleManualCommit(_:))
+        var context = MenuValidationContext()
+        context.isConnected = true
+        context.transaction.canHoldTransactions = true
+        context.transaction.isManualCommitOn = true
+        #expect(!enabled(toggle, context))
+        #expect(MainSplitViewController.shownManualCommitFootnote(context.transaction, isConnected: true)
+            == DatabaseMenuBuilder.manualCommitUnavailableFootnoteIdentifier)
+        #expect(MainSplitViewController.shownManualCommitFootnote(context.transaction, isConnected: false) == nil)
+    }
+
+    @Test("The reporting footnote shows only where the engine can hold but its driver can't report, while off")
+    func reportingFootnote() {
+        var state = TransactionMenuState()
+        state.isAvailable = true
+        #expect(MainSplitViewController.shownManualCommitFootnote(state, isConnected: true)
+            == DatabaseMenuBuilder.manualCommitFootnoteIdentifier)
+        state.canHoldTransactions = true
+        #expect(MainSplitViewController.shownManualCommitFootnote(state, isConnected: true) == nil)
+        state.canHoldTransactions = false
+        state.isManualCommitOn = true
+        #expect(MainSplitViewController.shownManualCommitFootnote(state, isConnected: true) == nil)
     }
 
     @Test("Commit needs an open transaction it may commit; Roll Back needs any held transaction")

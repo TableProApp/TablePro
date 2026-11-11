@@ -557,33 +557,6 @@ struct DataWriteExecutorHeldTests {
         #expect(counting.trace.isEmpty)
     }
 
-    // MySQL commits the cell edit implicitly before the TRUNCATE runs.
-    @Test("A save mixing a cell edit with a staged TRUNCATE on MySQL is refused in Manual Commit")
-    func mixedImplicitCommitSaveIsRefused() async {
-        let counting = CountingDriver(affectedRows: 1)
-        let mixed = DataWritePlan(
-            scope: DatabaseScope(connectionId: UUID(), database: "shop", schema: nil),
-            databaseType: .mysql,
-            steps: [
-                DataWriteStep(
-                    kind: .rowWrite,
-                    statement: ParameterizedStatement(sql: "UPDATE `orders` SET `b` = 1", parameters: []),
-                    expectedRowCount: 1,
-                    tableName: "orders"
-                ),
-                DataWriteStep(
-                    kind: .rowWrite,
-                    statement: ParameterizedStatement(sql: "TRUNCATE TABLE `audit_log`", parameters: []),
-                    tableName: "audit_log"
-                ),
-            ]
-        )
-        await #expect(throws: ManualCommitMixedRefusal()) {
-            try await DataWriteExecutor.run(mixed, commitMode: .manual, on: driver(counting))
-        }
-        #expect(counting.trace.isEmpty)
-    }
-
     @Test("A held save marks the turn's hold, and a rolled-back one clears it")
     func heldSaveMarksTheTurn() async throws {
         let held = ManualCommitTurnHold()

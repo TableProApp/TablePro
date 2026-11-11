@@ -269,14 +269,6 @@ extension RowEditingCoordinator {
                 waiter?.resume(returning: false)
                 return
             }
-            if clearTableOps, await !confirmsImplicitCommit(of: plan) {
-                restorePendingTableOperations(
-                    connectionId: conn.id, truncates: truncatedTables, deletes: deletedTables, options: capturedOptions
-                )
-                endSaveInFlight()
-                waiter?.resume(returning: false)
-                return
-            }
             let overallStartTime = Date()
             let operationStart = ContinuousClock.Instant.now
 
@@ -693,21 +685,6 @@ extension RowEditingCoordinator {
                 schemaName: scope.schema
             )
         )
-    }
-
-    // A staged TRUNCATE or DROP on MySQL or Oracle commits the transaction the bar shows before it runs.
-    private func confirmsImplicitCommit(of plan: DataWritePlan) async -> Bool {
-        let statements = plan.steps.map(\.statement.sql)
-        guard ManualCommit.asksBeforeImplicitCommit(
-            statements, databaseType: parent.connection.type, grammar: parent.lexicalGrammar,
-            commitMode: DatabaseManager.shared.commitMode(for: parent.connectionId)
-        ),
-            DatabaseManager.shared.sessionTransactions.holdsTransaction(
-                connectionId: parent.connectionId, container: plan.scope.database
-            )
-        else { return true }
-        let name = plan.scope.database.isEmpty ? parent.connection.name : plan.scope.database
-        return await ConnectionTransactionActions.confirmImplicitCommit(on: name, window: parent.contentWindow)
     }
 
     // Written to the tab that started the save: the one in front may be another by the time it fails.

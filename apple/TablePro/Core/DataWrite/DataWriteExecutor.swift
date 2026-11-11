@@ -113,11 +113,6 @@ enum DataWriteExecutor {
         // A write Manual Commit can't hold would commit with no Commit pressed, so it is refused before anything runs.
         if commitMode == .manual {
             guard plan.prologue.isEmpty, plan.epilogue.isEmpty else { throw ManualCommitSessionOptionsRefusal() }
-            // On MySQL and Oracle a staged TRUNCATE or DROP commits the cell edits saved beside it.
-            let sql = steps.map(\.statement.sql)
-            if ManualCommit.mixesImplicitCommit(sql, databaseType: plan.databaseType, grammar: plan.databaseType.lexicalGrammar) {
-                throw ManualCommitMixedRefusal()
-            }
             let state = await driver.heldSessionTransactionState()
             try ManualCommit.refuseUnheldWrite(supportsTransactions: driver.supportsTransactions, sessionState: state)
         }

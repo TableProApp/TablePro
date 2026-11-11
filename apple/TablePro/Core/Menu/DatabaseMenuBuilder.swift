@@ -11,6 +11,9 @@ enum DatabaseMenuBuilder {
     static let identifier = NSUserInterfaceItemIdentifier("menu.database")
     static let liveMessagesIdentifier = NSUserInterfaceItemIdentifier("menu.database.liveMessages")
     static let manualCommitFootnoteIdentifier = NSUserInterfaceItemIdentifier("menu.database.manualCommitFootnote")
+    static let manualCommitUnavailableFootnoteIdentifier = NSUserInterfaceItemIdentifier(
+        "menu.database.manualCommitUnavailableFootnote"
+    )
 
     static func build(keyboard: KeyboardSettings, modules: Set<AppModule> = []) -> NSMenuItem {
         let item = MenuItemFactory.menu(String(localized: "Database"), items: [
@@ -287,7 +290,11 @@ enum DatabaseMenuBuilder {
                 String(localized: "Manual Commit"),
                 action: #selector(MainSplitViewController.toggleManualCommit(_:))
             ),
-            manualCommitFootnote(),
+            manualCommitFootnote(
+                String(localized: "This database can't report an open transaction, so it commits each change."),
+                identifier: manualCommitFootnoteIdentifier
+            ),
+            manualCommitFootnote(ManualCommit.unavailableExplanation, identifier: manualCommitUnavailableFootnoteIdentifier),
             MenuItemFactory.item(
                 String(localized: "Commit Transaction"),
                 action: #selector(MainSplitViewController.commitOpenTransaction(_:)),
@@ -304,12 +311,10 @@ enum DatabaseMenuBuilder {
     }
 
     // Validation shows it under Manual Commit, which it shares an action with so it always validates as disabled.
-    private static func manualCommitFootnote() -> NSMenuItem {
-        let item = MenuFootnote.item(
-            String(localized: "This database can't report an open transaction, so it commits each change.")
-        )
+    private static func manualCommitFootnote(_ text: String, identifier: NSUserInterfaceItemIdentifier) -> NSMenuItem {
+        let item = MenuFootnote.item(text)
         item.action = #selector(MainSplitViewController.toggleManualCommit(_:))
-        item.identifier = manualCommitFootnoteIdentifier
+        item.identifier = identifier
         item.isHidden = true
         return item
     }

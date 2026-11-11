@@ -45,7 +45,12 @@ struct SessionTransactionTrackerTests {
     }
 
     // The editor's single-statement path: the hold is opened inside the same turn as the write.
-    private static func runInMode(_ mode: ConnectionCommitMode, _ sql: String, on connectionId: UUID) async throws {
+    private static func runInMode(
+        _ mode: ConnectionCommitMode,
+        _ sql: String,
+        on connectionId: UUID,
+        type: DatabaseType = .postgresql
+    ) async throws {
         let scope = DatabaseScope(connectionId: connectionId, database: "app", schema: nil)
         _ = try await DatabaseManager.shared.withScopedDriver(
             scope: scope,
@@ -53,8 +58,7 @@ struct SessionTransactionTrackerTests {
             cancellation: .protectedWrite
         ) { driver in
             _ = try await ManualCommit.openIfNeeded(
-                on: driver, statements: [sql], databaseType: .mysql,
-                grammar: DatabaseType.mysql.lexicalGrammar, commitMode: mode
+                on: driver, statements: [sql], databaseType: type, grammar: type.lexicalGrammar, commitMode: mode
             )
             return try await driver.execute(query: sql)
         }
@@ -264,7 +268,7 @@ struct SessionTransactionTrackerTests {
 
     @Test("In Manual Commit an UPDATE sends BEGIN first and leaves the transaction open")
     func manualCommitOpensTheHold() async throws {
-        let (connection, driver) = Self.seed()
+        let (connection, driver) = Self.seed(type: .postgresql)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
         try await Self.runInMode(.manual, "UPDATE t SET a = 1", on: connection.id)
@@ -275,7 +279,7 @@ struct SessionTransactionTrackerTests {
 
     @Test("Manual Commit sends no BEGIN for a read, nor a second one for a later write")
     func manualCommitBeginsOnce() async throws {
-        let (connection, driver) = Self.seed()
+        let (connection, driver) = Self.seed(type: .postgresql)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
         try await Self.runInMode(.manual, "SELECT * FROM t", on: connection.id)
@@ -289,7 +293,7 @@ struct SessionTransactionTrackerTests {
 
     @Test("Automatic commit sends no BEGIN")
     func automaticCommitOpensNothing() async throws {
-        let (connection, driver) = Self.seed()
+        let (connection, driver) = Self.seed(type: .postgresql)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
         try await Self.runInMode(.automatic, "UPDATE t SET a = 1", on: connection.id)
@@ -303,7 +307,7 @@ struct SessionTransactionTrackerTests {
         arguments: [PluginSessionTransactionState.unknown, .holdsSessionLocks]
     )
     func unholdableSessionRefuses(state: PluginSessionTransactionState) async throws {
-        let (connection, driver) = Self.seed()
+        let (connection, driver) = Self.seed(type: .postgresql)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
         driver.state = state
 
@@ -390,10 +394,10 @@ struct SessionTransactionTrackerTests {
 
     @Test("Manual Commit refuses every MCP transaction action", arguments: ["begin", "commit", "rollback"])
     func mcpTransactionControlRefusedInManualCommit(action: String) async throws {
-        let (connection, driver) = Self.seed(commitMode: .manual)
+        let (connection, driver) = Self.seed(type: .postgresql, commitMode: .manual)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
         let operation = try await ApprovedOperationFixture.approve(
-            [], scope: Self.scope(connection.id), databaseType: .mysql, kind: .writeQuery
+            [], scope: Self.scope(connection.id), databaseType: .postgresql, kind: .writeQuery
         )
 
         await #expect(throws: DatabaseAccessError.self) {
@@ -404,7 +408,7 @@ struct SessionTransactionTrackerTests {
 
     @Test("An agent's write in Manual Commit is held, and its reply says the change is pending")
     func mcpWriteIsHeldAndSaysSo() async throws {
-        let (connection, driver) = Self.seed(commitMode: .manual)
+        let (connection, driver) = Self.seed(type: .postgresql, commitMode: .manual)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
         let outcome = try await DatabaseAccessBridge().runStatement(
@@ -419,26 +423,9 @@ struct SessionTransactionTrackerTests {
         #expect(Self.states(connection.id) == [.open])
     }
 
-    @Test("An agent's DDL over an open transaction in Manual Commit is refused, since MySQL would commit it")
-    func mcpDDLRefusedOverAHold() async throws {
-        let (connection, driver) = Self.seed(commitMode: .manual)
-        defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        try await Self.run("BEGIN", on: connection.id)
-        let sent = driver.statements.count
-
-        let error = await #expect(throws: (any Error).self) {
-            _ = try await DatabaseAccessBridge().runStatement(
-                scope: Self.scope(connection.id), query: "ALTER TABLE t ADD c INT", maxRows: 10, timeoutSeconds: 30,
-                cancellation: nil
-            )
-        }
-        #expect(error?.localizedDescription == ManualCommitDDLRefusal().errorDescription)
-        #expect(driver.statements.count == sent)
-    }
-
     @Test("An agent's COMMIT, ROLLBACK or BEGIN in Manual Commit is refused and sends nothing", arguments: ["COMMIT", "ROLLBACK", "BEGIN"])
     func mcpTransactionStatementRefusedInManualCommit(sql: String) async throws {
-        let (connection, driver) = Self.seed(commitMode: .manual)
+        let (connection, driver) = Self.seed(type: .postgresql, commitMode: .manual)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
         try await Self.runInMode(.manual, "UPDATE t SET a = 1", on: connection.id)
         let sent = driver.statements.count
@@ -458,7 +445,7 @@ struct SessionTransactionTrackerTests {
         arguments: [
             (DatabaseType.mssql, "UPDATE t SET a = 1 COMMIT"),
             (DatabaseType.mssql, "EXEC dbo.p"),
-            (DatabaseType.mysql, "CALL p()"),
+            (DatabaseType.postgresql, "CALL p()"),
         ]
     )
     func mcpUnseenTransactionControlRefused(type: DatabaseType, sql: String) async throws {
@@ -475,6 +462,27 @@ struct SessionTransactionTrackerTests {
         #expect(error?.localizedDescription == ManualCommit.transactionControlRefusalMessage)
         #expect(driver.statements.count == sent)
         #expect(Self.states(connection.id) == [.open])
+    }
+
+    // Its own COMMIT would end the hold this call opens for its write.
+    @Test(
+        "On an idle Manual Commit session, an agent write that can end a transaction unseen is refused",
+        arguments: [
+            (DatabaseType.mssql, "UPDATE t SET a = 1 COMMIT"),
+            (DatabaseType.postgresql, "CALL p()"),
+        ]
+    )
+    func mcpUnseenWriteRefusedOnAnIdleSession(type: DatabaseType, sql: String) async throws {
+        let (connection, driver) = Self.seed(type: type, commitMode: .manual)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let error = await #expect(throws: (any Error).self) {
+            _ = try await DatabaseAccessBridge().runStatement(
+                scope: Self.scope(connection.id), query: sql, maxRows: 10, timeoutSeconds: 30, cancellation: nil
+            )
+        }
+        #expect(error?.localizedDescription == ManualCommit.transactionControlRefusalMessage)
+        #expect(driver.statements.isEmpty)
     }
 
     @Test("An agent statement that ended the open transaction says so in its reply")
@@ -560,13 +568,30 @@ struct SessionTransactionTrackerTests {
 
     @Test("Turning Manual Commit on writes the session and the connection it was opened from")
     func menuToggleWritesTheSession() {
-        let (connection, _) = Self.seed()
+        let (connection, _) = Self.seed(type: .postgresql)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
         DatabaseManager.shared.setCommitMode(.manual, for: connection.id)
 
         #expect(DatabaseManager.shared.commitMode(for: connection.id) == .manual)
         #expect(DatabaseManager.shared.session(for: connection.id)?.connection.commitMode == .manual)
+    }
+
+    @Test("A Manual Commit stored on a MySQL connection runs as automatic: an agent's write sends no BEGIN")
+    func storedManualCommitOnMySQLRunsAutomatic() async throws {
+        let (connection, driver) = Self.seed(type: .mysql, commitMode: .manual)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        #expect(DatabaseManager.shared.session(for: connection.id)?.connection.commitMode == .manual)
+        #expect(DatabaseManager.shared.commitMode(for: connection.id) == .automatic)
+
+        let outcome = try await DatabaseAccessBridge().runStatement(
+            scope: Self.scope(connection.id), query: "UPDATE t SET a = 1", maxRows: 10, timeoutSeconds: 30, cancellation: nil
+        )
+
+        #expect(driver.statements.contains("UPDATE t SET a = 1"))
+        #expect(!driver.statements.contains("BEGIN"))
+        #expect(outcome.result.statusMessage?.contains(ManualCommit.pendingNotice) != true)
+        #expect(Self.tracker.holds(for: connection.id).isEmpty)
     }
 
     @Test("Read-only hides Commit, an aborted transaction offers only Roll Back")
