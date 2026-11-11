@@ -3,6 +3,7 @@ import TableProDatabase
 @testable import TableProMobile
 import TableProModels
 import TableProQuery
+import TableProSQLGrammar
 import Testing
 
 @MainActor
