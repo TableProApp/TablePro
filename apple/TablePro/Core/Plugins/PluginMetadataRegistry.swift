@@ -73,93 +73,96 @@ struct PluginMetadataSnapshot: Sendable {
         var defaultSSLMode: SSLMode = .disabled
         var supportsOpportunisticTLS: Bool = true
         var tlsImpliedPorts: [Int] = []
+        // Verify Identity with no CA file checks the server against the system trust store.
         var verifiesServerWithSystemTrust: Bool = false
+        // A URL or port that asks for TLS without naming a mode gets Verify Identity rather than Required. Kept apart from
+        // `verifiesServerWithSystemTrust`: a libpq server on a private CA that connects with `ssl=true` today would stop.
+        var requestedTLSVerifiesIdentity: Bool = false
         var supportsPerConnectionCertificatePaths: Bool = true
         var supportsClientKeyPassphrase: Bool = false
         var supportsConnectionPooling: Bool = true
-        /// Whether two pooled drivers for the same connection sit on one physical session. Snowflake
-        /// keys its session on the account and role and deliberately not on the database, so every
-        /// pooled scope shares one mutable `currentDatabase`: a statement that selects a database on
-        /// behalf of one entry selects it for all of them.
+        // Whether two pooled drivers for the same connection sit on one physical session. Snowflake
+        // keys its session on the account and role and deliberately not on the database, so every
+        // pooled scope shares one mutable `currentDatabase`: a statement that selects a database on
+        // behalf of one entry selects it for all of them.
         var pooledDriversShareOneSession: Bool = false
         var authenticationIsDatabaseScoped: Bool = false
-        /// Whether a connection that names no database has nothing to browse until one is chosen. A
-        /// MySQL session opened without one has no current database: `SHOW TABLES` there is
-        /// `ERROR 1046 No database selected`. An engine whose session falls back to a default
-        /// database, such as ClickHouse's `default`, leaves this false.
+        // Whether a connection that names no database has nothing to browse until one is chosen. A
+        // MySQL session opened without one has no current database: `SHOW TABLES` there is
+        // `ERROR 1046 No database selected`. An engine whose session falls back to a default
+        // database, such as ClickHouse's `default`, leaves this false.
         var browsingRequiresSelectedDatabase: Bool = false
         var pagination: PaginationCapability = .offset
-        /// Whether an exact count reads the whole table with no estimate to stand in for it, and only the driver
-        /// knows how to count it. DynamoDB bills a `Scan` of every item and has no `COUNT(*)`; Cassandra reads
-        /// every partition, because `LIMIT` does not bound `COUNT(*)`, and a filtered count needs CQL the host
-        /// cannot write. Such an engine is counted only when the user asks, and only by its driver.
+        // Whether an exact count reads the whole table with no estimate to stand in for it, and only the driver
+        // knows how to count it. DynamoDB bills a `Scan` of every item and has no `COUNT(*)`; Cassandra reads
+        // every partition, because `LIMIT` does not bound `COUNT(*)`, and a filtered count needs CQL the host
+        // cannot write. Such an engine is counted only when the user asks, and only by its driver.
         var exactRowCountIsFullScan: Bool = false
-        /// Whether a table can be ordered by any of its columns. CQL orders rows only by clustering columns inside
-        /// one partition, so a Cassandra table offers no column sort and a query result sorts the rows it holds.
+        // Whether a table can be ordered by any of its columns. CQL orders rows only by clustering columns inside
+        // one partition, so a Cassandra table offers no column sort and a query result sorts the rows it holds.
         var supportsColumnSort: Bool = true
-        /// Whether filters can ask for rows matching any one of several conditions. CQL has no `OR`.
+        // Whether filters can ask for rows matching any one of several conditions. CQL has no `OR`.
         var supportsMatchAnyFilters: Bool = true
-        /// Whether a filter row can hold a condition written in the engine's own query language. A
-        /// driver that answers one with an error, such as etcd or DynamoDB, or reads it as a column
-        /// name, is not offered the row at all.
+        // Whether a filter row can hold a condition written in the engine's own query language. A
+        // driver that answers one with an error, such as etcd or DynamoDB, or reads it as a column
+        // name, is not offered the row at all.
         var supportsRawFilter: Bool = true
-        /// Whether a table's columns are a sample of its rows rather than a declared schema. A
-        /// MongoDB collection lists the fields found in its first documents, so a field missing from
-        /// one side's list says nothing about whether that side holds it.
+        // Whether a table's columns are a sample of its rows rather than a declared schema. A
+        // MongoDB collection lists the fields found in its first documents, so a field missing from
+        // one side's list says nothing about whether that side holds it.
         var columnsAreSampled: Bool = false
-        /// Whether a contains, starts with or ends with filter matches a scalar column of any type by the text it shows,
-        /// so a search can send number and date columns too. MongoDB's builder converts the value before it matches.
+        // Whether a contains, starts with or ends with filter matches a scalar column of any type by the text it shows,
+        // so a search can send number and date columns too. MongoDB's builder converts the value before it matches.
         var patternFiltersReadAnyColumn: Bool = false
-        /// Whether the driver types a filter's values by the kinds it learned from rows it read, so a count of a
-        /// filtered table runs on the driver that read the page. A pooled driver read nothing and would type the same
-        /// filter another way: a date compared as a string counts no rows.
+        // Whether the driver types a filter's values by the kinds it learned from rows it read, so a count of a
+        // filtered table runs on the driver that read the page. A pooled driver read nothing and would type the same
+        // filter another way: a date compared as a string counts no rows.
         var filtersTypedByReadRows: Bool = false
         var isEngineReadOnly: Bool = false
 
-        /// Which connection field carries the path of the local database file this driver opens,
-        /// for the types that open one. Nil for every driver that reaches its database over the
-        /// network, which is what makes it the test for "can this connection name a remote file".
+        // Which connection field carries the path of the local database file this driver opens,
+        // for the types that open one. Nil for every driver that reaches its database over the
+        // network, which is what makes it the test for "can this connection name a remote file".
         var localFilePathField: LocalFilePathField?
 
-        /// The plugin fields that name the server, for a type the built-in Host and Port do not
-        /// reach. Nil for every type whose driver dials `config.host`, which is what keeps a tunnel
-        /// forwarding and rewriting the built-in endpoint there.
+        // The plugin fields that name the server, for a type the built-in Host and Port do not
+        // reach. Nil for every type whose driver dials `config.host`, which is what keeps a tunnel
+        // forwarding and rewriting the built-in endpoint there.
         var serverEndpointFields: ServerEndpointFields?
 
-        /// Fields a driver older than this app ignores to the user's cost. A connection that sets one
-        /// away from its default, while it is in use, is refused when the loaded driver does not
-        /// declare it: DuckDB's SSL Mode read by a driver from before it existed would connect as
-        /// Automatic, which is plain HTTP on a loopback host, however the user set it.
+        // Fields a driver older than this app ignores to the user's cost. A connection that sets one
+        // away from its default, while it is in use, is refused when the loaded driver does not
+        // declare it: DuckDB's SSL Mode read by a driver from before it existed would connect as
+        // Automatic, which is plain HTTP on a loopback host, however the user set it.
         var fieldsRequiringDriverSupport: [String] = []
 
-        /// The extensions a new database file can be named with, the first one preferred. Empty
-        /// when the driver refuses a path with nothing at it, as Beancount does, so the form offers
-        /// no way to name one. DuckDB lists only its own format: a missing Parquet or CSV path is
-        /// refused rather than created.
+        // The extensions a new database file can be named with, the first one preferred. Empty
+        // when the driver refuses a path with nothing at it, as Beancount does, so the form offers
+        // no way to name one. DuckDB lists only its own format: a missing Parquet or CSV path is
+        // refused rather than created.
         var newDatabaseFileExtensions: [String] = []
 
         var supportsSOCKSProxy: Bool { supportsSSH }
 
-        /// `cloudflared access tcp` forwards a loopback port just as an SSH tunnel does. A stored flag
-        /// drifted: it defaulted to true in the built-in snapshots, so a registry type the plugin
-        /// declares without SSH offered Cloudflare Tunnel until that plugin was installed.
+        // `cloudflared access tcp` forwards a loopback port just as an SSH tunnel does. A stored flag
+        // drifted: it defaulted to true in the built-in snapshots, so a registry type the plugin
+        // declares without SSH offered Cloudflare Tunnel until that plugin was installed.
         var supportsCloudflareTunnel: Bool { supportsSSH }
 
-        /// A tunnel command forwards a loopback port to the server the connection names, so it
-        /// applies wherever an SSH tunnel would. Computed for the same reason `supportsSOCKSProxy`
-        /// is: a stored flag would need an opt-out line in every hand-written snapshot.
+        // A tunnel command forwards a loopback port to the server the connection names, so it
+        // applies wherever an SSH tunnel would. Computed for the same reason `supportsSOCKSProxy`
+        // is: a stored flag would need an opt-out line in every hand-written snapshot.
         var supportsTunnelCommand: Bool { supportsSSH }
 
-        /// Whether this type may point at a file on an SSH server instead of a local one.
-        ///
-        /// Deliberately not derived from `localFilePathField`. Beancount opens a local file and must
-        /// still be excluded: a ledger is a graph of files reached through `include`, so one file
-        /// out of it either fails to load or presents incomplete accounts, which is worse.
+        // Whether this type may point at a file on an SSH server instead of a local one.
+        // Deliberately not derived from `localFilePathField`. Beancount opens a local file and must
+        // still be excluded: a ledger is a graph of files reached through `include`, so one file
+        // out of it either fails to load or presents incomplete accounts, which is worse.
         var supportsRemoteDatabaseFile: Bool = false
 
-        /// Whether this type can run its statements on an SSH server against a live database file,
-        /// rather than only fetching a read-only copy. True for SQLite alone today, because the
-        /// remote agent opens the file with the server's `libsqlite3`.
+        // Whether this type can run its statements on an SSH server against a live database file,
+        // rather than only fetching a read-only copy. True for SQLite alone today, because the
+        // remote agent opens the file with the server's `libsqlite3`.
         var supportsRemoteDatabaseSession: Bool = false
 
         var supportsPrincipalConnectionLimit: Bool = true
@@ -211,24 +214,24 @@ struct PluginMetadataSnapshot: Sendable {
         let systemDatabaseNames: [String]
         let systemSchemaNames: [String]
         let fileExtensions: [String]
-        /// Curated in the app rather than declared by the plugin: claiming a format from the
-        /// system also needs a `CFBundleDocumentTypes` entry only the app bundle can make.
+        // Curated in the app rather than declared by the plugin: claiming a format from the
+        // system also needs a `CFBundleDocumentTypes` entry only the app bundle can make.
         let fileSignatures: [DatabaseFileSignature]
         let databaseGroupingStrategy: GroupingStrategy
         let structureColumnFields: [StructureColumnField]
         let implicitSchemaName: String?
         let rowMatchExcludedTypePrefixes: [String]
-        /// Column types whose keyless row match has to compare the server's own text rendering
-        /// rather than the value itself. A grid reads every cell back as text, and on these types
-        /// that text does not compare equal to what it was read from: measured on MySQL 8.4.11 and
-        /// OceanBase 4.4.2.1, a `FLOAT` holding 1.1 reads back `1.1` and `WHERE f = '1.1'` matches
-        /// no row, because the server widens the stored single to a different double than it parses
-        /// the literal into. `JSON` never compares equal to a string at all. Listing a type here
-        /// wraps only the keyless comparison, and only for the types measured to need it: `CONCAT`
-        /// over a `BIT` column returns its raw bytes and breaks a match that works today.
+        // Column types whose keyless row match has to compare the server's own text rendering
+        // rather than the value itself. A grid reads every cell back as text, and on these types
+        // that text does not compare equal to what it was read from: measured on MySQL 8.4.11 and
+        // OceanBase 4.4.2.1, a `FLOAT` holding 1.1 reads back `1.1` and `WHERE f = '1.1'` matches
+        // no row, because the server widens the stored single to a different double than it parses
+        // the literal into. `JSON` never compares equal to a string at all. Listing a type here
+        // wraps only the keyless comparison, and only for the types measured to need it: `CONCAT`
+        // over a `BIT` column returns its raw bytes and breaks a match that works today.
         let rowMatchTextTypePrefixes: [String]
-        /// Teradata and Snowflake compare database names without regard to case, so `dbc` is the
-        /// system database `DBC`. Every other engine keeps case: MySQL can hold a user database `MySQL`.
+        // Teradata and Snowflake compare database names without regard to case, so `dbc` is the
+        // system database `DBC`. Every other engine keeps case: MySQL can hold a user database `MySQL`.
         let systemDatabaseNamesIgnoreCase: Bool
         // Nil for an engine that keeps the case of an unquoted name, or whose rule is not curated yet.
         let identifierRules: SQLIdentifierRules?
@@ -313,10 +316,10 @@ struct PluginMetadataSnapshot: Sendable {
         let category: DatabaseCategory
         let tagline: String
         let hidesBuiltInPassword: Bool
-        /// The driver takes no container name on the connection, so the built-in field would
-        /// be a second, meaningless place to type one: an embedded engine reads it from the
-        /// file it opens, Redis numbers its databases through its own field, and a key-value
-        /// store may have no container at all.
+        // The driver takes no container name on the connection, so the built-in field would
+        // be a second, meaningless place to type one: an embedded engine reads it from the
+        // file it opens, Redis numbers its databases through its own field, and a key-value
+        // store may have no container at all.
         let hidesBuiltInDatabase: Bool
         let defaultUnixSocketPath: String?
         // Non-nil means the form offers Connect Using > Socket.
@@ -505,11 +508,10 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         registerBuiltInDefaults()
     }
 
-    /// The curated table the app ships, before any plugin or test registers over it.
-    ///
-    /// The live snapshots are not that table: a loaded plugin replaces its entry, and a test can
-    /// register a synthetic engine into the same shared registry. Anything that means to check the
-    /// table itself reads this instead of iterating `allRegisteredTypeIds()`.
+    // The curated table the app ships, before any plugin or test registers over it.
+    // The live snapshots are not that table: a loaded plugin replaces its entry, and a test can
+    // register a synthetic engine into the same shared registry. Anything that means to check the
+    // table itself reads this instead of iterating `allRegisteredTypeIds()`.
     func builtInDefaults() -> [(typeId: String, snapshot: PluginMetadataSnapshot)] {
         Self.curatedDefaults() + registryPluginDefaults()
     }
@@ -542,12 +544,12 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         registerLocked(snapshot: snapshot, forTypeId: typeId, preserveIcon: preserveIcon)
     }
 
-    /// Registers an additional database type served by a multi-type plugin (Redshift,
-    /// CockroachDB, PGlite on the PostgreSQL plugin). A plugin's statics are per-class, so
-    /// they cannot express per-type facts like PGlite's disabled SSL or single-connection limit.
-    /// The curated built-in entry is therefore authoritative for a variant; the plugin fills the
-    /// EXPLAIN variants the curated entry leaves open, and supplies the editor config. A variant
-    /// with no curated entry falls back to deriving its snapshot from the plugin.
+    // Registers an additional database type served by a multi-type plugin (Redshift,
+    // CockroachDB, PGlite on the PostgreSQL plugin). A plugin's statics are per-class, so
+    // they cannot express per-type facts like PGlite's disabled SSL or single-connection limit.
+    // The curated built-in entry is therefore authoritative for a variant; the plugin fills the
+    // EXPLAIN variants the curated entry leaves open, and supplies the editor config. A variant
+    // with no curated entry falls back to deriving its snapshot from the plugin.
     func registerVariant(
         pluginSnapshot: PluginMetadataSnapshot,
         forTypeId typeId: String,
@@ -611,33 +613,30 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         }
     }
 
-    /// A raw lookup by the exact id a snapshot was registered under, for the callers that hold an
-    /// id rather than a type: registration itself, and iteration over `allRegisteredTypeIds()`.
-    ///
-    /// It is deliberately not named `snapshot(forTypeId:)` any more. That spelling read as the
-    /// way to ask about a `DatabaseType`, so 62 call sites passed it `databaseType.pluginTypeId`
-    /// and every variant was answered with its primary's facts. Asking about a type is
-    /// `snapshot(for:)`; this overload cannot be reached from a `DatabaseType` without first
-    /// choosing which id you mean, which is the point.
+    // A raw lookup by the exact id a snapshot was registered under, for the callers that hold an
+    // id rather than a type: registration itself, and iteration over `allRegisteredTypeIds()`.
+    // It is deliberately not named `snapshot(forTypeId:)` any more. That spelling read as the
+    // way to ask about a `DatabaseType`, so 62 call sites passed it `databaseType.pluginTypeId`
+    // and every variant was answered with its primary's facts. Asking about a type is
+    // `snapshot(for:)`; this overload cannot be reached from a `DatabaseType` without first
+    // choosing which id you mean, which is the point.
     func snapshot(forRegisteredTypeId typeId: String) -> PluginMetadataSnapshot? {
         lock.lock()
         defer { lock.unlock() }
         return snapshots[typeId]
     }
 
-    /// The snapshot describing a database type, which for a variant is its own curated entry
-    /// rather than the entry of the plugin that serves it. Reaching a snapshot through
-    /// `pluginTypeId` asks the primary instead, which is how a Redshift tab came to be told
-    /// PostgreSQL's `ILIKE` folds non-ASCII, and how PGlite came to be offered the SSH, SSL,
-    /// Cloudflare Tunnel and SOCKS panes its own entry declares it does not support.
-    ///
-    /// The fallback covers a type registered by a plugin with no curated entry of its own, where
-    /// the primary's snapshot is the only one there is.
-    ///
-    /// This is the only way to read a snapshot for a `DatabaseType`. `pluginTypeId` answers a
-    /// different question, "which plugin serves this type", and belongs to driver lookup alone.
-    /// The entry the app ships for a type, kept after a plugin registers over it: what a driver
-    /// built with this app declares, against which an older loaded driver can be told apart.
+    // The snapshot describing a database type, which for a variant is its own curated entry
+    // rather than the entry of the plugin that serves it. Reaching a snapshot through
+    // `pluginTypeId` asks the primary instead, which is how a Redshift tab came to be told
+    // PostgreSQL's `ILIKE` folds non-ASCII, and how PGlite came to be offered the SSH, SSL,
+    // Cloudflare Tunnel and SOCKS panes its own entry declares it does not support.
+    // The fallback covers a type registered by a plugin with no curated entry of its own, where
+    // the primary's snapshot is the only one there is.
+    // This is the only way to read a snapshot for a `DatabaseType`. `pluginTypeId` answers a
+    // different question, "which plugin serves this type", and belongs to driver lookup alone.
+    // The entry the app ships for a type, kept after a plugin registers over it: what a driver
+    // built with this app declares, against which an older loaded driver can be told apart.
     func curatedSnapshot(for databaseType: DatabaseType) -> PluginMetadataSnapshot? {
         lock.lock()
         defer { lock.unlock() }
@@ -665,42 +664,37 @@ final class PluginMetadataRegistry: @unchecked Sendable {
 
     // MARK: - Dynamic Type Registration
 
-    /// Registers an alias type ID that maps to a primary type ID.
-    /// Used for multi-type plugins (e.g., MariaDB → MySQL, Redshift → PostgreSQL).
+    // For multi-type plugins: MariaDB to MySQL, Redshift to PostgreSQL.
     func registerTypeAlias(_ aliasTypeId: String, primaryTypeId: String) {
         lock.lock()
         defer { lock.unlock() }
         reverseTypeIndex[aliasTypeId] = primaryTypeId
     }
 
-    /// The inverse of `registerTypeAlias`. `unregister(typeId:)` drops a snapshot and leaves the
-    /// alias behind, so a test that registers one has nothing to undo it with.
+    // The inverse of `registerTypeAlias`. `unregister(typeId:)` drops a snapshot and leaves the
+    // alias behind, so a test that registers one has nothing to undo it with.
     func removeTypeAlias(_ aliasTypeId: String) {
         lock.lock()
         defer { lock.unlock() }
         reverseTypeIndex.removeValue(forKey: aliasTypeId)
     }
 
-    /// Returns all registered type IDs (sorted for deterministic UI ordering).
     func allRegisteredTypeIds() -> [String] {
         lock.lock()
         defer { lock.unlock() }
         return Array(snapshots.keys).sorted()
     }
 
-    /// Resolves a database type raw value to its plugin type ID for driver lookup.
-    /// For multi-type plugins (MySQL serves MariaDB), maps the alias to the primary.
-    ///
-    /// This is the answer to "which plugin serves this type", never "what is this type like".
-    /// A snapshot read for a `DatabaseType` belongs in `snapshot(for:)`, which asks the variant
-    /// first; `snapshot(forTypeId:)` is for a bare id that is already the one you want.
+    // For multi-type plugins (MySQL serves MariaDB), maps the alias to the primary.
+    // This is the answer to "which plugin serves this type", never "what is this type like".
+    // A snapshot read for a `DatabaseType` belongs in `snapshot(for:)`, which asks the variant
+    // first; `snapshot(forTypeId:)` is for a bare id that is already the one you want.
     func pluginTypeId(for rawValue: String) -> String {
         lock.lock()
         defer { lock.unlock() }
         return reverseTypeIndex[rawValue] ?? rawValue
     }
 
-    /// Checks if a type ID is registered (has a snapshot).
     func hasType(_ typeId: String) -> Bool {
         lock.lock()
         defer { lock.unlock() }
@@ -709,8 +703,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
 
     // MARK: - Snapshot Builder
 
-    /// Builds a PluginMetadataSnapshot from a DriverPlugin's protocol properties.
-    /// Used by PluginManager to self-register plugins at load time.
+    // PluginManager registers each plugin with this at load time.
     func buildMetadataSnapshot(
         from driverType: any DriverPlugin.Type,
         isDownloadable: Bool = false
@@ -802,6 +795,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 tlsImpliedPorts: existingSnapshot?.capabilities.tlsImpliedPorts ?? [],
                 verifiesServerWithSystemTrust: existingSnapshot?.capabilities
                     .verifiesServerWithSystemTrust ?? false,
+                requestedTLSVerifiesIdentity: existingSnapshot?.capabilities
+                    .requestedTLSVerifiesIdentity ?? false,
                 supportsPerConnectionCertificatePaths: existingSnapshot?.capabilities
                     .supportsPerConnectionCertificatePaths ?? true,
                 supportsClientKeyPassphrase: existingSnapshot?.capabilities.supportsClientKeyPassphrase ?? false,

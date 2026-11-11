@@ -39,23 +39,23 @@ extension GlobalStateSuites {
             "Find matches a lone CR as the space the cell shows while marks are off",
             .appSettings { $0.dataGrid.showInvisibleCharacters = false }
         )
-        func findReadsTheUnmarkedText() {
+        func findReadsTheUnmarkedText() async {
             let (model, owner) = makeModel(values: ["a\rb"])
             defer { withExtendedLifetime(owner) {} }
 
-            #expect(find("a b", in: model).count == 1)
+            #expect(await find("a b", in: model).count == 1)
         }
 
         @Test(
             "Find does not read a marked CR as a space",
             .appSettings { $0.dataGrid.showInvisibleCharacters = true }
         )
-        func findReadsTheMarkedText() {
+        func findReadsTheMarkedText() async {
             let (model, owner) = makeModel(values: ["a\rb"])
             defer { withExtendedLifetime(owner) {} }
 
-            #expect(find("a b", in: model).isEmpty)
-            #expect(find("b", in: model).count == 1)
+            #expect(await find("a b", in: model).isEmpty)
+            #expect(await find("b", in: model).count == 1)
         }
 
         // The model holds its owner weakly, so the caller keeps the owner alive.
@@ -74,10 +74,11 @@ extension GlobalStateSuites {
             return (model, owner)
         }
 
-        private func find(_ term: String, in model: DataGridModel) -> [GridFindState.Match] {
+        private func find(_ term: String, in model: DataGridModel) async -> [GridFindState.Match] {
             model.showFind()
             model.find.term = term
             model.findQueryDidChange()
+            await model.findSearchSettled()
             return model.find.matches
         }
     }

@@ -47,10 +47,21 @@ struct NativeDumpRegistryTests {
         localFilePath: String? = nil,
         flavor: NativeDumpToolFlavor = .mysql,
         toolVersionText: String? = nil,
-        serverVersion: String? = nil
+        serverVersion: String? = nil,
+        systemTrustAnchorsFile: URL? = nil
     ) throws -> NativeDumpCommand {
         let tool = try #require(NativeDumpRegistry.descriptor(for: type)?.commandLineTool)
         let effective = overrideConnection ?? connection(type: type)
+        var request = NativeDumpDescriptor.Request(
+            connection: effective,
+            database: database,
+            fileURL: fileURL,
+            password: password,
+            scope: scope,
+            localFilePath: localFilePath ?? effective.database,
+            serverVersion: serverVersion
+        )
+        request.systemTrustAnchorsFile = systemTrustAnchorsFile
         let built = try NativeDumpService.buildCommand(
             kind: kind,
             tool: tool,
@@ -60,15 +71,7 @@ struct NativeDumpRegistryTests {
                 flavor: flavor,
                 versionText: toolVersionText
             ),
-            request: NativeDumpDescriptor.Request(
-                connection: effective,
-                database: database,
-                fileURL: fileURL,
-                password: password,
-                scope: scope,
-                localFilePath: localFilePath ?? effective.database,
-                serverVersion: serverVersion
-            )
+            request: request
         )
         if let folder = built.clientPluginFolder {
             try? FileManager.default.removeItem(at: folder.url)
@@ -125,8 +128,8 @@ struct NativeDumpRegistryTests {
         #expect(try #require(NativeDumpRegistry.descriptor(for: .sqlite)).archiveFormat.fileExtension == "sql")
     }
 
-    /// Anything in `argv` is readable by every process on the machine through `ps`, so no
-    /// descriptor may put a password there.
+    // Anything in `argv` is readable by every process on the machine through `ps`, so no
+    // descriptor may put a password there.
     @Test("No engine puts the password in the argument list")
     func passwordNeverReachesArgv() throws {
         for type in [DatabaseType.postgresql, .mysql, .mongodb, .sqlite] {
@@ -149,7 +152,7 @@ struct NativeDumpRegistryTests {
         #expect(built.arguments.last == "sales")
     }
 
-    /// `mysqldump` writes SQL to standard output, so the caller has to redirect it to the file.
+    // `mysqldump` writes SQL to standard output, so the caller has to redirect it to the file.
     @Test("MySQL is redirected through standard output in both directions")
     func mysqlRedirects() throws {
         let backup = try command(.mysql, kind: .backup)
@@ -163,7 +166,7 @@ struct NativeDumpRegistryTests {
         #expect(!restore.arguments.contains("--single-transaction"))
     }
 
-    /// `pg_dump -Fc` is told the path and writes it itself, so nothing is redirected.
+    // `pg_dump -Fc` is told the path and writes it itself, so nothing is redirected.
     @Test("PostgreSQL writes its own file")
     func postgresWritesItsOwnFile() throws {
         let built = try command(.postgresql)
@@ -171,8 +174,8 @@ struct NativeDumpRegistryTests {
         #expect(built.redirectedFileURL == nil)
     }
 
-    /// `mongodump` reads a password from neither the environment nor standard input, so the only
-    /// channel left is a config file, which must be owner-only and must not survive the process.
+    // `mongodump` reads a password from neither the environment nor standard input, so the only
+    // channel left is a config file, which must be owner-only and must not survive the process.
     @Test("MongoDB writes an owner-only credentials file and points at it")
     func mongoUsesACredentialsFile() throws {
         let built = try command(.mongodb)
@@ -352,7 +355,7 @@ struct NativeDumpRegistryTests {
         )
     }
 
-    /// The database is a file the tool opens, so there is nothing to authenticate to.
+    // The database is a file the tool opens, so there is nothing to authenticate to.
     @Test("SQLite passes the file path and no network arguments")
     func sqliteUsesTheFilePath() throws {
         let file = connection(type: .sqlite, host: "", port: 0, database: "/tmp/app.sqlite", username: "")
@@ -390,9 +393,9 @@ struct NativeDumpRegistryTests {
         #expect(!FileManager.default.fileExists(atPath: marker.path))
     }
 
-    /// libSQL claims the SQLite descriptor and keeps its path in a plugin-declared additional
-    /// field, leaving `database` empty. Reading `database` handed `sqlite3` an empty path, which
-    /// exits 0 after writing a 52-byte file the result sheet then reported as a backup.
+    // libSQL claims the SQLite descriptor and keeps its path in a plugin-declared additional
+    // field, leaving `database` empty. Reading `database` handed `sqlite3` an empty path, which
+    // exits 0 after writing a 52-byte file the result sheet then reported as a backup.
     @Test("libSQL dumps the file its driver opens, not the empty database field")
     func libsqlUsesItsResolvedPath() throws {
         var remote = connection(type: .libsql, host: "", port: 0, database: "", username: "")
@@ -437,8 +440,8 @@ struct NativeDumpRegistryTests {
         }
     }
 
-    /// A libSQL connection to a Turso URL has no local file, so `sqlite3` cannot reach it at all.
-    /// Answering by type alone is what offered Backup Dump on one and wrote nothing.
+    // A libSQL connection to a Turso URL has no local file, so `sqlite3` cannot reach it at all.
+    // Answering by type alone is what offered Backup Dump on one and wrote nothing.
     @Test("A connection with no local file is not offered a dump")
     func remoteFileBackedConnectionIsUnsupported() {
         var remote = connection(type: .libsql, host: "", port: 0, database: "", username: "")
@@ -595,9 +598,9 @@ struct NativeDumpRegistryTests {
         #expect(fromDirectory.arguments.starts(with: ["--no-password", "-h", "/var/run/postgresql", "-p", "5434"]))
     }
 
-    /// Measured, MariaDB 12.3.3 answers any `--ssl-mode` with `unknown variable` and exit 7, and
-    /// MySQL 8.4.11 answers `--ssl` with `unknown option` and exit 2, so neither spelling may reach
-    /// the other family's tool in either direction (#3046).
+    // Measured, MariaDB 12.3.3 answers any `--ssl-mode` with `unknown variable` and exit 7, and
+    // MySQL 8.4.11 answers `--ssl` with `unknown option` and exit 2, so neither spelling may reach
+    // the other family's tool in either direction (#3046).
     @Test("Neither client family is ever handed the other one's SSL flags", arguments: [
         NativeDumpKind.backup, .restore
     ])
@@ -614,8 +617,8 @@ struct NativeDumpRegistryTests {
         #expect(!mysql.arguments.contains("--skip-ssl"))
     }
 
-    /// SSL off is the other half of the same defect: the old code sent `--ssl-mode=DISABLED`, which
-    /// MariaDB rejects exactly as it rejects the rest.
+    // SSL off is the other half of the same defect: the old code sent `--ssl-mode=DISABLED`, which
+    // MariaDB rejects exactly as it rejects the rest.
     @Test("An SSL-off connection is disabled in the tool's own spelling")
     func sslDisabledFollowsTheResolvedTool() throws {
         let maria = try command(.mysql, flavor: .mariadb)
@@ -626,8 +629,8 @@ struct NativeDumpRegistryTests {
         #expect(mysql.arguments.contains("--ssl-mode=DISABLED"))
     }
 
-    /// `--ssl-cert` implies `--ssl` on MariaDB, so a connection whose SSL is off must not carry the
-    /// certificate the form still holds.
+    // `--ssl-cert` implies `--ssl` on MariaDB, so a connection whose SSL is off must not carry the
+    // certificate the form still holds.
     @Test("Certificate paths reach the tool, and only while SSL is on")
     func certificatePathsFollowTheMode() throws {
         var secured = connection(type: .mysql, sslMode: .verifyCa, sslEnabled: true)
@@ -647,8 +650,8 @@ struct NativeDumpRegistryTests {
         #expect(!disabled.arguments.contains { $0.hasPrefix("--ssl-key") })
     }
 
-    /// A tool that answered nothing is not guessed at once the connection asks for encryption:
-    /// MariaDB accepts `--loose-ssl-mode=REQUIRED` and ignores it, which is a cleartext dump.
+    // A tool that answered nothing is not guessed at once the connection asks for encryption:
+    // MariaDB accepts `--loose-ssl-mode=REQUIRED` and ignores it, which is a cleartext dump.
     @Test("An unidentified client refuses an encrypted connection rather than guessing")
     func unidentifiedToolRefusesEncryptedModes() throws {
         for mode in [SSLMode.required, .verifyCa, .verifyIdentity] {
@@ -662,8 +665,8 @@ struct NativeDumpRegistryTests {
         #expect(!built.arguments.contains { $0.hasPrefix("--ssl") })
     }
 
-    /// `mysqldump` 8.0 reads a table no MariaDB server and no MySQL before 8.0 has, and exits 2
-    /// after writing part of the file. The flag that skips it is MySQL's own and backup only.
+    // `mysqldump` 8.0 reads a table no MariaDB server and no MySQL before 8.0 has, and exits 2
+    // after writing part of the file. The flag that skips it is MySQL's own and backup only.
     @Test("A MySQL 8 dump tool skips column statistics on a server that has none")
     func columnStatisticsFlagFollowsTheServer() throws {
         let mysql8 = "mysqldump  Ver 8.4.11 for macos26.6 on arm64 (Homebrew)"
@@ -691,9 +694,9 @@ struct NativeDumpRegistryTests {
         #expect(!mariaTool.arguments.contains("--skip-column-statistics"))
     }
 
-    /// `my_getopt` parses past a positional argument, so a database named `--no-data` was read as
-    /// the option: measured on MySQL 8.4.11 and MariaDB 12.3.3, that dumped a different database
-    /// with no rows and exited 0, which the result sheet reports as a successful backup.
+    // `my_getopt` parses past a positional argument, so a database named `--no-data` was read as
+    // the option: measured on MySQL 8.4.11 and MariaDB 12.3.3, that dumped a different database
+    // with no rows and exited 0, which the result sheet reports as a successful backup.
     @Test("The option terminator comes before the database, in both directions", arguments: [
         NativeDumpKind.backup, .restore
     ])
@@ -715,9 +718,9 @@ struct NativeDumpRegistryTests {
         #expect(Array(built.arguments[terminator...]) == ["--", "sales", "orders", "customers"])
     }
 
-    /// libpq falls back to `~/.postgresql/root.crt` when no root certificate is named, so a
-    /// Verify CA connection that opens in the app could never be dumped: measured with pg_dump
-    /// 17.11, it fails with `root certificate file "..." does not exist`.
+    // libpq falls back to `~/.postgresql/root.crt` when no root certificate is named, so a
+    // Verify CA connection that opens in the app could never be dumped: measured with pg_dump
+    // 17.11, it fails with `root certificate file "..." does not exist`.
     @Test("PostgreSQL sends the whole SSL configuration, not just the mode")
     func postgresSendsCertificatePaths() throws {
         var secured = connection(type: .postgresql, sslMode: .verifyCa, sslEnabled: true)
@@ -739,8 +742,8 @@ struct NativeDumpRegistryTests {
         #expect(disabled.environment["PGSSLKEY"] == nil)
     }
 
-    /// The CA belongs to the modes that verify one, which is the rule the live connection already
-    /// follows in `LibPQConnectionString`.
+    // The CA belongs to the modes that verify one, which is the rule the live connection already
+    // follows in `LibPQConnectionString`.
     @Test("A required connection sends its client certificate but not a CA it does not check")
     func postgresRequiredKeepsTheClientCertificate() throws {
         var secured = connection(type: .postgresql, sslMode: .required, sslEnabled: true)
@@ -752,8 +755,96 @@ struct NativeDumpRegistryTests {
         #expect(built.environment["PGSSLCERT"] == "/certs/client.pem")
     }
 
-    /// MariaDB 11.0 renamed every client and some builds ship no `mysql`-prefixed symlink, so both
-    /// spellings have to be tried before reporting the tool missing.
+    private func dumpRequest(_ connection: DatabaseConnection) -> NativeDumpDescriptor.Request {
+        NativeDumpDescriptor.Request(
+            connection: connection,
+            database: "sales",
+            fileURL: URL(fileURLWithPath: "/tmp/out.dump"),
+            password: nil
+        )
+    }
+
+    @Test("Verify Identity with no CA file hands pg_dump this Mac's trusted roots")
+    func verifyIdentityWithoutACAGetsTheSystemAnchors() throws {
+        let verifying = connection(type: .postgresql, sslMode: .verifyIdentity, sslEnabled: true)
+        let tool = try #require(NativeDumpRegistry.descriptor(for: .postgresql)?.commandLineTool)
+        let roots = URL(fileURLWithPath: "/tmp/tablepro-trust-test/roots.pem")
+
+        #expect(tool.needsSystemTrustAnchors(dumpRequest(verifying)) == NativeDumpRegistry.postgresNeedsSystemTrustAnchors(
+            dumpRequest(verifying)
+        ))
+        let built = try command(.postgresql, connection: verifying, systemTrustAnchorsFile: roots)
+        #expect(built.environment["PGSSLMODE"] == "verify-full")
+        #expect(built.environment["PGSSLROOTCERT"] == roots.path)
+
+        var withCA = verifying
+        withCA.sslConfig.caCertificatePath = "/certs/ca.pem"
+        let chosen = try command(.postgresql, connection: withCA, systemTrustAnchorsFile: roots)
+        #expect(chosen.environment["PGSSLROOTCERT"] == "/certs/ca.pem")
+    }
+
+    @Test("Verify CA with no CA file still names no root file, as libpq refuses this Mac's roots there")
+    func verifyCAWithoutACAStillSetsNoRootCertificate() throws {
+        let verifyCA = connection(type: .postgresql, sslMode: .verifyCa, sslEnabled: true)
+        let roots = URL(fileURLWithPath: "/tmp/tablepro-trust-test/roots.pem")
+
+        let built = try command(.postgresql, connection: verifyCA, systemTrustAnchorsFile: roots)
+
+        #expect(built.environment["PGSSLMODE"] == "verify-ca")
+        #expect(built.environment["PGSSLROOTCERT"] == nil)
+        #expect(!NativeDumpRegistry.postgresNeedsSystemTrustAnchors(dumpRequest(verifyCA), fileExists: { _ in false }))
+    }
+
+    @Test("pg_dump gets this Mac's roots only for Verify Identity over TCP with no CA file and no root.crt of libpq's own")
+    func postgresSystemAnchorsFollowTheDriverRule() {
+        let home = ["HOME": "/Users/test"]
+        let rootCrt = "/Users/test/.postgresql/root.crt"
+        func needs(_ connection: DatabaseConnection, rootCrtExists: Bool = false) -> Bool {
+            NativeDumpRegistry.postgresNeedsSystemTrustAnchors(
+                dumpRequest(connection),
+                environment: home,
+                fileExists: { rootCrtExists && $0 == rootCrt }
+            )
+        }
+        let verifying = connection(type: .postgresql, sslMode: .verifyIdentity, sslEnabled: true)
+        var withCA = verifying
+        withCA.sslConfig.caCertificatePath = "/certs/ca.pem"
+        var socket = verifying
+        socket.additionalFields[MySQLLocalSocket.fieldKey] = "/tmp/.s.PGSQL.5432"
+
+        #expect(needs(verifying))
+        #expect(needs(connection(type: .redshift, sslMode: .verifyIdentity, sslEnabled: true)))
+        #expect(!needs(verifying, rootCrtExists: true))
+        #expect(!needs(withCA))
+        #expect(!needs(socket))
+        for mode in [SSLMode.disabled, .preferred, .required, .verifyCa] {
+            #expect(!needs(connection(type: .postgresql, sslMode: mode, sslEnabled: mode != .disabled)))
+        }
+        #expect(!NativeDumpRegistry.postgresNeedsSystemTrustAnchors(
+            dumpRequest(verifying),
+            environment: ["HOME": "/Users/test", "PGSSLROOTCERT": "/etc/corp-ca.pem"],
+            fileExists: { _ in false }
+        ))
+        #expect(NativeDumpRegistry.postgresSSLEnvironment(
+            verifying.sslConfig, inherited: ["PGSSLROOTCERT": "/etc/corp-ca.pem"]
+        )["PGSSLROOTCERT"] == "/etc/corp-ca.pem")
+        #expect(NativeDumpRegistry.postgresDefaultRootCertificatePath(environment: home) == rootCrt)
+        #expect(NativeDumpRegistry.postgresDefaultRootCertificatePath(environment: [:])
+            == NSHomeDirectory() + "/.postgresql/root.crt")
+    }
+
+    @Test("Only the PostgreSQL tools ask for this Mac's trusted roots", arguments: [
+        DatabaseType.mysql, .mariadb, .mongodb, .sqlite, .mssql
+    ])
+    func otherToolsNeverAskForTheSystemAnchors(type: DatabaseType) throws {
+        let tool = try #require(NativeDumpRegistry.descriptor(for: type)?.commandLineTool)
+        let verifying = connection(type: type, sslMode: .verifyIdentity, sslEnabled: true)
+
+        #expect(!tool.needsSystemTrustAnchors(dumpRequest(verifying)))
+    }
+
+    // MariaDB 11.0 renamed every client and some builds ship no `mysql`-prefixed symlink, so both
+    // spellings have to be tried before reporting the tool missing.
     @Test("MySQL tries both the mysql and mariadb tool names")
     func mysqlTriesBothToolNames() throws {
         let tool = try #require(NativeDumpRegistry.descriptor(for: .mysql)?.commandLineTool)
@@ -786,8 +877,8 @@ struct NativeDumpRegistryTests {
         #expect(try configurationValue("password", in: contents) == #"p\nuri: mongodb://evil.example.com"#)
     }
 
-    /// A progress bar showing a percentage of a number nobody measured is worse than an
-    /// indeterminate one, so an engine with no cheap size answer returns nil.
+    // A progress bar showing a percentage of a number nobody measured is worse than an
+    // indeterminate one, so an engine with no cheap size answer returns nil.
     @Test("Only the engines with a cheap size query offer a determinate progress bar")
     func sizeQueryCoverage() {
         #expect(NativeDumpService.sizeQuery(for: .postgresql) != nil)

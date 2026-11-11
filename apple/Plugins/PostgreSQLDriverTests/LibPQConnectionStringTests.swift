@@ -14,7 +14,8 @@ struct LibPQConnectionStringTests {
         sslConfig: SSLConfiguration = SSLConfiguration(),
         options: String? = nil,
         applicationName: String? = nil,
-        connectTimeoutSeconds: Int? = nil
+        connectTimeoutSeconds: Int? = nil,
+        systemTrustAnchorsPath: String? = nil
     ) throws -> String {
         try LibPQConnectionString.build(
             host: "db.example.com",
@@ -25,7 +26,8 @@ struct LibPQConnectionStringTests {
             sslConfig: sslConfig,
             options: options,
             applicationName: applicationName,
-            connectTimeoutSeconds: connectTimeoutSeconds
+            connectTimeoutSeconds: connectTimeoutSeconds,
+            systemTrustAnchorsPath: systemTrustAnchorsPath
         )
     }
 
@@ -260,6 +262,98 @@ struct LibPQConnectionStringTests {
         #expect(verifying.contains("sslrootcert='/ca.pem'"))
     }
 
+    @Test("Verify Identity with no CA file checks the server against this Mac's trusted roots")
+    func verifyIdentityWithoutACAUsesTheSystemAnchors() throws {
+        let conninfo = try build(
+            sslConfig: SSLConfiguration(mode: .verifyIdentity),
+            systemTrustAnchorsPath: "/tmp/roots.pem"
+        )
+
+        #expect(conninfo.contains("sslmode='verify-full'"))
+        #expect(conninfo.contains("sslrootcert='/tmp/roots.pem'"))
+    }
+
+    @Test("A chosen CA file wins over this Mac's trusted roots")
+    func aCAFileWinsOverTheSystemAnchors() throws {
+        let conninfo = try build(
+            sslConfig: SSLConfiguration(mode: .verifyIdentity, caCertificatePath: "/ca.pem"),
+            systemTrustAnchorsPath: "/tmp/roots.pem"
+        )
+
+        #expect(conninfo.contains("sslrootcert='/ca.pem'"))
+        #expect(!conninfo.contains("/tmp/roots.pem"))
+    }
+
+    @Test("Verify CA never checks the server against this Mac's trusted roots")
+    func verifyCAWithoutACAGetsNoSystemAnchors() throws {
+        let conninfo = try build(sslConfig: SSLConfiguration(mode: .verifyCa), systemTrustAnchorsPath: "/tmp/roots.pem")
+
+        #expect(conninfo.contains("sslmode='verify-ca'"))
+        #expect(!conninfo.contains("sslrootcert"))
+    }
+
+    @Test("A mode that checks no certificate gets no root file", arguments: [SSLMode.disabled, .preferred, .required])
+    func requiredAndPreferredNeverGetSystemAnchors(mode: SSLMode) throws {
+        let conninfo = try build(sslConfig: SSLConfiguration(mode: mode), systemTrustAnchorsPath: "/tmp/roots.pem")
+
+        #expect(!conninfo.contains("sslrootcert"))
+    }
+
+    @Test("The roots come from the CA file, then libpq's own root.crt, then this Mac's trusted roots")
+    func rootCertificateSourceOrder() {
+        let home = ["HOME": "/Users/test"]
+        let rootCrt = "/Users/test/.postgresql/root.crt"
+        func source(
+            _ mode: SSLMode,
+            ca: String = "",
+            host: String = "db.example.com",
+            rootCrtExists: Bool = false
+        ) -> LibPQRootCertificateSource? {
+            LibPQConnectionString.rootCertificateSource(
+                for: SSLConfiguration(mode: mode, caCertificatePath: ca),
+                host: host,
+                environment: home,
+                fileExists: { rootCrtExists && $0 == rootCrt }
+            )
+        }
+
+        #expect(source(.verifyIdentity, ca: "/ca.pem", rootCrtExists: true) == .caFile("/ca.pem"))
+        #expect(source(.verifyCa, ca: "/ca.pem") == .caFile("/ca.pem"))
+        #expect(source(.verifyIdentity, rootCrtExists: true) == .libpqDefault)
+        #expect(source(.verifyIdentity) == .systemTrustAnchors)
+        #expect(source(.verifyIdentity, host: "/tmp") == .libpqDefault)
+        #expect(source(.verifyCa) == .libpqDefault)
+        #expect(source(.required) == nil)
+        #expect(source(.preferred) == nil)
+        #expect(source(.disabled) == nil)
+    }
+
+    @Test("A PGSSLROOTCERT the user set, or an empty host, leaves the roots to libpq")
+    func namedRootFileAndDefaultSocketStayWithLibpq() {
+        let config = SSLConfiguration(mode: .verifyIdentity)
+        #expect(LibPQConnectionString.rootCertificateSource(
+            for: config, host: "db.example.com", environment: ["HOME": "/Users/test", "PGSSLROOTCERT": "/etc/corp-ca.pem"],
+            fileExists: { _ in false }
+        ) == .libpqDefault)
+        #expect(LibPQConnectionString.rootCertificateSource(
+            for: config, host: "", environment: ["HOME": "/Users/test"], fileExists: { _ in false }
+        ) == .libpqDefault)
+        #expect(LibPQConnectionString.rootCertificateSource(
+            for: config, host: "db.example.com", environment: ["HOME": "/Users/test", "PGSSLROOTCERT": ""],
+            fileExists: { _ in false }
+        ) == .systemTrustAnchors)
+    }
+
+    @Test("libpq's own root file is found under HOME, and under the account's home when HOME is unset or empty")
+    func defaultRootCertificateFollowsHome() {
+        let fallback = NSHomeDirectory() + "/.postgresql/root.crt"
+
+        #expect(LibPQConnectionString.defaultRootCertificatePath(environment: ["HOME": "/Users/test"])
+            == "/Users/test/.postgresql/root.crt")
+        #expect(LibPQConnectionString.defaultRootCertificatePath(environment: ["HOME": ""]) == fallback)
+        #expect(LibPQConnectionString.defaultRootCertificatePath(environment: [:]) == fallback)
+    }
+
     @Test("A client certificate and key reach libpq as sslcert and sslkey")
     func clientCertificateIsSent() throws {
         let conninfo = try build(sslConfig: SSLConfiguration(
@@ -330,8 +424,8 @@ struct LibPQConnectionStringTests {
         #expect(try !build(applicationName: "").contains("application_name"))
     }
 
-    /// Measured on libpq 17: a fallback name replaces an `application_name` set in `options`, so it
-    /// has to stay out whenever the user named the session there, in any of the server's spellings.
+    // Measured on libpq 17: a fallback name replaces an `application_name` set in `options`, so it
+    // has to stay out whenever the user named the session there, in any of the server's spellings.
     @Test(
         "A name the user gives the session in the connection options keeps the fallback out",
         arguments: [

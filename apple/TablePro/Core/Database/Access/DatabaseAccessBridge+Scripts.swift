@@ -134,9 +134,16 @@ extension DatabaseAccessBridge {
                 onLateCompletion: { CatalogChangeService.post(statementsRan) }
             ) { driver in
                 reach.mark()
-                return try await ScriptBatchRun.run(
-                    batches, startLines: startLines, rowCap: rowCap, driver: driver, progress: progress, context: context
-                )
+                do {
+                    let answered = try await ScriptBatchRun.run(
+                        batches, startLines: startLines, rowCap: rowCap, driver: driver, progress: progress, context: context
+                    )
+                    await manager.noteSessionStatements(Self.ranStatements(of: batches, progress), ranOn: driver, scope: scope)
+                    return answered
+                } catch {
+                    await manager.noteSessionStatements(Self.ranStatements(of: batches, progress), ranOn: driver, scope: scope)
+                    throw error
+                }
             }
         } catch {
             if classification.tier != .safe {
@@ -149,6 +156,11 @@ extension DatabaseAccessBridge {
         CatalogChangeService.post(statementsRan)
         Self.postSucceededBatches(of: batches, progress: progress, scope: scope, databaseType: databaseType)
         return run.outcome(executionTimeMs: (CFAbsoluteTimeGetCurrent() - startTime) * 1_000)
+    }
+
+    // The batch a script stopped at ran too, and can have created a temporary table before its error.
+    private static func ranStatements(of batches: [ExecutableBatch], _ progress: ScriptBatchProgress) -> [String] {
+        batches.prefix(progress.completedBatchCount + 1).flatMap { $0.statements.map(\.sql) }
     }
 
     private static func postSucceededBatches(

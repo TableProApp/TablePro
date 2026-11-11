@@ -257,4 +257,24 @@ struct KeychainItemScopeTests {
         #expect(store.value(account: key, synchronizable: false) == nil)
         #expect(store.value(account: key, synchronizable: true) == "synced")
     }
+
+    @Test("Removing the synced copy keeps this Mac's own item, whatever the password sync setting", arguments: [true, false])
+    func removingTheSyncedCopyKeepsTheLocalItem(passwordSync: Bool) {
+        store.seed("local", account: key, synchronizable: false)
+        store.seed("synced", account: key, synchronizable: true)
+
+        #expect(helper(passwordSync: passwordSync).removeSyncedCopy(forKey: key))
+
+        #expect(store.value(account: key, synchronizable: false) == "local")
+        #expect(store.value(account: key, synchronizable: true) == nil)
+    }
+
+    @Test("Removing the synced copy is refused while this Mac has no item of its own")
+    func removingTheSyncedCopyIsRefusedWithoutALocalItem() {
+        store.seed("synced", account: key, synchronizable: true)
+
+        #expect(!helper(passwordSync: true).removeSyncedCopy(forKey: key))
+
+        #expect(store.value(account: key, synchronizable: true) == "synced")
+    }
 }

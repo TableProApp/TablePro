@@ -405,7 +405,14 @@ final class AnthropicProvider: ChatTransport {
                let tokens = usage["output_tokens"] as? Int {
                 state.outputTokens = tokens
             }
-            return []
+            switch (json["delta"] as? [String: Any])?["stop_reason"] as? String {
+            case "max_tokens":
+                return [.outputLimitReached(.outputTokens)]
+            case "model_context_window_exceeded":
+                return [.outputLimitReached(.contextWindow)]
+            default:
+                return []
+            }
         case "error":
             if let errorObj = json["error"] as? [String: Any],
                let message = errorObj["message"] as? String {

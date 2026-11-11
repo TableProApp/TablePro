@@ -19,7 +19,8 @@ final class FindCoordinator {
 
     var hasActiveFind: Bool {
         guard let find = model?.find else { return false }
-        return find.isVisible && !find.matches.isEmpty
+        // A typed term's search has no matches yet; Find Next waits for it rather than going to the editor.
+        return find.isVisible && (!find.matches.isEmpty || find.isAwaitingLoadedRows)
     }
 
     func showFind(replace: Bool = false) {

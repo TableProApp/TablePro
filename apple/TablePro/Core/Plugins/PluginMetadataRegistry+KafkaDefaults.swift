@@ -7,13 +7,11 @@ import Foundation
 import TableProPluginKit
 
 extension PluginMetadataRegistry {
-    /// The curated snapshot for Kafka.
-    ///
-    /// A registry-only driver is not installed until someone connects with it, so without an
-    /// entry here the type is absent from the New Connection picker and there is no way to
-    /// create the connection that would trigger the install. The connection fields are
-    /// duplicated from `KafkaConnectionField` for the same reason: the plugin that owns them
-    /// is not loaded yet.
+    // A registry-only driver is not installed until someone connects with it, so without an
+    // entry here the type is absent from the New Connection picker and there is no way to
+    // create the connection that would trigger the install. The connection fields are
+    // duplicated from `KafkaConnectionField` for the same reason: the plugin that owns them
+    // is not loaded yet.
     func kafkaPluginDefaults() -> [(typeId: String, snapshot: PluginMetadataSnapshot)] {
         [
             ("Kafka", PluginMetadataSnapshot(
@@ -43,6 +41,7 @@ extension PluginMetadataRegistry {
                     defaultSSLMode: .disabled,
                     supportsOpportunisticTLS: false,
                     verifiesServerWithSystemTrust: true,
+                    requestedTLSVerifiesIdentity: true,
                     supportsColumnSort: false,
                     supportsRawFilter: false,
                     statementPolicyInDriver: true
@@ -92,8 +91,8 @@ private let kafkaColumnTypes: [String: [String]] = [
     "Coordinates": ["INTEGER", "BIGINT", "TIMESTAMP"]
 ]
 
-/// Kept identical to `KafkaConnectionField.fields()` in the plugin. The two cannot share code:
-/// this list has to exist before the bundle that owns it is downloaded.
+// Kept identical to `KafkaConnectionField.fields()` in the plugin. The two cannot share code:
+// this list has to exist before the bundle that owns it is downloaded.
 private func kafkaConnectionFields() -> [ConnectionField] {
     [
         ConnectionField(

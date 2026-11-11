@@ -6,34 +6,26 @@
 import Foundation
 import TableProPluginKit
 
-/// Everything one engine's own dump and restore need, as data.
-///
-/// The three engines that had this hard-coded were all PostgreSQL. Generalizing it is not a matter
-/// of parameterizing a binary name: `mysqldump` writes SQL to standard output where `pg_dump -Fc`
-/// writes an archive to a path, `mongodump` takes a URI rather than host and port flags, `sqlite3`
-/// needs no network arguments at all, and DuckDB runs no binary because its dump is a statement its
-/// own in-process engine executes. So a descriptor names its mechanism and supplies its own
-/// arguments or statements, rather than filling slots in one shared command shape.
+// The three engines that had this hard-coded were all PostgreSQL. Generalizing it is not a matter
+// of parameterizing a binary name: `mysqldump` writes SQL to standard output where `pg_dump -Fc`
+// writes an archive to a path, `mongodump` takes a URI rather than host and port flags, `sqlite3`
+// needs no network arguments at all, and DuckDB runs no binary because its dump is a statement its
+// own in-process engine executes. So a descriptor names its mechanism and supplies its own
+// arguments or statements, rather than filling slots in one shared command shape.
 struct NativeDumpDescriptor: Sendable {
-    /// How the tool hands back what it produced. This is the difference that no shared argument
-    /// list can paper over.
     enum OutputDelivery: Sendable, Equatable {
-        /// The tool is told where to write, and writes there itself.
         case toolWritesFile
-        /// The tool writes to standard output and the caller redirects it to the file.
         case standardOutput
     }
 
-    /// What the caller offers as a file name, and what a restore will accept back.
-    ///
-    /// `id` exists because one engine can offer two: DuckDB writes either a single `.duckdb` file
-    /// or a directory of Parquet, and the sheet has to name which one it is about to write.
+    // `id` exists because one engine can offer two: DuckDB writes either a single `.duckdb` file
+    // or a directory of Parquet, and the sheet has to name which one it is about to write.
     struct ArchiveFormat: Sendable, Equatable, Identifiable {
         let id: String
         let fileExtension: String
         let contentDescription: String
-        /// A destination the user chooses with an open panel rather than a save panel, because the
-        /// engine writes a folder of files rather than one file.
+        // A destination the user chooses with an open panel rather than a save panel, because the
+        // engine writes a folder of files rather than one file.
         let producesDirectory: Bool
 
         init(
@@ -56,25 +48,19 @@ struct NativeDumpDescriptor: Sendable {
         let password: String?
         let scope: NativeDumpScope
 
-        /// The engine's own name for the database in front of it, read from the live connection.
-        ///
-        /// Only DuckDB needs one, and it needs it badly: `COPY FROM DATABASE <src> TO <dst>` names
-        /// a catalog, and DuckDB derives that catalog from the file's basename. Measured, a file
-        /// `my-weird.name.db` attaches as `my-weird`, and `COPY FROM DATABASE main` fails with
-        /// `Catalog "main" does not exist`. So neither the file name nor a constant will do.
+        // Only DuckDB needs one, and it needs it badly: `COPY FROM DATABASE <src> TO <dst>` names
+        // a catalog, and DuckDB derives that catalog from the file's basename. Measured, a file
+        // `my-weird.name.db` attaches as `my-weird`, and `COPY FROM DATABASE main` fails with
+        // `Catalog "main" does not exist`. So neither the file name nor a constant will do.
         let currentCatalog: String?
 
-        /// The path a file-backed driver actually opens.
-        ///
-        /// SQLite keeps it in `database`, while DuckDB and libSQL keep it in a plugin-declared
-        /// additional field and leave `database` empty. Resolved by the caller through
-        /// `LocalFilePathField` rather than guessed here, because reading `connection.database` for
-        /// libSQL handed `sqlite3` an empty path, which exits 0 and writes a 52-byte file that the
-        /// result sheet then reports as a successful backup.
+        // SQLite keeps the file's path in `database`; DuckDB and libSQL keep it in a plugin-declared field and leave
+        // `database` empty. Resolved by the caller through `LocalFilePathField`: reading `connection.database` for libSQL
+        // handed `sqlite3` an empty path, which exits 0 and writes a 52-byte file the result sheet reports as a backup.
         let localFilePath: String?
 
-        /// What the live session's driver reports the server to be, so a tool can be given the
-        /// flags that server needs. `mysqldump` 8.0 reads a table no MariaDB server has.
+        // What the live session's driver reports the server to be, so a tool can be given the
+        // flags that server needs. `mysqldump` 8.0 reads a table no MariaDB server has.
         let serverVersion: String?
 
         // Whether the server's greeting offered TLS, for a tool whose SSL options depend on it. Nil when not read.
@@ -82,6 +68,9 @@ struct NativeDumpDescriptor: Sendable {
 
         // Set by `NativeDumpService.buildCommand` before the arguments are built.
         var clientPluginFolder: MariaDBClientPluginFolder?
+
+        // Set by `NativeDumpService` when the tool's `needsSystemTrustAnchors` says so, and removed when the tool exits.
+        var systemTrustAnchorsFile: URL?
 
         init(
             connection: DatabaseConnection,
@@ -120,25 +109,24 @@ struct NativeDumpDescriptor: Sendable {
         let value: String
     }
 
-    /// A tool on the user's Mac that the app spawns.
     struct CommandLineTool: Sendable {
-        /// The candidate names, in the order they are tried. More than one because a tool can ship
-        /// under two names: MariaDB renamed `mysqldump` to `mariadb-dump` in 11.0 and keeps the old
-        /// name only as a symlink that some builds omit.
+        // The candidate names, in the order they are tried. More than one because a tool can ship
+        // under two names: MariaDB renamed `mysqldump` to `mariadb-dump` in 11.0 and keeps the old
+        // name only as a symlink that some builds omit.
         let backupBinaries: [String]
         let restoreBinaries: [String]
 
-        /// What to tell the user to install when neither name resolves. There is no portable
-        /// answer, so each engine names its own package.
+        // What to tell the user to install when neither name resolves. There is no portable
+        // answer, so each engine names its own package.
         let installHint: String
 
         let backupDelivery: OutputDelivery
         let restoreDelivery: OutputDelivery
 
-        /// True when the tool has no channel for a password but its own argument list, which every
-        /// process on the machine can read through `ps`. Only `sqlpackage` is in that position;
-        /// every other engine here takes one from the environment or a file. The flows that touch
-        /// such a tool say so rather than leaving the user to find out.
+        // True when the tool has no channel for a password but its own argument list, which every
+        // process on the machine can read through `ps`. Only `sqlpackage` is in that position;
+        // every other engine here takes one from the environment or a file. The flows that touch
+        // such a tool say so rather than leaving the user to find out.
         let exposesPasswordInArguments: Bool
 
         let configurationFileEntries: @Sendable (Request) -> [ConfigurationEntry]
@@ -147,14 +135,14 @@ struct NativeDumpDescriptor: Sendable {
 
         internal let requiresUntranslatedMessages: Bool
 
-        /// Picks the binary to run for a known server version, when the engine's tools refuse
-        /// some servers. Nil leaves the plain PATH lookup in place.
+        // Picks the binary to run for a known server version, when the engine's tools refuse
+        // some servers. Nil leaves the plain PATH lookup in place.
         let toolForServer: (@Sendable (_ binary: String, _ serverVersion: String?) -> NativeDumpToolSelection)?
 
-        /// Says what the resolved binary actually is, for an engine whose tools forked their
-        /// options. It runs a process, so it runs once per resolution rather than once per
-        /// argument list. Nil leaves the tool unidentified, which is what every engine but MySQL
-        /// and MariaDB wants.
+        // Says what the resolved binary actually is, for an engine whose tools forked their
+        // options. It runs a process, so it runs once per resolution rather than once per
+        // argument list. Nil leaves the tool unidentified, which is what every engine but MySQL
+        // and MariaDB wants.
         let identifyExecutable: (@Sendable (_ name: String, _ path: String) -> NativeDumpResolvedTool)?
 
         let backupArguments: @Sendable (Request, NativeDumpResolvedTool) throws -> [String]
@@ -165,6 +153,9 @@ struct NativeDumpDescriptor: Sendable {
         let prepare: @Sendable (Request, NativeDumpResolvedTool) async throws -> Request
 
         let clientPluginFolder: @Sendable (Request, NativeDumpResolvedTool) throws -> MariaDBClientPluginFolder?
+
+        // True when the tool has no trust store of its own to check the server with, so it gets a file of this Mac's.
+        let needsSystemTrustAnchors: @Sendable (Request) -> Bool
 
         init(
             backupBinaries: [String],
@@ -182,7 +173,8 @@ struct NativeDumpDescriptor: Sendable {
             environment: @escaping @Sendable (Request) -> [String: String] = { _ in [:] },
             configurationFileEntries: @escaping @Sendable (Request) -> [ConfigurationEntry] = { _ in [] },
             prepare: @escaping @Sendable (Request, NativeDumpResolvedTool) async throws -> Request = { request, _ in request },
-            clientPluginFolder: @escaping @Sendable (Request, NativeDumpResolvedTool) throws -> MariaDBClientPluginFolder? = { _, _ in nil }
+            clientPluginFolder: @escaping @Sendable (Request, NativeDumpResolvedTool) throws -> MariaDBClientPluginFolder? = { _, _ in nil },
+            needsSystemTrustAnchors: @escaping @Sendable (Request) -> Bool = { _ in false }
         ) {
             self.backupBinaries = backupBinaries
             self.restoreBinaries = restoreBinaries
@@ -200,6 +192,7 @@ struct NativeDumpDescriptor: Sendable {
             self.configurationFileEntries = configurationFileEntries
             self.prepare = prepare
             self.clientPluginFolder = clientPluginFolder
+            self.needsSystemTrustAnchors = needsSystemTrustAnchors
         }
 
         func binaries(for kind: NativeDumpKind) -> [String] {
@@ -214,8 +207,8 @@ struct NativeDumpDescriptor: Sendable {
             try kind == .backup ? backupArguments(request, resolved) : restoreArguments(request, resolved)
         }
 
-        /// What the app knows about the binary it resolved. An engine that declares no
-        /// `identifyExecutable` gets the plain answer, which is what its arguments already assume.
+        // What the app knows about the binary it resolved. An engine that declares no
+        // `identifyExecutable` gets the plain answer, which is what its arguments already assume.
         func identify(name: String, path: String) -> NativeDumpResolvedTool {
             identifyExecutable?(name, path) ?? NativeDumpResolvedTool(name: name, path: path)
         }
@@ -229,19 +222,17 @@ struct NativeDumpDescriptor: Sendable {
         }
     }
 
-    /// Statements the engine already in front of the app runs for itself.
-    ///
-    /// There is no binary to find, no password to hand over and nothing to reap, which is why this
-    /// cannot be a `CommandLineTool` with an empty argument list. An embedded engine also has no
-    /// server to write on the user's behalf, so the file lands where the panel picked.
+    // There is no binary to find, no password to hand over and nothing to reap, which is why this
+    // cannot be a `CommandLineTool` with an empty argument list. An embedded engine also has no
+    // server to write on the user's behalf, so the file lands where the panel picked.
     struct EngineStatements: Sendable {
-        /// The statements for one direction, in order. `alias` is a name for the attached backup,
-        /// unique per run so a `DETACH` that could not run leaves nothing blocking the next one.
+        // The statements for one direction, in order. `alias` is a name for the attached backup,
+        // unique per run so a `DETACH` that could not run leaves nothing blocking the next one.
         let backupStatements: @Sendable (Request, String) -> [String]
         let restoreStatements: @Sendable (Request, String) -> [String]
 
-        /// Run after a failure and ignored. A `DETACH` inside an aborted transaction fails too, and
-        /// the caller has the engine's real error to report rather than this one.
+        // Run after a failure and ignored. A `DETACH` inside an aborted transaction fails too, and
+        // the caller has the engine's real error to report rather than this one.
         let cleanupStatements: @Sendable (String) -> [String]
 
         // Set when the archive's own SQL must not run on the session: the driver imports it into a new file of this
@@ -271,9 +262,9 @@ struct NativeDumpDescriptor: Sendable {
     let objectScope: NativeDumpObjectScope
     let restoreSemantics: RestoreSemantics
 
-    /// True when the tool opens the database file itself and so cannot reach a connection that has
-    /// no local file. libSQL claims the SQLite descriptor and reaches either a file or a Turso URL,
-    /// and only the file can be handed to `sqlite3`.
+    // True when the tool opens the database file itself and so cannot reach a connection that has
+    // no local file. libSQL claims the SQLite descriptor and reaches either a file or a Turso URL,
+    // and only the file can be handed to `sqlite3`.
     let requiresLocalFile: Bool
 
     init(
