@@ -282,6 +282,21 @@ extension WelcomeViewModel {
         loadConnections()
     }
 
+    // Leaving sync takes the secrets off iCloud Keychain on every device, so it asks first.
+    func requestExcludeFromSync(_ ids: [UUID]) {
+        let targets = ids.compactMap { connectionsById[$0] }.filter(\.participatesInSync)
+        guard !targets.isEmpty else { return }
+        connectionsToExcludeFromSync = targets
+        showExcludeFromSyncConfirmation = true
+    }
+
+    func confirmExcludeFromSync() {
+        let ids = connectionsToExcludeFromSync.map(\.id)
+        connectionsToExcludeFromSync = []
+        guard !ids.isEmpty else { return }
+        setIncludedInSync(ids, included: false)
+    }
+
     func duplicateConnection(_ id: UUID) {
         guard let connection = connectionsById[id] else { return }
         guard let duplicate = storage.duplicateConnection(connection) else {
@@ -460,7 +475,11 @@ extension WelcomeViewModel {
         case .moveToNewGroup(let ids):
             requestNewGroup(parentId: nil, movingConnectionIds: ids)
         case .setIncludedInSync(let ids, let included):
-            setIncludedInSync(ids, included: included)
+            if included {
+                setIncludedInSync(ids, included: true)
+            } else {
+                requestExcludeFromSync(ids)
+            }
         case .deleteConnections(let ids):
             requestDeleteConnections(ids)
         case .removeFromRecent(let ids):

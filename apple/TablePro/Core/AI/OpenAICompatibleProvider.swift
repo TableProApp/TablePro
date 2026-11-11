@@ -171,6 +171,13 @@ final class OpenAICompatibleProvider: ChatTransport {
             if finishReason == "tool_calls" {
                 events.append(contentsOf: state.flushToolUseEnds())
             }
+            if finishReason == "length" {
+                events.append(.outputLimitReached(.outputTokens))
+            }
+        }
+        // Ollama's own API names the cut in `done_reason`.
+        if (json["done"] as? Bool) == true, (json["done_reason"] as? String) == "length" {
+            events.append(.outputLimitReached(.outputTokens))
         }
 
         if let usage = json["usage"] as? [String: Any],

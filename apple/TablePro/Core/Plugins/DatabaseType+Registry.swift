@@ -9,23 +9,16 @@ import SwiftUI
 import TableProAutocomplete
 import TableProPluginKit
 
-/// Everything a `DatabaseType` knows by asking the plugin registry.
-///
-/// It lives apart from the type itself because these are the members that make naming a database
-/// type cost the whole plugin system at compile time. `DatabaseType` is a string a connection
-/// carries and a value the display layer compares against a constant; keeping the lookups here
-/// means a file that only does that does not compile against the registry, the snapshot table and
-/// the theme engine behind them.
+// Apart from `DatabaseType`, so a file that only names or compares a type does not compile against the registry, the
+// snapshot table and the theme engine behind them.
 
 extension DatabaseType {
-    /// All registered database types, derived dynamically from the plugin metadata registry.
     static var allKnownTypes: [DatabaseType] {
         PluginMetadataRegistry.shared.allRegisteredTypeIds().map { DatabaseType(rawValue: $0) }
     }
 }
 
 extension DatabaseType {
-    /// Returns nil if rawValue doesn't match any registered type.
     init?(validating rawValue: String) {
         guard PluginMetadataRegistry.shared.hasType(rawValue) else { return nil }
         self.rawValue = rawValue
@@ -33,14 +26,11 @@ extension DatabaseType {
 }
 
 extension DatabaseType {
-    /// Plugin type ID used for PluginManager lookup, resolved via the registry.
     var pluginTypeId: String {
         PluginMetadataRegistry.shared.pluginTypeId(for: rawValue)
     }
 
-    /// Genuinely a fact about the plugin binary rather than the database, so it asks by
-    /// `pluginTypeId`: Redshift is served by the bundled PostgreSQL plugin and there is nothing
-    /// of its own to download.
+    // Asks by `pluginTypeId`: Redshift is served by the bundled PostgreSQL plugin and has nothing of its own to download.
     var isDownloadablePlugin: Bool {
         PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: pluginTypeId)?.isDownloadable ?? false
     }
@@ -49,8 +39,7 @@ extension DatabaseType {
         PluginMetadataRegistry.shared.snapshot(for: self)?.iconName ?? "cylinder"
     }
 
-    /// Returns the correct SwiftUI Image for this database type, handling both
-    /// SF Symbol names (e.g. "cylinder.fill") and asset catalog names (e.g. "mysql-icon").
+    // `iconName` is an SF Symbol (`cylinder.fill`) or an asset catalog name (`mysql-icon`).
     var iconImage: Image {
         let name = iconName
         if NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil {
@@ -88,6 +77,10 @@ extension DatabaseType {
         PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.verifiesServerWithSystemTrust ?? false
     }
 
+    var requestedTLSVerifiesIdentity: Bool {
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.requestedTLSVerifiesIdentity ?? false
+    }
+
     var supportsPerConnectionCertificatePaths: Bool {
         PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsPerConnectionCertificatePaths ?? true
     }
@@ -98,7 +91,7 @@ extension DatabaseType {
     }
 
     var sslModeWhenTLSEnabled: SSLMode {
-        verifiesServerWithSystemTrust ? .verifyIdentity : .required
+        requestedTLSVerifiesIdentity ? .verifyIdentity : .required
     }
 
     func impliedSSLMode(forPort port: Int) -> SSLMode? {
@@ -261,8 +254,8 @@ extension DatabaseType {
             .capabilities.supportsUserDefinedTypeBrowse ?? false
     }
 
-    /// The object kinds this engine fetches. The sidebar waits on these fetches before calling a
-    /// container empty, and keeps a section for one that failed; it lists a section only for rows.
+    // The object kinds this engine fetches. The sidebar waits on these fetches before calling a
+    // container empty, and keeps a section for one that failed; it lists a section only for rows.
     var declaredObjectKinds: Set<SidebarObjectKind> {
         var kinds: Set<SidebarObjectKind> = []
         if supportsRoutines {

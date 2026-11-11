@@ -28,8 +28,8 @@ struct MSSQLStatementGenerator {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) throws -> [PluginRowWrite] {
+        // In the order received, which is edit order: a row deleted to free a unique value goes before the row taking it.
         var writes: [PluginRowWrite] = []
-        var deletes: [PluginRowWrite] = []
         for change in changes {
             switch change.type {
             case .insert:
@@ -47,10 +47,10 @@ struct MSSQLStatementGenerator {
             case .delete:
                 guard deletedRowIndices.contains(change.rowIndex),
                       let statement = try deleteStatement(for: change) else { continue }
-                deletes.append(PluginRowWrite(statement: statement.statement, parameters: statement.parameters, rowIndices: [change.rowIndex]))
+                writes.append(PluginRowWrite(statement: statement.statement, parameters: statement.parameters, rowIndices: [change.rowIndex]))
             }
         }
-        return writes + deletes
+        return writes
     }
 
     /// The statements alone, for a host that asks without a context. With no context there is nothing to refuse.

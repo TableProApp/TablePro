@@ -13,7 +13,7 @@ protocol JSONElementSequence {
     func close()
 }
 
-// The elements of one array of a UTF-8 file, each read and parsed as it is reached.
+// The elements of one array of the file, each read and parsed as it is reached.
 struct JSONStreamedElements: JSONElementSequence {
     private var reader: JSONDocumentReader
     private var hasMore: Bool
@@ -39,19 +39,17 @@ struct JSONStreamedElements: JSONElementSequence {
     }
 }
 
-// The elements of a file `JSONSerialization` has already read whole.
-struct JSONParsedElements: JSONElementSequence {
-    private let elements: [Any]
-    private var cursor = 0
+// A file whose top-level object is the one row, built member by member.
+struct JSONSingleRow: JSONElementSequence {
+    private var row: [String: PluginCellValue]?
 
-    init(_ elements: [Any]) {
-        self.elements = elements
+    init(_ row: [String: PluginCellValue]) {
+        self.row = row
     }
 
     mutating func next() -> Any? {
-        guard cursor < elements.count else { return nil }
-        defer { cursor += 1 }
-        return elements[cursor]
+        defer { row = nil }
+        return row
     }
 
     func close() {}

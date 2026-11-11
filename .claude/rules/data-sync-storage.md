@@ -181,6 +181,7 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Snowflake SSO and MFA tokens, per host and user. A bare account's `NAME.USER` item stays for 0.83.1, which reads only that key | Keychain, device-local | `SnowflakeTokenCache` |
 | Whether `connections.json` was ever given an integrity tag, so a deleted tag reads as modified | Keychain `com.TablePro.connectionStoreStamped.<sha256 of path>`, device-local | `ConnectionStoreIntegrity` |
 | Whether Local only connections' secrets were copied to device-only items | UserDefaults `com.TablePro.localOnlySecretsKeptOnDevice`, device-local, never synced | `ConnectionStorage` |
+| iCloud Keychain copies of Local only secrets the keychain refused to remove, retried at launch | UserDefaults `com.TablePro.localOnlySyncedCopiesPendingRemoval`, device-local, never synced | `ConnectionStorage` |
 | Whether plugin secure fields moved out of `connections.json` into the Keychain, set only when every field moved and the save succeeded | UserDefaults `com.TablePro.pluginSecureFieldsMovedToKeychain`, device-local, never synced | `ConnectionStorage` |
 | Whether a saved-queries store replaced a damaged file and waits for a full fetch, so push treats it as unreadable | Table `sync_refill` in the saved-queries SQLite store, dropped once a full fetch applied | `SQLFavoriteStorage` |
 | Deletions the server reported for a sync category that is off, applied when the category is next read | UserDefaults, device-local, never synced | `SyncMetadataStorage.deferredDeletions` |

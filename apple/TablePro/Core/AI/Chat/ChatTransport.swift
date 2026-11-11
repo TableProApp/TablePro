@@ -83,6 +83,12 @@ struct ChatToolSpec: Codable, Equatable, Sendable {
     }
 }
 
+// Why a provider stopped the response before the model finished it.
+enum ChatOutputLimit: String, Codable, Sendable {
+    case outputTokens
+    case contextWindow
+}
+
 enum ChatStreamEvent: Sendable {
     case textDelta(String)
     case toolUseStart(id: String, name: String, providerMetadata: [String: String]? = nil)
@@ -93,6 +99,7 @@ enum ChatStreamEvent: Sendable {
     case reasoningStart(id: String)
     case reasoningDelta(id: String, text: String)
     case reasoningEnd(id: String, opaque: ReasoningOpaque?)
+    case outputLimitReached(ChatOutputLimit)
 }
 
 final class ToolReplyToken: Sendable {

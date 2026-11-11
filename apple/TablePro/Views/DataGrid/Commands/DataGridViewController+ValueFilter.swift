@@ -9,9 +9,68 @@ import TableProPluginKit
 
 // Each loaded value as the cell shows it, counted, in the order first seen.
 struct ColumnValueTally: Sendable {
+    static let cancellationInterval = 4_096
+
     var counts: [String: Int] = [:]
     var order: [String] = []
     var nullCount = 0
+
+    // Nil once cancelled, which is asked every 4,096 rows.
+    static func tally(
+        _ rows: TableRows,
+        dataIndex: Int,
+        columnType: ColumnType?,
+        displayFormat: ValueDisplayFormat?,
+        databaseType: DatabaseType?,
+        dates: DateDisplayRenderer,
+        isCancelled: () -> Bool
+    ) -> ColumnValueTally? {
+        var counted = ColumnValueTally()
+        guard dataIndex >= 0, dataIndex < rows.columns.count else { return counted }
+        for (offset, row) in rows.rows.enumerated() {
+            if offset % cancellationInterval == 0, isCancelled() { return nil }
+            guard dataIndex < row.values.count else { continue }
+            let raw = row.values[dataIndex]
+            if case .null = raw {
+                counted.nullCount += 1
+                continue
+            }
+            let display = GridDisplayOrderResolver.displayValue(
+                raw,
+                columnType: columnType,
+                displayFormat: displayFormat,
+                databaseType: databaseType,
+                dates: dates
+            )
+            if counted.counts[display] == nil {
+                counted.order.append(display)
+            }
+            counted.counts[display, default: 0] += 1
+        }
+        return counted
+    }
+
+    // A column of unique values costs a format per row and n log n locale-aware comparisons, too slow for the
+    // main actor. A renderer is never shared across threads, so this one builds its own from the format.
+    @concurrent
+    static func distinctValuesOffTheMainActor(
+        _ rows: TableRows,
+        dataIndex: Int,
+        columnType: ColumnType?,
+        displayFormat: ValueDisplayFormat?,
+        databaseType: DatabaseType?,
+        dateFormat: DateFormatOption
+    ) async -> [ColumnDistinctValue]? {
+        tally(
+            rows,
+            dataIndex: dataIndex,
+            columnType: columnType,
+            displayFormat: displayFormat,
+            databaseType: databaseType,
+            dates: DateDisplayRenderer(format: dateFormat),
+            isCancelled: { Task.isCancelled }
+        )?.sorted()
+    }
 
     func sorted() -> [ColumnDistinctValue] {
         var values = order
@@ -22,47 +81,20 @@ struct ColumnValueTally: Sendable {
         }
         return values
     }
-
-    // A column of unique values makes n log n locale-aware comparisons, too slow for the main actor.
-    @concurrent
-    func sortedOffTheMainActor() async -> [ColumnDistinctValue] {
-        sorted()
-    }
 }
 
 extension DataGridCommands {
     // Every loaded value as the cell shows it, which is what a value filter stores and matches; NULL first.
     func distinctValues(for column: DataGridColumn) -> [ColumnDistinctValue] {
-        valueTally(for: column).sorted()
-    }
-
-    // Formatting reads main-actor state, so the tally is taken here and only the sort leaves the main actor.
-    func valueTally(for column: DataGridColumn) -> ColumnValueTally {
-        let rows = model.rows
-        let dataIndex = column.dataIndex
-        guard dataIndex >= 0, dataIndex < rows.columns.count else { return ColumnValueTally() }
-        let format = model.displayFormat(for: column)
-        let databaseType = configuration.traits.databaseType
-        var tally = ColumnValueTally()
-        for row in rows.rows {
-            guard dataIndex < row.values.count else { continue }
-            let raw = row.values[dataIndex]
-            if case .null = raw {
-                tally.nullCount += 1
-                continue
-            }
-            let display = GridDisplayOrderResolver.displayValue(
-                raw,
-                columnType: column.type,
-                displayFormat: format,
-                databaseType: databaseType
-            )
-            if tally.counts[display] == nil {
-                tally.order.append(display)
-            }
-            tally.counts[display, default: 0] += 1
-        }
-        return tally
+        ColumnValueTally.tally(
+            model.rows,
+            dataIndex: column.dataIndex,
+            columnType: column.type,
+            displayFormat: model.displayFormat(for: column),
+            databaseType: configuration.traits.databaseType,
+            dates: DateFormattingService.shared.renderer,
+            isCancelled: { false }
+        )?.sorted() ?? []
     }
 }
 
@@ -80,15 +112,25 @@ extension DataGridViewController {
         }) else { return }
         guard model.anchor(for: column) != nil else { return }
 
-        let tally = gridCommands.valueTally(for: column)
+        let columnType = column.type
+        let displayFormat = model.displayFormat(for: column)
+        let databaseType = model.configuration.traits.databaseType
+        let dateFormat = DateFormattingService.shared.currentFormat
         let initialFilter = model.store.valueFilter.filter(forColumn: dataIndex)
         let loadedRowCount = rows.count
         let listedModel = model
         dismissValueFilterPopover()
-        // A reload, insert or removal while the list sorts cancels it, as it would close the open popover.
+        // A reload, insert or removal while the list builds cancels it, as it would close the open popover.
         menuState.valueFilterListing = Task { [weak self] in
-            let values = await tally.sortedOffTheMainActor()
-            guard !Task.isCancelled, let self else { return }
+            let listed = await ColumnValueTally.distinctValuesOffTheMainActor(
+                rows,
+                dataIndex: dataIndex,
+                columnType: columnType,
+                displayFormat: displayFormat,
+                databaseType: databaseType,
+                dateFormat: dateFormat
+            )
+            guard let values = listed, !Task.isCancelled, let self else { return }
             self.menuState.valueFilterListing = nil
             // A grid that took another tab's model meanwhile shows other rows.
             guard self.model === listedModel,

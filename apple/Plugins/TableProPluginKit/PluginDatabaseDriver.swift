@@ -55,6 +55,7 @@ public struct PluginRowChange: Sendable {
         case delete
     }
 
+    // One row can arrive as several changes, each with its own key and the row as it stands before that change.
     public let rowIndex: Int
     public let type: ChangeType
     public let cellChanges: [(columnIndex: Int, columnName: String, oldValue: PluginCellValue, newValue: PluginCellValue)]

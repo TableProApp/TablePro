@@ -9,6 +9,7 @@ import Combine
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// Manages database connections and active drivers
 @MainActor
@@ -143,6 +144,11 @@ final class DatabaseManager: ObservableObject {
         self?.isLiveSessionDriver(driver, for: key) ?? false
     }
 
+    // What the user's statements set up on each session connection, read before a reconnect closes one.
+    internal lazy var sessionStateLedger = SessionStateLedger { [weak self] key, driver in
+        self?.isLiveSessionDriver(driver, for: key) ?? false
+    }
+
     /// The driver each connection's health monitor last pinged, so the reconnect that follows a
     /// failed ping acts only on that driver and never on one a database switch put in its place.
     /// Held, not just identified: a closed driver that was freed would hand its address, and with it
@@ -212,6 +218,10 @@ final class DatabaseManager: ObservableObject {
         self.recoveryClock = recoveryClock
         sessionLanes.onClose = { [weak self] connectionId in
             self?.sessionTransactions.prune(connectionId)
+            self?.sessionStateLedger.prune(connectionId)
+        }
+        sessionLanes.recordedState = { [weak self] driver, connectionId in
+            self?.sessionStateLedger.state(heldBy: driver, for: connectionId) ?? []
         }
         observeConnectionUpdates()
         observeHealthCheckSetting()

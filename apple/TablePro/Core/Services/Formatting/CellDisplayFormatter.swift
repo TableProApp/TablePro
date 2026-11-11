@@ -9,15 +9,31 @@
 import Foundation
 import TableProPluginKit
 
-@MainActor
 enum CellDisplayFormatter {
     static let maxDisplayLength = 10_000
 
+    @MainActor
     static func format(
         _ rawValue: PluginCellValue,
         columnType: ColumnType?,
         displayFormat: ValueDisplayFormat? = nil,
         databaseType: DatabaseType? = nil
+    ) -> String? {
+        format(
+            rawValue,
+            columnType: columnType,
+            displayFormat: displayFormat,
+            databaseType: databaseType,
+            dates: DateFormattingService.shared.renderer
+        )
+    }
+
+    static func format(
+        _ rawValue: PluginCellValue,
+        columnType: ColumnType?,
+        displayFormat: ValueDisplayFormat?,
+        databaseType: DatabaseType?,
+        dates: DateDisplayRenderer
     ) -> String? {
         switch rawValue {
         case .null:
@@ -34,14 +50,11 @@ enum CellDisplayFormatter {
             var displayValue = value
             if let displayFormat, displayFormat != .raw,
                displayFormat.isApplicable(to: columnType, databaseType: databaseType),
-               let formatted = ValueDisplayFormatter.apply(value, format: displayFormat, columnType: columnType) {
+               let formatted = ValueDisplayFormatter.apply(value, format: displayFormat, columnType: columnType, dates: dates) {
                 displayValue = formatted
             } else if let columnType {
                 if columnType.isDateType {
-                    if let formatted = DateFormattingService.shared.format(
-                        dateString: displayValue,
-                        columnType: columnType
-                    ) {
+                    if let formatted = dates.format(dateString: displayValue, columnType: columnType) {
                         displayValue = formatted
                     }
                 } else if columnType.isVectorType {
@@ -56,9 +69,9 @@ enum CellDisplayFormatter {
         }
     }
 
-    /// A row is one line, so anything a format produces is capped and stripped of line breaks
-    /// before it reaches a cell. Binary read as text is the case that needs it: a blob carries
-    /// newlines and runs to megabytes where hex never did. A lone CR stays for the cell to mark.
+    // A row is one line, so anything a format produces is capped and stripped of line breaks before it
+    // reaches a cell. Binary read as text needs it: a blob carries newlines and runs to megabytes where
+    // hex never did. A lone CR stays for the cell to mark.
     private static func fitToCell(_ value: String) -> String {
         var displayValue = value
         let nsDisplay = displayValue as NSString

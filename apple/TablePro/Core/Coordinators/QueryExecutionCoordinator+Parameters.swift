@@ -215,6 +215,8 @@ extension QueryExecutionCoordinator {
                     route: DatabaseManager.shared.executionRoute(for: scope),
                     cancellation: .cancellableRead(lease)
                 ) { [queryExecutor = parent.queryExecutor, boundValues] driver in
+                    // Before it runs, so a statement that fails or a connection lost under it is still noted.
+                    await DatabaseManager.shared.noteSessionStatements([statement.sql], ranOn: driver, scope: scope)
                     let fetched = try await queryExecutor.executeQuery(
                         driver: driver,
                         sql: statement.sql,
@@ -433,7 +435,13 @@ extension QueryExecutionCoordinator {
             case .completed(let ran), .cancelled(let ran), .failed(let ran, _, _):
                 results = ran
             }
-            let built = await buildStatementRows(zip(sent, results).map { (sql: $0.originalSQL as String?, result: $1) }, tabId: tabId)
+            let resultPlan = RunResultPlan(producesRows: results.map { !$0.columns.isEmpty })
+            let built = await buildStatementRows(
+                zip(sent, results).enumerated().map { index, pair in
+                    resultPlan.showsRows(ofStatement: index) ? (sql: pair.0.originalSQL as String?, result: pair.1) : nil
+                },
+                tabId: tabId
+            )
 
             switch outcome {
             case .cancelled(let results):
@@ -563,6 +571,10 @@ extension QueryExecutionCoordinator {
                         )
                     }
                 }
+                let sent = await running.prepared
+                await DatabaseManager.shared.noteSessionStatements(
+                    sent.prefix(outcome.ranCount(of: sent.count)).map(\.sentSQL), ranOn: driver, scope: scope
+                )
                 guard sessionPlan == .sessionTransaction else {
                     let endState: PluginSessionTransactionState = asksEndState
                         ? await driver.heldSessionTransactionState()
@@ -671,25 +683,35 @@ extension QueryExecutionCoordinator {
         )
     }
 
+    // Only the statements the plan keeps become results, so a long script builds a few, not one per statement.
     private func statementResultSets(_ history: ExecutedStatementHistory, tabId: UUID, built: StatementRowsBuild) -> [ResultSet] {
         let firstNumber = parent.tabManager.tabs.first { $0.id == tabId }?.display.pinnedResultCount ?? 0
         let reading = parent.tableNameReading
-        return zip(history.prepared, history.results).enumerated().map { index, pair in
-            let (statement, result) = pair
-            return makeStatementResultSet(
-                result: result,
-                sql: statement.originalSQL,
-                index: firstNumber + index,
-                baseQuery: statement.executableSQL,
-                baseQueryParameterValues: statement.parameterValues?.map { $0 as? String },
-                namedParameterStatement: statement.parameterValues == nil
-                    ? nil
-                    : NamedParameterStatement(sql: statement.originalSQL, parameters: history.parameters),
-                tabId: tabId,
-                anchor: statement.anchor,
-                built: built.statement(at: index, readBy: reading)
-            )
+        let ran = Array(zip(history.prepared, history.results))
+        let plan = RunResultPlan(producesRows: ran.map { !$0.1.columns.isEmpty })
+        let resultSets = plan.entries.enumerated().map { position, entry -> ResultSet in
+            switch entry {
+            case .summary(let indices):
+                return makeRunSummaryResultSet(indices.map { RunSummaryPart(ran[$0].1) })
+            case .statement(let index):
+                let (statement, result) = ran[index]
+                return makeStatementResultSet(
+                    result: result,
+                    sql: statement.originalSQL,
+                    index: firstNumber + position,
+                    baseQuery: statement.executableSQL,
+                    baseQueryParameterValues: statement.parameterValues?.map { $0 as? String },
+                    namedParameterStatement: statement.parameterValues == nil
+                        ? nil
+                        : NamedParameterStatement(sql: statement.originalSQL, parameters: history.parameters),
+                    tabId: tabId,
+                    anchor: statement.anchor,
+                    built: built.statement(at: index, readBy: reading)
+                )
+            }
         }
+        appendDroppedNotice(of: plan, to: resultSets)
+        return resultSets
     }
 
     /// A commit whose connection died before the answer leaves every statement of the batch in a

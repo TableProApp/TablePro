@@ -371,15 +371,17 @@ final class OpenAIResponsesProvider: ChatTransport {
                 return [.textDelta(delta)]
             }
             return []
-        case "response.completed":
-            if let responseObj = json["response"] as? [String: Any],
-               let usage = responseObj["usage"] as? [String: Any] {
+        case "response.completed", "response.incomplete":
+            let responseObj = json["response"] as? [String: Any]
+            if let usage = responseObj?["usage"] as? [String: Any] {
                 let input = usage["input_tokens"] as? Int ?? 0
                 let output = usage["output_tokens"] as? Int ?? 0
                 state.inputTokens = input
                 state.outputTokens = output
             }
-            return []
+            let details = responseObj?["incomplete_details"] as? [String: Any]
+            guard type == "response.incomplete", details?["reason"] as? String == "max_output_tokens" else { return [] }
+            return [.outputLimitReached(.outputTokens)]
         case "response.failed":
             if let responseObj = json["response"] as? [String: Any],
                let errorObj = responseObj["error"] as? [String: Any],

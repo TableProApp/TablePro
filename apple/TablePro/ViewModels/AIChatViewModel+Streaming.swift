@@ -23,6 +23,7 @@ extension AIChatViewModel {
         let toolUseNames: [String: String]
         let toolUseInputs: [String: String]
         let toolUseMetadata: [String: [String: String]]
+        let outputLimit: ChatOutputLimit?
         let cancelled: Bool
     }
 
@@ -221,7 +222,8 @@ extension AIChatViewModel {
                         order: round.toolUseOrder,
                         names: round.toolUseNames,
                         inputs: round.toolUseInputs,
-                        metadata: round.toolUseMetadata
+                        metadata: round.toolUseMetadata,
+                        outputLimit: round.outputLimit
                     )
                     let context = await MainActor.run {
                         ChatToolContext(
@@ -466,6 +468,7 @@ extension AIChatViewModel {
         var toolUseNames: [String: String] = [:]
         var toolUseInputs: [String: String] = [:]
         var toolUseMetadata: [String: [String: String]] = [:]
+        var outputLimit: ChatOutputLimit?
         var hasRenderedFirstText = false
 
         for try await event in stream {
@@ -515,6 +518,9 @@ extension AIChatViewModel {
                     opaque: opaque,
                     idMap: &reasoningIDMap.value
                 )
+            case .outputLimitReached(let limit):
+                outputLimit = limit
+                turn(withID: assistantID)?.outputLimit = limit
             }
         }
 
@@ -523,6 +529,7 @@ extension AIChatViewModel {
             toolUseNames: toolUseNames,
             toolUseInputs: toolUseInputs,
             toolUseMetadata: toolUseMetadata,
+            outputLimit: outputLimit,
             cancelled: Task.isCancelled
         )
     }
@@ -668,21 +675,29 @@ extension AIChatViewModel {
         response hit the output token limit. Call the tool again with complete arguments.
         """
 
+    nonisolated static let cutToolArgumentsContent = """
+        This tool call did not run: the response hit the output limit before its arguments were complete. \
+        Call the tool again with complete arguments, and keep them shorter if you can.
+        """
+
     // A call whose arguments do not parse comes back already denied, so it never reaches approval or execution.
+    // A response cut at its limit was cut in its last call, whatever arguments a provider that parses them hands over.
     nonisolated static func assembleToolUseBlocks(
         order: [String],
         names: [String: String],
         inputs: [String: String],
-        metadata: [String: [String: String]] = [:]
+        metadata: [String: [String: String]] = [:],
+        outputLimit: ChatOutputLimit? = nil
     ) -> [ToolUseBlock] {
         order.compactMap { id -> ToolUseBlock? in
             guard let name = names[id] else { return nil }
-            guard let arguments = toolArguments(from: inputs[id] ?? "") else {
+            let isCut = outputLimit != nil && id == order.last
+            guard !isCut, let arguments = toolArguments(from: inputs[id] ?? "") else {
                 return ToolUseBlock(
                     id: id,
                     name: name,
                     input: .object([:]),
-                    approvalState: .denied(reason: unparsableToolArgumentsContent),
+                    approvalState: .denied(reason: isCut ? cutToolArgumentsContent : unparsableToolArgumentsContent),
                     providerMetadata: metadata[id]
                 )
             }
