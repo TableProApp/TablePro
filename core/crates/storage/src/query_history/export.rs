@@ -17,7 +17,11 @@ const HISTORY_CSV_HEADER: [&str; 10] = [
 
 pub(super) fn history_csv(entries: &[Entry]) -> Result<String, StorageError> {
     let records: Vec<Vec<String>> = entries.iter().map(history_record).collect();
-    let options = tablepro_core::export::CsvOptions::default();
+    // The history export has no option of its own, so it keeps neutralising rather than follow the export default.
+    let options = tablepro_core::export::CsvOptions {
+        sanitize_formulas: true,
+        ..tablepro_core::export::CsvOptions::default()
+    };
     Ok(tablepro_core::export::render_text_csv(
         &HISTORY_CSV_HEADER,
         &records,

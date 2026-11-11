@@ -14,7 +14,6 @@ import TableProSQLGrammar
 
 enum TriggerEditingError: LocalizedError {
     case notConnected
-    case denied(String)
     case dropUnavailable
     case notCreateTrigger
     case definitionUnavailable
@@ -23,7 +22,6 @@ enum TriggerEditingError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notConnected: String(localized: "Not connected to database")
-        case let .denied(reason): reason
         case .dropUnavailable: String(localized: "This database cannot drop triggers")
         case .notCreateTrigger:
             String(
@@ -121,9 +119,7 @@ enum TriggerApplyStrategy: Equatable {
 enum TriggerEditing {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "TriggerEditing")
 
-    /// Runs on the schema change route, never on the session driver: the trigger's own BEGIN
-    /// would join a transaction a query tab left open, and its COMMIT or ROLLBACK would take
-    /// that tab's uncommitted work with it.
+    // On the schema change route: a BEGIN on the session driver would join a query tab's open transaction.
     static func apply(
         scope: DatabaseScope,
         connection: DatabaseConnection,
@@ -162,9 +158,7 @@ enum TriggerEditing {
                 statements: plan.gatedStatements(for: sql)
             )
         )
-        guard case .authorized = decision else {
-            throw TriggerEditingError.denied(decision.deniedReason ?? String(localized: "Operation not permitted"))
-        }
+        if let denial = decision.denialError { throw denial }
 
         let startedAt = Date()
         defer {
@@ -230,10 +224,7 @@ enum TriggerEditing {
         name: String,
         gate: any ExecutionGate = ExecutionGateProvider.shared
     ) async throws {
-        /// Built on a driver in the scope that will run it, the way `apply` builds its own inside
-        /// the lease. The session driver is wherever the sidebar last went, and an engine that
-        /// qualifies its DDL with the connection's current database writes that name into a
-        /// statement the pooled connection then runs somewhere else.
+        // Built in the scope that runs it: the session driver may qualify the DDL with another database.
         let generated = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
             driver.generateDropTriggerSQL(name: name, table: tableName)
         }
@@ -252,9 +243,7 @@ enum TriggerEditing {
                 operationDescription: String(localized: "Drop Trigger")
             )
         )
-        guard case .authorized = decision else {
-            throw TriggerEditingError.denied(decision.deniedReason ?? String(localized: "Operation not permitted"))
-        }
+        if let denial = decision.denialError { throw denial }
 
         let startedAt = Date()
         try await withSchemaChangeDriver(scope: scope) { driver in

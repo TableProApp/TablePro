@@ -277,6 +277,87 @@ struct RewindPlannerTests {
         #expect(queries.first?.contains("SELECT *") == false)
     }
 
+    @Test("An edit that changed the key is read and restored under the key the save gave it")
+    func movedKeyIsFoundUnderItsNewKey() throws {
+        let moved = operation(kind: .update, preImage: ["k5", "Ada"], postImage: ["k6", "Ada"], writtenColumns: ["id"])
+        let rewind = planner(operations: [moved])
+
+        let query = try #require(rewind.readQueries().first)
+        #expect(query.contains("k6"))
+        #expect(query.contains("k5"))
+
+        let plan = try rewind.plan(currentRows: [RewindCurrentRow(values: ["k6", "Ada"])])
+        #expect(plan.rows.map { $0.outcome } == [.willRestore])
+        #expect(plan.statements.first?.sql.hasPrefix("UPDATE") == true)
+        #expect(plan.statements.first?.parameters.compactMap { $0 as? String } == ["k5", "k6"])
+    }
+
+    @Test("A moved row a rewind already put back reads as restored, and another row on its old key does not")
+    func movedKeyAlreadyRestored() throws {
+        let moved = operation(
+            kind: .update, preImage: ["k5", "Ada"], postImage: ["k6", "Grace"], writtenColumns: ["id", "name"]
+        )
+
+        let restored = try planner(operations: [moved]).plan(currentRows: [RewindCurrentRow(values: ["k5", "Ada"])])
+        #expect(restored.rows.map { $0.outcome } == [.alreadyRestored])
+        #expect(restored.statements.isEmpty)
+
+        let taken = try planner(operations: [moved]).plan(currentRows: [RewindCurrentRow(values: ["k5", "Bo"])])
+        #expect(taken.rows.map { $0.outcome } == [.rowMissing])
+        #expect(taken.statements.isEmpty)
+    }
+
+    @Test("A row that took the key a save moved to is left alone, though the save wrote only the key")
+    func rowOnTheMovedKeyIsNotRewritten() throws {
+        let moved = operation(kind: .update, preImage: ["k5", "Ada"], postImage: ["k6", "Ada"], writtenColumns: ["id"])
+
+        let plan = try planner(operations: [moved]).plan(currentRows: [RewindCurrentRow(values: ["k6", "Bo"])])
+
+        #expect(plan.rows.map { $0.outcome } == [.changedSinceSave])
+        #expect(plan.statements.isEmpty)
+    }
+
+    @Test("A moved row is not held to a column the server computes")
+    func movedKeyIgnoresGeneratedColumns() throws {
+        let columns = ["id", "name", "updated_at"]
+        let moved = RowWriteOperation(
+            kind: .update, target: target, columns: columns, primaryKeyColumns: ["id"],
+            preImage: ["k5", "Ada", "2026-01-01"], postImage: ["k6", "Ada", "2026-01-01"],
+            writtenColumns: ["id"], refusal: nil
+        )
+        let record = RewindRecord(
+            id: UUID(), historyId: nil, connectionId: UUID(), databaseType: .sqlite,
+            target: target, capturedAt: Date(timeIntervalSince1970: 0),
+            generatedColumns: ["updated_at"], identityColumns: [], operations: [moved]
+        )
+        let planner = RewindPlanner(
+            record: record,
+            factory: RowChangeStatementFactory(
+                tableName: target.table, schemaName: nil, columns: columns, primaryKeyColumns: ["id"],
+                generatedColumns: ["updated_at"], databaseType: .sqlite, pluginDriver: nil
+            ),
+            queryBuilder: sqliteQueryBuilder
+        )
+
+        let plan = try planner.plan(currentRows: [RewindCurrentRow(values: ["k6", "Ada", "2026-06-30"])])
+
+        #expect(plan.rows.map { $0.outcome } == [.willRestore])
+    }
+
+    @Test("Undoing a restore takes back what the restore did last first")
+    func inverseRecordRunsBackwards() throws {
+        let deleted = operation(kind: .delete, preImage: ["7", "Ada"], postImage: nil, writtenColumns: columns)
+        let inserted = operation(kind: .insert, preImage: nil, postImage: ["8", "Ada"], writtenColumns: columns)
+        let plan = try planner(operations: [deleted, inserted])
+            .plan(currentRows: [RewindCurrentRow(values: ["8", "Ada"])])
+
+        let inverse = RewindExecutor.inverseOperations(of: plan)
+        #expect(inverse.map { $0.kind } == [.delete, .insert])
+
+        let undo = try planner(operations: inverse).plan(currentRows: [RewindCurrentRow(values: ["7", "Ada"])])
+        #expect(undo.statements.map { String($0.sql.prefix(6)) } == ["DELETE", "INSERT"])
+    }
+
     @Test("The inverse runs newest first, so a value one row freed is not taken before the other gives it up")
     func inverseRunsInReverseOrder() throws {
         let first = operation(kind: .delete, preImage: ["7", "Ada"], postImage: nil, writtenColumns: columns)

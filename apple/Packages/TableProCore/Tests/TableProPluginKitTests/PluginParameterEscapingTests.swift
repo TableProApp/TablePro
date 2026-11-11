@@ -107,6 +107,17 @@ struct IsNumericLiteralTests {
         #expect(!StubDriver.isNumericLiteral("12abc"))
         #expect(!StubDriver.isNumericLiteral("1.2.3"))
     }
+
+    // Written bare, a zip or a product code is compared as a number and matches `123` and `0123` too.
+    @Test("Numeric-shaped text with padding zeros is bound as a string", arguments: ["00123", "-007", "0042", "00.5"])
+    func paddedNumbersAreQuoted(value: String) {
+        #expect(StubDriver().escapedParameterValue(value).unicodeScalars.first == "'")
+    }
+
+    @Test("A number that opens with a single zero is bound bare", arguments: ["0", "0.5", "-0.5", "0e3", "+0", "100"])
+    func singleLeadingZeroStaysBare(value: String) {
+        #expect(StubDriver().escapedParameterValue(value) == value)
+    }
 }
 
 // MARK: - escapedParameterValue

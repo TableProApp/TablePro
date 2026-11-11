@@ -257,7 +257,8 @@ struct SQLStatementGenerator {
         var bindParameters: [Any?] = []
 
         for (index, value) in values.enumerated() {
-            if case .text(let s) = value, s == "__DEFAULT__" { continue }
+            // Left out rather than written as DEFAULT, which SQLite does not take in VALUES.
+            if value.isColumnDefault(isExpression: expressionColumns.contains(index)) { continue }
 
             guard index < columns.count else { continue }
             let columnName = columns[index]
@@ -383,7 +384,7 @@ struct SQLStatementGenerator {
         guard !change.cellChanges.isEmpty else { return nil }
 
         let nonDefaultChanges = change.cellChanges.filter {
-            $0.newValue != .text("__DEFAULT__") && !generatedColumns.contains($0.columnName)
+            !$0.newValue.isColumnDefault(isExpression: $0.newIsExpression) && !generatedColumns.contains($0.columnName)
         }
 
         guard !nonDefaultChanges.isEmpty else { return nil }
@@ -419,8 +420,6 @@ struct SQLStatementGenerator {
         var parameters: [Any?] = []
         let setClauses = writableChanges.map { cellChange -> String in
             switch cellChange.newValue {
-            case .text(let s) where s == "__DEFAULT__":
-                return "\(quoteIdentifierFn(cellChange.columnName)) = DEFAULT"
             case .text(let expression) where cellChange.newIsExpression:
                 return "\(quoteIdentifierFn(cellChange.columnName)) = \(expression)"
             default:

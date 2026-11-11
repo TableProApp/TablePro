@@ -62,3 +62,47 @@ struct PrincipalApplyOpenTransactionTests {
         #expect(driver.executedQueries.isEmpty)
     }
 }
+
+// The review sheet showed a Cancel at the gate as a failed apply.
+@MainActor
+struct PrincipalApplyGateDenialTests {
+    private func apply(gate: any ExecutionGate) async -> (failure: GatedOperationFailure?, executed: [String]) {
+        let driver = TransactionHoldingPrincipalDriver(rollsBack: true)
+        let connection = TestFixtures.makeConnection(type: .postgresql)
+        DatabaseManager.shared.injectSession(
+            ConnectionSession(connection: connection, driver: PluginDriverAdapter(connection: connection, pluginDriver: driver)),
+            for: connection.id
+        )
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let change = PrincipalChange.create(PluginPrincipalDefinition(ref: PluginPrincipalRef(name: "X"), password: "p"))
+        do {
+            try await DatabaseManager.shared.executePrincipalChanges(
+                changes: [change],
+                databaseType: .postgresql,
+                connectionId: connection.id,
+                gate: gate
+            )
+            return (nil, driver.executedQueries)
+        } catch {
+            return (GatedOperationFailure(error), driver.executedQueries)
+        }
+    }
+
+    @Test("A Cancel at the gate ends the apply quietly, with nothing run")
+    func cancelIsQuiet() async {
+        let result = await apply(gate: AlwaysDenyGate.cancelling)
+
+        #expect(result.failure == .cancelledByUser)
+        #expect(result.failure?.message == nil)
+        #expect(result.executed.isEmpty)
+    }
+
+    @Test("A refused apply says why and is not a failed statement")
+    func refusalExplainsItself() async {
+        let result = await apply(gate: AlwaysDenyGate(reason: "Safe Mode is read-only"))
+
+        #expect(result.failure == .refused("Safe Mode is read-only"))
+        #expect(result.executed.isEmpty)
+    }
+}

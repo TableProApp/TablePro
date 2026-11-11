@@ -1567,7 +1567,8 @@ public extension PluginDatabaseDriver {
     }
 
     func escapedParameterValue(_ value: String) -> String {
-        if Self.isNumericLiteral(value) {
+        // No numeric column reads as `00123` or `-007`, so that text is a code or a zip and stays a string.
+        if Self.isNumericLiteral(value), !opensWithPaddingZero(value) {
             return value
         }
         return PluginSQLQuoting.stringLiteral(value, escapes: PluginSQLQuoting.Escapes(features: literalFeatures))
@@ -1610,4 +1611,11 @@ extension PluginDatabaseDriver {
         }
         return backslash ? [.backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes] : []
     }
+}
+
+// `007`, `-0042`: an integer part that opens with 0 and goes on with another digit.
+private func opensWithPaddingZero(_ value: String) -> Bool {
+    let unsigned = value.unicodeScalars.drop { $0 == "-" || $0 == "+" }
+    guard unsigned.first == "0", let next = unsigned.dropFirst().first else { return false }
+    return ("0"..."9").contains(next)
 }

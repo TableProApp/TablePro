@@ -245,11 +245,12 @@ struct CreateUserTypeSheet: View {
             try await UserTypeCreation.create(definition, in: scope, connection: connection)
             dismiss()
             onCreated(definition)
-        } catch ExecutionGateError.cancelledByUser {
-            return
         } catch {
-            Self.logger.error("Create Type failed: \(error.publicLogShape, privacy: .public)")
-            failure = error.localizedDescription
+            let outcome = GatedOperationFailure(error)
+            if outcome.reportsFailure {
+                Self.logger.error("Create Type failed: \(error.publicLogShape, privacy: .public)")
+            }
+            failure = outcome.message
         }
     }
 }

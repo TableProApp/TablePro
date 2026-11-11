@@ -79,7 +79,8 @@ public struct CSVExportOptions: Equatable, Codable, Sendable {
     public var quoteHandling: CSVQuoteHandling = .asNeeded
     public var lineBreak: CSVLineBreak = .lf
     public var decimalFormat: CSVDecimalFormat = .period
-    public var sanitizeFormulas: Bool = true
+    // Off: RFC 4180 carries a field as written, and OWASP scopes the quote prefix to files meant for a spreadsheet.
+    public var sanitizeFormulas: Bool = false
 
     /// What the file's bytes are written in. UTF-8 keeps every existing export byte for byte.
     public var encoding: PluginTextEncoding = .utf8

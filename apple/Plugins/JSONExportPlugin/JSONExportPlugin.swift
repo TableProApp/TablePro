@@ -53,10 +53,11 @@ final class JSONExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
             }
         }
 
-        /// NDJSON is one row per line by definition, so the pretty-print setting cannot apply to it
-        /// and the wrapping object has no place to go.
-        let isNewlineDelimited = settings.layout == .newlineDelimited
-        let prettyPrint = settings.prettyPrint && !isNewlineDelimited
+        // One plugin instance serves every window, so a dialog in another window can change `settings` mid-export.
+        let options = settings
+        // NDJSON is one row per line by definition, so pretty-printing and the wrapping object do not apply.
+        let isNewlineDelimited = options.layout == .newlineDelimited
+        let prettyPrint = options.prettyPrint && !isNewlineDelimited
         let indent = prettyPrint ? "  " : ""
         let newline = prettyPrint ? "\n" : ""
 
@@ -104,7 +105,7 @@ final class JSONExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
                             for (colIndex, column) in columns.enumerated() {
                                 if colIndex < row.count {
                                     let value = row[colIndex]
-                                    if settings.includeNullValues || !value.isNull {
+                                    if options.includeNullValues || !value.isNull {
                                         if !isFirstField {
                                             rowString += ", "
                                         }
@@ -117,7 +118,7 @@ final class JSONExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
                                         let jsonValue = formatJSONValue(
                                             value,
                                             columnTypeName: colTypeName,
-                                            preserveAsString: settings.preserveAllAsStrings
+                                            preserveAsString: options.preserveAllAsStrings
                                         )
                                         rowString += "\"\(escapedKey)\": \(jsonValue)"
                                     }

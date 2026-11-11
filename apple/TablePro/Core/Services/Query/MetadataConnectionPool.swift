@@ -591,13 +591,14 @@ final class MetadataConnectionPool {
         )
         do {
             try await driver.connect()
-            try await Self.prepareSession(
+            let startupFailures = try await Self.prepareSession(
                 driver,
                 queryTimeoutSeconds: queryTimeout,
                 startupCommands: session.connection.startupCommands,
                 connectionName: session.connection.name,
                 timeoutSeconds: operationTimeoutSeconds
             )
+            DatabaseManager.shared.reportStartupFailures(startupFailures, for: scope.connectionId)
             if let database = plan.switchDatabase {
                 try await Self.switchDatabase(driver, to: database, timeoutSeconds: operationTimeoutSeconds)
             }
@@ -680,14 +681,14 @@ final class MetadataConnectionPool {
         startupCommands: String?,
         connectionName: String,
         timeoutSeconds: Double?
-    ) async throws {
+    ) async throws -> [StartupCommandFailure] {
         try await bounded(
             driver: driver,
             timeoutSeconds: timeoutSeconds,
             timeoutMessage: String(localized: "Preparing the metadata connection timed out.")
         ) {
             try? await driver.applyQueryTimeout(queryTimeoutSeconds)
-            await DatabaseManager.shared.executeStartupCommands(
+            return await DatabaseManager.shared.executeStartupCommands(
                 startupCommands, on: driver, connectionName: connectionName
             )
         }
@@ -695,18 +696,17 @@ final class MetadataConnectionPool {
 
     /// Disconnects the driver when the deadline fires so a driver call that
     /// ignores task cancellation still completes and the timeout can propagate.
-    private static func bounded(
+    private static func bounded<T: Sendable>(
         driver: DatabaseDriver,
         timeoutSeconds: Double?,
         timeoutMessage: String,
-        _ operation: @escaping @Sendable () async throws -> Void
-    ) async throws {
+        _ operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
         guard let timeoutSeconds, timeoutSeconds > 0 else {
-            try await operation()
-            return
+            return try await operation()
         }
         do {
-            try await withTimeout(
+            return try await withTimeout(
                 seconds: timeoutSeconds,
                 onTimeout: { driver.disconnect() },
                 operation: operation

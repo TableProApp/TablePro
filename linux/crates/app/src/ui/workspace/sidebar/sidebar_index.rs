@@ -312,14 +312,94 @@ fn qualified(schema: Option<&str>, name: &str) -> String {
     }
 }
 
-/// What the grid pages through first, then each kind that has SQL to read.
+// The macOS app's order. Tables, partitions, dictionaries and keys stay in the schema's own list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum ObjectGroup {
+    Views,
+    MaterializedViews,
+    ForeignTables,
+    Sequences,
+    Procedures,
+    Functions,
+    Triggers,
+}
+
+const GROUPS: [ObjectGroup; 7] = [
+    ObjectGroup::Views,
+    ObjectGroup::MaterializedViews,
+    ObjectGroup::ForeignTables,
+    ObjectGroup::Sequences,
+    ObjectGroup::Procedures,
+    ObjectGroup::Functions,
+    ObjectGroup::Triggers,
+];
+
+impl ObjectGroup {
+    fn of(kind: ObjectKind) -> Option<Self> {
+        match kind {
+            ObjectKind::View => Some(Self::Views),
+            ObjectKind::MaterializedView => Some(Self::MaterializedViews),
+            ObjectKind::ForeignTable => Some(Self::ForeignTables),
+            ObjectKind::Sequence => Some(Self::Sequences),
+            ObjectKind::Procedure => Some(Self::Procedures),
+            ObjectKind::Function => Some(Self::Functions),
+            ObjectKind::Trigger => Some(Self::Triggers),
+            // A kind the core adds later stays with the tables until it has a group.
+            _ => None,
+        }
+    }
+
+    pub(crate) fn title(self) -> String {
+        use crate::i18n::pgettext;
+        match self {
+            Self::Views => pgettext("sidebar group", "Views"),
+            Self::MaterializedViews => pgettext("sidebar group", "Materialized Views"),
+            Self::ForeignTables => pgettext("sidebar group", "Foreign Tables"),
+            Self::Sequences => pgettext("sidebar group", "Sequences"),
+            Self::Procedures => pgettext("sidebar group", "Procedures"),
+            Self::Functions => pgettext("sidebar group", "Functions"),
+            Self::Triggers => pgettext("sidebar group", "Triggers"),
+        }
+    }
+}
+
+// Each group is then one stretch of its section's run, after the objects no group takes.
 fn kind_rank(kind: ObjectKind) -> u8 {
-    match kind {
-        ObjectKind::Function => 1,
-        ObjectKind::Procedure => 2,
-        ObjectKind::Sequence => 3,
-        ObjectKind::Trigger => 4,
-        _ => 0,
+    ObjectGroup::of(kind)
+        .and_then(|group| GROUPS.iter().position(|each| *each == group))
+        .map_or(0, |at| u8::try_from(at + 1).unwrap_or(u8::MAX))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct GroupRun {
+    pub(crate) group: Option<ObjectGroup>,
+    pub(crate) start: u32,
+    pub(crate) end: u32,
+}
+
+impl SidebarIndex {
+    // The objects no group takes come first, even when there are none.
+    pub(crate) fn group_runs(&self, run: SectionRun) -> Vec<GroupRun> {
+        let entries = self
+            .entries
+            .get(run.start as usize..run.end as usize)
+            .unwrap_or_default();
+        let mut runs = Vec::new();
+        let mut start = 0;
+        for (rank, group) in std::iter::once(None).chain(GROUPS.map(Some)).enumerate() {
+            let end =
+                start + entries[start..].partition_point(|entry| usize::from(kind_rank(entry.object.kind)) <= rank);
+            if group.is_none() || end > start {
+                let at = |offset: usize| run.start + u32::try_from(offset).unwrap_or(u32::MAX);
+                runs.push(GroupRun {
+                    group,
+                    start: at(start),
+                    end: at(end),
+                });
+            }
+            start = end;
+        }
+        runs
     }
 }
 
@@ -502,17 +582,69 @@ mod tests {
         assert_eq!(
             kinds,
             [
-                row("active_users", ObjectKind::View, None),
                 row("users", ObjectKind::Table, None),
+                row("active_users", ObjectKind::View, None),
+                row("ids", ObjectKind::Sequence, None),
+                row("archive", ObjectKind::Procedure, None),
                 row("add", ObjectKind::Function, None),
                 row("refresh", ObjectKind::Function, None),
-                row("archive", ObjectKind::Procedure, None),
-                row("ids", ObjectKind::Sequence, None),
                 row("audit", ObjectKind::Trigger, Some("users")),
                 row("audit", ObjectKind::Trigger, Some("orders")),
             ]
         );
         assert_eq!(index.runs().len(), 1, "every kind shares its schema's section");
+        let groups: Vec<(Option<ObjectGroup>, u32, u32)> = index
+            .group_runs(index.runs()[0])
+            .into_iter()
+            .map(|run| (run.group, run.start, run.end))
+            .collect();
+        assert_eq!(
+            groups,
+            [
+                (None, 0, 1),
+                (Some(ObjectGroup::Views), 1, 2),
+                (Some(ObjectGroup::Sequences), 2, 3),
+                (Some(ObjectGroup::Procedures), 3, 4),
+                (Some(ObjectGroup::Functions), 4, 6),
+                (Some(ObjectGroup::Triggers), 6, 8),
+            ]
+        );
+    }
+
+    #[test]
+    fn tables_partitions_dictionaries_and_keys_have_no_group() {
+        for kind in [
+            ObjectKind::Table,
+            ObjectKind::PartitionedTable,
+            ObjectKind::Dictionary,
+            ObjectKind::Key(tablepro_core::meta::KeyKind::Hash),
+        ] {
+            assert_eq!(ObjectGroup::of(kind), None, "{kind:?}");
+            assert_eq!(kind_rank(kind), 0, "{kind:?} sorts with the tables");
+        }
+    }
+
+    #[test]
+    fn a_schema_of_views_alone_has_no_objects_of_its_own() {
+        let index = SidebarIndex::build(&[object(Some("public"), "recent", ObjectKind::View)], &[]);
+
+        let groups = index.group_runs(index.runs()[0]);
+
+        assert_eq!(
+            groups,
+            [
+                GroupRun {
+                    group: None,
+                    start: 0,
+                    end: 0
+                },
+                GroupRun {
+                    group: Some(ObjectGroup::Views),
+                    start: 0,
+                    end: 1
+                },
+            ]
+        );
     }
 
     #[test]

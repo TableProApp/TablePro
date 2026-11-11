@@ -2,13 +2,26 @@ import Foundation
 
 /// Statement boundaries for the dialects whose only `;`-holding construct is a routine body written `BEGIN ... END`.
 ///
-/// A `BEGIN` opens a body only inside a statement that defines a routine, for the safety reason recorded on
+/// Outside T-SQL a `BEGIN` opens a body only inside a statement that defines a routine, for the safety reason recorded on
 /// ``SqlBlockStructure/opensRoutineDefinition(_:)``. The `;` belongs to the statement only after a T-SQL `MERGE`, which
 /// ``SQLLexicalGrammar/terminatedMergeStatements`` asks for: these engines accept every other statement without it.
 ///
 /// `BEGIN`, `CASE` and `END` count only where a keyword can stand: an engine that does not reserve them takes them as
-/// names, and a block a name opened would never close. A text left inside one is refused by the external gate.
+/// names, and a block a name opened would never close. T-SQL reserves all three, so there a block also opens outside
+/// a routine, as in `IF @x = 1 BEGIN ... END` and `BEGIN TRY ... END TRY BEGIN CATCH ... END CATCH`. A text left
+/// inside one is refused by the external gate.
+///
+/// A `;` inside parentheses ends the statement, so a stray `(` cannot swallow what follows it, except in a PostgreSQL
+/// rule's action list, `DO ALSO (INSERT ...; INSERT ...)`, which holds its commands together.
 public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
+    // A PostgreSQL `CREATE RULE`: its header, the `DO [ALSO | INSTEAD]` before the action list, and the list itself.
+    private enum RuleAction: Equatable {
+        case none
+        case header
+        case afterDo
+        case list(depth: Int)
+    }
+
     private enum Header {
         case opener
         /// After `CREATE`, `ALTER` or `REPLACE`. `accountWords` is what is left of an unquoted `DEFINER = user@host`.
@@ -25,6 +38,11 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
     private static let statementIntroducers: Set<String> = ["THEN", "ELSE", "DO", "LOOP", "REPEAT"]
 
     private let grammar: SQLLexicalGrammar
+    private let readsBlocksEverywhere: Bool
+    // T-SQL outside a routine: where a block's `BEGIN` can stand, as the statement's first word, after `IF`, `WHILE`
+    // or `ELSE`, or after a block the statement already opened. Anywhere else `begin` is in a name's place.
+    private var followsControlFlow = false
+    private var pendingBeginMayOpen = false
     private var header = Header.opener
     private var definesRoutine = false
     private var openedBlockBody = false
@@ -34,6 +52,8 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
     /// whatever word follows it.
     private var openCaseExpressions = 0
     private var parenDepth = 0
+    private var ruleAction = RuleAction.none
+    private var ruleActionHeldSemicolon = false
     private var pendingBegin = false
     private var pendingEnd = false
     private var followsName = false
@@ -50,12 +70,15 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
 
     public init(grammar: SQLLexicalGrammar) {
         self.grammar = grammar
+        self.readsBlocksEverywhere = grammar.contains(.unterminatedStatements)
         self.merge = grammar.contains(.terminatedMergeStatements) ? SQLMergeStatementTracker() : nil
     }
 
     public var needsWords: Bool {
+        // Inside parentheses no word opens or closes a block, and a `MERGE` there needs no `;`.
+        if readsBlocksEverywhere { return parenDepth == 0 }
         if case .read = header {
-            return definesRoutine || merge?.needsWords == true
+            return definesRoutine || ruleAction == .header || ruleAction == .afterDo || merge?.needsWords == true
         }
         return true
     }
@@ -70,7 +93,7 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
 
     // An `END` still waiting for the word after it closes a block when the text ends.
     public var holdsOpenBlock: Bool {
-        depth > (pendingEnd ? 1 : 0)
+        depth > (pendingEnd ? 1 : 0) || ruleActionHeldSemicolon
     }
 
     public mutating func observeWord(_ word: String) {
@@ -87,10 +110,27 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
         startsBodyStatement = false
         let statementPosition = atStatementPosition
         observeStatementPosition(after: word, wasAtStatementPosition: statementPosition)
-        guard !isMember, readHeader(word), definesRoutine, parenDepth == 0 else { return }
+        guard !isMember else { return }
+        var isFirstWord = false
+        if case .opener = header {
+            isFirstWord = true
+        }
+        let pastHeader = readHeader(word)
+        if pastHeader, parenDepth == 0 {
+            observeRuleWord(word)
+        }
+        guard parenDepth == 0, readsBlocksEverywhere || (pastHeader && definesRoutine) else { return }
         switch word {
-        case "BEGIN" where opensNestedBlock(atStatementPosition: statementPosition):
+        case "BEGIN" where readsBlocksEverywhere:
             pendingBegin = true
+            pendingBeginMayOpen = opensNestedBlock(atStatementPosition: statementPosition, isFirstWord: isFirstWord)
+        case "BEGIN" where opensNestedBlock(atStatementPosition: statementPosition, isFirstWord: isFirstWord):
+            pendingBegin = true
+            pendingBeginMayOpen = true
+        case "IF" where readsBlocksEverywhere, "WHILE" where readsBlocksEverywhere:
+            followsControlFlow = true
+        case "ELSE" where readsBlocksEverywhere && openCaseExpressions == 0:
+            followsControlFlow = true
         case "CASE" where !grammar.hasSingleBodyForm:
             depth += 1
             openCaseExpressions += 1
@@ -103,6 +143,9 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
 
     public mutating func observeSymbol(_ symbol: UInt16) {
         merge?.observeSymbol(symbol)
+        if ruleAction == .afterDo, symbol != SqlLexer.openParen {
+            ruleAction = .none
+        }
         let opensBlock = symbol == SqlLexer.openParen && !grammar.contains(.atomicRoutineBodies)
         settlePendingBeforeNonWord(opensBlock: opensBlock)
         followsDot = followsName && symbol == Self.dot
@@ -112,9 +155,16 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
         switch symbol {
         case SqlLexer.openParen:
             parenDepth += 1
+            if ruleAction == .afterDo {
+                ruleAction = .list(depth: parenDepth)
+            }
             endName()
         case SqlLexer.closeParen:
             parenDepth = max(0, parenDepth - 1)
+            if case .list(let listDepth) = ruleAction, parenDepth < listDepth {
+                ruleAction = .none
+                ruleActionHeldSemicolon = false
+            }
         default:
             break
         }
@@ -122,6 +172,9 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
 
     public mutating func observeOpaqueToken() {
         merge?.observeOpaqueToken()
+        if ruleAction == .afterDo {
+            ruleAction = .none
+        }
         settlePendingBeforeNonWord(opensBlock: !grammar.contains(.atomicRoutineBodies))
         followsName = true
         followsDot = false
@@ -140,13 +193,27 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
             pendingEnd = false
             closeBlock()
         }
+        if readsBlocksEverywhere {
+            // A T-SQL `CASE` is only an expression, which no `;` can stand inside, so one still open was never closed.
+            depth = max(0, depth - openCaseExpressions)
+        }
         openCaseExpressions = 0
-        parenDepth = 0
         followsName = false
         followsDot = false
-        let endsStatement = depth == 0
-        startsBodyStatement = !endsStatement
-        atStatementPosition = !endsStatement
+        let heldByRuleAction: Bool
+        if case .list(let listDepth) = ruleAction {
+            heldByRuleAction = depth == 0 && parenDepth >= listDepth
+        } else {
+            heldByRuleAction = false
+        }
+        if heldByRuleAction {
+            ruleActionHeldSemicolon = true
+        } else {
+            parenDepth = 0
+        }
+        let endsStatement = depth == 0 && !heldByRuleAction
+        startsBodyStatement = depth > 0
+        atStatementPosition = depth > 0
         labelMayFollow = false
         inDeclaration = false
         inHandlerDeclaration = false
@@ -175,6 +242,9 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
             }
             return false
         case .kind(let accountWords):
+            if word == "RULE", grammar.contains(.atomicRoutineBodies) {
+                ruleAction = .header
+            }
             if SqlBlockStructure.isRoutineKind(word, grammar: grammar) {
                 definesRoutine = true
                 header = .name
@@ -207,9 +277,31 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
         }
     }
 
-    private func opensNestedBlock(atStatementPosition: Bool) -> Bool {
-        guard depth > 0, !grammar.hasSingleBodyForm, !grammar.contains(.unterminatedStatements) else { return true }
+    private func opensNestedBlock(atStatementPosition: Bool, isFirstWord: Bool) -> Bool {
+        if readsBlocksEverywhere {
+            return depth > 0 || definesRoutine || isFirstWord || followsControlFlow || openedBlockBody
+        }
+        guard depth > 0, !grammar.hasSingleBodyForm else { return true }
         return atStatementPosition || inHandlerDeclaration
+    }
+
+    private mutating func observeRuleWord(_ word: String) {
+        switch ruleAction {
+        case .header where word == "DO":
+            ruleAction = .afterDo
+        case .afterDo where word == "ALSO" || word == "INSTEAD":
+            break
+        case .afterDo:
+            ruleAction = .none
+        default:
+            break
+        }
+    }
+
+    // `BEGIN TRY` and `BEGIN CATCH` are blocks wherever they stand, and nothing else follows a name that way.
+    private func beginOpensBlock(followedBy word: String) -> Bool {
+        if readsBlocksEverywhere, word == "TRY" || word == "CATCH" { return true }
+        return pendingBeginMayOpen && !SqlBlockStructure.beginStartsStatement(followedBy: word, grammar: grammar)
     }
 
     private mutating func endName() {
@@ -227,7 +319,7 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
                 openBlockBody()
                 return true
             }
-            if !SqlBlockStructure.beginStartsTransaction(followedBy: word) {
+            if beginOpensBlock(followedBy: word) {
                 openBlockBody()
             }
         }
@@ -237,7 +329,7 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
             closeBlock()
             return false
         }
-        switch SqlBlockStructure.endingFollowedBy(word, closesCaseExpression: openCaseExpressions > 0) {
+        switch SqlBlockStructure.endingFollowedBy(word, closesCaseExpression: openCaseExpressions > 0, grammar: grammar) {
         case .closesControlFlow:
             return true
         case .closesCaseStatement:
@@ -254,7 +346,9 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
     private mutating func settlePendingBeforeNonWord(opensBlock: Bool) {
         if pendingBegin {
             pendingBegin = false
-            if opensBlock {
+            // A T-SQL `begin(` outside a routine is a name, as in `CREATE TABLE begin(a int)`.
+            let opensAfterName = !readsBlocksEverywhere || definesRoutine || depth > 0
+            if opensBlock, pendingBeginMayOpen, opensAfterName {
                 openBlockBody()
             }
         }
