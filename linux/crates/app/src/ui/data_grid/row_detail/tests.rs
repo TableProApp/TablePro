@@ -584,6 +584,84 @@ fn tab_leaves_the_field_list_after_the_focused_field() {
     wait_until(WAIT, || !crate::ui::a11y::holds_focus(&list)).expect("Tab out of the list");
 }
 
+fn field_row_of(pane: &RowDetailPane, column: usize) -> gtk::Widget {
+    drawn_field(pane, column).child().expect("the field's row")
+}
+
+fn shows_value(pane: &RowDetailPane, column: usize) -> bool {
+    descendants(&field_row_of(pane, column))
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Inscription>().ok())
+        .any(|value| value.is_visible())
+}
+
+#[gtk4::test]
+fn the_value_editor_sits_in_the_picked_fields_row() {
+    let (grid, pane) = opened(three_text_columns(), three_text_values());
+    let imp = pane.imp();
+    grid.focus(0, 1);
+    drain_main_context();
+
+    assert!(
+        imp.editor_box.is_ancestor(&field_row_of(&pane, 1)),
+        "the editor is not in its field's row"
+    );
+    assert!(imp.editor_tools.is_ancestor(&field_row_of(&pane, 1)));
+    assert!(
+        !shows_value(&pane, 1),
+        "the picked field drew its value beside the editor"
+    );
+    assert!(shows_value(&pane, 2));
+
+    grid.focus(0, 2);
+    drain_main_context();
+
+    assert!(
+        imp.editor_box.is_ancestor(&field_row_of(&pane, 2)),
+        "the editor did not follow the field"
+    );
+    assert!(!imp.editor_box.is_ancestor(&field_row_of(&pane, 1)));
+    assert!(shows_value(&pane, 1), "the field left behind lost its value");
+    assert_eq!(pane.typed_text(), "x");
+}
+
+#[gtk4::test]
+fn a_field_the_search_drops_while_editing_hands_the_keyboard_to_the_search() {
+    let (grid, pane) = opened(three_text_columns(), three_text_values());
+    edit_field(&grid, &pane, 0, 2);
+    search_fields(&pane, "x");
+    assert_eq!(listed_columns(&pane), vec![2]);
+    assert!(crate::ui::a11y::holds_focus(&pane.imp().value_view.get()));
+
+    type_value(&pane, "z");
+    assert!(press_in_value(&pane, gdk::Key::Return, gdk::ModifierType::CONTROL_MASK));
+    drain_main_context();
+
+    assert_eq!(pending(&grid, 1, 2), Some(text("z")));
+    assert!(listed_columns(&pane).is_empty());
+    assert!(
+        crate::ui::a11y::holds_focus(&pane.imp().field_search.get()),
+        "the keyboard left the pane with the field's row"
+    );
+}
+
+#[gtk4::test]
+fn a_field_the_search_hides_lists_again_when_the_grid_shows_it() {
+    let (grid, pane) = opened(three_text_columns(), three_text_values());
+    let imp = pane.imp();
+    grid.focus(0, 1);
+    search_fields(&pane, "note");
+    assert_eq!(listed_columns(&pane), vec![2]);
+
+    grid.grid.show_details_for(1);
+    wait_until(WAIT, || imp.editor_box.is_ancestor(&imp.field_list.get())).expect("the editor takes a row");
+
+    assert!(imp.field_search.text().is_empty(), "the search still hides the field");
+    assert_eq!(listed_columns(&pane), vec![0, 1, 2]);
+    assert!(imp.editor_box.is_ancestor(&field_row_of(&pane, 1)));
+    assert_eq!(pane.typed_text(), "A");
+}
+
 #[gtk4::test]
 fn every_control_in_the_pane_is_named() {
     let (grid, pane) = opened(two_text_columns(), two_text_values());
