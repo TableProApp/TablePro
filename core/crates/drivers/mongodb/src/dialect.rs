@@ -46,7 +46,7 @@ impl SqlDialect for MongoDialect {
             BindTarget::Column(column) => Some(column),
             BindTarget::Pattern | BindTarget::EngineRowId(_) => None,
         };
-        let param = tablepro_core::document::bind_param(value, column)?;
+        let param = tablepro_core::document::bind_param(value, column, None)?;
         Ok(Placeholder::bound(format!("${}", ordinal + 1), param))
     }
 
@@ -134,7 +134,7 @@ mod tests {
     #[test]
     fn an_exported_insert_leaves_a_null_field_out() {
         let columns = ["_id", "name", "email"].map(|name| ResultColumn::new(name, ColumnType::unknown()));
-        let rows = [vec![Value::Int(1), Value::Text("ann".to_owned()), Value::Null]];
+        let rows = [vec![Value::Int32(1), Value::Text("ann".to_owned()), Value::Null]];
 
         let sql = render_sql_insert(
             &MongoDialect,
@@ -192,8 +192,12 @@ mod tests {
         let dialect = MongoDialect;
 
         assert_eq!(
-            dialect.literal(&Value::Int(1), &ColumnType::unknown()).as_deref(),
+            dialect.literal(&Value::Int32(1), &ColumnType::unknown()).as_deref(),
             Ok("1")
+        );
+        assert_eq!(
+            dialect.literal(&Value::Int(1), &ColumnType::unknown()).as_deref(),
+            Ok(r#"NumberLong("1")"#)
         );
         assert!(dialect.parse_type("int").is_err());
         assert!(dialect.parse_expression("1 + 1").is_err());

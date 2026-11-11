@@ -7,8 +7,8 @@ use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::text_offsets::CharCounter;
 use tablepro_core::sql_syntax::script::{BatchErrorPolicy, LexicalSettings, ScriptDiagnostic, ScriptPlan};
 use tablepro_core::{
-    DriverError, EditorSession, EditorSessionState, ReadOnlyRefusal, ResultEvent, ResultSink, RowLimit, RunOptions,
-    SinkFlow, TransactionState, UserSql,
+    ByteLimit, DriverError, EditorSession, EditorSessionState, ReadOnlyRefusal, ResultEvent, ResultSink, RowLimit,
+    RunOptions, SinkFlow, TransactionState, UserSql,
 };
 use tablepro_session::{MonitorSignal, Session};
 use tokio::sync::mpsc;
@@ -44,20 +44,50 @@ pub struct ScriptRun {
     pub statement_timeout: Option<Duration>,
     pub row_limit: RowLimit,
     pub run_row_limit: u64,
+    pub byte_limit: ByteLimit,
 }
 
-/// What a statement may keep once the run has kept `kept` rows, and the
-/// row limit it goes out with. With no room left it still runs, for
-/// what it changes, and reads one row, which is dropped.
-fn room_after(run: &ScriptRun, kept: u64) -> (RowRoom, RowLimit) {
-    let left = run.run_row_limit.saturating_sub(kept);
+#[derive(Debug, Clone, Copy, Default)]
+struct Kept {
+    rows: u64,
+    bytes: u64,
+}
+
+impl Kept {
+    fn add(&mut self, entries: &[EntryKind]) {
+        for entry in entries {
+            if let EntryKind::ResultSet(result) = entry {
+                self.rows += result.row_count() as u64;
+                self.bytes = result
+                    .rows
+                    .iter()
+                    .flat_map(|row| row.iter())
+                    .map(|value| value.retained_bytes() as u64)
+                    .fold(self.bytes, u64::saturating_add);
+            }
+        }
+    }
+}
+
+/// What a statement may keep once the run has kept `kept`, and the row
+/// and byte limits it goes out with. With no room left it still runs,
+/// for what it changes, and reads one row, which is dropped.
+fn room_after(run: &ScriptRun, kept: Kept) -> (RowRoom, RowLimit, ByteLimit) {
+    let left = run.run_row_limit.saturating_sub(kept.rows);
     let own = run.row_limit.get();
+    let bytes_left = run.byte_limit.get().saturating_sub(kept.bytes);
     let room = RowRoom {
         run_limit: run.run_row_limit,
         left,
         limits_statement: left < own,
+        run_bytes: run.byte_limit.get(),
+        bytes_left,
     };
-    (room, RowLimit::new(left.clamp(1, own)).unwrap_or(run.row_limit))
+    (
+        room,
+        RowLimit::new(left.clamp(1, own)).unwrap_or(run.row_limit),
+        ByteLimit::new(bytes_left.max(1)).unwrap_or(run.byte_limit),
+    )
 }
 
 /// The batches of the scoped text and what the plan warns about.
@@ -139,7 +169,7 @@ pub async fn run_batches(
         transaction,
         rollback_told: false,
     };
-    let mut kept: u64 = 0;
+    let mut kept = Kept::default();
     'batches: for (index, batch) in run.batches.iter().enumerate() {
         if batch.refused {
             if events.send(RunEvent::Batch(refusal(index))).await.is_err() {
@@ -155,11 +185,12 @@ pub async fn run_batches(
                 break 'batches;
             }
             let sql = UserSql::new(batch.text.as_str());
-            let (room, row_limit) = room_after(run, kept);
+            let (room, row_limit, byte_limit) = room_after(run, kept);
             let collector = Arc::new(Mutex::new(BatchCollector::new(sql.clone()).within(room)));
             let options = RunOptions::new(cancel.child_token())
                 .with_deadline(run.statement_timeout)
-                .with_row_limit(row_limit);
+                .with_row_limit(row_limit)
+                .with_byte_limit(byte_limit);
             let sink = Box::new(CollectingSink {
                 collector: collector.clone(),
             });
@@ -178,13 +209,7 @@ pub async fn run_batches(
             }
             after.rollback_told |=
                 lost && in_transaction && entries.iter().any(|entry| matches!(entry, EntryKind::Failed { .. }));
-            kept += entries
-                .iter()
-                .map(|entry| match entry {
-                    EntryKind::ResultSet(result) => result.row_count() as u64,
-                    _ => 0,
-                })
-                .sum::<u64>();
+            kept.add(&entries);
             let report = BatchReport {
                 batch: index,
                 entries,
@@ -331,7 +356,8 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 #[cfg(test)]
 mod tests {
-    use tablepro_core::{DriverError, LossPhase, RunEnd, TransactionState};
+    use tablepro_core::column::{ColumnType, ResultColumn};
+    use tablepro_core::{DriverError, LossPhase, RunEnd, TransactionState, Truncation, Value};
     use tablepro_test_support::{FakeEditorSession, FakeRun, Replies};
 
     use super::super::editor_session_slot::tests::session_opening;
@@ -355,6 +381,7 @@ mod tests {
                 statement_timeout: None,
                 row_limit: RowLimit::EDITOR_DEFAULT,
                 run_row_limit: RUN_ROW_LIMIT,
+                byte_limit: ByteLimit::EDITOR_DEFAULT,
             },
             statements,
             warnings,
@@ -591,6 +618,16 @@ mod tests {
     /// every event into a results list.
     async fn run_in_slot(session: &Arc<Session>, slot: &Arc<EditorSessionSlot>, text: &str) -> RunLog {
         let (run, statements, warnings) = script(text, SqlGrammar::PostgreSql);
+        run_script_in_slot(session, slot, run, statements, warnings).await
+    }
+
+    async fn run_script_in_slot(
+        session: &Arc<Session>,
+        slot: &Arc<EditorSessionSlot>,
+        run: ScriptRun,
+        statements: Vec<UserSql>,
+        warnings: Vec<String>,
+    ) -> RunLog {
         let (events, mut received) = mpsc::channel(8);
         let running = run_in_tab(
             session.clone(),
@@ -776,8 +813,8 @@ mod tests {
     fn a_statement_reads_only_the_rows_its_run_has_room_for() {
         let (mut run, _, _) = script("SELECT 1", SqlGrammar::PostgreSql);
         run.run_row_limit = 100_000;
-        let limit = |kept| {
-            let (room, limit) = room_after(&run, kept);
+        let limit = |rows| {
+            let (room, limit, _) = room_after(&run, Kept { rows, bytes: 0 });
             (room.left, room.limits_statement, limit.get())
         };
 
@@ -785,6 +822,61 @@ mod tests {
         assert_eq!(limit(95_000), (5_000, true, 5_000));
         assert_eq!(limit(100_000), (0, true, 1));
         assert_eq!(limit(250_000), (0, true, 1));
+    }
+
+    #[test]
+    fn a_statement_goes_out_with_the_bytes_its_run_has_left() {
+        let (mut run, _, _) = script("SELECT 1", SqlGrammar::PostgreSql);
+        run.byte_limit = ByteLimit::new(1_000).unwrap();
+        let bytes = |bytes| {
+            let (room, _, limit) = room_after(&run, Kept { rows: 0, bytes });
+            (room.run_bytes, room.bytes_left, limit.get())
+        };
+
+        assert_eq!(bytes(0), (1_000, 1_000, 1_000));
+        assert_eq!(bytes(600), (1_000, 400, 400));
+        assert_eq!(bytes(1_000), (1_000, 0, 1));
+        assert_eq!(bytes(5_000), (1_000, 0, 1));
+    }
+
+    fn wide_rows(rows: usize) -> FakeRun {
+        let columns: Arc<[ResultColumn]> = vec![ResultColumn::new("blob", ColumnType::untyped_text("text"))].into();
+        FakeRun::completed(vec![
+            ResultEvent::ResultSetStarted { columns },
+            ResultEvent::Rows((0..rows).map(|_| vec![Value::Text("x".repeat(1_000))]).collect()),
+            ResultEvent::ResultSetFinished {
+                retained: rows as u64,
+                total_rows: Some(rows as u64),
+                truncation: Truncation::Complete,
+            },
+        ])
+    }
+
+    // Through the window's session, whose editor sessions cut each statement at the bytes its run has left.
+    #[tokio::test]
+    async fn a_run_keeps_bytes_up_to_its_limit_across_all_results() {
+        let mut runs = Replies::default();
+        runs.always(wide_rows(60));
+        let editor = Arc::new(FakeEditorSession::new(runs));
+        let (session, _) = session_opening(vec![editor.clone()]);
+        let slot = Arc::new(EditorSessionSlot::new());
+        let (mut run, statements, warnings) = script("SELECT 1; SELECT 2; SELECT 3", SqlGrammar::PostgreSql);
+        let row = Value::Text("x".repeat(1_000)).retained_bytes() as u64;
+        run.byte_limit = ByteLimit::new(row * 100).unwrap();
+        let limit = run.byte_limit.get();
+
+        let log = run_script_in_slot(&session, &slot, run, statements, warnings).await;
+
+        assert_eq!(texts(&editor).len(), 3, "a statement past the limit was not sent");
+        let kept: Vec<(usize, Option<u64>)> = log
+            .entries()
+            .iter()
+            .filter_map(|entry| match &entry.kind {
+                EntryKind::ResultSet(result) => Some((result.row_count(), result.summary.size_limit)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(kept, [(60, None), (40, Some(limit)), (0, Some(limit))]);
     }
 
     #[test]

@@ -52,6 +52,7 @@ impl Serialize for JsonCell<'_> {
         match self.value {
             Value::Null | Value::Undecodable(_) => serializer.serialize_none(),
             Value::Bool(flag) => serializer.serialize_bool(*flag),
+            Value::Int32(number) => serializer.serialize_i32(*number),
             Value::Int(number) => serializer.serialize_i64(*number),
             Value::UInt(number) => serializer.serialize_u64(*number),
             Value::WideInt(number) => number_token(serializer, &number.to_string()),

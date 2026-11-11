@@ -106,6 +106,9 @@ fn encode(param: &BoundParam, out: &mut BytesMut) -> Result<IsNull, EncodeError>
         (ParamType::Int16, Value::Int(int)) => wire::int2_to_sql(i16::try_from(*int)?, out),
         (ParamType::Int32, Value::Int(int)) => wire::int4_to_sql(i32::try_from(*int)?, out),
         (ParamType::Int64, Value::Int(int)) => wire::int8_to_sql(*int, out),
+        (ParamType::Int16, Value::Int32(int)) => wire::int2_to_sql(i16::try_from(*int)?, out),
+        (ParamType::Int32, Value::Int32(int)) => wire::int4_to_sql(*int, out),
+        (ParamType::Int64, Value::Int32(int)) => wire::int8_to_sql(i64::from(*int), out),
         (ParamType::Int64, Value::UInt(int)) => wire::int8_to_sql(i64::try_from(*int)?, out),
         (ParamType::Float32, Value::Float32(float)) => wire::float4_to_sql(*float, out),
         (ParamType::Float64, Value::Float64(float)) => wire::float8_to_sql(*float, out),
@@ -162,6 +165,7 @@ fn micros(time: &SqlTime) -> Result<i64, EncodeError> {
 fn decimal_text(value: &Value) -> Option<String> {
     match value {
         Value::Decimal(decimal) => Some(decimal.to_string()),
+        Value::Int32(int) => Some(int.to_string()),
         Value::Int(int) => Some(int.to_string()),
         Value::UInt(int) => Some(int.to_string()),
         Value::WideInt(int) => Some(int.to_string()),

@@ -200,6 +200,7 @@ fn shown_value(value: &Value) -> String {
     let text = text.replace(['\n', '\r'], " ");
     match value {
         Value::Bool(_)
+        | Value::Int32(_)
         | Value::Int(_)
         | Value::UInt(_)
         | Value::WideInt(_)
@@ -279,6 +280,14 @@ mod tests {
             .expect("the SQL view");
         let buffer = view.buffer();
         buffer.text(&buffer.start_iter(), &buffer.end_iter(), false).to_string()
+    }
+
+    #[test]
+    fn a_bound_number_shows_bare_and_text_quoted() {
+        assert_eq!(shown_value(&Value::Int32(5)), "5");
+        assert_eq!(shown_value(&Value::Int(5)), "5");
+        assert_eq!(shown_value(&Value::Text("it's".to_owned())), "'it''s'");
+        assert_eq!(shown_value(&Value::Null), "NULL");
     }
 
     #[gtk4::test]

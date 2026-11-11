@@ -2,7 +2,7 @@ use crate::browse::{
     ExportFields, ExportRequest, PageRequest, RowKeyLayout, SortKey, build_count, build_export, build_page,
 };
 use crate::column::{
-    ColumnDefault, ColumnInfo, ColumnKind, ColumnType, IntegerKind, IntegerWidth, ReadForm, TextLength,
+    ColumnDefault, ColumnInfo, ColumnKind, ColumnType, FloatWidth, IntegerKind, IntegerWidth, ReadForm, TextLength,
 };
 use crate::dialect::TestDialect;
 use crate::dml::{BuildSqlError, build_delete, build_insert, build_multi_row_insert, build_update};
@@ -321,7 +321,7 @@ fn a_filter_that_is_not_one_document_or_names_a_dotted_field_is_refused() {
 #[test]
 fn build_filter_writes_the_document_after_parameters_already_bound() {
     let mut builder = StatementBuilder::new();
-    builder.push_bound(crate::document::bind_param(Value::Int(1), None).expect("a param"));
+    builder.push_bound(crate::document::bind_param(Value::Int(1), None, None).expect("a param"));
 
     assert_eq!(build_filter(&mut builder, &shell(), &columns(), &filter()), Ok(true));
 
@@ -458,6 +458,7 @@ fn a_change_names_its_document_by_id_and_sets_only_the_fields_changed() {
             (1, CellInput::Value(Value::Text("ann".to_owned()))),
             (2, CellInput::Value(Value::Int(3))),
         ],
+        &[],
     )
     .expect("an update");
     assert_eq!(
@@ -513,7 +514,16 @@ fn a_change_names_its_document_by_id_and_sets_only_the_fields_changed() {
 #[test]
 fn a_change_to_null_removes_the_field_and_a_key_keeps_set() {
     let change = |assignments: &[(usize, CellInput)]| {
-        build_update(&shell(), &users(), &columns(), &by_id(), &[object_id()], assignments).expect("an update")
+        build_update(
+            &shell(),
+            &users(),
+            &columns(),
+            &by_id(),
+            &[object_id()],
+            assignments,
+            &[],
+        )
+        .expect("an update")
     };
 
     let both = change(&[
@@ -619,6 +629,7 @@ fn a_dotted_field_cannot_be_updated_by_name() {
         &by_id(),
         &[object_id()],
         &[(3, CellInput::Value(Value::Text("x".to_owned())))],
+        &[],
     );
 
     assert_eq!(
@@ -636,6 +647,7 @@ fn a_document_field_is_never_set_to_a_value_the_server_computes() {
         &by_id(),
         &[object_id()],
         &[(1, CellInput::Default)],
+        &[],
     );
 
     assert_eq!(
@@ -643,5 +655,110 @@ fn a_document_field_is_never_set_to_a_value_the_server_computes() {
         Err(BuildSqlError::ServerComputedValue {
             name: "name".to_owned()
         })
+    );
+}
+
+fn numbers() -> Vec<ColumnInfo> {
+    vec![
+        column("_id", "objectId", ColumnKind::Other),
+        column(
+            "qty",
+            "long",
+            ColumnKind::Integer(IntegerKind {
+                width: IntegerWidth::W64,
+                signed: true,
+            }),
+        ),
+        column("price", "double", ColumnKind::Float(FloatWidth::F64)),
+        column(
+            "amount",
+            "decimal",
+            ColumnKind::Decimal {
+                precision: Some(34),
+                scale: None,
+            },
+        ),
+    ]
+}
+
+fn edited_params(edits: &[(usize, Value, Value)]) -> Vec<(Value, ParamType)> {
+    let assignments: Vec<(usize, CellInput)> = edits
+        .iter()
+        .map(|(column, _, value)| (*column, CellInput::Value(value.clone())))
+        .collect();
+    let read: Vec<(usize, Value)> = edits.iter().map(|(column, read, _)| (*column, read.clone())).collect();
+    let update = build_update(
+        &shell(),
+        &users(),
+        &numbers(),
+        &by_id(),
+        &[object_id()],
+        &assignments,
+        &read,
+    )
+    .expect("an update");
+    checked(&update);
+    update.params()[..edits.len()]
+        .iter()
+        .map(|param| (param.value().clone(), param.param_type().clone()))
+        .collect()
+}
+
+fn decimal(text: &str) -> Value {
+    Value::Decimal(text.parse().expect("a decimal"))
+}
+
+#[test]
+fn an_edited_number_binds_as_the_type_it_was_read_as() {
+    assert_eq!(
+        edited_params(&[
+            (1, Value::Int32(3), Value::Int(7)),
+            (2, Value::Int32(3), Value::Int32(4)),
+            (3, Value::Float64(1.5), decimal("2.5")),
+        ]),
+        [
+            (Value::Int32(7), ParamType::Int32),
+            (Value::Int32(4), ParamType::Int32),
+            (Value::Float64(2.5), ParamType::Float64),
+        ]
+    );
+    assert_eq!(
+        edited_params(&[(1, Value::Int(3), Value::Int(7)), (3, Value::Int(3), decimal("8"))]),
+        [(Value::Int(7), ParamType::Int64), (Value::Int(8), ParamType::Int64)]
+    );
+}
+
+#[test]
+fn an_edit_its_read_type_cannot_hold_takes_the_columns_type() {
+    assert_eq!(
+        edited_params(&[
+            (2, Value::Int32(3), Value::Float64(4.5)),
+            (1, Value::Int32(3), Value::Int(3_000_000_000)),
+            (3, Value::Float64(1.5), decimal("0.10000000000000000001")),
+        ]),
+        [
+            (Value::Float64(4.5), ParamType::Float64),
+            (Value::Int(3_000_000_000), ParamType::Int64),
+            (decimal("0.10000000000000000001"), ParamType::Decimal),
+        ]
+    );
+    assert_eq!(
+        edited_params(&[(3, Value::Int32(3), decimal("4.0"))]),
+        [(decimal("4.0"), ParamType::Decimal)],
+        "a fraction typed into an int field became an int"
+    );
+}
+
+#[test]
+fn a_cell_read_as_null_or_not_a_number_takes_the_columns_type() {
+    assert_eq!(
+        edited_params(&[
+            (1, Value::Null, Value::Int(7)),
+            (2, Value::Text("x".to_owned()), Value::Float64(4.0)),
+        ]),
+        [
+            (Value::Int(7), ParamType::Int64),
+            (Value::Float64(4.0), ParamType::Float64),
+        ]
     );
 }

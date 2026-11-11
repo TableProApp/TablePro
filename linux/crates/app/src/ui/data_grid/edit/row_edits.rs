@@ -114,7 +114,7 @@ impl EditController {
         let presets = cell_presets(&grid_column, &row.id(), grid.sql_dialect().as_deref());
         let input = match preset {
             CellPreset::Empty => {
-                parse_edit_text("", catalog, edit_context(&row.id())).map_err(|error| edit_parse_message(&error))
+                parse_edit_text("", catalog, edit_context(&row.id()), None).map_err(|error| edit_parse_message(&error))
             }
             CellPreset::Null if presets.null => Ok(CellInput::Value(Value::Null)),
             CellPreset::Null => Err(edit_parse_message(&EditParseError::Required)),
@@ -282,8 +282,8 @@ pub(super) fn toggled(value: &Value, default: bool, storage: BoolStorage) -> Val
     let truth = match (default, value) {
         (true, _) => None,
         (false, Value::Bool(flag)) => Some(*flag),
-        (false, Value::Int(0) | Value::UInt(0)) => Some(false),
-        (false, Value::Int(1) | Value::UInt(1)) => Some(true),
+        (false, Value::Int(0) | Value::Int32(0) | Value::UInt(0)) => Some(false),
+        (false, Value::Int(1) | Value::Int32(1) | Value::UInt(1)) => Some(true),
         (false, _) => None,
     };
     let next = truth.is_none_or(|truth| !truth);

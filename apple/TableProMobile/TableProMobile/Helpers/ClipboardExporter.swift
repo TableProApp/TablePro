@@ -32,8 +32,20 @@ nonisolated enum ClipboardExporter {
     }
 
     nonisolated struct TooLarge: LocalizedError, Equatable {
+        enum Source: Equatable {
+            case page
+            case queryResult
+        }
+
+        var source: Source = .page
+
         var errorDescription: String? {
-            String(localized: "The full values on this page need more memory than this device has free. Choose a smaller page size and try again.")
+            switch source {
+            case .page:
+                String(localized: "The full values on this page need more memory than this device has free. Choose a smaller page size and try again.")
+            case .queryResult:
+                String(localized: "The full values in this result need more memory than this device has free. Run a query that returns fewer rows and try again.")
+            }
         }
     }
 

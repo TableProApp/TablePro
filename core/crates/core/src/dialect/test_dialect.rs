@@ -224,6 +224,7 @@ impl SqlDialect for TestDialect {
         match value {
             Value::Null => Ok("NULL".to_owned()),
             Value::Bool(flag) => Ok(flag.to_string()),
+            Value::Int32(number) => Ok(number.to_string()),
             Value::Int(number) => Ok(number.to_string()),
             Value::UInt(number) => Ok(number.to_string()),
             Value::Text(text) => Ok(format!("'{}'", text.replace('\'', "''"))),

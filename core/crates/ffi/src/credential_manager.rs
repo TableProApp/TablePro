@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use secrecy::zeroize::{Zeroize, Zeroizing};
 use secrecy::{ExposeSecret, SecretString};
 use tablepro_core::AiProvider;
 use tablepro_core::credentials::{SecretError, SecretItem, SecretItems, SecretKind, SecretLookup, SecretVault};
@@ -93,7 +94,7 @@ fn failure(action: &str) -> SecretError {
 }
 
 // The blob holds UTF-16, as cmdkey and the Credential Manager control panel write it.
-fn decode(blob: &[u8]) -> Result<String, SecretError> {
+fn decode(blob: &[u8]) -> Result<SecretString, SecretError> {
     if blob.len() % 2 != 0 {
         return Err(SecretError::InvalidEncoding);
     }
@@ -101,10 +102,18 @@ fn decode(blob: &[u8]) -> Result<String, SecretError> {
         .chunks_exact(2)
         .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
         .collect();
-    String::from_utf16(&units).map_err(|_| SecretError::InvalidEncoding)
+    let units = Zeroizing::new(units);
+    // Sized exactly, so neither a push nor SecretString's shrink to fit leaves a copy in freed memory.
+    let mut size = 0;
+    for decoded in char::decode_utf16(units.iter().copied()) {
+        size += decoded.map_err(|_| SecretError::InvalidEncoding)?.len_utf8();
+    }
+    let mut text = String::with_capacity(size);
+    text.extend(char::decode_utf16(units.iter().copied()).flatten());
+    Ok(SecretString::from(text))
 }
 
-fn read(target: &str) -> Result<Option<String>, SecretError> {
+fn read(target: &str) -> Result<Option<SecretString>, SecretError> {
     let name = wide(target);
     let mut found: *mut CREDENTIALW = std::ptr::null_mut();
     // SAFETY: `name` is NUL-terminated and outlives the call; `found` receives a buffer CredFree releases.
@@ -116,16 +125,20 @@ fn read(target: &str) -> Result<Option<String>, SecretError> {
         }
         return Err(failure("read"));
     }
-    // SAFETY: CredReadW succeeded, so `found` is live until CredFree and a non-null blob holds its size.
+    // SAFETY: CredReadW succeeded, so `found` is live until CredFree, the process owns it, and a non-null blob
+    // holds its size.
     let decoded = unsafe {
         let credential = &*found;
         let size = credential.CredentialBlobSize as usize;
-        let blob = if credential.CredentialBlob.is_null() || size == 0 {
-            &[][..]
+        if credential.CredentialBlob.is_null() || size == 0 {
+            decode(&[])
         } else {
-            std::slice::from_raw_parts(credential.CredentialBlob, size)
-        };
-        decode(blob)
+            let blob = std::slice::from_raw_parts_mut(credential.CredentialBlob, size);
+            let decoded = decode(blob);
+            // CredFree releases the block as it is, so the decrypted text would stay in freed memory.
+            blob.zeroize();
+            decoded
+        }
     };
     // SAFETY: `found` came from CredReadW and is freed once.
     unsafe { CredFree(found.cast_const().cast()) };
@@ -136,7 +149,9 @@ fn write(target: &str, secret: &str, label: &str) -> Result<(), SecretError> {
     let name = wide(target);
     let mut comment = wide(label);
     let mut user = wide("TablePro");
-    let mut blob: Vec<u8> = secret.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    // Sized up front: a collect that grew would leave parts of the secret in the buffers it gave up.
+    let mut blob: Zeroizing<Vec<u8>> = Zeroizing::new(Vec::with_capacity(secret.encode_utf16().count() * 2));
+    blob.extend(secret.encode_utf16().flat_map(u16::to_le_bytes));
     let size = u32::try_from(blob.len()).map_err(|_| SecretError::Backend {
         detail: "the secret is too long for Credential Manager".to_owned(),
         service_message: None,
@@ -156,7 +171,6 @@ fn write(target: &str, secret: &str, label: &str) -> Result<(), SecretError> {
     credential.UserName = user.as_mut_ptr();
     // SAFETY: every pointer in `credential` points into a buffer that outlives the call.
     let ok = unsafe { CredWriteW(&raw const credential, 0) };
-    blob.fill(0);
     if ok == 0 {
         return Err(failure("write"));
     }
@@ -178,23 +192,22 @@ fn delete(target: &str) -> Result<(), SecretError> {
 impl SecretVault for CredentialManager {
     async fn store(&self, id: Uuid, kind: SecretKind, secret: &SecretString, label: &str) -> Result<(), SecretError> {
         let target = self.connection_target(id, kind);
-        let (secret, label) = (secret.expose_secret().to_owned(), label.to_owned());
-        self.blocking(move || write(&target, &secret, &label)).await
+        let (secret, label) = (secret.clone(), label.to_owned());
+        self.blocking(move || write(&target, secret.expose_secret(), &label))
+            .await
     }
 
     async fn load(&self, id: Uuid, kind: SecretKind) -> Result<SecretLookup, SecretError> {
         let target = self.connection_target(id, kind);
         let found = self.blocking(move || read(&target)).await?;
-        Ok(found.map_or(SecretLookup::NotStored, |secret| {
-            SecretLookup::Found(SecretString::from(secret))
-        }))
+        Ok(found.map_or(SecretLookup::NotStored, SecretLookup::Found))
     }
 
     async fn relabel(&self, id: Uuid, kind: SecretKind, label: &str) -> Result<(), SecretError> {
         let target = self.connection_target(id, kind);
         let label = label.to_owned();
         self.blocking(move || match read(&target)? {
-            Some(secret) => write(&target, &secret, &label),
+            Some(secret) => write(&target, secret.expose_secret(), &label),
             None => Ok(()),
         })
         .await
@@ -219,15 +232,15 @@ impl SecretVault for CredentialManager {
 impl SecretItems for CredentialManager {
     async fn load_item(&self, item: SecretItem) -> Result<Option<SecretString>, SecretError> {
         let target = self.item_target(item);
-        let found = self.blocking(move || read(&target)).await?;
-        Ok(found.map(SecretString::from))
+        self.blocking(move || read(&target)).await
     }
 
     async fn store_item(&self, item: SecretItem, secret: &SecretString) -> Result<(), SecretError> {
         let target = self.item_target(item);
-        let secret = secret.expose_secret().to_owned();
+        let secret = secret.clone();
         let label = english_item_label(item);
-        self.blocking(move || write(&target, &secret, &label)).await
+        self.blocking(move || write(&target, secret.expose_secret(), &label))
+            .await
     }
 
     async fn delete_item(&self, item: SecretItem) -> Result<(), SecretError> {

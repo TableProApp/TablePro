@@ -62,6 +62,7 @@ pub(crate) fn param_bson(param: &BoundParam) -> Converted {
     Ok(match param.value() {
         Value::Null => Bson::Null,
         Value::Bool(flag) => Bson::Boolean(*flag),
+        Value::Int32(number) => Bson::Int32(*number),
         Value::Int(number) => match (param.param_type(), i32::try_from(*number)) {
             (ParamType::Int32, Ok(small)) => Bson::Int32(small),
             _ => Bson::Int64(*number),
@@ -471,25 +472,44 @@ mod tests {
 
     #[test]
     fn a_bound_value_keeps_its_columns_type() {
-        let int = bind_param(Value::Int(5), None).expect("a long");
+        let int = bind_param(Value::Int(5), None, None).expect("a long");
         assert_eq!(param_bson(&int), Ok(Bson::Int64(5)));
+        let int32 = bind_param(Value::Int32(5), None, None).expect("an int");
+        assert_eq!(param_bson(&int32), Ok(Bson::Int32(5)));
         let id = Value::Other(Box::new(OtherValue {
             type_name: "objectId".to_owned(),
             text: "5f1d7a0c9b1e8b2a3c4d5e6f".to_owned(),
         }));
         assert!(matches!(
-            param_bson(&bind_param(id, None).expect("an id")),
+            param_bson(&bind_param(id, None, None).expect("an id")),
             Ok(Bson::ObjectId(_))
         ));
         let bad = Value::Other(Box::new(OtherValue {
             type_name: "objectId".to_owned(),
             text: "nope".to_owned(),
         }));
-        assert!(param_bson(&bind_param(bad, None).expect("text")).is_err());
+        assert!(param_bson(&bind_param(bad, None, None).expect("text")).is_err());
         let json = Value::Json(JsonText::parse(r#"{"a": {"$numberLong": "2"}}"#.to_owned()).expect("JSON"));
         assert_eq!(
-            param_bson(&bind_param(json, None).expect("JSON")),
+            param_bson(&bind_param(json, None, None).expect("JSON")),
             Ok(Bson::Document(bson::doc! { "a": 2_i64 }))
         );
+    }
+
+    #[test]
+    fn an_edited_number_keeps_the_type_it_was_read_as() {
+        let long = crate::field_types::field_column("qty", &["int", "long"].into_iter().collect());
+        let edited =
+            |value: Value, read: Option<&Value>| param_bson(&bind_param(value, Some(&long), read).expect("a number"));
+
+        assert_eq!(edited(Value::Int(7), Some(&Value::Int32(3))), Ok(Bson::Int32(7)));
+        assert_eq!(edited(Value::Int(7), Some(&Value::Int(3))), Ok(Bson::Int64(7)));
+        assert_eq!(
+            edited(Value::Int(3_000_000_000), Some(&Value::Int32(3))),
+            Ok(Bson::Int64(3_000_000_000)),
+            "a number past an int32 kept the type it no longer fits"
+        );
+        assert_eq!(edited(Value::Int(7), None), Ok(Bson::Int64(7)));
+        assert_eq!(edited(Value::Int(7), Some(&Value::Null)), Ok(Bson::Int64(7)));
     }
 }

@@ -13,9 +13,10 @@ pub fn shell_literal(value: &Value, column: &ColumnType) -> Result<String, Liter
     Ok(match value {
         Value::Null => "null".to_owned(),
         Value::Bool(flag) => flag.to_string(),
+        Value::Int32(number) => number.to_string(),
         Value::Int(number) => match (column.name.as_str(), i32::try_from(*number)) {
-            ("long", _) | (_, Err(_)) => format!("NumberLong({})", quoted(&number.to_string())),
-            (_, Ok(small)) => small.to_string(),
+            ("int", Ok(small)) => small.to_string(),
+            _ => format!("NumberLong({})", quoted(&number.to_string())),
         },
         Value::UInt(number) => match i64::try_from(*number) {
             Ok(number) => format!("NumberLong({})", quoted(&number.to_string())),
@@ -115,6 +116,9 @@ mod tests {
             (Value::Int(5), "int", "5"),
             (Value::Int(5), "long", r#"NumberLong("5")"#),
             (Value::Int(5_000_000_000), "int", r#"NumberLong("5000000000")"#),
+            (Value::Int32(5), "long", "5"),
+            (Value::Int(5), "double", r#"NumberLong("5")"#),
+            (Value::Int(5), "mixed", r#"NumberLong("5")"#),
             (Value::Float64(2.0), "double", "2.0"),
             (Value::Text("a\"b".to_owned()), "string", r#""a\"b""#),
             (

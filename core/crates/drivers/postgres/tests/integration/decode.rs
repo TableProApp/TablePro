@@ -229,6 +229,7 @@ async fn set_null_saves_typed_null() {
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![Value::Int(1)],
             assignments: (1..=4).map(|column| (column, CellInput::Value(Value::Null))).collect(),
+            read: Vec::new(),
         })],
     };
 
@@ -260,6 +261,7 @@ async fn char10_key_update_affects_one_row() {
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![Value::Text("ab".to_owned())],
             assignments: vec![(1, CellInput::Value(Value::Text("changed".to_owned())))],
+            read: Vec::new(),
         })],
     };
 

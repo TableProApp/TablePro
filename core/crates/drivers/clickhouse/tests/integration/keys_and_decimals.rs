@@ -13,6 +13,7 @@ async fn edit(connection: &dyn Connection, name: &str, key: Vec<Value>, column: 
         changes: vec![RowChange::Update(RowUpdate {
             key,
             assignments: vec![(column, CellInput::Value(value))],
+            read: Vec::new(),
         })],
     };
     let batch = planned(connection, &table(name), &changes).await;

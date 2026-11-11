@@ -154,6 +154,7 @@ impl Grid {
             changes: vec![RowChange::Update(RowUpdate {
                 key: vec![Value::Int(id)],
                 assignments: vec![(self.column(field), CellInput::Value(Value::Text(text.to_owned())))],
+                read: Vec::new(),
             })],
         };
         let grid = self.clone();

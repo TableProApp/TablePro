@@ -31,6 +31,7 @@ fn rename(team: &str, id: i64, name: &str) -> RowChange {
     RowChange::Update(RowUpdate {
         key: key(team, id),
         assignments: vec![(2, CellInput::Value(Value::Text(name.to_owned())))],
+        read: Vec::new(),
     })
 }
 
@@ -165,6 +166,7 @@ async fn a_static_column_is_saved_for_its_partition<S: Server>() {
         vec![RowChange::Update(RowUpdate {
             key: key("a", 1),
             assignments: vec![(motto, CellInput::Value(Value::Text("new".to_owned())))],
+            read: Vec::new(),
         })],
     )
     .await
