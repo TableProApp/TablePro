@@ -6,20 +6,22 @@ use std::str::FromStr;
 
 use secrecy::SecretString;
 use tablepro_core::browse::{PageRead, PageRequest, read_page};
+use tablepro_core::column::ColumnKind;
 use tablepro_core::edit::CellInput;
 use tablepro_core::filter::FilterSet;
 use tablepro_core::meta::{ObjectKind, ObjectScope, PagePosition, RowIdentity, TableRef};
 use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
 use tablepro_core::value::{JsonText, OtherValue, SqlDecimal, Temporal};
 use tablepro_core::{
-    Connection, Credentials, DatabaseDriver, DriverError, ErrorCategory, ResultEvent, RunEnd, ServerCode, Value,
-    WorkspaceSettings,
+    ColumnInfo, Connection, Credentials, DatabaseDriver, DriverError, ErrorCategory, ResultEvent, RowLimit, RunEnd,
+    RunOptions, ServerCode, Truncation, Value, WorkspaceSettings,
 };
 use tablepro_driver_mongodb::MongoDriver;
 use tokio_util::sync::CancellationToken;
 
 use crate::support::{
-    CALL, DATABASE, column_names, connect, editor, fixture_options, options_over, rows, run, start, unique, within,
+    CALL, DATABASE, column_names, connect, editor, fixture_options, options_over, rows, run, run_with, start, unique,
+    within,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -401,6 +403,200 @@ async fn a_result_set_event_names_the_fields_a_later_document_brings() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_field_of_two_number_types_is_json_and_an_edit_keeps_its_type() {
+    let fixture = start().await;
+    let connection = connect(&fixture).await;
+    let session = editor(connection.as_ref()).await;
+    let collection = unique("quantities");
+    let (inserted, _) = run(
+        session.as_ref(),
+        &format!("db.getCollection('{collection}').insertMany([{{_id: 1, qty: 3}}, {{_id: 2, qty: NumberLong(7)}}])"),
+    )
+    .await;
+    assert_eq!(inserted.end, RunEnd::Completed);
+    let table = TableRef::new(Some(DATABASE.to_owned()), collection.clone());
+    let columns = connection
+        .fetch_columns(&table, within(CALL))
+        .await
+        .expect("the fields");
+    let qty = columns
+        .iter()
+        .position(|column| column.name == "qty")
+        .expect("the qty field");
+    assert!(
+        matches!(columns[qty].column_type.kind, ColumnKind::Json { .. }),
+        "an int and a long: {:?}",
+        columns[qty]
+    );
+    let read = page_with(connection.as_ref(), &table, &columns).await;
+    assert_json(&read.result.rows[0][qty], "3");
+    assert_json(&read.result.rows[1][qty], r#"{"$numberLong": "7"}"#);
+    let identity = connection
+        .row_identity(&table, within(CALL))
+        .await
+        .expect("an identity");
+
+    let plan = plan_save(
+        &*connection.dialect(),
+        &table,
+        &columns,
+        &identity,
+        &ChangeSet {
+            changes: vec![RowChange::Update(RowUpdate {
+                key: vec![Value::Int(1)],
+                assignments: vec![(
+                    qty,
+                    CellInput::Value(Value::Json(JsonText::parse("4".to_owned()).expect("JSON"))),
+                )],
+            })],
+        },
+    )
+    .expect("a save plan");
+    let report = connection
+        .write_batch(&plan.batch, within(CALL))
+        .await
+        .expect("the save");
+
+    assert_eq!(report.rows_affected, [Some(1)]);
+    let (typed, events) = run(
+        session.as_ref(),
+        &format!(
+            "db.getCollection('{collection}').countDocuments({{_id: 1, qty: {{$eq: 4, $type: 'int'}}}})\n\
+             db.getCollection('{collection}').countDocuments({{_id: 2, qty: {{$type: 'long'}}}})"
+        ),
+    )
+    .await;
+    assert_eq!(typed.end, RunEnd::Completed);
+    assert_eq!(
+        rows(&events),
+        [vec![Value::Int(1)], vec![Value::Int(1)]],
+        "the edit kept the int and left the long a long"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_connection_that_never_read_the_fields_shows_json_fields_as_json() {
+    let fixture = start().await;
+    let connection = connect(&fixture).await;
+    let session = editor(connection.as_ref()).await;
+    let collection = unique("reconnected");
+    let (inserted, _) = run(
+        session.as_ref(),
+        &format!("db.getCollection('{collection}').insertMany([{{_id: 1, n: 'five'}}, {{_id: 2, n: NumberLong(5)}}])"),
+    )
+    .await;
+    assert_eq!(inserted.end, RunEnd::Completed);
+    let table = TableRef::new(Some(DATABASE.to_owned()), collection.clone());
+    let columns = connection
+        .fetch_columns(&table, within(CALL))
+        .await
+        .expect("the fields");
+    let n = columns
+        .iter()
+        .position(|column| column.name == "n")
+        .expect("the n field");
+    // As after a reconnect: the tab keeps its columns and pages on a
+    // connection that has not read them.
+    let reconnected = connect(&fixture).await;
+
+    let read = page_with(reconnected.as_ref(), &table, &columns).await;
+
+    assert_json(&read.result.rows[0][n], r#""five""#);
+    assert_json(&read.result.rows[1][n], r#"{"$numberLong": "5"}"#);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_projected_find_streams_its_rows_and_resolves_the_types_later_rows_bring() {
+    let fixture = start().await;
+    let connection = connect(&fixture).await;
+    let session = editor(connection.as_ref()).await;
+    let collection = unique("streamed");
+    // Past the first batch of rows, `n` holds strings too.
+    let documents: Vec<String> = (0..300)
+        .map(|id| match id < 280 {
+            true => format!("{{_id: {id}, n: {id}}}"),
+            false => format!("{{_id: {id}, n: 'n{id}'}}"),
+        })
+        .collect();
+    let (inserted, _) = run(
+        session.as_ref(),
+        &format!(
+            "db.getCollection('{collection}').insertMany([{}])",
+            documents.join(", ")
+        ),
+    )
+    .await;
+    assert_eq!(inserted.end, RunEnd::Completed);
+    let find = format!("db.getCollection('{collection}').find({{}}, {{n: 1}}).sort({{_id: 1}})");
+
+    let (read, events) = run(
+        session.as_ref(),
+        &format!("db.getCollection('{collection}').countDocuments({{}})\n{find}"),
+    )
+    .await;
+
+    assert_eq!(read.end, RunEnd::Completed);
+    let at = events
+        .iter()
+        .enumerate()
+        .filter(|(_, event)| matches!(event, ResultEvent::ResultSetStarted { .. }))
+        .nth(1)
+        .map(|(index, _)| index)
+        .expect("the find's result set");
+    let [
+        ResultEvent::ResultSetStarted { columns: started },
+        ResultEvent::Rows(first),
+        ResultEvent::Rows(rest),
+        ResultEvent::ColumnsResolved {
+            set_index,
+            columns: resolved,
+        },
+        ResultEvent::ResultSetFinished {
+            retained: 300,
+            total_rows: Some(300),
+            truncation: Truncation::Complete,
+        },
+    ] = &events[at..]
+    else {
+        panic!("the find sent {:?}", &events[at..]);
+    };
+    assert_eq!((first.len(), rest.len()), (256, 44));
+    assert_eq!(*set_index, 1, "the count's result set came first");
+    assert_eq!(started[1].column_type.name, "int");
+    assert_eq!(resolved[1].column_type.name, "mixed");
+
+    let limit = RowLimit::new(270).expect("a limit");
+    let (cut, events) = run_with(
+        session.as_ref(),
+        &find,
+        RunOptions::new(CancellationToken::new()).with_row_limit(limit),
+    )
+    .await;
+
+    assert_eq!(cut.end, RunEnd::Completed);
+    assert!(
+        matches!(
+            events.as_slice(),
+            [
+                ResultEvent::ResultSetStarted { .. },
+                ResultEvent::Rows(first),
+                ResultEvent::Rows(rest),
+                ResultEvent::RowLimitReached { retained: 270 },
+                ResultEvent::ResultSetFinished {
+                    retained: 270,
+                    total_rows: None,
+                    truncation: Truncation::ReadPastLimit,
+                },
+            ] if first.len() == 256 && rest.len() == 14
+        ),
+        "{events:?}"
+    );
+}
+
 /// A JSON cell that reads as `expected`, whatever its spacing.
 fn assert_json(cell: &Value, expected: &str) {
     let read = match cell {
@@ -414,10 +610,16 @@ fn assert_json(cell: &Value, expected: &str) {
 /// The first page of `table` as the grid reads it.
 async fn page(connection: &dyn Connection, table: &TableRef) -> PageRead {
     let columns = connection.fetch_columns(table, within(CALL)).await.expect("the fields");
+    page_with(connection, table, &columns).await
+}
+
+/// The first page of `table` under `columns`, which another connection
+/// may have read.
+async fn page_with(connection: &dyn Connection, table: &TableRef, columns: &[ColumnInfo]) -> PageRead {
     let identity = connection.row_identity(table, within(CALL)).await.expect("an identity");
     let request = PageRequest {
         table,
-        columns: &columns,
+        columns,
         filter: &FilterSet::default(),
         sort: &[],
         identity: &identity,

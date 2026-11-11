@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde::Serialize;
-use tablepro_core::browse::{ExportRequest, build_export};
+use tablepro_core::browse::{ExportFields, ExportRequest, build_export};
 use tablepro_core::column::ResultColumn;
 use tablepro_core::export::{CsvOptions, render_csv, render_json, render_sql_insert};
 use tablepro_core::{ColumnInfo, ReadStatement, TableRef, Value};
@@ -120,6 +120,8 @@ async fn export_table(
                 filter: &filter,
                 sort: &[],
                 identity: &identity,
+                // Every field would take a census of the whole collection before the first row.
+                fields: ExportFields::Listed,
             };
             Ok(ReadStatement::Generated(build_export(&*lease.dialect(), &request)?))
         },

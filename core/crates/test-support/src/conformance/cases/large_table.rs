@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use tablepro_core::browse::{ExportRequest, PageRead, PageRequest, PagingMode, build_export, read_page};
+use tablepro_core::browse::{ExportFields, ExportRequest, PageRead, PageRequest, PagingMode, build_export, read_page};
 use tablepro_core::export::{CsvEncoder, CsvOptions, RowEncoder};
 use tablepro_core::meta::{PagePosition, RowIdentity, TableRef};
 use tablepro_core::{
@@ -169,6 +169,7 @@ async fn export_table(
         filter: &browsed.filter,
         sort: &[],
         identity: &browsed.identity,
+        fields: ExportFields::Every,
     };
     let read = ReadStatement::Generated(
         build_export(&*connection.dialect(), &request)

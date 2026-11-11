@@ -17,6 +17,7 @@ mod tests;
 mod value_order;
 
 pub(crate) use document_catalog::{create_database, delete_all_documents, drop_database};
+pub use document_filter::filter_operators;
 pub(crate) use document_filter::{filter_document, typed_document};
 pub(crate) use document_read::{count, export, page};
 pub(crate) use document_write::{delete, insert, insert_many, key_probe, update};

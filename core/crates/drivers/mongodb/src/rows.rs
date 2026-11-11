@@ -6,10 +6,11 @@ use mongodb::ClientSession;
 use tablepro_core::column::{ColumnType, ResultColumn};
 use tablepro_core::value::Value;
 use tablepro_core::{
-    DriverError, LossPhase, QueryResult, ResultEvent, ResultSink, RowLimit, ServerNotice, SinkFlow, Truncation,
+    DriverError, QueryResult, ResultEvent, ResultSink, RowLimit, ServerNotice, SinkFlow, StopRequest, Truncation,
 };
 
 use crate::cells::cell;
+use crate::cursor_rows::Read;
 use crate::endpoint::MongoEndpoint;
 use crate::execute::Source;
 use crate::field_types::{column_type, shared_type, type_alias};
@@ -116,23 +117,19 @@ pub(crate) async fn collect(
     source: Source,
     session: &mut ClientSession,
     limit: RowLimit,
+    stop: &StopRequest,
 ) -> Result<QueryResult, DriverError> {
     let (documents, columns, truncated) = match source {
-        Source::Cursor { mut cursor, columns } => {
+        Source::Cursor { cursor, columns } => {
+            let mut read = Read::new(endpoint, *cursor, session, stop);
             let mut documents = Vec::new();
             let mut truncated = false;
-            loop {
-                match cursor.advance(session).await {
-                    Ok(true) if (documents.len() as u64) < limit.get() => {
-                        documents.push(crate::nested_document::current_document(&cursor)?);
-                    }
-                    Ok(true) => {
-                        truncated = true;
-                        break;
-                    }
-                    Ok(false) => break,
-                    Err(error) => return Err(endpoint.explain(&error, LossPhase::Statement).await),
+            while let Some(document) = read.next().await? {
+                if documents.len() as u64 == limit.get() {
+                    truncated = true;
+                    break;
                 }
+                documents.push(document);
             }
             (documents, columns, truncated)
         }
@@ -159,14 +156,28 @@ pub(crate) async fn collect(
 }
 
 /// Stream a source into `sink`, keeping at most `limit` rows when there
-/// is one.
+/// is one. `sets` counts the result sets the run has opened, which names
+/// the `set_index` of the one this source opens.
 pub(crate) async fn emit(
     endpoint: &MongoEndpoint,
     source: Source,
     session: &mut ClientSession,
     sink: &mut dyn ResultSink,
     limit: Option<RowLimit>,
+    sets: &mut usize,
+    stop: &StopRequest,
 ) -> Result<(SinkFlow, u64), DriverError> {
+    let set_index = *sets;
+    if !matches!(
+        source,
+        Source::Used(_)
+            | Source::Write {
+                unconfirmed: Some(_),
+                ..
+            }
+    ) {
+        *sets += 1;
+    }
     match source {
         Source::Used(database) => {
             let notice = ServerNotice {
@@ -204,7 +215,8 @@ pub(crate) async fn emit(
         }
         Source::Documents { documents, columns } => Ok(emit_documents(sink, documents, &columns, limit).await),
         Source::Cursor { cursor, columns } => {
-            crate::cursor_rows::stream(endpoint, *cursor, columns, session, sink, limit).await
+            let read = Read::new(endpoint, *cursor, session, stop);
+            crate::cursor_rows::stream(read, columns, sink, limit, set_index).await
         }
     }
 }

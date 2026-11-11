@@ -3,11 +3,13 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use bson::{Document, doc};
-use mongodb::{Client, ClientSession};
+use bson::{Bson, Document, doc};
+use mongodb::{Client, ClientSession, Database};
 use tablepro_core::sql_syntax::mongo::{ShellStatement, parse_bound_statement};
 use tablepro_core::statement::Statement;
-use tablepro_core::{CallResource, DriverError, EngineStop, LossPhase, StopDelivery, StopScope};
+use tablepro_core::{
+    CallResource, DriverError, EngineStop, LossPhase, StopDelivery, StopReason, StopRequest, StopScope, TimeoutPhase,
+};
 use tokio::time::Instant;
 
 use crate::endpoint::MongoEndpoint;
@@ -16,8 +18,10 @@ use crate::shell_command::{Plan, plan};
 
 /// The stop of one call: `killSessions` for the logical session the call
 /// runs in, which ends the operation that session has on the server and
-/// closes its cursors. Every call has a session of its own, so the stop
-/// names the call and nothing else.
+/// closes its cursors. A server that refuses it, as Atlas M0 and Flex do,
+/// gets `killOp` for each of the login's own operations in that session
+/// instead. Every call has a session of its own, so the stop names the
+/// call and nothing else.
 pub(crate) struct SessionKill {
     /// The client the session belongs to, which sends the kill on a
     /// connection of its own, and the session's id.
@@ -62,21 +66,58 @@ impl SessionKill {
             return Ok(());
         };
         self.mark(KillState::Unanswered);
-        let answered = client
-            .database("admin")
-            .run_command(doc! { "killSessions": [session] })
-            .await;
-        // Any reply, a refusal included, came back over the route.
+        let admin = client.database("admin");
+        let answered = match admin.run_command(doc! { "killSessions": [session.clone()] }).await {
+            Ok(_) => Ok(()),
+            Err(refused) if refused_by_server(&refused) => {
+                tracing::debug!(error = %refused, "killSessions refused, stopping the session's operations by id");
+                kill_operations(&admin, &session).await
+            }
+            Err(error) => Err(error),
+        };
+        // Any reply, a refusal included, came back over the route. Until
+        // the last command of the stop is answered, one could still land.
         let replied = match &answered {
-            Ok(_) => true,
-            Err(error) => matches!(error.kind.as_ref(), mongodb::error::ErrorKind::Command(_)),
+            Ok(()) => true,
+            Err(error) => refused_by_server(error),
         };
         if replied {
             self.mark(KillState::Answered);
         }
-        answered
-            .map(|_| ())
-            .map_err(|error| DriverError::Protocol(format!("the stop did not reach the server: {error}")))
+        answered.map_err(|error| DriverError::Protocol(format!("the stop did not reach the server: {error}")))
+    }
+}
+
+fn refused_by_server(error: &mongodb::error::Error) -> bool {
+    matches!(error.kind.as_ref(), mongodb::error::ErrorKind::Command(_))
+}
+
+/// `killOp` for each operation the login runs in `session`. Any user may
+/// list and kill their own operations, and the session's id names only
+/// this call's.
+async fn kill_operations(admin: &Database, session: &Document) -> Result<(), mongodb::error::Error> {
+    let Some(id) = session.get("id") else {
+        return Ok(());
+    };
+    // The command, not the `$currentOp` stage: Atlas documents it on every tier.
+    let listed = admin
+        .run_command(doc! { "currentOp": 1_i32, "$ownOps": true, "lsid.id": id.clone() })
+        .await?;
+    let operations = listed.get_array("inprog").map(Vec::as_slice).unwrap_or_default();
+    for opid in operations.iter().filter_map(|operation| in_session(operation, id)) {
+        admin.run_command(doc! { "killOp": 1_i32, "op": opid.clone() }).await?;
+    }
+    Ok(())
+}
+
+/// The `opid` of a `currentOp` entry that runs in the session `id`
+/// names. A server that ignores the filter lists the login's other
+/// operations too, and those are not this call's to end.
+fn in_session<'a>(operation: &'a Bson, id: &Bson) -> Option<&'a Bson> {
+    let operation = operation.as_document()?;
+    match operation.get_document("lsid").ok()?.get("id") {
+        Some(session) if session == id => operation.get("opid"),
+        _ => None,
     }
 }
 
@@ -152,6 +193,22 @@ pub(crate) fn release(session: ClientSession, stop: &SessionKill) {
     }
 }
 
+/// A call that ends at its own stop, before it asks the server for more,
+/// reads as what stopped it. The server was not told, so a deadline is
+/// never a statement the server cancelled.
+pub(crate) fn stopped(request: &StopRequest) -> DriverError {
+    match request.reason() {
+        Some(StopReason::DeadlineElapsed) => DriverError::Timeout {
+            phase: TimeoutPhase::Statement,
+            server_cancelled: false,
+        },
+        Some(StopReason::Shutdown) => DriverError::ConnectionLost {
+            during: LossPhase::Statement,
+        },
+        Some(StopReason::Cancelled) | None => DriverError::Cancelled,
+    }
+}
+
 /// How long the server may run what is left of a call, in the
 /// milliseconds `maxTimeMS` takes.
 pub(crate) fn remaining_millis(deadline: Option<Instant>) -> Option<i64> {
@@ -170,4 +227,60 @@ pub(crate) fn generated(statement: &Statement, database: &str) -> Result<(ShellS
         .map_err(|error| DriverError::Protocol(format!("a generated statement does not read: {error}")))?;
     let planned = plan(&parsed, database, statement.params())?;
     Ok((parsed, planned))
+}
+
+#[cfg(test)]
+mod tests {
+    use bson::Binary;
+    use bson::spec::BinarySubtype;
+
+    use super::*;
+
+    #[test]
+    fn a_read_that_ends_at_its_stop_reads_as_what_stopped_it() {
+        let stop = |reason: Option<StopReason>| {
+            let request = StopRequest::new();
+            if let Some(reason) = reason {
+                request.request(reason);
+            }
+            stopped(&request)
+        };
+
+        assert_eq!(
+            stop(Some(StopReason::DeadlineElapsed)),
+            DriverError::Timeout {
+                phase: TimeoutPhase::Statement,
+                server_cancelled: false
+            }
+        );
+        assert_eq!(
+            stop(Some(StopReason::Shutdown)),
+            DriverError::ConnectionLost {
+                during: LossPhase::Statement
+            }
+        );
+        assert_eq!(stop(Some(StopReason::Cancelled)), DriverError::Cancelled);
+        assert_eq!(stop(None), DriverError::Cancelled);
+    }
+
+    #[test]
+    fn only_an_operation_of_the_session_is_ended() {
+        let id = |byte: u8| {
+            Bson::Binary(Binary {
+                subtype: BinarySubtype::Uuid,
+                bytes: vec![byte; 16],
+            })
+        };
+        let entry = |session: Option<Bson>, opid: i32| {
+            let mut operation = doc! { "opid": opid, "op": "getmore" };
+            if let Some(session) = session {
+                operation.insert("lsid", doc! { "id": session });
+            }
+            Bson::Document(operation)
+        };
+
+        assert_eq!(in_session(&entry(Some(id(1)), 7), &id(1)), Some(&Bson::Int32(7)));
+        assert_eq!(in_session(&entry(Some(id(2)), 8), &id(1)), None, "another session's");
+        assert_eq!(in_session(&entry(None, 9), &id(1)), None, "no session's");
+    }
 }

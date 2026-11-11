@@ -1,15 +1,21 @@
 //! What the MongoDB integration modules share: targets over the fixture's
-//! port, one-line runs, and a sink that keeps what it gets.
+//! port, one-line runs, a page and a save as the grid makes them, and a
+//! sink that keeps what it gets.
 
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use secrecy::SecretString;
+use tablepro_core::browse::{PageRead, PageRequest, read_page};
+use tablepro_core::edit::CellInput;
+use tablepro_core::filter::FilterSet;
+use tablepro_core::meta::{PagePosition, TableRef};
+use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
 use tablepro_core::{
     CallOptions, ConnectEnvironment, ConnectOptions, ConnectTarget, Connection, Credentials, DatabaseDriver,
     EditorSession, EditorSessionOptions, LivenessPolicy, NetworkEndpoint, NetworkOptions, NetworkTarget, ResultEvent,
-    ResultSink, RunOptions, RunSummary, SinkFlow, TlsConfig, Transport, UserSql, Value, WorkspaceSettings,
+    ResultSink, RunOptions, RunSummary, SinkFlow, TlsConfig, Transport, UserSql, Value, WorkspaceSettings, WriteReport,
 };
 use tablepro_driver_mongodb::MongoDriver;
 use tablepro_net::DirectTcpTransport;
@@ -99,6 +105,20 @@ pub async fn connect(fixture: &MongoFixture) -> Arc<dyn Connection> {
         .expect("a connection")
 }
 
+/// A writable connection to `target`.
+pub async fn connect_to(target: NetworkTarget, liveness: LivenessPolicy) -> Arc<dyn Connection> {
+    let options = ConnectOptions {
+        target: ConnectTarget::Network(target),
+        workspace_settings: WorkspaceSettings::workspace(false),
+        liveness,
+        environment: ConnectEnvironment::new("test"),
+    };
+    MongoDriver
+        .connect(options, CancellationToken::new())
+        .await
+        .expect("a connection")
+}
+
 pub async fn editor(connection: &dyn Connection) -> Arc<dyn EditorSession> {
     connection
         .open_editor_session(EditorSessionOptions::default(), CancellationToken::new())
@@ -108,17 +128,68 @@ pub async fn editor(connection: &dyn Connection) -> Arc<dyn EditorSession> {
 
 /// Run `text` in the editor session and keep what it sent.
 pub async fn run(session: &dyn EditorSession, text: &str) -> (RunSummary, Vec<ResultEvent>) {
+    run_with(session, text, RunOptions::new(CancellationToken::new())).await
+}
+
+pub async fn run_with(session: &dyn EditorSession, text: &str, options: RunOptions) -> (RunSummary, Vec<ResultEvent>) {
     let kept = Arc::new(Mutex::new(Vec::new()));
     let summary = session
-        .run(
-            UserSql::new(text),
-            RunOptions::new(CancellationToken::new()),
-            Box::new(Keep(kept.clone())),
-        )
+        .run(UserSql::new(text), options, Box::new(Keep(kept.clone())))
         .await
         .expect("the session ran the text");
     let events = std::mem::take(&mut *kept.lock().unwrap_or_else(PoisonError::into_inner));
     (summary, events)
+}
+
+/// A sink that takes every event.
+pub fn sink() -> Box<dyn ResultSink> {
+    Box::new(Keep(Arc::new(Mutex::new(Vec::new()))))
+}
+
+/// The first page of `table` as the grid reads it.
+pub async fn first_page(connection: &dyn Connection, table: &TableRef) -> PageRead {
+    let columns = connection.fetch_columns(table, within(CALL)).await.expect("the fields");
+    let identity = connection.row_identity(table, within(CALL)).await.expect("an identity");
+    let request = PageRequest {
+        table,
+        columns: &columns,
+        filter: &FilterSet::default(),
+        sort: &[],
+        identity: &identity,
+        position: &PagePosition::First,
+        limit: 100,
+    };
+    read_page::<Box<dyn std::error::Error + Send + Sync>>(connection, &request, &within(CALL))
+        .await
+        .expect("a page")
+}
+
+/// Save `value` into `field` of the document `key` names, as the grid's
+/// save does.
+pub async fn save_field(
+    connection: &dyn Connection,
+    table: &TableRef,
+    key: Value,
+    field: &str,
+    value: Value,
+) -> WriteReport {
+    let columns = connection.fetch_columns(table, within(CALL)).await.expect("the fields");
+    let identity = connection.row_identity(table, within(CALL)).await.expect("an identity");
+    let column = columns
+        .iter()
+        .position(|column| column.name == field)
+        .expect("the field is a column");
+    let changes = ChangeSet {
+        changes: vec![RowChange::Update(RowUpdate {
+            key: vec![key],
+            assignments: vec![(column, CellInput::Value(value))],
+        })],
+    };
+    let plan = plan_save(&*connection.dialect(), table, &columns, &identity, &changes).expect("a save plan");
+    connection
+        .write_batch(&plan.batch, within(CALL))
+        .await
+        .expect("the save")
 }
 
 /// Every row the events carried.

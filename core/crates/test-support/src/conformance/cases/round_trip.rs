@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use tablepro_core::browse::{DeclaredPrecisionSink, ExportRequest, build_export};
+use tablepro_core::browse::{DeclaredPrecisionSink, ExportFields, ExportRequest, build_export};
 use tablepro_core::column::{ColumnInfo, ColumnType, ResultColumn};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::edit::{EditText, edit_text, read_only_reason};
@@ -577,6 +577,7 @@ async fn stream_table(
             filter: &FilterSet::default(),
             sort: &[],
             identity: &identity,
+            fields: ExportFields::Every,
         },
     )
     .map_err(ConformanceFailure::setup)?;

@@ -1,4 +1,6 @@
-use crate::browse::{ExportRequest, PageRequest, RowKeyLayout, SortKey, build_count, build_export, build_page};
+use crate::browse::{
+    ExportFields, ExportRequest, PageRequest, RowKeyLayout, SortKey, build_count, build_export, build_page,
+};
 use crate::column::{
     ColumnDefault, ColumnInfo, ColumnKind, ColumnType, IntegerKind, IntegerWidth, ReadForm, TextLength,
 };
@@ -10,7 +12,7 @@ use crate::meta::{PagePosition, PageStability, RowIdentity, TableRef};
 use crate::sql_syntax::SqlGrammar;
 use crate::sql_syntax::mongo::parse_bound_statement;
 use crate::statement::{ParamType, Statement, StatementBuilder};
-use crate::value::{OtherValue, Value};
+use crate::value::{JsonText, OtherValue, Value};
 
 fn shell() -> TestDialect {
     TestDialect::exact().parsing_as(SqlGrammar::Mongo)
@@ -216,6 +218,77 @@ fn a_filter_binds_what_was_typed_and_keeps_the_typed_document() {
 }
 
 #[test]
+fn a_json_field_compares_as_well_as_matching_text() {
+    let mut columns = columns();
+    columns.push(column("price", "mixed", ColumnKind::Json { binary: false }));
+    let offered = crate::document::filter_operators(&columns[4]);
+    for op in [
+        FilterOp::Eq,
+        FilterOp::Lt,
+        FilterOp::LtEq,
+        FilterOp::Gt,
+        FilterOp::GtEq,
+        FilterOp::Between,
+        FilterOp::In,
+        FilterOp::NotIn,
+        FilterOp::Contains,
+        FilterOp::Like,
+        FilterOp::IsNull,
+        FilterOp::IsNotNull,
+    ] {
+        assert!(offered.contains(&op), "{op:?} in {offered:?}");
+    }
+    assert_eq!(
+        crate::document::filter_operators(&columns[2]),
+        crate::filter::operators_for(&columns[2].column_type.kind)
+    );
+
+    let rule = |op: FilterOp, value: FilterValue| FilterRule {
+        column: "price".to_owned(),
+        op,
+        value: Some(value),
+    };
+    let filter = FilterSet {
+        combinator: Combinator::And,
+        rules: vec![
+            rule(FilterOp::Between, FilterValue::Pair("1".to_owned(), "9.5".to_owned())),
+            rule(FilterOp::Lt, FilterValue::Single(r#"{"$numberLong": "7"}"#.to_owned())),
+        ],
+        extra_sql: None,
+    };
+    let statement = build_count(&shell(), &users(), &columns, &filter).expect("a count");
+
+    assert_eq!(
+        checked(&statement),
+        r#"db.getSiblingDB("shop").getCollection("users").countDocuments({"$and": [{"price": {"$gte": $1, "$lte": $2}}, {"price": {"$lt": $3}}]})"#
+    );
+    assert!(
+        statement
+            .params()
+            .iter()
+            .all(|param| param.param_type() == &ParamType::Json),
+        "{:?}",
+        statement.params()
+    );
+    let text = FilterSet {
+        rules: vec![FilterRule {
+            column: "name".to_owned(),
+            op: FilterOp::Gt,
+            value: Some(FilterValue::Single("a".to_owned())),
+        }],
+        ..FilterSet::default()
+    };
+    assert_eq!(
+        build_filter(&mut StatementBuilder::new(), &shell(), &columns, &text),
+        Err(BuildFilterError::OperatorNotAllowed {
+            column: "name".to_owned(),
+            op: FilterOp::Gt,
+        }),
+        "a text field still only matches"
+    );
+}
+
+#[test]
 fn a_filter_that_is_not_one_document_or_names_a_dotted_field_is_refused() {
     let mut builder = StatementBuilder::new();
     let typed = |text: &str| FilterSet {
@@ -329,14 +402,13 @@ fn an_alias_never_takes_the_name_of_a_field() {
     assert!(text.contains(r#""__field_3": 1"#), "{text}");
 }
 
-#[test]
-fn an_export_reads_every_document_in_page_order() {
+fn export(fields: ExportFields) -> Statement {
     let columns = columns();
     let sort = [SortKey {
         column: 2,
         ascending: true,
     }];
-    let statement = build_export(
+    build_export(
         &shell(),
         &ExportRequest {
             table: &TableRef::unqualified("users"),
@@ -344,15 +416,31 @@ fn an_export_reads_every_document_in_page_order() {
             filter: &FilterSet::default(),
             sort: &sort,
             identity: &by_id(),
+            fields,
         },
     )
-    .expect("an export");
+    .expect("an export")
+}
+
+#[test]
+fn an_export_reads_every_document_in_page_order() {
+    let statement = export(ExportFields::Listed);
 
     assert_eq!(
         checked(&statement),
         format!(
             r#"db.getCollection("users").aggregate([{{"$sort": {{"qty": 1, "_id": 1}}}}, {PROJECTION}], {{"allowDiskUse": true}})"#
         )
+    );
+}
+
+#[test]
+fn an_export_of_every_field_reads_whole_documents_in_page_order() {
+    let statement = export(ExportFields::Every);
+
+    assert_eq!(
+        checked(&statement),
+        r#"db.getCollection("users").aggregate([{"$sort": {"qty": 1, "_id": 1}}], {"allowDiskUse": true})"#
     );
 }
 
@@ -368,7 +456,7 @@ fn a_change_names_its_document_by_id_and_sets_only_the_fields_changed() {
         &[object_id()],
         &[
             (1, CellInput::Value(Value::Text("ann".to_owned()))),
-            (2, CellInput::Value(Value::Null)),
+            (2, CellInput::Value(Value::Int(3))),
         ],
     )
     .expect("an update");
@@ -379,7 +467,7 @@ fn a_change_names_its_document_by_id_and_sets_only_the_fields_changed() {
     assert_eq!(
         update.params()[1].param_type(),
         &ParamType::Int32,
-        "a null keeps its field's type"
+        "a value takes its field's type"
     );
 
     let delete = build_delete(&dialect, &table, &columns(), &by_id(), &[object_id()]).expect("a delete");
@@ -420,6 +508,106 @@ fn a_change_names_its_document_by_id_and_sets_only_the_fields_changed() {
         checked(&many),
         r#"db.getSiblingDB("shop").getCollection("users").insertMany([{"name": $1, "qty": $2}, {"name": $3, "qty": $4}])"#
     );
+}
+
+#[test]
+fn a_change_to_null_removes_the_field_and_a_key_keeps_set() {
+    let change = |assignments: &[(usize, CellInput)]| {
+        build_update(&shell(), &users(), &columns(), &by_id(), &[object_id()], assignments).expect("an update")
+    };
+
+    let both = change(&[
+        (1, CellInput::Value(Value::Text("ann".to_owned()))),
+        (2, CellInput::Value(Value::Null)),
+    ]);
+    assert_eq!(
+        checked(&both),
+        r#"db.getSiblingDB("shop").getCollection("users").updateOne({"_id": $2}, {"$set": {"name": $1}, "$unset": {"qty": ""}})"#
+    );
+    assert_eq!(both.params().len(), 2);
+
+    let removed = change(&[(2, CellInput::Value(Value::Null))]);
+    assert_eq!(
+        checked(&removed),
+        r#"db.getSiblingDB("shop").getCollection("users").updateOne({"_id": $1}, {"$unset": {"qty": ""}})"#
+    );
+    assert_eq!(removed.params().len(), 1);
+
+    let key = change(&[(0, CellInput::Value(Value::Null))]);
+    assert_eq!(
+        checked(&key),
+        r#"db.getSiblingDB("shop").getCollection("users").updateOne({"_id": $2}, {"$set": {"_id": $1}})"#
+    );
+    assert_eq!(key.params()[0].value(), &Value::Null);
+    assert!(
+        matches!(key.params()[0].param_type(), ParamType::ServerText(_)),
+        "a null keeps its field's type"
+    );
+
+    let json_null = change(&[(
+        1,
+        CellInput::Value(Value::Json(JsonText::parse("null".to_owned()).expect("JSON"))),
+    )]);
+    assert_eq!(
+        checked(&json_null),
+        r#"db.getSiblingDB("shop").getCollection("users").updateOne({"_id": $2}, {"$set": {"name": $1}})"#,
+        "a typed null is a value"
+    );
+}
+
+#[test]
+fn a_new_document_leaves_out_every_null_cell() {
+    let dialect = shell();
+    let table = users();
+    let columns = columns();
+    let null = || CellInput::Value(Value::Null);
+
+    let insert = build_insert(
+        &dialect,
+        &table,
+        &columns,
+        &[
+            CellInput::Default,
+            CellInput::Value(Value::Text("ann".to_owned())),
+            null(),
+            null(),
+        ],
+    )
+    .expect("an insert");
+    assert_eq!(
+        checked(&insert),
+        r#"db.getSiblingDB("shop").getCollection("users").insertOne({"name": $1})"#
+    );
+    assert_eq!(insert.params().len(), 1);
+
+    let empty = build_insert(
+        &dialect,
+        &table,
+        &columns,
+        &[CellInput::Default, null(), null(), null()],
+    )
+    .expect("an insert of no field");
+    assert_eq!(
+        checked(&empty),
+        r#"db.getSiblingDB("shop").getCollection("users").insertOne({})"#
+    );
+
+    let many = build_multi_row_insert(
+        &dialect,
+        &table,
+        &[&columns[1], &columns[2]],
+        vec![
+            vec![Value::Text("a".to_owned()), Value::Null],
+            vec![Value::Null, Value::Int(2)],
+            vec![Value::Null, Value::Null],
+        ],
+    )
+    .expect("an insert of three");
+    assert_eq!(
+        checked(&many),
+        r#"db.getSiblingDB("shop").getCollection("users").insertMany([{"name": $1}, {"qty": $2}, {}])"#
+    );
+    assert_eq!(many.params().len(), 2);
 }
 
 #[test]
