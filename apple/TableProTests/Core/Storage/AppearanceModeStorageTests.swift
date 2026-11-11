@@ -81,7 +81,7 @@ struct AppearanceModeStorageTests {
 
         let data = try #require(defaults.data(forKey: Self.appearanceKey))
         let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
-        #expect(Set(object.keys) == ["preferredLightThemeId", "preferredDarkThemeId"])
+        #expect(Set(object.keys) == ["preferredLightThemeId", "preferredDarkThemeId", "objectIconStyle"])
     }
 
     @Test("Reset returns the mode to Auto")

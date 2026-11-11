@@ -440,7 +440,6 @@ internal enum ObjectListingColumnLayout {
 internal struct ObjectListingRow: Equatable, Identifiable, Sendable {
     let id: RowID
     let item: ObjectListingItem
-    let iconName: String
     /// The drawn text of each value, by value index.
     let texts: [String]
     let sortKeys: [ObjectListingSortKey]
@@ -472,7 +471,7 @@ internal enum ObjectListingRowBuilder {
                 texts.append(formatter.display(row[index], as: format))
                 keys.append(formatter.sortKey(row[index], as: format))
             }
-            return ObjectListingRow(id: row.id, item: item, iconName: item.iconName, texts: texts, sortKeys: keys)
+            return ObjectListingRow(id: row.id, item: item, texts: texts, sortKeys: keys)
         }
     }
 
@@ -496,11 +495,12 @@ internal enum ObjectListingRowBuilder {
 }
 
 extension ObjectListingItem {
-    /// The glyph the sidebar draws for the same object.
-    var iconName: String {
+    /// The kind the sidebar draws the same object as. A type is drawn as the Types section is, not
+    /// by its own shape.
+    var iconKind: ObjectIconKind {
         switch self {
-        case .relation(_, _, let type): return TableRowLogic.iconName(for: type)
-        case .sourced(let ref): return ref.kind.iconName
+        case .relation(_, _, let type): return .relation(type)
+        case .sourced(let ref): return ObjectIconKind(ref.kind.sidebarObjectKind)
         }
     }
 }

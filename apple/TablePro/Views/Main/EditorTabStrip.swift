@@ -160,7 +160,12 @@ internal struct EditorTabStrip: View {
     }
 
     private var labels: [UUID: EditorTabLabelResolver.Label] {
-        EditorTabLabelResolver.resolve(tabs: displayedTabs, target: containerTarget, style: titleStyle)
+        EditorTabLabelResolver.resolve(
+            tabs: displayedTabs,
+            target: containerTarget,
+            style: titleStyle,
+            iconStyle: settings.appearance.objectIconStyle
+        )
     }
 
     private var titleStyle: EditorTabTitleStyle {
@@ -351,10 +356,10 @@ private struct EditorTabStripItem: View {
                         .foregroundStyle(titleColor)
                         .accessibilityHidden(true)
                 }
-                if let symbolName = label.symbolName {
-                    Image(systemName: symbolName)
+                if let icon = label.icon {
+                    icon.image
                         .font(.system(size: EditorTabStripLayout.objectGlyphSize))
-                        .foregroundStyle(titleColor)
+                        .foregroundStyle(glyphColor(for: icon))
                         .accessibilityHidden(true)
                 }
                 Text(label.text)
@@ -458,6 +463,13 @@ private struct EditorTabStripItem: View {
             return Color(nsColor: isSelected ? .secondaryLabelColor : .tertiaryLabelColor)
         }
         return Color(nsColor: isSelected ? .labelColor : .secondaryLabelColor)
+    }
+
+    /// A hue only while the window is active: an inactive window's tabs step down to the label
+    /// colors, and a glyph left in full color would be the brightest thing in the strip.
+    private func glyphColor(for icon: ObjectIcon) -> Color {
+        guard isWindowActive, let tint = icon.tint else { return titleColor }
+        return tint.color
     }
 
     /// Shown for the tab in front at all times, and for any tab the pointer is over, so closing

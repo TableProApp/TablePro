@@ -125,6 +125,7 @@ internal extension MainSplitViewController {
     func recentTabCandidates() -> [RecentTabCandidate] {
         let hosted = recentTabWorkspaces
         let namesConnection = hosted.count > 1
+        let iconStyle = AppSettingsManager.shared.appearance.objectIconStyle
         var rows: [RecentTabReference: RecentTabCandidate] = [:]
 
         for workspace in hosted {
@@ -135,6 +136,7 @@ internal extension MainSplitViewController {
             for tab in tabs {
                 let reference = RecentTabReference(connectionId: workspace.connectionId, tabId: tab.id)
                 let title = labels[tab.id]?.text ?? tab.title
+                let icon = Self.recentTabIcon(for: tab, style: iconStyle)
                 rows[reference] = RecentTabCandidate(
                     reference: reference,
                     title: title,
@@ -142,7 +144,8 @@ internal extension MainSplitViewController {
                         container: Self.recentTabContainer(of: tab, title: title, target: target),
                         connectionName: connectionName
                     ),
-                    symbolName: Self.recentTabSymbol(for: tab)
+                    symbolName: icon.symbolName,
+                    symbolTint: icon.tint
                 )
             }
         }
@@ -189,6 +192,14 @@ internal extension MainSplitViewController {
 
     private static func recentTabDetail(container: String?, connectionName: String?) -> String {
         [container, connectionName].compactMap { $0 }.joined(separator: ", ")
+    }
+
+    /// The standard style keeps this switcher's own glyphs, which name the kind of tab rather than
+    /// the kind of object: every object source tab shared one.
+    static func recentTabIcon(for tab: QueryTab, style: ObjectIconStyle) -> ObjectIcon {
+        let standard = recentTabSymbol(for: tab)
+        guard let kind = ObjectIconKind(tab: tab) else { return ObjectIcon(symbolName: standard) }
+        return ObjectIconProvider.icon(for: kind, style: style, standard: standard)
     }
 
     private static func recentTabSymbol(for tab: QueryTab) -> String {

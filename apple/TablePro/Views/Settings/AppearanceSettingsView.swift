@@ -37,6 +37,17 @@ internal struct AppearanceSettingsView: View {
             } footer: {
                 Text("Themes color the editor, the data grid, other content views and the window background. Controls, sidebars and Settings follow the system appearance.")
             }
+
+            Section {
+                Picker(String(localized: "Object Icons"), selection: $settings.objectIconStyle) {
+                    ForEach(ObjectIconStyle.allCases) { style in
+                        Text(style.displayName).tag(style)
+                    }
+                }
+                .accessibilityIdentifier("appearance-object-icon-style")
+            } footer: {
+                Text("Colorful gives each kind of object its own filled, colored icon in the sidebar, the tabs and the object lists.")
+            }
         }
         .formStyle(.grouped)
         .scrollDisabled(true)

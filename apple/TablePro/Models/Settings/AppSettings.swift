@@ -17,23 +17,45 @@ enum AppAppearanceMode: String, Codable, CaseIterable {
     case auto
 }
 
+/// How the sidebar, the tabs and the object lists draw a database object's glyph.
+enum ObjectIconStyle: String, Codable, CaseIterable, Identifiable {
+    /// The outline glyphs every surface drew before the style existed, each in its surface's color.
+    case standard
+    /// A filled glyph in a system hue per kind of object, so a table, a view and a function are told
+    /// apart before their names are read.
+    case colorful
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .standard: return String(localized: "Standard")
+        case .colorful: return String(localized: "Colorful")
+        }
+    }
+}
+
 // The appearance mode is not here: it is per Mac (`AppSettingsManager.appearanceMode`), and this
 // struct is the synced `appearance` category.
 struct AppearanceSettings: Codable, Equatable {
     var preferredLightThemeId: String
     var preferredDarkThemeId: String
+    var objectIconStyle: ObjectIconStyle
 
     static let `default` = AppearanceSettings(
         preferredLightThemeId: BuiltInThemes.defaultLightId,
-        preferredDarkThemeId: BuiltInThemes.defaultDarkId
+        preferredDarkThemeId: BuiltInThemes.defaultDarkId,
+        objectIconStyle: .standard
     )
 
     init(
         preferredLightThemeId: String = BuiltInThemes.defaultLightId,
-        preferredDarkThemeId: String = BuiltInThemes.defaultDarkId
+        preferredDarkThemeId: String = BuiltInThemes.defaultDarkId,
+        objectIconStyle: ObjectIconStyle = .standard
     ) {
         self.preferredLightThemeId = preferredLightThemeId
         self.preferredDarkThemeId = preferredDarkThemeId
+        self.objectIconStyle = objectIconStyle
     }
 
     init(from decoder: Decoder) throws {
@@ -41,10 +63,11 @@ struct AppearanceSettings: Codable, Equatable {
         let fallback = Self.default
         preferredLightThemeId = container.decodeSetting(.preferredLightThemeId, default: fallback.preferredLightThemeId)
         preferredDarkThemeId = container.decodeSetting(.preferredDarkThemeId, default: fallback.preferredDarkThemeId)
+        objectIconStyle = container.decodeSetting(.objectIconStyle, default: fallback.objectIconStyle)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case preferredLightThemeId, preferredDarkThemeId
+        case preferredLightThemeId, preferredDarkThemeId, objectIconStyle
     }
 }
 

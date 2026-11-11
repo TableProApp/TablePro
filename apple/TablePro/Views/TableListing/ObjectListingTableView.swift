@@ -72,6 +72,8 @@ internal final class ObjectListingTableCoordinator: NSObject {
     // Held here: its theme subscription and the row views hold it weakly.
     private var themeChrome: ThemeTableChrome?
     private var themeSubscription: AnyCancellable?
+    private var iconStyleSubscription: AnyCancellable?
+    private var iconStyle = AppSettingsManager.shared.appearance.objectIconStyle
     private var builtColumnIDs: [String] = []
     private var appliedRevision: Int?
     private var isApplyingSort = false
@@ -123,6 +125,8 @@ internal final class ObjectListingTableCoordinator: NSObject {
         themeChrome = ThemeTableChrome(tableView: tableView, family: .records)
         themeSubscription = ThemeScope.live.changes
             .sink { [weak self] _ in self?.restyleVisibleCells() }
+        iconStyleSubscription = AppEvents.shared.objectIconStyleChanged
+            .sink { [weak self] style in self?.applyIconStyle(style) }
         sync()
         return scrollView
     }
@@ -283,6 +287,26 @@ internal final class ObjectListingTableCoordinator: NSObject {
             }
         }
     }
+
+    // MARK: - Icon style
+
+    private func icon(for row: ObjectListingRow) -> ObjectIcon {
+        ObjectIconProvider.icon(for: row.item.iconKind, style: iconStyle)
+    }
+
+    /// A glyph is set when its cell is configured, so the cells on screen are given the new one;
+    /// the rest pick it up as they are configured.
+    private func applyIconStyle(_ style: ObjectIconStyle) {
+        iconStyle = style
+        guard let tableView else { return }
+        let nameIndex = tableView.column(withIdentifier: NSUserInterfaceItemIdentifier("name"))
+        guard nameIndex >= 0 else { return }
+        tableView.enumerateAvailableRowViews { rowView, index in
+            guard let row = row(at: index),
+                  let cell = rowView.view(atColumn: nameIndex) as? ObjectListingCellView else { return }
+            cell.showGlyph(icon(for: row), label: row.item.kindName)
+        }
+    }
 }
 
 extension ObjectListingTableCoordinator: NSTableViewDataSource, NSTableViewDelegate {
@@ -302,7 +326,7 @@ extension ObjectListingTableCoordinator: NSTableViewDataSource, NSTableViewDeleg
         cell.configure(
             text: text,
             alignsTrailing: column.format.alignsTrailing,
-            glyph: isName ? row.iconName : nil,
+            glyph: isName ? icon(for: row) : nil,
             glyphLabel: isName ? row.item.kindName : nil
         )
         return cell
@@ -358,6 +382,8 @@ internal final class ObjectListingCellView: NSTableCellView {
 
     private let label = NSTextField(labelWithString: "")
     private let glyph = NSImageView()
+    /// The colorful style's hue; nil draws the glyph in the accent, as the sidebar does.
+    private var glyphTint: NSColor?
 
     internal init(identifier: NSUserInterfaceItemIdentifier, showsGlyph: Bool) {
         super.init(frame: .zero)
@@ -400,16 +426,23 @@ internal final class ObjectListingCellView: NSTableCellView {
         didSet { applyStyle() }
     }
 
-    internal func configure(text: String, alignsTrailing: Bool, glyph symbol: String?, glyphLabel: String?) {
+    internal func configure(text: String, alignsTrailing: Bool, glyph icon: ObjectIcon?, glyphLabel: String?) {
         label.stringValue = text
         label.alignment = alignsTrailing ? .right : .natural
         // Digits of one width, so counts and sizes line up down the column.
         label.font = alignsTrailing
             ? .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
             : .systemFont(ofSize: NSFont.systemFontSize)
-        if let symbol {
-            glyph.image = NSImage(systemSymbolName: symbol, accessibilityDescription: glyphLabel)
+        if let icon {
+            showGlyph(icon, label: glyphLabel)
+        } else {
+            applyStyle()
         }
+    }
+
+    internal func showGlyph(_ icon: ObjectIcon, label: String?) {
+        glyph.image = NSImage(systemSymbolName: icon.symbolName, accessibilityDescription: label)
+        glyphTint = icon.tint?.nsColor
         applyStyle()
     }
 
@@ -422,7 +455,7 @@ internal final class ObjectListingCellView: NSTableCellView {
         )
         label.textColor = slot.map { ThemeScope.live.palette[$0] } ?? .labelColor
         // The sidebar's tint for the same glyph, turning white on the emphasized selection as the text does.
-        glyph.contentTintColor = isEmphasized ? .alternateSelectedControlTextColor : .controlAccentColor
+        glyph.contentTintColor = isEmphasized ? .alternateSelectedControlTextColor : glyphTint ?? .controlAccentColor
     }
 }
 

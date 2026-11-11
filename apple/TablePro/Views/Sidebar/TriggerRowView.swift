@@ -44,6 +44,10 @@ struct TriggerRowView: View {
     let trigger: TriggerInfo
     var listedUnderTable = false
 
+    private var objectIcon: ObjectIcon {
+        ObjectIconProvider.icon(for: .trigger, style: settingsManager.appearance.objectIconStyle)
+    }
+
     var body: some View {
         Label {
             HStack(spacing: 6) {
@@ -59,8 +63,8 @@ struct TriggerRowView: View {
                 }
             }
         } icon: {
-            Image(systemName: SidebarObjectKind.trigger.iconName)
-                .selectionAwareTint(Color.accentColor)
+            objectIcon.image
+                .objectIconTint(objectIcon, standard: Color.accentColor)
                 .frame(width: 16)
         }
         .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)

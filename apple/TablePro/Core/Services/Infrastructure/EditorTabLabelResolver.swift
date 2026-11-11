@@ -48,22 +48,26 @@ internal enum EditorTabLabelResolver {
         internal let text: String
         /// What hovering says.
         internal let description: String
-        /// The object's glyph, drawn before the text. Only a located title carries one: it is long
-        /// and mostly the same from tab to tab, so the glyph is what still tells a table from a
-        /// view at a glance.
-        internal let symbolName: String?
+        /// The object's glyph, drawn before the text. In the standard icon style only a located
+        /// title carries one: it is long and mostly the same from tab to tab, so the glyph is what
+        /// still tells a table from a view at a glance. In the colorful style every tab showing an
+        /// object or a query carries its kind's tinted glyph, which is the point of that style.
+        internal let icon: ObjectIcon?
 
-        internal init(text: String, description: String, symbolName: String? = nil) {
+        internal var symbolName: String? { icon?.symbolName }
+
+        internal init(text: String, description: String, icon: ObjectIcon? = nil) {
             self.text = text
             self.description = description
-            self.symbolName = symbolName
+            self.icon = icon
         }
     }
 
     internal static func resolve(
         tabs: [QueryTab],
         target: ContainerSwitchTarget?,
-        style: EditorTabTitleStyle = .name
+        style: EditorTabTitleStyle = .name,
+        iconStyle: ObjectIconStyle = .standard
     ) -> [UUID: Label] {
         var titles: [UUID: String] = [:]
         var containers: [UUID: String] = [:]
@@ -86,7 +90,7 @@ internal enum EditorTabLabelResolver {
             result[tab.id] = Label(
                 text: isAmbiguous ? qualified : title,
                 description: qualified,
-                symbolName: symbolName(of: tab, style: style)
+                icon: icon(of: tab, style: style, iconStyle: iconStyle)
             )
         }
     }
@@ -112,9 +116,14 @@ internal enum EditorTabLabelResolver {
         )
     }
 
-    private static func symbolName(of tab: QueryTab, style: EditorTabTitleStyle) -> String? {
-        guard case .location = style, showsObject(tab) else { return nil }
-        return TableRowLogic.iconName(for: tab.tableContext.resolvedObjectKind())
+    private static func icon(of tab: QueryTab, style: EditorTabTitleStyle, iconStyle: ObjectIconStyle) -> ObjectIcon? {
+        switch iconStyle {
+        case .standard:
+            guard case .location = style, showsObject(tab) else { return nil }
+            return ObjectIconProvider.icon(for: .relation(tab.tableContext.resolvedObjectKind()), style: .standard)
+        case .colorful:
+            return ObjectIconKind(tab: tab).map { ObjectIconProvider.icon(for: $0, style: .colorful) }
+        }
     }
 
     /// A located title already names its database, so on an engine whose containers are databases

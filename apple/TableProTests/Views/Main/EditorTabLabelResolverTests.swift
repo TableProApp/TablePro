@@ -233,4 +233,40 @@ struct EditorTabLabelResolverTests {
         #expect(tabs[0].title == "orders")
         #expect(EditorTabLabelResolver.resolve(tabs: tabs, target: .database)[tabs[0].id]?.text == "orders")
     }
+
+    // MARK: - Object icon style
+
+    @Test("The colorful style gives every object and query tab its kind's tinted glyph, located or not")
+    func colorfulStyleTintsEveryObjectTab() {
+        var view = tableTab("active_orders", database: "shop_demo")
+        view.tableContext.isView = true
+        let table = tableTab("orders", database: "shop_demo")
+        let query = QueryTab(title: "Query 1", tabType: .query)
+        var listing = QueryTab(title: "Objects", tabType: .tableListing)
+        listing.display.listingKind = .function
+        var source = QueryTab(title: "touch", tabType: .objectSource)
+        source.display.objectRef = DatabaseObjectRef(kind: .trigger, name: "touch", database: "shop_demo")
+        let tabs = [table, view, query, listing, source]
+
+        let labels = EditorTabLabelResolver.resolve(tabs: tabs, target: .database, iconStyle: .colorful)
+
+        #expect(labels[table.id]?.icon == ObjectIcon(symbolName: "tablecells.fill", tint: .blue))
+        #expect(labels[view.id]?.icon == ObjectIcon(symbolName: "eyeglasses", tint: .cyan))
+        #expect(labels[query.id]?.icon == ObjectIcon(symbolName: "doc.text.fill", tint: .orange))
+        #expect(labels[listing.id]?.icon == ObjectIcon(symbolName: "folder.fill", tint: .purple))
+        #expect(labels[source.id]?.icon == ObjectIcon(symbolName: "bolt.fill", tint: .yellow))
+        #expect(labels[table.id]?.text == "orders")
+    }
+
+    @Test("A tool tab draws no glyph in the colorful style, and the standard style tints nothing")
+    func toolTabsAndStandardStyleStayPlain() {
+        let dashboard = QueryTab(title: "Server Dashboard", tabType: .serverDashboard)
+        let table = tableTab("orders", database: "shop_demo")
+
+        let colorful = EditorTabLabelResolver.resolve(tabs: [dashboard], target: .database, iconStyle: .colorful)
+        let standard = EditorTabLabelResolver.resolve(tabs: [table], target: .database, style: shop, iconStyle: .standard)
+
+        #expect(colorful[dashboard.id]?.icon == nil)
+        #expect(standard[table.id]?.icon == ObjectIcon(symbolName: "tablecells"))
+    }
 }

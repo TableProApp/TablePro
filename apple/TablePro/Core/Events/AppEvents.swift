@@ -37,6 +37,11 @@ final class AppEvents {
 
     let dataGridSettingsChanged = PassthroughSubject<Void, Never>()
 
+    /// SwiftUI rows observe the settings and redraw on their own. An AppKit list sets its glyphs
+    /// when it configures a cell, so it restyles the visible ones on this. Sent after the setting
+    /// is stored, carrying the new style.
+    let objectIconStyleChanged = PassthroughSubject<ObjectIconStyle, Never>()
+
     /// The menu bar re-syncs itself through `MainMenuBuilder`, but a window's toolbar advertises
     /// the same shortcuts in its tooltips and overflow menu and AppKit never revisits either.
     let keyboardSettingsChanged = PassthroughSubject<Void, Never>()

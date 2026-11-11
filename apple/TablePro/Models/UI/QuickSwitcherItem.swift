@@ -159,6 +159,31 @@ internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
         }
     }
 
+    /// The object the row stands for, or nil for a history entry, which keeps its own glyph in
+    /// either style.
+    var iconKind: ObjectIconKind? {
+        switch kind {
+        case .table: return .relation(tableType ?? .table)
+        case .view: return .relation(tableType ?? .view)
+        case .systemTable: return .relation(.systemTable)
+        case .database: return .database
+        case .schema: return .schema
+        case .procedure: return .routine(.procedure)
+        case .function: return .routine(.function)
+        case .trigger: return .trigger
+        case .userType: return .userType(objectRef?.typeKind ?? .other)
+        case .savedQuery: return .savedQuery
+        case .queryHistory: return nil
+        }
+    }
+
+    /// The standard style keeps this list's own glyphs, coarser than the sidebar's: every table
+    /// kind reads as a table here.
+    func icon(style: ObjectIconStyle) -> ObjectIcon {
+        guard let iconKind else { return ObjectIcon(symbolName: iconName) }
+        return ObjectIconProvider.icon(for: iconKind, style: style, standard: iconName)
+    }
+
     /// Localized display label for the item kind
     var kindLabel: String {
         switch kind {

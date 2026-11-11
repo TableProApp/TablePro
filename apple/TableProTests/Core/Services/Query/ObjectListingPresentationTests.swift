@@ -276,7 +276,8 @@ struct ObjectListingPresentationTests {
         let row = try #require(ObjectListingRowBuilder.rows(of: source, columns: columns, formatter: formatter).first)
 
         #expect(row.item == .relation(name: "orders", schema: nil, type: .table))
-        #expect(row.iconName == TableRowLogic.iconName(for: .table))
+        #expect(row.item.iconKind == .relation(.table))
+        #expect(ObjectIconProvider.icon(for: row.item.iconKind, style: .standard).symbolName == TableRowLogic.iconName(for: .table))
         #expect(row.texts[5] == "6,215,717")
         #expect(row.texts[7] == bytes(163_840))
         #expect(row.texts[10] == "2026-08-12 08:05:33")
@@ -294,7 +295,8 @@ struct ObjectListingPresentationTests {
 
         let row = try #require(ObjectListingRowBuilder.rows(of: built, columns: columns, formatter: formatter).first)
 
-        #expect(row.iconName == SidebarObjectKind.function.iconName)
+        #expect(row.item.iconKind == .routine(.function))
+        #expect(ObjectIconProvider.icon(for: row.item.iconKind, style: .standard).symbolName == SidebarObjectKind.function.iconName)
     }
 
     @Test("Rows sort by a column's values as numbers, and equal values keep the listing's order")

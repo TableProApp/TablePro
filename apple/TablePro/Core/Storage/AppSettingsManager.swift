@@ -38,6 +38,9 @@ final class AppSettingsManager: ObservableObject {
                 lightThemeId: appearance.preferredLightThemeId,
                 darkThemeId: appearance.preferredDarkThemeId
             )
+            if oldValue.objectIconStyle != appearance.objectIconStyle {
+                appEvents.objectIconStyleChanged.send(appearance.objectIconStyle)
+            }
             syncTracker.markDirty(.settings, id: AppSettingsCategory.appearance)
         }
     }

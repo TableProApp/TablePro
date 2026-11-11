@@ -156,7 +156,7 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Preferences | UserDefaults | `AppSettingsStorage`, `AppSettingsManager` |
 | Editor and grid fonts | UserDefaults, device-local, never synced | `TypographySettings` through `AppSettingsManager` |
 | Appearance mode (Auto, Light, Dark) | UserDefaults, device-local, never synced | `AppSettingsStorage` through `AppSettingsManager.appearanceMode` |
-| Light and dark theme ids (iCloud-synced, category `appearance`) | UserDefaults | `AppearanceSettings` through `AppSettingsManager` |
+| Light and dark theme ids and the object icon style (iCloud-synced, category `appearance`) | UserDefaults | `AppearanceSettings` through `AppSettingsManager` |
 | User themes (iCloud-synced, one `AppSettings` record `theme.<id>` each) | JSON, one file per theme | `ThemeCatalog` (sync rules: `.claude/rules/theme.md`, Sync) |
 | Query history | SQLite FTS5 | `QueryHistoryStorage` |
 | Tab state | JSON | `TabPersistenceCoordinator`, `TabDiskActor` |
