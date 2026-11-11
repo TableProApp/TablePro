@@ -242,11 +242,11 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         let matcher = try filter.matcher()
-        continuation.yield(.header(PluginStreamHeader(
+        var header = PluginStreamHeader(
             columns: Self.columns,
             columnTypeNames: Self.columnTypeNames,
             estimatedRowCount: nil
-        )))
+        )
 
         let range = Self.prefixRange(prefix)
         guard sortAscending else {
@@ -256,6 +256,9 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             req.sortTarget = "KEY"
             let response = try await client.rangeRequest(req)
             let rows = (response.kvs ?? []).map(Self.filterRow).filter(matcher.matches).map(\.cells)
+            // `more` says the range held keys past the limit.
+            if response.more == true { header.rowLimit = rows.count }
+            continuation.yield(.header(header))
             if !rows.isEmpty {
                 continuation.yield(.rows(rows))
             }
@@ -263,6 +266,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return
         }
 
+        continuation.yield(.header(header))
         do {
             try await scanKeyValues(in: range, client: client) { kvs in
                 let rows = kvs.map(Self.filterRow).filter(matcher.matches).map(\.cells)

@@ -133,6 +133,7 @@ extension DataGridCommands {
             tableRows: model.rows,
             displayIDs: model.order.filteredIDs,
             selectedDisplayIndices: displayIndices,
+            defaultedCells: model.changeState?.defaultedCells(in: model.rows) ?? [:],
             columns: projection
         )
         guard output.rowCount > 0 else { return }

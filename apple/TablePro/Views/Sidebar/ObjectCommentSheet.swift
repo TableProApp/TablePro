@@ -144,10 +144,8 @@ struct ObjectCommentSheet: View {
         do {
             try await ObjectCommentEditing.setComment(draft.commentToSave, on: target, connection: connection)
             dismiss()
-        } catch ExecutionGateError.cancelledByUser {
-            phase = .editing
         } catch {
-            saveError = error.localizedDescription
+            saveError = GatedOperationFailure(error).message
             phase = .editing
         }
     }

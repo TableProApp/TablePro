@@ -23,16 +23,17 @@ struct DataGridCellContent {
     static func placeholder(
         for rawValue: PluginCellValue,
         isAbsent: Bool = false,
+        isExpression: Bool = false,
         unloadedByteCount: Int? = nil,
         marksEmptyText: Bool = true
     ) -> DataGridCellPlaceholder? {
         if let unloadedByteCount { return .unloaded(byteCount: unloadedByteCount) }
         guard !isAbsent else { return .absent }
+        if rawValue.isColumnDefault(isExpression: isExpression) { return .defaultMarker }
         switch rawValue {
         case .null:
             return .null
         case .text(let value):
-            if value == PluginCellValue.defaultMarkerText { return .defaultMarker }
             return value.isEmpty && marksEmptyText ? .empty : nil
         case .bytes:
             return nil

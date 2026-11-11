@@ -65,7 +65,7 @@ internal extension StructureEditingSession {
                     )
                     await finishColumnReorder(prepared, clearTarget: clearTarget)
                 } catch {
-                    if StructureApplyFailure(error).reportsFailure {
+                    if GatedOperationFailure(error).reportsFailure {
                         CatalogChangeService.post(
                             .changed(
                                 CatalogChange(
@@ -115,7 +115,7 @@ internal extension StructureEditingSession {
     }
 
     private func reportColumnReorderFailure(_ error: any Error) {
-        guard let message = StructureApplyFailure(error).message else { return }
+        guard let message = GatedOperationFailure(error).message else { return }
         AlertHelper.showErrorSheet(
             title: String(localized: "Column Reorder Failed"),
             message: message,

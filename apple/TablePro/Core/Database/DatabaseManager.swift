@@ -126,6 +126,10 @@ final class DatabaseManager: ObservableObject {
     /// for the same reason every other shared write here is generation-checked.
     internal var connectionStages: [UUID: ConnectionStage] = [:]
 
+    // The startup statements a connection's warning has already named since its connect, so a pool entry or lane
+    // opened later names only a failure the window was not told about.
+    internal var reportedStartupFailures: [UUID: Set<String>] = [:]
+
     /// Orders operations that move the shared driver, so two windows cannot interleave
     /// their pins and each run against the other's database.
     internal let sessionDriverGate = SessionDriverGate()

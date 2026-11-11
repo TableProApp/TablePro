@@ -20,6 +20,7 @@ private let cursorIndexFixtures = [
     CREATE FUNCTION f() RETURNS int AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;
     /* c; */ SELECT E'x'
     'y';;
+    CREATE RULE r AS ON INSERT TO t DO ALSO (INSERT INTO a VALUES (1); INSERT INTO b VALUES (2));
     SELECT 2
     """),
     CursorIndexFixture(typeId: "MySQL", text: """
@@ -44,6 +45,15 @@ private let cursorIndexFixtures = [
     GO
     SELECT [a;b]
     GO
+    IF @x = 1
+    BEGIN
+      SELECT 1;
+      SELECT CASE WHEN @x = 1 THEN 2 END;
+    END
+    ELSE BEGIN TRY SELECT 3; END TRY BEGIN CATCH SELECT 4; END CATCH;
+    SELECT (5; 6);
+    SET XACT_ABORT ON
+    BEGIN TRY SELECT 7; END TRY BEGIN CATCH THROW; END CATCH
     """),
     CursorIndexFixture(typeId: "Oracle", text: """
     BEGIN
@@ -70,7 +80,8 @@ private let cursorIndexFixtures = [
 ]
 
 private let cursorIndexInsertions = [
-    ";", "'", "\nGO\n", "\n/\n", " ", "x", "$$", "BEGIN ", "END;", "--", "/*", "*/", "\n", "GO", "/",
+    ";", "'", "\nGO\n", "\n/\n", " ", "x", "$$", "BEGIN ", "END;", "--", "/*", "*/", "\n", "GO", "/", "(", ")",
+    "CASE ", "END ",
 ]
 
 private let longScriptRow = "SELECT id, name FROM users WHERE active = true;\n"

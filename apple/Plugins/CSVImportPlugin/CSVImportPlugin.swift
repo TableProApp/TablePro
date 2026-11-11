@@ -29,13 +29,13 @@ final class CSVImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
 
     var fieldDetectionSignature: String { settings.detectionSignature }
 
-    var rowImportConfiguration: RowImportRunner.Configuration? { runConfiguration }
+    var rowImportConfiguration: RowImportRunner.Configuration? { Self.runConfiguration(settings) }
 
-    private var runConfiguration: RowImportRunner.Configuration {
+    private static func runConfiguration(_ options: CSVImportOptions) -> RowImportRunner.Configuration {
         RowImportRunner.Configuration(
-            errorHandling: settings.errorHandling,
-            wrapInTransaction: settings.wrapInTransaction,
-            deleteExistingRows: settings.deleteExistingRows
+            errorHandling: options.errorHandling,
+            wrapInTransaction: options.wrapInTransaction,
+            deleteExistingRows: options.deleteExistingRows
         )
     }
 
@@ -58,10 +58,12 @@ final class CSVImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
     ) async throws -> PluginImportResult {
         let startTime = Date()
         let url = source.fileURL()
+        // One plugin instance serves every window, so a dialog in another window can change `settings` mid-import.
+        let options = settings
 
         let text: CSVImportText
         do {
-            text = try CSVImportText.contents(of: url, encoding: settings.encoding, isCancelled: { progress.isCancelled })
+            text = try CSVImportText.contents(of: url, encoding: options.encoding, isCancelled: { progress.isCancelled })
         } catch is TabularCancellation {
             throw PluginImportCancellationError()
         } catch {
@@ -80,9 +82,9 @@ final class CSVImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
         }
         let data = text.data
 
-        let dialect = CSVImportParsing.resolveDialect(in: data, options: settings)
+        let dialect = CSVImportParsing.resolveDialect(in: data, options: options)
         let parser = CSVStreamingParser(dialect: dialect)
-        let hasHeader = settings.hasHeaderRow
+        let hasHeader = options.hasHeaderRow
 
         let (dataRanges, columnNames) = indexRowsAndNames(in: data, parser: parser, hasHeader: hasHeader)
         guard !columnNames.isEmpty else {
@@ -93,7 +95,7 @@ final class CSVImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
 
         let lineOffset = hasHeader ? 2 : 1
         var cursor = 0
-        let configuration = runConfiguration
+        let configuration = Self.runConfiguration(options)
         var pendingFailure: PluginImportError?
         var malformedCount = 0
         var malformedErrors: [PluginImportResult.ImportStatementError] = []
@@ -111,7 +113,8 @@ final class CSVImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
                 ranges: dataRanges[cursor..<end],
                 startIndex: cursor,
                 lineOffset: lineOffset,
-                columnNames: columnNames
+                columnNames: columnNames,
+                options: options
             )
             var batch = parsed.rows
             let malformed = parsed.malformed
@@ -172,7 +175,8 @@ final class CSVImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
         ranges: ArraySlice<Range<Int>>,
         startIndex: Int,
         lineOffset: Int,
-        columnNames: [String]
+        columnNames: [String],
+        options: CSVImportOptions
     ) -> (rows: [RowImportRunner.Entry], malformed: [MalformedRow]) {
         data.withUnsafeBytes { raw -> (rows: [RowImportRunner.Entry], malformed: [MalformedRow]) in
             guard let base = raw.bindMemory(to: UInt8.self).baseAddress else { return ([], []) }
@@ -185,12 +189,12 @@ final class CSVImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
                 if CSVImportParsing.isBlank(fields) { continue }
                 let line = startIndex + offset + lineOffset
                 if let error = CSVImportParsing.shapeError(
-                    fields: fields, columnCount: columnNames.count, options: settings
+                    fields: fields, columnCount: columnNames.count, options: options
                 ) {
                     malformed.append((line, error))
                     continue
                 }
-                out.append((line, CSVImportParsing.row(fields: fields, columnNames: columnNames, options: settings)))
+                out.append((line, CSVImportParsing.row(fields: fields, columnNames: columnNames, options: options)))
             }
             return (out, malformed)
         }

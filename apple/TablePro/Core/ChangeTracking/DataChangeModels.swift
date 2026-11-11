@@ -49,8 +49,8 @@ struct CellChange: Identifiable, Equatable {
     let oldIsAbsent: Bool
     let newIsAbsent: Bool
     let oldIsExpression: Bool
-    /// The new value is `.text` holding SQL from `CellExpressionVocabulary`, written unquoted. Never set with
-    /// `newIsAbsent`.
+    /// The new value is `.text` holding SQL from `CellExpressionVocabulary`, or `PluginCellValue.columnDefault`,
+    /// written unquoted. Never set with `newIsAbsent`.
     let newIsExpression: Bool
 
     init(
@@ -92,8 +92,8 @@ struct RowChange: Identifiable, Equatable {
     /// stands for an insert. Empty on every engine that cannot tell a missing field from NULL.
     var absentColumns: Set<Int>
 
-    /// An insert's cells that hold a SQL expression, as the row stands. An update keeps its own on each
-    /// `CellChange`.
+    /// An insert's cells that hold a SQL expression or the column default, as the row stands. An update keeps its own
+    /// on each `CellChange`.
     var expressionColumns: Set<Int>
 
     /// The order the user made this change in.

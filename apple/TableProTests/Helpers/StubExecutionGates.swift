@@ -27,13 +27,18 @@ internal struct AlwaysAllowGate: ExecutionGate {
 
 internal struct AlwaysDenyGate: ExecutionGate {
     internal let reason: String
+    internal let cause: OperationDenialCause
 
-    internal init(reason: String = "Read-Only connection") {
+    internal init(reason: String = "Read-Only connection", cause: OperationDenialCause = .policy) {
         self.reason = reason
+        self.cause = cause
     }
 
+    // The user answering Cancel in the gate's confirmation.
+    internal static let cancelling = AlwaysDenyGate(reason: "Operation cancelled by user", cause: .cancelledByUser)
+
     internal func authorize(_ request: OperationRequest) async -> OperationDecision {
-        .denied(reason: reason)
+        .denied(reason: reason, cause: cause)
     }
 }
 

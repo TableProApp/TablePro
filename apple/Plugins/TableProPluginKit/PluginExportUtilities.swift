@@ -109,6 +109,72 @@ public enum PluginExportUtilities {
     }
 }
 
+// Shared so XLSX number cells and the CSV decimal comma read a column's declared type the same way.
+public enum PluginColumnNumbers: Equatable, Sendable {
+    case text
+    case exact
+    case approximate
+    case untyped
+
+    public init(typeName: String, bitsAreStrings: Bool = false) {
+        let base = Self.baseName(typeName)
+        if base.isEmpty {
+            self = .untyped
+        } else if Self.bitTypes.contains(base) {
+            self = bitsAreStrings ? .text : .exact
+        } else if Self.approximateTypes.contains(base) {
+            self = .approximate
+        } else if Self.exactTypes.contains(base) {
+            self = .exact
+        } else if Self.textTypes.contains(base) || Self.textMarkers.contains(where: { base.contains($0) }) {
+            self = .text
+        } else {
+            self = .untyped
+        }
+    }
+
+    public var isNumeric: Bool {
+        self == .exact || self == .approximate
+    }
+
+    // `Nullable(UInt64)` and `LowCardinality(Nullable(Int32))` name the type inside. The base is the
+    // first word without its width: `int4`, `Int64` and `INT UNSIGNED` are all `int`.
+    private static func baseName(_ typeName: String) -> String {
+        var name = typeName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        while name.hasSuffix(")"), let open = name.firstIndex(of: "("),
+              ["nullable", "lowcardinality"].contains(String(name[..<open])) {
+            name = String(name[name.index(after: open)...].dropLast())
+                .trimmingCharacters(in: .whitespaces)
+        }
+        return String(name.prefix { $0.isLetter || $0 == "_" })
+    }
+
+    private static let exactTypes: Set<String> = [
+        "int", "uint", "integer", "bigint", "smallint", "tinyint", "mediumint", "hugeint",
+        "uinteger", "ubigint", "usmallint", "utinyint", "uhugeint", "decimal", "dec", "numeric",
+        "number", "bignumeric", "serial", "bigserial", "smallserial", "money", "smallmoney", "year", "oid"
+    ]
+
+    private static let approximateTypes: Set<String> = [
+        "float", "double", "real", "binary_float", "binary_double"
+    ]
+
+    private static let textTypes: Set<String> = ["enum", "set", "json", "jsonb", "name"]
+
+    private static let bitTypes: Set<String> = ["bit", "varbit"]
+
+    // PostgreSQL's `bit(n)` is a string of 0 and 1. SQL Server's is a flag and MySQL's reads as a number.
+    public static func bitsAreStrings(databaseTypeId: String) -> Bool {
+        enginesWithBitStrings.contains(databaseTypeId)
+    }
+
+    private static let enginesWithBitStrings: Set<String> = [
+        "PostgreSQL", "Redshift", "CockroachDB", "PGlite", "AlloyDB", "Citus", "Greenplum", "KingbaseES"
+    ]
+
+    private static let textMarkers = ["char", "text", "string", "clob"]
+}
+
 public extension String {
     func toUTF8Data() throws -> Data {
         guard let data = self.data(using: .utf8) else {

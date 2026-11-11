@@ -156,9 +156,11 @@ extension BigtablePluginDriver {
                         try await self.export(spec, continuation: continuation)
                     } else {
                         let result = try await self.execute(query: query)
-                        continuation.yield(.header(PluginStreamHeader(
+                        var header = PluginStreamHeader(
                             columns: result.columns, columnTypeNames: result.columnTypeNames, estimatedRowCount: nil
-                        )))
+                        )
+                        if result.isTruncated { header.rowLimit = result.rows.count }
+                        continuation.yield(.header(header))
                         if !result.rows.isEmpty { continuation.yield(.rows(result.rows)) }
                     }
                     continuation.finish()

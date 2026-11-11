@@ -330,6 +330,24 @@ final class TextViewControllerTests: XCTestCase {
         )
     }
 
+    func test_findClosingPairWithALimitOnTheWrongSideOrPastTheText() {
+        controller.textView.string = "{ Lorem }"
+
+        XCTAssertNil(controller.findClosingPair("{", "}", from: 5, limit: 2, reverse: false))
+        XCTAssertNil(controller.findClosingPair("}", "{", from: 2, limit: 5, reverse: true))
+        XCTAssertEqual(controller.findClosingPair("{", "}", from: 1, limit: 10_000, reverse: false), 8)
+    }
+
+    func test_bracketEmphasisFarPastTheVisibleTextFindsThePair() {
+        controller.configuration.appearance.bracketPairEmphasis = .flash
+        controller.setText(String(repeating: "x", count: 60_000) + "{ a }")
+
+        controller.setCursorPositions([CursorPosition(range: NSRange(location: 60_001, length: 0))])
+
+        XCTAssertEqual(controller.cursorPositions.first?.range.location, 60_001)
+        XCTAssertEqual(controller.findClosingPair("{", "}", from: 60_001, limit: 60_005, reverse: false), 60_004)
+    }
+
     // MARK: Set Text
 
     func test_setText() {

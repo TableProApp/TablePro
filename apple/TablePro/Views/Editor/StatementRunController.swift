@@ -17,7 +17,8 @@ enum StatementNavigationDirection {
 
 // The gutter's run controls and the caret's statement band both come from the scanner execution uses, so a control
 // never offers to run something other than what it is drawn beside. The band runs on every caret move, so a SQL
-// document resolves it through `SQLStatementCursorIndex`, which rescans only from the last boundary before the caret.
+// document resolves it through `SQLStatementCursorIndex`, which rescans only from the last boundary before the caret,
+// and a JavaScript or Redis document through a `QueryStatementCaretTable` read once per text.
 // The controls need every statement, a full pass of 31ms at the size limit, so that refresh is debounced.
 @MainActor
 final class StatementRunController {
@@ -44,17 +45,25 @@ final class StatementRunController {
     /// How the document divides into statements. JavaScript engines do not end a statement at every
     /// semicolon, so the gutter controls and the caret band have to ask the same splitter execution does.
     var statementModel: QueryStatementModel = .sql {
-        didSet { if statementModel != oldValue { caretIndex = nil } }
+        didSet {
+            if statementModel != oldValue {
+                caretIndex = nil
+                caretTable = nil
+            }
+        }
     }
 
-    // The band asks on every caret move, so a SQL document keeps its statement boundaries between edits.
+    // The band asks on every caret move, so a document keeps its statement boundaries between edits.
     private var caretIndex: SQLStatementCursorIndex?
+    private var caretTable: QueryStatementCaretTable?
     private weak var caretIndexStorage: NSTextStorage?
     private var caretIndexEdits: StorageEditObservation?
 
     var caretIndexUnitsScanned: Int {
         caretIndex?.unitsScanned ?? 0
     }
+
+    private(set) var caretTableReads = 0
 
     /// Called with the SQL the pressed control stands for, read from the document at the moment of the press, and
     /// where that SQL starts in the document.
@@ -213,6 +222,8 @@ final class StatementRunController {
         pendingRefresh?.cancel()
         pendingRefresh = nil
         caretIndex = nil
+        caretTable = nil
+        caretIndexStorage = nil
         caretIndexEdits = nil
         controller?.runnableStatements = []
         controller?.highlightedStatementRange = nil
@@ -267,7 +278,7 @@ final class StatementRunController {
         guard (text as NSString).length <= sizeLimit else { return nil }
 
         let statement: SQLStatementScanner.LocatedStatement
-        if statementModel == .sql, let storage = textView.textStorage {
+        if let storage = textView.textStorage {
             statement = indexedStatement(at: selection.range.location, in: text, storage: storage)
         } else {
             statement = QueryStatementScanner.locatedStatementAtCursor(
@@ -286,19 +297,38 @@ final class StatementRunController {
         in text: String,
         storage: NSTextStorage
     ) -> SQLStatementScanner.LocatedStatement {
-        if caretIndex == nil || caretIndexStorage !== storage {
-            startCaretIndex(on: storage)
+        if caretIndexStorage !== storage {
+            observeEdits(on: storage)
         }
         // Inside an editing batch the text has changed but the storage has not posted its notification yet.
         if storage.editedMask.contains(.editedCharacters) {
-            caretIndex?.textDidChange(at: storage.editedRange.location)
+            textDidChange(at: storage.editedRange.location)
+        }
+        guard statementModel == .sql else {
+            if caretTable == nil {
+                caretTable = QueryStatementCaretTable(text: text, model: statementModel)
+                caretTableReads += 1
+            }
+            return caretTable?.statement(atCursor: cursor)
+                ?? QueryStatementScanner.locatedStatementAtCursor(
+                    in: text, cursorPosition: cursor, model: statementModel, grammar: grammar
+                )
+        }
+        if caretIndex == nil {
+            caretIndex = SQLStatementCursorIndex(grammar: grammar)
         }
         return caretIndex?.statementAtCursor(cursor, in: text)
             ?? SQLStatementScanner.locatedStatementAtCursor(in: text, cursorPosition: cursor, grammar: grammar)
     }
 
-    private func startCaretIndex(on storage: NSTextStorage) {
-        caretIndex = SQLStatementCursorIndex(grammar: grammar)
+    private func textDidChange(at location: Int) {
+        caretIndex?.textDidChange(at: location)
+        caretTable = nil
+    }
+
+    private func observeEdits(on storage: NSTextStorage) {
+        caretIndex = nil
+        caretTable = nil
         caretIndexStorage = storage
         // Every way the text changes passes through the storage, including the ones that skip the editor's delegate.
         let token = NotificationCenter.default.addObserver(
@@ -313,7 +343,7 @@ final class StatementRunController {
 
     private func caretIndexStorageDidProcessEditing() {
         guard let storage = caretIndexStorage, storage.editedMask.contains(.editedCharacters) else { return }
-        caretIndex?.textDidChange(at: storage.editedRange.location)
+        textDidChange(at: storage.editedRange.location)
     }
 }
 

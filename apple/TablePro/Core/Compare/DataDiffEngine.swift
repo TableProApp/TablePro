@@ -30,8 +30,14 @@ internal struct DataRow: Hashable, Sendable {
 
 internal protocol DataRowProviding: AnyObject {
     var endedAtRowLimit: Bool { get }
+    // The limit the driver stopped this side's stream at, once it has ended there.
+    var driverRowCut: Int? { get }
     func nextRow() async throws -> DataRow?
     func drain() async throws
+}
+
+internal extension DataRowProviding {
+    var driverRowCut: Int? { nil }
 }
 
 internal protocol OneSidedRowResolving: AnyObject {
@@ -111,6 +117,10 @@ internal struct DataDiffSummary: Hashable, Sendable {
     /// as `id > <key>` resumes from without skipping a key or comparing one twice.
     internal let resumeKey: [PluginCellValue]?
 
+    // The limit a driver stopped a side's stream at, so the answer covers only the rows read before it.
+    internal let sourceRowCut: Int?
+    internal let targetRowCut: Int?
+
     /// One comparison's own identity. Two runs that produce the same counts and the same digest are
     /// still two answers, and a view that caches on the answer has to be able to tell them apart:
     /// matching rows are counted rather than digested, so both can move while the digest stands.
@@ -130,6 +140,8 @@ internal struct DataDiffSummary: Hashable, Sendable {
         stoppedAtRowLimit: Bool = false,
         differenceDigest: String = "",
         resumeKey: [PluginCellValue]? = nil,
+        sourceRowCut: Int? = nil,
+        targetRowCut: Int? = nil,
         runIdentity: UUID = UUID()
     ) {
         self.insertCount = insertCount
@@ -145,6 +157,8 @@ internal struct DataDiffSummary: Hashable, Sendable {
         self.stoppedAtRowLimit = stoppedAtRowLimit
         self.differenceDigest = differenceDigest
         self.resumeKey = resumeKey
+        self.sourceRowCut = sourceRowCut
+        self.targetRowCut = targetRowCut
         self.runIdentity = runIdentity
     }
 
@@ -359,7 +373,9 @@ internal struct DataDiffEngine {
         return accumulator.summary(
             comparedKeyCount: positions,
             stoppedAtRowLimit: stoppedAtRowLimit,
-            resumeKey: stoppedAtRowLimit ? lastClassifiedKey : nil
+            resumeKey: stoppedAtRowLimit ? lastClassifiedKey : nil,
+            sourceRowCut: source.driverRowCut,
+            targetRowCut: target.driverRowCut
         )
     }
 
@@ -536,7 +552,9 @@ internal extension DataDiffEngine {
         func summary(
             comparedKeyCount: Int,
             stoppedAtRowLimit: Bool,
-            resumeKey: [PluginCellValue]? = nil
+            resumeKey: [PluginCellValue]? = nil,
+            sourceRowCut: Int? = nil,
+            targetRowCut: Int? = nil
         ) -> DataDiffSummary {
             DataDiffSummary(
                 insertCount: counts[.insert] ?? 0,
@@ -551,7 +569,9 @@ internal extension DataDiffEngine {
                 comparedKeyCount: comparedKeyCount,
                 stoppedAtRowLimit: stoppedAtRowLimit,
                 differenceDigest: digest.finalize().map { String(format: "%02x", $0) }.joined(),
-                resumeKey: resumeKey
+                resumeKey: resumeKey,
+                sourceRowCut: sourceRowCut,
+                targetRowCut: targetRowCut
             )
         }
 

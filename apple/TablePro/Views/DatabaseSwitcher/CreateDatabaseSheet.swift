@@ -176,7 +176,7 @@ struct CreateDatabaseSheet: View {
                 onCreated?(name)
                 dismiss()
             } catch {
-                errorMessage = error.localizedDescription
+                errorMessage = GatedOperationFailure(error).message
                 isCreating = false
             }
         }

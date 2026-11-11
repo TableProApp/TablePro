@@ -218,7 +218,7 @@ final class RowEditingCoordinator: ObservableObject {
 
     private static func sampleText(atColumn index: Int, in tableRows: TableRows) -> String? {
         for row in tableRows.rows where row.values.indices.contains(index) {
-            if case .text(let text) = row.values[index], text != "__DEFAULT__" { return text }
+            if case .text(let text) = row.values[index], row.values[index] != .columnDefault { return text }
         }
         return nil
     }
@@ -430,10 +430,12 @@ final class RowEditingCoordinator: ObservableObject {
             self?.copyRowsAsJson(rowIDs)
         }) else { return }
         let model = parent.gridModel(forTab: tab.id)
+        let tableRows = parent.tabSessionRegistry.tableRows(for: tab.id)
         let output = ResultJsonSerializer.serialize(
-            tableRows: parent.tabSessionRegistry.tableRows(for: tab.id),
+            tableRows: tableRows,
             displayIDs: model.displayedRowIDs,
             selectedDisplayIndices: Set(rowIDs.compactMap { model.displayIndex(of: $0) }),
+            defaultedCells: parent.changeManager.defaultedCells(in: tableRows),
             columns: VisibleColumnProjection(indices: presentedColumnIndices(tabId: tab.id))
         )
         guard output.rowCount > 0 else { return }
