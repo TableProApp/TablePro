@@ -6,6 +6,147 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.87.0-beta.1</title>
+            <pubDate>Wed, 11 Nov 2026 12:18:39 +0000</pubDate>
+            <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
+            <sparkle:channel>beta</sparkle:channel>
+            <sparkle:version>870001</sparkle:version>
+            <sparkle:shortVersionString>0.87.0-beta.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[# What's New in TablePro 0.87.0-beta.1
+
+### Added
+
+- PostgreSQL notices such as RAISE NOTICE show in the Output view, and a plan from EXPLAIN ANALYZE gains Output too. ([#4061](https://github.com/TableProApp/TablePro/pull/4061))
+- Export Results… has a keyboard shortcut, ⌥⇧⌘E, which you can change in Settings > Keyboard. ([#4066](https://github.com/TableProApp/TablePro/pull/4066))
+- tablepro completion prints a completion script for zsh, bash and fish. ([#4145](https://github.com/TableProApp/TablePro/pull/4145))
+- tablepro pair and tablepro unpair pair the command with TablePro or revoke its token. ([#4145](https://github.com/TableProApp/TablePro/pull/4145))
+- The tablepro command lists databases, schemas and tables, describes and exports tables, and reports its status. ([#4145](https://github.com/TableProApp/TablePro/pull/4145))
+- The get_table_health MCP tool returns Table Health findings to a connected client. ([#4167](https://github.com/TableProApp/TablePro/pull/4167))
+- Table Health checks redundant and invalid indexes, values near their limit, transaction ID age and stale statistics. ([#4167](https://github.com/TableProApp/TablePro/pull/4167))
+- Table Health finds reclaimable space on MySQL and MariaDB. ([#4167](https://github.com/TableProApp/TablePro/pull/4167))
+- Table Health marks new findings, keeps resolved ones and lets you ignore a finding, per database. ([#4167](https://github.com/TableProApp/TablePro/pull/4167))
+- Table Health exports findings to CSV, Excel, JSON and other formats, copies them, and saves every fix as one script. ([#4167](https://github.com/TableProApp/TablePro/pull/4167))
+
+### Changed
+
+- On iOS, usage data goes to PostHog instead of TablePro's server, and only after you choose Share Usage Data. ([#4058](https://github.com/TableProApp/TablePro/pull/4058))
+- SQL passed to tablepro query that starts with a dash now goes after --. ([#4145](https://github.com/TableProApp/TablePro/pull/4145))
+- tablepro opens files and links in the TablePro it ships in, and a hidden connection exits 2 like an unknown one. ([#4145](https://github.com/TableProApp/TablePro/pull/4145))
+- tablepro exits 2 for a target that is neither a URL nor a file; open a file named like a command with tablepro open. ([#4145](https://github.com/TableProApp/TablePro/pull/4145))
+- With Reduce Transparency on, themes now color the sidebar and inspector on macOS 26 and later. ([#4153](https://github.com/TableProApp/TablePro/pull/4153))
+- Table Health opens one tab per database and stays on it when the sidebar switches database. ([#4167](https://github.com/TableProApp/TablePro/pull/4167))
+
+### Fixed
+
+- Oracle output from a grid save, Commit or an AI statement showed under the next statement run from the editor. ([#4061](https://github.com/TableProApp/TablePro/pull/4061))
+- The Restore Previous Values toolbar button ignored a shortcut assigned to it in Settings > Keyboard. ([#4066](https://github.com/TableProApp/TablePro/pull/4066))
+- A database or schema's Export… in the sidebar showed ⇧⌘E, which exports the selected tables instead. ([#4066](https://github.com/TableProApp/TablePro/pull/4066))
+- tablepro query with TablePro closed could start another copy of TablePro, or the iPad app, and then time out. ([#4145](https://github.com/TableProApp/TablePro/pull/4145))
+- Settings offered a tablepro link line that broke once TablePro left its disk image. ([#4145](https://github.com/TableProApp/TablePro/pull/4145))
+- tablepro --help and tablepro --version opened TablePro instead of printing help or the version. ([#4145](https://github.com/TableProApp/TablePro/pull/4145))
+- Revoking an MCP token showed it as revoked even when TablePro could not save the change. ([#4145](https://github.com/TableProApp/TablePro/pull/4145))
+- Bars in the inspector lost their background under a theme on macOS 13 to 15. ([#4153](https://github.com/TableProApp/TablePro/pull/4153))
+- The license notice over Charts and Query Insights covered a themed window in system gray with Reduce Transparency on. ([#4153](https://github.com/TableProApp/TablePro/pull/4153))
+- Filter bar rows no longer center or drift out of line when a value is a pop-up, Between or Raw SQL. ([#4164](https://github.com/TableProApp/TablePro/pull/4164))
+- Table Health reported a PostgreSQL standby's activity counters and objects an extension owns. ([#4167](https://github.com/TableProApp/TablePro/pull/4167))
+- Saving a connection deleted its API token, TOTP secret or key passphrase when the Keychain could not be read. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Edits left on a background tab were reapplied to a different result that arrived while it was hidden. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- A DuckDB query over a very large result held every row in memory twice before showing the first page. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Items deleted on another Mac while their sync category was off stayed here and could come back everywhere. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Exporting an empty PostgreSQL table to CSV with field names wrote no header line. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Format Query put spaces around the @ of a MySQL account name or quoted user variable. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Saving, switching tabs during the Safe Mode prompt, then approving wiped the other tab's edits. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Deleting a row with unsaved edits could delete a different row, or none. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Editing a field inside an Elasticsearch object left the old value in the document beside the new one. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Editing a Redis string value in the grid removed the key's TTL. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Editing a string in an untyped SurrealDB field to text that looks like a number changed its type. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Renaming an etcd key or adding one overwrote an existing key, and a rename took two separate steps. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Adding an Elasticsearch row with an _id that exists replaced the existing document. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- A sidebar command on another database's table ran on the current database when the switch failed. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Redoing a cell edit on a row with another unsaved edit showed the value but never saved it. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Choosing Save on a second closing tab while the first was still saving left the first tab unclosable. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Copying a PostgreSQL text array into a JSON column wrote invalid JSON or turned strings into numbers. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- After a dropped connection reconnected, statements ran outside the transaction that was lost, with no error. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Rebuilding a SQLite table with a transaction open in the editor deleted its child rows. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Copy DDL and SQL export recreated a PostgreSQL partitioned or unlogged table as a plain table. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Renaming a Redis key or adding a string key overwrote an existing key of that name. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Editing a MySQL or MariaDB BIT cell saved the wrong value: 5 was stored as 53. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Cmd+Return right after typing in a very large script ran the text from before the last keystrokes. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- A save could fail on a unique constraint because edits ran before earlier deletes. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Query parameters mistook Snowflake paths, array slices or ClickHouse typed slots for :name parameters. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- A transaction opened in a tab on another PostgreSQL database was silently rolled back after a few minutes. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- A query approved in Safe Mode after switching tabs ran in the newly selected tab's database. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Shortcuts Add Rows inserted empty CSV cells as empty strings instead of NULL or the column default. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- One unreadable saved MCP token, or a failed keychain read, removed every paired client's token. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Format Query split PostgreSQL operators such as pgvector's <#> or pg_trgm's <%. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- XLSX export turned text such as 1E5 or Infinity into numbers and lost digits of long ids. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Pasting spreadsheet rows whose first cell is empty shifted every value one column left. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- CSV import silently dropped extra fields. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- A failed trigger edit could leave the trigger dropped with only a syntax error shown. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- An outside MCP server with long or dotted tool names made every chat request on its connections fail. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- A DuckDB export or table copy of more than 5,000,000 rows stopped at 5,000,000 and reported success. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Pasting or bulk-editing tens of thousands of rows froze the window for many seconds. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Reopening a closed connection from a deeplink or history replaced its saved tabs with one tab. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Keyword casing rewrote words inside string literals and in non-SQL editors such as MongoDB. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Stopping the assistant during a tool call broke the conversation; every later message failed. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Parquet export wrote NULL for values that did not fit the column type, with no warning. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Editing a MySQL or MariaDB trigger dropped it and ran its body as a statement. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- A long Snowflake statement was run a second time when the session expired while it ran. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Kafka topics and SurrealDB tables were browsed with a generic SQL SELECT instead of the driver's own query. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- A SQL dump of a MySQL BIT column restored different values than the table held. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Saving a password failed silently when the Keychain held both a synced and a local copy for the connection. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Running a query over an edited result discarded the unsaved edits without asking. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- A Snowflake statement still running after 45 minutes was reported as failed but kept running on the server. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- A structure save that failed part way on MySQL left edits staged that could not be saved again. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Parquet export wrote wrong bytes for binary values and NULL for an empty one. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- An error sent mid-stream by an OpenAI-compatible or Gemini provider ended the reply silently. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Editing a MongoDB string field to text that looks like a number or boolean changed its type. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- A write that outlasted the MCP or assistant timeout was reported as failed although it was applied. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Return and Delete on a selected row in the Welcome window, Favorites and the connections strip no longer do nothing. ([#4175](https://github.com/TableProApp/TablePro/pull/4175))
+- The host, attached database and extension lists in the connection form no longer hide the rows that do not fit. ([#4175](https://github.com/TableProApp/TablePro/pull/4175))
+- On macOS 27, clicking a row in a list or table no longer leaves its selection grey and the arrow keys going elsewhere. ([#4175](https://github.com/TableProApp/TablePro/pull/4175))
+- MySQL statements on iOS that ran past 30 seconds failed while the server kept running and committed them. ([#4177](https://github.com/TableProApp/TablePro/pull/4177))
+- Saving a password on iOS with Sync Passwords off deleted the iCloud Keychain copy your other devices use. ([#4177](https://github.com/TableProApp/TablePro/pull/4177))
+- Stop on iOS left a MySQL statement running on the server, which then committed it. ([#4177](https://github.com/TableProApp/TablePro/pull/4177))
+- Switching apps on iOS with a DuckDB transaction open rolled it back without any message. ([#4177](https://github.com/TableProApp/TablePro/pull/4177))
+- A password saved on iOS while Sync Passwords was off went unused once Sync Passwords was turned back on. ([#4177](https://github.com/TableProApp/TablePro/pull/4177))
+- A PostgreSQL query on iOS hung for about two hours when the network dropped its reply. ([#4177](https://github.com/TableProApp/TablePro/pull/4177))
+- A password saved while Sync Passwords was off went unused once Sync Passwords was turned back on. ([#4178](https://github.com/TableProApp/TablePro/pull/4178))
+- Items deleted on another Mac came back after iCloud sync had to download everything again. ([#4178](https://github.com/TableProApp/TablePro/pull/4178))
+- Saving a connection rewrote passwords you did not change, overwriting a newer one saved on another device. ([#4178](https://github.com/TableProApp/TablePro/pull/4178))
+- Editing a SurrealDB field that held both strings and numbers changed the edited value's type. ([#4178](https://github.com/TableProApp/TablePro/pull/4178))
+- Claude Agent asked for MCP access to the chat's connection on every message at Ask Once. ([#4178](https://github.com/TableProApp/TablePro/pull/4178))
+- Pasting spreadsheet rows with empty cells wrote NULL instead of the column's default value. ([#4178](https://github.com/TableProApp/TablePro/pull/4178))
+- Switching databases on a connection that reconnects to switch rolled back an open transaction without asking. ([#4178](https://github.com/TableProApp/TablePro/pull/4178))
+- Saving, closing or switching tabs right after typing in a very large script lost the last keystrokes. ([#4178](https://github.com/TableProApp/TablePro/pull/4178))
+- A structure save or column reorder that failed part way did not say which changes were already applied. ([#4178](https://github.com/TableProApp/TablePro/pull/4178))
+- Importing, copying or syncing rows into a MySQL or MariaDB BIT column stored the wrong value: 5 became 53. ([#4178](https://github.com/TableProApp/TablePro/pull/4178))
+- Adding a Redis hash, list, set or sorted set key in the grid wrote into an existing key of that name. ([#4178](https://github.com/TableProApp/TablePro/pull/4178))
+- Reading a SQLite full-text search table over MCP or from the assistant failed with authorization denied. ([#4178](https://github.com/TableProApp/TablePro/pull/4178))
+- A MySQL or MariaDB query with no query timeout hung for about two hours when the network dropped its reply. ([#4178](https://github.com/TableProApp/TablePro/pull/4178))
+- Text over 4 KB in a SQL Server, Oracle or DuckDB table on iOS could not be loaded in full, edited or copied. ([#4179](https://github.com/TableProApp/TablePro/pull/4179))
+- A large MySQL or SQL Server query on iOS kept downloading every remaining row after the row cap was reached. ([#4179](https://github.com/TableProApp/TablePro/pull/4179))
+- The query timeout on iOS was ignored on PostgreSQL, Redshift and Oracle, and as a lock timeout on SQL Server. ([#4179](https://github.com/TableProApp/TablePro/pull/4179))
+- A MySQL result on iOS that exactly filled the row cap said more rows were left out. ([#4179](https://github.com/TableProApp/TablePro/pull/4179))
+- After a low-memory trim on iOS, the data browser's page range named rows it no longer showed. ([#4179](https://github.com/TableProApp/TablePro/pull/4179))
+
+### Security
+
+- tablepro export printed control codes stored in the database to the terminal, where they could run. ([#4145](https://github.com/TableProApp/TablePro/pull/4145))
+- The tablepro command and the MCP bridge could send their token to a program that replaced TablePro's socket. ([#4145](https://github.com/TableProApp/TablePro/pull/4145))
+- MCP argument completion listed a connection's databases and tables to a client that was not approved for it. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Deleting the connections.json tag file let an edited connection list run its password and tunnel commands. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- A Local only connection's newly saved passwords and keys still synced through iCloud Keychain. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- Claude Agent could reach every saved connection through MCP instead of only the one the chat is on. ([#4174](https://github.com/TableProApp/TablePro/pull/4174))
+- MCP clients and the AI assistant could read masked values through a renamed column, a query plan or an error message. ([#4178](https://github.com/TableProApp/TablePro/pull/4178))
+- When the saved SSH host keys could not be read, a server whose key had changed was offered as a new server to trust. ([#4179](https://github.com/TableProApp/TablePro/pull/4179))
+
+[View release notes](https://github.com/TableProApp/TablePro/releases/tag/v0.87.0-beta.1)
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.87.0-beta.1/TablePro-0.87.0-beta.1.tar.xz" length="55616432" type="application/octet-stream" sparkle:edSignature="4PPk4QO0UOXtP5DIWbobiLUxYRvZQPLaUoqzxzNXvMXlxLyzjTyoPx6TXWWBl5czUl9wTB9P7im6TesPLfmcCw=="/>
+        </item>
+        <item>
             <title>0.86.0</title>
             <pubDate>Mon, 09 Nov 2026 18:36:56 +0000</pubDate>
             <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
@@ -202,6 +343,6 @@ Save Changes has its own toolbar section, and panes switch views with native tab
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: pX3mcjWVVLIWDpLEsQKHsr2oHSPVx3PdiZLu0dXhHQzd/B/fuJgrJb1ZxP9gfuHTU7l+TvD4zqrEzlbQcgazBA==
-length: 20351
+edSignature: vd4t8I1delpWLfvavlj6WRuUgTRAE8c74aNGlxhey2YRXxrGPgfId4Hu1JRCZXH+9W0EE8wfd+BYLscXhl60DA==
+length: 39793
 -->
