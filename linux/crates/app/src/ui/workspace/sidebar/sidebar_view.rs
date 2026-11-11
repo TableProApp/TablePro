@@ -200,7 +200,7 @@ impl SidebarView {
     }
 
     /// The schema whose tables hold `table`, and where among them.
-    pub(crate) fn locate(&self, table: &TableRef) -> Option<(TreeNode, u32)> {
+    pub(crate) fn locate(&self, table: &TableRef) -> Option<super::sidebar_model::Located> {
         self.inner.model.locate(table)
     }
 

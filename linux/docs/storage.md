@@ -340,6 +340,7 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `window-width` | `i` | `1200` | 360 to 32767 |
 | `window-height` | `i` | `760` | 294 to 32767 |
 | `is-maximized` | `b` | `false` | |
+| `sidebar-width` | `d` | `280` | 220 to 1200, in sp: the most the sidebar takes |
 | `default-page-size` | `u` | `1000` | 100 to 100000 |
 | `show-alternate-rows` | `b` | `true` | |
 | `show-row-numbers` | `b` | `true` | |

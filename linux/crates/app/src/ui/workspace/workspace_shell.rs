@@ -175,6 +175,7 @@ impl WorkspaceShell {
             &imp.split_view.get(),
             "show-sidebar",
         ));
+        super::sidebar_width::follow(&imp.split_view, &imp.sidebar_handle, services.settings.gio());
         window.add_action(&assistant_action(&shell));
         imp.walk_hooks.replace(Some(shell.hook_recent_walk(window)));
 

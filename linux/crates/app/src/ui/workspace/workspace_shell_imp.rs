@@ -69,6 +69,8 @@ pub struct WorkspaceShell {
     #[template_child]
     pub schema_filter_button: TemplateChild<gtk::MenuButton>,
     #[template_child]
+    pub sidebar_handle: TemplateChild<gtk::Box>,
+    #[template_child]
     pub sidebar_slot: TemplateChild<adw::Bin>,
     #[template_child]
     pub scope_toggle: TemplateChild<adw::ToggleGroup>,

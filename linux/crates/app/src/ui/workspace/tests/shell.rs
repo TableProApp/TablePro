@@ -946,3 +946,26 @@ fn the_schemas_button_chooses_what_the_sidebar_lists_and_keeps_it() {
     wait_until(WAIT, || !banner.is_revealed()).expect("Show All");
     assert!(filters.sidebar_schemas(id, &database).is_empty());
 }
+
+#[gtk4::test]
+fn the_sidebar_takes_the_width_kept_in_settings_and_has_a_handle_to_set_it() {
+    use tablepro_linux_platform::settings::keys::SIDEBAR_WIDTH;
+
+    let test = TestWindow::connected("SidebarWidth");
+    let shell = shell_of(&test.workspace());
+    let (split, handle) = (shell.imp().split_view.get(), shell.imp().sidebar_handle.get());
+    let settings = test.services.settings.gio().clone();
+    assert_eq!(split.max_sidebar_width(), 280.0, "the schema's default");
+
+    settings.set_double(SIDEBAR_WIDTH, 440.0).expect("a width in range");
+    wait_until(WAIT, || split.max_sidebar_width() == 440.0).expect("the window follows the setting");
+    assert!(settings.set_double(SIDEBAR_WIDTH, 100.0).is_err(), "under the floor");
+
+    assert!(handle.is_visible() && handle.is_focusable());
+    assert_eq!(handle.accessible_role(), gtk::AccessibleRole::Separator);
+    crate::test_support::assert_labelled(&handle).expect("the handle is named");
+    split.set_collapsed(true);
+    assert!(!handle.is_visible(), "a collapsed sidebar lies over the content");
+    split.set_collapsed(false);
+    assert!(handle.is_visible());
+}
