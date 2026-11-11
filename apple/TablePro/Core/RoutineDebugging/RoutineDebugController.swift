@@ -770,6 +770,7 @@ internal final class RoutineDebugController: ObservableObject {
         configuration.traits = DataGridEngineTraits(databaseType: databaseType)
         configuration.showRowNumbers = true
         configuration.supportsValueFilter = false
+        configuration.colorsValuesByType = true
         configuration.commands = [.freezeColumns, .displayAs]
         let grid = HeldRowsGridAdapter(configuration: configuration, sortsHeldRows: true)
         grid.setRows(rows)

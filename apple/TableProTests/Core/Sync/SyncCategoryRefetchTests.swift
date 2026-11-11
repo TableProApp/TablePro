@@ -27,7 +27,21 @@ struct SyncCategoryRefetchTests {
         #expect(!content.contains(SyncRecordType.settings.rawValue))
         #expect(!content.contains(SyncCoordinator.themeContentKind))
         #expect(!content.contains(SyncCoordinator.formatterContentKind))
+        #expect(!content.contains(SyncCoordinator.valueColorsContentKind))
         #expect(content.contains(SyncRecordType.connection.rawValue))
+    }
+
+    @Test("A Mac upgraded from a build that skipped value colors records fetches the zone once")
+    func upgradeRefetchesSkippedValueColorsRecords() throws {
+        let pool = EphemeralDefaultsPool()
+        let metadata = SyncMetadataStorage(userDefaults: try pool.make().defaults)
+        var older = SyncCoordinator.readableContent
+        older.remove(SyncCoordinator.valueColorsContentKind)
+        _ = metadata.adoptReadableRecordTypes(older)
+
+        #expect(SyncCoordinator.readableContent(for: .default).contains(SyncCoordinator.valueColorsContentKind))
+        #expect(metadata.adoptReadableRecordTypes(SyncCoordinator.readableContent))
+        #expect(!metadata.adoptReadableRecordTypes(SyncCoordinator.readableContent))
     }
 
     @Test("Turning Saved Queries on fetches the zone once and brings back a query saved elsewhere while it was off")

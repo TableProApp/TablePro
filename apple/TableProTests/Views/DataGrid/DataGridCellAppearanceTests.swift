@@ -55,6 +55,7 @@ struct DataGridCellAppearanceTests {
         onEmphasizedSelection: Bool = false,
         checkboxMark: DataGridCheckboxMark? = nil,
         textTone: NSColor? = nil,
+        valueTone: DataGridValueTone = .plain,
         palette: DataGridCellPalette? = nil
     ) -> DataGridCellAppearance {
         DataGridCellAppearance.resolve(
@@ -71,7 +72,8 @@ struct DataGridCellAppearanceTests {
             nullDisplayString: "NULL",
             onEmphasizedSelection: onEmphasizedSelection,
             checkboxMark: checkboxMark,
-            textTone: textTone
+            textTone: textTone,
+            valueTone: valueTone
         )
     }
 
@@ -395,6 +397,387 @@ struct DataGridCellAppearanceTests {
         #expect(selected.textColor == .systemIndigo)
         #expect(deleted.textColor == .systemRed)
         #expect(found.textColor == themedPalette.findMatchText)
+    }
+
+    // MARK: - Value tones
+
+    private let tonedPalette = DataGridCellPalette(
+        regularFont: .systemFont(ofSize: 13),
+        italicFont: .systemFont(ofSize: 13),
+        mediumFont: .systemFont(ofSize: 13, weight: .medium),
+        text: .systemPurple,
+        placeholderText: .systemBrown,
+        booleanTrueText: .systemGreen,
+        booleanFalseText: .systemPink,
+        valueColors: DataGridValueColors(
+            string: NSColor(srgbRed: 0.80, green: 0.20, blue: 0.10, alpha: 1),
+            number: NSColor(srgbRed: 0.10, green: 0.40, blue: 0.80, alpha: 1),
+            dateTime: NSColor(srgbRed: 0.50, green: 0.20, blue: 0.70, alpha: 1),
+            binary: NSColor(srgbRed: 0.40, green: 0.40, blue: 0.40, alpha: 1),
+            json: NSColor(srgbRed: 0.10, green: 0.50, blue: 0.30, alpha: 1),
+            uuid: NSColor(srgbRed: 0.60, green: 0.40, blue: 0.10, alpha: 1),
+            enumeration: NSColor(srgbRed: 0.70, green: 0.10, blue: 0.40, alpha: 1)
+        ),
+        rowNumberText: .systemTeal,
+        deletedRowText: .systemRed,
+        modifiedColumnTint: .systemYellow,
+        findMatchTint: .systemOrange,
+        selectionText: .systemIndigo,
+        focusBorder: .systemMint
+    )
+
+    @Test("Each value tone draws its theme color, a plain value the text color")
+    func eachToneDrawsItsColor() {
+        let colors = tonedPalette.valueColors
+        let expected: [(DataGridValueTone, NSColor)] = [
+            (.string, colors.string),
+            (.number, colors.number),
+            (.dateTime, colors.dateTime),
+            (.binary, colors.binary),
+            (.json, colors.json),
+            (.uuid, colors.uuid),
+            (.enumeration, colors.enumeration),
+            (.plain, .systemPurple),
+        ]
+        let distinctColors = Set(expected.map { ThemeTestFixture.hex($0.1) })
+        #expect(distinctColors.count == expected.count)
+        for (tone, color) in expected {
+            #expect(resolve(valueTone: tone, palette: tonedPalette).textColor == color, "\(tone)")
+        }
+    }
+
+    @Test("A find match, an emphasized selection, a deleted row and an owner tone outrank the value color")
+    func stateOutranksTheValueColor() {
+        let found = resolve(isCurrentFindMatch: true, valueTone: .number, palette: tonedPalette)
+        let selected = resolve(onEmphasizedSelection: true, valueTone: .number, palette: tonedPalette)
+        let deleted = resolve(
+            visualState: RowVisualState(isDeleted: true, isInserted: false, modifiedColumns: []),
+            valueTone: .number,
+            palette: tonedPalette
+        )
+        let toned = resolve(textTone: .systemGreen, valueTone: .number, palette: tonedPalette)
+        let modified = resolve(
+            visualState: RowVisualState(isDeleted: false, isInserted: false, modifiedColumns: [0]),
+            valueTone: .number,
+            palette: tonedPalette
+        )
+
+        #expect(found.textColor == tonedPalette.findMatchText)
+        #expect(selected.textColor == .systemIndigo)
+        #expect(deleted.textColor == .systemRed)
+        #expect(toned.textColor == .systemGreen)
+        #expect(modified.textColor == tonedPalette.valueColors.number)
+        #expect(modified.backgroundTint == tonedPalette.modifiedColumnTint)
+    }
+
+    @Test("A placeholder, a pending DEFAULT and a pending expression keep their own colors over a value tone")
+    func placeholdersAndPendingValuesIgnoreTheTone() {
+        let null = resolve(text: "", rawValue: nil, placeholder: .null, valueTone: .number, palette: tonedPalette)
+        let pendingDefault = resolve(text: "", placeholder: .defaultMarker, valueTone: .number, palette: tonedPalette)
+        let expression = resolve(
+            text: "now()",
+            rawValue: "now()",
+            visualState: RowVisualState(isDeleted: false, isInserted: false, modifiedColumns: [0], expressionColumns: [0]),
+            valueTone: .dateTime,
+            palette: tonedPalette
+        )
+
+        #expect(null.textColor == .systemBrown)
+        #expect(pendingDefault.textColor == .systemBlue)
+        #expect(expression.textColor == .systemBlue)
+    }
+
+    @Test("A boolean keeps its true and false colors whatever the tone, and an unreadable one draws plain")
+    func booleanBranchComesFirst() {
+        let isTrue = resolve(kind: .boolean, text: "1", rawValue: "1", valueTone: .number, palette: tonedPalette)
+        let isFalse = resolve(kind: .boolean, text: "f", rawValue: "f", palette: tonedPalette)
+        let unreadable = resolve(kind: .boolean, text: "maybe", rawValue: "maybe", palette: tonedPalette)
+
+        #expect(isTrue.textColor == .systemGreen)
+        #expect(isFalse.textColor == .systemPink)
+        #expect(unreadable.textColor == .systemPurple)
+    }
+
+    @Test("A palette built without value colors draws every tone in its text color")
+    func paletteWithoutValueColorsDrawsText() {
+        for tone in [DataGridValueTone.string, .number, .dateTime, .binary, .json, .uuid, .enumeration] {
+            #expect(resolve(valueTone: tone, palette: themedPalette).textColor == .systemPurple, "\(tone)")
+        }
+    }
+
+    @Test("A theme's value colors reach the grid's palette, and unset ones draw the grid text")
+    func themeReachesValueColors() throws {
+        let aqua = try #require(NSAppearance(named: .aqua))
+        let themed = ThemeScope.fixed(try ThemeTestFixture.theme(.light, [
+            .gridString: "#AA1100",
+            .gridNumber: "#0044AA",
+            .gridDateTime: "#7722AA",
+            .gridBinary: "#555555",
+            .gridJSON: "#117744",
+            .gridUUID: "#996611",
+            .gridEnum: "#AA1166",
+        ])).dataGridCellPalette(in: aqua)
+        let unset = ThemeScope.fixed(BuiltInThemes.light).dataGridCellPalette(in: aqua)
+
+        #expect(ThemeTestFixture.hex(themed.valueColors.string) == "#AA1100")
+        #expect(ThemeTestFixture.hex(themed.valueColors.number) == "#0044AA")
+        #expect(ThemeTestFixture.hex(themed.valueColors.dateTime) == "#7722AA")
+        #expect(ThemeTestFixture.hex(themed.valueColors.binary) == "#555555")
+        #expect(ThemeTestFixture.hex(themed.valueColors.json) == "#117744")
+        #expect(ThemeTestFixture.hex(themed.valueColors.uuid) == "#996611")
+        #expect(ThemeTestFixture.hex(themed.valueColors.enumeration) == "#AA1166")
+        #expect(unset.valueColors == DataGridValueColors(all: unset.text))
+    }
+
+    private static let typedTheme: [ThemeSlot: String] = [
+        .gridText: "#111111",
+        .gridString: "#AA1100",
+        .gridNumber: "#0044AA",
+        .gridDateTime: "#7722AA",
+        .gridBinary: "#555555",
+        .gridJSON: "#117744",
+        .gridUUID: "#996611",
+        .gridEnum: "#AA1166",
+        .gridBoolTrue: "#118811",
+        .gridBoolFalse: "#881111",
+        .gridNullValue: "#777777",
+    ]
+
+    @MainActor
+    private struct TypedGrid {
+        let owner: GridTestOwner
+        let model: DataGridModel
+        let presenter: DataGridCellPresenter
+
+        init(
+            values: [PluginCellValue],
+            type: ColumnType,
+            colorsValuesByType: Bool,
+            settingIsOn: Bool = true,
+            overridesSetting: Bool = false,
+            format: ValueDisplayFormat?
+        ) throws {
+            owner = GridTestOwner(TableRows.from(queryRows: values.map { [$0] }, columns: ["value"], columnTypes: [type]))
+            var configuration = DataGridConfiguration()
+            configuration.colorsValuesByType = colorsValuesByType
+            configuration.overridesValueColorSetting = overridesSetting
+            model = DataGridModel(
+                configuration: configuration,
+                themeScope: .fixed(try ThemeTestFixture.theme(.light, DataGridCellAppearanceTests.typedTheme))
+            )
+            model.dataSource = owner
+            model.reloadRows()
+            if let format { model.store.displayFormats = [format] }
+            presenter = DataGridCellPresenter(model: model, valueColors: ValueColorSettings(colorsValuesByType: settingIsOn))
+            presenter.refreshColumnPresentations()
+        }
+
+        func colors() throws -> [String?] {
+            let aqua = try #require(NSAppearance(named: .aqua))
+            let pass = try #require(presenter.makePass(in: aqua))
+            let column = try #require(model.columns.column(at: 0))
+            return try (0..<model.rowCount).map { displayRow in
+                let row = try #require(model.row(at: displayRow))
+                let appearance = try #require(presenter.appearance(
+                    of: row,
+                    displayRow: displayRow,
+                    column: column,
+                    visualState: .empty,
+                    pass: pass,
+                    onEmphasizedSelection: false
+                ))
+                return ThemeTestFixture.hex(appearance.textColor)
+            }
+        }
+    }
+
+    private func presentedColors(
+        of values: [PluginCellValue],
+        type: ColumnType,
+        colorsValuesByType: Bool = true,
+        settingIsOn: Bool = true,
+        overridesSetting: Bool = false,
+        format: ValueDisplayFormat? = nil
+    ) throws -> [String?] {
+        let grid = try TypedGrid(
+            values: values,
+            type: type,
+            colorsValuesByType: colorsValuesByType,
+            settingIsOn: settingIsOn,
+            overridesSetting: overridesSetting,
+            format: format
+        )
+        return try withExtendedLifetime(grid.owner) { try grid.colors() }
+    }
+
+    private static let uuidBytes = Data([
+        0xAF, 0x49, 0x45, 0x3B, 0x7F, 0x2F, 0xFB, 0x58,
+        0xFC, 0xD3, 0x2B, 0xD3, 0x99, 0x59, 0x9F, 0xA5,
+    ])
+
+    @Test("A grid that does not opt in draws every value in the grid text")
+    func gridOffDrawsPlain() throws {
+        #expect(try presentedColors(of: [.text("42")], type: .integer(rawType: "INT"), colorsValuesByType: false) == ["#111111"])
+        #expect(try presentedColors(of: [.text("ok")], type: .text(rawType: "VARCHAR(8)"), colorsValuesByType: false) == ["#111111"])
+        #expect(try presentedColors(
+            of: [.text("1700000000")],
+            type: .integer(rawType: "BIGINT"),
+            colorsValuesByType: false,
+            format: .unixTimestamp
+        ) == ["#111111"])
+    }
+
+    private static let everyTypedColumn: [(value: PluginCellValue, type: ColumnType, format: ValueDisplayFormat?, hex: String)] = [
+        (.text("42"), .integer(rawType: "INT"), nil, "#0044AA"),
+        (.text("ok"), .text(rawType: "VARCHAR(8)"), nil, "#AA1100"),
+        (.text("2024-01-08"), .date(rawType: "DATE"), nil, "#7722AA"),
+        (.bytes(Data([0x9F, 0x3A])), .blob(rawType: "BLOB"), nil, "#555555"),
+        (.text(#"["ops"]"#), .json(rawType: "JSON"), nil, "#117744"),
+        (.text("8f14e45f-ceea-467f-a8f5-2e1c6a3d9b07"), .text(rawType: "UUID"), nil, "#996611"),
+        (.text("admin"), .enumType(rawType: "ENUM", values: ["admin", "staff"]), nil, "#AA1166"),
+        (.text("1700000000"), .integer(rawType: "BIGINT"), .unixTimestamp, "#7722AA"),
+    ]
+
+    @Test("With Color values by type off, an opted-in grid draws every typed value in the grid text")
+    func settingOffDrawsPlain() throws {
+        for column in Self.everyTypedColumn {
+            let on = try presentedColors(of: [column.value], type: column.type, format: column.format)
+            let off = try presentedColors(of: [column.value], type: column.type, settingIsOn: false, format: column.format)
+            #expect(on == [column.hex], "\(column.type)")
+            #expect(off == ["#111111"], "\(column.type)")
+        }
+    }
+
+    @Test("Booleans and NULL keep their colors whether Color values by type is on or off")
+    func booleansAndNullIgnoreTheSetting() throws {
+        let values: [PluginCellValue] = [.text("true"), .text("false"), .null]
+        let type = ColumnType.boolean(rawType: "BOOLEAN")
+        let expected: [String?] = ["#118811", "#881111", "#777777"]
+
+        #expect(try presentedColors(of: values, type: type, settingIsOn: true) == expected)
+        #expect(try presentedColors(of: values, type: type, settingIsOn: false) == expected)
+        #expect(try presentedColors(of: [.null], type: .integer(rawType: "INT"), settingIsOn: false) == ["#777777"])
+    }
+
+    @Test("Turning Color values by type on or off recolors the grid it drew, with no reload")
+    func settingChangeRecolorsWithoutReload() throws {
+        let grid = try TypedGrid(
+            values: [.text("42")],
+            type: .integer(rawType: "INT"),
+            colorsValuesByType: true,
+            settingIsOn: false,
+            format: nil
+        )
+        let off = try grid.colors()
+        grid.presenter.registry.reloadValueColors(ValueColorSettings(colorsValuesByType: true))
+        let on = try grid.colors()
+        grid.presenter.registry.reloadValueColors(ValueColorSettings(colorsValuesByType: false))
+        let offAgain = try grid.colors()
+        withExtendedLifetime(grid.owner) {}
+
+        #expect(off == ["#111111"])
+        #expect(on == ["#0044AA"])
+        #expect(offAgain == ["#111111"])
+    }
+
+    @Test("A grid that overrides the setting colors values by type while it is off, and only if it opted in")
+    func overrideIgnoresTheSetting() throws {
+        let value: [PluginCellValue] = [.text("42")]
+        let type = ColumnType.integer(rawType: "INT")
+
+        #expect(try presentedColors(of: value, type: type, settingIsOn: false, overridesSetting: true) == ["#0044AA"])
+        #expect(try presentedColors(
+            of: value,
+            type: type,
+            colorsValuesByType: false,
+            settingIsOn: false,
+            overridesSetting: true
+        ) == ["#111111"])
+    }
+
+    @Test("An opted-in grid colors a value by its column's type and by the format it is shown in")
+    func gridOnColorsByTypeAndFormat() throws {
+        #expect(try presentedColors(of: [.text("42")], type: .integer(rawType: "INT")) == ["#0044AA"])
+        #expect(try presentedColors(of: [.text("ok")], type: .text(rawType: "VARCHAR(8)")) == ["#AA1100"])
+        #expect(try presentedColors(of: [.text("10.0.0.1")], type: .text(rawType: "INET")) == ["#111111"])
+        #expect(try presentedColors(of: [.text("1700000000")], type: .integer(rawType: "BIGINT"), format: .unixTimestamp) == ["#7722AA"])
+        #expect(try presentedColors(of: [.text("1700000000")], type: .integer(rawType: "BIGINT"), format: .json) == ["#0044AA"])
+    }
+
+    @Test("Under a UUID format a 16-byte value takes the UUID color and an 8-byte one in the same column stays binary")
+    func uuidFormatColorsOnlyTheValuesItRenders() throws {
+        let colors = try presentedColors(
+            of: [.bytes(Self.uuidBytes), .bytes(Self.uuidBytes.prefix(8))],
+            type: .blob(rawType: "VARBINARY(16)"),
+            format: .uuid
+        )
+
+        #expect(colors == ["#996611", "#555555"])
+    }
+
+    @Test("A value its decoder cannot read keeps the column's color, one it reads takes the JSON color")
+    func failedDecoderKeepsTheBaseColor() throws {
+        let colors = try presentedColors(
+            of: [.bytes(Data([0x82, 0xA7, 0x63, 0x6F, 0x6D, 0x70])), .bytes(Data([0x81, 0xA1, 0x61, 0x01]))],
+            type: .blob(rawType: "BLOB"),
+            format: .messagePack
+        )
+
+        #expect(colors == ["#555555", "#117744"])
+    }
+
+    @Test("A text column under a UUID format keeps the string color for a value that is not a UUID")
+    func textThatIsNotAUUIDStaysAString() throws {
+        let colors = try presentedColors(
+            of: [.text("not a uuid"), .text("AF49453B7F2FFB58FCD32BD399599FA5")],
+            type: .text(rawType: "VARCHAR(40)"),
+            format: .uuid
+        )
+
+        #expect(colors == ["#AA1100", "#996611"])
+    }
+
+    @Test("The prewarmed text carries the same color as text formatted at draw time")
+    func prewarmedTextKeepsTheFormattedFlag() throws {
+        let grid = try TypedGrid(
+            values: [.bytes(Self.uuidBytes), .bytes(Self.uuidBytes.prefix(8))],
+            type: .blob(rawType: "VARBINARY(16)"),
+            colorsValuesByType: true,
+            format: .uuid
+        )
+        for displayRow in 0..<grid.model.rowCount {
+            let row = try #require(grid.model.row(at: displayRow))
+            grid.presenter.cacheText(
+                of: row,
+                rows: grid.model.rows,
+                formats: grid.model.store.displayFormats,
+                databaseType: nil
+            )
+        }
+
+        #expect(try withExtendedLifetime(grid.owner) { try grid.colors() } == ["#996611", "#555555"])
+    }
+
+    @Test("A display format change recolors the cached cells it reformats")
+    func formatChangeRecolorsCachedCells() throws {
+        let grid = try TypedGrid(
+            values: [.bytes(Self.uuidBytes)],
+            type: .blob(rawType: "BINARY(16)"),
+            colorsValuesByType: true,
+            format: nil
+        )
+        let column = try #require(grid.model.columns.column(at: 0))
+
+        let asBinary = try grid.colors()
+        grid.model.setDisplayFormat(.uuid, for: column)
+        let asUUID = try grid.colors()
+        grid.model.setDisplayFormat(.raw, for: column)
+        let asBinaryAgain = try grid.colors()
+        withExtendedLifetime(grid.owner) {}
+
+        #expect(asBinary == ["#555555"])
+        #expect(asUUID == ["#996611"])
+        #expect(asBinaryAgain == ["#555555"])
     }
 
     // MARK: - Selection

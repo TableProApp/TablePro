@@ -10,7 +10,7 @@
 import Foundation
 
 struct ColumnTypeClassifier {
-    /// The engine's type family, when the caller knows it. Without one a `BIT` is a boolean.
+    // Without a family a `BIT` of any width is a boolean.
     let family: SQLTypeFamily?
 
     init(family: SQLTypeFamily? = nil) {
@@ -22,10 +22,7 @@ struct ColumnTypeClassifier {
         if Self.isAngleBracketCompositeType(stripped) {
             return .json(rawType: rawTypeName)
         }
-        /// `extractBaseAndParams` splits at the first `(` and keeps nothing after the last `)`, so
-        /// a parameterized array's `[]` never reached the test below: `numeric(10,2)[]` classified
-        /// as `.decimal` and `bit(8)[]` as `.boolean`, which put a boolean dropdown on an array
-        /// column. PostgreSQL spells a domain's array this way through `format_type`.
+        // `extractBaseAndParams` drops what follows the last `)`, so `bit(8)[]` would read as its element.
         if stripped.hasSuffix("[]") {
             let elementRaw = String(stripped.dropLast(2))
             guard !elementRaw.isEmpty else { return .text(rawType: rawTypeName) }
@@ -34,8 +31,7 @@ struct ColumnTypeClassifier {
 
         let (base, params) = extractBaseAndParams(stripped)
 
-        /// The app's own spelling for an enum array, `ENUM[](mood)`, puts the `[]` on the base and
-        /// the labels in the parentheses, so it is the one array form the suffix test above misses.
+        // The app spells an enum array `ENUM[](mood)`, with the `[]` on the base, which the suffix test misses.
         if base.hasSuffix("[]") {
             let elementBase = String(base.dropLast(2))
             guard !elementBase.isEmpty else { return .text(rawType: rawTypeName) }
@@ -59,6 +55,11 @@ struct ColumnTypeClassifier {
             return .text(rawType: rawTypeName)
         }
 
+        // A MySQL `BIT(8)` reads back as the number it holds, such as 170; only one bit is a flag.
+        if upper == "BIT", family?.readsBitsAsDecimal == true, let width = params.flatMap({ Int($0) }), width > 1 {
+            return .integer(rawType: rawTypeName)
+        }
+
         if let factory = Self.typeLookup[upper] {
             return factory(rawTypeName)
         }
@@ -72,8 +73,7 @@ struct ColumnTypeClassifier {
 
     private static let caseSensitiveBytesTypeName = "BYTES"
 
-    /// Elasticsearch names an object array `nested` and a flat key-value object `flattened`, and
-    /// both hold JSON the grid should offer its viewer for.
+    // Elasticsearch's `nested` is an object array and `flattened` a key-value object, both JSON the grid offers its viewer for.
     private static let structuredTypeNames: Set<String> = ["VARIANT", "OBJECT", "ARRAY", "NESTED", "FLATTENED"]
 
     private static func isAngleBracketCompositeType(_ value: String) -> Bool {
@@ -95,8 +95,7 @@ struct ColumnTypeClassifier {
         return value
     }
 
-    /// MySQL's catalog spells a column `INT UNSIGNED` or `INT(10) UNSIGNED ZEROFILL`, while its
-    /// result metadata says `INT`. Without this the catalog spelling fell through to text.
+    // MySQL's catalog says `INT(10) UNSIGNED ZEROFILL` where its result metadata says `INT`; unstripped, it fell through to text.
     private func stripTrailingAttributes(_ value: String) -> String {
         var stripped = value
         while let attribute = Self.trailingAttributes.first(where: { stripped.uppercased().hasSuffix(" \($0)") }) {
@@ -212,7 +211,7 @@ struct ColumnTypeClassifier {
             map[key] = { .json(rawType: $0) }
         }
 
-        /// Oracle's `LONG RAW` holds bytes, and no pattern arm below reads the name as binary.
+        // Oracle's `LONG RAW` holds bytes, and no pattern arm below reads the name as binary.
         for key in [
             "BLOB", "BYTEA", "BINARY", "VARBINARY", "RAW", "IMAGE",
             "TINYBLOB", "MEDIUMBLOB", "LONGBLOB", "LONG RAW"
@@ -226,11 +225,7 @@ struct ColumnTypeClassifier {
 
         map["SET"] = { .set(rawType: $0, values: nil) }
 
-        /// GEOMCOLLECTION is MySQL 8.0.11's own spelling, which its catalog reports for a column
-        /// declared either way. GEO_POINT and GEO_SHAPE are Elasticsearch's, SDO_GEOMETRY Oracle's,
-        /// ST_GEOMETRY Teradata's, and RING ClickHouse's. Every one of them fell through to a
-        /// pattern arm before this: GEO_POINT reached `hasSuffix("INT")` and classified as an
-        /// integer, which drove its alignment, its sort comparator and its filter operators.
+        // Engine spellings that fell to a pattern arm before, where GEO_POINT matched `hasSuffix("INT")` and classified as an integer.
         for key in [
             "GEOMETRY", "POINT", "LINESTRING", "POLYGON",
             "MULTIPOINT", "MULTILINESTRING", "MULTIPOLYGON",
@@ -244,8 +239,7 @@ struct ColumnTypeClassifier {
             map[key] = { .vector(rawType: $0) }
         }
 
-        /// An Oracle `BFILE` cell is the `BFILENAME('DIR', 'file')` call that points at the file, never its bytes,
-        /// so it edits as text; the hex editor would write bytes the driver refuses for a BFILE.
+        // An Oracle `BFILE` cell is the `BFILENAME('DIR', 'file')` call, never its bytes, so it edits as text.
         for key in [
             "TEXT", "VARCHAR", "CHAR", "NVARCHAR", "NCHAR", "NTEXT",
             "VARCHAR2", "NVARCHAR2", "CLOB", "NCLOB", "ROWID", "UROWID", "REF", "BFILE",

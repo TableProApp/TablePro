@@ -250,6 +250,14 @@ struct JsonRowConverterTests {
         #expect(result.contains("\"maybe\""))
     }
 
+    @Test("A boolean column holding another integer writes that number")
+    func booleanColumnOtherInteger() {
+        let converter = makeConverter(columns: ["flag"], columnTypes: [.boolean(rawType: "TINYINT(1)")])
+        let result = converter.generateJson(rows: [["2"]])
+        #expect(result.contains(": 2"))
+        #expect(!result.contains("\"2\""))
+    }
+
     // MARK: - JSON
 
     @Test("Valid JSON column is embedded verbatim")
@@ -384,8 +392,7 @@ struct JsonRowConverterTests {
 
     // MARK: - Default-value marker
 
-    /// A pending inserted row carries the default marker for columns the server fills in. The grid
-    /// draws it as a placeholder, so JSON has to agree instead of printing the internal token.
+    // A pending insert carries the default marker for server-filled columns; the grid draws a placeholder, so JSON must not print the token.
     @Test("The default-value marker renders as null, not as literal text")
     func defaultMarkerRendersAsNull() {
         let converter = makeConverter(

@@ -22,7 +22,7 @@ private extension VSCodeColorSource {
 }
 
 internal extension ThemeSlot {
-    // A list that stops short leaves the slot to `fallback`, which derives the stripe and the bools the way VS Code paints them.
+    // A list that stops short leaves the slot to `fallback`, which derives the stripe and the values the way VS Code paints them.
     var vscodeSources: [VSCodeColorSource] {
         switch self {
         case .windowBackdrop:
@@ -104,6 +104,13 @@ internal extension ThemeSlot {
             return [.sqlToken("constant.language.boolean.true.sql")]
         case .gridBoolFalse:
             return [.sqlToken("constant.language.boolean.false.sql")]
+        case .gridString:
+            return [.sqlToken("string.quoted.single.sql")]
+        case .gridNumber:
+            return [.sqlToken("constant.numeric.sql")]
+        // The SQL grammar scopes no date, binary, JSON, UUID or enum literal.
+        case .gridDateTime, .gridBinary, .gridJSON, .gridUUID, .gridEnum:
+            return []
         case .gridRowNumber:
             return [.color("editorLineNumber.foreground")]
         case .gridModified:

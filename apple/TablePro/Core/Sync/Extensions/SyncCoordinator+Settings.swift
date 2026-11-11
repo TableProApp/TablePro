@@ -22,13 +22,14 @@ extension SyncCoordinator {
             case AppSettingsCategory.ai: return try encoder.encode(storage.loadAI())
             case AppSettingsCategory.notifications: return try encoder.encode(storage.loadNotifications())
             case AppSettingsCategory.formatter: return try encoder.encode(storage.loadFormatter())
+            case AppSettingsCategory.valueColors: return try encoder.encode(storage.loadValueColors())
             case CustomSlashCommandStorage.syncCategory:
                 return try encoder.encode(CustomSlashCommandStorage.shared.commands)
             case let category where category.hasPrefix(FileColumnLayoutPersister.syncCategoryPrefix):
                 return columnLayouts().rawData(
                     forStorageKey: String(category.dropFirst(FileColumnLayoutPersister.syncCategoryPrefix.count))
                 )
-            case let category where category.hasPrefix(ThemeCatalog.syncCategoryPrefix):
+            case let category where ThemeCatalog.themeId(forSyncCategory: category) != nil:
                 return themeCatalog.syncPayload(forCategory: category)
             default: return nil
             }
@@ -57,6 +58,8 @@ extension SyncCoordinator {
                 manager.notifications = try decoder.decode(NotificationSettings.self, from: data)
             case AppSettingsCategory.formatter:
                 manager.formatter = try decoder.decode(SQLFormatterSettings.self, from: data)
+            case AppSettingsCategory.valueColors:
+                manager.valueColors = try decoder.decode(ValueColorSettings.self, from: data)
             case CustomSlashCommandStorage.syncCategory:
                 CustomSlashCommandStorage.shared.applyRemote(try decoder.decode([CustomSlashCommand].self, from: data))
             case let category where category.hasPrefix(FileColumnLayoutPersister.syncCategoryPrefix):
@@ -74,6 +77,12 @@ extension SyncCoordinator {
 
 // MARK: - Themes
 
+// nil for a record the pull deleted or could not read.
+struct PulledThemeRecords {
+    var records: [String: Data?] = [:]
+    var isFullFetch = false
+}
+
 extension SyncCoordinator {
     // A build that reads a newer theme format names a new kind, so it fetches the zone once and
     // picks up the theme records an older build skipped.
@@ -82,9 +91,17 @@ extension SyncCoordinator {
     // Fetches the zone once for a formatter record this Mac skipped while on an older build.
     static let formatterContentKind = "\(SyncRecordType.settings.rawValue)/\(AppSettingsCategory.formatter).v1"
 
+    // Fetches the zone once for a value colors record this Mac skipped while on an older build.
+    static let valueColorsContentKind = "\(SyncRecordType.settings.rawValue)/\(AppSettingsCategory.valueColors).v1"
+
     static var readableContent: Set<String> {
         Set(SyncRecordType.verifiedInProduction.map(\.rawValue))
-            .union([Self.themeContentKind, Self.formatterContentKind, ConnectionSyncField.sshRouteContentKind])
+            .union([
+                Self.themeContentKind,
+                Self.formatterContentKind,
+                Self.valueColorsContentKind,
+                ConnectionSyncField.sshRouteContentKind,
+            ])
     }
 
     // Only what this Mac applies: a pull skips a category that is off and still moves the token past it.
@@ -96,15 +113,97 @@ extension SyncCoordinator {
         if settings.syncs(.settings) {
             content.insert(Self.themeContentKind)
             content.insert(Self.formatterContentKind)
+            content.insert(Self.valueColorsContentKind)
         }
         return content
     }
 
+    // Read before any record is applied, so a theme new to this Mac finds its newer formats' records
+    // whichever comes first in the pull.
+    func pulledThemeRecords(
+        _ changedRecords: [CKRecord],
+        deletedRecordIDs: [CKRecord.ID],
+        unreadRecordIDs: [CKRecord.ID],
+        isFullFetch: Bool,
+        echoGuard: SyncEchoGuard?
+    ) -> PulledThemeRecords {
+        var pulled = PulledThemeRecords(isFullFetch: isFullFetch)
+        for record in changedRecords where record.recordType == SyncRecordType.settings.rawValue {
+            guard echoGuard?.withholds(record.recordID, tracker: changeTracker) != true,
+                  let category = SyncRecordMapper.settingsCategory(from: record),
+                  Self.isNewerThemeFormat(category),
+                  let data = SyncRecordMapper.settingsData(from: record)
+            else { continue }
+            pulled.records[category] = data
+        }
+        // An unread record changed since the cached copy, so its keys stay unknown until the pull that reads it.
+        for recordID in deletedRecordIDs + unreadRecordIDs {
+            guard let parsed = SyncRecordType.parse(recordName: recordID.recordName),
+                  parsed.type == .settings,
+                  Self.isNewerThemeFormat(parsed.id)
+            else { continue }
+            pulled.records.updateValue(nil, forKey: parsed.id)
+        }
+        return pulled
+    }
+
+    // A full fetch lists every record the zone holds, so a cached record it lacks was deleted.
+    func newerThemeRecord(_ category: String, in pulled: PulledThemeRecords) -> Data? {
+        if let record = pulled.records[category] {
+            return record
+        }
+        guard !pulled.isFullFetch else { return nil }
+        return recordCache.record(named: SyncRecordType.settings.recordName(for: category))
+            .flatMap(SyncRecordMapper.settingsData(from:))
+    }
+
+    // A newer format's record the fetch does not list is gone from the server. Every theme that exists
+    // anywhere is listed or held here, and only a Mac that holds a theme deletes its newer records.
+    func themeRecordsGone(
+        afterFullFetch result: PullResult,
+        zoneID: CKRecordZone.ID,
+        pushed: Set<CKRecord.ID>
+    ) -> [CKRecord.ID] {
+        let listed = Set((result.changedRecords.map(\.recordID) + result.unreadRecordIDs).map(\.recordName))
+        let listedIds = listed.compactMap { name -> String? in
+            guard let parsed = SyncRecordType.parse(recordName: name),
+                  parsed.type == .settings,
+                  ThemeCatalog.syncSchema(forCategory: parsed.id) == ThemeSchema.oldestReadable
+            else { return nil }
+            return ThemeCatalog.themeId(forSyncCategory: parsed.id)
+        }
+        let heldIds = themeCatalog.syncCategories.compactMap(ThemeCatalog.themeId(forSyncCategory:))
+        return Set(listedIds + heldIds).sorted()
+            .flatMap { id in
+                ThemeCatalog.newerSyncSchemas.map { schema in
+                    SyncRecordMapper.recordID(type: .settings, id: ThemeCatalog.syncCategory(for: id, schema: schema), in: zoneID)
+                }
+            }
+            .filter { !listed.contains($0.recordName) && !pushed.contains($0) }
+    }
+
+    private static func isNewerThemeFormat(_ category: String) -> Bool {
+        ThemeCatalog.syncSchema(forCategory: category).map { ThemeCatalog.newerSyncSchemas.contains($0) } == true
+    }
+
     func applyRemoteThemeDeletions(_ settingsRecordNames: Set<String>) -> Bool {
-        let prefix = SyncRecordType.settings.recordNamePrefix + ThemeCatalog.syncCategoryPrefix
-        let ids = Set(settingsRecordNames.filter { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) })
-        guard !ids.isEmpty else { return true }
-        return themeCatalog.removeWithoutSync(ids: ids)
+        let prefix = SyncRecordType.settings.recordNamePrefix
+        let deleted = settingsRecordNames.compactMap { name -> (id: String, schema: Int)? in
+            guard name.hasPrefix(prefix) else { return nil }
+            let category = String(name.dropFirst(prefix.count))
+            guard let id = ThemeCatalog.themeId(forSyncCategory: category),
+                  let schema = ThemeCatalog.syncSchema(forCategory: category)
+            else { return nil }
+            return (id, schema)
+        }
+        let trashed = Set(deleted.filter { $0.schema == ThemeSchema.oldestReadable }.map(\.id))
+        var isPersisted = trashed.isEmpty || themeCatalog.removeWithoutSync(ids: trashed)
+        for schema in ThemeCatalog.newerSyncSchemas {
+            let ids = Set(deleted.filter { $0.schema == schema && !trashed.contains($0.id) }.map(\.id))
+            guard !ids.isEmpty else { continue }
+            isPersisted = themeCatalog.removeSlotsWithoutSync(introducedIn: schema, ids: ids) && isPersisted
+        }
+        return isPersisted
     }
 
     // Themes made before theme sync were never marked, and loads never mark. They wait for the

@@ -4,22 +4,29 @@
   "dataGrid": {
     "alternateRow": "#3B4252",
     "background": "#2E3440",
-    "boolFalse": "#BF616A",
+    "binary": "#B590AF",
+    "boolFalse": "#CF888F",
     "boolTrue": "#A3BE8C",
+    "dateTime": "#81A1C1",
     "deleted": "#BF616A26",
     "deletedText": "#BF616A80",
+    "enum": "#D18A73",
     "focusBorder": "#88C0D0",
     "gridLine": "#434C5E",
     "headerBackground": "#3B4252",
     "headerText": "#D8DEE9",
     "inactiveSelection": "#434C5E80",
     "inserted": "#A3BE8C26",
+    "json": "#EBCB8B",
     "modified": "#EBCB8B4D",
     "nullValue": "#4C566A",
+    "number": "#B590AF",
     "rowNumber": "#4C566A",
     "selection": "#434C5E",
     "selectionText": "#ECEFF4",
-    "text": "#D8DEE9"
+    "string": "#A3BE8C",
+    "text": "#D8DEE9",
+    "uuid": "#8FBCBB"
   },
   "editor": {
     "background": "#2E3440",
@@ -43,7 +50,7 @@
   },
   "id": "tablepro.nord",
   "name": "Nord",
-  "schema": 3,
+  "schema": 4,
   "window": {
     "background": "#2E3440"
   }

@@ -116,7 +116,6 @@ internal struct JsonRowConverter {
         return quotedEscaped(value)
     }
 
-    /// Checks whether a string conforms to JSON number grammar (RFC 8259 §6)
     private func isValidJsonNumber(_ value: String) -> Bool {
         let scalars = value.unicodeScalars
         var iter = scalars.makeIterator()
@@ -173,7 +172,8 @@ internal struct JsonRowConverter {
         case "false", "0", "no", "off":
             return "false"
         default:
-            return quotedEscaped(value)
+            // MySQL's BOOLEAN is TINYINT(1), which also stores 2 or -1.
+            return formatInteger(value)
         }
     }
 

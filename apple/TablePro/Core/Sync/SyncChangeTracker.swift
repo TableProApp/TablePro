@@ -108,6 +108,14 @@ final class SyncChangeTracker: Sendable {
         postChangeNotification()
     }
 
+    // For a deletion taken back before it was pushed, such as a trash undone.
+    @MainActor
+    func discardTombstones(_ type: SyncRecordType, ids: [String]) {
+        guard !ids.isEmpty else { return }
+        metadataStorage.removeTombstones(ids, type: type)
+        recordEdits(type, ids: ids)
+    }
+
     @MainActor
     func discardTombstones(ownedBy owners: Set<UUID>) {
         guard !owners.isEmpty else { return }

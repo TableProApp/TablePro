@@ -57,6 +57,24 @@ public struct ThemeDefinition: Identifiable, Equatable, Sendable {
         isOverridden(slot, highContrast: false)
     }
 
+    public func restricted(toSchema schema: Int) -> ThemeDefinition {
+        var restricted = self
+        restricted.overrides = overrides.filter { $0.key.introducedInSchema <= schema }
+        return restricted
+    }
+
+    public func setsSlots(introducedIn schema: Int) -> Bool {
+        overrides.keys.contains { $0.introducedInSchema == schema }
+    }
+
+    // A slot `source` leaves unset is cleared here too.
+    public func replacingSlots(from source: ThemeDefinition, where isReplaced: (ThemeSlot) -> Bool) -> ThemeDefinition {
+        var merged = self
+        merged.overrides = overrides.filter { !isReplaced($0.key) }
+            .merging(source.overrides.filter { isReplaced($0.key) }) { _, replacement in replacement }
+        return merged
+    }
+
     private func fallbackValue(for slot: ThemeSlot, highContrast: Bool) -> ThemeSlotValue {
         switch slot.fallback {
         case .system:

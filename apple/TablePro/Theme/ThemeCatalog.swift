@@ -13,8 +13,8 @@ internal struct ThemeCatalogContents: Equatable, Sendable {
     internal static let empty = ThemeCatalogContents(themes: BuiltInThemes.all, rejected: [], userFiles: [:])
 }
 
-/// Where a user theme was read from and the bytes read, so a save or a move to the Trash can tell
-/// that the file changed on disk since and leave the newer version alone.
+// Where a user theme was read from and the bytes read, so a save or a move to the Trash can tell
+// that the file changed on disk since and leave the newer version alone.
 internal struct ThemeFile: Equatable, Sendable {
     internal let url: URL
     internal let contents: Data
@@ -33,6 +33,8 @@ internal struct ThemeTrashReceipt: Equatable, Sendable {
     internal let themeId: String?
     internal let originalURL: URL
     internal let trashedURL: URL
+    // Only the deletions the trash queued: one queued before it, such as a cleared value color, stays.
+    internal var tombstones: [String] = []
 }
 
 internal struct ThemeFileTrash: Sendable {
@@ -62,11 +64,11 @@ internal struct ThemeFileTrash: Sendable {
     }
 }
 
-/// Owns the list. A user theme is identified by its JSON `id` but lives in whatever file it was
-/// loaded from, so a save, rename or move to the Trash acts on that file rather than on `<id>.json`;
-/// the two differ for any file the user named themselves. Every mutation updates the in-memory list
-/// synchronously, and the list reloads whenever TablePro becomes active, so a theme fixed, dropped
-/// or removed in Finder is picked up without a view asking.
+// Owns the list. A user theme is identified by its JSON `id` but lives in whatever file it was
+// loaded from, so a save, rename or move to the Trash acts on that file rather than on `<id>.json`;
+// the two differ for any file the user named themselves. Every mutation updates the in-memory list
+// synchronously, and the list reloads whenever TablePro becomes active, so a theme fixed, dropped
+// or removed in Finder is picked up without a view asking.
 @MainActor
 internal final class ThemeCatalog: ObservableObject {
     internal static let shared = ThemeCatalog()
@@ -77,8 +79,8 @@ internal final class ThemeCatalog: ObservableObject {
     // What the files hold. `themes` is this with colliding names told apart for display.
     private var loaded: [ThemeDefinition] = BuiltInThemes.all
     private var userFiles: [String: ThemeFile] = [:]
-    /// Themes whose file went away since it was read. A save of one is refused rather than writing a
-    /// new file, which would bring back a theme deleted in Finder or on another Mac.
+    // Themes whose file went away since it was read. A save of one is refused rather than writing a
+    // new file, which would bring back a theme deleted in Finder or on another Mac.
     private var vanished: [String: URL] = [:]
     private let userDirectory: URL
     private let bundleDirectory: URL?
@@ -88,8 +90,8 @@ internal final class ThemeCatalog: ObservableObject {
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeCatalog")
 
-    /// Loaded before the first activation, so a user theme in a slot is in the list the launch
-    /// activation resolves against.
+    // Loaded before the first activation, so a user theme in a slot is in the list the launch
+    // activation resolves against.
     internal init(
         userDirectory: URL = ThemeCatalog.defaultUserDirectory,
         bundleDirectory: URL? = Bundle.main.resourceURL,
@@ -125,11 +127,25 @@ internal final class ThemeCatalog: ObservableObject {
         adopt(Self.loadContents(userDirectory: userDirectory, bundleDirectory: bundleDirectory))
     }
 
-    /// Writes the theme to the file it came from, or a new theme to `<id>.json`. The list then holds
-    /// what the file holds, which the format normalizes.
+    // Writes the theme to the file it came from, or a new theme to `<id>.json`. The list then holds
+    // what the file holds, which the format normalizes.
     internal func save(_ theme: ThemeDefinition) throws {
+        let previous = userFiles[theme.id] != nil ? storedTheme(id: theme.id) : nil
         try persist(theme)
-        syncTracker.markDirty(.settings, id: Self.syncCategory(for: theme.id))
+        markSyncEdit(of: storedTheme(id: theme.id) ?? theme, previous: previous)
+    }
+
+    // Each record pushes whole, so one whose keys did not change would revert another Mac's edit of them.
+    private func markSyncEdit(of theme: ThemeDefinition, previous: ThemeDefinition?) {
+        guard let previous else {
+            syncTracker.markDirty(.settings, ids: Self.syncCategories(of: theme))
+            return
+        }
+        let cleared = Self.newerSyncSchemas.filter { !theme.setsSlots(introducedIn: $0) && previous.setsSlots(introducedIn: $0) }
+        let changed = ([ThemeSchema.oldestReadable] + Self.newerSyncSchemas)
+            .filter { !cleared.contains($0) && !Self.ownedKeysMatch(theme, previous, schema: $0) }
+        syncTracker.markDirty(.settings, ids: changed.map { Self.syncCategory(for: theme.id, schema: $0) })
+        syncTracker.markDeleted(.settings, ids: cleared.map { Self.syncCategory(for: theme.id, schema: $0) })
     }
 
     private func persist(_ theme: ThemeDefinition) throws {
@@ -164,8 +180,16 @@ internal final class ThemeCatalog: ObservableObject {
         userFiles[id] = nil
         vanished[id] = file.url
         publish(loaded.filter { $0.id != id })
-        syncTracker.markDeleted(.settings, id: Self.syncCategory(for: id))
-        return ThemeTrashReceipt(themeId: id, originalURL: file.url, trashedURL: trashed)
+        // Another Mac may have set a value color this one has not pulled yet.
+        let categories = Self.allSyncCategories(for: id)
+        let queued = syncTracker.tombstonedIds(for: .settings)
+        syncTracker.markDeleted(.settings, ids: categories)
+        return ThemeTrashReceipt(
+            themeId: id,
+            originalURL: file.url,
+            trashedURL: trashed,
+            tombstones: categories.filter { !queued.contains($0) }
+        )
     }
 
     @discardableResult
@@ -180,12 +204,15 @@ internal final class ThemeCatalog: ObservableObject {
     internal func restore(_ receipt: ThemeTrashReceipt) throws {
         try FileManager.default.moveItem(at: receipt.trashedURL, to: receipt.originalURL)
         reloadSynchronously()
-        guard let id = receipt.themeId, userFiles[id] != nil else { return }
-        syncTracker.markDirty(.settings, id: Self.syncCategory(for: id))
+        guard let id = receipt.themeId, userFiles[id] != nil, let restored = storedTheme(id: id) else { return }
+        let categories = Self.syncCategories(of: restored)
+        syncTracker.markDirty(.settings, ids: categories)
+        // A record the restored theme does not hold may carry another Mac's keys, which the queued deletion would remove.
+        syncTracker.discardTombstones(.settings, ids: receipt.tombstones.filter { !categories.contains($0) })
     }
 
-    /// Two themes with one name cannot be told apart in a popup, so a taken name is refused rather
-    /// than numbered behind the user's back.
+    // Two themes with one name cannot be told apart in a popup, so a taken name is refused rather
+    // than numbered behind the user's back.
     internal func rename(id: String, to name: String) throws {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard var theme = storedTheme(id: id) else {
@@ -263,8 +290,8 @@ internal final class ThemeCatalog: ObservableObject {
         }
     }
 
-    /// `<id>.json`, unless that name already holds another theme or a file that failed to load,
-    /// which a save must never overwrite.
+    // `<id>.json`, unless that name already holds another theme or a file that failed to load,
+    // which a save must never overwrite.
     private func availableURL(for id: String) -> URL {
         let taken = Set(
             userFiles.values.map(\.url.standardizedFileURL)
@@ -279,8 +306,8 @@ internal final class ThemeCatalog: ObservableObject {
         return candidate
     }
 
-    /// A file edited, replaced or removed outside TablePro since it was read is not overwritten,
-    /// moved or recreated: the catalog reloads and the caller reports the conflict.
+    // A file edited, replaced or removed outside TablePro since it was read is not overwritten,
+    // moved or recreated: the catalog reloads and the caller reports the conflict.
     private func ensureUnchanged(_ file: ThemeFile) throws {
         let current: Data
         do {
@@ -294,7 +321,7 @@ internal final class ThemeCatalog: ObservableObject {
         throw ThemeLoadError.changedOnDisk(file.url.lastPathComponent)
     }
 
-    /// A file that is still there no longer loads as this theme, so it changed rather than went away.
+    // A file that is still there no longer loads as this theme, so it changed rather than went away.
     private func ensureNotVanished(_ id: String) throws {
         guard let url = vanished[id] else { return }
         guard FileManager.default.fileExists(atPath: url.path) else {
@@ -447,9 +474,17 @@ internal enum ThemeRemoteMerge: Sendable {
     case keepBoth
 }
 
-// Each user theme syncs as one settings record, `theme.<id>`, whose payload is the canonical file.
+// Each user theme syncs as the settings record `theme.<id>`, holding only the keys format 3 reads, so the
+// previous stable reads and edits it. A theme that sets a key a newer format introduced also syncs
+// `themeSchema<N>.<id>`. Each record owns its own keys, and every payload is a canonical file.
 internal extension ThemeCatalog {
     nonisolated static let syncCategoryPrefix = "theme."
+    // Never under `theme.`: a build that reads only format 3 passes over a category it does not know.
+    nonisolated static let schemaSyncCategoryPrefix = "themeSchema"
+
+    nonisolated static let newerSyncSchemas = Array(
+        stride(from: ThemeSchema.oldestReadable + 1, through: ThemeSchema.current, by: 1)
+    )
 
     // Themes are about 1.2 KB, and a slot path nests three containers deep, so anything past these
     // limits is not a theme and only costs parse time.
@@ -460,23 +495,69 @@ internal extension ThemeCatalog {
         syncCategoryPrefix + id
     }
 
+    nonisolated static func syncCategory(for id: String, schema: Int) -> String {
+        guard schema > ThemeSchema.oldestReadable else { return syncCategory(for: id) }
+        return "\(schemaSyncCategoryPrefix)\(schema).\(id)"
+    }
+
+    nonisolated static func syncCategories(of theme: ThemeDefinition) -> [String] {
+        [syncCategory(for: theme.id)]
+            + newerSyncSchemas.filter(theme.setsSlots(introducedIn:)).map { syncCategory(for: theme.id, schema: $0) }
+    }
+
     nonisolated static func themeId(forSyncCategory category: String) -> String? {
-        guard category.hasPrefix(syncCategoryPrefix) else { return nil }
-        return String(category.dropFirst(syncCategoryPrefix.count))
+        syncRecord(forCategory: category)?.id
+    }
+
+    nonisolated static func syncSchema(forCategory category: String) -> Int? {
+        syncRecord(forCategory: category)?.schema
+    }
+
+    nonisolated private static func syncRecord(forCategory category: String) -> (id: String, schema: Int)? {
+        if category.hasPrefix(syncCategoryPrefix) {
+            return (String(category.dropFirst(syncCategoryPrefix.count)), ThemeSchema.oldestReadable)
+        }
+        guard category.hasPrefix(schemaSyncCategoryPrefix) else { return nil }
+        let rest = category.dropFirst(schemaSyncCategoryPrefix.count)
+        guard let dot = rest.firstIndex(of: "."),
+              let schema = Int(rest[..<dot]),
+              String(schema) == rest[..<dot],
+              schema > ThemeSchema.oldestReadable
+        else { return nil }
+        return (String(rest[rest.index(after: dot)...]), schema)
+    }
+
+    // `theme.<id>` owns the format 3 slots, the name, the author and the appearance; a newer format's record
+    // owns only the slots that format introduced.
+    nonisolated private static func ownedKeysMatch(_ lhs: ThemeDefinition, _ rhs: ThemeDefinition, schema: Int) -> Bool {
+        let owned: (ThemeSlot) -> Bool = schema > ThemeSchema.oldestReadable
+            ? { $0.introducedInSchema == schema }
+            : { $0.introducedInSchema <= ThemeSchema.oldestReadable }
+        let slotsMatch = lhs.overrides.filter { owned($0.key) } == rhs.overrides.filter { owned($0.key) }
+        guard schema <= ThemeSchema.oldestReadable else { return slotsMatch }
+        return slotsMatch && lhs.name == rhs.name && lhs.author == rhs.author && lhs.appearance == rhs.appearance
+    }
+
+    nonisolated private static func allSyncCategories(for id: String) -> [String] {
+        [syncCategory(for: id)] + newerSyncSchemas.map { syncCategory(for: id, schema: $0) }
     }
 
     var syncCategories: [String] {
-        userFiles.keys.sorted().map(Self.syncCategory(for:))
+        userFiles.keys.sorted().flatMap { id in
+            storedTheme(id: id).map(Self.syncCategories(of:)) ?? [Self.syncCategory(for: id)]
+        }
     }
 
-    // The file's own name, never the one the list shows to tell two themes apart.
+    // The file's own name, never the one the list shows to tell two themes apart. A newer format's
+    // record exists only while the theme sets one of its keys.
     func syncPayload(forCategory category: String) -> Data? {
-        guard let id = Self.themeId(forSyncCategory: category),
-              userFiles[id] != nil,
-              let theme = storedTheme(id: id)
+        guard let record = Self.syncRecord(forCategory: category),
+              userFiles[record.id] != nil,
+              let theme = storedTheme(id: record.id),
+              record.schema == ThemeSchema.oldestReadable || theme.setsSlots(introducedIn: record.schema)
         else { return nil }
         do {
-            return try ThemeFileFormat.encode(theme)
+            return try ThemeFileFormat.encode(theme.restricted(toSchema: record.schema))
         } catch {
             Self.logger.error("Could not encode a theme for sync: \(error.publicLogShape, privacy: .public)")
             return nil
@@ -486,10 +567,15 @@ internal extension ThemeCatalog {
     // A synced theme is untrusted input from another device, so it is validated before anything
     // touches disk. A record that fails validation is skipped, since the same bytes would fail
     // again; only a disk failure is `.failed`, so the pull is not acknowledged and replays.
-    func applyRemote(category: String, data: Data, merge: ThemeRemoteMerge = .replace) -> RemoteApplyOutcome {
-        let theme: ThemeDefinition
+    func applyRemote(
+        category: String,
+        data: Data,
+        merge: ThemeRemoteMerge = .replace,
+        newerRecord: (String) -> Data? = { _ in nil }
+    ) -> RemoteApplyOutcome {
+        let record: (schema: Int, theme: ThemeDefinition)
         do {
-            theme = try Self.validatedRemoteTheme(category: category, data: data)
+            record = try Self.validatedRemoteTheme(category: category, data: data)
         } catch {
             Self.logger.error(
                 "Skipped synced theme \(category, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)"
@@ -498,7 +584,11 @@ internal extension ThemeCatalog {
         }
 
         do {
-            return try writeRemote(theme, merge: merge)
+            reloadIfChangedOnDisk(record.theme.id)
+            guard record.schema > ThemeSchema.oldestReadable else {
+                return try writeRemote(mergedTheme(record.theme, merge: merge, newerRecord: newerRecord), merge: merge)
+            }
+            return try applyRemoteSlots(of: record.theme, introducedIn: record.schema, merge: merge)
         } catch {
             Self.logger.error(
                 "Could not write synced theme \(category, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)"
@@ -532,12 +622,70 @@ internal extension ThemeCatalog {
         if !removed.isEmpty {
             publish(loaded.filter { !removed.contains($0.id) })
         }
-        syncTracker.discardDirty(.settings, ids: removed.sorted().map(Self.syncCategory(for:)))
+        syncTracker.discardDirty(.settings, ids: removed.sorted().flatMap(Self.allSyncCategories(for:)))
         return isPersisted
     }
 
+    // Another Mac cleared the theme's last key of `schema`, so this one clears that format's keys too.
+    @discardableResult
+    func removeSlotsWithoutSync(introducedIn schema: Int, ids: Set<String>) -> Bool {
+        var isPersisted = true
+        var settled: [String] = []
+        for id in ids.sorted() {
+            reloadIfChangedOnDisk(id)
+            guard userFiles[id] != nil, let local = storedTheme(id: id) else { continue }
+            settled.append(id)
+            guard local.setsSlots(introducedIn: schema) else { continue }
+            var cleared = local
+            cleared.overrides = local.overrides.filter { $0.key.introducedInSchema != schema }
+            do {
+                _ = try writeRemote(cleared, merge: .replace)
+            } catch {
+                Self.logger.error("Could not clear keys deleted on another Mac: \(error.publicLogShape, privacy: .public)")
+                settled.removeLast()
+                isPersisted = false
+            }
+        }
+        syncTracker.discardDirty(.settings, ids: settled.map { Self.syncCategory(for: $0, schema: schema) })
+        return isPersisted
+    }
+
+    // `theme.<id>` owns only the keys format 3 reads, so a theme this Mac holds keeps its newer keys.
+    // One new here, or one whose local file may never have reached the server, takes them from their records.
+    private func mergedTheme(
+        _ record: ThemeDefinition,
+        merge: ThemeRemoteMerge,
+        newerRecord: (String) -> Data?
+    ) -> ThemeDefinition {
+        let base = record.restricted(toSchema: ThemeSchema.oldestReadable)
+        if merge == .replace, userFiles[record.id] != nil, let local = storedTheme(id: record.id) {
+            return base.replacingSlots(from: local) { $0.introducedInSchema > ThemeSchema.oldestReadable }
+        }
+        return Self.newerSyncSchemas.reduce(base) { merged, schema in
+            let category = Self.syncCategory(for: record.id, schema: schema)
+            guard let data = newerRecord(category),
+                  let newer = try? Self.validatedRemoteTheme(category: category, data: data)
+            else { return merged }
+            return merged.replacingSlots(from: newer.theme) { $0.introducedInSchema == schema }
+        }
+    }
+
+    // A theme new to this Mac takes these keys when its `theme.<id>` arrives. While the local file may
+    // never have reached the server, `theme.<id>` decides the whole theme and what is kept as a copy.
+    private func applyRemoteSlots(
+        of record: ThemeDefinition,
+        introducedIn schema: Int,
+        merge: ThemeRemoteMerge
+    ) throws -> RemoteApplyOutcome {
+        guard merge == .replace, userFiles[record.id] != nil, let local = storedTheme(id: record.id) else {
+            return .skipped
+        }
+        let merged = local.replacingSlots(from: record) { $0.introducedInSchema == schema }
+        guard merged != local else { return .skipped }
+        return try writeRemote(merged, merge: .replace)
+    }
+
     private func writeRemote(_ theme: ThemeDefinition, merge: ThemeRemoteMerge) throws -> RemoteApplyOutcome {
-        reloadIfChangedOnDisk(theme.id)
         let data = try ThemeFileFormat.encode(theme)
         let url: URL
         var keptCopy: ThemeDefinition?
@@ -564,7 +712,7 @@ internal extension ThemeCatalog {
         upsert(try ThemeFileFormat.decode(data))
         // A pull suppresses this mark; the seed that follows it uploads the copy, which the server lacks.
         if let keptCopy {
-            syncTracker.markDirty(.settings, id: Self.syncCategory(for: keptCopy.id))
+            syncTracker.markDirty(.settings, ids: Self.syncCategories(of: keptCopy))
         }
         return .applied
     }
@@ -605,11 +753,15 @@ internal extension ThemeCatalog {
         reloadSynchronously()
     }
 
-    nonisolated private static func validatedRemoteTheme(category: String, data: Data) throws -> ThemeDefinition {
-        guard let id = themeId(forSyncCategory: category),
-              ThemeIdentifier.isValid(id),
-              !id.hasPrefix(ThemeDefinition.builtInPrefix)
+    nonisolated private static func validatedRemoteTheme(
+        category: String,
+        data: Data
+    ) throws -> (schema: Int, theme: ThemeDefinition) {
+        guard let record = syncRecord(forCategory: category),
+              ThemeIdentifier.isValid(record.id),
+              !record.id.hasPrefix(ThemeDefinition.builtInPrefix)
         else { throw ThemeSyncRejection.invalidCategory }
+        guard record.schema <= ThemeSchema.current else { throw ThemeSyncRejection.newerFormat(record.schema) }
         guard data.count <= maximumSyncPayloadSize else { throw ThemeSyncRejection.tooLarge(data.count) }
         guard JSONNesting.depth(of: data, stoppingAfter: maximumSyncPayloadDepth) <= maximumSyncPayloadDepth else {
             throw ThemeSyncRejection.tooDeep
@@ -617,13 +769,14 @@ internal extension ThemeCatalog {
         // The decoder refuses a newer schema, an unknown key, a bad color, and a name or author with a
         // control character or past the length cap.
         let theme = try ThemeFileFormat.decode(data)
-        guard theme.id == id else { throw ThemeSyncRejection.mismatchedIdentifier }
-        return theme
+        guard theme.id == record.id else { throw ThemeSyncRejection.mismatchedIdentifier }
+        return (record.schema, theme)
     }
 }
 
 private enum ThemeSyncRejection: Error {
     case invalidCategory
+    case newerFormat(Int)
     case tooLarge(Int)
     case tooDeep
     case mismatchedIdentifier
