@@ -36,6 +36,8 @@ public struct AWSPartition: Sendable, Equatable {
         id: "aws-iso-f", dnsSuffix: "csp.hci.ic.gov", defaultRegion: "us-isof-east-1"
     )
 
+    static let all: [AWSPartition] = [standard, china, govCloud, europeanSovereign, iso, isoB, isoE, isoF]
+
     private static let byRegionPrefix: [(prefix: String, partition: AWSPartition)] = [
         ("cn-", china),
         ("us-gov-", govCloud),

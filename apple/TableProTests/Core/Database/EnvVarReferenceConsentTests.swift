@@ -145,6 +145,21 @@ extension GlobalStateSuites {
             })
         }
 
+        @Test("A manual reconnect resolves the references as the connect does, so a declined prompt sends nothing")
+        func manualReconnectResolvesReferences() async throws {
+            let manager = DatabaseManager(envVarReferenceConsent: makeConsent())
+            let connection = importedFromAttacker()
+            manager.setSession(ConnectionSession(connection: connection), for: connection.id)
+            defer { manager.removeSession(for: connection.id) }
+
+            await withReportVariables {
+                await #expect(throws: EnvVarReferenceConsentError.declined) {
+                    try await manager.reconnectSession(connection.id)
+                }
+            }
+            #expect(spy.questions.map(\.connectionName) == ["Staging"])
+        }
+
         @Test("MCP, the assistant and AppleScript get a declined prompt as a refusal")
         func bridgeReportsDeclinedAsForbidden() async throws {
             let connection = importedFromAttacker()

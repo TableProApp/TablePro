@@ -8,8 +8,6 @@ struct RDSSigningEndpoint: Equatable {
 // RDS validates the token against its own endpoint, while a tunnel or a port forward run outside
 // TablePro makes the driver dial loopback. This picks the endpoint the token is signed for.
 enum RDSSigningEndpointResolver {
-    private static let loopbackHosts: Set<String> = ["localhost", "localhost.localdomain", "::1", "[::1]", "0.0.0.0"]
-
     static func resolve(
         configuredHost: String,
         configuredPort: Int,
@@ -18,22 +16,23 @@ enum RDSSigningEndpointResolver {
         override: String?,
         defaultPort: Int
     ) throws -> RDSSigningEndpoint {
-        let dialsLoopback = isLoopback(configuredHost)
+        let dialledHost = AWSEndpointHost.normalized(configuredHost)
+        let dialsLoopback = AWSEndpointHost.isLoopback(configuredHost)
 
         if let override, !override.trimmingCharacters(in: .whitespaces).isEmpty {
             let endpoint = try parse(override, defaultPort: defaultPort)
-            guard dialsLoopback || endpoint.host.caseInsensitiveCompare(configuredHost) == .orderedSame else {
-                throw AWSAuthError.rdsEndpointUnresolved(host: configuredHost)
+            guard dialsLoopback || endpoint.host == dialledHost else {
+                throw AWSAuthError.rdsEndpointNotDialed(endpoint: endpoint.host, host: dialledHost)
             }
             return endpoint
         }
 
-        let host = dialsLoopback ? (preTunnelHost ?? configuredHost) : configuredHost
+        let host = dialsLoopback ? (preTunnelHost.map(AWSEndpointHost.normalized) ?? dialledHost) : dialledHost
         let port = dialsLoopback ? (preTunnelPort ?? configuredPort) : configuredPort
-        guard !isLoopback(host) else {
+        guard !AWSEndpointHost.isLoopback(host) else {
             throw AWSAuthError.rdsEndpointUnresolved(host: host)
         }
-        return RDSSigningEndpoint(host: host.lowercased(), port: port)
+        return RDSSigningEndpoint(host: host, port: port)
     }
 
     static func parse(_ value: String, defaultPort: Int) throws -> RDSSigningEndpoint {
@@ -58,18 +57,14 @@ enum RDSSigningEndpointResolver {
         return try makeEndpoint(host: String(text[..<separatorIndex]), port: port, rawValue: value)
     }
 
-    static func isLoopback(_ host: String) -> Bool {
-        let normalized = host.trimmingCharacters(in: .whitespaces).lowercased()
-        return loopbackHosts.contains(normalized) || normalized.hasPrefix("127.")
-    }
-
     private static func makeEndpoint(host: String, port: Int, rawValue: String) throws -> RDSSigningEndpoint {
-        let isHostname = !host.isEmpty
-            && !host.contains(":")
-            && host.rangeOfCharacter(from: .whitespacesAndNewlines) == nil
-        guard isHostname, !isLoopback(host) else {
+        let name = AWSEndpointHost.normalized(host)
+        let isHostname = !name.isEmpty
+            && !name.contains(":")
+            && name.rangeOfCharacter(from: .whitespacesAndNewlines) == nil
+        guard isHostname, !AWSEndpointHost.isLoopback(name) else {
             throw AWSAuthError.rdsEndpointInvalid(rawValue)
         }
-        return RDSSigningEndpoint(host: host.lowercased(), port: port)
+        return RDSSigningEndpoint(host: name, port: port)
     }
 }
