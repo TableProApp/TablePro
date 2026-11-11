@@ -1,10 +1,3 @@
-//
-//  HostKeyStoreTests.swift
-//  TableProTests
-//
-//  Tests for HostKeyStore file-based SSH host key storage.
-//
-
 import Foundation
 import TableProPluginKit
 import TableProSSHTransport
@@ -13,13 +6,11 @@ import Testing
 @testable import TablePro
 
 struct HostKeyStoreTests {
-    /// Create a temporary file path for test isolation
     private func makeTempFilePath() -> String {
         let tempDir = NSTemporaryDirectory()
         return (tempDir as NSString).appendingPathComponent("test_known_hosts_\(UUID().uuidString)")
     }
 
-    /// Create a deterministic test key
     private func makeTestKey(_ seed: UInt8 = 0x42, length: Int = 32) -> Data {
         Data(repeating: seed, count: length)
     }
@@ -119,11 +110,9 @@ struct HostKeyStoreTests {
         store.remove(hostname: "example.com", port: 22)
 
         let result = store.verify(keyData: key, keyType: "ssh-rsa", hostname: "example.com", port: 22)
-        switch result {
-        case .unknown:
-            break // expected
-        default:
+        guard case .unknown = result else {
             Issue.record("Expected .unknown after removal, got \(result)")
+            return
         }
     }
 
@@ -133,15 +122,11 @@ struct HostKeyStoreTests {
         let fingerprint = HostKeyStore.fingerprint(of: key)
 
         #expect(fingerprint.hasPrefix("SHA256:"))
-
-        // Fingerprint should not contain '=' padding (matches OpenSSH format)
         #expect(!fingerprint.contains("="))
 
-        // Same key should produce the same fingerprint
         let fingerprint2 = HostKeyStore.fingerprint(of: key)
         #expect(fingerprint == fingerprint2)
 
-        // Different key should produce a different fingerprint
         let otherKey = makeTestKey(0x00, length: 64)
         let otherFingerprint = HostKeyStore.fingerprint(of: otherKey)
         #expect(fingerprint != otherFingerprint)
@@ -165,7 +150,6 @@ struct HostKeyStoreTests {
         #expect(store.verify(keyData: key2, keyType: "ssh-ed25519", hostname: "host-b.com", port: 22) == .trusted)
         #expect(store.verify(keyData: key3, keyType: "ecdsa-sha2-nistp256", hostname: "host-c.com", port: 22) == .trusted)
 
-        // Removing one host should not affect others
         store.remove(hostname: "host-b.com", port: 22)
         #expect(store.verify(keyData: key1, keyType: "ssh-rsa", hostname: "host-a.com", port: 22) == .trusted)
         #expect(store.verify(keyData: key3, keyType: "ecdsa-sha2-nistp256", hostname: "host-c.com", port: 22) == .trusted)
@@ -186,13 +170,10 @@ struct HostKeyStoreTests {
         #expect(store.verify(keyData: key22, keyType: "ssh-rsa", hostname: "example.com", port: 22) == .trusted)
         #expect(store.verify(keyData: key2222, keyType: "ssh-ed25519", hostname: "example.com", port: 2222) == .trusted)
 
-        // Key from port 22 should not match port 2222
         let result = store.verify(keyData: key22, keyType: "ssh-rsa", hostname: "example.com", port: 2222)
-        switch result {
-        case .mismatch:
-            break // expected — different key stored for this port
-        default:
+        guard case .mismatch = result else {
             Issue.record("Expected .mismatch when using wrong port's key, got \(result)")
+            return
         }
     }
 
@@ -220,18 +201,57 @@ struct HostKeyStoreTests {
         store.trust(hostname: "example.com", port: 22, key: oldKey, keyType: "ssh-rsa")
         #expect(store.verify(keyData: oldKey, keyType: "ssh-rsa", hostname: "example.com", port: 22) == .trusted)
 
-        // Trust with new key (same key type)
         store.trust(hostname: "example.com", port: 22, key: newKey, keyType: "ssh-rsa")
         #expect(store.verify(keyData: newKey, keyType: "ssh-rsa", hostname: "example.com", port: 22) == .trusted)
 
-        // Old key should no longer match
         let result = store.verify(keyData: oldKey, keyType: "ssh-rsa", hostname: "example.com", port: 22)
-        switch result {
-        case .mismatch:
-            break // expected
-        default:
+        guard case .mismatch = result else {
             Issue.record("Expected .mismatch for old key after update, got \(result)")
+            return
         }
+    }
+
+    @Test("A saved key file that cannot be read checks no key and is never written over")
+    func testUnreadableFileChecksNothing() throws {
+        let path = makeTempFilePath()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+
+        let store = HostKeyStore(filePath: path)
+        store.trust(hostname: "example.com", port: 22, key: makeTestKey(0x31), keyType: "ssh-ed25519")
+        let saved = try String(contentsOfFile: path, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: path)
+
+        #expect(
+            store.verify(keyData: makeTestKey(0x32), keyType: "ssh-ed25519", hostname: "example.com", port: 22)
+                == .unreadable
+        )
+        store.trust(hostname: "other.example.com", port: 22, key: makeTestKey(0x33), keyType: "ssh-ed25519")
+        store.remove(hostname: "example.com", port: 22)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
+        let after = try String(contentsOfFile: path, encoding: .utf8)
+        #expect(after == saved)
+        #expect(store.verify(keyData: makeTestKey(0x31), keyType: "ssh-ed25519", hostname: "example.com", port: 22) == .trusted)
+    }
+
+    @Test("A saved line that cannot be parsed keeps its host from looking new, and stays in the file")
+    func testUnparsedLineIsKept() throws {
+        let path = makeTempFilePath()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+
+        let unparsed = "[example.com]:22 ssh-ed25519 !!not-base64!!"
+        try (unparsed + "\n").write(toFile: path, atomically: true, encoding: .utf8)
+        let store = HostKeyStore(filePath: path)
+
+        #expect(
+            store.verify(keyData: makeTestKey(0x41), keyType: "ssh-ed25519", hostname: "example.com", port: 22)
+                == .unreadable
+        )
+        store.trust(hostname: "other.example.com", port: 22, key: makeTestKey(0x42), keyType: "ssh-ed25519")
+
+        let contents = try String(contentsOfFile: path, encoding: .utf8)
+        #expect(contents.hasPrefix(unparsed + "\n"))
+        #expect(store.verify(keyData: makeTestKey(0x42), keyType: "ssh-ed25519", hostname: "other.example.com", port: 22) == .trusted)
     }
 
     @Test("A host with a line break plants no key for another host", arguments: [

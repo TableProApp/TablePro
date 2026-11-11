@@ -88,6 +88,27 @@ struct HostKeyVerifierTests {
         #expect(previous != current)
     }
 
+    @Test("Saved keys that cannot be read fail the tunnel without asking, so a changed key is never offered as new")
+    func unreadableStoreFailsWithoutAsking() async throws {
+        let path = FileManager.default.temporaryDirectory
+            .appendingPathComponent("known_hosts-\(UUID().uuidString)").path
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let store = HostKeyStore(filePath: path)
+        store.trust(hostname: "db.example.com", port: 22, key: Data("old-key".utf8), keyType: "ssh-ed25519")
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: path)
+        let prompter = RecordingPrompter(answer: true)
+
+        let error = await #expect(throws: SSHTunnelError.self) {
+            try await verify(store: store, prompter: prompter, key: Data("new-key".utf8))
+        }
+
+        guard case .some(.hostKeyUnverified) = error else {
+            Issue.record("expected the unverified host key error, got \(String(describing: error))")
+            return
+        }
+        #expect(prompter.asked.isEmpty)
+    }
+
     @Test("With no screen to ask from, an unknown host fails at once instead of waiting")
     func noPrompterFailsImmediately() async {
         let store = makeStore()
