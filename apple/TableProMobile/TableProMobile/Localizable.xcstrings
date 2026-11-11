@@ -233,6 +233,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The SSH host keys saved on this device could not be read, so this server's key could not be checked." : {
+
+    },
     "The SSH port %lld is not between 1 and 65535." : {
       "extractionState" : "manual",
       "generatesSymbol" : false

@@ -82,8 +82,10 @@ pub struct StructureTab {
     pub saving_spinner: TemplateChild<adw::Spinner>,
     #[template_child]
     pub stop_button: TemplateChild<gtk::Button>,
+    #[template_child]
+    pub action_bar: TemplateChild<gtk::ActionBar>,
 
-    pub(super) save_action: OnceCell<gio::SimpleAction>,
+    pub(super) actions: OnceCell<gtk::gio::SimpleActionGroup>,
     pub(super) model: RefCell<Option<StructureModel>>,
     pub(super) queue: RefCell<VecDeque<StructureTabInput>>,
     pub(super) dispatching: Cell<bool>,

@@ -1,11 +1,3 @@
-//
-//  HostKeyVerifier.swift
-//  TableProMobile
-//
-//  Checks a presented SSH host key against the known-hosts store before any
-//  credential is sent, and asks the user when the key is new or has changed.
-//
-
 import Foundation
 import TableProDatabase
 import TableProSSHTransport
@@ -32,6 +24,13 @@ enum HostKeyVerifier {
 
         case let .invalidHost(problem):
             throw SSHTunnelError.hostKeyRejected(problem.explanation)
+
+        // Asking would offer a server whose key changed as a new one.
+        case .unreadable:
+            throw SSHTunnelError.hostKeyUnverified(String(localized: """
+                The SSH host keys saved on this device could not be read, so this server's key could not be \
+                checked.
+                """))
 
         case let .unknown(fingerprint, presentedType):
             try await decide(
@@ -63,9 +62,7 @@ enum HostKeyVerifier {
         }
     }
 
-    /// Without a prompter there is no screen to ask from, which is every background caller: a
-    /// Shortcut, Siri, or a widget. Those end with an error naming what to do instead of waiting on
-    /// a question nobody can answer.
+    // No prompter means a background caller (a Shortcut, Siri, a widget), which gets an error instead of a question.
     private static func decide(
         _ question: ConnectionQuestion,
         prompter: (any ConnectionPrompter)?,

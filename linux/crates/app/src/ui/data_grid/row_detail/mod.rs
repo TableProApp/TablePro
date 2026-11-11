@@ -80,13 +80,37 @@ impl RowDetailPane {
             return;
         }
         self.render();
-        let view = self.imp().value_view.get();
-        // The pane may only now be on its way to the screen.
-        if !view.grab_focus() {
-            glib::idle_add_local_once(move || {
-                view.grab_focus();
-            });
+        if crate::ui::a11y::holds_focus(&self.imp().value_view.get()) {
+            return;
         }
+        self.reveal_editor();
+        // The pane may only now be on its way to the screen.
+        if !self.grab_value() {
+            glib::idle_add_local_once(glib::clone!(
+                #[weak(rename_to = pane)]
+                self,
+                move || {
+                    pane.grab_value();
+                }
+            ));
+        }
+    }
+
+    /// A list builds a row only as it lays it out, which a pane opening
+    /// now has not done yet. Focusing the picked field's row makes the
+    /// list build it at once, so the editor has its row to sit in.
+    fn reveal_editor(&self) {
+        let imp = self.imp();
+        let position = imp.selection.selected();
+        if position != gtk::INVALID_LIST_POSITION {
+            imp.field_list.scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
+        }
+    }
+
+    /// Only in its field's row: in the dock it would take keys unseen.
+    fn grab_value(&self) -> bool {
+        let imp = self.imp();
+        imp.editor_box.is_ancestor(&imp.field_list.get()) && imp.value_view.grab_focus()
     }
 
     /// Commit what was typed in the value editor before the grid writes
