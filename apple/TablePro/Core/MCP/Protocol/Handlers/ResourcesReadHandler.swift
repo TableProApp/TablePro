@@ -27,6 +27,7 @@ public struct ResourcesReadHandler: MCPMethodHandler {
             Self.logger.debug("resources/read uri=\(uri, privacy: .private(mask: .hash))")
             MCPAuditLogger.logResourceRead(
                 principal: context.principal,
+                client: MCPAuditLogger.clientName(for: context.meta),
                 uri: uri,
                 outcome: .success
             )
@@ -38,6 +39,7 @@ public struct ResourcesReadHandler: MCPMethodHandler {
         } catch {
             MCPAuditLogger.logResourceRead(
                 principal: context.principal,
+                client: MCPAuditLogger.clientName(for: context.meta),
                 uri: uri,
                 outcome: .error,
                 errorMessage: (error as? MCPProtocolError)?.message ?? error.localizedDescription

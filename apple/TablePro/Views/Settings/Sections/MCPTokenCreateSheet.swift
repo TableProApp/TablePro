@@ -1,12 +1,18 @@
 import SwiftUI
 
+struct MCPTokenCreateFailure: Equatable, Sendable {
+    let message: String
+    // Nothing in this sheet can fix a server that is not running, so the alert closes it.
+    let endsSheet: Bool
+}
+
 struct MCPTokenCreateSheet: View {
     private enum Field: Hashable {
         case name
     }
 
     @Environment(\.dismiss) private var dismiss
-    let onGenerate: (String, TokenPermissions, Set<UUID>?, Date?) -> Void
+    let onGenerate: (String, TokenPermissions, Set<UUID>?, Date?) async -> MCPTokenCreateFailure?
 
     @State private var tokenName = ""
     @State private var permissions: TokenPermissions = .readOnly
@@ -15,6 +21,8 @@ struct MCPTokenCreateSheet: View {
     @State private var expirationOption: ExpirationOption = .never
     @State private var customExpirationDate = Calendar.current.date(byAdding: .day, value: 30, to: .now) ?? .now
     @State private var connections: [DatabaseConnection] = []
+    @State private var isGenerating = false
+    @State private var failure: MCPTokenCreateFailure?
     @FocusState private var focused: Field?
 
     var body: some View {
@@ -36,11 +44,36 @@ struct MCPTokenCreateSheet: View {
         .task {
             connections = ConnectionStorage.shared.loadConnections()
         }
+        .alert(
+            String(localized: "Couldn't Create the Token"),
+            isPresented: failureBinding,
+            presenting: failure
+        ) { failure in
+            Button(String(localized: "OK")) {
+                self.failure = nil
+                if failure.endsSheet {
+                    dismiss()
+                }
+            }
+        } message: { failure in
+            Text(verbatim: failure.message)
+        }
+    }
+
+    private var failureBinding: Binding<Bool> {
+        Binding(
+            get: { failure != nil },
+            set: { isPresented in
+                if !isPresented {
+                    failure = nil
+                }
+            }
+        )
     }
 
     private var nameSection: some View {
         Section(String(localized: "Token Name")) {
-            TextField(String(localized: "e.g., Claude Code on VPS"), text: $tokenName)
+            TextField(String(localized: "e.g., Cursor on my Mac"), text: $tokenName)
                 .focused($focused, equals: .name)
         }
     }
@@ -120,10 +153,15 @@ struct MCPTokenCreateSheet: View {
 
             Button(String(localized: "Generate")) {
                 let connectionIds: Set<UUID>? = connectionAccess == .selected ? selectedConnectionIds : nil
-                onGenerate(tokenName, permissions, connectionIds, resolvedExpirationDate)
+                isGenerating = true
+                Task {
+                    failure = await onGenerate(tokenName, permissions, connectionIds, resolvedExpirationDate)
+                    isGenerating = false
+                }
             }
             .keyboardShortcut(.defaultAction)
-            .disabled(tokenName.trimmingCharacters(in: .whitespaces).isEmpty
+            .disabled(isGenerating
+                || tokenName.trimmingCharacters(in: .whitespaces).isEmpty
                 || (connectionAccess == .selected && selectedConnectionIds.isEmpty))
         }
     }

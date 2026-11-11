@@ -176,6 +176,7 @@ public actor BridgeProxy {
     private let hostLines: AsyncStream<Data>
     private let logger: any MCPBridgeLogger
     private let discovery: BridgeDiscovery
+    private let instanceId = UUID().uuidString
 
     private var clientInfo: JsonValue?
 
@@ -248,12 +249,12 @@ public actor BridgeProxy {
 
     private func forward(line: Data, peek: BridgeMessagePeek, method: String) async {
         var body = line
-        if !peek.declaresProtocolVersion {
-            if let stamped = BridgeJson.stampMeta(line, fields: metaFields()) {
-                body = stamped
-            } else {
-                logger.log(.warning, "Could not stamp request metadata onto \(method)")
-            }
+        // The instance goes on every message, so a cancellation sent without metadata meets the request it names.
+        let fields = peek.declaresProtocolVersion ? instanceField() : metaFields()
+        if let stamped = BridgeJson.stampMeta(line, fields: fields) {
+            body = stamped
+        } else {
+            logger.log(.warning, "Could not stamp request metadata onto \(method)")
         }
 
         do {
@@ -312,9 +313,15 @@ public actor BridgeProxy {
         await stdout.write(data)
     }
 
+    // Two sessions of one client send the same clientInfo and the same request ids; this keeps them apart.
+    private func instanceField() -> Data {
+        Data("\"\(MCPMetaKeys.bridgeInstance)\":\"\(instanceId)\"".utf8)
+    }
+
     private func metaFields() -> Data {
         var fields = Data("\"\(MCPMetaKeys.protocolVersion)\":\"\(MCPProtocolVersion.latest.rawValue)\"".utf8)
-        fields.append(Data(",\"\(MCPMetaKeys.clientCapabilities)\":{}".utf8))
+        fields.append(Data(",\"\(MCPMetaKeys.clientCapabilities)\":{},".utf8))
+        fields.append(instanceField())
         guard let clientInfo, let encoded = try? JSONEncoder().encode(clientInfo) else { return fields }
         fields.append(Data(",\"\(MCPMetaKeys.clientInfo)\":".utf8))
         fields.append(encoded)

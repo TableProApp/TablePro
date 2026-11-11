@@ -4,29 +4,35 @@ public actor MCPClientActivityLedger {
     public struct Entry: Sendable, Identifiable, Equatable {
         public let id: String
         public let clientName: String
+        public let clientInfoName: String?
         public let clientVersion: String?
         public let tokenId: UUID?
         public let tokenName: String?
         public let address: String
+        public let transport: MCPClientTransport
         public let firstSeenAt: Date
         public let lastSeenAt: Date
 
         public init(
             id: String,
             clientName: String,
+            clientInfoName: String? = nil,
             clientVersion: String?,
             tokenId: UUID?,
             tokenName: String?,
             address: String,
+            transport: MCPClientTransport = .http,
             firstSeenAt: Date,
             lastSeenAt: Date
         ) {
             self.id = id
             self.clientName = clientName
+            self.clientInfoName = clientInfoName
             self.clientVersion = clientVersion
             self.tokenId = tokenId
             self.tokenName = tokenName
             self.address = address
+            self.transport = transport
             self.firstSeenAt = firstSeenAt
             self.lastSeenAt = lastSeenAt
         }
@@ -57,10 +63,12 @@ public actor MCPClientActivityLedger {
         entries[identity.id] = Entry(
             id: identity.id,
             clientName: identity.clientName,
+            clientInfoName: identity.clientInfoName,
             clientVersion: identity.clientVersion,
             tokenId: identity.tokenId,
             tokenName: identity.tokenName,
-            address: identity.addressDisplayValue,
+            address: identity.address.localizedDisplayValue,
+            transport: identity.transport,
             firstSeenAt: existing?.firstSeenAt ?? timestamp,
             lastSeenAt: timestamp
         )

@@ -269,6 +269,21 @@
     LICENSE at the tag is byte-identical to the Go distribution''s LICENSE, but this is a separate module
     with its own version, so it has its own entry. Reaches users only through the registry-only SAP HANA
     plugin.'
+- id: goose
+  name: goose
+  version: vendored at bf760fd63, 2025-03-24
+  spdx: Apache-2.0
+  copyrights:
+  - Copyright 2024 Block, Inc.
+  homepageURL: https://github.com/aaif-goose/goose
+  licenseTextURL: https://github.com/aaif-goose/goose/blob/bf760fd630b9accd1eff63adba24798d6bf7413a/LICENSE
+  textFile: texts/goose.txt
+  source: manual
+  patched: false
+  platforms: [macos]
+  notes: The goose logo only (TablePro/Assets.xcassets/goose-icon.imageset/goose.svg), byte-identical to
+    documentation/static/img/goose.svg at bf760fd630b9 (block/goose, now aaif-goose/goose). No code ships. The
+    repository has no NOTICE file. The mark is the project's trademark; the licence covers the file only.
 - id: vscode-theme-gruvbox
   name: Gruvbox Theme
   version: 1.29.1
@@ -360,6 +375,20 @@
     Two clause BSD license", and the inet_pton / inet_ntop implementations in src/inet.c, "copyright the
     Internet Systems Consortium, Inc.", ISC licence. The repo also has LICENSE-docs (documentation only,
     not linked).'
+- id: llama-cpp
+  name: llama.cpp
+  version: vendored at ef9c13d4c, 2026-06-24
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2023-2026 The ggml authors
+  homepageURL: https://github.com/ggml-org/llama.cpp
+  licenseTextURL: https://github.com/ggml-org/llama.cpp/blob/ef9c13d4c27f1ad9804341a0187c33b621609c63/LICENSE
+  textFile: texts/llama-cpp.txt
+  source: manual
+  patched: false
+  platforms: [macos]
+  notes: The llama.cpp logo only (TablePro/Assets.xcassets/llamacpp-icon.imageset/llamacpp.svg), byte-identical
+    to tools/ui/src/lib/assets/logo.svg at ef9c13d4c27f. No code ships.
 - id: mariadb-connector-c
   name: MariaDB Connector/C
   version: 3.4.4
@@ -387,6 +416,22 @@
     LGPL: shipping the app must keep the relinking route open (object files or the shipped .a plus the
     licence text). The build uses Homebrew openssl@3, not the pinned OpenSSL. scripts/ios/build-mariadb-ios.sh
     pins the same 3.4.4.'
+- id: mlx
+  name: MLX
+  version: vendored at 9ab391356, 2026-03-24
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2023 Apple Inc.
+  homepageURL: https://github.com/ml-explore/mlx
+  licenseTextURL: https://github.com/ml-explore/mlx/blob/9ab3913567df16cac539dce7b4e5d569897a1c29/LICENSE
+  textFile: texts/mlx.txt
+  source: manual
+  patched: false
+  platforms: [macos]
+  notes: The MLX logo only (TablePro/Assets.xcassets/mlx-icon.imageset/mlx.pdf and mlx-dark.pdf), byte-identical
+    to docs/logo/mlx_logo.pdf and mlx_logo_dark.pdf at 9ab3913567df. The PDFs, not the SVGs beside them, because
+    the SVGs draw their glyphs through <use> and render empty in AppKit. No code ships. The original LICENSE
+    writes the copyright sign; this YAML is ASCII-folded.
 - id: mongo-c-driver
   name: MongoDB C Driver (libmongoc / libbson)
   version: 1.28.1
@@ -406,6 +451,20 @@
     grant), mongoc.css_t, zlib, common-md5.c and utf8proc. The full text is saved in the extra text file.
     Tarball is the GitHub release archive for 1.28.1, pinned by SHA-256. The script writes the flat
     Libs/libmongoc.a and Libs/libbson.a itself.'
+- id: n8n-requesty
+  name: Requesty n8n node
+  version: vendored at 6aeafb9e9, 2026-06-02
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2024 Requesty
+  homepageURL: https://github.com/requestyai/n8n-requesty
+  licenseTextURL: https://github.com/requestyai/n8n-requesty/blob/6aeafb9e98d8b2b783a1316f2a038cf1b729dab4/LICENSE
+  textFile: texts/n8n-requesty.txt
+  source: manual
+  patched: false
+  platforms: [macos]
+  notes: The Requesty logo only (TablePro/Assets.xcassets/requesty-icon.imageset/requesty.svg), byte-identical to
+    icons/requesty.svg at 6aeafb9e98d8, the commit "use official Requesty bubble logo as node icon". No code ships.
 - id: nord-visual-studio-code
   name: Nord Visual Studio Code
   version: vendored at 8ead09822, 2023-05-03
@@ -468,6 +527,21 @@
     Atom's original One Light palette (styles/colors.less and styles/syntax-variables.less, package version
     1.8.4; the repository is archived) supplies its git colors and confirms the editor values. No code or
     file from the project ships.
+- id: openai-realtime-console
+  name: OpenAI Realtime Console
+  version: vendored at 758faf83a, 2024-12-19
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2024 OpenAI
+  homepageURL: https://github.com/openai/openai-realtime-console
+  licenseTextURL: https://github.com/openai/openai-realtime-console/blob/758faf83a11d0026baafeb7bc072ee2eb9f1c2f9/LICENSE
+  textFile: texts/openai-realtime-console.txt
+  source: manual
+  patched: false
+  platforms: [macos]
+  notes: The OpenAI logomark only (TablePro/Assets.xcassets/openai-icon.imageset/openai.svg), byte-identical to
+    client/assets/openai-logomark.svg at 758faf83a11d, the same bytes as public/openai-logomark.svg in
+    openai/openai-realtime-agents. No code ships. The mark is an OpenAI trademark (openai.com/brand).
 - id: openssl
   name: OpenSSL
   version: 3.5.9
@@ -562,6 +636,21 @@
     file. The COPYRIGHT text is the whole licence; SPDX calls it "PostgreSQL" (a BSD/MIT-style permissive
     licence), not BSD-2-Clause. The same build also emits Libs/libssl_*.a and Libs/libcrypto_*.a, which
     are OpenSSL, not PostgreSQL. scripts/ios/build-libpq-ios.sh pins the same 17.4.
+- id: primer-octicons
+  name: Primer Octicons
+  version: copilot-24, through Simple Icons 16.37.0
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2026 GitHub Inc.
+  homepageURL: https://github.com/primer/octicons
+  licenseTextURL: https://github.com/primer/octicons/blob/41c780575654fe4fef3fc4e91a46c8c0e91b233b/LICENSE
+  textFile: texts/primer-octicons.txt
+  source: manual
+  patched: false
+  platforms: [macos]
+  notes: The GitHub Copilot mark only (TablePro/Assets.xcassets/githubcopilot-icon.imageset/githubcopilot.svg),
+    byte-identical to icons/githubcopilot.svg in the simple-icons 16.37.0 npm package, whose data file records
+    its source as https://primer.style/foundations/icons/copilot-24 and its license as MIT. No code ships.
 - id: rearrange
   name: Rearrange
   version: 2.1.1

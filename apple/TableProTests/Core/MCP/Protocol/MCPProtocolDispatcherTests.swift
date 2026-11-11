@@ -627,6 +627,298 @@ struct MCPProtocolDispatcherTests {
         #expect(result["inputRequests"]?["approve_connection"] != nil)
     }
 
+    @Test("The bridge's discover probe is not listed as a client, the client it carries is")
+    func discoverProbeIsNotAClient() async throws {
+        let dispatcher = MCPProtocolTestSupport.makeDispatcher(handlers: [DiscoverHandler(), StubToolsListHandler()])
+        let bridge = Self.bridgePrincipal()
+
+        let probe = Self.request(id: .string("tablepro-bridge-discover"), method: DiscoverHandler.method, clientName: "tablepro-mcp")
+        let (probeExchange, probeSink) = MCPProtocolTestSupport.makeExchange(message: probe, principal: bridge, clientAddress: .localSocket)
+        await dispatcher.dispatch(probeExchange)
+        await probeSink.waitForCompletion()
+        #expect(try await probeSink.successResult() != nil)
+        #expect(await dispatcher.activityLedger.snapshot(now: MCPProtocolTestSupport.referenceDate).isEmpty)
+
+        let list = Self.request(id: .number(2), method: StubToolsListHandler.method, clientName: "claude-ai")
+        let (listExchange, listSink) = MCPProtocolTestSupport.makeExchange(message: list, principal: bridge, clientAddress: .localSocket)
+        await dispatcher.dispatch(listExchange)
+        await listSink.waitForCompletion()
+
+        let entries = await dispatcher.activityLedger.snapshot(now: MCPProtocolTestSupport.referenceDate)
+        #expect(entries.map(\.clientName) == ["claude-ai"])
+        #expect(entries.first?.transport == .stdioBridge)
+    }
+
+    @Test("Ending one stdio client's requests leaves another stdio client's request on the same credential running")
+    func cancellingOneClientSparesTheOther() async throws {
+        let handler = StubTestHandler(behavior: .waitForCancellation)
+        let dispatcher = MCPProtocolTestSupport.makeDispatcher(handlers: [handler])
+        let bridge = Self.bridgePrincipal()
+        let (cursorExchange, cursorSink) = MCPProtocolTestSupport.makeExchange(
+            message: Self.request(id: .number(1), method: StubTestHandler.method, clientName: "cursor-vscode"),
+            principal: bridge,
+            clientAddress: .localSocket
+        )
+        let (zedExchange, zedSink) = MCPProtocolTestSupport.makeExchange(
+            message: Self.request(id: .number(2), method: StubTestHandler.method, clientName: "Zed"),
+            principal: bridge,
+            clientAddress: .localSocket
+        )
+
+        async let cursorRun: Void = dispatcher.dispatch(cursorExchange)
+        async let zedRun: Void = dispatcher.dispatch(zedExchange)
+        #expect(await waitForInflight(dispatcher, count: 2) == 2)
+
+        let entries = await dispatcher.activityLedger.snapshot(now: MCPProtocolTestSupport.referenceDate)
+        let cursor = try #require(entries.first { $0.clientName == "cursor-vscode" })
+        #expect(await dispatcher.cancelInflight(matchingClientId: cursor.id) == 1)
+
+        await cursorSink.waitForCompletion()
+        let cursorError = try #require(try await cursorSink.errorEnvelope())
+        #expect(cursorError.code == JsonRpcErrorCode.requestCancelled)
+        #expect(await dispatcher.inflightCount() == 1)
+        #expect(await zedSink.jsonWrites.isEmpty)
+
+        _ = await dispatcher.cancelAllInflight()
+        await zedSink.waitForCompletion()
+        _ = await cursorRun
+        _ = await zedRun
+    }
+
+    @Test("Two stdio clients may use the same request id, and one's cancellation stops only its own request")
+    func stdioClientsShareARequestIdWithoutCollapsing() async throws {
+        let handler = StubTestHandler(behavior: .waitForCancellation)
+        let dispatcher = MCPProtocolTestSupport.makeDispatcher(handlers: [handler])
+        let bridge = Self.bridgePrincipal()
+        let (cursorExchange, cursorSink) = MCPProtocolTestSupport.makeExchange(
+            message: Self.request(id: .number(1), method: StubTestHandler.method, clientName: "cursor-vscode"),
+            principal: bridge,
+            clientAddress: .localSocket
+        )
+        let (zedExchange, zedSink) = MCPProtocolTestSupport.makeExchange(
+            message: Self.request(id: .number(1), method: StubTestHandler.method, clientName: "Zed"),
+            principal: bridge,
+            clientAddress: .localSocket
+        )
+
+        async let cursorRun: Void = dispatcher.dispatch(cursorExchange)
+        async let zedRun: Void = dispatcher.dispatch(zedExchange)
+        #expect(await waitForInflight(dispatcher, count: 2) == 2)
+
+        let cancel = JsonRpcMessage.notification(JsonRpcNotification(
+            method: "notifications/cancelled",
+            params: .object([
+                "requestId": .int(1),
+                "_meta": .object(MCPProtocolTestSupport.metaFields(clientName: "Zed"))
+            ])
+        ))
+        let (cancelExchange, cancelSink) = MCPProtocolTestSupport.makeExchange(
+            message: cancel,
+            principal: bridge,
+            clientAddress: .localSocket
+        )
+        await dispatcher.dispatch(cancelExchange)
+        #expect(await cancelSink.acceptedCount == 1)
+
+        await zedSink.waitForCompletion()
+        let zedError = try #require(try await zedSink.errorEnvelope())
+        #expect(zedError.code == JsonRpcErrorCode.requestCancelled)
+        #expect(await dispatcher.inflightCount() == 1)
+        #expect(await cursorSink.jsonWrites.isEmpty)
+
+        _ = await dispatcher.cancelAllInflight()
+        await cursorSink.waitForCompletion()
+        _ = await cursorRun
+        _ = await zedRun
+    }
+
+    @Test("A stdio cancellation that names no client stops nothing")
+    func stdioCancellationWithoutAClientIsDropped() async throws {
+        let handler = StubTestHandler(behavior: .waitForCancellation)
+        let dispatcher = MCPProtocolTestSupport.makeDispatcher(handlers: [handler])
+        let bridge = Self.bridgePrincipal()
+        let (exchange, sink) = MCPProtocolTestSupport.makeExchange(
+            message: Self.request(id: .number(4), method: StubTestHandler.method, clientName: "Zed"),
+            principal: bridge,
+            clientAddress: .localSocket
+        )
+
+        async let run: Void = dispatcher.dispatch(exchange)
+        #expect(await waitForInflight(dispatcher, count: 1) == 1)
+
+        let (cancelExchange, cancelSink) = MCPProtocolTestSupport.makeExchange(
+            message: MCPProtocolTestSupport.makeNotification(
+                method: "notifications/cancelled",
+                params: .object(["requestId": .int(4)])
+            ),
+            principal: bridge,
+            clientAddress: .localSocket
+        )
+        await dispatcher.dispatch(cancelExchange)
+        #expect(await cancelSink.acceptedCount == 1)
+        #expect(await dispatcher.inflightCount() == 1)
+        #expect(await sink.jsonWrites.isEmpty)
+
+        _ = await dispatcher.cancelAllInflight()
+        await sink.waitForCompletion()
+        _ = await run
+    }
+
+    @Test("A stdio cancellation sent with the renewed bridge credential stops the request the old one started")
+    func stdioCancellationCrossesACredentialRotation() async throws {
+        let handler = StubTestHandler(behavior: .waitForCancellation)
+        let dispatcher = MCPProtocolTestSupport.makeDispatcher(handlers: [handler], handlerTimeout: .seconds(10))
+        let (exchange, sink) = MCPProtocolTestSupport.makeExchange(
+            message: Self.request(id: .number(3), method: StubTestHandler.method, clientName: "claude-code", bridgeInstance: "one"),
+            principal: Self.bridgePrincipal(fingerprint: "a"),
+            clientAddress: .localSocket
+        )
+
+        async let run: Void = dispatcher.dispatch(exchange)
+        #expect(await waitForInflight(dispatcher, count: 1) == 1)
+
+        let (cancelExchange, cancelSink) = MCPProtocolTestSupport.makeExchange(
+            message: Self.cancellation(requestId: 3, clientName: "claude-code", bridgeInstance: "one"),
+            principal: Self.bridgePrincipal(fingerprint: "b"),
+            clientAddress: .localSocket
+        )
+        await dispatcher.dispatch(cancelExchange)
+        #expect(await cancelSink.acceptedCount == 1)
+        #expect(await dispatcher.inflightCount() == 0)
+
+        _ = await dispatcher.cancelAllInflight()
+        await sink.waitForCompletion()
+        let error = try #require(try await sink.errorEnvelope())
+        #expect(error.code == JsonRpcErrorCode.requestCancelled)
+        _ = await run
+    }
+
+    @Test("A stdio cancellation without clientInfo stops the request that sent it, matched by bridge instance")
+    func stdioCancellationWithoutClientInfo() async throws {
+        let handler = StubTestHandler(behavior: .waitForCancellation)
+        let dispatcher = MCPProtocolTestSupport.makeDispatcher(handlers: [handler], handlerTimeout: .seconds(10))
+        let bridge = Self.bridgePrincipal()
+        let (exchange, sink) = MCPProtocolTestSupport.makeExchange(
+            message: Self.request(id: .number(3), method: StubTestHandler.method, clientName: "claude-code", bridgeInstance: "one"),
+            principal: bridge,
+            clientAddress: .localSocket
+        )
+
+        async let run: Void = dispatcher.dispatch(exchange)
+        #expect(await waitForInflight(dispatcher, count: 1) == 1)
+
+        let (otherSession, _) = MCPProtocolTestSupport.makeExchange(
+            message: Self.cancellation(requestId: 3, clientName: nil, bridgeInstance: "two"),
+            principal: bridge,
+            clientAddress: .localSocket
+        )
+        await dispatcher.dispatch(otherSession)
+        #expect(await dispatcher.inflightCount() == 1)
+
+        let (cancelExchange, cancelSink) = MCPProtocolTestSupport.makeExchange(
+            message: Self.cancellation(requestId: 3, clientName: nil, bridgeInstance: "one"),
+            principal: bridge,
+            clientAddress: .localSocket
+        )
+        await dispatcher.dispatch(cancelExchange)
+        #expect(await cancelSink.acceptedCount == 1)
+        #expect(await dispatcher.inflightCount() == 0)
+
+        _ = await dispatcher.cancelAllInflight()
+        await sink.waitForCompletion()
+        let error = try #require(try await sink.errorEnvelope())
+        #expect(error.code == JsonRpcErrorCode.requestCancelled)
+        _ = await run
+    }
+
+    @Test("Sessions of one stdio client share a request id: a cancellation stops its own session, Disconnect ends them all")
+    func sessionsOfOneStdioClientKeepTheirRequestsApart() async throws {
+        let handler = StubTestHandler(behavior: .waitForCancellation)
+        let dispatcher = MCPProtocolTestSupport.makeDispatcher(handlers: [handler], handlerTimeout: .seconds(10))
+        let bridge = Self.bridgePrincipal()
+        let (oneExchange, oneSink) = MCPProtocolTestSupport.makeExchange(
+            message: Self.request(id: .number(1), method: StubTestHandler.method, clientName: "claude-code", bridgeInstance: "one"),
+            principal: bridge,
+            clientAddress: .localSocket
+        )
+        let (twoExchange, twoSink) = MCPProtocolTestSupport.makeExchange(
+            message: Self.request(id: .number(1), method: StubTestHandler.method, clientName: "claude-code", bridgeInstance: "two"),
+            principal: bridge,
+            clientAddress: .localSocket
+        )
+        let (threeExchange, threeSink) = MCPProtocolTestSupport.makeExchange(
+            message: Self.request(id: .number(1), method: StubTestHandler.method, clientName: "claude-code", bridgeInstance: "three"),
+            principal: bridge,
+            clientAddress: .localSocket
+        )
+
+        async let oneRun: Void = dispatcher.dispatch(oneExchange)
+        async let twoRun: Void = dispatcher.dispatch(twoExchange)
+        async let threeRun: Void = dispatcher.dispatch(threeExchange)
+        #expect(await waitForInflight(dispatcher, count: 3) == 3)
+
+        let entries = await dispatcher.activityLedger.snapshot(now: MCPProtocolTestSupport.referenceDate)
+        #expect(entries.count == 1)
+        let row = try #require(entries.first)
+
+        let (cancelExchange, _) = MCPProtocolTestSupport.makeExchange(
+            message: Self.cancellation(requestId: 1, clientName: "claude-code", bridgeInstance: "three"),
+            principal: bridge,
+            clientAddress: .localSocket
+        )
+        await dispatcher.dispatch(cancelExchange)
+        #expect(await dispatcher.inflightCount() == 2)
+        #expect(await oneSink.jsonWrites.isEmpty)
+        #expect(await twoSink.jsonWrites.isEmpty)
+
+        #expect(await dispatcher.cancelInflight(matchingClientId: row.id) == 2)
+        #expect(await dispatcher.inflightCount() == 0)
+
+        _ = await dispatcher.cancelAllInflight()
+        for sink in [oneSink, twoSink, threeSink] {
+            await sink.waitForCompletion()
+            let error = try #require(try await sink.errorEnvelope())
+            #expect(error.code == JsonRpcErrorCode.requestCancelled)
+        }
+        _ = await oneRun
+        _ = await twoRun
+        _ = await threeRun
+    }
+
+    private static func bridgePrincipal(fingerprint: String = "bridge") -> MCPPrincipal {
+        MCPPrincipal(
+            tokenFingerprint: fingerprint,
+            tokenId: UUID(),
+            scopes: MCPScope.readWriteSet,
+            connectionAccess: .all,
+            metadata: MCPPrincipalMetadata(
+                label: MCPTokenStore.stdioBridgeTokenName,
+                issuedAt: MCPProtocolTestSupport.referenceDate,
+                expiresAt: nil,
+                isBridgeCredential: true
+            )
+        )
+    }
+
+    private static func request(id: JsonRpcId, method: String, clientName: String, bridgeInstance: String? = nil) -> JsonRpcMessage {
+        .request(JsonRpcRequest(id: id, method: method, params: .object(["_meta": .object(meta(clientName, bridgeInstance))])))
+    }
+
+    private static func cancellation(requestId: Int, clientName: String?, bridgeInstance: String?) -> JsonRpcMessage {
+        .notification(JsonRpcNotification(
+            method: "notifications/cancelled",
+            params: .object(["requestId": .int(requestId), "_meta": .object(meta(clientName, bridgeInstance))])
+        ))
+    }
+
+    private static func meta(_ clientName: String?, _ bridgeInstance: String?) -> [String: JsonValue] {
+        var fields = MCPProtocolTestSupport.metaFields(clientName: clientName)
+        if let bridgeInstance {
+            fields[MCPMetaKeys.bridgeInstance] = .string(bridgeInstance)
+        }
+        return fields
+    }
+
     private func dispatch(
         _ message: JsonRpcMessage,
         handlers: [any MCPMethodHandler],

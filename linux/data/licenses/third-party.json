@@ -1284,7 +1284,8 @@
         { "crate": { "name": "env_logger", "version": "0.11.11" } },
         { "crate": { "name": "toml_datetime", "version": "1.1.1+spec-1.1.0" } },
         { "crate": { "name": "toml_edit", "version": "0.25.15+spec-1.1.0" } },
-        { "crate": { "name": "toml_parser", "version": "1.1.3+spec-1.1.0" } }
+        { "crate": { "name": "toml_parser", "version": "1.1.3+spec-1.1.0" } },
+        { "crate": { "name": "toml_writer", "version": "1.1.2+spec-1.1.0" } }
       ]
     },
     {
@@ -3107,6 +3108,7 @@
     { "name": "toml_datetime", "version": "1.1.1+spec-1.1.0", "license": "MIT OR Apache-2.0" },
     { "name": "toml_edit", "version": "0.25.15+spec-1.1.0", "license": "MIT OR Apache-2.0" },
     { "name": "toml_parser", "version": "1.1.3+spec-1.1.0", "license": "MIT OR Apache-2.0" },
+    { "name": "toml_writer", "version": "1.1.2+spec-1.1.0", "license": "MIT OR Apache-2.0" },
     { "name": "tower", "version": "0.5.3", "license": "MIT" },
     { "name": "tower-http", "version": "0.6.11", "license": "MIT" },
     { "name": "tower-layer", "version": "0.3.3", "license": "MIT" },

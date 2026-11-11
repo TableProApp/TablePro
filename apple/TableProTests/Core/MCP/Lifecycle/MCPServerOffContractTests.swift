@@ -108,6 +108,53 @@ struct MCPServerOffContractTests {
     }
 }
 
+@MainActor
+struct MCPServerFailedStartTests {
+    private let root: URL
+
+    init() throws {
+        root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mcp-fail-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    }
+
+    @Test("A start that fails while MCP is on leaves a refusal that says so, for the bridge that asked")
+    func failedStartWritesARefusal() async throws {
+        // Too long for a socket path, so the server falls back to the temporary folder, which is a file here.
+        let directory = root.appendingPathComponent(String(repeating: "d", count: 110), isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let notAFolder = root.appendingPathComponent("tmp-file", isDirectory: false)
+        try Data().write(to: notAFolder)
+        let manager = MCPServerManager(
+            handshake: MCPHandshakeFile(directory: directory, temporaryDirectory: notAFolder),
+            isEnabled: { true }
+        )
+        let startedAt = Date()
+
+        try await manager.start(port: 0)
+
+        #expect(manager.state == .failed(.socketFolderUnusable))
+        #expect(manager.tokenStore == nil)
+        let data = try Data(contentsOf: MCPHandshakeLocation.refusalFile(in: directory))
+        let refusal = try MCPHandshakeCoding.decoder().decode(MCPStartRefusal.self, from: data)
+        #expect(refusal.reason == .failedToStart)
+        #expect(refusal.answers(launchRequestedAt: startedAt))
+        await manager.stop()
+    }
+
+    @Test("A refusal while MCP is off still reads as turned off")
+    func turnedOffRefusalKeepsItsReason() async throws {
+        let manager = MCPServerManager(handshake: MCPHandshakeFile(directory: root), isEnabled: { false })
+
+        await #expect(throws: MCPServerStartError.turnedOff) {
+            try await manager.start(port: 0)
+        }
+
+        let data = try Data(contentsOf: MCPHandshakeLocation.refusalFile(in: root))
+        #expect(try MCPHandshakeCoding.decoder().decode(MCPStartRefusal.self, from: data).reason == .turnedOff)
+    }
+}
+
 struct MCPBridgeRefusalTests {
     private let directory: URL
 

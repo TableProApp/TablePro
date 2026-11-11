@@ -40,18 +40,30 @@ enum CLILive {
         let handshake: MCPHandshakePayload
         do {
             handshake = try await MCPHandshakeAcquirer(logger: logger).acquire()
-        } catch MCPHandshakeAcquisitionError.serverTurnedOff {
-            throw CLIFailure(
-                .refused,
-                "TablePro's MCP server is turned off, and the tablepro command reaches TablePro through it. Turn it on under Settings > MCP."
-            )
         } catch {
-            throw CLIFailure(.failure, "TablePro did not start its MCP server: \(error.localizedDescription)")
+            throw failure(acquiring: error)
         }
         do {
             return try await verified(handshake, logger: logger)
         } catch MCPSocketHttpError.peerChanged {
             throw CLIFailure.peerChanged
+        }
+    }
+
+    static func failure(acquiring error: Error) -> CLIFailure {
+        switch error as? MCPHandshakeAcquisitionError {
+        case .serverTurnedOff?:
+            return CLIFailure(
+                .refused,
+                "TablePro's MCP server is turned off, and the tablepro command reaches TablePro through it. Turn it on under Settings > MCP."
+            )
+        case .serverFailedToStart?:
+            return CLIFailure(
+                .failure,
+                "TablePro's MCP server is on but could not start. Open Settings > MCP in TablePro to see why, then run the command again."
+            )
+        case .launchFailed?, .timeout?, nil:
+            return CLIFailure(.failure, "TablePro did not start its MCP server: \(error.localizedDescription)")
         }
     }
 
@@ -104,6 +116,8 @@ enum CLILive {
             return try await CLIServerClient.exchange(code: code, verifier: request.verifier, socketPath: server.socketPath, serverPID: server.serverPID)
         case .denied:
             throw CLIFailure(.refused, "Pairing was declined in TablePro.")
+        case .failed:
+            throw CLIFailure(.failure, "TablePro could not issue a token for the tablepro command. TablePro shows why; run the command again.")
         case .ignored, nil:
             throw CLIFailure(.refused, "Pairing was not approved in time.")
         }

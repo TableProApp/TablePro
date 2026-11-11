@@ -6,13 +6,17 @@
 
 mod access_token;
 mod browse_request;
+pub mod clients;
 mod collected_results;
 mod connection_tools;
 mod export_tools;
 mod mcp_host;
 mod mcp_server;
+#[cfg(any(target_os = "linux", test))]
+mod peer_owner;
 mod query_tools;
 mod schema_tools;
+mod seen_clients;
 mod token_vault;
 mod tool_args;
 mod tool_context;
@@ -25,6 +29,7 @@ pub use export_tools::MAX_EXPORT_TABLES;
 pub use mcp_host::{McpHost, OpenOutcome, WriteApproval};
 pub use mcp_server::{MCP_PATH, McpServer, StartError};
 pub use query_tools::{DEFAULT_ROWS, DEFAULT_TIMEOUT_SECONDS, MAX_QUERY_BYTES, MAX_ROWS, MAX_TIMEOUT_SECONDS};
+pub use seen_clients::SeenClient;
 pub use token_vault::{ObtainError, TokenVault, obtain_token, replace_token};
 pub use tool_context::ToolContext;
 pub use tool_server::catalog;

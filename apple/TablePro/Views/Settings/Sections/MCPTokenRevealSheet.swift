@@ -2,14 +2,24 @@ import AppKit
 import SwiftUI
 
 struct MCPTokenRevealSheet: View {
-    let token: MCPAuthToken
     let plaintext: String
     let port: Int
+    let configuredPort: Int
     @Environment(\.dismiss) private var dismiss
 
     @State private var isTokenRevealed = false
-    @State private var selectedClient: IntegrationClient = .claudeCode
-    @FocusState private var doneFocused: Bool
+    @State private var selectedClientID: String
+
+    private let setup: MCPHTTPClientSetup
+
+    init(plaintext: String, port: Int, configuredPort: Int) {
+        self.plaintext = plaintext
+        self.port = port
+        self.configuredPort = configuredPort
+        let setup = MCPHTTPClientSetup(port: port)
+        self.setup = setup
+        _selectedClientID = State(initialValue: setup.choices.first?.id ?? MCPHTTPClientSetup.otherClientID)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,7 +38,6 @@ struct MCPTokenRevealSheet: View {
                 Spacer()
                 Button(String(localized: "Done")) { dismiss() }
                     .keyboardShortcut(.defaultAction)
-                    .focused($doneFocused)
             }
             .padding()
         }
@@ -46,7 +55,7 @@ struct MCPTokenRevealSheet: View {
                 .font(.headline)
 
             HStack(spacing: 8) {
-                Text(isTokenRevealed ? plaintext : maskedToken)
+                Text(verbatim: displayedToken)
                     .font(.system(.body, design: .monospaced))
                     .textSelection(.enabled)
                     .lineLimit(1)
@@ -71,17 +80,13 @@ struct MCPTokenRevealSheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
 
             Button {
-                copyToClipboard(plaintext)
+                ClipboardService.shared.writeSecretText(plaintext)
+                AccessibilityAnnouncement.post(String(localized: "Copied to clipboard"))
             } label: {
                 Label(String(localized: "Copy Token"), systemImage: "doc.on.doc")
             }
-            .buttonStyle(.borderedProminent)
             .accessibilityLabel(String(localized: "Copy token"))
         }
-    }
-
-    private var maskedToken: String {
-        String(plaintext.prefix(8)) + String(repeating: "\u{2022}", count: 24)
     }
 
     private var setupInstructions: some View {
@@ -89,56 +94,70 @@ struct MCPTokenRevealSheet: View {
             Text(String(localized: "Setup Instructions"))
                 .font(.headline)
 
-            Picker(String(localized: "Client"), selection: $selectedClient) {
-                ForEach(IntegrationClient.allCases) { client in
-                    Text(client.displayName).tag(client)
+            Picker(String(localized: "Client"), selection: $selectedClientID) {
+                ForEach(setup.choices) { choice in
+                    Text(verbatim: choice.name).tag(choice.id)
                 }
             }
-            .labelsHidden()
-            .pickerStyle(.segmented)
+            .pickerStyle(.menu)
+            .fixedSize()
+            .accessibilityIdentifier("mcp-token-client-picker")
 
-            CopyableCodeBlock(text: configSnippet(for: selectedClient), isSecret: true)
+            if port != configuredPort {
+                NoticeLabel(String(
+                    format: String(localized: "Port %d was in use, so this address changes when TablePro restarts."),
+                    configuredPort
+                ))
+            }
+
+            if selectedClientID == MCPHTTPClientSetup.otherClientID {
+                otherClientInstructions
+            } else {
+                clientInstructions
+            }
         }
     }
 
-    private var baseURL: String {
-        let scheme = "http"
-        return "\(scheme)://127.0.0.1:\(port)/mcp"
-    }
-
-    private func configSnippet(for client: IntegrationClient) -> String {
-        switch client {
-        case .claudeCode:
-            return "claude mcp add tablepro --transport http \(baseURL) --header \"Authorization: Bearer \(plaintext)\""
-        case .claudeDesktop, .cursor:
-            return """
-            {
-              "mcpServers": {
-                "tablepro": {
-                  "url": "\(baseURL)",
-                  "headers": {
-                    "Authorization": "Bearer \(plaintext)"
-                  }
-                }
-              }
+    @ViewBuilder
+    private var clientInstructions: some View {
+        if let copied = setup.render(clientID: selectedClientID, token: plaintext),
+           let shown = setup.render(clientID: selectedClientID, token: displayedToken) {
+            if let commandLine = copied.commandLine {
+                Text(String(localized: "Run this in Terminal:"))
+                CopyableCodeBlock(text: commandLine, displayText: shown.commandLine, isSecret: true)
             }
-            """
-        case .zed:
-            return """
-            {
-              "tablepro": {
-                "url": "\(baseURL)",
-                "headers": {
-                  "Authorization": "Bearer \(plaintext)"
+            if let snippet = copied.snippet {
+                if let path = copied.displayConfigPath {
+                    Text(String(format: String(localized: "Add this to %@:"), path))
                 }
-              }
+                CopyableCodeBlock(text: snippet, displayText: shown.snippet, isSecret: true)
             }
-            """
+        } else {
+            otherClientInstructions
         }
     }
 
-    private func copyToClipboard(_ text: String) {
-        ClipboardService.shared.writeSecretText(text)
-        AccessibilityAnnouncement.post(String(localized: "Copied to clipboard"))
+    private var otherClientInstructions: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(String(localized: "Give your client this address and header:"))
+            CopyableCodeBlock(text: setup.url)
+            CopyableCodeBlock(
+                text: header(token: plaintext),
+                displayText: header(token: displayedToken),
+                isSecret: true
+            )
+        }
+    }
+
+    private func header(token: String) -> String {
+        "Authorization: " + MCPHTTPClientSetup.authorization(token: token)
+    }
+
+    private var displayedToken: String {
+        isTokenRevealed ? plaintext : maskedToken
+    }
+
+    private var maskedToken: String {
+        String(plaintext.prefix(8)) + String(repeating: "\u{2022}", count: 24)
     }
 }

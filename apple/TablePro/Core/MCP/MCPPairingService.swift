@@ -12,9 +12,7 @@ struct PairingExchangeRecord: Sendable, Equatable {
     let expiresAt: Date
 }
 
-/// A failed verification burns the code. PKCE protects the exchange only while each code allows one
-/// attempt; leaving a code alive after a mismatch turns the five-minute window into an offline
-/// guessing game against a value the caller can retry without limit.
+// A failed verification burns the code: PKCE holds only while each code allows one attempt.
 actor PairingExchangeStore {
     static let exchangeWindow: TimeInterval = 300
     static let maxPendingCodes = 50
@@ -96,6 +94,30 @@ actor PairingExchangeStore {
     }
 }
 
+// The approval sheet has closed by the time a token is minted, so this is what the user reads.
+enum MCPPairingError: Error, LocalizedError, Equatable {
+    case tokenNotSaved
+    case tokenNotCreated
+
+    init(issuing error: Error) {
+        switch error as? MCPTokenStoreError {
+        case .notSaved?, .keychainUnavailable?:
+            self = .tokenNotSaved
+        case .storedTokensUnreadable?, .randomGenerationFailed?, nil:
+            self = .tokenNotCreated
+        }
+    }
+
+    var errorDescription: String? {
+        switch self {
+        case .tokenNotSaved:
+            String(localized: "TablePro couldn't save a token for this client to the Keychain, so the client wasn't paired. Try pairing again.")
+        case .tokenNotCreated:
+            String(localized: "TablePro couldn't create a token for this client, so the client wasn't paired. Try pairing again.")
+        }
+    }
+}
+
 @MainActor
 final class MCPPairingService {
     static let shared = MCPPairingService()
@@ -168,20 +190,57 @@ final class MCPPairingService {
             throw error
         }
 
+        let redirect: URL
+        do {
+            redirect = try await issueCode(for: request, target: target, approval: approval, tokenStore: tokenStore)
+        } catch {
+            // The requesting app waits on its redirect, so a failure after approval still answers it.
+            if let failed = PairingRedirectBuilder.failed(
+                base: target.url,
+                state: request.state,
+                mode: request.responseMode
+            ) {
+                NSWorkspace.shared.open(failed)
+            }
+            throw error
+        }
+
+        Self.logger.info(
+            """
+            Pairing approved for client '\(request.clientName, privacy: .private(mask: .hash))' \
+            redirect=\(target.displayValue, privacy: .private(mask: .hash))
+            """
+        )
+        NSWorkspace.shared.open(redirect)
+    }
+
+    // Mints the token and parks it behind a one-time code; nothing is left behind when it throws.
+    func issueCode(
+        for request: PairingRequest,
+        target: PairingRedirectTarget,
+        approval: PairingApproval,
+        tokenStore: MCPTokenStore
+    ) async throws -> URL {
         let connectionAccess: ConnectionAccess = approval.allowedConnectionIds.map { .limited($0) } ?? .all
         let extraScopes = request.scopeRequest.grantedOptionalScopes(
             approved: approval.extraScopes,
             allowsHiddenConnectionListing: AppSettingsManager.shared.mcp.allowsHiddenConnectionListing
         )
-        let result = try await tokenStore.generate(
-            name: request.clientName,
-            permissions: approval.grantedPermissions,
-            connectionAccess: connectionAccess,
-            expiresAt: approval.expiresAt,
-            isBridgeCredential: false,
-            isClaudeAgentCredential: false,
-            extraScopes: extraScopes
-        )
+        let result: (token: MCPAuthToken, plaintext: String)
+        do {
+            result = try await tokenStore.generate(
+                name: request.clientName,
+                permissions: approval.grantedPermissions,
+                connectionAccess: connectionAccess,
+                expiresAt: approval.expiresAt,
+                isBridgeCredential: false,
+                isClaudeAgentCredential: false,
+                extraScopes: extraScopes
+            )
+        } catch {
+            Self.logger.error("Pairing token was not issued: \(error.publicLogShape, privacy: .public)")
+            throw MCPPairingError(issuing: error)
+        }
 
         let code = UUID().uuidString
         do {
@@ -211,14 +270,7 @@ final class MCPPairingService {
             await tokenStore.delete(tokenId: result.token.id)
             throw DatabaseAccessError.invalidArgument("redirect URL")
         }
-
-        Self.logger.info(
-            """
-            Pairing approved for client '\(request.clientName, privacy: .private(mask: .hash))' \
-            redirect=\(target.displayValue, privacy: .private(mask: .hash))
-            """
-        )
-        NSWorkspace.shared.open(redirect)
+        return redirect
     }
 
     func exchange(

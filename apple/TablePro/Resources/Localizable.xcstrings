@@ -1290,6 +1290,9 @@
         }
       }
     },
+    "“%@” will be disconnected and its token revoked. Any in-flight requests will be cancelled." : {
+
+    },
     "\"%@\" will be moved to Trash. You can recover it from there." : {
       "localizations" : {
         "fr" : {
@@ -1489,6 +1492,12 @@
           }
         }
       }
+    },
+    "“%@”'s in-flight requests will be cancelled. It reconnects the next time it starts; to stop it, remove TablePro from it in Connect a Client." : {
+
+    },
+    "“%@”'s running requests will be cancelled, but it can send new ones right away. To stop it, remove TablePro from it in Connect a Client, or turn off the MCP server." : {
+
     },
     "“%1$@” could not be written. %2$@" : {
       "localizations" : {
@@ -3174,6 +3183,9 @@
         }
       }
     },
+    "%@ connected" : {
+
+    },
     "%@ connections do not support adding rows from Shortcuts." : {
 
     },
@@ -3216,6 +3228,9 @@
           }
         }
       }
+    },
+    "%@ connects with a token from Settings > MCP > Authentication, which can limit what it reaches. TablePro leaves it as is." : {
+
     },
     "%@ contains characters Spanner does not allow." : {
       "extractionState" : "manual",
@@ -3275,6 +3290,9 @@
         }
       }
     },
+    "%@ could not be read as valid settings, so TablePro left it unchanged." : {
+
+    },
     "%@ could not be updated" : {
 
     },
@@ -3291,6 +3309,9 @@
       }
     },
     "%@ DDL" : {
+
+    },
+    "%@ defines TablePro in a form TablePro cannot edit safely, so it left the file unchanged." : {
 
     },
     "%@ does not accept this column change." : {
@@ -3564,6 +3585,9 @@
         }
       }
     },
+    "%@ has an unexpected shape where TablePro would add itself, so TablePro left it unchanged." : {
+
+    },
     "%@ has no column named %@" : {
       "localizations" : {
         "en" : {
@@ -3612,6 +3636,9 @@
       "generatesSymbol" : false
     },
     "%@ has no recorded reads." : {
+
+    },
+    "%@ has TablePro in one project only. Install adds it for every project." : {
 
     },
     "%@ holds a character macOS would turn into command line punctuation." : {
@@ -4235,6 +4262,18 @@
         }
       }
     },
+    "%@ is set up for a copy of TablePro that is no longer there." : {
+
+    },
+    "%@ is set up for a different copy of TablePro. Update points it to this one." : {
+
+    },
+    "%@ is set up with an address or token that no longer works." : {
+
+    },
+    "%@ is set up, but one project has its own older TablePro setup that wins there. Remove TablePro from that project's settings." : {
+
+    },
     "%@ is showing another sheet. Close it, then try again." : {
       "localizations" : {
         "fr" : {
@@ -4286,6 +4325,9 @@
     "%@ isn't compiled for debugging." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "%@ kept changing while TablePro wrote it. Try again." : {
+
     },
     "%@ lines have unreadable characters" : {
       "localizations" : {
@@ -4561,6 +4603,9 @@
         }
       }
     },
+    "%@ names the same key twice, so TablePro left it unchanged." : {
+
+    },
     "%@ needs %@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -4830,6 +4875,9 @@
         }
       }
     },
+    "%@ picks up the change right away." : {
+
+    },
     "%@ Plan" : {
 
     },
@@ -4924,6 +4972,9 @@
           }
         }
       }
+    },
+    "%@ reaches MCP servers only from its maker's cloud, so it cannot reach TablePro on this Mac." : {
+
     },
     "%@ read" : {
       "extractionState" : "manual",
@@ -5414,6 +5465,9 @@
         }
       }
     },
+    "%@ starts MCP servers only as local commands, so it cannot reach TablePro's HTTP server." : {
+
+    },
     "%@ statement" : {
 
     },
@@ -5439,6 +5493,9 @@
           }
         }
       }
+    },
+    "%@ stops reaching your databases through TablePro." : {
+
     },
     "%@ succeeded" : {
       "extractionState" : "manual",
@@ -7300,6 +7357,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "%1$@ is set up, but the project %2$@ has its own older TablePro setup that wins there. Remove TablePro from that project's settings." : {
+
+    },
     "%1$@ is the local port, %2$@ and %3$@ are this connection's host and port. The command runs directly rather than through a shell, so start it with /usr/bin/env if you need environment variables." : {
       "localizations" : {
         "fr" : {
@@ -7564,6 +7624,9 @@
 
     },
     "%1$@ rows modified since it was last analyzed, more than the %2$@ that start an autoanalyze." : {
+
+    },
+    "%1$@ stops reaching your databases through TablePro. The current %2$@ is kept next to it as %3$@." : {
 
     },
     "%1$@ tables hold “%2$@”." : {
@@ -20356,6 +20419,9 @@
         }
       }
     },
+    "Add it in %@'s settings" : {
+
+    },
     "Add Jump Host" : {
       "localizations" : {
         "fr" : {
@@ -20809,6 +20875,9 @@
         }
       }
     },
+    "Add this to %@:" : {
+
+    },
     "Add to Favorites" : {
       "comment" : "A label that describes an action to add an item to a user's favorites.",
       "isCommentAutoGenerated" : true,
@@ -21239,6 +21308,9 @@
           }
         }
       }
+    },
+    "Adds through the %@ command" : {
+
     },
     "Adjust Limit" : {
       "localizations" : {
@@ -22689,6 +22761,9 @@
           }
         }
       }
+    },
+    "All clients" : {
+
     },
     "All collections" : {
       "extractionState" : "manual",
@@ -33726,6 +33801,9 @@
         }
       }
     },
+    "Can't read settings" : {
+
+    },
     "Can't read this folder" : {
 
     },
@@ -39481,6 +39559,15 @@
         }
       }
     },
+    "Claude Agent can't use this connection: TablePro couldn't create its access token. Try again." : {
+
+    },
+    "Claude Agent can't use this connection: TablePro couldn't save its access token to the Keychain. Try again." : {
+
+    },
+    "Claude Agent can't use this connection: TablePro couldn't write its MCP settings file. Try again." : {
+
+    },
     "Claude Code" : {
       "localizations" : {
         "fr" : {
@@ -41265,6 +41352,9 @@
         }
       }
     },
+    "Client List Unavailable" : {
+
+    },
     "Client Secret" : {
       "localizations" : {
         "fr" : {
@@ -41345,6 +41435,18 @@
           }
         }
       }
+    },
+    "Client: %@" : {
+
+    },
+    "Clients can connect once the MCP server is running." : {
+
+    },
+    "Clients can connect while the MCP server is on. Turn it on in Settings > MCP." : {
+
+    },
+    "Clients cannot connect until it runs. Open Settings > MCP to see why and try again." : {
+
     },
     "Clients will appear here while they have an active MCP session." : {
       "localizations" : {
@@ -43224,6 +43326,9 @@
           }
         }
       }
+    },
+    "Code expires in ^[%lld second](inflect: true)" : {
+
     },
     "Code folding" : {
       "localizations" : {
@@ -46844,6 +46949,9 @@
         }
       }
     },
+    "Configuration" : {
+
+    },
     "Configure an active provider or turn on Apple Intelligence to enable inline suggestions." : {
 
     },
@@ -47933,6 +48041,9 @@
           }
         }
       }
+    },
+    "Connected just now" : {
+
     },
     "Connected Threads" : {
       "localizations" : {
@@ -51203,6 +51314,12 @@
         }
       }
     },
+    "Copy Command" : {
+
+    },
+    "Copy Configuration" : {
+
+    },
     "Copy Connection ID" : {
       "localizations" : {
         "fr" : {
@@ -52259,6 +52376,9 @@
         }
       }
     },
+    "Copy Setup for %@" : {
+
+    },
     "Copy Special" : {
       "localizations" : {
         "fr" : {
@@ -52392,6 +52512,9 @@
         }
       }
     },
+    "Copy the command and run it in Terminal" : {
+
+    },
     "Copy the full error to the clipboard" : {
       "localizations" : {
         "fr" : {
@@ -52431,6 +52554,9 @@
           }
         }
       }
+    },
+    "Copy the setup into %@" : {
+
     },
     "Copy to" : {
       "localizations" : {
@@ -55063,6 +55189,9 @@
         }
       }
     },
+    "Couldn't Create the Token" : {
+
+    },
     "Couldn't Detach Partition" : {
 
     },
@@ -55098,6 +55227,9 @@
 
     },
     "Couldn't Import Formatter Rules" : {
+
+    },
+    "Couldn't install" : {
 
     },
     "Couldn't Load" : {
@@ -55325,6 +55457,9 @@
     "Couldn't refresh the team library" : {
 
     },
+    "Couldn't remove" : {
+
+    },
     "Couldn't Rename the Theme" : {
 
     },
@@ -55424,10 +55559,16 @@
         }
       }
     },
+    "Couldn't Save the Deletion" : {
+
+    },
     "Couldn't Save the Revocation" : {
 
     },
     "Couldn't start" : {
+
+    },
+    "Couldn't update" : {
 
     },
     "Count" : {
@@ -62425,6 +62566,9 @@
           }
         }
       }
+    },
+    "Delete %d tokens?" : {
+
     },
     "Delete %lld columns?" : {
       "localizations" : {
@@ -69730,6 +69874,9 @@
         }
       }
     },
+    "e.g., Cursor on my Mac" : {
+
+    },
     "Each array element must be a JSON object" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -71206,6 +71353,9 @@
     "Editor Text" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Edits %@" : {
+
     },
     "Effective" : {
       "localizations" : {
@@ -84146,6 +84296,9 @@
     "Findings the check reported" : {
 
     },
+    "Finish in %@" : {
+
+    },
     "Finish Signing In" : {
       "localizations" : {
         "fr" : {
@@ -87481,6 +87634,9 @@
           }
         }
       }
+    },
+    "Give your client this address and header:" : {
+
     },
     "global" : {
       "localizations" : {
@@ -96244,6 +96400,12 @@
     "Install %@…" : {
 
     },
+    "Install adds TablePro to a client on this Mac. Select a client to see its settings and set it up by hand." : {
+
+    },
+    "Install in %@" : {
+
+    },
     "Install it with “brew install libpq” and link it." : {
       "localizations" : {
         "fr" : {
@@ -96418,6 +96580,9 @@
       "generatesSymbol" : false
     },
     "Install Update…" : {
+
+    },
+    "Install…" : {
 
     },
     "Installed" : {
@@ -106552,6 +106717,10 @@
         }
       }
     },
+    "Local socket" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Locale Provider" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -107201,6 +107370,9 @@
           }
         }
       }
+    },
+    "macOS could not generate a secure token. Try again." : {
+
     },
     "macOS will ask for your login password" : {
       "localizations" : {
@@ -109658,6 +109830,18 @@
           }
         }
       }
+    },
+    "MCP Server Couldn't Start" : {
+
+    },
+    "MCP Server Not Running" : {
+
+    },
+    "MCP Server Off" : {
+
+    },
+    "MCP Server Starting" : {
+
     },
     "MCP Server: Running (%d clients)" : {
       "extractionState" : "stale",
@@ -123364,6 +123548,9 @@
         }
       }
     },
+    "Not found" : {
+
+    },
     "Not found (404) at %@. Check the Base URL and the model." : {
       "localizations" : {
         "fr" : {
@@ -126406,6 +126593,9 @@
         }
       }
     },
+    "Old setup in a project" : {
+
+    },
     "Ollama is running but has no models. Run \"ollama pull <model>\" to download one." : {
       "localizations" : {
         "fr" : {
@@ -126782,6 +126972,9 @@
         }
       }
     },
+    "On This Mac" : {
+
+    },
     "On Update" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -126981,6 +127174,9 @@
           }
         }
       }
+    },
+    "One project only" : {
+
     },
     "One report a day: hashed Mac ID, versions, architecture, language, database types, connection count, license status, update settings, first-use dates. Never hostnames, credentials, queries, or rows." : {
       "localizations" : {
@@ -129784,6 +129980,9 @@
         }
       }
     },
+    "Opens %@ to confirm" : {
+
+    },
     "Opens a database connection in TablePro" : {
 
     },
@@ -130850,6 +131049,12 @@
         }
       }
     },
+    "Other Client" : {
+
+    },
+    "Other Clients" : {
+
+    },
     "Other rows hold exactly the same values, so the change cannot reach this row alone." : {
 
     },
@@ -130909,6 +131114,9 @@
           }
         }
       }
+    },
+    "Out of date" : {
+
     },
     "out-of-band check" : {
       "extractionState" : "manual",
@@ -136249,6 +136457,19 @@
           }
         }
       }
+    },
+    "Port %d cannot be used. Choose a port from %d to %d." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Port %1$d cannot be used. Choose a port from %2$d to %3$d."
+          }
+        }
+      }
+    },
+    "Port %d was in use, so this address changes when TablePro restarts." : {
+
     },
     "Port %d was in use." : {
 
@@ -142445,6 +142666,9 @@
         }
       }
     },
+    "Quit and reopen %@ to load it." : {
+
+    },
     "Quit Anyway" : {
       "localizations" : {
         "fr" : {
@@ -143715,6 +143939,9 @@
           }
         }
       }
+    },
+    "Reaches only servers on the internet" : {
+
     },
     "Read" : {
       "localizations" : {
@@ -146894,6 +147121,9 @@
         }
       }
     },
+    "Reload %@ to load it." : {
+
+    },
     "Reload from Disk" : {
       "localizations" : {
         "fr" : {
@@ -148504,6 +148734,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Remove TablePro from %@?" : {
+
+    },
     "Remove tag %@" : {
       "comment" : "A label for a button that removes a tag from a list of selected tags. The argument is the name of the tag to be removed.",
       "isCommentAutoGenerated" : true,
@@ -148696,6 +148929,9 @@
 
     },
     "Removing" : {
+
+    },
+    "Removing…" : {
 
     },
     "Rename" : {
@@ -156235,6 +156471,9 @@
         }
       }
     },
+    "Run this in Terminal:" : {
+
+    },
     "Run WATCH again before starting the block." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -161752,6 +161991,9 @@
         }
       }
     },
+    "Select a client to see how TablePro connects to it." : {
+
+    },
     "Select a column" : {
 
     },
@@ -165096,6 +165338,15 @@
         }
       }
     },
+    "Set up" : {
+
+    },
+    "Set up an app to use TablePro's MCP server" : {
+
+    },
+    "Set up with a token" : {
+
+    },
     "Set Value" : {
       "localizations" : {
         "fr" : {
@@ -165256,6 +165507,9 @@
           }
         }
       }
+    },
+    "Settings file" : {
+
     },
     "Settings:" : {
       "extractionState" : "stale",
@@ -174074,6 +174328,9 @@
     "Start" : {
 
     },
+    "Start a new %@ session to load it." : {
+
+    },
     "Start one to ask about this connection." : {
       "localizations" : {
         "fr" : {
@@ -174215,6 +174472,9 @@
           }
         }
       }
+    },
+    "Starts only local command servers" : {
+
     },
     "starts with" : {
       "localizations" : {
@@ -181413,6 +181673,9 @@
     "TablePro could not check whether %@ sends the password in plain text without TLS. Try again, or set SSL Mode to Required." : {
 
     },
+    "TablePro could not confirm its change to %@. Check the file before you try again." : {
+
+    },
     "TablePro could not do this for you. Run this in Terminal instead:" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -181530,6 +181793,12 @@
     "TablePro could not reach the Schema Registry: %@" : {
 
     },
+    "TablePro could not read %@'s settings file, so it leaves the file alone. Copy the setup and add it by hand." : {
+
+    },
+    "TablePro could not read its list of clients. Reinstall TablePro to restore it." : {
+
+    },
     "TablePro could not read its query history, so it moved the file aside as “%@” and started a new one. The copy stays until you delete it or clear all of your history." : {
 
     },
@@ -181556,6 +181825,9 @@
     "TablePro could not read the Table Health history: %@" : {
 
     },
+    "TablePro could not read the tokens saved in the Keychain, so it will not save a new one over them. Restart TablePro and try again." : {
+
+    },
     "TablePro could not read what this connection is holding, so it kept the file." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -181578,6 +181850,9 @@
 
     },
     "TablePro could not save the Table Health history: %@" : {
+
+    },
+    "TablePro could not save the token to the Keychain, so it was not created. Try again." : {
 
     },
     "TablePro could not tell how this Dameng server treats backslashes, so it will not send a value that contains one. Reconnect, then try again." : {
@@ -181605,6 +181880,9 @@
     "TablePro could not verify your license with the server. Connect to the internet, then check again." : {
 
     },
+    "TablePro could not write %@." : {
+
+    },
     "TablePro could not write the CA bundle DuckDB reads: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -181615,6 +181893,9 @@
     "TablePro couldn't confirm that the routine ended. It may still be running on the server." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "TablePro couldn't create a token for this client, so the client wasn't paired. Try pairing again." : {
+
     },
     "TablePro couldn't reach the plugin registry to update this plugin. Check your connection and reopen TablePro." : {
       "localizations" : {
@@ -181660,6 +181941,9 @@
 
     },
     "TablePro couldn't reach the team library." : {
+
+    },
+    "TablePro couldn't save a token for this client to the Keychain, so the client wasn't paired. Try pairing again." : {
 
     },
     "TablePro Data Was Removed from iCloud" : {
@@ -182209,6 +182493,12 @@
         }
       }
     },
+    "TablePro is turned off in %1$@. Turn it on in %1$@'s MCP settings to use it." : {
+
+    },
+    "TablePro moved" : {
+
+    },
     "TablePro on iPhone and iPad can't connect to %1$@ with the SSL mode %2$@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -182513,6 +182803,9 @@
           }
         }
       }
+    },
+    "TablePro's client list has a setup for this client that it cannot fill in." : {
+
     },
     "TablePro's data is no longer in iCloud. It may have been deleted in iCloud settings. Upload what this Mac has again, or turn off sync to keep it on this Mac only." : {
 
@@ -185156,6 +185449,19 @@
         }
       }
     },
+    "The %@ command did not finish within %d seconds." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The %1$@ command did not finish within %2$d seconds."
+          }
+        }
+      }
+    },
+    "The %@ command is no longer installed." : {
+
+    },
     "The %@ command line tool is not installed." : {
       "localizations" : {
         "fr" : {
@@ -185192,6 +185498,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "尚未安裝 %@ 命令列工具。"
+          }
+        }
+      }
+    },
+    "The %@ command stopped with exit code %d." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The %1$@ command stopped with exit code %2$d."
           }
         }
       }
@@ -190306,6 +190622,15 @@
 
     },
     "The MCP server could not prepare its private socket folder." : {
+
+    },
+    "The MCP server is not running, so clients you add cannot connect yet. Turn it on in Settings > MCP." : {
+
+    },
+    "The MCP server is not running, so TablePro cannot change its tokens now. Start the server, then try again." : {
+
+    },
+    "The MCP server is not running, so TablePro cannot save a token now. Start the server, then try again." : {
 
     },
     "The MCP server is turned off. Turn it on in Settings > MCP." : {
@@ -196890,6 +197215,9 @@
     "These theme keys need theme format %1$d: %2$@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "These tokens will be permanently deleted. External clients using them will lose access immediately." : {
+
     },
     "These two engines cannot share a script." : {
       "localizations" : {
@@ -204845,6 +205173,12 @@
         }
       }
     },
+    "Tokens are not available" : {
+
+    },
+    "Tokens load while the MCP server is running." : {
+
+    },
     "Too Large to Compare" : {
 
     },
@@ -207106,6 +207440,9 @@
           }
         }
       }
+    },
+    "Turned off" : {
+
     },
     "Two columns are both named “%@”. Rename one, then save again." : {
       "localizations" : {
@@ -210139,6 +210476,9 @@
         }
       }
     },
+    "Update in %@" : {
+
+    },
     "Update Now" : {
       "localizations" : {
         "fr" : {
@@ -210408,6 +210748,9 @@
           }
         }
       }
+    },
+    "Update…" : {
+
     },
     "Updated" : {
       "localizations" : {
@@ -212237,6 +212580,9 @@
           }
         }
       }
+    },
+    "Uses another copy" : {
+
     },
     "Uses the access key stored in ~/.aws/credentials." : {
       "localizations" : {

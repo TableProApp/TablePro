@@ -106,6 +106,19 @@ struct MCPSettingsTests {
         #expect(decoded.port == 5_000)
     }
 
+    @Test("A stored port below 1024 falls back to the default, as on Linux")
+    func decodesAPrivilegedPort() throws {
+        let decoded = try JSONDecoder().decode(MCPSettings.self, from: Data(#"{"port": 80}"#.utf8))
+        #expect(decoded.port == 23_508)
+    }
+
+    @Test("A port written outside 1024 to 65535 is clamped into it")
+    func validatedPortClamps() {
+        #expect(MCPSettings(port: 80).validatedPort == 1_024)
+        #expect(MCPSettings(port: 70_000).validatedPort == 65_535)
+        #expect(MCPSettings(port: 23_508).validatedPort == 23_508)
+    }
+
     @Test("Row limits decode to the documented defaults")
     func decodesRowLimitDefaults() throws {
         let decoded = try JSONDecoder().decode(MCPSettings.self, from: Data("{}".utf8))
