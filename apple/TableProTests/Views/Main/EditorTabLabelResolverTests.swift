@@ -150,7 +150,9 @@ struct EditorTabLabelResolverTests {
         #expect(labels[tabs[0].id]?.text == "orders (Shop Demo)")
     }
 
-    @Test("A long title is kept whole with the table name first, so the strip's tail truncation cuts the location")
+    /// The strip, not the resolver, shortens a title that does not fit, so the text stays whole and the
+    /// short form carries the parts the strip keeps.
+    @Test("A long title is kept whole, and its short form keeps the table and the database apart")
     func keepsLongTitlesWhole() {
         let table = String(repeating: "customer_order_line_item_", count: 4) + "archive"
         let database = String(repeating: "warehouse_reporting_", count: 3) + "replica"
@@ -164,6 +166,38 @@ struct EditorTabLabelResolverTests {
         #expect(text == "\(table)@\(database) (\(connection))")
         #expect(text.hasPrefix(table))
         #expect(!text.contains("…"))
+        #expect(labels[tabs[0].id]?.shortForm == EditorTabLabelResolver.ShortForm(object: table, database: "@\(database)"))
+    }
+
+    @Test("Only a located title has a short form, and one with no database keeps the object alone")
+    func shortFormBelongsToLocatedTitles() {
+        let tabs = [
+            tableTab("orders", database: "shop_demo"),
+            tableTab("audit_log"),
+            QueryTab(title: "Query 1", tabType: .query),
+        ]
+        let located = EditorTabLabelResolver.resolve(tabs: tabs, target: .database, style: shop)
+        let named = EditorTabLabelResolver.resolve(tabs: tabs, target: .database)
+
+        #expect(located[tabs[0].id]?.shortForm == EditorTabLabelResolver.ShortForm(object: "orders", database: "@shop_demo"))
+        #expect(located[tabs[1].id]?.shortForm == EditorTabLabelResolver.ShortForm(object: "audit_log", database: ""))
+        #expect(located[tabs[2].id]?.shortForm == nil)
+        #expect(tabs.allSatisfy { named[$0.id]?.shortForm == nil })
+    }
+
+    /// Two schemas of one database hold `orders` each: the location does not tell them apart, the schema does,
+    /// and the short form has to keep it.
+    @Test("A short form keeps the schema a collision needs")
+    func shortFormKeepsTheQualifyingSchema() {
+        let tabs = [
+            tableTab("orders", database: "shop_demo", schema: "sales"),
+            tableTab("orders", database: "shop_demo", schema: "archive"),
+        ]
+        let labels = EditorTabLabelResolver.resolve(tabs: tabs, target: .schema, style: shop)
+
+        #expect(labels[tabs[0].id]?.text == "sales.orders@shop_demo (Shop Demo)")
+        #expect(labels[tabs[0].id]?.shortForm == EditorTabLabelResolver.ShortForm(object: "sales.orders", database: "@shop_demo"))
+        #expect(labels[tabs[1].id]?.shortForm?.object == "archive.orders")
     }
 
     @Test("A view tab carries the view glyph, and every other object kind its sidebar glyph")

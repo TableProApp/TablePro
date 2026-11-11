@@ -53,14 +53,27 @@ internal enum EditorTabLabelResolver {
         /// still tells a table from a view at a glance. In the colorful style every tab showing an
         /// object or a query carries its kind's tinted glyph, which is the point of that style.
         internal let icon: ObjectIcon?
+        /// A located title's short form, drawn when the whole title does not fit, and nil for every other
+        /// title. The tab asks for the width of the whole title first; when the strip cannot give it, the
+        /// connection goes, then the object gives way in its middle while `@database` stays whole, so the
+        /// tab never loses the part that tells it from the same table in another database.
+        internal let shortForm: ShortForm?
 
         internal var symbolName: String? { icon?.symbolName }
 
-        internal init(text: String, description: String, icon: ObjectIcon? = nil) {
+        internal init(text: String, description: String, icon: ObjectIcon? = nil, shortForm: ShortForm? = nil) {
             self.text = text
             self.description = description
             self.icon = icon
+            self.shortForm = shortForm
         }
+    }
+
+    /// `orders` and `@shop_demo` of `orders@shop_demo (Shop Demo)`. `database` is empty when the tab
+    /// names no database.
+    internal struct ShortForm: Equatable {
+        internal let object: String
+        internal let database: String
     }
 
     internal static func resolve(
@@ -90,7 +103,8 @@ internal enum EditorTabLabelResolver {
             result[tab.id] = Label(
                 text: isAmbiguous ? qualified : title,
                 description: qualified,
-                icon: icon(of: tab, style: style, iconStyle: iconStyle)
+                icon: icon(of: tab, style: style, iconStyle: iconStyle),
+                shortForm: shortForm(of: tab, style: style, container: isAmbiguous ? containers[tab.id] : nil)
             )
         }
     }
@@ -113,6 +127,16 @@ internal enum EditorTabLabelResolver {
             object: tab.title,
             database: tab.tableContext.databaseName,
             connectionName: connectionName
+        )
+    }
+
+    /// Qualified the way the whole title is, so a collision the location does not settle stays told apart.
+    private static func shortForm(of tab: QueryTab, style: EditorTabTitleStyle, container: String?) -> ShortForm? {
+        guard case .location = style, showsObject(tab) else { return nil }
+        let database = tab.tableContext.databaseName
+        return ShortForm(
+            object: qualify(tab.title, with: container),
+            database: database.isEmpty ? "" : "@\(database)"
         )
     }
 

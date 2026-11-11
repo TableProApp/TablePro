@@ -84,6 +84,12 @@ internal struct EditorTabStrip: View {
         .onChange(of: settings.tabs.overflow) { style in
             interaction.overflow = style
         }
+        /// A located title asks for its whole width. Handed over here, where the labels are resolved, on
+        /// appearing and whenever a title, the location setting or the icon style moves it.
+        .onAppear { interaction.setPreferredWidths(preferredWidths) }
+        .onChange(of: preferredWidths) { widths in
+            interaction.setPreferredWidths(widths)
+        }
         /// Cmd+1..9, opening a table from the sidebar and closing a tab can all land on a tab that
         /// is scrolled out of sight, so the selection pulls itself into view.
         .onChange(of: tabManager.selectedTabId) { newValue in
@@ -166,6 +172,10 @@ internal struct EditorTabStrip: View {
             style: titleStyle,
             iconStyle: settings.appearance.objectIconStyle
         )
+    }
+
+    private var preferredWidths: [UUID: CGFloat] {
+        EditorTabStripLayout.preferredWidths(tabs: displayedTabs, labels: labels)
     }
 
     private var titleStyle: EditorTabTitleStyle {
@@ -362,12 +372,7 @@ private struct EditorTabStripItem: View {
                         .foregroundStyle(glyphColor(for: icon))
                         .accessibilityHidden(true)
                 }
-                Text(label.text)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .italic(tab.isPreview)
-                    .font(.system(size: EditorTabStripLayout.fontSize))
-                    .foregroundStyle(titleColor)
+                titleText
             }
             .frame(maxWidth: .infinity)
             unseenIndicator
@@ -380,6 +385,38 @@ private struct EditorTabStripItem: View {
         /// shape of its own everything either side of a title like "Album" stops selecting the
         /// tab: roughly 55pt of dead zone at each end of a 184pt tab.
         .contentShape(Rectangle())
+    }
+
+    /// A located title that does not fit drops the connection first, then gives way in the middle of the
+    /// object's name while `@database` stays whole: cut at its tail it lost the database and the
+    /// connection both, which are what tell this tab from the same table elsewhere. Any other title is
+    /// cut at its tail, as the system's tabs cut theirs.
+    @ViewBuilder
+    private var titleText: some View {
+        if let short = label.shortForm {
+            ViewThatFits(in: .horizontal) {
+                titleSegment(label.text)
+                HStack(spacing: 0) {
+                    titleSegment(short.object)
+                        .truncationMode(.middle)
+                    if !short.database.isEmpty {
+                        titleSegment(short.database)
+                            .layoutPriority(1)
+                    }
+                }
+            }
+        } else {
+            titleSegment(label.text)
+                .truncationMode(.tail)
+        }
+    }
+
+    private func titleSegment(_ text: String) -> some View {
+        Text(text)
+            .lineLimit(1)
+            .italic(tab.isPreview)
+            .font(.system(size: EditorTabStripLayout.fontSize))
+            .foregroundStyle(titleColor)
     }
 
     // The trailing slot is reserved, so nothing reflows. Running outranks the unseen mark, and shows on the selected tab too.

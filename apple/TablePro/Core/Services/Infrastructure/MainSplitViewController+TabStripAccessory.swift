@@ -209,5 +209,16 @@ internal extension MainSplitViewController {
             tabIds: manager.visibleTabs.map(\.id),
             overflow: AppSettingsManager.shared.tabs.overflow
         )
+        let settings = AppSettingsManager.shared
+        let labels = EditorTabLabelResolver.resolve(
+            tabs: manager.visibleTabs,
+            target: target,
+            style: EditorTabTitleStyle(
+                showsLocation: settings.tabs.titleShowsLocation,
+                connectionName: workspace.connection?.name ?? ""
+            ),
+            iconStyle: settings.appearance.objectIconStyle
+        )
+        interaction.setPreferredWidths(EditorTabStripLayout.preferredWidths(tabs: manager.visibleTabs, labels: labels))
     }
 }
