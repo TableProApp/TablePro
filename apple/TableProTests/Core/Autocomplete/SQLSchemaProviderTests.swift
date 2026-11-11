@@ -1257,7 +1257,7 @@ private final class CallRecorder: @unchecked Sendable {
 private struct ForeignKeyReadFailure: Error {}
 
 extension SQLSchemaProviderTests {
-    private static let orderItemKey = [
+    nonisolated private static let orderItemKey = [
         ForeignKeyInfo(name: "items_order_fk", column: "order_id", referencedTable: "orders", referencedColumn: "id"),
         ForeignKeyInfo(name: "items_order_fk", column: "tenant_id", referencedTable: "orders", referencedColumn: "tenant_id"),
     ]
@@ -1271,7 +1271,7 @@ extension SQLSchemaProviderTests {
             fetchAllColumns: { [:] },
             fetchForeignKeys: { table, _ in
                 recorder.record(table)
-                return try await read?() ?? orderItemKey
+                return try await read?() ?? Self.orderItemKey
             }
         )
     }
