@@ -1,8 +1,7 @@
 import SwiftUI
 import TableProTheme
 
-/// The Theme Editor window's content: a live preview over the theme's fields. The window is chrome,
-/// so only the preview wears the theme.
+// The window is chrome, so only the preview wears the theme.
 internal struct ThemeEditorView: View {
     @ObservedObject internal var model: ThemeEditorModel
     internal let onDuplicate: () -> Void
@@ -117,6 +116,8 @@ internal struct ThemeEditorView: View {
     private func sectionFooter(_ section: ThemeSlotSection) -> some View {
         if section == .window {
             Text("With Increase Contrast on, the window uses the system background.")
+        } else if section == .values {
+            ThemeValuesSectionFooter(contrastNote: ThemeContrastNote.message(for: section, in: model.draft))
         } else if let note = ThemeContrastNote.message(for: section, in: model.draft) {
             Text(note)
                 .accessibilityIdentifier("theme-editor-contrast-\(section.rawValue)")
@@ -159,6 +160,31 @@ internal struct ThemeEditorView: View {
         case .deletedOnDisk:
             Button(String(localized: "Keep Theme")) { model.keepAsNewTheme() }
             Button(String(localized: "Close"), role: .cancel) { model.requestClose() }
+        }
+    }
+}
+
+// Observes the settings itself, so a settings change re-renders this footer and not the editor or its preview.
+private struct ThemeValuesSectionFooter: View {
+    let contrastNote: String?
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
+
+    var body: some View {
+        let settingNote = ThemeValueColorsNote.message(
+            for: .values,
+            colorsValuesByType: settingsManager.valueColors.colorsValuesByType
+        )
+        if contrastNote != nil || settingNote != nil {
+            VStack(alignment: .leading, spacing: 4) {
+                if let contrastNote {
+                    Text(contrastNote)
+                        .accessibilityIdentifier("theme-editor-contrast-values")
+                }
+                if let settingNote {
+                    Text(settingNote)
+                        .accessibilityIdentifier("theme-editor-values-setting-note")
+                }
+            }
         }
     }
 }

@@ -4,22 +4,29 @@
   "dataGrid": {
     "alternateRow": "#181825",
     "background": "#1E1E2E",
+    "binary": "#F5C2E7",
     "boolFalse": "#F38BA8",
     "boolTrue": "#A6E3A1",
+    "dateTime": "#89B4FA",
     "deleted": "#F38BA826",
     "deletedText": "#F38BA880",
+    "enum": "#CBA6F7",
     "focusBorder": "#CBA6F7",
     "gridLine": "#45475A",
     "headerBackground": "#181825",
     "headerText": "#CDD6F4",
     "inactiveSelection": "#313244",
     "inserted": "#A6E3A126",
+    "json": "#F9E2AF",
     "modified": "#F9E2AF26",
     "nullValue": "#9399B2",
+    "number": "#FAB387",
     "rowNumber": "#7F849C",
     "selection": "#313244",
     "selectionText": "#CDD6F4",
-    "text": "#CDD6F4"
+    "string": "#A6E3A1",
+    "text": "#CDD6F4",
+    "uuid": "#94E2D5"
   },
   "editor": {
     "background": "#1E1E2E",
@@ -43,7 +50,7 @@
   },
   "id": "tablepro.catppuccin-mocha",
   "name": "Catppuccin Mocha",
-  "schema": 3,
+  "schema": 4,
   "window": {
     "background": "#1E1E2E"
   }

@@ -13,32 +13,28 @@ final class AppEvents {
 
     // MARK: - Theme & Accessibility
 
-    /// Carries the palette revision and the effective appearance. A consumer that snapshots
-    /// colours or fonts needs both: a forced Light/Dark switch never changes the theme, and a
-    /// theme switch never changes the appearance. Subscribing reaches a view that is alive but
-    /// detached from every window, which a walk of the window tree would miss.
+    // Carries both because a Light/Dark switch keeps the theme and a theme switch keeps the appearance; it also reaches views detached from every window.
     let themeChanged = PassthroughSubject<ThemeChange, Never>()
 
     let accessibilityTextSizeChanged = PassthroughSubject<Void, Never>()
 
     // MARK: - System Environment
 
-    /// The Mac's time zone moved. Formatted text that was derived in the old one is now wrong, and
-    /// nothing else re-derives it: a grid keeps its cached strings until the result is re-fetched.
+    // A grid keeps strings formatted in the old time zone until a re-fetch, and nothing else re-derives them.
     let systemTimeZoneChanged = PassthroughSubject<Void, Never>()
 
     // MARK: - Settings
 
     let editorSettingsChanged = PassthroughSubject<Void, Never>()
 
-    /// A live session's health monitor is started once, at connect, so a change to how often
-    /// TablePro checks its connections reaches nothing already open without this.
+    // A session's health monitor starts once at connect, so an open session sees a new interval only through this.
     let connectionHealthCheckChanged = PassthroughSubject<Void, Never>()
 
     let dataGridSettingsChanged = PassthroughSubject<Void, Never>()
 
-    /// The menu bar re-syncs itself through `MainMenuBuilder`, but a window's toolbar advertises
-    /// the same shortcuts in its tooltips and overflow menu and AppKit never revisits either.
+    let valueColorSettingsChanged = PassthroughSubject<Void, Never>()
+
+    // The menu bar re-syncs itself, but AppKit never revisits the shortcuts in a toolbar's tooltips or overflow menu.
     let keyboardSettingsChanged = PassthroughSubject<Void, Never>()
 
     let currentSchemaChanged = PassthroughSubject<UUID, Never>()
@@ -50,21 +46,16 @@ final class AppEvents {
     // MARK: - Connections
 
     let connectionStatusChanged = PassthroughSubject<ConnectionStatusChange, Never>()
-    /// A workspace's window phase changed. Carries the connection id; the phase lives on the workspace.
+    // The phase lives on the workspace, so the payload is only the connection id.
     let connectionPhaseChanged = PassthroughSubject<UUID, Never>()
 
     // A driver's Vault lease can no longer be renewed, so the driver has to sign in again.
     let credentialLeaseEnding = PassthroughSubject<CredentialLeaseEnding, Never>()
 
-    /// The step a connection attempt is currently on. Presentational detail inside the
-    /// connecting phase, never a second source of truth for which pane a window shows.
+    // Presentational only: which pane a window shows comes from the phase, never from the stage.
     let connectionStageChanged = PassthroughSubject<ConnectionStageChange, Never>()
 
-    /// Connection metadata changed (name, color, group, type, etc.).
-    /// Payload is the affected connection's id, or `nil` for bulk updates
-    /// (sync pull, multi-import) where the sender doesn't track individual ids.
-    /// Subscribers scoped to a single connection should filter `payload == id`;
-    /// list-level subscribers refresh on every event regardless.
+    // nil for a bulk update (sync pull, multi-import) whose sender does not track ids.
     let connectionUpdated = PassthroughSubject<UUID?, Never>()
 
     let databaseDidConnect = PassthroughSubject<DatabaseDidConnect, Never>()
@@ -75,61 +66,38 @@ final class AppEvents {
 
     let mainWindowWillClose = PassthroughSubject<Void, Never>()
 
-    /// A connection window was registered, closed, or became key.
-    /// Subscribers that present the set of open connections, or which window
-    /// stands for each one, refresh on every event.
+    // Also fires when a connection window becomes key, since that can change which window stands for a connection.
     let connectionWindowsChanged = PassthroughSubject<Void, Never>()
 
-    /// The user reordered the workspace rail. Every open rail shares one
-    /// arrangement, so all of them reload.
+    // Every open rail shares one arrangement, so all of them reload.
     let workspaceRailOrderChanged = PassthroughSubject<Void, Never>()
 
-    /// The workspace rail was shown or hidden. Every window carries its own
-    /// rail, so all of them follow the one setting.
+    // Every window carries its own rail, and all of them follow the one setting.
     let workspaceRailVisibilityChanged = PassthroughSubject<Void, Never>()
 
-    /// A window's tabs changed in a way that changes which containers they hold
-    /// open. Fired only when the set of held containers can differ, not on every
-    /// keystroke, so the rail reloads when a workspace appears or goes away.
+    // Fired only when the set of held containers can differ, not on every keystroke.
     let workspaceTabsChanged = PassthroughSubject<Void, Never>()
 
-    /// A connection's browse cursor moved to another database or schema.
-    /// Payload is the connection's id.
     let browseContainerChanged = PassthroughSubject<UUID, Never>()
 
-    /// A window put another connections-strip entry in front, so the strip's highlight moves.
+    // The connections strip moves its highlight on this.
     let visibleContainerChanged = PassthroughSubject<Void, Never>()
 
-    /// A session connection started or stopped holding a transaction. Payload is the connection's id.
     let sessionTransactionsChanged = PassthroughSubject<UUID, Never>()
 
     // MARK: - Data Sources
 
-    /// Query history changed (entry added, deleted, or cleared).
-    /// Payload is the affected connection's id, or `nil` for cross-connection
-    /// operations (delete-by-id without connection lookup, clear-all).
-    /// Per-connection subscribers should refresh on `payload == nil || payload == self.connectionId`.
+    // nil when the sender cannot name one connection (delete by id, clear all), so a per-connection subscriber refreshes on nil too.
     let queryHistoryDidUpdate = PassthroughSubject<UUID?, Never>()
 
-    /// SQL favorites or favorite folders changed.
-    /// Payload is the connection whose list changed, or `nil` when every connection's did.
-    /// Per-connection subscribers should refresh on `payload == nil || payload == self.connectionId`.
-    ///
-    /// A global favorite is part of every connection's list, so a record moving into or out of
-    /// global scope changes them all and is sent as `nil`, as are bulk operations and any delete.
-    /// Only the sender can know this: the scope it moved from is no longer in the record by the
-    /// time a subscriber sees the event. `SQLFavoriteManager.scopeToAnnounce(for:newConnectionId:)`
-    /// is where that is decided.
+    // SQLFavoriteManager.scopeToAnnounce picks the payload, since a subscriber never sees the scope a record moved from.
     let sqlFavoritesDidUpdate = PassthroughSubject<UUID?, Never>()
 
     let linkedFoldersDidUpdate = PassthroughSubject<Void, Never>()
 
     let teamLibraryDidUpdate = PassthroughSubject<Void, Never>()
 
-    /// Linked SQL folder rescan completed; cached file index changed.
-    /// Senders are bulk rescans across all enabled folders, so payload is always `nil`.
-    /// The shape is kept consistent with `sqlFavoritesDidUpdate` so subscribers can
-    /// uniformly handle "this update may affect me" via `payload == nil || payload == self.connectionId`.
+    // Always nil, since every rescan is bulk; typed like sqlFavoritesDidUpdate so subscribers share one filter.
     let linkedSQLFoldersDidUpdate = PassthroughSubject<UUID?, Never>()
 
     // Refresh on a tab that loads its own content rather than through the coordinator, by tab id.
@@ -149,8 +117,7 @@ final class AppEvents {
 
     let pluginsRejected = PassthroughSubject<[RejectedPlugin], Never>()
 
-    /// Not private so a test can hand an isolated bus to the object under test. App code uses
-    /// `shared`, which is the only instance anything observes.
+    // Not private so a test can hand an isolated bus to the object under test; app code uses only shared.
     init() {}
 }
 

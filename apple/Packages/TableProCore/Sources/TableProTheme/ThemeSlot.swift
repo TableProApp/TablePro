@@ -34,6 +34,13 @@ public enum ThemeSlot: String, CaseIterable, Sendable {
     case gridNullValue = "dataGrid.nullValue"
     case gridBoolTrue = "dataGrid.boolTrue"
     case gridBoolFalse = "dataGrid.boolFalse"
+    case gridString = "dataGrid.string"
+    case gridNumber = "dataGrid.number"
+    case gridDateTime = "dataGrid.dateTime"
+    case gridBinary = "dataGrid.binary"
+    case gridJSON = "dataGrid.json"
+    case gridUUID = "dataGrid.uuid"
+    case gridEnum = "dataGrid.enum"
     case gridRowNumber = "dataGrid.rowNumber"
     case gridModified = "dataGrid.modified"
     case gridInserted = "dataGrid.inserted"
@@ -52,8 +59,9 @@ public enum ThemeSlot: String, CaseIterable, Sendable {
             return .syntax
         case .gridBackground, .gridText, .gridAlternateRow, .gridHeaderBackground, .gridHeaderText,
              .gridLine, .gridSelection, .gridSelectionText, .gridInactiveSelection, .gridFocusBorder,
-             .gridNullValue, .gridBoolTrue, .gridBoolFalse, .gridRowNumber,
-             .gridModified, .gridInserted, .gridDeleted, .gridDeletedText:
+             .gridNullValue, .gridBoolTrue, .gridBoolFalse,
+             .gridString, .gridNumber, .gridDateTime, .gridBinary, .gridJSON, .gridUUID, .gridEnum,
+             .gridRowNumber, .gridModified, .gridInserted, .gridDeleted, .gridDeletedText:
             return .dataGrid
         }
     }
@@ -69,8 +77,11 @@ public enum ThemeSlot: String, CaseIterable, Sendable {
              .syntaxNull, .syntaxOperator, .syntaxFunction, .syntaxType:
             return .syntax
         case .gridBackground, .gridText, .gridAlternateRow, .gridHeaderBackground, .gridHeaderText,
-             .gridLine, .gridNullValue, .gridBoolTrue, .gridBoolFalse, .gridRowNumber:
+             .gridLine, .gridRowNumber:
             return .dataGrid
+        case .gridNullValue, .gridBoolTrue, .gridBoolFalse,
+             .gridString, .gridNumber, .gridDateTime, .gridBinary, .gridJSON, .gridUUID, .gridEnum:
+            return .values
         case .gridSelection, .gridSelectionText, .gridInactiveSelection, .gridFocusBorder:
             return .selection
         case .gridModified, .gridInserted, .gridDeleted, .gridDeletedText:
@@ -94,6 +105,7 @@ public enum ThemeSlot: String, CaseIterable, Sendable {
              .syntaxNull, .syntaxOperator, .syntaxFunction, .syntaxType,
              .gridText, .gridAlternateRow, .gridHeaderText, .gridLine, .gridSelection, .gridSelectionText,
              .gridInactiveSelection, .gridFocusBorder, .gridNullValue, .gridBoolTrue, .gridBoolFalse,
+             .gridString, .gridNumber, .gridDateTime, .gridBinary, .gridJSON, .gridUUID, .gridEnum,
              .gridRowNumber, .gridModified, .gridInserted, .gridDeleted, .gridDeletedText:
             return false
         }
@@ -110,6 +122,7 @@ public enum ThemeSlot: String, CaseIterable, Sendable {
              .syntaxNull, .syntaxOperator, .syntaxFunction, .syntaxType,
              .gridBackground, .gridText, .gridHeaderBackground, .gridHeaderText, .gridLine,
              .gridSelectionText, .gridFocusBorder, .gridNullValue, .gridBoolTrue, .gridBoolFalse,
+             .gridString, .gridNumber, .gridDateTime, .gridBinary, .gridJSON, .gridUUID, .gridEnum,
              .gridRowNumber:
             return false
         }
@@ -126,8 +139,8 @@ public enum ThemeSlot: String, CaseIterable, Sendable {
         case .editorLineNumber: return String(localized: "Line Number")
         case .editorInvisibles: return String(localized: "Invisibles")
         case .syntaxKeyword: return String(localized: "Keyword")
-        case .syntaxString: return String(localized: "String")
-        case .syntaxNumber: return String(localized: "Number")
+        case .syntaxString, .gridString: return String(localized: "String")
+        case .syntaxNumber, .gridNumber: return String(localized: "Number")
         case .syntaxComment: return String(localized: "Comment")
         case .syntaxNull: return String(localized: "NULL")
         case .syntaxOperator: return String(localized: "Operator")
@@ -143,6 +156,11 @@ public enum ThemeSlot: String, CaseIterable, Sendable {
         case .gridNullValue: return String(localized: "NULL Value")
         case .gridBoolTrue: return String(localized: "Bool True")
         case .gridBoolFalse: return String(localized: "Bool False")
+        case .gridDateTime: return String(localized: "Date & Time")
+        case .gridBinary: return String(localized: "Binary")
+        case .gridJSON: return String(localized: "JSON")
+        case .gridUUID: return String(localized: "UUID")
+        case .gridEnum: return String(localized: "Enum")
         case .gridRowNumber: return String(localized: "Row Number")
         case .gridModified: return String(localized: "Modified")
         case .gridInserted: return String(localized: "Inserted")
@@ -184,11 +202,36 @@ public enum ThemeSlot: String, CaseIterable, Sendable {
         case .gridNullValue: return String(localized: "Data Grid NULL Value")
         case .gridBoolTrue: return String(localized: "Data Grid Bool True")
         case .gridBoolFalse: return String(localized: "Data Grid Bool False")
+        case .gridString: return String(localized: "Data Grid String")
+        case .gridNumber: return String(localized: "Data Grid Number")
+        case .gridDateTime: return String(localized: "Data Grid Date & Time")
+        case .gridBinary: return String(localized: "Data Grid Binary")
+        case .gridJSON: return String(localized: "Data Grid JSON")
+        case .gridUUID: return String(localized: "Data Grid UUID")
+        case .gridEnum: return String(localized: "Data Grid Enum")
         case .gridRowNumber: return String(localized: "Data Grid Row Number")
         case .gridModified: return String(localized: "Data Grid Modified")
         case .gridInserted: return String(localized: "Data Grid Inserted")
         case .gridDeleted: return String(localized: "Data Grid Deleted")
         case .gridDeletedText: return String(localized: "Data Grid Deleted Text")
+        }
+    }
+
+    // A file declaring an older format cannot hold the key.
+    public var introducedInSchema: Int {
+        switch self {
+        case .windowBackdrop,
+             .editorBackground, .editorText, .editorCursor, .editorSelection,
+             .editorCurrentLine, .editorCurrentStatement, .editorLineNumber, .editorInvisibles,
+             .syntaxKeyword, .syntaxString, .syntaxNumber, .syntaxComment,
+             .syntaxNull, .syntaxOperator, .syntaxFunction, .syntaxType,
+             .gridBackground, .gridText, .gridAlternateRow, .gridHeaderBackground, .gridHeaderText,
+             .gridLine, .gridSelection, .gridSelectionText, .gridInactiveSelection, .gridFocusBorder,
+             .gridNullValue, .gridBoolTrue, .gridBoolFalse, .gridRowNumber,
+             .gridModified, .gridInserted, .gridDeleted, .gridDeletedText:
+            return 3
+        case .gridString, .gridNumber, .gridDateTime, .gridBinary, .gridJSON, .gridUUID, .gridEnum:
+            return 4
         }
     }
 }

@@ -4,22 +4,29 @@
   "dataGrid": {
     "alternateRow": "#21222C",
     "background": "#282A36",
+    "binary": "#BD93F9",
     "boolFalse": "#FF5555",
     "boolTrue": "#50FA7B",
+    "dateTime": "#8BE9FD",
     "deleted": "#FF555526",
     "deletedText": "#FF555580",
+    "enum": "#F1FA8C",
     "focusBorder": "#BD93F9",
     "gridLine": "#44475A",
     "headerBackground": "#21222C",
     "headerText": "#F8F8F2",
     "inactiveSelection": "#44475A80",
     "inserted": "#50FA7B26",
+    "json": "#FFB86C",
     "modified": "#FFB86C4D",
     "nullValue": "#6272A4",
+    "number": "#BD93F9",
     "rowNumber": "#6272A4",
     "selection": "#44475A",
     "selectionText": "#F8F8F2",
-    "text": "#F8F8F2"
+    "string": "#F1FA8C",
+    "text": "#F8F8F2",
+    "uuid": "#FF79C6"
   },
   "editor": {
     "background": "#282A36",
@@ -43,7 +50,7 @@
   },
   "id": "tablepro.dracula",
   "name": "Dracula",
-  "schema": 3,
+  "schema": 4,
   "window": {
     "background": "#282A36"
   }

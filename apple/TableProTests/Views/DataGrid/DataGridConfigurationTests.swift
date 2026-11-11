@@ -34,7 +34,7 @@ struct DataGridConfigurationTests {
         return store
     }
 
-    @Test("A default grid offers value filters and column sort, and edits nothing")
+    @Test("A default grid offers value filters and column sort, edits nothing and colors no value by type")
     func defaults() {
         let configuration = DataGridConfiguration()
 
@@ -43,6 +43,8 @@ struct DataGridConfigurationTests {
         #expect(configuration.showRowNumbers)
         #expect(!configuration.isEditable)
         #expect(configuration.commands.isEmpty)
+        #expect(!configuration.colorsValuesByType)
+        #expect(!configuration.overridesValueColorSetting)
     }
 
     // MARK: - Sort
