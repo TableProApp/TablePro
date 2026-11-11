@@ -5,6 +5,7 @@ struct GeneralSettingsView: View {
     @Binding var settings: GeneralSettings
     @Binding var tabSettings: TabSettings
     @Binding var dataGridSettings: DataGridSettings
+    @Binding var editorSettings: EditorSettings
     @ObservedObject var updater: SoftwareUpdater
     var onResetAll: () -> Void
 
@@ -82,7 +83,8 @@ struct GeneralSettingsView: View {
                     tree, and makes Tree the default sidebar layout. In table tabs it shows column types in \
                     the header, the sort and a Text mode in the filter panel, opens that panel with each table, \
                     puts the result bar above the grid and names the database and connection in tab titles. \
-                    Standard Layout turns them off again. Open connections switch layout too.
+                    In query tabs it shows the query bar on two rows. Standard Layout turns them off again. \
+                    Open connections switch layout too.
                     """))
             }
 
@@ -205,10 +207,18 @@ struct GeneralSettingsView: View {
     private func useLayoutPreset(navigator: Bool) {
         if navigator {
             NavigatorLayoutPreset.apply(to: &settings, defaultLayout: &defaultSidebarLayout)
-            NavigatorLayoutPreset.applyDataView(tabs: &tabSettings, dataGrid: &dataGridSettings)
+            NavigatorLayoutPreset.applyDataView(
+                tabs: &tabSettings,
+                dataGrid: &dataGridSettings,
+                editor: &editorSettings
+            )
         } else {
             NavigatorLayoutPreset.restore(to: &settings, defaultLayout: &defaultSidebarLayout)
-            NavigatorLayoutPreset.restoreDataView(tabs: &tabSettings, dataGrid: &dataGridSettings)
+            NavigatorLayoutPreset.restoreDataView(
+                tabs: &tabSettings,
+                dataGrid: &dataGridSettings,
+                editor: &editorSettings
+            )
         }
         NavigatorLayoutPreset.switchOpenConnections(to: defaultSidebarLayout)
     }
@@ -219,6 +229,7 @@ struct GeneralSettingsView: View {
         settings: .constant(.default),
         tabSettings: .constant(.default),
         dataGridSettings: .constant(.default),
+        editorSettings: .constant(.default),
         updater: SoftwareUpdater.shared,
         onResetAll: {}
     )

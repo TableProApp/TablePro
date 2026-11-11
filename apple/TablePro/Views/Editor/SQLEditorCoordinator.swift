@@ -509,6 +509,11 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         formatSQL(selectedRange: textView.selectedRange())
     }
 
+    func insertSavedQuery(_ sql: String) {
+        guard let controller else { return }
+        QuerySnippetInsertion.insert(sql, into: controller)
+    }
+
     private func formatSQL(selectedRange: NSRange) {
         guard let textView = controller?.textView else { return }
         let formatter: QueryFormatting

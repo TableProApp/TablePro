@@ -1196,6 +1196,9 @@ extension MainEditorContentView {
             explainVariants: coordinator.connection.type.explainVariants,
             supportsFormatting: QueryFormatterFactory.supportsFormatting(coordinator.connection.type),
             aiActions: coordinator.aiQueryActionAvailability(for: tab),
+            hasUnsavedEdits: tab.content.isFileDirty || changeManager.hasChanges,
+            hasSourceFile: tab.content.sourceFileURL != nil,
+            supportsQueryBuilder: coordinator.canBuildJoinQuery,
             shortcutHint: { label, action in
                 settingsManager.keyboard.shortcutHint(label, for: action)
             }
@@ -1247,6 +1250,7 @@ extension MainEditorContentView {
         let showsHistoryTip = showsHistoryTip
         let parameters = parameterBinding(for: tab)
         let isParameterPanelVisible = parameterVisibilityBinding(for: tab)
+        let twoRow = settingsManager.editor.queryBarTwoRows ? coordinator.queryBarTwoRowInput(forTab: tab.id) : nil
         let header: (VimMode?) -> AnyView = { vimMode in
             AnyView(VStack(alignment: .leading, spacing: 0) {
                 if let change = tab.content.diskChange,
@@ -1276,7 +1280,8 @@ extension MainEditorContentView {
                     onSaveAsFavorite: { coordinator.saveCurrentQueryAsFavorite() },
                     onClearQuery: { coordinator.commandActions?.clearQuery() },
                     onClearResults: { coordinator.clearActiveQueryResults() },
-                    onContainerChanged: { name in changeContainer(for: tab, to: name) }
+                    onContainerChanged: { name in changeContainer(for: tab, to: name) },
+                    twoRow: twoRow
                 )
                 Divider()
                 if isParameterPanelVisible.wrappedValue && !parameters.wrappedValue.isEmpty {

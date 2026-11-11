@@ -102,43 +102,55 @@ struct NavigatorLayoutPresetTests {
         #expect(settings == before)
     }
 
-    @Test("Use Navigator Layout turns on the table tab's data view, and Standard Layout turns it off")
+    @Test("Use Navigator Layout turns on the data view and the two-row query bar, and Standard Layout turns them off")
     func dataViewFollowsTheButtons() {
         var tabs = TabSettings.default
         var grid = DataGridSettings.default
+        var editor = EditorSettings.default
 
-        NavigatorLayoutPreset.applyDataView(tabs: &tabs, dataGrid: &grid)
+        NavigatorLayoutPreset.applyDataView(tabs: &tabs, dataGrid: &grid, editor: &editor)
 
         #expect(grid.showsColumnTypesInHeader)
         #expect(grid.showsSortInFilterPanel)
         #expect(grid.opensFilterPanelForTables)
         #expect(grid.resultBarAtTop)
         #expect(tabs.titleShowsLocation)
+        #expect(editor.queryBarTwoRows)
 
-        NavigatorLayoutPreset.restoreDataView(tabs: &tabs, dataGrid: &grid)
+        NavigatorLayoutPreset.restoreDataView(tabs: &tabs, dataGrid: &grid, editor: &editor)
 
         #expect(grid == DataGridSettings.default)
         #expect(tabs == TabSettings.default)
+        #expect(editor == EditorSettings.default)
+        #expect(!editor.queryBarTwoRows)
     }
 
-    @Test("The data view buttons leave every other Data Grid and Tab setting alone")
+    @Test("The data view buttons leave every other Data Grid, Tab and Editor setting alone")
     func dataViewKeepsOtherSettings() {
         var tabs = TabSettings.default
         tabs.enablePreviewTabs = !tabs.enablePreviewTabs
         var grid = DataGridSettings.default
         grid.showRowNumbers = !grid.showRowNumbers
         grid.defaultPageSize = 250
+        var editor = EditorSettings.default
+        editor.wordWrap = !editor.wordWrap
+        editor.keyBindings = .vim
         let tabsBefore = tabs
         let gridBefore = grid
+        let editorBefore = editor
 
-        NavigatorLayoutPreset.applyDataView(tabs: &tabs, dataGrid: &grid)
+        NavigatorLayoutPreset.applyDataView(tabs: &tabs, dataGrid: &grid, editor: &editor)
         #expect(tabs.enablePreviewTabs == tabsBefore.enablePreviewTabs)
         #expect(grid.showRowNumbers == gridBefore.showRowNumbers)
         #expect(grid.defaultPageSize == 250)
+        var expectedEditor = editorBefore
+        expectedEditor.queryBarTwoRows = true
+        #expect(editor == expectedEditor)
 
-        NavigatorLayoutPreset.restoreDataView(tabs: &tabs, dataGrid: &grid)
+        NavigatorLayoutPreset.restoreDataView(tabs: &tabs, dataGrid: &grid, editor: &editor)
         #expect(tabs == tabsBefore)
         #expect(grid == gridBefore)
+        #expect(editor == editorBefore)
     }
 
     /// The View menu switches one connection through its shared sidebar state; the preset does the

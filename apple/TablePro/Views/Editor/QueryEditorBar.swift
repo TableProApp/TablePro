@@ -23,6 +23,10 @@ import TableProPluginKit
 /// across five controls with no grouping: borderless icon buttons for Clear, Format and Favorite, a
 /// `.bordered` `.small` Explain, and a `.borderedProminent` `.small` Execute. Here every control is
 /// one size, the scope leads, the commands trail, and the primary action is the only prominent one.
+///
+/// Settings > Editor can put it on two rows (`EditorSettings.queryBarTwoRows`), which adds Save, the
+/// Query Builder, Snippets and the tab's connection. `QueryEditorBarLayout` decides which control sits
+/// on which row; off, it is the single row above.
 struct QueryEditorBar: View {
     let scope: QueryScopeBarModel
     let commands: QueryCommandAvailability
@@ -43,9 +47,51 @@ struct QueryEditorBar: View {
     let onClearQuery: () -> Void
     let onClearResults: () -> Void
     let onContainerChanged: (String) -> Void
+    /// What the second row and the extra commands need. Nil draws the single row.
+    var twoRow: TwoRowInput?
+
+    /// The two-row bar's own inputs, given only while the setting is on, so the single row never
+    /// reads the connection library or the saved queries.
+    struct TwoRowInput {
+        let connection: QueryConnectionPickerModel
+        let savedQueries: ConnectionDataCache
+        let onSave: () -> Void
+        let onOpenQueryBuilder: () -> Void
+        let onInsertSavedQuery: (SQLFavorite) -> Void
+    }
+
+    private var rows: [QueryEditorBarRow] {
+        QueryEditorBarLayout.rows(
+            twoRows: twoRow != nil,
+            showsQueryBuilder: commands.showsQueryBuilder,
+            showsAI: commands.aiActions.isVisible,
+            showsVimMode: vimMode != nil
+        )
+    }
 
     var body: some View {
-        HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack(spacing: 8) {
+                    ForEach(row.leading, id: \.self) { control($0) }
+
+                    Spacer(minLength: 8)
+
+                    ForEach(row.trailing, id: \.self) { control($0) }
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .paneBarBackground()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("query-editor-bar")
+    }
+
+    @ViewBuilder
+    private func control(_ control: QueryEditorBarControl) -> some View {
+        switch control {
+        case .database:
             QueryContainerPicker(
                 containers: scope.containers,
                 selectedName: scope.selectedName,
@@ -54,27 +100,64 @@ struct QueryEditorBar: View {
                 schemaName: scope.schemaName,
                 onChange: onContainerChanged
             )
-
+        case .vimMode:
             if let vimMode {
                 VimModeIndicatorView(mode: vimMode)
             }
-
-            Spacer(minLength: 8)
-
+        case .editingCommands:
             editingCommands
-
-            if commands.aiActions.isVisible {
-                aiControl
-            }
-
+        case .ai:
+            aiControl
+        case .explain:
             explainControl
-
+        case .run:
             runControl
+        case .save:
+            if let twoRow {
+                commandButton(String(localized: "Save"), systemImage: "square.and.arrow.down", action: twoRow.onSave)
+                    .disabled(!commands.canSave)
+                    .help(commands.saveHint)
+                    .accessibilityIdentifier("query-save")
+            }
+        case .separator:
+            Divider()
+                .frame(height: 16)
+                .accessibilityHidden(true)
+        case .queryBuilder:
+            if let twoRow {
+                commandButton(String(localized: "Query Builder"), systemImage: "hammer", action: twoRow.onOpenQueryBuilder)
+                    .disabled(!commands.canOpenQueryBuilder)
+                    .help(commands.queryBuilderHint)
+                    .accessibilityIdentifier("query-builder")
+            }
+        case .format:
+            commandButton(String(localized: "Format"), systemImage: "wand.and.stars", action: onFormat)
+                .disabled(!commands.canFormat)
+                .help(commands.beautifyHint)
+                .accessibilityIdentifier("query-format")
+        case .snippets:
+            if let twoRow {
+                QuerySnippetsMenu(
+                    savedQueries: twoRow.savedQueries,
+                    canSaveCurrentQuery: commands.canSaveAsFavorite,
+                    onInsert: twoRow.onInsertSavedQuery,
+                    onSaveCurrentQuery: onSaveAsFavorite
+                )
+            }
+        case .connection:
+            if let twoRow {
+                QueryConnectionPicker(model: twoRow.connection)
+            }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .paneBarBackground()
-        .accessibilityIdentifier("query-editor-bar")
+    }
+
+    /// The two-row bar's editing tools stand alone rather than in a `ControlGroup`, because a separator
+    /// sits between them and Save. Each is `.bordered` `.small`, the size of every other control here.
+    private func commandButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(title, systemImage: systemImage, action: action)
+            .labelStyle(.iconOnly)
+            .buttonStyle(.bordered)
+            .controlSize(.small)
     }
 
     /// The two that change the query without running it, in one `ControlGroup` because adjacent

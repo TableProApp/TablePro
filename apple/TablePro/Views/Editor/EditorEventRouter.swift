@@ -123,6 +123,12 @@ internal final class EditorEventRouter {
         coordinator.performFormatSQL()
     }
 
+    /// The query bar's Snippets menu, which sits above the editor it fills, as Format does.
+    internal func insertSavedQueryForKeyWindow(_ sql: String) {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.insertSavedQuery(sql)
+    }
+
     internal func performRemoveInvisibleCharactersForKeyWindow() {
         guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
         coordinator.performRemoveInvisibleCharacters()
