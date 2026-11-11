@@ -103,7 +103,7 @@ pub struct BrowseTabInit {
     pub tracker: TabTrackerHandle,
     pub schema: Option<String>,
     pub table: String,
-    pub connection_id: Option<uuid::Uuid>,
+    pub state_key: Option<crate::persistence::TableStateKey>,
     pub read_only: bool,
     pub page_size: u64,
     pub initial_offset: u64,
@@ -111,6 +111,7 @@ pub struct BrowseTabInit {
     pub filter: TableFilter,
     pub column_layouts: crate::persistence::ColumnLayoutStore,
     pub filter_settings: crate::persistence::FilterSettingsStore,
+    pub highlight_rules: crate::persistence::HighlightRulesStore,
     /// The session the tab reads through. The tab belongs to it and is
     /// closed before it shuts down.
     pub session: Arc<Session>,
@@ -128,7 +129,8 @@ impl BrowseTab {
         let tab: Self = glib::Object::new();
         // The model and the inline strip start with the same FilterSet.
         let (initial_filter, reveal_filter) = init.filter.opening(|| {
-            init.connection_id
+            init.state_key
+                .as_ref()
                 .map(|id| init.filter_settings.filters(id, init.schema.as_deref(), &init.table))
                 .unwrap_or_default()
         });
@@ -165,7 +167,7 @@ impl BrowseTab {
             layout::GridInit {
                 table,
                 label: table_label,
-                connection_id: init.connection_id,
+                state_key: init.state_key.clone(),
                 sorting: grid_sorting(dialect.as_deref(), initial_sort),
                 tracker: init.tracker.clone(),
                 settings: init.settings,
@@ -175,6 +177,7 @@ impl BrowseTab {
                 tasks: init.tasks.clone(),
             },
         );
+        restore_highlights(&grid, &init.highlight_rules, init.state_key.clone());
         let link_changes = init.session.link_changes();
         let model = BrowseModel {
             this: tab.downgrade(),
@@ -192,9 +195,10 @@ impl BrowseTab {
             tracker: init.tracker,
             schema: init.schema,
             table: init.table,
-            connection_id: init.connection_id,
+            state_key: init.state_key,
             read_only: init.read_only,
             filter_settings: init.filter_settings,
+            highlight_rules: init.highlight_rules,
             pager: BrowsePager::new(init.page_size, init.initial_offset),
             deadlines: init.deadlines,
             current_sort: initial_sort,
@@ -596,9 +600,10 @@ pub(crate) struct BrowseModel {
     tracker: TabTrackerHandle,
     schema: Option<String>,
     table: String,
-    connection_id: Option<uuid::Uuid>,
+    state_key: Option<crate::persistence::TableStateKey>,
     read_only: bool,
     filter_settings: crate::persistence::FilterSettingsStore,
+    highlight_rules: crate::persistence::HighlightRulesStore,
 
     /// Where the page the tab reads starts, and how many rows it holds.
     pager: BrowsePager,
@@ -705,6 +710,31 @@ impl BrowseModel {
     fn has_primary_key(&self) -> bool {
         self.current_columns.iter().any(|c| c.primary_key)
     }
+}
+
+fn restore_highlights(
+    grid: &DataGrid,
+    store: &crate::persistence::HighlightRulesStore,
+    state_key: Option<crate::persistence::TableStateKey>,
+) {
+    let Some(state_key) = state_key else {
+        return;
+    };
+    let opened = grid.config().and_then(|config| config.table.clone());
+    if let Some(table) = opened {
+        let rules = store.rules(&state_key, table.schema.as_deref(), &table.name);
+        if !rules.is_empty() {
+            grid.set_highlight_rules(rules);
+        }
+    }
+    let store = store.clone();
+    // The grid's table, not the opening one, so a rename moves the rules with it.
+    grid.connect_highlight_rules_changed(move |grid| {
+        let Some(table) = grid.config().and_then(|config| config.table.clone()) else {
+            return;
+        };
+        store.set_rules(&state_key, table.schema.as_deref(), &table.name, grid.highlight_rules());
+    });
 }
 
 /// Whether a page of a table can be sorted on its engine. Without a

@@ -423,7 +423,7 @@ pub(super) fn table_tab(
         tracker,
         schema: None,
         table: table.to_owned(),
-        connection_id: Some(connection_id),
+        state_key: Some(connection_id.into()),
         read_only,
         page_size: 100,
         initial_offset: 0,
@@ -431,6 +431,7 @@ pub(super) fn table_tab(
         filter,
         column_layouts: crate::persistence::ColumnLayoutStore::load(root.join("column_layouts.json"), &tasks),
         filter_settings,
+        highlight_rules: crate::persistence::HighlightRulesStore::load(root.join("highlight_rules.json"), &tasks),
         session: session.clone(),
         tasks,
         deadlines: Arc::new(tablepro_session::operation::DefaultDeadlines::new(
@@ -1956,6 +1957,34 @@ fn the_bottom_bar_offers_the_column_chooser() {
         .expect("More reaches the grid");
     wait_until(WAIT, || window.visible_dialog().is_some()).expect("More opens Columns");
     window.visible_dialog().expect("the chooser").close();
+}
+
+#[gtk4::test]
+fn a_renamed_table_keeps_its_highlight_rules_under_the_new_name() {
+    use crate::services::grid::HighlightRule;
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown() == text(&["Ada"])).expect("the page");
+    let saved = |table: &str| {
+        let model = harness.tab().imp().model.borrow();
+        let model = model.as_ref().expect("the tab is open");
+        let state_key = model.state_key.as_ref().expect("a saved connection");
+        model.highlight_rules.rules(state_key, None, table)
+    };
+    let rule = HighlightRule::new("name");
+    harness.grid().set_highlight_rules(vec![rule.clone()]);
+
+    harness.tab().rename_table("people");
+
+    assert_eq!(saved("people"), [rule]);
+    harness.grid().set_highlight_rules(Vec::new());
+    assert!(
+        saved("people").is_empty(),
+        "a change after the rename was kept under the old name"
+    );
 }
 
 fn switch_labels(tab: &BrowseTab) -> Vec<gtk4::Label> {

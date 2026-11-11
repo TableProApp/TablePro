@@ -39,8 +39,11 @@ crates/app/src/persistence/column_layout_store.rs
 crates/app/src/persistence/column_layouts_document.rs
 crates/app/src/persistence/filter_settings_document.rs
 crates/app/src/persistence/filter_settings_store.rs
+crates/app/src/persistence/highlight_rules_document.rs
+crates/app/src/persistence/highlight_rules_store.rs
 crates/app/src/persistence/mod.rs
 crates/app/src/persistence/state_file.rs
+crates/app/src/persistence/table_state_key.rs
 crates/app/src/runtime/app_runtime.rs
 crates/app/src/runtime/clock_sample.rs
 crates/app/src/runtime/clock_source.rs
@@ -559,6 +562,7 @@ crates/app/src/ui/session_window/session_restore.rs
 crates/app/src/ui/session_window/session_teardown.rs
 crates/app/src/ui/session_window/session_window_command.rs
 crates/app/src/ui/session_window/session_window_input.rs
+crates/app/src/ui/session_window/state_file_status.rs
 crates/app/src/ui/session_window/tests/mod.rs
 crates/app/src/ui/session_window/tests/notification.rs
 crates/app/src/ui/session_window/tests/open_file.rs
