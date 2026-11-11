@@ -125,6 +125,18 @@ struct GeneralSettingsView: View {
                 Toggle("Show object icons", isOn: $settings.showObjectIcons)
                     .help("Shows a type icon before each object name in the sidebar. Turn it off for a plain list of names.")
 
+                // Here rather than in Appearance: that pane cannot scroll, and one more row pushed its controls off it.
+                Picker("Object icon style:", selection: $appearanceSettings.objectIconStyle) {
+                    ForEach(ObjectIconStyle.allCases) { style in
+                        Text(style.displayName).tag(style)
+                    }
+                }
+                .accessibilityIdentifier("general-object-icon-style")
+                .help(String(localized: """
+                    Colorful gives each kind of object its own filled, colored icon in the sidebar, the tabs, the \
+                    toolbar and the object lists.
+                    """))
+
                 Toggle("Show object comments", isOn: $settings.showObjectComments)
                     .help("Shows database object comments next to tables in the sidebar and in grid column headers.")
 
