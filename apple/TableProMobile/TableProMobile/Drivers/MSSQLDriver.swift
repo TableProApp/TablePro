@@ -1,4 +1,5 @@
 import Foundation
+import os
 import TableProDatabase
 import TableProModels
 import TableProMSSQLCore
@@ -20,8 +21,11 @@ nonisolated private extension MSSQLRawResult {
 }
 
 nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "MSSQLDriver")
+
     nonisolated(unsafe) private var conn: FreeTDSConnection
     let options: MSSQLConnectionOptions
+    let queryTimeoutSeconds: Int?
     private let additionalFields: [String: String]
     private let host: String
     private let authMethod: MSSQLAuthMethod
@@ -56,6 +60,7 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
         )
         self.conn = FreeTDSConnection(options: options)
         self.options = options
+        self.queryTimeoutSeconds = connection.queryTimeoutSeconds
         self.additionalFields = connection.additionalFields
         self.host = connection.host
         self.authMethod = authMethod
@@ -90,6 +95,17 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
             throw mapToConnectionError(error)
         }
 
+        // A server that refuses the limit still runs queries, as on the Mac.
+        for statement in Self.sessionSetupStatements(queryTimeoutSeconds: queryTimeoutSeconds) {
+            do {
+                _ = try await runQuery(statement)
+            } catch {
+                Self.logger.warning(
+                    "Session setup failed with \(statement, privacy: .private): \(error.localizedDescription, privacy: .private)"
+                )
+            }
+        }
+
         if let serverSchema = try? await runQuery(MSSQLSchemaQueries.currentSchema).rows.first?.first ?? nil,
            !serverSchema.isEmpty {
             currentSchema = serverSchema
@@ -98,6 +114,12 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
         if let version = try? await runQuery(MSSQLSchemaQueries.serverVersion).rows.first?.first ?? nil {
             serverVersion = String(version.prefix(50))
         }
+    }
+
+    // The Mac reads a query timeout on SQL Server as the session's lock wait. None, or 0, keeps the server's own wait.
+    static func sessionSetupStatements(queryTimeoutSeconds: Int?) -> [String] {
+        guard let queryTimeoutSeconds, queryTimeoutSeconds > 0 else { return [] }
+        return ["SET LOCK_TIMEOUT \(PluginQueryTimeout.milliseconds(queryTimeoutSeconds))"]
     }
 
     func disconnect() async throws {
@@ -149,8 +171,7 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
                 }
                 var emitted = 0
                 var headerColumns: [ColumnInfo] = []
-                // Past the row cap the batch keeps running, so a later UPDATE or COMMIT in it still happens and its
-                // error still reaches the run; the rows are read and dropped. Only a reader that stops aborts it.
+                var rowKey: LazyCellKey?
                 var isCapped = false
                 do {
                     for try await element in coreStream {
@@ -165,6 +186,7 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
                             headerColumns = columns.enumerated().map { idx, col in
                                 ColumnInfo(name: col.name, typeName: col.type.canonicalName, ordinalPosition: idx)
                             }
+                            rowKey = LazyCellKey(options.lazyContext, columnNames: headerColumns.map(\.name))
                             continuation.yield(.columns(headerColumns))
                         case .rows(let batch):
                             for row in batch {
@@ -173,11 +195,26 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
                                     isCapped = true
                                     break
                                 }
+                                let primaryKey = rowKey?.primaryKey { row[safe: $0]?.keyText }
                                 let cells = zip(headerColumns, row).map { columnInfo, rawCell in
-                                    cell(from: rawCell, columnTypeName: columnInfo.typeName, options: options)
+                                    cell(
+                                        from: rawCell,
+                                        columnTypeName: columnInfo.typeName,
+                                        options: options,
+                                        ref: rowKey?.ref(column: columnInfo.name, primaryKey: primaryKey)
+                                    )
                                 }
                                 continuation.yield(.row(Row(cells: cells)))
                                 emitted += 1
+                            }
+                            // Any batch but a capped read runs on past the cap with its rows dropped, so a later UPDATE
+                            // or COMMIT in it still runs and its error still reaches the run. Classified here, off the
+                            // caller's thread and once. The abort ends the request with an attention, or reads the rest
+                            // where the session's transaction would not survive one (MSSQLRequestEnding).
+                            if isCapped, CappedRead.qualifies(query, databaseType: .mssql) {
+                                abort.abort()
+                                continuation.finish()
+                                return
                             }
                         case .affectedRows(let count):
                             continuation.yield(.rowsAffected(count))
@@ -196,12 +233,13 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
         }
     }
 
-    private func cell(from raw: MSSQLRawCell, columnTypeName: String, options: StreamOptions) -> Cell {
+    // A binary value reads back through `execute` as text, not its bytes, so it offers no full value to load.
+    private func cell(from raw: MSSQLRawCell, columnTypeName: String, options: StreamOptions, ref: CellRef?) -> Cell {
         switch raw {
         case .null:
             return .null
         case .string(let value):
-            return Cell.from(legacyValue: value, columnTypeName: columnTypeName, options: options)
+            return Cell.from(legacyValue: value, columnTypeName: columnTypeName, options: options, ref: ref)
         case .bytes(let data):
             return .binary(byteCount: data.count, ref: nil)
         }
@@ -340,6 +378,14 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
 nonisolated private extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
+    }
+}
+
+nonisolated private extension MSSQLRawCell {
+    // A binary key is no text a key predicate can match.
+    var keyText: String? {
+        guard case .string(let value) = self else { return nil }
+        return value
     }
 }
 

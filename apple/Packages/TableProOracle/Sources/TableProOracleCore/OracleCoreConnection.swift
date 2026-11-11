@@ -418,6 +418,10 @@ public final class OracleCoreConnection: @unchecked Sendable {
         }
     }
 
+    public var queryTimeoutSeconds: Int {
+        state.withLock { $0.queryTimeoutSeconds }
+    }
+
     // A debug session's statement is a routine that waits at a breakpoint for a person: no query timeout, no
     // staleness limit on the health check, and no silent redial, since a new session would not be the one debugged.
     public func reserveForDebugging() {

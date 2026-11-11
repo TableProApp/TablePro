@@ -1,18 +1,8 @@
-//
-//  HostKeyStore.swift
-//  TablePro
-//
-//  Manages SSH host key verification for known hosts.
-//  Stores trusted host keys in a line-based file at
-//  ~/Library/Application Support/TablePro/known_hosts
-//
-
 import CryptoKit
 import Foundation
 import os
 import TableProSSHTransport
 
-/// Manages SSH host key verification for known hosts
 internal final class HostKeyStore: @unchecked Sendable {
     static let shared = HostKeyStore()
 
@@ -25,9 +15,11 @@ internal final class HostKeyStore: @unchecked Sendable {
         // The file is one entry per line split on spaces, so a host with a line break would plant
         // an entry for another host.
         case invalidHost(SSHDestinationName.Problem)
+        // The saved keys could not be read, so a changed key would look like a new host.
+        case unreadable
     }
 
-    private let filePath: String
+    let filePath: String
     private let lock = NSLock()
 
     private init() {
@@ -36,12 +28,9 @@ internal final class HostKeyStore: @unchecked Sendable {
         self.filePath = tableProDir.appendingPathComponent("known_hosts").path
     }
 
-    /// Testing initializer with a custom file path
     init(filePath: String) {
         self.filePath = filePath
     }
-
-    // MARK: - Public API
 
     func verify(keyData: Data, keyType: String, hostname: String, port: Int) -> VerificationResult {
         lock.lock()
@@ -50,38 +39,31 @@ internal final class HostKeyStore: @unchecked Sendable {
         guard let hostKey = hostIdentifier(hostname, port) else {
             return .invalidHost(.host(hostname))
         }
-        let currentFingerprint = Self.fingerprint(of: keyData)
-        let entries = loadEntries()
+        guard let file = loadFile() else { return .unreadable }
 
-        let hostEntries = entries.filter { $0.host == hostKey }
-        guard !hostEntries.isEmpty else {
-            Self.logger.info("Unknown host key for \(hostKey)")
-            return .unknown(fingerprint: currentFingerprint, keyType: keyType)
-        }
-
-        if hostEntries.contains(where: { Self.fingerprint(of: $0.keyData) == currentFingerprint }) {
+        switch file.match(host: hostKey, keyType: keyType, keyData: keyData) {
+        case .trusted:
             Self.logger.debug("Host key trusted for \(hostKey)")
             return .trusted
+        case .unknown:
+            Self.logger.info("Unknown host key for \(hostKey)")
+            return .unknown(fingerprint: Self.fingerprint(of: keyData), keyType: keyType)
+        case .changed(let storedKey):
+            Self.logger.warning("Host key mismatch for \(hostKey)")
+            return .mismatch(expected: Self.fingerprint(of: storedKey), actual: Self.fingerprint(of: keyData))
+        case .unreadable:
+            Self.logger.error("The saved host key for \(hostKey) could not be parsed")
+            return .unreadable
         }
-
-        let sameType = hostEntries.first { $0.keyType == keyType }
-        let storedFingerprint = Self.fingerprint(of: (sameType ?? hostEntries[0]).keyData)
-
-        Self.logger.warning("Host key mismatch for \(hostKey)")
-        return .mismatch(expected: storedFingerprint, actual: currentFingerprint)
     }
 
     func trust(hostname: String, port: Int, key: Data, keyType: String) {
         lock.lock()
         defer { lock.unlock() }
 
-        guard let hostKey = hostIdentifier(hostname, port) else { return }
-        var entries = loadEntries()
-
-        entries.removeAll { $0.host == hostKey && $0.keyType == keyType }
-
-        entries.append((host: hostKey, keyType: keyType, keyData: key))
-        saveEntries(entries)
+        guard let hostKey = hostIdentifier(hostname, port), var file = loadFile() else { return }
+        file.trust(host: hostKey, keyType: keyType, keyData: key)
+        saveFile(file)
 
         Self.logger.info("Trusted host key for \(hostKey) (\(keyType))")
     }
@@ -90,21 +72,13 @@ internal final class HostKeyStore: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        guard let hostKey = hostIdentifier(hostname, port) else { return }
-        var entries = loadEntries()
-
-        let countBefore = entries.count
-        entries.removeAll { $0.host == hostKey }
-
-        if entries.count < countBefore {
-            saveEntries(entries)
+        guard let hostKey = hostIdentifier(hostname, port), var file = loadFile() else { return }
+        if file.remove(host: hostKey) {
+            saveFile(file)
             Self.logger.info("Removed host key for \(hostKey)")
         }
     }
 
-    // MARK: - Key Type Mapping
-
-    /// Convert a numeric key type to its string name
     static func keyTypeName(_ type: Int32) -> String {
         switch type {
         case 1: return "ssh-rsa"
@@ -117,20 +91,11 @@ internal final class HostKeyStore: @unchecked Sendable {
         }
     }
 
-    // MARK: - Fingerprint
-
-    /// Compute a SHA-256 fingerprint of a host key
-    /// - Parameter key: The raw key bytes
-    /// - Returns: Fingerprint in "SHA256:base64" format (matches ssh-keygen -l output)
+    // The OpenSSH form `ssh-keygen -l` prints: SHA-256, base64 without padding.
     static func fingerprint(of key: Data) -> String {
-        let hash = SHA256.hash(data: key)
-        let base64 = Data(hash).base64EncodedString()
-        // Remove trailing '=' padding to match OpenSSH format
-        let trimmed = base64.replacingOccurrences(of: "=", with: "")
-        return "SHA256:\(trimmed)"
+        let digest = SHA256.hash(data: key)
+        return "SHA256:" + Data(digest).base64EncodedString().replacingOccurrences(of: "=", with: "")
     }
-
-    // MARK: - Private Helpers
 
     private func hostIdentifier(_ hostname: String, _ port: Int) -> String? {
         guard SSHDestinationName.isValidHost(hostname) else {
@@ -140,45 +105,19 @@ internal final class HostKeyStore: @unchecked Sendable {
         return "[\(hostname)]:\(port)"
     }
 
-    /// Load all entries from the known_hosts file
-    /// File format: [hostname]:port keyType base64EncodedKey
-    private func loadEntries() -> [(host: String, keyType: String, keyData: Data)] {
-        guard let content = try? String(contentsOfFile: filePath, encoding: .utf8) else {
-            return []
+    // nil means the file is there but unreadable, and nothing may be written over it.
+    private func loadFile() -> KnownHostsFile? {
+        do {
+            return try KnownHostsFile.load(from: URL(fileURLWithPath: filePath))
+        } catch {
+            Self.logger.error("Failed to read known_hosts file: \(error.localizedDescription)")
+            return nil
         }
-
-        var entries: [(host: String, keyType: String, keyData: Data)] = []
-
-        for line in content.components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else {
-                continue
-            }
-
-            let parts = trimmed.components(separatedBy: " ")
-            guard parts.count == 3,
-                  let keyData = Data(base64Encoded: parts[2]) else {
-                Self.logger.warning("Skipping malformed known_hosts line: \(trimmed)")
-                continue
-            }
-
-            entries.append((host: parts[0], keyType: parts[1], keyData: keyData))
-        }
-
-        return entries
     }
 
-    /// Save entries to the known_hosts file
-    private func saveEntries(_ entries: [(host: String, keyType: String, keyData: Data)]) {
-        let lines = entries.map { entry in
-            let base64Key = entry.keyData.base64EncodedString()
-            return "\(entry.host) \(entry.keyType) \(base64Key)"
-        }
-
-        let content = lines.joined(separator: "\n") + (lines.isEmpty ? "" : "\n")
-
+    private func saveFile(_ file: KnownHostsFile) {
         do {
-            try content.write(toFile: filePath, atomically: true, encoding: .utf8)
+            try file.contents.write(toFile: filePath, atomically: true, encoding: .utf8)
         } catch {
             Self.logger.error("Failed to write known_hosts file: \(error.localizedDescription)")
         }

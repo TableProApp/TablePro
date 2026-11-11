@@ -1,11 +1,3 @@
-//
-//  HostKeyStore.swift
-//  TableProMobile
-//
-//  Trusted SSH host keys, stored line-based in the app's Application Support
-//  directory. Mirrors the Mac store's file format and verification semantics.
-//
-
 import CryptoKit
 import Foundation
 import os
@@ -23,6 +15,8 @@ nonisolated final class HostKeyStore: @unchecked Sendable {
         // The file is one entry per line split on spaces, so a host with a line break would plant
         // an entry for another host.
         case invalidHost(SSHDestinationName.Problem)
+        // The saved keys could not be read, so a changed key would look like a new host.
+        case unreadable
     }
 
     private let filePath: String
@@ -50,51 +44,46 @@ nonisolated final class HostKeyStore: @unchecked Sendable {
         guard let hostKey = hostIdentifier(hostname, port) else {
             return .invalidHost(.host(hostname))
         }
-        let currentFingerprint = Self.fingerprint(of: keyData)
-        let entries = loadEntries()
+        guard let file = loadFile() else { return .unreadable }
 
-        let hostEntries = entries.filter { $0.host == hostKey }
-        guard !hostEntries.isEmpty else {
-            Self.logger.info("Unknown host key for \(hostKey)")
-            return .unknown(fingerprint: currentFingerprint, keyType: keyType)
-        }
-
-        if hostEntries.contains(where: { Self.fingerprint(of: $0.keyData) == currentFingerprint }) {
+        switch file.match(host: hostKey, keyType: keyType, keyData: keyData) {
+        case .trusted:
             return .trusted
+        case .unknown:
+            Self.logger.info("Unknown host key for \(hostKey)")
+            return .unknown(fingerprint: Self.fingerprint(of: keyData), keyType: keyType)
+        case .changed(let storedKey):
+            Self.logger.warning("Host key mismatch for \(hostKey)")
+            return .mismatch(expected: Self.fingerprint(of: storedKey), actual: Self.fingerprint(of: keyData))
+        case .unreadable:
+            Self.logger.error("The saved host key for \(hostKey) could not be parsed")
+            return .unreadable
         }
-
-        let sameType = hostEntries.first { $0.keyType == keyType }
-        let storedFingerprint = Self.fingerprint(of: (sameType ?? hostEntries[0]).keyData)
-
-        Self.logger.warning("Host key mismatch for \(hostKey)")
-        return .mismatch(expected: storedFingerprint, actual: currentFingerprint)
     }
 
     func trust(hostname: String, port: Int, key: Data, keyType: String) {
         lock.lock()
         defer { lock.unlock() }
 
-        guard let hostKey = hostIdentifier(hostname, port) else { return }
-        var entries = loadEntries()
-        entries.removeAll { $0.host == hostKey && $0.keyType == keyType }
-        entries.append((host: hostKey, keyType: keyType, keyData: key))
-        saveEntries(entries)
+        guard let hostKey = hostIdentifier(hostname, port), var file = loadFile() else { return }
+        file.trust(host: hostKey, keyType: keyType, keyData: key)
+        saveFile(file)
     }
 
     func remove(hostname: String, port: Int) {
         lock.lock()
         defer { lock.unlock() }
 
-        guard let hostKey = hostIdentifier(hostname, port) else { return }
-        var entries = loadEntries()
-        entries.removeAll { $0.host == hostKey }
-        saveEntries(entries)
+        guard let hostKey = hostIdentifier(hostname, port), var file = loadFile() else { return }
+        if file.remove(host: hostKey) {
+            saveFile(file)
+        }
     }
 
     func trustedHosts() -> [String] {
         lock.lock()
         defer { lock.unlock() }
-        return Array(Set(loadEntries().map(\.host))).sorted()
+        return Array(Set((loadFile()?.entries ?? []).map(\.host))).sorted()
     }
 
     static func keyTypeName(_ type: Int32) -> String {
@@ -122,35 +111,19 @@ nonisolated final class HostKeyStore: @unchecked Sendable {
         return "[\(hostname)]:\(port)"
     }
 
-    private func loadEntries() -> [(host: String, keyType: String, keyData: Data)] {
-        guard let content = try? String(contentsOfFile: filePath, encoding: .utf8) else {
-            return []
+    // nil means the file is there but unreadable, and nothing may be written over it.
+    private func loadFile() -> KnownHostsFile? {
+        do {
+            return try KnownHostsFile.load(from: URL(fileURLWithPath: filePath))
+        } catch {
+            Self.logger.error("Failed to read known_hosts file: \(error.localizedDescription)")
+            return nil
         }
-
-        var entries: [(host: String, keyType: String, keyData: Data)] = []
-
-        for line in content.components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { continue }
-
-            let parts = trimmed.components(separatedBy: " ")
-            guard parts.count == 3, let keyData = Data(base64Encoded: parts[2]) else {
-                Self.logger.warning("Skipping malformed known_hosts line")
-                continue
-            }
-
-            entries.append((host: parts[0], keyType: parts[1], keyData: keyData))
-        }
-
-        return entries
     }
 
-    private func saveEntries(_ entries: [(host: String, keyType: String, keyData: Data)]) {
-        let lines = entries.map { "\($0.host) \($0.keyType) \($0.keyData.base64EncodedString())" }
-        let content = lines.joined(separator: "\n") + (lines.isEmpty ? "" : "\n")
-
+    private func saveFile(_ file: KnownHostsFile) {
         do {
-            try content.write(toFile: filePath, atomically: true, encoding: .utf8)
+            try file.contents.write(toFile: filePath, atomically: true, encoding: .utf8)
         } catch {
             Self.logger.error("Failed to write known_hosts file: \(error.localizedDescription)")
         }

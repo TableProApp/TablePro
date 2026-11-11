@@ -205,6 +205,8 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
         let actor = self.actor
         let killer = actor.killer
         let statement = killer.reserve()
+        let databaseType = self.databaseType
+        let session = settledLexicalFacts
         return AsyncThrowingStream { continuation in
             let task = Task {
                 var openStream: MySQLStreamID?
@@ -218,10 +220,16 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
                         openStream = stream
                         continuation.yield(.columns(columns))
                         var emitted = 0
-                        while !Task.isCancelled, emitted < options.maxRows {
+                        // A row after the cap tells a result that only fills it from one with rows still to stop.
+                        var rowsLeft = false
+                        while !Task.isCancelled {
                             guard let cells = try await actor.fetchNextRow(
                                 stream, options: options, columns: columns
                             ) else {
+                                break
+                            }
+                            guard emitted < options.maxRows else {
+                                rowsLeft = true
                                 break
                             }
                             continuation.yield(.row(Row(cells: cells)))
@@ -229,11 +237,16 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
                         }
                         if Task.isCancelled {
                             continuation.yield(.truncated(reason: .cancelled))
-                        } else if emitted >= options.maxRows {
+                        } else if rowsLeft {
                             continuation.yield(.truncated(reason: .rowCap(options.maxRows)))
                         }
                         openStream = nil
-                        try await actor.endStream(stream)
+                        // Classified here, off the caller's thread and only for a statement that passed the cap.
+                        if rowsLeft, CappedRead.qualifies(query, databaseType: databaseType, session: session) {
+                            try await actor.endStreamAtRowCap(stream)
+                        } else {
+                            try await actor.endStream(stream)
+                        }
                     }
                     await self.settleLexicalFacts()
                     continuation.finish()
@@ -1096,6 +1109,20 @@ private actor MySQLActor {
     func endStream(_ stream: MySQLStreamID) throws {
         guard let mysql, stream.generation == streamGeneration else { return }
         try releaseStream(of: mysql)
+    }
+
+    // Only for a `CappedRead`: its rows past the cap would only be read and dropped, so it is stopped on the server
+    // first, as on the Mac, and the kill's 1317 is the cut the reader was already told of.
+    func endStreamAtRowCap(_ stream: MySQLStreamID) throws {
+        guard let mysql, stream.generation == streamGeneration else { return }
+        if let sent = streamingStatement {
+            killer.rowCapReached(sent.id)
+        }
+        do {
+            try releaseStream(of: mysql)
+        } catch {
+            guard flavor.isInterruptedByKill(errno: mysql_errno(mysql), message: message(from: mysql)) else { throw error }
+        }
     }
 
     /// The producer of a superseded stream only learns that its rows were cut off, so an error in the rest of
