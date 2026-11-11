@@ -20,6 +20,18 @@ extension PluginMetadataRegistry {
     // their driver creates is a SQLite database.
     static let sqliteFileExtensions = ["db", "db3", "s3db", "sl3", "sqlite", "sqlite3", "sqlitedb"]
 
+    // Engines where a function a SELECT calls can change data: an autonomous-transaction function on Oracle and Dameng,
+    // a stored function on MySQL, MariaDB and OceanBase, PL/pgSQL on the PostgreSQL family. Read-Only asks before such a
+    // call only when the live driver cannot run the statement in the engine's read-only mode. MySQL and MariaDB are
+    // listed by type because an OceanBase server answers as MySQL, so only the driver's own bit tells them apart. TiDB,
+    // StarRocks and Databend have no stored function or UDF that writes; SQL Server, Snowflake, BigQuery, Trino and
+    // Redshift refuse a write from a function a query calls; ClickHouse, the SQLite engines and Cassandra have none.
+    static let queryFunctionsCanWrite: Set<DatabaseType> = [
+        .oracle, .dameng,
+        .mysql, .mariadb, .oceanbase,
+        .postgresql, .cockroachdb, .pglite, .kingbasees,
+    ]
+
     // swiftlint:disable:next function_body_length
     static func curatedDefaults() -> [(typeId: String, snapshot: PluginMetadataSnapshot)] {
         let mysqlDialect = SQLDialectDescriptor(

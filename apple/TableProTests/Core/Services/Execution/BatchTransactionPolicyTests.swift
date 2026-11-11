@@ -339,4 +339,16 @@ struct BatchTransactionPolicyTests {
     func redisBlockEndersDoNotOpenOne(statement: String) {
         #expect(Self.plan([statement], .redis) == .autocommit)
     }
+
+    // Each statement then runs in a read-only transaction of its own, which an app transaction around them would refuse.
+    @Test("At Read-Only a batch of reads runs in autocommit", arguments: [DatabaseType.postgresql, .mysql, .oracle])
+    func readOnlyBatchRunsInAutocommit(type: DatabaseType) {
+        let reads = ["SELECT purge_orders()", "SELECT 1"]
+        let plan = BatchTransactionPolicy.plan(
+            for: reads, databaseType: type, grammar: type.lexicalGrammar, safeModeIsReadOnly: true
+        )
+
+        #expect(plan == .autocommit)
+        #expect(Self.plan(reads, type) == .appTransaction)
+    }
 }

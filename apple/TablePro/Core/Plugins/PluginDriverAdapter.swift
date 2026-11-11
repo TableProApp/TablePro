@@ -1318,7 +1318,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     // MARK: - Result Mapping
 
-    private func mapQueryResult(_ pluginResult: PluginQueryResult) -> QueryResult {
+    func mapQueryResult(_ pluginResult: PluginQueryResult) -> QueryResult {
         let columnTypes = mapColumnTypes(
             rawTypeNames: pluginResult.columnTypeNames,
             classificationHints: PluginResultColumnHints.hints(
@@ -1462,7 +1462,7 @@ extension PluginDriverAdapter {
         return mapQueryResult(pluginResult)
     }
 
-    fileprivate func statementContext(_ query: String, approvedAs caller: PluginStatementContext, parameters: [Any?]? = nil) -> PluginStatementContext {
+    func statementContext(_ query: String, approvedAs caller: PluginStatementContext, parameters: [Any?]? = nil) -> PluginStatementContext {
         var context = PluginStatementContext.statement(query, databaseType: connection.type, approvedAs: caller)
         context.lexicalFeatures = sessionLexicalFeatures
         context.parameterKinds = TypedParameterValue.kinds(of: parameters) ?? context.parameterKinds
@@ -1470,7 +1470,7 @@ extension PluginDriverAdapter {
     }
 
     // A driver built before `.statementPolicy` would run an external write the approval did not cover.
-    fileprivate func refuseUnenforcedPolicy(_ context: PluginStatementContext) throws {
+    func refuseUnenforcedPolicy(_ context: PluginStatementContext) throws {
         guard context.origin == .external, !context.readOnly,
               !context.allowsDestructive || !context.allowsServerCode,
               PluginMetadataRegistry.shared.snapshot(for: connection.type)?.capabilities.statementPolicyInDriver == true,

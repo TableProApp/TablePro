@@ -138,7 +138,8 @@ final class TableTransferService: ObservableObject {
     /// drivers, so every statement lands on the database the sheet named rather than wherever
     /// either shared driver was last parked. The gate asks before either lease is taken, so a
     /// prompt nobody has answered yet holds no connection. `confirmedByCaller` is a delete of the
-    /// destination's rows the sheet already confirmed in its own words; Touch ID still applies.
+    /// destination's rows the sheet already confirmed in its own words; Touch ID still applies. At
+    /// Read-Only on the source, a row filter meets the gate first, as a Run of it would.
     func run(
         request: Request,
         source: DatabaseScope,
@@ -148,6 +149,17 @@ final class TableTransferService: ObservableObject {
         manager: DatabaseManager = .shared,
         gate: ExecutionGate = ExecutionGateProvider.shared
     ) async throws {
+        let sourceSession = manager.driver(for: source.connectionId)
+        try await ReadOnlyExportGate.authorize(
+            ReadOnlyExportGate.rowScopeStatements(request.objects, databaseType: request.sourceType) { name in
+                sourceSession?.quoteIdentifier(name) ?? name
+            },
+            connectionId: source.connectionId,
+            databaseType: request.sourceType,
+            gate: gate,
+            manager: manager
+        )
+
         var capabilities = CallerCapabilities.interactiveUser
         if confirmedByCaller {
             capabilities.insert(.confirmationPreCleared)
@@ -204,7 +216,11 @@ final class TableTransferService: ObservableObject {
             isCancelled = false
         }
 
-        let source = ExportDataSourceAdapter(driver: sourceDriver, databaseType: request.sourceType)
+        let source = ExportDataSourceAdapter(
+            driver: sourceDriver,
+            databaseType: request.sourceType,
+            safeModeIsReadOnly: ExecutionGateProvider.runsAtReadOnly(sourceDriver.connection.id)
+        )
         /// The destination can be the user's own editor session, so the scopes close on every exit.
         let scopes = await openSessionScopes(
             for: request, objects: rowObjects, sourceDriver: sourceDriver, destinationDriver: destinationDriver)

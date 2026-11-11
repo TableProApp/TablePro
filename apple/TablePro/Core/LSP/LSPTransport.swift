@@ -82,6 +82,7 @@ actor LSPTransport {
     private var stdoutPipe: Pipe?
     private var stderrPipe: Pipe?
     private var stderrReader: PipeReader?
+    private var stdoutReader: PipeReader?
     private var nextRequestID: Int = 1
     private var pendingRequests: [Int: CheckedContinuation<Data, Error>] = [:]
     private var notificationHandlers: [String: @Sendable (Data) -> Void] = [:]
@@ -128,9 +129,14 @@ actor LSPTransport {
 
         try proc.run()
 
-        let handle = stdout.fileHandleForReading
+        // Not FileHandle.bytes: its reads share one serial queue, so this idle server would hold every
+        // other AsyncBytes reader in the app, the Claude Agent chat among them.
+        let (chunks, chunkSink) = AsyncStream<Data>.makeStream()
+        let stdoutReader = PipeReader(stdout.fileHandleForReading)
+        stdoutReader.start(delivering: { chunkSink.yield($0) }, onEnd: { chunkSink.finish() })
+        self.stdoutReader = stdoutReader
         readerTask = Task { [weak self] in
-            await self?.runReadLoop(handle: handle)
+            await self?.runReadLoop(chunks)
         }
 
         Self.logger.info("LSP transport started: \(executablePath)")
@@ -148,6 +154,8 @@ actor LSPTransport {
 
         writer?.close()
         writer = nil
+        stdoutReader?.stop()
+        stdoutReader = nil
         if let stdoutHandle = stdoutPipe?.fileHandleForReading {
             try? stdoutHandle.close()
         }
@@ -270,25 +278,20 @@ actor LSPTransport {
         continuation.resume(throwing: error)
     }
 
-    private func runReadLoop(handle: FileHandle) async {
+    private func runReadLoop(_ chunks: AsyncStream<Data>) async {
         var buffer = Data()
-        do {
-            for try await byte in handle.bytes {
-                if Task.isCancelled { return }
-                buffer.append(byte)
-                while let (messageData, _) = Self.parseMessageFromBuffer(&buffer) {
-                    dispatchMessage(messageData)
-                }
+        for await chunk in chunks {
+            if Task.isCancelled { return }
+            buffer.append(chunk)
+            while let (messageData, _) = Self.parseMessageFromBuffer(&buffer) {
+                dispatchMessage(messageData)
             }
-        } catch {
-            if !Task.isCancelled {
-                Self.logger.debug("LSP read loop ended: \(error.localizedDescription)")
-            }
+        }
+        if !Task.isCancelled {
+            Self.logger.debug("LSP read loop ended at end of output")
         }
     }
 
-    /// Parse a single LSP message from the buffer.
-    /// Returns (messageBody, totalBytesConsumed) or nil if buffer is incomplete.
     private static func parseMessageFromBuffer(_ buffer: inout Data) -> (Data, Int)? {
         let separator: [UInt8] = [0x0D, 0x0A, 0x0D, 0x0A]
         guard let separatorRange = buffer.range(of: Data(separator)) else {

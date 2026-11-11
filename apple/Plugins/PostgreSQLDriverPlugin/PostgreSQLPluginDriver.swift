@@ -51,7 +51,8 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             .schemaCompare,
             .dataCompare,
             .temporaryTables,
-            .readOnlyStatements
+            .readOnlyStatements,
+            .enforcesReadOnlyMode
         ]
     }
 

@@ -26,7 +26,7 @@ extension AIChatViewModel {
                 guard self.messages.isEmpty else { return }
                 guard let wanted, let stored = loaded.first(where: { $0.id == wanted }) else { return }
                 self.activeConversationID = stored.id
-                self.messages = stored.messages.map { ChatTurn(wire: $0) }
+                self.messages = ChatToolCallRepair.settlingPendingApprovals(stored.messages).map { ChatTurn(wire: $0) }
             }
         }
     }
@@ -73,7 +73,7 @@ extension AIChatViewModel {
 
     private func snapshotCurrentConversation() -> AIConversation? {
         guard !messages.isEmpty else { return nil }
-        let wireMessages = messages.map { $0.wireSnapshot }
+        let wireMessages = ChatToolCallRepair.settlingPendingApprovals(messages.map { $0.wireSnapshot })
 
         if let existingID = activeConversationID {
             var conversation = conversations.first(where: { $0.id == existingID })

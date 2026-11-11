@@ -16,6 +16,8 @@ struct MCPTabSnapshot {
     weak var window: NSWindow?
 }
 
+typealias MCPTabSnapshotCollector = @MainActor @Sendable () -> [MCPTabSnapshot]
+
 enum MCPTabSnapshotProvider {
     static let openPollInterval: Duration = .milliseconds(50)
     static let openTimeout: Duration = .seconds(8)
@@ -58,13 +60,31 @@ enum MCPTabSnapshotProvider {
         }
     }
 
+    static let liveSnapshots: MCPTabSnapshotCollector = { MCPTabSnapshotProvider.collectTabSnapshots() }
+
+    // Tabs of every connection the token may see; the caller asks about one before acting on it.
     static func readableSnapshots(
         context: MCPRequestContext,
-        services: MCPToolServices
+        services: MCPToolServices,
+        collect: MCPTabSnapshotCollector = MCPTabSnapshotProvider.liveSnapshots
     ) async -> [MCPTabSnapshot] {
         let readable = await MCPToolAuthorization.readableConnectionIds(context: context, services: services)
-        let snapshots = await MainActor.run { collectTabSnapshots() }
-        return snapshots.filter { readable.contains($0.connectionId) }
+        let collected = await collect()
+        return snapshots(collected, in: readable)
+    }
+
+    static func snapshotsReadableWithoutPrompt(
+        context: MCPRequestContext,
+        services: MCPToolServices,
+        collect: MCPTabSnapshotCollector = MCPTabSnapshotProvider.liveSnapshots
+    ) async -> [MCPTabSnapshot] {
+        let allowed = await services.authPolicy.connectionIdsReadableWithoutPrompt(principal: context.principal)
+        let collected = await collect()
+        return snapshots(collected, in: allowed)
+    }
+
+    static func snapshots(_ snapshots: [MCPTabSnapshot], in connectionIds: Set<UUID>) -> [MCPTabSnapshot] {
+        snapshots.filter { connectionIds.contains($0.connectionId) }
     }
 
     /// A database or schema the caller left out means the one being browsed, which is where the

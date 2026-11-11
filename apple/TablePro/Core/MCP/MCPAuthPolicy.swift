@@ -143,10 +143,7 @@ public actor MCPAuthPolicy {
         )
     }
 
-    /// An aggregate read spans connections, so it cannot prompt for one that asks each time. It
-    /// answers the narrower question every per-connection check already asks: may this principal
-    /// see this connection at all. Anything it excludes is a connection the client could not have
-    /// named directly either.
+    // May this principal see the connection at all; a call that names one is asked about it on top of this.
     func readableConnectionIds(principal: MCPPrincipal) async -> Set<UUID> {
         let candidates = await connectionIdsProvider()
         return await readableConnectionIds(principal: principal, from: candidates)
@@ -170,6 +167,16 @@ public actor MCPAuthPolicy {
               case .allowed = decision
         else { return false }
         return true
+    }
+
+    // A read spanning connections cannot ask about each one, so it keeps only those already allowed.
+    func connectionIdsReadableWithoutPrompt(principal: MCPPrincipal) async -> Set<UUID> {
+        var allowed: Set<UUID> = []
+        for candidate in await readableConnectionIds(principal: principal) {
+            guard await isAllowedWithoutPrompt(principal: principal, connectionId: candidate) else { continue }
+            allowed.insert(candidate)
+        }
+        return allowed
     }
 
     func resolveAndAuthorize(

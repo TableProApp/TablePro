@@ -196,7 +196,6 @@ internal final class AgentSession: ObservableObject, Identifiable {
     /// throwing a conversation away, so the transcript is written first and kept.
     internal func stop() {
         viewModel.cancelStream()
-        settlePendingApprovals()
         viewModel.persistCurrentConversation()
         mark(.stopped)
     }
@@ -210,23 +209,6 @@ internal final class AgentSession: ObservableObject, Identifiable {
     internal func resume() {
         guard status.isEnded else { return }
         mark(.ready)
-    }
-
-    /// Settles a card that is still waiting before the transcript is written.
-    ///
-    /// `cancelStream()` resumes the continuation, but the suspended task only marks the block
-    /// `.cancelled` once it is back on the main actor, and the snapshot was taken before that. The
-    /// restored transcript then held a `.pending` card with no continuation behind it, whose Run
-    /// button could never work.
-    private func settlePendingApprovals() {
-        for turn in viewModel.messages {
-            for block in turn.blocks {
-                guard case .toolUse(var use) = block.kind,
-                      case .pending = use.approvalState else { continue }
-                use.approvalState = .cancelled
-                block.setKind(.toolUse(use))
-            }
-        }
     }
 
     internal var record: AgentSessionRecord {

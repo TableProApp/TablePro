@@ -13,12 +13,19 @@ struct AIChatToolUseBlockView: View {
     @State private var isExpanded: Bool = false
 
     @Environment(\.chatApprovalConnectionName) private var connectionName
+    @Environment(\.chatApprovalSessionId) private var sessionId
 
     internal static let inputFont = Font.system(.caption, design: .monospaced)
 
     private var isPending: Bool {
         if case .pending = block.approvalState { return true }
         return false
+    }
+
+    // A click on a card no turn waits on is dropped, so its buttons are not drawn.
+    private var isAwaitingAnswer: Bool {
+        guard isPending, let sessionId else { return false }
+        return ToolApprovalCenter.shared.isAwaiting(sessionId: sessionId, toolUseId: block.id)
     }
 
     private var shouldShowInput: Bool {
@@ -79,7 +86,7 @@ struct AIChatToolUseBlockView: View {
                 CodeWell(prettyInput, font: Self.inputFont)
             }
 
-            if case .pending = block.approvalState {
+            if isAwaitingAnswer {
                 ToolApprovalActionsRow(
                     toolUseId: block.id,
                     toolName: block.name,

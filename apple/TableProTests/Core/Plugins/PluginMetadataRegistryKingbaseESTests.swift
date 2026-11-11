@@ -24,6 +24,15 @@ struct PluginMetadataRegistryKingbaseESTests {
         #expect(snapshot.connection.additionalConnectionFields.map(\.id) == ["usePgpass", "connectionOptions"])
     }
 
+    // Its driver is PostgreSQL's, which runs an external read in START TRANSACTION READ ONLY, so the Options pane says so.
+    @Test("KingbaseES describes Read Only for external clients as PostgreSQL does")
+    func readOnlyNoteMatchesItsDriver() {
+        #expect(ReadOnlyEnforcement(for: .kingbasees) == .sessionDefault)
+        #expect(ReadOnlyEnforcement(for: .kingbasees) == ReadOnlyEnforcement(for: .postgresql))
+        #expect(ReadOnlyEnforcement(for: .kingbasees, liveDriverRunsReadOnly: true) == .sessionDefault)
+        #expect(ReadOnlyEnforcement(for: .kingbasees, liveDriverRunsReadOnly: false) == .loginPrivileges)
+    }
+
     @Test("Both KingbaseES URL schemes keep credentials and route to the dedicated engine", arguments: ["kingbase", "kingbase8"])
     func connectionURLs(scheme: String) throws {
         let parsed = try ConnectionURLParser.parse("\(scheme)://system:pass@localhost:55432/test").get()

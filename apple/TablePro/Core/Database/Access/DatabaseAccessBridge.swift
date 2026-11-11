@@ -340,21 +340,25 @@ internal actor DatabaseAccessBridge {
     internal struct StatementOutcome: Sendable {
         internal let result: QueryResult
         internal let executionTimeMs: Double
+        // What the answer spent, nil when it ran with none.
+        internal let budget: ExternalAnswerBudget?
     }
 
-    // Runs the one approved statement as it was approved, its rows masked as `masking` says.
+    // Runs the one approved statement as it was approved, its rows masked as `masking` says, then held to `budget`.
+    // AppleScript and Shortcuts pass none.
     internal func runStatement(
         _ operation: ApprovedOperation,
         maxRows: Int,
         timeoutSeconds: Int,
         cancellation: (any StatementCancellationSignal)?,
-        masking: ExternalRowMasking = .byOrigin
+        masking: ExternalRowMasking = .byOrigin,
+        budget: ExternalAnswerBudget? = nil
     ) async throws -> StatementOutcome {
         let reach = DriverReach()
         do {
             return try await runApprovedStatement(
                 operation, maxRows: maxRows, timeoutSeconds: timeoutSeconds, cancellation: cancellation, masking: masking,
-                reach: reach
+                budget: budget, reach: reach
             )
         } catch {
             throw await externalError(error, on: operation.scope.connectionId, reach: reach)
@@ -367,6 +371,7 @@ internal actor DatabaseAccessBridge {
         timeoutSeconds: Int,
         cancellation: (any StatementCancellationSignal)?,
         masking: ExternalRowMasking,
+        budget: ExternalAnswerBudget?,
         reach: DriverReach
     ) async throws -> StatementOutcome {
         guard operation.unit == .statement, operation.statements.count == 1, let statement = operation.statements.first
@@ -384,7 +389,7 @@ internal actor DatabaseAccessBridge {
             let ceiling = await MainActor.run { PluginManager.shared.paginationCapability(for: databaseType).maximumRows }
             rowCap = ceiling.map { min(maxRows, $0) } ?? maxRows
         }
-        let context = operation.context
+        let context = operation.context(readingAtMost: budget?.remainingBytes)
         let fetchCap = rowCap
         let connectionId = scope.connectionId
         // One owner per statement, so a cancel or a timeout reaches this statement's lease only.
@@ -442,7 +447,17 @@ internal actor DatabaseAccessBridge {
         let executionTimeMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1_000
         let rules = await maskingPolicy(for: connectionId)
         let applied = await MainActor.run { masking.resolved(in: scope, databaseType: databaseType) }
-        return StatementOutcome(result: applied.apply(rules, to: result), executionTimeMs: executionTimeMs)
+        // Masked first, so a partial mask reads the whole value before any cut.
+        let masked = applied.apply(rules, to: result)
+        guard var spent = budget else {
+            return StatementOutcome(result: masked, executionTimeMs: executionTimeMs, budget: nil)
+        }
+        let kept = spent.keep(masked)
+        // Short of the row cap and truncated anyway: the driver stopped at the byte limit.
+        if context.resultByteLimit != nil, let fetchCap, masked.isTruncated, masked.rows.count < fetchCap {
+            spent.markSizeLimited()
+        }
+        return StatementOutcome(result: kept, executionTimeMs: executionTimeMs, budget: spent)
     }
 
     // A plan the driver builds for the approved statement, masked as `masking` says.
@@ -459,7 +474,9 @@ internal actor DatabaseAccessBridge {
                 operation, step: step, timeoutSeconds: timeoutSeconds, cancellation: cancellation, reach: reach
             )
             let rules = await maskingPolicy(for: operation.scope.connectionId)
-            return StatementOutcome(result: masking.apply(rules, to: outcome.result), executionTimeMs: outcome.executionTimeMs)
+            return StatementOutcome(
+                result: masking.apply(rules, to: outcome.result), executionTimeMs: outcome.executionTimeMs, budget: nil
+            )
         } catch {
             throw await externalError(error, on: operation.scope.connectionId, reach: reach)
         }
@@ -524,7 +541,9 @@ internal actor DatabaseAccessBridge {
         if writes {
             CatalogChangeService.post(statementRan)
         }
-        return StatementOutcome(result: result, executionTimeMs: (CFAbsoluteTimeGetCurrent() - startTime) * 1_000)
+        return StatementOutcome(
+            result: result, executionTimeMs: (CFAbsoluteTimeGetCurrent() - startTime) * 1_000, budget: nil
+        )
     }
 
     // One approved INSERT per row, on one write lease, each with the values it was approved with.
@@ -822,6 +841,7 @@ internal actor DatabaseAccessBridge {
         _ work: @Sendable @escaping (_ enterDriver: @escaping @Sendable () throws -> Void) async throws -> Output
     ) async throws -> Output {
         let phase = OSAllocatedUnfairLock(initialState: ProtectedWritePhase.queued)
+        let callerLeft = OSAllocatedUnfairLock(initialState: false)
         let abandonIfQueued: @Sendable () -> Bool = {
             phase.withLock { current -> Bool in
                 guard current == .queued else { return current == .abandoned }
@@ -855,8 +875,9 @@ internal actor DatabaseAccessBridge {
                 continuation.finish(throwing: error)
             }
             deadline.cancel()
-            let ranInDriver = phase.withLock { $0 == .inDriver }
-            if await deadline.value, ranInDriver {
+            guard phase.withLock({ $0 == .inDriver }) else { return }
+            let deadlinePassed = await deadline.value
+            if deadlinePassed || callerLeft.withLock({ $0 }) {
                 onLateCompletion?()
             }
         }
@@ -878,14 +899,29 @@ internal actor DatabaseAccessBridge {
                     context: ["outcome": "unknown"]
                 )
             }
+            if phase.withLock({ $0 == .inDriver }) {
+                throw stoppedWhileRunning
+            }
             try Task.checkCancellation()
             throw DatabaseAccessError.dataSourceError("No result from query execution")
         } onCancel: {
             if abandonIfQueued() {
                 workTask.cancel()
+            } else {
+                callerLeft.withLock { $0 = true }
             }
             deadline.cancel()
         }
+    }
+
+    // Not "timed out": the caller stopped it, and a retry would apply it twice.
+    static var stoppedWhileRunning: DatabaseAccessError {
+        .stoppedWhileRunning(String(
+            localized: """
+                The statement was still running in the database when it was stopped, and it runs to the end. \
+                It may have been applied; check before running it again.
+                """
+        ))
     }
 
     /// The text an external client's statement reaches the driver as.

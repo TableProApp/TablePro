@@ -12,6 +12,7 @@ internal actor DefaultExecutionGate: ExecutionGate {
     private let safeModeLevelResolver: @Sendable (UUID) async -> SafeModeLevel
     private let forcesWriteResolver: @Sendable (DatabaseType) async -> Bool
     private let connectionNameResolver: @Sendable (UUID) async -> String?
+    private let readOnlyFunctionPolicyResolver: @Sendable (UUID, DatabaseType) async -> ReadOnlyFunctionPolicy
     private let auditLog: any ExecutionAuditLogging
 
     /// The end of a sentence macOS writes, not a sentence of its own. `LAContext` shows the reason
@@ -29,6 +30,9 @@ internal actor DefaultExecutionGate: ExecutionGate {
         safeModeLevelResolver: @escaping @Sendable (UUID) async -> SafeModeLevel,
         forcesWriteResolver: @escaping @Sendable (DatabaseType) async -> Bool,
         connectionNameResolver: @escaping @Sendable (UUID) async -> String? = { _ in nil },
+        readOnlyFunctionPolicyResolver: @escaping @Sendable (UUID, DatabaseType) async -> ReadOnlyFunctionPolicy = { _, _ in
+            ReadOnlyFunctionPolicy()
+        },
         auditLog: any ExecutionAuditLogging = ExecutionAuditLog.shared
     ) {
         self.confirming = confirming
@@ -36,6 +40,7 @@ internal actor DefaultExecutionGate: ExecutionGate {
         self.safeModeLevelResolver = safeModeLevelResolver
         self.forcesWriteResolver = forcesWriteResolver
         self.connectionNameResolver = connectionNameResolver
+        self.readOnlyFunctionPolicyResolver = readOnlyFunctionPolicyResolver
         self.auditLog = auditLog
     }
 
@@ -72,6 +77,11 @@ internal actor DefaultExecutionGate: ExecutionGate {
             return .denied(reason: String(
                 localized: "Cannot execute write queries: TablePro's Safe Mode is set to read-only for this connection"
             ))
+        }
+
+        if level.blocksAllWrites, request.kind != .metadataRead, let sql = request.sql,
+           let refusal = await readOnlyFunctionRefusal(request, sql: sql) {
+            return refusal
         }
 
         /// Narrower than `effectiveWrite`, which is true for every statement on a driver that
@@ -127,6 +137,43 @@ internal actor DefaultExecutionGate: ExecutionGate {
                 token: UUID()
             )
         )
+    }
+
+    // The classifier tiers `SELECT purge_orders()` as a read. Where the driver cannot run it in the engine's read-only
+    // mode and a function on the engine can write, a call off the built-in list is asked about, or refused when a
+    // profile or the engine floor holds the level, since an answer there would let a write past them. Nil runs it.
+    private func readOnlyFunctionRefusal(_ request: OperationRequest, sql: String) async -> OperationDecision? {
+        let policy = await readOnlyFunctionPolicyResolver(request.connectionId, request.databaseType)
+        guard policy.functionsCanWrite,
+              ReadOnlyFunctionCalls.callsUnlistedFunction(sql, databaseType: request.databaseType)
+        else { return nil }
+        if policy.levelIsHeld {
+            return .denied(reason: String(
+                localized: "Cannot run this query: it calls a function that can change data, and Safe Mode is held at Read-Only for this connection."
+            ))
+        }
+        let caps = request.capabilities
+        guard !caps.contains(.preCleared), !caps.contains(.confirmationPreCleared) else { return nil }
+        if caps.contains(.cannotPrompt) {
+            return .denied(reason: String(localized: "Confirmation is required for this operation"))
+        }
+        let confirmed = await confirming.confirm(
+            OperationConfirmationRequest(
+                sql: request.sql,
+                operationDescription: String(localized: "This query calls a function that can change data"),
+                connectionId: request.connectionId,
+                connectionName: await connectionNameResolver(request.connectionId),
+                databaseType: request.databaseType,
+                caller: request.caller,
+                isDestructive: false,
+                scope: request.scope,
+                statements: request.statements
+            )
+        )
+        guard confirmed else {
+            return .denied(reason: String(localized: "Operation cancelled by user"), cause: .cancelledByUser)
+        }
+        return nil
     }
 
     private func resolveEffectiveWrite(_ request: OperationRequest, tier: QueryTier?) async -> Bool {

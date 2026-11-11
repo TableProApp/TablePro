@@ -178,7 +178,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             capabilities.insert(.temporaryTables)
         }
         if flavor.enforcesReadOnlyTransactions {
-            capabilities.insert(.readOnlyStatements)
+            capabilities.formUnion([.readOnlyStatements, .enforcesReadOnlyMode])
         }
         return capabilities
     }
@@ -384,14 +384,23 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
+        try await runUserQuery(query: query, rowCap: rowCap, parameters: parameters, byteLimit: nil)
+    }
+
+    private func runUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        byteLimit: Int?
+    ) async throws -> PluginQueryResult {
         let cap = rowCap.flatMap { $0 > 0 ? $0 : nil }
         guard let parameters else {
             return try await retryingAfterStop {
-                try await self.executeWithReconnect(query: query, isRetry: false, rowCap: cap)
+                try await self.executeWithReconnect(query: query, isRetry: false, rowCap: cap, byteLimit: byteLimit)
             }
         }
         return try await retryingAfterStop {
-            try await self.executeParameterizedOnce(query: query, parameters: parameters, rowCap: cap)
+            try await self.executeParameterizedOnce(query: query, parameters: parameters, rowCap: cap, byteLimit: byteLimit)
         }
     }
 
@@ -403,85 +412,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         try await retryingAfterStop {
-            try await self.executeParameterizedOnce(query: query, parameters: parameters, rowCap: nil)
-        }
-    }
-
-    func executeUserQuery(
-        query: String,
-        rowCap: Int?,
-        parameters: [PluginCellValue]?,
-        context: PluginStatementContext
-    ) async throws -> PluginQueryResult {
-        guard runsReadOnly(context) else {
-            return try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
-        }
-        let cap = rowCap.flatMap { $0 > 0 ? $0 : nil }
-        return try await retryingAfterStop {
-            try await self.executeReadOnly(query: query, parameters: parameters, rowCap: cap, isRetry: false)
-        }
-    }
-
-    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
-        guard runsReadOnly(context) else { return try await execute(query: query) }
-        return try await retryingAfterStop {
-            try await self.executeReadOnly(query: query, parameters: nil, rowCap: nil, isRetry: false)
-        }
-    }
-
-    func executeParameterized(
-        query: String,
-        parameters: [PluginCellValue],
-        context: PluginStatementContext
-    ) async throws -> PluginQueryResult {
-        guard runsReadOnly(context) else { return try await executeParameterized(query: query, parameters: parameters) }
-        return try await retryingAfterStop {
-            try await self.executeReadOnly(query: query, parameters: parameters, rowCap: nil, isRetry: false)
-        }
-    }
-
-    private func runsReadOnly(_ context: PluginStatementContext) -> Bool {
-        MySQLReadOnlyTransaction.applies(to: context, flavor: flavor)
-    }
-
-    // The lock comes from the footprint, because the status flags never show it.
-    private var readOnlySessionState: @Sendable (Bool) -> PluginSessionTransactionState {
-        { isInTransaction in
-            self.sessionLock.withLock { self.footprint.transactionState(isInTransaction: isInTransaction) }
-        }
-    }
-
-    // Replays on a lost connection exactly when `executeWithReconnect` would.
-    private func executeReadOnly(
-        query: String,
-        parameters: [PluginCellValue]?,
-        rowCap: Int?,
-        isRetry: Bool
-    ) async throws -> PluginQueryResult {
-        let startTime = Date()
-
-        let conn = try await requireConnection()
-        defer { endOperation(on: conn) }
-        noteActivity(query)
-
-        do {
-            let result = try await conn.executeReadOnly(
-                query,
-                parameters: parameters,
-                rowCap: rowCap,
-                sessionState: readOnlySessionState
-            )
-            return Self.pluginResult(result, startedAt: startTime)
-        } catch let error as MariaDBPluginError where !isRetry
-            && parameters == nil
-            && mysqlConnectionLossMayReplay(code: error.code, outlastedSocketTimeout: error.outlastedSocketTimeout)
-            && mayReplay(query) {
-            try await reconnect()
-            return try await executeReadOnly(query: query, parameters: nil, rowCap: rowCap, isRetry: true)
-        } catch {
-            noteFailure(query)
-            await refreshTransactionFlag(after: error, on: conn)
-            throw error
+            try await self.executeParameterizedOnce(query: query, parameters: parameters, rowCap: nil, byteLimit: nil)
         }
     }
 
@@ -499,7 +430,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func executeParameterizedOnce(
         query: String,
         parameters: [PluginCellValue],
-        rowCap: Int?
+        rowCap: Int?,
+        byteLimit: Int?
     ) async throws -> PluginQueryResult {
         let conn = try await requireConnection()
         defer { endOperation(on: conn) }
@@ -507,7 +439,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let startTime = Date()
         let result: MariaDBPluginQueryResult
         do {
-            result = try await conn.executeParameterizedQuery(query, parameters: parameters, rowCap: rowCap)
+            result = try await conn.executeParameterizedQuery(
+                query, parameters: parameters, rowCap: rowCap, byteLimit: byteLimit
+            )
         } catch {
             noteFailure(query)
             await refreshTransactionFlag(after: error, on: conn)
@@ -562,6 +496,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         query: String,
         isRetry: Bool,
         rowCap: Int? = nil,
+        byteLimit: Int? = nil,
         countsAsActivity: Bool = true
     ) async throws -> PluginQueryResult {
         let startTime = Date()
@@ -573,7 +508,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         do {
-            let result = try await conn.executeQuery(query, rowCap: rowCap)
+            let result = try await conn.executeQuery(query, rowCap: rowCap, byteLimit: byteLimit)
             return Self.pluginResult(result, startedAt: startTime)
         } catch let error as MariaDBPluginError where !isRetry
             && mysqlConnectionLossMayReplay(code: error.code, outlastedSocketTimeout: error.outlastedSocketTimeout)
@@ -583,6 +518,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 query: query,
                 isRetry: true,
                 rowCap: rowCap,
+                byteLimit: byteLimit,
                 countsAsActivity: countsAsActivity
             )
         } catch {
@@ -1084,12 +1020,12 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        streamRows(query: query, readOnlySessionState: nil)
+        streamRows(query: query, readOnly: nil)
     }
 
     func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        guard runsReadOnly(context) else { return streamRows(query: query) }
-        return streamRows(query: query, readOnlySessionState: readOnlySessionState)
+        guard let scope = readOnlyScope(context) else { return streamRows(query: query) }
+        return streamRows(query: query, readOnly: scope)
     }
 
     /// The bridge task is retained and cancelled from `onTermination`. Without that, a consumer
@@ -1098,7 +1034,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// nothing ever cancels the task awaiting it.
     private func streamRows(
         query: String,
-        readOnlySessionState: (@Sendable (Bool) -> PluginSessionTransactionState)?
+        readOnly: MySQLReadOnlyTransaction.Scope?
     ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
@@ -1107,7 +1043,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                         let conn = try await requireConnection()
                         defer { self.endOperation(on: conn) }
                         noteActivity(query)
-                        for try await element in conn.streamQuery(query, readOnlySessionState: readOnlySessionState) {
+                        for try await element in conn.streamQuery(query, readOnly: readOnly) {
                             continuation.yield(element)
                         }
                     }
@@ -1491,5 +1427,129 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func foreignKeyEnableStatements() -> [String]? {
         flavor.hasMySQLObjectCatalogs ? ["SET FOREIGN_KEY_CHECKS=1"] : nil
+    }
+}
+
+// MARK: - Statement Context
+
+// An app read marked `readOnly` alone, a catalog read or a dashboard tile, runs as it is. `enforcesReadOnly` from any
+// origin, and `readOnly` from an external one, run in `START TRANSACTION READ ONLY` on a flavor that enforces it.
+extension MySQLPluginDriver {
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        guard let scope = readOnlyScope(context) else {
+            return try await runUserQuery(
+                query: query, rowCap: rowCap, parameters: parameters, byteLimit: context.resultByteLimit
+            )
+        }
+        return try await readOnlyRead(
+            query: query, parameters: parameters, rowCap: rowCap, byteLimit: context.resultByteLimit, scope: scope
+        )
+    }
+
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
+        guard let scope = readOnlyScope(context) else {
+            return try await runUserQuery(query: query, rowCap: nil, parameters: nil, byteLimit: context.resultByteLimit)
+        }
+        return try await readOnlyRead(
+            query: query, parameters: nil, rowCap: nil, byteLimit: context.resultByteLimit, scope: scope
+        )
+    }
+
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        guard let scope = readOnlyScope(context) else {
+            return try await runUserQuery(
+                query: query, rowCap: nil, parameters: parameters, byteLimit: context.resultByteLimit
+            )
+        }
+        return try await readOnlyRead(
+            query: query, parameters: parameters, rowCap: nil, byteLimit: context.resultByteLimit, scope: scope
+        )
+    }
+
+    // A context the read-only mode does not cover goes back to the host as PluginKit's default sends it, so TiDB,
+    // OceanBase, Databend and StarRocks never run an `enforcesReadOnly` read without the mode.
+    func executeBoundedQuery(
+        query: String,
+        rowCap: Int,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult? {
+        guard let scope = readOnlyScope(context) else {
+            guard !context.enforcesReadOnly, !context.readOnly, !context.readsCatalog,
+                  context.allowsDestructive, context.allowsServerCode
+            else { return nil }
+            return try await runUserQuery(
+                query: query, rowCap: rowCap, parameters: nil, byteLimit: context.resultByteLimit
+            )
+        }
+        return try await readOnlyRead(
+            query: query, parameters: nil, rowCap: rowCap, byteLimit: context.resultByteLimit, scope: scope
+        )
+    }
+
+    private func readOnlyScope(_ context: PluginStatementContext) -> MySQLReadOnlyTransaction.Scope? {
+        guard let reason = MySQLReadOnlyTransaction.reason(for: context, flavor: flavor) else { return nil }
+        // The lock comes from the footprint, because the status flags never show it.
+        return MySQLReadOnlyTransaction.Scope(reason: reason, sessionState: { isInTransaction in
+            self.sessionLock.withLock { self.footprint.transactionState(isInTransaction: isInTransaction) }
+        })
+    }
+
+    private func readOnlyRead(
+        query: String,
+        parameters: [PluginCellValue]?,
+        rowCap: Int?,
+        byteLimit: Int?,
+        scope: MySQLReadOnlyTransaction.Scope
+    ) async throws -> PluginQueryResult {
+        let cap = rowCap.flatMap { $0 > 0 ? $0 : nil }
+        return try await retryingAfterStop {
+            try await self.executeReadOnly(
+                query: query, parameters: parameters, rowCap: cap, byteLimit: byteLimit, scope: scope, isRetry: false
+            )
+        }
+    }
+
+    // Replays on a lost connection exactly when `executeWithReconnect` would.
+    private func executeReadOnly(
+        query: String,
+        parameters: [PluginCellValue]?,
+        rowCap: Int?,
+        byteLimit: Int?,
+        scope: MySQLReadOnlyTransaction.Scope,
+        isRetry: Bool
+    ) async throws -> PluginQueryResult {
+        let startTime = Date()
+
+        let conn = try await requireConnection()
+        defer { endOperation(on: conn) }
+        noteActivity(query)
+
+        do {
+            let result = try await conn.executeReadOnly(
+                query, parameters: parameters, rowCap: rowCap, byteLimit: byteLimit, scope: scope
+            )
+            return Self.pluginResult(result, startedAt: startTime)
+        } catch let error as MariaDBPluginError where !isRetry
+            && parameters == nil
+            && mysqlConnectionLossMayReplay(code: error.code, outlastedSocketTimeout: error.outlastedSocketTimeout)
+            && mayReplay(query) {
+            try await reconnect()
+            return try await executeReadOnly(
+                query: query, parameters: nil, rowCap: rowCap, byteLimit: byteLimit, scope: scope, isRetry: true
+            )
+        } catch {
+            noteFailure(query)
+            await refreshTransactionFlag(after: error, on: conn)
+            throw error
+        }
     }
 }

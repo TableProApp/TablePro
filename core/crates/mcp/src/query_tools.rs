@@ -5,7 +5,9 @@ use serde::Serialize;
 use tablepro_core::browse::{DeclaredPrecisionSink, ExportFields, ExportRequest, build_count, build_export};
 use tablepro_core::meta::{ObjectScope, RowIdentity};
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan};
-use tablepro_core::sql_syntax::{SqlGrammar, StatementAccess, changes_catalog, statement_access};
+use tablepro_core::sql_syntax::{
+    SqlGrammar, StatementAccess, changes_catalog, reaches_outside_database, statement_access,
+};
 use tablepro_core::{
     CallOptions, ColumnInfo, EditorSessionOptions, ExternalGate, ExternalRefusal, ReadStatement, ResultSink, RowLimit,
     RunEnd, RunOptions, TableRef, TransactionState, UserSql,
@@ -55,6 +57,9 @@ pub async fn execute_query(
         .ok_or_else(|| ToolError::NotConnected(format!("“{}” has no connection right now", connection.name)))?;
     let grammar = dialect.grammar();
     let text = single_batch(&args.query, grammar)?;
+    if reaches_outside_database(&text, grammar) {
+        return Err(refusal(&connection, ExternalRefusal::ReachesOutside));
+    }
     let access = statement_access(&text, grammar);
     // Before the gate, so a client that asked for a read never puts a write to the user.
     if args.read_only && access != StatementAccess::Read {
@@ -175,6 +180,9 @@ fn refusal(connection: &SavedConnection, reason: ExternalRefusal) -> ToolError {
             "Safe Mode on “{}” is Read-Only, which refuses every write",
             connection.name
         )),
+        ExternalRefusal::ReachesOutside => ToolError::Denied(
+            "the statement reads or writes files, reaches another server or runs code outside the database, which TablePro refuses for MCP clients".to_owned(),
+        ),
     }
 }
 

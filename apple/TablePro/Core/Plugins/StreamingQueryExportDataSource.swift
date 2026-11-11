@@ -18,6 +18,7 @@ final class StreamingQueryExportDataSource: PluginExportDataSource, @unchecked S
     private let query: String
     private let driver: DatabaseDriver
     private let dbType: DatabaseType
+    private let safeModeIsReadOnly: Bool
     private let rowCut = OSAllocatedUnfairLock<Int?>(initialState: nil)
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "StreamingQueryExport")
@@ -27,8 +28,9 @@ final class StreamingQueryExportDataSource: PluginExportDataSource, @unchecked S
         rowCut.withLock { $0 }
     }
 
-    init(query: String, driver: DatabaseDriver, databaseType: DatabaseType) {
+    init(query: String, driver: DatabaseDriver, databaseType: DatabaseType, safeModeIsReadOnly: Bool = false) {
         self.query = query
+        self.safeModeIsReadOnly = safeModeIsReadOnly
         self.driver = driver
         self.dbType = databaseType
         self.databaseTypeId = databaseType.rawValue
@@ -40,7 +42,8 @@ final class StreamingQueryExportDataSource: PluginExportDataSource, @unchecked S
             return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
         }
         let rowCut = rowCut
-        return ExportRowCut<PluginStreamElement>.reporting(adapter.streamRows(query: query), engineCeiling: nil) { limit in
+        let rows = adapter.streamRows(query: query, safeModeIsReadOnly: safeModeIsReadOnly)
+        return ExportRowCut<PluginStreamElement>.reporting(rows, engineCeiling: nil) { limit in
             rowCut.withLock { $0 = limit }
         }
     }
@@ -54,7 +57,8 @@ final class StreamingQueryExportDataSource: PluginExportDataSource, @unchecked S
             return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
         }
         let rowCut = rowCut
-        return ExportRowCut<PluginExportStreamElement>.reporting(adapter.streamExportRows(query: query), engineCeiling: nil) { limit in
+        let rows = adapter.streamExportRows(query: query, safeModeIsReadOnly: safeModeIsReadOnly)
+        return ExportRowCut<PluginExportStreamElement>.reporting(rows, engineCeiling: nil) { limit in
             rowCut.withLock { $0 = limit }
         }
     }

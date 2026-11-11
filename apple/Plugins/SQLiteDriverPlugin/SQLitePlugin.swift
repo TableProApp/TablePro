@@ -152,6 +152,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .dataCompare,
             .temporaryTables,
             .readOnlyStatements,
+            .enforcesReadOnlyMode,
         ]
     }
 
@@ -226,9 +227,10 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
-        let scope = SQLiteStatementScope(context)
-        guard scope != .unrestricted else { return try await execute(query: query) }
-        return Self.queryResult(try await backend.executeQuery(query, parameters: nil, scope: scope))
+        let rules = SQLiteStatementRules(context)
+        guard rules != .unrestricted else { return try await execute(query: query) }
+        let bound = Self.bound(rowCap: nil, context: context, rules: rules)
+        return Self.queryResult(try await backend.executeQuery(query, parameters: nil, rules: rules, bound: bound))
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
@@ -240,9 +242,19 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         parameters: [PluginCellValue],
         context: PluginStatementContext
     ) async throws -> PluginQueryResult {
-        let scope = SQLiteStatementScope(context)
-        guard scope != .unrestricted else { return try await executeParameterized(query: query, parameters: parameters) }
-        return Self.queryResult(try await backend.executeQuery(query, parameters: parameters, scope: scope))
+        let rules = SQLiteStatementRules(context)
+        guard rules != .unrestricted else { return try await executeParameterized(query: query, parameters: parameters) }
+        let bound = Self.bound(rowCap: nil, context: context, rules: rules)
+        return Self.queryResult(try await backend.executeQuery(query, parameters: parameters, rules: rules, bound: bound))
+    }
+
+    // Only a read-only run stops at the byte limit: stopping a write would cancel what the caller approved.
+    private static func bound(
+        rowCap: Int?,
+        context: PluginStatementContext,
+        rules: SQLiteStatementRules
+    ) -> SQLiteReadBound? {
+        SQLiteReadBound.ifSet(rowCap: rowCap, byteLimit: rules.readsOnly ? context.resultByteLimit : nil)
     }
 
     private static func queryResult(_ rawResult: SQLiteRawResult) -> PluginQueryResult {
@@ -341,29 +353,39 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return Self.capped(raw, to: rowCap)
     }
 
+    // A capped statement that returns rows stops in the step loop one row past the cap, a read-only one also at the byte
+    // limit. Any other runs to its end.
     func executeUserQuery(
         query: String,
         rowCap: Int?,
         parameters: [PluginCellValue]?,
         context: PluginStatementContext
     ) async throws -> PluginQueryResult {
-        guard SQLiteStatementScope(context) != .unrestricted else {
+        let rules = SQLiteStatementRules(context)
+        guard rules != .unrestricted else {
             return try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
         }
-        if parameters == nil, let cap = rowCap, cap > 0, Self.returnsRows(query) {
-            return try await PluginBoundedStream.collect(
-                streamRows(query: query, context: context),
-                rowCap: cap,
-                startedAt: Date()
-            )
+        let bound = Self.bound(rowCap: Self.returnsRows(query) ? rowCap : nil, context: context, rules: rules)
+        let raw = try await backend.executeQuery(query, parameters: parameters, rules: rules, bound: bound)
+        return Self.capped(Self.queryResult(raw), to: rowCap)
+    }
+
+    // A context the read-only mode does not cover goes back to the host as PluginKit's default sends it.
+    func executeBoundedQuery(
+        query: String,
+        rowCap: Int,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult? {
+        let rules = SQLiteStatementRules(context)
+        guard rules.readsOnly else {
+            guard !context.enforcesReadOnly, !context.readOnly, !context.readsCatalog,
+                  context.allowsDestructive, context.allowsServerCode
+            else { return nil }
+            return try await executeBoundedQuery(query: query, rowCap: rowCap)
         }
-        let raw: PluginQueryResult
-        if let parameters {
-            raw = try await executeParameterized(query: query, parameters: parameters, context: context)
-        } else {
-            raw = try await execute(query: query, context: context)
-        }
-        return Self.capped(raw, to: rowCap)
+        guard Self.returnsRows(query) else { return nil }
+        let bound = SQLiteReadBound(rowCap: rowCap, byteLimit: context.resultByteLimit)
+        return Self.queryResult(try await backend.executeQuery(query, parameters: nil, rules: rules, bound: bound))
     }
 
     private static func capped(_ raw: PluginQueryResult, to rowCap: Int?) -> PluginQueryResult {
@@ -683,19 +705,19 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        stream(query, scope: .unrestricted)
+        stream(query, rules: .unrestricted)
     }
 
     func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        stream(query, scope: SQLiteStatementScope(context))
+        stream(query, rules: SQLiteStatementRules(context))
     }
 
-    private func stream(_ query: String, scope: SQLiteStatementScope) -> AsyncThrowingStream<PluginStreamElement, Error> {
+    private func stream(_ query: String, rules: SQLiteStatementRules) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
         return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let streamTask = Task {
                 do {
-                    try await self.backend.streamQuery(queryToRun, scope: scope, continuation: continuation)
+                    try await self.backend.streamQuery(queryToRun, rules: rules, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -843,18 +865,6 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 }
 
-extension SQLiteStatementScope {
-    init(_ context: PluginStatementContext) {
-        if context.readOnly, context.origin == .external {
-            self = .readOnly
-        } else if !context.allowsServerCode {
-            self = .noServerCode
-        } else {
-            self = .unrestricted
-        }
-    }
-}
-
 // MARK: - Errors
 
 enum SQLitePluginError: Error {
@@ -864,6 +874,7 @@ enum SQLitePluginError: Error {
     case unsupportedOperation
     case attachedDatabaseStructure
     case readOnlyStatement
+    case safeModeReadOnlyStatement
 }
 
 extension SQLitePluginError: PluginDriverError {
@@ -877,6 +888,8 @@ extension SQLitePluginError: PluginDriverError {
             return String(localized: "The structure of a table in an attached database cannot be changed here.")
         case .readOnlyStatement:
             return String(localized: "This request is read only, and the statement is not a read.")
+        case .safeModeReadOnlyStatement:
+            return String(localized: "Safe Mode is set to Read-Only for this connection, and the database refused the statement.")
         }
     }
 }

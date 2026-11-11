@@ -96,7 +96,7 @@ public actor MCPLegacyEraAdapter {
         Self.logger.info(
             "Legacy initialize: client=\(clientInfo?.name ?? "unknown", privacy: .private(mask: .hash)) version=\(negotiated.rawValue, privacy: .public)"
         )
-        return (InitializeHandler.result(protocolVersion: negotiated), sessionId)
+        return (InitializeHandler.result(protocolVersion: negotiated, scopes: principal.scopes), sessionId)
     }
 
     public func terminate(sessionId: MCPLegacySessionId) async {

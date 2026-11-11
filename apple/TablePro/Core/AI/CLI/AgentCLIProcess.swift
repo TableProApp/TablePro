@@ -92,35 +92,34 @@ struct AgentCLIProcess: Sendable {
             process.standardError = stderr
 
             let label = self.label
-            let stderrDrain = Task {
-                for try await line in stderr.fileHandleForReading.bytes.lines where !line.isEmpty {
-                    Self.logger.error("\(label, privacy: .public) stderr: \(line, privacy: .private)")
-                }
+            // Not FileHandle.bytes: Foundation runs every AsyncBytes read on one serial queue, so a quiet
+            // stderr or an idle language server holds the stdout read until the tool exits.
+            let stderrReader = PipeReader(stderr.fileHandleForReading)
+            stderrReader.startDeliveringLines { line in
+                guard !line.isEmpty else { return }
+                Self.logger.error("\(label, privacy: .public) stderr: \(line, privacy: .private)")
             }
 
             do {
                 try process.run()
             } catch {
-                stderrDrain.cancel()
+                stderrReader.stop()
                 continuation.finish(throwing: AgentCLIError.launchFailed(error.localizedDescription))
                 return
             }
 
-            let reader = Task {
-                do {
-                    for try await line in stdout.fileHandleForReading.bytes.lines {
-                        if Task.isCancelled { break }
-                        continuation.yield(line)
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
+            let stdoutReader = PipeReader(stdout.fileHandleForReading)
+            stdoutReader.startDeliveringLines(
+                { line in
+                    guard !line.isEmpty else { return }
+                    continuation.yield(line)
+                },
+                onEnd: { continuation.finish() }
+            )
 
             continuation.onTermination = { _ in
-                reader.cancel()
-                stderrDrain.cancel()
+                stdoutReader.stop()
+                stderrReader.stop()
                 Self.terminate(process, label: label)
             }
         }

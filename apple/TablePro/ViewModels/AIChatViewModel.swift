@@ -285,6 +285,7 @@ final class AIChatViewModel: ObservableObject {
         streamingTask?.cancel()
         streamingTask = nil
         ToolApprovalCenter.shared.cancelAll(sessionId: sessionId)
+        settlePendingToolApprovals()
 
         if case .streaming(let assistantID) = streamingState,
            let idx = messages.firstIndex(where: { $0.id == assistantID }) {
@@ -352,7 +353,7 @@ final class AIChatViewModel: ObservableObject {
         AIProviderFactory.resetCopilotConversation(sessionId: sessionId)
         cancelStream()
         persistCurrentConversation()
-        messages = conversation.messages.map { ChatTurn(wire: $0) }
+        messages = ChatToolCallRepair.settlingPendingApprovals(conversation.messages).map { ChatTurn(wire: $0) }
         activeConversationID = conversation.id
         clearError()
     }

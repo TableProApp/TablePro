@@ -28,6 +28,18 @@ public struct ToolsCallHandler: MCPMethodHandler {
         }
 
         let connectionId = Self.connectionId(in: arguments)
+        // Before the scope check: no scope step-up opens a tool the token's profile leaves out.
+        guard context.principal.allowsTool(toolName) else {
+            Self.audit(
+                context: context,
+                tool: toolName,
+                connectionId: connectionId,
+                outcome: .denied,
+                error: "tool_not_in_profile"
+            )
+            throw MCPProtocolError.forbidden(reason: "Tool '\(toolName)' is not available to this token")
+        }
+
         let requiredScopes = type(of: tool).requiredScopes
         guard requiredScopes.isSubset(of: context.principal.scopes) else {
             Self.audit(

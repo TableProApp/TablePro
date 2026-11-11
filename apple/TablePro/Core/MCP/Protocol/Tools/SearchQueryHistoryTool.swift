@@ -6,8 +6,9 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
     public static let title: String? = String(localized: "Search Query History")
     public static let description = String(
         localized: """
-        Search the query history TablePro keeps on this Mac. Results cover only connections this client \
-        may reach, whether or not connection_id is given.
+        Search the query history TablePro keeps on this Mac. With connection_id, TablePro asks the user about \
+        that connection first. Without it, results cover only connections this client may already reach \
+        without asking.
         """
     )
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
@@ -22,7 +23,9 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
     public static let inputSchema = MCPToolSchema.object(
         properties: [
             "query": MCPToolSchema.string(String(localized: "Text matched against the recorded statement")),
-            "connection_id": MCPToolSchema.string(String(localized: "Restrict to one connection")),
+            "connection_id": MCPToolSchema.string(
+                String(localized: "Restrict to one connection. Omit for every connection already approved.")
+            ),
             "limit": MCPToolSchema.integer(
                 String(localized: "Maximum entries to return (1-500, default 50)"),
                 minimum: 1,
@@ -60,9 +63,12 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
                         "row_count", "was_successful"
                     ]
                 )
+            ),
+            "is_truncated": MCPToolSchema.boolean(
+                String(localized: "Whether the size limit left out matching entries")
             )
         ],
-        required: ["entries"]
+        required: ["entries", "is_truncated"]
     )
 
     public init() {}
@@ -90,21 +96,16 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
             )
         }
 
+        let allowlist: Set<UUID>
         if let connectionId {
-            try await services.authPolicy.resolveAndAuthorize(
-                principal: context.principal,
-                tool: Self.name,
-                connectionId: connectionId,
-                sql: nil
-            )
-        }
-
-        var allowlist = await services.authPolicy.readableConnectionIds(principal: context.principal)
-        if let connectionId {
-            allowlist = allowlist.intersection([connectionId])
+            // ToolsCallHandler already asked about this connection; Ask Every Time records nothing, so asking here asked twice.
+            try await MCPToolAuthorization.requireReadAccess(connectionId, context: context, services: services)
+            allowlist = [connectionId]
+        } else {
+            allowlist = await services.authPolicy.connectionIdsReadableWithoutPrompt(principal: context.principal)
         }
         guard !allowlist.isEmpty else {
-            return .structured(.object(["entries": .array([])]))
+            return .structured(.object(["entries": .array([]), "is_truncated": .bool(false)]))
         }
 
         var anyMasksValues = false
@@ -161,6 +162,10 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
             return .object(fields)
         }
 
-        return .structured(.object(["entries": .array(payload)]))
+        let answer = MCPConnectionBridge.withinAnswerBudget(payload)
+        return .structured(.object([
+            "entries": .array(answer.entries),
+            "is_truncated": .bool(answer.isTruncated)
+        ]))
     }
 }

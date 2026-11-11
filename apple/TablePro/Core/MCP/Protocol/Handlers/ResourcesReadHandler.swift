@@ -130,7 +130,7 @@ public struct ResourcesReadHandler: MCPMethodHandler {
             return MCPProtocolError(code: JsonRpcErrorCode.expired, message: detail, httpStatus: .ok)
         case .timeout(let detail, _):
             return .requestTimeout(detail: detail)
-        case .userCancelled:
+        case .userCancelled, .stoppedWhileRunning:
             return .requestCancelled()
         case .dataSourceError(let detail):
             return .internalError(detail: detail)

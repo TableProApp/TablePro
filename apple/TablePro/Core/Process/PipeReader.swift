@@ -14,17 +14,45 @@ internal final class PipeReader: @unchecked Sendable {
     private let descriptor: Int32
     private let lock = NSLock()
     private var consumer: (@Sendable (Data) -> Void)?
+    private var onEnd: (@Sendable () -> Void)?
 
     init(_ handle: FileHandle) {
         self.handle = handle
         descriptor = handle.fileDescriptor
     }
 
-    func start(delivering consumer: @escaping @Sendable (Data) -> Void) {
-        lock.withLock { self.consumer = consumer }
+    // onEnd runs once when the pipe reaches end of file or fails, never after a stop.
+    func start(
+        delivering consumer: @escaping @Sendable (Data) -> Void,
+        onEnd: (@Sendable () -> Void)? = nil
+    ) {
+        lock.withLock {
+            self.consumer = consumer
+            self.onEnd = onEnd
+        }
         handle.readabilityHandler = { _ in
             self.readArrivedBytes()
         }
+    }
+
+    func startDeliveringLines(
+        _ deliver: @escaping @Sendable (String) -> Void,
+        onEnd: @escaping @Sendable () -> Void = {}
+    ) {
+        let splitter = OSAllocatedUnfairLock(initialState: PipeLineSplitter())
+        start(
+            delivering: { chunk in
+                for line in splitter.withLock({ $0.lines(appending: chunk) }) {
+                    deliver(line)
+                }
+            },
+            onEnd: {
+                if let last = splitter.withLock({ $0.finish() }) {
+                    deliver(last)
+                }
+                onEnd()
+            }
+        )
     }
 
     func stop(drainingUpTo limit: Int = 0) {
@@ -49,30 +77,37 @@ internal final class PipeReader: @unchecked Sendable {
         defer { lock.unlock() }
         guard let consumer else { return }
         self.consumer = nil
+        onEnd = nil
         drain(consumer)
     }
 
     private func readArrivedBytes() {
         lock.lock()
-        defer { lock.unlock() }
-        guard let consumer else { return }
+        let ended = readLocked()
+        lock.unlock()
+        // Outside the lock: the callback may stop this reader.
+        ended?()
+    }
+
+    private func readLocked() -> (@Sendable () -> Void)? {
+        guard let consumer else { return nil }
         do {
             let chunk = try DescriptorRead.availableBytes(from: descriptor)
-            guard !chunk.isEmpty else {
-                endReading()
-                return
-            }
+            guard !chunk.isEmpty else { return endReading() }
             consumer(chunk)
+            return nil
         } catch POSIXError.EAGAIN {
-            return
+            return nil
         } catch {
             Self.logger.error("Reading a pipe failed: \(error.publicLogShape, privacy: .public)")
-            endReading()
+            return endReading()
         }
     }
 
-    private func endReading() {
+    private func endReading() -> (@Sendable () -> Void)? {
         consumer = nil
         handle.readabilityHandler = nil
+        defer { onEnd = nil }
+        return onEnd
     }
 }

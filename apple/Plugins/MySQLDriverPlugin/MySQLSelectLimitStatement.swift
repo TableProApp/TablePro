@@ -121,15 +121,28 @@ internal func mysqlStatementReturnsAtMostOneRow(_ sql: String) -> Bool {
     return mysqlBodyMatches(String(body[fromRange.lowerBound...]), "^FROM\\s+DUAL\\s*$")
 }
 
+// A read that stopped at the byte limit keeps the row that crossed it, so the host sees its own limit was reached.
 internal func mysqlBoundedFetchOutcome(
     fetchedRows: Int,
     rowCap: Int,
-    serverSentMore: Bool
+    serverSentMore: Bool,
+    stoppedAtByteLimit: Bool = false
 ) -> MySQLBoundedFetchOutcome {
-    let truncated = serverSentMore || fetchedRows > rowCap
-    return MySQLBoundedFetchOutcome(
-        keptRows: truncated ? rowCap : fetchedRows,
-        isTruncated: truncated,
+    MySQLBoundedFetchOutcome(
+        keptRows: min(fetchedRows, rowCap),
+        isTruncated: serverSentMore || stoppedAtByteLimit || fetchedRows > rowCap,
         serverIgnoredLimit: serverSentMore
     )
+}
+
+// Text as UTF-8, bytes as they are, null as nothing: never more than the host counts for the same row, so the read never
+// stops before the host's own budget is full.
+internal func mysqlDecodedByteCount(of row: [PluginCellValue]) -> Int {
+    row.reduce(0) { total, cell in
+        switch cell {
+        case .null: total
+        case .text(let text): total + text.utf8.count
+        case .bytes(let data): total + data.count
+        }
+    }
 }

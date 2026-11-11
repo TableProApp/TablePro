@@ -51,16 +51,7 @@ final class DashboardTileBoard: ObservableObject {
                     )
                 },
                 safeModeLevel: { connectionId in
-                    let connectionLevel: SafeModeLevel
-                    switch services.databaseManager.connectionState(connectionId) {
-                    case .live(_, let session): connectionLevel = session.safeModeLevel
-                    case .stored(let connection): connectionLevel = connection.safeModeLevel
-                    case .unknown: connectionLevel = .silent
-                    }
-                    return ManagedPolicyResolver.effectiveSafeModeLevel(
-                        connectionLevel: connectionLevel,
-                        policy: ManagedPolicyReader.shared
-                    )
+                    ExecutionGateProvider.effectiveSafeModeLevel(for: connectionId, in: services.databaseManager)
                 },
                 chartsAvailable: { services.featureAccess.isAvailable(.resultCharts) },
                 nullDisplay: { services.appSettings.dataGrid.nullDisplay },

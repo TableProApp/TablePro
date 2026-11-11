@@ -776,7 +776,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
     // One dispatch for the state check, the transaction and the statement, as `executeTransactionScopedRead` does.
     func executeReadOnlyStatement(
         _ statement: String,
-        parameters: [PluginCellValue]?
+        parameters: [PluginCellValue]?,
+        reason: LibPQReadOnlyTransaction.Reason
     ) async throws -> LibPQPluginQueryResult {
         let statementToRun = String(statement)
         let params = parameters
@@ -786,6 +787,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
             if let ended = sessionEndedBeforeSending(conn) { throw ended }
             return try LibPQReadOnlyTransaction.run(
                 state: transactionStateOnQueue().sessionTransactionState,
+                reason: reason,
                 send: { try runReadOnlyControl($0, on: conn) }
             ) {
                 guard let params else { return try executeQuerySync(statementToRun, singleStatement: true) }
@@ -1356,67 +1358,11 @@ final class LibPQPluginConnection: @unchecked Sendable {
         defer { refreshStandardConformingStrings(from: conn) }
 
         let cancelsOutput = cancelsAbandonedOutput(conn)
-        var paramValues: [UnsafePointer<CChar>?] = []
-        var paramLengths: [Int32] = []
-        var paramFormats: [Int32] = []
-        var allocations: [UnsafeMutableRawPointer] = []
-
-        defer {
-            for ptr in allocations {
-                free(ptr)
-            }
-        }
-
-        paramValues.reserveCapacity(parameters.count)
-        paramLengths.reserveCapacity(parameters.count)
-        paramFormats.reserveCapacity(parameters.count)
-
-        for param in parameters {
-            switch param {
-            case .null:
-                paramValues.append(nil)
-                paramLengths.append(0)
-                paramFormats.append(0)
-            case .text(let str):
-                guard let cStr = strdup(str) else {
-                    throw LibPQPluginError(message: "Failed to allocate parameter buffer", sqlState: nil, detail: nil)
-                }
-                allocations.append(UnsafeMutableRawPointer(cStr))
-                paramValues.append(UnsafePointer(cStr))
-                paramLengths.append(0)
-                paramFormats.append(0)
-            case .bytes(let data):
-                let byteCount = data.count
-                guard let raw = malloc(max(byteCount, 1)) else {
-                    throw LibPQPluginError(message: "Failed to allocate parameter buffer", sqlState: nil, detail: nil)
-                }
-                allocations.append(raw)
-                if byteCount > 0 {
-                    data.copyBytes(to: raw.assumingMemoryBound(to: UInt8.self), count: byteCount)
-                }
-                paramValues.append(UnsafePointer(raw.assumingMemoryBound(to: CChar.self)))
-                paramLengths.append(Int32(byteCount))
-                paramFormats.append(1)
-            }
-        }
-
-        if let ended = sessionEndedBeforeSending(conn) { throw ended }
-
         let localQuery = String(query)
-        let result: OpaquePointer? = localQuery.withCString { queryPtr in
-            paramLengths.withUnsafeBufferPointer { lengthsBuf in
-                paramFormats.withUnsafeBufferPointer { formatsBuf in
-                    PQexecParams(
-                        conn,
-                        queryPtr,
-                        Int32(parameters.count),
-                        nil,
-                        paramValues,
-                        lengthsBuf.baseAddress,
-                        formatsBuf.baseAddress,
-                        0
-                    )
-                }
+        let result: OpaquePointer? = try Self.withParameterBuffers(parameters) { values, lengths, formats in
+            if let ended = sessionEndedBeforeSending(conn) { throw ended }
+            return localQuery.withCString { queryPtr in
+                PQexecParams(conn, queryPtr, Int32(parameters.count), nil, values, lengths, formats, 0)
             }
         }
 
@@ -1520,7 +1466,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
     // The abort is polled by the producer rather than acted on from `onTermination`, because both
     // run on one serial queue: a drain enqueued from the handler sits behind the producer and runs
     // only once the whole result has been read, which is no abort at all.
-    func streamQuery(_ query: String, readOnly: Bool = false) -> AsyncThrowingStream<PluginStreamElement, Error> {
+    func streamQuery(
+        _ query: String,
+        readOnly: LibPQReadOnlyTransaction.Reason? = nil
+    ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
 
         return PluginRowStream.make { continuation, abort in
@@ -1561,10 +1510,11 @@ final class LibPQPluginConnection: @unchecked Sendable {
                     cancelsOutput: cancelsOutput
                 )
                 do {
-                    if readOnly {
+                    if let readOnly {
                         // The extended protocol takes one statement, so no `COMMIT; INSERT` can follow the read.
                         try LibPQReadOnlyTransaction.run(
                             state: transactionStateOnQueue().sessionTransactionState,
+                            reason: readOnly,
                             send: { try runReadOnlyControl($0, on: conn) }
                         ) {
                             try streamResults(stream, singleStatement: true)
@@ -1877,5 +1827,229 @@ extension LibPQPluginConnection {
     // after a routine returned must not turn its committed result into a cancellation.
     func requestServerCancelKeepingReply() {
         requestServerCancelOnCurrentConnection()
+    }
+}
+
+// MARK: - Bounded Read-Only Read
+
+// Outside the class body, which is at its length limit. An extension in this file still reaches its private members.
+extension LibPQPluginConnection {
+    // `executeReadOnlyStatement` bounded at the source: the statement goes out in single-row mode and stops at `bound`,
+    // so no more than that is ever held. Stopping cancels only the read-only transaction this opened. Unknown column
+    // types are looked up after its ROLLBACK, since a cancel can leave it aborted.
+    func boundedReadOnlyStatement(
+        _ statement: String,
+        parameters: [PluginCellValue]?,
+        bound: LibPQReadBound,
+        reason: LibPQReadOnlyTransaction.Reason
+    ) async throws -> LibPQPluginQueryResult {
+        let statementToRun = String(statement)
+        let params = parameters ?? []
+
+        return try await pluginDispatchAsync(on: queue) { [self] in
+            guard !isShuttingDown, let conn = connectionHandle else { throw LibPQPluginError.notConnected }
+            if let ended = sessionEndedBeforeSending(conn) { throw ended }
+            let read = try LibPQReadOnlyTransaction.run(
+                state: transactionStateOnQueue().sessionTransactionState,
+                reason: reason,
+                send: { try runReadOnlyControl($0, on: conn) }
+            ) {
+                try boundedReadSync(statementToRun, parameters: params, bound: bound, conn: conn)
+            }
+            let metadata = read.metadata.map { resolvingUnknownTypes($0, conn: conn) }
+            var result = PostGISTypes.rendering(
+                LibPQPluginQueryResult(
+                    columns: metadata?.columns ?? [],
+                    columnOids: metadata?.columnOids ?? [],
+                    columnTypeNames: metadata?.columnTypeNames ?? [],
+                    rows: read.rows,
+                    affectedRows: read.affectedRows,
+                    commandTag: read.commandTag,
+                    isTruncated: read.isTruncated,
+                    firstRowTime: read.firstRowTime
+                ),
+                types: typeNames.postgisTypes
+            )
+            result.columnSources = read.columnSources
+            return result
+        }
+    }
+
+    private struct BoundedRead {
+        var metadata: ColumnMetadata?
+        var columnSources: [PostgreSQLColumnOrigins.Source?] = []
+        var rows: [[PluginCellValue]] = []
+        var affectedRows = 0
+        var commandTag: String?
+        var isTruncated = false
+        var firstRowTime: TimeInterval?
+    }
+
+    // Runs inside the read-only transaction `boundedReadOnlyStatement` opened. The session reports a block open, but
+    // the block is this read's own and ends in ROLLBACK, so the server is cancelled wherever it takes a cancel, which
+    // `cancelsAbandonedOutput` would refuse inside a block the user opened. PGlite takes none, so its rest is drained.
+    // The column sources come from the first row description, as every single-row result carries one.
+    private func boundedReadSync(
+        _ query: String,
+        parameters: [PluginCellValue],
+        bound: LibPQReadBound,
+        conn: OpaquePointer
+    ) throws -> BoundedRead {
+        let generation = cancellationGate.beginQuery()
+        defer { cancellationGate.endQuery(generation) }
+        defer { refreshStandardConformingStrings(from: conn) }
+
+        let sentAt = Date()
+        let suppressCancel = suppressServerSideCancel
+        let localQuery = String(query)
+        let sent: Int32 = try Self.withParameterBuffers(parameters) { values, lengths, formats in
+            if let ended = sessionEndedBeforeSending(conn) { throw ended }
+            return localQuery.withCString { queryPtr in
+                PQsendQueryParams(conn, queryPtr, Int32(parameters.count), nil, values, lengths, formats, 0)
+            }
+        }
+        guard sent != 0 else {
+            throw lostConnection(getError(from: conn), on: conn, sent: false)
+        }
+        guard PQsetSingleRowMode(conn) != 0 else {
+            _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
+            recordTransactionState(of: conn)
+            throw LibPQPluginError(message: "Failed to enter single-row mode", sqlState: nil, detail: nil)
+        }
+
+        var read = BoundedRead()
+        read.rows.reserveCapacity(min(bound.rowCap, 10_000))
+        var bytes = 0
+        var stopped = false
+        var failedStatement: LibPQPluginError?
+        var pendingError: Error?
+
+        while let result = PQgetResult(conn) {
+            let status = PQresultStatus(result)
+            if read.firstRowTime == nil { read.firstRowTime = Date().timeIntervalSince(sentAt) }
+            if read.metadata == nil, Self.carriesRowDescription(status) {
+                read.metadata = readColumnMetadata(from: result)
+                read.columnSources = PostgreSQLColumnOrigins.sources(of: result)
+            }
+
+            if status == PGRES_SINGLE_TUPLE {
+                let oids = read.metadata?.columnOids ?? []
+                var row: [PluginCellValue] = []
+                row.reserveCapacity(oids.count)
+                for (columnIndex, oid) in oids.enumerated() {
+                    row.append(Self.decodeCell(from: result, row: 0, column: Int32(columnIndex), oid: oid))
+                }
+                PQclear(result)
+                bytes += LibPQReadBound.byteCount(of: row)
+                read.rows.append(row)
+
+                if cancellationGate.isCancelled(generation) {
+                    _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
+                    recordTransactionState(of: conn)
+                    throw CancellationError()
+                }
+                if bound.isReached(rows: read.rows.count, bytes: bytes) {
+                    stopped = true
+                    break
+                }
+                continue
+            }
+
+            if status == PGRES_TUPLES_OK {
+                PQclear(result)
+                continue
+            }
+
+            if status == PGRES_COMMAND_OK {
+                read.affectedRows = getAffectedRows(from: result)
+                read.commandTag = getCommandTag(from: result)
+                PQclear(result)
+                continue
+            }
+
+            if let copy = LibPQCopyState.copy(of: result) {
+                pendingError = Self.unsupportedCopyError(copy)
+                PQclear(result)
+                break
+            }
+
+            failedStatement = getResultError(from: result)
+            PQclear(result)
+            break
+        }
+
+        let outcome = stopped
+            ? cancelAndDrain(conn, suppressCancel: suppressCancel)
+            : finishPendingResults(conn, cancellingOutput: !suppressCancel)
+        recordTransactionState(of: conn)
+
+        if let failedStatement {
+            if cancellationGate.isCancelled(generation) { throw CancellationError() }
+            throw lostConnection(failedStatement, on: conn, sent: true)
+        }
+        if let pendingError {
+            if cancellationGate.isCancelled(generation) { throw CancellationError() }
+            throw pendingError
+        }
+        if cancellationGate.isCancelled(generation) { throw CancellationError() }
+        if let abandoned = abandonedCopyError(outcome, generation: generation) { throw abandoned }
+
+        read.isTruncated = stopped
+        read.rows = bound.kept(read.rows)
+        return read
+    }
+
+    // libpq reads the parameter buffers only while the call sends them, so they live for `body` alone.
+    private static func withParameterBuffers<T>(
+        _ parameters: [PluginCellValue],
+        _ body: (_ values: [UnsafePointer<CChar>?], _ lengths: UnsafePointer<Int32>?, _ formats: UnsafePointer<Int32>?) throws -> T
+    ) throws -> T {
+        var values: [UnsafePointer<CChar>?] = []
+        var lengths: [Int32] = []
+        var formats: [Int32] = []
+        var allocations: [UnsafeMutableRawPointer] = []
+        defer {
+            for pointer in allocations {
+                free(pointer)
+            }
+        }
+        values.reserveCapacity(parameters.count)
+        lengths.reserveCapacity(parameters.count)
+        formats.reserveCapacity(parameters.count)
+
+        for parameter in parameters {
+            switch parameter {
+            case .null:
+                values.append(nil)
+                lengths.append(0)
+                formats.append(0)
+            case .text(let text):
+                guard let cString = strdup(text) else {
+                    throw LibPQPluginError(message: "Failed to allocate parameter buffer", sqlState: nil, detail: nil)
+                }
+                allocations.append(UnsafeMutableRawPointer(cString))
+                values.append(UnsafePointer(cString))
+                lengths.append(0)
+                formats.append(0)
+            case .bytes(let data):
+                let byteCount = data.count
+                guard let raw = malloc(max(byteCount, 1)) else {
+                    throw LibPQPluginError(message: "Failed to allocate parameter buffer", sqlState: nil, detail: nil)
+                }
+                allocations.append(raw)
+                if byteCount > 0 {
+                    data.copyBytes(to: raw.assumingMemoryBound(to: UInt8.self), count: byteCount)
+                }
+                values.append(UnsafePointer(raw.assumingMemoryBound(to: CChar.self)))
+                lengths.append(Int32(byteCount))
+                formats.append(1)
+            }
+        }
+
+        return try lengths.withUnsafeBufferPointer { lengthsBuffer in
+            try formats.withUnsafeBufferPointer { formatsBuffer in
+                try body(values, lengthsBuffer.baseAddress, formatsBuffer.baseAddress)
+            }
+        }
     }
 }

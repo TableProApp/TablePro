@@ -10,10 +10,12 @@ import TableProMCP
 struct ClaudeAgentToolGrant: Sendable, Equatable {
     let configPath: String
     let tokenId: UUID
+    // Nil leaves every tool the token's scopes allow.
+    let allowedToolNames: [String]?
 }
 
 protocol ClaudeAgentMCPBridging: Sendable {
-    func makeGrant(connectionId: UUID?) async -> ClaudeAgentToolGrant?
+    func makeGrant(connectionId: UUID?, mode: AIChatMode) async -> ClaudeAgentToolGrant?
     func release(_ grant: ClaudeAgentToolGrant?) async
 }
 
@@ -33,7 +35,15 @@ struct ClaudeAgentMCPBridge: ClaudeAgentMCPBridging {
         return .limited([connectionId])
     }
 
-    func makeGrant(connectionId: UUID?) async -> ClaudeAgentToolGrant? {
+    // Ask promises schema lookups only, so the server holds the token to them; Edit and Agent keep the read-only token.
+    static func toolProfile(for mode: AIChatMode) -> MCPToolProfile? {
+        switch mode {
+        case .ask: .schemaLookup
+        case .edit, .agent: nil
+        }
+    }
+
+    func makeGrant(connectionId: UUID?, mode: AIChatMode) async -> ClaudeAgentToolGrant? {
         guard let connectionAccess = Self.connectionAccess(for: connectionId) else {
             Self.logger.info("No connection attached; Claude Agent runs without database tools")
             return nil
@@ -41,6 +51,7 @@ struct ClaudeAgentMCPBridge: ClaudeAgentMCPBridging {
         guard let endpoint = await Self.resolveEndpoint() else { return nil }
         guard let tokenStore = await MCPServerManager.shared.tokenStore else { return nil }
 
+        let toolProfile = Self.toolProfile(for: mode)
         guard let generated = try? await tokenStore.generate(
             name: Self.tokenName,
             permissions: permissions,
@@ -48,7 +59,8 @@ struct ClaudeAgentMCPBridge: ClaudeAgentMCPBridging {
             expiresAt: Date.now.addingTimeInterval(Self.tokenLifetime),
             isBridgeCredential: false,
             isClaudeAgentCredential: true,
-            extraScopes: []
+            extraScopes: [],
+            toolProfile: toolProfile
         ) else { return nil }
 
         guard let configPath = Self.writeConfig(endpoint: endpoint, token: generated.plaintext) else {
@@ -57,7 +69,11 @@ struct ClaudeAgentMCPBridge: ClaudeAgentMCPBridging {
         }
 
         Self.logger.debug("Issued Claude Agent MCP grant")
-        return ClaudeAgentToolGrant(configPath: configPath, tokenId: generated.token.id)
+        return ClaudeAgentToolGrant(
+            configPath: configPath,
+            tokenId: generated.token.id,
+            allowedToolNames: toolProfile.map { $0.toolNames.sorted() }
+        )
     }
 
     func release(_ grant: ClaudeAgentToolGrant?) async {

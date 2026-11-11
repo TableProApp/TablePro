@@ -277,6 +277,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .schemaCompare,
             .dataCompare,
             .readOnlyStatements,
+            .enforcesReadOnlyMode,
         ]
     }
 
@@ -695,8 +696,10 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
-        guard context.readOnly, context.origin == .external else { return try await execute(query: query) }
-        return Self.queryResult(try await connectionActor.executeReadOnly(query, parameters: []))
+        guard let reason = DuckDBReadOnlyStatement.reason(for: context) else { return try await execute(query: query) }
+        return Self.queryResult(try await connectionActor.executeReadOnly(
+            query, parameters: [], byteLimit: context.resultByteLimit, reason: reason
+        ))
     }
 
     func executeParameterized(
@@ -711,13 +714,35 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         parameters: [PluginCellValue],
         context: PluginStatementContext
     ) async throws -> PluginQueryResult {
-        guard context.readOnly, context.origin == .external else { return try await executeParameterized(query: query, parameters: parameters) }
-        return Self.queryResult(try await connectionActor.executeReadOnly(query, parameters: parameters))
+        guard let reason = DuckDBReadOnlyStatement.reason(for: context) else {
+            return try await executeParameterized(query: query, parameters: parameters)
+        }
+        return Self.queryResult(try await connectionActor.executeReadOnly(
+            query, parameters: parameters, byteLimit: context.resultByteLimit, reason: reason
+        ))
     }
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
         guard rowCap > 0 else { return nil }
         return Self.queryResult(try await connectionActor.executeBounded(query, parameters: [], rowCap: rowCap))
+    }
+
+    // A context the read-only mode does not cover goes back to the host as PluginKit's default sends it.
+    func executeBoundedQuery(
+        query: String,
+        rowCap: Int,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult? {
+        guard let reason = DuckDBReadOnlyStatement.reason(for: context) else {
+            guard !context.enforcesReadOnly, !context.readOnly, !context.readsCatalog,
+                  context.allowsDestructive, context.allowsServerCode
+            else { return nil }
+            return try await executeBoundedQuery(query: query, rowCap: rowCap)
+        }
+        guard rowCap > 0 else { return nil }
+        return Self.queryResult(try await connectionActor.executeReadOnly(
+            query, parameters: [], rowCap: rowCap, byteLimit: context.resultByteLimit, reason: reason
+        ))
     }
 
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
@@ -733,11 +758,13 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         parameters: [PluginCellValue]?,
         context: PluginStatementContext
     ) async throws -> PluginQueryResult {
-        guard context.readOnly, context.origin == .external else {
+        guard let reason = DuckDBReadOnlyStatement.reason(for: context) else {
             return try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
         }
         let cap = rowCap.flatMap { $0 > 0 ? $0 : nil }
-        return Self.queryResult(try await connectionActor.executeReadOnly(query, parameters: parameters ?? [], rowCap: cap))
+        return Self.queryResult(try await connectionActor.executeReadOnly(
+            query, parameters: parameters ?? [], rowCap: cap, byteLimit: context.resultByteLimit, reason: reason
+        ))
     }
 
     private static func queryResult(_ rawResult: DuckDBRawResult) -> PluginQueryResult {
@@ -772,12 +799,12 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        guard context.readOnly, context.origin == .external else { return streamRows(query: query) }
+        guard let reason = DuckDBReadOnlyStatement.reason(for: context) else { return streamRows(query: query) }
         let actor = connectionActor
         return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(DuckDBBoundedStream.bufferedBatches)) { continuation in
             Task {
                 do {
-                    try await actor.streamReadOnly(query, continuation: continuation)
+                    try await actor.streamReadOnly(query, reason: reason, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }

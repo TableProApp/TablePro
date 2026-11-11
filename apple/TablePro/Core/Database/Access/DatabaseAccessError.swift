@@ -9,6 +9,8 @@ public enum DatabaseAccessError: Error, Sendable {
     case expired(String)
     case userCancelled
     case dataSourceError(String)
+    // The caller stopped waiting while a write it sent was in the driver, so the write may have been applied.
+    case stoppedWhileRunning(String)
 
     public var message: String {
         switch self {
@@ -28,6 +30,8 @@ public enum DatabaseAccessError: Error, Sendable {
             "User cancelled"
         case .dataSourceError(let detail):
             "Data source error: \(detail)"
+        case .stoppedWhileRunning(let detail):
+            detail
         }
     }
 

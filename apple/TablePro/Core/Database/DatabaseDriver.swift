@@ -116,12 +116,20 @@ protocol DatabaseDriver: AnyObject, Sendable {
     // Whether this driver runs a statement marked read-only in the engine's read-only mode.
     var runsReadOnlyStatements: Bool { get }
 
+    // Whether this driver runs a statement whose context `enforcesReadOnly` in the engine's read-only mode, or refuses
+    // it, from every call that takes a context.
+    var enforcesReadOnlyMode: Bool { get }
+
     /// Run a read that stops once `rowCap` rows are known to be exceeded, rather than fetching the
     /// whole result and discarding the tail. Returns nil when the driver cannot bound its own fetch.
     ///
     /// Call this only for a statement already classified as a read. Bounding means abandoning the
     /// rest of the fetch, which for some drivers cancels the statement on the server.
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult?
+
+    // Nil also when the driver cannot honor `context` on a bounded read: the caller then runs `executeUserQuery` with the
+    // same context and cap.
+    func executeBoundedQuery(query: String, rowCap: Int, context: PluginStatementContext) async throws -> QueryResult?
 
     /// Runs a statement the app wrote to read, telling the driver it may only read. A driver that
     /// evaluates statements in a scripting engine with state refuses any write the script reaches,
@@ -549,6 +557,24 @@ extension DatabaseDriver {
     }
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult? { nil }
+
+    // A driver without its own overload ignores every field, so a read-only mode, a statement policy or a catalog pin
+    // it was asked for would silently not happen.
+    func executeBoundedQuery(query: String, rowCap: Int, context: PluginStatementContext) async throws -> QueryResult? {
+        guard !context.enforcesReadOnly, !context.readOnly, !context.readsCatalog,
+              context.allowsDestructive, context.allowsServerCode
+        else { return nil }
+        return try await executeBoundedQuery(query: query, rowCap: rowCap)
+    }
+
+    var enforcesReadOnlyMode: Bool { false }
+
+    // What a run carries when Safe Mode is Read-Only and this driver can hold the engine to it. Nil otherwise, so the run
+    // keeps the calls it always made.
+    func readOnlyRunContext(safeModeIsReadOnly: Bool) -> PluginStatementContext? {
+        guard safeModeIsReadOnly, enforcesReadOnlyMode else { return nil }
+        return PluginStatementContext(enforcesReadOnly: true)
+    }
 
     func executeRead(query: String) async throws -> QueryResult {
         try await execute(query: query)

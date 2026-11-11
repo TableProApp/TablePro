@@ -48,6 +48,12 @@ struct MCPToolErrorSurfaceTests {
         #expect(MCPToolTestHarness.errorText(result) == "query_failed: syntax error at or near \"SELEC\"")
     }
 
+    @Test("The assistant's transcript reads a tool failure's own message, not Foundation's generic text")
+    func localizedDescriptionCarriesTheMessage() {
+        let error: Error = MCPToolExecutionError.queryFailed("relation \"ordrs\" does not exist")
+        #expect(error.localizedDescription == "query_failed: relation \"ordrs\" does not exist")
+    }
+
     @Test("A timeout and a denied write also come back as results, not protocol errors")
     func timeoutAndDenialAreToolResults() async throws {
         let timedOut = try await result(for: MCPToolExecutionError.timedOut("Query timed out after 30 seconds"))

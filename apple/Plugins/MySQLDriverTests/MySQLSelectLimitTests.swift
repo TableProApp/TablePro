@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import Foundation
 import TableProPluginKit
 import Testing
 
@@ -104,6 +105,32 @@ struct MySQLSelectLimitTests {
         let outcome = mysqlBoundedFetchOutcome(fetchedRows: 0, rowCap: 1_000, serverSentMore: false)
         #expect(outcome.keptRows == 0)
         #expect(outcome.isTruncated == false)
+    }
+
+    @Test("A read stopped at the byte limit keeps the row that crossed it and reports truncated")
+    func byteLimitKeepsTheCrossingRow() {
+        let outcome = mysqlBoundedFetchOutcome(
+            fetchedRows: 3, rowCap: 1_000, serverSentMore: false, stoppedAtByteLimit: true
+        )
+        #expect(outcome.keptRows == 3)
+        #expect(outcome.isTruncated == true)
+        #expect(outcome.serverIgnoredLimit == false)
+    }
+
+    @Test("A byte stop on the row past the cap still drops that row")
+    func byteLimitOnTheExtraRowDropsIt() {
+        let outcome = mysqlBoundedFetchOutcome(
+            fetchedRows: 1_001, rowCap: 1_000, serverSentMore: false, stoppedAtByteLimit: true
+        )
+        #expect(outcome.keptRows == 1_000)
+        #expect(outcome.isTruncated == true)
+    }
+
+    @Test("A row's size is its text as UTF-8 and its bytes, with null counting nothing")
+    func decodedByteCountMeasuresTheCells() {
+        let row: [PluginCellValue] = [.null, .text("héllo"), .bytes(Data(count: 4)), .text("")]
+        #expect(mysqlDecodedByteCount(of: row) == 10)
+        #expect(mysqlDecodedByteCount(of: []) == 0)
     }
 
     /// Installing the cap costs a `SET`, and a `SET` resets what `ROW_COUNT()` reports, so

@@ -31,14 +31,15 @@ final class ClaudeAgentProvider: ChatTransport {
             let task = Task {
                 var grant: ClaudeAgentToolGrant?
                 do {
-                    grant = await toolBridge.makeGrant(connectionId: options.connectionId)
+                    grant = await toolBridge.makeGrant(connectionId: options.connectionId, mode: options.chatMode)
                     let prompt = AgentPromptRenderer.renderPrompt(turns: turns, includingSystemPrompt: nil)
                     let lines = try cli.streamLines(
                         arguments: Self.inferenceArguments(
                             prompt: prompt,
                             model: model,
                             systemPrompt: options.systemPrompt ?? ClaudeAgent.systemPrompt,
-                            mcpConfigPath: grant?.configPath
+                            mcpConfigPath: grant?.configPath,
+                            allowedToolNames: grant?.allowedToolNames
                         ),
                         currentDirectory: FileManager.default.temporaryDirectory
                     )
@@ -100,7 +101,8 @@ final class ClaudeAgentProvider: ChatTransport {
         prompt: String,
         model: String,
         systemPrompt: String?,
-        mcpConfigPath: String?
+        mcpConfigPath: String?,
+        allowedToolNames: [String]?
     ) -> [String] {
         var arguments = [
             "-p",
@@ -114,7 +116,7 @@ final class ClaudeAgentProvider: ChatTransport {
         ]
 
         if let mcpConfigPath {
-            arguments += ["--mcp-config", mcpConfigPath, "--allowedTools", "mcp__\(ClaudeAgent.mcpServerName)__*"]
+            arguments += ["--mcp-config", mcpConfigPath, "--allowedTools", allowedToolsArgument(allowedToolNames)]
         }
         arguments.append("--strict-mcp-config")
 
@@ -126,6 +128,13 @@ final class ClaudeAgentProvider: ChatTransport {
         }
         arguments += ["--", prompt]
         return arguments
+    }
+
+    // The server's token profile is the gate; naming the tools here keeps the CLI from offering any other.
+    static func allowedToolsArgument(_ toolNames: [String]?) -> String {
+        let prefix = "mcp__\(ClaudeAgent.mcpServerName)__"
+        guard let toolNames else { return prefix + "*" }
+        return toolNames.map { prefix + $0 }.joined(separator: ",")
     }
 
     static func decodeEvent(_ line: String) -> DecodedEvent? {
