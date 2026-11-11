@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use secrecy::{ExposeSecret, SecretString};
@@ -21,14 +22,14 @@ use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::{
     ConnectEnvironment, ExternalAccess, FileEndpoint, LivenessPolicy, ResultEvent, ResultSink, RunOptions,
-    SafeModeLevel, SinkFlow, TlsConfig, UserSql, WorkspaceSettings,
+    SafeModeLevel, SinkFlow, TableRef, TlsConfig, UserSql, WorkspaceSettings,
 };
 use tablepro_driver_sqlite::SqliteDriver;
 use tablepro_mcp::{AccessToken, McpHost, McpServer, OpenOutcome, ToolContext, WriteApproval};
 use tablepro_session::runtime::Tasks;
 use tablepro_session::{
     ConnectRequest, ConnectServices, ConnectionMetadata, Connector, DefaultDeadlines, DriverConnector,
-    NoStoredCredentials, RequestTarget, Session, SessionDeps,
+    NoStoredCredentials, OperationKind, RequestTarget, Session, SessionDeps,
 };
 use tablepro_ssh::{SshRuntimeCell, SshServices};
 use tablepro_storage::query_history::NewEntry;
@@ -289,6 +290,26 @@ struct Reply {
 /// One request on a connection of its own, written by hand so the test
 /// controls every header a client sends.
 async fn send(port: u16, path: &str, headers: &[(&str, &str)], body: &str) -> Reply {
+    let mut stream = open_request(port, path, headers, body).await;
+    let mut raw = Vec::new();
+    stream.read_to_end(&mut raw).await.expect("the response");
+    let text = String::from_utf8(raw).expect("a UTF-8 response");
+    let (head, body) = text.split_once("\r\n\r\n").expect("a header block");
+    let status = head
+        .split(' ')
+        .nth(1)
+        .and_then(|code| code.parse().ok())
+        .expect("a status code");
+    let headers = head.to_ascii_lowercase();
+    let body = match headers.contains("transfer-encoding: chunked") {
+        true => unchunk(body),
+        false => body.to_owned(),
+    };
+    Reply { status, headers, body }
+}
+
+// The request sent and its answer not read yet, so a test can go away while the server works on it.
+async fn open_request(port: u16, path: &str, headers: &[(&str, &str)], body: &str) -> tokio::net::TcpStream {
     let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port))
         .await
         .expect("a connection to the server");
@@ -305,21 +326,7 @@ async fn send(port: u16, path: &str, headers: &[(&str, &str)], body: &str) -> Re
     request.push_str("\r\n");
     request.push_str(body);
     stream.write_all(request.as_bytes()).await.expect("the request");
-    let mut raw = Vec::new();
-    stream.read_to_end(&mut raw).await.expect("the response");
-    let text = String::from_utf8(raw).expect("a UTF-8 response");
-    let (head, body) = text.split_once("\r\n\r\n").expect("a header block");
-    let status = head
-        .split(' ')
-        .nth(1)
-        .and_then(|code| code.parse().ok())
-        .expect("a status code");
-    let headers = head.to_ascii_lowercase();
-    let body = match headers.contains("transfer-encoding: chunked") {
-        true => unchunk(body),
-        false => body.to_owned(),
-    };
-    Reply { status, headers, body }
+    stream
 }
 
 fn unchunk(mut body: &str) -> String {
@@ -1092,4 +1099,102 @@ async fn an_export_outside_its_limits_is_refused() {
     )
     .await;
     assert!(missing_failed, "{missing}");
+}
+
+// A SQLite session has one connection, so a read of its own waits while another call holds it.
+async fn connection_is_held(session: &Session) -> bool {
+    let table = TableRef::new(None, "orders");
+    let read = session.run(OperationKind::Metadata, |lease, call| {
+        let table = table.clone();
+        async move { Ok(lease.fetch_columns(&table, call).await?) }
+    });
+    tokio::time::timeout(Duration::from_millis(200), read).await.is_err()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_count_stops_when_its_client_goes_away() {
+    let harness = harness().await;
+    let writable = harness
+        .host
+        .session(harness.ids.writable)
+        .await
+        .expect("the writable session");
+    let readable = harness
+        .host
+        .session(harness.ids.readable)
+        .await
+        .expect("the readable session");
+    run_all(
+        &writable,
+        &["CREATE VIEW endless AS WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n) SELECT x FROM n"],
+    )
+    .await;
+    let body = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "count_rows",
+            "arguments": { "connection_id": harness.ids.readable.to_string(), "table": "endless" },
+        },
+    })
+    .to_string();
+    let client = open_request(harness.server.address().port(), "/mcp", &MCP_HEADERS, &body).await;
+    let mut counting = false;
+    for _ in 0..50 {
+        if connection_is_held(&readable).await {
+            counting = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(counting, "the count never started");
+
+    drop(client);
+    let counted = tokio::time::timeout(Duration::from_secs(10), order_count(&harness)).await;
+
+    assert_eq!(
+        counted.ok(),
+        Some(3),
+        "the count kept the connection after its client left"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_answer_cuts_long_values_and_stops_at_its_size() {
+    let harness = harness().await;
+
+    let (failed, text) = call(
+        &harness,
+        "execute_query",
+        json!({
+            "connection_id": harness.ids.readable.to_string(),
+            "query": "WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < 200) \
+                SELECT x, replace(hex(zeroblob(100000)), '0', 'x') AS body FROM n",
+            "max_rows": 200,
+        }),
+    )
+    .await;
+
+    assert!(!failed, "{text}");
+    assert!(text.len() < tablepro_mcp::MAX_ANSWER_BYTES, "{} bytes", text.len());
+    let answer = parsed(&text);
+    let set = &answer["result_sets"][0];
+    let rows = set["rows"].as_array().expect("rows");
+    assert!(!rows.is_empty() && rows.len() < 200, "{} rows", rows.len());
+    assert_eq!(set["truncated"], true);
+    let cut = format!(
+        "{} [TablePro cut this value: 200000 bytes in all]",
+        "x".repeat(tablepro_mcp::MAX_VALUE_BYTES)
+    );
+    assert_eq!(rows[0]["body"].as_str(), Some(cut.as_str()));
+    let notes: Vec<&str> = answer["notes"]
+        .as_array()
+        .expect("notes")
+        .iter()
+        .filter_map(Json::as_str)
+        .collect();
+    assert!(notes.iter().any(|note| note.contains("64 KB")), "{notes:?}");
+    assert!(notes.iter().any(|note| note.contains("4 MB")), "{notes:?}");
+    assert!(!notes.iter().any(|note| note.contains("max_rows")), "{notes:?}");
 }

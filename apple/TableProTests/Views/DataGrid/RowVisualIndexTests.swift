@@ -10,6 +10,120 @@ import TableProTheme
 import Testing
 
 @MainActor
+private final class CountingChangeManager: ChangeManaging {
+    var changes: [RowChange] = []
+    private(set) var scans = 0
+    private(set) var lookups = 0
+
+    var hasChanges: Bool { !changes.isEmpty }
+    var reloadVersion: Int { 0 }
+    var canRedo: Bool { false }
+    var insertedRowIDs: Set<RowID> { [] }
+
+    var rowChanges: [RowChange] {
+        scans += 1
+        return changes
+    }
+
+    func pendingChange(forRow rowID: RowID) -> RowChange? {
+        lookups += 1
+        return changes.first { $0.rowID == rowID }
+    }
+
+    func isRowDeleted(_ rowID: RowID) -> Bool { false }
+
+    func recordCellChange(
+        rowID: RowID,
+        columnIndex: Int,
+        columnName: String,
+        oldValue: PluginCellValue,
+        newValue: PluginCellValue,
+        originalRow: [PluginCellValue]?
+    ) {}
+
+    func undoRowDeletion(rowID: RowID) {}
+}
+
+@MainActor
+private final class RepaintRecordingView: DataGridMountedView {
+    private(set) var changes: [DataGridChange] = []
+
+    func apply(_ change: DataGridChange) {
+        changes.append(change)
+    }
+
+    func selectionDidChange() {}
+    func configurationDidChange() {}
+    func reveal(row: Int, displayColumn: Int?) {}
+    func revealColumn(_ displayColumn: Int) {}
+    func sortDidChange() {}
+    func summaryRulesDidChange() {}
+    func viewportSample() -> (row: Int, offset: CGFloat)? { nil }
+    func beginEditing(row: Int, displayColumn: Int) -> Bool { false }
+    var isEditing: Bool { false }
+    func commitEditing() -> Bool { true }
+    func discardEditing() {}
+    func focus() -> Bool { false }
+    func anchor(forColumn displayColumn: Int) -> (view: NSView, rect: NSRect)? { nil }
+}
+
+@MainActor
+struct UndoStepRepaintTests {
+    private let fixture = CoordinatorFixture()
+
+    // Undoing a command over every row runs one step per cell, so a step that repaints every row costs rows squared.
+    @Test("Undoing a step repaints the row it names and no other")
+    func undoRepaintsOnlyItsRow() {
+        let rows = TableRows.from(
+            queryRows: (0..<40).map { row -> [PluginCellValue] in [.text("\(row)"), .text("b")] },
+            columns: ["id", "name"],
+            columnTypes: [.text(rawType: nil), .text(rawType: nil)],
+            hasAuthoritativeSchema: true
+        )
+        let tab = fixture.addTab(
+            QueryTab(title: "users", query: "SELECT * FROM users", tabType: .table, tableName: "users"),
+            rows: rows
+        )
+        let model = fixture.coordinator.gridModel(forTab: tab.id)
+        let view = RepaintRecordingView()
+        model.attach(view)
+
+        fixture.coordinator.handleUndoResult(UndoResult(
+            action: .cellEdit(
+                rowID: .existing(7), columnIndex: 1, columnName: "name",
+                previousValue: "a", newValue: "b", originalRow: ["7", "a"]
+            ),
+            needsRowRemoval: false,
+            needsRowRestore: false,
+            restoreRow: nil
+        ))
+
+        var repainted = IndexSet()
+        var marksRepainted = false
+        for change in view.changes {
+            guard case .rowsUpdated(let indexes, let columns) = change else { continue }
+            repainted.formUnion(indexes)
+            if columns == nil { marksRepainted = true }
+        }
+        #expect(repainted == IndexSet(integer: 7))
+        #expect(marksRepainted)
+        #expect(fixture.coordinator.tabSessionRegistry.tableRows(for: tab.id).rows[7].values[1] == "a")
+    }
+
+    @Test("A batch step names every row it holds")
+    func batchStepNamesItsRows() {
+        let deletion = UndoAction.batchRowDeletion(rows: [(rowID: .existing(1), originalRow: []), (rowID: .existing(3), originalRow: [])])
+        let insertion = UndoAction.batchRowInsertion(
+            rows: [InsertedRowLocation(rowID: .existing(5), storageIndex: 5)],
+            rowValues: [[]]
+        )
+
+        #expect(RowEditingCoordinator.rowIDs(touchedBy: deletion) == [.existing(1), .existing(3)])
+        #expect(RowEditingCoordinator.rowIDs(touchedBy: insertion) == [.existing(5)])
+    }
+}
+
+@MainActor
 struct RowVisualIndexTests {
     private func makeManager() -> DataChangeManager {
         let manager = DataChangeManager()
@@ -108,6 +222,55 @@ struct RowVisualIndexTests {
         #expect(index.visualState(for: .existing(1)).expressionColumns == [1])
         #expect(index.visualState(for: .existing(2)).expressionColumns.isEmpty)
         #expect(index.visualState(for: inserted).expressionColumns == [1])
+    }
+
+    @Test("Updating rows looks each one's change up by its id, never scanning every pending change")
+    func updateRowLooksTheChangeUp() {
+        let manager = CountingChangeManager()
+        manager.changes = (0..<2_000).map { row in
+            RowChange(
+                rowID: .existing(row),
+                type: .update,
+                cellChanges: [CellChange(columnIndex: 1, columnName: "name", oldValue: "a", newValue: "b")]
+            )
+        }
+        let changeManager = AnyChangeManager(manager)
+        let index = RowVisualIndex()
+
+        for row in 0..<2_000 {
+            index.updateRow(.existing(row), from: changeManager)
+        }
+
+        #expect(manager.scans == 0)
+        #expect(manager.lookups == 2_000)
+        #expect(index.visualState(for: .existing(1_999)).modifiedColumns == [1])
+    }
+
+    @Test("A row's pending change is the one a scan of every change finds, after removals reorder them")
+    func pendingChangeMatchesAScan() {
+        let manager = makeManager()
+        for row in 0..<6 {
+            manager.recordCellChange(
+                rowID: .existing(row), columnIndex: 1, columnName: "name",
+                oldValue: "a", newValue: "b", originalRow: [.text("\(row)"), "a"]
+            )
+        }
+        let inserted = RowID.inserted(UUID())
+        manager.recordRowInsertion(rowID: inserted, values: [.null, .null])
+        manager.recordRowDeletion(rowID: .existing(2), originalRow: ["2", "b"])
+        manager.recordCellChange(
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
+            oldValue: "b", newValue: "a", originalRow: ["0", "b"]
+        )
+        manager.undoRowDeletion(rowID: .existing(2))
+        manager.recordRowDeletion(rowID: .existing(4), originalRow: ["4", "b"])
+
+        for rowID in (0..<8).map(RowID.existing) + [inserted] {
+            let scanned = manager.rowChanges.first { $0.rowID == rowID }
+            #expect(manager.pendingChange(forRow: rowID) == scanned)
+        }
+        #expect(manager.pendingChange(forRow: .existing(4))?.type == .delete)
+        #expect(manager.pendingChange(forRow: .existing(0)) == nil)
     }
 
     @Test("A deleted or new row tints the whole row from its theme slot, a highlighted one with the rule's wash")

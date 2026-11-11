@@ -6,13 +6,6 @@ import SwiftUI
 import TableProEditorKit
 import TableProTheme
 
-internal enum DataGridFontVariant {
-    static let regular = 0
-    static let italic = 1
-    static let medium = 2
-    static let rowNumber = 3
-}
-
 internal struct EditorFontCache: Equatable {
     internal let font: NSFont
     internal let lineNumberFont: NSFont

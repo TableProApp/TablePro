@@ -95,11 +95,12 @@ struct SyncFullFetchDeletionTests {
         #expect(await environment.favorites.fetchFavorite(id: edited.id) != nil)
     }
 
-    @Test("A full fetch that could not read a record deletes nothing")
-    func unreadRecordStopsTheDeletions() async throws {
+    @Test("A record a full fetch listed but could not read is kept, and the deletions the fetch proves still apply")
+    func unreadRecordIsKeptAndDeletionsStillApply() async throws {
         let kept = SQLFavorite(name: "Churn", query: "SELECT 2")
         let unread = SQLFavorite(name: "Revenue", query: "SELECT 1")
-        let coordinator = try await seededCoordinator(with: [kept, unread])
+        let deleted = SQLFavorite(name: "Retention", query: "SELECT 3")
+        let coordinator = try await seededCoordinator(with: [kept, unread, deleted])
         let result = PullResult(
             changedRecords: [Self.record(kept)],
             deletedRecordIDs: [],
@@ -109,7 +110,9 @@ struct SyncFullFetchDeletionTests {
 
         #expect(await coordinator.applyPullResult(result, settings: Self.syncSettings(), isFullFetch: true))
 
+        #expect(await environment.favorites.fetchFavorite(id: kept.id) != nil)
         #expect(await environment.favorites.fetchFavorite(id: unread.id) != nil)
+        #expect(await environment.favorites.fetchFavorite(id: deleted.id) == nil)
     }
 
     @Test("A delta is never read for what it does not list")

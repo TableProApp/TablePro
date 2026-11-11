@@ -490,6 +490,66 @@ struct MCPTokenStoreTests {
         #expect(await store.validate(bearerToken: result.plaintext) == nil)
     }
 
+    @Test("A superseded bridge credential stops working at once and no revocation observer hears of it")
+    func supersededBridgeCredentialIsDroppedWithoutARevocation() async throws {
+        let store = makeStore()
+        let superseded = try await store.generate(
+            name: MCPTokenStore.stdioBridgeTokenName,
+            permissions: MCPTokenStore.bridgeTokenPermissions,
+            connectionAccess: .all,
+            expiresAt: Date.now.addingTimeInterval(3_600),
+            isBridgeCredential: true,
+            isClaudeAgentCredential: false,
+            extraScopes: []
+        )
+        let paired = try await store.generate(
+            name: "paired",
+            permissions: .readOnly,
+            connectionAccess: .all,
+            expiresAt: nil,
+            isBridgeCredential: false,
+            isClaudeAgentCredential: false,
+            extraScopes: []
+        )
+        let recorder = RevocationRecorder()
+        await store.addRevocationObserver { key, _ in
+            await recorder.append(key)
+        }
+
+        await store.dropSupersededBridgeCredential(tokenId: superseded.token.id)
+        await store.delete(tokenId: paired.token.id)
+        let pairedKey = paired.token.id.uuidString
+        try await waitUntil { await recorder.keys().contains(pairedKey) }
+
+        #expect(await store.validate(bearerToken: superseded.plaintext) == nil)
+        #expect(await store.list().contains(where: { $0.id == superseded.token.id }) == false)
+        #expect(await recorder.keys() == [pairedKey])
+    }
+
+    @Test("Only a bridge credential is dropped quietly: any other token passed in is deleted as a revocation")
+    func supersedingAPairedTokenStillRevokesIt() async throws {
+        let store = makeStore()
+        let paired = try await store.generate(
+            name: "paired",
+            permissions: .readWrite,
+            connectionAccess: .all,
+            expiresAt: nil,
+            isBridgeCredential: false,
+            isClaudeAgentCredential: false,
+            extraScopes: []
+        )
+        let recorder = RevocationRecorder()
+        await store.addRevocationObserver { key, _ in
+            await recorder.append(key)
+        }
+
+        await store.dropSupersededBridgeCredential(tokenId: paired.token.id)
+        let key = paired.token.id.uuidString
+        try await waitUntil { await recorder.keys().contains(key) }
+
+        #expect(await store.validate(bearerToken: paired.plaintext) == nil)
+    }
+
     @Test("A second token claiming the same client name leaves the first one working")
     func sameClientNameDoesNotRevokeTheStandingToken() async throws {
         let store = makeStore()

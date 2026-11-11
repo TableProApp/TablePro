@@ -131,6 +131,11 @@
                         <KeyboardAccelerator Modifiers="Control" Key="Enter" />
                     </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuRunStatement" x:Name="MenuRunStatement" Click="OnRunStatement" IsEnabled="False">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="Enter" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
                 <MenuFlyoutItem x:Uid="MenuStop" x:Name="MenuStop" Click="OnStop" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Stop" /></MenuFlyoutItem.Icon>
                     <MenuFlyoutItem.KeyboardAccelerators>

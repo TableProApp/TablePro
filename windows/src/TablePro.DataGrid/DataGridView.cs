@@ -337,6 +337,8 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     // Shows data, or nothing for null. The grid opens its own reader on this thread and disposes it with the data.
     public void SetData(IGridData? data)
     {
+        // A copy still reading the old data would read it after the host lets it go, then put it on the clipboard.
+        _copy?.Cancel();
         _cache?.Dispose();
         _cache = null;
         _data = data;

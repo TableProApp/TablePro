@@ -274,20 +274,45 @@ public enum SQLStatementScanner {
         return result
     }
 
-    // MARK: - Private
+    // MARK: - Resuming
 
-    /// Walks the document once and hands each segment to `onStatement`, which returns false to stop.
-    ///
-    /// Segments tile the document: a statement runs from the end of the previous one to its terminator, so it carries
-    /// the whitespace before it. With a `cursorPosition`, only the segment holding it is reported, or the last one
-    /// when the cursor sits past every terminator. Where a statement ends is the tracker's decision; this loop only
-    /// lexes, so a `;` inside a string, a comment or a quoted body never reaches it. A `GO` line is the exception: it
-    /// ends the batch, so it ends whatever statement is open whatever the tracker thinks, and is a segment of its own
-    /// that holds nothing to run.
-    private static func scan(
+    // The span of a statement that had content, kept without its text so a checkpoint stays small.
+    struct EndedStatement: Sendable, Equatable {
+        let range: NSRange
+        let terminator: SQLStatementTerminator
+        let acceptsBindParameters: Bool
+
+        func located(in text: NSString) -> LocatedStatement {
+            LocatedStatement(
+                sql: text.substring(with: range),
+                offset: range.location,
+                hasContent: true,
+                terminator: terminator,
+                acceptsBindParameters: acceptsBindParameters
+            )
+        }
+    }
+
+    // A point where the scan holds no state but the last statement with content, so it can start again there.
+    struct Checkpoint: Sendable, Equatable {
+        let offset: Int
+        // The last offset whose text decided this boundary: an edit there or earlier moves it.
+        let decidedThrough: Int
+        let endedStatement: EndedStatement?
+    }
+
+    // MARK: - Scanning
+
+    // Segments tile the document: each runs from the end of the previous one to its terminator, whitespace included.
+    // With a cursor only the segment holding it is reported, or the last one when it sits past every terminator.
+    // Where a statement ends is the tracker's decision, except at a `GO` line, which ends the batch whatever the
+    // tracker thinks and is a segment of its own that runs nothing.
+    static func scan(
         sql: String,
         cursorPosition: Int?,
         grammar: SQLLexicalGrammar,
+        resumingAt resume: Checkpoint? = nil,
+        onCheckpoint: (Checkpoint) -> Void = { _ in },
         onBatchSeparator: (SQLBatchSeparator) -> Void = { _ in },
         onFinish: (_ holdsOpenBlock: Bool) -> Void = { _ in },
         onStatement: (LocatedStatement) -> Bool
@@ -299,34 +324,42 @@ public enum SQLStatementScanner {
         let safePosition = cursorPosition.map { min(max(0, $0), length) }
 
         var tracker = SQLStatementBoundaries.makeTracker(for: grammar)
-        var currentStart = 0
+        var currentStart = min(max(0, resume?.offset ?? 0), length)
         var hasStatementContent = false
-        var i = 0
+        var i = currentStart
 
-        var lastStatementWithContent: LocatedStatement?
+        var lastEndedStatement = resume?.endedStatement
 
-        /// Reports the segment ending at `end` and starts the next one there. Returns false when the scan is done.
-        ///
-        /// A caret on a SQL*Plus `/` line stands for the statement the slash ends, which is where a reader who has
-        /// just typed the slash expects `Cmd+Enter` to act. A caret on a `GO` line stands for the last statement of the
-        /// batch it ends, and for nothing when that batch is empty: the batch before is not the one the line ends.
+        // A caret on a SQL*Plus `/` line stands for the statement the slash ends, where `Cmd+Enter` is expected to act.
+        // A caret on a `GO` line stands for the last statement of its batch, and for nothing when the batch is empty.
         func finishSegment(at end: Int, hasContent: Bool, standsForEndedStatement: Bool = false) -> Bool {
-            let statement = LocatedStatement(
-                sql: nsQuery.substring(with: NSRange(location: currentStart, length: end - currentStart)),
-                offset: currentStart,
-                hasContent: hasContent,
-                terminator: tracker.terminator,
-                acceptsBindParameters: tracker.acceptsBindParameters
-            )
+            let range = NSRange(location: currentStart, length: end - currentStart)
             if hasContent {
-                lastStatementWithContent = statement
+                lastEndedStatement = EndedStatement(
+                    range: range,
+                    terminator: tracker.terminator,
+                    acceptsBindParameters: tracker.acceptsBindParameters
+                )
             }
             if let cursor = safePosition {
                 guard cursor >= currentStart, cursor <= end else {
                     currentStart = end
                     return true
                 }
-                _ = onStatement(standsForEndedStatement ? lastStatementWithContent ?? statement : statement)
+                if standsForEndedStatement, let ended = lastEndedStatement {
+                    _ = onStatement(ended.located(in: nsQuery))
+                    return false
+                }
+            }
+            let statement = LocatedStatement(
+                sql: nsQuery.substring(with: range),
+                offset: currentStart,
+                hasContent: hasContent,
+                terminator: tracker.terminator,
+                acceptsBindParameters: tracker.acceptsBindParameters
+            )
+            if safePosition != nil {
+                _ = onStatement(statement)
                 return false
             }
             currentStart = end
@@ -361,9 +394,10 @@ public enum SQLStatementScanner {
                 }
                 let separatorEnd = NSMaxRange(separator.range)
                 guard finishSegment(at: separatorEnd, hasContent: false, standsForEndedStatement: true) else { return }
-                lastStatementWithContent = nil
+                lastEndedStatement = nil
                 tracker.reset()
                 hasStatementContent = false
+                onCheckpoint(Checkpoint(offset: separatorEnd, decidedThrough: separatorEnd, endedStatement: nil))
                 i = separatorEnd
                 continue
             }
@@ -392,6 +426,7 @@ public enum SQLStatementScanner {
                 guard finishSegment(at: i + 1, hasContent: hasStatementContent) else { return }
                 tracker.reset()
                 hasStatementContent = false
+                onCheckpoint(Checkpoint(offset: i + 1, decidedThrough: i, endedStatement: lastEndedStatement))
                 i += 1
                 continue
             }
@@ -403,6 +438,11 @@ public enum SQLStatementScanner {
                 guard finishSegment(at: i + 1, hasContent: false, standsForEndedStatement: true) else { return }
                 tracker.reset()
                 hasStatementContent = false
+                onCheckpoint(Checkpoint(
+                    offset: i + 1,
+                    decidedThrough: endOfSlashLine(nsQuery, at: i, length: length),
+                    endedStatement: lastEndedStatement
+                ))
                 i += 1
                 continue
             }
@@ -439,11 +479,17 @@ public enum SQLStatementScanner {
             before -= 1
         }
         guard before < 0 || text.character(at: before) == SqlLexer.newline else { return false }
+        let after = endOfSlashLine(text, at: offset, length: length)
+        return after == length || text.character(at: after) == SqlLexer.newline
+    }
+
+    // The last offset `isSlashLine` reads after the slash: its line break, or the end of the text.
+    private static func endOfSlashLine(_ text: NSString, at offset: Int, length: Int) -> Int {
         var after = offset + 1
         while after < length, isLineBlank(text.character(at: after)) {
             after += 1
         }
-        return after == length || text.character(at: after) == SqlLexer.newline
+        return after
     }
 
     private static func isLineBlank(_ character: UInt16) -> Bool {

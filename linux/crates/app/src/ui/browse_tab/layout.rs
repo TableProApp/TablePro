@@ -35,6 +35,12 @@ pub(super) struct LayoutInit<'a> {
 /// its input. Gives back the widgets the handlers drive.
 pub(super) fn build(tab: &BrowseTab, init: &LayoutInit<'_>) -> BrowseTabWidgets {
     let imp = tab.imp();
+    let weak = tab.downgrade();
+    imp.view_stack.connect_visible_child_name_notify(move |_| {
+        if let Some(tab) = weak.upgrade() {
+            tab.follow_selected_view();
+        }
+    });
     imp.loading_page
         .set_description(Some(&loading_description(init.table_label)));
     imp.inner_stack.set_visible_child_name("loading");
@@ -42,6 +48,7 @@ pub(super) fn build(tab: &BrowseTab, init: &LayoutInit<'_>) -> BrowseTabWidgets 
     let page_sizes = page_size_choices(&imp.page_size_dropdown, init.page_size);
     imp.overflow_button.set_menu_model(Some(&overflow_menu(&page_sizes)));
     imp.more_button.set_menu_model(Some(&more_menu(&page_sizes)));
+    imp.json_more.set_menu_model(Some(&json_menu(&page_sizes)));
     connect_controls(tab, page_sizes.clone());
     BrowseTabWidgets {
         inner_stack: imp.inner_stack.get(),
@@ -95,6 +102,17 @@ fn overflow_menu(page_sizes: &[u64]) -> gio::Menu {
     menu
 }
 
+fn json_menu(page_sizes: &[u64]) -> gio::Menu {
+    let actions = gio::Menu::new();
+    actions.append(Some(&gettext("_Filter Rows…")), Some("browse.filter"));
+    actions.append(Some(&gettext("_Export Rows…")), Some("browse.export"));
+    actions.append(Some(&gettext("_Count Rows")), Some("browse.count-rows"));
+    let menu = gio::Menu::new();
+    menu.append_section(None, &actions);
+    menu.append_section(Some(&gettext("Rows per Page")), &page_size_menu(page_sizes));
+    menu
+}
+
 fn export_item() -> gio::MenuItem {
     let export = gio::MenuItem::new(Some(&gettext("_Export Rows…")), Some("browse.export"));
     // The window's Export Results key reaches this tab's Export.
@@ -142,7 +160,7 @@ pub(super) fn filter_strip(tab: &BrowseTab, initial: &FilterSet, dialect: Option
 pub(super) struct GridInit {
     pub(super) table: TableRef,
     pub(super) label: String,
-    pub(super) connection_id: Option<uuid::Uuid>,
+    pub(super) state_key: Option<crate::persistence::TableStateKey>,
     pub(super) sorting: GridSorting,
     pub(super) tracker: TabTrackerHandle,
     pub(super) settings: Rc<AppSettings>,
@@ -160,9 +178,9 @@ pub(super) struct GridInit {
 pub(super) fn grid(tab: &BrowseTab, init: GridInit) -> DataGrid {
     let session = init.session;
     let dialect: DialectSource = Rc::new(move || session.upgrade()?.current_dialect());
-    let layout = init.connection_id.map(|connection_id| LayoutBinding {
+    let layout = init.state_key.map(|state_key| LayoutBinding {
         store: init.layouts,
-        connection_id,
+        state_key,
         schema: init.table.schema.clone(),
         table: init.table.name.clone(),
     });

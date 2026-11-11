@@ -7,14 +7,65 @@
 //
 
 import Foundation
-import Network
 import os
+import TableProHTTP
 
-final class ChatGPTCodexCallbackServer: @unchecked Sendable {
-    enum ServerError: Error, LocalizedError {
+// Only the redirect carrying this sign-in's `state` settles it (RFC 6749 section 4.1.2, RFC 8252 section 7.3).
+enum ChatGPTCodexCallback: Sendable, Equatable {
+    case code(String)
+    case denied(error: String, description: String?)
+    case ignore
+
+    static let callbackPath = URLComponents(string: ChatGPTCodex.redirectURI)?.path ?? ""
+
+    static let unknownError = "unknown_error"
+
+    private static let maximumErrorLength = 300
+
+    static func parse(requestHead: String, expectedState: String) -> ChatGPTCodexCallback {
+        guard !expectedState.isEmpty,
+              !callbackPath.isEmpty,
+              let target = LoopbackRedirectRequest.getTarget(requestHead),
+              let components = URLComponents(string: target),
+              components.host == nil,
+              components.path == callbackPath
+        else {
+            return .ignore
+        }
+        let items = components.queryItems ?? []
+        guard let state = LoopbackRedirectRequest.singleValue(named: "state", in: items),
+              LoopbackRedirectRequest.constantTimeEquals(state, expectedState)
+        else {
+            return .ignore
+        }
+        if items.contains(where: { $0.name == "error" }) {
+            let error = LoopbackRedirectRequest.singleValue(named: "error", in: items).flatMap(sanitized) ?? unknownError
+            let formItems = LoopbackRedirectRequest.formDecodedItems(in: components)
+            let description = LoopbackRedirectRequest.singleValue(named: "error_description", in: formItems).flatMap(sanitized)
+            return .denied(error: error, description: description)
+        }
+        if let code = LoopbackRedirectRequest.singleValue(named: "code", in: items), !code.isEmpty {
+            return .code(code)
+        }
+        return .ignore
+    }
+
+    // RFC 6749 allows only printable ASCII other than `"` and `\` in `error` and `error_description`.
+    private static func sanitized(_ value: String) -> String? {
+        let allowed = value.unicodeScalars.filter { scalar in
+            (0x20...0x7E).contains(scalar.value) && scalar != "\"" && scalar != "\\"
+        }
+        let text = String(String.UnicodeScalarView(allowed.prefix(maximumErrorLength)))
+            .trimmingCharacters(in: .whitespaces)
+        return text.isEmpty ? nil : text
+    }
+}
+
+final class ChatGPTCodexCallbackServer: Sendable {
+    enum ServerError: Error, LocalizedError, Equatable {
         case portInUse
         case timedOut
-        case stateMismatch
+        case authorizationDenied(error: String, description: String?)
 
         var errorDescription: String? {
             switch self {
@@ -22,8 +73,12 @@ final class ChatGPTCodexCallbackServer: @unchecked Sendable {
                 return String(localized: "Port 1455 is in use. Quit the Codex CLI or another sign-in and try again.")
             case .timedOut:
                 return String(localized: "Sign-in timed out. Please try again.")
-            case .stateMismatch:
-                return String(localized: "Sign-in could not be verified. Please try again.")
+            case .authorizationDenied(let error, let description):
+                if error == "access_denied" {
+                    guard let description else { return String(localized: "ChatGPT sign-in was denied.") }
+                    return String(format: String(localized: "ChatGPT sign-in was denied: %@"), description)
+                }
+                return String(format: String(localized: "ChatGPT sign-in failed: %@"), description ?? error)
             }
         }
     }
@@ -32,182 +87,55 @@ final class ChatGPTCodexCallbackServer: @unchecked Sendable {
     private static let timeout: TimeInterval = 300
     private static let startTimeout: TimeInterval = 10
 
-    private let expectedState: String
-    private let lock = NSLock()
-    private var listener: NWListener?
-    private var connection: NWConnection?
-    private var readyContinuation: CheckedContinuation<Void, Error>?
-    private var codeContinuation: CheckedContinuation<String, Error>?
-    private var readyTimeoutTask: Task<Void, Never>?
-    private var timeoutTask: Task<Void, Never>?
+    private let listener: LoopbackRedirectListener<String>
 
-    init(expectedState: String) {
-        self.expectedState = expectedState
+    init(expectedState: String, port: UInt16 = ChatGPTCodex.redirectPort, headTimeout: TimeInterval = 5) {
+        listener = LoopbackRedirectListener(port: port, headTimeout: headTimeout) { head in
+            Self.answer(head, expectedState: expectedState)
+        }
     }
 
-    func start() async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            let timeout = Task { [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(Self.startTimeout * 1_000_000_000))
-                self?.finishReady(.failure(ServerError.timedOut))
-            }
-            lock.withLock {
-                readyContinuation = continuation
-                readyTimeoutTask = timeout
-            }
-            do {
-                try startListener()
-            } catch {
-                finishReady(.failure(ServerError.portInUse))
-            }
+    @discardableResult
+    func start() async throws -> UInt16 {
+        do {
+            return try await listener.start(readyTimeout: Self.startTimeout)
+        } catch LoopbackRedirectListenerError.timedOut {
+            throw ServerError.timedOut
+        } catch is LoopbackRedirectListenerError {
+            throw ServerError.portInUse
         }
     }
 
     func waitForCode() async throws -> String {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
-            lock.withLock { codeContinuation = continuation }
-            let task = Task { [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(Self.timeout * 1_000_000_000))
-                self?.finishCode(.failure(ServerError.timedOut))
-            }
-            lock.withLock { timeoutTask = task }
-        }
+        try await listener.outcome(timeout: Self.timeout, timeoutError: ServerError.timedOut)
     }
 
     func stop() {
-        let (task, readyTask, conn, lst): (
-            Task<Void, Never>?, Task<Void, Never>?, NWConnection?, NWListener?
-        ) = lock.withLock {
-            let values = (timeoutTask, readyTimeoutTask, connection, listener)
-            timeoutTask = nil
-            readyTimeoutTask = nil
-            connection = nil
-            listener = nil
-            return values
-        }
-        task?.cancel()
-        readyTask?.cancel()
-        conn?.cancel()
-        lst?.cancel()
+        listener.stop()
     }
 
-    private func startListener() throws {
-        guard let port = NWEndpoint.Port(rawValue: ChatGPTCodex.redirectPort) else {
-            throw ServerError.portInUse
-        }
-        let parameters = NWParameters.tcp
-        parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(.loopback), port: port)
-
-        let listener = try NWListener(using: parameters)
-        lock.withLock { self.listener = listener }
-
-        listener.stateUpdateHandler = { [weak self] state in
-            switch state {
-            case .ready:
-                self?.finishReady(.success(()))
-            case .failed(let error):
-                Self.logger.error("Callback listener failed: \(error.publicLogShape, privacy: .public)")
-                self?.finishReady(.failure(ServerError.portInUse))
-                self?.finishCode(.failure(ServerError.portInUse))
-            default:
-                break
-            }
-        }
-        listener.newConnectionHandler = { [weak self] connection in
-            self?.handleConnection(connection)
-        }
-        listener.start(queue: .global(qos: .userInitiated))
-    }
-
-    private func handleConnection(_ newConnection: NWConnection) {
-        lock.withLock { connection = newConnection }
-        newConnection.stateUpdateHandler = { [weak self] state in
-            if case .ready = state {
-                self?.readRequest(from: newConnection)
-            }
-        }
-        newConnection.start(queue: .global(qos: .userInitiated))
-    }
-
-    private func readRequest(from connection: NWConnection) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 16_384) { [weak self] content, _, isComplete, error in
-            guard let self else { return }
-            if error != nil {
-                connection.cancel()
-                return
-            }
-            guard let data = content, let request = String(data: data, encoding: .utf8),
-                  let query = Self.parseCallback(request) else {
-                if isComplete {
-                    connection.cancel()
-                } else {
-                    self.readRequest(from: connection)
-                }
-                return
-            }
-            let matches = query.state == self.expectedState
-            Self.send(html: matches ? Self.successPage : Self.failurePage, to: connection)
-            self.finishCode(matches ? .success(query.code) : .failure(ServerError.stateMismatch))
+    private static func answer(_ head: Data, expectedState: String) -> LoopbackRedirectAnswer<String> {
+        let text = LoopbackRedirectRequest.text(of: head)
+        switch ChatGPTCodexCallback.parse(requestHead: text, expectedState: expectedState) {
+        case .ignore:
+            return .ignore(LoopbackRedirectPage.badRequest)
+        case .code(let code):
+            return .settle(successPage, .success(code))
+        case .denied(let error, let description):
+            logger.info("The ChatGPT sign-in redirect carried an OAuth error: \(error, privacy: .private)")
+            return .settle(failurePage, .failure(ServerError.authorizationDenied(error: error, description: description)))
         }
     }
 
-    private func finishReady(_ result: Result<Void, Error>) {
-        let (continuation, timeout): (CheckedContinuation<Void, Error>?, Task<Void, Never>?) = lock.withLock {
-            let pendingContinuation = readyContinuation
-            let pendingTimeout = readyTimeoutTask
-            readyContinuation = nil
-            readyTimeoutTask = nil
-            return (pendingContinuation, pendingTimeout)
-        }
-        timeout?.cancel()
-        continuation?.resume(with: result)
-    }
+    private static let successPage = LoopbackRedirectPage.response(
+        status: "200 OK",
+        title: "Signed in to ChatGPT",
+        message: "You can return to TablePro."
+    )
 
-    private func finishCode(_ result: Result<String, Error>) {
-        let continuation: CheckedContinuation<String, Error>? = lock.withLock {
-            let pending = codeContinuation
-            codeContinuation = nil
-            return pending
-        }
-        guard let continuation else { return }
-        continuation.resume(with: result)
-        stop()
-    }
-
-    private static func parseCallback(_ request: String) -> (code: String, state: String)? {
-        guard let requestLine = request.components(separatedBy: "\r\n").first,
-              let target = requestLine.components(separatedBy: " ").dropFirst().first,
-              let components = URLComponents(string: "http://127.0.0.1\(target)"),
-              let items = components.queryItems,
-              let code = items.first(where: { $0.name == "code" })?.value,
-              let state = items.first(where: { $0.name == "state" })?.value else {
-            return nil
-        }
-        return (code, state)
-    }
-
-    private static func send(html: String, to connection: NWConnection) {
-        let body = Array(html.utf8)
-        let headers = "HTTP/1.1 200 OK\r\n"
-            + "Content-Type: text/html; charset=utf-8\r\n"
-            + "Content-Length: \(body.count)\r\n"
-            + "Connection: close\r\n\r\n"
-        var response = Data(headers.utf8)
-        response.append(contentsOf: body)
-        connection.send(content: response, completion: .contentProcessed { _ in
-            connection.cancel()
-        })
-    }
-
-    private static let successPage = """
-    <!doctype html><html><head><meta charset="utf-8"><title>TablePro</title></head>
-    <body style="font-family:-apple-system,Helvetica,Arial,sans-serif;text-align:center;padding-top:80px">
-    <h2>Signed in to ChatGPT</h2><p>You can return to TablePro.</p></body></html>
-    """
-
-    private static let failurePage = """
-    <!doctype html><html><head><meta charset="utf-8"><title>TablePro</title></head>
-    <body style="font-family:-apple-system,Helvetica,Arial,sans-serif;text-align:center;padding-top:80px">
-    <h2>Sign-in failed</h2><p>Please return to TablePro and try again.</p></body></html>
-    """
+    private static let failurePage = LoopbackRedirectPage.response(
+        status: "200 OK",
+        title: "Sign-in failed",
+        message: "Please return to TablePro and try again."
+    )
 }

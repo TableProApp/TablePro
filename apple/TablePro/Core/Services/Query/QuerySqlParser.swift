@@ -121,3 +121,14 @@ enum QuerySqlParser {
         return EnumValueParser.parseMySQLEnumOrSet(from: "ENUM(\(valuesString))")
     }
 }
+
+// What `extractTableName` reads from the connection and its session, held as a value so a parse can run off the main actor.
+struct TableNameReading: Equatable, Sendable {
+    let dialect: SqlDialect
+    let readings: SQLLexicalReadings
+    let browseSchema: String?
+
+    func tableName(in sql: String) -> String? {
+        QuerySqlParser.extractTableName(from: sql, dialect: dialect, readings: readings, browseSchema: browseSchema)
+    }
+}

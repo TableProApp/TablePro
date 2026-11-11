@@ -1,3 +1,4 @@
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -45,25 +46,34 @@ impl RunState {
 
     // Called on a runtime thread.
     pub(crate) fn post(&self, event: RunEvent) {
-        {
-            let mut queue = self.lock();
-            match (queue.events.last_mut(), &event) {
-                (
-                    Some(RunEvent::RowsAppended {
-                        set_index: queued,
-                        row_count,
-                    }),
-                    RunEvent::RowsAppended {
-                        set_index,
-                        row_count: latest,
-                    },
-                ) if queued == set_index => *row_count = *latest,
-                _ => queue.events.push(event),
-            }
+        self.enqueue(event);
+        self.wake();
+    }
+
+    fn enqueue(&self, event: RunEvent) {
+        let mut queue = self.lock();
+        match (queue.events.last_mut(), &event) {
+            (
+                Some(RunEvent::RowsAppended {
+                    set_index: queued,
+                    row_count,
+                }),
+                RunEvent::RowsAppended {
+                    set_index,
+                    row_count: latest,
+                },
+            ) if queued == set_index => *row_count = *latest,
+            _ => queue.events.push(event),
         }
-        // Outside the lock: foreign code never runs under one.
-        if !self.wake_pending.swap(true, Ordering::AcqRel) {
-            self.listener.events_pending();
+    }
+
+    // Outside the lock. UniFFI panics when the app's callback throws, which loses this wake and not the run.
+    fn wake(&self) {
+        if self.wake_pending.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        if catch_unwind(AssertUnwindSafe(|| self.listener.events_pending())).is_err() {
+            tracing::warn!("the app's run listener failed, so it was not told about waiting events");
         }
     }
 
@@ -76,11 +86,13 @@ impl RunState {
     pub(crate) fn finish(&self, outcome: RunOutcome, transaction: TransactionStateTag) {
         let sets = self.lock().sets.clone();
         sets.iter().for_each(|store| store.finish());
-        self.post(RunEvent::Finished {
+        self.enqueue(RunEvent::Finished {
             outcome: outcome.clone(),
             transaction,
         });
+        // Before the wake, so `QueryRun::outcome` returns whatever the listener does.
         self.outcome.send_replace(Some(outcome));
+        self.wake();
     }
 
     pub(crate) fn outcome(&self) -> watch::Receiver<Option<RunOutcome>> {
@@ -94,6 +106,7 @@ impl RunState {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::OnceLock;
     use std::sync::atomic::AtomicUsize;
 
     use super::*;
@@ -158,5 +171,82 @@ mod tests {
             ]
         );
         assert_eq!(*outcome.borrow(), Some(RunOutcome::Cancelled));
+    }
+
+    // What UniFFI does when the app's callback throws: the call panics on the Rust side.
+    #[derive(Clone, Default)]
+    struct ThrowingListener {
+        calls: Arc<AtomicUsize>,
+        failures: usize,
+    }
+
+    impl RunListener for ThrowingListener {
+        fn events_pending(&self) {
+            if self.calls.fetch_add(1, Ordering::SeqCst) < self.failures {
+                panic!("Callback interface failure: the dispatcher is shut down");
+            }
+        }
+    }
+
+    #[test]
+    fn a_listener_that_throws_at_the_end_still_ends_the_run() {
+        let state = RunState::new(Box::new(ThrowingListener {
+            failures: usize::MAX,
+            ..ThrowingListener::default()
+        }));
+        let outcome = state.outcome();
+
+        state.finish(RunOutcome::Cancelled, TransactionStateTag::Idle);
+
+        assert_eq!(*outcome.borrow(), Some(RunOutcome::Cancelled));
+        assert_eq!(
+            state.drain(),
+            [RunEvent::Finished {
+                outcome: RunOutcome::Cancelled,
+                transaction: TransactionStateTag::Idle,
+            }]
+        );
+    }
+
+    #[test]
+    fn a_listener_that_throws_loses_one_wake_and_no_events() {
+        let listener = ThrowingListener {
+            failures: 1,
+            ..ThrowingListener::default()
+        };
+        let state = RunState::new(Box::new(listener.clone()));
+
+        state.post(rows(0, 1));
+        state.post(rows(0, 2));
+        assert_eq!(listener.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(state.drain(), [rows(0, 2)]);
+
+        state.post(rows(0, 3));
+        assert_eq!(listener.calls.load(Ordering::SeqCst), 2);
+        assert_eq!(state.drain(), [rows(0, 3)]);
+    }
+
+    #[derive(Clone, Default)]
+    struct OutcomeAtWake {
+        outcome: Arc<OnceLock<watch::Receiver<Option<RunOutcome>>>>,
+        seen: Arc<Mutex<Vec<Option<RunOutcome>>>>,
+    }
+
+    impl RunListener for OutcomeAtWake {
+        fn events_pending(&self) {
+            let outcome = self.outcome.get().and_then(|outcome| outcome.borrow().clone());
+            self.seen.lock().unwrap().push(outcome);
+        }
+    }
+
+    #[test]
+    fn the_outcome_is_set_before_the_last_wake() {
+        let listener = OutcomeAtWake::default();
+        let state = RunState::new(Box::new(listener.clone()));
+        listener.outcome.set(state.outcome()).unwrap();
+
+        state.finish(RunOutcome::Cancelled, TransactionStateTag::Idle);
+
+        assert_eq!(*listener.seen.lock().unwrap(), [Some(RunOutcome::Cancelled)]);
     }
 }

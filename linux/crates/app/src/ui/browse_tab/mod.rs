@@ -27,6 +27,7 @@ mod fetch;
 mod grid_handlers;
 mod grid_input;
 mod imp;
+mod json_view;
 mod layout;
 mod page_label;
 mod page_reply;
@@ -103,7 +104,7 @@ pub struct BrowseTabInit {
     pub tracker: TabTrackerHandle,
     pub schema: Option<String>,
     pub table: String,
-    pub connection_id: Option<uuid::Uuid>,
+    pub state_key: Option<crate::persistence::TableStateKey>,
     pub read_only: bool,
     pub page_size: u64,
     pub initial_offset: u64,
@@ -111,6 +112,7 @@ pub struct BrowseTabInit {
     pub filter: TableFilter,
     pub column_layouts: crate::persistence::ColumnLayoutStore,
     pub filter_settings: crate::persistence::FilterSettingsStore,
+    pub highlight_rules: crate::persistence::HighlightRulesStore,
     /// The session the tab reads through. The tab belongs to it and is
     /// closed before it shuts down.
     pub session: Arc<Session>,
@@ -128,7 +130,8 @@ impl BrowseTab {
         let tab: Self = glib::Object::new();
         // The model and the inline strip start with the same FilterSet.
         let (initial_filter, reveal_filter) = init.filter.opening(|| {
-            init.connection_id
+            init.state_key
+                .as_ref()
                 .map(|id| init.filter_settings.filters(id, init.schema.as_deref(), &init.table))
                 .unwrap_or_default()
         });
@@ -165,7 +168,7 @@ impl BrowseTab {
             layout::GridInit {
                 table,
                 label: table_label,
-                connection_id: init.connection_id,
+                state_key: init.state_key.clone(),
                 sorting: grid_sorting(dialect.as_deref(), initial_sort),
                 tracker: init.tracker.clone(),
                 settings: init.settings,
@@ -175,6 +178,7 @@ impl BrowseTab {
                 tasks: init.tasks.clone(),
             },
         );
+        restore_highlights(&grid, &init.highlight_rules, init.state_key.clone());
         let link_changes = init.session.link_changes();
         let model = BrowseModel {
             this: tab.downgrade(),
@@ -192,9 +196,10 @@ impl BrowseTab {
             tracker: init.tracker,
             schema: init.schema,
             table: init.table,
-            connection_id: init.connection_id,
+            state_key: init.state_key,
             read_only: init.read_only,
             filter_settings: init.filter_settings,
+            highlight_rules: init.highlight_rules,
             pager: BrowsePager::new(init.page_size, init.initial_offset),
             deadlines: init.deadlines,
             current_sort: initial_sort,
@@ -224,6 +229,10 @@ impl BrowseTab {
     pub(crate) fn shown_save_action(&self) -> Option<gio::SimpleAction> {
         if self.shows_structure() {
             return self.structure_tab()?.save_action();
+        }
+        // The JSON preview edits nothing, so Save stays with the grid's own view.
+        if self.shows_json() {
+            return None;
         }
         self.imp().save_action.get().cloned()
     }
@@ -283,6 +292,7 @@ impl BrowseTab {
             }
         }
         imp.dispatching.set(false);
+        self.refresh_json();
     }
 
     /// Stop every read the tab has running and stop following
@@ -291,6 +301,9 @@ impl BrowseTab {
     pub fn shutdown(&self) {
         let imp = self.imp();
         imp.link_watch.take();
+        if let Some(view) = imp.json_view.borrow().as_ref() {
+            view.shutdown();
+        }
         if let Ok(mut model) = imp.model.try_borrow_mut()
             && let Some(model) = model.as_mut()
         {
@@ -429,13 +442,7 @@ impl BrowseTab {
 
     pub fn offer_structure(&self) {
         let imp = self.imp();
-        imp.view_toggle.set_visible(true);
-        let tab = self.downgrade();
-        imp.view_stack.connect_visible_child_name_notify(move |_| {
-            if let Some(tab) = tab.upgrade() {
-                tab.follow_selected_view();
-            }
-        });
+        imp.view_stack.page(&*imp.structure_host).set_visible(true);
     }
 
     pub fn set_structure(&self, structure: &crate::ui::structure_tab::StructureTab) {
@@ -456,26 +463,44 @@ impl BrowseTab {
         self.imp().view_stack.visible_child_name().as_deref() == Some("structure")
     }
 
+    pub(super) fn shows_data(&self) -> bool {
+        self.imp().view_stack.visible_child_name().as_deref() == Some("data")
+    }
+
+    pub(super) fn shows_json(&self) -> bool {
+        self.imp().view_stack.visible_child_name().as_deref() == Some("json")
+    }
+
     fn follow_selected_view(&self) {
         let imp = self.imp();
         let structure = self.shows_structure();
         // Finish an open cell before hiding its editor, so close and Save see the draft.
-        if structure {
+        if !self.shows_data() {
             self.commit_cell_edit();
         }
         if structure && !imp.structure_requested.replace(true) {
             self.emit_by_name::<()>("structure-requested", &[]);
         }
-        imp.data_start.set_visible(!structure);
-        imp.data_end.set_visible(!structure);
+        imp.data_start.set_visible(self.shows_data());
+        imp.data_end.set_visible(self.shows_data());
+        imp.rows_start.set_visible(!structure);
+        imp.json_end.set_visible(self.shows_json());
         imp.structure_start.set_visible(structure);
         imp.structure_end.set_visible(structure);
         self.sync_structure_actions();
-        let actions = imp.browse_actions.get().filter(|_| !structure);
+        let actions = if self.shows_data() {
+            imp.browse_actions.get()
+        } else if self.shows_json() {
+            imp.json_browse_actions.get()
+        } else {
+            None
+        };
         self.insert_action_group("browse", actions);
+        self.insert_action_group("json", imp.json_actions.get().filter(|_| self.shows_json()));
         if let Some(model) = imp.model.borrow_mut().as_mut() {
             model.show_grid_actions();
         }
+        self.refresh_json();
         self.emit_by_name::<()>("save-action-changed", &[]);
     }
 
@@ -497,6 +522,36 @@ impl BrowseTab {
             }
         } else {
             self.send(PagingInput::RequestRefresh);
+        }
+    }
+
+    fn refresh_json(&self) {
+        if !self.shows_json() {
+            return;
+        }
+        let imp = self.imp();
+        let Some(grid) = imp.grid.get() else {
+            return;
+        };
+        if imp.json_view.borrow().is_none() {
+            let weak = self.downgrade();
+            let view = json_view::JsonView::new(grid, move || {
+                if let Some(tab) = weak.upgrade() {
+                    tab.send(PagingInput::RequestRefresh);
+                }
+            });
+            libadwaita::prelude::BinExt::set_child(&*imp.json_host, Some(view.widget()));
+            let group = gtk::gio::SimpleActionGroup::new();
+            group.add_action(view.copy_action());
+            let _ = imp.json_actions.set(group);
+            imp.json_view.replace(Some(view));
+        }
+        self.insert_action_group("json", imp.json_actions.get());
+        if let (Some(view), Some(presentation)) = (
+            imp.json_view.borrow().as_ref(),
+            self.read(|model| model.load.presentation()),
+        ) {
+            view.refresh(grid, presentation);
         }
     }
 
@@ -596,9 +651,10 @@ pub(crate) struct BrowseModel {
     tracker: TabTrackerHandle,
     schema: Option<String>,
     table: String,
-    connection_id: Option<uuid::Uuid>,
+    state_key: Option<crate::persistence::TableStateKey>,
     read_only: bool,
     filter_settings: crate::persistence::FilterSettingsStore,
+    highlight_rules: crate::persistence::HighlightRulesStore,
 
     /// Where the page the tab reads starts, and how many rows it holds.
     pager: BrowsePager,
@@ -705,6 +761,31 @@ impl BrowseModel {
     fn has_primary_key(&self) -> bool {
         self.current_columns.iter().any(|c| c.primary_key)
     }
+}
+
+fn restore_highlights(
+    grid: &DataGrid,
+    store: &crate::persistence::HighlightRulesStore,
+    state_key: Option<crate::persistence::TableStateKey>,
+) {
+    let Some(state_key) = state_key else {
+        return;
+    };
+    let opened = grid.config().and_then(|config| config.table.clone());
+    if let Some(table) = opened {
+        let rules = store.rules(&state_key, table.schema.as_deref(), &table.name);
+        if !rules.is_empty() {
+            grid.set_highlight_rules(rules);
+        }
+    }
+    let store = store.clone();
+    // The grid's table, not the opening one, so a rename moves the rules with it.
+    grid.connect_highlight_rules_changed(move |grid| {
+        let Some(table) = grid.config().and_then(|config| config.table.clone()) else {
+            return;
+        };
+        store.set_rules(&state_key, table.schema.as_deref(), &table.name, grid.highlight_rules());
+    });
 }
 
 /// Whether a page of a table can be sorted on its engine. Without a

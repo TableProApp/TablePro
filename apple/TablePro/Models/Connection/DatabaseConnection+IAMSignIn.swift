@@ -36,8 +36,24 @@ enum GoogleCloudSQLCredentialKind: Equatable, Sendable {
 extension DatabaseConnection {
     static let iamSignInFieldId = "awsAuth"
 
+    // Only a value the type's own Authentication picker offers. A definition from someone else can carry the field on
+    // an engine that takes no IAM token, which would sign one and send it to whatever servers that engine dials. The
+    // Keyspaces engines are the exception for AWS: their plugin signs in itself and this host mints nothing for them.
     var iamSignIn: IAMSignInMethod? {
-        IAMSignInMethod(pickerValue: additionalFields[Self.iamSignInFieldId])
+        guard let value = additionalFields[Self.iamSignInFieldId],
+              let method = IAMSignInMethod(pickerValue: value)
+        else { return nil }
+        if resolvesAWSIAMInDriver, case .aws = method {
+            return method
+        }
+        return Self.offersSignIn(value, for: type) ? method : nil
+    }
+
+    private static func offersSignIn(_ value: String, for type: DatabaseType) -> Bool {
+        let field = PluginMetadataRegistry.shared.snapshot(for: type)?.connection.additionalConnectionFields
+            .first { $0.id == iamSignInFieldId }
+        guard case .dropdown(let options) = field?.fieldType else { return false }
+        return options.contains { $0.value == value }
     }
 
     var usesAWSIAM: Bool {

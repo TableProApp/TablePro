@@ -45,13 +45,13 @@ public final class ConnectionManager: @unchecked Sendable {
 
     // A teardown wait that gives up leaves the teardown running and counting as suspension-blocking.
     public func connect(
-        _ connection: DatabaseConnection,
+        _ saved: DatabaseConnection,
         prompter: (any ConnectionPrompter)? = nil
     ) async throws -> ConnectionSession {
         // Ahead of beginAttempt, so a refusal neither cancels an attempt in flight nor tears down the open session.
-        if let refusal = driverFactory.refusal(for: connection) { throw refusal }
-        let generation = beginAttempt(for: connection.id)
-        switch await awaitTeardown(of: connection.id, bound: .after(teardownWaitLimit)) {
+        if let refusal = driverFactory.refusal(for: saved) { throw refusal }
+        let generation = beginAttempt(for: saved.id)
+        switch await awaitTeardown(of: saved.id, bound: .after(teardownWaitLimit)) {
         case .cleared:
             break
         case .cancelled:
@@ -59,6 +59,9 @@ public final class ConnectionManager: @unchecked Sendable {
         case .stillClosing:
             throw ConnectionError.previousSessionStillClosing
         }
+        guard isCurrentAttempt(generation, for: saved.id) else { throw CancellationError() }
+        // Everything after this mints for, tunnels to and dials the endpoint this names.
+        let connection = try await driverFactory.resolvingEndpointAlias(for: saved)
         guard isCurrentAttempt(generation, for: connection.id) else { throw CancellationError() }
         let stored = try secureStore.retrieve(forKey: Self.passwordKey(for: connection.id))
         let password = try await driverFactory.resolvePassword(for: connection, stored: stored, secureStore: secureStore)

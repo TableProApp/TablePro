@@ -5,10 +5,10 @@
 use std::sync::Arc;
 
 use tablepro_core::{Connection, EditorSession, RowLimit, RunEnd, RunOptions, Truncation};
-use tablepro_test_fixtures::MysqlFixture;
+use tablepro_test_fixtures::{MysqlFixture, MysqlOptions};
 use tokio_util::sync::CancellationToken;
 
-use crate::support::{FLAVOURS, connect, count, run_ok, run_with, session, setup, start};
+use crate::support::{FLAVOURS, connect, connect_root, count, run_ok, run_with, session, setup, start, start_with};
 
 const BIG_ROWS: u64 = 200_000;
 
@@ -135,6 +135,105 @@ async fn insert_select_copies_200000() {
             count(connection.as_ref(), "SELECT COUNT(*) FROM copied").await,
             BIG_ROWS
         );
+        editor.close().await;
+        connection.close().await.expect("a close");
+    }
+}
+
+// The server cuts INTO OUTFILE at sql_select_limit too, and a plain read before it leaves the limit set.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn select_into_outfile_after_a_limited_read_writes_every_row() {
+    for flavour in FLAVOURS {
+        let fixture = start_with(
+            MysqlOptions::new(flavour)
+                .allowing_plaintext()
+                .trusting_function_creators()
+                .with_server_argument("--secure-file-priv=/tmp"),
+        )
+        .await;
+        let (connection, owner) = with_big(&fixture).await;
+        owner.close().await;
+        // FILE is a global privilege, which only root holds here.
+        let root = connect_root(&fixture).await;
+        let editor = session(root.as_ref()).await;
+
+        let (_, before) = run_with(editor.as_ref(), "SELECT id FROM big", limited(100)).await;
+        let (summary, written) = run_with(
+            editor.as_ref(),
+            "SELECT id FROM big INTO OUTFILE '/tmp/every_id.csv'",
+            limited(100),
+        )
+        .await;
+
+        assert_eq!(
+            before.finished(),
+            [(100, None, Truncation::ServerStopped)],
+            "{flavour:?}"
+        );
+        assert_eq!(summary.end, RunEnd::Completed, "{flavour:?}");
+        assert_eq!(written.started(), 0, "{flavour:?}");
+        assert_eq!(written.affected(), [Some(BIG_ROWS)], "{flavour:?}");
+
+        // The backslash makes the driver send this whole, so its first word is an INSERT.
+        setup(root.as_ref(), &["CREATE TABLE log (path varchar(20))"]).await;
+        run_with(editor.as_ref(), "SELECT id FROM big", limited(100)).await;
+        let (summary, batch) = run_with(
+            editor.as_ref(),
+            r"INSERT INTO log VALUES ('C:\\tmp'); SELECT id FROM big INTO OUTFILE '/tmp/whole_batch.csv'",
+            limited(100),
+        )
+        .await;
+
+        assert_eq!(summary.end, RunEnd::Completed, "{flavour:?}");
+        assert_eq!(batch.affected(), [Some(1), Some(BIG_ROWS)], "{flavour:?}");
+        editor.close().await;
+        root.close().await.expect("a close");
+        connection.close().await.expect("a close");
+    }
+}
+
+// A locking read that stopped at the limit would lock only the rows before it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn locking_reads_read_past_limit() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let (connection, editor) = with_big(&fixture).await;
+
+        for sql in ["SELECT id FROM big FOR UPDATE", "SELECT id FROM big LOCK IN SHARE MODE"] {
+            let (summary, events) = run_with(editor.as_ref(), sql, limited(100)).await;
+
+            assert_eq!(summary.end, RunEnd::Completed, "{flavour:?}: {sql}");
+            assert_eq!(events.rows().len(), 100, "{flavour:?}: {sql}");
+            assert_eq!(
+                events.finished(),
+                [(100, Some(BIG_ROWS), Truncation::ReadPastLimit)],
+                "{flavour:?}: {sql}"
+            );
+        }
+        editor.close().await;
+        connection.close().await.expect("a close");
+    }
+}
+
+// The limit is set before a run's first statement, so a SET of the user's in the run holds after it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_users_own_select_limit_holds_for_the_rest_of_its_run() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let (connection, editor) = with_big(&fixture).await;
+
+        let (summary, events) = run_with(
+            editor.as_ref(),
+            "SET SESSION sql_select_limit = 2; SELECT id FROM big",
+            limited(100),
+        )
+        .await;
+
+        assert_eq!(summary.end, RunEnd::Completed, "{flavour:?}");
+        assert_eq!(events.finished(), [(2, Some(2), Truncation::Complete)], "{flavour:?}");
         editor.close().await;
         connection.close().await.expect("a close");
     }

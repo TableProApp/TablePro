@@ -26,13 +26,17 @@ internal actor SQLFavoriteStorage {
 
     private let databaseURL: URL
     private let removeDatabaseOnDeinit: Bool
+    private let onSetAside: @Sendable (SetAsideDamagedStore) -> Void
+    var syncRefillPending = false
 
     init(
         databaseURL: URL = SQLFavoriteStorage.defaultDatabaseURL(),
-        removeDatabaseOnDeinit: Bool = false
+        removeDatabaseOnDeinit: Bool = false,
+        onSetAside: @escaping @Sendable (SetAsideDamagedStore) -> Void = { _ in }
     ) {
         self.databaseURL = databaseURL
         self.removeDatabaseOnDeinit = removeDatabaseOnDeinit
+        self.onSetAside = onSetAside
     }
 
     static func defaultDatabaseURL() -> URL {
@@ -61,16 +65,14 @@ internal actor SQLFavoriteStorage {
         let dir = databaseURL.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
-        let dbPath = databaseURL.path(percentEncoded: false)
-
-        var pointer: OpaquePointer?
-        let openResult = sqlite3_open(dbPath, &pointer)
-        guard openResult == SQLITE_OK else {
-            Self.logger.error("Error opening database: \(String(cString: sqlite3_errstr(openResult)), privacy: .public)")
-            sqlite3_close_v2(pointer)
+        guard case .opened(let pointer, let setAside) = LocalSQLiteStoreOpener.open(at: databaseURL) else {
+            Self.logger.error("The saved queries database could not be opened")
             return
         }
         dbHandle.pointer = pointer
+        if let setAside {
+            onSetAside(setAside)
+        }
 
         execute("PRAGMA journal_mode=WAL;")
         execute("PRAGMA synchronous=NORMAL;")
@@ -78,12 +80,16 @@ internal actor SQLFavoriteStorage {
         createTables()
         migrateIfNeeded()
         Self.versionSchemaStatements.forEach { execute($0) }
+        loadSyncRefillState(afterSetAside: setAside != nil)
     }
 
     // MARK: - Schema Migration
 
     private func migrateIfNeeded() {
-        let currentVersion = getUserVersion()
+        guard let currentVersion = getUserVersion() else {
+            Self.logger.error("The saved queries schema version could not be read, so no migration ran")
+            return
+        }
 
         if currentVersion < 1 {
             setUserVersion(2)
@@ -91,73 +97,24 @@ internal actor SQLFavoriteStorage {
         }
 
         if currentVersion < 2 {
-            execute("ALTER TABLE favorites RENAME TO favorites_old")
-            execute("""
-                CREATE TABLE IF NOT EXISTS favorites (
-                    id TEXT PRIMARY KEY, name TEXT NOT NULL, query TEXT NOT NULL,
-                    keyword TEXT, folder_id TEXT, connection_id TEXT,
-                    sort_order INTEGER NOT NULL DEFAULT 0, created_at REAL NOT NULL, updated_at REAL NOT NULL
-                )
-            """)
-            execute("""
-                INSERT INTO favorites SELECT id, name, query, keyword, folder_id, connection_id,
-                sort_order, created_at, updated_at FROM favorites_old
-            """)
-            execute("DROP TABLE favorites_old")
-
-            execute("ALTER TABLE folders RENAME TO folders_old")
-            execute("""
-                CREATE TABLE IF NOT EXISTS folders (
-                    id TEXT PRIMARY KEY, name TEXT NOT NULL, parent_id TEXT, connection_id TEXT,
-                    sort_order INTEGER NOT NULL DEFAULT 0, created_at REAL NOT NULL, updated_at REAL NOT NULL
-                )
-            """)
-            execute("""
-                INSERT INTO folders SELECT id, name, parent_id, connection_id,
-                sort_order, created_at, updated_at FROM folders_old
-            """)
-            execute("DROP TABLE folders_old")
-
-            execute("CREATE INDEX IF NOT EXISTS idx_favorites_connection ON favorites(connection_id);")
-            execute("CREATE INDEX IF NOT EXISTS idx_favorites_folder ON favorites(folder_id);")
-            execute("CREATE INDEX IF NOT EXISTS idx_favorites_keyword ON favorites(keyword);")
-            execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_favorites_keyword_scope ON favorites(keyword, connection_id) WHERE keyword IS NOT NULL;")
-            execute("CREATE INDEX IF NOT EXISTS idx_folders_connection ON folders(connection_id);")
-            execute("CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_id);")
-
-            execute("DROP TRIGGER IF EXISTS favorites_ai;")
-            execute("DROP TRIGGER IF EXISTS favorites_ad;")
-            execute("DROP TRIGGER IF EXISTS favorites_au;")
-            execute("""
-                CREATE TRIGGER IF NOT EXISTS favorites_ai AFTER INSERT ON favorites BEGIN
-                    INSERT INTO favorites_fts(rowid, name, query, keyword) VALUES (new.rowid, new.name, new.query, new.keyword);
-                END;
-            """)
-            execute("""
-                CREATE TRIGGER IF NOT EXISTS favorites_ad AFTER DELETE ON favorites BEGIN
-                    INSERT INTO favorites_fts(favorites_fts, rowid, name, query, keyword) VALUES('delete', old.rowid, old.name, old.query, old.keyword);
-                END;
-            """)
-            execute("""
-                CREATE TRIGGER IF NOT EXISTS favorites_au AFTER UPDATE ON favorites BEGIN
-                    INSERT INTO favorites_fts(favorites_fts, rowid, name, query, keyword) VALUES('delete', old.rowid, old.name, old.query, old.keyword);
-                    INSERT INTO favorites_fts(rowid, name, query, keyword) VALUES (new.rowid, new.name, new.query, new.keyword);
-                END;
-            """)
-
-            execute("INSERT INTO favorites_fts(favorites_fts) VALUES('rebuild');")
-
-            setUserVersion(2)
+            // Stamped inside the transaction, so a failed step rolls back to the old tables intact.
+            let migrated = inTransaction { () -> Bool? in
+                let applied = Self.version2MigrationStatements.allSatisfy { execute($0) }
+                return applied ? true : nil
+            }
+            if migrated == nil {
+                Self.logger.error("The saved queries migration to version 2 failed and was rolled back")
+            }
         }
     }
 
-    private func getUserVersion() -> Int32 {
+    private func getUserVersion() -> Int32? {
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
         guard sqlite3_prepare_v2(db, "PRAGMA user_version", -1, &statement, nil) == SQLITE_OK,
               sqlite3_step(statement) == SQLITE_ROW
         else {
-            return 0
+            return nil
         }
         return sqlite3_column_int(statement, 0)
     }
@@ -242,18 +199,21 @@ internal actor SQLFavoriteStorage {
 
     // MARK: - Helper Methods
 
-    private func execute(_ sql: String) {
+    @discardableResult
+    private func execute(_ sql: String) -> Bool {
         var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
         let prepareResult = sqlite3_prepare_v2(db, sql, -1, &statement, nil)
-        if prepareResult == SQLITE_OK {
-            let stepResult = sqlite3_step(statement)
-            if stepResult != SQLITE_DONE && stepResult != SQLITE_ROW {
-                Self.logger.error("sqlite3_step failed (\(stepResult)): \(String(cString: sqlite3_errmsg(self.db)))")
-            }
-        } else {
+        guard prepareResult == SQLITE_OK else {
             Self.logger.error("sqlite3_prepare_v2 failed (\(prepareResult)): \(String(cString: sqlite3_errmsg(self.db)))")
+            return false
         }
-        sqlite3_finalize(statement)
+        let stepResult = sqlite3_step(statement)
+        guard stepResult == SQLITE_DONE || stepResult == SQLITE_ROW else {
+            Self.logger.error("sqlite3_step failed (\(stepResult)): \(String(cString: sqlite3_errmsg(self.db)))")
+            return false
+        }
+        return true
     }
 
     // MARK: - Favorite Operations

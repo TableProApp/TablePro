@@ -48,7 +48,7 @@ actor VaultAuthenticator {
     private let readFile: @Sendable (String) -> String?
     private let now: @Sendable () -> ContinuousClock.Instant
     private let openURL: @Sendable (URL) async -> Void
-    private let makeCallbackReceiver: @Sendable () -> any VaultOIDCCallbackReceiving
+    private let makeCallbackReceiver: @Sendable (_ expectedState: String) -> any VaultOIDCCallbackReceiving
 
     private var minted: [LoginKey: VaultToken] = [:]
     private var oidcSignIns: [LoginKey: Task<VaultToken, Error>] = [:]
@@ -61,7 +61,9 @@ actor VaultAuthenticator {
         openURL: @escaping @Sendable (URL) async -> Void = { url in
             await MainActor.run { _ = WebPageOpener.open(url, scope: .httpsOrLoopbackHTTP) }
         },
-        makeCallbackReceiver: @escaping @Sendable () -> any VaultOIDCCallbackReceiving = { VaultOIDCLoopback() }
+        makeCallbackReceiver: @escaping @Sendable (_ expectedState: String) -> any VaultOIDCCallbackReceiving = {
+            VaultOIDCLoopback(expectedState: $0)
+        }
     ) {
         self.transport = transport
         self.environment = environment
@@ -180,10 +182,6 @@ actor VaultAuthenticator {
     }
 
     private func performOIDCSignIn(_ login: VaultOIDCLogin) async throws -> VaultToken {
-        let receiver = makeCallbackReceiver()
-        try await receiver.start()
-        defer { receiver.stop() }
-
         let client = VaultClient(endpoint: login.endpoint, transport: transport)
         let nonce = UUID().uuidString.replacingOccurrences(of: "-", with: "")
             + UUID().uuidString.replacingOccurrences(of: "-", with: "")
@@ -198,13 +196,23 @@ actor VaultAuthenticator {
         } catch let error as VaultRequestError {
             throw VaultError.oidcFailed(error.message)
         }
+        // Vault checks this state on the callback; the loopback lets no other callback end the wait.
+        guard let state = Self.singleQueryValue(named: "state", in: authURL), !state.isEmpty else {
+            throw VaultError.oidcFailed(String(
+                localized: "Vault returned a sign-in page without a state, so TablePro could not check the browser's answer."
+            ))
+        }
+
+        let receiver = makeCallbackReceiver(state)
+        try await receiver.start()
+        defer { receiver.stop() }
         await openURL(authURL)
 
         let parameters = try await receiver.callback(timeout: Self.oidcCallbackTimeout)
         if let error = parameters["error"] {
             throw VaultError.oidcFailed(parameters["error_description"] ?? error)
         }
-        guard let state = parameters["state"], let code = parameters["code"], !code.isEmpty else {
+        guard let code = parameters["code"], !code.isEmpty else {
             throw VaultError.oidcFailed(String(localized: "The browser returned no authorization code."))
         }
         do {
@@ -214,6 +222,11 @@ actor VaultAuthenticator {
         } catch let error as VaultRequestError {
             throw VaultError.oidcFailed(error.message)
         }
+    }
+
+    private static func singleQueryValue(named name: String, in url: URL) -> String? {
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        return LoopbackRedirectRequest.singleValue(named: name, in: items)
     }
 
     // MARK: - Minted tokens

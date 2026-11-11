@@ -84,6 +84,22 @@ nonisolated extension ErrorClassifier {
                 recovery: String(localized: "Enter the RDS Endpoint in this connection's Authentication section."),
                 opensEditor: true
             )
+        case .endpointLookupFailed:
+            return failure(
+                error,
+                .network,
+                title: String(localized: "DNS Lookup Failed"),
+                recovery: String(localized: "Check the network connection and try again."),
+                opensEditor: false
+            )
+        case .rdsEndpointNotDialed:
+            return failure(
+                error,
+                .config,
+                title: String(localized: "RDS Endpoint Does Not Match"),
+                recovery: String(localized: "Clear the RDS Endpoint in this connection's Authentication section."),
+                opensEditor: true
+            )
         case .rdsEndpointInvalid:
             return failure(
                 error,

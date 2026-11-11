@@ -50,10 +50,14 @@ struct QueryHistoryView: View {
                 }
             }
 
-            if !coordinator.queryHistory.isEmpty {
+            if !coordinator.queryHistory.isEmpty || coordinator.keepsDamagedHistoryCopy {
                 Section {
                     Button(String(localized: "Clear All History"), role: .destructive) {
                         showClearConfirmation = true
+                    }
+                } footer: {
+                    if coordinator.keepsDamagedHistoryCopy {
+                        Text("A damaged history file from every connection was kept on this device. Clear All History deletes it.")
                     }
                 }
             }
@@ -65,7 +69,7 @@ struct QueryHistoryView: View {
             }
         }
         .overlay {
-            if coordinator.queryHistory.isEmpty {
+            if coordinator.queryHistory.isEmpty, !coordinator.keepsDamagedHistoryCopy {
                 ContentUnavailableView(
                     "No History",
                     systemImage: "clock",

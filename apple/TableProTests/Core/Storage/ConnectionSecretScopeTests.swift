@@ -1,102 +1,14 @@
 import Foundation
 @testable import TablePro
 import TableProSyncTransport
+import TableProTestSupport
 import Testing
-
-// One synced and one local value per key, as the keychain holds them. Nothing here removes a synced value except delete.
-private final class ScopeRecordingKeychain: KeychainStoring, @unchecked Sendable {
-    private let lock = NSLock()
-    private var synced: [String: String] = [:]
-    private var local: [String: String] = [:]
-    private var unreadableKeys: Set<String> = []
-    private var failingKeys: Set<String> = []
-
-    func seedSynced(_ value: String, forKey key: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        synced[key] = value
-    }
-
-    func seedLocal(_ value: String, forKey key: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        local[key] = value
-    }
-
-    func makeUnreadable(_ key: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        unreadableKeys.insert(key)
-    }
-
-    func makeReadable(_ key: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        unreadableKeys.remove(key)
-    }
-
-    func failWrites(to key: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        failingKeys.insert(key)
-    }
-
-    func syncedValue(forKey key: String) -> String? {
-        lock.lock()
-        defer { lock.unlock() }
-        return synced[key]
-    }
-
-    func localValue(forKey key: String) -> String? {
-        lock.lock()
-        defer { lock.unlock() }
-        return local[key]
-    }
-
-    @discardableResult
-    func writeString(_ value: String, forKey key: String) -> Bool {
-        writeString(value, forKey: key, deviceOnly: false)
-    }
-
-    // Password sync is on in this model, so a write that is not device-only is a synced one.
-    @discardableResult
-    func writeString(_ value: String, forKey key: String, deviceOnly: Bool) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !failingKeys.contains(key) else { return false }
-        if deviceOnly {
-            local[key] = value
-        } else {
-            synced[key] = value
-            local[key] = nil
-        }
-        return true
-    }
-
-    func readStringResult(forKey key: String) -> KeychainStringResult {
-        readStringResult(forKey: key, deviceOnly: false)
-    }
-
-    func readStringResult(forKey key: String, deviceOnly: Bool) -> KeychainStringResult {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !unreadableKeys.contains(key) else { return .locked }
-        let value = deviceOnly ? local[key] ?? synced[key] : synced[key] ?? local[key]
-        return value.map { .found($0) } ?? .notFound
-    }
-
-    func delete(forKey key: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        synced[key] = nil
-        local[key] = nil
-    }
-}
 
 @MainActor
 struct ConnectionSecretScopeTests {
     private let keychain = ScopeRecordingKeychain()
     private let suite: EphemeralDefaults
+    private let tracker: SyncChangeTracker
     private let storage: ConnectionStorage
 
     init() throws {
@@ -105,10 +17,11 @@ struct ConnectionSecretScopeTests {
             .appendingPathComponent("tablepro-tests")
             .appendingPathComponent("secret-scope-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: suite.defaults))
         storage = ConnectionStorage(
             fileURL: directory.appendingPathComponent("connections.json"),
             userDefaults: suite.defaults,
-            syncTracker: SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: suite.defaults)),
+            syncTracker: tracker,
             keychain: keychain,
             appEvents: AppEvents(),
             integrity: ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: InMemoryKeychain()))
@@ -372,5 +285,83 @@ struct ConnectionSecretScopeTests {
         #expect(keychain.localValue(forKey: tokenSecretKey) == "secret")
         #expect(keychain.syncedValue(forKey: passwordKey(id)) == nil)
         #expect(keychain.syncedValue(forKey: tokenSecretKey) == nil)
+    }
+
+    @Test("A delete from another device removes this Mac's own secrets and leaves the ones iCloud Keychain holds")
+    func remoteDeleteKeepsTheSyncedSecrets() {
+        let connection = TestFixtures.makeConnection(type: .mongodb)
+        let tokenKey = "com.TablePro.plugin.mongoAWSSessionToken.\(connection.id.uuidString)"
+        for key in [passwordKey(connection.id), totpKey(connection.id), tokenKey] {
+            keychain.seedLocal("local", forKey: key)
+            keychain.seedSynced("synced", forKey: key)
+        }
+
+        storage.deleteSecrets(of: [connection], origin: .remote)
+
+        for key in [passwordKey(connection.id), totpKey(connection.id), tokenKey] {
+            #expect(keychain.localValue(forKey: key) == nil)
+            #expect(keychain.syncedValue(forKey: key) == "synced")
+        }
+    }
+
+    @Test("Deleting a connection here removes every secret it has, the synced ones too")
+    func localDeleteRemovesEverySecret() {
+        let connection = TestFixtures.makeConnection(type: .mongodb)
+        #expect(storage.addConnection(connection, password: "hunter2"))
+        let tokenKey = "com.TablePro.plugin.mongoAWSSessionToken.\(connection.id.uuidString)"
+        for key in [totpKey(connection.id), sslKey(connection.id), tokenKey] {
+            keychain.seedLocal("local", forKey: key)
+            keychain.seedSynced("synced", forKey: key)
+        }
+
+        #expect(storage.deleteConnection(connection))
+
+        for key in [passwordKey(connection.id), totpKey(connection.id), sslKey(connection.id), tokenKey] {
+            #expect(keychain.localValue(forKey: key) == nil)
+            #expect(keychain.syncedValue(forKey: key) == nil)
+        }
+    }
+
+    enum LocalOnlyHistory: CaseIterable {
+        case pushedBeforeMarkedLocalOnly
+        case pulledFromAnotherDevice
+        case localOnlyFromTheStart
+    }
+
+    // Local only from the start too: nothing on this Mac can prove no other device holds the row.
+    @Test("A Local only delete never removes the synced secrets, whatever the row's history",
+          arguments: LocalOnlyHistory.allCases, [false, true])
+    func localOnlyDeleteKeepsTheSyncedSecrets(_ history: LocalOnlyHistory, inBatch: Bool) async throws {
+        var localOnly = makeConnection(localOnly: history == .localOnlyFromTheStart)
+        if history == .pulledFromAnotherDevice {
+            localOnly.origin = .synced
+            localOnly.localOnly = true
+        }
+        let synced = makeConnection(localOnly: false)
+        #expect(storage.saveConnections([localOnly, synced]))
+        if history == .pushedBeforeMarkedLocalOnly {
+            let marked = storage.mutateConnections(ids: [localOnly.id]) { $0.localOnly = true }
+            #expect(marked)
+            localOnly.localOnly = true
+        }
+        for connection in [localOnly, synced] {
+            keychain.seedLocal("local", forKey: totpKey(connection.id))
+            keychain.seedSynced("synced", forKey: totpKey(connection.id))
+        }
+
+        if inBatch {
+            #expect(storage.deleteConnections([localOnly, synced]))
+        } else {
+            #expect(storage.deleteConnection(localOnly))
+        }
+
+        #expect(keychain.localValue(forKey: totpKey(localOnly.id)) == nil)
+        #expect(keychain.syncedValue(forKey: totpKey(localOnly.id)) == "synced")
+        if inBatch {
+            #expect(keychain.localValue(forKey: totpKey(synced.id)) == nil)
+            #expect(keychain.syncedValue(forKey: totpKey(synced.id)) == nil)
+        }
+        // The purge releases a Local only owner from a Task; waiting keeps that defaults write inside the case.
+        try await waitUntil { tracker.ownersKeptOffSync.isEmpty }
     }
 }

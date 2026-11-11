@@ -153,7 +153,7 @@ struct VaultAuthenticatorTests {
     @Test("OIDC sign-in opens the browser, trades the callback code for a token and keeps it for the launch")
     func oidcSignIn() async throws {
         let transport = VaultFakeTransport()
-        transport.reply("POST", "auth/oidc/oidc/auth_url", #"{"data":{"auth_url":"https://idp.test/authorize?x=1"}}"#)
+        transport.reply("POST", "auth/oidc/oidc/auth_url", #"{"data":{"auth_url":"https://idp.test/authorize?x=1&state=st"}}"#)
         transport.reply("GET", "auth/oidc/oidc/callback", VaultFixtures.authReply(token: "oidc-token", ttl: 3_600))
         let receiver = VaultFakeCallbackReceiver(parameters: ["state": "st", "code": "cd"])
         let opened = VaultFixtures.OpenedURLs()
@@ -165,8 +165,9 @@ struct VaultAuthenticatorTests {
 
         #expect(token.value == "oidc-token")
         #expect(again == token)
-        #expect(opened.all.map(\.absoluteString) == ["https://idp.test/authorize?x=1"])
+        #expect(opened.all.map(\.absoluteString) == ["https://idp.test/authorize?x=1&state=st"])
         #expect(receiver.wasStopped)
+        #expect(receiver.expectedStates == ["st"])
         let authURLRequest = try #require(transport.requests(to: "auth/oidc/oidc/auth_url").first)
         #expect(authURLRequest.body["redirect_uri"] == "http://localhost:8250/oidc/callback")
         #expect(authURLRequest.body["role"] == "dba")
@@ -179,7 +180,7 @@ struct VaultAuthenticatorTests {
     @Test("An identity provider error ends the OIDC sign-in with its description")
     func oidcProviderError() async {
         let transport = VaultFakeTransport()
-        transport.reply("POST", "auth/oidc/oidc/auth_url", #"{"data":{"auth_url":"https://idp.test/authorize"}}"#)
+        transport.reply("POST", "auth/oidc/oidc/auth_url", #"{"data":{"auth_url":"https://idp.test/authorize?state=st"}}"#)
         let receiver = VaultFakeCallbackReceiver(parameters: ["error": "access_denied", "error_description": "User cancelled"])
         let authenticator = VaultFixtures.authenticator(transport: transport, receiver: receiver)
 
@@ -213,7 +214,7 @@ struct VaultAuthenticatorTests {
     @Test("A local identity provider over plain http on this Mac still opens")
     func oidcAllowsLoopbackSignInPage() async throws {
         let transport = VaultFakeTransport()
-        transport.reply("POST", "auth/oidc/oidc/auth_url", #"{"data":{"auth_url":"http://127.0.0.1:5556/auth?x=1"}}"#)
+        transport.reply("POST", "auth/oidc/oidc/auth_url", #"{"data":{"auth_url":"http://127.0.0.1:5556/auth?x=1&state=st"}}"#)
         transport.reply("GET", "auth/oidc/oidc/callback", VaultFixtures.authReply(token: "oidc-token"))
         let receiver = VaultFakeCallbackReceiver(parameters: ["state": "st", "code": "cd"])
         let opened = VaultFixtures.OpenedURLs()
@@ -222,18 +223,79 @@ struct VaultAuthenticatorTests {
         let token = try await authenticator.token(for: .oidc(mount: "oidc", role: ""), endpoint: endpoint, interactive: true)
 
         #expect(token.value == "oidc-token")
-        #expect(opened.all.map { $0.absoluteString } == ["http://127.0.0.1:5556/auth?x=1"])
+        #expect(opened.all.map { $0.absoluteString } == ["http://127.0.0.1:5556/auth?x=1&state=st"])
     }
 
-    @Test("The callback listener hands back the query of GET /oidc/callback only")
+    @Test("A sign-in page without a state is refused before the browser opens anything")
+    func oidcRefusesSignInPageWithoutState() async {
+        let transport = VaultFakeTransport()
+        transport.reply("POST", "auth/oidc/oidc/auth_url", #"{"data":{"auth_url":"https://idp.test/authorize?x=1"}}"#)
+        let receiver = VaultFakeCallbackReceiver(parameters: ["state": "st", "code": "cd"])
+        let opened = VaultFixtures.OpenedURLs()
+        let authenticator = VaultFixtures.authenticator(transport: transport, receiver: receiver, opened: opened)
+
+        await #expect(throws: VaultError.self) {
+            try await authenticator.token(for: .oidc(mount: "oidc", role: ""), endpoint: endpoint, interactive: true)
+        }
+        #expect(opened.all.isEmpty)
+        #expect(receiver.expectedStates.isEmpty)
+        #expect(transport.requests(to: "auth/oidc/oidc/callback").isEmpty)
+    }
+
+    @Test("The callback listener hands back the query of GET /oidc/callback carrying the expected state")
     func loopbackParsesCallback() {
         let head = Data("GET /oidc/callback?code=abc&state=xyz HTTP/1.1\r\nHost: localhost:8250\r\n\r\n".utf8)
-        #expect(VaultOIDCLoopback.callbackParameters(in: head) == ["code": "abc", "state": "xyz"])
+        #expect(VaultOIDCLoopback.callbackParameters(in: head, expectedState: "xyz") == ["code": "abc", "state": "xyz"])
+
+        let denied = Data("GET /oidc/callback?error=access_denied&error_description=User+cancelled&state=xyz HTTP/1.1\r\n\r\n".utf8)
+        #expect(
+            VaultOIDCLoopback.callbackParameters(in: denied, expectedState: "xyz")
+                == ["error": "access_denied", "error_description": "User cancelled", "state": "xyz"]
+        )
 
         let favicon = Data("GET /favicon.ico HTTP/1.1\r\nHost: localhost:8250\r\n\r\n".utf8)
-        #expect(VaultOIDCLoopback.callbackParameters(in: favicon) == nil)
+        #expect(VaultOIDCLoopback.callbackParameters(in: favicon, expectedState: "xyz") == nil)
 
-        let partial = Data("GET /oidc/callback?code=abc HTTP/1.1\r\nHost: local".utf8)
-        #expect(VaultOIDCLoopback.callbackParameters(in: partial) == nil)
+        let partial = Data("GET /oidc/callback?code=abc&state=xyz HTTP/1.1\r\nHost: local".utf8)
+        #expect(VaultOIDCLoopback.callbackParameters(in: partial, expectedState: "xyz") == nil)
+    }
+
+    @Test("A callback without this sign-in's state is ignored", arguments: [
+        "/oidc/callback?code=abc&state=forged",
+        "/oidc/callback?code=abc",
+        "/oidc/callback?code=abc&state=xyz&state=xyz",
+        "/oidc/callback?error=access_denied&state=forged",
+        "/oidc/callback?error=access_denied"
+    ])
+    func loopbackIgnoresStrayCallback(target: String) {
+        let head = Data("GET \(target) HTTP/1.1\r\nHost: localhost:8250\r\n\r\n".utf8)
+        #expect(VaultOIDCLoopback.callbackParameters(in: head, expectedState: "xyz") == nil)
+    }
+
+    @Test("A stray callback is answered and ignored, and the real one still ends the wait")
+    func loopbackKeepsListeningAfterAStrayCallback() async throws {
+        let loopback = VaultOIDCLoopback(expectedState: "xyz", port: 0)
+        let port = try await loopback.startListening()
+        defer { loopback.stop() }
+        let parameters = Task { try await loopback.callback(timeout: .seconds(30)) }
+
+        let forged = await Self.status(of: "/oidc/callback?code=forged&state=wrong", port: port)
+        let redirect = await Self.status(of: "/oidc/callback?code=real&state=xyz", port: port)
+
+        #expect([forged, redirect] == [400, 200])
+        #expect(try await parameters.value == ["code": "real", "state": "xyz"])
+    }
+
+    private static func status(of target: String, port: UInt16) async -> Int? {
+        guard let url = URL(string: "http://127.0.0.1:\(port)\(target)") else { return nil }
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.finishTasksAndInvalidate() }
+        let request = URLRequest(url: url, timeoutInterval: 5)
+        guard let (_, response) = try? await session.data(for: request),
+              let httpResponse = response as? HTTPURLResponse
+        else {
+            return nil
+        }
+        return httpResponse.statusCode
     }
 }

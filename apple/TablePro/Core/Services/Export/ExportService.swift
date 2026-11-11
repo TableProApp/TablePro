@@ -475,16 +475,21 @@ final class ExportService: ObservableObject {
 
         let capWarning = Self.leadingRowsCapWarning(
             exportedRows: progress.processedRows,
-            pagination: PaginationCapability.of(databaseType)
+            pagination: PaginationCapability.of(databaseType),
+            driverCut: dataSource.driverRowCut
         )
         state.warnings = result.warnings + [capWarning].compactMap { $0 }
         state.notes = result.notes
     }
 
-    /// A query result exported from an engine that returns only its leading rows stops at the
-    /// engine's ceiling, so a file that reached it is named as partial rather than passing as whole.
-    static func leadingRowsCapWarning(exportedRows: Int, pagination: PaginationCapability) -> String? {
-        guard let maximum = pagination.maximumRows, exportedRows >= maximum else { return nil }
+    // A file that reached the engine's ceiling, or the limit the driver cut its stream at, is named as partial.
+    static func leadingRowsCapWarning(
+        exportedRows: Int,
+        pagination: PaginationCapability,
+        driverCut: Int? = nil
+    ) -> String? {
+        let engineCut = pagination.maximumRows.flatMap { exportedRows >= $0 ? $0 : nil }
+        guard let maximum = engineCut ?? driverCut else { return nil }
         return String(
             format: String(localized: "Only the first %lld rows were exported, the most this database returns from one query."),
             maximum

@@ -5,7 +5,8 @@
 //  The pool closed at most one idle connection each time a new one was opened, so a burst of opens
 //  on distinct keys, which a tree restore or a Refresh of every expanded database produces, left
 //  every connection it opened standing until the idle sweep: 13 to 16 backends for one saved
-//  connection on a server 1.5 seconds away, against a limit of 6 (#3103).
+//  connection on a server 1.5 seconds away, against a limit of 6 (#3103). Trimming at the end of
+//  the burst still let it dial every key at once, so the limit now holds while the burst runs.
 //
 
 import Foundation
@@ -20,6 +21,8 @@ private final class CountingOpener {
     private let connectDelaySeconds: Double
     private(set) var opened: [MockDatabaseDriver] = []
     private(set) var openedByDatabase: [String: MockDatabaseDriver] = [:]
+    private(set) var openOrder: [String] = []
+    private(set) var peakOpenCount = 0
     var afterOpen: ((DatabaseScope) -> Void)?
     var deadOnArrival: Set<String> = []
 
@@ -37,10 +40,17 @@ private final class CountingOpener {
         driver.hasLostConnection = deadOnArrival.remove(scope.database) != nil
         opened.append(driver)
         openedByDatabase[scope.database] = driver
+        openOrder.append(scope.database)
+        peakOpenCount = max(peakOpenCount, openCount)
         try await driver.connect()
         afterOpen?(scope)
         return driver
     }
+}
+
+@MainActor
+private final class StartedTaskBox {
+    var task: Task<Void, Error>?
 }
 
 /// Holds a lease's body until the test lets it go, so a test can keep work in flight.
@@ -85,12 +95,13 @@ struct MetadataConnectionPoolCapacityTests {
     private func fill(
         _ pool: MetadataConnectionPool,
         _ connection: DatabaseConnection,
-        databases: [String]
+        databases: [String],
+        workload: MetadataConnectionPool.Workload = .interactive
     ) async throws -> (gates: [LeaseGate], leases: [Task<Void, Error>]) {
         let gates = databases.map { _ in LeaseGate() }
         let leases = zip(databases, gates).map { database, gate in
             Task { @MainActor in
-                try await pool.withDriver(scope: scope(connection, database)) { _ in
+                try await pool.withDriver(scope: scope(connection, database), workload: workload) { _ in
                     await gate.wait()
                 }
             }
@@ -126,32 +137,246 @@ struct MetadataConnectionPoolCapacityTests {
         }
 
         #expect(opener.opened.count == limit * 2)
+        #expect(opener.peakOpenCount == limit)
         #expect(opener.openCount == limit)
         #expect(pool.heldConnectionCount(for: connection.id) == limit)
     }
 
-    @Test("Each lease that ends past the limit closes the connection unused longest, never one still working")
-    func trimClosesOnlyIdleConnections() async throws {
+    @Test("A burst on twice the limit never has more than the limit open while it runs")
+    func burstNeverRunsPastTheLimit() async throws {
         let connection = makeSession()
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
         let opener = CountingOpener()
         let pool = MetadataConnectionPool.isolatedForTesting(openDriver: { try await opener.open($0) })
         defer { pool.closeAll(connectionId: connection.id) }
 
-        let databases = (0..<limit + 2).map { "db\($0)" }
+        let gates = (0..<limit * 2).map { _ in LeaseGate() }
+        let leases = gates.enumerated().map { index, gate in
+            Task { @MainActor in
+                try await pool.withDriver(scope: scope(connection, "db\(index)")) { _ in
+                    await gate.wait()
+                }
+            }
+        }
+        try await waitUntil {
+            gates.filter { $0.hasArrived }.count == limit && pool.roomWaiterCount(for: connection.id) == limit
+        }
+        #expect(opener.opened.count == limit)
+        #expect(opener.peakOpenCount == limit)
+
+        await release(gates, leases)
+        #expect(opener.opened.count == limit * 2)
+        #expect(opener.peakOpenCount == limit)
+        #expect(pool.heldConnectionCount(for: connection.id) == limit)
+    }
+
+    @Test("A lease waiting for room takes the place of the connection unused longest, never one still working")
+    func waitingLeaseTakesOnlyAnIdlePlace() async throws {
+        let connection = makeSession()
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let opener = CountingOpener()
+        let pool = MetadataConnectionPool.isolatedForTesting(openDriver: { try await opener.open($0) })
+        defer { pool.closeAll(connectionId: connection.id) }
+
+        let databases = (0..<limit).map { "db\($0)" }
         let (gates, leases) = try await fill(pool, connection, databases: databases)
-        #expect(pool.heldConnectionCount(for: connection.id) == limit + 2)
+        let extras = ["x0", "x1"].map { database in
+            Task { @MainActor in
+                try await pool.withDriver(scope: scope(connection, database)) { _ in }
+            }
+        }
+        try await waitUntil { pool.roomWaiterCount(for: connection.id) == 2 }
+        #expect(opener.opened.count == limit)
 
         gates[0].open()
         _ = try? await leases[0].value
+        for extra in extras {
+            try await extra.value
+        }
 
-        #expect(pool.heldConnectionCount(for: connection.id) == limit + 1)
+        #expect(opener.opened.count == limit + 2)
         #expect(opener.openedByDatabase["db0"]?.disconnectCallCount == 1)
         #expect(databases.dropFirst().allSatisfy { opener.openedByDatabase[$0]?.disconnectCallCount == 0 })
+        #expect(pool.heldConnectionCount(for: connection.id) == limit)
 
         await release(gates, leases)
         #expect(pool.heldConnectionCount(for: connection.id) == limit)
         #expect(opener.openCount == limit)
+    }
+
+    // The outer work holds its connection until the inner lease returns, so making the inner one wait would wait on itself.
+    @Test("A lease taken inside another lease's work on the same connection never waits for room", .timeLimit(.minutes(1)))
+    func nestedLeaseIsNotHeldBack() async throws {
+        let connection = makeSession()
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let opener = CountingOpener()
+        let pool = MetadataConnectionPool.isolatedForTesting(openDriver: { try await opener.open($0) })
+        defer { pool.closeAll(connectionId: connection.id) }
+
+        let (gates, leases) = try await fill(pool, connection, databases: (1..<limit).map { "db\($0)" })
+        let inner = scope(connection, "inner")
+        let innerRanOn = try await pool.withDriver(scope: scope(connection, "outer")) { _ in
+            try await pool.withDriver(scope: inner) { driver in ObjectIdentifier(driver) }
+        }
+
+        #expect(innerRanOn == opener.openedByDatabase["inner"].map { ObjectIdentifier($0) })
+        #expect(opener.opened.count == limit + 1)
+        await release(gates, leases)
+        #expect(pool.heldConnectionCount(for: connection.id) == limit)
+    }
+
+    @Test("A lease cancelled while it waits for room stops waiting and opens nothing")
+    func cancelledRoomWaiterStopsWaiting() async throws {
+        let connection = makeSession()
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let opener = CountingOpener()
+        let pool = MetadataConnectionPool.isolatedForTesting(openDriver: { try await opener.open($0) })
+        defer { pool.closeAll(connectionId: connection.id) }
+
+        let (gates, leases) = try await fill(pool, connection, databases: (0..<limit).map { "db\($0)" })
+        let waiting = Task { @MainActor in
+            try await pool.withDriver(scope: scope(connection, "extra")) { _ in }
+        }
+        try await waitUntil { pool.roomWaiterCount(for: connection.id) == 1 }
+
+        waiting.cancel()
+
+        await #expect(throws: CancellationError.self) {
+            try await waiting.value
+        }
+        #expect(pool.roomWaiterCount(for: connection.id) == 0)
+        #expect(opener.openedByDatabase["extra"] == nil)
+        await release(gates, leases)
+        #expect(opener.openedByDatabase["extra"] == nil)
+    }
+
+    @Test("Closing the connection fails a lease waiting for room at once")
+    func closingTheConnectionFailsRoomWaiters() async throws {
+        let connection = makeSession()
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let opener = CountingOpener()
+        let pool = MetadataConnectionPool.isolatedForTesting(openDriver: { try await opener.open($0) })
+        defer { pool.closeAll(connectionId: connection.id) }
+
+        let (gates, leases) = try await fill(pool, connection, databases: (0..<limit).map { "db\($0)" })
+        let waiting = Task { @MainActor in
+            try await pool.withDriver(scope: scope(connection, "extra")) { _ in }
+        }
+        try await waitUntil { pool.roomWaiterCount(for: connection.id) == 1 }
+
+        pool.closeAll(connectionId: connection.id)
+        #expect(pool.roomWaiterCount(for: connection.id) == 0)
+
+        await #expect(throws: CancellationError.self) {
+            try await waiting.value
+        }
+        await release(gates, leases)
+        #expect(opener.openedByDatabase["extra"] == nil)
+        #expect(opener.openCount == 0)
+    }
+
+    // A completion read or a sidebar expand used to park behind every bulk read of a tree Refresh burst.
+    @Test("Freed places go to waiting leases in order, interactive ahead of bulk, and a new lease waits its turn")
+    func freedPlacesAreHandedInOrder() async throws {
+        let connection = makeSession()
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let opener = CountingOpener()
+        let pool = MetadataConnectionPool.isolatedForTesting(openDriver: { try await opener.open($0) })
+        defer { pool.closeAll(connectionId: connection.id) }
+
+        let (gates, leases) = try await fill(pool, connection, databases: (0..<limit).map { "db\($0)" })
+        let arrivals: [(String, MetadataConnectionPool.Workload)] = [
+            ("b1", .bulk), ("i1", .interactive), ("b2", .bulk), ("i2", .interactive)
+        ]
+        var waiting: [Task<Void, Error>] = []
+        for (database, workload) in arrivals {
+            let place = scope(connection, database)
+            waiting.append(Task { @MainActor in
+                try await pool.withDriver(scope: place, workload: workload) { _ in }
+            })
+            let parked = waiting.count
+            try await waitUntil { pool.roomWaiterCount(for: connection.id) == parked }
+        }
+
+        gates[0].open()
+        _ = try? await leases[0].value
+        try await waiting[1].value
+        try await waiting[3].value
+        #expect(Array(opener.openOrder.dropFirst(limit)) == ["i1", "i2"])
+        #expect(pool.roomWaiterCount(for: connection.id) == 2)
+
+        let lateBulk = scope(connection, "b3")
+        let late = Task { @MainActor in
+            try await pool.withDriver(scope: lateBulk, workload: .bulk) { _ in }
+        }
+        try await waitUntil { pool.roomWaiterCount(for: connection.id) == 3 }
+        try await pool.withDriver(scope: scope(connection, "i3")) { _ in }
+        #expect(Array(opener.openOrder.dropFirst(limit)) == ["i1", "i2", "i3"])
+
+        gates[1].open()
+        _ = try? await leases[1].value
+        try await waiting[0].value
+        try await waiting[2].value
+        try await late.value
+        #expect(Array(opener.openOrder.dropFirst(limit)) == ["i1", "i2", "i3", "b1", "b2", "b3"])
+        await release(gates, leases)
+    }
+
+    @Test("Bulk work never takes the last place, so an interactive lease runs while five bulk leases hold the rest")
+    func bulkLeavesOnePlaceForInteractive() async throws {
+        let connection = makeSession()
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let opener = CountingOpener()
+        let pool = MetadataConnectionPool.isolatedForTesting(openDriver: { try await opener.open($0) })
+        defer { pool.closeAll(connectionId: connection.id) }
+
+        let (gates, leases) = try await fill(pool, connection, databases: (0..<limit - 1).map { "bulk\($0)" }, workload: .bulk)
+        let sixthBulk = scope(connection, "bulk-extra")
+        let waiting = Task { @MainActor in
+            try await pool.withDriver(scope: sixthBulk, workload: .bulk) { _ in }
+        }
+        try await waitUntil { pool.roomWaiterCount(for: connection.id) == 1 }
+
+        try await pool.withDriver(scope: scope(connection, "completion")) { _ in }
+
+        #expect(opener.openedByDatabase["completion"] != nil)
+        #expect(opener.openedByDatabase["bulk-extra"] == nil)
+        await release(gates, leases)
+        try await waiting.value
+        #expect(opener.openedByDatabase["bulk-extra"] != nil)
+    }
+
+    // A task the body started without awaiting it outlived the lease and kept skipping the limit for good.
+    @Test("A task started inside a lease waits for room like any other caller once that lease has ended")
+    func taskStartedInALeaseLosesTheExemptionWhenItEnds() async throws {
+        let connection = makeSession()
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let opener = CountingOpener()
+        let pool = MetadataConnectionPool.isolatedForTesting(openDriver: { try await opener.open($0) })
+        defer { pool.closeAll(connectionId: connection.id) }
+
+        let (gates, leases) = try await fill(pool, connection, databases: (1..<limit).map { "db\($0)" })
+        let box = StartedTaskBox()
+        let orphanGate = LeaseGate()
+        let orphan = scope(connection, "orphan")
+        try await pool.withDriver(scope: scope(connection, "outer")) { _ in
+            await MainActor.run {
+                box.task = Task { @MainActor in
+                    await orphanGate.wait()
+                    try await pool.withDriver(scope: orphan) { _ in }
+                }
+            }
+        }
+        let (lastGate, lastLease) = try await fill(pool, connection, databases: ["db0"])
+        #expect(pool.heldConnectionCount(for: connection.id) == limit)
+
+        orphanGate.open()
+        try await waitUntil { pool.roomWaiterCount(for: connection.id) == 1 }
+        #expect(opener.openedByDatabase["orphan"] == nil)
+
+        await release(gates + lastGate, leases + lastLease)
+        try await box.task?.value
+        #expect(opener.openedByDatabase["orphan"] != nil)
     }
 
     /// The open's callers take the entry a scheduler turn after it lands. A lease that asked for

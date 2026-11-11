@@ -98,6 +98,8 @@ internal static class JsonFile
         using (var stream = File.Create(temporary))
         {
             JsonSerializer.Serialize(stream, value, type);
+            // On disk before the rename is, so a power cut after the move cannot leave a file of zeros.
+            stream.Flush(flushToDisk: true);
         }
 
         File.Move(temporary, path, overwrite: true);

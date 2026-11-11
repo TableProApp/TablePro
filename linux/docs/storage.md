@@ -12,7 +12,7 @@ The app's data goes to the store its shape calls for. The core's `storage` crate
 | Preferences and window geometry | `gio::Settings` | `AppSettings` |
 | Query history, saved queries with their folders and keywords, and favourite tables and databases | SQLite, one database ([core ADR 0017](../../core/docs/decisions/0017-favourites.md)) | `QueryHistory`, `SavedQueries`, `SavedQueryFolders`, `Favourites` |
 | Editor tab text | one file per tab | `DraftStore` |
-| Open tabs, open sessions, column layouts, filters | JSON files the app crate writes | `WorkspaceStore`, `OpenSessions`, `crates/app/src/persistence/` |
+| Open tabs, open sessions, column layouts, filters, highlight rules | JSON files the app crate writes | `WorkspaceStore`, `OpenSessions`, `crates/app/src/persistence/` |
 
 [Where files go](#where-files-go) has the paths.
 
@@ -108,7 +108,7 @@ leaves nothing unreachable behind when a step fails:
    entry stays: an entry with no secrets only asks for them again, while a
    secret with no entry is orphaned in the keyring.
 2. The entry in `connections.json`.
-3. Everything kept for it: column layouts, filters, the saved tabs with any
+3. Everything kept for it: column layouts, filters, highlight rules, the saved tabs with any
    copy Reset moved aside or an upgrade kept, the editor drafts
    (`WorkspaceStore::purge`), the saved queries, and the query history when
    the user turned that on. A
@@ -137,6 +137,7 @@ nothing reaches outside it.
 | `connections_file()` | `$XDG_CONFIG_HOME/<dir>/connections.json` |
 | `column_layouts_file()` | `$XDG_CONFIG_HOME/<dir>/column_layouts.json`: each table's column layout (order, hidden columns, widths the user set) |
 | `filter_settings_file()` | `$XDG_CONFIG_HOME/<dir>/filter_settings.json`, version 2: each table's filter, and the schemas each connection's sidebar lists, per database. Version 1 had no sidebar filters |
+| `highlight_rules_file()` | `$XDG_CONFIG_HOME/<dir>/highlight_rules.json`: ordered rules for each table |
 | `history_database()` | `$XDG_STATE_HOME/<dir>/history.db` |
 | `workspaces_dir()` | `$XDG_STATE_HOME/<dir>/workspaces`: one file per session, and `open-sessions.json`: the sessions open at the last quit as `windows`, one list of keys per window, windows in the order of their first recorded session and keys in the order each window adopted them |
 | `drafts_dir()` | `$XDG_DATA_HOME/<dir>/drafts` |
@@ -404,7 +405,15 @@ Three points worth knowing:
 
 Preference rows bind straight to the schema with `settings.gio().bind(key, &row, prop)`, so a change reaches every open view through `changed::<key>` without a save step.
 
-High-churn keyed data stays in files: column layouts, per-table filters and workspace tabs are unbounded maps, which is not what GSettings is for.
+High-churn keyed data stays in files: column layouts, per-table filters, highlight rules and workspace tabs are unbounded maps, which is not what GSettings is for.
+
+## Table state
+
+Column layouts, filters and highlight rules use the session identity from `WorkspaceFileName`: a saved connection UUID, that UUID plus a digest of the sibling database name, or a digest of the canonical file URI. Existing saved UUID keys keep their spelling. A schema and table name complete the key. Opening a file again uses the same key; tables with the same name in different databases stay separate. Deleting a saved connection also removes its sibling database keys.
+
+`StateFile` holds these small versioned documents in memory and writes the latest snapshot through the core's `LatestWinsWriter` and `write_document_blocking`. `flush` waits for a write attempt and returns its failure. A failed write keeps the latest state in memory. Each window shows a notice with Retry, which writes that latest state again. A successful write dismisses the notice. Closing the last window waits until every pending settings edit is saved. It checks again after workspace prompts, so concurrent window closes cannot skip the check. If local changes cannot be saved, it offers Retry, Keep Open or Close Without Saving. Consent to close without saving applies only to the settings revision shown. Newer or unreadable files stay protected and offer no write retry. An untouched protected file does not prevent closing.
+
+Highlight rules are restored before the table grid starts reporting edits. A query result has no table identity, so its rules live only until the next run. The grid behavior is in `../ARCHITECTURE.md`, Highlight rules.
 
 ## Errors
 
@@ -452,8 +461,8 @@ that replaces it with a newer format ([core ADR 0012](../../core/docs/decisions/
 - Every write of the connection list first takes the connections it no longer
   has out of each copy of `connections.json`, and deletes a copy it cannot
   read that way; a failed trim fails the write, so the next one tries again. Deleting
-  a connection deletes the copies of the column layout and filter files, which
-  name its tables and filter values.
+  a connection deletes the copies of the column layout, filter and highlight rule files, which
+  name its tables and values.
 - A copy that cannot be made fails the write or the open, and the file is
   left as it was. The error names the copy's path.
 - Reading never makes a copy. Nothing restores one on its own:
