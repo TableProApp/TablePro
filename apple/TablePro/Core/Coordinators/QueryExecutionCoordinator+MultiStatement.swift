@@ -14,9 +14,10 @@ struct StatementRows: Sendable {
 }
 
 // The names hold only while the session still reads them the same way, so the build keeps the reading it used.
+// A statement whose rows no result shows has nothing built.
 struct StatementRowsBuild: Sendable {
     let reading: TableNameReading
-    let statements: [StatementRows]
+    let statements: [StatementRows?]
 
     func statement(at index: Int, readBy current: TableNameReading) -> StatementRows? {
         guard current == reading, statements.indices.contains(index) else { return nil }
@@ -125,8 +126,8 @@ extension QueryExecutionCoordinator {
         return TableRows.from(prepared: prepared, columnTypes: result.columnTypes, columnOrigins: result.columnOrigins)
     }
 
-    // A nil statement is a result no statement names, which reads no table.
-    func buildStatementRows(_ statements: [(sql: String?, result: QueryResult)], tabId: UUID) async -> StatementRowsBuild {
+    // A nil sql is a result no statement names, which reads no table. A nil entry builds nothing.
+    func buildStatementRows(_ statements: [(sql: String?, result: QueryResult)?], tabId: UUID) async -> StatementRowsBuild {
         let reveals = parent.tabManager.tabs.first { $0.id == tabId }?.revealsMaskedValues == true
         return await Self.statementRows(
             statements,
@@ -139,11 +140,13 @@ extension QueryExecutionCoordinator {
     // this build runs to the end.
     @concurrent
     nonisolated static func statementRows(
-        _ statements: [(sql: String?, result: QueryResult)],
+        _ statements: [(sql: String?, result: QueryResult)?],
         reading: TableNameReading,
         policy: MaskingPolicy
     ) async -> StatementRowsBuild {
-        StatementRowsBuild(reading: reading, statements: statements.map { sql, result in
+        StatementRowsBuild(reading: reading, statements: statements.map { entry -> StatementRows? in
+            guard let entry else { return nil }
+            let (sql, result) = entry
             let tableName = sql.flatMap(reading.tableName(in:))
             let shape = TableRows.RowShape(
                 columns: result.columns,
@@ -158,6 +161,50 @@ extension QueryExecutionCoordinator {
                 )
             )
         })
+    }
+
+    static let summaryMessageLimit = 5
+
+    // The statements of one run that returned no rows, as one result: rows affected and time added
+    // up, server output in the order it was printed.
+    func makeRunSummaryResultSet(_ parts: [RunSummaryPart]) -> ResultSet {
+        let count = parts.count.formatted()
+        let resultSet = ResultSet(label: String(format: String(localized: "%@ Statements"), count))
+        resultSet.rowsAffected = parts.reduce(0) { $0 + $1.rowsAffected }
+        resultSet.executionTime = parts.reduce(0) { $0 + $1.executionTime }
+        // A driver's own message (a warning, a server reply) stays, each once, after the count; a long script's
+        // varied replies are cut to the first few.
+        var seen: Set<String> = []
+        var messages: [String] = []
+        var unshown = 0
+        for message in parts.compactMap(\.statusMessage) where !message.isEmpty && seen.insert(message).inserted {
+            if messages.count < Self.summaryMessageLimit {
+                messages.append(message)
+            } else {
+                unshown += 1
+            }
+        }
+        if unshown == 1 {
+            messages.append(String(localized: "1 more message."))
+        } else if unshown > 1 {
+            messages.append(String(format: String(localized: "%@ more messages."), unshown.formatted()))
+        }
+        resultSet.statusMessage = ([String(format: String(localized: "Ran %@ statements that returned no rows."), count)] + messages)
+            .joined(separator: " ")
+        resultSet.serverOutput = PluginServerOutput(
+            lines: parts.flatMap(\.serverOutput.lines),
+            isTruncated: parts.contains { $0.serverOutput.isTruncated }
+        )
+        return resultSet
+    }
+
+    func appendDroppedNotice(of plan: RunResultPlan, to resultSets: [ResultSet]) {
+        guard let notice = plan.droppedNotice else { return }
+        for resultSet in resultSets {
+            resultSet.statusMessage = [resultSet.statusMessage, notice]
+                .compactMap { $0?.isEmpty == false ? $0 : nil }
+                .joined(separator: " ")
+        }
     }
 
     /// Each statement in a multi-statement run targets its own table, so each result carries its

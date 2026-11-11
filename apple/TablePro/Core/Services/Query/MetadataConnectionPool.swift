@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 
 // The lease a task's work runs under. That work keeps the lease until a lease it asks for returns, so such a
@@ -11,10 +12,13 @@ import TableProPluginKit
 @MainActor
 private final class PooledLease {
     let connectionId: UUID
+    // A lease nested in this one never takes this entry: it would queue behind the work that waits on it.
+    let entryId: ObjectIdentifier
     var isOpen = true
 
-    init(connectionId: UUID) {
+    init(connectionId: UUID, entryId: ObjectIdentifier) {
         self.connectionId = connectionId
+        self.entryId = entryId
     }
 }
 
@@ -31,43 +35,81 @@ final class MetadataConnectionPool {
         case bulk
     }
 
+    // A scope with no schema reads wherever the connection's own settings put it, so its entries never switch.
+    private enum Slot: Hashable, Sendable {
+        case home
+        case followsSchema
+    }
+
+    // No schema in the key: an entry moves to each lease's schema, so the schemas of one database share connections.
     private struct Key: Hashable, Sendable {
-        let scope: DatabaseScope
+        let connectionId: UUID
+        let database: String
         let workload: Workload
+        let slot: Slot
+
+        init(scope: DatabaseScope, workload: Workload) {
+            connectionId = scope.connectionId
+            database = scope.database
+            self.workload = workload
+            slot = scope.schema == nil ? .home : .followsSchema
+        }
+    }
+
+    private struct OpenKey: Hashable, Sendable {
+        let key: Key
+        let schema: String?
+        // Set for a lease inside another lease's work, so its open is its own and nobody queues on it.
+        let owner: UUID?
+    }
+
+    private enum LeaseOutcome<T: Sendable>: Sendable {
+        case ran(T)
+        // The entry was left in a transaction and is closing, so the lease takes another.
+        case retired
     }
 
     @MainActor
     private final class Entry {
         let driver: DatabaseDriver
-        var lastUsed: Date
-        var inFlightCount: Int
-        var closeWhenIdle: Bool
+        var lastUsed = Date()
+        var inFlightCount = 0
+        var closeWhenIdle = false
+        // The schema the last lease moved it to, used only to pick an entry; nil until a lease has moved it.
+        var schema: String?
+        // Only leases on one schema queue on a busy entry, so this is the schema its queue is on.
+        var queuedSchema: String?
+        // A startup command can move the search path after the driver read it, so the driver's cache is not trusted.
+        var forcesNextSwitch: Bool
+        var hasServedALease = false
         private var tail: Task<Void, Never> = Task {}
 
-        init(driver: DatabaseDriver) {
+        init(driver: DatabaseDriver, schema: String?, forcesNextSwitch: Bool) {
             self.driver = driver
-            self.lastUsed = Date()
-            self.inFlightCount = 0
-            self.closeWhenIdle = false
+            self.schema = schema
+            self.queuedSchema = schema
+            self.forcesNextSwitch = forcesNextSwitch
         }
 
-        /// The work runs in its own task so the next caller can queue behind it, so
-        /// cancelling the caller has to be forwarded explicitly or a stopped query
-        /// would keep running with nobody waiting on it.
+        // The work runs in its own task so the next caller can queue behind it, so a cancel is forwarded by hand.
         func runSerially<T: Sendable>(
             connectionId: UUID,
+            prepare: @escaping @MainActor @Sendable (Entry) async throws -> Bool,
             _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
-        ) async throws -> T {
+        ) async throws -> LeaseOutcome<T> {
             let previous = tail
             let driver = self.driver
-            let work = Task { @MainActor () async throws -> T in
+            let work = Task { @MainActor [self] () async throws -> LeaseOutcome<T> in
                 await previous.value
                 try Task.checkCancellation()
-                let lease = PooledLease(connectionId: connectionId)
+                guard try await prepare(self) else { return .retired }
+                hasServedALease = true
+                let lease = PooledLease(connectionId: connectionId, entryId: ObjectIdentifier(self))
                 defer { lease.isOpen = false }
-                return try await PooledLeaseContext.$open.withValue(PooledLeaseContext.open + [lease]) {
+                let value = try await PooledLeaseContext.$open.withValue(PooledLeaseContext.open + [lease]) {
                     try await body(driver)
                 }
+                return .ran(value)
             }
             tail = Task { @MainActor in _ = try? await work.value }
             return try await withTaskCancellationHandler(
@@ -79,27 +121,22 @@ final class MetadataConnectionPool {
 
     typealias DriverOpener = @MainActor (DatabaseScope) async throws -> DatabaseDriver
 
-    /// Why an open still in progress was taken away from the callers waiting on it.
+    // Why an open still in progress was taken away from the callers waiting on it.
     private enum Withdrawal {
-        /// The transport it was dialing is being rebuilt, so its callers take a connection again
-        /// once the replacement is in place.
+        // The transport it was dialing is being rebuilt, so its callers take a connection again after the replacement.
         case transportReplaced
-        /// What it was opened for is going away, so nothing may open it again.
+        // What it was opened for is going away, so nothing may open it again.
         case closed
     }
 
-    /// One open in progress, shared by every caller that asks for its key while it runs. It stays
-    /// listed until the last of those callers has taken its entry, because an entry nobody has
-    /// taken yet looks idle and would otherwise be the first one closed.
+    // Shared by every caller that asks for its key and schema while it runs. It stays listed until the last of them
+    // has taken its entry, because an entry nobody has taken yet looks idle and would be the first one closed.
     @MainActor
     private final class PendingOpen {
-        let task: Task<Void, Error>
+        var task: Task<Void, Error>?
+        var entry: Entry?
         var withdrawal: Withdrawal?
         var waiterCount = 0
-
-        init(task: Task<Void, Error>) {
-            self.task = task
-        }
     }
 
     private struct TransportWaiter {
@@ -111,22 +148,27 @@ final class MetadataConnectionPool {
     @MainActor
     private final class RoomTicket {
         let key: Key
+        let schema: String?
+        let held: Set<ObjectIdentifier>
         var continuation: CheckedContinuation<Void, Error>?
         var isWithdrawn = false
 
-        init(key: Key) {
+        init(key: Key, schema: String?, held: Set<ObjectIdentifier>) {
             self.key = key
+            self.schema = schema
+            self.held = held
         }
     }
 
-    private var entries: [Key: Entry] = [:]
-    private var pending: [Key: PendingOpen] = [:]
+    private var entries: [Key: [Entry]] = [:]
+    private var pending: [OpenKey: PendingOpen] = [:]
     private var transportReplacements: [UUID: Int] = [:]
     private var transportWaiters: [UUID: [TransportWaiter]] = [:]
     private var roomQueues: [UUID: [RoomTicket]] = [:]
     private let openDriver: DriverOpener
     static let maxPerConnection = 6
     private var sweeper: Task<Void, Never>?
+    private static let logger = Logger(subsystem: "com.TablePro", category: "MetadataConnectionPool")
 
     /// How long a pooled connection may sit unused before it is handed back.
     ///
@@ -156,38 +198,47 @@ final class MetadataConnectionPool {
         workload: Workload = .interactive,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
-        let entry = try await acquireEntry(scope: scope, workload: workload)
-        entry.inFlightCount += 1
-        entry.lastUsed = Date()
-        defer { releaseEntry(entry, connectionId: scope.connectionId) }
-        return try await entry.runSerially(connectionId: scope.connectionId, body)
+        let key = Key(scope: scope, workload: workload)
+        while true {
+            let entry = try await acquireEntry(forKey: key, schema: scope.schema, scope: scope)
+            if case .ran(let value) = try await run(body, on: entry, inKey: key, schema: scope.schema) {
+                return value
+            }
+        }
+    }
+
+    private func run<T: Sendable>(
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T,
+        on entry: Entry,
+        inKey key: Key,
+        schema: String?
+    ) async throws -> LeaseOutcome<T> {
+        defer { releaseEntry(entry, connectionId: key.connectionId) }
+        return try await entry.runSerially(
+            connectionId: key.connectionId,
+            prepare: { [self] entry in try await moveEntry(entry, inKey: key, to: schema) },
+            body
+        )
     }
 
     /// Closes only the leases attached to one database, which is what a rename of that database
     /// needs: PostgreSQL refuses `ALTER DATABASE ... RENAME` while any backend is connected to it,
     /// and an expanded row or a tab that ran a query there leaves one here.
     func closeAll(connectionId: UUID, database: String) {
-        closeEntries(withdrawingOpensAs: .closed) { scope in
-            scope.connectionId == connectionId && scope.database == database
-        }
+        closeEntries(withdrawingOpensAs: .closed) { $0 == connectionId && $1 == database }
     }
 
     func closeAll(connectionId: UUID) {
-        closeEntries(withdrawingOpensAs: .closed) { $0.connectionId == connectionId }
+        closeEntries(withdrawingOpensAs: .closed) { id, _ in id == connectionId }
     }
 
-    /// Holds a connection's pooled work while its transport is rebuilt.
-    ///
-    /// A pooled entry stands on the session's effective connection plus its own database, so it only
-    /// has to go when that endpoint does: a tunnel rebuilt on a new local port, or a reconnect
-    /// recovering a connection that stopped answering. An open already dialing is withdrawn, and once
-    /// it has returned the callers waiting on it take a connection again after `endTransportReplacement`
-    /// rather than failing a load nobody cancelled. A new caller waits for the same moment instead of
-    /// dialing an endpoint about to close. Replacements nest, and pooled work resumes when the last one
-    /// ends. Closing the connection, or one of its databases, fails the callers waiting for it.
+    // Holds a connection's pooled work while its transport is rebuilt: a tunnel on a new local port, or a reconnect of
+    // a connection that stopped answering. An open already dialing is withdrawn and its callers take a connection again
+    // after `endTransportReplacement`; a new caller waits for that too. Replacements nest. Closing the connection, or
+    // one of its databases, fails the callers waiting for it.
     func beginTransportReplacement(connectionId: UUID) {
         transportReplacements[connectionId, default: 0] += 1
-        closeEntries(withdrawingOpensAs: .transportReplaced) { $0.connectionId == connectionId }
+        closeEntries(withdrawingOpensAs: .transportReplaced) { id, _ in id == connectionId }
     }
 
     /// Has to follow every `beginTransportReplacement` on every exit, cancellation included, or the
@@ -205,29 +256,35 @@ final class MetadataConnectionPool {
     }
 
     #if DEBUG
-    /// Seeds a connected driver as the pooled connection for `scope`, so a test can observe
-    /// what runs on the pool without a plugin to open a real connection.
+    // Seeds a connected driver as a pooled connection already on `scope`'s schema, for a test with no plugin to open one.
     internal func injectEntry(
         _ driver: DatabaseDriver,
         scope: DatabaseScope,
         workload: Workload = .interactive,
         lastUsed: Date = Date()
     ) {
-        let entry = Entry(driver: driver)
+        let entry = Entry(driver: driver, schema: scope.schema, forcesNextSwitch: false)
         entry.lastUsed = lastUsed
-        entries[Key(scope: scope, workload: workload)] = entry
+        entry.hasServedALease = true
+        entries[Key(scope: scope, workload: workload), default: []].append(entry)
     }
 
     internal func pooledDriverCount(for connectionId: UUID) -> Int {
-        entries.keys.filter { $0.scope.connectionId == connectionId }.count
+        pooled(on: connectionId).count
     }
 
     internal func heldConnectionCount(for connectionId: UUID) -> Int {
         heldCount(for: connectionId)
     }
 
+    internal func leaseCount(for connectionId: UUID) -> Int {
+        pooled(on: connectionId).reduce(0) { $0 + $1.entry.inFlightCount }
+    }
+
     internal func markInFlight(scope: DatabaseScope, workload: Workload = .interactive) {
-        entries[Key(scope: scope, workload: workload)]?.inFlightCount += 1
+        let list = entries[Key(scope: scope, workload: workload)] ?? []
+        let entry = list.first(where: { $0.schema == scope.schema }) ?? list.first
+        entry?.inFlightCount += 1
     }
 
     internal var hasSweeper: Bool {
@@ -275,33 +332,43 @@ final class MetadataConnectionPool {
         handRoom(on: connectionId)
     }
 
-    private func closeOrDeferEntry(forKey key: Key) {
-        guard let entry = entries.removeValue(forKey: key) else { return }
+    @discardableResult
+    private func detach(_ entry: Entry, fromKey key: Key) -> Bool {
+        guard var list = entries[key], let index = list.firstIndex(where: { $0 === entry }) else { return false }
+        list.remove(at: index)
+        entries[key] = list.isEmpty ? nil : list
+        return true
+    }
+
+    private func removeEntry(_ entry: Entry, fromKey key: Key) {
+        guard detach(entry, fromKey: key) else { return }
         if entry.inFlightCount == 0 {
             entry.driver.disconnect()
         } else {
             entry.closeWhenIdle = true
         }
-        handRoom(on: key.scope.connectionId)
+        handRoom(on: key.connectionId)
     }
 
     private func closeEntries(
         withdrawingOpensAs withdrawal: Withdrawal,
-        where matches: (DatabaseScope) -> Bool
+        where matches: (UUID, String) -> Bool
     ) {
         var withdrawnFrom: Set<UUID> = []
-        for key in pending.keys where matches(key.scope) {
-            guard let open = pending.removeValue(forKey: key) else { continue }
+        for openKey in pending.keys where matches(openKey.key.connectionId, openKey.key.database) {
+            guard let open = pending.removeValue(forKey: openKey) else { continue }
             open.withdrawal = withdrawal
-            open.task.cancel()
-            withdrawnFrom.insert(key.scope.connectionId)
+            open.task?.cancel()
+            withdrawnFrom.insert(openKey.key.connectionId)
         }
         if withdrawal == .closed {
             failTransportWaiters(where: matches)
             withdrawRoomTickets(where: matches)
         }
-        for key in entries.keys where matches(key.scope) {
-            closeOrDeferEntry(forKey: key)
+        for (key, list) in entries where matches(key.connectionId, key.database) {
+            for entry in list {
+                removeEntry(entry, fromKey: key)
+            }
         }
         for connectionId in withdrawnFrom {
             handRoom(on: connectionId)
@@ -309,14 +376,12 @@ final class MetadataConnectionPool {
         stopSweeperIfEmpty()
     }
 
-    /// A caller parked for a replacement is waiting on its connection as much as one waiting on a
-    /// pending open, so closing what it waits for fails it too. Left parked, it would wake when the
-    /// replacement ends and open a connection for a session, or a database, that has gone.
-    private func failTransportWaiters(where matches: (DatabaseScope) -> Bool) {
+    // A parked caller would otherwise wake when the replacement ends and open a connection for what has gone.
+    private func failTransportWaiters(where matches: (UUID, String) -> Bool) {
         for (connectionId, waiters) in transportWaiters {
-            let failing = waiters.filter { matches($0.scope) }
+            let failing = waiters.filter { matches($0.scope.connectionId, $0.scope.database) }
             guard !failing.isEmpty else { continue }
-            let remaining = waiters.filter { !matches($0.scope) }
+            let remaining = waiters.filter { !matches($0.scope.connectionId, $0.scope.database) }
             transportWaiters[connectionId] = remaining.isEmpty ? nil : remaining
             for waiter in failing {
                 waiter.continuation.resume(throwing: CancellationError())
@@ -324,24 +389,29 @@ final class MetadataConnectionPool {
         }
     }
 
-    private func acquireEntry(scope: DatabaseScope, workload: Workload) async throws -> Entry {
-        let key = Key(scope: scope, workload: workload)
+    // In order: an idle entry on the schema, any idle entry, the busy entry on the schema, an open for the schema
+    // already dialing, a new entry if there is room, else a place in the room line. A lease inside another lease's
+    // work skips the busy entry and the open: two such leases nesting in opposite directions would wait on each other.
+    private func acquireEntry(forKey key: Key, schema: String?, scope: DatabaseScope) async throws -> Entry {
+        let held = entriesHeldByThisTask()
+        let openKey = OpenKey(key: key, schema: schema, owner: held.isEmpty ? nil : UUID())
         while true {
             try await waitForTransport(for: scope)
-            if let entry = reusableEntry(forKey: key) {
+            if let entry = claimEntry(forKey: key, schema: schema, excluding: held) {
                 return entry
             }
-            if pending[key] == nil {
-                try await waitForRoom(forKey: key)
-                // A wait can outlast its reason: the key opened meanwhile, or the transport is being rebuilt.
-                if pending[key] != nil || entries[key] != nil || isReplacingTransport(for: scope.connectionId) {
+            if pending[openKey] == nil {
+                try await waitForRoom(forKey: key, schema: schema, held: held)
+                // A wait can outlast its reason: an entry came free, the schema's open started, or the transport is being rebuilt.
+                if pending[openKey] != nil || placeWithoutOpening(forKey: key, schema: schema, excluding: held) != nil
+                    || isReplacingTransport(for: key.connectionId) {
                     continue
                 }
             }
-            let open = try pending[key] ?? startOpen(forKey: key)
-            let failure = await completion(of: open, forKey: key)
-            /// A withdrawn open can end either way: a driver whose connect honours cancellation
-            /// throws, and one that finished first returns without keeping its entry.
+            let open = try pending[openKey] ?? startOpen(openKey)
+            let failure = await completion(of: open, for: openKey)
+            // A withdrawn open can end either way: a driver whose connect honours cancellation throws, and one that
+            // finished first returns without keeping its entry.
             if open.withdrawal == .transportReplaced {
                 try Task.checkCancellation()
                 continue
@@ -349,72 +419,170 @@ final class MetadataConnectionPool {
             if let failure {
                 throw failure
             }
-            if let entry = entries[key] {
+            if let entry = open.entry, isListed(entry, inKey: key) {
+                claim(entry, for: schema)
                 return entry
             }
             if open.withdrawal == .closed {
                 throw DatabaseError.notConnected
             }
-            forgetSpentOpen(open, forKey: key)
+            forgetSpentOpen(open, for: openKey)
         }
     }
 
-    /// An open whose entry went before this caller could take it has nothing left to hand out.
-    /// Joining it again returns at once, without a suspension, so a caller that did would spin on
-    /// the main actor and starve the other callers still waiting to resume from it.
-    private func forgetSpentOpen(_ open: PendingOpen, forKey key: Key) {
-        guard pending[key] === open else { return }
-        pending.removeValue(forKey: key)
-        handRoom(on: key.scope.connectionId)
+    private func entriesHeldByThisTask() -> Set<ObjectIdentifier> {
+        Set(PooledLeaseContext.open.filter { $0.isOpen }.map { $0.entryId })
     }
 
-    /// A cached entry is only worth reusing while it is both connected and recent. The
-    /// staleness half matters even with the sweeper running, because a Mac that slept comes
-    /// back with entries the sweeper never got to and sockets the server has long since
-    /// closed. The old entry is closed rather than left behind: overwriting `entries[key]`
-    /// with a fresh one used to leak the driver it replaced.
-    private func reusableEntry(forKey key: Key) -> Entry? {
-        guard let entry = entries[key] else { return nil }
-        if entry.driver.status == .connected, !entry.driver.hasLostConnection, !Self.isStale(entry.lastUsed) {
-            return entry
+    private func claimEntry(forKey key: Key, schema: String?, excluding held: Set<ObjectIdentifier>) -> Entry? {
+        // A Mac that slept comes back with entries the sweeper never reached and sockets the server already closed.
+        for entry in entries[key] ?? [] where !isUsable(entry) {
+            removeEntry(entry, fromKey: key)
         }
-        closeOrDeferEntry(forKey: key)
-        return nil
+        guard let entry = placeWithoutOpening(forKey: key, schema: schema, excluding: held) else { return nil }
+        claim(entry, for: schema)
+        return entry
     }
 
-    private func startOpen(forKey key: Key) throws -> PendingOpen {
-        guard DatabaseManager.shared.session(for: key.scope.connectionId) != nil else {
+    // At most one busy entry per schema, so two schemas share a connection only while one of them is idle.
+    private func placeWithoutOpening(
+        forKey key: Key,
+        schema: String?,
+        excluding held: Set<ObjectIdentifier>
+    ) -> Entry? {
+        let candidates = (entries[key] ?? []).filter { !held.contains(ObjectIdentifier($0)) && isUsable($0) }
+        let idle = candidates.filter { isIdle($0) }
+        if let onSchema = idle.first(where: { $0.schema == schema }) {
+            return onSchema
+        }
+        if let any = idle.min(by: { $0.lastUsed < $1.lastUsed }) {
+            return any
+        }
+        guard held.isEmpty else { return nil }
+        return candidates.first { $0.inFlightCount > 0 && $0.queuedSchema == schema }
+    }
+
+    private func claim(_ entry: Entry, for schema: String?) {
+        entry.inFlightCount += 1
+        entry.lastUsed = Date()
+        entry.queuedSchema = schema
+    }
+
+    // Runs on the entry's queue before the lease's work, so the switch lands where the work reads.
+    private func moveEntry(_ entry: Entry, inKey key: Key, to schema: String?) async throws -> Bool {
+        guard key.slot == .followsSchema, let schema, let switchable = entry.driver as? SchemaSwitchable else {
+            return true
+        }
+        let unconditionally = entry.forcesNextSwitch
+        // Asked on every lease: Snowflake's drivers for one connection share a session, so another one may have moved it.
+        if !unconditionally, switchable.currentSchema == schema {
+            entry.schema = schema
+            return true
+        }
+        // A SET sent inside a transaction is undone by its rollback while the driver keeps the new name. A fresh
+        // entry's transaction came from the startup commands, and every replacement would carry one too.
+        if entry.hasServedALease {
+            let state = await entry.driver.sessionTransactionState()
+            if state == .inTransaction || state == .abortedTransaction {
+                Self.logger.info("Closing a pooled connection left in a transaction instead of moving its schema")
+                removeEntry(entry, fromKey: key)
+                return false
+            }
+        }
+        do {
+            try await Self.switchSchema(
+                entry.driver,
+                to: schema,
+                timeoutSeconds: Self.stepTimeoutSeconds(for: key.connectionId),
+                unconditionally: unconditionally
+            )
+        } catch {
+            // The server may have run a statement the client gave up on, so the next lease sends its own.
+            entry.schema = nil
+            entry.forcesNextSwitch = true
+            if !Self.isConnected(entry.driver) {
+                removeEntry(entry, fromKey: key)
+            }
+            throw error
+        }
+        entry.schema = schema
+        entry.forcesNextSwitch = false
+        return true
+    }
+
+    private static func stepTimeoutSeconds(for connectionId: UUID) -> Double? {
+        guard let seconds = DatabaseManager.shared.session(for: connectionId)?.effectiveQueryTimeoutSeconds,
+              seconds > 0
+        else { return nil }
+        return Double(seconds)
+    }
+
+    // Joining an open that has already finished returns without a suspension, so a caller that rejoined one whose entry
+    // went would spin on the main actor and starve the callers still waiting to resume from it.
+    private func forgetSpentOpen(_ open: PendingOpen, for openKey: OpenKey) {
+        guard pending[openKey] === open else { return }
+        pending.removeValue(forKey: openKey)
+        handRoom(on: openKey.key.connectionId)
+    }
+
+    private static func isConnected(_ driver: DatabaseDriver) -> Bool {
+        driver.status == .connected && !driver.hasLostConnection
+    }
+
+    private func isUsable(_ entry: Entry) -> Bool {
+        Self.isConnected(entry.driver) && !Self.isStale(entry.lastUsed)
+    }
+
+    private func isListed(_ entry: Entry, inKey key: Key) -> Bool {
+        entries[key]?.contains { $0 === entry } == true
+    }
+
+    private func isAwaitingItsOpeners(_ entry: Entry) -> Bool {
+        pending.values.contains { $0.entry === entry }
+    }
+
+    private func isIdle(_ entry: Entry) -> Bool {
+        entry.inFlightCount == 0 && !isAwaitingItsOpeners(entry)
+    }
+
+    // A new entry opens on the connection's own default and each lease moves it, so it can serve every schema.
+    private func startOpen(_ openKey: OpenKey) throws -> PendingOpen {
+        let key = openKey.key
+        guard let session = DatabaseManager.shared.session(for: key.connectionId) else {
             throw DatabaseError.notConnected
         }
-        evictIdleIfNeeded(for: key.scope.connectionId)
-        let task = Task<Void, Error> { [self] in
-            let entry = Entry(driver: try await openDriver(key.scope))
+        evictIdleIfNeeded(for: key.connectionId)
+        let scope = DatabaseScope(connectionId: key.connectionId, database: key.database, schema: nil)
+        let forcesFirstSwitch = key.slot == .followsSchema
+            && DatabaseManager.hasStartupCommands(session.connection.startupCommands)
+        let open = PendingOpen()
+        open.task = Task { [self] in
+            let entry = Entry(driver: try await openDriver(scope), schema: nil, forcesNextSwitch: forcesFirstSwitch)
             if Task.isCancelled {
                 entry.driver.disconnect()
                 return
             }
-            entries[key] = entry
+            entries[key, default: []].append(entry)
+            open.entry = entry
             startSweeperIfNeeded()
         }
-        let open = PendingOpen(task: task)
-        pending[key] = open
+        pending[openKey] = open
         return open
     }
 
-    /// Waits for an open to finish, takes it off the pending list once the last caller waiting on it
-    /// has, and returns how it failed.
-    private func completion(of open: PendingOpen, forKey key: Key) async -> Error? {
+    // Waits for an open to finish, takes it off the pending list once its last caller has, and returns how it failed.
+    private func completion(of open: PendingOpen, for openKey: OpenKey) async -> Error? {
         open.waiterCount += 1
         defer {
             open.waiterCount -= 1
-            if open.waiterCount == 0, pending[key] === open {
-                pending.removeValue(forKey: key)
+            if open.waiterCount == 0, pending[openKey] === open {
+                pending.removeValue(forKey: openKey)
                 // A failed open frees its place, and a taken one leaves an entry that is now evictable once idle.
-                handRoom(on: key.scope.connectionId)
+                handRoom(on: openKey.key.connectionId)
             }
         }
         do {
-            try await open.task.value
+            _ = try await open.task?.value
             return nil
         } catch {
             return error
@@ -464,10 +632,10 @@ final class MetadataConnectionPool {
     }
 
     // First come first served, interactive ahead of bulk; a caller arriving while others wait goes behind them.
-    private func waitForRoom(forKey key: Key) async throws {
-        let connectionId = key.scope.connectionId
+    private func waitForRoom(forKey key: Key, schema: String?, held: Set<ObjectIdentifier>) async throws {
+        let connectionId = key.connectionId
         guard !PooledLeaseContext.open.contains(where: { $0.isOpen && $0.connectionId == connectionId }) else { return }
-        let ticket = RoomTicket(key: key)
+        let ticket = RoomTicket(key: key, schema: schema, held: held)
         roomQueues[connectionId, default: []].append(ticket)
         defer { leaveRoomQueue(ticket) }
         while !mayOpen(ticket) {
@@ -477,11 +645,18 @@ final class MetadataConnectionPool {
         }
     }
 
-    private func mayOpen(_ ticket: RoomTicket) -> Bool {
+    private func proceedsWithoutAPlace(_ ticket: RoomTicket) -> Bool {
         let key = ticket.key
-        let connectionId = key.scope.connectionId
-        if pending[key] != nil || entries[key] != nil || isReplacingTransport(for: connectionId) { return true }
-        return nextInLine(on: connectionId) === ticket && hasRoom(for: key.workload, on: connectionId)
+        let joinsAnOpen = ticket.held.isEmpty && pending[OpenKey(key: key, schema: ticket.schema, owner: nil)] != nil
+        return joinsAnOpen
+            || placeWithoutOpening(forKey: key, schema: ticket.schema, excluding: ticket.held) != nil
+            || isReplacingTransport(for: key.connectionId)
+    }
+
+    private func mayOpen(_ ticket: RoomTicket) -> Bool {
+        if proceedsWithoutAPlace(ticket) { return true }
+        let connectionId = ticket.key.connectionId
+        return nextInLine(on: connectionId) === ticket && hasRoom(for: ticket.key.workload, on: connectionId)
     }
 
     private func nextInLine(on connectionId: UUID) -> RoomTicket? {
@@ -489,18 +664,24 @@ final class MetadataConnectionPool {
         return line.first { $0.key.workload == .interactive } ?? line.first
     }
 
-    // Wakes only the caller next in line, so a freed place goes to it rather than to whoever resumes first.
+    // A freed place goes only to the caller next in line. Callers that need no new place go too, and first, so an
+    // idle entry is reused before the next in line can evict it.
     private func handRoom(on connectionId: UUID) {
-        guard let next = nextInLine(on: connectionId),
-              let continuation = next.continuation,
-              mayOpen(next)
-        else { return }
-        next.continuation = nil
-        continuation.resume()
+        let parked = (roomQueues[connectionId] ?? []).filter { $0.continuation != nil }
+        var woken = parked.filter { proceedsWithoutAPlace($0) }
+        if let next = nextInLine(on: connectionId), next.continuation != nil,
+           !woken.contains(where: { $0 === next }), mayOpen(next) {
+            woken.append(next)
+        }
+        for ticket in woken {
+            guard let continuation = ticket.continuation else { continue }
+            ticket.continuation = nil
+            continuation.resume()
+        }
     }
 
     private func leaveRoomQueue(_ ticket: RoomTicket) {
-        let connectionId = ticket.key.scope.connectionId
+        let connectionId = ticket.key.connectionId
         roomQueues[connectionId]?.removeAll { $0 === ticket }
         if roomQueues[connectionId]?.isEmpty == true {
             roomQueues.removeValue(forKey: connectionId)
@@ -536,9 +717,9 @@ final class MetadataConnectionPool {
     }
 
     // Same reason as `failTransportWaiters`: a parked caller would otherwise open what was just closed.
-    private func withdrawRoomTickets(where matches: (DatabaseScope) -> Bool) {
+    private func withdrawRoomTickets(where matches: (UUID, String) -> Bool) {
         for line in roomQueues.values {
-            for ticket in line where matches(ticket.key.scope) {
+            for ticket in line where matches(ticket.key.connectionId, ticket.key.database) {
                 ticket.isWithdrawn = true
                 failRoomTicket(ticket)
             }
@@ -660,14 +841,23 @@ final class MetadataConnectionPool {
         }
     }
 
-    static func switchSchema(_ driver: DatabaseDriver, to schema: String, timeoutSeconds: Double?) async throws {
+    static func switchSchema(
+        _ driver: DatabaseDriver,
+        to schema: String,
+        timeoutSeconds: Double?,
+        unconditionally: Bool = false
+    ) async throws {
         guard let switchable = driver as? SchemaSwitchable else { return }
         try await bounded(
             driver: driver,
             timeoutSeconds: timeoutSeconds,
             timeoutMessage: String(format: String(localized: "Switching to schema '%@' timed out."), schema)
         ) {
-            try await switchable.switchSchemaIfNeeded(to: schema)
+            if unconditionally {
+                try await switchable.switchSchema(to: schema)
+            } else {
+                try await switchable.switchSchemaIfNeeded(to: schema)
+            }
         }
     }
 
@@ -740,15 +930,16 @@ final class MetadataConnectionPool {
         sweeper = nil
     }
 
-    /// Hands back every connection nobody has used for `idleTimeout`. An entry with work on it is
-    /// left alone whatever its age: `lastUsed` is stamped when the work starts, so a long export
-    /// would otherwise have its own connection closed underneath it.
+    // An entry with work on it stays whatever its age: `lastUsed` is stamped when the work starts, so a long export
+    // would otherwise have its own connection closed underneath it.
     internal func sweepIdleEntries(now: Date = Date()) {
         var sweptFrom: Set<UUID> = []
-        for (key, entry) in entries where entry.inFlightCount == 0 && Self.isStale(entry.lastUsed, now: now) {
-            entries.removeValue(forKey: key)
-            entry.driver.disconnect()
-            sweptFrom.insert(key.scope.connectionId)
+        for (key, list) in entries {
+            for entry in list where entry.inFlightCount == 0 && Self.isStale(entry.lastUsed, now: now) {
+                detach(entry, fromKey: key)
+                entry.driver.disconnect()
+                sweptFrom.insert(key.connectionId)
+            }
         }
         for connectionId in sweptFrom {
             handRoom(on: connectionId)
@@ -765,22 +956,34 @@ final class MetadataConnectionPool {
     // Bulk never takes the last place, so a completion read or a sidebar expand never waits behind a burst of bulk work.
     private func hasRoom(for workload: Workload, on connectionId: UUID) -> Bool {
         let placeIsFree = heldCount(for: connectionId) < Self.maxPerConnection
-            || leastRecentlyUsedIdleKey(for: connectionId) != nil
+            || leastRecentlyUsedIdleEntry(for: connectionId) != nil
         guard workload == .bulk else { return placeIsFree }
         return placeIsFree && busyCount(for: connectionId) < Self.maxPerConnection - 1
     }
 
-    private func busyCount(for connectionId: UUID) -> Int {
-        var keys = Set(pending.keys.filter { $0.scope.connectionId == connectionId })
-        for (key, entry) in entries where key.scope.connectionId == connectionId && entry.inFlightCount > 0 {
-            keys.insert(key)
+    private func pooled(on connectionId: UUID) -> [(key: Key, entry: Entry)] {
+        var found: [(key: Key, entry: Entry)] = []
+        for (key, list) in entries where key.connectionId == connectionId {
+            found += list.map { (key: key, entry: $0) }
         }
-        return keys.count
+        return found
     }
 
-    /// Keeps a connection at the limit once its work ends. Closing only one idle entry per open, as
-    /// the pool used to, left a burst's high-water mark standing until the idle sweep: a tree Refresh
-    /// across many databases held every connection it opened for ten minutes (#3103).
+    // An open still dialing holds a place. One that landed holds it through its entry, and counts once.
+    private func openingCount(for connectionId: UUID) -> Int {
+        pending.filter { openKey, open in
+            guard openKey.key.connectionId == connectionId else { return false }
+            guard let landed = open.entry else { return true }
+            return !isListed(landed, inKey: openKey.key)
+        }.count
+    }
+
+    private func busyCount(for connectionId: UUID) -> Int {
+        pooled(on: connectionId).filter { !isIdle($0.entry) }.count + openingCount(for: connectionId)
+    }
+
+    // Closing one idle entry per open, as the pool used to, left a burst's high-water mark standing until the idle
+    // sweep: a tree Refresh across many databases held every connection it opened for ten minutes (#3103).
     private func trimIdleEntries(for connectionId: UUID) {
         while heldCount(for: connectionId) > Self.maxPerConnection {
             guard evictLeastRecentlyUsedIdleEntry(for: connectionId) else { break }
@@ -788,29 +991,22 @@ final class MetadataConnectionPool {
         stopSweeperIfEmpty()
     }
 
-    /// Every key the connection holds a connection for or is opening one for. Counted by key, so an
-    /// open that has finished but is still listed until its callers take the entry counts once.
     private func heldCount(for connectionId: UUID) -> Int {
-        var keys = Set(entries.keys.filter { $0.scope.connectionId == connectionId })
-        keys.formUnion(pending.keys.filter { $0.scope.connectionId == connectionId })
-        return keys.count
+        pooled(on: connectionId).count + openingCount(for: connectionId)
     }
 
     @discardableResult
     private func evictLeastRecentlyUsedIdleEntry(for connectionId: UUID) -> Bool {
-        guard let key = leastRecentlyUsedIdleKey(for: connectionId),
-              let entry = entries.removeValue(forKey: key)
+        guard let victim = leastRecentlyUsedIdleEntry(for: connectionId),
+              detach(victim.entry, fromKey: victim.key)
         else { return false }
-        entry.driver.disconnect()
+        victim.entry.driver.disconnect()
         return true
     }
 
-    /// An entry whose open is still listed has callers that have not taken it yet, so it is not idle
-    /// however it looks.
-    private func leastRecentlyUsedIdleKey(for connectionId: UUID) -> Key? {
-        let idle = entries.filter { key, entry in
-            key.scope.connectionId == connectionId && entry.inFlightCount == 0 && pending[key] == nil
-        }
-        return idle.min(by: { $0.value.lastUsed < $1.value.lastUsed })?.key
+    private func leastRecentlyUsedIdleEntry(for connectionId: UUID) -> (key: Key, entry: Entry)? {
+        pooled(on: connectionId)
+            .filter { isIdle($0.entry) }
+            .min { $0.entry.lastUsed < $1.entry.lastUsed }
     }
 }

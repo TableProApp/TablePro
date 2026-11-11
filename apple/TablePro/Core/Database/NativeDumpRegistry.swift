@@ -6,21 +6,19 @@
 import Foundation
 import TableProPluginKit
 import TableProSQLQuoting
+import TableProTLSClientIdentity
 
-/// Which engines can dump and restore, and how to drive them.
-///
-/// Curated here rather than declared by each driver plugin, because the facts are about tools on
-/// the user's Mac rather than about the driver's own behaviour, and adding a `DriverPlugin` static
-/// for them would mean an ABI change and a re-release of every registry plugin for data no plugin
-/// produces.
-///
-/// A password never reaches the argument list. Anything in `argv` is readable by every process on
-/// the machine through `ps`, so each engine's own out-of-band channel is used instead: `PGPASSWORD`
-/// and `MYSQL_PWD` for the two that read the environment, and a `0600` config file for MongoDB,
-/// whose tools read neither.
+// Curated here rather than declared by each driver plugin, because the facts are about tools on
+// the user's Mac rather than about the driver's own behaviour, and adding a `DriverPlugin` static
+// for them would mean an ABI change and a re-release of every registry plugin for data no plugin
+// produces.
+// A password never reaches the argument list. Anything in `argv` is readable by every process on
+// the machine through `ps`, so each engine's own out-of-band channel is used instead: `PGPASSWORD`
+// and `MYSQL_PWD` for the two that read the environment, and a `0600` config file for MongoDB,
+// whose tools read neither.
 enum NativeDumpRegistry {
-    /// The formats one engine can write, in the order the sheet offers them. The first is the
-    /// default. Only DuckDB has more than one.
+    // The formats one engine can write, in the order the sheet offers them. The first is the
+    // default. Only DuckDB has more than one.
     static func formats(for type: DatabaseType) -> [NativeDumpDescriptor.ArchiveFormat] {
         switch type {
         case .duckdb:
@@ -58,12 +56,11 @@ enum NativeDumpRegistry {
         descriptor(for: type) != nil
     }
 
-    /// Whether this particular connection can be dumped, which is not always the same question as
-    /// whether its engine can.
-    ///
-    /// libSQL reaches either a local file or a Turso URL, and only the file can be handed to
-    /// `sqlite3`. Answering by type alone is how a remote libSQL connection produced a 52-byte
-    /// backup the result sheet reported as a success.
+    // Whether this particular connection can be dumped, which is not always the same question as
+    // whether its engine can.
+    // libSQL reaches either a local file or a Turso URL, and only the file can be handed to
+    // `sqlite3`. Answering by type alone is how a remote libSQL connection produced a 52-byte
+    // backup the result sheet reported as a success.
     static func supports(_ connection: DatabaseConnection, localFilePath: String?) -> Bool {
         guard let descriptor = descriptor(for: connection.type) else { return false }
         guard descriptor.requiresLocalFile else { return true }
@@ -73,8 +70,8 @@ enum NativeDumpRegistry {
 
     // MARK: - PostgreSQL
 
-    /// Redshift reports 8.0.2, which no `pg_dump` release claims to support, so only PostgreSQL
-    /// itself is matched to the server.
+    // Redshift reports 8.0.2, which no `pg_dump` release claims to support, so only PostgreSQL
+    // itself is matched to the server.
     static let postgresToolForServer: @Sendable (String, String?) -> NativeDumpToolSelection = { binary, serverVersion in
         PostgreSQLDumpToolLocator.select(binary: binary, serverVersion: serverVersion)
     }
@@ -121,10 +118,14 @@ enum NativeDumpRegistry {
                             environment["PGHOSTADDR"] = hostaddr
                         }
                         environment.merge(
-                            postgresSSLEnvironment(request.connection.transportSSLConfiguration)
+                            postgresSSLEnvironment(
+                                request.connection.transportSSLConfiguration,
+                                systemTrustAnchorsFile: request.systemTrustAnchorsFile
+                            )
                         ) { _, new in new }
                         return environment
-                    }
+                    },
+                    needsSystemTrustAnchors: { request in postgresNeedsSystemTrustAnchors(request) }
                 )
             ),
             archiveFormat: NativeDumpDescriptor.ArchiveFormat(
@@ -186,18 +187,23 @@ enum NativeDumpRegistry {
         }
     }
 
-    /// The whole of the connection's SSL configuration, not just its mode.
-    ///
-    /// libpq falls back to `~/.postgresql/root.crt` when no root certificate is named, and measured
-    /// with pg_dump 17.11 a `verify-ca` connection with no such file fails before connecting with
-    /// `root certificate file "..." does not exist`. So a Verify CA connection that opens in the
-    /// app could never be dumped. The rule matches what `LibPQConnectionString` already sends on
-    /// the live connection, down to the CA being tied to the modes that verify.
-    static func postgresSSLEnvironment(_ ssl: SSLConfiguration) -> [String: String] {
+    // What `LibPQConnectionString` sends on the live connection. Measured with pg_dump 17.11, a verifying mode with no
+    // root file named and no `~/.postgresql/root.crt` fails before connecting with `root certificate file "..." does not
+    // exist`.
+    static func postgresSSLEnvironment(
+        _ ssl: SSLConfiguration,
+        systemTrustAnchorsFile: URL? = nil,
+        inherited: [String: String] = ProcessInfo.processInfo.environment
+    ) -> [String: String] {
         guard ssl.isEnabled, let mode = postgresSSLMode(ssl.mode) else { return [:] }
         var environment = ["PGSSLMODE": mode]
         if ssl.verifiesCertificate, !ssl.caCertificatePath.isEmpty {
             environment["PGSSLROOTCERT"] = ssl.caCertificatePath
+        } else if ssl.verifiesHostname, let systemTrustAnchorsFile {
+            environment["PGSSLROOTCERT"] = systemTrustAnchorsFile.path
+        } else if ssl.verifiesCertificate, let named = inherited["PGSSLROOTCERT"], !named.isEmpty {
+            // The tool starts from a minimal environment, so a root file the user named for libpq is carried to it.
+            environment["PGSSLROOTCERT"] = named
         }
         if !ssl.clientCertificatePath.isEmpty {
             environment["PGSSLCERT"] = ssl.clientCertificatePath
@@ -208,10 +214,32 @@ enum NativeDumpRegistry {
         return environment
     }
 
+    // The driver's rule, `LibPQConnectionString.rootCertificateSource`: Verify Identity with no CA file checks this Mac's
+    // trusted roots, unless the server is a socket or libpq's own `~/.postgresql/root.crt` is there. The tool inherits
+    // HOME, so it looks for that file where this does.
+    static func postgresNeedsSystemTrustAnchors(
+        _ request: NativeDumpDescriptor.Request,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    ) -> Bool {
+        let ssl = request.connection.transportSSLConfiguration
+        return LibPQSystemTrustRule.usesSystemTrustAnchors(
+            verifiesHostname: ssl.verifiesHostname,
+            caCertificatePath: ssl.caCertificatePath,
+            host: postgresEndpoint(request).host,
+            environment: environment,
+            fileExists: fileExists
+        )
+    }
+
+    static func postgresDefaultRootCertificatePath(environment: [String: String]) -> String {
+        LibPQSystemTrustRule.defaultRootCertificatePath(environment: environment)
+    }
+
     // MARK: - MySQL and MariaDB
 
-    /// MariaDB 11.0 renamed every client, keeping the `mysql`-prefixed names as symlinks that some
-    /// builds leave out, so both spellings are tried.
+    // MariaDB 11.0 renamed every client, keeping the `mysql`-prefixed names as symlinks that some
+    // builds leave out, so both spellings are tried.
     private static var mysql: NativeDumpDescriptor {
         NativeDumpDescriptor(
             mechanism: .commandLineTool(
@@ -269,12 +297,12 @@ enum NativeDumpRegistry {
         )
     }
 
-    /// `--` before the database, because `my_getopt` does not stop parsing options at the first
-    /// positional argument and every name after it is the user's. Measured with mysqldump 8.4.11
-    /// and 12.3.2, a database named `--no-data` with the terminator behind it dumped a *different*
-    /// database with no rows and exited 0, which the result sheet reports as a successful backup;
-    /// a table named `--ssl-mode=DISABLED` in the same slot sends the whole dump in cleartext. With
-    /// `--` in front of the database, both are names again.
+    // `--` before the database, because `my_getopt` does not stop parsing options at the first
+    // positional argument and every name after it is the user's. Measured with mysqldump 8.4.11
+    // and 12.3.2, a database named `--no-data` with the terminator behind it dumped a *different*
+    // database with no rows and exited 0, which the result sheet reports as a successful backup;
+    // a table named `--ssl-mode=DISABLED` in the same slot sends the whole dump in cleartext. With
+    // `--` in front of the database, both are names again.
     private static func mysqlObjectArguments(_ request: NativeDumpDescriptor.Request) -> [String] {
         ["--", request.database] + request.scope.objects.map(\.name)
     }
@@ -390,9 +418,9 @@ enum NativeDumpRegistry {
 
     // MARK: - MongoDB
 
-    /// `mongodump` reads no password from the environment, and a password in `argv` is readable by
-    /// every process on the machine. Its `--config` file is the only channel left, so the caller
-    /// writes one at mode `0600` and passes its path; `NativeDumpService` removes it afterwards.
+    // `mongodump` reads no password from the environment, and a password in `argv` is readable by
+    // every process on the machine. Its `--config` file is the only channel left, so the caller
+    // writes one at mode `0600` and passes its path; `NativeDumpService` removes it afterwards.
     private static var mongodb: NativeDumpDescriptor {
         NativeDumpDescriptor(
             mechanism: .commandLineTool(
@@ -432,8 +460,8 @@ enum NativeDumpRegistry {
     // The tools check the name in the URI, 127.0.0.1 through a tunnel, and no option names another. Verify CA skips it.
     private static let mongoModesThroughTunnel: [SSLMode] = [.disabled, .preferred, .required, .verifyCa]
 
-    /// A whole-database dump names the database; a narrowed one names each collection, because
-    /// `--db` plus `--collection` takes only one collection at a time while `--nsInclude` repeats.
+    // A whole-database dump names the database; a narrowed one names each collection, because
+    // `--db` plus `--collection` takes only one collection at a time while `--nsInclude` repeats.
     private static func mongoNamespaceFlags(_ request: NativeDumpDescriptor.Request) -> [String] {
         guard !request.scope.isWholeDatabase else { return ["--db=\(request.database)"] }
         return request.scope.objects.map { object in
@@ -458,13 +486,12 @@ enum NativeDumpRegistry {
 
     // MARK: - SQL Server
 
-    /// `sqlpackage` is Microsoft's own client-side export, and the only one that writes a whole
-    /// database to a local file. `bcp` moves one table at a time and produces no schema, so it
-    /// cannot stand in for a dump.
-    ///
-    /// Not verified against a live server here: the arguments come from Microsoft's documented CLI
-    /// surface rather than from a run, so a mistake in them surfaces as the tool's own usage error
-    /// rather than a wrong file.
+    // `sqlpackage` is Microsoft's own client-side export, and the only one that writes a whole
+    // database to a local file. `bcp` moves one table at a time and produces no schema, so it
+    // cannot stand in for a dump.
+    // Not verified against a live server here: the arguments come from Microsoft's documented CLI
+    // surface rather than from a run, so a mistake in them surfaces as the tool's own usage error
+    // rather than a wrong file.
     private static var sqlServer: NativeDumpDescriptor {
         NativeDumpDescriptor(
             mechanism: .commandLineTool(
@@ -522,10 +549,10 @@ enum NativeDumpRegistry {
         return "\(schema).\(object.name)"
     }
 
-    /// `sqlpackage` takes no password flag and no password environment variable: the connection
-    /// string is the only channel it has. That puts the password in `argv`, where `ps` can read it,
-    /// so the string is built here and `NativeDumpService` keeps SQL Server out of the flows that
-    /// promise otherwise. Anything better needs Entra or integrated auth, which have no password.
+    // `sqlpackage` takes no password flag and no password environment variable: the connection
+    // string is the only channel it has. That puts the password in `argv`, where `ps` can read it,
+    // so the string is built here and `NativeDumpService` keeps SQL Server out of the flows that
+    // promise otherwise. Anything better needs Entra or integrated auth, which have no password.
     private static func sqlServerConnectionString(_ request: NativeDumpDescriptor.Request) throws -> String {
         let quoted = NativeDumpArgumentQuoting.sqlServerConnectionStringValue
         var parts = try [
@@ -559,12 +586,11 @@ enum NativeDumpRegistry {
 
     // MARK: - SQLite
 
-    /// The database is a file the tool opens directly, so there is no host, port or password, and
-    /// `.dump` writes SQL to standard output.
-    ///
-    /// The path comes from `localFilePath` rather than from `connection.database`. libSQL claims
-    /// this descriptor too and keeps its path in a plugin-declared additional field, so reading
-    /// `database` handed `sqlite3` an empty string, which exits 0 after writing a 52-byte file.
+    // The database is a file the tool opens directly, so there is no host, port or password, and
+    // `.dump` writes SQL to standard output.
+    // The path comes from `localFilePath` rather than from `connection.database`. libSQL claims
+    // this descriptor too and keeps its path in a plugin-declared additional field, so reading
+    // `database` handed `sqlite3` an empty string, which exits 0 after writing a 52-byte file.
     private static var sqlite: NativeDumpDescriptor {
         NativeDumpDescriptor(
             mechanism: .commandLineTool(

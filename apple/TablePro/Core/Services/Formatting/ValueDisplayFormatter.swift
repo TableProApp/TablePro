@@ -12,14 +12,23 @@ import TableProUtilities
 // per cell, and it has to stay reachable without dragging the preference layer behind it.
 // Resolving *which* format a column carries is a separate job with separate dependencies, and it
 // lives in `ValueDisplayFormatService`.
-@MainActor
 enum ValueDisplayFormatter {
+    @MainActor
+    static func apply(
+        _ rawValue: String,
+        format: ValueDisplayFormat,
+        columnType: ColumnType? = nil
+    ) -> String? {
+        apply(rawValue, format: format, columnType: columnType, dates: DateFormattingService.shared.renderer)
+    }
+
     // nil where the format cannot render this value, so the caller falls back to how the column
     // would have read without it rather than showing a value the format did not actually produce.
     static func apply(
         _ rawValue: String,
         format: ValueDisplayFormat,
-        columnType: ColumnType? = nil
+        columnType: ColumnType?,
+        dates: DateDisplayRenderer
     ) -> String? {
         switch format {
         case .raw:
@@ -31,9 +40,9 @@ enum ValueDisplayFormatter {
         case .uuidSwappedTime:
             return formatAsUuid(rawValue, order: .swappedTime)
         case .unixTimestamp:
-            return formatAsTimestamp(rawValue, divideBy: 1)
+            return formatAsTimestamp(rawValue, divideBy: 1, dates: dates)
         case .unixTimestampMillis:
-            return formatAsTimestamp(rawValue, divideBy: 1_000)
+            return formatAsTimestamp(rawValue, divideBy: 1_000, dates: dates)
         case .json, .phpSerialized:
             return rawValue
         case .messagePack, .protobuf, .igbinary, .avro, .protobufSchema, .schemaRegistry:
@@ -105,11 +114,11 @@ enum ValueDisplayFormatter {
         return "\(p1)-\(p2)-\(p3)-\(p4)-\(p5)"
     }
 
-    private static func formatAsTimestamp(_ rawValue: String, divideBy divisor: Double) -> String {
+    private static func formatAsTimestamp(_ rawValue: String, divideBy divisor: Double, dates: DateDisplayRenderer) -> String {
         guard let numericValue = Double(rawValue) else { return rawValue }
         let seconds = numericValue / divisor
         let date = Date(timeIntervalSince1970: seconds)
-        return DateFormattingService.shared.format(date)
+        return dates.format(date)
     }
 }
 

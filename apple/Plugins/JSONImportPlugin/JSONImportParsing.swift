@@ -37,9 +37,9 @@ enum JSONImportParsing {
         .importFailed("The file contains multiple tables and none matches the target table")
     }
 
-    // The values of a `.json` file that become rows, and how many there are. A UTF-8 file is read
-    // one element at a time after a pass that finds its rows and checks its structure, so a broken
-    // file fails before the first row is imported.
+    // The values of a `.json` file that become rows, and how many there are. The file is read one
+    // element at a time after a pass that finds its rows and checks its structure, so a broken file
+    // fails before the first row is imported.
     static func rowElements(
         at url: URL,
         targetTable: String?,
@@ -50,27 +50,51 @@ enum JSONImportParsing {
             let rows = try JSONDocumentOutline.rows(in: &reader, targetTable: targetTable) { reader, _ in
                 try reader.skipValue()
             }
-            if case .array(let offset, let count, _) = rows {
+            switch rows {
+            case .array(let offset, let count, _):
                 return (try JSONStreamedElements(reader: reader, arrayAt: offset), count)
+            case .singleObject(let offset):
+                defer { reader.close() }
+                var row: [String: PluginCellValue] = [:]
+                try members(ofObjectAt: offset, in: &reader) { name, value in
+                    row[name] = cellValue(from: value)
+                }
+                return (JSONSingleRow(row), 1)
             }
         } catch {
             reader.close()
             throw error
         }
-        reader.close()
-        let elements = try parseElements(at: url, targetTable: targetTable)
-        return (JSONParsedElements(elements), elements.count)
+    }
+
+    // Each member of the object at `offset`, parsed one at a time. A parsed object keeps the first
+    // of two members that share a name, so the later one is passed over.
+    static func members(
+        ofObjectAt offset: Int,
+        in reader: inout JSONDocumentReader,
+        _ body: (String, Any) throws -> Void
+    ) throws {
+        try reader.seek(to: offset)
+        guard try reader.enterObject() else { return }
+        var names: Set<String> = []
+        repeat {
+            let name = try reader.memberName()
+            let value = try reader.readValue()
+            guard names.insert(name).inserted else { continue }
+            try autoreleasepool {
+                try body(name, try JSONSerialization.jsonObject(with: value, options: .fragmentsAllowed))
+            }
+        } while try reader.continueObject()
     }
 
     static func row(from element: Any) throws -> [String: PluginCellValue] {
+        if let row = element as? [String: PluginCellValue] {
+            return row
+        }
         guard let object = element as? NSDictionary else {
             throw PluginImportError.importFailed(String(localized: "Each array element must be a JSON object"))
         }
         return convertRow(object)
-    }
-
-    static func parseRows(at url: URL, targetTable: String?) throws -> [NSDictionary] {
-        try parseElements(at: url, targetTable: targetTable).compactMap { $0 as? NSDictionary }
     }
 
     static func parseElements(at url: URL, targetTable: String?) throws -> [Any] {
@@ -181,8 +205,12 @@ enum JSONImportParsing {
         switch rows {
         case .array(_, _, let slot):
             return surveys[slot]?.fields ?? []
-        case .wholeDocument:
-            return try detectFields(in: try parseRows(at: url, targetTable: targetTable))
+        case .singleObject(let offset):
+            var survey = JSONFieldSurvey()
+            try members(ofObjectAt: offset, in: &reader) { name, value in
+                survey.add(value, named: name)
+            }
+            return survey.fields
         }
     }
 

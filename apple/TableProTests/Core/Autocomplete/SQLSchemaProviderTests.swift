@@ -387,11 +387,15 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     func commitTransaction() async throws { commitTransactionCallCount += 1 }
     func rollbackTransaction() async throws {}
 
+    // A switch to this schema fails, the way a server refuses a schema it does not have.
+    var switchSchemaError: (schema: String, error: any Error)?
+
     func switchSchema(to schema: String) async throws {
         await onSwitchSchema?()
         if switchSchemaDelaySeconds > 0 {
             try await Task.sleep(nanoseconds: UInt64(switchSchemaDelaySeconds * 1_000_000_000))
         }
+        if let failure = switchSchemaError, failure.schema == schema { throw failure.error }
         switchSchemaCallCount += 1
         currentSchema = schema
     }

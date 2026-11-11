@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProSQLGrammar
 import TableProUtilities
 
 extension DatabaseManager {
@@ -239,7 +240,12 @@ extension DatabaseManager {
 
     // Closes only the lanes parked when it starts, each while still parked as the same driver and only while
     // `owns` holds: a connect that took the session over parks lanes, and transactions, that are not this teardown's.
-    internal func closeTransportLanes(for connectionId: UUID, while owns: () -> Bool) async {
+    // A reconnect the user asked for passes `includingState: false`, as their own database switch does.
+    internal func closeTransportLanes(
+        for connectionId: UUID,
+        includingState: Bool = true,
+        while owns: () -> Bool
+    ) async {
         guard owns() else { return }
         let lanes = sessionLanes.parkedDatabases(for: connectionId).compactMap { database in
             sessionLanes.parkedDriver(for: connectionId, database: database).map { (database, $0) }
@@ -250,9 +256,12 @@ extension DatabaseManager {
             let held = await driver.heldSessionTransactionState()
             guard owns() else { return }
             guard sessionLanes.parkedDriver(for: connectionId, database: database) === driver else { continue }
-            if !held.permitsAppTransaction {
-                sessionLanes.markTransactionLost(database: database, for: connectionId)
-            }
+            sessionLanes.markLost(
+                database: database,
+                transaction: !held.permitsAppTransaction,
+                state: includingState ? sessionStateLedger.state(heldBy: driver, for: connectionId) : [],
+                for: connectionId
+            )
             sessionLanes.close(database: database, for: connectionId, supersedingOpens: false)
         }
     }
