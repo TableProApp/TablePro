@@ -71,4 +71,69 @@ public enum PluginRowStream {
             build(continuation, abort)
         }
     }
+
+    // A batch is a few thousand rows, so this caps what a reader that falls behind leaves in memory.
+    public static let boundedBufferBatches = 16
+
+    // Every element the producer sends goes through `deliverBlocking` or `deliver`: a full buffer drops a plain yield.
+    public static func makeBounded(
+        _ build: @escaping @Sendable (
+            AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
+            PluginStreamAbort
+        ) -> Void
+    ) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        make(bufferingPolicy: .bufferingOldest(boundedBufferBatches), build)
+    }
+
+    // Blocks the calling thread while the buffer is full, so it is only for a producer on its own serial queue or
+    // thread, never the cooperative pool. False, with the element not delivered, once the reader has gone or `stops`
+    // answers true.
+    public static func deliverBlocking<Element: Sendable>(
+        _ element: Element,
+        to continuation: AsyncThrowingStream<Element, Error>.Continuation,
+        stops: () -> Bool = { false }
+    ) -> Bool {
+        var pending = element
+        while true {
+            switch continuation.yield(pending) {
+            case .enqueued:
+                return true
+            case .dropped(let refused):
+                guard !stops() else { return false }
+                pending = refused
+                usleep(pollMicroseconds)
+            case .terminated:
+                return false
+            @unknown default:
+                return false
+            }
+        }
+    }
+
+    // `deliverBlocking` for a producer running as a task: it suspends while the buffer is full.
+    public static func deliver<Element: Sendable>(
+        _ element: Element,
+        to continuation: AsyncThrowingStream<Element, Error>.Continuation
+    ) async -> Bool {
+        var pending = element
+        while true {
+            switch continuation.yield(pending) {
+            case .enqueued:
+                return true
+            case .dropped(let refused):
+                pending = refused
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(pollMicroseconds) * 1_000)
+                } catch {
+                    return false
+                }
+            case .terminated:
+                return false
+            @unknown default:
+                return false
+            }
+        }
+    }
+
+    private static let pollMicroseconds: UInt32 = 2_000
 }

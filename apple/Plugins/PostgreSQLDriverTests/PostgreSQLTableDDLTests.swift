@@ -125,7 +125,15 @@ struct PostgreSQLTableDDLTests {
         let hostile = "o'rders"
         let statements = [
             PostgreSQLTableDDL.shapeQuery(schema: hostile, table: hostile, capabilities: Self.modern),
-            PostgreSQLTableDDL.partitionTreeQuery(schema: hostile, table: hostile)
+            PostgreSQLTableDDL.partitionTreeQuery(schema: hostile, table: hostile),
+            PostgreSQLTableDDL.partitionElementsQuery(
+                schema: hostile, table: hostile, scope: .below, capabilities: Self.modern
+            ),
+            PostgreSQLTableDDL.partitionElementsQuery(
+                schema: hostile, table: hostile, scope: .itself, capabilities: Self.modern
+            ),
+            PostgreSQLTableDDL.partitionIndexesQuery(schema: hostile, table: hostile),
+            PostgreSQLTableDDL.partitionCommentsQuery(schema: hostile, table: hostile)
         ]
         for sql in statements {
             #expect(PostgreSQLCatalogQualificationTests.unqualifiedCalls(in: sql).isEmpty, "\(sql)")
@@ -134,12 +142,114 @@ struct PostgreSQLTableDDLTests {
         }
     }
 
-    @Test("The partition tree lists a parent before its own partitions")
+    @Test("The partition tree lists a parent before its own partitions, foreign ones included")
     func partitionTreeOrder() {
         let sql = PostgreSQLTableDDL.partitionTreeQuery(schema: "public", table: "events")
         #expect(sql.contains("WITH RECURSIVE"))
         #expect(sql.contains("ORDER BY parts.depth"))
-        #expect(sql.contains("c.relkind IN ('r', 'p')"))
+        #expect(sql.contains("c.relkind IN ('r', 'p', 'f')"))
+    }
+
+    @Test("A foreign table partition's comments are left out with it")
+    func foreignPartitionCommentsAreLeftOut() {
+        let sql = PostgreSQLTableDDL.partitionCommentsQuery(schema: "public", table: "events")
+        #expect(sql.components(separatedBy: "WHERE c.relkind <> 'f'").count == 3)
+    }
+
+    // Each statement below was replayed on PostgreSQL 18 into an empty database and recreated the partition as read.
+    @Test("A partition's own defaults, NOT NULLs and constraints go in its element list")
+    func partitionElements() throws {
+        var partition = try #require(PostgreSQLTableDDL.partition(
+            from: ["public.events_2025", "public.events", "FOR VALUES FROM ('2025-01-01') TO ('2026-01-01')", "HASH (id)", "p"]
+        ))
+        partition.elements = PostgreSQLTableDDL.elementsByPartition([
+            ["public.events_2025", "user_id WITH OPTIONS NOT NULL"],
+            ["public.events_2025", "note WITH OPTIONS DEFAULT 'y'::text"],
+            ["public.events_2024", "CONSTRAINT ck_2024 CHECK (user_id > 0)"]
+        ])["public.events_2025"] ?? []
+        #expect(PostgreSQLTableDDL.createPartition(partition) == """
+            CREATE TABLE public.events_2025 PARTITION OF public.events (
+              user_id WITH OPTIONS NOT NULL,
+              note WITH OPTIONS DEFAULT 'y'::text
+            ) FOR VALUES FROM ('2025-01-01') TO ('2026-01-01') PARTITION BY HASH (id);
+            """)
+    }
+
+    @Test("A partition asked for by name keeps its own element list")
+    func partitionByNameKeepsElements() {
+        var shape = PostgreSQLTableDDL.shape(from: ["p", nil, "FOR VALUES FROM (1) TO (100)", "public.events"])
+        shape.partitionElements = ["CONSTRAINT ck CHECK (id > 0)"]
+        #expect(PostgreSQLTableDDL.createTable(name: "public.events_1", definitions: Self.columns, shape: shape)
+            == "CREATE TABLE public.events_1 PARTITION OF public.events (\n  CONSTRAINT ck CHECK (id > 0)\n) FOR VALUES FROM (1) TO (100);")
+    }
+
+    // The export reads a foreign partition's rows through the parent; replayed into it, they would go to the server.
+    @Test("A foreign table partition is written as a comment that names its server and options")
+    func foreignPartition() throws {
+        var partition = try #require(PostgreSQLTableDDL.partition(from: [
+            "public.logs_old", "public.logs", "FOR VALUES FROM (MINVALUE) TO ('2025-01-01')", nil, "p",
+            "remote_srv", "schema_name 'public', table_name 'old''logs'"
+        ]))
+        partition.elements = ["at WITH OPTIONS DEFAULT '2000-01-01'::date"]
+        let ddl = PostgreSQLTableDDL.createPartition(partition)
+        #expect(ddl == """
+            -- public.logs_old is a foreign table partition on server remote_srv, left out so a restore writes nothing
+            -- to that server. Rows exported for it have no partition until it is created:
+            -- CREATE FOREIGN TABLE public.logs_old PARTITION OF public.logs (
+            --   at WITH OPTIONS DEFAULT '2000-01-01'::date
+            -- ) FOR VALUES FROM (MINVALUE) TO ('2025-01-01') SERVER remote_srv OPTIONS (schema_name 'public', table_name 'old''logs');
+            """)
+        #expect(ddl.split(separator: "\n").allSatisfy { $0.hasPrefix("-- ") })
+
+        let bare = try #require(PostgreSQLTableDDL.partition(
+            from: ["public.l", "public.logs", "DEFAULT", nil, "p", "\"Srv\"", nil]
+        ))
+        #expect(PostgreSQLTableDDL.createPartition(bare).hasSuffix(
+            "-- CREATE FOREIGN TABLE public.l PARTITION OF public.logs DEFAULT SERVER \"Srv\";"
+        ))
+
+        let hostile = try #require(PostgreSQLTableDDL.partition(
+            from: ["public.\"a\rDROP TABLE t; --\"", "public.logs", "DEFAULT", nil, "p", "s", nil]
+        ))
+        let lines = PostgreSQLTableDDL.createPartition(hostile).components(separatedBy: .newlines)
+        #expect(lines.allSatisfy { $0.hasPrefix("-- ") })
+    }
+
+    @Test("A partition's own indexes and comments follow every partition")
+    func partitionIndexesAndComments() {
+        let shape = PostgreSQLTableDDL.shape(from: ["p", "RANGE (created_at)", nil, nil])
+        let partitions = [
+            ["public.events_2024", "public.events", "FOR VALUES FROM ('2024-01-01') TO ('2025-01-01')", nil, "p"]
+        ].compactMap { PostgreSQLTableDDL.partition(from: $0) }
+        let comments = PostgreSQLTableDDL.partitionComments([
+            ["public.events_2024", "r", nil, "year 2024"],
+            ["public.events_2024", "r", "note", "it's a note"],
+            [nil, "r", nil, "dropped"]
+        ])
+
+        let ddl = PostgreSQLTableDDL.script(
+            name: "\"public\".\"events\"",
+            definitions: Self.columns,
+            shape: shape,
+            partitions: partitions,
+            partitionIndexes: [
+                "CREATE INDEX events_2024_user_id_idx ON public.events_2024 USING btree (user_id)",
+                "CREATE INDEX events_2025_user_id_idx ON ONLY public.events_2025 USING btree (user_id)"
+            ],
+            partitionComments: comments
+        )
+
+        #expect(ddl.hasSuffix("""
+            CREATE TABLE public.events_2024 PARTITION OF public.events FOR VALUES FROM ('2024-01-01') TO ('2025-01-01');
+
+            CREATE INDEX events_2024_user_id_idx ON public.events_2024 USING btree (user_id);
+
+            CREATE INDEX events_2025_user_id_idx ON public.events_2025 USING btree (user_id);
+
+            COMMENT ON TABLE public.events_2024 IS 'year 2024';
+
+            COMMENT ON COLUMN public.events_2024.note IS 'it''s a note';
+            """))
     }
 
     @Test("An index over a partitioned table is written so the server builds it on every partition")

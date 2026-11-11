@@ -702,8 +702,10 @@ internal struct ObjectCopyRunner {
                     guard let sourcePlugin = CompareMetadataService.pluginDriver(from: sourceDriver) else {
                         throw ObjectCopyError.refused(noSourceDriver)
                     }
-                    return try await copier.copy(from: sourcePlugin, to: targetPlugin) { rows in
-                        progress.setRowsForCurrentObject(rows, completedBefore: completedBefore)
+                    return try await BulkReadTimeout.lifted(on: [sourceDriver]) {
+                        try await copier.copy(from: sourcePlugin, to: targetPlugin) { rows in
+                            progress.setRowsForCurrentObject(rows, completedBefore: completedBefore)
+                        }
                     }
                 }
                 guard !outcome.cancelled else {
@@ -804,8 +806,10 @@ internal struct ObjectCopyRunner {
                 guard let sourcePlugin = CompareMetadataService.pluginDriver(from: sourceDriver) else {
                     throw ObjectCopyError.refused(Self.noSourceDriver)
                 }
-                let outcome = try await copier.copy(from: sourcePlugin, to: targetPlugin) { rows in
-                    progress.setRowsForCurrentObject(rows, completedBefore: completedBefore)
+                let outcome = try await BulkReadTimeout.lifted(on: [sourceDriver]) {
+                    try await copier.copy(from: sourcePlugin, to: targetPlugin) { rows in
+                        progress.setRowsForCurrentObject(rows, completedBefore: completedBefore)
+                    }
                 }
                 return CopiedRows(outcome: outcome, joinedSessionTransaction: owner == .session)
             }

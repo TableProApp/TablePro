@@ -96,42 +96,171 @@ public enum MSSQLSchemaQueries {
         }
     }
 
+    // A column keeps COLLATE only where it differs from `databaseCollation`; nil writes every column's.
     public static func createTableStatement(
         schema: String,
         table: String,
         columns: [MSSQLColumnRow],
-        primaryKeyColumns: [String],
-        foreignKeys: [MSSQLForeignKeyRow]
+        keyConstraints: [MSSQLKeyConstraintRow] = [],
+        checkConstraints: [MSSQLCheckConstraintRow] = [],
+        foreignKeys: [MSSQLForeignKeyRow] = [],
+        databaseCollation: String?
     ) throws -> String {
-        var parts = try columns.map { column -> String in
-            let type = column.displayType.uppercased()
-            guard MSSQLDefinitionText.isColumnType(type) else {
-                throw MSSQLDefinitionRefusal.columnType(column.name, type)
+        var parts = try columns.map { try columnDefinition($0, databaseCollation: databaseCollation) }
+        parts += keyConstraintDefinitions(keyConstraints)
+        parts += try foreignKeyDefinitions(foreignKeys, schema: schema)
+        parts += try checkConstraintDefinitions(checkConstraints, table: table)
+        let body = parts.map { "    " + $0 }.joined(separator: ",\n")
+        let created = "CREATE TABLE \(bracketed(schema: schema, table: table)) (\n\(body)\n);"
+        // CREATE TABLE has no way to declare a check disabled or untrusted, and rows the source let past one would
+        // fail the restore, so it is switched off before any row goes in.
+        let unchecked = checkConstraints.filter { $0.definition != nil && ($0.isDisabled || $0.isNotTrusted) }
+            .map { "ALTER TABLE \(bracketed(schema: schema, table: table)) NOCHECK CONSTRAINT \(SQLQuoting.identifier($0.name, quote: .bracket));" }
+        return ([created] + unchecked).joined(separator: "\n")
+    }
+
+    // After the rows: a check the source enforced without having checked its rows is turned back on the same way.
+    public static func checkConstraintReenableStatements(
+        schema: String,
+        table: String,
+        checkConstraints: [MSSQLCheckConstraintRow]
+    ) -> [String] {
+        checkConstraints.filter { $0.definition != nil && $0.isNotTrusted && !$0.isDisabled }.map {
+            "ALTER TABLE \(bracketed(schema: schema, table: table)) WITH NOCHECK CHECK CONSTRAINT "
+                + "\(SQLQuoting.identifier($0.name, quote: .bracket));"
+        }
+    }
+
+    private static func columnDefinition(_ column: MSSQLColumnRow, databaseCollation: String?) throws -> String {
+        let name = SQLQuoting.identifier(column.name, quote: .bracket)
+        if column.isComputed {
+            guard let expression = column.computedDefinition.flatMap(MSSQLDefinitionText.expression) else {
+                throw MSSQLDefinitionRefusal.computedColumn(column.name)
             }
-            var definition = "    \(SQLQuoting.identifier(column.name, quote: .bracket)) \(type)"
-            if column.isIdentity { definition += " IDENTITY(1,1)" }
-            definition += column.isNullable ? " NULL" : " NOT NULL"
-            if let value = column.defaultValue {
-                guard let expression = MSSQLDefinitionText.expression(value) else {
-                    throw MSSQLDefinitionRefusal.columnDefault(column.name)
-                }
-                definition += " DEFAULT \(expression)"
+            // NOT NULL is allowed on a computed column only with PERSISTED.
+            guard column.isPersisted else { return "\(name) AS \(expression)" }
+            return "\(name) AS \(expression) PERSISTED" + (column.isNullable ? "" : " NOT NULL")
+        }
+        let type = column.displayType.uppercased()
+        guard MSSQLDefinitionText.isColumnType(type) else {
+            throw MSSQLDefinitionRefusal.columnType(column.name, type)
+        }
+        var definition = "\(name) \(type)"
+        if let collation = column.collation, collation != databaseCollation {
+            guard MSSQLDefinitionText.isCollationName(collation) else {
+                throw MSSQLDefinitionRefusal.collation(column.name, collation)
             }
+            definition += " COLLATE \(collation)"
+        }
+        if column.isIdentity {
+            let identity = "\(column.identitySeed ?? ""),\(column.identityIncrement ?? "")"
+            guard MSSQLDefinitionText.isIdentitySpecification(identity) else {
+                throw MSSQLDefinitionRefusal.identity(column.name, identity)
+            }
+            definition += " IDENTITY(\(identity))"
+        }
+        definition += column.isNullable ? " NULL" : " NOT NULL"
+        if let value = column.defaultValue {
+            guard let expression = MSSQLDefinitionText.expression(value) else {
+                throw MSSQLDefinitionRefusal.columnDefault(column.name)
+            }
+            definition += " DEFAULT \(expression)"
+        }
+        return definition
+    }
+
+    private static func keyConstraintDefinitions(_ rows: [MSSQLKeyConstraintRow]) -> [String] {
+        let constraints = grouped(rows, by: { $0.name })
+        let primaryFirst = constraints.filter { $0.first?.isPrimaryKey == true }
+            + constraints.filter { $0.first?.isPrimaryKey != true }
+        return primaryFirst.compactMap { keyRows -> String? in
+            guard let first = keyRows.first else { return nil }
+            var definition = "CONSTRAINT \(SQLQuoting.identifier(first.name, quote: .bracket))"
+            definition += first.isPrimaryKey ? " PRIMARY KEY" : " UNIQUE"
+            if let kind = MSSQLDefinitionText.indexKind(first.indexKind) {
+                definition += " \(kind)"
+            }
+            let keys = keyRows.map { key in
+                SQLQuoting.identifier(key.columnName, quote: .bracket) + (key.isDescending ? " DESC" : "")
+            }
+            return definition + " (\(keys.joined(separator: ", ")))"
+        }
+    }
+
+    // A referenced table without a schema resolves against the login's default schema, so it is always qualified.
+    private static func foreignKeyDefinitions(_ rows: [MSSQLForeignKeyRow], schema: String) throws -> [String] {
+        try grouped(rows, by: { $0.constraintName }).compactMap { keyRows -> String? in
+            guard let first = keyRows.first else { return nil }
+            guard let onDelete = MSSQLDefinitionText.referentialAction(first.onDelete) else {
+                throw MSSQLDefinitionRefusal.foreignKeyAction(first.constraintName, first.onDelete)
+            }
+            guard let onUpdate = MSSQLDefinitionText.referentialAction(first.onUpdate) else {
+                throw MSSQLDefinitionRefusal.foreignKeyAction(first.constraintName, first.onUpdate)
+            }
+            let columns = keyRows.map { SQLQuoting.identifier($0.columnName, quote: .bracket) }
+            let referencedColumns = keyRows.map { SQLQuoting.identifier($0.referencedColumn, quote: .bracket) }
+            let referencedSchema = first.referencedSchema.flatMap { $0.isEmpty ? nil : $0 } ?? schema
+            var definition: String = "CONSTRAINT \(SQLQuoting.identifier(first.constraintName, quote: .bracket))"
+                + " FOREIGN KEY (\(columns.joined(separator: ", ")))"
+                + " REFERENCES \(bracketed(schema: referencedSchema, table: first.referencedTable))"
+                + " (\(referencedColumns.joined(separator: ", ")))"
+            if onDelete != "NO ACTION" { definition += " ON DELETE \(onDelete)" }
+            if onUpdate != "NO ACTION" { definition += " ON UPDATE \(onUpdate)" }
             return definition
         }
-        if !primaryKeyColumns.isEmpty {
-            let keys = primaryKeyColumns.map { SQLQuoting.identifier($0, quote: .bracket) }.joined(separator: ", ")
-            parts.append("    CONSTRAINT \(SQLQuoting.identifier("PK_" + table, quote: .bracket)) PRIMARY KEY (\(keys))")
+    }
+
+    // An unreadable definition is left out, as an unreadable default is.
+    private static func checkConstraintDefinitions(_ rows: [MSSQLCheckConstraintRow], table: String) throws -> [String] {
+        try rows.compactMap { row -> String? in
+            guard let definition = row.definition else { return nil }
+            guard let expression = MSSQLDefinitionText.expression(definition) else {
+                throw MSSQLDefinitionRefusal.checkConstraint(table)
+            }
+            return "CONSTRAINT \(SQLQuoting.identifier(row.name, quote: .bracket)) CHECK \(expression)"
         }
-        for key in foreignKeys {
-            parts.append(
-                "    CONSTRAINT \(SQLQuoting.identifier(key.constraintName, quote: .bracket))"
-                    + " FOREIGN KEY (\(SQLQuoting.identifier(key.columnName, quote: .bracket)))"
-                    + " REFERENCES \(SQLQuoting.identifier(key.referencedTable, quote: .bracket))"
-                    + " (\(SQLQuoting.identifier(key.referencedColumn, quote: .bracket)))"
-            )
+    }
+
+    private static func grouped<Row>(_ rows: [Row], by key: (Row) -> String) -> [[Row]] {
+        var order: [String] = []
+        var groups: [String: [Row]] = [:]
+        for row in rows {
+            let name = key(row)
+            if groups[name] == nil { order.append(name) }
+            groups[name, default: []].append(row)
         }
-        return "CREATE TABLE \(bracketed(schema: schema, table: table)) (\n" + parts.joined(separator: ",\n") + "\n);"
+        return order.compactMap { groups[$0] }
+    }
+
+    // SQL Server gives a column altered without COLLATE the database default, so a character column restates the
+    // collation the new definition carries, or else the one it had.
+    public static func alterColumnCollation(type: String, collation: String?, previous: String?) -> String? {
+        guard MSSQLDefinitionText.isCharacterType(type) else { return nil }
+        return collation.flatMap(nonEmpty) ?? previous.flatMap(nonEmpty)
+    }
+
+    public static func alterColumnStatement(
+        qualifiedTable: String,
+        column: String,
+        type: String,
+        collation: String?,
+        isNullable: Bool
+    ) throws -> String {
+        guard MSSQLDefinitionText.isColumnType(type) else {
+            throw MSSQLDefinitionRefusal.columnType(column, type)
+        }
+        var statement = "ALTER TABLE \(qualifiedTable) ALTER COLUMN \(SQLQuoting.identifier(column, quote: .bracket)) \(type)"
+        if let collation {
+            guard MSSQLDefinitionText.isCollationName(collation) else {
+                throw MSSQLDefinitionRefusal.collation(column, collation)
+            }
+            statement += " COLLATE \(collation)"
+        }
+        return statement + (isNullable ? " NULL" : " NOT NULL")
+    }
+
+    private static func nonEmpty(_ text: String) -> String? {
+        text.isEmpty ? nil : text
     }
 
     public static func qualifiedName(schema: String?, table: String) -> String {
@@ -237,7 +366,7 @@ public enum MSSQLSchemaQueries {
             SELECT
             \(columnSelectList)
             FROM INFORMATION_SCHEMA.COLUMNS c
-            \(columnDefaultJoin)
+            \(columnCatalogJoin)
             LEFT JOIN (
                 SELECT kcu.COLUMN_NAME
                 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
@@ -262,7 +391,7 @@ public enum MSSQLSchemaQueries {
             \(columnSelectList),
                 c.TABLE_NAME
             FROM INFORMATION_SCHEMA.COLUMNS c
-            \(columnDefaultJoin)
+            \(columnCatalogJoin)
             LEFT JOIN (
                 SELECT kcu.TABLE_NAME, kcu.COLUMN_NAME
                 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
@@ -277,11 +406,12 @@ public enum MSSQLSchemaQueries {
             """
     }
 
-    public static let allColumnsTableNameIndex = 11
+    public static let allColumnsTableNameIndex = 16
 
-    /// A `rowversion` column reports its type as `timestamp`, and a system-versioned period or ledger column reports a
-    /// `GeneratedAlwaysType` above zero. Neither is identity or computed, and the server refuses a written value for
-    /// both. Before SQL Server 2016 the property does not exist and reads NULL, which is not above zero.
+    // A `rowversion` column reports its type as `timestamp`, and a system-versioned period or ledger column reports a
+    // `GeneratedAlwaysType` above zero. Neither is identity or computed, and the server refuses a written value for
+    // both. Before SQL Server 2016 the property does not exist and reads NULL, which is not above zero.
+    // `sys.identity_columns` keeps seed and increment as `sql_variant`, read here as text.
     private static let columnSelectList = """
                 c.COLUMN_NAME,
                 c.DATA_TYPE,
@@ -297,15 +427,27 @@ public enum MSSQLSchemaQueries {
                     WHEN c.DATA_TYPE = 'timestamp' THEN 1
                     WHEN COLUMNPROPERTY(\(columnObjectID), c.COLUMN_NAME, 'GeneratedAlwaysType') > 0 THEN 1
                     ELSE 0
-                END AS IS_SERVER_GENERATED
+                END AS IS_SERVER_GENERATED,
+        \(columnDefinitionSelectList)
+        """
+
+    // The parts a CREATE TABLE restates, after the flags every reader takes, read the same way for a `#name` table.
+    private static let columnDefinitionSelectList = """
+                c.COLLATION_NAME,
+                cc.definition AS COMPUTED_DEFINITION,
+                cc.is_persisted AS IS_PERSISTED,
+                CONVERT(varchar(40), idc.seed_value) AS IDENTITY_SEED,
+                CONVERT(varchar(40), idc.increment_value) AS IDENTITY_INCREMENT
         """
 
     private static let columnObjectID = "OBJECT_ID(QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME))"
 
     // `INFORMATION_SCHEMA.COLUMNS.COLUMN_DEFAULT` stops at 4,000 characters, which can leave a literal open.
-    private static let columnDefaultJoin = """
+    private static let columnCatalogJoin = """
         LEFT JOIN sys.columns sc ON sc.object_id = \(columnObjectID) AND sc.name = c.COLUMN_NAME
         LEFT JOIN sys.default_constraints dc ON dc.object_id = sc.default_object_id
+        LEFT JOIN sys.computed_columns cc ON cc.object_id = sc.object_id AND cc.column_id = sc.column_id
+        LEFT JOIN sys.identity_columns idc ON idc.object_id = sc.object_id AND idc.column_id = sc.column_id
         """
 
     // A `#name` table lives in `tempdb` whatever database the session is on.
@@ -363,10 +505,13 @@ public enum MSSQLSchemaQueries {
                     WHEN c.DATA_TYPE = 'timestamp' THEN 1
                     WHEN sc.generated_always_type > 0 THEN 1
                     ELSE 0
-                END AS IS_SERVER_GENERATED
+                END AS IS_SERVER_GENERATED,
+            \(columnDefinitionSelectList)
             FROM tempdb.INFORMATION_SCHEMA.COLUMNS c
             JOIN tempdb.sys.columns sc ON sc.object_id = \(object) AND sc.name = c.COLUMN_NAME
             LEFT JOIN tempdb.sys.default_constraints dc ON dc.object_id = sc.default_object_id
+            LEFT JOIN tempdb.sys.computed_columns cc ON cc.object_id = sc.object_id AND cc.column_id = sc.column_id
+            LEFT JOIN tempdb.sys.identity_columns idc ON idc.object_id = sc.object_id AND idc.column_id = sc.column_id
             WHERE c.TABLE_NAME = OBJECT_NAME(\(object), DB_ID(N'tempdb'))
             ORDER BY c.ORDINAL_POSITION
             """
@@ -399,6 +544,69 @@ public enum MSSQLSchemaQueries {
               AND i.name IS NOT NULL
             ORDER BY i.index_id, ic.key_ordinal
             """
+    }
+
+    // Rows are what `indexStatements` reads. A primary key's or UNIQUE constraint's index is left out:
+    // `createTableStatement` declares the constraint, which builds it.
+    public static func indexDefinitions(schema: String, table: String) -> String {
+        let object = MSSQLStringLiteral.quoted(bracketed(schema: schema, table: table))
+        return """
+            SELECT i.name, i.type_desc, i.is_unique, i.filter_definition,
+                   c.name AS column_name, ic.is_included_column, ic.is_descending_key
+            FROM sys.indexes i
+            JOIN sys.index_columns ic
+                ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+            JOIN sys.columns c
+                ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+            WHERE i.object_id = OBJECT_ID(\(object))
+              AND i.name IS NOT NULL
+              AND i.is_primary_key = 0
+              AND i.is_unique_constraint = 0
+              AND i.type IN (1, 2)
+            ORDER BY i.index_id, ic.is_included_column, ic.key_ordinal
+            """
+    }
+
+    // Rows are `name, type, type_desc, column_name, is_descending_key`, one per key column in key order.
+    public static func keyConstraints(schema: String, table: String) -> String {
+        let (catalog, object) = catalogObject(schema: schema, table: table)
+        return """
+            SELECT kc.name, kc.type, i.type_desc, c.name AS column_name, ic.is_descending_key
+            FROM \(catalog)sys.key_constraints kc
+            JOIN \(catalog)sys.indexes i
+                ON i.object_id = kc.parent_object_id AND i.index_id = kc.unique_index_id
+            JOIN \(catalog)sys.index_columns ic
+                ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+            JOIN \(catalog)sys.columns c
+                ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+            WHERE kc.parent_object_id = \(object)
+              AND ic.key_ordinal > 0
+            ORDER BY CASE kc.type WHEN 'PK' THEN 0 ELSE 1 END, kc.name, ic.key_ordinal
+            """
+    }
+
+    // Rows are `name, definition, is_disabled, is_not_trusted`.
+    public static func checkConstraints(schema: String, table: String) -> String {
+        let (catalog, object) = catalogObject(schema: schema, table: table)
+        return """
+            SELECT cc.name, cc.definition, cc.is_disabled, cc.is_not_trusted
+            FROM \(catalog)sys.check_constraints cc
+            WHERE cc.parent_object_id = \(object)
+            ORDER BY cc.name
+            """
+    }
+
+    // A `#name` table's columns take tempdb's default, not the current database's.
+    public static func databaseCollation(forTable table: String) -> String {
+        let database = namesTemporaryTable(table) ? "N'tempdb'" : "DB_NAME()"
+        return "SELECT CONVERT(nvarchar(128), DATABASEPROPERTYEX(\(database), 'Collation'))"
+    }
+
+    private static func catalogObject(schema: String, table: String) -> (catalog: String, object: String) {
+        if namesTemporaryTable(table) {
+            return ("tempdb.", temporaryObjectID(table))
+        }
+        return ("", "OBJECT_ID(\(MSSQLStringLiteral.quoted(bracketed(schema: schema, table: table))))")
     }
 
     // One statement for a table's keys and a schema's, so the two reads cannot drift apart.
@@ -455,6 +663,11 @@ public struct MSSQLColumnRow: Sendable, Equatable {
     public let isPrimaryKey: Bool
     public let isComputed: Bool
     public let isServerGenerated: Bool
+    public let collation: String?
+    public let computedDefinition: String?
+    public let isPersisted: Bool
+    public let identitySeed: String?
+    public let identityIncrement: String?
 
     public init(
         name: String,
@@ -467,7 +680,12 @@ public struct MSSQLColumnRow: Sendable, Equatable {
         isIdentity: Bool,
         isPrimaryKey: Bool,
         isComputed: Bool = false,
-        isServerGenerated: Bool = false
+        isServerGenerated: Bool = false,
+        collation: String? = nil,
+        computedDefinition: String? = nil,
+        isPersisted: Bool = false,
+        identitySeed: String? = nil,
+        identityIncrement: String? = nil
     ) {
         self.name = name
         self.dataType = dataType
@@ -480,6 +698,11 @@ public struct MSSQLColumnRow: Sendable, Equatable {
         self.isPrimaryKey = isPrimaryKey
         self.isComputed = isComputed
         self.isServerGenerated = isServerGenerated
+        self.collation = collation
+        self.computedDefinition = computedDefinition
+        self.isPersisted = isPersisted
+        self.identitySeed = identitySeed
+        self.identityIncrement = identityIncrement
     }
 
     /// Whether the server refuses any value written to the column, which is what the host treats as generated.
@@ -520,6 +743,36 @@ public struct MSSQLIndexRow: Sendable, Equatable {
         self.isUnique = isUnique
         self.isPrimary = isPrimary
         self.columnName = columnName
+    }
+}
+
+public struct MSSQLKeyConstraintRow: Sendable, Equatable {
+    public let name: String
+    public let isPrimaryKey: Bool
+    public let indexKind: String?
+    public let columnName: String
+    public let isDescending: Bool
+
+    public init(name: String, isPrimaryKey: Bool, indexKind: String?, columnName: String, isDescending: Bool = false) {
+        self.name = name
+        self.isPrimaryKey = isPrimaryKey
+        self.indexKind = indexKind
+        self.columnName = columnName
+        self.isDescending = isDescending
+    }
+}
+
+public struct MSSQLCheckConstraintRow: Sendable, Equatable {
+    public let name: String
+    public let definition: String?
+    public let isDisabled: Bool
+    public let isNotTrusted: Bool
+
+    public init(name: String, definition: String?, isDisabled: Bool = false, isNotTrusted: Bool = false) {
+        self.name = name
+        self.definition = definition
+        self.isDisabled = isDisabled
+        self.isNotTrusted = isNotTrusted
     }
 }
 
@@ -574,7 +827,33 @@ public extension MSSQLSchemaQueries {
             isIdentity: (row[safe: 7] ?? nil) == "1",
             isPrimaryKey: (row[safe: 8] ?? nil) == "1",
             isComputed: (row[safe: 9] ?? nil) == "1",
-            isServerGenerated: (row[safe: 10] ?? nil) == "1"
+            isServerGenerated: (row[safe: 10] ?? nil) == "1",
+            collation: (row[safe: 11] ?? nil).flatMap { $0.isEmpty ? nil : $0 },
+            computedDefinition: row[safe: 12] ?? nil,
+            isPersisted: (row[safe: 13] ?? nil) == "1",
+            identitySeed: row[safe: 14] ?? nil,
+            identityIncrement: row[safe: 15] ?? nil
+        )
+    }
+
+    static func parseKeyConstraintRow(_ row: [String?]) -> MSSQLKeyConstraintRow? {
+        guard let name = row[safe: 0] ?? nil, let column = row[safe: 3] ?? nil else { return nil }
+        return MSSQLKeyConstraintRow(
+            name: name,
+            isPrimaryKey: (row[safe: 1] ?? nil)?.trimmingCharacters(in: .whitespaces) == "PK",
+            indexKind: row[safe: 2] ?? nil,
+            columnName: column,
+            isDescending: (row[safe: 4] ?? nil) == "1"
+        )
+    }
+
+    static func parseCheckConstraintRow(_ row: [String?]) -> MSSQLCheckConstraintRow? {
+        guard let name = row[safe: 0] ?? nil else { return nil }
+        return MSSQLCheckConstraintRow(
+            name: name,
+            definition: row[safe: 1] ?? nil,
+            isDisabled: (row[safe: 2] ?? nil) == "1",
+            isNotTrusted: (row[safe: 3] ?? nil) == "1"
         )
     }
 

@@ -78,7 +78,7 @@ struct TableEditDialect: Sendable, Equatable {
             return .sqlServer
         case .oracle:
             return .oracle
-        case .cockroach, .redis, .other:
+        case .cockroach, .redis, .teradata, .other:
             return nil
         }
     }

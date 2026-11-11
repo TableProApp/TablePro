@@ -4,59 +4,120 @@
 //
 
 import Foundation
+import TableProOracleCore
 import TableProPluginKit
 import TableProSQLQuoting
 
-/// Writes the values for the host's `?` placeholders into an Oracle statement.
-///
-/// A value a literal can carry is written as the literal the PluginKit default has always written, so a statement the
-/// host builds (an import, a copy, an MCP write, a query parameter) reads exactly as it did: numeric text unquoted,
-/// other text quoted, NULL as `NULL`. What no literal can carry is bound as a positional `:1 ... :n`, numbered in
-/// order: bytes, because Oracle has no `X'..'` literal (ORA-03046), and text over the literal limit (ORA-01704).
-///
-/// Only a `?` that is a placeholder is replaced. One inside a string literal, an alternative-quoted `q'[...]'`
-/// literal (any delimiter, with or without the national `n` prefix), a double-quoted name such as `"Paid?"`, or a
-/// `--` or `/* */` comment is text, and replacing it would change the statement and shift every value after it.
+// Writes the values for the host's `?` placeholders into an Oracle statement. Each value is written for the type of
+// the column it goes into when the host names one, the same way a grid save writes it; else for the kind the user
+// gave the parameter; else as the PluginKit default writes untyped text. What no literal can carry is bound as a
+// positional `:1 ... :n`, numbered in order: bytes, because Oracle has no `X'..'` literal (ORA-03046), and text over
+// the literal limit (ORA-01704). No session NLS setting is changed: a quoted decimal fails with ORA-01722 under
+// `NLS_NUMERIC_CHARACTERS = ',.'`, so a number goes in as a validated literal.
+//
+// Only a `?` that is a placeholder is replaced. One inside a string literal, an alternative-quoted `q'[...]'` literal
+// (any delimiter, with or without the national `n` prefix), a double-quoted name such as `"Paid?"`, or a `--` or
+// `/* */` comment is text, and replacing it would change the statement and shift every value after it.
 internal enum OracleBindPlaceholders {
     /// The longest string literal Oracle parses, in bytes of the value it holds rather than of its doubled quotes
     /// (measured on 23ai with `MAX_STRING_SIZE = STANDARD`: 4,000 bytes parse, 4,001 fail with ORA-01704).
     static let maxLiteralBytes = 4_000
 
-    /// The statement with every placeholder replaced, and the values left to bind, in `:n` order. A placeholder with
-    /// no parameter left stays `?`, as the PluginKit default leaves it.
-    static func substituting(_ sql: String, parameters: [PluginCellValue]) -> (sql: String, binds: [PluginCellValue]) {
+    // A placeholder with no parameter left stays `?`, as the PluginKit default leaves it. Throws for a BFILE value that
+    // is not a `BFILENAME` call, which no SQL writes.
+    static func substituting(
+        _ sql: String,
+        parameters: [PluginCellValue],
+        kinds: [PluginColumnKind?]? = nil,
+        typeNames: [String?]? = nil,
+        writesBooleans: Bool = false
+    ) throws -> (sql: String, binds: [PluginCellValue]) {
         var binds: [PluginCellValue] = []
-        let rewritten = replacingPlaceholders(in: sql) { index in
+        let rewritten = try replacingPlaceholders(in: sql) { index in
             guard index < parameters.count else { return nil }
             let value = parameters[index]
-            if let literal = literal(for: value) { return literal }
-            binds.append(value)
-            return ":\(binds.count)"
+            guard let written = Self.operand(
+                for: value,
+                kind: kinds.flatMap { $0.indices.contains(index) ? $0[index] : nil },
+                typeName: typeNames.flatMap { $0.indices.contains(index) ? $0[index] : nil },
+                writesBooleans: writesBooleans,
+                bind: {
+                    binds.append(value)
+                    return ":\(binds.count)"
+                }
+            ) else {
+                throw OraclePluginError(core: .queryFailed(OracleValueKind.unwritableBFileReason))
+            }
+            return written
         }
         return (rewritten, binds)
     }
 
-    /// The literal for a value, or nil when it has to be bound. NUL characters are dropped as the PluginKit default
-    /// drops them. A quote is doubled scalar by scalar, so one carrying a combining mark cannot end the literal.
-    static func literal(for value: PluginCellValue) -> String? {
+    static func operand(
+        for value: PluginCellValue,
+        kind: PluginColumnKind?,
+        typeName: String?,
+        writesBooleans: Bool,
+        bind: () -> String
+    ) -> String? {
+        if let typeName {
+            return OracleValueKind(typeName: typeName).operand(for: value, bind: bind)
+        }
         switch value {
         case .null:
             return "NULL"
         case .bytes:
-            return nil
+            return bind()
         case .text(let text):
-            return PluginNumericLiteral.isValid(text) ? text : quotedLiteral(text)
+            return literal(for: text, kind: kind, writesBooleans: writesBooleans) ?? bind()
         }
     }
 
-    // Nil when the text is over the literal limit and has to be bound.
+    // Nil when the text is over the literal limit and has to be bound. Text the kind does not fit is quoted, for the
+    // server to refuse. `TRUE` and `FALSE` parse only where SQL has a BOOLEAN type, 23ai on.
+    static func literal(for text: String, kind: PluginColumnKind?, writesBooleans: Bool) -> String? {
+        guard let kind else {
+            // No numeric column reads as `00123` or `-007`, so that text is a code or a zip and stays a string.
+            if PluginNumericLiteral.isValid(text), !opensWithPaddingZero(text) { return text }
+            return quotedLiteral(text)
+        }
+        switch kind {
+        case .integer, .decimal:
+            if OracleNumericLiteral.isValid(text) { return text }
+        case .boolean:
+            guard writesBooleans else { break }
+            switch PluginSQLLiteral.booleanSynonym(for: text, kind: kind) {
+            case .isTrue?: return "TRUE"
+            case .isFalse?: return "FALSE"
+            default: break
+            }
+        case .text, .other:
+            break
+        @unknown default:
+            break
+        }
+        return quotedLiteral(text)
+    }
+
+    // Nil when the text is over the literal limit and has to be bound. NUL characters are dropped as the PluginKit
+    // default drops them. A quote is doubled scalar by scalar, so one carrying a combining mark cannot end the literal.
     static func quotedLiteral(_ text: String) -> String? {
         let kept = text.unicodeScalars.filter { $0 != "\0" }
         guard String(kept).utf8.count <= maxLiteralBytes else { return nil }
         return SQLQuoting.stringLiteral(text)
     }
 
-    private static func replacingPlaceholders(in sql: String, with replacement: (Int) -> String?) -> String {
+    // `007`, `-0042`: an integer part that opens with 0 and goes on with another digit.
+    private static func opensWithPaddingZero(_ text: String) -> Bool {
+        let unsigned = text.unicodeScalars.drop { $0 == "-" || $0 == "+" }
+        guard unsigned.first == "0", let next = unsigned.dropFirst().first else { return false }
+        return ("0"..."9").contains(next)
+    }
+
+    private static func replacingPlaceholders(
+        in sql: String,
+        with replacement: (Int) throws -> String?
+    ) rethrows -> String {
         let units = Array(sql.utf16)
         var output = ""
         var placeholderIndex = 0
@@ -67,7 +128,7 @@ internal enum OracleBindPlaceholders {
                 index = skippedEnd(in: units, from: index)
                 continue
             }
-            let replaced = replacement(placeholderIndex)
+            let replaced = try replacement(placeholderIndex)
             placeholderIndex += 1
             guard let text = replaced else {
                 index += 1

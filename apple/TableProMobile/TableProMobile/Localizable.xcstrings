@@ -25784,6 +25784,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The referential action of foreign key %@ is not one SQL Server has: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The report contains:" : {
       "localizations" : {
         "ko" : {

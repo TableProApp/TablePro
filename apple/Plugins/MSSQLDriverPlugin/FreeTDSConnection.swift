@@ -1000,7 +1000,7 @@ nonisolated private struct FreeTDSBatchReader {
     private mutating func readResultSet(columnCount: Int, errorsBefore: Int) throws -> ResultSetEnd {
         let descriptors = (1...columnCount).map(describeColumn)
         if case .stream(let continuation) = sink {
-            continuation.yield(.header(columns: descriptors))
+            _ = PluginRowStream.deliverBlocking(.header(columns: descriptors), to: continuation, stops: readerStopped)
             headerStreamed = true
         }
 
@@ -1123,21 +1123,26 @@ nonisolated private struct FreeTDSBatchReader {
         }
     }
 
+    // A reader that left or a Stop is handled at the top of the row loop.
     private func streamIfFull(_ rows: inout [[MSSQLRawCell]]) {
         guard case .stream(let continuation) = sink, rows.count >= MSSQLRowLimits.streamBatchSize else { return }
-        continuation.yield(.rows(rows))
+        guard PluginRowStream.deliverBlocking(.rows(rows), to: continuation, stops: readerStopped) else { return }
         rows.removeAll(keepingCapacity: true)
     }
 
     private func streamRemaining(_ rows: inout [[MSSQLRawCell]]) {
         guard case .stream(let continuation) = sink, !rows.isEmpty else { return }
-        continuation.yield(.rows(rows))
+        _ = PluginRowStream.deliverBlocking(.rows(rows), to: continuation, stops: readerStopped)
         rows.removeAll()
     }
 
     private func finishCountOnlyStream() {
         guard case .stream(let continuation) = sink, !headerStreamed, errorTotal == 0 else { return }
-        continuation.yield(.affectedRows(rowsAffected))
+        _ = PluginRowStream.deliverBlocking(.affectedRows(rowsAffected), to: continuation, stops: readerStopped)
+    }
+
+    private func readerStopped() -> Bool {
+        userCancelled() || consumerStopped()
     }
 
     private mutating func absorbMessages() {
