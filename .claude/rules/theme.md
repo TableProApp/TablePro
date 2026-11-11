@@ -22,7 +22,7 @@ paths:
 - `TableProTheme` is Foundation only, so the iOS app can adopt it; AppKit and SwiftUI code stays in `apple/TablePro/Theme`.
 - **`ThemeSlot` is the one registry.** A slot exists only while a view reads it: removing its last reader removes the slot.
 - `isOverridden(_:)` means the slot draws a theme color, set or derived: ask it before swapping a native drawing path (a code table's selection, the caret). Only the theme editor asks `hasExplicitColor(_:)`.
-- **Adding a slot bumps `ThemeSchema.current`.** `ThemeFileFormat` reads only the current schema: an older or newer one, or an unknown key, is refused rather than loaded without colors its author wrote, so a bump stops every older file from loading. The bump renames the sync content kind (Sync).
+- **Adding a slot bumps `ThemeSchema.current`, and the slot records the schema that introduced it.** `ThemeFileFormat` reads every schema from 3 to the current one. A newer schema, an unknown key, or a key newer than the file's schema is refused rather than loaded without colors its author wrote. It writes the oldest schema that holds every key the theme sets, so a theme that sets no new slot stays readable by the previous stable (`.claude/rules/data-sync-storage.md`). The bump renames the sync content kind (Sync).
 - **An imported file is untrusted.** `ThemeFileImporter` checks the size before it reads, mints a fresh id every time, and never follows a VS Code `include` out of the file's folder.
 
 ## Reading colors

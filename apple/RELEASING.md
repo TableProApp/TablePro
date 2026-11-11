@@ -11,7 +11,7 @@ The macOS app, its registry plugins, the static libraries and the manual iOS flo
 
 ## Storage check
 
-Sparkle never downgrades, so a release never writes storage the previous stable cannot read. Before beta.1, before every stable, and on a pick that touches the `.claude/rules/data-sync-storage.md` paths, list the commits on those paths and read each for a changed storage or sync format:
+Sparkle never downgrades, so a release never writes storage the previous stable cannot read, apart from the one exception in `.claude/rules/data-sync-storage.md`. Before beta.1, before every stable, and on a pick that touches the `.claude/rules/data-sync-storage.md` paths, list the commits on those paths and read each for a changed storage or sync format:
 
 ```bash
 awk -F'"' '/^  - "/ {print ":(glob)" $2}' .claude/rules/data-sync-storage.md \
