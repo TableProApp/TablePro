@@ -12796,6 +12796,9 @@
     "Its uncommitted changes are discarded." : {
 
     },
+    "Join Condition" : {
+
+    },
     "JSON" : {
       "extractionState" : "manual",
       "generatesSymbol" : false

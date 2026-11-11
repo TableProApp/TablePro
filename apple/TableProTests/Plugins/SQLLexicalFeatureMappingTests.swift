@@ -78,6 +78,7 @@ struct SQLLexicalFeatureMappingTests {
             SQLLexicalGrammar(pluginFeatures: cockroach.pluginFeatures)
                 == cockroach.subtracting([
                     .escapeBytesPrefix, .escapeStringContinuations, .atomicRoutineBodies, .bracketedStatementSources,
+                    .psqlScripts,
                 ])
         )
     }
@@ -93,7 +94,7 @@ struct SQLLexicalFeatureMappingTests {
     @Test("A grammar survives the trip through the kit's features, less the facts only the curated table sets")
     func roundTrip() {
         let grammar = DatabaseType.postgresql.lexicalGrammar
-        let curatedOnly: SQLLexicalGrammar = [.atomicRoutineBodies, .escapeStringContinuations]
+        let curatedOnly: SQLLexicalGrammar = [.atomicRoutineBodies, .escapeStringContinuations, .psqlScripts]
         #expect(grammar.isSuperset(of: curatedOnly))
         #expect(SQLLexicalGrammar(pluginFeatures: grammar.pluginFeatures) == grammar.subtracting(curatedOnly))
         #expect(SQLLexicalGrammar(pluginFeatures: DatabaseType.mysql.lexicalGrammar.pluginFeatures) == DatabaseType.mysql.lexicalGrammar)

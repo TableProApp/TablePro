@@ -215,8 +215,9 @@ struct SQLStatementScan {
             let rows = SQLPsqlScript.copyRows(afterSemicolonAt: index, in: text, length: length)
             let end = NSMaxRange(rows)
             let segment = NSRange(location: currentStart, length: end - currentStart)
-            let content = StatementBlank.contentRange(of: text.substring(with: segment))
-            events.scriptText(NSRange(location: currentStart + content.location, length: content.length))
+            // The rows run to `end` as written: a last row's trailing tab is a column.
+            let start = currentStart + StatementBlank.contentRange(of: text.substring(with: segment)).location
+            events.scriptText(NSRange(location: start, length: end - start))
             guard finishSegment(at: end, hasContent: hasStatementContent, copyRows: rows) else { return .finished }
             endStatement(at: end, decidedThrough: end + 1)
             return .consumed
@@ -270,7 +271,8 @@ struct SQLStatementScan {
         hasContent: Bool,
         standsForEndedStatement: Bool = false,
         delimiterLength: Int = 0,
-        copyRows: NSRange? = nil
+        copyRows: NSRange? = nil,
+        isClientLine: Bool = false
     ) -> Bool {
         let range = NSRange(location: currentStart, length: end - currentStart)
         if hasContent {
@@ -301,7 +303,8 @@ struct SQLStatementScan {
             acceptsBindParameters: tracker.acceptsBindParameters,
             delimiterLength: delimiterLength,
             copyRows: copyRows,
-            clientDelimiter: delimiter
+            clientDelimiter: delimiter,
+            isClientLine: isClientLine
         )
         if cursor != nil {
             _ = events.statement(statement)
@@ -329,7 +332,7 @@ struct SQLStatementScan {
 
     // A `DELIMITER` or `\restrict` line ends a segment that runs nothing.
     private mutating func finishClientLine(at end: Int) -> Step {
-        guard finishSegment(at: end, hasContent: false) else { return .finished }
+        guard finishSegment(at: end, hasContent: false, isClientLine: true) else { return .finished }
         endStatement(at: end, decidedThrough: end)
         return .consumed
     }

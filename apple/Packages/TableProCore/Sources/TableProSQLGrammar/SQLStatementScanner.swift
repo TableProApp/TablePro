@@ -18,6 +18,9 @@ public enum SQLStatementScanner {
 
         /// The client delimiter in force once the statement ends.
         public let clientDelimiter: SQLClientDelimiter?
+
+        /// A `DELIMITER` or psql `\restrict` line, which the client reads and no server receives.
+        public let isClientLine: Bool
         private let isAllContent: Bool
 
         public init(
@@ -28,7 +31,8 @@ public enum SQLStatementScanner {
             acceptsBindParameters: Bool = true,
             delimiterLength: Int = 0,
             copyRows: NSRange? = nil,
-            clientDelimiter: SQLClientDelimiter? = nil
+            clientDelimiter: SQLClientDelimiter? = nil,
+            isClientLine: Bool = false
         ) {
             self.sql = sql
             self.offset = offset
@@ -38,6 +42,7 @@ public enum SQLStatementScanner {
             self.delimiterLength = delimiterLength
             self.copyRows = copyRows
             self.clientDelimiter = clientDelimiter
+            self.isClientLine = isClientLine
             isAllContent = false
         }
 
@@ -51,6 +56,7 @@ public enum SQLStatementScanner {
             delimiterLength = 0
             copyRows = nil
             clientDelimiter = nil
+            isClientLine = false
             isAllContent = true
         }
 
@@ -267,7 +273,7 @@ public enum SQLStatementScanner {
     ///
     /// A client delimiter never reaches the server, and a `COPY ... FROM STDIN` is sent without its rows.
     public static func executableStatement(from located: LocatedStatement) -> ExecutableStatement? {
-        guard located.hasContent else { return nil }
+        guard !located.isClientLine else { return nil }
         let rawSQL = located.sql
         var content = StatementBlank.trimming(rawSQL[..<sentEnd(of: located)])
         if content.last == ";", located.delimiterLength == 0 {
