@@ -268,10 +268,7 @@ public actor MCPAuthPolicy {
         await approvalLedger.record(principal: principal, connectionId: connectionId, approved: true)
     }
 
-    /// Called when a token is revoked. The bundled bridge re-mints its credential roughly every
-    /// 45 minutes and deletes the one it replaces, which reaches here as a revocation; treating that
-    /// as the user withdrawing consent is what made the prompt come back all day, so the caller
-    /// passes the token's name and the bridge's own rotation is skipped.
+    // The bridge's approvals belong to the bridge, not to one of its rotating credentials.
     func clearApprovals(tokenId: UUID, wasBridgeCredential: Bool = false) async {
         guard !wasBridgeCredential else { return }
         await clearApprovals(subject: .token(tokenId))

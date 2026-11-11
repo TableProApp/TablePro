@@ -1785,6 +1785,9 @@
     "A cursor has no .%@() modifier." : {
 
     },
+    "A damaged history file from every connection was kept on this device. Clear All History deletes it." : {
+
+    },
     "A database name must be shorter than %ld bytes." : {
 
     },

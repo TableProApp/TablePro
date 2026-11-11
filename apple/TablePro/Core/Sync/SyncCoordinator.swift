@@ -686,6 +686,7 @@ final class SyncCoordinator: ObservableObject {
         // Applied with the categories recorded here, so one turned off during the download is still read once.
         let settings = services.appSettingsStorage.loadSync()
         adoptReadableContent(for: settings)
+        await clearTokenForSavedQueriesRefill(settings: settings)
         let token = metadataStorage.loadToken()
         let tokenStatus = token == nil ? "nil (full fetch)" : "present (delta)"
         Self.logger.info("Pull starting, token: \(tokenStatus)")
@@ -722,6 +723,7 @@ final class SyncCoordinator: ObservableObject {
         }
         if isFullFetch {
             seedLocalThemesIfPending(after: result)
+            await finishSavedQueriesRefill(after: result, settings: settings)
         }
         return true
     }

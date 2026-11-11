@@ -7,6 +7,7 @@ public struct PullResult: Sendable {
     public let deletedRecordIDs: [CKRecord.ID]
     public let newToken: CKServerChangeToken?
     // Records the zone holds that the fetch could not read, so their absence from `changedRecords` proves nothing.
+    // Until `UnreadRecordLedger` releases one, `newToken` stops before it, so the next pull lists it again.
     public let unreadRecordIDs: [CKRecord.ID]
 
     public init(
@@ -33,6 +34,11 @@ public actor CloudKitSyncEngine {
     public static let defaultContainerID = "iCloud.com.TablePro"
 
     private static let maxRetries = 3
+
+    // Under the 400 items per operation CloudKit's limitExceeded documentation gives as its guideline.
+    private static let refetchBatchSize = 200
+
+    private var unreadLedger = UnreadRecordLedger()
 
     /// What a build without the iCloud entitlement reports, in CloudKit's own terms, so it is
     /// classified like the server's answer to the same fault.
@@ -236,7 +242,7 @@ public actor CloudKitSyncEngine {
     public func pull(since token: CKServerChangeToken?) async throws -> PullResult {
         var changedRecords: [CKRecord] = []
         var deletedRecordIDs: [CKRecord.ID] = []
-        var unreadRecordIDs: [CKRecord.ID] = []
+        var pages: [PullAcknowledgement.Page<CKServerChangeToken>] = []
         var cursor = token
 
         while true {
@@ -246,17 +252,89 @@ public actor CloudKitSyncEngine {
 
             changedRecords.append(contentsOf: page.result.changedRecords)
             deletedRecordIDs.append(contentsOf: page.result.deletedRecordIDs)
-            unreadRecordIDs.append(contentsOf: page.result.unreadRecordIDs)
+            pages.append(PullAcknowledgement.Page(
+                startToken: cursor,
+                changed: Set(page.result.changedRecords.map(\.recordID)),
+                deleted: Set(page.result.deletedRecordIDs),
+                unread: page.result.unreadRecordIDs
+            ))
             cursor = page.result.newToken ?? cursor
 
-            guard page.moreComing, page.result.newToken != nil else {
-                return PullResult(
-                    changedRecords: changedRecords,
-                    deletedRecordIDs: deletedRecordIDs,
-                    newToken: cursor,
-                    unreadRecordIDs: unreadRecordIDs
-                )
+            guard page.moreComing, page.result.newToken != nil else { break }
+        }
+
+        let unread = Set(PullAcknowledgement.settle(pages, finalToken: cursor).unread).union(unreadLedger.released)
+        let refetched = await refetchByID(Array(unread))
+        changedRecords.append(contentsOf: refetched.records)
+        unreadLedger.forget(refetched.resolved)
+        var settled = PullAcknowledgement.settle(
+            pages, finalToken: cursor, resolved: refetched.resolved.union(unreadLedger.released)
+        )
+        let releasing = unreadLedger.countPull(holding: settled.unread)
+        if !releasing.isEmpty {
+            let names = releasing.map(\.recordName).sorted().joined(separator: ", ")
+            Self.logger.error(
+                "Released \(releasing.count, privacy: .public) records unread after \(UnreadRecordLedger.heldPulls, privacy: .public) pulls; fetching them by ID: \(names, privacy: .private)"
+            )
+            settled = PullAcknowledgement.settle(
+                pages, finalToken: cursor, resolved: refetched.resolved.union(unreadLedger.released)
+            )
+        }
+        if !settled.unread.isEmpty {
+            Self.logger.error(
+                "\(settled.unread.count, privacy: .public) changed records could not be read; the change token stays before them"
+            )
+        }
+        return PullResult(
+            changedRecords: changedRecords,
+            deletedRecordIDs: deletedRecordIDs,
+            newToken: settled.token,
+            unreadRecordIDs: settled.unread + unreadLedger.released.sorted { $0.recordName < $1.recordName }
+        )
+    }
+
+    private struct Refetch {
+        var records: [CKRecord] = []
+        // Read, or gone from the zone, so it holds the token no longer.
+        var resolved: Set<CKRecord.ID> = []
+    }
+
+    // A failed batch leaves its records unread, which holds the token rather than failing the pages already read.
+    private func refetchByID(_ recordIDs: [CKRecord.ID]) async -> Refetch {
+        var outcome = Refetch()
+        var start = 0
+        while start < recordIDs.count {
+            let end = min(start + Self.refetchBatchSize, recordIDs.count)
+            await refetch(Array(recordIDs[start..<end]), into: &outcome)
+            start = end
+        }
+        return outcome
+    }
+
+    // CloudKit asks a request it finds too large to be split in half and sent again.
+    private func refetch(_ batch: [CKRecord.ID], into outcome: inout Refetch) async {
+        guard let database else { return }
+        do {
+            let results = try await withRetry {
+                try await database.records(for: batch)
             }
+            for (recordID, result) in results {
+                switch result {
+                case .success(let record):
+                    outcome.records.append(record)
+                    outcome.resolved.insert(recordID)
+                case .failure(let error as CKError) where error.code == .unknownItem:
+                    outcome.resolved.insert(recordID)
+                case .failure:
+                    break
+                }
+            }
+        } catch let error as CKError where error.code == .limitExceeded && batch.count > 1 {
+            let middle = batch.count / 2
+            await refetch(Array(batch[..<middle]), into: &outcome)
+            await refetch(Array(batch[middle...]), into: &outcome)
+        } catch {
+            Self.logger.warning("Fetching unread records by ID failed: \(error.localizedDescription)")
         }
     }
 

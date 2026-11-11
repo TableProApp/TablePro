@@ -37161,6 +37161,15 @@
         }
       }
     },
+    "ChatGPT sign-in failed: %@" : {
+
+    },
+    "ChatGPT sign-in was denied: %@" : {
+
+    },
+    "ChatGPT sign-in was denied." : {
+
+    },
     "Check" : {
 
     },
@@ -141434,6 +141443,9 @@
         }
       }
     },
+    "Query History Was Damaged" : {
+
+    },
     "Query Insights" : {
       "localizations" : {
         "fr" : {
@@ -158257,6 +158269,9 @@
 
     },
     "Saved queries import for every connection, in a folder named “%@”." : {
+
+    },
+    "Saved Queries Were Damaged" : {
 
     },
     "Saved Query" : {
@@ -181432,6 +181447,12 @@
       }
     },
     "TablePro could not reach the Schema Registry: %@" : {
+
+    },
+    "TablePro could not read its query history, so it moved the file aside as “%@” and started a new one. The copy stays until you delete it or clear all of your history." : {
+
+    },
+    "TablePro could not read its saved queries, so it moved the file aside as “%@” and started an empty one. Nothing in that file was deleted." : {
 
     },
     "TablePro could not read its Table Health history for this connection." : {
@@ -213427,6 +213448,9 @@
 
     },
     "Vault returned a sign-in page that is not an https address, so TablePro did not open it." : {
+
+    },
+    "Vault returned a sign-in page without a state, so TablePro could not check the browser's answer." : {
 
     },
     "Vault returned no sign-in page. The OIDC role must allow the redirect URI http://localhost:8250/oidc/callback." : {
