@@ -456,4 +456,92 @@ struct QueryResultPresentationTests {
             #expect(above.showsErrorBanner == below.showsErrorBanner)
         }
     }
+
+    // MARK: - Message and Summary tabs
+
+    @Test("With the setting off the pane is today's: no run tabs, the result page, and the tab row only for two or more")
+    func runTabsOffKeepsTodaysPane() {
+        var inputs = QueryResultInputs()
+        inputs.hasExecuted = true
+        inputs.hasRunLog = true
+        inputs.resultsPage = .message
+        let placements = (0 ... 3).map { count -> ResultSetChooserPlacement in
+            inputs.resultSetCount = count
+            let presentation = QueryResultPresentation(inputs: inputs)
+            #expect(presentation.showsRunTabs == false)
+            #expect(presentation.page == .result)
+            return presentation.resultSetChooser
+        }
+
+        #expect(placements == [.hidden, .statusBar, .tabRow, .tabRow])
+    }
+
+    @Test("With the setting on, the run tabs show from the first run, even for one result, and carry the pull-down")
+    func runTabsOnShowAfterTheFirstRun() {
+        var inputs = QueryResultInputs()
+        inputs.prefersRunTabs = true
+        #expect(QueryResultPresentation(inputs: inputs).showsRunTabs == false)
+
+        inputs.hasExecuted = true
+        inputs.hasRunLog = true
+        let failedFirstRun = QueryResultPresentation(inputs: inputs)
+        #expect(failedFirstRun.showsRunTabs)
+        #expect(failedFirstRun.resultSetChooser == .hidden)
+
+        inputs.resultSetCount = 1
+        let oneResult = QueryResultPresentation(inputs: inputs)
+        #expect(oneResult.showsRunTabs)
+        #expect(oneResult.resultSetChooser == .tabRow)
+        #expect(oneResult.showsStatusBar(at: .bottom))
+    }
+
+    @Test("The page in front follows the tab's choice only while the run tabs show")
+    func pageFollowsTheTab() {
+        var inputs = QueryResultInputs()
+        inputs.prefersRunTabs = true
+        inputs.hasExecuted = true
+        inputs.hasRunLog = true
+        inputs.resultSetCount = 2
+
+        for page in [ResultsPage.message, .summary, .result] {
+            inputs.resultsPage = page
+            #expect(QueryResultPresentation(inputs: inputs).page == page)
+        }
+    }
+
+    @Test("A table tab never gets the run tabs")
+    func tableTabsKeepTheirPane() {
+        var inputs = QueryResultInputs()
+        inputs.tabType = .table
+        inputs.prefersRunTabs = true
+        inputs.hasRunLog = true
+        inputs.resultSetCount = 1
+        inputs.resultsPage = .message
+
+        let presentation = QueryResultPresentation(inputs: inputs)
+        #expect(presentation.showsRunTabs == false)
+        #expect(presentation.page == .result)
+        #expect(presentation.resultSetChooser == .hidden)
+    }
+
+    @Test("Turning the run tabs on changes nothing about the result page itself")
+    func resultPageIsUnchanged() {
+        var inputs = QueryResultInputs()
+        inputs.hasExecuted = true
+        inputs.hasActiveResultSet = true
+        inputs.activeResultHasColumns = true
+        inputs.loadedColumnCount = 3
+        inputs.loadedRowCount = 5
+        inputs.resultSetCount = 2
+        inputs.hasRunLog = true
+        let off = QueryResultPresentation(inputs: inputs)
+        inputs.prefersRunTabs = true
+        let on = QueryResultPresentation(inputs: inputs)
+
+        #expect(on.content == off.content)
+        #expect(on.showsErrorBanner == off.showsErrorBanner)
+        #expect(on.showsFilterChrome == off.showsFilterChrome)
+        #expect(on.statusBarPlacement == off.statusBarPlacement)
+        #expect(on.resultSetChooser == off.resultSetChooser)
+    }
 }

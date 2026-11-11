@@ -73,6 +73,10 @@ struct QueryResultInputs: Equatable {
     var hasAppliedFilters = false
     var isFilterPanelVisible = false
     var prefersStatusBarAtTop = false
+    // Settings > Editor's Message and Summary tabs.
+    var prefersRunTabs = false
+    var hasRunLog = false
+    var resultsPage: ResultsPage = .result
 }
 
 // Pure: every branch is decidable from `QueryResultInputs` alone, like `ResultStatusModel` and `ResultSetPolicy`.
@@ -84,6 +88,10 @@ struct QueryResultPresentation: Equatable {
     let showsStatusBar: Bool
     let statusBarPlacement: StatusBarPlacement
     let showsErrorBanner: Bool
+    // Message, Summary and a tab per result, in place of the result set tab row.
+    let showsRunTabs: Bool
+    // Always `.result` while the run tabs are off, so the pane is the one it was before they existed.
+    let page: ResultsPage
 
     var showsResultSetSelector: Bool { resultSetChooser != .hidden }
 
@@ -99,6 +107,14 @@ struct QueryResultPresentation: Equatable {
         showsStatusBar = true
         statusBarPlacement = inputs.prefersStatusBarAtTop ? .top : .bottom
         showsErrorBanner = Self.resolvedError(inputs) != nil
+        showsRunTabs = Self.resolvesRunTabs(inputs)
+        page = showsRunTabs ? inputs.resultsPage : .result
+    }
+
+    // From the first run on, even with one result: the log is worth a tab whatever the run returned.
+    private static func resolvesRunTabs(_ inputs: QueryResultInputs) -> Bool {
+        guard inputs.prefersRunTabs, inputs.tabType == .query else { return false }
+        return inputs.hasRunLog || inputs.resultSetCount > 0
     }
 
     // Same order as `QueryTab.shownError`: the tab's message is the newer failure.
@@ -192,8 +208,12 @@ struct QueryResultPresentation: Equatable {
     }
 
     // One result still gets the pull-down: Pin, Unpin and Close live in its menu, and it costs no height inside the bar.
+    // With the run tabs on, the pull-down sits at the end of their row, whatever the count.
     private static func resolveResultSetChooser(_ inputs: QueryResultInputs) -> ResultSetChooserPlacement {
         guard inputs.tabType == .query, inputs.viewMode != .structure else { return .hidden }
+        if resolvesRunTabs(inputs) {
+            return inputs.resultSetCount > 0 ? .tabRow : .hidden
+        }
         switch inputs.resultSetCount {
         case 0: return .hidden
         case 1: return .statusBar

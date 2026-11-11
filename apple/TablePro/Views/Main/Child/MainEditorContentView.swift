@@ -703,35 +703,53 @@ struct MainEditorContentView: View {
         let presentation = resultPresentation(for: tab, rows: rows)
 
         VStack(spacing: 0) {
-            if presentation.resultSetChooser == .tabRow {
+            if presentation.showsRunTabs {
+                QueryRunTabBar(
+                    page: presentation.page,
+                    results: resultSetEntriesModel(for: tab),
+                    showsMenu: presentation.resultSetChooser == .tabRow,
+                    actions: coordinator.runTabActions(forTab: tab.id)
+                )
+            } else if presentation.resultSetChooser == .tabRow {
                 ResultSetTabBar(
                     model: resultSetMenuModel(for: tab, placedIn: .tabRow),
-                    actions: resultSetActions(for: tab)
+                    actions: coordinator.resultSetActions(forTab: tab.id)
                 )
             }
 
-            /// Above the error banner, so a failure appearing or being dismissed moves the grid and
-            /// never the bar. Below the result set tabs, which choose the result this bar describes.
-            if presentation.showsStatusBar(at: .top) {
-                statusBarSection(tab: tab, placement: .top)
-            }
-
-            if presentation.showsErrorBanner {
-                executionErrorBanner(tab: tab)
-            }
-
-            if presentation.showsFilterChrome {
-                rowFilterChrome(tab: tab, rows: rows)
-            }
-
-            resultContent(presentation.content, tab: tab, rows: rows)
-                .gridStandInBackground(isActive: presentation.content.standsInForGrid)
-
-            if presentation.showsStatusBar(at: .bottom) {
-                statusBarSection(tab: tab, placement: .bottom)
+            if presentation.page == .result {
+                resultPage(tab: tab, rows: rows, presentation: presentation)
+            } else {
+                QueryRunPage(page: presentation.page, display: tab.display) { [coordinator, tabId = tab.id] in
+                    coordinator.showRunResult($0, in: tabId)
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private func resultPage(tab: QueryTab, rows: TableRows, presentation: QueryResultPresentation) -> some View {
+        /// Above the error banner, so a failure appearing or being dismissed moves the grid and
+        /// never the bar. Below the result set tabs, which choose the result this bar describes.
+        if presentation.showsStatusBar(at: .top) {
+            statusBarSection(tab: tab, placement: .top)
+        }
+
+        if presentation.showsErrorBanner {
+            executionErrorBanner(tab: tab)
+        }
+
+        if presentation.showsFilterChrome {
+            rowFilterChrome(tab: tab, rows: rows)
+        }
+
+        resultContent(presentation.content, tab: tab, rows: rows)
+            .gridStandInBackground(isActive: presentation.content.standsInForGrid)
+
+        if presentation.showsStatusBar(at: .bottom) {
+            statusBarSection(tab: tab, placement: .bottom)
+        }
     }
 
     private func statusBarSection(tab: QueryTab, placement: StatusBarPlacement) -> some View {
@@ -870,7 +888,14 @@ struct MainEditorContentView: View {
         inputs.hasAppliedFilters = tab.filterState.hasAppliedFilters
         inputs.isFilterPanelVisible = tab.filterState.isVisible
         inputs.prefersStatusBarAtTop = settingsManager.dataGrid.resultBarAtTop
+        Self.fillRunTabInputs(&inputs, tab: tab, prefersRunTabs: settingsManager.editor.queryResultTabs)
         return QueryResultPresentation(inputs: inputs)
+    }
+
+    private static func fillRunTabInputs(_ inputs: inout QueryResultInputs, tab: QueryTab, prefersRunTabs: Bool) {
+        inputs.prefersRunTabs = prefersRunTabs
+        inputs.hasRunLog = tab.display.runLog != nil
+        inputs.resultsPage = tab.display.resultsPage
     }
 
     // Filtering rebuilds and reruns the query, so a mode showing this panel gets filtered rows without knowing.
@@ -1058,20 +1083,9 @@ struct MainEditorContentView: View {
             isRefreshingSchema: schemaService.isRefreshing(connectionId: connectionId),
             viewMode: resultsViewModeBinding(for: tab),
             resultSetMenu: resultSetMenuModel(for: tab, placedIn: .statusBar),
-            resultSetActions: resultSetActions(for: tab),
+            resultSetActions: coordinator.resultSetActions(forTab: tab.id),
             onToggleFilters: { coordinator.toggleFilterPanel() },
             onFetchAll: { coordinator.fetchAllRows() }
-        )
-    }
-
-    private func resultSetActions(for tab: QueryTab) -> ResultSetActions {
-        let tabId = tab.id
-        return ResultSetActions(
-            activate: { coordinator.switchActiveResultSet(to: $0, in: tabId) },
-            togglePin: { coordinator.togglePinResultSet(id: $0) },
-            compare: { coordinator.compareResultSet(id: $0) },
-            close: { coordinator.closeResultSet(id: $0) },
-            closeOthers: { coordinator.closeOtherResultSets(keeping: $0) }
         )
     }
 
@@ -1081,6 +1095,7 @@ struct MainEditorContentView: View {
         selectorInputs.tabType = tab.tabType
         selectorInputs.viewMode = tab.display.resultsViewMode
         selectorInputs.resultSetCount = tab.display.resultSets.count
+        Self.fillRunTabInputs(&selectorInputs, tab: tab, prefersRunTabs: settingsManager.editor.queryResultTabs)
         return QueryResultPresentation(inputs: selectorInputs).resultSetChooser
     }
 
@@ -1088,22 +1103,13 @@ struct MainEditorContentView: View {
         guard resultSetChooser(for: tab) == placement else {
             return ResultSetMenuModel(entries: [], activeOrdinal: 0, total: 0)
         }
-        let activeId = tab.display.activeResultSet?.id
-        let entries = tab.display.resultSets.enumerated().map { index, resultSet in
-            ResultSetMenuEntry(
-                id: resultSet.id,
-                label: resultSet.label,
-                isPinned: resultSet.isPinned,
-                isActive: resultSet.id == activeId,
-                ordinal: index + 1,
-                isComparable: coordinator.isComparable(resultSet, in: tab)
-            )
+        return resultSetEntriesModel(for: tab)
+    }
+
+    private func resultSetEntriesModel(for tab: QueryTab) -> ResultSetMenuModel {
+        ResultSetMenuModel(resultSets: tab.display.resultSets, activeId: tab.display.activeResultSet?.id) {
+            coordinator.isComparable($0, in: tab)
         }
-        return ResultSetMenuModel(
-            entries: entries,
-            activeOrdinal: entries.first(where: \.isActive)?.ordinal ?? entries.count,
-            total: entries.count
-        )
     }
 
     private func resultsViewModeBinding(for tab: QueryTab) -> Binding<ResultsViewMode> {
