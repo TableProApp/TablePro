@@ -34,6 +34,18 @@ pub struct BrowseTab {
     #[template_child]
     pub view_toggle: TemplateChild<adw::InlineViewSwitcher>,
     #[template_child]
+    pub structure_start: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub structure_end: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub structure_details: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub structure_secondary: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub structure_primary: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub structure_more: TemplateChild<gtk::MenuButton>,
+    #[template_child]
     pub data_start: TemplateChild<gtk::Box>,
     #[template_child]
     pub data_end: TemplateChild<gtk::Box>,
@@ -57,6 +69,8 @@ pub struct BrowseTab {
     pub selection_label: TemplateChild<gtk::Label>,
     #[template_child]
     pub action_bar: TemplateChild<gtk::ActionBar>,
+    #[template_child]
+    pub overflow_button: TemplateChild<gtk::MenuButton>,
     #[template_child]
     pub more_button: TemplateChild<gtk::MenuButton>,
     #[template_child]
