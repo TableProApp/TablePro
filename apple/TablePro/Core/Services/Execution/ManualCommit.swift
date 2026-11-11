@@ -125,9 +125,12 @@ internal enum ManualCommit {
         }
     }
 
-    // MySQL, Oracle and ClickHouse commit schema and maintenance statements on their own, so nothing can wait there.
+    // These commit schema and maintenance statements on their own, so nothing can wait there; Redshift's TRUNCATE
+    // and CockroachDB's DDL commit the open transaction too.
     nonisolated internal static func isAvailable(for databaseType: DatabaseType) -> Bool {
-        TableEditDialect.of(databaseType)?.commitsDDLImplicitly != true
+        guard TableEditDialect.of(databaseType)?.commitsDDLImplicitly != true else { return false }
+        let family = TransactionEngineFamily.of(databaseType)
+        return family != .redshift && family != .cockroach
     }
 
     nonisolated internal static func effectiveMode(

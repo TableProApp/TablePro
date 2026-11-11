@@ -401,7 +401,8 @@ struct OptionsPaneView: View {
                 Text(floor.explanation)
             }
             if coordinator.isManualCommitAvailable {
-                Text(String(localized: "Your first change opens a transaction, and nothing is saved until you commit."))
+                // swiftlint:disable:next line_length
+                Text(String(localized: "Your first change opens a transaction, and nothing is saved until you commit. Structure changes, Users & Roles, Copy To and Generate Rows still save at once."))
             } else {
                 Text(ManualCommit.unavailableExplanation)
             }

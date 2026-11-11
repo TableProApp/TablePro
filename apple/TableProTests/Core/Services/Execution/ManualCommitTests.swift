@@ -75,7 +75,7 @@ struct ManualCommitTests {
     }
 
     @Test("Manual Commit is offered where DDL waits for Commit", arguments: [
-        DatabaseType.postgresql, .sqlite, .mssql, .duckdb, .redshift,
+        DatabaseType.postgresql, .sqlite, .mssql, .duckdb,
     ])
     func availableWhereDDLWaits(type: DatabaseType) {
         #expect(ManualCommit.isAvailable(for: type))
@@ -83,7 +83,7 @@ struct ManualCommitTests {
     }
 
     @Test("Manual Commit is not offered where DDL commits on its own, and a stored one runs as automatic", arguments: [
-        DatabaseType.mysql, .mariadb, .oracle, .clickhouse,
+        DatabaseType.mysql, .mariadb, .oracle, .clickhouse, .redshift, .cockroachdb,
     ])
     func unavailableWhereDDLCommits(type: DatabaseType) {
         #expect(!ManualCommit.isAvailable(for: type))

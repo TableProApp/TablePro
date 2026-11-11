@@ -311,7 +311,8 @@ public struct InsertRowsTool: MCPToolImplementation {
     public static let description = String(
         localized: """
         Insert rows into a table using bound parameters, so values are never spliced into SQL text. \
-        Needs tools:write and goes through the connection's Safe Mode approval.
+        Needs tools:write and goes through the connection's Safe Mode approval. With Manual Commit on, the rows \
+        stay pending until the user commits in TablePro.
         """
     )
     public static let requiredScopes: Set<MCPScope> = [.toolsWrite]

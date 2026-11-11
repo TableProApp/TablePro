@@ -423,6 +423,26 @@ struct SessionTransactionTrackerTests {
         #expect(Self.states(connection.id) == [.open])
     }
 
+    @Test("An agent's insert_rows in Manual Commit is held: BEGIN first, and no COMMIT")
+    func mcpInsertRowsIsHeld() async throws {
+        let (connection, driver) = Self.seed(type: .postgresql, commitMode: .manual)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let rows = ["INSERT INTO t VALUES (1)", "INSERT INTO t VALUES (2)"]
+        let operation = try await ApprovedOperationFixture.approve(
+            rows.map { OperationStatement(sql: $0) }, scope: Self.scope(connection.id), databaseType: .postgresql,
+            kind: .writeQuery
+        )
+
+        _ = try await DatabaseAccessBridge().runInserts(operation)
+
+        let begin = try #require(driver.statements.firstIndex(of: "BEGIN"))
+        let first = try #require(driver.statements.firstIndex(of: rows[0]))
+        #expect(begin < first)
+        #expect(driver.statements.contains(rows[1]))
+        #expect(!driver.statements.contains("COMMIT"))
+        #expect(Self.states(connection.id) == [.open])
+    }
+
     @Test("An agent's COMMIT, ROLLBACK or BEGIN in Manual Commit is refused and sends nothing", arguments: ["COMMIT", "ROLLBACK", "BEGIN"])
     func mcpTransactionStatementRefusedInManualCommit(sql: String) async throws {
         let (connection, driver) = Self.seed(type: .postgresql, commitMode: .manual)

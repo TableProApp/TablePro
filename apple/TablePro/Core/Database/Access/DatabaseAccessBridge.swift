@@ -555,6 +555,14 @@ internal actor DatabaseAccessBridge {
         let manager = await databaseManager
         // No cancel handler: the inserts run under a `.protectedWrite` lease, which nothing may abort.
         let route = await MainActor.run { manager.executionRoute(for: scope) }
+        let agentGuard = await MainActor.run {
+            AgentTransactionGuard(
+                commitMode: manager.commitMode(for: scope.connectionId),
+                databaseType: databaseType,
+                grammar: SQLLexicalResolver.executionGrammar(for: databaseType, connectionId: scope.connectionId),
+                connectionId: scope.connectionId
+            )
+        }
         let statements = operation.statements
         let context = operation.context
         return try await manager.withScopedDriver(
@@ -563,16 +571,20 @@ internal actor DatabaseAccessBridge {
             cancellation: .protectedWrite
         ) { driver -> Int in
             reach.mark()
-            var affected = 0
-            for statement in statements {
-                let result = try await driver.executeParameterized(
-                    query: statement.sql,
-                    parameters: statement.boundValues,
-                    context: context
-                )
-                affected += max(result.rowsAffected, 0)
+            // The hold and savepoint execute_query gets, so a Manual Commit insert waits for Commit too.
+            let ran = try await agentGuard.running(statements.map(\.sql), writes: true, on: driver) { _ in
+                var affected = 0
+                for statement in statements {
+                    let result = try await driver.executeParameterized(
+                        query: statement.sql,
+                        parameters: statement.boundValues,
+                        context: context
+                    )
+                    affected += max(result.rowsAffected, 0)
+                }
+                return affected
             }
-            return affected
+            return ran.value
         }
     }
 
