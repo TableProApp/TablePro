@@ -11,7 +11,6 @@ import TableProPluginKit
 // A new row is written `IF NOT EXISTS` and an edit `IF EXISTS` (CassandraConditionalWrite), and anything CQL cannot
 // do to a row is refused by name rather than sent.
 enum CassandraRowWriter {
-    static let defaultSentinel = "__DEFAULT__"
     static let unappliedMarker = CassandraConditionalWrite.appliedColumn
 
     static func rowWrites(
@@ -79,12 +78,16 @@ enum CassandraRowWriter {
                 ))
             }
             let row = values ?? rowFromCellChanges(change)
+            // A new row built from its edits leaves every column it never set to the server.
+            let leftOut = (change.defaultColumns ?? []).union(
+                values == nil ? Set(columns.indices).subtracting(change.cellChanges.map(\.columnIndex)) : []
+            )
             let expressionColumns = change.expressionColumns ?? []
             var names: [String] = []
             var placeholders: [String] = []
             var parameters: [PluginCellValue] = []
             for (index, value) in row.enumerated() where index < columns.count {
-                if value.asText == defaultSentinel { continue }
+                if leftOut.contains(index) { continue }
                 names.append(CassandraBrowseRenderer.quote(columns[index]))
                 if let call = expression(value, isMarked: expressionColumns.contains(index)) {
                     placeholders.append(call)
@@ -95,7 +98,7 @@ enum CassandraRowWriter {
             }
             for keyColumn in primaryKeyColumns {
                 guard let index = columns.firstIndex(of: keyColumn), index < row.count, !row[index].isNull,
-                      row[index].asText != defaultSentinel
+                      !leftOut.contains(index)
                 else {
                     throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: String(
                         format: String(localized: "Enter a value for the primary key column %@."), keyColumn
@@ -120,7 +123,7 @@ enum CassandraRowWriter {
                         cell.columnName
                     ))
                 }
-                if cell.newValue.asText == defaultSentinel {
+                if change.isColumnDefault(cell.columnIndex) {
                     throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: String(
                         localized: "Cassandra columns have no default value."
                     ))
@@ -168,7 +171,7 @@ enum CassandraRowWriter {
         }
 
         private func rowFromCellChanges(_ change: PluginRowChange) -> [PluginCellValue] {
-            var row = [PluginCellValue](repeating: .text(defaultSentinel), count: columns.count)
+            var row = [PluginCellValue](repeating: .null, count: columns.count)
             for cell in change.cellChanges where cell.columnIndex < row.count {
                 row[cell.columnIndex] = cell.newValue
             }

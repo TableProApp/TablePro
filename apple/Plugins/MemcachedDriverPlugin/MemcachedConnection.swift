@@ -11,10 +11,15 @@ import TableProPluginKit
 private final class MemcachedReplyHandler: ChannelInboundHandler, @unchecked Sendable {
     typealias InboundIn = ByteBuffer
 
+    private let closed: NIOLockedValueBox<Bool>
     private var reader: MemcachedReplyReader?
     private var continuation: CheckedContinuation<MemcachedReply, Error>?
     private var failure: Error?
     private let lock = NIOLock()
+
+    init(closed: NIOLockedValueBox<Bool>) {
+        self.closed = closed
+    }
 
     func expect(
         _ shape: MemcachedReplyShape,
@@ -57,6 +62,7 @@ private final class MemcachedReplyHandler: ChannelInboundHandler, @unchecked Sen
     }
 
     func channelInactive(context: ChannelHandlerContext) {
+        closed.withLockedValue { $0 = true }
         finish(with: MemcachedError.connectionClosed)
     }
 
@@ -124,6 +130,10 @@ actor MemcachedConnection {
     private var wireSlotIsTaken = false
     private var waitingForWireSlot: [CheckedContinuation<Void, Never>] = []
     private var requestTimeout: TimeAmount?
+    private nonisolated let closed = NIOLockedValueBox(false)
+
+    // True once the channel closed under the connection, as a cancelled or timed-out request closes it.
+    nonisolated var hasClosed: Bool { closed.withLockedValue { $0 } }
 
     /// A reply that has not finished by then closes the connection, since the text protocol cannot skip it.
     func setRequestTimeout(seconds: Int) {
@@ -138,7 +148,7 @@ actor MemcachedConnection {
         guard channel == nil else { return }
         let sslContext = try Self.makeSSLContext(endpoint.ssl)
         let serverHostname = endpoint.ssl.verifiesHostname ? endpoint.tlsServerName : nil
-        let replyHandler = MemcachedReplyHandler()
+        let replyHandler = MemcachedReplyHandler(closed: closed)
         let bootstrap = ClientBootstrap(group: NIOSingletons.posixEventLoopGroup)
             .connectTimeout(endpoint.connectTimeout)
             .channelOption(ChannelOptions.socketOption(.so_keepalive), value: 1)

@@ -35,7 +35,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
     func quoteIdentifier(_ name: String) -> String { name }
 
     var capabilities: PluginCapabilities {
-        [.cancelQuery, .statementPolicy]
+        [.cancelQuery, .statementPolicy, .columnDefaultMarks]
     }
 
     func defaultExportQuery(table: String) -> String? {

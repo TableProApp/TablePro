@@ -43,6 +43,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .dataCompare,
             .rowWrites,
             .cellExpressions,
+            .columnDefaultMarks,
         ]
     }
 

@@ -28,6 +28,21 @@ func (b *Bridge) Explain(sessionID uint64, operationID uint64, requestJSON []byt
 	return encoded, encodedFailure(bridgeFailure)
 }
 
+func (b *Bridge) OpenCursor(sessionID uint64, operationID uint64, requestJSON []byte) (result []byte, failure []byte) {
+	encoded, bridgeFailure := b.openCursorOnSession(sessionID, operationID, requestJSON)
+	return encoded, encodedFailure(bridgeFailure)
+}
+
+func (b *Bridge) Fetch(sessionID uint64, operationID uint64) (result []byte, failure []byte) {
+	encoded, bridgeFailure := b.fetchOnSession(sessionID, operationID)
+	return encoded, encodedFailure(bridgeFailure)
+}
+
+func (b *Bridge) CloseCursor(sessionID uint64, operationID uint64) (result []byte, failure []byte) {
+	encoded, bridgeFailure := b.closeCursorOnSession(sessionID, operationID)
+	return encoded, encodedFailure(bridgeFailure)
+}
+
 func (b *Bridge) Ping(sessionID uint64, operationID uint64) (failure []byte) {
 	return encodedFailure(b.pingSession(sessionID, operationID))
 }
@@ -99,6 +114,34 @@ func (b *Bridge) explainOnSession(sessionID uint64, operationID uint64, requestJ
 		return nil, failure
 	}
 	return entry.explain(operationID, request)
+}
+
+func (b *Bridge) openCursorOnSession(sessionID uint64, operationID uint64, requestJSON []byte) ([]byte, *bridgeError) {
+	entry, failure := b.sessions.lookup(sessionID)
+	if failure != nil {
+		return nil, failure
+	}
+	request, failure := decodeRequest[cursorRequest](requestJSON)
+	if failure != nil {
+		return nil, failure
+	}
+	return entry.openCursor(operationID, request)
+}
+
+func (b *Bridge) fetchOnSession(sessionID uint64, operationID uint64) ([]byte, *bridgeError) {
+	entry, failure := b.sessions.lookup(sessionID)
+	if failure != nil {
+		return nil, failure
+	}
+	return entry.fetch(operationID)
+}
+
+func (b *Bridge) closeCursorOnSession(sessionID uint64, operationID uint64) ([]byte, *bridgeError) {
+	entry, failure := b.sessions.lookup(sessionID)
+	if failure != nil {
+		return nil, failure
+	}
+	return entry.closeCursor(operationID)
 }
 
 func (b *Bridge) pingSession(sessionID uint64, operationID uint64) *bridgeError {

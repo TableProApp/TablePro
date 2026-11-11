@@ -51,7 +51,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var supportsTransactions: Bool { false }
 
     var capabilities: PluginCapabilities {
-        [.cancelQuery, .statementPolicy]
+        [.cancelQuery, .statementPolicy, .columnDefaultMarks]
     }
 
     // etcd has no transactions.
@@ -449,6 +449,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) throws -> [PluginRowWrite]? {
+        if let refusal = PluginRowWriteRefusal.columnDefaultsUnsupported(in: changes) { throw refusal }
         let generator = EtcdStatementGenerator(
             prefix: keyspace.prefix(forTable: table),
             columns: columns

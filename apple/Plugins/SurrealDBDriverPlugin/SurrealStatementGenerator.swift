@@ -8,13 +8,6 @@ import TableProNumberFormatting
 import TableProPluginKit
 
 public enum SurrealStatementGenerator {
-    static let autoIdMarker = "__DEFAULT__"
-
-    static func isAutoDefault(_ value: PluginCellValue) -> Bool {
-        guard case let .text(text) = value else { return false }
-        return text.trimmingCharacters(in: .whitespaces) == autoIdMarker
-    }
-
     public static func rowWrites(
         table: String,
         scope: SurrealScope,
@@ -37,10 +30,15 @@ public enum SurrealStatementGenerator {
             writes.append(write)
         }
 
+        var defaults: [Int: Set<Int>] = [:]
+        for change in changes where change.type == .insert {
+            defaults[change.rowIndex, default: []].formUnion(change.defaultColumns ?? [])
+        }
         for index in insertedRowIndices.sorted() {
             guard let values = insertedRowData[index] else { continue }
             writes.append(try insert(
-                table: table, scope: scope, columns: columns, typing: typing, values: values, rowIndex: index
+                table: table, scope: scope, columns: columns, typing: typing, values: values,
+                defaults: defaults[index] ?? [], rowIndex: index
             ))
         }
 
@@ -96,7 +94,7 @@ public enum SurrealStatementGenerator {
         }
         let recordKey = Self.recordText(columns: columns, originalRow: change.originalRow)
         guard let record = recordKey.flatMap({ SurrealQL.parseRecordId($0, fallbackTable: table) }) else { return nil }
-        let editable = change.cellChanges.filter { !Self.isAutoDefault($0.newValue) }
+        let editable = change.cellChanges.filter { !change.isColumnDefault($0.columnIndex) }
         guard !editable.isEmpty else { return nil }
 
         var parameters: [PluginCellValue] = [SurrealCellCoder.parameter(.recordId(record))]
@@ -126,6 +124,7 @@ public enum SurrealStatementGenerator {
         columns: [String],
         typing: FieldTyping,
         values: [PluginCellValue],
+        defaults: Set<Int>,
         rowIndex: Int
     ) throws(PluginRowWriteRefusal) -> PluginRowWrite {
         var parameters: [PluginCellValue] = []
@@ -133,13 +132,13 @@ public enum SurrealStatementGenerator {
         var target = SurrealQL.quoteIdentifier(table)
 
         for (index, column) in columns.enumerated() {
-            guard index < values.count else { continue }
+            guard index < values.count, !defaults.contains(index) else { continue }
             let cell = values[index]
 
             if column == SurrealInfoParser.recordIdColumn {
                 guard case let .text(text) = cell else { continue }
                 let trimmed = text.trimmingCharacters(in: .whitespaces)
-                guard !trimmed.isEmpty, trimmed != Self.autoIdMarker else { continue }
+                guard !trimmed.isEmpty else { continue }
                 guard let record = SurrealQL.parseRecordId(text, fallbackTable: table) else { continue }
                 parameters.append(SurrealCellCoder.parameter(.recordId(record)))
                 target = "$p\(parameters.count - 1)"
@@ -147,7 +146,6 @@ public enum SurrealStatementGenerator {
             }
 
             if case .null = cell { continue }
-            if Self.isAutoDefault(cell) { continue }
             try refuseShortened(cell, in: column, rowIndex: rowIndex)
             let value = typing.value(of: cell, in: column)
             parameters.append(SurrealCellCoder.parameter(value))

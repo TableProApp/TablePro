@@ -76,6 +76,8 @@ public enum InfluxCredentials: Sendable, Equatable {
 
 public enum InfluxRequests {
     public static let bucketPageSize = 100
+    // 2.x's own default for `chunked=true`.
+    public static let influxQLChunkSize = 10_000
 
     // 3.x with auth on refuses an anonymous `/ping`. Before the version is known the token goes out as `Token`.
     public static func ping(credentials: InfluxCredentials, generation: InfluxGeneration? = nil) -> InfluxRequest {
@@ -148,13 +150,16 @@ public enum InfluxRequests {
         InfluxRequest(method: "GET", path: "/api/v2/orgs", headers: authHeaders(credentials, generation: .v2))
     }
 
+    // `streamed` asks 2.x InfluxQL for chunks: without it the server gathers the whole result in its memory before the
+    // first byte. 3.x writes CSV per record batch either way.
     public static func query(
         _ statement: InfluxStatement,
         database: String,
         retentionPolicy: String? = nil,
         organization: String,
         generation: InfluxGeneration,
-        credentials: InfluxCredentials
+        credentials: InfluxCredentials,
+        streamed: Bool = false
     ) throws -> InfluxRequest {
         var headers = authHeaders(credentials, generation: generation)
         switch (generation, statement.language) {
@@ -190,6 +195,10 @@ public enum InfluxRequests {
             var form = [InfluxQueryItem("q", statement.text)]
             if !database.isEmpty { form.append(InfluxQueryItem("db", database)) }
             if let retentionPolicy, !retentionPolicy.isEmpty { form.append(InfluxQueryItem("rp", retentionPolicy)) }
+            if streamed {
+                form.append(InfluxQueryItem("chunked", "true"))
+                form.append(InfluxQueryItem("chunk_size", String(influxQLChunkSize)))
+            }
             return InfluxRequest(
                 method: "POST",
                 path: "/query",

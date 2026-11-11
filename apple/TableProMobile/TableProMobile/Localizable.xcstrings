@@ -26444,6 +26444,10 @@
     "The statement before it stays applied." : {
 
     },
+    "The statement was stopped, and the server rolled back the transaction it ran in. Every change since that transaction began is undone." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The table \"%@\" and all its data will be permanently deleted." : {
       "localizations" : {
         "ko" : {
@@ -27176,6 +27180,10 @@
           }
         }
       }
+    },
+    "This database has no column defaults, so a cell cannot be left to one. Enter a value." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This database has no Create Table form" : {
       "extractionState" : "manual",
