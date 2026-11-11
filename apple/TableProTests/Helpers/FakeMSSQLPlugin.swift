@@ -193,9 +193,6 @@ final class FakeMSSQLPluginDriver: PluginDriverStub, @unchecked Sendable {
     }
     func disconnect() { disconnectCallCount += 1 }
 
-    // SQL Server moves a live session with USE, so a statement pinned to a database after a reconnect lands.
-    func switchDatabase(to database: String) async throws {}
-
     func applyQueryTimeout(_ seconds: Int) async throws {
         queryTimeoutValues.withLock { $0.append(seconds) }
     }

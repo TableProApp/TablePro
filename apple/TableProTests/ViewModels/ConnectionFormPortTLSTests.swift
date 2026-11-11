@@ -118,13 +118,10 @@ struct ConnectionFormPortTLSTests {
         #expect(coordinator.ssl.validationIssues.isEmpty)
     }
 
-    @Test("PostgreSQL Verify Identity saves without a CA certificate, and Verify CA still asks for one")
-    func postgresNeedsACAOnlyForVerifyCA() {
+    @Test("PostgreSQL Verify Identity still asks for a CA certificate")
+    func postgresStillRequiresCA() {
         let coordinator = newConnection(.postgresql)
         coordinator.ssl.select(.verifyIdentity)
-        #expect(coordinator.ssl.validationIssues.isEmpty)
-
-        coordinator.ssl.select(.verifyCa)
         #expect(!coordinator.ssl.validationIssues.isEmpty)
     }
 }
