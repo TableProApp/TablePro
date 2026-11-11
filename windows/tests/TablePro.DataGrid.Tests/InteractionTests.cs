@@ -72,6 +72,37 @@ public sealed class InteractionTests
         Assert.Equal(new CellRange(6, 0, 9, 199), grid.SelectionRange);
     });
 
+    // The host builds its menu on ContextRequested, so the selection must be the cells under the pointer by then.
+    [Fact]
+    public Task ARightClickOutsideTheSelectionSelectsTheCellAndOneInsideKeepsIt() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WinUiHost.ShowAsync(new SyntheticData(), frozen: 1);
+        var rh = grid.RowHeight;
+        grid.SelectCell(2, 2, extend: false);
+        grid.SelectCell(4, 4, extend: true);
+        var range = new CellRange(2, 2, 4, 4);
+
+        grid.HandleContextRequest(frozen: false, new Point(grid.Columns.PaneX(3) + 5, (3 * rh) + 5));
+        Assert.Equal(range, grid.SelectionRange);
+        Assert.Equal((4, 4), (grid.FocusedRow, grid.FocusedColumn));
+        grid.HandleContextRequest(frozen: false, null);
+        Assert.Equal(range, grid.SelectionRange);
+
+        grid.HandleContextRequest(frozen: false, new Point(grid.Columns.PaneX(6) + 5, (8 * rh) + 5));
+        Assert.Equal(new CellRange(8, 6, 8, 6), grid.SelectionRange);
+        Assert.Equal((8, 6), (grid.FocusedRow, grid.FocusedColumn));
+        grid.HandleContextRequest(frozen: true, new Point(grid.Columns.PaneX(0) + 5, (1 * rh) + 5));
+        Assert.Equal(new CellRange(1, 0, 1, 0), grid.SelectionRange);
+
+        grid.HandleContextRequest(frozen: true, new Point(4, (5 * rh) + 5));
+        Assert.Equal(SelectionKind.Rows, grid.SelectionKind);
+        Assert.Equal(new CellRange(5, 0, 5, 199), grid.SelectionRange);
+        grid.HandleContextRequest(frozen: false, new Point(grid.Columns.PaneX(6) + 5, (5 * rh) + 5));
+        grid.HandleContextRequest(frozen: true, new Point(4, (5 * rh) + 5));
+        Assert.Equal(SelectionKind.Rows, grid.SelectionKind);
+        Assert.Equal(new CellRange(5, 0, 5, 199), grid.SelectionRange);
+    });
+
     [Fact]
     public Task CopyPutsExcelStyleTsvWithWholeValuesOnTheClipboard() => WinUiHost.RunAsync(async () =>
     {

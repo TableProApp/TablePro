@@ -28,6 +28,22 @@ impl ResultSet {
         }
     }
 
+    pub(crate) fn result_columns(&self) -> Arc<[tablepro_core::column::ResultColumn]> {
+        self.store.columns()
+    }
+
+    pub(crate) fn stored_value(&self, row: u64, column: usize) -> Option<tablepro_core::Value> {
+        self.store.stored_value(self.stored_row(row), column)
+    }
+
+    pub(crate) fn cell_kind(&self, row: u64, column: usize) -> Option<Option<ValueKind>> {
+        self.store.cell_kind(self.stored_row(row), column)
+    }
+
+    pub(crate) fn full_text(&self, row: u64, column: usize) -> Option<Option<String>> {
+        self.store.full_text(self.stored_row(row), column)
+    }
+
     fn stored_row(&self, row: u64) -> u64 {
         self.order
             .as_ref()

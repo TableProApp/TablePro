@@ -15,6 +15,8 @@ public sealed class ResultSet : IDisposable
 
     public int Index { get; }
 
+    internal Native.ResultSet Handle => _set;
+
     public long RowCount => Mapping.Count(_set.RowCount());
 
     public bool IsFinished => _set.IsFinished();
