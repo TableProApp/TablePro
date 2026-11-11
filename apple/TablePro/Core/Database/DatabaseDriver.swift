@@ -348,6 +348,11 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Fetch the source of one trigger.
     func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String
 
+    // Mirrors `PluginDatabaseDriver.serverObjectKinds`: asked of the live driver, never of the type.
+    var serverObjectKinds: [PluginServerObjectKind] { get }
+    func fetchServerObjects(ofKind kindId: String, schema: String?) async throws -> [ServerObjectInfo]
+    func fetchServerObject(_ object: ServerObjectInfo) async throws -> ServerObjectInfo
+
     /// Fetch metadata for a specific database (table count, size, etc.)
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata
 
@@ -1030,6 +1035,17 @@ extension DatabaseDriver {
     func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String {
         if let definition = trigger.definition, !definition.isEmpty { return definition }
         throw PluginObjectSourceError.unsupported(trigger.name)
+    }
+
+    var serverObjectKinds: [PluginServerObjectKind] { [] }
+
+    func fetchServerObjects(ofKind kindId: String, schema: String?) async throws -> [ServerObjectInfo] { [] }
+
+    func fetchServerObject(_ object: ServerObjectInfo) async throws -> ServerObjectInfo {
+        guard let definition = object.definition, !definition.isEmpty else {
+            throw PluginObjectSourceError.unsupported(object.name)
+        }
+        return object
     }
 
     var supportsTransactions: Bool { true }

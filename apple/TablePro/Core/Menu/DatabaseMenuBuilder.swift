@@ -10,6 +10,7 @@ import AppKit
 enum DatabaseMenuBuilder {
     static let identifier = NSUserInterfaceItemIdentifier("menu.database")
     static let liveMessagesIdentifier = NSUserInterfaceItemIdentifier("menu.database.liveMessages")
+    static let manualCommitFootnoteIdentifier = NSUserInterfaceItemIdentifier("menu.database.manualCommitFootnote")
 
     static func build(keyboard: KeyboardSettings, modules: Set<AppModule> = []) -> NSMenuItem {
         let item = MenuItemFactory.menu(String(localized: "Database"), items: [
@@ -38,6 +39,7 @@ enum DatabaseMenuBuilder {
                 shortcut: .refresh,
                 keyboard: keyboard
             ),
+            autoRefreshSubmenu(),
             MenuItemFactory.separator,
             MenuItemFactory.item(
                 String(localized: "New Database…"),
@@ -109,7 +111,8 @@ enum DatabaseMenuBuilder {
             ),
             schemaSubmenu(),
             sessionContextSubmenu(),
-            safeModeSubmenu(),
+            safeModeSubmenu()
+        ] + transactionItems(keyboard: keyboard) + [
             favoriteDatabaseSubmenu(),
             maintenanceSubmenu(),
             MenuItemFactory.item(
@@ -275,6 +278,47 @@ enum DatabaseMenuBuilder {
     private static func sessionContextSubmenu() -> NSMenuItem {
         let container = MenuItemFactory.submenu(String(localized: "Session Context"), items: [])
         container.submenu?.delegate = sessionContextDelegate
+        return container
+    }
+
+    private static func transactionItems(keyboard: KeyboardSettings) -> [NSMenuItem] {
+        [
+            MenuItemFactory.item(
+                String(localized: "Manual Commit"),
+                action: #selector(MainSplitViewController.toggleManualCommit(_:))
+            ),
+            manualCommitFootnote(),
+            MenuItemFactory.item(
+                String(localized: "Commit Transaction"),
+                action: #selector(MainSplitViewController.commitOpenTransaction(_:)),
+                shortcut: .commitTransaction,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Roll Back Transaction"),
+                action: #selector(MainSplitViewController.rollBackOpenTransaction(_:)),
+                shortcut: .rollbackTransaction,
+                keyboard: keyboard
+            )
+        ]
+    }
+
+    // Validation shows it under Manual Commit, which it shares an action with so it always validates as disabled.
+    private static func manualCommitFootnote() -> NSMenuItem {
+        let item = MenuFootnote.item(
+            String(localized: "This database can't report an open transaction, so it commits each change.")
+        )
+        item.action = #selector(MainSplitViewController.toggleManualCommit(_:))
+        item.identifier = manualCommitFootnoteIdentifier
+        item.isHidden = true
+        return item
+    }
+
+    private static let autoRefreshDelegate = TableAutoRefreshMenuDelegate()
+
+    private static func autoRefreshSubmenu() -> NSMenuItem {
+        let container = MenuItemFactory.submenu(String(localized: "Auto Refresh"), items: [])
+        container.submenu?.delegate = autoRefreshDelegate
         return container
     }
 

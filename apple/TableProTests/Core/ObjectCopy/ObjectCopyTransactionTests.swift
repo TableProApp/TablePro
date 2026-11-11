@@ -286,6 +286,23 @@ struct ObjectCopyTransactionTests {
         #expect(result.pendingInSessionTransaction == false)
     }
 
+    // A held copy on a pooled lease would be rolled back when the pool closes it, after the sheet reported success.
+    @Test("Copy To commits its own transaction even on a connection in Manual Commit")
+    func manualCommitConnectionStillCommitsTheCopy() async throws {
+        var connection = TestFixtures.makeConnection(id: targetScope.connectionId, type: targetType)
+        connection.commitMode = .manual
+        DatabaseManager.shared.injectSession(ConnectionSession(connection: connection), for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let log = CopyEventLog()
+
+        _ = try await run(
+            replacementPlan(), source: RecordingCopyDriver("source", log: log), target: RecordingCopyDriver("target", log: log)
+        )
+
+        #expect(log.events.first == "target begin")
+        #expect(log.events.last == "target commit")
+    }
+
     /// The statements still run: they join the transaction the user opened, and only the user can
     /// end it. Opening one over it is what aborted it on DuckDB.
     @Test("A session holding a transaction is joined rather than wrapped, with its keys as they are")

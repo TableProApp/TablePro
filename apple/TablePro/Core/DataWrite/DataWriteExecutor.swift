@@ -103,11 +103,24 @@ enum DataWriteExecutor {
     nonisolated static func run(
         _ plan: DataWritePlan,
         mode: PluginTransactionAccessMode = .readWrite,
+        commitMode: ConnectionCommitMode,
         on driver: DatabaseDriver,
         context: PluginStatementContext? = nil
     ) async throws -> DataWriteRun {
         let steps = plan.steps.filter { !$0.statement.sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         guard !steps.isEmpty || !plan.prologue.isEmpty else { return DataWriteRun(results: [], sideStatements: []) }
+
+        // A write Manual Commit can't hold would commit with no Commit pressed, so it is refused before anything runs.
+        if commitMode == .manual {
+            guard plan.prologue.isEmpty, plan.epilogue.isEmpty else { throw ManualCommitSessionOptionsRefusal() }
+            // On MySQL and Oracle a staged TRUNCATE or DROP commits the cell edits saved beside it.
+            let sql = steps.map(\.statement.sql)
+            if ManualCommit.mixesImplicitCommit(sql, databaseType: plan.databaseType, grammar: plan.databaseType.lexicalGrammar) {
+                throw ManualCommitMixedRefusal()
+            }
+            let state = await driver.heldSessionTransactionState()
+            try ManualCommit.refuseUnheldWrite(supportsTransactions: driver.supportsTransactions, sessionState: state)
+        }
 
         // A row a lookup cannot find on its own refuses the save before anything is written. Each step reads its
         // lookup again right before it runs, since the steps ahead of it can move or change its rows.
@@ -154,17 +167,18 @@ enum DataWriteExecutor {
             }
         }
 
-        /// Asked inside the same lease that runs the statements, so nothing can open a transaction
-        /// between the answer and the first write.
+        // Asked inside the lease that runs the statements, so nothing opens a transaction before the first write.
         let owner = WriteTransactionOwner.resolve(
             supportsTransactions: driver.supportsTransactions,
-            sessionState: await driver.heldSessionTransactionState()
+            sessionState: await driver.heldSessionTransactionState(),
+            commitMode: commitMode
         )
         var results: [DataWriteStepResult] = []
 
         do {
-            if owner.opensTransaction {
+            if owner.sendsBegin {
                 try await driver.beginTransaction(mode: mode)
+                if owner == .held { ManualCommit.turnHold?.mark(true) }
             }
 
             for step in steps {
@@ -217,14 +231,15 @@ enum DataWriteExecutor {
                 }
             }
 
-            if owner.opensTransaction {
+            if owner.commitsAtEnd {
                 try await driver.commitTransaction()
             }
         } catch {
             var rollbackSucceeded = owner.canRollBack
-            if owner.opensTransaction {
+            if owner.canRollBack {
                 do {
                     try await driver.rollbackTransaction()
+                    if owner == .held { ManualCommit.turnHold?.mark(false) }
                 } catch {
                     rollbackSucceeded = false
                     logger.error("Rollback failed: \(error.publicLogShape, privacy: .public)")
@@ -242,7 +257,7 @@ enum DataWriteExecutor {
                     committed: results,
                     totalStatements: steps.count,
                     engine: plan.databaseType.rawValue,
-                    disposition: owner == .session ? .pendingInSessionTransaction : .written,
+                    disposition: owner == .session || owner == .held ? .pendingInSessionTransaction : .written,
                     underlying: error
                 )
             }
@@ -370,7 +385,7 @@ enum DataWriteExecutor {
         actual: Int
     ) -> DataWriteError {
         switch owner {
-        case .app:
+        case .app, .held:
             return .tooManyRowsAffected(table: table, expected: expected, actual: actual)
         case .session:
             return .tooManyRowsAffectedInSessionTransaction(table: table, expected: expected, actual: actual)

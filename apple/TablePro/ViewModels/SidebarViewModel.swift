@@ -293,8 +293,13 @@ final class SidebarViewModel: ObservableObject {
 
     private static func loadInitialExpansion(connectionId: UUID, defaults: UserDefaults) -> ExpansionState {
         var values: [SidebarObjectKind: Bool] = [:]
-        for kind in SidebarObjectKind.allCases {
+        for kind in SidebarObjectKind.builtIn {
             values[kind] = loadKindExpansion(connectionId: connectionId, kind: kind, defaults: defaults)
+        }
+        let serverKey = SidebarPersistenceKey.serverKindsExpanded(connectionId: connectionId)
+        for (id, expanded) in defaults.dictionary(forKey: serverKey) ?? [:] {
+            guard let expanded = expanded as? Bool, !id.isEmpty else { continue }
+            values[.server(SidebarServerObjectKind(id: id))] = expanded
         }
         return ExpansionState(values: values)
     }
@@ -338,12 +343,20 @@ final class SidebarViewModel: ObservableObject {
     }
 
     private func persistExpansion(oldValue: ExpansionState) {
-        for kind in SidebarObjectKind.allCases where oldValue[kind] != expanded[kind] {
+        for kind in SidebarObjectKind.builtIn where oldValue[kind] != expanded[kind] {
             defaults.set(
                 expanded[kind],
                 forKey: SidebarPersistenceKey.expanded(connectionId: connectionId, kind: kind)
             )
         }
+        let serverKinds = Set(oldValue.values.keys).union(expanded.values.keys).compactMap(\.serverKind)
+        guard serverKinds.contains(where: { oldValue[.server($0)] != expanded[.server($0)] }) else { return }
+        var stored: [String: Bool] = [:]
+        for (kind, isExpanded) in expanded.values {
+            guard let serverKind = kind.serverKind else { continue }
+            stored[serverKind.id] = isExpanded
+        }
+        defaults.set(stored, forKey: SidebarPersistenceKey.serverKindsExpanded(connectionId: connectionId))
     }
 
     // MARK: - Batch Operations
@@ -472,6 +485,7 @@ final class SidebarViewModel: ObservableObject {
     private var cachedFilteredTriggersFingerprint: (count: Int, generation: Int, query: String)?
     private var cachedFilteredUserTypes: [UserDefinedTypeInfo] = []
     private var cachedFilteredUserTypesFingerprint: (count: Int, generation: Int, query: String)?
+    private var cachedFilteredServerObjects: [String: (count: Int, generation: Int, query: String, objects: [ServerObjectInfo])] = [:]
 
     private var schemaGeneration: Int {
         SchemaService.shared.generationToken(for: connectionId)
@@ -494,7 +508,7 @@ final class SidebarViewModel: ObservableObject {
         if cachedFilteredByKindFingerprint?.count != fingerprint.count
             || cachedFilteredByKindFingerprint?.generation != fingerprint.generation
             || cachedFilteredByKindFingerprint?.query != fingerprint.query {
-            for tableKind in SidebarObjectKind.allCases where tableKind.category == .table {
+            for tableKind in SidebarObjectKind.builtIn where tableKind.category == .table {
                 cachedFilteredByKind[tableKind] = applyQuery(query, to: self.tables(of: tableKind, from: tables))
             }
             cachedFilteredByKindFingerprint = fingerprint
@@ -548,6 +562,18 @@ final class SidebarViewModel: ObservableObject {
             cachedFilteredUserTypesFingerprint = fingerprint
         }
         return cachedFilteredUserTypes
+    }
+
+    func filteredServerObjects(kindId: String, from objects: [ServerObjectInfo]) -> [ServerObjectInfo] {
+        let query = filterQuery
+        let generation = schemaGeneration
+        if let cached = cachedFilteredServerObjects[kindId],
+           cached.count == objects.count, cached.generation == generation, cached.query == query {
+            return cached.objects
+        }
+        let filtered = DatabaseTreeFilter.filteredServerObjects(objects, searchText: query, database: browsedDatabase)
+        cachedFilteredServerObjects[kindId] = (objects.count, generation, query, filtered)
+        return filtered
     }
 
     func effectiveExpanded(kind: SidebarObjectKind, hasMatches: Bool) -> Bool {
@@ -660,7 +686,7 @@ final class SidebarViewModel: ObservableObject {
 
     private func rebuildKindBuckets(from tables: [TableInfo]) {
         var buckets: [SidebarObjectKind: [TableInfo]] = [:]
-        for kind in SidebarObjectKind.allCases {
+        for kind in SidebarObjectKind.builtIn {
             buckets[kind] = []
         }
         for table in tables {
@@ -675,6 +701,7 @@ final class SidebarViewModel: ObservableObject {
         cachedFilteredByKindFingerprint = nil
         cachedFilteredRoutines = [:]
         cachedFilteredRoutinesFingerprint = nil
+        cachedFilteredServerObjects = [:]
     }
 
     /// Clearing the field, or typing the first character into an empty one, changes what the list

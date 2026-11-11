@@ -764,6 +764,32 @@ struct SessionLanesTests {
         #expect(holding.isEmpty)
     }
 
+    @Test("A transaction the tracker holds is named even while its connection runs a turn")
+    func trackedHoldOnABusyConnectionIsNamed() async throws {
+        let harness = makeHarness()
+        defer { cleanUp(harness) }
+        DatabaseManager.shared.sessionTransactions.record(
+            .inTransaction, on: harness.home, for: .init(connectionId: harness.connection.id, lane: "app")
+        )
+        let release = AsyncGate()
+        let acquired = AsyncGate()
+        let holder = Task { @MainActor in
+            try await DatabaseManager.shared.sessionDriverGate.withExclusiveAccess(
+                SessionDriverGate.Key(connectionId: harness.connection.id, database: "app")
+            ) {
+                await acquired.open()
+                await release.wait()
+            }
+        }
+        await acquired.wait()
+
+        let holding = await DatabaseManager.shared.databasesHoldingTransaction(for: harness.connection.id)
+
+        await release.open()
+        try await holder.value
+        #expect(holding == ["app"])
+    }
+
     @Test("A connection that does not answer counts as holding nothing once the bound passes")
     func silentConnectionIsBounded() async {
         let harness = makeHarness()

@@ -117,7 +117,8 @@ internal final class VersionHistoryViewModel: ObservableObject {
         } catch {
             guard !Task.isCancelled else { return }
             Self.logger.warning("Version history failed to load: \(error.publicLogShape, privacy: .public)")
-            let subjectIsGone = (error as? VersionHistoryError) == .subjectNotFound
+            let failure = error as? VersionHistoryError
+            let subjectIsGone = failure == .subjectNotFound || failure == .tabClosed
             guard page.entries.isEmpty || subjectIsGone else { return }
             page = .empty
             selection = nil

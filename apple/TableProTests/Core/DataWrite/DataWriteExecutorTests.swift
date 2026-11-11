@@ -114,7 +114,7 @@ struct DataWriteExecutorTests {
     @Test("The driver's real affected-row count reaches the caller")
     func reportsRealRowCount() async throws {
         let counting = CountingDriver(affectedRows: 42)
-        let results = try await DataWriteExecutor.run(plan(expectedRowCount: 50), on: driver(counting)).results
+        let results = try await DataWriteExecutor.run(plan(expectedRowCount: 50), commitMode: .automatic, on: driver(counting)).results
 
         #expect(results.first?.rowsAffected == 42)
         #expect(counting.didCommit)
@@ -124,7 +124,7 @@ struct DataWriteExecutorTests {
     func tooManyRowsRollsBack() async throws {
         let counting = CountingDriver(affectedRows: 2)
         await #expect(throws: DataWriteError.tooManyRowsAffected(table: "t", expected: 1, actual: 2)) {
-            try await DataWriteExecutor.run(plan(expectedRowCount: 1), on: driver(counting))
+            try await DataWriteExecutor.run(plan(expectedRowCount: 1), commitMode: .automatic, on: driver(counting))
         }
         #expect(counting.didRollBack)
         #expect(counting.didCommit == false)
@@ -136,7 +136,7 @@ struct DataWriteExecutorTests {
         await #expect(
             throws: DataWriteError.tooManyRowsAffectedUnrecoverable(table: "t", expected: 1, actual: 2)
         ) {
-            try await DataWriteExecutor.run(plan(expectedRowCount: 1), on: driver(counting))
+            try await DataWriteExecutor.run(plan(expectedRowCount: 1), commitMode: .automatic, on: driver(counting))
         }
         #expect(counting.didRollBack == false)
     }
@@ -144,7 +144,7 @@ struct DataWriteExecutorTests {
     @Test("Fewer rows than expected is an ordinary save, because MySQL reports zero for an unchanged value")
     func fewerRowsIsNotAFailure() async throws {
         let counting = CountingDriver(affectedRows: 0)
-        let results = try await DataWriteExecutor.run(plan(expectedRowCount: 1), on: driver(counting)).results
+        let results = try await DataWriteExecutor.run(plan(expectedRowCount: 1), commitMode: .automatic, on: driver(counting)).results
 
         #expect(results.first?.rowsAffected == 0)
         #expect(counting.didCommit)
@@ -157,7 +157,7 @@ struct DataWriteExecutorTests {
         await #expect(throws: DataWriteError.rowsNoLongerMatch(table: "t", expected: 1, actual: 0)) {
             try await DataWriteExecutor.run(
                 plan(expectedRowCount: 1, matchesRowsWithoutKey: true),
-                on: driver(counting)
+                commitMode: .automatic, on: driver(counting)
             )
         }
         #expect(counting.didRollBack)
@@ -171,7 +171,7 @@ struct DataWriteExecutorTests {
         await #expect(throws: DataWriteError.keyNoLongerMatchesOneRow(table: "t", expected: 1, actual: 0)) {
             try await DataWriteExecutor.run(
                 plan(expectedRowCount: 1, refusesSharedKey: true),
-                on: driver(counting)
+                commitMode: .automatic, on: driver(counting)
             )
         }
         #expect(counting.didRollBack)
@@ -184,7 +184,7 @@ struct DataWriteExecutorTests {
         await #expect(throws: DataWriteError.rowsNoLongerMatch(table: "t", expected: 3, actual: 2)) {
             try await DataWriteExecutor.run(
                 plan(expectedRowCount: 3, matchesRowsWithoutKey: true),
-                on: driver(counting)
+                commitMode: .automatic, on: driver(counting)
             )
         }
         #expect(counting.didRollBack)
@@ -196,7 +196,7 @@ struct DataWriteExecutorTests {
         await #expect(throws: DataWriteError.rowsNoLongerMatch(table: "t", expected: 1, actual: 0)) {
             try await DataWriteExecutor.run(
                 plan(expectedRowCount: 1, matchesRowsWithoutKey: true, databaseType: .kingbasees),
-                on: driver(counting)
+                commitMode: .automatic, on: driver(counting)
             )
         }
         #expect(counting.didRollBack)
@@ -207,7 +207,7 @@ struct DataWriteExecutorTests {
         let counting = CountingDriver(affectedRows: 0)
         let results = try await DataWriteExecutor.run(
             plan(expectedRowCount: 1, matchesRowsWithoutKey: true, databaseType: .clickhouse),
-            on: driver(counting)
+            commitMode: .automatic, on: driver(counting)
         ).results
 
         #expect(results.first?.rowsAffected == 0)
@@ -224,7 +224,7 @@ struct DataWriteExecutorTests {
                 prologue: ["PRAGMA foreign_keys = OFF"],
                 epilogue: ["PRAGMA foreign_keys = ON"]
             ),
-            on: driver(counting)
+            commitMode: .automatic, on: driver(counting)
         )
 
         #expect(counting.trace == [
@@ -248,7 +248,7 @@ struct DataWriteExecutorTests {
                     prologue: ["PRAGMA foreign_keys = OFF"],
                     epilogue: ["PRAGMA foreign_keys = ON"]
                 ),
-                on: driver(counting)
+                commitMode: .automatic, on: driver(counting)
             )
         }
 
@@ -269,7 +269,7 @@ struct DataWriteExecutorTests {
                 prologue: ["SET session_replication_role = replica"],
                 epilogue: ["SET session_replication_role = origin"]
             ),
-            on: driver(counting)
+            commitMode: .automatic, on: driver(counting)
         )
 
         #expect(!counting.trace.contains("open preserve"))
@@ -279,7 +279,7 @@ struct DataWriteExecutorTests {
     @Test("A plan without a prologue leaves the session's settings alone")
     func planWithoutPrologueOpensNoScope() async throws {
         let counting = CountingDriver(affectedRows: 1)
-        _ = try await DataWriteExecutor.run(plan(expectedRowCount: 1), on: driver(counting))
+        _ = try await DataWriteExecutor.run(plan(expectedRowCount: 1), commitMode: .automatic, on: driver(counting))
 
         #expect(counting.trace == ["BEGIN", "UPDATE \"t\" SET \"b\" = 0", "COMMIT"])
     }
@@ -296,7 +296,7 @@ struct DataWriteExecutorTests {
             prologueIsRequired: true
         )
         await #expect(throws: (any Error).self) {
-            try await DataWriteExecutor.run(required, on: driver(counting))
+            try await DataWriteExecutor.run(required, commitMode: .automatic, on: driver(counting))
         }
 
         #expect(counting.trace == [
@@ -312,7 +312,7 @@ struct DataWriteExecutorTests {
     func anOptionalPrologueThatFailsLetsTheStepsRun() async throws {
         let counting = CountingDriver(affectedRows: 1, failOnStatement: 1)
         _ = try await DataWriteExecutor.run(
-            plan(expectedRowCount: 1, prologue: ["PRAGMA foreign_keys = OFF"]), on: driver(counting)
+            plan(expectedRowCount: 1, prologue: ["PRAGMA foreign_keys = OFF"]), commitMode: .automatic, on: driver(counting)
         )
 
         #expect(counting.didCommit)
@@ -323,7 +323,7 @@ struct DataWriteExecutorTests {
         let counting = CountingDriver(affectedRows: 1)
         let run = try await DataWriteExecutor.run(
             plan(expectedRowCount: 1, prologue: ["A"], epilogue: ["B"]),
-            on: driver(counting)
+            commitMode: .automatic, on: driver(counting)
         )
 
         #expect(run.sideStatements == ["A", "B"])
@@ -335,7 +335,7 @@ struct DataWriteExecutorTests {
 
         do {
             _ = try await DataWriteExecutor.run(
-                plan(expectedRowCount: 1, statementCount: 3), on: driver(counting)
+                plan(expectedRowCount: 1, statementCount: 3), commitMode: .automatic, on: driver(counting)
             )
             Issue.record("expected the run to throw")
         } catch let error as DataWritePartialCommitError {
@@ -350,7 +350,7 @@ struct DataWriteExecutorTests {
 
         do {
             _ = try await DataWriteExecutor.run(
-                plan(expectedRowCount: 1, statementCount: 3), on: driver(counting)
+                plan(expectedRowCount: 1, statementCount: 3), commitMode: .automatic, on: driver(counting)
             )
             Issue.record("expected the run to throw")
         } catch is DataWritePartialCommitError {
@@ -368,7 +368,7 @@ struct DataWriteExecutorTests {
 
         do {
             _ = try await DataWriteExecutor.run(
-                plan(expectedRowCount: 1, statementCount: 3), on: driver(counting)
+                plan(expectedRowCount: 1, statementCount: 3), commitMode: .automatic, on: driver(counting)
             )
             Issue.record("expected the run to throw")
         } catch let error as DataWritePartialCommitError {
@@ -379,7 +379,7 @@ struct DataWriteExecutorTests {
     @Test("A statement whose row count carries no meaning is not held to one")
     func unverifiedStepIsNotChecked() async throws {
         let counting = CountingDriver(affectedRows: 9_999)
-        let results = try await DataWriteExecutor.run(plan(expectedRowCount: nil), on: driver(counting)).results
+        let results = try await DataWriteExecutor.run(plan(expectedRowCount: nil), commitMode: .automatic, on: driver(counting)).results
 
         #expect(results.first?.wasVerified == false)
         #expect(counting.didCommit)
@@ -391,7 +391,7 @@ struct DataWriteExecutorTests {
     )
     func saveJoinsTheSessionTransaction(state: PluginSessionTransactionState) async throws {
         let counting = CountingDriver(affectedRows: 1, sessionState: state)
-        let results = try await DataWriteExecutor.run(plan(expectedRowCount: 1), on: driver(counting)).results
+        let results = try await DataWriteExecutor.run(plan(expectedRowCount: 1), commitMode: .automatic, on: driver(counting)).results
 
         #expect(results.first?.rowsAffected == 1)
         #expect(counting.trace == ["UPDATE \"t\" SET \"b\" = 0"])
@@ -401,7 +401,7 @@ struct DataWriteExecutorTests {
     func saveWrapsWhenNothingIsOpen() async throws {
         for state in [PluginSessionTransactionState.idle, .unknown] {
             let counting = CountingDriver(affectedRows: 1, sessionState: state)
-            _ = try await DataWriteExecutor.run(plan(expectedRowCount: 1), on: driver(counting))
+            _ = try await DataWriteExecutor.run(plan(expectedRowCount: 1), commitMode: .automatic, on: driver(counting))
             #expect(counting.trace.first == "BEGIN")
             #expect(counting.didCommit)
         }
@@ -413,7 +413,7 @@ struct DataWriteExecutorTests {
 
         do {
             _ = try await DataWriteExecutor.run(
-                plan(expectedRowCount: 1, statementCount: 3), on: driver(counting)
+                plan(expectedRowCount: 1, statementCount: 3), commitMode: .automatic, on: driver(counting)
             )
             Issue.record("expected the run to throw")
         } catch let error as DataWritePartialCommitError {
@@ -430,7 +430,7 @@ struct DataWriteExecutorTests {
         await #expect(
             throws: DataWriteError.tooManyRowsAffectedInSessionTransaction(table: "t", expected: 1, actual: 2)
         ) {
-            try await DataWriteExecutor.run(plan(expectedRowCount: 1), on: driver(counting))
+            try await DataWriteExecutor.run(plan(expectedRowCount: 1), commitMode: .automatic, on: driver(counting))
         }
         #expect(counting.didRollBack == false)
     }
@@ -442,10 +442,12 @@ struct WriteTransactionOwnerTests {
         for state in [
             PluginSessionTransactionState.idle, .inTransaction, .abortedTransaction, .holdsSessionLocks, .unknown,
         ] {
-            let owner = WriteTransactionOwner.resolve(supportsTransactions: false, sessionState: state)
-            #expect(owner == WriteTransactionOwner.none)
-            #expect(owner.opensTransaction == false)
-            #expect(owner.canRollBack == false)
+            for mode in ConnectionCommitMode.allCases {
+                let owner = WriteTransactionOwner.resolve(supportsTransactions: false, sessionState: state, commitMode: mode)
+                #expect(owner == WriteTransactionOwner.none)
+                #expect(owner.sendsBegin == false)
+                #expect(owner.canRollBack == false)
+            }
         }
     }
 
@@ -454,19 +456,155 @@ struct WriteTransactionOwnerTests {
         arguments: [PluginSessionTransactionState.inTransaction, .abortedTransaction, .holdsSessionLocks]
     )
     func sessionOwnsWhatItHolds(state: PluginSessionTransactionState) {
-        let owner = WriteTransactionOwner.resolve(supportsTransactions: true, sessionState: state)
-        #expect(owner == .session)
-        #expect(owner.opensTransaction == false)
-        #expect(owner.canRollBack == false)
+        for mode in ConnectionCommitMode.allCases {
+            let owner = WriteTransactionOwner.resolve(supportsTransactions: true, sessionState: state, commitMode: mode)
+            #expect(owner == .session)
+            #expect(owner.sendsBegin == false)
+            #expect(owner.canRollBack == false)
+        }
     }
 
     @Test("The app owns the transaction when nothing is open, and when the driver cannot say")
     func appOwnsTheRest() {
         for state in [PluginSessionTransactionState.idle, .unknown] {
-            let owner = WriteTransactionOwner.resolve(supportsTransactions: true, sessionState: state)
+            let owner = WriteTransactionOwner.resolve(supportsTransactions: true, sessionState: state, commitMode: .automatic)
             #expect(owner == .app)
-            #expect(owner.opensTransaction)
+            #expect(owner.sendsBegin)
+            #expect(owner.commitsAtEnd)
             #expect(owner.canRollBack)
         }
+    }
+
+    @Test("Manual Commit holds an idle session's write: BEGIN, no COMMIT, a rollback on failure")
+    func manualCommitHoldsAnIdleSession() {
+        let owner = WriteTransactionOwner.resolve(supportsTransactions: true, sessionState: .idle, commitMode: .manual)
+        #expect(owner == .held)
+        #expect(owner.sendsBegin)
+        #expect(owner.commitsAtEnd == false)
+        #expect(owner.canRollBack)
+        #expect(WriteTransactionOwner.resolve(supportsTransactions: true, sessionState: .unknown, commitMode: .manual) == .app)
+    }
+}
+
+struct DataWriteExecutorHeldTests {
+    private func plan(prologue: [String] = []) -> DataWritePlan {
+        DataWritePlan(
+            scope: DatabaseScope(connectionId: UUID(), database: "shop", schema: nil),
+            databaseType: .sqlite,
+            steps: [
+                DataWriteStep(
+                    kind: .rowWrite,
+                    statement: ParameterizedStatement(sql: "UPDATE \"t\" SET \"b\" = 1", parameters: []),
+                    expectedRowCount: 1,
+                    tableName: "t"
+                ),
+            ],
+            prologue: prologue
+        )
+    }
+
+    private func driver(_ counting: CountingDriver) -> DatabaseDriver {
+        PluginDriverAdapter(connection: TestFixtures.makeConnection(type: .sqlite), pluginDriver: counting)
+    }
+
+    @Test("A held save sends BEGIN and the write, and leaves the transaction open")
+    func heldSaveLeavesTheTransactionOpen() async throws {
+        let counting = CountingDriver(affectedRows: 1)
+        _ = try await DataWriteExecutor.run(plan(), commitMode: .manual, on: driver(counting))
+        #expect(counting.trace == ["BEGIN", "UPDATE \"t\" SET \"b\" = 1"])
+    }
+
+    @Test("A held save that fails rolls back the transaction it opened")
+    func heldSaveRollsBackAFailure() async {
+        let counting = CountingDriver(affectedRows: 1, failOnStatement: 1)
+        await #expect(throws: (any Error).self) {
+            try await DataWriteExecutor.run(plan(), commitMode: .manual, on: driver(counting))
+        }
+        #expect(counting.trace.first == "BEGIN")
+        #expect(counting.didRollBack)
+        #expect(counting.didCommit == false)
+    }
+
+    @Test("A save with session toggles is refused in Manual Commit before anything runs")
+    func toggledSaveIsRefused() async {
+        let counting = CountingDriver(affectedRows: 1)
+        await #expect(throws: ManualCommitSessionOptionsRefusal()) {
+            try await DataWriteExecutor.run(
+                plan(prologue: ["PRAGMA foreign_keys = OFF"]), commitMode: .manual, on: driver(counting)
+            )
+        }
+        #expect(counting.trace.isEmpty)
+    }
+
+    @Test(
+        "A save the session can't hold is refused in Manual Commit before anything runs",
+        arguments: [PluginSessionTransactionState.unknown, .holdsSessionLocks]
+    )
+    func unholdableSaveIsRefused(state: PluginSessionTransactionState) async {
+        let counting = CountingDriver(affectedRows: 1, sessionState: state)
+        await #expect(throws: ManualCommitRefusal()) {
+            try await DataWriteExecutor.run(plan(), commitMode: .manual, on: driver(counting))
+        }
+        #expect(counting.trace.isEmpty)
+    }
+
+    @Test("A save on an engine without transactions is refused in Manual Commit")
+    func saveWithoutTransactionsIsRefused() async {
+        let counting = CountingDriver(affectedRows: 1, transactional: false)
+        await #expect(throws: ManualCommitRefusal()) {
+            try await DataWriteExecutor.run(plan(), commitMode: .manual, on: driver(counting))
+        }
+        #expect(counting.trace.isEmpty)
+    }
+
+    // MySQL commits the cell edit implicitly before the TRUNCATE runs.
+    @Test("A save mixing a cell edit with a staged TRUNCATE on MySQL is refused in Manual Commit")
+    func mixedImplicitCommitSaveIsRefused() async {
+        let counting = CountingDriver(affectedRows: 1)
+        let mixed = DataWritePlan(
+            scope: DatabaseScope(connectionId: UUID(), database: "shop", schema: nil),
+            databaseType: .mysql,
+            steps: [
+                DataWriteStep(
+                    kind: .rowWrite,
+                    statement: ParameterizedStatement(sql: "UPDATE `orders` SET `b` = 1", parameters: []),
+                    expectedRowCount: 1,
+                    tableName: "orders"
+                ),
+                DataWriteStep(
+                    kind: .rowWrite,
+                    statement: ParameterizedStatement(sql: "TRUNCATE TABLE `audit_log`", parameters: []),
+                    tableName: "audit_log"
+                ),
+            ]
+        )
+        await #expect(throws: ManualCommitMixedRefusal()) {
+            try await DataWriteExecutor.run(mixed, commitMode: .manual, on: driver(counting))
+        }
+        #expect(counting.trace.isEmpty)
+    }
+
+    @Test("A held save marks the turn's hold, and a rolled-back one clears it")
+    func heldSaveMarksTheTurn() async throws {
+        let held = ManualCommitTurnHold()
+        _ = try await ManualCommit.$turnHold.withValue(held) {
+            try await DataWriteExecutor.run(plan(), commitMode: .manual, on: driver(CountingDriver(affectedRows: 1)))
+        }
+        #expect(held.isHeld)
+
+        let failed = ManualCommitTurnHold()
+        await ManualCommit.$turnHold.withValue(failed) {
+            _ = try? await DataWriteExecutor.run(
+                plan(), commitMode: .manual, on: driver(CountingDriver(affectedRows: 1, failOnStatement: 1))
+            )
+        }
+        #expect(!failed.isHeld)
+    }
+
+    @Test("Manual Commit joins a transaction already open and sends no BEGIN")
+    func heldSaveJoinsAnOpenTransaction() async throws {
+        let counting = CountingDriver(affectedRows: 1, sessionState: .inTransaction)
+        _ = try await DataWriteExecutor.run(plan(), commitMode: .manual, on: driver(counting))
+        #expect(counting.trace == ["UPDATE \"t\" SET \"b\" = 1"])
     }
 }

@@ -30,6 +30,8 @@ nonisolated public struct PostgreSQLCapabilities: Sendable, Equatable {
     /// Every range gained a companion multirange in 14, with a name the creator may choose.
     public var hasMultirangeTypes: Bool { serverVersion >= 140_000 }
     public var hasForeignTablesCatalog: Bool { serverVersion >= 90_100 }
+    // `pg_extension` and CREATE EXTENSION landed in 9.1.
+    public var hasExtensionsCatalog: Bool { serverVersion >= 90_100 }
     public var hasSequencesCatalog: Bool { serverVersion >= 100_000 }
     public var hasBypassRLS: Bool { serverVersion >= 90_500 }
     public var hasProcedureKind: Bool { serverVersion >= 110_000 }

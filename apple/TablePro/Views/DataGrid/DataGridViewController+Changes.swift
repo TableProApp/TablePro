@@ -259,11 +259,11 @@ extension DataGridViewController {
         } else {
             table.scroll(NSPoint(x: x, y: -headerInset))
         }
-        guard !placement.selectedRows.isEmpty else { return }
+        guard placement.selection != .empty else { return }
         // Selecting publishes the model, which a SwiftUI update or layout pass refuses, so it runs on the next turn.
         DispatchQueue.main.async { [weak self] in
             guard let self, self.model.mountedView === self else { return }
-            self.model.selectRows(placement.selectedRows)
+            self.model.select(placement.selection)
             guard placement.revealsSelection, let row = self.model.selection.affectedRows.first else { return }
             self.reveal(row: row, displayColumn: nil)
         }

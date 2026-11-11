@@ -149,12 +149,13 @@ internal struct RowInspectorView: View {
 
         switch InspectorPopOutWindow.resolve(for: kind) {
         case .json:
-            JSONViewerWindowController.open(
+            let window = JSONViewerWindowController.open(
                 text: text,
                 columnName: field.columnName,
                 isEditable: isEditable,
                 onCommit: commit
             )
+            if commit != nil { InspectorPopOutRegistry.record(window, openedFrom: paneState) }
         case .php:
             PhpViewerWindowController.open(text: text, columnName: field.columnName)
         case .binary(let format):
@@ -165,12 +166,13 @@ internal struct RowInspectorView: View {
                 columnName: field.columnName
             )
         case .text:
-            TextViewerWindowController.open(
+            let window = TextViewerWindowController.open(
                 text: text,
                 columnName: field.columnName,
                 isEditable: isEditable,
                 onCommit: commit
             )
+            if commit != nil { InspectorPopOutRegistry.record(window, openedFrom: paneState) }
         }
     }
 }

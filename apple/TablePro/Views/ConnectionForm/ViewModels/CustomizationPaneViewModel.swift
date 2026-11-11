@@ -19,6 +19,7 @@ final class CustomizationPaneViewModel: ObservableObject {
     @Published var queryTimeoutSeconds: Int?
     @Published var binaryInlineLimitKilobytes: Int?
     @Published var completionIdentifierCase: SQLIdentifierCase = .default
+    @Published var commitMode: ConnectionCommitMode = .automatic
 
     @Published var coordinator: WeakCoordinatorRef?
 
@@ -52,5 +53,6 @@ final class CustomizationPaneViewModel: ObservableObject {
         queryTimeoutSeconds = connection.queryTimeoutSeconds
         binaryInlineLimitKilobytes = connection.binaryInlineLimitKilobytes
         completionIdentifierCase = connection.completionIdentifierCase
+        commitMode = connection.commitMode
     }
 }

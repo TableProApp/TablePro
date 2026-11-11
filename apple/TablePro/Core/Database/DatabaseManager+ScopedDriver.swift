@@ -116,6 +116,7 @@ extension DatabaseManager {
         workload: MetadataConnectionPool.Workload = .interactive,
         cancellation: DriverCancellationPolicy,
         ownsSessionState: Bool = true,
+        readsOnly: Bool = false,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
         let leased = trackedLease(for: scope.connectionId, cancellation: cancellation, body)
@@ -127,7 +128,9 @@ extension DatabaseManager {
                 scope: scope, workload: workload, leased
             )
         case .sessionDriver:
-            return try await withPinnedSessionDriver(scope: scope, ownsSessionState: ownsSessionState, leased)
+            return try await withPinnedSessionDriver(
+                scope: scope, ownsSessionState: ownsSessionState, readsOnly: readsOnly, leased
+            )
         }
     }
 
@@ -138,6 +141,7 @@ extension DatabaseManager {
         route: ScopedDriverRoute,
         workload: MetadataConnectionPool.Workload = .interactive,
         ownsSessionState: Bool = true,
+        readsOnly: Bool = false,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
         let owner = DriverLeaseOwner()
@@ -149,6 +153,7 @@ extension DatabaseManager {
                 workload: workload,
                 cancellation: .cancellableRead(owner),
                 ownsSessionState: ownsSessionState,
+                readsOnly: readsOnly,
                 body
             )
         } onCancel: {
@@ -173,7 +178,7 @@ extension DatabaseManager {
         guard rowCountRunsWithPage(scope, filtered: filtered) else {
             return try await withMetadataDriver(scope: scope, workload: .bulk, body)
         }
-        return try await withCancellableRead(scope: scope, route: tableReadRoute(for: scope), body)
+        return try await withCancellableRead(scope: scope, route: tableReadRoute(for: scope), readsOnly: true, body)
     }
 
     /// A table tab's read is a SELECT the app built from the tab's own table, so it depends on
@@ -372,9 +377,10 @@ extension DatabaseManager {
     private func withPinnedSessionDriver<T: Sendable>(
         scope: DatabaseScope,
         ownsSessionState: Bool,
+        readsOnly: Bool,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
-        try await withSessionDriverTurn(scope: scope, ownsSessionState: ownsSessionState) { driver in
+        try await withSessionDriverTurn(scope: scope, ownsSessionState: ownsSessionState, readsOnly: readsOnly) { driver in
             try await pin(driver, to: scope)
             return try await body(driver)
         }
@@ -387,7 +393,7 @@ extension DatabaseManager {
         scope: DatabaseScope,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> TableReadTurn<T> {
-        try await withSessionDriverTurn(scope: scope, ownsSessionState: false) { driver in
+        try await withSessionDriverTurn(scope: scope, ownsSessionState: false, readsOnly: true) { driver in
             let route = tableReadRoute(for: scope)
             guard route == .sessionDriver else { return .moved(route) }
             try await pin(driver, to: scope)
@@ -401,6 +407,7 @@ extension DatabaseManager {
     private func withSessionDriverTurn<R>(
         scope: DatabaseScope,
         ownsSessionState: Bool,
+        readsOnly: Bool = false,
         _ turn: (DatabaseDriver) async throws -> R
     ) async throws -> R {
         let connectionId = scope.connectionId
@@ -442,7 +449,9 @@ extension DatabaseManager {
                     if ownsSessionState, let lost = sessionLanes.takeAnyTransactionLoss(for: connectionId) {
                         throw DatabaseError.connectionFailed(Self.parkedTransactionLostMessage(database: lost))
                     }
-                    return try await recordingTransaction(on: browsedDriver, for: .init(connectionId: connectionId, lane: nil)) {
+                    return try await recordingTransaction(
+                        on: browsedDriver, for: .init(connectionId: connectionId, lane: nil), readsOnly: readsOnly
+                    ) {
                         try await turn(browsedDriver)
                     }
                 }
@@ -464,7 +473,9 @@ extension DatabaseManager {
                 }
                 sessionLanes.noteOpenedUse(database: lane, for: connectionId)
                 defer { sessionLanes.noteOpenedUse(database: lane, for: connectionId) }
-                return try await recordingTransaction(on: laneDriver, for: .init(connectionId: connectionId, lane: lane)) {
+                return try await recordingTransaction(
+                    on: laneDriver, for: .init(connectionId: connectionId, lane: lane), readsOnly: readsOnly
+                ) {
                     try await turn(laneDriver)
                 }
             }
@@ -477,17 +488,20 @@ extension DatabaseManager {
     private func recordingTransaction<R>(
         on driver: DatabaseDriver,
         for key: SessionTransactionTracker.Key,
+        readsOnly: Bool,
         _ work: () async throws -> R
     ) async throws -> R {
         guard driver.supportsTransactions else { return try await work() }
+        let turnHold = ManualCommitTurnHold()
         let outcome: Result<R, any Error>
         do {
-            outcome = .success(try await work())
+            outcome = .success(try await ManualCommit.$turnHold.withValue(turnHold) { try await work() })
         } catch {
             outcome = .failure(error)
         }
-        let state = await Self.boundedTransactionState(of: driver, clock: ContinuousClock())
-        sessionTransactions.record(state, on: driver, for: key)
+        let read = await Self.boundedTransactionState(of: driver, clock: ContinuousClock())
+        let state = ManualCommit.recordedState(read: read, turnOpenedHold: turnHold.isHeld)
+        sessionTransactions.record(state, on: driver, for: key, readsOnly: readsOnly)
         return try outcome.get()
     }
 

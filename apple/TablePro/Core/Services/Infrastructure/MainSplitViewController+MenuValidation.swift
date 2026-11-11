@@ -6,6 +6,15 @@
 import AppKit
 import TableProPluginKit
 
+// Read only when a transaction command is validated, as the Debug menu's state is.
+struct TransactionMenuState: Equatable {
+    var isManualCommitOn = false
+    // False for an engine with no transactions, or one whose live driver has only answered that it cannot say.
+    var canHoldTransactions = false
+    var holdsTransaction = false
+    var canCommit = false
+}
+
 // A plain value keeps `isEnabled` pure and testable, the same split `ToolbarContextResolver` uses for the toolbar.
 struct MenuValidationContext: Equatable {
     // True for any connection on screen, connected or not, so a pane that failed to dial can still be dismissed.
@@ -140,6 +149,7 @@ struct MenuValidationContext: Equatable {
     var hasSchemaFilter = false
     // Filled only when a Debug menu item is validated; the menu exists only while the module is on.
     var routineDebug = RoutineDebugMenuState()
+    var transaction = TransactionMenuState()
     var canOpenLiveMessages = false
     var canDisconnect = false
     var isPresentingSheet = false
@@ -358,9 +368,34 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(showAllSchemas(_:)):
             return context.isConnected && context.canFilterSchemas && context.hasSchemaFilter
         default:
-            return nil
+            return isTransactionCommandEnabled(selector, context: context)
         }
     }
+
+    // Manual Commit stays enabled while on, so a connection that cannot hold can still turn it off.
+    private static func isTransactionCommandEnabled(
+        _ selector: Selector,
+        context: MenuValidationContext
+    ) -> Bool? {
+        guard transactionSelectors.contains(selector) else { return nil }
+        guard context.isConnected else { return false }
+        switch selector {
+        case #selector(toggleManualCommit(_:)):
+            return context.transaction.isManualCommitOn || context.transaction.canHoldTransactions
+        case #selector(commitOpenTransaction(_:)):
+            return context.transaction.canCommit
+        case #selector(rollBackOpenTransaction(_:)):
+            return context.transaction.holdsTransaction
+        default:
+            return false
+        }
+    }
+
+    static let transactionSelectors: Set<Selector> = [
+        #selector(toggleManualCommit(_:)),
+        #selector(commitOpenTransaction(_:)),
+        #selector(rollBackOpenTransaction(_:)),
+    ]
 
     // Agent mode does not draw the debug tab these act on.
     private static func isRoutineDebugCommandEnabled(
@@ -471,6 +506,9 @@ extension MainSplitViewController: NSMenuItemValidation {
         #selector(closeConnection(_:)),
         #selector(requestDisconnect),
         #selector(setSafeModeLevel(_:)),
+        #selector(toggleManualCommit(_:)),
+        #selector(commitOpenTransaction(_:)),
+        #selector(rollBackOpenTransaction(_:)),
         #selector(releaseFileLock(_:)),
         #selector(openContainerSwitcher(_:)),
         #selector(openSchemaSwitcher(_:)),
@@ -539,6 +577,8 @@ extension MainSplitViewController: NSMenuItemValidation {
         #selector(closeAgentSession(_:)),
         #selector(deleteAgentSession(_:)),
         #selector(clearAIConversations(_:)),
+        #selector(commitOpenTransaction(_:)),
+        #selector(rollBackOpenTransaction(_:)),
     ]
 
     // A command this window does not own stays enabled, which keeps `performClose:` and the system's own items working.
@@ -596,6 +636,9 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.canClearResults
         case #selector(saveAsFavorite(_:)):
             return context.canSaveAsFavorite
+        // The versions are on this Mac, so a tab whose connection dropped can still go back.
+        case #selector(revertToQueryTabVersion(_:)), #selector(browseQueryTabVersions(_:)):
+            return context.isQueryTab
         default:
             return nil
         }
@@ -766,12 +809,14 @@ extension MainSplitViewController: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         applyDynamicTitle(to: menuItem)
         guard let action = menuItem.action else { return false }
+        if menuItem.identifier == DatabaseMenuBuilder.manualCommitFootnoteIdentifier { return false }
         // AppKit asks this for the View menu and `validateUserInterfaceItem` for the rest, so a rule must live in both.
         if action == #selector(toggleSidebar(_:)) { return true }
         if action == #selector(toggleInspector(_:)) { return canToggleTrailingPane }
         if action == #selector(toggleAssistant(_:)) { return canToggleAssistant }
         if action == #selector(setResultView(_:)) { return canShowResultView(menuItem) }
         if action == #selector(setSafeModeLevel(_:)) { return canChooseSafeModeLevel(menuItem) }
+        if action == #selector(setTableAutoRefreshInterval(_:)) { return canSetTableAutoRefresh }
         if action == #selector(retryConnection) { return canReconnect }
         if let zoom = FontSizeZoom.editor.enablement(action, typography: AppSettingsManager.shared.typography) {
             return zoom
@@ -791,6 +836,9 @@ extension MainSplitViewController: NSMenuItemValidation {
         }
         if action == #selector(openLiveMessages(_:)) {
             context.canOpenLiveMessages = canOpenLiveMessages
+        }
+        if Self.transactionSelectors.contains(action) {
+            context.transaction = transactionMenuState
         }
         guard Self.agentSessionSelectors.contains(action) else { return context }
         context.agentSessionTarget = agentSessionTarget(for: menuItem)?.status
@@ -867,6 +915,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             setState(isCurrentResultView(menuItem) ? .on : .off, on: menuItem)
         case #selector(setContentModeFromMenu(_:)):
             setState(isCurrentContentMode(menuItem) ? .on : .off, on: menuItem)
+        case #selector(toggleManualCommit(_:)):
+            applyManualCommitState(to: menuItem)
         case #selector(useFlatSidebarLayout(_:)):
             setState(commandActions?.sidebarLayout == .flat ? .on : .off, on: menuItem)
         case #selector(useTreeSidebarLayout(_:)):
@@ -878,6 +928,18 @@ extension MainSplitViewController: NSMenuItemValidation {
         default:
             return
         }
+    }
+
+    private func applyManualCommitState(to menuItem: NSMenuItem) {
+        guard menuItem.identifier != DatabaseMenuBuilder.manualCommitFootnoteIdentifier else { return }
+        let state = transactionMenuState
+        setState(state.isManualCommitOn ? .on : .off, on: menuItem)
+        guard let footnote = menuItem.menu?.items.first(where: {
+            $0.identifier == DatabaseMenuBuilder.manualCommitFootnoteIdentifier
+        }) else { return }
+        // While on, a write is refused rather than committed, which the footnote's wording does not cover.
+        let hidden = !isConnected || state.canHoldTransactions || state.isManualCommitOn
+        if footnote.isHidden != hidden { footnote.isHidden = hidden }
     }
 
     // The mode is in `representedObject`, so enablement needs the item, not the selector the shared table keys on.

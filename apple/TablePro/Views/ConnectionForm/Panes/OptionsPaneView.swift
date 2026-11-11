@@ -355,6 +355,7 @@ struct OptionsPaneView: View {
     private var safetySection: some View {
         Section {
             safeModeRow
+            Toggle(String(localized: "Manual Commit"), isOn: manualCommitBinding)
             if aiIsEnabled {
                 Picker(String(localized: "AI Policy"), selection: $coordinator.advanced.aiPolicy) {
                     Text(String(localized: "Use Default"))
@@ -392,12 +393,20 @@ struct OptionsPaneView: View {
         }
     }
 
+    private var manualCommitBinding: Binding<Bool> {
+        Binding(
+            get: { coordinator.customization.commitMode == .manual },
+            set: { coordinator.customization.commitMode = $0 ? .manual : .automatic }
+        )
+    }
+
     @ViewBuilder
     private var accessFooter: some View {
         VStack(alignment: .leading, spacing: 4) {
             if let floor = coordinator.safeModeFloor {
                 Text(floor.explanation)
             }
+            Text(String(localized: "Your first change opens a transaction, and nothing is saved until you commit. Some databases commit schema changes at once."))
             if aiIsEnabled {
                 // swiftlint:disable:next line_length
                 Text(String(localized: "AI Policy controls in-app AI agents. External Clients controls Raycast, Cursor, Claude Desktop, other MCP clients, AppleScript, and Shortcuts. Effective scope is the minimum of the requesting token's scope and the External Clients level."))

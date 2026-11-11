@@ -159,6 +159,7 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Light and dark theme ids (iCloud-synced, category `appearance`) | UserDefaults | `AppearanceSettings` through `AppSettingsManager` |
 | User themes (iCloud-synced, one `AppSettings` record `theme.<id>` each) | JSON, one file per theme | `ThemeCatalog` (sync rules: `.claude/rules/theme.md`, Sync) |
 | Query history | SQLite FTS5 | `QueryHistoryStorage` |
+| Query tab edit history: up to 50 versions per tab, kept 30 days or the shorter Query History window, after the tab closes too; purged with the connection and by Clear History | SQLite `query_tab_versions.db`, device-local, never synced | `QueryTabVersionStorage` |
 | Tab state | JSON | `TabPersistenceCoordinator`, `TabDiskActor` |
 | Filter defaults and presets | UserDefaults | `FilterSettingsStorage`, `FilterPresetStorage` |
 | Per-table filters | JSON, one file per table | `FilterSettingsStorage` |

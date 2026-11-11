@@ -103,6 +103,7 @@ extension QueryExecutionCoordinator {
     /// The app opens no transaction around the run, as SQL Server's own tools do not: a batch carries on past most
     /// errors, so an app-owned rollback would take back statements that ran after the failure, and the script's own
     /// `BEGIN TRAN`, `TRY...CATCH` and procedures are what decide. A transaction the script leaves open is reported.
+    /// Manual Commit is the exception: the run is held, and a failure or a Stop rolls it back.
     func executeBatches(
         _ batches: [ExecutableBatch],
         parameters: [QueryParameter],
@@ -250,6 +251,10 @@ extension QueryExecutionCoordinator {
         lease: DriverLeaseOwner
     ) async -> BatchRun {
         let failureOutput = ServerOutputBox()
+        let commitMode = DatabaseManager.shared.commitMode(for: scope.connectionId)
+        let databaseType = parent.connection.type
+        let grammar = parent.lexicalGrammar
+        let statementTexts = prepared.flatMap { $0.batch.statements.map(\.sql) }
         do {
             var run = try await DatabaseManager.shared.withScopedDriver(
                 scope: scope,
@@ -257,7 +262,16 @@ extension QueryExecutionCoordinator {
                 cancellation: .cancellableRead(lease)
             ) { driver in
                 let startState = await driver.heldSessionTransactionState()
-                let plan = BatchTransactionPlan.autocommit.joining(startState)
+                let manual = ManualCommit.decision(
+                    commitMode: commitMode,
+                    statements: statementTexts,
+                    databaseType: databaseType,
+                    grammar: grammar,
+                    supportsTransactions: driver.supportsTransactions,
+                    sessionState: startState
+                )
+                if let refusal = manual.refusal { throw refusal }
+                let plan = ManualCommit.runPlan(text: .autocommit, decision: manual, sessionState: startState)
                 let outcome = await BatchStatementRun.run(
                     prepared,
                     plan: plan,

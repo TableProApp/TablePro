@@ -15,8 +15,14 @@ internal final class ImportSinkRun: @unchecked Sendable {
     private let targetTable: String?
     private let targetSchema: String?
     private let joinsTransaction: Bool
+    private let commitMode: ConnectionCommitMode
     private let lock = NSLock()
     private var ownsTransaction = false
+    private var leavesTransactionOpen = false
+    private var disabledForeignKeys = false
+    private var writesOutsideTransaction: Bool?
+    private var heldChanges = false
+    private var holdEndedByFile = false
     private var finalized = false
     private var acknowledgedEnding: ImportTransactionOutcome = .untracked
     private var fileCommittedEarly = false
@@ -38,7 +44,8 @@ internal final class ImportSinkRun: @unchecked Sendable {
         fileIndex: Int?,
         targetTable: String?,
         targetSchema: String?,
-        joinsTransaction: Bool
+        joinsTransaction: Bool,
+        commitMode: ConnectionCommitMode = .automatic
     ) {
         self.run = run
         self.driver = driver
@@ -47,10 +54,15 @@ internal final class ImportSinkRun: @unchecked Sendable {
         self.targetTable = targetTable
         self.targetSchema = targetSchema
         self.joinsTransaction = joinsTransaction
+        self.commitMode = commitMode
     }
 
     internal func prepare() async throws {
         try await admitted(.begin) {
+            if self.commitMode == .manual {
+                let state = await self.driver.heldSessionTransactionState()
+                try ManualCommit.refuseUnheldWrite(supportsTransactions: self.driver.supportsTransactions, sessionState: state)
+            }
             if !self.run.snapshot.prepared {
                 let state = await self.sessionState()
                 self.run.record {
@@ -93,6 +105,10 @@ internal final class ImportSinkRun: @unchecked Sendable {
         operation: () async throws -> T
     ) async throws -> T {
         try await admitted(.data) {
+            if writes, self.commitMode == .manual {
+                try self.refuseWriteOutsideTransaction()
+                if let statement { try self.refuseCommittingStatement(statement) }
+            }
             if let statement { self.noteStatement(statement) }
             if writes, let index = self.fileIndex {
                 self.run.record { $0.effects[index]?.admittedWrite = true }
@@ -110,6 +126,7 @@ internal final class ImportSinkRun: @unchecked Sendable {
                 }
                 await self.observe()
                 if let statement { self.noteCompletedStatement(statement, before: before, wasOwned: hadAuthority) }
+                if writes, self.commitMode == .manual, let statement { self.noteHeldStatement(statement) }
                 return value
             } catch {
                 self.run.record {
@@ -120,6 +137,41 @@ internal final class ImportSinkRun: @unchecked Sendable {
                 throw error
             }
         }
+    }
+
+    // Decided at the first write, before a GO line resets the holder: outside a transaction each statement commits.
+    private func refuseWriteOutsideTransaction() throws {
+        let holder = run.snapshot.holder
+        let outside = lock.withLock { () -> Bool in
+            if writesOutsideTransaction == nil { writesOutsideTransaction = holder == .none }
+            return writesOutsideTransaction == true
+        }
+        if outside { throw ManualCommitUnwrappedImportRefusal() }
+    }
+
+    // MySQL and Oracle commit a held import's rows at its next DDL, and the rows after that DDL would autocommit.
+    private func refuseCommittingStatement(_ statement: String) throws {
+        guard let commits = heldImplicitCommit(statement) else { return }
+        let (changed, ended) = lock.withLock { (heldChanges, holdEndedByFile) }
+        if commits ? changed : ended { throw ManualCommitMixedRefusal() }
+    }
+
+    private func noteHeldStatement(_ statement: String) {
+        guard let commits = heldImplicitCommit(statement) else { return }
+        let changes = !commits && OperationKind.worst(of: [statement], databaseType: databaseType).declaresWrite
+        lock.withLock {
+            if commits { holdEndedByFile = true }
+            if changes { heldChanges = true }
+        }
+    }
+
+    // Nil unless this import holds its transaction on an engine whose DDL commits it.
+    private func heldImplicitCommit(_ statement: String) -> Bool? {
+        guard lock.withLock({ leavesTransactionOpen }),
+              TableEditDialect.of(databaseType)?.commitsDDLImplicitly == true
+        else { return nil }
+        let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
+        return ManualCommit.commitsHeldTransaction([statement], databaseType: databaseType, grammar: grammar)
     }
 
     private func noteStatement(_ statement: String) {
@@ -171,17 +223,34 @@ internal final class ImportSinkRun: @unchecked Sendable {
         try await admitted(.data) {}
     }
 
+    // SQLite ignores the re-enable inside a held transaction, and a Roll Back undoes PostgreSQL's.
+    internal func noteForeignKeysDisabled() {
+        lock.withLock { disabledForeignKeys = true }
+    }
+
     internal func begin() async throws {
         guard !joinsTransaction else { return }
         try await admitted(.begin) {
             let state = await self.driver.heldSessionTransactionState()
-            let owner = WriteTransactionOwner.resolve(supportsTransactions: self.driver.supportsTransactions, sessionState: state)
-            guard owner.opensTransaction else {
+            if self.commitMode == .manual {
+                guard !self.lock.withLock({ self.disabledForeignKeys }) else { throw ManualCommitForeignKeyRefusal() }
+                try ManualCommit.refuseUnheldWrite(supportsTransactions: self.driver.supportsTransactions, sessionState: state)
+            }
+            let owner = WriteTransactionOwner.resolve(
+                supportsTransactions: self.driver.supportsTransactions,
+                sessionState: state,
+                commitMode: self.commitMode
+            )
+            guard owner.sendsBegin else {
                 self.run.record { $0.currentState = ImportSessionState(state) }
                 return
             }
             try await self.driver.beginTransaction(mode: .readWrite)
-            self.lock.withLock { self.ownsTransaction = true }
+            if owner == .held { ManualCommit.turnHold?.mark(true) }
+            self.lock.withLock {
+                self.ownsTransaction = true
+                self.leavesTransactionOpen = !owner.commitsAtEnd
+            }
             self.run.record { $0.holder = .owned; $0.ending = nil }
             await self.observe()
         }
@@ -200,6 +269,13 @@ internal final class ImportSinkRun: @unchecked Sendable {
         if state == .idle {
             run.record { $0.uncertainHistory = true; $0.currentState = .idle; $0.ending = .unknown }
             lock.withLock { acknowledgedEnding = .endedByServer }
+            markFinalized()
+            return
+        }
+        // Manual Commit: the rows stay pending in a transaction that is now the user's, as a joined one is.
+        if lock.withLock({ leavesTransactionOpen }) {
+            lock.withLock { ownsTransaction = false }
+            run.record { $0.holder = .joinedUser; $0.currentState = state }
             markFinalized()
             return
         }
@@ -243,6 +319,7 @@ internal final class ImportSinkRun: @unchecked Sendable {
         }
         do {
             try await driver.rollbackTransaction()
+            ManualCommit.turnHold?.mark(false)
             await recordEnding(.rolledBack)
             lock.withLock { acknowledgedEnding = .rolledBack }
             markFinalized()

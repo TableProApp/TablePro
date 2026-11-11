@@ -1131,14 +1131,7 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func clearQuery() {
-        guard let coordinator,
-              let (tab, tabIndex) = coordinator.tabManager.selectedTabAndIndex,
-              tab.tabType == .query else { return }
-        coordinator.tabManager.mutate(at: tabIndex) { $0.content.query = "" }
-        coordinator.toolbarState.hasQueryText = false
-        coordinator.scheduleDraftSave()
-        // Emptying from a command bypasses the editor binding that recomputes the dirty indicator on each keystroke.
-        coordinator.refreshUnsavedIndicator()
+        coordinator?.clearSelectedQuery()
     }
 
     var canClearQuery: Bool {
@@ -1287,6 +1280,19 @@ final class MainContentCommandActions: ObservableObject {
             hasPendingTableOps: hasPendingTableOps,
             onDiscard: { [weak self] in self?.clearPendingTableOps() }
         )
+    }
+
+    // Nil off a table tab, which the Database menu's Auto Refresh items dim for.
+    var tableAutoRefreshInterval: TableAutoRefreshInterval? {
+        guard let tab = coordinator?.tabManager.selectedTab,
+              tab.tabType == .table,
+              tab.tableContext.tableName != nil else { return nil }
+        return tab.autoRefreshInterval
+    }
+
+    func setTableAutoRefreshInterval(_ interval: TableAutoRefreshInterval) {
+        guard let coordinator, let tabId = coordinator.tabManager.selectedTabId else { return }
+        coordinator.setAutoRefreshInterval(interval, forTab: tabId)
     }
 
     private var hasPendingTableOps: Bool {

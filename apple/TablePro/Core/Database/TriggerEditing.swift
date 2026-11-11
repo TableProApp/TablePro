@@ -128,7 +128,8 @@ enum TriggerEditing {
         isEdit: Bool,
         originalName: String?,
         originalDefinition: String?,
-        gate: any ExecutionGate = ExecutionGateProvider.shared
+        gate: any ExecutionGate = ExecutionGateProvider.shared,
+        holdConfirmation: SchemaChangeHoldConfirmation = DatabaseManager.confirmSchemaChangeBesideHold
     ) async throws {
         let plan = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
             TriggerApplyPlan(
@@ -159,6 +160,11 @@ enum TriggerEditing {
             )
         )
         if let denial = decision.denialError { throw denial }
+        let route = DatabaseManager.shared.schemaChangeRoute(for: scope)
+        try await DatabaseManager.shared.confirmSchemaChange(
+            on: route, connectionId: connection.id, confirmation: holdConfirmation
+        )
+        let isPooled = route.isPooled
 
         let startedAt = Date()
         defer {
@@ -167,10 +173,13 @@ enum TriggerEditing {
             )
         }
         do {
-            try await withSchemaChangeDriver(scope: scope) { driver in
+            try await withSchemaChangeDriver(scope: scope, route: route) { driver in
                 switch plan.strategy {
                 case let .transactional(dropFirst):
-                    try await runInTransaction(driver: driver, dropSQL: dropFirst ? plan.dropSQL : nil, sql: sql)
+                    let wraps = await DatabaseManager.wrapsSchemaChange(on: driver, isPooled: isPooled)
+                    try await runInTransaction(
+                        driver: driver, dropSQL: dropFirst ? plan.dropSQL : nil, sql: sql, wraps: wraps
+                    )
                 case .dropThenCreate:
                     guard let dropSQL = plan.dropSQL, let restore else { throw TriggerEditingError.dropUnavailable }
                     try await runDropThenCreate(driver: driver, dropSQL: dropSQL, sql: sql, rollback: restore)
@@ -260,17 +269,24 @@ enum TriggerEditing {
 
     private static func withSchemaChangeDriver(
         scope: DatabaseScope,
+        route: ScopedDriverRoute? = nil,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> Void
     ) async throws {
         try await DatabaseManager.shared.withScopedDriver(
             scope: scope,
-            route: DatabaseManager.shared.schemaChangeRoute(for: scope),
+            route: route ?? DatabaseManager.shared.schemaChangeRoute(for: scope),
             cancellation: .protectedWrite,
             body
         )
     }
 
-    static func runInTransaction(driver: DatabaseDriver, dropSQL: String?, sql: String) async throws {
+    // Unwrapped, the edit joins the transaction the session holds and is taken back with it.
+    static func runInTransaction(driver: DatabaseDriver, dropSQL: String?, sql: String, wraps: Bool = true) async throws {
+        guard wraps else {
+            if let dropSQL { _ = try await driver.execute(query: dropSQL) }
+            _ = try await driver.execute(query: sql)
+            return
+        }
         try await driver.beginTransaction(mode: .readWrite)
         do {
             if let dropSQL { _ = try await driver.execute(query: dropSQL) }
