@@ -5,10 +5,9 @@ use bson::{Bson, Document};
 use mongodb::ClientSession;
 use tablepro_core::column::{ColumnType, ResultColumn};
 use tablepro_core::value::Value;
-use tablepro_core::{
-    DriverError, QueryResult, ResultEvent, ResultSink, RowLimit, ServerNotice, SinkFlow, StopRequest, Truncation,
-};
+use tablepro_core::{DriverError, QueryResult, ResultEvent, ResultSink, RowLimit, ServerNotice, SinkFlow, Truncation};
 
+use crate::call::ReadStop;
 use crate::cells::cell;
 use crate::cursor_rows::Read;
 use crate::endpoint::MongoEndpoint;
@@ -117,7 +116,7 @@ pub(crate) async fn collect(
     source: Source,
     session: &mut ClientSession,
     limit: RowLimit,
-    stop: &StopRequest,
+    stop: &ReadStop,
 ) -> Result<QueryResult, DriverError> {
     let (documents, columns, truncated) = match source {
         Source::Cursor { cursor, columns } => {
@@ -165,7 +164,7 @@ pub(crate) async fn emit(
     sink: &mut dyn ResultSink,
     limit: Option<RowLimit>,
     sets: &mut usize,
-    stop: &StopRequest,
+    stop: &ReadStop,
 ) -> Result<(SinkFlow, u64), DriverError> {
     let set_index = *sets;
     if !matches!(

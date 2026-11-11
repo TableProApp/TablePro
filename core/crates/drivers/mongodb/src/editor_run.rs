@@ -130,8 +130,9 @@ impl EditorRun {
 
     /// Send one statement in a session of its own and stream what it
     /// returns, or stop it: `killSessions` ends what that session runs on
-    /// the server, cursors included, and the read ends before it asks for
-    /// its next batch.
+    /// the server, cursors included. The read asks for no more until the
+    /// server answers it, and where it is refused and `killOp` stands in,
+    /// ends there.
     fn statement<'a>(
         &'a self,
         planned: crate::shell_command::Plan,
@@ -156,9 +157,17 @@ impl EditorRun {
                         }
                         source => (source, Some(options.row_limit)),
                     };
-                    emit(&self.endpoint, source, &mut session, sink, limit, sets, &stop)
-                        .await
-                        .map(|(flow, _)| flow)
+                    emit(
+                        &self.endpoint,
+                        source,
+                        &mut session,
+                        sink,
+                        limit,
+                        sets,
+                        &kill.follow(&stop),
+                    )
+                    .await
+                    .map(|(flow, _)| flow)
                 };
                 let mut work = std::pin::pin!(work);
                 let interrupt = tokio::select! {

@@ -12,7 +12,7 @@ use tablepro_core::{
     ColumnInfo, DriverError, ReadOnlyRefusal, ReadStatement, ResultSink, SinkFlow, StopRequest, StreamSummary,
 };
 
-use crate::call::{SessionKill, generated, session};
+use crate::call::{ReadStop, SessionKill, generated, session};
 use crate::catalog::{JsonFields, Reader, census_stages, columns_from};
 use crate::cursor_rows::Read;
 use crate::endpoint::{ClientUse, MongoEndpoint};
@@ -63,8 +63,8 @@ async fn stream_on(
 ) -> Result<StreamSummary, DriverError> {
     let mut session = session(endpoint, client, kill).await?;
     let streamed = match stop.is_requested() {
-        true => Err(crate::call::stopped(stop)),
-        false => stream_in(endpoint, client, scope, plans, sink, &mut session, stop).await,
+        true => Err(DriverError::Cancelled),
+        false => stream_in(endpoint, client, scope, plans, sink, &mut session, &kill.follow(stop)).await,
     };
     // The export's client closes with it, so no later call takes this
     // session from its pool, and a graceful close waits for it.
@@ -79,7 +79,7 @@ async fn stream_in(
     plans: Vec<Planned>,
     sink: &mut dyn ResultSink,
     session: &mut ClientSession,
-    stop: &StopRequest,
+    stop: &ReadStop,
 ) -> Result<StreamSummary, DriverError> {
     let mut rows = 0;
     let mut sets = 0;
@@ -145,7 +145,7 @@ async fn census(
     client: &Client,
     session: &mut ClientSession,
     planned: &Plan,
-    stop: &StopRequest,
+    stop: &ReadStop,
 ) -> Result<Vec<NamedColumn>, DriverError> {
     if let Some(tally) = planned.followed_by(census_stages()) {
         let mut tallies = Vec::new();
@@ -171,7 +171,7 @@ async fn each(
     client: &Client,
     session: &mut ClientSession,
     planned: Plan,
-    stop: &StopRequest,
+    stop: &ReadStop,
     mut take: impl FnMut(Document) + Send,
 ) -> Result<(), DriverError> {
     let Source::Cursor { cursor, .. } = start(endpoint, client, session, planned).await? else {

@@ -1,4 +1,4 @@
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
@@ -11,6 +11,7 @@ use tablepro_core::{
     CallResource, DriverError, EngineStop, LossPhase, StopDelivery, StopReason, StopRequest, StopScope, TimeoutPhase,
 };
 use tokio::time::Instant;
+use tokio_util::sync::CancellationToken;
 
 use crate::endpoint::MongoEndpoint;
 use crate::errors::stopped_by_kill;
@@ -27,6 +28,10 @@ pub(crate) struct SessionKill {
     /// connection of its own, and the session's id.
     armed: Mutex<Option<(Client, Document)>>,
     sent: Mutex<KillState>,
+    /// Set once `killSessions` has its first answer, or once the kill
+    /// sends nothing more; a stopped read waits for it.
+    answered: CancellationToken,
+    refused: AtomicBool,
 }
 
 /// How far a kill got, which says whether the route to the server still
@@ -36,6 +41,9 @@ pub(crate) enum KillState {
     NotSent,
     /// Sent with no answer yet, or none before the call was given up.
     Unanswered,
+    /// `killSessions` came back refused and the `killOp` fallback has not
+    /// finished. The route answered.
+    Refused,
     Answered,
 }
 
@@ -44,6 +52,8 @@ impl SessionKill {
         Arc::new(Self {
             armed: Mutex::new(None),
             sent: Mutex::new(KillState::NotSent),
+            answered: CancellationToken::new(),
+            refused: AtomicBool::new(false),
         })
     }
 
@@ -55,12 +65,23 @@ impl SessionKill {
         *self.sent.lock().unwrap_or_else(PoisonError::into_inner) = state;
     }
 
+    /// What a read of the call checks before it asks the server for more.
+    pub(crate) fn follow(self: &Arc<Self>, call: &StopRequest) -> ReadStop {
+        ReadStop {
+            call: call.clone(),
+            kill: self.clone(),
+        }
+    }
+
     /// Name the session the stop ends, once the call has one.
     pub(crate) fn arm(&self, client: &Client, session: &ClientSession) {
         *self.armed.lock().unwrap_or_else(PoisonError::into_inner) = Some((client.clone(), session.id().clone()));
     }
 
     pub(crate) async fn kill(&self) -> Result<(), DriverError> {
+        // A stop that sends nothing, or is given up unanswered, lets a
+        // waiting read go on.
+        let _answered = self.answered.clone().drop_guard();
         let armed = self.armed.lock().unwrap_or_else(PoisonError::into_inner).clone();
         let Some((client, session)) = armed else {
             return Ok(());
@@ -71,6 +92,11 @@ impl SessionKill {
             Ok(_) => Ok(()),
             Err(refused) if refused_by_server(&refused) => {
                 tracing::debug!(error = %refused, "killSessions refused, stopping the session's operations by id");
+                // The state first, so a read that ends here finds the
+                // route answered.
+                self.mark(KillState::Refused);
+                self.refused.store(true, Ordering::SeqCst);
+                self.answered.cancel();
                 kill_operations(&admin, &session).await
             }
             Err(error) => Err(error),
@@ -81,10 +107,36 @@ impl SessionKill {
             Ok(()) => true,
             Err(error) => refused_by_server(error),
         };
-        if replied {
-            self.mark(KillState::Answered);
-        }
+        self.mark(match replied {
+            true => KillState::Answered,
+            false => KillState::Unanswered,
+        });
         answered.map_err(|error| DriverError::Protocol(format!("the stop did not reach the server: {error}")))
+    }
+}
+
+/// What a read of one call checks before it asks the server for more:
+/// the call's stop and the kill that follows it.
+#[derive(Clone)]
+pub(crate) struct ReadStop {
+    call: StopRequest,
+    kill: Arc<SessionKill>,
+}
+
+impl ReadStop {
+    /// Once the call is stopped, wait for the server's answer to the
+    /// stop, so nothing is sent that the stop could miss. After a refusal
+    /// the read ends here, since `killOp` reaches no cursor waiting between
+    /// batches; after any other answer the killed cursor's error ends it.
+    pub(crate) async fn before_more(&self) -> Result<(), DriverError> {
+        if !self.call.is_requested() {
+            return Ok(());
+        }
+        self.kill.answered.cancelled().await;
+        match self.kill.refused.load(Ordering::SeqCst) {
+            true => Err(stopped(&self.call)),
+            false => Ok(()),
+        }
     }
 }
 
@@ -180,7 +232,8 @@ pub(crate) async fn session(
 /// Give a call's session back. A dropped session goes back to the
 /// client's pool for the next call, so one whose `killSessions` is still
 /// on its way is kept out of the pool until it could land, or the stop
-/// would end whichever call took the session next.
+/// would end whichever call took the session next. A `killOp` names an
+/// operation, not the session, and the fallback ends with the call.
 pub(crate) fn release(session: ClientSession, stop: &SessionKill) {
     if stop.state() != KillState::Unanswered {
         return;
@@ -194,18 +247,16 @@ pub(crate) fn release(session: ClientSession, stop: &SessionKill) {
 }
 
 /// A call that ends at its own stop, before it asks the server for more,
-/// reads as what stopped it. The server was not told, so a deadline is
-/// never a statement the server cancelled.
-pub(crate) fn stopped(request: &StopRequest) -> DriverError {
+/// reads as `OwnedCalls` reports a stop the server acknowledged, a
+/// shutdown as a cancel. The server was not told, so a deadline is never
+/// a statement the server cancelled.
+fn stopped(request: &StopRequest) -> DriverError {
     match request.reason() {
         Some(StopReason::DeadlineElapsed) => DriverError::Timeout {
             phase: TimeoutPhase::Statement,
             server_cancelled: false,
         },
-        Some(StopReason::Shutdown) => DriverError::ConnectionLost {
-            during: LossPhase::Statement,
-        },
-        Some(StopReason::Cancelled) | None => DriverError::Cancelled,
+        Some(StopReason::Cancelled | StopReason::Shutdown) | None => DriverError::Cancelled,
     }
 }
 
@@ -253,14 +304,41 @@ mod tests {
                 server_cancelled: false
             }
         );
-        assert_eq!(
-            stop(Some(StopReason::Shutdown)),
-            DriverError::ConnectionLost {
-                during: LossPhase::Statement
-            }
-        );
+        assert_eq!(stop(Some(StopReason::Shutdown)), DriverError::Cancelled);
         assert_eq!(stop(Some(StopReason::Cancelled)), DriverError::Cancelled);
         assert_eq!(stop(None), DriverError::Cancelled);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_stopped_read_waits_for_the_answer_and_ends_at_a_refusal() {
+        let (kill, call) = (SessionKill::new(), StopRequest::new());
+        let read = kill.follow(&call);
+        assert_eq!(read.before_more().await, Ok(()));
+
+        call.request(StopReason::DeadlineElapsed);
+        let waited = tokio::time::timeout(Duration::from_secs(1), read.before_more()).await;
+        assert!(waited.is_err(), "the read went on before the answer");
+
+        kill.refused.store(true, Ordering::SeqCst);
+        kill.answered.cancel();
+        assert_eq!(
+            read.before_more().await,
+            Err(DriverError::Timeout {
+                phase: TimeoutPhase::Statement,
+                server_cancelled: false
+            })
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_stop_that_sends_nothing_lets_the_read_go_on() {
+        let (kill, call) = (SessionKill::new(), StopRequest::new());
+        let read = kill.follow(&call);
+        call.request(StopReason::Cancelled);
+
+        assert_eq!(kill.kill().await, Ok(()));
+        assert_eq!(read.before_more().await, Ok(()));
+        assert_eq!(kill.state(), KillState::NotSent);
     }
 
     #[test]

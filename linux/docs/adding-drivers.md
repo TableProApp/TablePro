@@ -216,7 +216,7 @@ Start the resource empty and fill it inside the work, as `PgCall::acquire` and `
 | ClickHouse | `KILL QUERY WHERE query_id = ? ASYNC` on a sessionless client | `OutOfBand(Statement)` |
 | Cassandra, ScyllaDB | None in the protocol: the call drops its request, and the server runs it to its own timeout | `InBand` |
 | Redis | A workspace read stops between its bounded commands; an editor command gets `CLIENT UNBLOCK <id> ERROR`, then `CLIENT KILL ID <id>` past the grace, from a link of its own ([redis.md](drivers/redis.md#stops-and-timeouts)) | `InBand` |
-| MongoDB | `killSessions` for the call's own logical session, from the same client | `OutOfBand(Statement)` |
+| MongoDB | `killSessions` for the call's own logical session, from the same client; where it is refused, `killOp` for each operation `currentOp` lists in that session ([mongodb.md](drivers/mongodb.md#stops-and-timeouts)) | `OutOfBand(Statement)` |
 
 ### `CallResource` release rules
 

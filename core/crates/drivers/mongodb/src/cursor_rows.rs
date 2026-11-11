@@ -1,7 +1,8 @@
 use bson::Document;
 use mongodb::{ClientSession, SessionCursor};
-use tablepro_core::{DriverError, LossPhase, ResultEvent, ResultSink, RowLimit, SinkFlow, StopRequest, Truncation};
+use tablepro_core::{DriverError, LossPhase, ResultEvent, ResultSink, RowLimit, SinkFlow, Truncation};
 
+use crate::call::ReadStop;
 use crate::endpoint::MongoEndpoint;
 use crate::rows::{BATCH_ROWS, Layout};
 use crate::shell_command::Columns;
@@ -31,7 +32,7 @@ pub(crate) struct Read<'a> {
     endpoint: &'a MongoEndpoint,
     cursor: SessionCursor<Document>,
     session: &'a mut ClientSession,
-    stop: &'a StopRequest,
+    stop: &'a ReadStop,
 }
 
 impl<'a> Read<'a> {
@@ -39,7 +40,7 @@ impl<'a> Read<'a> {
         endpoint: &'a MongoEndpoint,
         cursor: SessionCursor<Document>,
         session: &'a mut ClientSession,
-        stop: &'a StopRequest,
+        stop: &'a ReadStop,
     ) -> Self {
         Self {
             endpoint,
@@ -49,14 +50,11 @@ impl<'a> Read<'a> {
         }
     }
 
-    /// The next document, `None` once the cursor is spent. A stop ends the
-    /// read before it asks for more, and dropping the cursor closes it on
-    /// the server: a cursor waiting between batches runs no operation, so
-    /// a `killOp` finds nothing to end.
+    /// The next document, `None` once the cursor is spent. A stopped read
+    /// asks for no more until the server answers the stop, and one the
+    /// server refused ends here, where dropping the cursor closes it.
     pub(crate) async fn next(&mut self) -> Result<Option<Document>, DriverError> {
-        if self.stop.is_requested() {
-            return Err(crate::call::stopped(self.stop));
-        }
+        self.stop.before_more().await?;
         match self.cursor.advance(self.session).await {
             Ok(true) => crate::nested_document::current_document(&self.cursor).map(Some),
             Ok(false) => Ok(None),

@@ -25,7 +25,7 @@ use tablepro_core::{
 use tokio::time::Instant;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 
-use crate::call::{ClientCall, KillState, SessionKill, generated, release, remaining_millis, session};
+use crate::call::{ClientCall, KillState, ReadStop, SessionKill, generated, release, remaining_millis, session};
 use crate::catalog::{CollectionType, JsonFields, Reader};
 use crate::dialect::MongoDialect;
 use crate::editor_session::MongoEditorSession;
@@ -39,13 +39,13 @@ use crate::write_batch::{WritePlan, perform, precheck};
 type Work<'s, T> = Pin<Box<dyn Future<Output = Result<T, DriverError>> + Send + 's>>;
 
 /// What a workspace call works with: the client, the endpoint that
-/// explains its failures, the server's time limit for the call and its
-/// stop.
+/// explains its failures, the server's time limit for the call and the
+/// stop its reads check before they ask for more.
 pub(crate) struct CallContext {
     pub(crate) endpoint: Arc<MongoEndpoint>,
     pub(crate) client: Client,
     pub(crate) max_time: Option<i64>,
-    pub(crate) request: StopRequest,
+    pub(crate) stop: ReadStop,
 }
 
 /// A workspace's link to one server: a client whose pool serves the
@@ -122,14 +122,14 @@ impl MongoConnection {
                     endpoint,
                     client,
                     max_time,
-                    request,
+                    stop: armed.follow(&request),
                 };
                 let mut session = match session(&context.endpoint, &context.client, &armed).await {
                     Ok(session) => session,
                     Err(error) => return (call, Err(error)),
                 };
-                let result = match context.request.is_requested() {
-                    true => Err(crate::call::stopped(&context.request)),
+                let result = match request.is_requested() {
+                    true => Err(DriverError::Cancelled),
                     false => work(context, &mut session).await,
                 };
                 release(session, &armed);
@@ -141,8 +141,9 @@ impl MongoConnection {
 
     /// Decide whether a failed call means the link itself is gone. A kill
     /// that never came back means the route is gone, and one the server
-    /// answered means it is not; with no kill sent, the probe's own
-    /// connection answers within the cancel grace, or the route is gone.
+    /// answered, if only to refuse it, means it is not; with no kill sent,
+    /// the probe's own connection answers within the cancel grace, or the
+    /// route is gone.
     async fn settle<T>(&self, outcome: Result<T, DriverError>, stop: &SessionKill) -> Result<T, DriverError> {
         let error = match outcome {
             Ok(value) => return Ok(value),
@@ -153,7 +154,7 @@ impl MongoConnection {
         }
         let lost = match stop.state() {
             KillState::Unanswered => true,
-            KillState::Answered => false,
+            KillState::Refused | KillState::Answered => false,
             KillState::NotSent => self
                 .check(self.endpoint.cancel_grace())
                 .await
@@ -457,7 +458,7 @@ impl Connection for MongoConnection {
                 // After the census, which the page's deadline also bounds.
                 planned.limit_time(remaining_millis(deadline));
                 let source = start(&context.endpoint, &context.client, session, planned).await?;
-                collect(&context.endpoint, source, session, limit, &context.request).await
+                collect(&context.endpoint, source, session, limit, &context.stop).await
             })
         })
         .await
