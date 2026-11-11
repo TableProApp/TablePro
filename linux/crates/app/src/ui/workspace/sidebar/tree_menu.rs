@@ -1,3 +1,4 @@
+use gtk4::gio::prelude::MenuModelExt;
 use gtk4::{gio, glib};
 use tablepro_core::ddl::DatabaseNoun;
 use tablepro_session::SessionKey;
@@ -10,6 +11,7 @@ pub(super) const SHOW_SESSION: &str = "win.show-session";
 const NEW_QUERY_IN: &str = "win.new-query-in";
 const REFRESH_IN: &str = "win.refresh-in";
 const OPEN_DATABASE_IN: &str = "win.open-database-in";
+const NEW_TABLE_IN: &str = "win.new-table-in";
 const NEW_DATABASE_IN: &str = "win.new-database-in";
 const NEW_SCHEMA_IN: &str = "win.new-schema-in";
 const DROP_DATABASE_IN: &str = "win.drop-database-in";
@@ -86,6 +88,33 @@ pub(super) fn session_section(key: &SessionKey, state: InWindow, affordances: Si
             if failed && !stored {
                 add(crate::i18n::gettext("_Remove"), FORGET_CONNECT_FAILURE);
             }
+        }
+    }
+    menu
+}
+
+// Empty when the engine makes none of these or the connection is read-only, which hides the Add button.
+pub(crate) fn creation_menu(key: &SessionKey, affordances: SidebarAffordances) -> gio::Menu {
+    let target = crate::ui::session_target::to_variant(key);
+    let objects = gio::Menu::new();
+    if affordances.offers_new_table() {
+        objects.append_item(&item(&crate::i18n::gettext("New _Table…"), NEW_TABLE_IN, &target));
+    }
+    let containers = gio::Menu::new();
+    if affordances.offers_new_schema() {
+        containers.append_item(&item(&crate::i18n::gettext("New _Schema…"), NEW_SCHEMA_IN, &target));
+    }
+    if affordances.offers_new_database() {
+        let label = match affordances.catalog.database_noun {
+            DatabaseNoun::Database => crate::i18n::gettext("New _Database…"),
+            DatabaseNoun::Keyspace => crate::i18n::gettext("New _Keyspace…"),
+        };
+        containers.append_item(&item(&label, NEW_DATABASE_IN, &target));
+    }
+    let menu = gio::Menu::new();
+    for section in [objects, containers] {
+        if section.n_items() > 0 {
+            menu.append_section(None, &section);
         }
     }
     menu
