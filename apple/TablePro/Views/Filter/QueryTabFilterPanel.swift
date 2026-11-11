@@ -85,9 +85,18 @@ internal struct QueryTabFilterPanel: View {
                 supportsColumnSort: coordinator.supportsColumnSort,
                 columns: columns,
                 appliedSort: coordinator.filterCoordinator.selectedTabAppliedSortCriteria,
+                runningCondition: coordinator.filterCoordinator.selectedTabRunningCondition,
                 actions: coordinator.filterCoordinator
-            )
+            ),
+            replacesUntouchedStartingRow: Self.replacesUntouchedStartingRow(settings: settingsManager.dataGrid)
         )
+    }
+
+    /// Under the data view settings the panel opens with each table, so its empty starting row is
+    /// one the reader never asked for, and an incoming filter takes its place. With both settings
+    /// off the panel keeps the row, as it always has.
+    static func replacesUntouchedStartingRow(settings: DataGridSettings) -> Bool {
+        settings.showsSortInFilterPanel || settings.opensFilterPanelForTables
     }
 
     /// Nil while the setting is off, which leaves the filter-only panel. Text mode is a WHERE
@@ -101,6 +110,7 @@ internal struct QueryTabFilterPanel: View {
         supportsColumnSort: Bool,
         columns: [String],
         appliedSort: [FilterSortCriterion],
+        runningCondition: String? = nil,
         actions: any FilterCriteriaActions
     ) -> FilterCriteriaConfiguration? {
         guard settings.showsSortInFilterPanel else { return nil }
@@ -109,6 +119,7 @@ internal struct QueryTabFilterPanel: View {
             sortColumns: supportsColumnSort ? columns : nil,
             appliedSort: supportsColumnSort ? appliedSort : [],
             newSortDirection: settings.defaultSortDirection,
+            runningCondition: runningCondition,
             actions: actions
         )
     }

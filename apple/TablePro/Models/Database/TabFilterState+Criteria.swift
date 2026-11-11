@@ -136,8 +136,24 @@ internal extension TabFilterState {
     /// runs (every enabled, complete row) against the filters the rows were fetched with, and the
     /// sort draft against the tab's sort. An incomplete or unchecked row runs nothing, so it edits
     /// nothing.
-    func criteriaDiffer(fromAppliedSort appliedSort: [FilterSortCriterion]) -> Bool {
-        filterDraftDiffersFromRunning || (sortDraft.map { $0 != appliedSort } ?? false)
+    ///
+    /// `runningCondition` is the WHERE condition the rows on screen were fetched with, written the
+    /// way Text mode writes it. Text mode runs its text as written, so text that is still that
+    /// condition fetches the same rows, and switching modes without typing edits nothing.
+    func criteriaDiffer(fromAppliedSort appliedSort: [FilterSortCriterion], runningCondition: String? = nil) -> Bool {
+        filterDraftDiffers(fromRunningCondition: runningCondition) || (sortDraft.map { $0 != appliedSort } ?? false)
+    }
+
+    /// The rows compare by condition first. Text mode's one raw row never matches rows the builder
+    /// ran, so its text is compared with the condition they produce instead.
+    func filterDraftDiffers(fromRunningCondition runningCondition: String?) -> Bool {
+        guard filterDraftDiffersFromRunning else { return false }
+        guard effectiveEditMode == .text, let runningCondition else { return true }
+        return Self.trimmedCondition(textCondition) != Self.trimmedCondition(runningCondition)
+    }
+
+    private static func trimmedCondition(_ condition: String) -> String {
+        condition.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     var filterDraftDiffersFromRunning: Bool {

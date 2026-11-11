@@ -405,6 +405,12 @@ struct TabFilterState: Equatable, Hashable, Codable {
     /// rows were fetched with is the tab's `SortState`, and a draft is only what Apply would run.
     var sortDraft: [FilterSortCriterion]?
 
+    /// The empty row the panel put in by itself for the reader to type into, as it was put in. A
+    /// filter brought in from outside the panel takes its place while the row is still exactly this.
+    /// Only a panel that opts in records it (`FilterPanelConfiguration.replacesUntouchedStartingRow`).
+    /// Not persisted: an incomplete row is never saved.
+    var startingFilter: TableFilter?
+
     init(isVisible: Bool = false) {
         self.filters = []
         self.commit = nil

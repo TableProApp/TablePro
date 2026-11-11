@@ -701,6 +701,14 @@ final class FilterCoordinator: ObservableObject {
         )
     }
 
+    /// What the selected tab's rows were fetched with, written the way Text mode writes it, so text
+    /// left as Builder to Text wrote it reads as unedited. Nil outside Text mode, which compares rows.
+    var selectedTabRunningCondition: String? {
+        guard let tab = parent.tabManager.selectedTab, tab.filterState.effectiveEditMode == .text else { return nil }
+        let rerun = tab.filterState.rerunFilters
+        return filterConditionText(for: rerun.filters, logicMode: parent.supportsMatchAnyFilters ? rerun.logicMode : .and)
+    }
+
     /// The preview's WHERE clause for the enabled rows, without its keyword, for Text mode to start from.
     func filterConditionText(for filters: [TableFilter], logicMode: FilterLogicMode) -> String? {
         guard let generator = filterSQLGenerator(databaseType: parent.connection.type),

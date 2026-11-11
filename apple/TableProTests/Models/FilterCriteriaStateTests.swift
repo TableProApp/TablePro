@@ -235,6 +235,47 @@ struct FilterCriteriaStateTests {
         #expect(cleared.criteriaDiffer(fromAppliedSort: []), "Apply would filter rows shown unfiltered")
     }
 
+    @Test("Switching to Text is not an edit while the text is the running rows' condition, and typing into it is")
+    func textOfTheRunningConditionIsNotAnEdit() {
+        let raw = TableFilter.rawCondition("total > 1")
+        let id = TestFixtures.makeTableFilter(column: "id", op: .greaterThan, value: "1")
+        var state = builderState([raw, id], commit: .all)
+        state.filterLogicMode = .and
+        state.adoptAppliedFiltersAsRunning()
+        let running = "(total > 1) AND `id` > 1"
+
+        state.enterTextMode(condition: running)
+        #expect(!state.criteriaDiffer(fromAppliedSort: [], runningCondition: running))
+
+        state.setTextCondition(running + " \n")
+        #expect(!state.criteriaDiffer(fromAppliedSort: [], runningCondition: running), "only space was added")
+
+        state.setTextCondition("(total > 2) AND `id` > 1")
+        #expect(state.criteriaDiffer(fromAppliedSort: [], runningCondition: running))
+
+        state.setTextCondition(running)
+        state.enterBuilderMode()
+        #expect(state.filters == [raw, id])
+        #expect(!state.criteriaDiffer(fromAppliedSort: [], runningCondition: nil))
+    }
+
+    @Test("Text is an edit when nothing runs, or when the running rows cannot be written as one condition")
+    func textAgainstNoRunningCondition() {
+        let name = TestFixtures.makeTableFilter(column: "name", value: "a")
+        var unapplied = builderState([name])
+        unapplied.enterTextMode(condition: "`name` = 'a'")
+        #expect(unapplied.criteriaDiffer(fromAppliedSort: [], runningCondition: ""))
+
+        var applied = builderState([name], commit: .all)
+        applied.adoptAppliedFiltersAsRunning()
+        applied.enterTextMode(condition: "`name` = 'a'")
+        #expect(applied.criteriaDiffer(fromAppliedSort: [], runningCondition: nil))
+
+        var empty = builderState([])
+        empty.enterTextMode(condition: "")
+        #expect(!empty.criteriaDiffer(fromAppliedSort: [], runningCondition: ""))
+    }
+
     @Test("Edited sees a changed logic mode only when it joins two rows")
     func editedLogicMode() {
         let name = TestFixtures.makeTableFilter(column: "name", value: "a")

@@ -104,6 +104,31 @@ struct TabFilterStateEditingTests {
         #expect(state.isVisible)
     }
 
+    @Test("Filtering with a column takes the place of the panel's untouched starting row, and only that row")
+    func addFilterForColumnReplacesTheStartingRow() throws {
+        var replaceable = TabFilterState(isVisible: true)
+        replaceable.addStartingFilter(
+            settings: settings(.rawSQL), columns: ["id"], primaryKeyColumn: nil, offersRawFilter: true, isReplaceable: true
+        )
+        replaceable.addFilter(forColumn: "email", settings: settings(.rawSQL))
+        #expect(replaceable.filters.map(\.columnName) == ["email"])
+
+        var touched = TabFilterState(isVisible: true)
+        touched.addStartingFilter(
+            settings: settings(.rawSQL), columns: ["id"], primaryKeyColumn: nil, offersRawFilter: true, isReplaceable: true
+        )
+        touched.filters[0] = touched.filters[0].selectingColumn("id")
+        touched.addFilter(forColumn: "email", settings: settings(.rawSQL))
+        #expect(touched.filters.map(\.columnName) == ["id", "email"])
+
+        var plain = TabFilterState(isVisible: true)
+        plain.addStartingFilter(
+            settings: settings(.rawSQL), columns: ["id"], primaryKeyColumn: nil, offersRawFilter: true, isReplaceable: false
+        )
+        plain.addFilter(forColumn: "email", settings: settings(.rawSQL))
+        #expect(plain.filters.map(\.columnName) == [TableFilter.rawSQLColumn, "email"])
+    }
+
     @Test("A duplicate lands after its source and copies the condition")
     func duplicateInsertsAfterSource() {
         let first = TestFixtures.makeTableFilter(column: "id", op: .between, value: "1", secondValue: "9")

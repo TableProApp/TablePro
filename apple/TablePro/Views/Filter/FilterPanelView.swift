@@ -63,11 +63,11 @@ struct FilterPanelView: View {
                 focusedFilterId = state.filters.last?.id
                 return
             }
-            focusedFilterId = addDefaultFilter(columns: configuration.columns)
+            focusedFilterId = addStartingFilter(columns: configuration.columns)
         }
         .onChange(of: configuration.columns) { newColumns in
             guard state.filters.isEmpty, !newColumns.isEmpty, state.isVisible else { return }
-            focusedFilterId = addDefaultFilter(columns: newColumns)
+            focusedFilterId = addStartingFilter(columns: newColumns)
         }
         .sheet(isPresented: $showSQLSheet) {
             if let sqlPreview = configuration.sqlPreview {
@@ -104,7 +104,7 @@ struct FilterPanelView: View {
 
             Spacer()
 
-            if let criteria, state.criteriaDiffer(fromAppliedSort: criteria.appliedSort) {
+            if let criteria, criteria.isEdited(state) {
                 Text("Criteria Edited")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -156,9 +156,10 @@ struct FilterPanelView: View {
     }
 
     /// Enabled whenever pressing it would change the rows, and whenever filters run, as the plain Apply is.
+    @ViewBuilder
     private func criteriaApplyButton(_ criteria: FilterCriteriaConfiguration) -> some View {
-        let changesRows = state.criteriaDiffer(fromAppliedSort: criteria.appliedSort)
-        return Button {
+        let changesRows = criteria.isEdited(state)
+        let button = Button {
             applyAllValidFilters()
         } label: {
             if criteria.showsSort {
@@ -167,13 +168,17 @@ struct FilterPanelView: View {
                 Text("Apply")
             }
         }
-        .buttonStyle(.borderedProminent)
         .controlSize(.small)
         .keyboardShortcut(.return, modifiers: .command)
         .disabled(!changesRows && enabledValidFilterCount == 0 && !state.hasAppliedFilters)
         .help(criteria.showsSort
             ? String(localized: "Apply the filters and the sort (Cmd+Return)")
             : String(localized: "Apply active filters (Cmd+Return)"))
+        if criteria.applyIsProminent(for: state) {
+            button.buttonStyle(.borderedProminent)
+        } else {
+            button.buttonStyle(.bordered)
+        }
     }
 
     private func editModePicker(_ criteria: FilterCriteriaConfiguration) -> some View {
@@ -428,6 +433,17 @@ struct FilterPanelView: View {
         return Binding(
             get: { stateBinding.wrappedValue.filters.first { $0.id == filter.id } ?? filter },
             set: { stateBinding.wrappedValue.updateFilter($0) }
+        )
+    }
+
+    /// The row an empty panel opens with, which the reader did not ask for by name.
+    private func addStartingFilter(columns: [String]) -> UUID {
+        state.addStartingFilter(
+            settings: FilterSettingsStorage.shared.loadSettings(),
+            columns: columns,
+            primaryKeyColumn: configuration.primaryKeyColumn,
+            offersRawFilter: configuration.offersRawFilter,
+            isReplaceable: configuration.replacesUntouchedStartingRow
         )
     }
 
