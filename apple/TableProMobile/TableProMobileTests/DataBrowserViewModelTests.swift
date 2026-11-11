@@ -1021,6 +1021,37 @@ struct DataBrowserViewModelTests {
         #expect(vm.isLoading == false)
         #expect(driver.executedQueries.isEmpty)
     }
+
+    @Test("a long value in a key's contents stays whole within the budget, and the grid shows a preview of it")
+    func longKeyValueStaysWhole() async {
+        let long = String(repeating: "v", count: 10_000)
+        let driver = MockKeyContentsDriver()
+        driver.scriptedPages = [
+            .success(KeyContentsPage(
+                result: QueryResult(
+                    columns: [ColumnInfo(name: "value", typeName: "string", ordinalPosition: 0)],
+                    rows: [[long]],
+                    rowsAffected: 0,
+                    executionTime: 0
+                ),
+                totalCount: 1
+            ))
+        ]
+        let vm = DataBrowserViewModel(textBudgetBytes: { 1_000_000 })
+        let session = ConnectionSession(connectionId: UUID(), driver: driver, activeDatabase: "db0", tables: [])
+        vm.attach(session: session, table: TableInfo(name: "profile"), databaseType: .redis, host: "localhost")
+
+        await vm.load(isInitial: true)
+
+        guard case .text(let kept)? = vm.cells(at: 0).first else {
+            Issue.record("the value should be kept whole, got \(vm.cells(at: 0))")
+            return
+        }
+        #expect(kept == long)
+        #expect(DataBrowserViewModel.canComplete(vm.cells(at: 0)))
+        let shown = vm.legacyRows.first?.first ?? nil
+        #expect(shown?.utf8.count == Cell.previewByteLimit)
+    }
 }
 
 private actor ExecuteGate {

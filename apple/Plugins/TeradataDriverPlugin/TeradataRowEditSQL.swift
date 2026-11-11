@@ -11,9 +11,6 @@ import TableProTeradataCore
 /// Teradata literals and the INSERT a new grid row becomes. The driver sends statements as text, so every value is
 /// written as a literal here rather than bound.
 enum TeradataRowEditSQL {
-    /// What the grid stages for a column the user leaves to the server's default. It is a marker, never a value.
-    static let defaultMarker = PluginCellValue.text("__DEFAULT__")
-
     static func literal(_ value: PluginCellValue) -> String {
         switch value {
         case .null:
@@ -29,9 +26,10 @@ enum TeradataRowEditSQL {
         target: String,
         columns: [String],
         values: [PluginCellValue],
-        expressionColumns: Set<Int> = []
+        expressionColumns: Set<Int> = [],
+        defaultColumns: Set<Int> = []
     ) -> String {
-        let written = zip(columns, values).enumerated().filter { $0.element.1 != defaultMarker }
+        let written = zip(columns, values).enumerated().filter { !defaultColumns.contains($0.offset) }
         guard !written.isEmpty else { return "INSERT INTO \(target) DEFAULT VALUES" }
         let columnList = written.map { TeradataSchemaQueries.quoteIdentifier($0.element.0) }.joined(separator: ", ")
         let valueList = written.map { cell in
@@ -40,9 +38,9 @@ enum TeradataRowEditSQL {
         return "INSERT INTO \(target) (\(columnList)) VALUES (\(valueList))"
     }
 
-    static func assignment(column: String, value: PluginCellValue, isExpression: Bool) -> String {
+    static func assignment(column: String, value: PluginCellValue, isExpression: Bool, isDefault: Bool = false) -> String {
         let name = TeradataSchemaQueries.quoteIdentifier(column)
-        guard value != defaultMarker else { return "\(name) = DEFAULT" }
+        guard !isDefault else { return "\(name) = DEFAULT" }
         return "\(name) = \(Self.value(value, isExpression: isExpression))"
     }
 

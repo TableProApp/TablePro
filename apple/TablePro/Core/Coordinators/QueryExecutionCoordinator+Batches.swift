@@ -71,6 +71,8 @@ private struct PrintedBatchAnswer: CarriesServerOutput {
 private struct BatchResultPlan {
     let queries: [[SQLStatementScanner.ExecutableStatement]?]
     let built: StatementRowsBuild
+    // Over every result the batches produce, in order: each result set, and one count result per batch with none.
+    let results: RunResultPlan
 }
 
 private struct BatchRun {
@@ -285,6 +287,11 @@ extension QueryExecutionCoordinator {
                 ) { batch in
                     try await Self.runBatch(batch, driver: driver, failureOutput: failureOutput)
                 }
+                await DatabaseManager.shared.noteSessionStatements(
+                    prepared.prefix(outcome.ranCount(of: prepared.count)).flatMap { $0.batch.statements.map(\.sql) },
+                    ranOn: driver,
+                    scope: scope
+                )
                 let sessionState = await driver.heldSessionTransactionState()
                 return BatchRun(outcome: outcome, plan: plan, sessionState: sessionState, startState: startState)
             }
@@ -536,47 +543,83 @@ extension QueryExecutionCoordinator {
         let grammar = parent.lexicalGrammar
         let firstNumber = parent.tabManager.tabs.first { $0.id == tabId }?.display.pinnedResultCount ?? 0
         let reading = parent.tableNameReading
+        let runPlan = plan.results
         var builtIndex = 0
         // Taken in the order `batchResultPlan` built them: batch by batch, each batch's result sets in order.
         func nextBuilt() -> StatementRows? {
             defer { builtIndex += 1 }
             return plan.built.statement(at: builtIndex, readBy: reading)
         }
-        var resultSets: [ResultSet] = []
-        for ((entry, output), queries) in zip(zip(prepared, outputs), plan.queries) {
-            let produced: [ResultSet]
-            if let queries {
-                produced = zip(queries, output.resultSets).map { statement, result in
-                    let replayable = entry.parameterValues == nil
-                        && !BatchResultMapping.referencesLocalVariable(statement.sql, grammar: grammar)
-                    return makeStatementResultSet(
-                        result: result,
-                        sql: statement.sql,
-                        index: firstNumber + resultSets.count,
-                        baseQuery: replayable ? statement.sql : nil,
-                        tabId: tabId,
-                        anchor: StatementAnchor(statement),
-                        built: nextBuilt()
-                    )
-                }
-            } else if output.resultSets.isEmpty {
-                produced = output.errors.isEmpty
-                    ? [countResultSet(output, anchor: entry.batch.anchor, index: firstNumber + resultSets.count)]
-                    : []
-            } else {
-                produced = output.resultSets.enumerated().map { offset, result in
-                    numberedResultSet(
-                        result,
-                        anchor: entry.batch.anchor,
-                        index: firstNumber + resultSets.count + offset,
-                        tabId: tabId,
-                        built: nextBuilt()
+        var own: [Int: ResultSet] = [:]
+        var parts: [Int: RunSummaryPart] = [:]
+        var candidate = 0
+        // A result left out by the plan is never built; one the summary covers keeps only its counts and output.
+        func place(_ result: QueryResult?, count output: BatchOutput? = nil, build: (Int) -> ResultSet) {
+            defer { candidate += 1 }
+            if let position = runPlan.position(ofStatement: candidate) {
+                own[candidate] = build(firstNumber + position)
+            } else if runPlan.summarizes(statement: candidate) {
+                if let result {
+                    parts[candidate] = RunSummaryPart(result)
+                } else if let output {
+                    parts[candidate] = RunSummaryPart(
+                        rowsAffected: output.rowsAffected,
+                        executionTime: output.executionTime,
+                        serverOutput: .none,
+                        statusMessage: nil
                     )
                 }
             }
-            produced.last?.serverOutput = output.serverOutput
-            resultSets += produced
         }
+        for ((entry, output), queries) in zip(zip(prepared, outputs), plan.queries) {
+            let firstCandidate = candidate
+            if let queries {
+                for (statement, result) in zip(queries, output.resultSets) {
+                    let built = nextBuilt()
+                    place(result) { index in
+                        let replayable = entry.parameterValues == nil
+                            && !BatchResultMapping.referencesLocalVariable(statement.sql, grammar: grammar)
+                        return makeStatementResultSet(
+                            result: result,
+                            sql: statement.sql,
+                            index: index,
+                            baseQuery: replayable ? statement.sql : nil,
+                            tabId: tabId,
+                            anchor: StatementAnchor(statement),
+                            built: built
+                        )
+                    }
+                }
+            } else if output.resultSets.isEmpty {
+                if output.errors.isEmpty {
+                    place(nil, count: output) { index in countResultSet(output, anchor: entry.batch.anchor, index: index) }
+                }
+            } else {
+                for result in output.resultSets {
+                    let built = nextBuilt()
+                    place(result) { index in
+                        numberedResultSet(result, anchor: entry.batch.anchor, index: index, tabId: tabId, built: built)
+                    }
+                }
+            }
+            // The batch's printed output belongs to its last result, wherever that result went.
+            guard candidate > firstCandidate else { continue }
+            let last = candidate - 1
+            if let resultSet = own[last] {
+                resultSet.serverOutput = output.serverOutput
+            } else if let part = parts[last] {
+                parts[last] = part.withServerOutput(output.serverOutput)
+            }
+        }
+        let resultSets = runPlan.entries.compactMap { entry -> ResultSet? in
+            switch entry {
+            case .statement(let index):
+                return own[index]
+            case .summary(let indices):
+                return makeRunSummaryResultSet(indices.compactMap { parts[$0] })
+            }
+        }
+        appendDroppedNotice(of: runPlan, to: resultSets)
         return resultSets
     }
 
@@ -587,11 +630,31 @@ extension QueryExecutionCoordinator {
         let queries = zip(prepared, outputs).map { entry, output in
             Self.mappedQueries(of: entry, output: output, databaseType: databaseType, grammar: grammar)
         }
-        let sources = zip(queries, outputs).flatMap { mapped, output -> [(sql: String?, result: QueryResult)] in
-            guard let mapped else { return output.resultSets.map { (sql: nil, result: $0) } }
-            return zip(mapped, output.resultSets).map { (sql: $0.sql as String?, result: $1) }
+        // One entry per result in the order `batchResultSets` places them; a count result has no rows to build.
+        var shapes: [Bool] = []
+        var sources: [(sql: String?, result: QueryResult)] = []
+        var sourceCandidates: [Int] = []
+        for (mapped, output) in zip(queries, outputs) {
+            if mapped == nil, output.resultSets.isEmpty {
+                if output.errors.isEmpty {
+                    shapes.append(false)
+                }
+                continue
+            }
+            let pairs: [(sql: String?, result: QueryResult)] = mapped.map { mapped in
+                zip(mapped, output.resultSets).map { (sql: $0.sql as String?, result: $1) }
+            } ?? output.resultSets.map { (sql: nil, result: $0) }
+            for pair in pairs {
+                sourceCandidates.append(shapes.count)
+                shapes.append(!pair.result.columns.isEmpty)
+                sources.append(pair)
+            }
         }
-        return BatchResultPlan(queries: queries, built: await buildStatementRows(sources, tabId: tabId))
+        let results = RunResultPlan(producesRows: shapes)
+        let shown = zip(sources, sourceCandidates).map { source, candidate in
+            results.showsRows(ofStatement: candidate) ? source : nil
+        }
+        return BatchResultPlan(queries: queries, built: await buildStatementRows(shown, tabId: tabId), results: results)
     }
 
     // The query each of a batch's result sets belongs to, or nil when the batch's shape does not pin them.

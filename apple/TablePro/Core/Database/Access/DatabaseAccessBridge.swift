@@ -422,7 +422,9 @@ internal actor DatabaseAccessBridge {
             ) { driver in
                 reach.mark()
                 let ran = try await agentGuard.running([sql], writes: writes, on: driver) { _ in
-                    try await driver.executeUserQuery(
+                    // Before it runs, so a statement that fails or a connection lost under it is still noted.
+                    await manager.noteSessionStatements([sql], ranOn: driver, scope: scope)
+                    return try await driver.executeUserQuery(
                         query: sql,
                         rowCap: fetchCap,
                         parameters: statement.parameters.isEmpty ? nil : statement.boundValues,

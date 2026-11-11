@@ -15,6 +15,7 @@ mod host_key;
 mod library;
 mod prompter;
 mod results;
+mod row_edits;
 mod run;
 mod runtime;
 mod safe_mode_gate;
@@ -38,9 +39,22 @@ pub use library::{
 };
 pub use prompter::{HostPrompter, PromptAnswer, PromptFieldInfo, PromptPurposeTag, PromptReasonTag, PromptRequest};
 pub use results::{ResultColumnInfo, ResultSet, ValueKind};
+pub use row_edits::{
+    CellChange, CellEdit, EditColumnInfo, EditLock, EditStart, PlannedStatement, RowEdit, RowSave, RowSaveOutcome,
+    SaveGate, TableEditor,
+};
 pub use run::{QueryRun, RunEvent, RunListener, RunOutcome, TransactionStateTag, TruncationTag};
 pub use safe_mode_gate::RunGate;
 pub use session::{ColumnSort, DatabaseSession, FailureCauseTag, SessionHealthTag, TableQuery};
 pub use statement_at::StatementSpan;
 
+use secrecy::{ExposeSecret, SecretString};
+
 uniffi::setup_scaffolding!();
+
+// The app sees a String; here a lifted secret is wiped on drop. core/ARCHITECTURE.md, Bindings, lists what is not.
+uniffi::custom_type!(SecretString, String, {
+    remote,
+    lower: |secret| secret.expose_secret().to_owned(),
+    try_lift: |text| Ok(SecretString::from(text)),
+});

@@ -6,6 +6,7 @@
 import Foundation
 import TableProPluginKit
 import TableProSQLQuoting
+import TableProTLSClientIdentity
 
 internal struct LibPQConnectTimeout: Equatable, Sendable {
     static let defaultMilliseconds = 10_000
@@ -46,9 +47,8 @@ internal struct LibPQConnectTimeout: Equatable, Sendable {
     }
 }
 
-/// One monotonic wall-clock budget for libpq's TCP/TLS/authentication and the bootstrap queries
-/// that make the session usable. Keeping the absolute instant here prevents every catalog probe
-/// from receiving the full timeout again.
+// One absolute instant for the TCP, TLS and sign-in steps and the bootstrap queries, so no catalog probe gets the full
+// timeout again.
 internal struct LibPQConnectDeadline: Equatable, Sendable {
     private let expiresAtMicroseconds: Int64
 
@@ -67,6 +67,13 @@ internal struct LibPQConnectDeadline: Equatable, Sendable {
     }
 }
 
+// Where libpq takes the roots it checks the server's certificate against.
+internal enum LibPQRootCertificateSource: Equatable, Sendable {
+    case caFile(String)
+    case libpqDefault
+    case systemTrustAnchors
+}
+
 internal enum LibPQConnectionString {
     static let clientEncoding = "UTF8"
 
@@ -75,11 +82,10 @@ internal enum LibPQConnectionString {
     static let sessionApplicationName = "TablePro"
     static let metadataApplicationName = "TablePro Metadata"
 
-    /// Left to the kernel, macOS sends the first keepalive after 7,200 s of idle, while an AWS
-    /// Network Load Balancer drops an idle flow after 350 s and an Azure Load Balancer silently after
-    /// 4 minutes. These keep a parked session's flow open and let the kernel declare a dead peer
-    /// about 90 s after the last traffic. `tcp_user_timeout` is left out: macOS has no
-    /// `TCP_USER_TIMEOUT`, so libpq accepts it and changes nothing.
+    // Left to the kernel, macOS sends the first keepalive after 7,200 s of idle, while an AWS Network Load Balancer drops
+    // an idle flow after 350 s and an Azure Load Balancer silently after 4 minutes. These keep a parked session's flow
+    // open and find a dead peer about 90 s after the last traffic. No `tcp_user_timeout`: macOS has no
+    // `TCP_USER_TIMEOUT`, so libpq accepts it and changes nothing.
     static let keepaliveParameters: [(String, String)] = [
         ("keepalives", "1"),
         ("keepalives_idle", "60"),
@@ -98,7 +104,8 @@ internal enum LibPQConnectionString {
         applicationName: String? = nil,
         connectTimeoutSeconds: Int? = nil,
         kerberos: LibPQKerberosSignIn? = nil,
-        serverName: String? = nil
+        serverName: String? = nil,
+        systemTrustAnchorsPath: String? = nil
     ) throws -> String {
         var parameters: [(String, String)] = []
         if let serverName, !serverName.isEmpty, serverName != host, isAddressLiteral(host) {
@@ -142,6 +149,8 @@ internal enum LibPQConnectionString {
         }
         if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {
             parameters.append(("sslrootcert", sslConfig.caCertificatePath))
+        } else if sslConfig.verifiesHostname, let systemTrustAnchorsPath {
+            parameters.append(("sslrootcert", systemTrustAnchorsPath))
         }
         if !sslConfig.clientCertificatePath.isEmpty {
             parameters.append(("sslcert", sslConfig.clientCertificatePath))
@@ -181,6 +190,29 @@ internal enum LibPQConnectionString {
     // Nothing can exist under a device file, so libpq finds no file there and says nothing.
     static let unreadablePassfile = "/dev/null/pgpass"
 
+    // Nil when the mode checks no certificate. Verify CA never takes this Mac's roots: it would accept any server with a
+    // public certificate, which libpq refuses for sslrootcert=system. A `~/.postgresql/root.crt` keeps libpq's default.
+    static func rootCertificateSource(
+        for sslConfig: SSLConfiguration,
+        host: String,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    ) -> LibPQRootCertificateSource? {
+        guard sslConfig.verifiesCertificate else { return nil }
+        guard sslConfig.caCertificatePath.isEmpty else { return .caFile(sslConfig.caCertificatePath) }
+        return LibPQSystemTrustRule.usesSystemTrustAnchors(
+            verifiesHostname: sslConfig.verifiesHostname,
+            caCertificatePath: sslConfig.caCertificatePath,
+            host: host,
+            environment: environment,
+            fileExists: fileExists
+        ) ? .systemTrustAnchors : .libpqDefault
+    }
+
+    static func defaultRootCertificatePath(environment: [String: String]) -> String {
+        LibPQSystemTrustRule.defaultRootCertificatePath(environment: environment)
+    }
+
     private static func isAddressLiteral(_ host: String) -> Bool {
         var ipv4 = in_addr()
         var ipv6 = in6_addr()
@@ -191,16 +223,15 @@ internal enum LibPQConnectionString {
         purpose == "metadata" ? metadataApplicationName : sessionApplicationName
     }
 
-    /// libpq applies `fallback_application_name` over an `application_name` set in `options`, so a
-    /// name the user already gave the session there has to keep the fallback out entirely.
+    // libpq applies `fallback_application_name` over an `application_name` set in `options`, so a name the user gave the
+    // session there keeps the fallback out.
     static func namesApplication(_ options: String?) -> Bool {
         guard let options else { return false }
         return settingNames(in: options).contains("application_name")
     }
 
-    /// The setting each `-c name=value`, `-cname=value` and `--name=value` in `options` assigns, spelled
-    /// the way the server reads a name: in any case, with `-` and `_` as the same character. Only the
-    /// names, because a value such as `search_path=application_name` assigns something else.
+    // Spelled the way the server reads a name: any case, `-` and `_` alike. Only the names, because a value such as
+    // `search_path=application_name` assigns something else.
     static func settingNames(in options: String) -> [String] {
         let tokens = options.split(whereSeparator: \.isWhitespace).map(String.init)
         var names: [String] = []

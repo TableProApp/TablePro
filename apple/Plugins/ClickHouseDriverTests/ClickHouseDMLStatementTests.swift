@@ -248,6 +248,7 @@ struct ClickHouseDMLStatementTests {
     func insertStaysPlain() throws {
         var change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
         change.expressionColumns = [1]
+        change.defaultColumns = [2]
         let write = try #require(try writes(
             [change], columns: ["id", "at", "note"], inserted: [0: ["7", "now()", "__DEFAULT__"]]
         )?.first)
@@ -257,9 +258,21 @@ struct ClickHouseDMLStatementTests {
         #expect(write.lookup == nil)
     }
 
+    @Test("The text __DEFAULT__ in a column with no default mark is written as text")
+    func unmarkedDefaultTextIsAValue() throws {
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        let write = try #require(try writes(
+            [change], columns: ["id", "note"], inserted: [0: ["7", "__DEFAULT__"]]
+        )?.first)
+
+        #expect(write.statement == "INSERT INTO `users` (`id`, `note`) VALUES (?, ?)")
+        #expect(write.parameters == ["7", "__DEFAULT__"])
+    }
+
     @Test("A new row that sets nothing takes every default, named through a column the server does not fill")
     func emptyInsertTakesDefaults() throws {
-        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        var change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        change.defaultColumns = [0, 1]
         var context = PluginRowWriteContext()
         context.serverOwnedColumns = ["id"]
         let write = try #require(try waitingDriver.generateRowWrites(

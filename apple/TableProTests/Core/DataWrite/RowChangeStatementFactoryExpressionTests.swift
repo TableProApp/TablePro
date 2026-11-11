@@ -37,6 +37,12 @@ private final class ExpressionRecordingDriver: PluginDriverStub, @unchecked Send
 }
 
 private final class RestoringDriver: PluginDriverStub, @unchecked Sendable {
+    let capabilities: PluginCapabilities
+
+    init(capabilities: PluginCapabilities = []) {
+        self.capabilities = capabilities
+    }
+
     func generateIdentityPreservingInsert(
         table: String,
         schema: String?,
@@ -284,6 +290,66 @@ struct RowChangeStatementFactoryExpressionTests {
         }
         #expect(refused?.kind == .insert)
         #expect(refused?.reason.contains("name") == true)
+    }
+
+    @Test("A driver that reads the default mark gets the mark beside its old spelling")
+    func defaultReachesAMarkingDriverWithItsMark() throws {
+        let driver = ExpressionRecordingDriver(capabilities: .columnDefaultMarks)
+        _ = try factory(databaseType: .mssql, driver: driver).statements(
+            for: [edit(to: .columnDefault, isExpression: true, column: 1)]
+        )
+        #expect(driver.changes.first?.cellChanges.first?.newValue == .pluginDefaultMarker)
+        #expect(driver.changes.first?.defaultColumns == [1])
+        #expect(driver.changes.first?.expressionColumns == nil)
+    }
+
+    @Test("A driver that reads the default mark saves the text __DEFAULT__ as text")
+    func textAMarkingDriverReadsIsSaved() throws {
+        let driver = ExpressionRecordingDriver(capabilities: .columnDefaultMarks)
+        _ = try factory(databaseType: .mssql, driver: driver).statements(
+            for: [edit(to: "__DEFAULT__", isExpression: false, column: 1)]
+        )
+        #expect(driver.changes.first?.cellChanges.first?.newValue == "__DEFAULT__")
+        #expect(driver.changes.first?.defaultColumns == nil)
+    }
+
+    @Test("A new row's default cells are marked for the driver, and its text cells are not")
+    func newRowDefaultsAreMarked() throws {
+        let driver = ExpressionRecordingDriver(capabilities: .columnDefaultMarks)
+        let rowID = RowID.inserted(UUID())
+        let change = RowChange(rowID: rowID, type: .insert, expressionColumns: [0])
+        _ = try factory(databaseType: .mssql, driver: driver).statements(
+            for: [change],
+            insertedRowData: [rowID: [.columnDefault, "__DEFAULT__", "2026-01-01"]],
+            insertedRowIDs: [rowID]
+        )
+        #expect(driver.changes.first?.defaultColumns == [0])
+    }
+
+    @Test("A new row staged only as cell edits marks its default cells by column")
+    func newRowCellEditDefaultsAreMarked() throws {
+        let driver = ExpressionRecordingDriver(capabilities: .columnDefaultMarks)
+        let change = RowChange(
+            rowID: .inserted(UUID()),
+            type: .insert,
+            cellChanges: [
+                CellChange(columnIndex: 1, columnName: "name", oldValue: .null, newValue: "__DEFAULT__"),
+                CellChange(
+                    columnIndex: 2, columnName: "stamped_at", oldValue: .null, newValue: .columnDefault,
+                    newIsExpression: true
+                ),
+            ]
+        )
+        _ = try factory(databaseType: .mssql, driver: driver).statements(for: [change])
+        #expect(driver.changes.first?.defaultColumns == [2])
+        #expect(driver.changes.first?.cellChanges.first?.newValue == "__DEFAULT__")
+    }
+
+    @Test("A deleted row holding that text is put back by a driver that reads the default mark")
+    func restoredTextAMarkingDriverReadsIsWritten() throws {
+        let restored = try factory(databaseType: .dameng, driver: RestoringDriver(capabilities: .columnDefaultMarks))
+            .restoreStatements(rows: [["1", "__DEFAULT__", "2026-01-01"]])
+        #expect(restored.statements.first?.parameters.compactMap { $0 as? String } == ["1", "__DEFAULT__", "2026-01-01"])
     }
 
     @Test("A deleted row a driver puts back with no such text is restored")

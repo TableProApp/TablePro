@@ -95,14 +95,7 @@ extension DataGridModel {
             searchDataset(revealsFirstMatch: true)
             return
         }
-        let source = findSource
-        let result = GridFindEngine.search(find.term, options: find.options, in: source)
-        let current = GridFindEngine.index(
-            atOrAfter: selection.activeCell,
-            in: GridFindEngine.positions(of: result.matches, in: source)
-        )
-        find.setResults(result.matches, current: current, problem: result.problem, basis: findBasis(of: source))
-        revealCurrentFindMatch()
+        searchLoadedRows(GridFindState.Landing(revealsFirstMatch: true, cursorAtStart: activeCellIdentity))
     }
 
     // The rows changed under the bar: keep the current match when it survives and leave the selection alone.
@@ -123,33 +116,24 @@ extension DataGridModel {
             searchDataset(revealsFirstMatch: false)
             return
         }
-        let source = findSource
-        let basis = findBasis(of: source)
-        let previous = find.currentMatch
-        let result: GridFindEngine.Result
-        if let changes, find.loadedRowsBasis == basis,
-           let refreshed = GridFindEngine.refreshed(
-               find.matches,
-               writtenCells: changes.writtenCells,
-               addedRows: changes.addedRows,
-               term: find.term,
-               options: find.options,
-               in: source
-           ) {
-            result = refreshed
-        } else {
-            result = GridFindEngine.search(find.term, options: find.options, in: source)
+        // A running search leaves no basis, so a change meanwhile searches again.
+        if let changes {
+            let source = findSource
+            let basis = findBasis(of: source)
+            if find.loadedRowsBasis == basis,
+               let refreshed = GridFindEngine.refreshed(
+                   find.matches,
+                   writtenCells: changes.writtenCells,
+                   addedRows: changes.addedRows,
+                   term: find.term,
+                   options: find.options,
+                   in: source
+               ) {
+                landLoadedRowsResult(refreshed, landing: GridFindState.Landing(), basis: basis, source: source)
+                return
+            }
         }
-        let current: Int?
-        if let previous, let kept = result.matches.firstIndex(of: previous) {
-            current = kept
-        } else {
-            current = GridFindEngine.index(
-                atOrAfter: selection.activeCell,
-                in: GridFindEngine.positions(of: result.matches, in: source)
-            )
-        }
-        find.setResults(result.matches, current: current, problem: result.problem, basis: basis)
+        searchLoadedRows(GridFindState.Landing())
     }
 
     // The owner's rows changed (an edit, an undo, a filter): search them again, keeping the current match.
@@ -170,11 +154,11 @@ extension DataGridModel {
         find.stopDatasetSearch()
     }
 
-    // Returns once no whole-dataset search is waiting or running.
+    // Returns once no search of the loaded rows or the whole dataset is waiting or running.
     func findSearchSettled() async {
-        while let task = find.datasetSearch {
+        while let task = find.datasetSearch ?? find.loadedRowsSearch {
             await task.value
-            if find.datasetSearch == task { return }
+            if find.datasetSearch == task || find.loadedRowsSearch == task { return }
         }
     }
 
@@ -215,7 +199,12 @@ extension DataGridModel {
     // MARK: - Replacing
 
     func replaceCurrentMatch() {
-        guard canReplaceInFind, find.problem == nil, let match = find.currentMatch, commitEditing() else { return }
+        guard canReplaceInFind else { return }
+        // Replace acts on the match the bar is about to show.
+        if find.isAwaitingLoadedRows {
+            searchLoadedRowsNow()
+        }
+        guard find.problem == nil, let match = find.currentMatch, commitEditing() else { return }
         if let finder = datasetFinder {
             replaceDatasetMatch(match, finder: finder)
             return
@@ -252,10 +241,12 @@ extension DataGridModel {
             return nil
         }
         let source = findSource
-        let result = GridFindEngine.search(find.term, options: find.options, in: source)
-        guard result.problem == nil else { return nil }
+        if find.isAwaitingLoadedRows || find.loadedRowsBasis != findBasis(of: source) {
+            searchLoadedRowsNow()
+        }
+        guard find.problem == nil else { return nil }
         let replacement = GridFindEngine.replacements(
-            for: result.matches,
+            for: find.matches,
             term: find.term,
             options: find.options,
             template: find.replacement,
@@ -308,9 +299,16 @@ extension DataGridModel {
             stepDatasetFind(finder, forward: forward)
             return
         }
-        if find.matches.isEmpty {
-            refreshFind()
+        if find.isAwaitingLoadedRows {
+            find.deferStep(forward: forward)
+        } else if find.matches.isEmpty {
+            searchLoadedRows(GridFindState.Landing(steps: forward ? 1 : -1))
+        } else {
+            stepThroughFindMatches(forward: forward)
         }
+    }
+
+    private func stepThroughFindMatches(forward: Bool) {
         guard !find.matches.isEmpty else { return }
         let index = GridFindEngine.step(
             from: find.currentIndex,
@@ -320,6 +318,78 @@ extension DataGridModel {
         )
         find.setCurrentIndex(index)
         revealCurrentFindMatch()
+    }
+
+    // MARK: - Loaded rows
+
+    // Off the main actor. A term with nothing to scan is answered here, as is an invalid pattern.
+    private func searchLoadedRows(_ landing: GridFindState.Landing) {
+        let source = findSource
+        let basis = findBasis(of: source)
+        let term = find.term
+        let options = find.options
+        let generation = find.beginLoadedRowsSearch(landing)
+        if let answered = GridFindEngine.resultWithoutScanning(term, options: options, in: source) {
+            if let merged = find.endLoadedRowsSearch(generation: generation) {
+                landLoadedRowsResult(answered, landing: merged, basis: basis, source: source)
+            }
+            return
+        }
+        let dateFormat = DateFormattingService.shared.currentFormat
+        find.attachLoadedRowsSearch(Task { [weak self] in
+            let result = await GridFindEngine.searchOffTheMainActor(term, options: options, in: source, dateFormat: dateFormat)
+            self?.loadedRowsSearchDidFinish(result, basis: basis, generation: generation)
+        }, generation: generation)
+    }
+
+    private func loadedRowsSearchDidFinish(_ result: GridFindEngine.Result?, basis: GridFindEngine.Basis, generation: Int) {
+        guard let landing = find.endLoadedRowsSearch(generation: generation), let result, find.isVisible else { return }
+        let source = findSource
+        // A setting the cell text follows changed while it ran, and nothing refreshed the bar.
+        guard findBasis(of: source) == basis else {
+            searchLoadedRows(landing)
+            return
+        }
+        landLoadedRowsResult(result, landing: landing, basis: basis, source: source)
+    }
+
+    // On the main actor, landing as a running search would have.
+    private func searchLoadedRowsNow() {
+        let source = findSource
+        let basis = findBasis(of: source)
+        let generation = find.beginLoadedRowsSearch(GridFindState.Landing())
+        guard let landing = find.endLoadedRowsSearch(generation: generation) else { return }
+        let result = GridFindEngine.search(find.term, options: find.options, in: source)
+        landLoadedRowsResult(result, landing: landing, basis: basis, source: source)
+    }
+
+    private func landLoadedRowsResult(
+        _ result: GridFindEngine.Result,
+        landing: GridFindState.Landing,
+        basis: GridFindEngine.Basis,
+        source: GridFindEngine.Source
+    ) {
+        let current: Int?
+        if !landing.revealsFirstMatch, let previous = find.currentMatch, let kept = result.matches.firstIndex(of: previous) {
+            current = kept
+        } else {
+            current = GridFindEngine.index(
+                atOrAfter: selection.activeCell,
+                in: GridFindEngine.positions(of: result.matches, in: source)
+            )
+        }
+        find.setResults(result.matches, current: current, problem: result.problem, basis: basis)
+        if landing.revealsFirstMatch, landing.cursorAtStart == activeCellIdentity {
+            revealCurrentFindMatch()
+        }
+        for _ in 0..<abs(landing.steps) {
+            stepThroughFindMatches(forward: landing.steps > 0)
+        }
+    }
+
+    // By identity, so a row change that moves the cursor's position is not a move by the user.
+    private var activeCellIdentity: GridFindState.Match? {
+        activeCell.map { GridFindState.Match(rowID: $0.rowID, columnID: $0.column.id) }
     }
 
     // The match becomes the active cell, so Copy, Return and the arrow keys act on the found column.

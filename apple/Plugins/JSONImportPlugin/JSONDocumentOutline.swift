@@ -9,8 +9,7 @@ import TableProPluginKit
 enum JSONDocumentRows: Equatable {
     // The rows are the elements of the array that opens at `offset`. `slot` is the one `visit` was given for them.
     case array(offset: Int, elementCount: Int, slot: Int)
-    // A single object, which is one row, or text in UTF-16 or UTF-32: `JSONSerialization` reads the file whole.
-    case wholeDocument
+    case singleObject(offset: Int)
 }
 
 // Finds which array of a `.json` file holds the rows, by the rules `JSONImportParsing.extractElements`
@@ -32,7 +31,7 @@ enum JSONDocumentOutline {
         targetTable: String?,
         visit: (inout JSONDocumentReader, _ slot: Int?) throws -> Void
     ) throws -> JSONDocumentRows {
-        guard try reader.startDocument() else { return .wholeDocument }
+        try reader.startDocument()
         guard let first = try reader.nextSignificantByte() else { throw JSONDocumentError.endsEarly }
         switch first {
         case JSONDocumentReader.openBracket:
@@ -41,11 +40,12 @@ enum JSONDocumentOutline {
             try reader.expectEnd()
             return .array(offset: offset, elementCount: array.count, slot: 0)
         case JSONDocumentReader.openBrace:
-            return try memberRows(in: &reader, targetTable: targetTable, visit: visit)
+            let offset = reader.offset
+            return try memberRows(in: &reader, at: offset, targetTable: targetTable, visit: visit)
         case 0x22, 0x2D, 0x30...0x39, 0x66, 0x6E, 0x74:
             throw JSONImportParsing.unexpectedShapeError
         default:
-            throw JSONDocumentError.unexpectedCharacter(byteOffset: reader.offset)
+            throw JSONDocumentError.unexpectedCharacter(byteOffset: reader.fileOffset)
         }
     }
 
@@ -69,6 +69,7 @@ enum JSONDocumentOutline {
 
     private static func memberRows(
         in reader: inout JSONDocumentReader,
+        at objectOffset: Int,
         targetTable: String?,
         visit: (inout JSONDocumentReader, _ slot: Int?) throws -> Void
     ) throws -> JSONDocumentRows {
@@ -96,7 +97,7 @@ enum JSONDocumentOutline {
         }
         try reader.expectEnd()
 
-        guard !members.isEmpty, members.allSatisfy({ $0.holdsRows }) else { return .wholeDocument }
+        guard !members.isEmpty, members.allSatisfy({ $0.holdsRows }) else { return .singleObject(offset: objectOffset) }
         let match = targetTable.flatMap { target in
             members.first { $0.name.caseInsensitiveCompare(target) == .orderedSame }
                 ?? members.first { $0.name.split(separator: ".").last?.caseInsensitiveCompare(target) == .orderedSame }

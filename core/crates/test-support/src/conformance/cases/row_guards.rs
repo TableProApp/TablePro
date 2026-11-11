@@ -87,6 +87,7 @@ fn relabel(
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![Value::Int(id)],
             assignments: vec![(label, CellInput::Value(Value::Text("changed".to_owned())))],
+            read: Vec::new(),
         })],
     };
     let plan = plan_save(connection.dialect().as_ref(), table, columns, identity, &changes)

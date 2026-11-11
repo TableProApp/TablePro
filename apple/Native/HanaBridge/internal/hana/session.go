@@ -64,6 +64,8 @@ type session struct {
 	state        sessionState
 	conn         *sql.Conn
 	connectionID int64
+	// Set only between fetches; a fetch takes it out while it reads.
+	parkedCursor *cursor
 
 	controlMu sync.Mutex
 	control   *sql.Conn
@@ -267,7 +269,11 @@ func (s *session) adopt(conn *sql.Conn, connectionID int64) *bridgeError {
 }
 
 func (s *session) beginStatement(operationID uint64) (*operation, *sql.Conn, *bridgeError) {
-	op, err := s.slot.begin(operationID, s.interruptStatement)
+	return s.beginOperation(operationID, s.interruptStatement)
+}
+
+func (s *session) beginOperation(operationID uint64, interrupt interruptFunc) (*operation, *sql.Conn, *bridgeError) {
+	op, err := s.slot.begin(operationID, interrupt)
 	if err != nil {
 		return nil, nil, s.failure(nil, err)
 	}
@@ -380,16 +386,23 @@ func (s *session) close() {
 	s.state = sessionClosed
 	conn := s.conn
 	s.conn = nil
+	parked := s.parkedCursor
+	s.parkedCursor = nil
 	s.mu.Unlock()
 	s.slot.close()
 	s.dialer.sever()
-	go s.release(conn)
+	go s.release(conn, parked)
 }
 
-func (s *session) release(conn *sql.Conn) {
+func (s *session) release(conn *sql.Conn, parked *cursor) {
 	defer func() {
 		_ = recover()
 	}()
+	// Open rows hold the connection, so it cannot close before them.
+	if parked != nil {
+		_ = parked.rows.Close()
+		s.slot.finish(parked.op)
+	}
 	if conn != nil {
 		_ = conn.Close()
 	}

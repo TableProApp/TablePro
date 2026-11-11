@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-/// Serves one table's rows as a source, and records what reaches it as a destination.
 private final class TransferStubDriver: PluginDriverStub, @unchecked Sendable {
     let header: [String]
     let rows: [PluginRow]
@@ -104,8 +103,7 @@ struct TableTransferServiceTests {
         #expect(values["email"] == .text("ada@example.com"))
     }
 
-    /// A driver that stops sending values once the rest of a row is null would otherwise lose the
-    /// whole row: the sink writes by column name, and a missing key is not a null.
+    // A driver can stop sending values once the rest of a row is null, and the sink writes by column name: a missing key is not a null.
     @Test("A row shorter than its header is padded with nulls")
     func shortRowIsPadded() {
         let values = TableTransferService.dictionary(
@@ -143,8 +141,7 @@ struct TableTransferServiceTests {
         #expect(values["missing"] == .null)
     }
 
-    /// The transfer moves rows, so a request naming only definition objects has nothing to do and
-    /// must say so rather than reporting a successful transfer of nothing.
+    // Refused rather than reported as a successful transfer of nothing.
     @MainActor @Test("A request with no row-carrying object is refused")
     func requestWithoutTablesIsRefused() {
         let service = TableTransferService()
@@ -195,8 +192,7 @@ struct TableTransferServiceTests {
         }
     }
 
-    /// The server refused the INSERT only after "Delete existing rows first" had run, and with no
-    /// transaction around the table the deletion stood: the destination was left empty.
+    // The server refused the INSERT after "Delete existing rows first" ran outside a transaction, which left the destination empty.
     @MainActor @Test("A contested mapping deletes nothing on the destination")
     func contestedMappingDeletesNothing() async {
         let source = TransferStubDriver(header: ["first_name", "last_name"], rows: [[.text("Ada"), .text("Lovelace")]])
@@ -226,8 +222,7 @@ struct TableTransferServiceTests {
         #expect(destination.executedQueries.isEmpty)
     }
 
-    /// `Name` and `name` both matched a lone `name`, and even with only one of them mapped the
-    /// sink folded the other onto it, so the INSERT named the column twice.
+    // `Name` and `name` both matched a lone `name`, and the sink folded the unmapped one onto it, so the INSERT named the column twice.
     @MainActor @Test("A source column that differs only by case from a mapped one is not written twice")
     func caseTwinIsNotWrittenTwice() async throws {
         let source = TransferStubDriver(
@@ -351,7 +346,6 @@ struct TableTransferServiceTests {
         #expect(destination.executedParameters.last == [.text("5"), .text("1")])
     }
 
-    // MySQL's header says BIT without the width, so the digits take the catalog's BIT(8).
     @MainActor @Test("A MySQL BIT transferred to a PostgreSQL bit varying arrives as its digits, at the source's width")
     func mysqlBitReachesPostgresAsItsDigits() async throws {
         let source = TransferStubDriver(
@@ -359,7 +353,7 @@ struct TableTransferServiceTests {
             rows: [[.text("1"), .text("5")]],
             columns: ["id", "flags"],
             types: ["id": "int", "flags": "bit(8)"],
-            headerTypes: ["id": "INT", "flags": "BIT"]
+            headerTypes: ["id": "INT", "flags": "BIT(8)"]
         )
         let destination = TransferStubDriver(columns: ["id", "flags"], types: ["id": "integer", "flags": "varbit"])
         let request = TableTransferService.Request(

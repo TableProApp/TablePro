@@ -1,10 +1,59 @@
-use crate::column::ColumnInfo;
+use crate::column::{ColumnInfo, ColumnKind};
 use crate::edit::parse_filter_text;
 use crate::filter::{BuildFilterError, Combinator, FilterOp, FilterRule, FilterSet, FilterValue, operators_for};
 use crate::sql_syntax::mongo::{ShellValue, is_addressable_field, parse_value};
 use crate::value::Value;
 
 use super::shell_params::ShellParams;
+
+const JSON_OPERATORS: &[FilterOp] = &[
+    FilterOp::Eq,
+    FilterOp::NotEq,
+    FilterOp::Lt,
+    FilterOp::LtEq,
+    FilterOp::Gt,
+    FilterOp::GtEq,
+    FilterOp::Between,
+    FilterOp::Contains,
+    FilterOp::StartsWith,
+    FilterOp::EndsWith,
+    FilterOp::Like,
+    FilterOp::NotLike,
+    FilterOp::Ilike,
+    FilterOp::In,
+    FilterOp::NotIn,
+    FilterOp::IsNull,
+    FilterOp::IsNotNull,
+];
+
+/// A pattern is a `$regex`, which never matches a number.
+const NUMBER_OPERATORS: &[FilterOp] = &[
+    FilterOp::Eq,
+    FilterOp::NotEq,
+    FilterOp::Lt,
+    FilterOp::LtEq,
+    FilterOp::Gt,
+    FilterOp::GtEq,
+    FilterOp::Between,
+    FilterOp::In,
+    FilterOp::NotIn,
+    FilterOp::IsNull,
+    FilterOp::IsNotNull,
+];
+
+/// The operators a filter rule takes on a field, in the order the filter
+/// strip lists them. A JSON column compares as well as matching text: a
+/// value typed for it binds as the BSON its Extended JSON names, and the
+/// server compares it with the field's values of that type, numbers of
+/// every type with each other, so a field of ints and doubles keeps `<`
+/// and Between. A field of numbers only compares.
+pub fn filter_operators(column: &ColumnInfo) -> &'static [FilterOp] {
+    match column.column_type.kind {
+        ColumnKind::Json { .. } if super::json_cells::holds_numbers(&column.column_type) => NUMBER_OPERATORS,
+        ColumnKind::Json { .. } => JSON_OPERATORS,
+        _ => operators_for(&column.column_type.kind),
+    }
+}
 
 /// The filter document a collection's page, count and export read
 /// under: one clause per rule, then the document the user typed, joined
@@ -23,7 +72,7 @@ pub(crate) fn filter_document(
             .iter()
             .find(|column| column.name == rule.column)
             .ok_or_else(|| BuildFilterError::UnknownColumn(rule.column.clone()))?;
-        if !operators_for(&column.column_type.kind).contains(&rule.op) {
+        if !filter_operators(column).contains(&rule.op) {
             return Err(BuildFilterError::OperatorNotAllowed {
                 column: rule.column.clone(),
                 op: rule.op,

@@ -1,14 +1,13 @@
-use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use bson::doc;
 use mongodb::{Client, ClientSession};
-use tablepro_core::column::{ColumnInfo, ColumnKind};
+use tablepro_core::column::ColumnInfo;
 use tablepro_core::ddl::{
     ColumnAttributes, ColumnDefinition, InboundForeignKey, OutboundForeignKey, PrimaryKeyConstraint, TableDefinition,
 };
@@ -26,24 +25,27 @@ use tablepro_core::{
 use tokio::time::Instant;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 
-use crate::call::{ClientCall, KillState, SessionKill, generated, release, remaining_millis, session};
-use crate::catalog::{CollectionType, Reader};
+use crate::call::{ClientCall, KillState, ReadStop, SessionKill, generated, release, remaining_millis, session};
+use crate::catalog::{CollectionType, KnownFields, Reader};
 use crate::dialect::MongoDialect;
 use crate::editor_session::MongoEditorSession;
 use crate::endpoint::MongoEndpoint;
 use crate::execute::{Source, start};
 use crate::rows::collect;
+use crate::stream_read::ExportScope;
 use crate::write_batch::{WritePlan, perform, precheck};
 
 /// A workspace call's work, which borrows the call's session.
 type Work<'s, T> = Pin<Box<dyn Future<Output = Result<T, DriverError>> + Send + 's>>;
 
 /// What a workspace call works with: the client, the endpoint that
-/// explains its failures, and the server's time limit for the call.
+/// explains its failures, the server's time limit for the call and the
+/// stop its reads check before they ask for more.
 pub(crate) struct CallContext {
     pub(crate) endpoint: Arc<MongoEndpoint>,
     pub(crate) client: Client,
     pub(crate) max_time: Option<i64>,
+    pub(crate) stop: ReadStop,
 }
 
 /// A workspace's link to one server: a client whose pool serves the
@@ -60,11 +62,7 @@ pub(crate) struct MongoConnection {
     dialect: Arc<MongoDialect>,
     link: LinkWatch,
     closed: AtomicBool,
-    /// Each collection's fields that its columns show as JSON, from the
-    /// last read of its fields, so a page or an export of it shows them
-    /// as Extended JSON straight from the BSON, which keeps an `int`
-    /// apart from a `long`.
-    json_fields: Mutex<BTreeMap<(String, String), BTreeSet<String>>>,
+    known_fields: Arc<KnownFields>,
 }
 
 impl MongoConnection {
@@ -87,33 +85,8 @@ impl MongoConnection {
             dialect: Arc::new(MongoDialect),
             link: LinkWatch::new(),
             closed: AtomicBool::new(false),
-            json_fields: Mutex::new(BTreeMap::new()),
+            known_fields: Arc::new(KnownFields::default()),
         }
-    }
-
-    fn remember_json_fields(&self, database: String, collection: String, columns: &[ColumnInfo]) {
-        let fields = columns
-            .iter()
-            .filter(|column| matches!(column.column_type.kind, ColumnKind::Json { .. }))
-            .map(|column| column.name.clone())
-            .collect();
-        self.json_fields
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .insert((database, collection), fields);
-    }
-
-    /// The JSON fields of the collection a plan reads.
-    fn json_fields_of(&self, planned: &crate::shell_command::Plan) -> BTreeSet<String> {
-        let Some((database, collection)) = planned.collection() else {
-            return BTreeSet::new();
-        };
-        self.json_fields
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .get(&(database.to_owned(), collection.to_owned()))
-            .cloned()
-            .unwrap_or_default()
     }
 
     fn ensure_open(&self) -> Result<(), DriverError> {
@@ -138,16 +111,19 @@ impl MongoConnection {
     {
         self.ensure_open()?;
         let kill = SessionKill::new();
-        let context = CallContext {
-            endpoint: self.endpoint.clone(),
-            client: self.client.clone(),
-            max_time: remaining_millis(options.deadline()),
-        };
+        let (endpoint, client) = (self.endpoint.clone(), self.client.clone());
+        let max_time = remaining_millis(options.deadline());
         let armed = kill.clone();
         let stop = kill.clone();
         let outcome = self
             .calls
             .run_read(options, ClientCall::new(), kill, move |call, request| async move {
+                let context = CallContext {
+                    endpoint,
+                    client,
+                    max_time,
+                    stop: armed.follow(&request),
+                };
                 let mut session = match session(&context.endpoint, &context.client, &armed).await {
                     Ok(session) => session,
                     Err(error) => return (call, Err(error)),
@@ -165,8 +141,9 @@ impl MongoConnection {
 
     /// Decide whether a failed call means the link itself is gone. A kill
     /// that never came back means the route is gone, and one the server
-    /// answered means it is not; with no kill sent, the probe's own
-    /// connection answers within the cancel grace, or the route is gone.
+    /// answered, if only to refuse it, means it is not; with no kill sent,
+    /// the probe's own connection answers within the cancel grace, or the
+    /// route is gone.
     async fn settle<T>(&self, outcome: Result<T, DriverError>, stop: &SessionKill) -> Result<T, DriverError> {
         let error = match outcome {
             Ok(value) => return Ok(value),
@@ -177,7 +154,7 @@ impl MongoConnection {
         }
         let lost = match stop.state() {
             KillState::Unanswered => true,
-            KillState::Answered => false,
+            KillState::Refused | KillState::Answered => false,
             KillState::NotSent => self
                 .check(self.endpoint.cancel_grace())
                 .await
@@ -213,12 +190,10 @@ impl MongoConnection {
     /// A generated statement's plan, refused when it is not a read on a
     /// connection held read-only.
     fn generated_read(&self, statement: &Statement) -> Result<crate::shell_command::Plan, DriverError> {
-        let (parsed, mut planned) = generated(statement, &self.database)?;
+        let (parsed, planned) = generated(statement, &self.database)?;
         if self.settings.read_only && access_of(&parsed) != StatementAccess::Read {
             return Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard));
         }
-        let json_fields = self.json_fields_of(&planned);
-        planned.show_as_json(&json_fields);
         Ok(planned)
     }
 }
@@ -346,7 +321,7 @@ impl Connection for MongoConnection {
                 })
             })
             .await?;
-        self.remember_json_fields(key.0, key.1, &columns);
+        self.known_fields.remember(&key.0, &key.1, &columns);
         Ok(columns)
     }
 
@@ -475,11 +450,16 @@ impl Connection for MongoConnection {
         options: CallOptions,
     ) -> Result<QueryResult, DriverError> {
         let mut planned = self.generated_read(statement)?;
-        planned.limit_time(remaining_millis(options.deadline()));
+        let (known_fields, deadline) = (self.known_fields.clone(), options.deadline());
         self.read(options, move |context, session| {
             Box::pin(async move {
+                let known = known_fields.of(&planned, &mut reader(&context, session)).await?;
+                planned.show_as_json(&known);
+                // After the census, which the page's deadline also bounds.
+                planned.limit_time(remaining_millis(deadline));
+                context.stop.before_command().await?;
                 let source = start(&context.endpoint, &context.client, session, planned).await?;
-                collect(&context.endpoint, source, session, limit).await
+                collect(&context.endpoint, source, session, limit, &context.stop).await
             })
         })
         .await
@@ -508,12 +488,7 @@ impl Connection for MongoConnection {
     ) -> Result<StreamSummary, DriverError> {
         self.ensure_open()?;
         let (read, endpoint, database) = (read.clone(), self.endpoint.clone(), self.database.clone());
-        let json_fields = match &read {
-            ReadStatement::Generated(statement) => generated(statement, &database)
-                .map(|(_, planned)| self.json_fields_of(&planned))
-                .unwrap_or_default(),
-            ReadStatement::User(_) => BTreeSet::new(),
-        };
+        let (known_fields, max_time) = (self.known_fields.clone(), remaining_millis(options.deadline()));
         let kill = SessionKill::new();
         let armed = kill.clone();
         let stop = kill.clone();
@@ -524,16 +499,13 @@ impl Connection for MongoConnection {
                 ClientCall::new(),
                 kill,
                 move |call, request: StopRequest| async move {
-                    let result = crate::stream_read::stream(
-                        &endpoint,
-                        &database,
-                        &read,
-                        &json_fields,
-                        sink.as_mut(),
-                        &request,
-                        &armed,
-                    )
-                    .await;
+                    let scope = ExportScope {
+                        database: &database,
+                        known_fields: &known_fields,
+                        max_time,
+                    };
+                    let result =
+                        crate::stream_read::stream(&endpoint, &scope, &read, sink.as_mut(), &request, &armed).await;
                     (call, result)
                 },
             )
@@ -625,5 +597,6 @@ fn reader<'a>(context: &'a CallContext, session: &'a mut ClientSession) -> Reade
         client: &context.client,
         session,
         max_time: context.max_time,
+        stop: &context.stop,
     }
 }

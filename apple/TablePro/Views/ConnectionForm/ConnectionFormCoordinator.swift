@@ -57,6 +57,11 @@ final class ConnectionFormCoordinator: ObservableObject {
     @Published var pluginInstallConnection: DatabaseConnection?
     @Published var pluginDiagnostic: PluginDiagnosticItem?
 
+    // A connection that syncs today and is saved Local only has its secrets taken off iCloud Keychain.
+    var removesSyncedSecretsOnSave: Bool {
+        advanced.localOnly && originalConnection?.participatesInSync == true
+    }
+
     @Published var saveError: String?
 
     @Published var isChoosingType: Bool = false

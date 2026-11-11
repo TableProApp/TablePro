@@ -13,45 +13,49 @@ final class AppEvents {
 
     // MARK: - Theme & Accessibility
 
-    // Both the revision and the appearance: a forced Light/Dark switch never changes the theme, and the reverse.
+    // Carries both because a Light/Dark switch keeps the theme and a theme switch keeps the appearance; it also reaches views detached from every window.
     let themeChanged = PassthroughSubject<ThemeChange, Never>()
 
     let accessibilityTextSizeChanged = PassthroughSubject<Void, Never>()
 
     // MARK: - System Environment
 
-    // A grid keeps text formatted in the old zone until its result is fetched again.
+    // A grid keeps strings formatted in the old time zone until a re-fetch, and nothing else re-derives them.
     let systemTimeZoneChanged = PassthroughSubject<Void, Never>()
 
     // MARK: - Settings
 
     let editorSettingsChanged = PassthroughSubject<Void, Never>()
 
-    // A session's health monitor starts once, at connect.
+    // A session's health monitor starts once at connect, so an open session sees a new interval only through this.
     let connectionHealthCheckChanged = PassthroughSubject<Void, Never>()
 
     let dataGridSettingsChanged = PassthroughSubject<Void, Never>()
 
-    // The toolbar's tooltips and overflow menu show shortcuts too, and AppKit never revisits them.
+    let valueColorSettingsChanged = PassthroughSubject<Void, Never>()
+
+    // The menu bar re-syncs itself, but AppKit never revisits the shortcuts in a toolbar's tooltips or overflow menu.
     let keyboardSettingsChanged = PassthroughSubject<Void, Never>()
 
     let currentSchemaChanged = PassthroughSubject<UUID, Never>()
 
     let aiSettingsChanged = PassthroughSubject<Void, Never>()
+    // A new API key lives in the Keychain, so the save that brings it can leave `AISettings` unchanged.
+    let aiProviderSaved = PassthroughSubject<UUID, Never>()
 
     // MARK: - Connections
 
     let connectionStatusChanged = PassthroughSubject<ConnectionStatusChange, Never>()
-    // Carries the connection id; the phase lives on the workspace.
+    // The phase lives on the workspace, so the payload is only the connection id.
     let connectionPhaseChanged = PassthroughSubject<UUID, Never>()
 
     // A driver's Vault lease can no longer be renewed, so the driver has to sign in again.
     let credentialLeaseEnding = PassthroughSubject<CredentialLeaseEnding, Never>()
 
-    // Detail inside the connecting phase, never what decides which pane a window shows.
+    // Presentational only: which pane a window shows comes from the phase, never from the stage.
     let connectionStageChanged = PassthroughSubject<ConnectionStageChange, Never>()
 
-    // The connection's id, or nil for a sync pull or a multi-import.
+    // nil for a bulk update (sync pull, multi-import) whose sender does not track ids.
     let connectionUpdated = PassthroughSubject<UUID?, Never>()
 
     let databaseDidConnect = PassthroughSubject<DatabaseDidConnect, Never>()
@@ -62,39 +66,37 @@ final class AppEvents {
 
     let mainWindowWillClose = PassthroughSubject<Void, Never>()
 
-    // A connection window was registered, closed, or became key.
+    // Also fires when a connection window becomes key, since that can change which window stands for a connection.
     let connectionWindowsChanged = PassthroughSubject<Void, Never>()
 
-    // Every open rail shares one arrangement.
+    // Every open rail shares one arrangement, so all of them reload.
     let workspaceRailOrderChanged = PassthroughSubject<Void, Never>()
 
-    // Every window's rail follows the one setting.
+    // Every window carries its own rail, and all of them follow the one setting.
     let workspaceRailVisibilityChanged = PassthroughSubject<Void, Never>()
 
-    // Only when the set of containers the tabs hold open can differ, never per keystroke.
+    // Fired only when the set of held containers can differ, not on every keystroke.
     let workspaceTabsChanged = PassthroughSubject<Void, Never>()
 
-    // The connection's id.
     let browseContainerChanged = PassthroughSubject<UUID, Never>()
 
     let visibleContainerChanged = PassthroughSubject<Void, Never>()
 
-    // The connection's id.
     let sessionTransactionsChanged = PassthroughSubject<UUID, Never>()
 
     // MARK: - Data Sources
 
-    // The connection's id, or nil for a change across connections, such as Clear History.
+    // nil when the sender cannot name one connection (delete by id, clear all), so a per-connection subscriber refreshes on nil too.
     let queryHistoryDidUpdate = PassthroughSubject<UUID?, Never>()
 
-    // Nil when every connection's list changed, which only the sender knows: `SQLFavoriteManager.scopeToAnnounce`.
+    // SQLFavoriteManager.scopeToAnnounce picks the payload, since a subscriber never sees the scope a record moved from.
     let sqlFavoritesDidUpdate = PassthroughSubject<UUID?, Never>()
 
     let linkedFoldersDidUpdate = PassthroughSubject<Void, Never>()
 
     let teamLibraryDidUpdate = PassthroughSubject<Void, Never>()
 
-    // Always nil: a rescan covers every folder. Shaped like `sqlFavoritesDidUpdate` for shared subscribers.
+    // Always nil, since every rescan is bulk; typed like sqlFavoritesDidUpdate so subscribers share one filter.
     let linkedSQLFoldersDidUpdate = PassthroughSubject<UUID?, Never>()
 
     // Refresh on a tab that loads its own content rather than through the coordinator, by tab id.
@@ -117,7 +119,7 @@ final class AppEvents {
 
     let pluginsRejected = PassthroughSubject<[RejectedPlugin], Never>()
 
-    // Not private, so a test can hand an isolated bus to the object under test.
+    // Not private so a test can hand an isolated bus to the object under test; app code uses only shared.
     init() {}
 }
 

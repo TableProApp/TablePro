@@ -118,7 +118,16 @@ struct ThemeFileImporterTests {
         defer { folder.remove() }
         let url = try folder.write("{\"version\": 1, \"id\": \"user.a\", \"name\": \"x\"}", as: "old.json")
 
-        #expect(Self.refusal(importing: url) == .schemaTooOld(found: 1, supported: ThemeSchema.current))
+        #expect(Self.refusal(importing: url) == .schemaTooOld(found: 1, supported: ThemeSchema.oldestReadable))
+    }
+
+    @Test("A TablePro theme in a newer format names the newest format this version reads")
+    func newerFormatKeepsItsError() throws {
+        let folder = try Folder()
+        defer { folder.remove() }
+        let url = try folder.write("{\"schema\": 5, \"id\": \"user.a\", \"name\": \"x\", \"appearance\": \"dark\"}", as: "new.json")
+
+        #expect(Self.refusal(importing: url) == .schemaTooNew(found: 5, supported: ThemeSchema.current))
     }
 
     @Test("A missing file throws the file system's error")

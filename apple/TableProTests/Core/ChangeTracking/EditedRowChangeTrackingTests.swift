@@ -249,4 +249,359 @@ struct UpdateSaveOrderTests {
         #expect(pending.change(forRow: .existing(0), type: .update)?.sequence == sequence)
         #expect(pending.isCellModified(rowID: .existing(0), columnIndex: 1))
     }
+
+    @Test("A row edited again after another row's delete is written after that delete")
+    func laterEditRunsAfterTheDeleteBeforeIt() throws {
+        let (manager, _) = EditAroundADelete.manager()
+        EditAroundADelete.record(on: manager)
+
+        let statements = try manager.generateSQL()
+
+        #expect(EditAroundADelete.verbs(statements) == ["UPDATE", "DELETE", "UPDATE"])
+        try #require(statements.count == 3)
+        #expect(EditAroundADelete.strings(statements[0]) == ["Cyd", "3"])
+        #expect(EditAroundADelete.strings(statements[1]) == ["2"])
+        #expect(EditAroundADelete.strings(statements[2]) == ["b@test.com", "3"])
+    }
+
+    @Test("A swap through a temporary value saves each step in the order it was made")
+    func swapThroughATemporaryValueSavesInOrder() throws {
+        let (manager, _) = EditAroundADelete.manager()
+        let rowA: [PluginCellValue] = ["1", "Al", "a@test.com"]
+        manager.recordCellChange(
+            rowID: .existing(0), columnIndex: 2, columnName: "email",
+            oldValue: "a@test.com", newValue: "tmp", originalRow: rowA
+        )
+        manager.recordCellChange(
+            rowID: .existing(1), columnIndex: 2, columnName: "email",
+            oldValue: "b@test.com", newValue: "a@test.com", originalRow: EditAroundADelete.rowB
+        )
+        manager.recordCellChange(
+            rowID: .existing(0), columnIndex: 2, columnName: "email",
+            oldValue: "tmp", newValue: "b@test.com", originalRow: ["1", "Al", "tmp"]
+        )
+
+        let statements = try manager.generateSQL()
+        let bound = statements.map { EditAroundADelete.strings($0) }
+
+        #expect(EditAroundADelete.verbs(statements) == ["UPDATE", "UPDATE", "UPDATE"])
+        #expect(bound == [["tmp", "1"], ["a@test.com", "2"], ["b@test.com", "1"]])
+    }
+
+    @Test("A later edit of a row keys on the key an earlier edit of it wrote")
+    func laterRunKeysOnTheKeyTheEarlierRunWrote() throws {
+        let (manager, _) = EditAroundADelete.manager()
+        manager.recordCellChange(
+            rowID: .existing(2), columnIndex: 0, columnName: "id",
+            oldValue: "3", newValue: "6", originalRow: EditAroundADelete.rowC
+        )
+        manager.recordRowDeletion(rowID: .existing(1), originalRow: EditAroundADelete.rowB)
+        manager.recordCellChange(
+            rowID: .existing(2), columnIndex: 1, columnName: "name",
+            oldValue: "Cy", newValue: "Cyd", originalRow: ["6", "Cy", "c@test.com"]
+        )
+
+        let statements = try manager.generateSQL()
+        let bound = statements.map { EditAroundADelete.strings($0) }
+
+        #expect(EditAroundADelete.verbs(statements) == ["UPDATE", "DELETE", "UPDATE"])
+        #expect(bound == [["6", "3"], ["2"], ["Cyd", "6"]])
+    }
+
+    @Test("A tab switch keeps the place of every edit of a row, so a later change sorts after them")
+    func aTabSwitchKeepsEveryRunsPlace() throws {
+        let (manager, _) = EditAroundADelete.manager()
+        EditAroundADelete.record(on: manager)
+        let state = manager.saveState()
+
+        manager.restoreState(from: state, tableName: "users", databaseType: .mysql, generatedColumns: [])
+        manager.recordRowInsertion(rowID: .inserted(UUID()), values: ["9", "Di", "d@test.com"])
+        let verbs = try EditAroundADelete.verbs(manager.generateSQL())
+
+        #expect(verbs == ["UPDATE", "DELETE", "UPDATE", "INSERT"])
+    }
+
+    @Test("Undoing the delete of a row edited around another delete brings back both of its edits in place")
+    func undoingADeleteBringsBackEveryRun() throws {
+        let (manager, _) = EditAroundADelete.manager()
+        EditAroundADelete.record(on: manager)
+        manager.recordRowDeletion(rowID: .existing(2), originalRow: ["3", "Cyd", "b@test.com"])
+
+        manager.undoRowDeletion(rowID: .existing(2))
+        let verbs = try EditAroundADelete.verbs(manager.generateSQL())
+
+        #expect(verbs == ["UPDATE", "DELETE", "UPDATE"])
+    }
+
+    @Test("Two edits of a row with nothing between them stay one UPDATE")
+    func editsWithNothingBetweenStayOneUpdate() throws {
+        let (manager, _) = EditAroundADelete.manager()
+        manager.recordCellChange(
+            rowID: .existing(2), columnIndex: 1, columnName: "name",
+            oldValue: "Cy", newValue: "Cyd", originalRow: EditAroundADelete.rowC
+        )
+        manager.recordCellChange(
+            rowID: .existing(2), columnIndex: 2, columnName: "email",
+            oldValue: "c@test.com", newValue: "x@test.com", originalRow: ["3", "Cyd", "c@test.com"]
+        )
+        manager.recordRowDeletion(rowID: .existing(1), originalRow: EditAroundADelete.rowB)
+
+        let statements = try manager.generateSQL()
+        let bound = statements.map { EditAroundADelete.strings($0) }
+
+        #expect(EditAroundADelete.verbs(statements) == ["UPDATE", "DELETE"])
+        #expect(bound.first == ["Cyd", "x@test.com", "3"])
+    }
+
+    @Test("A cell typed back to its value as read is not written, whatever came between")
+    func aCellTypedBackToItsValueAsReadIsNotWritten() throws {
+        let (manager, _) = EditAroundADelete.manager()
+        manager.recordCellChange(
+            rowID: .existing(2), columnIndex: 2, columnName: "email",
+            oldValue: "c@test.com", newValue: "x@test.com", originalRow: EditAroundADelete.rowC
+        )
+        manager.recordRowDeletion(rowID: .existing(1), originalRow: EditAroundADelete.rowB)
+        manager.recordCellChange(
+            rowID: .existing(2), columnIndex: 2, columnName: "email",
+            oldValue: "x@test.com", newValue: "c@test.com", originalRow: ["3", "Cy", "x@test.com"]
+        )
+        let verbs = try EditAroundADelete.verbs(manager.generateSQL())
+
+        #expect(verbs == ["DELETE"])
+    }
+
+    @Test("Edits of a row around a change that was then cancelled are one UPDATE")
+    func aChangeCancelledBetweenRunsLeavesOneUpdate() throws {
+        let (manager, _) = EditAroundADelete.manager()
+        manager.recordCellChange(
+            rowID: .existing(2), columnIndex: 1, columnName: "name",
+            oldValue: "Cy", newValue: "Cyd", originalRow: EditAroundADelete.rowC
+        )
+        manager.recordRowDeletion(rowID: .existing(1), originalRow: EditAroundADelete.rowB)
+        manager.undoRowDeletion(rowID: .existing(1))
+        manager.recordCellChange(
+            rowID: .existing(2), columnIndex: 2, columnName: "email",
+            oldValue: "c@test.com", newValue: "x@test.com", originalRow: ["3", "Cyd", "c@test.com"]
+        )
+
+        let statements = try manager.generateSQL()
+        let bound = statements.map { EditAroundADelete.strings($0) }
+
+        #expect(EditAroundADelete.verbs(statements) == ["UPDATE"])
+        #expect(bound == [["Cyd", "x@test.com", "3"]])
+    }
+
+    @Test("A row whose key an earlier edit set to SQL stays one UPDATE keyed on the key as read")
+    func aKeySetToSQLBeforeAnotherChangeKeepsTheRowWhole() throws {
+        let (manager, _) = EditAroundADelete.manager()
+        manager.recordCellChange(
+            rowID: .existing(2), columnIndex: 0, columnName: "id", oldValue: "3", newValue: "NOW()",
+            originalRow: EditAroundADelete.rowC, absence: FieldAbsence(), isExpression: true
+        )
+        manager.recordRowDeletion(rowID: .existing(1), originalRow: EditAroundADelete.rowB)
+        manager.recordCellChange(
+            rowID: .existing(2), columnIndex: 1, columnName: "name",
+            oldValue: "Cy", newValue: "Cyd", originalRow: ["NOW()", "Cy", "c@test.com"]
+        )
+
+        let statements = try manager.generateSQL()
+        let bound = statements.map { EditAroundADelete.strings($0) }
+
+        #expect(EditAroundADelete.verbs(statements) == ["UPDATE", "DELETE"])
+        #expect(statements.first?.sql.contains("= NOW()") == true)
+        #expect(bound.first == ["Cyd", "3"])
+    }
+
+    @Test("A key set to SQL by a row's last edit still saves that edit in its own place")
+    func aKeySetToSQLInTheLastEditStillSplits() throws {
+        let (manager, _) = EditAroundADelete.manager()
+        manager.recordCellChange(
+            rowID: .existing(2), columnIndex: 1, columnName: "name",
+            oldValue: "Cy", newValue: "Cyd", originalRow: EditAroundADelete.rowC
+        )
+        manager.recordRowDeletion(rowID: .existing(1), originalRow: EditAroundADelete.rowB)
+        manager.recordCellChange(
+            rowID: .existing(2), columnIndex: 0, columnName: "id", oldValue: "3", newValue: "NOW()",
+            originalRow: ["3", "Cyd", "c@test.com"], absence: FieldAbsence(), isExpression: true
+        )
+
+        let statements = try manager.generateSQL()
+        let bound = statements.map { EditAroundADelete.strings($0) }
+
+        #expect(EditAroundADelete.verbs(statements) == ["UPDATE", "DELETE", "UPDATE"])
+        #expect(bound == [["Cyd", "3"], ["2"], ["3"]])
+    }
+
+    @Test("A row of a table with no primary key stays one UPDATE at its first edit's place")
+    func aKeylessRowStaysOneUpdate() throws {
+        let (manager, _) = EditAroundADelete.manager(primaryKeyColumns: [])
+        EditAroundADelete.record(on: manager)
+        let verbs = try EditAroundADelete.verbs(manager.generateSQL())
+
+        #expect(verbs == ["UPDATE", "DELETE"])
+    }
+}
+
+@MainActor
+struct UpdateRunActionTests {
+    @Test("One command over several rows writes each row once, whatever its other rows' changes")
+    func oneCommandOverSeveralRowsIsOneUpdatePerRow() throws {
+        let (manager, _) = EditAroundADelete.manager()
+        manager.recordRowDeletion(rowID: .existing(3), originalRow: ["4", "Di", "d@test.com"])
+        manager.recordAsOneAction {
+            manager.recordCellChange(
+                rowID: .existing(0), columnIndex: 1, columnName: "name",
+                oldValue: "Al", newValue: "Alf", originalRow: ["1", "Al", "a@test.com"]
+            )
+            manager.recordCellChange(
+                rowID: .existing(1), columnIndex: 1, columnName: "name",
+                oldValue: "Bo", newValue: "Bob", originalRow: EditAroundADelete.rowB
+            )
+            manager.recordCellChange(
+                rowID: .existing(0), columnIndex: 2, columnName: "email",
+                oldValue: "a@test.com", newValue: "alf@test.com", originalRow: ["1", "Alf", "a@test.com"]
+            )
+            manager.recordCellChange(
+                rowID: .existing(1), columnIndex: 2, columnName: "email",
+                oldValue: "b@test.com", newValue: "bob@test.com", originalRow: ["2", "Bob", "b@test.com"]
+            )
+        }
+        manager.recordRowDeletion(rowID: .existing(4), originalRow: ["5", "Ed", "e@test.com"])
+
+        let verbs = try EditAroundADelete.verbs(manager.generateSQL())
+
+        #expect(verbs == ["DELETE", "UPDATE", "UPDATE", "DELETE"])
+    }
+
+    @Test("Typing into several rows at once writes each row once")
+    func typingIntoSeveralRowsIsOneUpdatePerRow() throws {
+        let (manager, _) = EditAroundADelete.manager()
+        manager.recordTypedCellChange(
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
+            oldValue: "Al", newValue: "A", originalRow: ["1", "Al", "a@test.com"]
+        )
+        manager.recordTypedCellChange(
+            rowID: .existing(1), columnIndex: 1, columnName: "name",
+            oldValue: "Bo", newValue: "A", originalRow: EditAroundADelete.rowB
+        )
+        manager.recordTypedCellChange(
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
+            oldValue: "A", newValue: "Ab", originalRow: ["1", "A", "a@test.com"]
+        )
+        manager.endCoalescedUndoRun()
+        let verbs = try EditAroundADelete.verbs(manager.generateSQL())
+
+        #expect(verbs == ["UPDATE", "UPDATE"])
+    }
+}
+
+@MainActor
+struct UpdateRunUndoTests {
+    @Test("Redoing a row's later edit puts it back after the delete it followed")
+    func redoPutsTheLaterEditBackAfterTheDelete() throws {
+        let (manager, undoManager) = EditAroundADelete.manager()
+        EditAroundADelete.record(on: manager)
+
+        undoManager.undo()
+        undoManager.redo()
+
+        let statements = try manager.generateSQL()
+        let bound = statements.map { EditAroundADelete.strings($0) }
+        #expect(EditAroundADelete.verbs(statements) == ["UPDATE", "DELETE", "UPDATE"])
+        #expect(bound.last == ["b@test.com", "3"])
+    }
+
+    @Test("Undoing a row's later edit leaves its earlier one where it was")
+    func undoingTheLaterEditLeavesTheEarlierUpdate() throws {
+        let (manager, undoManager) = EditAroundADelete.manager()
+        EditAroundADelete.record(on: manager)
+
+        undoManager.undo()
+
+        let statements = try manager.generateSQL()
+        let bound = statements.map { EditAroundADelete.strings($0) }
+        #expect(EditAroundADelete.verbs(statements) == ["UPDATE", "DELETE"])
+        #expect(bound.first == ["Cyd", "3"])
+    }
+
+    @Test("Undoing and redoing a command over two rows still writes each row once")
+    func undoAndRedoOfACommandKeepOneUpdatePerRow() throws {
+        let (manager, undoManager) = EditAroundADelete.manager()
+        manager.recordRowDeletion(rowID: .existing(3), originalRow: ["4", "Di", "d@test.com"])
+        undoManager.beginUndoGrouping()
+        manager.recordAsOneAction {
+            manager.recordCellChange(
+                rowID: .existing(0), columnIndex: 1, columnName: "name",
+                oldValue: "Al", newValue: "Alf", originalRow: ["1", "Al", "a@test.com"]
+            )
+            manager.recordCellChange(
+                rowID: .existing(1), columnIndex: 1, columnName: "name",
+                oldValue: "Bo", newValue: "Bob", originalRow: EditAroundADelete.rowB
+            )
+            manager.recordCellChange(
+                rowID: .existing(0), columnIndex: 2, columnName: "email",
+                oldValue: "a@test.com", newValue: "alf@test.com", originalRow: ["1", "Alf", "a@test.com"]
+            )
+            manager.recordCellChange(
+                rowID: .existing(1), columnIndex: 2, columnName: "email",
+                oldValue: "b@test.com", newValue: "bob@test.com", originalRow: ["2", "Bob", "b@test.com"]
+            )
+        }
+        undoManager.endUndoGrouping()
+
+        undoManager.undo()
+        let undone = try EditAroundADelete.verbs(manager.generateSQL())
+        undoManager.redo()
+        let redone = try EditAroundADelete.verbs(manager.generateSQL())
+
+        #expect(undone == ["DELETE"])
+        #expect(redone == ["DELETE", "UPDATE", "UPDATE"])
+    }
+}
+
+// Edit C, delete B, then give C the email B freed: each step is valid on a unique `email`.
+@MainActor
+enum EditAroundADelete {
+    static let columns = ["id", "name", "email"]
+    static let rowB: [PluginCellValue] = ["2", "Bo", "b@test.com"]
+    static let rowC: [PluginCellValue] = ["3", "Cy", "c@test.com"]
+
+    static func manager(
+        table: String = "users",
+        primaryKeyColumns: [String] = ["id"],
+        databaseType: DatabaseType = .mysql
+    ) -> (DataChangeManager, UndoManager) {
+        let manager = DataChangeManager()
+        let undoManager = UndoManager()
+        undoManager.groupsByEvent = false
+        manager.undoManagerProvider = { undoManager }
+        manager.configureForTable(
+            tableName: table,
+            columns: columns,
+            primaryKeyColumns: primaryKeyColumns,
+            databaseType: databaseType,
+            generatedColumns: []
+        )
+        return (manager, undoManager)
+    }
+
+    static func record(on manager: DataChangeManager) {
+        manager.recordCellChange(
+            rowID: .existing(2), columnIndex: 1, columnName: "name",
+            oldValue: "Cy", newValue: "Cyd", originalRow: rowC
+        )
+        manager.recordRowDeletion(rowID: .existing(1), originalRow: rowB)
+        manager.recordCellChange(
+            rowID: .existing(2), columnIndex: 2, columnName: "email",
+            oldValue: "c@test.com", newValue: "b@test.com", originalRow: ["3", "Cyd", "c@test.com"]
+        )
+    }
+
+    nonisolated static func verbs(_ statements: [ParameterizedStatement]) -> [String] {
+        statements.map { String($0.sql.prefix(while: { $0 != " " })) }
+    }
+
+    nonisolated static func strings(_ statement: ParameterizedStatement) -> [String] {
+        statement.parameters.compactMap { $0 as? String }
+    }
 }

@@ -109,9 +109,10 @@ public final class OracleCoreConnection: @unchecked Sendable {
         var close = OracleCloseRecord()
         var serverRelease: OracleServerRelease?
         var loginWarning: String?
-        /// Read before the first statement of each session, and again before the statement after one that can
-        /// change them, so no result ever waits on them mid-stream.
+        // Read before a session's first statement and again after one that can change them, never mid-stream.
         var sessionZones: OracleSessionTimeZones?
+        // The server's time zone file fixes these, so only a new session clears them.
+        var timeZoneRegions: OracleTimeZoneRegions?
         var isReservedForDebugging = false
     }
 
@@ -218,6 +219,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
                 current.serverRelease = release
                 current.loginWarning = connection.loginWarning?.message
                 current.sessionZones = nil
+                current.timeZoneRegions = nil
                 current.close.clearOnConnect()
                 return true
             }
@@ -846,8 +848,13 @@ public final class OracleCoreConnection: @unchecked Sendable {
             let admitted = try admit(role)
             let result = try await withQueryDeadline { [self] in
                 let zones = await sessionZones(on: connection)
+                let regions = await timeZoneRegions(on: connection)
                 return try await collectRows(
-                    statement, options: OracleRowLimits.collecting(admitted.options), zones: zones, on: connection
+                    statement,
+                    options: OracleRowLimits.collecting(admitted.options),
+                    zones: zones,
+                    regions: regions,
+                    on: connection
                 )
             }
             await recordSuccess(of: role, on: admitted.session)
@@ -936,7 +943,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
         }
     }
 
-    /// The app's own session statements, none of which reads a `TIMESTAMP WITH LOCAL TIME ZONE`.
+    // The app's own session statements, none of which reads a zoned timestamp.
     private func collectRows(
         _ query: String,
         options: StatementOptions,
@@ -946,6 +953,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
             OracleStatement(unsafeSQL: query),
             options: options,
             zones: .driverDefault,
+            regions: OracleTimeZoneRegions.none,
             on: connection
         )
     }
@@ -954,12 +962,13 @@ public final class OracleCoreConnection: @unchecked Sendable {
         _ statement: OracleStatement,
         options: StatementOptions,
         zones: OracleSessionTimeZones,
+        regions: OracleTimeZoneRegions,
         on connection: OracleNIO.OracleConnection
     ) async throws -> OracleRawResult {
         let stream = try await connection.execute(statement, options: options, logger: nioLogger)
 
         let columns = stream.columns.map(OracleResultColumn.init)
-        var decoder = CellDecoder(columns: columns, zones: zones)
+        var decoder = CellDecoder(columns: columns, zones: zones, regions: regions)
         var allRows: [[OracleRawCell]] = []
         var truncated = false
 
@@ -1005,10 +1014,12 @@ public final class OracleCoreConnection: @unchecked Sendable {
             let admitted = try admit(role)
             try await withQueryDeadline { [self] in
                 let zones = await sessionZones(on: connection)
+                let regions = await timeZoneRegions(on: connection)
                 try await streamRows(
                     query,
                     options: admitted.options,
                     zones: zones,
+                    regions: regions,
                     batching: batching,
                     on: connection,
                     continuation: continuation
@@ -1031,6 +1042,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
         _ query: String,
         options: StatementOptions,
         zones: OracleSessionTimeZones,
+        regions: OracleTimeZoneRegions,
         batching: OracleRowBatcher,
         on connection: OracleNIO.OracleConnection,
         continuation: AsyncThrowingStream<OracleStreamElement, Error>.Continuation
@@ -1039,7 +1051,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
         let stream = try await connection.execute(statement, options: options, logger: nioLogger)
 
         let columns = stream.columns.map(OracleResultColumn.init)
-        var decoder = CellDecoder(columns: columns, zones: zones)
+        var decoder = CellDecoder(columns: columns, zones: zones, regions: regions)
         continuation.yield(.header(columns: columns.map(\.descriptor)))
 
         var batcher = batching
@@ -1104,17 +1116,68 @@ public final class OracleCoreConnection: @unchecked Sendable {
         state.withLock { $0.sessionZones = nil }
     }
 
+    // MARK: - Time Zone Regions
+
+    // A failed read keeps an empty map for the session, so a region value reads as its UTC wall clock and the
+    // read is not retried before every statement.
+    private func timeZoneRegions(on connection: OracleNIO.OracleConnection) async -> OracleTimeZoneRegions {
+        if let regions = state.withLock({ $0.timeZoneRegions }) {
+            return regions
+        }
+        do {
+            let regions = try await readTimeZoneRegions(on: connection)
+            state.withLock { $0.timeZoneRegions = regions }
+            return regions
+        } catch is CancellationError {
+            return OracleTimeZoneRegions.none
+        } catch {
+            osLogger.error(
+                "Reading the Oracle time zone regions failed: \(String(describing: type(of: error)), privacy: .public)"
+            )
+            state.withLock { $0.timeZoneRegions = OracleTimeZoneRegions.none }
+            return OracleTimeZoneRegions.none
+        }
+    }
+
+    // Read straight from the stream: the cell decode would turn the region column back into the UTC fallback.
+    private func readTimeZoneRegions(on connection: OracleNIO.OracleConnection) async throws -> OracleTimeZoneRegions {
+        let stream = try await connection.execute(
+            OracleStatement(unsafeSQL: OracleTimeZoneRegions.query),
+            options: OracleRowLimits.collecting(Self.sessionSetupOptions),
+            logger: nioLogger
+        )
+        var rows: [(name: String, wire: [UInt8])] = []
+        for try await row in stream {
+            let cells = Array(row)
+            guard cells.count == 2, let name = try? cells[0].decode(String.self), let wire = cells[1].bytes else {
+                continue
+            }
+            rows.append((name: name, wire: Array(wire.readableBytesView)))
+        }
+        let regions = OracleTimeZoneRegions(rows: rows)
+        let repeated = regions.duplicateIDs
+        let unknown = regions.unknownNames
+        if repeated > 0 || unknown > 0 {
+            osLogger.notice(
+                "Oracle time zone regions: \(regions.count, privacy: .public), repeated ids \(repeated, privacy: .public), unknown names \(unknown, privacy: .public)"
+            )
+        }
+        return regions
+    }
+
     // MARK: - Cell Decoding
 
-    /// Decodes the cells of one result, collecting the names of the types it had to render as placeholders.
+    // Collects the names of the types it had to render as placeholders, so each is logged once.
     private struct CellDecoder {
         let columns: [OracleResultColumn]
         let zones: OracleSessionTimeZones
+        let regions: OracleTimeZoneRegions
         private(set) var unsupportedTypeNames: Set<String> = []
 
-        init(columns: [OracleResultColumn], zones: OracleSessionTimeZones) {
+        init(columns: [OracleResultColumn], zones: OracleSessionTimeZones, regions: OracleTimeZoneRegions) {
             self.columns = columns
             self.zones = zones
+            self.regions = regions
         }
 
         mutating func decode(_ cells: some Sequence<OracleCell>) -> [OracleRawCell] {
@@ -1124,7 +1187,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
                 let column = columns.indices.contains(index)
                     ? columns[index]
                     : OracleResultColumn(name: cell.columnName, dataType: cell.dataType, scale: 9)
-                values.append(OracleCellDecoding.decode(cell, column: column, zones: zones) { name in
+                values.append(OracleCellDecoding.decode(cell, column: column, zones: zones, regions: regions) { name in
                     unsupportedTypeNames.insert(name)
                 })
             }

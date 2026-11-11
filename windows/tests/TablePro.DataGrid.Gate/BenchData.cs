@@ -41,7 +41,8 @@ internal sealed class BenchData : IAsyncDisposable
 
     public async Task<(QueryRun Run, ResultSet Set, ResultSetData Data)> QueryAsync(string sql, long rowLimit)
     {
-        var run = _editor.Run(sql, new QueryOptions(RowLimit: rowLimit));
+        // The gate times a million wide rows, past the run's default byte limit.
+        var run = _editor.Run(sql, new QueryOptions(RowLimit: rowLimit, ByteLimit: long.MaxValue));
         var outcome = await run.Completion;
         if (outcome is not QueryOutcome.Completed)
         {

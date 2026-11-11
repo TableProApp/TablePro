@@ -155,7 +155,8 @@ fn rank(value: &Value) -> u8 {
     match value {
         Value::Null => 0,
         Value::Bool(_) => 1,
-        Value::Int(_)
+        Value::Int32(_)
+        | Value::Int(_)
         | Value::UInt(_)
         | Value::WideInt(_)
         | Value::Float32(_)
@@ -217,7 +218,13 @@ fn interval_span(interval: &SqlInterval) -> i128 {
 fn is_number(value: &Value) -> bool {
     matches!(
         value,
-        Value::Int(_) | Value::UInt(_) | Value::WideInt(_) | Value::Float32(_) | Value::Float64(_) | Value::Decimal(_)
+        Value::Int32(_)
+            | Value::Int(_)
+            | Value::UInt(_)
+            | Value::WideInt(_)
+            | Value::Float32(_)
+            | Value::Float64(_)
+            | Value::Decimal(_)
     )
 }
 
@@ -257,6 +264,7 @@ fn float_of(value: &Value) -> Option<f64> {
 
 fn integer_of(value: &Value) -> Option<i128> {
     match value {
+        Value::Int32(int) => Some(i128::from(*int)),
         Value::Int(int) => Some(i128::from(*int)),
         Value::UInt(int) => Some(i128::from(*int)),
         Value::WideInt(wide) => wide.to_i128(),
@@ -397,6 +405,15 @@ mod tests {
         );
         assert_eq!(order(&Value::Int(2), &decimal("2.000")), Ordering::Equal);
         assert_eq!(order(&Value::Float64(-0.0), &Value::Float64(0.0)), Ordering::Less);
+    }
+
+    #[test]
+    fn an_int32_orders_as_the_number_it_holds() {
+        assert_eq!(order(&Value::Int32(2), &Value::Int(2)), Ordering::Equal);
+        assert_eq!(order(&Value::Int32(3), &Value::Int(2)), Ordering::Greater);
+        assert_eq!(order(&Value::Int32(2), &Value::Float64(2.5)), Ordering::Less);
+        assert_eq!(order(&Value::Int32(2), &decimal("2.0")), Ordering::Equal);
+        assert_eq!(order(&Value::Bool(true), &Value::Int32(0)), Ordering::Less);
     }
 
     #[test]

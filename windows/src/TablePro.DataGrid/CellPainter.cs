@@ -26,6 +26,8 @@ internal enum CellInk : byte
     Text,
     Placeholder,
     RowNumber,
+    Default,
+    Deleted,
 }
 
 // Matches a TextBlock cell: XAML's font and content size times the text scale, one line cut with an ellipsis.
@@ -41,8 +43,10 @@ internal sealed unsafe class CellPainter : IDisposable
     private IDWriteTextFormat* _text;
     private IDWriteTextFormat* _null;
     private IDWriteTextFormat* _number;
+    private IDWriteTextFormat* _default;
     private IDWriteInlineObject* _ellipsis;
     private IDWriteInlineObject* _nullEllipsis;
+    private IDWriteInlineObject* _defaultEllipsis;
     private ID2D1SolidColorBrush* _textBrush;
     private ID2D1SolidColorBrush* _placeholderBrush;
     private ID2D1SolidColorBrush* _cutMarkBrush;
@@ -51,8 +55,15 @@ internal sealed unsafe class CellPainter : IDisposable
     private ID2D1SolidColorBrush* _frozenEdgeBrush;
     private ID2D1SolidColorBrush* _headerBrush;
     private ID2D1SolidColorBrush* _selectedTextBrush;
+    private ID2D1SolidColorBrush* _defaultBrush;
+    private ID2D1SolidColorBrush* _deletedBrush;
+    private ID2D1SolidColorBrush* _modifiedFill;
+    private ID2D1SolidColorBrush* _insertedFill;
+    private ID2D1SolidColorBrush* _deletedFill;
+    private ID2D1SolidColorBrush* _selectionBrush;
     private int _brushGeneration = -1;
     private GridColors _colors;
+    private string _defaultText = "DEFAULT";
 
     public CellPainter(SurfaceDevice device, float fontSize, GridColors colors)
     {
@@ -65,6 +76,20 @@ internal sealed unsafe class CellPainter : IDisposable
     public string FamilyName { get; }
 
     public float FontSize { get; private set; }
+
+    // What a cell the server fills shows.
+    public string DefaultText
+    {
+        get => _defaultText;
+        set
+        {
+            if (!string.Equals(_defaultText, value, StringComparison.Ordinal))
+            {
+                _defaultText = value;
+                Version++;
+            }
+        }
+    }
 
     // Bumped by every change that makes drawn rows stale: fonts, colors, the device.
     public int Version { get; private set; }
@@ -86,8 +111,10 @@ internal sealed unsafe class CellPainter : IDisposable
         _text = CreateFormat(DWRITE_FONT_STYLE_NORMAL, DWRITE_TEXT_ALIGNMENT_LEADING);
         _null = CreateFormat(DWRITE_FONT_STYLE_ITALIC, DWRITE_TEXT_ALIGNMENT_LEADING);
         _number = CreateFormat(DWRITE_FONT_STYLE_NORMAL, DWRITE_TEXT_ALIGNMENT_TRAILING);
+        _default = CreateFormat(DWRITE_FONT_STYLE_NORMAL, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_FONT_WEIGHT_SEMI_BOLD);
         _ellipsis = Trim(_text);
         _nullEllipsis = Trim(_null);
+        _defaultEllipsis = Trim(_default);
         _brushGeneration = -1;
         Version++;
     }
@@ -109,6 +136,12 @@ internal sealed unsafe class CellPainter : IDisposable
         _frozenEdgeBrush = Brush(context, _colors.FrozenEdge);
         _headerBrush = Brush(context, _colors.HeaderBackground);
         _selectedTextBrush = Brush(context, _colors.SelectedText);
+        _defaultBrush = Brush(context, _colors.DefaultValue);
+        _deletedBrush = Brush(context, _colors.DeletedText);
+        _modifiedFill = Brush(context, _colors.ModifiedFill);
+        _insertedFill = Brush(context, _colors.InsertedFill);
+        _deletedFill = Brush(context, _colors.DeletedFill);
+        _selectionBrush = Brush(context, _colors.Selection);
         _brushGeneration = _device.Generation;
         Version++;
     }
@@ -117,8 +150,28 @@ internal sealed unsafe class CellPainter : IDisposable
     {
         CellInk.Placeholder => (ID2D1Brush*)_placeholderBrush,
         CellInk.RowNumber => (ID2D1Brush*)(selected ? _textBrush : _rowNumberBrush),
+        CellInk.Default => (ID2D1Brush*)(selected && _colors.HighContrast ? _selectedTextBrush : _defaultBrush),
+        CellInk.Deleted => (ID2D1Brush*)(selected && _colors.HighContrast ? _selectedTextBrush : _deletedBrush),
         _ => (ID2D1Brush*)(selected && _colors.HighContrast ? _selectedTextBrush : _textBrush),
     };
+
+    // The wash behind a pending change, or null where none is drawn.
+    public ID2D1Brush* FillBrush(CellState marks)
+    {
+        if (_colors.HighContrast)
+        {
+            return null;
+        }
+        if ((marks & CellState.Deleted) != 0)
+        {
+            return (ID2D1Brush*)_deletedFill;
+        }
+        if ((marks & CellState.Inserted) != 0)
+        {
+            return (ID2D1Brush*)_insertedFill;
+        }
+        return (marks & CellState.Modified) != 0 ? (ID2D1Brush*)_modifiedFill : null;
+    }
 
     public ID2D1Brush* DividerBrush => (ID2D1Brush*)_dividerBrush;
 
@@ -128,37 +181,78 @@ internal sealed unsafe class CellPainter : IDisposable
 
     public ID2D1Brush* SelectedTextBrush => (ID2D1Brush*)_selectedTextBrush;
 
+    // The selection's tint, for a washed cell that hides the selection box beneath the row.
+    public ID2D1Brush* SelectionBrush => (ID2D1Brush*)_selectionBrush;
+
     // A layout for one cell's text, or null when nothing shows. The caller releases it.
     public IDWriteTextLayout* CreateLayout(ReadOnlySpan<char> text, CellState state, float width, float height, out CellInk ink)
     {
-        ink = CellInk.Text;
+        var deleted = (state & CellState.Deleted) != 0;
+        ink = deleted ? CellInk.Deleted : CellInk.Text;
         if (width <= 0 || (state & CellState.Missing) != 0)
         {
             return null;
         }
+        IDWriteTextLayout* layout;
+        int length;
         if ((state & CellState.Null) != 0)
         {
-            ink = CellInk.Placeholder;
-            return Create(NullText, _null, width, height);
+            ink = deleted ? CellInk.Deleted : CellInk.Placeholder;
+            layout = Create(NullText, _null, width, height);
+            length = NullText.Length;
         }
-        if (text.IsEmpty)
+        else if ((state & CellState.Default) != 0)
         {
-            return null;
+            if (_defaultText.Length == 0)
+            {
+                return null;
+            }
+            ink = deleted ? CellInk.Deleted : CellInk.Default;
+            layout = Create(_defaultText, _default, width, height);
+            length = _defaultText.Length;
         }
-        var layout = Create(text, _text, width, height);
-        if ((state & CellState.RightToLeft) != 0)
+        else
         {
-            layout->SetReadingDirection(DWRITE_READING_DIRECTION_RIGHT_TO_LEFT);
+            if (text.IsEmpty)
+            {
+                return null;
+            }
+            layout = Create(text, _text, width, height);
+            length = text.Length;
+            if ((state & CellState.RightToLeft) != 0)
+            {
+                layout->SetReadingDirection(DWRITE_READING_DIRECTION_RIGHT_TO_LEFT);
+            }
+            if ((state & CellState.Truncated) != 0)
+            {
+                layout->SetDrawingEffect((IUnknown*)_cutMarkBrush, new DWRITE_TEXT_RANGE { startPosition = (uint)(text.Length - 1), length = 1 });
+            }
         }
-        if ((state & CellState.Truncated) != 0)
+        var range = new DWRITE_TEXT_RANGE { startPosition = 0, length = (uint)length };
+        if (deleted)
         {
-            layout->SetDrawingEffect((IUnknown*)_cutMarkBrush, new DWRITE_TEXT_RANGE { startPosition = (uint)(text.Length - 1), length = 1 });
+            layout->SetStrikethrough(BOOL.TRUE, range);
+        }
+        else if ((state & (CellState.Modified | CellState.Inserted)) != 0)
+        {
+            layout->SetUnderline(BOOL.TRUE, range);
         }
         return layout;
     }
 
-    public IDWriteTextLayout* CreateRowNumber(ReadOnlySpan<char> digits, float width, float height) =>
-        width <= 0 || digits.IsEmpty ? null : Create(digits, _number, width, height);
+    public IDWriteTextLayout* CreateRowNumber(ReadOnlySpan<char> digits, float width, float height, bool deleted)
+    {
+        if (width <= 0 || digits.IsEmpty)
+        {
+            return null;
+        }
+        var layout = Create(digits, _number, width, height);
+        if (deleted)
+        {
+            layout->SetStrikethrough(BOOL.TRUE, new DWRITE_TEXT_RANGE { startPosition = 0, length = (uint)digits.Length });
+        }
+        return layout;
+    }
 
     // The width text takes on one line, for fitting a column to its content.
     public float Measure(ReadOnlySpan<char> text, bool placeholder = false)
@@ -167,12 +261,10 @@ internal sealed unsafe class CellPainter : IDisposable
         {
             return 0;
         }
-        var layout = Create(text, placeholder ? _null : _text, 100_000, 100);
-        DWRITE_TEXT_METRICS metrics;
-        layout->GetMetrics(&metrics);
-        layout->Release();
-        return metrics.widthIncludingTrailingWhitespace;
+        return Measure(text, placeholder ? _null : _text);
     }
+
+    public float MeasureDefault() => _defaultText.Length == 0 ? 0 : Measure(_defaultText, _default);
 
     // Lays out and draws sample cells of every common script as the rows do, on the rows' device from a pool thread.
     public Task WarmAsync(float width, float height)
@@ -278,6 +370,15 @@ internal sealed unsafe class CellPainter : IDisposable
         }
     }
 
+    private float Measure(ReadOnlySpan<char> text, IDWriteTextFormat* format)
+    {
+        var layout = Create(text, format, 100_000, 100);
+        DWRITE_TEXT_METRICS metrics;
+        layout->GetMetrics(&metrics);
+        layout->Release();
+        return metrics.widthIncludingTrailingWhitespace;
+    }
+
     private IDWriteTextLayout* Create(ReadOnlySpan<char> text, IDWriteTextFormat* format, float width, float height)
     {
         IDWriteTextLayout* layout;
@@ -289,7 +390,8 @@ internal sealed unsafe class CellPainter : IDisposable
         return layout;
     }
 
-    private IDWriteTextFormat* CreateFormat(DWRITE_FONT_STYLE style, DWRITE_TEXT_ALIGNMENT alignment)
+    private IDWriteTextFormat* CreateFormat(DWRITE_FONT_STYLE style, DWRITE_TEXT_ALIGNMENT alignment,
+        DWRITE_FONT_WEIGHT weight = DWRITE_FONT_WEIGHT_NORMAL)
     {
         IDWriteTextFormat* format;
         // The user's language picks glyph variants, such as Han forms, as XAML text does.
@@ -297,7 +399,7 @@ internal sealed unsafe class CellPainter : IDisposable
         fixed (char* family = FamilyName)
         fixed (char* localeName = locale.Length == 0 ? "en-us" : locale)
         {
-            NativeCom.Check(_device.DWrite->CreateTextFormat(family, null, DWRITE_FONT_WEIGHT_NORMAL, style,
+            NativeCom.Check(_device.DWrite->CreateTextFormat(family, null, weight, style,
                 DWRITE_FONT_STRETCH_NORMAL, FontSize, localeName, &format));
         }
         format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
@@ -359,14 +461,22 @@ internal sealed unsafe class CellPainter : IDisposable
         NativeCom.Release(ref _frozenEdgeBrush);
         NativeCom.Release(ref _headerBrush);
         NativeCom.Release(ref _selectedTextBrush);
+        NativeCom.Release(ref _defaultBrush);
+        NativeCom.Release(ref _deletedBrush);
+        NativeCom.Release(ref _modifiedFill);
+        NativeCom.Release(ref _insertedFill);
+        NativeCom.Release(ref _deletedFill);
+        NativeCom.Release(ref _selectionBrush);
     }
 
     private void ReleaseFormats()
     {
         NativeCom.Release(ref _ellipsis);
         NativeCom.Release(ref _nullEllipsis);
+        NativeCom.Release(ref _defaultEllipsis);
         NativeCom.Release(ref _text);
         NativeCom.Release(ref _null);
         NativeCom.Release(ref _number);
+        NativeCom.Release(ref _default);
     }
 }

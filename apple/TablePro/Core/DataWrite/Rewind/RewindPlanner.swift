@@ -56,26 +56,12 @@ struct RewindPlanner {
         let byLocator = indexByLocator(currentRows)
         let matchesByLocator = locatorQuery() != nil || !byLocator.isEmpty
 
-        var rows: [RewindRowPlan] = []
-        var restorable: [RowWriteOperation] = []
-        for operation in record.operations {
+        var found: [FoundRow] = record.operations.map { operation in
             if let refusal = record.refusal(of: operation) {
-                rows.append(
-                    RewindRowPlan(
-                        id: UUID(), operation: operation,
-                        outcome: .notReversible(refusal), currentImage: nil
-                    )
-                )
-                continue
+                return FoundRow(outcome: .notReversible(refusal), current: nil)
             }
             guard keyIsComparable(operation) else {
-                rows.append(
-                    RewindRowPlan(
-                        id: UUID(), operation: operation,
-                        outcome: .notReversible(.keyNotComparable), currentImage: nil
-                    )
-                )
-                continue
+                return FoundRow(outcome: .notReversible(.keyNotComparable), current: nil)
             }
             let currentRow: RewindCurrentRow?
             if let locator = operation.rowLocator, matchesByLocator {
@@ -84,11 +70,17 @@ struct RewindPlanner {
                 currentRow = primaryKey(of: operation).flatMap { current[$0] }
                     ?? rowRestoredUnderKeyBefore(operation, in: current)
             }
-            let outcome = classify(operation, current: currentRow)
+            return FoundRow(outcome: classify(operation, current: currentRow), current: currentRow)
+        }
+        restoreDeletesWhoseKeyAnInsertFrees(&found)
+
+        var rows: [RewindRowPlan] = []
+        var restorable: [RowWriteOperation] = []
+        for (operation, row) in zip(record.operations, found) {
             rows.append(
-                RewindRowPlan(id: UUID(), operation: operation, outcome: outcome, currentImage: currentRow?.values)
+                RewindRowPlan(id: UUID(), operation: operation, outcome: row.outcome, currentImage: row.current?.values)
             )
-            if outcome.restores {
+            if row.outcome.restores {
                 restorable.append(operation)
             }
         }
@@ -105,6 +97,36 @@ struct RewindPlanner {
     }
 
     // MARK: - Classification
+
+    private struct FoundRow {
+        var outcome: RewindRowOutcome
+        var current: RewindCurrentRow?
+    }
+
+    // A new row that took a deleted row's key is removed before the deleted row is put back, so that key is free.
+    private func restoreDeletesWhoseKeyAnInsertFrees(_ found: inout [FoundRow]) {
+        var rank: [Int: Int] = [:]
+        for (position, entry) in Self.runOrder(of: record.operations).enumerated() where rank[entry.operation] == nil {
+            rank[entry.operation] = position
+        }
+        let operations = record.operations
+        for (index, delete) in operations.enumerated()
+        where delete.kind == .delete && found[index].outcome == .rowAlreadyPresent {
+            guard let key = primaryKey(of: delete),
+                  let occupant = found[index].current,
+                  primaryKey(of: occupant.values, columns: delete.columns, keyColumns: delete.primaryKeyColumns) == key,
+                  let deleteRank = rank[index]
+            else { continue }
+            let freed = operations.indices.contains { other in
+                operations[other].kind == .insert && found[other].outcome == .willRestore
+                    && primaryKey(of: operations[other]) == key
+                    && (rank[other] ?? .max) < deleteRank
+            }
+            if freed {
+                found[index] = FoundRow(outcome: .willRestore, current: nil)
+            }
+        }
+    }
 
     private var readsThroughView: Bool { record.writtenThroughView == true }
 
@@ -244,25 +266,74 @@ struct RewindPlanner {
 
     // MARK: - Statements
 
-    /// The inverse operations, newest first.
-    ///
-    /// Reverse order matters when one row in the save freed a value another row took: putting the
-    /// second row's change back before the first row's is the only order that does not collide.
-    /// The forward generator groups by verb, which loses that order, so the inverse is generated
-    /// one operation at a time.
+    struct RunEntry: Hashable {
+        let operation: Int
+        let step: Int?
+    }
+
+    // Newest first, step by step, since a value one write freed may be one a later write took. Ties, and a record
+    // saved before orders were kept, run by list position, the later first.
+    static func runOrder(of operations: [RowWriteOperation]) -> [RunEntry] {
+        var entries: [(order: Int?, entry: RunEntry)] = []
+        for (index, operation) in operations.enumerated() {
+            if let steps = operation.steps, !steps.isEmpty {
+                for (stepIndex, step) in steps.enumerated() {
+                    entries.append((step.order, RunEntry(operation: index, step: stepIndex)))
+                }
+            } else {
+                entries.append((operation.order, RunEntry(operation: index, step: nil)))
+            }
+        }
+        return entries.sorted { lhs, rhs in
+            (lhs.order ?? .min, lhs.entry.operation, lhs.entry.step ?? 0)
+                > (rhs.order ?? .min, rhs.entry.operation, rhs.entry.step ?? 0)
+        }.map(\.entry)
+    }
+
     private func statements(for operations: [RowWriteOperation]) throws -> RestoreStatements {
         var statements: [ParameterizedStatement] = []
         var lookups: [RowLookup?] = []
         var prologue: [String] = []
         var epilogue: [String] = []
-        for operation in operations.reversed() {
-            let inverse = try inverseStatements(for: operation)
+        for entry in Self.runOrder(of: operations) {
+            let operation = operations[entry.operation]
+            let inverse: RestoreStatements
+            if let step = entry.step {
+                inverse = try inverseStatements(for: operation, step: step)
+            } else {
+                inverse = try inverseStatements(for: operation)
+            }
             statements.append(contentsOf: inverse.statements)
             lookups.append(contentsOf: inverse.lookups)
             prologue.append(contentsOf: inverse.prologue.filter { !prologue.contains($0) })
             epilogue.append(contentsOf: inverse.epilogue.filter { !epilogue.contains($0) })
         }
         return RestoreStatements(statements: statements, lookups: lookups, prologue: prologue, epilogue: epilogue)
+    }
+
+    // Sets the step's columns back, keyed on the row as that step left it.
+    private func inverseStatements(for operation: RowWriteOperation, step index: Int) throws -> RestoreStatements {
+        guard let image = operation.stepImages()?[safe: index] else { return RestoreStatements(statements: []) }
+        var factory = factory
+        factory.rowLocators = operation.rowLocator.map { [.existing(0): $0] } ?? [:]
+        let step = image.step
+        let cellChanges = step.columns.enumerated().compactMap { offset, column -> CellChange? in
+            guard operation.columns.indices.contains(column), image.after.indices.contains(column),
+                  step.before.indices.contains(offset)
+            else { return nil }
+            return CellChange(
+                columnIndex: column, columnName: operation.columns[column],
+                oldValue: image.after[column], newValue: step.before[offset],
+                oldIsAbsent: image.absentAfter.contains(column), newIsAbsent: step.beforeAbsent.contains(column)
+            )
+        }
+        guard !cellChanges.isEmpty else { return RestoreStatements(statements: []) }
+        return try factory.lookedUpStatements(
+            for: [RowChange(
+                rowID: .existing(0), type: .update, cellChanges: cellChanges,
+                originalRow: image.after, absentColumns: image.absentAfter
+            )]
+        )
     }
 
     private func inverseStatements(for operation: RowWriteOperation) throws -> RestoreStatements {

@@ -1203,9 +1203,11 @@ final class MainContentCoordinator: ObservableObject {
                     scope: scope,
                     isTableTab: isTableTab,
                     lease: lease
-                ) { [queryExecutor] driver in
+                ) { [queryExecutor, manager = services.databaseManager] driver in
                     let fetched = try await held.running([statement.sql], on: driver) {
-                        try await queryExecutor.executeQuery(
+                        // Before it runs, so a statement that fails or a connection lost under it is still noted.
+                        if !isAutoLoad { await manager.noteSessionStatements([statement.sql], ranOn: driver, scope: scope) }
+                        return try await queryExecutor.executeQuery(
                             driver: driver,
                             sql: statement.sql,
                             parameters: nil,

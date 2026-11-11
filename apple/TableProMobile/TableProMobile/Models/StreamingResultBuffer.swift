@@ -51,7 +51,8 @@ final class StreamingResultBuffer {
         flushTask?.cancel()
         flushTask = nil
         guard !pendingRows.isEmpty else { return }
-        let legacyBatch = pendingRows.map(\.legacyValues)
+        // Display text only: a long value kept whole stays whole in `window` for copy, export and the row screen.
+        let legacyBatch = pendingRows.map { $0.displayValues() }
         window.append(contentsOf: pendingRows)
         legacyRows.append(contentsOf: legacyBatch)
         if legacyRows.count > window.count {

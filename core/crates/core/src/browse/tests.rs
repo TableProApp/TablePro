@@ -496,19 +496,28 @@ fn build_export_projects_only_visible_columns() {
         ascending: true,
     }];
 
-    let statement = build_export(
+    let table = table();
+    let request = ExportRequest {
+        table: &table,
+        columns: &columns,
+        filter: &filter,
+        sort: &sort,
+        identity: &identity,
+        fields: ExportFields::Every,
+    };
+
+    let statement = build_export(&dialect, &request).expect("the export");
+    let listed = build_export(
         &dialect,
         &ExportRequest {
-            table: &table(),
-            columns: &columns,
-            filter: &filter,
-            sort: &sort,
-            identity: &identity,
+            fields: ExportFields::Listed,
+            ..request
         },
     )
     .expect("the export");
 
     let sql = statement.sql();
+    assert_eq!(listed.sql(), sql, "a table's rows hold only its columns");
     let projection = sql
         .strip_prefix("SELECT ")
         .and_then(|rest| rest.split_once(" FROM "))
@@ -538,6 +547,7 @@ fn export_sql_in(dialect: &TestDialect, identity: RowIdentity, sort: &[SortKey])
             filter: &FilterSet::default(),
             sort,
             identity: &identity,
+            fields: ExportFields::Listed,
         },
     )
     .expect("the export");

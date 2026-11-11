@@ -2,36 +2,62 @@ import Foundation
 import TableProWireIO
 
 enum TeradataResultParser {
-    static func parse(_ parcels: [Parcel]) throws -> TeradataResultSet {
-        for parcel in parcels where parcel.flavor == ParcelFlavor.failure.rawValue
-            || parcel.flavor == ParcelFlavor.error.rawValue
-            || parcel.flavor == ParcelFlavor.statementError.rawValue {
-            let (code, message) = errorDetail(parcel)
-            throw TeradataWireError.server(code: code, message: message)
-        }
+    // The answer is its first result set; a later statement's rows join only when they decode the same way.
+    struct Reader {
+        private var resultColumns: [ColumnMeta]?
+        private var statementColumns: [ColumnMeta] = []
+        private var statementJoins = false
+        private var firstActivityCount: Int?
 
-        let activityCount = parcels
-            .first { $0.flavor == ParcelFlavor.success.rawValue }
-            .map { readActivityCount(fromSuccess: $0.body) } ?? 0
+        var activityCount: Int { firstActivityCount ?? 0 }
 
-        var columns: [ColumnMeta] = []
-        if let prepInfoX = parcels.first(where: { $0.flavor == ParcelFlavor.prepInfoX.rawValue }) {
-            columns = try parsePrepInfo(prepInfoX.body, extended: true)
-        } else if let prepInfo = parcels.first(where: { $0.flavor == ParcelFlavor.prepInfo.rawValue }) {
-            columns = try parsePrepInfo(prepInfo.body, extended: false)
-        }
-
-        var rows: [[TeradataValue]] = []
-        if !columns.isEmpty {
-            for record in parcels where record.flavor == ParcelFlavor.record.rawValue {
-                rows.append(try RecordDecoder.decode(recordBody: record.body, columns: columns))
+        // False when the consumer wants no more rows.
+        mutating func read(
+            _ parcels: [Parcel],
+            onColumns: ([TeradataColumn]) throws -> Void,
+            onRows: ([[TeradataValue]]) throws -> Bool
+        ) throws -> Bool {
+            if let failure = parcels.first(where: TeradataResultParser.isError) {
+                let (code, message) = TeradataResultParser.errorDetail(failure)
+                throw TeradataWireError.server(code: code, message: message)
             }
+            var rows: [[TeradataValue]] = []
+            for parcel in parcels {
+                switch parcel.knownFlavor {
+                case .success?:
+                    if firstActivityCount == nil {
+                        firstActivityCount = TeradataResultParser.readActivityCount(fromSuccess: parcel.body)
+                    }
+                case .prepInfo?, .prepInfoX?:
+                    let columns = try TeradataResultParser.parsePrepInfo(
+                        parcel.body, extended: parcel.flavor == ParcelFlavor.prepInfoX.rawValue)
+                    if let resultColumns {
+                        statementJoins = !resultColumns.isEmpty
+                            && TeradataResultParser.decodeAlike(columns, resultColumns)
+                    } else {
+                        resultColumns = columns
+                        statementJoins = !columns.isEmpty
+                        try onColumns(columns.map {
+                            TeradataColumn(name: $0.name, typeCode: $0.typeCode, dataLength: $0.dataLength)
+                        })
+                    }
+                    statementColumns = columns
+                case .record? where statementJoins:
+                    rows.append(try RecordDecoder.decode(recordBody: parcel.body, columns: statementColumns))
+                default:
+                    break
+                }
+            }
+            guard !rows.isEmpty else { return true }
+            return try onRows(rows)
         }
 
-        let resultColumns = columns.map {
-            TeradataColumn(name: $0.name, typeCode: $0.typeCode, dataLength: $0.dataLength)
+        // A request that described no result set still answers its consumer, with no columns.
+        mutating func finish(onColumns: ([TeradataColumn]) throws -> Void) throws {
+            guard resultColumns == nil else { return }
+            resultColumns = []
+            try onColumns([])
         }
-        return TeradataResultSet(columns: resultColumns, rows: rows, activityCount: activityCount)
     }
 
     static func errorDetail(_ parcel: Parcel) -> (code: Int, message: String) {
@@ -43,6 +69,18 @@ enum TeradataResultParser {
         let message = decodedText(body[12..<end])
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return (code, message.isEmpty ? decodedText(body) : message)
+    }
+
+    private static func isError(_ parcel: Parcel) -> Bool {
+        parcel.flavor == ParcelFlavor.failure.rawValue
+            || parcel.flavor == ParcelFlavor.error.rawValue
+            || parcel.flavor == ParcelFlavor.statementError.rawValue
+    }
+
+    // A record decodes by each field's base type and declared length, so two descriptions alike in those read it alike.
+    private static func decodeAlike(_ lhs: [ColumnMeta], _ rhs: [ColumnMeta]) -> Bool {
+        lhs.count == rhs.count
+            && zip(lhs, rhs).allSatisfy { $0.baseCode == $1.baseCode && $0.dataLength == $1.dataLength }
     }
 
     private static func decodedText(_ bytes: some Collection<UInt8>) -> String {

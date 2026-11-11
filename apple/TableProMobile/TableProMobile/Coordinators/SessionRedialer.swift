@@ -5,8 +5,8 @@ import TableProLogRedaction
 import TableProModels
 import TableProSSHTransport
 
-// Each scene has its own coordinator on the one shared session, so two windows coming back at once
-// would each dial, and the later attempt cancels the earlier one's.
+// One dial per connection at a time: a dial that would start a second one joins the first, or waits for it when it
+// needs its own target, since the later attempt cancels the earlier one's.
 @MainActor
 final class SessionRedialer {
     struct Outcome {

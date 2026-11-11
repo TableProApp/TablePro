@@ -131,22 +131,22 @@ struct RowChangeStatementFactory {
         }
     }
 
-    /// Every statement the changes need, or a throw naming the changes that would be left out.
-    ///
-    /// The host's statements carry the rows they touch, so the executor can hold the server to that
-    /// count. A driver's carry one only for a keyless update or delete of one row.
+    // Split into save steps first, so the refusals, every writer, the preview and the coverage see what runs.
     func rowWriteStatements(
         for changes: [RowChange],
         insertedRowData: [RowID: [PluginCellValue]] = [:],
         deletedRowIDs: Set<RowID> = [],
         insertedRowIDs: Set<RowID> = []
     ) throws -> RowWriteStatements {
-        try refuseServerOwnedEdits(in: changes)
-        try refuseDefaultOnUpdate(in: changes)
-        try refuseUnwritableExpressions(in: changes, insertedRowData: insertedRowData)
-        try refuseMisdimensionedVectors(in: changes, insertedRowData: insertedRowData)
+        let steps = RowChange.saveSteps(
+            changes, keyColumns: Set(primaryKeyColumns.compactMap { columns.firstIndex(of: $0) })
+        )
+        try refuseServerOwnedEdits(in: steps)
+        try refuseDefaultOnUpdate(in: steps)
+        try refuseUnwritableExpressions(in: steps, insertedRowData: insertedRowData)
+        try refuseMisdimensionedVectors(in: steps, insertedRowData: insertedRowData)
         let insertedRowData = insertedRowData.mapValues(leavingServerOwnedColumnsToTheServer)
-        let changes = changes.map { markingServerOwnedDefaults($0, in: insertedRowData) }
+        let changes = steps.map { markingServerOwnedDefaults($0, in: insertedRowData) }
         if let driverStatements = try pluginRowWrites(
             for: changes,
             insertedRowData: insertedRowData,
@@ -328,23 +328,30 @@ struct RowChangeStatementFactory {
         return marked
     }
 
-    // A driver reads its own spelling for a default, not the mark, so a default reaches it spelled that way and unmarked.
+    // A driver built before `PluginRowChange.defaultColumns` reads its own spelling for a default, so a default reaches
+    // every driver spelled that way, with the mark beside it for one that reads the mark.
     private static func spellingDefaultsForDrivers(
         _ changes: [RowChange],
         insertedRowData: [RowID: [PluginCellValue]]
-    ) -> (changes: [RowChange], insertedRowData: [RowID: [PluginCellValue]]) {
+    ) -> (changes: [RowChange], insertedRowData: [RowID: [PluginCellValue]], defaults: [RowID: Set<Int>]) {
         var rows = insertedRowData
+        var defaults: [RowID: Set<Int>] = [:]
         let spelledChanges = changes.map { change -> RowChange in
             var spelled = change
             if change.type == .insert, var values = rows[change.rowID] {
                 for index in change.expressionColumns where values.indices.contains(index) && values[index] == .columnDefault {
                     values[index] = .pluginDefaultMarker
                     spelled.expressionColumns.remove(index)
+                    defaults[change.rowID, default: []].insert(index)
                 }
                 rows[change.rowID] = values
             }
             let defaulted = change.cellChanges.filter { $0.newValue.isColumnDefault(isExpression: $0.newIsExpression) }
             guard !defaulted.isEmpty else { return spelled }
+            // A new row's stored values are what a driver writes, so only they mark its defaults.
+            if !(change.type == .insert && insertedRowData[change.rowID] != nil) {
+                defaults[change.rowID, default: []].formUnion(defaulted.map(\.columnIndex))
+            }
             spelled.cellChanges = change.cellChanges.map { cell in
                 guard cell.newValue.isColumnDefault(isExpression: cell.newIsExpression) else { return cell }
                 return CellChange(
@@ -362,7 +369,7 @@ struct RowChangeStatementFactory {
             }
             return spelled
         }
-        return (spelledChanges, rows)
+        return (spelledChanges, rows, defaults)
     }
 
     private func rowWriteContext(for keyed: PluginKeyedChanges) -> PluginRowWriteContext {
@@ -392,7 +399,7 @@ struct RowChangeStatementFactory {
             changes,
             deletedRowIDs: deletedRowIDs,
             insertedRowIDs: insertedRowIDs,
-            writtenRowIDs: Set(statements.flatMap(\.rowIDs))
+            writtenChangeIDs: Set(statements.flatMap(\.changeIDs))
         )
         if let kind = UnwrittenRowCounts(unwritten).leadingKind {
             throw DataWriteError.rowsNotIdentifiable(tableName, kind)
@@ -426,7 +433,9 @@ struct RowChangeStatementFactory {
                 },
                 context: restoreContext(rowCount: rows.count)
             ) {
-                try refuseRestoredTextDriversReadAsDefault(rows, restorable: restorable)
+                if !pluginDriver.capabilities.contains(.columnDefaultMarks) {
+                    try refuseRestoredTextDriversReadAsDefault(rows, restorable: restorable)
+                }
                 try refuseUnfilteredWrites(restored.map { $0.statement })
                 return RestoreStatements(statements: restored.map {
                     ParameterizedStatement(sql: $0.statement, parameters: $0.parameters.map(\.asAny))
@@ -535,7 +544,8 @@ struct RowChangeStatementFactory {
             changes: spelled.changes,
             insertedRowData: spelled.insertedRowData,
             deletedRowIDs: deletedRowIDs,
-            insertedRowIDs: insertedRowIDs
+            insertedRowIDs: insertedRowIDs,
+            defaultColumns: spelled.defaults
         )
         let writes: [PluginRowWrite]
         do {
@@ -566,13 +576,15 @@ struct RowChangeStatementFactory {
             throw DataWriteError.changeRefused(table: tableName, kind: nil, reason: error.localizedDescription)
         }
 
-        try refuseTextDriversReadAsDefault(in: changes, insertedRowData: insertedRowData)
+        if !pluginDriver.capabilities.contains(.columnDefaultMarks) {
+            try refuseTextDriversReadAsDefault(in: changes, insertedRowData: insertedRowData)
+        }
         try refuseUnfilteredWrites(writes.map(\.statement))
         let unwritten = RowWriteCoverage.unwrittenChanges(
             changes,
             deletedRowIDs: deletedRowIDs,
             insertedRowIDs: insertedRowIDs,
-            writtenRowIDs: Set(writes.flatMap(\.rowIndices).compactMap(keyed.rowID(forIndex:)))
+            writtenChangeIDs: Set(writes.flatMap(\.rowIndices).compactMap { keyed.change(forIndex: $0)?.id })
         )
         guard unwritten.isEmpty else {
             throw DataWriteError.changesNotWritable(table: tableName, unwritten: UnwrittenRowCounts(unwritten))
@@ -590,8 +602,8 @@ struct RowChangeStatementFactory {
         }
     }
 
-    // A driver may read the text `__DEFAULT__` as the column default, and none can say whether it does until PluginKit
-    // carries the mark beside the value, so the text is never handed to one as a value.
+    // A driver that does not read `PluginRowChange.defaultColumns` may read the text `__DEFAULT__` as the column default,
+    // so the text is never handed to one as a value.
     private func refuseTextDriversReadAsDefault(
         in changes: [RowChange],
         insertedRowData: [RowID: [PluginCellValue]]
@@ -697,38 +709,45 @@ struct RowChangeStatementFactory {
     }
 }
 
+// One key per change, so a row written in two steps reaches the driver as two changes.
 struct PluginKeyedChanges {
     let changes: [PluginRowChange]
     let insertedRowData: [Int: [PluginCellValue]]
     let deletedRowIndices: Set<Int>
     let insertedRowIndices: Set<Int>
-    /// The row each key stands for, indexed by key.
+    // Indexed by key.
     let rowIDs: [RowID]
+    private let steps: [RowChange]
 
     init(
         changes: [RowChange],
         insertedRowData: [RowID: [PluginCellValue]],
         deletedRowIDs: Set<RowID>,
-        insertedRowIDs: Set<RowID>
+        insertedRowIDs: Set<RowID>,
+        defaultColumns: [RowID: Set<Int>] = [:]
     ) {
         let ordered = changes.sorted { $0.sequence < $1.sequence }
-        var keys: [RowID: Int] = [:]
-        var rowIDs: [RowID] = []
-        for change in ordered where keys[change.rowID] == nil {
-            keys[change.rowID] = rowIDs.count
-            rowIDs.append(change.rowID)
+        var insertKeys: [RowID: Int] = [:]
+        var deleteKeys: [RowID: Int] = [:]
+        for (key, change) in ordered.enumerated() {
+            switch change.type {
+            case .insert: insertKeys[change.rowID] = key
+            case .delete: deleteKeys[change.rowID] = key
+            case .update: break
+            }
         }
-        self.rowIDs = rowIDs
-        self.changes = ordered.compactMap { change in
-            keys[change.rowID].map { PluginRowChange(change, key: $0) }
+        self.steps = ordered
+        self.rowIDs = ordered.map(\.rowID)
+        self.changes = ordered.enumerated().map { key, change in
+            PluginRowChange(change, key: key, defaultColumns: defaultColumns[change.rowID])
         }
         self.insertedRowData = Dictionary(
             uniqueKeysWithValues: insertedRowData.compactMap { rowID, values in
-                keys[rowID].map { ($0, values) }
+                insertKeys[rowID].map { ($0, values) }
             }
         )
-        self.deletedRowIndices = Set(deletedRowIDs.compactMap { keys[$0] })
-        self.insertedRowIndices = Set(insertedRowIDs.compactMap { keys[$0] })
+        self.deletedRowIndices = Set(deletedRowIDs.compactMap { deleteKeys[$0] })
+        self.insertedRowIndices = Set(insertedRowIDs.compactMap { insertKeys[$0] })
     }
 
     func locators(_ byRow: [RowID: String]) -> [Int: String] {
@@ -739,14 +758,14 @@ struct PluginKeyedChanges {
         return keyed
     }
 
-    /// The row a driver's `rowIndex` names, or nil when it names none of these changes.
-    func rowID(forIndex index: Int) -> RowID? {
-        rowIDs.indices.contains(index) ? rowIDs[index] : nil
+    // Nil when a driver's `rowIndex` names none of these changes.
+    func change(forIndex index: Int) -> RowChange? {
+        steps.indices.contains(index) ? steps[index] : nil
     }
 
     func writeKind(ofRowIndex index: Int) -> RowWriteKind? {
-        guard let change = changes.first(where: { $0.rowIndex == index }) else { return nil }
-        switch change.type {
+        guard let type = change(forIndex: index)?.type else { return nil }
+        switch type {
         case .insert: return .insert
         case .update: return .update
         case .delete: return .delete
@@ -773,7 +792,7 @@ private extension SQLUnfilteredWrite {
 }
 
 private extension PluginRowChange {
-    init(_ change: RowChange, key: Int) {
+    init(_ change: RowChange, key: Int, defaultColumns: Set<Int>?) {
         self.init(
             rowIndex: key,
             type: {
@@ -790,6 +809,7 @@ private extension PluginRowChange {
         )
         absentColumns = Self.absentColumns(after: change)
         expressionColumns = Self.expressionColumns(of: change)
+        self.defaultColumns = change.type == .delete || defaultColumns?.isEmpty != false ? nil : defaultColumns
     }
 
     static func expressionColumns(of change: RowChange) -> Set<Int>? {

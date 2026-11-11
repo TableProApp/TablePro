@@ -15,6 +15,7 @@ final class AIModelCatalog: @unchecked Sendable {
     private let lock = NSLock()
     private var fetched: [UUID: [String: AIModelInfo]] = [:]
     private var refreshTokens: [UUID: UUID] = [:]
+    private var revisions: [UUID: Int] = [:]
 
     init() {}
 
@@ -24,6 +25,7 @@ final class AIModelCatalog: @unchecked Sendable {
         defer { lock.unlock() }
         refreshTokens.removeValue(forKey: providerID)
         fetched[providerID] = Self.indexed(models)
+        revisions[providerID, default: 0] += 1
     }
 
     func remove(providerID: UUID) {
@@ -31,6 +33,24 @@ final class AIModelCatalog: @unchecked Sendable {
         defer { lock.unlock() }
         refreshTokens.removeValue(forKey: providerID)
         fetched.removeValue(forKey: providerID)
+        revisions[providerID, default: 0] += 1
+    }
+
+    func revision(providerID: UUID) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return revisions[providerID, default: 0]
+    }
+
+    // For a reader such as the chat panel: it never overtakes a refresh a Save started, and its
+    // answer is dropped once anything newer was written or begun since it read `revision`.
+    func store(providerID: UUID, models: [AIModelInfo], ifUnchangedSince revision: Int) {
+        guard !models.isEmpty else { return }
+        lock.lock()
+        defer { lock.unlock() }
+        guard revisions[providerID, default: 0] == revision else { return }
+        fetched[providerID] = Self.indexed(models)
+        revisions[providerID, default: 0] += 1
     }
 
     /// Loads a provider's list again after Save dropped the one on record. Open chat windows read
@@ -49,6 +69,7 @@ final class AIModelCatalog: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         refreshTokens[providerID] = token
+        revisions[providerID, default: 0] += 1
         return token
     }
 
@@ -59,6 +80,7 @@ final class AIModelCatalog: @unchecked Sendable {
         refreshTokens.removeValue(forKey: providerID)
         guard !models.isEmpty else { return }
         fetched[providerID] = Self.indexed(models)
+        revisions[providerID, default: 0] += 1
     }
 
     private static func indexed(_ models: [AIModelInfo]) -> [String: AIModelInfo] {

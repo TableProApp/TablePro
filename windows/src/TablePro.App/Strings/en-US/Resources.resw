@@ -750,6 +750,15 @@
   <data name="StatusRowsLimited" xml:space="preserve">
     <value>Rows: {0:N0}, the row limit · {1:N0} ms</value>
   </data>
+  <data name="StatusRowsStopped" xml:space="preserve">
+    <value>Rows: {0:N0}, the server stopped the statement at the row limit, before its end · {1:N0} ms</value>
+  </data>
+  <data name="StatusRowsSizeLimited" xml:space="preserve">
+    <value>Rows: {0:N0}, a run stops keeping rows past {2:N0} MB · {1:N0} ms</value>
+  </data>
+  <data name="StatusRowsSizeLimitedStopped" xml:space="preserve">
+    <value>Rows: {0:N0}, a run stops keeping rows past {2:N0} MB, and the server stopped the statement at the row limit, before its end · {1:N0} ms</value>
+  </data>
   <data name="StatusNoStatement" xml:space="preserve">
     <value>No statement at the cursor</value>
   </data>
@@ -1613,5 +1622,350 @@ New fingerprint: {2}</value>
   </data>
   <data name="Error_config_client_identity_incomplete" xml:space="preserve">
     <value>A client certificate needs both a certificate file and a key file.</value>
+  </data>
+  <data name="AddRowButton.Label" xml:space="preserve">
+    <value>Add row</value>
+  </data>
+  <data name="AddRowButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Add row (Ctrl+Shift+N)</value>
+  </data>
+  <data name="DuplicateRowButton.Label" xml:space="preserve">
+    <value>Duplicate row</value>
+  </data>
+  <data name="DuplicateRowButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Duplicate row (Ctrl+Shift+D)</value>
+  </data>
+  <data name="DeleteRowsButton.Label" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="DeleteRowsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Delete (Delete)</value>
+  </data>
+  <data name="SaveChangesButton.Label" xml:space="preserve">
+    <value>Save changes</value>
+  </data>
+  <data name="SaveChangesButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Save changes (Ctrl+S)</value>
+  </data>
+  <data name="DiscardChangesButton.Label" xml:space="preserve">
+    <value>Discard changes</value>
+  </data>
+  <data name="PreviewSqlButton.Label" xml:space="preserve">
+    <value>Preview SQL</value>
+  </data>
+  <data name="PreviewSqlButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Preview SQL (Ctrl+Shift+P)</value>
+  </data>
+  <data name="MenuSaveChanges.Text" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="MenuDiscardChanges.Text" xml:space="preserve">
+    <value>Discard changes...</value>
+  </data>
+  <data name="MenuPreviewSql.Text" xml:space="preserve">
+    <value>Preview SQL</value>
+  </data>
+  <data name="MenuAddRow.Text" xml:space="preserve">
+    <value>Add row</value>
+  </data>
+  <data name="MenuDuplicateRow.Text" xml:space="preserve">
+    <value>Duplicate row</value>
+  </data>
+  <data name="MenuDeleteRows.Text" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="GridMenuSetValue" xml:space="preserve">
+    <value>Set value</value>
+  </data>
+  <data name="GridMenuEmpty" xml:space="preserve">
+    <value>Empty</value>
+  </data>
+  <data name="GridMenuNull" xml:space="preserve">
+    <value>NULL</value>
+  </data>
+  <data name="GridMenuDefault" xml:space="preserve">
+    <value>Default</value>
+  </data>
+  <data name="GridMenuAddRow" xml:space="preserve">
+    <value>Add row</value>
+  </data>
+  <data name="GridMenuDuplicate" xml:space="preserve">
+    <value>Duplicate</value>
+  </data>
+  <data name="GridMenuDelete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="GridMenuUndoDelete" xml:space="preserve">
+    <value>Undo delete</value>
+  </data>
+  <data name="GridMenuCopy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="GridDefaultText" xml:space="preserve">
+    <value>DEFAULT</value>
+  </data>
+  <data name="GridEditedStatus" xml:space="preserve">
+    <value>edited</value>
+  </data>
+  <data name="GridNewRowStatus" xml:space="preserve">
+    <value>new row</value>
+  </data>
+  <data name="GridDeletedStatus" xml:space="preserve">
+    <value>marked for deletion</value>
+  </data>
+  <data name="DiscardChangesTitle" xml:space="preserve">
+    <value>Discard changes?</value>
+  </data>
+  <data name="DiscardChangesMessage" xml:space="preserve">
+    <value>The changes you have not saved will be lost.</value>
+  </data>
+  <data name="DiscardChangesAction" xml:space="preserve">
+    <value>Discard changes</value>
+  </data>
+  <data name="ReloadDiscardTitle" xml:space="preserve">
+    <value>Discard unsaved changes?</value>
+  </data>
+  <data name="ReloadDiscardRefresh" xml:space="preserve">
+    <value>Refreshing will discard all unsaved changes.</value>
+  </data>
+  <data name="ReloadDiscardSort" xml:space="preserve">
+    <value>Sorting will reload data and discard all unsaved changes.</value>
+  </data>
+  <data name="ReloadDiscardPage" xml:space="preserve">
+    <value>Navigating to another page will discard all unsaved changes.</value>
+  </data>
+  <data name="ReloadDiscardAction" xml:space="preserve">
+    <value>Discard</value>
+  </data>
+  <data name="SaveBeforeCloseTitle" xml:space="preserve">
+    <value>Do you want to save changes?</value>
+  </data>
+  <data name="SaveBeforeCloseMessage" xml:space="preserve">
+    <value>Your changes will be lost if you don't save them.</value>
+  </data>
+  <data name="SaveBeforeCloseSave" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="SaveBeforeCloseDontSave" xml:space="preserve">
+    <value>Don't save</value>
+  </data>
+  <data name="SaveBeforeCloseTab" xml:space="preserve">
+    <value>Do you want to save changes to {0}?</value>
+  </data>
+  <data name="DeleteRowsTitleOne" xml:space="preserve">
+    <value>Delete this row from {0}?</value>
+  </data>
+  <data name="DeleteRowsTitleMany" xml:space="preserve">
+    <value>Delete {0} rows from {1}?</value>
+  </data>
+  <data name="DeleteRowsMessage" xml:space="preserve">
+    <value>This permanently deletes the selected rows from the database and can't be undone.</value>
+  </data>
+  <data name="DeleteRowsAction" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="SaveReviewTitle" xml:space="preserve">
+    <value>Save changes</value>
+  </data>
+  <data name="SaveReviewRunsOn" xml:space="preserve">
+    <value>Runs on {0}, which asks before every change to the database.</value>
+  </data>
+  <data name="SaveReviewAction" xml:space="preserve">
+    <value>Execute</value>
+  </data>
+  <data name="StatementCountOne" xml:space="preserve">
+    <value>1 statement</value>
+  </data>
+  <data name="StatementCountMany" xml:space="preserve">
+    <value>{0} statements</value>
+  </data>
+  <data name="CopyAllButton" xml:space="preserve">
+    <value>Copy all</value>
+  </data>
+  <data name="PreviewSqlTitle" xml:space="preserve">
+    <value>SQL preview</value>
+  </data>
+  <data name="PreviewSqlEmpty" xml:space="preserve">
+    <value>No pending changes</value>
+  </data>
+  <data name="PreviewSqlDone" xml:space="preserve">
+    <value>Done</value>
+  </data>
+  <data name="PreviewSqlValues" xml:space="preserve">
+    <value>Values: {0}</value>
+  </data>
+  <data name="SaveFailedTitle" xml:space="preserve">
+    <value>Save failed</value>
+  </data>
+  <data name="SaveIncompleteTitle" xml:space="preserve">
+    <value>Save incomplete</value>
+  </data>
+  <data name="SaveFailedPending" xml:space="preserve">
+    <value>Nothing was saved, and every change is still pending.</value>
+  </data>
+  <data name="SaveUnknownMessage" xml:space="preserve">
+    <value>The save may have been written. Refresh the table to see what is there before you save again.</value>
+  </data>
+  <data name="SaveUnknownBlocked" xml:space="preserve">
+    <value>The last save may have been written. Refresh the table before you save again.</value>
+  </data>
+  <data name="SaveCancelled" xml:space="preserve">
+    <value>Operation cancelled by user</value>
+  </data>
+  <data name="StatusSaving" xml:space="preserve">
+    <value>Saving changes...</value>
+  </data>
+  <data name="EditLockNoPrimaryKey" xml:space="preserve">
+    <value>{0} has no primary key, so its rows cannot be told apart. Edit the rows with a query.</value>
+  </data>
+  <data name="EditLockKeyUnreadable" xml:space="preserve">
+    <value>Rows of {0} cannot be edited here, because their key cannot be read back exactly. Edit them with a query.</value>
+  </data>
+  <data name="EditLockColumnsChanged" xml:space="preserve">
+    <value>The table's columns changed. Refresh the table to edit it.</value>
+  </data>
+  <data name="EditLockReadOnly" xml:space="preserve">
+    <value>This connection is read only.</value>
+  </data>
+  <data name="EditCellReadOnly" xml:space="preserve">
+    <value>This value cannot be edited here.</value>
+  </data>
+  <data name="Error_edit_required" xml:space="preserve">
+    <value>This column needs a value.</value>
+  </data>
+  <data name="Error_edit_invalid_integer" xml:space="preserve">
+    <value>Enter a whole number.</value>
+  </data>
+  <data name="Error_edit_integer_out_of_range" xml:space="preserve">
+    <value>This number is outside the range the column holds.</value>
+  </data>
+  <data name="Error_edit_invalid_float" xml:space="preserve">
+    <value>Enter a number.</value>
+  </data>
+  <data name="Error_edit_invalid_decimal" xml:space="preserve">
+    <value>Enter a number.</value>
+  </data>
+  <data name="Error_edit_precision_exceeded" xml:space="preserve">
+    <value>This column keeps fewer digits.</value>
+  </data>
+  <data name="Error_edit_scale_exceeded" xml:space="preserve">
+    <value>This column keeps fewer decimal places.</value>
+  </data>
+  <data name="Error_edit_invalid_boolean" xml:space="preserve">
+    <value>Enter true or false.</value>
+  </data>
+  <data name="Error_edit_invalid_uuid" xml:space="preserve">
+    <value>Enter a UUID.</value>
+  </data>
+  <data name="Error_edit_invalid_json" xml:space="preserve">
+    <value>Enter valid JSON.</value>
+  </data>
+  <data name="Error_edit_invalid_date" xml:space="preserve">
+    <value>Enter a date as YYYY-MM-DD.</value>
+  </data>
+  <data name="Error_edit_invalid_time" xml:space="preserve">
+    <value>Enter a time as HH:MM:SS.</value>
+  </data>
+  <data name="Error_edit_time_out_of_range" xml:space="preserve">
+    <value>This time is outside the range the column can hold.</value>
+  </data>
+  <data name="Error_edit_invalid_timestamp" xml:space="preserve">
+    <value>Enter a date and time as YYYY-MM-DD HH:MM:SS.</value>
+  </data>
+  <data name="Error_edit_offset_required" xml:space="preserve">
+    <value>This column needs a time zone offset.</value>
+  </data>
+  <data name="Error_edit_invalid_interval" xml:space="preserve">
+    <value>Enter an interval.</value>
+  </data>
+  <data name="Error_edit_invalid_bits" xml:space="preserve">
+    <value>Enter a bit string of 0 and 1.</value>
+  </data>
+  <data name="Error_edit_invalid_bytes" xml:space="preserve">
+    <value>Enter bytes as 0x and hex digits.</value>
+  </data>
+  <data name="Error_edit_bit_length_mismatch" xml:space="preserve">
+    <value>This column holds a different number of bits.</value>
+  </data>
+  <data name="Error_edit_unknown_enum_label" xml:space="preserve">
+    <value>This is not one of the values this column allows.</value>
+  </data>
+  <data name="Error_edit_not_editable" xml:space="preserve">
+    <value>This value cannot be edited here.</value>
+  </data>
+  <data name="Error_edit_read_only_connection" xml:space="preserve">
+    <value>This connection is read only.</value>
+  </data>
+  <data name="Error_edit_no_primary_key" xml:space="preserve">
+    <value>This table has no primary key, so its rows cannot be told apart.</value>
+  </data>
+  <data name="Error_edit_key_unreadable" xml:space="preserve">
+    <value>A row's key cannot be read back exactly, so the row cannot be changed here.</value>
+  </data>
+  <data name="Error_edit_columns_changed" xml:space="preserve">
+    <value>The table's columns changed since the rows were read. Refresh the table and edit again.</value>
+  </data>
+  <data name="Error_edit_safe_mode_changed" xml:space="preserve">
+    <value>The connection's Safe Mode changed. Save again to see what it asks.</value>
+  </data>
+  <data name="Error_edit_not_as_planned" xml:space="preserve">
+    <value>The connection would save other statements than the ones planned. Save again.</value>
+  </data>
+  <data name="Error_edit_not_confirmed" xml:space="preserve">
+    <value>Safe Mode asks before this save. Save again to answer it.</value>
+  </data>
+  <data name="Error_edit_no_default" xml:space="preserve">
+    <value>This column has no default a saved row can be set to.</value>
+  </data>
+  <data name="Error_edit_already_saved" xml:space="preserve">
+    <value>This save already ran.</value>
+  </data>
+  <data name="Error_edit_out_of_range" xml:space="preserve">
+    <value>The rows changed since they were read. Refresh the table and edit again.</value>
+  </data>
+  <data name="Error_build_no_row_identity" xml:space="preserve">
+    <value>This table has no way to name a single row.</value>
+  </data>
+  <data name="Error_build_read_only_rows" xml:space="preserve">
+    <value>Rows of this table cannot be edited, because nothing identifies one.</value>
+  </data>
+  <data name="Error_build_nothing_to_update" xml:space="preserve">
+    <value>There is nothing to save.</value>
+  </data>
+  <data name="Error_build_no_insert_values" xml:space="preserve">
+    <value>This database has no statement for a new row that sets no column. Enter a value in at least one column, or insert the row with a query.</value>
+  </data>
+  <data name="Error_build_undecodable_key" xml:space="preserve">
+    <value>Part of this row's key could not be read from the server, so the row cannot be changed.</value>
+  </data>
+  <data name="Error_build_server_computed_value" xml:space="preserve">
+    <value>A column here cannot be set to a value the server computes.</value>
+  </data>
+  <data name="Error_build_bind" xml:space="preserve">
+    <value>A value here cannot be sent to this database.</value>
+  </data>
+  <data name="Error_build_unknown_key_column" xml:space="preserve">
+    <value>The row key names a column this table no longer has.</value>
+  </data>
+  <data name="Error_build_length_mismatch" xml:space="preserve">
+    <value>The row key does not fit the table's key.</value>
+  </data>
+  <data name="Error_build_unaddressable_field" xml:space="preserve">
+    <value>A field here has a name an update cannot write.</value>
+  </data>
+  <data name="Error_driver_rolled_back" xml:space="preserve">
+    <value>Nothing was saved.</value>
+  </data>
+  <data name="Error_driver_row_guard_failed" xml:space="preserve">
+    <value>A row changed or went away since it was read, so nothing was saved.</value>
+  </data>
+  <data name="Error_driver_guard_unsupported" xml:space="preserve">
+    <value>This database cannot report how many rows a change touched, so nothing was saved.</value>
+  </data>
+  <data name="Error_driver_partially_applied" xml:space="preserve">
+    <value>Part of the save was written before it stopped.</value>
+  </data>
+  <data name="Error_driver_commit_outcome_unknown" xml:space="preserve">
+    <value>The save was sent and no answer came back, so it may have been written.</value>
   </data>
 </root>

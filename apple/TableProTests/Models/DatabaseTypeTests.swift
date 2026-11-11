@@ -145,7 +145,7 @@ struct DatabaseTypeTests {
     func testCACertificateRequirement() {
         #expect(DatabaseType.trino.requiresCACertificate(for: .verifyIdentity) == false)
         #expect(DatabaseType.clickhouse.requiresCACertificate(for: .verifyIdentity) == false)
-        #expect(DatabaseType.postgresql.requiresCACertificate(for: .verifyIdentity) == true)
+        #expect(DatabaseType.postgresql.requiresCACertificate(for: .verifyIdentity) == false)
         #expect(DatabaseType.mysql.requiresCACertificate(for: .verifyIdentity) == true)
         #expect(DatabaseType(rawValue: "FutureDB").requiresCACertificate(for: .verifyIdentity) == true)
     }

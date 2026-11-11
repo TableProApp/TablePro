@@ -19,6 +19,9 @@ internal struct BooleanPickerView: View {
             )
             Text("true").tag("1")
             Text("false").tag("0")
+            if let stored = Self.unrecognizedValue(of: context.valueState) {
+                Text(verbatim: stored).tag(stored)
+            }
         } label: {
             EmptyView()
         }
@@ -28,9 +31,7 @@ internal struct BooleanPickerView: View {
         .disabled(context.isReadOnly)
     }
 
-    /// The selection follows `valueState`, so a value the user has just picked on a NULL column
-    /// shows that value. Reading the stored value instead is what made the control snap back to
-    /// NULL over a recorded edit.
+    // The selection follows `valueState`, so a value just picked on a NULL column shows instead of snapping back to NULL.
     private var selectionBinding: Binding<String> {
         Binding(
             get: {
@@ -45,11 +46,16 @@ internal struct BooleanPickerView: View {
         )
     }
 
-    private static func normalized(_ value: String) -> String {
-        let lower = value.lowercased()
-        if lower == "true" || lower == "1" || lower == "t" || lower == "yes" {
-            return "1"
-        }
-        return "0"
+    internal static func normalized(_ value: String) -> String {
+        guard let isTrue = StoredBoolean.value(of: value) else { return value.isEmpty ? "0" : value }
+        return isTrue ? "1" : "0"
+    }
+
+    // A TINYINT(1) can hold 2, which is neither choice, so the picker shows it rather than reading it as false.
+    internal static func unrecognizedValue(of state: FieldValueState) -> String? {
+        guard FieldPickerSentinel.tag(for: state) == nil else { return nil }
+        let text = state.editableText
+        guard !text.isEmpty, StoredBoolean.value(of: text) == nil else { return nil }
+        return text
     }
 }

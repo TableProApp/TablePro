@@ -55,6 +55,7 @@ public struct PluginRowChange: Sendable {
         case delete
     }
 
+    // One row can arrive as several changes, each with its own key and the row as it stands before that change.
     public let rowIndex: Int
     public let type: ChangeType
     public let cellChanges: [(columnIndex: Int, columnName: String, oldValue: PluginCellValue, newValue: PluginCellValue)]
@@ -70,6 +71,11 @@ public struct PluginRowChange: Sendable {
     /// that declares `PluginCapabilities.cellExpressions` is handed any.
     public var expressionColumns: Set<Int>?
 
+    // The columns whose new value is the column's default rather than a value: an update's `cellChanges`, or a new
+    // row's `insertedRowData` cells. Such a cell still holds the text `__DEFAULT__`, which a driver built before this
+    // field reads as the default. Every other cell is a value, that text included.
+    public var defaultColumns: Set<Int>?
+
     public init(
         rowIndex: Int,
         type: ChangeType,
@@ -80,6 +86,10 @@ public struct PluginRowChange: Sendable {
         self.type = type
         self.cellChanges = cellChanges
         self.originalRow = originalRow
+    }
+
+    public func isColumnDefault(_ columnIndex: Int) -> Bool {
+        defaultColumns?.contains(columnIndex) ?? false
     }
 }
 
@@ -1495,7 +1505,7 @@ public extension PluginDatabaseDriver {
         parameters: [PluginCellValue]?,
         context: PluginStatementContext
     ) async throws -> PluginQueryResult {
-        try await PluginParameterBinder.$hostFeatures.withValue(context.lexicalFeatures) {
+        try await PluginParameterBinder.withHostContext(context) {
             try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
         }
     }
@@ -1505,7 +1515,7 @@ public extension PluginDatabaseDriver {
         parameters: [PluginCellValue],
         context: PluginStatementContext
     ) async throws -> PluginQueryResult {
-        try await PluginParameterBinder.$hostFeatures.withValue(context.lexicalFeatures) {
+        try await PluginParameterBinder.withHostContext(context) {
             try await executeParameterized(query: query, parameters: parameters)
         }
     }
@@ -1559,9 +1569,12 @@ public extension PluginDatabaseDriver {
         guard !parameters.isEmpty else {
             return try await execute(query: query)
         }
+        let kinds = PluginParameterBinder.hostParameterKinds
         let sql = try PluginParameterBinder.bind(
             query,
-            literals: parameters.map(sqlLiteral(for:)),
+            literals: parameters.enumerated().map { index, value in
+                sqlLiteral(for: value, kind: kinds.flatMap { $0.indices.contains(index) ? $0[index] : nil })
+            },
             style: parameterStyle,
             features: literalFeatures
         )
@@ -1569,11 +1582,17 @@ public extension PluginDatabaseDriver {
     }
 
     func sqlLiteral(for value: PluginCellValue) -> String {
+        sqlLiteral(for: value, kind: nil)
+    }
+
+    // A nil kind is a value nobody typed, such as a grid cell, whose text the host wrote: number-shaped text is a number.
+    func sqlLiteral(for value: PluginCellValue, kind: PluginColumnKind?) -> String {
         switch value {
         case .null:
             return "NULL"
         case .text(let s):
-            return escapedParameterValue(s)
+            guard let kind else { return escapedParameterValue(s) }
+            return typedParameterValue(s, kind: kind)
         case .bytes(let data):
             var hex = "X'"
             hex.reserveCapacity(2 + data.count * 2 + 1)
@@ -1595,6 +1614,23 @@ public extension PluginDatabaseDriver {
 
     static func isNumericLiteral(_ value: String) -> Bool {
         PluginNumericLiteral.isValid(value)
+    }
+
+    // Text the server cannot read as the declared number or boolean is sent as a string, for the server to refuse.
+    func typedParameterValue(_ value: String, kind: PluginColumnKind) -> String {
+        switch kind {
+        case .integer, .decimal:
+            if PluginSQLLiteral.isNumericLiteral(value, kind: kind) { return value }
+        case .boolean:
+            switch PluginSQLLiteral.booleanSynonym(for: value, kind: kind) {
+            case .isTrue: return "TRUE"
+            case .isFalse: return "FALSE"
+            case nil: break
+            }
+        case .text, .other:
+            break
+        }
+        return PluginSQLQuoting.stringLiteral(value, escapes: PluginSQLQuoting.Escapes(features: literalFeatures))
     }
 
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {

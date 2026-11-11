@@ -7,18 +7,48 @@ import Foundation
 
 final class RowDisplayBox {
     var values: ContiguousArray<String?>
+    // A bit per column whose display format produced its text, so the draw reads it without formatting again.
+    private var formattedBits: ContiguousArray<UInt64> = []
 
     init(_ values: ContiguousArray<String?>) {
         self.values = values
+    }
+
+    func setText(_ text: String?, at index: Int, isFormatted: Bool) {
+        values[index] = text
+        let word = index >> 6
+        let bit = UInt64(1) << UInt64(index & 63)
+        if isFormatted {
+            if word >= formattedBits.count {
+                formattedBits.append(contentsOf: repeatElement(0, count: word + 1 - formattedBits.count))
+            }
+            formattedBits[word] |= bit
+        } else if word < formattedBits.count {
+            formattedBits[word] &= ~bit
+        }
+    }
+
+    func isFormatted(at index: Int) -> Bool {
+        let word = index >> 6
+        return index >= 0 && word < formattedBits.count && formattedBits[word] & (UInt64(1) << UInt64(index & 63)) != 0
+    }
+
+    func clearText(at index: Int) {
+        guard index >= 0, index < values.count else { return }
+        setText(nil, at: index, isFormatted: false)
+    }
+
+    func clearAllText() {
+        for index in values.indices {
+            values[index] = nil
+        }
+        formattedBits.removeAll()
     }
 }
 
 @MainActor
 final class RowDisplayCache {
-    /// A box is a reference and callers mutate one in place before handing it back, so the cost
-    /// recorded at insertion is the only number that still describes what was added. Recomputing it
-    /// from the box on removal subtracts a different figure than was added and drifts `totalCost`
-    /// away from the budget it is there to enforce.
+    // Callers mutate a box in place, so only the cost recorded at insertion matches what was added to `totalCost`.
     private struct Entry {
         let box: RowDisplayBox
         let cost: Int
@@ -80,17 +110,12 @@ final class RowDisplayCache {
         totalCost = 0
     }
 
-    /// Drops one row's formatted values while keeping its box, so the next read
-    /// reformats from the current cell values. Row ids are positional, so a row
-    /// whose content changed in place keeps its id and would otherwise be served
-    /// its pre-edit text.
+    // Row ids are positional: a row edited in place keeps its id and would otherwise be served its pre-edit text.
     func clearValues(forID id: RowID) {
         highlights.removeValue(forKey: id)
         guard let existing = storage[id] else { return }
         totalCost -= existing.cost
-        for index in existing.box.values.indices {
-            existing.box.values[index] = nil
-        }
+        existing.box.clearAllText()
         storage[id] = Entry(box: existing.box, cost: 0)
     }
 
@@ -99,8 +124,8 @@ final class RowDisplayCache {
         guard !dataIndexes.isEmpty else { return }
         highlights.removeAll(keepingCapacity: true)
         storage = storage.mapValues { entry in
-            for index in dataIndexes where index < entry.box.values.count {
-                entry.box.values[index] = nil
+            for index in dataIndexes {
+                entry.box.clearText(at: index)
             }
             let cost = Self.rowCost(entry.box.values)
             totalCost += cost - entry.cost

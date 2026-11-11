@@ -94,6 +94,7 @@ async fn edit_by_max_id(connection: &Arc<dyn Connection>, id_type: &str, id: Val
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![read[0][0].clone()],
             assignments: vec![(label, CellInput::Value(Value::Text("after".to_owned())))],
+            read: Vec::new(),
         })],
     };
     let dialect = connection.dialect();

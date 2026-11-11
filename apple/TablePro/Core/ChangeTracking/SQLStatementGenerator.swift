@@ -17,12 +17,12 @@ struct ParameterizedStatement: @unchecked Sendable {
     let parameters: [Any?]
 }
 
-/// A statement plus the rows it is meant to touch, so a caller can hold the server to that count
-/// and tell a change that became a statement from one that did not.
+// The rows it should touch hold the server to a count; the changes it writes tell a written change from a dropped one.
 struct AttributedStatement: @unchecked Sendable {
     let statement: ParameterizedStatement
     let kind: RowWriteKind
     let rowIDs: [RowID]
+    let changeIDs: [UUID]
     var refusesSharedKey = false
 
     var rowCount: Int { rowIDs.count }
@@ -125,16 +125,8 @@ struct SQLStatementGenerator {
         ).map(\.statement)
     }
 
-    /// The same statements, each carrying how many rows it is meant to touch.
-    ///
-    /// Emitted in the order the user made the changes, because that order can be load-bearing: a
-    /// row deleted to free a unique value, and a new row taking that value, only work if the
-    /// DELETE runs first. Grouping every INSERT ahead of every DELETE, which is what this used to
-    /// do, turned that save into a constraint violation and rolled the whole thing back.
-    ///
-    /// Deletes still batch, but only across a consecutive run of them. That keeps the case that
-    /// matters, selecting many rows and pressing Delete, on one statement, while a delete
-    /// separated from another delete by an insert stays on its own side of it.
+    // In edit order, since a row deleted to free a unique value must go before the row that takes it. Only a
+    // consecutive run of deletes batches.
     func generateAttributedStatements(
         from changes: [RowChange],
         insertedRowData: [RowID: [PluginCellValue]],
@@ -156,7 +148,8 @@ struct SQLStatementGenerator {
                 flushDeleteRun()
                 if let stmt = generateUpdateSQL(for: change) {
                     statements.append(AttributedStatement(
-                        statement: stmt, kind: .update, rowIDs: [change.rowID], refusesSharedKey: matchesEitherWay(change)
+                        statement: stmt, kind: .update, rowIDs: [change.rowID], changeIDs: [change.id],
+                        refusesSharedKey: matchesEitherWay(change)
                     ))
                 }
             case .insert:
@@ -164,7 +157,9 @@ struct SQLStatementGenerator {
                 guard insertedRowIDs.contains(change.rowID) else { continue }
                 flushDeleteRun()
                 if let stmt = generateInsertSQL(for: change, insertedRowData: insertedRowData) {
-                    statements.append(AttributedStatement(statement: stmt, kind: .insert, rowIDs: [change.rowID]))
+                    statements.append(AttributedStatement(
+                        statement: stmt, kind: .insert, rowIDs: [change.rowID], changeIDs: [change.id]
+                    ))
                 }
             case .delete:
                 // SAFETY: Verify the row is still marked as deleted
@@ -553,12 +548,12 @@ struct SQLStatementGenerator {
 
     private func generateDeleteStatements(for changes: [RowChange]) -> [AttributedStatement] {
         let rowMatches = changes.compactMap { change in
-            deleteRowMatches(for: change).map { (rowID: change.rowID, matches: $0) }
+            deleteRowMatches(for: change).map { (rowID: change.rowID, changeID: change.id, matches: $0) }
         }
         guard !rowMatches.isEmpty else { return [] }
 
         var statements: [AttributedStatement] = []
-        var chunk: [(rowID: RowID, matches: [DeleteColumnMatch])] = []
+        var chunk: [(rowID: RowID, changeID: UUID, matches: [DeleteColumnMatch])] = []
         var chunkParameterCount = 0
 
         func flush() {
@@ -567,6 +562,7 @@ struct SQLStatementGenerator {
                     statement: deleteStatement(for: chunk.map(\.matches)),
                     kind: .delete,
                     rowIDs: chunk.map(\.rowID),
+                    changeIDs: chunk.map(\.changeID),
                     refusesSharedKey: chunk.contains { $0.matches.contains { matchesEitherWay($0.boundValue) } }
                 )
             )

@@ -28,7 +28,7 @@ internal final class InfluxDBPluginDriver: PluginDatabaseDriver, @unchecked Send
 
     var serverVersion: String? { lock.withLock { server?.version } }
     var supportsTransactions: Bool { false }
-    var capabilities: PluginCapabilities { [.cancelQuery] }
+    var capabilities: PluginCapabilities { [.cancelQuery, .columnDefaultMarks] }
     var currentDatabase: String? { lock.withLock { database.isEmpty ? nil : database } }
 
     func beginTransaction() async throws {}
@@ -152,7 +152,7 @@ internal final class InfluxDBPluginDriver: PluginDatabaseDriver, @unchecked Send
         let started = Date()
         let (_, server) = try requireConnection()
         let table: InfluxResultTable
-        if let remembered = lock.withLock({ gridQueries[query] }) {
+        if let remembered = rememberedGrid(query) {
             table = try await runGrid(remembered.query, hostKinds: remembered.hostKinds, generation: server.generation)
         } else {
             table = try await run(InfluxStatement.route(query, generation: server.generation))
@@ -160,22 +160,30 @@ internal final class InfluxDBPluginDriver: PluginDatabaseDriver, @unchecked Send
         return PluginQueryResult(
             columns: table.columns,
             columnTypeNames: table.typeNames,
-            rows: table.rows.map { row in row.map { $0.map(PluginCellValue.text) ?? .null } },
+            rows: Self.cells(table.rows),
             rowsAffected: 0,
             executionTime: Date().timeIntervalSince(started),
-            columnMeta: zip(table.columns, table.typeNames).map { name, typeName in
-                Self.columnInfo(name: name, typeName: typeName, role: nil)
-            }
+            columnMeta: Self.columnMeta(columns: table.columns, typeNames: table.typeNames)
         )
     }
 
-    // A grid statement built before the measurement's columns were known is written again from them here.
-    // A filter on a column the cached schema lacks means the measurement gained one since; the schema is read again.
     private func runGrid(
         _ grid: InfluxGridQuery,
         hostKinds: [String: InfluxColumnKind],
         generation: InfluxGeneration
     ) async throws -> InfluxResultTable {
+        let (statement, schema) = try await gridStatementFromSchema(grid, hostKinds: hostKinds, generation: generation)
+        let table = try await run(statement).typed(by: schema)
+        return table.columns.isEmpty ? grid.emptyResult(schema: schema) : table
+    }
+
+    // A grid statement built before the measurement's columns were known is written again from them here.
+    // A filter on a column the cached schema lacks means the measurement gained one since; the schema is read again.
+    func gridStatementFromSchema(
+        _ grid: InfluxGridQuery,
+        hostKinds: [String: InfluxColumnKind],
+        generation: InfluxGeneration
+    ) async throws -> (statement: InfluxStatement, schema: [InfluxColumn]) {
         var schema = try await columns(of: grid.measurement)
         let known = Set(schema.map(\.name))
         if grid.filters.contains(where: { !known.contains($0.column) }) {
@@ -186,20 +194,31 @@ internal final class InfluxDBPluginDriver: PluginDatabaseDriver, @unchecked Send
         guard let text = grid.statement(language: language, kinds: kinds, marked: false) else {
             throw InfluxError.filterNotExpressible(language)
         }
-        var table = try await run(InfluxStatement(language: language, text: text)).typed(by: schema)
-        if table.columns.isEmpty {
-            let names = grid.projection.isEmpty ? schema.map(\.name) : grid.projection
-            let types = Dictionary(schema.map { ($0.name, $0.typeName) }, uniquingKeysWith: { first, _ in first })
-            table = InfluxResultTable(
-                columns: names,
-                typeNames: names.map { types[$0] ?? InfluxTypeName.string },
-                rows: []
-            )
-        }
-        return table
+        return (InfluxStatement(language: language, text: text), schema)
+    }
+
+    func rememberedGrid(_ statement: String) -> RememberedGridQuery? {
+        lock.withLock { gridQueries[statement] }
     }
 
     func run(_ statement: InfluxStatement) async throws -> InfluxResultTable {
+        let (connection, server, request) = try await queryRequest(statement)
+        let response = try await connection.send(request)
+        guard response.isSuccess else { throw response.error }
+        switch (server.generation, statement.language) {
+        case (.v3, _):
+            return try InfluxResponseDecoder.decodeV3CSV(response.data)
+        case (_, .flux):
+            return try InfluxResponseDecoder.decodeFluxCSV(response.data)
+        default:
+            return try InfluxResponseDecoder.decodeV1JSON(response.data)
+        }
+    }
+
+    func queryRequest(
+        _ statement: InfluxStatement,
+        streamed: Bool = false
+    ) async throws -> (connection: InfluxDBConnection, server: InfluxServerInfo, request: InfluxRequest) {
         let (connection, server) = try requireConnection()
         let (database, organization) = lock.withLock { (self.database, self.organization) }
         if server.generation == .v3, statement.language == .sql, database.isEmpty {
@@ -221,18 +240,10 @@ internal final class InfluxDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             retentionPolicy: target.retentionPolicy,
             organization: organization,
             generation: server.generation,
-            credentials: connection.credentials
+            credentials: connection.credentials,
+            streamed: streamed
         )
-        let response = try await connection.send(request)
-        guard response.isSuccess else { throw response.error }
-        switch (server.generation, statement.language) {
-        case (.v3, _):
-            return try InfluxResponseDecoder.decodeV3CSV(response.data)
-        case (_, .flux):
-            return try InfluxResponseDecoder.decodeFluxCSV(response.data)
-        default:
-            return try InfluxResponseDecoder.decodeV1JSON(response.data)
-        }
+        return (connection, server, request)
     }
 
     // Safe Mode read this script with TablePro's lexer. The server parses it first, and a script it reads as writing or
@@ -360,10 +371,18 @@ internal final class InfluxDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             columnCheck: nil
         )
     }
+
+    static func columnMeta(columns: [String], typeNames: [String]) -> [PluginColumnInfo] {
+        zip(columns, typeNames).map { name, typeName in columnInfo(name: name, typeName: typeName, role: nil) }
+    }
+
+    static func cells(_ rows: [[String?]]) -> [PluginRow] {
+        rows.map { row in row.map { $0.map(PluginCellValue.text) ?? .null } }
+    }
 }
 
 // The statements the driver built for its grid, so `execute` runs them knowing the measurement they read.
-private struct RememberedGridQuery {
+struct RememberedGridQuery {
     let query: InfluxGridQuery
     let hostKinds: [String: InfluxColumnKind]
 }

@@ -14,25 +14,24 @@ import os
 import TableProConnectionLibrary
 import TableProPluginKit
 import TableProProcess
+import TableProTLSClientIdentity
 import Yams
 
 // MARK: - Public Types
 
-/// What the service is doing: dump (back up) a database or restore a dump file.
 enum NativeDumpKind: Equatable, Sendable {
     case backup
     case restore
 }
 
-/// Observable state of a backup or restore.
 enum NativeDumpState: Equatable {
     case idle
     case running(database: String, fileURL: URL, bytesProcessed: Int64, totalBytes: Int64?)
     case cancelling
     case finished(database: String, fileURL: URL, bytesProcessed: Int64, skippedSettings: [String] = [])
-    /// A restore that fails part way through has already replayed some of the dump, and the
-    /// target is left in whatever state that reached. A backup writes only to its own file, which
-    /// is removed, so nothing of the user's is touched.
+    // A restore that fails part way through has already replayed some of the dump, and the
+    // target is left in whatever state that reached. A backup writes only to its own file, which
+    // is removed, so nothing of the user's is touched.
     case failed(message: String, targetMayBeModified: Bool)
     case cancelled
 }
@@ -48,6 +47,7 @@ enum NativeDumpError: LocalizedError, Equatable {
     case unreachableServer(message: String)
     case nulInArgument
     case uncheckedThroughTunnel(tool: String, mode: SSLMode, supportedModes: [SSLMode])
+    case systemTrustUnavailable(message: String)
 
     var errorDescription: String? {
         switch self {
@@ -67,7 +67,7 @@ enum NativeDumpError: LocalizedError, Equatable {
             return String(localized: "The selected backup file is not readable.")
         case .engineStatementUnavailable:
             return String(localized: "TablePro could not read the database's own name from the connection.")
-        case .incompatibleTool(let message), .unreachableServer(let message):
+        case .incompatibleTool(let message), .unreachableServer(let message), .systemTrustUnavailable(let message):
             return message
         case .nulInArgument:
             return String(localized: "The database name or a sign-in value holds a NUL character, which a command line cannot carry.")
@@ -98,29 +98,28 @@ internal enum NativeDumpExitPolicy: Equatable, Sendable {
     }
 }
 
-/// Parameters for a single backup or restore subprocess.
 struct NativeDumpCommand: Equatable {
     let executable: URL
     let arguments: [String]
     let environment: [String: String]
     let stderrByteCap: Int
 
-    /// Where the tool's output goes. `pg_dump -Fc` is told a path and writes it itself, while
-    /// `mysqldump` and `sqlite3 .dump` write SQL to standard output for the caller to redirect.
+    // Where the tool's output goes. `pg_dump -Fc` is told a path and writes it itself, while
+    // `mysqldump` and `sqlite3 .dump` write SQL to standard output for the caller to redirect.
     let delivery: NativeDumpDescriptor.OutputDelivery
 
-    /// The file standard output is redirected to, or read from on a restore. Nil when the tool
-    /// handles the file itself.
+    // The file standard output is redirected to, or read from on a restore. Nil when the tool
+    // handles the file itself.
     let redirectedFileURL: URL?
 
-    /// A credentials file written for tools that read a password from neither the environment nor
-    /// standard input. Removed once the process exits, however it exits.
+    // A credentials file written for tools that read a password from neither the environment nor
+    // standard input. Removed once the process exits, however it exits.
     let temporaryCredentialsFileURL: URL?
 
     let clientPluginFolder: MariaDBClientPluginFolder?
 
-    /// Which direction a redirected file goes: a restore feeds it in as standard input, a backup
-    /// takes standard output and writes it out.
+    // Which direction a redirected file goes: a restore feeds it in as standard input, a backup
+    // takes standard output and writes it out.
     let isRestore: Bool
 
     internal let exitPolicy: NativeDumpExitPolicy
@@ -150,11 +149,10 @@ struct NativeDumpCommand: Equatable {
     }
 }
 
-/// Parameters for a dump the engine runs for itself.
 struct NativeDumpStatementJob: Sendable, Equatable {
     let statements: [String]
-    /// Run after a failure and ignored. A `DETACH` inside a transaction the engine already aborted
-    /// fails too, and the caller has the real error to report instead of this one.
+    // Run after a failure and ignored. A `DETACH` inside a transaction the engine already aborted
+    // fails too, and the caller has the real error to report instead of this one.
     let cleanupStatements: [String]
     let scope: DatabaseScope
     var isolatedImport: NativeDumpIsolatedImport?
@@ -168,8 +166,8 @@ struct NativeDumpIsolatedImport: Sendable, Equatable {
     let file: URL
 }
 
-/// What a run is, so the service can pick a runner without either runner accepting a shape it
-/// cannot execute.
+// What a run is, so the service can pick a runner without either runner accepting a shape it
+// cannot execute.
 enum NativeDumpJob {
     case process(NativeDumpCommand)
     case statements(NativeDumpStatementJob)
@@ -201,7 +199,6 @@ internal extension NativeDumpJob {
     }
 }
 
-/// Captured terminal state of a finished/cancelled run.
 struct NativeDumpRunResult: Equatable {
     let exitCode: Int32
     let stderr: String
@@ -209,14 +206,12 @@ struct NativeDumpRunResult: Equatable {
     var targetUntouched = false
 }
 
-/// Runs one backup or restore and reports how it ended. Abstracted so the state machine can be
-/// tested without launching a process or reaching a database.
+// Runs one backup or restore and reports how it ended. Abstracted so the state machine can be
+// tested without launching a process or reaching a database.
 protocol NativeDumpRunner: AnyObject {
-    /// Begins the work. Throws synchronously if it cannot be started at all.
     func start() throws
-    /// Asks for cancellation. Safe to call more than once.
+    // Safe to call more than once.
     func cancel()
-    /// Resolves once the work has ended, however it ended.
     var result: NativeDumpRunResult { get async }
     // How far a restore has read its file, or nil when the runner cannot tell.
     var bytesRead: Int64? { get }
@@ -244,6 +239,8 @@ final class NativeDumpService: ObservableObject {
     private var preparation: Task<NativeDumpDescriptor.Request, any Error>?
     // The Vault lease the tool signs in with, held until the tool exits.
     private var credentialLease: VaultLease?
+    // The roots file the tool checks the server with, removed when the tool exits.
+    private var systemTrustAnchors: SystemTrustAnchorFile?
     private let runningWork: RunningWorkRegistry
     private let reportCompletion: @MainActor (OperationCompletion) -> Void
     private var trackedRestore: TrackedRestore?
@@ -273,13 +270,13 @@ final class NativeDumpService: ObservableObject {
         state = newState
         switch newState {
         case .finished:
-            releaseCredentialLease()
+            releaseRunResources()
             finishTrackedRestore(.succeeded(OperationSummary()))
         case .failed(let message, _):
-            releaseCredentialLease()
+            releaseRunResources()
             finishTrackedRestore(.failed(reason: message))
         case .cancelled:
-            releaseCredentialLease()
+            releaseRunResources()
             finishTrackedRestore(.cancelled)
         case .idle, .running, .cancelling:
             break
@@ -417,12 +414,12 @@ final class NativeDumpService: ObservableObject {
             effective.username = username
         }
         let password = signIn.password
-        releaseCredentialLease()
+        releaseRunResources()
         credentialLease = signIn.lease
         signIn.lease?.start { _ in }
         var jobStarted = false
         defer {
-            if !jobStarted { releaseCredentialLease() }
+            if !jobStarted { releaseRunResources() }
         }
         let localFilePath = Self.localFilePath(for: effective)
         let catalog = descriptor.engineStatements == nil
@@ -453,6 +450,7 @@ final class NativeDumpService: ObservableObject {
                 return
             }
             request = prepared
+            request.systemTrustAnchorsFile = try await holdSystemTrustAnchors(for: request, tool: tool)
             let command = try Self.buildCommand(
                 kind: kind,
                 tool: tool,
@@ -480,9 +478,29 @@ final class NativeDumpService: ObservableObject {
         Self.logger.info("\(self.toolName, privacy: .public) started db=\(database, privacy: .private(mask: .hash))")
     }
 
-    private func releaseCredentialLease() {
+    private func releaseRunResources() {
         credentialLease?.release()
         credentialLease = nil
+        systemTrustAnchors?.remove()
+        systemTrustAnchors = nil
+    }
+
+    // Off the main actor: the first build in a minute reads every trust setting, 150 to 275 ms measured.
+    private func holdSystemTrustAnchors(
+        for request: NativeDumpDescriptor.Request,
+        tool: NativeDumpDescriptor.CommandLineTool
+    ) async throws -> URL? {
+        let file = try await Task.detached { () throws -> SystemTrustAnchorFile? in
+            guard tool.needsSystemTrustAnchors(request) else { return nil }
+            do {
+                return try SystemTrustAnchors.shared.writeFile()
+            } catch {
+                throw NativeDumpError.systemTrustUnavailable(message: error.localizedDescription)
+            }
+        }.value
+        systemTrustAnchors?.remove()
+        systemTrustAnchors = file
+        return file?.url
     }
 
     // Nil when a cancel arrived while it ran: the checks it was making stop, and the run reads as cancelled rather than
@@ -561,12 +579,11 @@ final class NativeDumpService: ObservableObject {
         }
     }
 
-    /// A cancel that arrives before the tool is running is latched rather than dropped.
-    ///
-    /// `start` finds the binary and asks it what it is before there is anything to cancel, and both
-    /// steps spawn a process, so the window is real: a Cancel taken during it used to be discarded
-    /// and the tool launched afterwards, which on a restore means writing to the target database
-    /// the user just said to leave alone.
+    // A cancel that arrives before the tool is running is latched rather than dropped.
+    // `start` finds the binary and asks it what it is before there is anything to cancel, and both
+    // steps spawn a process, so the window is real: a Cancel taken during it used to be discarded
+    // and the tool launched afterwards, which on a restore means writing to the target database
+    // the user just said to leave alone.
     func cancel() {
         cancelRequested = true
         preparation?.cancel()
@@ -634,21 +651,18 @@ final class NativeDumpService: ObservableObject {
         return refusal.map { .incompatible($0) } ?? .missing
     }
 
-    /// The path a file-backed driver actually opens, read from wherever that driver keeps it.
-    /// SQLite uses `database`; DuckDB and libSQL use a plugin-declared additional field.
+    // SQLite uses `database`; DuckDB and libSQL use a plugin-declared additional field.
     static func localFilePath(for connection: DatabaseConnection) -> String? {
         guard let field = PluginManager.shared.localFilePathField(for: connection.type) else { return nil }
         let path = connection.localFilePath(in: field)
         return path.isEmpty ? nil : path
     }
 
-    /// The engine's own name for the database being dumped.
-    ///
-    /// `COPY FROM DATABASE` names a catalog, and DuckDB derives a catalog name from the file's
-    /// basename: measured, `my-weird.name.db` attaches as `my-weird`, and `COPY FROM DATABASE main`
-    /// fails with `Catalog "main" does not exist`. DuckDB also reaches more than one catalog at once
-    /// through `ATTACH`, so the answer is the picked database when the engine lists it, and only
-    /// otherwise the one the session is on.
+    // `COPY FROM DATABASE` names a catalog, and DuckDB derives a catalog name from the file's
+    // basename: measured, `my-weird.name.db` attaches as `my-weird`, and `COPY FROM DATABASE main`
+    // fails with `Catalog "main" does not exist`. DuckDB also reaches more than one catalog at once
+    // through `ATTACH`, so the answer is the picked database when the engine lists it, and only
+    // otherwise the one the session is on.
     static func resolvedCatalog(connectionId: UUID, database: String) async -> String? {
         guard let scope = DatabaseManager.shared.resolvedScope(
             database: database, schema: nil, for: connectionId
@@ -664,9 +678,9 @@ final class NativeDumpService: ObservableObject {
         }
     }
 
-    /// Pure so the choice is testable without an engine. The picked name wins when the engine says
-    /// it exists, because a connection with two catalogs attached has to dump the one that was
-    /// ticked rather than whichever the session is parked on.
+    // Pure so the choice is testable without an engine. The picked name wins when the engine says
+    // it exists, because a connection with two catalogs attached has to dump the one that was
+    // ticked rather than whichever the session is parked on.
     nonisolated static func catalogName(
         picked: String,
         reported: [String],
@@ -716,18 +730,18 @@ final class NativeDumpService: ObservableObject {
         )
     }
 
-    /// Unique per run, so a `DETACH` that could not execute leaves nothing behind that blocks the
-    /// next attempt with "database with name already exists".
+    // Unique per run, so a `DETACH` that could not execute leaves nothing behind that blocks the
+    // next attempt with "database with name already exists".
     static func backupAlias() -> String {
         "tablepro_backup_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12))"
     }
 
     // MARK: - Command Construction
 
-    /// The descriptor supplies the arguments and the environment; this adds the parts every tool
-    /// shares. A password never joins the argument list, because `argv` is world readable through
-    /// `ps`: it goes in the environment where the tool reads one, and in a `0600` file where it
-    /// does not.
+    // The descriptor supplies the arguments and the environment; this adds the parts every tool
+    // shares. A password never joins the argument list, because `argv` is world readable through
+    // `ps`: it goes in the environment where the tool reads one, and in a `0600` file where it
+    // does not.
     nonisolated static func buildCommand(
         kind: NativeDumpKind,
         tool: NativeDumpDescriptor.CommandLineTool,
@@ -773,9 +787,9 @@ final class NativeDumpService: ObservableObject {
         )
     }
 
-    /// `mongodump` and `mongorestore` read a password from neither the environment nor standard
-    /// input, and one in `argv` is readable by every process on the machine. Their `--config` file
-    /// is the remaining channel, so it is written owner-only and removed when the process exits.
+    // `mongodump` and `mongorestore` read a password from neither the environment nor standard
+    // input, and one in `argv` is readable by every process on the machine. Their `--config` file
+    // is the remaining channel, so it is written owner-only and removed when the process exits.
     nonisolated static func writeMongoConfigurationFile(
         _ entries: [NativeDumpDescriptor.ConfigurationEntry]
     ) throws -> URL {
@@ -799,10 +813,10 @@ final class NativeDumpService: ObservableObject {
         return try Yams.serialize(node: .mapping(Node.Mapping(pairs)), width: -1, allowUnicode: true)
     }
 
-    /// The locale variables a spawned tool reads, named rather than spelled at each use site. The
-    /// preference-key guard scans this target's sources for a quoted string passed to a `forKey:`
-    /// label and reports anything outside the `com.TablePro` namespace, so a locale variable
-    /// written that way reads as a stray `UserDefaults` key. Comments are scanned too.
+    // The locale variables a spawned tool reads, named rather than spelled at each use site. The
+    // preference-key guard scans this target's sources for a quoted string passed to a `forKey:`
+    // label and reports anything outside the `com.TablePro` namespace, so a locale variable
+    // written that way reads as a stray `UserDefaults` key. Comments are scanned too.
     nonisolated internal enum LocaleEnvironmentKey {
         static let everyCategory = "LC_ALL"
         static let characterHandling = "LC_CTYPE"
@@ -875,9 +889,9 @@ final class NativeDumpService: ObservableObject {
         Self.logger.error("\(self.toolName, privacy: .public) failed code=\(result.exitCode) db=\(database, privacy: .private(mask: .hash)) stderr=\(result.stderr)")
     }
 
-    /// A DuckDB Parquet backup is a folder, so its size is the sum of what is inside it and its
-    /// removal is recursive. `removeItem` already handles a directory; `attributesOfItem` does not
-    /// sum one.
+    // A DuckDB Parquet backup is a folder, so its size is the sum of what is inside it and its
+    // removal is recursive. `removeItem` already handles a directory; `attributesOfItem` does not
+    // sum one.
     nonisolated static func sizeOfDestination(_ url: URL) -> Int64 {
         let manager = FileManager.default
         var isDirectory: ObjCBool = false
@@ -937,13 +951,12 @@ final class NativeDumpService: ObservableObject {
 // MARK: - Database Size Helper
 
 extension NativeDumpService {
-    /// Best-effort estimate of the database's on-disk size. Used as an upper bound for the backup
-    /// progress bar; the dump file is typically much smaller because of compression, so the bar
-    /// tops out at the size and then jumps when the tool exits. Returns nil if the query fails.
-    ///
-    /// Routed through `withMetadataDriver` rather than taken straight off `driver(for:)`. On the
-    /// session driver this query queues behind whatever the user is running and joins whatever
-    /// transaction a query tab left open, which is the hazard `metadataRoute` exists to avoid.
+    // Best-effort estimate of the database's on-disk size. Used as an upper bound for the backup
+    // progress bar; the dump file is typically much smaller because of compression, so the bar
+    // tops out at the size and then jumps when the tool exits.
+    // Routed through `withMetadataDriver` rather than taken straight off `driver(for:)`. On the
+    // session driver this query queues behind whatever the user is running and joins whatever
+    // transaction a query tab left open, which is the hazard `metadataRoute` exists to avoid.
     static func estimatedDatabaseSize(
         connection: DatabaseConnection,
         database: String
@@ -959,8 +972,8 @@ extension NativeDumpService {
         return Int64(text)
     }
 
-    /// An engine with no cheap size answer returns nil, which leaves the progress bar
-    /// indeterminate rather than showing a percentage of a number nobody measured.
+    // An engine with no cheap size answer returns nil, which leaves the progress bar
+    // indeterminate rather than showing a percentage of a number nobody measured.
     nonisolated static func sizeQuery(for type: DatabaseType) -> String? {
         switch type {
         case .postgresql, .redshift:

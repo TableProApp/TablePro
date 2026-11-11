@@ -7,6 +7,7 @@ import SwiftUI
 
 struct DataResultsSettingsView: View {
     @Binding var dataGrid: DataGridSettings
+    @Binding var valueColors: ValueColorSettings
     @Binding var history: HistorySettings
     @Binding var editor: EditorSettings
     @Binding var typography: TypographySettings
@@ -15,7 +16,7 @@ struct DataResultsSettingsView: View {
         Form {
             TypographySection(domain: .dataGrid, settings: $typography)
 
-            DataGridSection(settings: $dataGrid)
+            DataGridSection(settings: $dataGrid, valueColors: $valueColors)
 
             Section("JSON Viewer") {
                 Picker("Default view:", selection: $editor.jsonViewerPreferredMode) {
@@ -35,6 +36,7 @@ struct DataResultsSettingsView: View {
 #Preview {
     DataResultsSettingsView(
         dataGrid: .constant(.default),
+        valueColors: .constant(.default),
         history: .constant(.default),
         editor: .constant(.default),
         typography: .constant(.default)

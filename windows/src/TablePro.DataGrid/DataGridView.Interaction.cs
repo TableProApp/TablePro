@@ -20,10 +20,10 @@ public sealed partial class DataGridView
 
     public int Copies { get; private set; }
 
-    // Moves the focused cell for a key, as OnKeyDown does; false when the key is not the grid's.
+    // Moves the focused cell for a key, as OnKeyDown does; false when the key is not the grid's or an editor is open.
     public bool HandleKey(VirtualKey key, bool control, bool shift)
     {
-        if (_data is null || RowCount == 0 || ColumnCount == 0)
+        if (_data is null || RowCount == 0 || ColumnCount == 0 || IsEditing)
         {
             return false;
         }
@@ -60,6 +60,22 @@ public sealed partial class DataGridView
             case VirtualKey.C when control:
             case VirtualKey.Insert when control:
                 _ = CopySelectionAsync();
+                return true;
+            // Typing does not start an edit, as on macOS.
+            case VirtualKey.F2 when !control && !shift:
+            case VirtualKey.Enter when !control && !shift:
+                if (!IsEditable)
+                {
+                    return false;
+                }
+                BeginEditAfterKey();
+                return true;
+            case VirtualKey.Delete when !control && !shift:
+                if (!IsEditable)
+                {
+                    return false;
+                }
+                DeleteRequested?.Invoke(this, EventArgs.Empty);
                 return true;
             default:
                 return false;
@@ -157,11 +173,14 @@ public sealed partial class DataGridView
         using var cancel = new CancellationTokenSource();
         _copy = cancel;
         var data = _data;
+        var edited = _edited;
+        // Taken with the range, so a later swap of the edits cannot move the rows it names.
+        var edits = edited?.Edits ?? GridEdits.None;
         try
         {
             var text = await Task.Run(() =>
             {
-                using var reader = data.OpenReader();
+                using var reader = edited is null ? data.OpenReader() : edited.OpenReader(edits);
                 return GridCopy.Tsv(reader, range, cancel.Token);
             }, cancel.Token).ConfigureAwait(true);
             if (cancel.IsCancellationRequested || !ClipboardText.TrySet(text))
@@ -240,7 +259,7 @@ public sealed partial class DataGridView
             var cell = Cell(row, column);
             widest = Math.Max(widest, cell.IsNull
                 ? painter.Measure(CellPainter.NullText, placeholder: true)
-                : painter.Measure(Head(cell.Text, maxCharacters)));
+                : cell.IsDefault ? painter.MeasureDefault() : painter.Measure(Head(cell.Text, maxCharacters)));
         }
         return Math.Ceiling(widest + (CellPainter.Padding * 2) + 2);
     }
@@ -327,6 +346,12 @@ public sealed partial class DataGridView
     protected override void OnKeyDown(KeyRoutedEventArgs e)
     {
         ArgumentNullException.ThrowIfNull(e);
+        // The editor's keys bubble here, the Enter that committed it among them.
+        if (e.Handled || (_editor is not null && ReferenceEquals(e.OriginalSource, _editor)))
+        {
+            base.OnKeyDown(e);
+            return;
+        }
         if (HandleKey(e.Key, IsDown(VirtualKey.Control), IsDown(VirtualKey.Shift)))
         {
             e.Handled = true;
@@ -345,6 +370,60 @@ public sealed partial class DataGridView
         _frozenContent.PointerReleased += (_, _) => _dragging = false;
         _content.PointerCaptureLost += (_, _) => _dragging = false;
         _frozenContent.PointerCaptureLost += (_, _) => _dragging = false;
+        _content.DoubleTapped += (_, e) => OnPaneDoubleTapped(e, frozen: false);
+        _frozenContent.DoubleTapped += (_, e) => OnPaneDoubleTapped(e, frozen: true);
+        _content.ContextRequested += (_, e) => OnPaneContextRequested(e, frozen: false);
+        _frozenContent.ContextRequested += (_, e) => OnPaneContextRequested(e, frozen: true);
+    }
+
+    // The panes see the request before the host's handler on the grid; a key's request has no position.
+    private void OnPaneContextRequested(ContextRequestedEventArgs e, bool frozen)
+    {
+        if (e.Handled || IsInEditor(e.OriginalSource))
+        {
+            return;
+        }
+        var pane = frozen ? (UIElement)_frozenContent : _content;
+        Point? point = e.TryGetPosition(pane, out var at) ? at : null;
+        HandleContextRequest(frozen, point);
+    }
+
+    // As File Explorer and Excel: a right-click outside the selection selects the cell first. Also how the tests right-click.
+    internal void HandleContextRequest(bool frozen, Point? point)
+    {
+        if (point is not { } at || HitTest(frozen, at) is not { } hit)
+        {
+            return;
+        }
+        Focus(FocusState.Pointer);
+        var range = SelectionRange;
+        var inside = hit.Column >= 0
+            ? range.Contains(hit.Row, hit.Column)
+            : range.Contains(hit.Row, 0) && range.LastColumn == ColumnCount - 1;
+        if (inside)
+        {
+            return;
+        }
+        if (hit.Column < 0)
+        {
+            SelectRows(hit.Row, extend: false);
+        }
+        else
+        {
+            SelectCell(hit.Row, hit.Column, extend: false);
+        }
+    }
+
+    private void OnPaneDoubleTapped(DoubleTappedRoutedEventArgs e, bool frozen)
+    {
+        var pane = frozen ? (UIElement)_frozenContent : _content;
+        if (!IsEditable || HitTest(frozen, e.GetPosition(pane)) is not { Column: >= 0 } hit)
+        {
+            return;
+        }
+        SelectCell(hit.Row, hit.Column, extend: false);
+        BeginEdit();
+        e.Handled = true;
     }
 
     // A press picks a cell, or a row on the row numbers; Shift extends from the anchor. Dragging extends too.
@@ -449,11 +528,16 @@ public sealed partial class DataGridView
         {
             ((DrawnRow)row).Invalidate();
         }
-        if (Painter.Colors.HighContrast)
+        var highContrast = Painter.Colors.HighContrast;
+        if (highContrast || _edited is not null)
         {
             foreach (var (_, row) in _rowsLayout.Realized)
             {
-                ((DrawnRow)row).Invalidate();
+                var drawn = (DrawnRow)row;
+                if (highContrast || drawn.IsWashed)
+                {
+                    drawn.Invalidate();
+                }
             }
         }
         if (AutomationPeer.ListenerExists(AutomationEvents.SelectionItemPatternOnElementSelected)
@@ -510,6 +594,7 @@ public sealed partial class DataGridView
 
     private void UpdateFocusBox()
     {
+        PlaceEditor();
         var row = _selection.FocusRow;
         var column = _selection.FocusColumn;
         var show = FocusState != FocusState.Unfocused && column < ColumnCount && row < RowCount

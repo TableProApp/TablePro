@@ -113,6 +113,37 @@ struct AIModelCatalogTests {
         #expect(catalog.fetchedInfo(providerID: provider, modelID: "m") == nil)
     }
 
+    /// The chat panel reads model lists while a Save in Settings refreshes them. Taking a refresh
+    /// token there cancelled the Save's refresh, and a failed panel fetch then left no list at all.
+    @Test("A chat panel answer lands when nothing changed since it started, and never cancels a refresh")
+    func panelAnswerLandsBesideARefresh() {
+        let catalog = AIModelCatalog()
+        let provider = UUID()
+        let token = catalog.beginRefresh(providerID: provider)
+        let revision = catalog.revision(providerID: provider)
+        catalog.store(providerID: provider, models: [AIModelInfo(id: "panel")], ifUnchangedSince: revision)
+        #expect(catalog.fetchedInfo(providerID: provider, modelID: "panel") != nil)
+        catalog.finishRefresh(providerID: provider, token: token, models: [AIModelInfo(id: "saved")])
+        #expect(catalog.fetchedInfo(providerID: provider, modelID: "saved") != nil)
+    }
+
+    @Test("A chat panel answer is dropped once a Save stored, removed or began a refresh after it started")
+    func panelAnswerIsDroppedAfterASave() {
+        let catalog = AIModelCatalog()
+        let provider = UUID()
+        let writes: [(AIModelCatalog) -> Void] = [
+            { $0.store(providerID: provider, models: [AIModelInfo(id: "saved")]) },
+            { $0.remove(providerID: provider) },
+            { _ = $0.beginRefresh(providerID: provider) }
+        ]
+        for write in writes {
+            let revision = catalog.revision(providerID: provider)
+            write(catalog)
+            catalog.store(providerID: provider, models: [AIModelInfo(id: "late")], ifUnchangedSince: revision)
+            #expect(catalog.fetchedInfo(providerID: provider, modelID: "late") == nil)
+        }
+    }
+
     @Test("A refresh fetches through the transport it is given")
     func refreshFetchesThroughTheTransport() async {
         let catalog = AIModelCatalog()

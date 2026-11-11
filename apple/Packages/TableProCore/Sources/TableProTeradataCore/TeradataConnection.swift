@@ -31,7 +31,7 @@ public final class TeradataConnection: @unchecked Sendable {
     private var _stoppingRequest: UInt32?
 
     // 3110: "The transaction was aborted by the user."
-    static let userAbortCode = 3_110
+    public static let userAbortCode = 3_110
     private static let abortLockWait: TimeInterval = 0.25
     // A server or network that stops answering would otherwise hold a stop for the whole 20-second receive timeout.
     static let defaultStopGrace: TimeInterval = 5
@@ -53,9 +53,11 @@ public final class TeradataConnection: @unchecked Sendable {
     }
 
     private enum Exchange {
-        case answered([Parcel])
+        case answered
         case notSent
         case outputEnded
+        // The consumer threw on a reply, and the request has ended on the wire.
+        case refused(any Error)
     }
 
     public init(config: TeradataConnectionConfig) {
@@ -120,8 +122,7 @@ public final class TeradataConnection: @unchecked Sendable {
         established = true
     }
 
-    /// Keeps the transport's connect deadline active through the driver's required VERSION probe.
-    /// Only then may ordinary query I/O use the session's 20-second socket timeout.
+    // The connect deadline holds through the driver's VERSION probe; only then does query I/O get the 20-second timeout.
     public func finishConnecting() throws {
         guard let socket, let connectDeadline else {
             throw TeradataWireError.connectionFailed("not connecting")
@@ -132,14 +133,62 @@ public final class TeradataConnection: @unchecked Sendable {
     }
 
     public func execute(_ sql: String) throws -> TeradataResultSet {
+        var columns: [TeradataColumn] = []
+        var rows: [[TeradataValue]] = []
+        let activityCount = try perform(sql, onColumns: { columns = $0 }, onRows: { batch in
+            rows.append(contentsOf: batch)
+            return true
+        })
+        return TeradataResultSet(columns: columns, rows: rows, activityCount: activityCount)
+    }
+
+    // The reply that passes the cap ends the output on the server, so the rows past it are never fetched.
+    public func execute(_ sql: String, rowCap: Int?) throws -> TeradataCappedResult {
+        guard let rowCap, rowCap > 0 else {
+            return TeradataCappedResult(resultSet: try execute(sql), isTruncated: false)
+        }
+        var columns: [TeradataColumn] = []
+        var rows: [[TeradataValue]] = []
+        var isTruncated = false
+        let activityCount = try perform(sql, onColumns: { columns = $0 }, onRows: { batch in
+            guard rows.count + batch.count > rowCap else {
+                rows.append(contentsOf: batch)
+                return true
+            }
+            rows.append(contentsOf: batch.prefix(rowCap - rows.count))
+            isTruncated = true
+            return false
+        })
+        return TeradataCappedResult(
+            resultSet: TeradataResultSet(columns: columns, rows: rows, activityCount: activityCount),
+            isTruncated: isTruncated)
+    }
+
+    // `onColumns` runs once before any rows, with none for a request that has no result set; false from `onRows` ends the output.
+    public func stream(
+        _ sql: String,
+        onColumns: ([TeradataColumn]) throws -> Void,
+        onRows: ([[TeradataValue]]) throws -> Bool
+    ) throws {
+        _ = try perform(sql, onColumns: onColumns, onRows: onRows)
+    }
+
+    private func perform(
+        _ sql: String,
+        onColumns: ([TeradataColumn]) throws -> Void,
+        onRows: ([[TeradataValue]]) throws -> Bool
+    ) throws -> Int {
         guard socket != nil else { throw TeradataWireError.connectionFailed("not connected") }
         let requestNumber = nextRequest()
         let body = TeradataMessages.optionsParcel(returnStatementInfo: false).encoded()
             + TeradataMessages.requestParcel(sql: sql).encoded()
             + TeradataMessages.responseParcel().encoded()
+        var reader = TeradataResultParser.Reader()
         let outcome: Exchange
         do {
-            outcome = try exchange(body, requestNumber: requestNumber)
+            outcome = try exchange(body, requestNumber: requestNumber) { parcels in
+                try reader.read(parcels, onColumns: onColumns, onRows: onRows)
+            }
         } catch {
             endRequest()
             // The reply still on its way would be read as the next request's.
@@ -147,16 +196,28 @@ public final class TeradataConnection: @unchecked Sendable {
             throw error
         }
         let stopped = endRequest()
-        guard case .answered(let parcels) = outcome else { throw TeradataWireError.cancelled }
-        do {
-            return try TeradataResultParser.parse(parcels)
-        } catch TeradataWireError.server(let code, _) where stopped && code == Self.userAbortCode {
-            // The server rolled back the transaction the request ran in; the host has no way yet to say so.
+        switch outcome {
+        case .notSent:
             throw TeradataWireError.cancelled
+        case .refused(let error):
+            if stopped, case .server(let code, _)? = error as? TeradataWireError, code == Self.userAbortCode {
+                // In Teradata mode a request outside BT is its own transaction, so the abort undid that request alone.
+                throw config.transactionMode == .ansi ? TeradataWireError.rolledBackByStop : TeradataWireError.cancelled
+            }
+            throw error
+        case .outputEnded where stopped:
+            throw TeradataWireError.cancelled
+        case .answered, .outputEnded:
+            try reader.finish(onColumns: onColumns)
+            return reader.activityCount
         }
     }
 
-    private func exchange(_ body: [UInt8], requestNumber: UInt32) throws -> Exchange {
+    private func exchange(
+        _ body: [UInt8],
+        requestNumber: UInt32,
+        consume: ([Parcel]) throws -> Bool
+    ) throws -> Exchange {
         let sent = try wireLock.withLock { () -> Bool in
             // A stop that landed before the request went out refuses it, and the session stays as it was.
             let refused = socketLock.withLock { () -> Bool in
@@ -169,17 +230,21 @@ public final class TeradataConnection: @unchecked Sendable {
             return true
         }
         guard sent else { return .notSent }
-        var parcels: [Parcel] = []
         while true {
             let batch = try readReply()
-            parcels.append(contentsOf: batch)
-            if Self.responseIsComplete(batch) { return .answered(parcels) }
+            let complete = Self.responseIsComplete(batch)
             // Once the first reply is out an abort no longer takes effect, so a stop ends the output instead.
-            let stopRequested = socketLock.withLock { () -> Bool in
-                _phase = .fetching(requestNumber)
-                return _stopRequested
+            socketLock.withLock { _phase = .fetching(requestNumber) }
+            let wantsMore: Bool
+            do {
+                wantsMore = try consume(batch)
+            } catch {
+                // Ending the output keeps the session; a failed end leaves the rest to be read as the next request's.
+                if !complete, (try? endOutput(requestNumber: requestNumber)) == nil { throw error }
+                return .refused(error)
             }
-            if stopRequested {
+            if complete { return .answered }
+            if !wantsMore || socketLock.withLock({ _stopRequested }) {
                 try endOutput(requestNumber: requestNumber)
                 return .outputEnded
             }
@@ -515,4 +580,10 @@ public final class TeradataConnection: @unchecked Sendable {
         guard inet_ntop(AF_INET, &inAddr, &buffer, socklen_t(INET_ADDRSTRLEN)) != nil else { return nil }
         return String(cString: buffer)
     }
+}
+
+public struct TeradataCappedResult: Sendable {
+    public let resultSet: TeradataResultSet
+    // The answer held more rows than the cap, and its output was ended there.
+    public let isTruncated: Bool
 }

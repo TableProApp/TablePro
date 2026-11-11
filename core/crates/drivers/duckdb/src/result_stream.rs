@@ -15,7 +15,7 @@ use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptDiagnostic, ScriptPlan, ScriptToken, ScriptTokenKind};
 use tablepro_core::statement::{BoundParam, Statement};
 use tablepro_core::value::Value;
-use tablepro_core::{DriverError, QueryResult, ResultEvent, RowLimit, Truncation, UnsupportedFeature};
+use tablepro_core::{DriverError, QueryResult, ResultEvent, RowBatch, RowLimit, Truncation, UnsupportedFeature};
 use tokio::sync::mpsc;
 
 use crate::decode::value_at;
@@ -24,11 +24,6 @@ use crate::encode::bind_all;
 use crate::errors::map_error;
 use crate::instance::{Link, attach_unless_open};
 use crate::result_origin::{TracedTable, traced_table};
-
-/// How many rows travel in one `Rows` event: enough that a large read
-/// is not one await per row, few enough that the first rows show at
-/// once.
-const ROWS_PER_EVENT: usize = 256;
 
 /// What a run of statements did.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -74,15 +69,15 @@ impl Shape {
     }
 
     fn rows(&self, chunk: &StructArray, from: usize, to: usize) -> Vec<Vec<Value>> {
-        (from..to)
-            .map(|row| {
-                chunk
-                    .columns()
-                    .iter()
-                    .zip(&self.types)
-                    .map(|(column, duck)| value_at(column.as_ref(), duck, row))
-                    .collect()
-            })
+        (from..to).map(|row| self.row(chunk, row)).collect()
+    }
+
+    fn row(&self, chunk: &StructArray, row: usize) -> Vec<Value> {
+        chunk
+            .columns()
+            .iter()
+            .zip(&self.types)
+            .map(|(column, duck)| value_at(column.as_ref(), duck, row))
             .collect()
     }
 }
@@ -344,26 +339,30 @@ fn stream_rows(
     let keep = limit.map_or(u64::MAX, RowLimit::get);
     let mut retained = 0u64;
     let mut truncation = Truncation::Complete;
+    let mut batch = RowBatch::new();
     'chunks: while let Some(chunk) = next_chunk(running)? {
-        let mut from = 0;
-        while from < chunk.len() {
+        for row in 0..chunk.len() {
             if retained >= keep {
                 truncation = Truncation::ReadPastLimit;
                 break 'chunks;
             }
-            let room = usize::try_from(keep - retained).unwrap_or(usize::MAX);
-            let to = chunk.len().min(from + ROWS_PER_EVENT).min(from.saturating_add(room));
-            let rows = shape.rows(&chunk, from, to);
-            retained += rows.len() as u64;
-            outcome.rows += rows.len() as u64;
-            if !events.send(ResultEvent::Rows(rows)) {
+            retained += 1;
+            outcome.rows += 1;
+            if batch.push(shape.row(&chunk, row)) && !events.send(ResultEvent::Rows(batch.take())) {
                 outcome.consumer_gone = true;
                 return Ok(());
             }
-            from = to;
+        }
+        // A chunk's rows show without waiting for the next chunk.
+        if !batch.is_empty() && !events.send(ResultEvent::Rows(batch.take())) {
+            outcome.consumer_gone = true;
+            return Ok(());
         }
     }
     let mut closing = Vec::new();
+    if !batch.is_empty() {
+        closing.push(ResultEvent::Rows(batch.take()));
+    }
     if truncation == Truncation::ReadPastLimit {
         closing.push(ResultEvent::RowLimitReached { retained });
     }

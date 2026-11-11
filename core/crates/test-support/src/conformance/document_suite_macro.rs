@@ -16,15 +16,23 @@ macro_rules! document_conformance_suite {
             a_field_edit_saves_and_reads_back,
             a_save_on_a_document_that_is_gone_changes_nothing,
             an_insert_and_a_delete_land,
+            a_save_that_fails_at_its_second_step_keeps_the_first,
             a_read_only_connection_refuses_writes_before_sending,
             a_stopped_statement_ends_and_the_session_runs_again,
             a_dropped_editor_run_stops_the_statement,
             a_timed_out_statement_is_stopped_by_the_server,
+            a_stopped_workspace_read_ends_and_the_connection_reads_again,
             an_editor_result_keeps_the_row_limit,
             stream_read_streams_every_document,
             a_probe_answers_while_a_statement_runs,
             document_close_is_idempotent,
             a_lost_transport_reports_connection_lost_to_a_read,
+        }
+        $crate::__conformance_case! {
+            true,
+            $engine as DocumentEngine,
+            a_document_read_stops_at_the_byte_limit,
+            $crate::conformance::cases::byte_limit::a_document_read_stops_at_the_byte_limit::<$engine>
         }
 
         #[::tokio::test(flavor = "multi_thread", worker_threads = 2)]

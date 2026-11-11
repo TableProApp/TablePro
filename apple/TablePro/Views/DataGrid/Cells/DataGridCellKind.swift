@@ -113,8 +113,9 @@ enum DataGridCellAccessory: Equatable {
 struct DataGridColumnPresentation: Equatable {
     let kind: DataGridCellKind
     let accessory: DataGridCellAccessory
+    let valueTone: DataGridColumnTone
 
-    static let plain = DataGridColumnPresentation(kind: .text, accessory: .none)
+    static let plain = DataGridColumnPresentation(kind: .text, accessory: .none, valueTone: .plain)
 
     static func resolve(
         columnType: ColumnType?,
@@ -123,7 +124,8 @@ struct DataGridColumnPresentation: Equatable {
         isTypePicker: Bool,
         isEnumOrSet: Bool,
         isEditable: Bool,
-        isCheckbox: Bool = false
+        isCheckbox: Bool = false,
+        valueTone: DataGridColumnTone = .plain
     ) -> DataGridColumnPresentation {
         let configuredPicker = isDropdown || isTypePicker
         let picksFromList = configuredPicker || isEnumOrSet || columnType?.isEnumOrSetType == true
@@ -149,7 +151,8 @@ struct DataGridColumnPresentation: Equatable {
 
         return DataGridColumnPresentation(
             kind: kind,
-            accessory: DataGridCellAccessory.reserved(for: kind, isEditable: isEditable)
+            accessory: DataGridCellAccessory.reserved(for: kind, isEditable: isEditable),
+            valueTone: valueTone
         )
     }
 }

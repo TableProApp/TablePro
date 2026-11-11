@@ -23,6 +23,7 @@ async fn update_label(connection: &dyn tablepro_core::Connection, table: &TableR
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![key],
             assignments: vec![(label, CellInput::Value(Value::Text("changed".to_owned())))],
+            read: Vec::new(),
         })],
     };
     plan_save(connection.dialect().as_ref(), table, &columns, &identity, &changes)
@@ -54,6 +55,7 @@ async fn edited_xml_cell_saves() {
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![Value::Int(1)],
             assignments: vec![(1, CellInput::Value(edited))],
+            read: Vec::new(),
         })],
     };
     let save = plan_save(connection.dialect().as_ref(), &table, &columns, &identity, &changes)
@@ -94,6 +96,7 @@ async fn datetime_key_with_a_third_of_a_millisecond_saves() {
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![key],
             assignments: vec![(1, CellInput::Value(Value::Text("changed".to_owned())))],
+            read: Vec::new(),
         })],
     };
     let save = plan_save(connection.dialect().as_ref(), &table, &columns, &identity, &changes)

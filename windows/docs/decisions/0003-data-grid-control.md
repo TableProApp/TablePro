@@ -14,7 +14,7 @@
 
 ## Decision
 
-`TablePro.DataGrid` is a read-only WinUI 3 control of our own. ItemsRepeater virtualizes the rows, and each row draws its visible cells' text with DirectWrite into a composition surface, through `TablePro.Graphics`, the one drawing layer the editor uses too. Cells are UIA peers with no element. The data comes from the core through `TablePro.Interop`, formatted there.
+`TablePro.DataGrid` is a WinUI 3 control of our own. ItemsRepeater virtualizes the rows, and each row draws its visible cells' text with DirectWrite into a composition surface, through `TablePro.Graphics`, the one drawing layer the editor uses too. Cells are UIA peers with no element. The data comes from the core through `TablePro.Interop`, formatted there. The grid edits in place with a stock TextBox and shows the changes the host holds; the host checks, keeps and saves them.
 
 ## Design
 
@@ -28,6 +28,10 @@
 - `GridSelection` is an anchor and a focused cell, as cells, whole rows or everything, so a selection of any size is two numbers.
 - `GridNavigation` moves as Excel does in a block with no empty cells: arrows, Page Up and Down, Home and End, Ctrl to the edges, Shift to extend.
 - `GridCopy` writes Excel's TSV: tabs, CRLF, values with a tab, line break or quote quoted with quotes doubled, NULL as an empty cell. It streams blocks of 16,384 cells from a reader of its own, at a 4,096-character cap, and reads a cut value whole. The core shows control characters as spaces, so a text value with a space is read whole too.
+- `EditedGridData` lays the host's `GridEdits` over the data: the data's rows, then the new rows. `GridEdits` is immutable, and a reader keeps the edits it opened with. A copy takes the edits on the UI thread with its range and opens its reader over them on the pool thread.
+- Its reader reads the data's rows into a block of its own, then copies each cell on, a pending one in its place. Pending text is cut and its control characters shown as spaces, as the core shows a value. New rows are never asked of the data.
+- A cell's state carries Modified, Inserted, Deleted or Default. A deleted row keeps the data's text. `ReadWhole` gives the pending text, null for NULL and empty for DEFAULT, so a copy takes what the user typed.
+- A grid of plain `ResultSetData` reads as before, and its scroll test still measures 0 bytes.
 
 ### Virtualization (`src/TablePro.DataGrid`)
 
@@ -47,6 +51,9 @@
 - A row keeps an `IDWriteTextLayout` per visible cell while it stays on screen, and lays out only the columns that come into view. Layouts are made from the block's spans: no string, wrapper or closure per cell.
 - The font is what a TextBlock cell would use: Segoe UI Variable Text at the content size (Segoe UI before Windows 11), one line, cut with an ellipsis, centered, grayscale antialiased on a clear surface. The locale is the UI language's, so Han glyphs follow it.
 - NULL is the word NULL in italic in the tertiary text color. A value the core cut ends with an ellipsis in the tertiary color.
+- Pending changes, as on macOS. A changed cell has underlined text on `SystemFillColorCautionBackground`, and a new row underlined text on `SystemFillColorSuccessBackground`. A row marked for delete, its number too, has struck-through text in `SystemFillColorCritical` on `SystemFillColorCriticalBackground`. DEFAULT is `DefaultText` in semibold `AccentTextFillColorPrimary`.
+- Underline and strike-through are the layout's own, over the whole text. A wash covers the selection rectangle beneath the row, so a row with one draws the selection's tint over it and redraws when the selection moves.
+- High contrast draws no washes; underline and strike-through stay.
 - A value whose first strong character is right to left reads right to left from the cell's right edge, as TextBlock's `DetectFromContent` does.
 - Color fonts draw in color: `D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT` on each layout's draw.
 - Device loss: `D2DERR_RECREATE_TARGET` or a removed device from `BeginDraw` or `EndDraw` moves the composition device to a new Direct2D device (`ICompositionGraphicsDeviceInterop::SetRenderingDevice`), makes the brushes again and redraws every row.
@@ -61,6 +68,22 @@
 - A click picks a cell and Shift+click extends; a drag extends; a click on a row number picks the row, and on the corner, everything.
 - The selection and the focused cell are a Rectangle and a Border in each pane, cut to the realized rows.
 - Ctrl+C builds the TSV on a pool thread, so the UI thread does not wait for a selection of any size, then sets the clipboard. A later copy cancels one still running.
+- A right-click, pen press or touch hold outside the selection selects the cell under it, or the row on the row numbers, as File Explorer and Excel do. It does so before `ContextRequested` reaches the host, so the host's menu acts on that cell. Inside the selection, and from Shift+F10 or the menu key, the selection stays.
+
+### Editing
+
+- Off until the host sets `IsEditable`. F2, Enter or a double-click on a cell opens the editor; typing does not, as on macOS. `CellEditStarting` gives the host the cell, and the host sets the text or cancels. Text with NUL opens nothing, since a TextBox cannot hold it.
+- F2 and Enter, and Tab in the editor, open the editor once the key is done, so the key's character does not reach the new TextBox.
+- The editor is a stock TextBox in the cell's pane, the frozen one or the scrolling one, so it scrolls with the rows. It takes the cells' font, gets focus and selects its text. A value with a line break opens with AcceptsReturn and grows to four rows.
+- Enter commits and stays. Tab and Shift+Tab commit and edit the next cell to the right or left, as NSTableView does. Escape cancels. Ctrl+Enter commits a value with line breaks.
+- Losing focus commits, and a refused commit then cancels. Focus that moves to the TextBox's own menus does not. Unloading the grid and setting `FrozenColumnCount` do the same.
+- On those paths the editor's ToolTip closes with it, so the host shows a refused commit's Error itself.
+- `CellEditCommitting` gives the host the typed text. The text the TextBox holds once opened is no change and raises nothing, so a NULL cell or a value with mixed line breaks left as it was stays as it was.
+- A host that sets `Error` keeps the editor open. The error shows in a ToolTip, as the editor's FullDescription and as a UIA notification.
+- Delete with no editor open raises `DeleteRequested`.
+- The host swaps `EditedGridData.Edits` and calls `EditsChanged`. The grid opens a new reader, reads RowCount again and redraws; when rows go, it gives the repeaters a new source, as `SetData` does (trap 5).
+- When the row count changes, an editor open on a data row commits, or cancels when refused. One on a new row cancels: the host's new rows have moved already, so its index may name another row. The host commits before an edit command to keep that text.
+- `SetData` cancels an open editor.
 
 ### Header
 
@@ -80,6 +103,8 @@
 - `ISelectionProvider.GetSelection` reads the model, so cells off the screen are in it, up to 10,000 cells.
 - A point query reaches a drawn cell through the pane's peer, which maps the point to the cell.
 - A header is a HeaderItem with Invoke, which sorts and raises the Invoked event, Transform, which resizes in physical pixels, and its sort order as `ItemStatus`, the property the [HeaderItem control type](https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-supportheaderitemcontroltype) gives sort orders. A change raises ItemStatus's property-changed event. The host words it through `SortedAscendingStatus` and `SortedDescendingStatus`.
+- A cell's `ItemStatus` is its pending change: `EditedStatus`, `NewRowStatus` or `DeletedStatus`, the macOS grid's VoiceOver words. A change raises ItemStatus's property-changed event. Its Name stays the value, `DefaultText` for a DEFAULT cell.
+- An open editor is its pane's one automation child.
 
 ## Rationale
 
@@ -94,7 +119,7 @@
 - The grid raises `SortRequested` and the host sorts: on the server, or with the core's sort of the rows held.
 - A UI in a right-to-left language would need the grid mirrored; only values read right to left today.
 - The gate runs WARP on hosted runners; no machine with a GPU is measured yet.
-- Not yet: editing, column reorder, row header peers, find, tooltips for cut cells.
+- Not yet: column reorder, row header peers, find, tooltips for cut cells.
 
 ## Alternatives considered
 

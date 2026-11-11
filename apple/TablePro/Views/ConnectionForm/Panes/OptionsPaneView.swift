@@ -449,9 +449,14 @@ struct OptionsPaneView: View {
         } header: {
             Text(String(localized: "iCloud Sync"))
         } footer: {
-            Text("This connection won't sync to other devices via iCloud.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("This connection won't sync to other devices via iCloud.")
+                if coordinator.removesSyncedSecretsOnSave {
+                    Text("Saving removes its passwords from iCloud Keychain. Your other devices will need them entered again.")
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 }

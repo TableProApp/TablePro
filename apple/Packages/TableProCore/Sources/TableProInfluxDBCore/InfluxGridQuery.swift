@@ -104,6 +104,13 @@ public struct InfluxGridQuery: Sendable, Equatable, Hashable {
         return marked ? InfluxStatement.marked(statement, language: language) : statement
     }
 
+    // A read that matched nothing comes back with no columns at all, so the grid still gets them from the schema.
+    public func emptyResult(schema: [InfluxColumn]) -> InfluxResultTable {
+        let names = projection.isEmpty ? schema.map(\.name) : projection
+        let types = Dictionary(schema.map { ($0.name, $0.typeName) }, uniquingKeysWith: { first, _ in first })
+        return InfluxResultTable(columns: names, typeNames: names.map { types[$0] ?? InfluxTypeName.string }, rows: [])
+    }
+
     // InfluxQL answers `COUNT(*)` with one `count_<field>` per field, the point count only when there is one field.
     public static func rowCount(from table: InfluxResultTable) -> Int? {
         guard let row = table.rows.first else { return 0 }
