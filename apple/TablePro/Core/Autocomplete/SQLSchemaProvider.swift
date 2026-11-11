@@ -103,6 +103,8 @@ actor SQLSchemaProvider {
     private(set) var tableColumnItemsBuildCount = 0
 
     private weak var cachedDriver: (any DatabaseDriver)?
+    // Read from the driver that filled the table list, so learning it opens no connection.
+    private var fetchesAllColumnsInOneRequest = false
     private let metadataSource: ColumnMetadataSource?
     private var connectionInfo: DatabaseConnection?
 
@@ -131,6 +133,7 @@ actor SQLSchemaProvider {
         Self.logger.info("[schema] loadSchema starting new fetch")
         let t0 = Date()
         self.cachedDriver = driver
+        self.fetchesAllColumnsInOneRequest = driver.fetchesAllColumnsInOneRequest
         self.eagerLoadSchema = (driver as? SchemaSwitchable)?.currentSchema
         if let connection { self.connectionInfo = connection }
 
@@ -260,6 +263,7 @@ actor SQLSchemaProvider {
         self.onDemandSchemaTables.removeAll()
         self.onDemandSchemaTableTasks.removeAll()
         self.cachedDriver = driver
+        self.fetchesAllColumnsInOneRequest = driver.fetchesAllColumnsInOneRequest
         self.eagerLoadSchema = (driver as? SchemaSwitchable)?.currentSchema
         if let connection { self.connectionInfo = connection }
         noteTableListWritten()
@@ -316,6 +320,13 @@ actor SQLSchemaProvider {
         let tableCount = eagerLoadTableCount
         guard tableCount > 0 else {
             columnPreload = .awaitingTables(generation: generation)
+            return
+        }
+        guard fetchesAllColumnsInOneRequest else {
+            Self.logger.info(
+                "[schema] column preload skipped tableCount=\(tableCount) fetchesAllColumnsInOneRequest=false"
+            )
+            columnPreload = .settled(generation: generation, outcome: .skipped)
             return
         }
         guard tableCount <= Self.maxCachedTables else {

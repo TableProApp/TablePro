@@ -27,9 +27,9 @@ internal extension PostgreSQLPluginDriver {
         PostgreSQLVersionedStatements.refusal(for: operation, capabilities: versionedCapabilities)
     }
 
-    func probeSessionFacts() async {
+    func applySessionFactsProbe(_ read: Result<PluginQueryResult, Error>) {
         do {
-            let result = try await core.executeCatalogRead(PostgreSQLSessionFacts.probeQuery)
+            let result = try read.get()
             let row = result.rows.first?.map(\.asText) ?? []
             let facts = PostgreSQLSessionFacts(probeRow: row)
             sessionFacts.withLock { $0 = facts }
