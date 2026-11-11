@@ -146,6 +146,8 @@ public sealed partial class DataGridView
             _selectionVersion++;
             UpdateRowNumberWidth();
             UpdateExtent();
+            // ScrollTo clamps to the ScrollViewer's extent, which follows the new height only after a layout pass.
+            _scroller.UpdateLayout();
             UpdateSelectionBoxes();
             UpdateFocusBox();
             if (focus != (_selection.FocusRow, _selection.FocusColumn))
