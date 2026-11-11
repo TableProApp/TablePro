@@ -5,9 +5,9 @@ use tablepro_core::connection_url::{self, ConnectionUrl};
 use tablepro_core::is_local_socket_host;
 
 use crate::error::CoreError;
-use crate::library::TlsModeTag;
+use crate::library::{Redacted, TlsModeTag};
 
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[derive(Clone, PartialEq, Eq, uniffi::Record)]
 pub struct ParsedConnectionUrl {
     pub driver_id: String,
     pub host: String,
@@ -21,6 +21,24 @@ pub struct ParsedConnectionUrl {
     pub client_certificate: Option<String>,
     pub client_key: Option<String>,
     pub server_name: Option<String>,
+}
+
+impl std::fmt::Debug for ParsedConnectionUrl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ParsedConnectionUrl")
+            .field("driver_id", &self.driver_id)
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("username", &self.username)
+            .field("password", &self.password.as_ref().map(|_| Redacted))
+            .field("database", &self.database)
+            .field("tls_mode", &self.tls_mode)
+            .field("ca_file", &self.ca_file)
+            .field("client_certificate", &self.client_certificate)
+            .field("client_key", &self.client_key)
+            .field("server_name", &self.server_name)
+            .finish()
+    }
 }
 
 #[uniffi::export]
@@ -100,6 +118,15 @@ mod tests {
         assert_eq!(parsed.password.as_deref(), Some("p@ss"));
         assert_eq!(parsed.database, "shop db");
         assert_eq!(parsed.tls_mode, Some(TlsModeTag::VerifyFull));
+    }
+
+    #[test]
+    fn debug_output_shows_the_url_but_not_its_password() {
+        let shown = format!("{:?}", parse("postgresql://app:hunter2@db.example.com/shop"));
+
+        assert!(!shown.contains("hunter2"), "{shown}");
+        assert!(shown.contains("db.example.com"), "{shown}");
+        assert!(shown.contains("password: Some([REDACTED])"), "{shown}");
     }
 
     #[test]

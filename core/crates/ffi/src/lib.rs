@@ -19,6 +19,7 @@ mod run;
 mod runtime;
 mod safe_mode_gate;
 mod session;
+mod statement_at;
 mod syntax;
 pub mod window_abi;
 
@@ -40,5 +41,6 @@ pub use results::{ResultColumnInfo, ResultSet, ValueKind};
 pub use run::{QueryRun, RunEvent, RunListener, RunOutcome, TransactionStateTag, TruncationTag};
 pub use safe_mode_gate::RunGate;
 pub use session::{ColumnSort, DatabaseSession, FailureCauseTag, SessionHealthTag, TableQuery};
+pub use statement_at::StatementSpan;
 
 uniffi::setup_scaffolding!();

@@ -10,6 +10,7 @@ use tablepro_session::Session;
 use tokio_util::sync::CancellationToken;
 
 use crate::browse_request::filter_set;
+use crate::collected_results::{Keep, MAX_ANSWER_BYTES};
 use crate::connection_tools::to_json;
 use crate::query_tools::{DEFAULT_TIMEOUT_SECONDS, row_limit, stream, table_shape};
 use crate::tool_args::{ExportArgs, ExportFormat};
@@ -55,21 +56,31 @@ pub async fn export_data(
         return Err(ToolError::InvalidArgument("tables holds an empty name".to_owned()));
     }
     let session = context
-        .held_session(&connection, args.database.as_deref())
+        .held_session(&connection, args.database.as_deref(), &cancel)
         .await?
         .session;
     let mut exports = Vec::with_capacity(args.tables.len());
-    let mut undecodable = false;
+    let (mut undecodable, mut size_limited, mut spent) = (false, false, 0_usize);
     for name in args.tables {
         let table = TableRef::new(args.schema.clone(), name);
-        let (export, lossy) = export_table(&session, table, args.format, limit, &cancel).await?;
+        // Every table of the call shares one answer, so each gets what the ones before it left.
+        let keep = Keep::export(limit, MAX_ANSWER_BYTES.saturating_sub(spent));
+        let (export, read) = export_table(&session, table, args.format, keep, &cancel).await?;
         exports.push(export);
-        undecodable |= lossy;
+        undecodable |= read.undecodable;
+        size_limited |= read.size_limited;
+        spent = spent.saturating_add(read.bytes);
     }
-    let notes = match undecodable {
-        true => vec!["Some values could not be decoded by TablePro and are written as null."],
-        false => Vec::new(),
-    };
+    let mut notes = Vec::new();
+    if undecodable {
+        notes.push("Some values could not be decoded by TablePro and are written as null.");
+    }
+    if size_limited {
+        notes.push(
+            "The rows reached TablePro's 4 MB limit for one answer, so a table marked truncated holds only the rows \
+that fit, and the tables after it may hold none; export fewer tables, columns or rows per call.",
+        );
+    }
     to_json(&ExportDocument {
         format: args.format,
         exports,
@@ -77,22 +88,28 @@ pub async fn export_data(
     })
 }
 
-// The flag says a value the driver could not decode went out as null.
+struct TableRead {
+    // A value the driver could not decode went out as null.
+    undecodable: bool,
+    size_limited: bool,
+    bytes: usize,
+}
+
 async fn export_table(
     session: &Session,
     table: TableRef,
     format: ExportFormat,
-    limit: usize,
+    keep: Keep,
     cancel: &CancellationToken,
-) -> Result<(TableExport, bool), ToolError> {
-    let (columns, identity) = table_shape(session, &table).await?;
+) -> Result<(TableExport, TableRead), ToolError> {
+    let (columns, identity) = table_shape(session, &table, cancel).await?;
     let catalog: Arc<[ColumnInfo]> = columns.into();
     let filter = filter_set(&[], None)?;
     let read_table = table.clone();
     let read_catalog = catalog.clone();
     let mut collected = stream(
         session,
-        limit,
+        keep,
         Duration::from_secs(u64::from(DEFAULT_TIMEOUT_SECONDS)),
         cancel,
         Some(catalog.clone()),
@@ -124,7 +141,12 @@ async fn export_table(
         data,
         table: table.name,
     };
-    Ok((export, collected.undecodable))
+    let read = TableRead {
+        undecodable: collected.undecodable,
+        size_limited: collected.size_limited,
+        bytes: collected.bytes,
+    };
+    Ok((export, read))
 }
 
 fn render(

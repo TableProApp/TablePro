@@ -41,14 +41,31 @@
         </SelectorBar>
 
         <Grid x:Name="ResultsArea" Grid.Row="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Only a run with more than one result set has one to pick. -->
+            <ComboBox
+                x:Name="ResultPicker"
+                x:Uid="ResultPicker"
+                Margin="8,8,8,4"
+                MinWidth="200"
+                AutomationProperties.AutomationId="ResultPicker"
+                SelectionChanged="OnResultPicked"
+                Visibility="Collapsed" />
+
             <grid:DataGridView
                 x:Name="ResultGrid"
                 x:Uid="ResultsGrid"
+                Grid.Row="1"
                 AutomationProperties.AutomationId="ResultsGrid"
                 Visibility="Collapsed" />
 
             <TextBlock
                 x:Name="Placeholder"
+                Grid.Row="1"
                 Margin="24"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"

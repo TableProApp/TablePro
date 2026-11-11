@@ -116,6 +116,17 @@ public sealed partial class SettingsView : UserControl
         await Launcher.LaunchUriAsync(IssuesUri);
 
     // LaunchFolderPathAsync needs Windows 10 1903; this form runs on 1809.
-    private async void OnOpenDataFolder(object sender, RoutedEventArgs e) =>
-        await Launcher.LaunchFolderAsync(await Windows.Storage.StorageFolder.GetFolderFromPathAsync(_workbench.Folder));
+    private async void OnOpenDataFolder(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            // A folder removed while the app runs is made again, as the app's next write would make it.
+            Directory.CreateDirectory(_workbench.Folder);
+            await Launcher.LaunchFolderAsync(await Windows.Storage.StorageFolder.GetFolderFromPathAsync(_workbench.Folder));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // The card names the folder, so it can still be opened by hand.
+        }
+    }
 }
