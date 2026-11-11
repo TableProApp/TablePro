@@ -137,6 +137,19 @@ private struct WelcomeDeletionAlerts: ViewModifier {
             } message: {
                 deletionMessage
             }
+            .alert(
+                String(localized: "Exclude from iCloud Sync?"),
+                isPresented: $vm.showExcludeFromSyncConfirmation
+            ) {
+                Button(String(localized: "Exclude"), role: .destructive) {
+                    vm.confirmExcludeFromSync()
+                }
+                Button(String(localized: "Cancel"), role: .cancel) {
+                    vm.connectionsToExcludeFromSync = []
+                }
+            } message: {
+                Text("Saved passwords are removed from iCloud Keychain, and your other devices will need them entered again.")
+            }
     }
 
     @ViewBuilder

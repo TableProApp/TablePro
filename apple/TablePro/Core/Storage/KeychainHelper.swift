@@ -37,6 +37,9 @@ protocol KeychainStoring: Sendable {
     func delete(forKey key: String)
     // deviceOnly removes this Mac's own item and leaves the one iCloud Keychain holds, which every device shares.
     func delete(forKey key: String, deviceOnly: Bool)
+    // Removes the iCloud Keychain copy, which removes it from every device. Refused while this Mac has no item of its own.
+    @discardableResult
+    func removeSyncedCopy(forKey key: String) -> Bool
 }
 
 extension KeychainStoring {
@@ -51,6 +54,12 @@ extension KeychainStoring {
     @discardableResult
     func writeString(_ value: String, forKey key: String, deviceOnly: Bool) -> Bool {
         writeString(value, forKey: key)
+    }
+
+    // A store with one item per key has no synced copy apart from the one it holds.
+    @discardableResult
+    func removeSyncedCopy(forKey key: String) -> Bool {
+        true
     }
 }
 
@@ -249,6 +258,21 @@ final class KeychainHelper: KeychainStoring {
         if status != errSecSuccess, status != errSecItemNotFound {
             log(status: status, operation: "delete", key: key)
         }
+    }
+
+    @discardableResult
+    func removeSyncedCopy(forKey key: String) -> Bool {
+        let own = items.copyItem(itemQuery(forKey: key, synchronizable: false))
+        guard own.status == errSecSuccess, own.data != nil else {
+            log(status: own.status, operation: "find the local copy before removing the synced one", key: key)
+            return false
+        }
+        let status = items.delete(itemQuery(forKey: key, synchronizable: true))
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            log(status: status, operation: "remove the synced copy", key: key)
+            return false
+        }
+        return true
     }
 
     // MARK: - String Convenience

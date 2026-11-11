@@ -321,6 +321,10 @@ final class GeminiProvider: ChatTransport {
                 }
             }
         }
+        if let candidates = json["candidates"] as? [[String: Any]],
+           candidates.first?["finishReason"] as? String == "MAX_TOKENS" {
+            events.append(.outputLimitReached(.outputTokens))
+        }
         if let usageMetadata = json["usageMetadata"] as? [String: Any] {
             if let prompt = usageMetadata["promptTokenCount"] as? Int {
                 state.inputTokens = prompt

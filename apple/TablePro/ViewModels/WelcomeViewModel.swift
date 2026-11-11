@@ -119,6 +119,8 @@ final class WelcomeViewModel: ObservableObject {
     @Published var presentsWelcomeSheet = false
     @Published var connectionsToDelete: [DatabaseConnection] = []
     @Published var showDeleteConfirmation = false
+    @Published var connectionsToExcludeFromSync: [DatabaseConnection] = []
+    @Published var showExcludeFromSyncConfirmation = false
     @Published var pendingDeleteHasFavorites = false
     private var deleteRequestToken = UUID()
     @Published var showDeleteGroupConfirmation = false

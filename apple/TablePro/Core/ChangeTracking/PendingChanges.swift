@@ -2,12 +2,6 @@
 //  PendingChanges.swift
 //  TablePro
 //
-//  Value type holding all uncommitted edits to a result set.
-//  Owns the consistency invariants between `changes`, `changeIndex`,
-//  `deletedRowIDs`, `insertedRowIDs`, `modifiedCells`, and
-//  `insertedRowData`. Callers mutate through methods that maintain
-//  the cross-collection state.
-//
 
 import Foundation
 import TableProPluginKit
@@ -16,9 +10,7 @@ struct PendingChanges: Equatable {
     private(set) var changes: [RowChange] = []
     private(set) var deletedRowIDs: Set<RowID> = []
 
-    /// Stamped onto every change so statement generation can recover the order the user worked in.
-    /// `changes` cannot carry that order itself: a cancelled change is removed by swapping the last
-    /// element into its slot.
+    // `changes` cannot carry the edit order: a cancelled change is swap-removed from it.
     private var nextSequence = 0
     private(set) var insertedRowIDs: Set<RowID> = []
     private(set) var modifiedCells: [RowID: Set<Int>] = [:]
@@ -108,11 +100,7 @@ struct PendingChanges: Equatable {
 
     // MARK: - Mutate (recording user edits)
 
-    /// Whether the recorded edit is a no-op (oldValue == newValue with no prior modification).
-    /// Returns the result so the caller can decide whether to register undo.
-    ///
-    /// A field going missing, or coming back, is a change even when the value reads `.null` on
-    /// both sides. So is an expression put in place of text that reads the same, or text in place of one.
+    // False for a no-op, so no undo is registered. A nil `action` is an undo step of its own.
     @discardableResult
     mutating func recordCellChange(
         rowID: RowID,
@@ -122,7 +110,8 @@ struct PendingChanges: Equatable {
         newValue: PluginCellValue,
         originalRow: [PluginCellValue]? = nil,
         absence: FieldAbsence = FieldAbsence(),
-        isExpression: Bool = false
+        isExpression: Bool = false,
+        action: Int? = nil
     ) -> Bool {
         let wasExpression = self.isExpression(rowID: rowID, columnIndex: columnIndex)
         if oldValue == newValue && absence.wasAbsent == absence.isAbsent && wasExpression == isExpression {
@@ -152,14 +141,12 @@ struct PendingChanges: Equatable {
         }
 
         if let updateIdx = changeIndex[RowChangeKey(rowID: rowID, type: .update)] {
-            mergeUpdateCell(at: updateIdx, cellChange: cellChange)
+            mergeUpdateCell(at: updateIdx, cellChange: cellChange, action: action)
         } else {
-            appendChange(RowChange(
-                rowID: rowID, type: .update,
-                cellChanges: [cellChange], originalRow: originalRow,
-                absentColumns: absence.originalRow
-            ))
-            modifiedCells[rowID, default: []].insert(columnIndex)
+            appendUpdate(
+                rowID: rowID, cellChange: cellChange, originalRow: originalRow,
+                absentColumns: absence.originalRow, action: action
+            )
         }
         return true
     }
@@ -246,9 +233,7 @@ struct PendingChanges: Equatable {
         recordRowDeletion(rowID: rowID, originalRow: originalRow, absentColumns: absentColumns)
     }
 
-    /// Re-apply a cell edit during undo replay (skips undo registration).
-    /// `originalDBValue` is the cell's value in the unmodified database row.
-    /// It must be preserved so that a later collapse compares correctly.
+    // `originalDBValue` is the cell as it stands before this write.
     mutating func reapplyCellChange(
         rowID: RowID,
         columnIndex: Int,
@@ -257,7 +242,8 @@ struct PendingChanges: Equatable {
         newValue: PluginCellValue,
         originalRow: [PluginCellValue]?,
         absence: FieldAbsence = FieldAbsence(),
-        expression: ExpressionTransition = ExpressionTransition()
+        expression: ExpressionTransition = ExpressionTransition(),
+        action: Int? = nil
     ) {
         let cellChange = CellChange(
             columnIndex: columnIndex,
@@ -279,14 +265,12 @@ struct PendingChanges: Equatable {
         }
 
         if let updateIdx = changeIndex[RowChangeKey(rowID: rowID, type: .update)] {
-            mergeUpdateCell(at: updateIdx, cellChange: cellChange)
+            mergeUpdateCell(at: updateIdx, cellChange: cellChange, action: action)
         } else {
-            appendChange(RowChange(
-                rowID: rowID, type: .update,
-                cellChanges: [cellChange], originalRow: originalRow,
-                absentColumns: absence.originalRow
-            ))
-            modifiedCells[rowID, default: []].insert(columnIndex)
+            appendUpdate(
+                rowID: rowID, cellChange: cellChange, originalRow: originalRow,
+                absentColumns: absence.originalRow, action: action
+            )
         }
     }
 
@@ -306,8 +290,8 @@ struct PendingChanges: Equatable {
         )
     }
 
-    /// Restore a cell's value during undo replay when an existing change matches.
-    mutating func revertUpdateCell(
+    // Undo takes back the cell's latest write, which the newest run holding the cell made.
+    mutating func revertCellWrite(
         rowID: RowID,
         columnIndex: Int,
         columnName: String,
@@ -316,29 +300,24 @@ struct PendingChanges: Equatable {
         previousIsExpression: Bool = false
     ) {
         guard let updateIdx = changeIndex[RowChangeKey(rowID: rowID, type: .update)],
-              let cellIdx = changes[updateIdx].cellChanges.firstIndex(where: { $0.columnIndex == columnIndex })
+              let current = changes[updateIdx].cellChanges.first(where: { $0.columnIndex == columnIndex })
         else { return }
 
-        let original = changes[updateIdx].cellChanges[cellIdx]
-        if previousValue == original.oldValue && previousIsAbsent == original.oldIsAbsent
-            && previousIsExpression == original.oldIsExpression {
-            changes[updateIdx].cellChanges.remove(at: cellIdx)
-            removeModifiedCell(rowID: rowID, columnIndex: columnIndex)
-            if changes[updateIdx].cellChanges.isEmpty {
-                removeChangeAt(updateIdx)
-            }
-        } else {
-            changes[updateIdx].cellChanges[cellIdx] = CellChange(
-                columnIndex: columnIndex,
-                columnName: columnName,
-                oldValue: original.oldValue,
-                newValue: previousValue,
-                oldIsAbsent: original.oldIsAbsent,
-                newIsAbsent: previousIsAbsent,
-                oldIsExpression: original.oldIsExpression,
-                newIsExpression: previousIsExpression
-            )
-        }
+        materializeRuns(at: updateIdx)
+        let reverted = CellChange(
+            columnIndex: columnIndex,
+            columnName: columnName,
+            oldValue: current.newValue,
+            newValue: previousValue,
+            oldIsAbsent: current.newIsAbsent,
+            newIsAbsent: previousIsAbsent,
+            oldIsExpression: current.newIsExpression,
+            newIsExpression: previousIsExpression
+        )
+        guard writeNetCell(reverted, at: updateIdx),
+              let runIdx = changes[updateIdx].runs.lastIndex(where: { $0.holds(columnIndex) })
+        else { return }
+        write(reverted, intoRun: runIdx, at: updateIdx)
     }
 
     /// Insert a synthetic .insert RowChange for undo replay (e.g., after redoing a deletion's undo).
@@ -430,7 +409,7 @@ struct PendingChanges: Equatable {
         modifiedCells = snapshot.modifiedCells
         insertedRowData = snapshot.insertedRowData
         supersededUpdates = snapshot.supersededUpdates
-        let sequences = changes.map(\.sequence) + supersededUpdates.values.map(\.sequence)
+        let sequences = (changes + supersededUpdates.values).flatMap { [$0.sequence] + $0.runs.map(\.sequence) }
         nextSequence = (sequences.max() ?? -1) + 1
         rebuildChangeIndex()
     }
@@ -456,6 +435,29 @@ struct PendingChanges: Equatable {
         nextSequence += 1
         changes.append(stamped)
         changeIndex[RowChangeKey(rowID: stamped.rowID, type: stamped.type)] = changes.count - 1
+    }
+
+    private mutating func appendUpdate(
+        rowID: RowID,
+        cellChange: CellChange,
+        originalRow: [PluginCellValue]?,
+        absentColumns: Set<Int>,
+        action: Int?
+    ) {
+        let run = UpdateRun(
+            sequence: nextSequence, action: action ?? Self.ownAction(at: nextSequence), cellChanges: [cellChange]
+        )
+        appendChange(RowChange(
+            rowID: rowID, type: .update,
+            cellChanges: [cellChange], originalRow: originalRow,
+            absentColumns: absentColumns, runs: [run]
+        ))
+        modifiedCells[rowID, default: []].insert(cellChange.columnIndex)
+    }
+
+    // Below every id DataChangeManager hands out, so no other write ever joins it.
+    private static func ownAction(at sequence: Int) -> Int {
+        -(sequence + 1)
     }
 
     @discardableResult
@@ -528,32 +530,72 @@ struct PendingChanges: Equatable {
         }
     }
 
-    private mutating func mergeUpdateCell(at updateIdx: Int, cellChange: CellChange) {
+    private mutating func mergeUpdateCell(at updateIdx: Int, cellChange: CellChange, action: Int?) {
+        materializeRuns(at: updateIdx)
+        guard writeNetCell(cellChange, at: updateIdx) else { return }
+
+        // The newest run takes the write when the same step opened it or nothing was recorded since.
+        if let newest = changes[updateIdx].runs.indices.last {
+            let run = changes[updateIdx].runs[newest]
+            if (action != nil && run.action == action) || run.sequence == nextSequence - 1 {
+                write(cellChange, intoRun: newest, at: updateIdx)
+                return
+            }
+        }
+        changes[updateIdx].runs.append(UpdateRun(
+            sequence: nextSequence, action: action ?? Self.ownAction(at: nextSequence), cellChanges: [cellChange]
+        ))
+        nextSequence += 1
+    }
+
+    // An update built outside this type reads as one run at its own place.
+    private mutating func materializeRuns(at updateIdx: Int) {
+        let update = changes[updateIdx]
+        guard update.runs.isEmpty, !update.cellChanges.isEmpty else { return }
+        changes[updateIdx].runs = [UpdateRun(
+            sequence: update.sequence, action: Self.ownAction(at: update.sequence), cellChanges: update.cellChanges
+        )]
+    }
+
+    // False when the write left the cell as it was read, so no run writes it.
+    private mutating func writeNetCell(_ cellChange: CellChange, at updateIdx: Int) -> Bool {
         let rowID = changes[updateIdx].rowID
         guard let cellIdx = changes[updateIdx].cellChanges.firstIndex(where: {
             $0.columnIndex == cellChange.columnIndex
         }) else {
             changes[updateIdx].cellChanges.append(cellChange)
             modifiedCells[rowID, default: []].insert(cellChange.columnIndex)
-            return
+            return true
         }
 
-        let original = changes[updateIdx].cellChanges[cellIdx]
-        let merged = CellChange(
-            columnIndex: cellChange.columnIndex,
-            columnName: cellChange.columnName,
-            oldValue: original.oldValue,
-            newValue: cellChange.newValue,
-            oldIsAbsent: original.oldIsAbsent,
-            newIsAbsent: cellChange.newIsAbsent,
-            oldIsExpression: original.oldIsExpression,
-            newIsExpression: cellChange.newIsExpression
-        )
-        changes[updateIdx].cellChanges[cellIdx] = merged
+        let merged = changes[updateIdx].cellChanges[cellIdx].followed(by: cellChange)
+        guard merged.restoresOriginal else {
+            changes[updateIdx].cellChanges[cellIdx] = merged
+            return true
+        }
+        removeUpdateCell(at: updateIdx, cellIdx: cellIdx)
+        return false
+    }
 
-        guard merged.restoresOriginal else { return }
+    private mutating func write(_ cellChange: CellChange, intoRun runIdx: Int, at updateIdx: Int) {
+        changes[updateIdx].runs[runIdx].write(cellChange)
+        if changes[updateIdx].runs[runIdx].cellChanges.isEmpty {
+            changes[updateIdx].runs.remove(at: runIdx)
+        }
+    }
+
+    // A cell the grid shows unchanged leaves every run too, so no trigger fires for a value nobody changed.
+    private mutating func removeUpdateCell(at updateIdx: Int, cellIdx: Int) {
+        let rowID = changes[updateIdx].rowID
+        let columnIndex = changes[updateIdx].cellChanges[cellIdx].columnIndex
         changes[updateIdx].cellChanges.remove(at: cellIdx)
-        removeModifiedCell(rowID: rowID, columnIndex: cellChange.columnIndex)
+        removeModifiedCell(rowID: rowID, columnIndex: columnIndex)
+        for runIdx in changes[updateIdx].runs.indices.reversed() {
+            changes[updateIdx].runs[runIdx].cellChanges.removeAll { $0.columnIndex == columnIndex }
+            if changes[updateIdx].runs[runIdx].cellChanges.isEmpty {
+                changes[updateIdx].runs.remove(at: runIdx)
+            }
+        }
         if changes[updateIdx].cellChanges.isEmpty {
             removeChangeAt(updateIdx)
         }
@@ -575,11 +617,7 @@ struct PendingChanges: Equatable {
               changes[updateIdx].cellChanges[cellIdx].oldIsExpression == restoredIsExpression else {
             return false
         }
-        changes[updateIdx].cellChanges.remove(at: cellIdx)
-        removeModifiedCell(rowID: rowID, columnIndex: columnIndex)
-        if changes[updateIdx].cellChanges.isEmpty {
-            removeChangeAt(updateIdx)
-        }
+        removeUpdateCell(at: updateIdx, cellIdx: cellIdx)
         return true
     }
 }

@@ -358,6 +358,139 @@ struct RewindPlannerTests {
         #expect(undo.statements.map { String($0.sql.prefix(6)) } == ["DELETE", "INSERT"])
     }
 
+    private func recordedOperations(_ edits: (inout PendingChanges) -> Void) -> [RowWriteOperation] {
+        var pending = PendingChanges()
+        edits(&pending)
+        return RowWriteOperationBuilder.operations(
+            from: pending.changes,
+            insertedRowData: pending.insertedRowData,
+            deletedRowIDs: pending.deletedRowIDs,
+            insertedRowIDs: pending.insertedRowIDs,
+            target: target,
+            columns: columns,
+            primaryKeyColumns: ["id"],
+            generatedColumns: [],
+            containsTableOperation: false
+        )
+    }
+
+    // A.name a to tmp, B.name b to a, A.name tmp to b: valid step by step on a unique `name`.
+    private func swapOperations() -> [RowWriteOperation] {
+        recordedOperations { pending in
+            pending.recordCellChange(
+                rowID: .existing(0), columnIndex: 1, columnName: "name", oldValue: "a", newValue: "tmp",
+                originalRow: ["k1", "a"]
+            )
+            pending.recordCellChange(
+                rowID: .existing(1), columnIndex: 1, columnName: "name", oldValue: "b", newValue: "a",
+                originalRow: ["k2", "b"]
+            )
+            pending.recordCellChange(
+                rowID: .existing(0), columnIndex: 1, columnName: "name", oldValue: "tmp", newValue: "b",
+                originalRow: ["k1", "tmp"]
+            )
+        }
+    }
+
+    private func bound(_ statements: [ParameterizedStatement]) -> [[String]] {
+        statements.map { statement in statement.parameters.compactMap { $0 as? String } }
+    }
+
+    @Test("A swap rewinds its newest step first, so no step takes a value another still holds")
+    func aSwapRewindsNewestStepFirst() throws {
+        let plan = try planner(operations: swapOperations()).plan(currentRows: [
+            RewindCurrentRow(values: ["k1", "b"]), RewindCurrentRow(values: ["k2", "a"])
+        ])
+
+        #expect(plan.rows.map { $0.outcome } == [.willRestore, .willRestore])
+        #expect(bound(plan.statements) == [["tmp", "k1"], ["b", "k2"], ["a", "k1"]])
+    }
+
+    @Test("Undoing the rewind of a swap replays the save in its own order")
+    func undoingASwapRewindReplaysTheSave() throws {
+        let rewind = try planner(operations: swapOperations()).plan(currentRows: [
+            RewindCurrentRow(values: ["k1", "b"]), RewindCurrentRow(values: ["k2", "a"])
+        ])
+
+        let undo = try planner(operations: RewindExecutor.inverseOperations(of: rewind)).plan(currentRows: [
+            RewindCurrentRow(values: ["k1", "a"]), RewindCurrentRow(values: ["k2", "b"])
+        ])
+
+        #expect(bound(undo.statements) == [["tmp", "k1"], ["a", "k2"], ["b", "k1"]])
+    }
+
+    @Test("A key moved in an earlier step is rewound under the key each step left")
+    func aKeyMovedInTheFirstStepRewindsUnderEachStepsKey() throws {
+        let operations = recordedOperations { pending in
+            pending.recordCellChange(
+                rowID: .existing(0), columnIndex: 0, columnName: "id", oldValue: "k5", newValue: "k6",
+                originalRow: ["k5", "Ada"]
+            )
+            pending.recordRowDeletion(rowID: .existing(1), originalRow: ["k7", "Bo"])
+            pending.recordCellChange(
+                rowID: .existing(0), columnIndex: 1, columnName: "name", oldValue: "Ada", newValue: "Grace",
+                originalRow: ["k6", "Ada"]
+            )
+        }
+
+        let plan = try planner(operations: operations).plan(currentRows: [RewindCurrentRow(values: ["k6", "Grace"])])
+        let verbs = plan.statements.map { String($0.sql.prefix(6)) }
+
+        #expect(plan.rows.map { $0.outcome } == [.willRestore, .willRestore])
+        #expect(verbs == ["UPDATE", "INSERT", "UPDATE"])
+        #expect(bound(plan.statements).first == ["Ada", "k6"])
+        #expect(bound(plan.statements).last == ["k5", "k6"])
+    }
+
+    @Test("A step that wrote SQL refuses the row, though a later step replaced it with a value")
+    func aStepThatWroteSQLRefusesTheRow() throws {
+        let operations = recordedOperations { pending in
+            pending.recordCellChange(
+                rowID: .existing(0), columnIndex: 1, columnName: "name", oldValue: "Ada", newValue: "now()",
+                originalRow: ["k1", "Ada"], isExpression: true
+            )
+            pending.recordRowDeletion(rowID: .existing(1), originalRow: ["k2", "Bo"])
+            pending.recordCellChange(
+                rowID: .existing(0), columnIndex: 1, columnName: "name", oldValue: "now()", newValue: "Grace",
+                originalRow: ["k1", "now()"]
+            )
+        }
+
+        let update = try #require(operations.first { $0.kind == .update })
+        #expect(update.refusal == .serverComputedValue)
+        let plan = try planner(operations: operations).plan(currentRows: [RewindCurrentRow(values: ["k1", "Grace"])])
+        #expect(plan.rows.first?.outcome == .notReversible(.serverComputedValue))
+    }
+
+    @Test("A record saved before steps were kept rewinds newest first by list position")
+    func aRecordWithoutStepsRewindsAsBefore() throws {
+        let first = operation(kind: .update, preImage: ["k1", "Ada"], postImage: ["k1", "Grace"], writtenColumns: ["name"])
+        let second = operation(kind: .update, preImage: ["k2", "Bo"], postImage: ["k2", "Cy"], writtenColumns: ["name"])
+
+        let plan = try planner(operations: [first, second]).plan(currentRows: [
+            RewindCurrentRow(values: ["k1", "Grace"]), RewindCurrentRow(values: ["k2", "Cy"])
+        ])
+
+        #expect(bound(plan.statements) == [["Bo", "k2"], ["Ada", "k1"]])
+    }
+
+    @Test("A deleted row comes back once the new row that took its key is removed, and not while that row was changed")
+    func aDeletedRowComesBackAfterTheNewRowThatTookItsKey() throws {
+        let operations = recordedOperations { pending in
+            pending.recordRowDeletion(rowID: .existing(0), originalRow: ["k5", "Ada"])
+            pending.recordRowInsertion(rowID: .inserted(UUID()), values: ["k5", "Bo"])
+        }
+
+        let plan = try planner(operations: operations).plan(currentRows: [RewindCurrentRow(values: ["k5", "Bo"])])
+        let verbs = plan.statements.map { String($0.sql.prefix(6)) }
+        #expect(plan.rows.map { $0.outcome } == [.willRestore, .willRestore])
+        #expect(verbs == ["DELETE", "INSERT"])
+
+        let changed = try planner(operations: operations).plan(currentRows: [RewindCurrentRow(values: ["k5", "Cy"])])
+        #expect(changed.rows.map { $0.outcome } == [.rowAlreadyPresent, .changedSinceSave])
+        #expect(changed.statements.isEmpty)
+    }
+
     @Test("The inverse runs newest first, so a value one row freed is not taken before the other gives it up")
     func inverseRunsInReverseOrder() throws {
         let first = operation(kind: .delete, preImage: ["7", "Ada"], postImage: nil, writtenColumns: columns)

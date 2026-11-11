@@ -22,30 +22,33 @@ public enum SurrealStatementGenerator {
         insertedRowIndices: Set<Int>
     ) throws(PluginRowWriteRefusal) -> [PluginRowWrite] {
         var writes: [PluginRowWrite] = []
+        var insertedWritten: Set<Int> = []
         let typing = FieldTyping(kinds: kinds, held: heldKinds, records: recordKinds, declared: declaredKinds)
-
-        for change in changes where change.type == .update && !insertedRowIndices.contains(change.rowIndex) {
-            let write = try update(table: table, scope: scope, columns: columns, typing: typing, change: change)
-            guard let write else { continue }
-            writes.append(write)
-        }
 
         var defaults: [Int: Set<Int>] = [:]
         for change in changes where change.type == .insert {
             defaults[change.rowIndex, default: []].formUnion(change.defaultColumns ?? [])
         }
-        for index in insertedRowIndices.sorted() {
-            guard let values = insertedRowData[index] else { continue }
-            writes.append(try insert(
-                table: table, scope: scope, columns: columns, typing: typing, values: values,
-                defaults: defaults[index] ?? [], rowIndex: index
-            ))
-        }
 
-        for change in changes where change.type == .delete || deletedRowIndices.contains(change.rowIndex) {
-            guard !insertedRowIndices.contains(change.rowIndex) else { continue }
-            guard let write = delete(table: table, scope: scope, columns: columns, change: change) else { continue }
-            writes.append(write)
+        // In the order received, which is edit order: a record deleted to free a unique value goes before the one taking it.
+        for change in changes {
+            let index = change.rowIndex
+            if insertedRowIndices.contains(index) {
+                guard insertedWritten.insert(index).inserted, let values = insertedRowData[index] else { continue }
+                writes.append(try insert(
+                    table: table, scope: scope, columns: columns, typing: typing, values: values,
+                    defaults: defaults[index] ?? [], rowIndex: index
+                ))
+                continue
+            }
+            if change.type == .update,
+               let write = try update(table: table, scope: scope, columns: columns, typing: typing, change: change) {
+                writes.append(write)
+            }
+            if change.type == .delete || deletedRowIndices.contains(index),
+               let write = delete(table: table, scope: scope, columns: columns, change: change) {
+                writes.append(write)
+            }
         }
 
         return writes
