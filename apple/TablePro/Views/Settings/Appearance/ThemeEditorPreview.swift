@@ -162,10 +162,7 @@ private final class ThemePreviewStatementBand: TextViewCoordinator {
 
 // MARK: - Grid
 
-// Five rows that put every grid slot on screen: header and row numbers, both stripes, a value of every
-// colored type, NULL, both booleans, an unfocused selection, and a modified, a deleted and an inserted row.
-// The preview takes no scroll events, so fixed widths keep every column inside the editor window's default
-// width, and every value but the UUID fits its column at the default grid font.
+// The preview takes no scroll events, so fixed widths keep every column in the editor window; only the UUID overflows.
 internal enum ThemePreviewGridSample {
     internal static let selectedRow = 1
     internal static let modifiedRow = 2

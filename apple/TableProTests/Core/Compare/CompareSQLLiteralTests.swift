@@ -48,23 +48,34 @@ struct CompareSQLLiteralTests {
     @Test
     func mysqlBitIsWrittenAsItsNumber() {
         let driver = NoBackslashEscapesDriver()
-        let bit = ColumnType.boolean(rawType: "bit(8)")
+        let bits = ColumnTypeClassifier(family: .mysql).classify(rawTypeName: "BIT(8)")
+        #expect(bits == .integer(rawType: "BIT(8)"))
         for type in [DatabaseType.mysql, .mariadb] {
-            #expect(CompareSQLLiteral.textLiteral("5", columnType: bit, databaseType: type, driver: driver) == "5")
+            #expect(CompareSQLLiteral.textLiteral("5", columnType: bits, databaseType: type, driver: driver) == "5")
             #expect(CompareSQLLiteral.literal(
-                for: .text("170"), columnType: bit, databaseType: type, driver: driver, keptInScript: false
+                for: .text("170"), columnType: bits, databaseType: type, driver: driver, keptInScript: false
             ) == "170")
         }
-        #expect(CompareSQLLiteral.textLiteral("abc", columnType: bit, databaseType: .mysql, driver: driver) == "'abc'")
-        #expect(CompareSQLLiteral.textLiteral("+5", columnType: bit, databaseType: .mysql, driver: driver) == "'+5'")
+        #expect(CompareSQLLiteral.textLiteral("abc", columnType: bits, databaseType: .mysql, driver: driver) == "'abc'")
+        #expect(CompareSQLLiteral.textLiteral("+5", columnType: bits, databaseType: .mysql, driver: driver) == "'+5'")
+        #expect(CompareSQLLiteral.textLiteral("-1", columnType: bits, databaseType: .mysql, driver: driver) == "-1")
+    }
+
+    @Test
+    func mysqlOneBitFlagIsWrittenAsItsNumber() {
+        let driver = NoBackslashEscapesDriver()
+        let flag = ColumnTypeClassifier(family: .mysql).classify(rawTypeName: "BIT")
+        #expect(flag.isBooleanType)
+        #expect(CompareSQLLiteral.textLiteral("1", columnType: flag, databaseType: .mysql, driver: driver) == "1")
+        #expect(CompareSQLLiteral.textLiteral("-1", columnType: flag, databaseType: .mysql, driver: driver) == "'-1'")
     }
 
     @Test
     func otherBooleansAndBitStringsStayQuoted() {
         let driver = NoBackslashEscapesDriver()
-        let tinyint = ColumnType.boolean(rawType: "tinyint(1)")
+        let tinyint = ColumnTypeClassifier(family: .mysql).classify(rawTypeName: "TINYINT(1)")
         #expect(CompareSQLLiteral.textLiteral("1", columnType: tinyint, databaseType: .mysql, driver: driver) == "'1'")
-        let bit = ColumnType.boolean(rawType: "bit(8)")
+        let bit = ColumnTypeClassifier(family: .postgres).classify(rawTypeName: "bit(8)")
         #expect(CompareSQLLiteral.textLiteral("5", columnType: bit, databaseType: .postgresql, driver: driver) != "5")
     }
 

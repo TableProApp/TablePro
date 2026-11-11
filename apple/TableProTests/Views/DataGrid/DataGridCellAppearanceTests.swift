@@ -6,6 +6,7 @@
 import AppKit
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import TableProTheme
 import Testing
 
@@ -19,6 +20,7 @@ struct DataGridCellAppearanceTests {
         placeholderText: .secondaryLabelColor,
         booleanTrueText: .labelColor,
         booleanFalseText: .labelColor,
+        valueColors: DataGridValueColors(all: .labelColor),
         rowNumberText: .secondaryLabelColor,
         deletedRowText: .systemRed,
         modifiedColumnTint: .systemYellow,
@@ -35,6 +37,7 @@ struct DataGridCellAppearanceTests {
         placeholderText: .systemBrown,
         booleanTrueText: .systemGreen,
         booleanFalseText: .systemPink,
+        valueColors: DataGridValueColors(all: .systemPurple),
         rowNumberText: .systemTeal,
         deletedRowText: .systemRed,
         modifiedColumnTint: .systemYellow,
@@ -498,13 +501,6 @@ struct DataGridCellAppearanceTests {
         #expect(unreadable.textColor == .systemPurple)
     }
 
-    @Test("A palette built without value colors draws every tone in its text color")
-    func paletteWithoutValueColorsDrawsText() {
-        for tone in [DataGridValueTone.string, .number, .dateTime, .binary, .json, .uuid, .enumeration] {
-            #expect(resolve(valueTone: tone, palette: themedPalette).textColor == .systemPurple, "\(tone)")
-        }
-    }
-
     @Test("A theme's value colors reach the grid's palette, and unset ones draw the grid text")
     func themeReachesValueColors() throws {
         let aqua = try #require(NSAppearance(named: .aqua))
@@ -555,9 +551,17 @@ struct DataGridCellAppearanceTests {
             colorsValuesByType: Bool,
             settingIsOn: Bool = true,
             overridesSetting: Bool = false,
+            isForeignKey: Bool = false,
             format: ValueDisplayFormat?
         ) throws {
-            owner = GridTestOwner(TableRows.from(queryRows: values.map { [$0] }, columns: ["value"], columnTypes: [type]))
+            owner = GridTestOwner(TableRows.from(
+                queryRows: values.map { [$0] },
+                columns: ["value"],
+                columnTypes: [type],
+                columnForeignKeys: isForeignKey
+                    ? ["value": ForeignKeyInfo(name: "fk_value", column: "value", referencedTable: "targets", referencedColumn: "id")]
+                    : [:]
+            ))
             var configuration = DataGridConfiguration()
             configuration.colorsValuesByType = colorsValuesByType
             configuration.overridesValueColorSetting = overridesSetting
@@ -659,27 +663,6 @@ struct DataGridCellAppearanceTests {
         #expect(try presentedColors(of: [.null], type: .integer(rawType: "INT"), settingIsOn: false) == ["#777777"])
     }
 
-    @Test("Turning Color values by type on or off recolors the grid it drew, with no reload")
-    func settingChangeRecolorsWithoutReload() throws {
-        let grid = try TypedGrid(
-            values: [.text("42")],
-            type: .integer(rawType: "INT"),
-            colorsValuesByType: true,
-            settingIsOn: false,
-            format: nil
-        )
-        let off = try grid.colors()
-        grid.presenter.registry.reloadValueColors(ValueColorSettings(colorsValuesByType: true))
-        let on = try grid.colors()
-        grid.presenter.registry.reloadValueColors(ValueColorSettings(colorsValuesByType: false))
-        let offAgain = try grid.colors()
-        withExtendedLifetime(grid.owner) {}
-
-        #expect(off == ["#111111"])
-        #expect(on == ["#0044AA"])
-        #expect(offAgain == ["#111111"])
-    }
-
     @Test("A grid that overrides the setting colors values by type while it is off, and only if it opted in")
     func overrideIgnoresTheSetting() throws {
         let value: [PluginCellValue] = [.text("42")]
@@ -693,6 +676,29 @@ struct DataGridCellAppearanceTests {
             settingIsOn: false,
             overridesSetting: true
         ) == ["#111111"])
+    }
+
+    @Test("A foreign key cell keeps its link and takes its type's color")
+    func foreignKeyTakesItsTypeColor() throws {
+        let number = try TypedGrid(
+            values: [.text("7")],
+            type: .integer(rawType: "INT"),
+            colorsValuesByType: true,
+            isForeignKey: true,
+            format: nil
+        )
+        let string = try TypedGrid(
+            values: [.text("ops")],
+            type: .text(rawType: "VARCHAR(8)"),
+            colorsValuesByType: true,
+            isForeignKey: true,
+            format: nil
+        )
+
+        #expect(number.presenter.presentation(forDataIndex: 0).kind == .foreignKey)
+        #expect(try withExtendedLifetime(number.owner) { try number.colors() } == ["#0044AA"])
+        #expect(string.presenter.presentation(forDataIndex: 0).kind == .foreignKey)
+        #expect(try withExtendedLifetime(string.owner) { try string.colors() } == ["#AA1100"])
     }
 
     @Test("An opted-in grid colors a value by its column's type and by the format it is shown in")
@@ -819,5 +825,62 @@ struct DataGridCellAppearanceTests {
         #expect(palette.selectionText === NSColor.alternateSelectedControlTextColor)
         #expect(palette.focusBorder === NSColor.keyboardFocusIndicatorColor)
         #expect(resolve(onEmphasizedSelection: true, palette: palette).textColor === NSColor.alternateSelectedControlTextColor)
+    }
+}
+
+extension GlobalStateSuites {
+    @MainActor
+    struct DataGridValueColorSettingTests {
+        private func valueColor(in grid: HostedDataGrid) throws -> String? {
+            let aqua = try #require(NSAppearance(named: .aqua))
+            let presenter = grid.controller.presenter
+            let pass = try #require(presenter.makePass(in: aqua))
+            let row = try #require(grid.model.row(at: 0))
+            let column = try #require(grid.model.columns.column(at: 0))
+            let appearance = try #require(presenter.appearance(
+                of: row,
+                displayRow: 0,
+                column: column,
+                visualState: .empty,
+                pass: pass,
+                onEmphasizedSelection: false
+            ))
+            return ThemeTestFixture.hex(appearance.textColor)
+        }
+
+        @Test("Turning Color values by type on or off reaches a mounted grid's cells, with no reload of its rows")
+        func settingChangeRecolorsWithoutReload() async throws {
+            let settings = AppSettingsManager.shared
+            let original = settings.valueColors
+            defer { settings.valueColors = original }
+            settings.valueColors = ValueColorSettings(colorsValuesByType: false)
+            var configuration = DataGridConfiguration()
+            configuration.colorsValuesByType = true
+            let scope = ThemeScope.fixed(try ThemeTestFixture.theme(.light, [.gridText: "#111111", .gridNumber: "#0044AA"]))
+            let grid = HostedDataGrid(
+                rows: TableRows.from(queryRows: [[.text("42")]], columns: ["value"], columnTypes: [.integer(rawType: "INT")]),
+                configuration: configuration,
+                prepare: { _, model in model.themeScope = scope }
+            )
+            defer { grid.close() }
+            let rowView = try #require(grid.main.rowView(atRow: 0, makeIfNecessary: true))
+            let rowID = try #require(grid.model.row(at: 0)).id
+            let off = try valueColor(in: grid)
+            let cached = try #require(grid.model.display.cache.box(forID: rowID))
+
+            settings.valueColors = ValueColorSettings(colorsValuesByType: true)
+            try await waitUntil { grid.controller.presenter.registry.colorsValuesByType }
+            let on = try valueColor(in: grid)
+
+            settings.valueColors = ValueColorSettings(colorsValuesByType: false)
+            try await waitUntil { !grid.controller.presenter.registry.colorsValuesByType }
+            let offAgain = try valueColor(in: grid)
+
+            #expect(off == "#111111")
+            #expect(on == "#0044AA")
+            #expect(offAgain == "#111111")
+            #expect(grid.model.display.cache.box(forID: rowID) === cached)
+            #expect(grid.main.rowView(atRow: 0, makeIfNecessary: false) === rowView)
+        }
     }
 }

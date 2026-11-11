@@ -57,6 +57,35 @@ struct RowSortComparatorTests {
         #expect(result == .orderedSame)
     }
 
+    @Test("A boolean column holding integers orders them as numbers")
+    func booleanColumnHoldingIntegers() {
+        let tinyint = ColumnTypeClassifier(family: .mysql).classify(rawTypeName: "TINYINT(1)")
+        #expect(tinyint.isBooleanType)
+        #expect(RowSortComparator.compare("-2", "-1", columnType: tinyint) == .orderedAscending)
+        #expect(RowSortComparator.compare("10", "9", columnType: tinyint) == .orderedDescending)
+        #expect(RowSortComparator.compare("-128", "127", columnType: tinyint) == .orderedAscending)
+        #expect(RowSortComparator.compare("0", "1", columnType: tinyint) == .orderedAscending)
+        #expect(RowSortComparator.compare("1", "1", columnType: tinyint) == .orderedSame)
+    }
+
+    @Test("A boolean column holding true and false orders false first, whatever the spelling")
+    func booleanColumnHoldingTruthValues() {
+        let boolean = ColumnType.boolean(rawType: "BOOLEAN")
+        #expect(RowSortComparator.compare("false", "true", columnType: boolean) == .orderedAscending)
+        #expect(RowSortComparator.compare("TRUE", "false", columnType: boolean) == .orderedDescending)
+        #expect(RowSortComparator.compare("t", "f", columnType: boolean) == .orderedDescending)
+        #expect(RowSortComparator.compare("t", "true", columnType: boolean) == .orderedSame)
+    }
+
+    @Test("A boolean column mixing integers and true or false orders them one way")
+    func booleanColumnMixingIntegersAndTruthValues() {
+        let boolean = ColumnType.boolean(rawType: "BOOLEAN")
+        #expect(RowSortComparator.compare("1", "2", columnType: boolean) == .orderedAscending)
+        #expect(RowSortComparator.compare("2", "true", columnType: boolean) == .orderedDescending)
+        #expect(RowSortComparator.compare("true", "1", columnType: boolean) == .orderedSame)
+        #expect(RowSortComparator.compare("false", "-1", columnType: boolean) == .orderedDescending)
+    }
+
     @Test("text column uses numeric string comparison")
     func textColumn() {
         let result = RowSortComparator.compare("file2", "file10", columnType: .text(rawType: "VARCHAR"))
