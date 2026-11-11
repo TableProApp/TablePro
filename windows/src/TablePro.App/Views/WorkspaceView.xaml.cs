@@ -14,13 +14,13 @@ using Windows.System;
 
 namespace TablePro.App.Views;
 
-internal sealed record SecretAnswer(string Secret, bool Save);
-
-public sealed partial class WorkspaceView : UserControl
+// The closing and reopening of tabs is WorkspaceTabs'; the tree, the bars and the strip's moves are drawn here.
+public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabViewItem>
 {
     private readonly Workbench _workbench;
     private readonly OpenConnection _connection;
-    private SessionShare? _share;
+    private readonly WorkspaceTabs<TabViewItem> _tabs;
+    private SessionShare<DatabaseSession>? _share;
     private DatabaseSession? _session;
     private IReadOnlyList<ObjectEntry>? _everyObject;
     private bool _singleSchema;
@@ -29,11 +29,9 @@ public sealed partial class WorkspaceView : UserControl
 
     // Schemas a refresh reads again, the next time each one opens.
     private readonly HashSet<string> _stale = [];
-    private readonly ClosedTabs _closed = new();
 
     // What each query tab's text read at its document's version, since the session is written every few seconds.
     private readonly Dictionary<ITabContent, (long Version, LineEnding Ending, SessionTab Tab)> _snapshots = [];
-    private readonly HashSet<TabViewItem> _closingTabs = [];
     private CancellationTokenSource? _watching;
     private Windows.Foundation.Point _stripOrigin;
     private WindowId _tearOutWindow;
@@ -44,6 +42,8 @@ public sealed partial class WorkspaceView : UserControl
     {
         _workbench = workbench;
         _connection = connection;
+        _tabs = new WorkspaceTabs<TabViewItem>(this);
+        _tabs.Emptied += (_, _) => Emptied?.Invoke(this, EventArgs.Empty);
         InitializeComponent();
         ObjectList.ContainerContentChanging += OnObjectContainerChanging;
         for (var number = 1; number <= 9; number++)
@@ -90,7 +90,7 @@ public sealed partial class WorkspaceView : UserControl
 
     public bool ObjectsVisible => ObjectsPane.Visibility == Visibility.Visible;
 
-    public bool CanReopenTab => _session is not null && _closed.Count > 0;
+    public bool CanReopenTab => _session is not null && _tabs.ClosedCount > 0;
 
     internal ITabContent? ActiveTab => (Tabs.SelectedItem as TabViewItem)?.Content as ITabContent;
 
@@ -154,7 +154,7 @@ public sealed partial class WorkspaceView : UserControl
     }
 
     // A workspace a tab is moved into starts with none, and reads its tree once the tab is there (Start).
-    internal void ShowConnected(SessionShare share, SessionConnection? restore, bool adopted = false)
+    internal void ShowConnected(SessionShare<DatabaseSession> share, SessionConnection? restore, bool adopted = false)
     {
         _share = share;
         _session = share.Session;
@@ -245,47 +245,21 @@ public sealed partial class WorkspaceView : UserControl
         return tab;
     }
 
-    internal bool HasUnconfirmedTransactions(ISet<ITabContent> confirmed) => Tabs.TabItems.OfType<TabViewItem>()
-        .Any(item => item.Content is ITabContent content && WorkspaceNotices.Holds(content.Transaction) && !confirmed.Contains(content));
+    // A held transaction or unsaved changes the close has not been answered about.
+    internal bool HasUnconfirmed(ISet<IWorkspaceTab> confirmed) => _tabs.HasUnconfirmed(confirmed);
 
-    // A table tab loading a page is not work the user started, so only a query tab's run is asked about.
-    internal List<ITabContent> RunningQueries() => [.. Tabs.TabItems.OfType<TabViewItem>()
-        .Select(item => item.Content)
-        .OfType<QueryTabView>()
-        .Where(view => view.IsRunning)];
+    internal IReadOnlyList<IWorkspaceTab> RunningQueries() => _tabs.RunningQueries();
 
-    // The tabs of a window that closed, so Reopen closed tab brings them back here in their order.
     internal void KeepClosed(IReadOnlyList<SessionTab> tabs)
     {
-        ArgumentNullException.ThrowIfNull(tabs);
-        for (var index = tabs.Count - 1; index >= 0; index--)
-        {
-            _closed.Push(tabs[index], int.MaxValue);
-        }
-
+        _tabs.KeepClosed(tabs);
         CommandsChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    internal async Task<bool> ConfirmCloseAsync(ISet<ITabContent> confirmed)
-    {
-        foreach (var item in Tabs.TabItems.OfType<TabViewItem>().ToList())
-        {
-            if (item.Content is ITabContent content && WorkspaceNotices.Holds(content.Transaction) && !confirmed.Contains(content))
-            {
-                Tabs.SelectedItem = item;
-                if (!await ConfirmCloseHeldAsync(content).ConfigureAwait(true))
-                {
-                    return false;
-                }
+    // Without Save when the connection is being made read only.
+    internal Task<bool> ConfirmCloseAsync(ISet<IWorkspaceTab> confirmed, bool offerSave = true) =>
+        _tabs.ConfirmCloseAsync(confirmed, offerSave);
 
-                confirmed.Add(content);
-            }
-        }
-
-        return true;
-    }
-
-    // A reconnect keeps the closed tabs, which hold only their text or table, to reopen on the next session.
     public async Task CloseTabsAsync(bool keepClosed = false)
     {
         CancelRecovery();
@@ -299,16 +273,7 @@ public sealed partial class WorkspaceView : UserControl
         HealthBar.IsOpen = false;
         ElsewhereBar.IsOpen = false;
         HideChangesOnConnect();
-        if (!keepClosed)
-        {
-            _closed.Clear();
-        }
-
-        foreach (var content in Tabs.TabItems.OfType<TabViewItem>().Select(item => item.Content).OfType<ITabContent>().ToList())
-        {
-            await content.CloseAsync().ConfigureAwait(true);
-        }
-
+        await _tabs.CloseAllAsync(keepClosed).ConfigureAwait(true);
         Tabs.TabItems.Clear();
         _snapshots.Clear();
         Objects.Clear();
@@ -379,7 +344,7 @@ public sealed partial class WorkspaceView : UserControl
 
     public void ReopenClosedTab()
     {
-        if (_share is null || _closed.Pop() is not { } closed)
+        if (_share is null || _tabs.TakeClosed() is not { } closed)
         {
             return;
         }
@@ -471,6 +436,12 @@ public sealed partial class WorkspaceView : UserControl
     internal void Take(TabViewItem item, int? index = null)
     {
         item.Tag = this;
+        // A tab that is not shown is out of the tree, so its questions are asked from here, as a held transaction's are.
+        if (item.Content is TableTabView table)
+        {
+            table.DialogOwner = this;
+        }
+
         item.ContextRequested += OnTabContextRequested;
         if (item.Content is ITabContent content)
         {
@@ -670,41 +641,19 @@ public sealed partial class WorkspaceView : UserControl
         }
     }
 
-    // Closing a tab ends its own connection, and its transaction with it, so a held one is asked about first.
-    // A second request while the first is closing the tab, or asking about its transaction, does nothing.
-    private async Task CloseTabAsync(TabViewItem item)
-    {
-        if (!_closingTabs.Add(item))
-        {
-            return;
-        }
+    private Task CloseTabAsync(TabViewItem item) => _tabs.CloseAsync(item);
 
-        try
-        {
-            if (item.Content is ITabContent content)
-            {
-                if (WorkspaceNotices.Holds(content.Transaction) && !await ConfirmCloseHeldAsync(content).ConfigureAwait(true))
-                {
-                    return;
-                }
+    IReadOnlyList<TabViewItem> IWorkspaceTabsView<TabViewItem>.Items => [.. Tabs.TabItems.OfType<TabViewItem>()];
 
-                _closed.Push(content.Snapshot(), Tabs.TabItems.IndexOf(item));
-                await content.CloseAsync().ConfigureAwait(true);
-            }
-        }
-        finally
-        {
-            _closingTabs.Remove(item);
-        }
+    IWorkspaceTab? IWorkspaceTabsView<TabViewItem>.ContentOf(TabViewItem item) => item.Content as ITabContent;
 
-        Release(item);
-        if (Tabs.TabItems.Count == 0)
-        {
-            Emptied?.Invoke(this, EventArgs.Empty);
-        }
-    }
+    void IWorkspaceTabsView<TabViewItem>.SelectTab(TabViewItem item) => Tabs.SelectedItem = item;
 
-    private async Task<bool> ConfirmCloseHeldAsync(ITabContent content)
+    Task<bool> IWorkspaceTabsView<TabViewItem>.ConfirmCloseHeldAsync(IWorkspaceTab tab) => ConfirmCloseHeldAsync(tab);
+
+    void IWorkspaceTabsView<TabViewItem>.Remove(TabViewItem item) => Release(item);
+
+    private async Task<bool> ConfirmCloseHeldAsync(IWorkspaceTab content)
     {
         var dialog = new ContentDialog
         {

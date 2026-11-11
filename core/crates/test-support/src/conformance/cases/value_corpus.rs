@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use tablepro_core::browse::{
-    BrowseSqlError, DeclaredPrecisionSink, ExportRequest, PageRequest, build_export, read_page,
+    BrowseSqlError, DeclaredPrecisionSink, ExportFields, ExportRequest, PageRequest, build_export, read_page,
 };
 use tablepro_core::column::{ColumnInfo, ColumnType, ResultColumn};
 use tablepro_core::export::value_text;
@@ -175,6 +175,7 @@ async fn export(connection: &dyn Connection, table: &TableRef) -> Result<Read, C
             filter: &FilterSet::default(),
             sort: &[],
             identity: &identity,
+            fields: ExportFields::Every,
         },
     )
     .map_err(ConformanceFailure::setup)?;

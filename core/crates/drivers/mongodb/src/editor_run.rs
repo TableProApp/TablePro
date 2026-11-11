@@ -8,8 +8,8 @@ use mongodb::Client;
 use tablepro_core::sql_syntax::StatementAccess;
 use tablepro_core::sql_syntax::mongo::{access_of, parse_statement, statement_ranges};
 use tablepro_core::{
-    DriverError, ErrorCategory, ReadOnlyRefusal, ResultSink, RunEnd, RunOptions, RunSummary, SinkFlow, TimeoutPhase,
-    TransactionState, UserSql,
+    DriverError, ErrorCategory, ReadOnlyRefusal, ResultSink, RunEnd, RunOptions, RunSummary, SinkFlow, StopReason,
+    StopRequest, TimeoutPhase, TransactionState, UserSql,
 };
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -33,6 +33,13 @@ impl Interrupt {
         match self {
             Self::Cancelled => RunEnd::Cancelled,
             Self::DeadlineElapsed => RunEnd::TimedOut { server_cancelled },
+        }
+    }
+
+    fn reason(self) -> StopReason {
+        match self {
+            Self::Cancelled => StopReason::Cancelled,
+            Self::DeadlineElapsed => StopReason::DeadlineElapsed,
         }
     }
 }
@@ -70,6 +77,7 @@ impl EditorRun {
         let started = Instant::now();
         let run_deadline = options.deadline.map(|bound| started + bound);
         let text = sql.as_str();
+        let mut sets = 0;
         for range in statement_ranges(text) {
             let statement = match parse_statement(&text[range.clone()]) {
                 Ok(statement) => statement,
@@ -99,7 +107,9 @@ impl EditorRun {
             if let Some(interrupt) = self.interrupted(&options.cancel, deadline) {
                 return Ok(summary(started, interrupt.end(false)));
             }
-            let ran = self.statement(planned, sink.as_mut(), &options, deadline).await;
+            let ran = self
+                .statement(planned, sink.as_mut(), &options, deadline, &mut sets)
+                .await;
             match ran {
                 Ran::Done(SinkFlow::ConsumerGone) => return Ok(summary(started, RunEnd::Cancelled)),
                 Ran::Done(SinkFlow::Continue) => {}
@@ -120,33 +130,44 @@ impl EditorRun {
 
     /// Send one statement in a session of its own and stream what it
     /// returns, or stop it: `killSessions` ends what that session runs on
-    /// the server, cursors included.
+    /// the server, cursors included. The read asks for no more until the
+    /// server answers it, and where it is refused and `killOp` stands in,
+    /// ends there.
     fn statement<'a>(
         &'a self,
         planned: crate::shell_command::Plan,
         sink: &'a mut dyn ResultSink,
         options: &'a RunOptions,
         deadline: Option<Instant>,
+        sets: &'a mut usize,
     ) -> Pin<Box<dyn Future<Output = Ran> + Send + 'a>> {
         Box::pin(async move {
             let kill = SessionKill::new();
+            let stop = StopRequest::new();
             let mut session = match session(&self.endpoint, &self.client, &kill).await {
                 Ok(session) => session,
                 Err(error) => return Ran::Failed(error),
             };
             let ran = {
                 let work = async {
-                    match start(&self.endpoint, &self.client, &mut session, planned).await? {
+                    let (source, limit) = match start(&self.endpoint, &self.client, &mut session, planned).await? {
                         Source::Used(next) => {
                             *self.database.lock().unwrap_or_else(PoisonError::into_inner) = next.clone();
-                            emit(&self.endpoint, Source::Used(next), &mut session, sink, None)
-                                .await
-                                .map(|(flow, _)| flow)
+                            (Source::Used(next), None)
                         }
-                        source => emit(&self.endpoint, source, &mut session, sink, Some(options.row_limit))
-                            .await
-                            .map(|(flow, _)| flow),
-                    }
+                        source => (source, Some(options.row_limit)),
+                    };
+                    emit(
+                        &self.endpoint,
+                        source,
+                        &mut session,
+                        sink,
+                        limit,
+                        sets,
+                        &kill.follow(&stop),
+                    )
+                    .await
+                    .map(|(flow, _)| flow)
                 };
                 let mut work = std::pin::pin!(work);
                 let interrupt = tokio::select! {
@@ -162,6 +183,7 @@ impl EditorRun {
                 match interrupt {
                     ControlFlow::Break(ran) => ran,
                     ControlFlow::Continue(interrupt) => {
+                        stop.request(interrupt.reason());
                         let grace_ends = Instant::now() + self.endpoint.cancel_grace();
                         let _ = tokio::time::timeout_at(grace_ends, kill.kill()).await;
                         let server_cancelled = match tokio::time::timeout_at(grace_ends, &mut work).await {

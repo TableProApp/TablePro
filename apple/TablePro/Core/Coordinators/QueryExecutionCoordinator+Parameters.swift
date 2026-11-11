@@ -288,7 +288,10 @@ extension QueryExecutionCoordinator {
                 )
                 await MainActor.run { [weak self] in
                     guard let self else { return }
-                    guard parent.tabExecution.settle(claim) else { return }
+                    guard parent.tabExecution.settle(claim) else {
+                        parent.reportStopRollback(error, tabId: tabId)
+                        return
+                    }
                     parent.tabManager.mutate(tabId: tabId) { tab in
                         tab.pagination.isLoadingMore = false
                     }
@@ -297,6 +300,7 @@ extension QueryExecutionCoordinator {
                         parent.reportEndedExecutions([
                             EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
                         ])
+                        parent.reportStopRollback(error, tabId: tabId)
                         return
                     }
                     handleQueryExecutionError(
@@ -700,7 +704,7 @@ extension QueryExecutionCoordinator {
                     sql: statement.originalSQL,
                     index: firstNumber + position,
                     baseQuery: statement.executableSQL,
-                    baseQueryParameterValues: statement.parameterValues?.map { $0 as? String },
+                    baseQueryParameterValues: statement.parameterValues?.map(TypedParameterValue.kept),
                     namedParameterStatement: statement.parameterValues == nil
                         ? nil
                         : NamedParameterStatement(sql: statement.originalSQL, parameters: history.parameters),
@@ -812,7 +816,7 @@ extension QueryExecutionCoordinator {
                 prepared: prepared
             )
 
-            let parameterValues = nativeParameters.map { $0 as? String }
+            let parameterValues = nativeParameters.map(TypedParameterValue.kept)
             let statement = originalSQL.map { NamedParameterStatement(sql: $0, parameters: originalParameters) }
             parent.tabManager.mutate(tabId: tabId) {
                 $0.pagination.baseQueryParameterValues = parameterValues

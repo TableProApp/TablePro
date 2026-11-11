@@ -24,6 +24,12 @@ struct DataGridConfiguration: Equatable {
     // A result's rows, not a list of columns: the Data Grid sort preferences apply.
     var appliesRowSortPreferences: Bool = false
 
+    // Values typed by the engine draw in their type's theme color; a list of definitions or untyped text stays plain.
+    var colorsValuesByType: Bool = false
+
+    // The theme editor shows a theme's value colors even while Color values by type is off.
+    var overridesValueColorSetting: Bool = false
+
     // Off on the Structure grids, whose Copy writes definitions a paste reads back.
     var appliesRowCopyFormat: Bool = false
 

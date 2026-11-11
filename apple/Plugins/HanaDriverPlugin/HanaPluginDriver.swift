@@ -100,6 +100,22 @@ final class HanaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         try await run(query, parameters: parameters, rowCap: nil)
     }
 
+    // Collected here rather than through boundedQueryFromStream, which would drop the column hints and the
+    // large object warning that execute returns.
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        let report = HanaStreamReport()
+        let collected = try await PluginBoundedStream.collect(
+            stream(query, report: report),
+            rowCap: rowCap,
+            startedAt: Date()
+        )
+        return report.completing(collected)
+    }
+
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        stream(query, report: HanaStreamReport())
+    }
+
     func switchSchema(to schema: String) async throws {
         guard !schema.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw HanaError(kind: .configuration, message: String(localized: "The SAP HANA schema name cannot be empty."))
@@ -153,6 +169,63 @@ final class HanaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 cancellation: query.cancellation
             )
             return HanaResultMapping.pluginResult(from: envelope)
+        } catch let failure as HanaBridgeFailure {
+            let requested = Task.isCancelled || cancellationGate.isCancelled(query.generation)
+            throw HanaFailureMapping.error(for: failure, cancellationRequested: requested)
+        }
+    }
+
+    private func stream(_ sql: String, report: HanaStreamReport) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        PluginRowStream.make { continuation, abort in
+            let driver = self
+            let producer = Task {
+                do {
+                    try await driver.produce(sql, into: continuation, report: report)
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+                report.logTruncatedLargeObjects()
+            }
+            // The cancel takes the Stop path: the helper ends a fetch in flight, or the cursor loop closes the cursor.
+            abort.onAbort { producer.cancel() }
+        }
+    }
+
+    private func produce(
+        _ sql: String,
+        into continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
+        report: HanaStreamReport
+    ) async throws {
+        if HanaExplainStatement.explainedStatement(in: sql) != nil {
+            let result = try await run(sql, parameters: nil, rowCap: nil)
+            continuation.yield(.header(PluginStreamHeader(
+                columns: result.columns,
+                columnTypeNames: result.columnTypeNames
+            )))
+            if !result.rows.isEmpty {
+                continuation.yield(.rows(result.rows))
+            }
+            return
+        }
+        let query = beginQuery()
+        defer { endQuery(query) }
+        do {
+            try await session.stream(
+                sql: sql,
+                cancellation: query.cancellation,
+                onHeader: { header in
+                    report.record(header)
+                    continuation.yield(.header(PluginStreamHeader(
+                        columns: header.columns,
+                        columnTypeNames: header.columnTypeNames
+                    )))
+                },
+                onBatch: { batch in
+                    report.record(truncatedLargeObjects: batch.truncatedLobCount)
+                    continuation.yield(.rows(HanaResultMapping.pluginRows(batch.rows)))
+                }
+            )
         } catch let failure as HanaBridgeFailure {
             let requested = Task.isCancelled || cancellationGate.isCancelled(query.generation)
             throw HanaFailureMapping.error(for: failure, cancellationRequested: requested)

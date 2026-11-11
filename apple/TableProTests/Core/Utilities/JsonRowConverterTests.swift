@@ -250,6 +250,14 @@ struct JsonRowConverterTests {
         #expect(result.contains("\"maybe\""))
     }
 
+    @Test("A boolean column holding another integer writes that number")
+    func booleanColumnOtherInteger() {
+        let converter = makeConverter(columns: ["flag"], columnTypes: [.boolean(rawType: "TINYINT(1)")])
+        let result = converter.generateJson(rows: [["2"]])
+        #expect(result.contains(": 2"))
+        #expect(!result.contains("\"2\""))
+    }
+
     // MARK: - JSON
 
     @Test("Valid JSON column is embedded verbatim")

@@ -6,8 +6,6 @@ import TableProPluginKit
 internal struct BigQueryStatementGenerator {
     typealias Statement = (statement: String, parameters: [PluginCellValue])
 
-    static let defaultSentinel = "__DEFAULT__"
-
     private static let logger = Logger(subsystem: "com.TablePro", category: "BigQueryStatementGenerator")
     private static let placeholder = "?"
 
@@ -81,7 +79,7 @@ internal struct BigQueryStatementGenerator {
         var placeholders: [String] = []
         var parameters: [PluginCellValue] = []
         for (index, column) in columns.enumerated() {
-            guard let value = values[column], !Self.isDefaultSentinel(value) else { continue }
+            guard let value = values[column], !change.isColumnDefault(index) else { continue }
             names.append(GoogleSQLLiteral.quotedIdentifier(column))
             if let sql = Self.expression(value, isMarked: expressionColumns.contains(index)) {
                 placeholders.append(sql)
@@ -124,7 +122,7 @@ internal struct BigQueryStatementGenerator {
         var parameters: [PluginCellValue] = []
         let assignments = change.cellChanges.map { cellChange -> String in
             let column = GoogleSQLLiteral.quotedIdentifier(cellChange.columnName)
-            guard !Self.isDefaultSentinel(cellChange.newValue) else { return "\(column) = DEFAULT" }
+            guard !change.isColumnDefault(cellChange.columnIndex) else { return "\(column) = DEFAULT" }
             if let sql = Self.expression(
                 cellChange.newValue,
                 isMarked: expressionColumns.contains(cellChange.columnIndex)
@@ -183,10 +181,6 @@ internal struct BigQueryStatementGenerator {
         Self.logger.warning(
             "Refusing the save: a \(kind, privacy: .public) on \(self.tableName, privacy: .private) has no usable row key"
         )
-    }
-
-    private static func isDefaultSentinel(_ value: PluginCellValue) -> Bool {
-        value.asText == defaultSentinel
     }
 
     // The host checked a marked cell's text against the engine's vocabulary before handing it over.

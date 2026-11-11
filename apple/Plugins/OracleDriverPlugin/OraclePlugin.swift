@@ -215,6 +215,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .cellExpressions,
             .uuidCellText,
             .userManagement,
+            .columnDefaultMarks,
         ]
     }
 

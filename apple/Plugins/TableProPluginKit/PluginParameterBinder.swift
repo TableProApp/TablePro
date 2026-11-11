@@ -20,6 +20,21 @@ public enum PluginParameterBinder {
     // The host's reading of the connection, set around a statement it hands to a driver.
     @TaskLocal static var hostFeatures: SQLLexicalFeatures?
 
+    @TaskLocal static var hostParameterKinds: [PluginColumnKind?]?
+
+    // A driver whose context overload forwards to its context-free twin wraps the call in this, so the default binder
+    // still writes each value the way the host's context says.
+    public static func withHostContext<T>(
+        _ context: PluginStatementContext,
+        operation: () async throws -> T
+    ) async rethrows -> T {
+        try await $hostFeatures.withValue(context.lexicalFeatures) {
+            try await $hostParameterKinds.withValue(context.parameterKinds) {
+                try await operation()
+            }
+        }
+    }
+
     public static func bind(
         _ template: String,
         literals parameters: [String],

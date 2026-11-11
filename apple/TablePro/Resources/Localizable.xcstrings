@@ -7023,6 +7023,9 @@
     "%1$@ column of %2$@" : {
 
     },
+    "%1$@ contrast is %2$@:1. Aim for at least 4.5:1." : {
+
+    },
     "%1$@ could not be read again before generating the script. %2$@" : {
       "localizations" : {
         "fr" : {
@@ -31815,6 +31818,10 @@
     "Billing…" : {
 
     },
+    "Binary" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Binary content" : {
       "localizations" : {
         "fr" : {
@@ -43902,6 +43909,9 @@
         }
       }
     },
+    "Color values by type" : {
+
+    },
     "Color, omitted when none" : {
       "localizations" : {
         "fr" : {
@@ -44062,6 +44072,10 @@
           }
         }
       }
+    },
+    "column %@ first appears in a later chunk" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Column %@ has a type, default, generation expression or check that is not one SQL expression." : {
       "extractionState" : "manual",
@@ -58497,6 +58511,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Data Grid Binary" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Data Grid Bool False" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -58505,11 +58523,19 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Data Grid Date & Time" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Data Grid Deleted" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
     "Data Grid Deleted Text" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid Enum" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -58574,6 +58600,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Data Grid JSON" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Data Grid Line" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -58583,6 +58613,10 @@
       "generatesSymbol" : false
     },
     "Data Grid NULL Value" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid Number" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -58598,7 +58632,15 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Data Grid String" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Data Grid Text" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid UUID" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -60785,6 +60827,10 @@
           }
         }
       }
+    },
+    "Date & Time" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Date and Time" : {
 
@@ -67309,6 +67355,9 @@
         }
       }
     },
+    "Draw strings, numbers, dates and other typed values in the colors of the theme's Values section" : {
+
+    },
     "Drawing %1$d shapes in SRID %2$d." : {
       "localizations" : {
         "fr" : {
@@ -73556,6 +73605,10 @@
         }
       }
     },
+    "Enum" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Enum %@ has no symbols." : {
 
     },
@@ -75522,6 +75575,9 @@
           }
         }
       }
+    },
+    "Except NULL and booleans, these colors show in the grid only while Color values by type is on in Settings > Data." : {
+
     },
     "exclamation mark" : {
       "extractionState" : "manual",
@@ -194652,6 +194708,10 @@
         }
       }
     },
+    "The statement was stopped, and the server rolled back the transaction it ran in. Every change since that transaction began is undone." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The statement's placeholders do not match the %d values given." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -196376,7 +196436,15 @@
         }
       }
     },
+    "Theme format %1$d is no longer supported. This version of TablePro reads format %2$d and later." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Theme format %1$d is no longer supported. This version of TablePro reads format %2$d." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Theme format %1$d was made for a newer TablePro. This version reads format %2$d and earlier." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -196880,6 +196948,10 @@
     },
     "These statements ran inside the transaction already open on this connection, so rolling it back undoes them:" : {
 
+    },
+    "These theme keys need theme format %1$d: %2$@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "These two engines cannot share a script." : {
       "localizations" : {
@@ -198462,6 +198534,10 @@
           }
         }
       }
+    },
+    "This database has no column defaults, so a cell cannot be left to one. Enter a value." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This database has no Create Table form" : {
       "extractionState" : "manual",
@@ -212371,6 +212447,8 @@
       }
     },
     "UUID" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -213295,6 +213373,10 @@
           }
         }
       }
+    },
+    "Values" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Values a spreadsheet would read as formulas, written with a leading single quote: %lld. Turn off Sanitize formula-like values to export them unchanged." : {
       "extractionState" : "manual",

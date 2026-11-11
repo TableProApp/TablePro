@@ -12,10 +12,8 @@ internal sealed record GridColors
 
     public Color Text { get; init; }
 
-    // NULL cells.
     public Color Placeholder { get; init; }
 
-    // The mark after a value the core cut.
     public Color CutMark { get; init; }
 
     public Color RowNumber { get; init; }
@@ -37,6 +35,16 @@ internal sealed record GridColors
     public Color SelectedText { get; init; }
 
     public Color Focus { get; init; }
+
+    public Color DefaultValue { get; init; }
+
+    public Color DeletedText { get; init; }
+
+    public Color ModifiedFill { get; init; }
+
+    public Color InsertedFill { get; init; }
+
+    public Color DeletedFill { get; init; }
 
     public bool HighContrast { get; init; }
 
@@ -65,6 +73,8 @@ internal sealed record GridColors
                 Selection = highlight,
                 SelectedText = ThemeColors.System("SystemColorHighlightTextColor", ThemeColors.FromArgb(0xFF000000u)),
                 Focus = windowText,
+                DefaultValue = windowText,
+                DeletedText = windowText,
             };
         }
         var dark = theme == ElementTheme.Dark;
@@ -90,6 +100,14 @@ internal sealed record GridColors
             Selection = Color.FromArgb(dark ? (byte)0x55 : (byte)0x3A, accent.R, accent.G, accent.B),
             SelectedText = text,
             Focus = Themed("AccentFillColorDefault", 0xFF005FB8u, 0xFF60CDFFu),
+            // The accent shade AccentTextFillColorPrimary takes, should the key be missing.
+            DefaultValue = ThemeColors.Theme("AccentTextFillColorPrimary", theme,
+                ThemeColors.Theme(dark ? "SystemAccentColorLight3" : "SystemAccentColorDark2", theme,
+                    ThemeColors.FromArgb(dark ? 0xFF99EBFFu : 0xFF003E92u))),
+            DeletedText = Themed("SystemFillColorCritical", 0xFFC42B1Cu, 0xFFFF99A4u),
+            ModifiedFill = Themed("SystemFillColorCautionBackground", 0xFFFFF4CEu, 0xFF433519u),
+            InsertedFill = Themed("SystemFillColorSuccessBackground", 0xFFDFF6DDu, 0xFF393D1Bu),
+            DeletedFill = Themed("SystemFillColorCriticalBackground", 0xFFFDE7E9u, 0xFF442726u),
         };
     }
 }

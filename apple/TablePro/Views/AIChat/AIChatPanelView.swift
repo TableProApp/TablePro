@@ -73,7 +73,8 @@ struct AIChatPanelView: View {
             viewModel.connection = connection
         }
         .task(id: ModelListTrigger(
-            providerIDs: settingsManager.ai.providers.map(\.id),
+            sources: settingsManager.ai.providers.map(AIModelListSource.init(config:)),
+            savedRevision: viewModel.providerSettingsRevision,
             isCopilotRunning: copilotService.status == .running
         )) {
             await viewModel.loadAvailableModels()
@@ -595,9 +596,9 @@ struct AIChatPanelView: View {
     }
 }
 
-/// Copilot lists no models until its server runs, and it starts on first use rather than with the
-/// panel, so its list is fetched again once it is up.
+// Copilot lists no models until its server runs, which starts on first use, not with the panel.
 private struct ModelListTrigger: Equatable {
-    let providerIDs: [UUID]
+    let sources: [AIModelListSource]
+    let savedRevision: Int
     let isCopilotRunning: Bool
 }

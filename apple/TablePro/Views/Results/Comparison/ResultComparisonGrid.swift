@@ -34,6 +34,7 @@ internal final class ResultComparisonGridModel: ObservableObject {
         configuration.supportsValueFilter = false
         configuration.supportsColumnSort = false
         configuration.appliesRowCopyFormat = true
+        configuration.colorsValuesByType = true
         configuration.commands = [.freezeColumns, .displayAs]
         return configuration
     }

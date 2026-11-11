@@ -136,4 +136,56 @@ struct AIProviderDraftRulesTests {
                 == .keep
         )
     }
+
+    private let optional = AIReasoningSupport(mode: .effortOnly, effortLevels: [.low, .medium, .high])
+    private let mandatory = AIReasoningSupport(
+        mode: .effortOnly, effortLevels: [.minimal, .low, .medium, .high, .xhigh], defaultEffort: .high, isMandatory: true
+    )
+    private let curated = CuratedModel(
+        id: "gpt-5.5", displayName: "GPT-5.5", supportedEffortLevels: [.low, .medium, .high], defaultEffort: .medium
+    )
+
+    @Test("An effort the next model takes is kept")
+    func effortTheModelTakesIsKept() {
+        #expect(AIProviderDraftRules.effort(afterPicking: .high, reasoning: optional, curated: nil) == .high)
+        #expect(AIProviderDraftRules.effort(afterPicking: .low, reasoning: mandatory, curated: nil) == .low)
+    }
+
+    @Test("A curated model starts on its own default, and replaces an effort it does not take")
+    func curatedModelStartsOnItsDefault() {
+        #expect(AIProviderDraftRules.effort(afterPicking: nil, reasoning: optional, curated: curated) == .medium)
+        #expect(AIProviderDraftRules.effort(afterPicking: .xhigh, reasoning: optional, curated: curated) == .medium)
+    }
+
+    @Test("A listed or typed model that reasons optionally keeps Off, and drops an effort it does not take")
+    func optionalReasoningKeepsOff() {
+        #expect(AIProviderDraftRules.effort(afterPicking: nil, reasoning: optional, curated: nil) == nil)
+        #expect(AIProviderDraftRules.effort(afterPicking: .xhigh, reasoning: optional, curated: nil) == nil)
+    }
+
+    /// Meta runs its most expensive level when the effort is left out, so Off there was the
+    /// costliest choice in the picker.
+    @Test("A model that always reasons never ends up with no effort")
+    func mandatoryReasoningAlwaysHasAnEffort() {
+        #expect(AIProviderDraftRules.effort(afterPicking: nil, reasoning: mandatory, curated: nil) == .high)
+        let narrow = AIReasoningSupport(
+            mode: .effortOnly, effortLevels: [.low, .medium], defaultEffort: .low, isMandatory: true
+        )
+        #expect(AIProviderDraftRules.effort(afterPicking: .xhigh, reasoning: narrow, curated: nil) == .medium)
+    }
+
+    /// Typing a model id under Other… used to keep the effort as it stood. A rule that cleared it
+    /// on every keystroke turned Extra High into Off before the id was complete.
+    @Test("Typing, preselecting or reopening keeps the effort, except that a model that always reasons gets one")
+    func keptEffortChangesOnlyForMandatoryReasoning() {
+        #expect(AIProviderDraftRules.effort(keeping: .xhigh, reasoning: optional) == .xhigh)
+        #expect(AIProviderDraftRules.effort(keeping: nil, reasoning: optional) == nil)
+        #expect(AIProviderDraftRules.effort(keeping: nil, reasoning: mandatory) == .high)
+        #expect(AIProviderDraftRules.effort(keeping: .minimal, reasoning: mandatory) == .minimal)
+    }
+
+    @Test("A model that does not reason has no effort")
+    func noReasoningNoEffort() {
+        #expect(AIProviderDraftRules.effort(afterPicking: .high, reasoning: .unsupported, curated: curated) == nil)
+    }
 }

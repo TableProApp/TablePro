@@ -183,6 +183,7 @@ extension MainContentCoordinator {
         configuration.showRowNumbers = AppSettingsManager.shared.dataGrid.showRowNumbers
         configuration.appliesRowSortPreferences = true
         configuration.appliesRowCopyFormat = true
+        configuration.colorsValuesByType = true
         configuration.supportsColumnSort = tab.tabType != .table || supportsColumnSort
         configuration.isEditable = isEditable
         configuration.editRefusalMessage = isSelected ? activeResultEditRefusal?.message : nil

@@ -377,7 +377,11 @@ extension AIChatViewModel {
                 model: resolved.model,
                 systemPrompt: systemPrompt,
                 tools: toolSpecs,
-                reasoningEffort: resolved.config.reasoningEffort,
+                reasoningEffort: AIProviderFactory.reasoningEffort(
+                    resolved.config.reasoningEffort,
+                    config: resolved.config,
+                    model: resolved.model
+                ),
                 sessionId: sessionId,
                 connectionId: connection?.id
             )

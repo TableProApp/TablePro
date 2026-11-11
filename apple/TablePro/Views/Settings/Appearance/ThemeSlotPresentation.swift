@@ -82,25 +82,57 @@ internal struct ThemeSlotPresentation: Equatable {
 internal enum ThemeContrastNote {
     internal static let minimumRatio = 4.5
 
-    internal static func pair(for section: ThemeSlotSection) -> (text: ThemeSlot, background: ThemeSlot)? {
+    // NULL draws a placeholder, not a value. An unset value color is the grid text, which the Data Grid note checks.
+    internal static func checks(
+        for section: ThemeSlotSection,
+        in theme: ThemeDefinition
+    ) -> (texts: [ThemeSlot], background: ThemeSlot)? {
         switch section {
-        case .editor: return (.editorText, .editorBackground)
-        case .dataGrid: return (.gridText, .gridBackground)
-        case .window, .syntax, .selection, .changes: return nil
+        case .editor:
+            return ([.editorText], .editorBackground)
+        case .dataGrid:
+            return ([.gridText], .gridBackground)
+        case .values:
+            let explicit = ThemeSlotSection.values.slots.filter { $0 != .gridNullValue && theme.hasExplicitColor($0) }
+            return (explicit, .gridBackground)
+        case .window, .syntax, .selection, .changes:
+            return nil
         }
     }
 
-    internal static func ratio(for section: ThemeSlotSection, in theme: ThemeDefinition) -> Double? {
-        guard let pair = pair(for: section) else { return nil }
-        let background = ThemeSlotPresentation.displayColor(for: pair.background, in: theme).opaque
-        let text = ThemeSlotPresentation.displayColor(for: pair.text, in: theme).composited(over: background)
-        return text.contrastRatio(with: background)
+    internal static func lowest(for section: ThemeSlotSection, in theme: ThemeDefinition) -> (slot: ThemeSlot, ratio: Double)? {
+        guard let checks = checks(for: section, in: theme) else { return nil }
+        let background = ThemeSlotPresentation.displayColor(for: checks.background, in: theme).opaque
+        return checks.texts
+            .map { slot in
+                let text = ThemeSlotPresentation.displayColor(for: slot, in: theme).composited(over: background)
+                return (slot: slot, ratio: text.contrastRatio(with: background))
+            }
+            .min { $0.ratio < $1.ratio }
     }
 
     internal static func message(for section: ThemeSlotSection, in theme: ThemeDefinition) -> String? {
-        guard let ratio = ratio(for: section, in: theme), ratio < minimumRatio else { return nil }
-        let formatted = ratio.formatted(.number.precision(.fractionLength(1)))
-        return String(format: String(localized: "Text contrast is %@:1. Aim for at least 4.5:1."), formatted)
+        guard let lowest = lowest(for: section, in: theme), lowest.ratio < minimumRatio else { return nil }
+        let formatted = lowest.ratio.formatted(.number.precision(.fractionLength(1)))
+        switch section {
+        case .values:
+            return String(
+                format: String(localized: "%1$@ contrast is %2$@:1. Aim for at least 4.5:1."),
+                lowest.slot.label,
+                formatted
+            )
+        case .window, .editor, .syntax, .dataGrid, .selection, .changes:
+            return String(format: String(localized: "Text contrast is %@:1. Aim for at least 4.5:1."), formatted)
+        }
+    }
+}
+
+internal enum ThemeValueColorsNote {
+    internal static func message(for section: ThemeSlotSection, colorsValuesByType: Bool) -> String? {
+        guard section == .values, !colorsValuesByType else { return nil }
+        return String(
+            localized: "Except NULL and booleans, these colors show in the grid only while Color values by type is on in Settings > Data."
+        )
     }
 }
 

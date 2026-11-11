@@ -31,7 +31,7 @@ struct ThemeCatalogTests {
             }
         }
 
-        /// A trash inside the sandbox, so a test never puts a file in the user's own Trash.
+        // A trash inside the sandbox, so a test never puts a file in the user's own Trash.
         var fileTrash: ThemeFileTrash {
             let trash = trash
             return ThemeFileTrash { url in
@@ -133,8 +133,8 @@ struct ThemeCatalogTests {
 
     // MARK: - Deleted on disk
 
-    /// The file is gone, so writing it again would bring back a theme deleted in Finder or on
-    /// another Mac.
+    // The file is gone, so writing it again would bring back a theme deleted in Finder or on
+    // another Mac.
     @Test("A save of a theme whose file was deleted outside TablePro is refused and recreates nothing")
     func saveRefusesAFileDeletedOnDisk() throws {
         let sandbox = try Sandbox()
@@ -170,8 +170,8 @@ struct ThemeCatalogTests {
         #expect(try sandbox.fileNames().isEmpty)
     }
 
-    /// A file edited into one that no longer loads keeps its name, so a stale save would otherwise
-    /// write `<id>-2.json` and leave two files with one id once the first is fixed.
+    // A file edited into one that no longer loads keeps its name, so a stale save would otherwise
+    // write `<id>-2.json` and leave two files with one id once the first is fixed.
     @Test("A save of a theme whose file no longer loads is refused, and writes no second file")
     func saveRefusesAFileThatNoLongerLoads() throws {
         let sandbox = try Sandbox()
@@ -430,6 +430,8 @@ struct ThemeCatalogTests {
         let saved = try sandbox.read("legacy.json")
         #expect(saved.name == String(repeating: "N", count: cap))
         #expect(saved.author == "Someone on two lines")
+        let savedRoot = try JSONSerialization.jsonObject(with: try Data(contentsOf: url)) as? [String: Any]
+        #expect(savedRoot?["schema"] as? Int == 3)
 
         let picked = sandbox.incoming.appendingPathComponent("legacy.json")
         try bytes.write(to: picked)
@@ -446,7 +448,36 @@ struct ThemeCatalogTests {
         let catalog = sandbox.catalog()
 
         #expect(catalog.theme(id: "user.old") == nil)
-        #expect(catalog.rejected.first?.reason == ThemeLoadError.schemaTooOld(found: 2, supported: 3).localizedDescription)
+        #expect(
+            catalog.rejected.first?.reason
+                == ThemeLoadError.schemaTooOld(found: 2, supported: ThemeSchema.oldestReadable).localizedDescription
+        )
+    }
+
+    @Test("A format 4 file loads its value colors, and a format 3 file holding one is listed with the key")
+    func valueColorsNeedFormatFour() throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.remove() }
+        let current: [String: Any] = [
+            "schema": 4, "id": "user.current", "name": "Current", "appearance": "dark",
+            "dataGrid": ["text": "#F8F8F2", "string": "#F1FA8C"],
+        ]
+        let mislabeled: [String: Any] = [
+            "schema": 3, "id": "user.mislabeled", "name": "Mislabeled", "appearance": "dark",
+            "dataGrid": ["text": "#F8F8F2", "string": "#F1FA8C"],
+        ]
+        try JSONSerialization.data(withJSONObject: current).write(to: sandbox.themes.appendingPathComponent("current.json"))
+        try JSONSerialization.data(withJSONObject: mislabeled).write(to: sandbox.themes.appendingPathComponent("mislabeled.json"))
+
+        let catalog = sandbox.catalog()
+
+        #expect(catalog.storedTheme(id: "user.current")?.overrides[.gridString]?.hex == "#F1FA8C")
+        #expect(catalog.theme(id: "user.mislabeled") == nil)
+        #expect(catalog.rejected.map(\.fileName) == ["mislabeled.json"])
+        #expect(
+            catalog.rejected.first?.reason
+                == ThemeLoadError.keysNeedNewerFormat(["dataGrid.string"], format: 4).localizedDescription
+        )
     }
 
     @Test("The bundled themes load after the two defaults, in the shared order")
@@ -568,8 +599,8 @@ struct ThemeCatalogTests {
         #expect(catalog.theme(id: BuiltInThemes.defaultDarkId) == BuiltInThemes.dark)
     }
 
-    /// The id in a file says nothing about which theme on this Mac it is: the same file imported
-    /// twice, or on two Macs, would otherwise collide in sync.
+    // The id in a file says nothing about which theme on this Mac it is: the same file imported
+    // twice, or on two Macs, would otherwise collide in sync.
     @Test("Import mints a new id even when the file's id is free, and keeps a free name")
     func importMintsAFreshId() throws {
         let sandbox = try Sandbox()

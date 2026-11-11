@@ -91,9 +91,16 @@ pub(crate) enum Plan {
 }
 
 impl Plan {
-    /// The collection a cursor reads, in its database.
+    /// The collection whose documents a cursor shows as rows, in its
+    /// database. A count shows none.
     pub(crate) fn collection(&self) -> Option<(&str, &str)> {
-        let Self::Cursor { database, command, .. } = self else {
+        let Self::Cursor {
+            database,
+            command,
+            counted: false,
+            ..
+        } = self
+        else {
             return None;
         };
         let collection = command.get_str("aggregate").or_else(|_| command.get_str("find")).ok()?;
@@ -126,10 +133,41 @@ impl Plan {
     }
 
     /// Fix the columns a first read of the cursor found.
-    pub(crate) fn name_columns(&mut self, names: Vec<String>) {
+    pub(crate) fn name_columns(&mut self, named: Vec<NamedColumn>) {
         if let Self::Cursor { columns, .. } = self {
-            *columns = Columns::Named(names.into_iter().map(NamedColumn::field).collect());
+            *columns = Columns::Named(named);
         }
+    }
+
+    /// The aggregate with `stages` after its pipeline, its columns found
+    /// from what they return. `None` for a cursor that is no aggregate, or
+    /// one whose pipeline ends in a write, which no stage may follow.
+    pub(crate) fn followed_by(&self, stages: impl IntoIterator<Item = Document>) -> Option<Self> {
+        let Self::Cursor {
+            database,
+            command,
+            counted: false,
+            ..
+        } = self
+        else {
+            return None;
+        };
+        if !command.contains_key("aggregate") {
+            return None;
+        }
+        let mut pipeline = command.get_array("pipeline").ok()?.clone();
+        if ends_in_write(&pipeline) {
+            return None;
+        }
+        pipeline.extend(stages.into_iter().map(Bson::Document));
+        let mut command = command.clone();
+        command.insert("pipeline", pipeline);
+        Some(Self::Cursor {
+            database: database.clone(),
+            command,
+            columns: Columns::Discovered,
+            counted: false,
+        })
     }
 
     /// Bound the command by the server's own time limit, which stops it
@@ -528,14 +566,8 @@ fn aggregate(target: Bson, mut pipeline: Vec<Bson>, options: Document, database:
         .and_then(|stage| stage.get_document("$project").ok())
         .map_or(Columns::Discovered, crate::shell_find::projected_columns);
     if counted && !explained {
-        // The server takes no stage after one that writes, and such a
-        // pipeline returns no documents to count.
-        let writes = pipeline
-            .last()
-            .and_then(Bson::as_document)
-            .and_then(|stage| stage.keys().next())
-            .is_some_and(|stage| stage == "$out" || stage == "$merge");
-        if writes {
+        // Such a pipeline also returns no documents to count.
+        if ends_in_write(&pipeline) {
             return Err(unsupported("itcount() after $out or $merge"));
         }
         pipeline.push(Bson::Document(
@@ -558,6 +590,16 @@ fn aggregate(target: Bson, mut pipeline: Vec<Bson>, options: Document, database:
         columns,
         counted,
     })
+}
+
+/// Whether a pipeline ends in `$out` or `$merge`, after which the server
+/// takes no stage.
+fn ends_in_write(pipeline: &[Bson]) -> bool {
+    pipeline
+        .last()
+        .and_then(Bson::as_document)
+        .and_then(|stage| stage.keys().next())
+        .is_some_and(|stage| stage == "$out" || stage == "$merge")
 }
 
 #[cfg(test)]
@@ -612,6 +654,50 @@ mod tests {
             planned("db.a.aggregate([{$out: 'b'}], {explain: true}).itcount()"),
             Ok(Plan::Command { .. })
         ));
+    }
+
+    #[test]
+    fn a_count_shows_no_collection_rows() {
+        let collection = |text: &str| {
+            planned(text).ok().and_then(|plan| {
+                plan.collection()
+                    .map(|(database, name)| (database.to_owned(), name.to_owned()))
+            })
+        };
+
+        assert_eq!(collection("db.a.find()"), Some(("shop".to_owned(), "a".to_owned())));
+        assert_eq!(
+            collection("db.a.aggregate([])"),
+            Some(("shop".to_owned(), "a".to_owned()))
+        );
+        assert_eq!(collection("db.a.countDocuments({})"), None);
+        assert_eq!(collection("db.a.aggregate([]).itcount()"), None);
+    }
+
+    #[test]
+    fn stages_follow_an_aggregate_and_keep_its_options() {
+        let followed = |text: &str| {
+            planned(text)
+                .ok()
+                .and_then(|plan| plan.followed_by([doc! { "$count": "n" }]))
+        };
+
+        let Some(Plan::Cursor { command, columns, .. }) =
+            followed("db.a.aggregate([{$match: {x: 1}}, {$project: {x: 1}}], {allowDiskUse: true})")
+        else {
+            panic!("not an aggregate");
+        };
+        assert_eq!(columns, Columns::Discovered);
+        assert_eq!(command.get_bool("allowDiskUse").ok(), Some(true));
+        let stages: Vec<&str> = command
+            .get_array("pipeline")
+            .expect("a pipeline")
+            .iter()
+            .filter_map(|stage| stage.as_document()?.keys().next().map(String::as_str))
+            .collect();
+        assert_eq!(stages, ["$match", "$project", "$count"]);
+        assert_eq!(followed("db.a.find()"), None);
+        assert_eq!(followed("db.a.aggregate([]).itcount()"), None);
     }
 
     #[test]

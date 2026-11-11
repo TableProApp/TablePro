@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Input;
 using TablePro.App.Model;
 using TablePro.App.Services;
 using TablePro.DataGrid;
@@ -10,60 +11,68 @@ using TablePro.Interop;
 
 namespace TablePro.App.Views;
 
-// A sort is an ORDER BY in the page's statement, so it orders the whole table, not the rows already read.
-public sealed partial class TableTabView : UserControl, ITabContent
+// The pager and the edits over a table's rows; the page, its count, every reload and every save are TableTab's.
+public sealed partial class TableTabView : UserControl, ITabContent, ITableTabView
 {
-    private readonly Workbench _workbench;
-    private readonly SessionShare _share;
-    private readonly DatabaseSession _session;
-    private readonly string? _schema;
-    private readonly string _table;
-    private readonly TabWork _work = new();
-    private QueryEditor? _editor;
-    private Task? _closing;
-    private QueryRun? _run;
-    private GridSort _sort = GridSort.None;
-    private GridSort _shownSort = GridSort.None;
-    private TablePage _page;
-
-    // The size this tab was given, as macOS keeps one per table tab; without one, Settings decides.
-    private int? _chosenSize;
+    private readonly TableTab _model;
     private bool _messagesIsTarget;
-    private (long Milliseconds, bool Truncated)? _finished;
-    private CancellationTokenSource? _counting;
 
-    internal TableTabView(Workbench workbench, SessionShare share, string? schema, string table, SessionTab? restore = null)
+    internal TableTabView(
+        Workbench workbench,
+        SessionShare<DatabaseSession> share,
+        string? schema,
+        string table,
+        SessionTab? restore = null)
     {
-        _workbench = workbench;
-        _share = share.Hold();
-        _session = share.Session;
-        _schema = schema;
-        _table = table;
-        _chosenSize = restore?.PageSize is { } size ? Math.Clamp(size, 1, TablePage.LargestSize) : null;
-        var first = TablePage.First(PageSize);
-        _page = first.At((restore?.Offset ?? 0) / first.Size * first.Size);
         InitializeComponent();
+        Results.ShowsEdits = true;
+        var grid = Results.GridView;
+        grid.DefaultText = Strings.Get("GridDefaultText");
+        grid.EditedStatus = Strings.Get("GridEditedStatus");
+        grid.NewRowStatus = Strings.Get("GridNewRowStatus");
+        grid.DeletedStatus = Strings.Get("GridDeletedStatus");
+        _model = new TableTab(
+            new CoreTabSession(share),
+            this,
+            Results,
+            new TableName(schema, table),
+            () => workbench.Settings,
+            restore);
+        _model.StateChanged += (_, _) => StateChanged?.Invoke(this, EventArgs.Empty);
         Results.StatusChanged += (_, status) => StatusText.Text = status;
         Results.RowsStatus = (rows, milliseconds, truncated) =>
         {
-            _finished = (milliseconds, truncated);
-            _page = _page with { Rows = rows };
+            _model.PageRead(rows, milliseconds, truncated);
             return RowsStatus()!;
         };
-        Results.SortRequested += OnSortRequested;
-        Results.GridView.GotFocus += (_, _) => _messagesIsTarget = false;
+        Results.SortRequested += async (_, sort) => await _model.SortAsync(sort).ConfigureAwait(true);
+        grid.GotFocus += (_, _) =>
+        {
+            _messagesIsTarget = false;
+            EditStateMayHaveChanged();
+        };
+        // The editor takes focus as it opens and gives it back as it closes, so Save and the closes follow it.
+        grid.LostFocus += (_, _) => EditStateMayHaveChanged();
         Results.MessagesBox.GotFocus += (_, _) => _messagesIsTarget = true;
+        grid.CellEditStarting += OnCellEditStarting;
+        grid.CellEditCommitting += OnCellEditCommitting;
+        grid.DeleteRequested += (_, _) => DeleteRows();
+        grid.ContextRequested += OnGridContextRequested;
         UpdatePager();
+        UpdateEditing();
     }
 
     public event EventHandler? StateChanged;
 
-    public string Title => _table;
+    public string Title => _model.Title;
 
-    public bool IsRunning { get; private set; }
+    public TabKind Kind => _model.Kind;
 
-    // A table tab only reads.
-    public TransactionState Transaction => TransactionState.Idle;
+    public bool IsRunning => _model.IsRunning;
+
+    public TransactionState Transaction => _model.Transaction;
+
+    public bool HasUnsavedChanges => _model.HasUnsavedChanges;
 
     public SqlEditor? Editor => null;
 
@@ -74,178 +83,202 @@ public sealed partial class TableTabView : UserControl, ITabContent
     public TextBox? MessagesTarget =>
         _messagesIsTarget && Results.MessagesBox.Visibility == Visibility.Visible ? Results.MessagesBox : null;
 
-    private int PageSize => _chosenSize ?? _workbench.Settings.PageSize;
+    public bool CanSave => _model.CanSave;
 
-    public bool Shows(string? schema, string table) =>
-        string.Equals(_table, table, StringComparison.Ordinal) && string.Equals(_schema, schema, StringComparison.Ordinal);
+    public bool CanDiscard => _model.CanDiscard;
 
-    public async void Run() => await LoadAsync(_page.Offset).ConfigureAwait(true);
+    public bool CanPreview => _model.CanPreview;
 
-    public void Stop() => _run?.Cancel();
+    public bool CanAddRow => _model.CanEdit;
+
+    // Duplicate and Delete act on the rows the selection touches.
+    public bool CanChangeRows => _model.CanEdit && Results.GridView.RowCount > 0;
+
+    // The workspace that holds the tab, always in the tree while its window shows it, so a close can ask from it.
+    internal FrameworkElement? DialogOwner { get; set; }
+
+    bool ITableTabView.HasOpenEdit => Results.GridView.IsEditing;
+
+    private FrameworkElement Owner => DialogOwner ?? this;
+
+    public bool Shows(string? schema, string table) => _model.Shows(schema, table);
+
+    public async void Run() => await _model.RunAsync().ConfigureAwait(true);
+
+    public void Stop() => _model.Stop();
 
     public void FocusContent() => Results.GridView.Focus(FocusState.Programmatic);
 
-    public SessionTab Snapshot() => new()
+    public SessionTab Snapshot() => _model.Snapshot();
+
+    public Task<bool> ConfirmCloseAsync(bool offerSave) => _model.ConfirmCloseAsync(offerSave);
+
+    public Task CloseAsync() => _model.CloseAsync();
+
+    public Task SaveAsync() => _model.SaveAsync();
+
+    public Task DiscardAsync() => _model.DiscardAsync();
+
+    public Task PreviewAsync() => _model.PreviewAsync();
+
+    // The open edit is kept first, and the new row's editor opens on the first column the server does not fill.
+    public void AddRow()
     {
-        Kind = TabKind.Table,
-        Title = Title,
-        Schema = _schema,
-        Table = _table,
-        PageSize = _chosenSize,
-        Offset = _page.Offset > 0 ? _page.Offset : null,
-    };
-
-    // Once only, however often it is asked for: the tab lets go of its session exactly once.
-    public Task CloseAsync() => _closing ??= CloseOnceAsync();
-
-    // The page in flight and its count stop and end before the run, the editor and the session they use are let go.
-    private async Task CloseOnceAsync()
-    {
-        _run?.Cancel();
-        await _work.CloseAsync().ConfigureAwait(true);
-        _run?.Dispose();
-        _run = null;
-        Results.Clear();
-        if (_editor is not null)
+        var grid = Results.GridView;
+        if (!grid.CommitEdit())
         {
-            await _editor.DisposeAsync().ConfigureAwait(true);
-            _editor = null;
-        }
-
-        await _share.ReleaseAsync().ConfigureAwait(true);
-    }
-
-    private async Task LoadAsync(long offset)
-    {
-        if (!IsRunning)
-        {
-            await _work.RunAsync(token => LoadPageAsync(offset, token)).ConfigureAwait(true);
-        }
-    }
-
-    private async Task LoadPageAsync(long offset, CancellationToken cancellationToken)
-    {
-        _finished = null;
-        SetRunning(true);
-        try
-        {
-            if (_editor is { IsLost: true } lost)
-            {
-                _editor = null;
-                await lost.DisposeAsync().ConfigureAwait(true);
-            }
-
-            // An editor that opens as the tab closes stays in _editor, which the close disposes.
-            _editor ??= await _session.OpenEditorAsync(cancellationToken).ConfigureAwait(true);
-            var page = _page.At(offset);
-            // A default changed in Settings applies from the page holding the first row shown.
-            if (_chosenSize is null && page.Size != PageSize)
-            {
-                page = page.Resized(PageSize);
-            }
-
-            var sort = _sort.Direction == SortDirection.None
-                ? null
-                : new ColumnSort(_sort.Column, _sort.Direction == SortDirection.Ascending);
-            var query = await _session.GetTableQueryAsync(
-                    new TableName(_schema, _table), sort, page.Size, page.Offset, cancellationToken)
-                .ConfigureAwait(true);
-            if (_work.IsClosed)
-            {
-                return;
-            }
-
-            _run?.Dispose();
-            _page = page with { CanSeek = query.CanSeek };
-            // The statement holds the page; a run limit one past it keeps a full page from reading as cut short.
-            _run = _editor.Run(query.Sql, new QueryOptions(page.Size + 1), cancellationToken);
-            await Results.ShowRunAsync(_run, _sort, query.VisibleColumns, cancellationToken).ConfigureAwait(true);
-            if (_work.IsClosed)
-            {
-                return;
-            }
-
-            _shownSort = _sort;
-            _page = _page with { Rows = Results.RowCount };
-            CountIfNeeded();
-        }
-        catch (TableProException exception)
-        {
-            if (!_work.IsClosed)
-            {
-                // An engine that reads a table only in its own order refuses the sort; the rows shown keep theirs.
-                _sort = _shownSort;
-                Results.Sort = _shownSort;
-                Results.ShowError(Strings.Error(exception.Error));
-            }
-        }
-        finally
-        {
-            SetRunning(false);
-        }
-    }
-
-    private async void CountIfNeeded() => await _work.RunAsync(CountAsync).ConfigureAwait(true);
-
-    // A first page that is not full holds the whole table; otherwise the server counts it, in the background.
-    private async Task CountAsync(CancellationToken closing)
-    {
-        if (_page.Total is not null || !_page.CanSeek)
-        {
-            UpdatePager();
             return;
         }
 
-        if (_page.Offset == 0 && _page.Rows < _page.Size)
+        if (_model.AddRow(out var row) is { } refusal)
         {
-            _page = _page with { Total = _page.Rows };
-            UpdatePager();
+            ShowRefusal(refusal);
             return;
+        }
+
+        grid.FocusCell(row, _model.FirstColumnToFill);
+        grid.BeginEdit();
+    }
+
+    public void DuplicateRows()
+    {
+        var grid = Results.GridView;
+        if (!grid.CommitEdit())
+        {
+            return;
+        }
+
+        if (_model.DuplicateRows(SelectedRows(), out var last) is { } refusal)
+        {
+            ShowRefusal(refusal);
+            return;
+        }
+
+        if (last >= 0)
+        {
+            var column = Math.Max(0, grid.FocusedColumn);
+            grid.FocusCell(last, column);
+            grid.ScrollIntoView(last, column);
+        }
+    }
+
+    public void DeleteRows()
+    {
+        if (Results.GridView.CommitEdit())
+        {
+            ShowRefusal(_model.DeleteRows(SelectedRows()));
+        }
+    }
+
+    void ITableTabView.ShowRunning(bool running)
+    {
+        RefreshButton.IsEnabled = !running && !_model.IsSaving;
+        StopButton.IsEnabled = running;
+        UpdatePager();
+        UpdateEditing();
+    }
+
+    void ITableTabView.UpdatePager() => UpdatePager();
+
+    // Asked first, as macOS asks: a large table on one page takes a lot of memory.
+    async Task<bool> ITableTabView.ConfirmAllRowsAsync(long total)
+    {
+        if (XamlRoot is null)
+        {
+            return false;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            RequestedTheme = ActualTheme,
+            Title = Strings.Get("AllRowsTitle"),
+            Content = Strings.Format("AllRowsMessage", total),
+            PrimaryButtonText = Strings.Get("AllRowsButton"),
+            CloseButtonText = Strings.Get("Cancel"),
+            DefaultButton = ContentDialogButton.Close,
+        };
+        return await WindowDialogs.ShowAsync(dialog, this).ConfigureAwait(true) == ContentDialogResult.Primary;
+    }
+
+    void ITableTabView.ShowEdits() => UpdateEditing();
+
+    void ITableTabView.ShowSaving(bool saving)
+    {
+        RefreshButton.IsEnabled = !saving && !_model.IsRunning;
+        if (saving)
+        {
+            StatusText.Text = Strings.Get("StatusSaving");
+        }
+        else if (RowsStatus() is { } status)
+        {
+            StatusText.Text = status;
         }
 
         UpdatePager();
-        _counting?.Cancel();
-        using var counting = CancellationTokenSource.CreateLinkedTokenSource(closing);
-        _counting = counting;
-        try
-        {
-            var total = await _session.CountRowsAsync(new TableName(_schema, _table), counting.Token).ConfigureAwait(true);
-            _page = _page with { Total = total };
-            UpdatePager();
-        }
-        catch (Exception exception) when (exception is TableProException or OperationCanceledException)
-        {
-            // Without a count the pager still pages forward while pages come back full.
-        }
-        finally
-        {
-            if (ReferenceEquals(_counting, counting))
-            {
-                _counting = null;
-            }
-        }
     }
+
+    void ITableTabView.ShowEditRefusal(EditRefusal refusal) => ShowRefusal(refusal);
+
+    void ITableTabView.ShowSaveCancelled() => StatusText.Text = Strings.Get("SaveCancelled");
+
+    bool ITableTabView.CommitOpenEdit() => Results.GridView.CommitEdit();
+
+    void ITableTabView.FocusRow(int row)
+    {
+        var grid = Results.GridView;
+        var column = Math.Max(0, grid.FocusedColumn);
+        grid.FocusCell(row, column);
+        grid.ScrollIntoView(row, column);
+    }
+
+    Task<bool> ITableTabView.ConfirmDiscardForReloadAsync(ReloadReason reason) =>
+        RowEditDialogs.ConfirmReloadAsync(Owner, Strings.Get(reason switch
+        {
+            ReloadReason.Refresh => "ReloadDiscardRefresh",
+            ReloadReason.Sort => "ReloadDiscardSort",
+            _ => "ReloadDiscardPage",
+        }));
+
+    Task<bool> ITableTabView.ConfirmDiscardAsync() => RowEditDialogs.ConfirmDiscardAsync(Owner);
+
+    Task<SaveBeforeClose> ITableTabView.AskSaveBeforeCloseAsync(string tab, bool offerSave) =>
+        RowEditDialogs.AskSaveBeforeCloseAsync(Owner, tab, offerSave);
+
+    Task<bool> ITableTabView.ConfirmDeleteAsync(string table, int rows) =>
+        RowEditDialogs.ConfirmDeleteAsync(Owner, table, rows);
+
+    Task<bool> ITableTabView.ConfirmSaveAsync(string connection, IReadOnlyList<PlannedStatement> statements) =>
+        RowEditDialogs.ConfirmSaveAsync(Owner, connection, statements);
+
+    Task ITableTabView.ShowPreviewAsync(IReadOnlyList<PlannedStatement> statements, CoreError? failure) =>
+        RowEditDialogs.ShowPreviewAsync(Owner, statements, failure is null ? null : Strings.Error(failure));
+
+    Task ITableTabView.ShowSaveFailedAsync(CoreError failure, bool incomplete) =>
+        RowEditDialogs.ShowSaveFailedAsync(Owner, Strings.Error(failure), incomplete);
 
     private void UpdatePager()
     {
-        var shown = _page.IsPaged ? Visibility.Visible : Visibility.Collapsed;
+        var page = _model.Page;
+        var busy = _model.IsRunning || _model.IsSaving;
+        var shown = page.IsPaged ? Visibility.Visible : Visibility.Collapsed;
         foreach (var element in new UIElement[] { FirstPageButton, PreviousPageButton, GoToPageButton, NextPageButton, LastPageButton })
         {
             element.Visibility = shown;
         }
 
-        FirstPageButton.IsEnabled = !IsRunning && _page.HasPrevious;
-        PreviousPageButton.IsEnabled = !IsRunning && _page.HasPrevious;
-        NextPageButton.IsEnabled = !IsRunning && _page.HasNext;
-        LastPageButton.IsEnabled = !IsRunning && _page.HasLast;
-        PageSizeButton.Label = Strings.Format("PageSizeLabel", _page.Size);
-        PageSizeButton.IsEnabled = !IsRunning;
+        FirstPageButton.IsEnabled = !busy && page.HasPrevious;
+        PreviousPageButton.IsEnabled = !busy && page.HasPrevious;
+        NextPageButton.IsEnabled = !busy && page.HasNext;
+        LastPageButton.IsEnabled = !busy && page.HasLast;
+        PageSizeButton.Label = Strings.Format("PageSizeLabel", page.Size);
+        PageSizeButton.IsEnabled = !busy;
         // Going to a page needs the count, as on macOS; until it lands the button names the page alone.
-        GoToPageButton.Label = _page.Count is { } count
-            ? Strings.Format("PageOf", _page.Number, count)
-            : Strings.Format("PageNumber", _page.Number);
-        GoToPageButton.IsEnabled = !IsRunning && _page.Count is > 1;
-        if (RowsStatus() is { } status)
+        GoToPageButton.Label = page.Count is { } count
+            ? Strings.Format("PageOf", page.Number, count)
+            : Strings.Format("PageNumber", page.Number);
+        GoToPageButton.IsEnabled = !busy && page.Count is > 1;
+        if (!_model.IsSaving && RowsStatus() is { } status)
         {
             StatusText.Text = status;
         }
@@ -254,43 +287,155 @@ public sealed partial class TableTabView : UserControl, ITabContent
     // Null until a run has read the page; a count that arrives later adds the total, as on macOS.
     private string? RowsStatus()
     {
-        if (_finished is not { } run)
+        if (_model.Finished is not { } run)
         {
             return null;
         }
 
-        if (!_page.IsPaged)
+        var page = _model.Page;
+        if (!page.IsPaged)
         {
-            return Strings.Format(run.Truncated ? "StatusRowsLimited" : "StatusRows", _page.Rows, run.Milliseconds);
+            return Strings.Format(run.Truncated ? "StatusRowsLimited" : "StatusRows", page.Rows, run.Milliseconds);
         }
 
-        return _page.Total is { } total
-            ? Strings.Format("StatusPageOf", _page.FirstRow, _page.LastRow, total, run.Milliseconds)
-            : Strings.Format("StatusPage", _page.FirstRow, _page.LastRow, run.Milliseconds);
+        return page.Total is { } total
+            ? Strings.Format("StatusPageOf", page.FirstRow, page.LastRow, total, run.Milliseconds)
+            : Strings.Format("StatusPage", page.FirstRow, page.LastRow, run.Milliseconds);
     }
 
-    private void SetRunning(bool running)
+    // An editor opening or closing counts as a change for Save and the menus.
+    private void EditStateMayHaveChanged()
     {
-        IsRunning = running;
-        RefreshButton.IsEnabled = !running;
-        StopButton.IsEnabled = running;
-        UpdatePager();
+        UpdateEditing();
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void Resize(TablePage page, int chosen)
+    // The grid swaps its edits only when they moved, since EditsChanged reads every cell again.
+    private void UpdateEditing()
     {
-        if (IsRunning)
+        var grid = Results.GridView;
+        if (grid.Data is EditedGridData edited)
+        {
+            var edits = _model.Edits?.Snapshot() ?? GridEdits.None;
+            if (!ReferenceEquals(edited.Edits, edits))
+            {
+                edited.Edits = edits;
+                grid.EditsChanged();
+            }
+        }
+
+        grid.IsEditable = _model.AcceptsEdits;
+        AddRowButton.IsEnabled = CanAddRow;
+        DuplicateRowButton.IsEnabled = CanChangeRows;
+        DeleteRowsButton.IsEnabled = CanChangeRows;
+        SaveChangesButton.IsEnabled = CanSave;
+        DiscardChangesButton.IsEnabled = CanDiscard;
+        PreviewSqlButton.IsEnabled = CanPreview;
+    }
+
+    private void OnCellEditStarting(object? sender, GridEditStartingEventArgs e)
+    {
+        if (_model.StartEdit(e.Row, e.Column, out var text) is { } refusal)
+        {
+            e.Cancel = true;
+            ShowRefusal(refusal);
+            return;
+        }
+
+        e.Text = text;
+    }
+
+    // A refusal keeps the editor open with the reason on it; on a focus loss the editor closes, so the status says it too.
+    private void OnCellEditCommitting(object? sender, GridEditCommittingEventArgs e)
+    {
+        if (_model.CommitEdit(e.Row, e.Column, e.Text) is { } refusal)
+        {
+            var text = RefusalText(refusal) ?? Strings.Get("EditCellReadOnly");
+            e.Error = text;
+            StatusText.Text = text;
+        }
+    }
+
+    // The status is a polite live region, so a refusal is read out where the user is.
+    private void ShowRefusal(EditRefusal? refusal)
+    {
+        if (refusal is not null && RefusalText(refusal) is { } text)
+        {
+            StatusText.Text = text;
+        }
+    }
+
+    private string? RefusalText(EditRefusal refusal) => refusal switch
+    {
+        EditRefusal.TableLocked { Lock: EditLock.ReadOnlyConnection } => Strings.Get("EditLockReadOnly"),
+        EditRefusal.TableLocked { Lock: EditLock.NoPrimaryKey } => Strings.Format("EditLockNoPrimaryKey", _model.Title),
+        EditRefusal.TableLocked { Lock: EditLock.KeyUnreadable } => Strings.Format("EditLockKeyUnreadable", _model.Title),
+        EditRefusal.TableLocked => Strings.Get("EditLockColumnsChanged"),
+        EditRefusal.CellLocked => Strings.Get("EditCellReadOnly"),
+        EditRefusal.SaveBlocked => Strings.Get("SaveUnknownBlocked"),
+        EditRefusal.Invalid invalid => Strings.Error(invalid.Failure),
+        _ => null,
+    };
+
+    private List<int> SelectedRows()
+    {
+        var range = Results.GridView.SelectionRange;
+        return range.IsEmpty ? [] : [.. Enumerable.Range(range.FirstRow, range.RowCount)];
+    }
+
+    // Built when asked for, since a menu keeps the window it first opened in and a tab can move to another.
+    private void OnGridContextRequested(UIElement sender, ContextRequestedEventArgs args)
+    {
+        var grid = Results.GridView;
+        // The editor's TextBox shows its own menu; a right-click on another cell keeps the edit first.
+        if (grid.IsEditing && (grid.IsInEditor(args.OriginalSource) || !grid.CommitEdit()))
         {
             return;
         }
 
-        _chosenSize = chosen;
-        if (page.Size != _page.Size || page.Offset != _page.Offset)
+        args.Handled = true;
+        var (row, column) = (grid.FocusedRow, grid.FocusedColumn);
+        var menu = new MenuFlyout();
+        // A row marked for delete offers only to keep it, as macOS does.
+        if (grid.RowCount > 0 && _model.IsDeleted(row))
         {
-            _page = page;
-            Run();
+            menu.Items.Add(MenuItem("GridMenuUndoDelete", _model.CanEdit, () => ShowRefusal(_model.RestoreRows(SelectedRows()))));
         }
+        else
+        {
+            var setValue = new MenuFlyoutSubItem { Text = Strings.Get("GridMenuSetValue"), IsEnabled = _model.CanEdit };
+            setValue.Items.Add(ValueItem("GridMenuEmpty", row, column, CellValueKind.Empty));
+            setValue.Items.Add(ValueItem("GridMenuNull", row, column, CellValueKind.Null));
+            setValue.Items.Add(ValueItem("GridMenuDefault", row, column, CellValueKind.Default));
+            menu.Items.Add(setValue);
+            menu.Items.Add(new MenuFlyoutSeparator());
+            menu.Items.Add(MenuItem("GridMenuAddRow", CanAddRow, AddRow));
+            menu.Items.Add(MenuItem("GridMenuDuplicate", CanChangeRows, DuplicateRows));
+            menu.Items.Add(MenuItem("GridMenuDelete", CanChangeRows, DeleteRows));
+        }
+
+        menu.Items.Add(new MenuFlyoutSeparator());
+        var copy = new MenuFlyoutItem { Text = Strings.Get("GridMenuCopy"), IsEnabled = grid.RowCount > 0 };
+        copy.Click += async (_, _) => await grid.CopySelectionAsync().ConfigureAwait(true);
+        menu.Items.Add(copy);
+        if (args.TryGetPosition(grid, out var point))
+        {
+            menu.ShowAt(grid, new FlyoutShowOptions { Position = point });
+        }
+        else
+        {
+            menu.ShowAt(grid);
+        }
+    }
+
+    private MenuFlyoutItem ValueItem(string text, int row, int column, CellValueKind kind) =>
+        MenuItem(text, _model.CanSetValue(row, column, kind), () => ShowRefusal(_model.SetValue(row, column, kind)));
+
+    private static MenuFlyoutItem MenuItem(string text, bool enabled, Action invoke)
+    {
+        var item = new MenuFlyoutItem { Text = Strings.Get(text), IsEnabled = enabled };
+        item.Click += (_, _) => invoke();
+        return item;
     }
 
     // A command in the bar's overflow has no place of its own on screen, so its flyout opens at the bar.
@@ -298,6 +443,7 @@ public sealed partial class TableTabView : UserControl, ITabContent
 
     private void OnPageSize(object sender, RoutedEventArgs e)
     {
+        var page = _model.Page;
         var menu = new MenuFlyout { Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft };
         foreach (var size in TablePage.Presets)
         {
@@ -305,17 +451,17 @@ public sealed partial class TableTabView : UserControl, ITabContent
             {
                 Text = Strings.Format("PageSizeOption", size),
                 GroupName = "PageSize",
-                IsChecked = size == _page.Size,
+                IsChecked = size == page.Size,
             };
-            item.Click += (_, _) => Resize(_page.Resized(size), size);
+            item.Click += async (_, _) => await _model.ResizeAsync(size).ConfigureAwait(true);
             menu.Items.Add(item);
         }
 
         menu.Items.Add(new MenuFlyoutSeparator());
-        if (_page.CanSeek)
+        if (page.CanSeek)
         {
-            var all = new MenuFlyoutItem { Text = Strings.Get("PageSizeAll"), IsEnabled = _page.Total is > 0 };
-            all.Click += async (_, _) => await ShowAllRowsAsync().ConfigureAwait(true);
+            var all = new MenuFlyoutItem { Text = Strings.Get("PageSizeAll"), IsEnabled = page.Total is > 0 };
+            all.Click += async (_, _) => await _model.ShowAllRowsAsync().ConfigureAwait(true);
             menu.Items.Add(all);
         }
 
@@ -329,93 +475,57 @@ public sealed partial class TableTabView : UserControl, ITabContent
     {
         var request = new NumberRequest(
             Strings.Get("PageSizeCaption"),
-            _page.Size,
+            _model.Page.Size,
             TablePage.MaximumSize,
             Strings.Get("PageSizeApply"),
             "PageSizeBox",
             "PageSizeApplyButton");
-        NumberFlyout.Create(request, size => Resize(_page.Resized((int)size), (int)size))
+        NumberFlyout.Create(request, async size => await _model.ResizeAsync((int)size).ConfigureAwait(true))
             .ShowAt(Anchor(PageSizeButton));
-    }
-
-    // Asked first, as macOS asks: a large table on one page takes a lot of memory.
-    private async Task ShowAllRowsAsync()
-    {
-        if (_page.Total is not { } total || XamlRoot is null)
-        {
-            return;
-        }
-
-        var dialog = new ContentDialog
-        {
-            XamlRoot = XamlRoot,
-            RequestedTheme = ActualTheme,
-            Title = Strings.Get("AllRowsTitle"),
-            Content = Strings.Format("AllRowsMessage", total),
-            PrimaryButtonText = Strings.Get("AllRowsButton"),
-            CloseButtonText = Strings.Get("Cancel"),
-            DefaultButton = ContentDialogButton.Close,
-        };
-        if (await WindowDialogs.ShowAsync(dialog, this) == ContentDialogResult.Primary)
-        {
-            var all = _page.AllRows();
-            Resize(all, all.Size);
-        }
     }
 
     private void OnGoToPage(object sender, RoutedEventArgs e)
     {
-        if (_page.Count is not { } count)
+        var page = _model.Page;
+        if (page.Count is not { } count)
         {
             return;
         }
 
         var request = new NumberRequest(
             Strings.Get("GoToPageCaption"),
-            _page.Number,
+            page.Number,
             count,
             Strings.Get("GoToPageAction"),
             "GoToPageBox",
             "GoToPageGo");
-        NumberFlyout.Create(request, number =>
-            {
-                if (_page.Accepts(number) && number != _page.Number)
-                {
-                    Run(_page.OffsetOf(number));
-                }
-            })
+        NumberFlyout.Create(request, async number => await _model.GoToPageAsync(number).ConfigureAwait(true))
             .ShowAt(Anchor(GoToPageButton));
     }
 
-    private async void Run(long offset) => await LoadAsync(offset).ConfigureAwait(true);
+    private async void OnFirstPage(object sender, RoutedEventArgs e) => await _model.FirstPageAsync().ConfigureAwait(true);
 
-    private void OnFirstPage(object sender, RoutedEventArgs e) => Run(0);
+    private async void OnPreviousPage(object sender, RoutedEventArgs e) =>
+        await _model.PreviousPageAsync().ConfigureAwait(true);
 
-    private void OnPreviousPage(object sender, RoutedEventArgs e) => Run(_page.PreviousOffset);
+    private async void OnNextPage(object sender, RoutedEventArgs e) => await _model.NextPageAsync().ConfigureAwait(true);
 
-    private void OnNextPage(object sender, RoutedEventArgs e) => Run(_page.NextOffset);
+    private async void OnLastPage(object sender, RoutedEventArgs e) => await _model.LastPageAsync().ConfigureAwait(true);
 
-    private void OnLastPage(object sender, RoutedEventArgs e) => Run(_page.LastOffset);
-
-    private void OnSortRequested(object? sender, GridSort sort)
-    {
-        if (IsRunning)
-        {
-            Results.Sort = _sort;
-            return;
-        }
-
-        _sort = sort;
-        _page = _page.At(0);
-        Run();
-    }
-
-    // A refresh counts the table again.
-    private void OnRefresh(object sender, RoutedEventArgs e)
-    {
-        _page = _page with { Total = null };
-        Run();
-    }
+    private async void OnRefresh(object sender, RoutedEventArgs e) => await _model.RefreshAsync().ConfigureAwait(true);
 
     private void OnStop(object sender, RoutedEventArgs e) => Stop();
+
+    private void OnAddRow(object sender, RoutedEventArgs e) => AddRow();
+
+    private void OnDuplicateRow(object sender, RoutedEventArgs e) => DuplicateRows();
+
+    private void OnDeleteRows(object sender, RoutedEventArgs e) => DeleteRows();
+
+    private async void OnSaveChanges(object sender, RoutedEventArgs e) => await _model.SaveAsync().ConfigureAwait(true);
+
+    private async void OnDiscardChanges(object sender, RoutedEventArgs e) =>
+        await _model.DiscardAsync().ConfigureAwait(true);
+
+    private async void OnPreviewSql(object sender, RoutedEventArgs e) => await _model.PreviewAsync().ConfigureAwait(true);
 }

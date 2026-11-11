@@ -28,7 +28,7 @@ pub use build_count::build_count;
 pub use build_export::build_export;
 pub use build_page::build_page;
 pub use declared_precision::DeclaredPrecisionSink;
-pub use export_request::ExportRequest;
+pub use export_request::{ExportFields, ExportRequest};
 pub use page_layout::PageLayout;
 pub use page_request::PageRequest;
 pub use page_spec::PageSpec;

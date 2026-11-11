@@ -147,4 +147,33 @@ struct AIProviderFactoryResolveTests {
         let resolved = AIProviderFactory.resolve(settings: settings)
         #expect(resolved?.model == "")
     }
+
+    /// The chat panel keeps its pick after the picked provider is removed in Settings, and the
+    /// next turn went to the active provider under the removed provider's model id.
+    @Test("A model picked for a removed provider is not sent to the active one")
+    func removedOverrideProviderDropsItsModel() {
+        let active = makeProvider(model: "claude-sonnet-5")
+        let settings = AISettings(enabled: true, providers: [active], activeProviderID: active.id)
+        let resolved = AIProviderFactory.resolve(
+            settings: settings,
+            overrideProviderId: UUID(),
+            overrideModel: "muse-spark-1.3"
+        )
+        #expect(resolved?.config.id == active.id)
+        #expect(resolved?.model == "claude-sonnet-5")
+    }
+
+    @Test("A model picked for a provider that still exists is sent to it")
+    func overrideModelGoesToItsProvider() {
+        let active = makeProvider(model: "claude-sonnet-5")
+        let other = makeProvider(type: .custom, model: "muse-spark-1.3")
+        let settings = AISettings(enabled: true, providers: [active, other], activeProviderID: active.id)
+        let resolved = AIProviderFactory.resolve(
+            settings: settings,
+            overrideProviderId: other.id,
+            overrideModel: "muse-wonder-1.0"
+        )
+        #expect(resolved?.config.id == other.id)
+        #expect(resolved?.model == "muse-wonder-1.0")
+    }
 }

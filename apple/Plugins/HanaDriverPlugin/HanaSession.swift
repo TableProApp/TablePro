@@ -13,6 +13,12 @@ protocol HanaSession: AnyObject, Sendable {
         cancellation: HanaOperationSlot
     ) async throws -> HanaResultEnvelope
     func explain(sql: String, cancellation: HanaOperationSlot) async throws -> HanaResultEnvelope
+    func stream(
+        sql: String,
+        cancellation: HanaOperationSlot,
+        onHeader: @escaping @Sendable (HanaCursorHeader) -> Void,
+        onBatch: @escaping @Sendable (HanaCursorBatch) -> Void
+    ) async throws
     func cancel(_ cancellation: HanaOperationSlot)
     func applyQueryTimeout(seconds: Int)
 }

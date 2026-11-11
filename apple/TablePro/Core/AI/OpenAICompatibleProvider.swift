@@ -22,6 +22,7 @@ final class OpenAICompatibleProvider: ChatTransport {
     private let model: String
     private let maxOutputTokens: Int?
     private let treatsForbiddenAsAuthFailure: Bool
+    private let modelIDs: AIModelIDFilter
     private let providerID: UUID?
     private let catalog: AIModelCatalog
     private let session: URLSession
@@ -36,6 +37,7 @@ final class OpenAICompatibleProvider: ChatTransport {
         model: String = "",
         maxOutputTokens: Int? = nil,
         treatsForbiddenAsAuthFailure: Bool = false,
+        modelIDs: AIModelIDFilter = .all,
         providerID: UUID? = nil,
         catalog: AIModelCatalog = .shared,
         session: URLSession = URLSession(configuration: .ephemeral)
@@ -49,6 +51,7 @@ final class OpenAICompatibleProvider: ChatTransport {
         self.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
         self.maxOutputTokens = maxOutputTokens
         self.treatsForbiddenAsAuthFailure = treatsForbiddenAsAuthFailure
+        self.modelIDs = modelIDs
         self.providerID = providerID
         self.catalog = catalog
         self.session = session
@@ -66,6 +69,7 @@ final class OpenAICompatibleProvider: ChatTransport {
             model: config.model,
             maxOutputTokens: config.maxOutputTokens,
             treatsForbiddenAsAuthFailure: config.preset?.rejectsBadKeyWithForbidden ?? false,
+            modelIDs: config.preset?.modelIDFilter(forEndpoint: config.endpoint) ?? .all,
             providerID: config.id,
             session: session
         )
@@ -326,6 +330,11 @@ final class OpenAICompatibleProvider: ChatTransport {
                 return Self.looksLikeAnAPIResponse(data: data, response: httpResponse)
             }
 
+            // The placeholder model is unknown by design; that answer proves the route and the key.
+            if model.isEmpty, statusCode == 404, Self.isUnknownModelError(data) {
+                return true
+            }
+
             let errorBody = String(data: data, encoding: .utf8) ?? ""
             throw AIProviderError.mapHTTPError(
                 statusCode: statusCode,
@@ -334,6 +343,13 @@ final class OpenAICompatibleProvider: ChatTransport {
                 requestURL: url
             )
         }
+    }
+
+    private static func isUnknownModelError(_ data: Data) -> Bool {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let error = json["error"] as? [String: Any]
+        else { return false }
+        return error["code"] as? String == "model_not_found"
     }
 
     /// A wrong Base URL often lands on a reverse proxy's login page or a single-page app's
@@ -607,7 +623,9 @@ final class OpenAICompatibleProvider: ChatTransport {
             )
         }
 
-        return modelsArray.compactMap(Self.decodeModel(_:)).sorted { $0.id < $1.id }
+        return modelsArray.compactMap(Self.decodeModel(_:))
+            .filter { modelIDs.lists($0.id) }
+            .sorted { $0.id < $1.id }
     }
 
     private func fetchOllamaModels() async throws -> [String] {

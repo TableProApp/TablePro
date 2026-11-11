@@ -3,8 +3,6 @@ import TableProBigtableCore
 import TableProPluginKit
 
 extension BigtablePluginDriver {
-    private static let defaultMarker = "__DEFAULT__"
-
     func generateRowWrites(
         table: String,
         schema: String?,
@@ -50,11 +48,13 @@ extension BigtablePluginDriver {
         switch change.type {
         case .insert:
             return try BigtableRowWrites.insert(
-                table: table, columns: columns, values: cells(insertedRowData[change.rowIndex] ?? [], absent: absent)
+                table: table,
+                columns: columns,
+                values: cells(insertedRowData[change.rowIndex] ?? [], absent: absent.union(change.defaultColumns ?? []))
             )
         case .update:
             let changes = try change.cellChanges.map { cell in
-                guard cell.newValue.asText != Self.defaultMarker else {
+                guard !change.isColumnDefault(cell.columnIndex) else {
                     throw BigtableError.unsupported(String(localized: "Bigtable has no default values. Delete the cell, or enter a value."))
                 }
                 return (column: cell.columnName, value: absent.contains(cell.columnIndex) ? BigtableRowSet.Cell.absent : Self.cell(cell.newValue))
@@ -74,11 +74,10 @@ extension BigtablePluginDriver {
         return key
     }
 
-    /// A new row holds the host's Default marker where it has no value yet. Bigtable generates
-    /// nothing, so that cell is left out, and a `_key` left that way is refused.
+    // Bigtable generates nothing, so a cell left to the default is left out, and a `_key` left that way is refused.
     private func cells(_ row: [PluginCellValue], absent: Set<Int>) -> [BigtableRowSet.Cell] {
         row.enumerated().map { index, value in
-            absent.contains(index) || value.asText == Self.defaultMarker ? .absent : Self.cell(value)
+            absent.contains(index) ? .absent : Self.cell(value)
         }
     }
 

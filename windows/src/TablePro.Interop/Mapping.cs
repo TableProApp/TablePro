@@ -414,4 +414,43 @@ internal static class Mapping
         Native.ObjectKindTag.Key => Interop.ObjectKind.Key,
         _ => Interop.ObjectKind.Other,
     };
+
+    public static Native.CellEdit Edit(CellEdit edit) => edit switch
+    {
+        CellEdit.Text text => new Native.CellEdit.Text(text.Value),
+        CellEdit.Null => new Native.CellEdit.Null(),
+        _ => new Native.CellEdit.Default(),
+    };
+
+    public static CellEdit Edit(Native.CellEdit edit) => edit switch
+    {
+        Native.CellEdit.Text text => new CellEdit.Text(text.TextValue),
+        Native.CellEdit.Null => CellEdit.Null.Instance,
+        _ => CellEdit.ServerDefault.Instance,
+    };
+
+    public static Native.RowEdit Edit(RowEdit edit) => edit switch
+    {
+        RowEdit.Update update => new Native.RowEdit.Update(
+            checked((ulong)update.Row),
+            [.. update.Cells.Select(cell => new Native.CellChange(checked((uint)cell.Column), Edit(cell.Edit)))]),
+        RowEdit.Insert insert => new Native.RowEdit.Insert([.. insert.Cells.Select(Edit)]),
+        RowEdit.Delete delete => new Native.RowEdit.Delete(checked((ulong)delete.Row)),
+        _ => throw new ArgumentException("A row edit of a kind the core does not know.", nameof(edit)),
+    };
+
+    public static EditLock Lock(Native.EditLock locked) => locked switch
+    {
+        Native.EditLock.ReadOnlyConnection => EditLock.ReadOnlyConnection,
+        Native.EditLock.NoPrimaryKey => EditLock.NoPrimaryKey,
+        Native.EditLock.KeyUnreadable => EditLock.KeyUnreadable,
+        _ => EditLock.ColumnsChanged,
+    };
+
+    public static SaveGate Gate(Native.SaveGate gate) => gate switch
+    {
+        Native.SaveGate.Run => SaveGate.Run,
+        Native.SaveGate.Confirm => SaveGate.Confirm,
+        _ => SaveGate.Refuse,
+    };
 }

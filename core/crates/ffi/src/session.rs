@@ -13,6 +13,7 @@ use crate::catalog::{ColumnEntry, ObjectEntry, ObjectScopeArg, SchemaEntry, Tabl
 use crate::editor::QueryEditor;
 use crate::error::{BoxedErrorInfo, CoreError};
 use crate::library::SafeModeTag;
+use crate::row_edits::TableEditor;
 use crate::runtime::on_runtime;
 use crate::safe_mode_gate::{self, RunGate};
 use crate::statement_at::{self, StatementSpan};
@@ -326,6 +327,17 @@ impl DatabaseSession {
     // Read-only, which takes a new connection; the session keeps its level until then.
     pub fn set_safe_mode(&self, level: SafeModeTag) -> bool {
         self.session.set_safe_mode(level.into())
+    }
+
+    // The table's rows as a save sees them, for a table tab that edits. `refresh` reads the catalog again, as a
+    // tab's Refresh does, so the page that follows is read with the same columns.
+    pub async fn table_editor(
+        &self,
+        table: TableName,
+        refresh: bool,
+        cancel: Option<Arc<CancelToken>>,
+    ) -> Result<Arc<TableEditor>, CoreError> {
+        TableEditor::open(self.session.clone(), self.tasks.clone(), table, refresh, cancel).await
     }
 
     pub async fn open_editor(&self, cancel: Option<Arc<CancelToken>>) -> Result<Arc<QueryEditor>, CoreError> {

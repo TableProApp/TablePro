@@ -4,7 +4,7 @@ import Testing
 
 // Replies are read in order; a hook keyed by a reply's index runs just before that reply is read, which is where a
 // request is waiting on the server when Stop is pressed.
-private final class StoppableTransport: TeradataTransport {
+final class StoppableTransport: TeradataTransport {
     private var replies: [[UInt8]]
     private var stream: [UInt8] = []
     private var repliesRead = 0
@@ -97,6 +97,9 @@ private final class SilentTransport: TeradataTransport, @unchecked Sendable {
 
 struct TeradataStopTests {
     private static let config = TeradataConnectionConfig(host: "td.example", username: "dbc", password: "dbc")
+    private static let ansiConfig = TeradataConnectionConfig(
+        host: "td.example", username: "dbc", password: "dbc", transactionMode: .ansi
+    )
     private static let start = MessageKind.start.rawValue
     private static let cont = MessageKind.cont.rawValue
     private static let abort = MessageKind.abort.rawValue
@@ -128,16 +131,36 @@ struct TeradataStopTests {
         return true
     }
 
-    @Test("Stop while the server works on a request aborts it on the session, which stays logged on")
+    private static func isRolledBack(_ error: Error?) -> Bool {
+        guard let wire = error as? TeradataWireError, case .rolledBackByStop = wire else { return false }
+        return true
+    }
+
+    @Test("A Stop outside a session set to ANSI reads as a cancel")
+    func stopOutsideANSIModeIsACancel() throws {
+        let aborted = Self.reply([Self.failure(code: 3_110, "The transaction was aborted by the user.")])
+        let transport = StoppableTransport(replies: [aborted])
+        let connection = TeradataConnection(config: Self.config, transport: transport)
+        transport.beforeReply[0] = { connection.cancel() }
+
+        let error = Self.thrown { _ = try connection.execute("SELECT * FROM sales.orders") }
+
+        guard let wire = error as? TeradataWireError, case .cancelled = wire else {
+            Issue.record("Expected cancelled, got \(String(describing: error))")
+            return
+        }
+    }
+
+    @Test("Stop while the server works on a request aborts it on the session, which stays logged on and reports the rollback")
     func stopAbortsTheRequestAndKeepsTheSession() throws {
         let aborted = Self.reply([Self.failure(code: 3_110, "The transaction was aborted by the user.")])
         let transport = StoppableTransport(replies: [aborted, Self.finished])
-        let connection = TeradataConnection(config: Self.config, transport: transport)
+        let connection = TeradataConnection(config: Self.ansiConfig, transport: transport)
         transport.beforeReply[0] = { connection.cancel() }
 
         let error = Self.thrown { _ = try connection.execute("SELECT * FROM sales.orders CROSS JOIN sales.items") }
 
-        #expect(Self.isCancelled(error))
+        #expect(Self.isRolledBack(error))
         #expect(transport.sentKinds == [Self.start, Self.abort])
         #expect(transport.sent.last?.requestNumber == transport.sent.first?.requestNumber)
         #expect(transport.sent.last?.body == TeradataMessages.abortParcel().encoded())

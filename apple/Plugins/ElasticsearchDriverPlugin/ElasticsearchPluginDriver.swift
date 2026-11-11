@@ -35,7 +35,7 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
 
     var supportsTransactions: Bool { false }
 
-    var capabilities: PluginCapabilities { [.cancelQuery] }
+    var capabilities: PluginCapabilities { [.cancelQuery, .columnDefaultMarks] }
 
     init(config: DriverConnectionConfig) {
         self.config = config
@@ -248,6 +248,11 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) throws -> [PluginRowWrite]? {
+        if let refusal = PluginRowWriteRefusal.columnDefaultsUnsupported(in: changes.filter { $0.type != .insert }) {
+            throw refusal
+        }
+        var insertedRowData = insertedRowData
+        let changes = changes.map { Self.leavingDefaultsOut($0, insertedRowData: &insertedRowData) }
         let typeNames = columnTypeNames(for: columns, index: table)
         let generator = ElasticsearchStatementGenerator(
             index: table,
@@ -261,6 +266,29 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
             deletedRowIndices: deletedRowIndices,
             insertedRowIndices: insertedRowIndices
         )
+    }
+
+    // A new document leaves out a field left to its default, and one whose `_id` is left to it gets an id from the server.
+    private static func leavingDefaultsOut(
+        _ change: PluginRowChange,
+        insertedRowData: inout [Int: [PluginCellValue]]
+    ) -> PluginRowChange {
+        guard change.type == .insert, let defaults = change.defaultColumns, !defaults.isEmpty else { return change }
+        if var row = insertedRowData[change.rowIndex] {
+            for index in defaults where row.indices.contains(index) { row[index] = .null }
+            insertedRowData[change.rowIndex] = row
+        }
+        var cleared = PluginRowChange(
+            rowIndex: change.rowIndex,
+            type: change.type,
+            cellChanges: change.cellChanges.map { cell in
+                defaults.contains(cell.columnIndex) ? (cell.columnIndex, cell.columnName, cell.oldValue, .null) : cell
+            },
+            originalRow: change.originalRow
+        )
+        cleared.absentColumns = change.absentColumns
+        cleared.expressionColumns = change.expressionColumns
+        return cleared
     }
 
     // MARK: - Caching

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use thiserror::Error;
 use tokio::sync::mpsc;
 
-use crate::browse::{BrowseSqlError, DeclaredPrecisionSink, ExportRequest, build_export};
+use crate::browse::{BrowseSqlError, DeclaredPrecisionSink, ExportFields, ExportRequest, build_export};
 use crate::call_options::CallOptions;
 use crate::column::{ColumnInfo, ResultColumn};
 use crate::connection::Connection;
@@ -266,6 +266,7 @@ impl Writer<'_> {
                 filter: &FilterSet::default(),
                 sort: &[],
                 identity: &identity,
+                fields: ExportFields::Listed,
             },
         )?;
         let written_as = match self.dialect.database_layout() {

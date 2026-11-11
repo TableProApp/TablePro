@@ -331,7 +331,7 @@ struct PaginationStateTests {
     func resetLoadMoreClearsTheQueryAndItsValues() {
         var state = PaginationState()
         state.hasMoreRows = true
-        state.setBaseQueryForMore("SELECT * FROM t WHERE id = ?", parameterValues: ["1"])
+        state.setBaseQueryForMore("SELECT * FROM t WHERE id = ?", parameterValues: [TypedParameterValue(text: "1", kind: .text)])
 
         state.resetLoadMore()
 
@@ -404,7 +404,7 @@ struct PaginationStateTests {
     @Test("Setting the base query clears the previous run's bindings")
     func setBaseQueryForMoreClearsStaleBindings() {
         var state = PaginationState()
-        state.setBaseQueryForMore("SELECT * FROM orders WHERE id = $1", parameterValues: ["42"])
+        state.setBaseQueryForMore("SELECT * FROM orders WHERE id = $1", parameterValues: [TypedParameterValue(text: "42", kind: .text)])
 
         state.setBaseQueryForMore("SELECT * FROM events", parameterValues: nil)
 
@@ -416,10 +416,11 @@ struct PaginationStateTests {
     func setBaseQueryForMoreCarriesBindings() {
         var state = PaginationState()
 
-        state.setBaseQueryForMore("SELECT * FROM orders WHERE id = $1", parameterValues: ["7"])
+        let bound = TypedParameterValue(text: "7", kind: .integer)
+        state.setBaseQueryForMore("SELECT * FROM orders WHERE id = $1", parameterValues: [bound])
 
         #expect(state.baseQueryForMore == "SELECT * FROM orders WHERE id = $1")
-        #expect(state.baseQueryParameterValues == ["7"])
+        #expect(state.baseQueryParameterValues == [bound])
     }
 
     @Test("Busy covers every kind of pending work")

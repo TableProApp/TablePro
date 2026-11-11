@@ -19,13 +19,7 @@ enum CellDisplayFormatter {
         displayFormat: ValueDisplayFormat? = nil,
         databaseType: DatabaseType? = nil
     ) -> String? {
-        format(
-            rawValue,
-            columnType: columnType,
-            displayFormat: displayFormat,
-            databaseType: databaseType,
-            dates: DateFormattingService.shared.renderer
-        )
+        display(rawValue, columnType: columnType, displayFormat: displayFormat, databaseType: databaseType).text
     }
 
     static func format(
@@ -35,24 +29,52 @@ enum CellDisplayFormatter {
         databaseType: DatabaseType?,
         dates: DateDisplayRenderer
     ) -> String? {
+        display(rawValue, columnType: columnType, displayFormat: displayFormat, databaseType: databaseType, dates: dates).text
+    }
+
+    @MainActor
+    static func display(
+        _ rawValue: PluginCellValue,
+        columnType: ColumnType?,
+        displayFormat: ValueDisplayFormat?,
+        databaseType: DatabaseType?
+    ) -> (text: String?, isFormatted: Bool) {
+        display(
+            rawValue,
+            columnType: columnType,
+            displayFormat: displayFormat,
+            databaseType: databaseType,
+            dates: DateFormattingService.shared.renderer
+        )
+    }
+
+    // `isFormatted` is false wherever the cell falls back to how its column reads without the display format.
+    static func display(
+        _ rawValue: PluginCellValue,
+        columnType: ColumnType?,
+        displayFormat: ValueDisplayFormat?,
+        databaseType: DatabaseType?,
+        dates: DateDisplayRenderer
+    ) -> (text: String?, isFormatted: Bool) {
         switch rawValue {
         case .null:
-            return nil
+            return (nil, false)
         case .bytes(let data):
             if let displayFormat,
                displayFormat.isApplicable(to: columnType, databaseType: databaseType),
                let formatted = ValueDisplayFormatter.apply(data, format: displayFormat, columnType: columnType) {
-                return fitToCell(formatted)
+                return (fitToCell(formatted), true)
             }
-            return BlobFormattingService.shared.format(data, for: .grid)
+            return (BlobFormattingService.shared.format(data, for: .grid), false)
         case .text(let value):
-            guard !value.isEmpty else { return value }
-            var displayValue = value
+            guard !value.isEmpty else { return (value, false) }
             if let displayFormat, displayFormat != .raw,
                displayFormat.isApplicable(to: columnType, databaseType: databaseType),
                let formatted = ValueDisplayFormatter.apply(value, format: displayFormat, columnType: columnType, dates: dates) {
-                displayValue = formatted
-            } else if let columnType {
+                return (fitToCell(formatted), rendered(formatted, from: value, by: displayFormat))
+            }
+            var displayValue = value
+            if let columnType {
                 if columnType.isDateType {
                     if let formatted = dates.format(dateString: displayValue, columnType: columnType) {
                         displayValue = formatted
@@ -65,13 +87,27 @@ enum CellDisplayFormatter {
                     )
                 }
             }
-            return fitToCell(displayValue)
+            return (fitToCell(displayValue), false)
         }
     }
 
-    // A row is one line, so anything a format produces is capped and stripped of line breaks before it
-    // reaches a cell. Binary read as text needs it: a blob carries newlines and runs to megabytes where
-    // hex never did. A lone CR stays for the cell to mark.
+    // The UUID, timestamp, JSON and PHP formats hand back a text value they cannot read unchanged rather than nil.
+    private static func rendered(_ formatted: String, from value: String, by format: ValueDisplayFormat) -> Bool {
+        switch format {
+        case .uuid, .uuidSwappedTime:
+            return UUID(uuidString: formatted) != nil
+        case .unixTimestamp, .unixTimestampMillis:
+            return formatted != value
+        case .json:
+            return value.isValidJson
+        case .phpSerialized:
+            return CellValueContentDetector.detect(value) == .phpSerialized
+        case .raw, .text, .messagePack, .protobuf, .igbinary, .avro, .protobufSchema, .schemaRegistry:
+            return true
+        }
+    }
+
+    // Binary read as text carries newlines and runs to megabytes, so all output is capped and flattened. A lone CR stays for the cell to mark.
     private static func fitToCell(_ value: String) -> String {
         var displayValue = value
         let nsDisplay = displayValue as NSString

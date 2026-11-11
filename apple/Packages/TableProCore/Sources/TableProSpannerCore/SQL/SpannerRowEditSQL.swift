@@ -24,25 +24,27 @@ public struct SpannerRowChange: Sendable, Equatable {
     public let originalRow: [SpannerCell]?
     // Keyed by name, as the writer collapses a row's cell changes to one value per column.
     public let expressionColumns: Set<String>
+    // The columns left to their default, by name like `expressionColumns`. Every other cell is a value.
+    public let defaultColumns: Set<String>
 
     public init(
         rowIndex: Int,
         kind: Kind,
         cellChanges: [CellChange] = [],
         originalRow: [SpannerCell]? = nil,
-        expressionColumns: Set<String> = []
+        expressionColumns: Set<String> = [],
+        defaultColumns: Set<String> = []
     ) {
         self.rowIndex = rowIndex
         self.kind = kind
         self.cellChanges = cellChanges
         self.originalRow = originalRow
         self.expressionColumns = expressionColumns
+        self.defaultColumns = defaultColumns
     }
 }
 
 public enum SpannerRowEditSQL {
-    public static let defaultSentinel = "__DEFAULT__"
-
     private static let logger = Logger(subsystem: "com.TablePro", category: "SpannerRowEditSQL")
 
     public static func statements(
@@ -115,7 +117,7 @@ internal struct SpannerRowEditTarget {
     func insert(_ change: SpannerRowChange, row: [SpannerCell]?) -> SpannerRenderedStatement? {
         let cells = row.map { zip(columns, $0).map { SpannerRowChange.CellChange(column: $0.0, value: $0.1) } }
             ?? Self.lastValuePerColumn(change.cellChanges)
-        let written = cells.filter { !Self.isDefaultSentinel($0.value) }
+        let written = cells.filter { !change.defaultColumns.contains($0.column) }
         guard written.isEmpty else {
             return Self.insertStatement(
                 table: table, cells: written, dialect: dialect, expressionColumns: change.expressionColumns
@@ -132,7 +134,7 @@ internal struct SpannerRowEditTarget {
         var parameters: [SpannerCell] = []
         let assignments = Self.lastValuePerColumn(change.cellChanges).map { cell in
             let column = dialect.quoteIdentifier(cell.column)
-            guard !Self.isDefaultSentinel(cell.value) else { return "\(column) = DEFAULT" }
+            guard !change.defaultColumns.contains(cell.column) else { return "\(column) = DEFAULT" }
             if let sql = Self.expression(cell, in: change.expressionColumns) { return "\(column) = \(sql)" }
             parameters.append(cell.value)
             return "\(column) = ?"
@@ -189,10 +191,6 @@ internal struct SpannerRowEditTarget {
             parameters.append(value)
         }
         return (terms.joined(separator: " AND "), parameters)
-    }
-
-    private static func isDefaultSentinel(_ cell: SpannerCell) -> Bool {
-        cell == .text(SpannerRowEditSQL.defaultSentinel)
     }
 
     private static func lastValuePerColumn(_ cells: [SpannerRowChange.CellChange]) -> [SpannerRowChange.CellChange] {

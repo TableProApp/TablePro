@@ -3,7 +3,7 @@ using System.Text;
 namespace TablePro.DataGrid.Model;
 
 [Flags]
-public enum CellState : byte
+public enum CellState : ushort
 {
     None = 0,
     Null = 1,
@@ -18,6 +18,18 @@ public enum CellState : byte
 
     // The core shows control characters as spaces, so a copy reads text with a space whole.
     Lossy = 16,
+
+    // A cell of a data row the user changed.
+    Modified = 32,
+
+    // Any cell of a new row.
+    Inserted = 64,
+
+    // Any cell of a row marked for delete; it keeps the data's text.
+    Deleted = 128,
+
+    // The server's value, with no text: the grid draws its DefaultText.
+    Default = 256,
 }
 
 public readonly ref struct CellText(ReadOnlySpan<char> text, CellState state)
@@ -27,6 +39,8 @@ public readonly ref struct CellText(ReadOnlySpan<char> text, CellState state)
     public CellState State { get; } = state;
 
     public bool IsNull => (State & CellState.Null) != 0;
+
+    public bool IsDefault => (State & CellState.Default) != 0;
 
     public bool IsTruncated => (State & CellState.Truncated) != 0;
 
@@ -77,7 +91,9 @@ public sealed class CellBlock
         _starts[0] = 0;
     }
 
-    public void AddNull() => Close(CellState.Null);
+    public void AddNull(CellState marks = CellState.None) => Close(CellState.Null | marks);
+
+    public void AddDefault(CellState marks = CellState.None) => Close(CellState.Default | marks);
 
     // Grows the buffer once for a window's text, where adding cell by cell would grow it several times.
     public void EnsureCapacity(int characters) => Reserve(characters - _length, exact: true);
@@ -87,16 +103,16 @@ public sealed class CellBlock
         Reserve(Encoding.UTF8.GetMaxCharCount(utf8.Length) + 1);
         var start = _length;
         _length += Encoding.UTF8.GetChars(utf8, _chars.AsSpan(_length));
-        Finish(start, truncated, lossy);
+        Finish(start, truncated, lossy, CellState.None);
     }
 
-    // A cell another block already read, copied as it is.
-    public void Add(CellText cell)
+    // A cell another block already read, copied as it is, with the marks added.
+    public void Add(CellText cell, CellState marks = CellState.None)
     {
         Reserve(cell.Text.Length);
         cell.Text.CopyTo(_chars.AsSpan(_length));
         _length += cell.Text.Length;
-        Close(cell.State);
+        Close(cell.State | marks);
     }
 
     public void Add(ReadOnlySpan<char> text, bool truncated, bool lossy = false)
@@ -105,7 +121,28 @@ public sealed class CellBlock
         var start = _length;
         text.CopyTo(_chars.AsSpan(_length));
         _length += text.Length;
-        Finish(start, truncated, lossy);
+        Finish(start, truncated, lossy, CellState.None);
+    }
+
+    // Text the user typed, shown as the core shows a value: cut at the block's cap, control characters as spaces.
+    public void AddTyped(ReadOnlySpan<char> text, CellState marks)
+    {
+        var cut = MaxCharacters > 0 && text.Length > MaxCharacters;
+        if (cut)
+        {
+            var end = char.IsHighSurrogate(text[MaxCharacters - 1]) ? MaxCharacters - 1 : MaxCharacters;
+            text = text[..end];
+        }
+        Reserve(text.Length + 1);
+        var start = _length;
+        var lossy = false;
+        foreach (var character in text)
+        {
+            var control = char.IsControl(character);
+            lossy |= control;
+            _chars[_length++] = control ? ' ' : character;
+        }
+        Finish(start, cut, lossy, marks);
     }
 
     // The span stays valid until the block is refilled.
@@ -120,9 +157,13 @@ public sealed class CellBlock
         return new CellText(_chars.AsSpan(start, _starts[cell + 1] - start), _flags[cell]);
     }
 
-    private void Finish(int start, bool truncated, bool lossy)
+    private void Finish(int start, bool truncated, bool lossy, CellState marks)
     {
-        var flags = TextDirection.IsRightToLeft(_chars.AsSpan(start, _length - start)) ? CellState.RightToLeft : CellState.None;
+        var flags = marks;
+        if (TextDirection.IsRightToLeft(_chars.AsSpan(start, _length - start)))
+        {
+            flags |= CellState.RightToLeft;
+        }
         if (lossy)
         {
             flags |= CellState.Lossy;

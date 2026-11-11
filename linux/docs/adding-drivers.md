@@ -109,7 +109,7 @@ pub trait DatabaseDriver: Send + Sync {
 | `row_count_estimate` | `Statistics` ("about N"), `ExactMetadata` or `Unavailable`. |
 | `object_kinds` | The `ObjectKind`s `list_objects` returns. |
 | `database_required` | Whether a connect without a database name is refused before anything is opened. |
-| `network_options` | The `NetworkOption`s the connect dialog offers beyond host, port and database: `DnsSeedList` and `AuthDatabase`. `NetworkOptions::validate` refuses one the driver does not list, which only a saved or imported connection can carry. |
+| `network_options` | The `NetworkOption`s the connect dialog offers beyond host, port and database: `DnsSeedList`, `AuthDatabase`, `HostList` (a replica set name and more members), `ChannelBinding` and `LocalSocket`. `NetworkOptions::validate` refuses one the driver does not list, which only a saved or imported connection can carry. |
 | `statement_stop` | `Server` where the engine stop reaches the server, `Abandon` where the protocol carries none and the server runs the statement to its own timeout. |
 
 The shipped drivers:
@@ -216,7 +216,7 @@ Start the resource empty and fill it inside the work, as `PgCall::acquire` and `
 | ClickHouse | `KILL QUERY WHERE query_id = ? ASYNC` on a sessionless client | `OutOfBand(Statement)` |
 | Cassandra, ScyllaDB | None in the protocol: the call drops its request, and the server runs it to its own timeout | `InBand` |
 | Redis | A workspace read stops between its bounded commands; an editor command gets `CLIENT UNBLOCK <id> ERROR`, then `CLIENT KILL ID <id>` past the grace, from a link of its own ([redis.md](drivers/redis.md#stops-and-timeouts)) | `InBand` |
-| MongoDB | `killSessions` for the call's own logical session, from the same client | `OutOfBand(Statement)` |
+| MongoDB | `killSessions` for the call's own logical session, from the same client; where it is refused, `killOp` for each operation `currentOp` lists in that session ([mongodb.md](drivers/mongodb.md#stops-and-timeouts)) | `OutOfBand(Statement)` |
 
 ### `CallResource` release rules
 
@@ -314,7 +314,7 @@ A run streams `ResultEvent`s into a `ResultSink`:
 - `Notice` passes on a server notice or warning.
 - `NoticeLimitReached { retained }` comes once per run when the driver kept fewer notices than the server sent, after the `retained` ones it passed on.
 
-`ResultSink::accept` is awaited before the next rows are read off the wire, so a grid that cannot keep up slows the read instead of growing a queue the size of the result. `SinkFlow::ConsumerGone` ends the run with `RunEnd::Cancelled`. PostgreSQL, MySQL, SQL Server and ClickHouse then stop the statement on the server, SQLite stops stepping it, DuckDB stops fetching its streamed result, and the Cassandra driver asks for no more pages. `stream_read` uses the same sink and events, without a row limit.
+`ResultSink::accept` is awaited before the next rows are read off the wire, so a grid that cannot keep up slows the read instead of growing a queue the size of the result. One exception: an editor result whose columns a document engine finds from its documents, since a later document can add a column. It reads the documents it keeps, at most the row limit and one more, before `ResultSetStarted`, then sends them under the same backpressure and closes the cursor. `SinkFlow::ConsumerGone` ends the run with `RunEnd::Cancelled`. PostgreSQL, MySQL, SQL Server and ClickHouse then stop the statement on the server, SQLite stops stepping it, DuckDB stops fetching its streamed result, and the Cassandra driver asks for no more pages. `stream_read` uses the same sink and events, without a row limit.
 
 ## The row-limit rule
 
@@ -417,8 +417,8 @@ What a new engine without SQL does:
 
 MongoDB holds databases of collections and takes mongosh statements. A collection opens in the table tab, so every builder the tab, an export, a save and the MCP server reach (`build_page`, `build_count`, `build_export`, `plan_save`, `build_filter`, `validate_raw_predicate`, the SQL export's inserts) has a document arm, chosen by the dialect's grammar, that writes the engine's shell call with every value bound ([ADR 0026](decisions/0026-documents-in-the-table-tab.md)). What a document engine does beyond the steps above:
 
-1. **Capabilities.** `data_model: Document`, `object_kinds` tables and views, and `network_options` for what its connection strings carry beyond a host (MongoDB: `DnsSeedList`, `AuthDatabase`).
-2. **Catalogue.** Databases from `list_schemas`, collections and views from `list_objects`. `fetch_columns` reads the top-level fields of a bounded sample on the server, the key first, with the column kind the field's values share and JSON for nested or mixed ones. `row_identity` is the document key, `Unordered` for a view.
+1. **Capabilities.** `data_model: Document`, `object_kinds` tables and views, and `network_options` for what its connection strings carry beyond a host (MongoDB: `DnsSeedList`, `AuthDatabase`, `HostList`).
+2. **Catalogue.** Databases from `list_schemas`, collections and views from `list_objects`. `fetch_columns` reads the top-level fields of a bounded sample on the server, the key first, with the column kind the field's values share and JSON for nested or mixed ones, numbers of more than one BSON type included. `row_identity` is the document key, `Unordered` for a view.
 3. **Grammar and builders.** The `SqlGrammar` variant's module (`sql_syntax/mongo/`) parses the shell into an AST that keeps key order and prints it back, so a generated statement is runnable text, and the driver reads generated and typed statements through the same parser and the same read-only check. The document arms live in `tablepro_core::document`; a builder that meets a field a query cannot name refuses it (`UnaddressableField`).
 4. **Values.** A cell comes from the value's own type, not the column's; a nested value is Extended JSON that names its types, and a JSON cell the user edits goes back as the BSON it names.
 5. **Tests.** `document_conformance_suite!` through `DocumentEngine` ([testing.md](testing.md#document-conformance)), and the TLS suite on each route the driver does TLS on.
@@ -431,7 +431,7 @@ MongoDB holds databases of collections and takes mongosh statements. A collectio
 - [ ] Every call runs under `OwnedCalls` with the engine's stop, and a connection-scoped stop never releases an unsettled connection.
 - [ ] `probe` never waits for a pool slot; `stream_read` never holds one.
 - [ ] Saves record every step in a `WriteLedger`, and the stop is held while a commit is in flight.
-- [ ] Editor sessions are one connection per tab, one run at a time, with `ResultSink` backpressure and the row-limit rule.
+- [ ] Editor sessions are one connection per tab, one run at a time, with `ResultSink` backpressure (or the document exception in [ResultSink and backpressure](#resultsink-and-backpressure)) and the row-limit rule.
 - [ ] Errors map to `DriverError` by the engine's code ([error-handling.md](error-handling.md)).
 - [ ] The client library's log target is in `SILENCED_LIBRARIES` in `crates/app/src/logging.rs`, so no statement text reaches the journal ([error-handling.md](error-handling.md#logging)).
 - [ ] Registered in `build_registry`; added to the workspace and to `crates/app/Cargo.toml`.

@@ -82,7 +82,7 @@ extension QueryExecutionCoordinator {
         sql: String,
         index: Int,
         baseQuery: String?,
-        baseQueryParameterValues: [String?]? = nil,
+        baseQueryParameterValues: [TypedParameterValue?]? = nil,
         namedParameterStatement: NamedParameterStatement? = nil,
         tabId: UUID,
         anchor: StatementAnchor? = nil,
