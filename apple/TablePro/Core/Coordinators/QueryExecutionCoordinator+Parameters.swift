@@ -368,7 +368,6 @@ extension QueryExecutionCoordinator {
         let transactionKind = OperationKind.worst(of: statementTexts, databaseType: conn.type)
         let grammar = parent.lexicalGrammar
         let plan = BatchTransactionPolicy.plan(for: statementTexts, databaseType: conn.type, grammar: grammar)
-        let commitMode = DatabaseManager.shared.commitMode(for: conn.id)
         let prepared = statements.map { statement in
             prepareStatement(
                 statement: statement,
@@ -408,7 +407,6 @@ extension QueryExecutionCoordinator {
                 scope: scope,
                 mode: transactionKind.transactionAccessMode,
                 plan: plan,
-                commitMode: commitMode,
                 asksEndState: asksEndState,
                 claim: claim,
                 lease: lease
@@ -537,11 +535,11 @@ extension QueryExecutionCoordinator {
         scope: DatabaseScope,
         mode: PluginTransactionAccessMode,
         plan: BatchTransactionPlan,
-        commitMode: ConnectionCommitMode,
         asksEndState: Bool,
         claim: TabExecutionClaim,
         lease: DriverLeaseOwner
     ) async -> MultiStatementRun {
+        let commitMode = DatabaseManager.shared.commitMode(for: scope.connectionId)
         let failureOutput = ServerOutputBox()
         let commitOutput = ServerOutputBox()
         let databaseType = parent.connection.type
