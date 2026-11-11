@@ -894,7 +894,7 @@ private final class StatementRecordingDriver: DatabaseDriver, @unchecked Sendabl
     }
 
     private func record(_ query: String, parameters: [Any?]?) -> QueryResult {
-        let bound = parameters.map { values in values.map { $0 as? String } }
+        let bound = parameters.map { values in values.map { ($0 as? TypedParameterValue)?.text ?? $0 as? String } }
         lock.withLock { statements.append(SentStatement(sql: query, parameters: bound)) }
         guard query.uppercased().hasPrefix("SELECT") else {
             return QueryResult(columns: [], columnTypes: [], rows: [], rowsAffected: 1, executionTime: 0, error: nil)

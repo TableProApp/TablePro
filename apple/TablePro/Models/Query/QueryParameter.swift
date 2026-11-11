@@ -69,6 +69,12 @@ struct TypedParameterValue: Equatable, Sendable {
     let text: String
     let kind: PluginColumnKind?
 
+    // A run's value as the rerun state keeps it; plain text from a caller that gave no type stays text with no kind.
+    static func kept(_ value: Any?) -> TypedParameterValue? {
+        if let typed = value as? TypedParameterValue { return typed }
+        return (value as? String).map { TypedParameterValue(text: $0, kind: nil) }
+    }
+
     // Nil when no value carries a type, so a driver reads the values as it did before types were passed.
     static func kinds(of parameters: [Any?]?) -> [PluginColumnKind?]? {
         guard let parameters else { return nil }

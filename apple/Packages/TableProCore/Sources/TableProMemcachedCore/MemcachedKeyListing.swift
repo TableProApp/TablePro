@@ -55,7 +55,7 @@ public enum MemcachedKeyListing {
         // A key stored through the binary or meta protocol can hold a space or a line break, which a text command
         // line cannot carry: sent in a `get`, it would end the line and start a command of its own.
         guard let encoded = fields["key"], let key = percentDecoded(encoded),
-              MemcachedCommand.isValidKey(Array(key.utf8)) else { return nil }
+              MemcachedCommandParser.isValidKey(Array(key.utf8)) else { return nil }
         let expiry = fields["exp"].flatMap { Int64($0) }
         return MemcachedKeyEntry(
             key: key,

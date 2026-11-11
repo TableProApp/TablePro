@@ -685,7 +685,7 @@ extension QueryExecutionCoordinator {
                 sql: statement.originalSQL,
                 index: firstNumber + index,
                 baseQuery: statement.executableSQL,
-                baseQueryParameterValues: statement.parameterValues?.map { $0 as? TypedParameterValue },
+                baseQueryParameterValues: statement.parameterValues?.map(TypedParameterValue.kept),
                 namedParameterStatement: statement.parameterValues == nil
                     ? nil
                     : NamedParameterStatement(sql: statement.originalSQL, parameters: history.parameters),
@@ -794,7 +794,7 @@ extension QueryExecutionCoordinator {
                 prepared: prepared
             )
 
-            let parameterValues = nativeParameters.map { $0 as? TypedParameterValue }
+            let parameterValues = nativeParameters.map(TypedParameterValue.kept)
             let statement = originalSQL.map { NamedParameterStatement(sql: $0, parameters: originalParameters) }
             parent.tabManager.mutate(tabId: tabId) {
                 $0.pagination.baseQueryParameterValues = parameterValues
