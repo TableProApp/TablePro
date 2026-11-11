@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use tokio_util::sync::CancellationToken;
 
-use super::sqlite::Database;
 use crate::app::check_cancel;
+use crate::apps::sqlite::Database;
 use crate::{ForeignImportError, ForeignSavedQuery, SavedQueryContent};
 
 // Every install seeds this example, so importing it would add noise to every library.
@@ -19,7 +19,7 @@ pub(super) fn read(
     limit: u64,
     cancel: &CancellationToken,
 ) -> Result<Vec<ForeignSavedQuery>, ForeignImportError> {
-    let columns = column_names(db, "favorite_query");
+    let columns = db.columns("favorite_query");
     if !columns.contains("title") || !columns.contains("text") {
         return Ok(Vec::new());
     }
@@ -70,7 +70,7 @@ pub(super) fn read(
 }
 
 pub(super) fn count(db: &Database) -> usize {
-    let columns = column_names(db, "favorite_query");
+    let columns = db.columns("favorite_query");
     if !columns.contains("title") || !columns.contains("text") {
         return 0;
     }
@@ -107,7 +107,7 @@ fn where_clause(columns: &HashSet<String>, conditions: &[&str]) -> String {
 }
 
 fn read_folders(db: &Database) -> HashMap<i64, Folder> {
-    let columns = column_names(db, "query_folder");
+    let columns = db.columns("query_folder");
     if !columns.contains("id") || !columns.contains("name") {
         return HashMap::new();
     }
@@ -147,19 +147,6 @@ fn folder_path(folder_id: Option<i64>, folders: &HashMap<i64, Folder>) -> Vec<St
     }
     path.reverse();
     path
-}
-
-fn column_names(db: &Database, table: &str) -> HashSet<String> {
-    let Some(mut statement) = db.prepare(&format!("PRAGMA table_info({table})")) else {
-        return HashSet::new();
-    };
-    let mut names = HashSet::new();
-    while let Some(row) = statement.next_row() {
-        if let Some(name) = row.text(1) {
-            names.insert(name);
-        }
-    }
-    names
 }
 
 #[cfg(test)]

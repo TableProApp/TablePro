@@ -9,14 +9,31 @@ import TableProPluginKit
 
 // Redshift issues the user and a temporary password together, so a sign-in mints both.
 struct RedshiftIAMSignIn: Sendable {
+    // A custom domain is asked for by name: AWS answers only for a domain associated with a cluster or workgroup in
+    // the caller's account, so the password still goes only to that database.
     enum Endpoint: Equatable, Sendable {
         case cluster(identifier: String, region: String)
         case serverless(workgroup: String, region: String)
+        case clusterDomain(name: String, region: String)
+        case serverlessDomain(name: String, region: String)
 
         var region: String {
             switch self {
-            case .cluster(_, let region), .serverless(_, let region): region
+            case .cluster(_, let region), .serverless(_, let region),
+                 .clusterDomain(_, let region), .serverlessDomain(_, let region):
+                region
             }
+        }
+
+        var isServerless: Bool {
+            switch self {
+            case .serverless, .serverlessDomain: true
+            case .cluster, .clusterDomain: false
+            }
+        }
+
+        func onCustomDomain(_ name: String) -> Endpoint {
+            isServerless ? .serverlessDomain(name: name, region: region) : .clusterDomain(name: name, region: region)
         }
     }
 
@@ -28,9 +45,10 @@ struct RedshiftIAMSignIn: Sendable {
     let fields: [String: String]
     let configuredHost: String
     let preTunnelHost: String?
+    var aliasResolver: any CNAMEResolving = SystemCNAMEResolver()
 
     func signIn(deadline: ConnectionDeadline?) async throws -> ResolvedSignIn {
-        let endpoint = try resolveEndpoint()
+        let endpoint = try await resolveEndpoint(within: deadline?.remainingDuration)
         let region = nonEmpty(fields["awsRegion"]) ?? endpoint.region
         return try await AWSDeadlineSession.run(within: deadline) { session in
             let credentials = try await AWSCredentialResolver.resolve(source: source, fields: fields, session: session)
@@ -50,23 +68,45 @@ struct RedshiftIAMSignIn: Sendable {
         }
     }
 
-    func resolveEndpoint() throws -> Endpoint {
+    func resolveEndpoint(within timeout: Duration?) async throws -> Endpoint {
+        let dialledHost = AWSEndpointHost.normalized(configuredHost)
+        let dialsLoopback = AWSEndpointHost.isLoopback(configuredHost)
+        // The password goes to this name: the far end of a forward, else the host the driver dials.
+        let reachedHost = dialsLoopback ? preTunnelHost.map(AWSEndpointHost.normalized) : dialledHost
         if let override = nonEmpty(fields[Self.endpointFieldId]) {
-            let overrideHost = Self.hostName(in: override)
+            let overrideHost = AWSEndpointHost.normalized(Self.hostName(in: override))
             guard let endpoint = Self.endpoint(forHost: overrideHost) else {
                 throw RedshiftIAMError.endpointInvalid(override)
             }
-            // The password goes to the host the driver dials, so it must be a forward or that endpoint itself.
-            guard Self.isLoopback(configuredHost)
-                || overrideHost.caseInsensitiveCompare(configuredHost) == .orderedSame
-            else {
+            if dialsLoopback || overrideHost == dialledHost {
+                return endpoint
+            }
+            // Only a DNS name can be a custom domain; an address or another AWS endpoint is not the one named.
+            guard AWSEndpointHost.isAliasCandidate(dialledHost), Self.endpoint(forHost: dialledHost) == nil else {
                 throw RedshiftIAMError.endpointNotDialed(host: configuredHost)
             }
-            return endpoint
+            return endpoint.onCustomDomain(dialledHost)
         }
         for host in [preTunnelHost, configuredHost].compactMap({ $0 }) {
             if let endpoint = Self.endpoint(forHost: host) {
                 return endpoint
+            }
+        }
+        if let reachedHost, AWSEndpointHost.isAliasCandidate(reachedHost) {
+            let lookup = await aliasResolver.firstName(
+                behind: reachedHost,
+                within: timeout,
+                where: { Self.endpoint(forHost: $0) != nil }
+            )
+            switch lookup {
+            case .found(let target):
+                if let endpoint = Self.endpoint(forHost: target) {
+                    return endpoint.onCustomDomain(reachedHost)
+                }
+            case .failed:
+                throw AWSAuthError.endpointLookupFailed(host: reachedHost)
+            case .notFound:
+                break
             }
         }
         throw RedshiftIAMError.endpointUnresolved(host: preTunnelHost ?? configuredHost)
@@ -74,8 +114,13 @@ struct RedshiftIAMSignIn: Sendable {
 
     func request(for endpoint: Endpoint, region: String, credentials: AWSCredentials, now: Date = Date()) throws -> URLRequest {
         switch endpoint {
-        case .cluster(let identifier, _):
-            var parameters = ["Version": "2012-12-01", "ClusterIdentifier": identifier]
+        case .cluster, .clusterDomain:
+            var parameters = ["Version": "2012-12-01"]
+            switch endpoint {
+            case .clusterDomain(let name, _): parameters["CustomDomainName"] = name
+            case .cluster(let identifier, _): parameters["ClusterIdentifier"] = identifier
+            case .serverless, .serverlessDomain: break
+            }
             if let databaseUser = nonEmpty(databaseUser) {
                 parameters["Action"] = "GetClusterCredentials"
                 parameters["DbUser"] = databaseUser
@@ -87,8 +132,13 @@ struct RedshiftIAMSignIn: Sendable {
             }
             return try AWSQueryRequest(service: "redshift", region: region, parameters: parameters)
                 .signedURLRequest(credentials: credentials, now: now)
-        case .serverless(let workgroup, _):
-            var body = ["workgroupName": workgroup]
+        case .serverless, .serverlessDomain:
+            var body: [String: String] = [:]
+            switch endpoint {
+            case .serverlessDomain(let name, _): body["customDomainName"] = name
+            case .serverless(let workgroup, _): body["workgroupName"] = workgroup
+            case .cluster, .clusterDomain: break
+            }
             if let database = nonEmpty(database) {
                 body["dbName"] = database
             }
@@ -104,10 +154,7 @@ struct RedshiftIAMSignIn: Sendable {
 
     // Only a name AWS issued, under the region's own DNS suffix: anything else is someone else's host.
     static func endpoint(forHost host: String) -> Endpoint? {
-        var name = host.trimmingCharacters(in: .whitespaces).lowercased()
-        if name.hasSuffix(".") {
-            name.removeLast()
-        }
+        let name = AWSEndpointHost.normalized(host)
         let labels = name.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
         guard labels.count > 4, !labels[0 ..< 3].contains(where: \.isEmpty) else { return nil }
         let region = labels[2]
@@ -122,12 +169,11 @@ struct RedshiftIAMSignIn: Sendable {
     static func signIn(from data: Data, for endpoint: Endpoint) throws -> ResolvedSignIn {
         let user: String?
         let password: String?
-        switch endpoint {
-        case .cluster:
+        if !endpoint.isServerless {
             let parser = ClusterCredentialsXMLParser()
             guard parser.parse(data) else { throw RedshiftIAMError.unreadableResponse }
             (user, password) = (parser.databaseUser, parser.databasePassword)
-        case .serverless:
+        } else {
             let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
             (user, password) = (object?["dbUser"] as? String, object?["dbPassword"] as? String)
         }
@@ -138,21 +184,13 @@ struct RedshiftIAMSignIn: Sendable {
     }
 
     static func errorMessage(in data: Data, for endpoint: Endpoint) -> String? {
-        switch endpoint {
-        case .cluster:
+        guard endpoint.isServerless else {
             return AWSQueryErrorResponse.parse(data)?.summary
-        case .serverless:
-            guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
-            let code = (object["__type"] as? String).map { $0.split(separator: "#").last.map(String.init) ?? $0 }
-            let message = object["message"] as? String ?? object["Message"] as? String
-            return AWSQueryErrorResponse(code: code, message: message).summary
         }
-    }
-
-    private static func isLoopback(_ host: String) -> Bool {
-        let normalized = host.trimmingCharacters(in: .whitespaces).lowercased()
-        return ["localhost", "localhost.localdomain", "::1", "[::1]", "0.0.0.0"].contains(normalized)
-            || normalized.hasPrefix("127.")
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        let code = (object["__type"] as? String).map { $0.split(separator: "#").last.map(String.init) ?? $0 }
+        let message = object["message"] as? String ?? object["Message"] as? String
+        return AWSQueryErrorResponse(code: code, message: message).summary
     }
 
     private static func hostName(in value: String) -> String {
@@ -203,8 +241,8 @@ enum RedshiftIAMError: LocalizedError, Equatable {
             return String(
                 format: String(localized: """
                     TablePro cannot tell which Redshift cluster or workgroup "%@" is. Set Host to the \
-                    endpoint AWS issued, such as my-cluster.abc123.us-east-1.redshift.amazonaws.com, or \
-                    enter that endpoint as the Redshift Endpoint when you connect through a port forward.
+                    endpoint AWS issued, such as my-cluster.abc123.us-east-1.redshift.amazonaws.com, or to a \
+                    custom domain name that points to it, or enter that endpoint as the Redshift Endpoint.
                     """),
                 host
             )
@@ -216,8 +254,8 @@ enum RedshiftIAMError: LocalizedError, Equatable {
         case .endpointNotDialed(let host):
             return String(
                 format: String(localized: """
-                    The Redshift Endpoint applies only when Host is a local port forward or that same \
-                    endpoint, and "%@" is neither.
+                    The Redshift Endpoint applies only when Host is a local port forward, a custom domain \
+                    name or that same endpoint, and "%@" is none of them.
                     """),
                 host
             )

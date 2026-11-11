@@ -4,6 +4,7 @@ use tablepro_core::ddl::BuildDdlError;
 use tablepro_core::meta::{IndexKey, ObjectKind, ObjectScope, RowCountEstimate, SchemaInfo};
 use tablepro_core::{ColumnInfo, DriverError, ForeignKeyInfo, IndexInfo, TableRef};
 use tablepro_session::{OperationError, OperationKind};
+use tokio_util::sync::CancellationToken;
 
 use crate::connection_tools::to_json;
 use crate::tool_args::{ConnectionArgs, DatabaseArgs, SchemaArgs, TableArgs};
@@ -22,12 +23,17 @@ struct ListedSchema {
     is_system: bool,
 }
 
-pub async fn list_schemas(context: &ToolContext, args: DatabaseArgs) -> Result<String, ToolError> {
+pub async fn list_schemas(
+    context: &ToolContext,
+    args: DatabaseArgs,
+    cancel: CancellationToken,
+) -> Result<String, ToolError> {
     let connection = context.connection(&args.connection_id)?;
     let session = context
-        .held_session(&connection, args.database.as_deref())
+        .held_session(&connection, args.database.as_deref(), &cancel)
         .await?
         .session;
+    // The catalog's reads are shared with the window, so a client that goes away does not stop them.
     let schemas = session
         .schemas()
         .await
@@ -55,11 +61,15 @@ struct ListedDatabase {
     is_current: bool,
 }
 
-pub async fn list_databases(context: &ToolContext, args: ConnectionArgs) -> Result<String, ToolError> {
+pub async fn list_databases(
+    context: &ToolContext,
+    args: ConnectionArgs,
+    cancel: CancellationToken,
+) -> Result<String, ToolError> {
     let connection = context.connection(&args.connection_id)?;
     let session = context.session(&connection).await?;
     let databases = session
-        .run(OperationKind::Metadata, |lease, call| async move {
+        .run_cancellable(OperationKind::Metadata, &cancel, |lease, call| async move {
             Ok(lease.list_databases(call).await?)
         })
         .await
@@ -101,10 +111,14 @@ struct ListedTable {
 
 /// Read again rather than from the window's catalog, so a table a
 /// client just created is there; the read also refreshes the sidebar.
-pub async fn list_tables(context: &ToolContext, args: SchemaArgs) -> Result<String, ToolError> {
+pub async fn list_tables(
+    context: &ToolContext,
+    args: SchemaArgs,
+    cancel: CancellationToken,
+) -> Result<String, ToolError> {
     let connection = context.connection(&args.connection_id)?;
     let session = context
-        .held_session(&connection, args.database.as_deref())
+        .held_session(&connection, args.database.as_deref(), &cancel)
         .await?
         .session;
     let scope = match args.schema {
@@ -193,15 +207,19 @@ struct DescribedForeignKey {
 
 type TableParts = (Vec<ColumnInfo>, Vec<IndexInfo>, Vec<ForeignKeyInfo>, RowCountEstimate);
 
-pub async fn describe_table(context: &ToolContext, args: TableArgs) -> Result<String, ToolError> {
+pub async fn describe_table(
+    context: &ToolContext,
+    args: TableArgs,
+    cancel: CancellationToken,
+) -> Result<String, ToolError> {
     let connection = context.connection(&args.connection_id)?;
     let session = context
-        .held_session(&connection, args.database.as_deref())
+        .held_session(&connection, args.database.as_deref(), &cancel)
         .await?
         .session;
     let table = TableRef::new(args.schema, args.table);
     let read: Result<TableParts, OperationError> = session
-        .run(OperationKind::Metadata, |lease, call| {
+        .run_cancellable(OperationKind::Metadata, &cancel, |lease, call| {
             let table = table.clone();
             async move {
                 let columns = lease.fetch_columns(&table, call.clone()).await?;
@@ -300,15 +318,19 @@ struct TableDdl {
 /// The statements Show CREATE TABLE gives: the server's own text where
 /// it keeps one, otherwise the table's definition written in its
 /// dialect.
-pub async fn get_table_ddl(context: &ToolContext, args: TableArgs) -> Result<String, ToolError> {
+pub async fn get_table_ddl(
+    context: &ToolContext,
+    args: TableArgs,
+    cancel: CancellationToken,
+) -> Result<String, ToolError> {
     let connection = context.connection(&args.connection_id)?;
     let session = context
-        .held_session(&connection, args.database.as_deref())
+        .held_session(&connection, args.database.as_deref(), &cancel)
         .await?
         .session;
     let table = TableRef::new(args.schema, args.table);
     let read = session
-        .run(OperationKind::Metadata, |lease, call| {
+        .run_cancellable(OperationKind::Metadata, &cancel, |lease, call| {
             let table = table.clone();
             async move {
                 let definition = lease.fetch_table_definition(&table, call).await?;

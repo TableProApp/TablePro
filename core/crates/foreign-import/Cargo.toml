@@ -16,7 +16,7 @@ chacha20.workspace = true
 flate2.workspace = true
 hex.workspace = true
 # The SQLite the storage crate links through sqlx, read directly because
-# a Beekeeper Studio database is read once, blocking, read-only.
+# a Beekeeper Studio or DBX database is read once, blocking, read-only.
 libsqlite3-sys.workspace = true
 plist.workspace = true
 roxmltree.workspace = true

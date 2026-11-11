@@ -80,6 +80,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
     /// Queue-confined. Non-nil until every schema/flavor/catalog bootstrap probe has completed.
     private var activeConnectDeadline: LibPQConnectDeadline?
     private var bootstrapTransportFailed = false
+    // Queue-confined. Nil until a probe, sent while no block was open, showed whether the server takes savepoints:
+    // inside the user's block a refused SAVEPOINT aborts the block, so none is sent there until this is true.
+    private var takesSavepoints: Bool?
 
     var isConnected: Bool {
         stateLock.lock()
@@ -1021,13 +1024,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
     }
 
-    /// Reads at most `rowCap` rows through libpq's single-row mode, then cancels the statement and
-    /// drains the connection instead of pulling the rest of the result across the socket.
-    ///
-    /// One row past the cap is read so `isTruncated` can tell "exactly `rowCap` rows" from "more
-    /// rows exist". The cancel is not an optimization: libpq drains an abandoned result inside the
-    /// next `PQexec`, charging that cost to the user's next statement, and the backend stays active
-    /// holding its snapshot until it can finish writing to the client.
+    // Reads at most `rowCap` rows, plus one to tell "exactly `rowCap`" from "more", then stops the server producing
+    // the rest. The stop is not an optimization: libpq drains an abandoned result inside the next `PQexec`, and the
+    // backend holds its snapshot until it has written the whole result to the client.
     private func boundedQuerySync(_ query: String, rowCap: Int) throws -> LibPQPluginQueryResult {
         let conn = connectionHandle
 
@@ -1039,18 +1038,26 @@ final class LibPQPluginConnection: @unchecked Sendable {
         defer { cancellationGate.endQuery(generation) }
         defer { refreshStandardConformingStrings(from: conn) }
 
-        /// Started before the drain, so a result the previous statement abandoned is charged to the
-        /// time before the first row rather than appearing as this query's row transfer.
+        // Started before the drain, so a result the previous statement abandoned is charged to the time before the
+        // first row rather than to this query's row transfer.
         let sentAt = Date()
 
-        /// Cancelling a statement inside a transaction block puts the transaction into the aborted
-        /// state, and every later command fails until ROLLBACK. Reading the tail of one result costs
-        /// less than throwing away the transaction the user opened, so the cancel is withheld here
-        /// and the connection is drained instead.
+        // A cancel inside a transaction block aborts the block the user opened, so there the statement is read
+        // through a cursor, and where it cannot be the connection is drained instead.
         let cancelsOutput = cancelsAbandonedOutput(conn)
         let suppressCancel = !cancelsOutput
         finishAbandonedResults(conn, cancellingOutput: cancelsOutput)
         if let ended = sessionEndedBeforeSending(conn) { throw ended }
+
+        // A Stop during one of the driver's own round trips is spent there, so each is followed by a check before
+        // the user's statement goes out.
+        probeSavepointsWhileIdle(conn)
+        if cancellationGate.isCancelled(generation) { throw CancellationError() }
+        if let plan = cappedCursorPlan(for: query, rowCap: rowCap, conn: conn),
+           let read = try cappedCursorRead(plan, rowCap: rowCap, conn: conn, generation: generation, sentAt: sentAt) {
+            return read
+        }
+        if cancellationGate.isCancelled(generation) { throw CancellationError() }
 
         let localQuery = String(query)
         let sendOk = localQuery.withCString { queryPtr in
@@ -1162,6 +1169,162 @@ final class LibPQPluginConnection: @unchecked Sendable {
             firstRowTime: firstRowTime ?? Date().timeIntervalSince(sentAt)
         )
         return PostGISTypes.rendering(bounded, types: typeNames.postgisTypes)
+    }
+
+    private static let savepointProbe =
+        "BEGIN; SAVEPOINT tablepro_probe; RELEASE SAVEPOINT tablepro_probe; ROLLBACK"
+
+    // Unpinned connections (Redshift, CockroachDB) never get a driver savepoint inside the user's block. A PG-wire
+    // server that refuses one is found here, outside any block, where the refusal costs one round trip.
+    private func probeSavepointsWhileIdle(_ conn: OpaquePointer) {
+        guard pinsCatalogSearchPath, takesSavepoints == nil, PQtransactionStatus(conn) == PQTRANS_IDLE,
+              let result = Self.savepointProbe.withCString({ PQexec(conn, $0) })
+        else { return }
+        let accepted = PQresultStatus(result) == PGRES_COMMAND_OK
+        let cancelled = !accepted && getResultError(from: result).sqlState == "57014"
+        PQclear(result)
+        if PQtransactionStatus(conn) != PQTRANS_IDLE, let rollback = "ROLLBACK".withCString({ PQexec(conn, $0) }) {
+            PQclear(rollback)
+        }
+        recordTransactionState(of: conn)
+        guard PQstatus(conn) == CONNECTION_OK, !cancelled else { return }
+        takesSavepoints = accepted
+    }
+
+    private func cappedCursorPlan(for query: String, rowCap: Int, conn: OpaquePointer) -> LibPQCappedCursorRead.Plan? {
+        guard pinsCatalogSearchPath else { return nil }
+        let scope: LibPQCappedCursorRead.Scope
+        switch PQtransactionStatus(conn) {
+        case PQTRANS_INTRANS where takesSavepoints == true:
+            scope = .insideTransaction
+        case PQTRANS_IDLE where suppressServerSideCancel:
+            scope = .ownTransaction
+        default:
+            return nil
+        }
+        return LibPQCappedCursorRead.plan(for: query, rowCap: rowCap, scope: scope)
+    }
+
+    // Nil when the caller should run the statement the plain way: after a refused DECLARE, undone before the statement
+    // ran, so the plain run reports any error of its own in the user's text. A failure after DECLARE is the
+    // statement's own and leaves the user's block aborted, as the plain read does.
+    private func cappedCursorRead(
+        _ plan: LibPQCappedCursorRead.Plan,
+        rowCap: Int,
+        conn: OpaquePointer,
+        generation: Int,
+        sentAt: Date
+    ) throws -> LibPQPluginQueryResult? {
+        guard let opened = plan.opening.withCString({ PQexec(conn, $0) }) else {
+            throw lostConnection(getError(from: conn), on: conn, sent: true)
+        }
+        let openingFailure = PQresultStatus(opened) == PGRES_COMMAND_OK ? nil : getResultError(from: opened)
+        PQclear(opened)
+        recordTransactionState(of: conn)
+        if let openingFailure {
+            guard PQstatus(conn) == CONNECTION_OK else { throw lostConnection(openingFailure, on: conn, sent: true) }
+            if cancellationGate.isCancelled(generation) { throw CancellationError() }
+            takesSavepoints = false
+            if PQtransactionStatus(conn) == PQTRANS_INERROR { throw openingFailure }
+            return nil
+        }
+        if cancellationGate.isCancelled(generation) {
+            _ = undoCappedCursorRead(plan, conn: conn)
+            throw CancellationError()
+        }
+
+        let sendOk = plan.statement.withCString { PQsendQuery(conn, $0) }
+        guard sendOk != 0 else {
+            throw lostConnection(getError(from: conn), on: conn, sent: false)
+        }
+        guard PQsetSingleRowMode(conn) != 0 else {
+            _ = finishPendingResults(conn, cancellingOutput: false)
+            recordTransactionState(of: conn)
+            throw LibPQPluginError(message: "Failed to enter single-row mode", sqlState: nil, detail: nil)
+        }
+
+        var metadata: ColumnMetadata?
+        var rows: [[PluginCellValue]] = []
+        rows.reserveCapacity(min(plan.fetchCount, 10_000))
+        var firstRowTime: TimeInterval?
+        var declared = false
+        var failure: LibPQPluginError?
+
+        while let result = PQgetResult(conn) {
+            let status = PQresultStatus(result)
+            if status == PGRES_SINGLE_TUPLE || status == PGRES_TUPLES_OK {
+                if firstRowTime == nil { firstRowTime = Date().timeIntervalSince(sentAt) }
+                let columns = metadata ?? readColumnMetadata(from: result)
+                metadata = columns
+                for rowIndex in 0..<PQntuples(result) {
+                    var row: [PluginCellValue] = []
+                    row.reserveCapacity(columns.columnOids.count)
+                    for columnIndex in columns.columnOids.indices {
+                        row.append(Self.decodeCell(
+                            from: result,
+                            row: rowIndex,
+                            column: Int32(columnIndex),
+                            oid: columns.columnOids[columnIndex]
+                        ))
+                    }
+                    rows.append(row)
+                }
+            } else if status == PGRES_COMMAND_OK {
+                if getCommandTag(from: result) == "DECLARE CURSOR" { declared = true }
+            } else {
+                failure = getResultError(from: result)
+            }
+            PQclear(result)
+
+            // MOVE runs every row before the reply ends, so the rest is cancelled on the server where it takes one.
+            if failure == nil, cancellationGate.isCancelled(generation) {
+                _ = cancelAndDrain(conn, suppressCancel: suppressServerSideCancel)
+                recordTransactionState(of: conn)
+                if plan.scope == .ownTransaction, PQtransactionStatus(conn) != PQTRANS_IDLE {
+                    _ = undoCappedCursorRead(plan, conn: conn)
+                }
+                throw CancellationError()
+            }
+        }
+        recordTransactionState(of: conn)
+
+        if let failure {
+            guard PQstatus(conn) == CONNECTION_OK else { throw lostConnection(failure, on: conn, sent: true) }
+            let cancelled = cancellationGate.isCancelled(generation)
+            if !declared, !cancelled {
+                guard undoCappedCursorRead(plan, conn: conn) else {
+                    if cancellationGate.isCancelled(generation) { throw CancellationError() }
+                    throw failure
+                }
+                return nil
+            }
+            if plan.scope == .ownTransaction { _ = undoCappedCursorRead(plan, conn: conn) }
+            if cancelled { throw CancellationError() }
+            throw failure
+        }
+        if cancellationGate.isCancelled(generation) { throw CancellationError() }
+
+        let truncated = rows.count > rowCap
+        if truncated { rows.removeLast() }
+        let resolvedMetadata = metadata.map { resolvingUnknownTypes($0, conn: conn) }
+        let bounded = LibPQPluginQueryResult(
+            columns: resolvedMetadata?.columns ?? [],
+            columnOids: resolvedMetadata?.columnOids ?? [],
+            columnTypeNames: resolvedMetadata?.columnTypeNames ?? [],
+            rows: rows,
+            affectedRows: 0,
+            commandTag: nil,
+            isTruncated: truncated,
+            firstRowTime: firstRowTime ?? Date().timeIntervalSince(sentAt)
+        )
+        return PostGISTypes.rendering(bounded, types: typeNames.postgisTypes)
+    }
+
+    private func undoCappedCursorRead(_ plan: LibPQCappedCursorRead.Plan, conn: OpaquePointer) -> Bool {
+        guard let result = plan.recovery.withCString({ PQexec(conn, $0) }) else { return false }
+        defer { PQclear(result) }
+        recordTransactionState(of: conn)
+        return PQresultStatus(result) == PGRES_COMMAND_OK
     }
 
     private func executeParameterizedQuerySync(_ query: String, parameters: [PluginCellValue]) throws -> LibPQPluginQueryResult {
@@ -1430,7 +1593,17 @@ final class LibPQPluginConnection: @unchecked Sendable {
         let continuation = run.continuation
         let generation = run.generation
         let cancelsOutput = run.cancelsOutput
-        let suppressCancel = !cancelsOutput
+        // Inside the user's block a cancel aborts the block, so a savepoint holds the read: a reader that goes away
+        // cancels it and rolls back to the savepoint instead of draining the rest of the result. The abandoned read
+        // then keeps nothing it did, as a cancelled statement outside a block.
+        if !singleStatement { probeSavepointsWhileIdle(conn) }
+        if run.abort.isAborted || cancellationGate.isCancelled(generation) { throw CancellationError() }
+        let holdsSavepoint = !singleStatement && !cancelsOutput && openStreamSavepoint(for: run.query, conn: conn)
+        let suppressCancel = !cancelsOutput && !holdsSavepoint
+        if holdsSavepoint, run.abort.isAborted || cancellationGate.isCancelled(generation) {
+            if let aborted = endStreamSavepoint(conn, undoing: true) { throw aborted }
+            throw CancellationError()
+        }
 
         let sendOk = run.query.withCString { queryPtr in
             singleStatement
@@ -1444,6 +1617,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         if PQsetSingleRowMode(conn) == 0 {
             _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
+            if holdsSavepoint, let aborted = endStreamSavepoint(conn, undoing: true) { throw aborted }
             throw LibPQPluginError(message: "Failed to enter single-row mode", sqlState: nil, detail: nil)
         }
 
@@ -1490,6 +1664,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
                         continuation.yield(.rows(batch))
                     }
                     _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
+                    // A Stop leaves the block aborted, as it does for any statement; only a reader that left is undone.
+                    let undoing = !cancellationGate.isCancelled(generation)
+                    if holdsSavepoint, let aborted = endStreamSavepoint(conn, undoing: undoing) { throw aborted }
                     throw CancellationError()
                 }
             } else if status == PGRES_TUPLES_OK {
@@ -1520,8 +1697,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         let outcome = finishPendingResults(conn, cancellingOutput: cancelsOutput)
         recordTransactionState(of: conn)
-        /// The header went out with the first row, so this stream keeps what it said;
-        /// the lookup is for the results that follow.
+        if holdsSavepoint, let aborted = endStreamSavepoint(conn, undoing: false) { throw aborted }
+        // The header went out with the first row, so this stream keeps what it said; the lookup is for the results
+        // that follow.
         let missing = typeNames.unresolvedOids(in: columnOids)
         if !missing.isEmpty {
             learnTypeNames(for: missing, conn: conn)
@@ -1530,6 +1708,51 @@ final class LibPQPluginConnection: @unchecked Sendable {
         if let abandoned = abandonedCopyError(outcome, generation: generation) {
             throw abandoned
         }
+    }
+
+    private static let streamSavepoint = "SAVEPOINT tablepro_stream_read"
+    private static let streamSavepointRelease = "RELEASE SAVEPOINT tablepro_stream_read"
+    private static let streamSavepointRollback =
+        "ROLLBACK TO SAVEPOINT tablepro_stream_read; RELEASE SAVEPOINT tablepro_stream_read"
+
+    // Only one read statement, since rolling back to the savepoint would undo a write, a lock or a second statement.
+    // Unpinned connections (Redshift, CockroachDB) never get a driver savepoint inside the user's block.
+    private func openStreamSavepoint(for query: String, conn: OpaquePointer) -> Bool {
+        guard pinsCatalogSearchPath, !suppressServerSideCancel, takesSavepoints == true,
+              PQtransactionStatus(conn) == PQTRANS_INTRANS,
+              LibPQCappedCursorRead.cursorBody(of: query) != nil,
+              let result = Self.streamSavepoint.withCString({ PQexec(conn, $0) })
+        else { return false }
+        defer { PQclear(result) }
+        recordTransactionState(of: conn)
+        guard PQresultStatus(result) == PGRES_COMMAND_OK else {
+            takesSavepoints = false
+            return false
+        }
+        return true
+    }
+
+    // Undoing rolls back to the savepoint whatever state the cancel left, so an abandoned read keeps nothing. Without
+    // it, a read that ended keeps its work and one a failure aborted stays aborted. The error is a release or rollback
+    // the server refused, which leaves the user's block aborted: a late cancel can land on it, and the block's state
+    // is reported then rather than found by the next statement.
+    private func endStreamSavepoint(_ conn: OpaquePointer, undoing: Bool) -> LibPQPluginError? {
+        let status = PQtransactionStatus(conn)
+        let statement: String
+        if undoing, status == PQTRANS_INTRANS || status == PQTRANS_INERROR {
+            statement = Self.streamSavepointRollback
+        } else if status == PQTRANS_INTRANS {
+            statement = Self.streamSavepointRelease
+        } else {
+            return nil
+        }
+        guard let result = statement.withCString({ PQexec(conn, $0) }) else { return getError(from: conn) }
+        defer { PQclear(result) }
+        recordTransactionState(of: conn)
+        guard PQresultStatus(result) != PGRES_COMMAND_OK else { return nil }
+        let refused = getResultError(from: result)
+        Self.logger.error("A stream savepoint was refused, so the transaction block is aborted")
+        return refused
     }
 
     // MARK: - Private Helpers

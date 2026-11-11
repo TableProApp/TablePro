@@ -663,6 +663,12 @@ extension AIChatViewModel {
         streamingTask = nil
     }
 
+    nonisolated static let unparsableToolArgumentsContent = """
+        This tool call did not run: its arguments are not a complete JSON object, which usually means the \
+        response hit the output token limit. Call the tool again with complete arguments.
+        """
+
+    // A call whose arguments do not parse comes back already denied, so it never reaches approval or execution.
     nonisolated static func assembleToolUseBlocks(
         order: [String],
         names: [String: String],
@@ -671,22 +677,36 @@ extension AIChatViewModel {
     ) -> [ToolUseBlock] {
         order.compactMap { id -> ToolUseBlock? in
             guard let name = names[id] else { return nil }
-            let inputString = inputs[id] ?? "{}"
-            let inputValue: JsonValue
-            if inputString.isEmpty {
-                inputValue = .object([:])
-            } else if let data = inputString.data(using: .utf8),
-                      let decoded = try? JSONDecoder().decode(JsonValue.self, from: data) {
-                inputValue = decoded
-            } else {
-                inputValue = .object([:])
+            guard let arguments = toolArguments(from: inputs[id] ?? "") else {
+                return ToolUseBlock(
+                    id: id,
+                    name: name,
+                    input: .object([:]),
+                    approvalState: .denied(reason: unparsableToolArgumentsContent),
+                    providerMetadata: metadata[id]
+                )
             }
             return ToolUseBlock(
                 id: id,
                 name: name,
-                input: inputValue,
+                input: arguments,
                 providerMetadata: metadata[id]
             )
+        }
+    }
+
+    // Every provider sends a call's arguments as one JSON object; no arguments at all reads as an empty one.
+    nonisolated private static func toolArguments(from raw: String) -> JsonValue? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return .object([:]) }
+        guard let decoded = try? JSONDecoder().decode(JsonValue.self, from: Data(trimmed.utf8)) else { return nil }
+        switch decoded {
+        case .object:
+            return decoded
+        case .null:
+            return .object([:])
+        case .bool, .int, .double, .string, .array:
+            return nil
         }
     }
 

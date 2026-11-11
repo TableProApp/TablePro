@@ -18,7 +18,10 @@ public protocol DriverFactory: Sendable {
         preTunnelHost: String?,
         refreshPassword: (@Sendable () async throws -> String?)?
     ) throws -> any DatabaseDriver
-    // Runs before the tunnel, on the connection as saved, so a sign-in failure comes before any SSH prompt.
+    // Runs first, on the connection as saved. The connect mints for, tunnels to and dials what it returns, which can
+    // name another host, such as the RDS endpoint a CNAME stands for. It is never saved.
+    func resolvingEndpointAlias(for connection: DatabaseConnection) async throws -> DatabaseConnection
+    // Runs before the tunnel, so a sign-in failure comes before any SSH prompt.
     func resolvePassword(
         for connection: DatabaseConnection,
         stored: String?,
@@ -48,5 +51,9 @@ public extension DriverFactory {
 
     func dialsSSHTunnel(for connection: DatabaseConnection) -> Bool {
         connection.sshEnabled
+    }
+
+    func resolvingEndpointAlias(for connection: DatabaseConnection) async throws -> DatabaseConnection {
+        connection
     }
 }

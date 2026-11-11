@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tablepro_core::dialect::DatabaseLayout;
 use tablepro_session::{OperationKind, Session};
 use tablepro_storage::{ConnectionList, ConnectionListState, ConnectionStore, SavedConnection};
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::mcp_host::McpHost;
@@ -75,6 +76,7 @@ impl ToolContext {
         &self,
         connection: &SavedConnection,
         database: Option<&str>,
+        cancel: &CancellationToken,
     ) -> Result<HeldSession, ToolError> {
         let own = self.session(connection).await?;
         let Some(database) = database else {
@@ -102,7 +104,7 @@ impl ToolContext {
                 database: Some(database.to_owned()),
             });
         }
-        if own.database().is_none() && opened_in(&own, database).await {
+        if own.database().is_none() && opened_in(&own, database, cancel).await {
             return Ok(HeldSession {
                 session: own,
                 database: None,
@@ -117,9 +119,9 @@ impl ToolContext {
 }
 
 // A connection saved without a database opens the login's default, which only the server can name.
-async fn opened_in(session: &Session, database: &str) -> bool {
+async fn opened_in(session: &Session, database: &str, cancel: &CancellationToken) -> bool {
     session
-        .run(OperationKind::Metadata, |lease, call| async move {
+        .run_cancellable(OperationKind::Metadata, cancel, |lease, call| async move {
             Ok(lease.list_databases(call).await?)
         })
         .await

@@ -40,11 +40,11 @@ public sealed partial class ShellTests
         app.TypeInto("Query 1", Update);
         app.Chord(() => app.TryFind("CommitButton") is { IsOffscreen: false }, VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
 
-        Reconnect(app);
+        ReconnectUntilAsked(app);
         app.CloseDialog();
         Assert.True(app.Find("CommitButton").IsEnabled);
 
-        Reconnect(app);
+        ReconnectUntilAsked(app);
         app.Screenshot("40-reconnect-asked");
         app.PressDialogButton();
         var rolledBack = Retry.WhileFalse(
@@ -110,5 +110,16 @@ public sealed partial class ShellTests
     {
         app.Click(app.Find("DatabaseMenu"), () => app.TryFindMenuItem("Reconnect") is not null);
         app.FindMenuItem("Reconnect").Patterns.Invoke.Pattern.Invoke();
+    }
+
+    // The prompt opens after the menu item returns, and until then CloseButton finds the tab's own close button.
+    private static void ReconnectUntilAsked(AppSession app)
+    {
+        Reconnect(app);
+        var asked = Retry.WhileFalse(
+            () => app.TryFind("PrimaryButton") is not null,
+            AppSession.Wait,
+            throwOnTimeout: false).Success;
+        Assert.True(asked, "Reconnect did not ask about the open transaction.");
     }
 }

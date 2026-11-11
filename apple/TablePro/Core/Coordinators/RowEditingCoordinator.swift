@@ -393,9 +393,22 @@ final class RowEditingCoordinator: ObservableObject {
         }
 
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
-        model?.repaintAllRows()
+        // Undoing a command over many cells runs one step per cell, so a step repaints only its own rows.
+        model?.repaintRows(Self.rowIDs(touchedBy: result.action))
         // The inspector reads its fields from the rows this rewrote, and nothing else it watches moves on an undo.
         parent.gridDisplayRevision &+= 1
+    }
+
+    // A step moves the pending marks of the rows it names and of no other row.
+    static func rowIDs(touchedBy action: UndoAction) -> [RowID] {
+        switch action {
+        case .cellEdit(let rowID, _, _, _, _, _, _, _), .rowInsertion(let rowID, _), .rowDeletion(let rowID, _, _):
+            return [rowID]
+        case .batchRowDeletion(let rows, _):
+            return rows.map { $0.rowID }
+        case .batchRowInsertion(let rows, _, _, _):
+            return rows.map { $0.rowID }
+        }
     }
 
     func copyRowsToClipboard(_ rowIDs: [RowID], includeHeaders: Bool = false) {

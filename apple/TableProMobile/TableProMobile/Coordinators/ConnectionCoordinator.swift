@@ -71,6 +71,7 @@ final class ConnectionCoordinator {
     var selectedTable: TableInfo?
 
     private(set) var queryHistory: [QueryHistoryItem] = []
+    private(set) var keepsDamagedHistoryCopy = false
     private var historyStorage: QueryHistoryStorage { appState.queryHistory }
 
     private let appState: AppState
@@ -1179,6 +1180,7 @@ final class ConnectionCoordinator {
 
     func loadHistory() {
         queryHistory = historyStorage.load(for: connection.id)
+        keepsDamagedHistoryCopy = historyStorage.hasSetAsideCopies
     }
 
     func addHistoryItem(_ item: QueryHistoryItem) {
@@ -1192,8 +1194,9 @@ final class ConnectionCoordinator {
     }
 
     func clearHistory() {
-        historyStorage.clearAll(for: [connection.id])
+        historyStorage.clearAll(for: [connection.id], removingSetAsideCopies: keepsDamagedHistoryCopy)
         queryHistory = []
+        keepsDamagedHistoryCopy = historyStorage.hasSetAsideCopies
     }
 
     func navigateToPendingTable() {

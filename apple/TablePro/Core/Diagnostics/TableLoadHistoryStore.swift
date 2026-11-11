@@ -1,8 +1,3 @@
-//
-//  TableLoadHistoryStore.swift
-//  TablePro
-//
-
 import Foundation
 import os
 
@@ -11,14 +6,6 @@ import os
 /// happens or the measurement pays for its own recording.
 internal protocol TableLoadSummarySink: Sendable {
     func record(_ record: TableLoadPerformanceRecord)
-}
-
-/// What `TableLoadTracer.shared` gets under XCTest. Dozens of coordinator suites drive
-/// `openTableTab`, which begins real traces, and `AppStorageEnvironment` resolves to the production
-/// directory under a unit-test host, so a live sink would append to the developer's own history on
-/// every test run. Discarding at the sink means no file is opened and nothing needs cleaning up.
-internal struct DiscardingTableLoadSummarySink: TableLoadSummarySink {
-    internal func record(_ record: TableLoadPerformanceRecord) {}
 }
 
 /// A bounded, device-local history of how long table loads took, kept so an intermittent slowdown

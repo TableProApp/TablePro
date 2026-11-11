@@ -24,7 +24,8 @@ struct RedshiftIAMSignInTests {
         user: String = "",
         host: String = clusterHost,
         preTunnelHost: String? = nil,
-        fields: [String: String] = ["awsAuth": "profile"]
+        fields: [String: String] = ["awsAuth": "profile"],
+        aliases: FakeCNAMEResolver = FakeCNAMEResolver()
     ) -> RedshiftIAMSignIn {
         RedshiftIAMSignIn(
             source: "profile",
@@ -32,7 +33,8 @@ struct RedshiftIAMSignInTests {
             database: "dev",
             fields: fields,
             configuredHost: host,
-            preTunnelHost: preTunnelHost
+            preTunnelHost: preTunnelHost,
+            aliasResolver: aliases
         )
     }
 
@@ -85,33 +87,104 @@ struct RedshiftIAMSignInTests {
     }
 
     @Test("A tunneled connection signs in for the endpoint typed before the tunnel")
-    func tunneledConnectionUsesPreTunnelHost() throws {
+    func tunneledConnectionUsesPreTunnelHost() async throws {
         let tunneled = Self.signIn(host: "127.0.0.1", preTunnelHost: Self.clusterHost)
-        #expect(try tunneled.resolveEndpoint() == .cluster(identifier: "analytics", region: "us-east-1"))
+        #expect(try await tunneled.resolveEndpoint(within: nil) == .cluster(identifier: "analytics", region: "us-east-1"))
     }
 
     @Test("The Redshift Endpoint field names a forward's target, and a host that names nothing says what to enter")
-    func endpointOverride() throws {
+    func endpointOverride() async throws {
         let forwarded = Self.signIn(
             host: "127.0.0.1",
             fields: ["awsAuth": "sso", RedshiftIAMSignIn.endpointFieldId: "https://\(Self.serverlessHost):5439/dev"]
         )
-        #expect(try forwarded.resolveEndpoint() == .serverless(workgroup: "reporting", region: "eu-west-1"))
+        #expect(try await forwarded.resolveEndpoint(within: nil) == .serverless(workgroup: "reporting", region: "eu-west-1"))
 
-        let elsewhere = Self.signIn(
-            host: "warehouse.corp.example",
+        let otherCluster = Self.signIn(
+            host: "other.abc123xyz.us-east-1.redshift.amazonaws.com",
             fields: [RedshiftIAMSignIn.endpointFieldId: Self.serverlessHost]
         )
-        #expect(throws: RedshiftIAMError.endpointNotDialed(host: "warehouse.corp.example")) {
-            try elsewhere.resolveEndpoint()
+        await #expect(throws: RedshiftIAMError.endpointNotDialed(host: "other.abc123xyz.us-east-1.redshift.amazonaws.com")) {
+            try await otherCluster.resolveEndpoint(within: nil)
         }
 
-        #expect(throws: RedshiftIAMError.endpointUnresolved(host: "warehouse.corp.example")) {
-            try Self.signIn(host: "warehouse.corp.example").resolveEndpoint()
+        await #expect(throws: RedshiftIAMError.endpointNotDialed(host: "10.0.0.5")) {
+            try await Self.signIn(host: "10.0.0.5", fields: [RedshiftIAMSignIn.endpointFieldId: Self.clusterHost])
+                .resolveEndpoint(within: nil)
         }
-        #expect(throws: RedshiftIAMError.endpointInvalid("not-an-endpoint")) {
-            try Self.signIn(host: "localhost", fields: [RedshiftIAMSignIn.endpointFieldId: "not-an-endpoint"]).resolveEndpoint()
+
+        await #expect(throws: RedshiftIAMError.endpointUnresolved(host: "warehouse.corp.example")) {
+            try await Self.signIn(host: "warehouse.corp.example").resolveEndpoint(within: nil)
         }
+        await #expect(throws: RedshiftIAMError.endpointInvalid("not-an-endpoint")) {
+            try await Self.signIn(host: "localhost", fields: [RedshiftIAMSignIn.endpointFieldId: "not-an-endpoint"])
+                .resolveEndpoint(within: nil)
+        }
+    }
+
+    @Test("A custom domain Host is asked for by name, with the kind and region from the Redshift Endpoint field")
+    func customDomainWithEndpointField() async throws {
+        let serverless = Self.signIn(
+            host: "Warehouse.Corp.Example.",
+            fields: [RedshiftIAMSignIn.endpointFieldId: Self.serverlessHost]
+        )
+        #expect(try await serverless.resolveEndpoint(within: nil)
+            == .serverlessDomain(name: "warehouse.corp.example", region: "eu-west-1"))
+
+        let cluster = Self.signIn(host: "warehouse.corp.example", fields: [RedshiftIAMSignIn.endpointFieldId: Self.clusterHost])
+        #expect(try await cluster.resolveEndpoint(within: nil) == .clusterDomain(name: "warehouse.corp.example", region: "us-east-1"))
+    }
+
+    @Test("A custom domain Host finds its kind and region through its CNAME, and is still asked for by name")
+    func customDomainThroughCNAME() async throws {
+        let aliases = FakeCNAMEResolver([
+            "warehouse.corp.example": "edge.corp.example",
+            "edge.corp.example": Self.clusterHost
+        ])
+        let direct = Self.signIn(host: "warehouse.corp.example", aliases: aliases)
+        #expect(try await direct.resolveEndpoint(within: nil) == .clusterDomain(name: "warehouse.corp.example", region: "us-east-1"))
+
+        let tunneled = Self.signIn(
+            host: "127.0.0.1",
+            preTunnelHost: "bi.corp.example",
+            aliases: FakeCNAMEResolver(["bi.corp.example": Self.serverlessHost])
+        )
+        #expect(try await tunneled.resolveEndpoint(within: nil) == .serverlessDomain(name: "bi.corp.example", region: "eu-west-1"))
+    }
+
+    @Test("A DNS name that starts like 127.0.0.1 is not a forward, so the endpoint field cannot point it at a real cluster")
+    func loopbackLookalikeIsACustomDomain() async throws {
+        let fields = [RedshiftIAMSignIn.endpointFieldId: Self.clusterHost]
+        #expect(try await Self.signIn(host: "127.0.0.1.attacker.example", fields: fields).resolveEndpoint(within: nil)
+            == .clusterDomain(name: "127.0.0.1.attacker.example", region: "us-east-1"))
+        await #expect(throws: RedshiftIAMError.endpointNotDialed(host: "127.0.0.1.")) {
+            try await Self.signIn(host: "127.0.0.1.", fields: fields).resolveEndpoint(within: nil)
+        }
+    }
+
+    @Test("A custom domain asks by CustomDomainName, never by the cluster or workgroup name")
+    func customDomainRequests() throws {
+        let cluster = try Self.signIn(user: "reporting").request(
+            for: .clusterDomain(name: "warehouse.corp.example", region: "us-east-1"),
+            region: "us-east-1",
+            credentials: Self.credentials
+        )
+        #expect(Self.formParameters(cluster) == [
+            "Action": "GetClusterCredentials",
+            "Version": "2012-12-01",
+            "CustomDomainName": "warehouse.corp.example",
+            "DbUser": "reporting",
+            "DbName": "dev"
+        ])
+
+        let serverless = try Self.signIn().request(
+            for: .serverlessDomain(name: "bi.corp.example", region: "eu-west-1"),
+            region: "eu-west-1",
+            credentials: Self.credentials,
+            now: Self.signedAt
+        )
+        #expect(serverless.value(forHTTPHeaderField: "x-amz-target") == "RedshiftServerless.GetCredentials")
+        #expect(String(data: serverless.httpBody ?? Data(), encoding: .utf8) == #"{"customDomainName":"bi.corp.example","dbName":"dev"}"#)
     }
 
     @Test("A cluster with a database user asks GetClusterCredentials, without one GetClusterCredentialsWithIAM")

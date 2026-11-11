@@ -14,15 +14,15 @@ struct XLSXWriterCellTypeTests {
         databaseTypeId: String = ""
     ) async throws -> String {
         let writer = XLSXWriter(databaseTypeId: databaseTypeId)
-        writer.beginSheet(
+        try writer.beginSheet(
             name: "t",
             columns: columnTypeNames.indices.map { "c\($0)" },
             columnTypeNames: columnTypeNames,
             includeHeader: false,
             convertNullToEmpty: true
         )
-        writer.addRows([row], convertNullToEmpty: true)
-        writer.finishSheet()
+        try writer.addRows([row], convertNullToEmpty: true)
+        try writer.finishSheet()
         let destination = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(UUID().uuidString).xlsx")
         defer { try? FileManager.default.removeItem(at: destination) }

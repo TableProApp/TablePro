@@ -1,4 +1,5 @@
 mod default_sort;
+mod json;
 mod load;
 mod references;
 mod rows;
@@ -423,7 +424,7 @@ pub(super) fn table_tab(
         tracker,
         schema: None,
         table: table.to_owned(),
-        connection_id: Some(connection_id),
+        state_key: Some(connection_id.into()),
         read_only,
         page_size: 100,
         initial_offset: 0,
@@ -431,6 +432,7 @@ pub(super) fn table_tab(
         filter,
         column_layouts: crate::persistence::ColumnLayoutStore::load(root.join("column_layouts.json"), &tasks),
         filter_settings,
+        highlight_rules: crate::persistence::HighlightRulesStore::load(root.join("highlight_rules.json"), &tasks),
         session: session.clone(),
         tasks,
         deadlines: Arc::new(tablepro_session::operation::DefaultDeadlines::new(
@@ -1700,7 +1702,7 @@ fn the_bottom_bar_switches_between_data_and_structure() {
         .into_iter()
         .filter(|widget| widget.accessible_role() == gtk4::AccessibleRole::Tab)
         .collect();
-    assert_eq!(tabs.len(), 2);
+    assert_eq!(tabs.len(), 3);
     assert!(tabs[1].activate());
     wait_until(WAIT, || tab.shows_structure()).expect("keyboard activation selects Structure");
     assert_eq!(asked.get(), 1);
@@ -1958,6 +1960,34 @@ fn the_bottom_bar_offers_the_column_chooser() {
     window.visible_dialog().expect("the chooser").close();
 }
 
+#[gtk4::test]
+fn a_renamed_table_keeps_its_highlight_rules_under_the_new_name() {
+    use crate::services::grid::HighlightRule;
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown() == text(&["Ada"])).expect("the page");
+    let saved = |table: &str| {
+        let model = harness.tab().imp().model.borrow();
+        let model = model.as_ref().expect("the tab is open");
+        let state_key = model.state_key.as_ref().expect("a saved connection");
+        model.highlight_rules.rules(state_key, None, table)
+    };
+    let rule = HighlightRule::new("name");
+    harness.grid().set_highlight_rules(vec![rule.clone()]);
+
+    harness.tab().rename_table("people");
+
+    assert_eq!(saved("people"), [rule]);
+    harness.grid().set_highlight_rules(Vec::new());
+    assert!(
+        saved("people").is_empty(),
+        "a change after the rename was kept under the old name"
+    );
+}
+
 fn switch_labels(tab: &BrowseTab) -> Vec<gtk4::Label> {
     use gtk4::subclass::prelude::ObjectSubclassIsExt;
     crate::test_support::descendants(&tab.imp().view_toggle.get())
@@ -2019,7 +2049,7 @@ fn the_view_switch_keeps_its_names_in_a_1200_px_window() {
         .iter()
         .map(|label| label.label().to_string())
         .collect();
-    assert_eq!(names, ["Data", "Structure"]);
+    assert_eq!(names, ["Data", "Structure", "JSON"]);
     assert!(
         wait_until(WAIT, || bar_shortfall(tab).is_none()).is_ok(),
         "{:?}",
@@ -2038,6 +2068,10 @@ fn the_view_switch_keeps_its_names_in_a_1200_px_window() {
         wait_until(WAIT, || bar_shortfall(tab).is_none()).is_ok(),
         "{:?}",
         bar_shortfall(tab)
+    );
+    assert_eq!(
+        imp.view_toggle.display_mode(),
+        libadwaita::InlineViewSwitcherDisplayMode::Labels
     );
     assert!(!columns.is_visible() && !imp.export_button.is_visible() && !imp.page_size_dropdown.is_mapped());
     assert!(!imp.more_button.is_visible());

@@ -1315,6 +1315,7 @@ final class MainContentCoordinator: ObservableObject {
                     : nil
                 // Rows and definition commit together after a definition change, so new columns never sit under old keys or defaults.
                 let definition = needsDefinition ? try? await schemaTask?.value : nil
+                let prepared = await preparedPhase1Rows(fetchResult, tabId: tabId, tableName: tableName, isTableTab: isTableTab)
 
                 let applied = await MainActor.run { [weak self] () -> Bool in
                     guard let self else { return false }
@@ -1360,7 +1361,8 @@ final class MainContentCoordinator: ObservableObject {
                         exportDocuments: fetchResult.exportDocuments,
                         absentCells: fetchResult.absentCells,
                         unloadedCells: fetchResult.unloadedCells,
-                        columnOrigins: fetchResult.columnOrigins
+                        columnOrigins: fetchResult.columnOrigins,
+                        prepared: prepared
                     )
 
                     scheduleTraceCompletion(traceToken, outcome: .completed)
@@ -1456,17 +1458,6 @@ final class MainContentCoordinator: ObservableObject {
         }
 
         return result
-    }
-
-    // MARK: - SQL Parsing
-
-    func extractTableName(from sql: String) -> String? {
-        QuerySqlParser.extractTableName(
-            from: sql,
-            dialect: sqlDialect,
-            readings: connection.type.lexicalReadings,
-            browseSchema: services.databaseManager.session(for: connectionId)?.browseSchema
-        )
     }
 
     // MARK: - Sorting

@@ -819,7 +819,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         mariadbConnection?.disconnect()
         mariadbConnection = nil
         sessionLock.withLock { footprint.reset() }
-        try await connect()
+        // A minted IAM token is good for 15 minutes, and this sign-in can come long after the first.
+        try await open(password: try await config.passwordForNewSignIn())
         if let seconds = sessionLock.withLock({ appliedQueryTimeoutSeconds }) {
             try await applyQueryTimeout(seconds)
         }

@@ -23,7 +23,8 @@ is_open is false, and the user may have to answer TablePro first. Call describe_
 against a table. execute_query runs one statement: a read runs read-only, and a write runs only where the \
 connection's External Clients level allows it and after the user approves it in TablePro. A refusal is the \
 user's setting, not a passing failure, so do not retry it. A tool that takes database reaches only a database \
-the user already opened in TablePro beside the connection.";
+the user already opened in TablePro beside the connection. An answer holds about 4 MB of rows at most, and a \
+statement's or a browse's answer cuts a value longer than 64 KB; its notes say when.";
 
 /// The tools, as a stateless handler: every call reads the saved
 /// connections and the windows again.
@@ -52,13 +53,13 @@ impl ToolServer {
         match request.name.as_ref() {
             "list_connections" => connection_tools::list_connections(tools, parse(arguments)?).await,
             "connect" => connection_tools::connect(tools, parse(arguments)?).await,
-            "list_databases" => schema_tools::list_databases(tools, parse(arguments)?).await,
-            "list_schemas" => schema_tools::list_schemas(tools, parse(arguments)?).await,
-            "list_tables" => schema_tools::list_tables(tools, parse(arguments)?).await,
-            "describe_table" => schema_tools::describe_table(tools, parse(arguments)?).await,
-            "get_table_ddl" => schema_tools::get_table_ddl(tools, parse(arguments)?).await,
+            "list_databases" => schema_tools::list_databases(tools, parse(arguments)?, cancel).await,
+            "list_schemas" => schema_tools::list_schemas(tools, parse(arguments)?, cancel).await,
+            "list_tables" => schema_tools::list_tables(tools, parse(arguments)?, cancel).await,
+            "describe_table" => schema_tools::describe_table(tools, parse(arguments)?, cancel).await,
+            "get_table_ddl" => schema_tools::get_table_ddl(tools, parse(arguments)?, cancel).await,
             "browse_table" => query_tools::browse_table(tools, parse(arguments)?, cancel).await,
-            "count_rows" => query_tools::count_rows(tools, parse(arguments)?).await,
+            "count_rows" => query_tools::count_rows(tools, parse(arguments)?, cancel).await,
             "execute_query" => query_tools::execute_query(tools, parse(arguments)?, cancel).await,
             "export_data" => export_tools::export_data(tools, parse(arguments)?, cancel).await,
             other => Err(ToolError::NotFound(format!("there is no tool named {other}"))),

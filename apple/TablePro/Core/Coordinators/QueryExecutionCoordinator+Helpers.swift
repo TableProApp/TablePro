@@ -183,6 +183,19 @@ extension QueryExecutionCoordinator {
         }
     }
 
+    // Read before and inside `applyPhase1Result`, so rows built off the main actor install as built. A Reveal stays only on its table.
+    func phase1RowShape(tabId: UUID, tableName: String?, columns: [String], columnTypes: [ColumnType]) -> TableRows.RowShape {
+        let tab = parent.tabManager.tabs.first { $0.id == tabId }
+        let keepsReveal = tab?.revealsMaskedValues == true && tab?.tableContext.tableName == tableName
+        let policy = keepsReveal ? MaskingPolicy.none : parent.maskingPolicy
+        return TableRows.RowShape(
+            columns: columns,
+            masks: policy.columnMasks(table: tableName, columns: columns, columnTypes: columnTypes),
+            exportPolicy: policy,
+            exportTable: tableName
+        )
+    }
+
     func applyPhase1Result( // swiftlint:disable:this function_parameter_count
         tabId: UUID,
         columns: [String],
@@ -210,7 +223,8 @@ extension QueryExecutionCoordinator {
         exportDocuments: [PluginExportDocument]? = nil,
         absentCells: [Int: Set<Int>] = [:],
         unloadedCells: [Int: [Int: Int]] = [:],
-        columnOrigins: [PluginColumnOrigin?]? = nil
+        columnOrigins: [PluginColumnOrigin?]? = nil,
+        prepared: TableRows.PreparedRows? = nil
     ) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
@@ -250,11 +264,18 @@ extension QueryExecutionCoordinator {
         if parent.tabManager.tabs[idx].revealsMaskedValues, parent.tabManager.tabs[idx].tableContext.tableName != tableName {
             parent.tabManager.mutate(at: idx) { $0.revealsMaskedValues = false }
         }
-        let masks = parent.columnMasks(forTabId: tabId, table: tableName, columns: columns, columnTypes: columnTypes)
+        let shape = phase1RowShape(tabId: tabId, tableName: tableName, columns: columns, columnTypes: columnTypes)
+        let builtRows = prepared.flatMap { $0.fits(shape) ? $0 : nil } ?? TableRows.prepare(
+            rows,
+            rowLocators: rowLocators,
+            exportDocuments: exportDocuments,
+            absentCells: absentCells,
+            unloadedCells: unloadedCells,
+            shape: shape
+        )
 
         let newTableRows = TableRows.from(
-            queryRows: rows,
-            columns: columns,
+            prepared: builtRows,
             columnTypes: columnTypes,
             columnDefaults: resolved.columnDefaults,
             columnForeignKeys: resolved.columnForeignKeys,
@@ -267,13 +288,6 @@ extension QueryExecutionCoordinator {
             rowMatchPolicy: resolved.rowMatchPolicy,
             hasAuthoritativeSchema: resolved.hasAuthoritativeSchema,
             foreignKeysFetched: resolved.foreignKeysFetched,
-            rowLocators: rowLocators,
-            exportDocuments: exportDocuments,
-            absentCells: absentCells,
-            unloadedCells: unloadedCells,
-            masks: masks,
-            exportPolicy: parent.exportMaskingPolicy(forTabId: tabId),
-            exportTable: tableName,
             columnOrigins: columnOrigins
         )
         let previousTableName = parent.tabManager.tabs[idx].tableContext.tableName

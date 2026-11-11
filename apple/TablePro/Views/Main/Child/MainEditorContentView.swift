@@ -1021,7 +1021,7 @@ struct MainEditorContentView: View {
                 isPinned: resultSet.isPinned,
                 isActive: resultSet.id == activeId,
                 ordinal: index + 1,
-                isComparable: coordinator.isComparable(resultSet, in: tab)
+                isComparable: coordinator.isComparable(resultSet, in: tab, activeResultSetId: activeId)
             )
         }
         return ResultSetMenuModel(

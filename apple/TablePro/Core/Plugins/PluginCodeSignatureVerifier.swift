@@ -1,8 +1,3 @@
-//
-//  PluginCodeSignatureVerifier.swift
-//  TablePro
-//
-
 import Foundation
 import os
 import Security
@@ -19,8 +14,11 @@ enum PluginCodeSignatureVerifier {
         return teamId
     }()
 
-    /// The app keeps `disable-library-validation` for SQLite and DuckDB extensions, so dyld checks
-    /// nothing and this is the whole load decision for a plugin bundle.
+    static let validationFlags = kSecCSCheckAllArchitectures | kSecCSCheckNestedCode | kSecCSStrictValidate
+        | kSecCSRestrictSymlinks
+
+    // The app keeps `disable-library-validation` for SQLite and DuckDB extensions, so dyld checks
+    // nothing and this is the whole load decision for a plugin bundle.
     static func verify(bundle: Bundle) throws {
         #if DEBUG
         if ProcessInfo.processInfo.environment["TABLEPRO_ALLOW_UNSIGNED_PLUGINS"] == "1" {
@@ -30,35 +28,53 @@ enum PluginCodeSignatureVerifier {
             return
         }
         #endif
+        try verify(bundle: bundle, signingTeam: resolvedSigningTeamId)
+    }
+
+    static func verify(bundle: Bundle, signingTeam: String) throws {
+        let requirement = try firstPartyRequirement(signingTeam: signingTeam)
+
         var staticCode: SecStaticCode?
         let createStatus = SecStaticCodeCreateWithPath(
             bundle.bundleURL as CFURL,
             SecCSFlags(),
             &staticCode
         )
-
         guard createStatus == errSecSuccess, let code = staticCode else {
             throw PluginError.signatureInvalid(detail: describeOSStatus(createStatus))
         }
 
-        let flags = SecCSFlags(rawValue: Self.validationFlags)
-        let status = SecStaticCodeCheckValidity(code, flags, requirement(Self.firstPartyRequirement))
+        let flags = SecCSFlags(rawValue: validationFlags)
+        let status = SecStaticCodeCheckValidity(code, flags, requirement)
         guard status == errSecSuccess else {
             throw PluginError.signatureInvalid(detail: describeOSStatus(status))
         }
     }
 
-    static let validationFlags = kSecCSCheckAllArchitectures | kSecCSCheckNestedCode | kSecCSStrictValidate
-        | kSecCSRestrictSymlinks
-
-    private static var firstPartyRequirement: String {
-        "anchor apple generic and certificate leaf[subject.OU] = \"\(resolvedSigningTeamId)\""
+    static func firstPartyRequirement(signingTeam team: String) throws -> SecRequirement {
+        // The team goes into the requirement text, where a quote could append an `or` clause.
+        guard isTeamIdentifier(team) else {
+            throw PluginError.signatureInvalid(detail: "TablePro's signing Team ID is not valid")
+        }
+        return try compiledRequirement("anchor apple generic and certificate leaf[subject.OU] = \"\(team)\"")
     }
 
-    private static func requirement(_ text: String) -> SecRequirement? {
+    static func compiledRequirement(_ text: String) throws -> SecRequirement {
         var requirement: SecRequirement?
-        SecRequirementCreateWithString(text as CFString, SecCSFlags(), &requirement)
+        let status = SecRequirementCreateWithString(text as CFString, SecCSFlags(), &requirement)
+        // A nil requirement makes SecStaticCodeCheckValidity accept any valid signature.
+        guard status == errSecSuccess, let requirement else {
+            throw PluginError.signatureInvalid(
+                detail: "TablePro's signing requirement could not be built (OSStatus \(status))"
+            )
+        }
         return requirement
+    }
+
+    private static func isTeamIdentifier(_ team: String) -> Bool {
+        team.unicodeScalars.count == 10 && team.unicodeScalars.allSatisfy { scalar in
+            ("A"..."Z").contains(scalar) || ("0"..."9").contains(scalar)
+        }
     }
 
     private static func teamIdFromBundleSignature() -> String? {

@@ -686,6 +686,7 @@ final class SyncCoordinator: ObservableObject {
         // Applied with the categories recorded here, so one turned off during the download is still read once.
         let settings = services.appSettingsStorage.loadSync()
         adoptReadableContent(for: settings)
+        await clearTokenForSavedQueriesRefill(settings: settings)
         let token = metadataStorage.loadToken()
         let tokenStatus = token == nil ? "nil (full fetch)" : "present (delta)"
         Self.logger.info("Pull starting, token: \(tokenStatus)")
@@ -722,6 +723,7 @@ final class SyncCoordinator: ObservableObject {
         }
         if isFullFetch {
             seedLocalThemesIfPending(after: result)
+            await finishSavedQueriesRefill(after: result, settings: settings)
         }
         return true
     }
@@ -861,6 +863,17 @@ final class SyncCoordinator: ObservableObject {
         var tableFavorites: [FavoriteTablesStorage.FavoriteEntry] = []
         let databaseFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .favoriteDatabase).map(\.id))
         var tableFolderRecords: [CKRecord] = []
+        var connectionBatch: RemoteConnectionBatch?
+
+        func persistConnectionBatch() {
+            guard let batch = connectionBatch else { return }
+            connectionBatch = nil
+            switch persistRemoteConnections(batch) {
+            case .applied: actualConnectionChanges = true
+            case .failed: persistenceFailed = true
+            case .skipped: break
+            }
+        }
 
         for record in changedRecords {
             if let echoGuard, echoGuard.withholds(record.recordID, tracker: changeTracker) {
@@ -868,13 +881,13 @@ final class SyncCoordinator: ObservableObject {
                 continue
             }
             guard let type = SyncRecordType(rawValue: record.recordType), settings.syncs(type) else { continue }
+            // A record whose apply can read or write the library sees every connection record before it.
+            if !Self.leavesConnectionLibraryAlone(type) {
+                persistConnectionBatch()
+            }
             switch type {
             case .connection:
-                switch applyRemoteConnection(record, tombstoneIds: connectionTombstoneIds) {
-                case .applied: actualConnectionChanges = true
-                case .failed: persistenceFailed = true
-                case .skipped: break
-                }
+                stageRemoteConnection(record, tombstoneIds: connectionTombstoneIds, into: &connectionBatch)
             case .group:
                 switch applyRemoteGroup(record, tombstoneIds: groupTombstoneIds) {
                 case .applied: groupsOrTagsChanged = true
@@ -911,6 +924,7 @@ final class SyncCoordinator: ObservableObject {
                 break
             }
         }
+        persistConnectionBatch()
         applyRemoteTableFolderRecords(tableFolderRecords)
 
         var effects = applyRemoteDeletions(
@@ -982,51 +996,81 @@ final class SyncCoordinator: ObservableObject {
         }
     }
 
-    private func applyRemoteConnection(_ record: CKRecord, tombstoneIds: Set<String>) -> RemoteApplyOutcome {
+    // Groups and tags write only their own store, and the rest are collected and applied after the loop.
+    private static func leavesConnectionLibraryAlone(_ type: SyncRecordType) -> Bool {
+        switch type {
+        case .connection, .group, .tag, .tableFavorite, .tableFolder, .tableFolderItem, .favorite, .favoriteFolder:
+            return true
+        case .settings, .sshProfile, .credentialProfile, .favoriteDatabase:
+            return false
+        }
+    }
+
+    // Applied to one list and written once, where each record used to read, verify, decode, encode and write the
+    // whole library.
+    private func stageRemoteConnection(
+        _ record: CKRecord,
+        tombstoneIds: Set<String>,
+        into pending: inout RemoteConnectionBatch?
+    ) {
         let remoteConnection: DatabaseConnection
         do {
             remoteConnection = try SyncRecordMapper.toConnection(record)
         } catch {
             Self.logger.error("Skipping remote connection \(record.recordID.recordName, privacy: .public): \(error.publicLogShape, privacy: .public)")
-            return .skipped
+            return
         }
 
         if tombstoneIds.contains(remoteConnection.id.uuidString) {
-            return .skipped
+            return
         }
 
-        var connections = services.connectionStorage.loadConnections()
+        let batch: RemoteConnectionBatch
+        if let existing = pending {
+            batch = existing
+        } else {
+            batch = RemoteConnectionBatch(connections: services.connectionStorage.loadConnections())
+            pending = batch
+        }
+
         var incoming = remoteConnection
-        let index = connections.firstIndex(where: { $0.id == remoteConnection.id })
+        let index = batch.index(of: remoteConnection.id)
         if let index {
-            guard !connections[index].localOnly else { return .skipped }
+            guard !batch.connections[index].localOnly else { return }
             if changeTracker.dirtyRecords(for: .connection).contains(remoteConnection.id.uuidString) {
                 guard let reconciled = mergeLocalEdits(
                     into: record,
-                    localConnection: connections[index]
+                    localConnection: batch.connections[index]
                 ) else {
-                    return .skipped
+                    return
                 }
                 incoming = reconciled
             }
         }
         // A record an older build pushed can still carry a connection string's secret in plain text.
         let kept = services.connectionStorage.keepingMongoURISecretsInKeychain(incoming)
-        let movedSecrets = kept.additionalFields != incoming.additionalFields
+        if kept.additionalFields != incoming.additionalFields {
+            batch.cleanedIds.insert(remoteConnection.id.uuidString)
+        }
         if let index {
-            connections[index] = kept.adoptingDeviceLocalState(from: connections[index])
+            batch.replace(at: index, with: kept.adoptingDeviceLocalState(from: batch.connections[index]))
         } else {
             var inserted = kept
             inserted.origin = .synced
-            connections.append(inserted)
+            batch.append(inserted)
         }
-        guard services.connectionStorage.saveConnections(connections, byUser: false) else {
-            Self.logger.error("Failed to apply remote connection update: persistence error for \(remoteConnection.id, privacy: .public)")
+        batch.stagedCount += 1
+    }
+
+    private func persistRemoteConnections(_ batch: RemoteConnectionBatch) -> RemoteApplyOutcome {
+        guard batch.stagedCount > 0 else { return .skipped }
+        guard services.connectionStorage.saveConnections(batch.connections, byUser: false) else {
+            Self.logger.error(
+                "Failed to apply \(batch.stagedCount, privacy: .public) remote connection update(s): persistence error"
+            )
             return .failed
         }
-        if movedSecrets {
-            connectionsCleanedOnPull.insert(remoteConnection.id.uuidString)
-        }
+        connectionsCleanedOnPull.formUnion(batch.cleanedIds)
         return .applied
     }
 
@@ -1263,6 +1307,35 @@ final class SyncCoordinator: ObservableObject {
             }
         }
         return monitor
+    }
+}
+
+// A reference, so staging a record changes the list in place instead of copying it.
+private final class RemoteConnectionBatch {
+    private(set) var connections: [DatabaseConnection]
+    var cleanedIds: Set<String> = []
+    var stagedCount = 0
+    private var indexById: [UUID: Int]
+
+    init(connections: [DatabaseConnection]) {
+        self.connections = connections
+        indexById = Dictionary(
+            connections.enumerated().map { ($0.element.id, $0.offset) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
+    func index(of id: UUID) -> Int? {
+        indexById[id]
+    }
+
+    func replace(at index: Int, with connection: DatabaseConnection) {
+        connections[index] = connection
+    }
+
+    func append(_ connection: DatabaseConnection) {
+        indexById[connection.id] = connections.count
+        connections.append(connection)
     }
 }
 
