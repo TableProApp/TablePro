@@ -223,6 +223,7 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
             .uuidCellText,
             .repeatingPrimaryKey,
             .readOnlyStatements,
+            .columnDefaultMarks,
         ]
     }
 

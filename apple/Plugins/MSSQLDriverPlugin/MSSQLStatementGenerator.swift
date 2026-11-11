@@ -14,9 +14,6 @@ import TableProSQLQuoting
 /// second row that happens to look the same. That bound is only safe when every column takes part in the match: a
 /// match with one left out can pick a different row, so such a change is refused instead.
 struct MSSQLStatementGenerator {
-    /// What the grid stages for a column the user leaves to the server's default. It is a marker, never a value.
-    static let defaultMarker = PluginCellValue.text("__DEFAULT__")
-
     let qualifiedTable: String
     let columns: [String]
     let primaryKeyColumns: [String]
@@ -38,7 +35,8 @@ struct MSSQLStatementGenerator {
                 let statement = try insertStatement(
                     values: values,
                     rowIndex: change.rowIndex,
-                    expressionColumns: change.expressionColumns ?? []
+                    expressionColumns: change.expressionColumns ?? [],
+                    defaultColumns: change.defaultColumns ?? []
                 )
                 writes.append(PluginRowWrite(statement: statement.statement, parameters: statement.parameters, rowIndices: [change.rowIndex]))
             case .update:
@@ -72,10 +70,11 @@ struct MSSQLStatementGenerator {
     func insertStatement(
         values: [PluginCellValue],
         rowIndex: Int = 0,
-        expressionColumns: Set<Int> = []
+        expressionColumns: Set<Int> = [],
+        defaultColumns: Set<Int> = []
     ) throws -> (statement: String, parameters: [PluginCellValue]) {
         let written = zip(columns, values).enumerated()
-            .filter { $0.element.1 != Self.defaultMarker }
+            .filter { !defaultColumns.contains($0.offset) }
             .map { (index: $0.offset, column: $0.element.0, value: $0.element.1) }
         if let owned = written.first(where: { context.serverOwnedColumns.contains($0.column) }) {
             throw PluginRowWriteRefusal(rowIndex: rowIndex, reason: Self.serverOwnedReason(owned.column))
@@ -106,7 +105,7 @@ struct MSSQLStatementGenerator {
         var parameters: [PluginCellValue] = []
         let assignments = change.cellChanges.map { cellChange -> String in
             let column = Self.quote(cellChange.columnName)
-            guard cellChange.newValue != Self.defaultMarker else { return "\(column) = DEFAULT" }
+            guard !change.isColumnDefault(cellChange.columnIndex) else { return "\(column) = DEFAULT" }
             if let sql = Self.expression(
                 cellChange.newValue,
                 isMarked: expressionColumns.contains(cellChange.columnIndex)

@@ -41,4 +41,7 @@ public struct PluginCapabilities: OptionSet, Sendable {
     // The driver refuses what `PluginStatementContext.allowsDestructive` and `allowsServerCode` forbid, for a language
     // the host cannot read in full.
     public static let statementPolicy = PluginCapabilities(rawValue: 1 << 22)
+    // The driver writes the column default only where `PluginRowChange.defaultColumns` marks one, so the text
+    // `__DEFAULT__` in any other cell is saved as text.
+    public static let columnDefaultMarks = PluginCapabilities(rawValue: 1 << 23)
 }

@@ -172,6 +172,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             .alterTableDDL,
             .cellExpressions,
             .uuidCellText,
+            .columnDefaultMarks,
         ]
     }
 

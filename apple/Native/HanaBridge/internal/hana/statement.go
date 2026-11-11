@@ -152,19 +152,27 @@ func rowsAffected(result sql.Result) int64 {
 }
 
 func readFirstResultSet(rows *sql.Rows, op *operation, rowLimit int) (*resultEnvelope, error) {
+	found, err := moveToFirstResultSet(rows)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return affectedRowsEnvelope(0), nil
+	}
+	return readResultSet(rows, op, rowLimit)
+}
+
+func moveToFirstResultSet(rows *sql.Rows) (bool, error) {
 	for {
 		columns, err := rows.Columns()
 		if err != nil {
-			return nil, err
+			return false, err
 		}
 		if len(columns) > 0 {
-			return readResultSet(rows, op, rowLimit)
+			return true, nil
 		}
 		if !rows.NextResultSet() {
-			if err := rows.Err(); err != nil {
-				return nil, err
-			}
-			return affectedRowsEnvelope(0), nil
+			return false, rows.Err()
 		}
 	}
 }
@@ -175,25 +183,68 @@ func readResultSet(rows *sql.Rows, op *operation, rowLimit int) (*resultEnvelope
 		return nil, err
 	}
 	envelope := tabularEnvelope(columns)
-	for rows.Next() {
-		if op.stopped() {
-			return nil, errOperationStopped
-		}
-		if rowLimit > 0 && len(envelope.rows) >= rowLimit {
-			envelope.isTruncated = true
-			break
-		}
-		row, truncatedLobs, err := scanRow(rows, columns, op)
-		if err != nil {
-			return nil, err
-		}
-		envelope.rows = append(envelope.rows, row)
-		envelope.truncatedLobCount += truncatedLobs
-	}
-	if err := rows.Err(); err != nil {
+	reader := &resultReader{rows: rows, columns: columns, op: op}
+	collected := &collectedRows{limit: rowLimit}
+	ended, err := reader.read(collected)
+	if err != nil {
 		return nil, err
 	}
+	envelope.rows = collected.rows
+	envelope.isTruncated = !ended
+	envelope.truncatedLobCount = collected.truncatedLobs
 	return envelope, nil
+}
+
+type rowSink interface {
+	full() bool
+	add(row []cell, truncatedLobs int)
+}
+
+type resultReader struct {
+	rows    *sql.Rows
+	columns []columnInfo
+	op      *operation
+	// Next has moved to a row that no sink has taken yet, so the next read starts with it.
+	pending bool
+}
+
+// The bool is true once the result set has no rows left.
+func (r *resultReader) read(sink rowSink) (bool, error) {
+	for {
+		if !r.pending {
+			if !r.rows.Next() {
+				return true, r.rows.Err()
+			}
+			r.pending = true
+		}
+		if r.op.stopped() {
+			return false, errOperationStopped
+		}
+		if sink.full() {
+			return false, nil
+		}
+		row, truncatedLobs, err := scanRow(r.rows, r.columns, r.op)
+		if err != nil {
+			return false, err
+		}
+		r.pending = false
+		sink.add(row, truncatedLobs)
+	}
+}
+
+type collectedRows struct {
+	limit         int
+	rows          [][]cell
+	truncatedLobs int
+}
+
+func (c *collectedRows) full() bool {
+	return c.limit > 0 && len(c.rows) >= c.limit
+}
+
+func (c *collectedRows) add(row []cell, truncatedLobs int) {
+	c.rows = append(c.rows, row)
+	c.truncatedLobs += truncatedLobs
 }
 
 func describeColumns(rows *sql.Rows) (columns []columnInfo, err error) {

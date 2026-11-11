@@ -54,10 +54,58 @@ struct OracleCellFormattingTests {
         #expect(OracleCellFormatting.timestampWithTimeZoneText(wire: utc, fractionDigits: 0) == "2024-01-01 00:30:00+05:00")
     }
 
-    /// A zone stored by region name is an id into Oracle's time zone file. It used to read `<decode error>`.
-    @Test func testRegionNamedZoneIsAPlaceholder() {
-        let paris: [UInt8] = [0x78, 0x7c, 0x01, 0x02, 0x03, 0x05, 0x06, 0x1d, 0xcd, 0x65, 0x00, 0x85, 0xf8]
-        #expect(OracleCellFormatting.timestampWithTimeZoneText(wire: paris, fractionDigits: 6) == "<unsupported: time zone region>")
+    private static let parisInJanuary: [UInt8] = [0x78, 0x7c, 0x01, 0x02, 0x03, 0x05, 0x06, 0x1d, 0xcd, 0x65, 0x00, 0x85, 0xf8]
+
+    private static func regionText(_ wire: [UInt8], fractionDigits: Int = 6, regions: OracleTimeZoneRegions) -> String? {
+        OracleCellFormatting.timestampWithTimeZoneText(wire: wire, fractionDigits: fractionDigits, regions: regions)
+    }
+
+    // A zone stored by region name used to read `<unsupported: time zone region>`, and export wrote that text.
+    @Test func testRegionZoneIsTheWallClockAndOraclesName() {
+        #expect(Self.regionText(Self.parisInJanuary, regions: OracleTimeZoneRegionFixtures.paris) == "2024-01-02 03:04:05.500000 Europe/Paris")
+    }
+
+    @Test func testRegionZoneFollowsDaylightSaving() {
+        let july: [UInt8] = [0x78, 0x7c, 0x07, 0x01, 0x0d, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x85, 0xf8]
+        #expect(Self.regionText(july, fractionDigits: 0, regions: OracleTimeZoneRegionFixtures.paris) == "2024-07-01 14:00:00 Europe/Paris")
+    }
+
+    @Test func testRegionZoneCanCrossAYearBoundary() {
+        let lastHalfHourOf2024: [UInt8] = [0x78, 0x7c, 0x0c, 0x1f, 0x18, 0x1f, 0x01, 0x00, 0x00, 0x00, 0x00, 0x85, 0xf8]
+        let paris = Self.regionText(lastHalfHourOf2024, fractionDigits: 0, regions: OracleTimeZoneRegionFixtures.paris)
+        #expect(paris == "2025-01-01 00:30:00 Europe/Paris")
+
+        // Id 65 is made up; only the map decides which name it stands for.
+        let losAngeles = OracleTimeZoneRegions(rows: [OracleTimeZoneRegionFixtures.row("America/Los_Angeles", zone: (0x81, 0x04))])
+        let threeAMOn2025: [UInt8] = [0x78, 0x7d, 0x01, 0x01, 0x04, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x81, 0x04]
+        #expect(Self.regionText(threeAMOn2025, fractionDigits: 0, regions: losAngeles) == "2024-12-31 19:00:00 America/Los_Angeles")
+    }
+
+    @Test func testRegionZoneIgnoresTheLowBitsOfByte12() {
+        var lowBitsSet = Self.parisInJanuary
+        lowBitsSet[12] = 0xf9
+        #expect(Self.regionText(lowBitsSet, regions: OracleTimeZoneRegionFixtures.paris) == "2024-01-02 03:04:05.500000 Europe/Paris")
+    }
+
+    // Without a name the text keeps the instant, as the UTC wall clock in the offset spelling the grid reads.
+    @Test func testRegionMissingFromTheMapReadsAsUTC() {
+        var otherID = Self.parisInJanuary
+        otherID[12] = 0xfc
+        #expect(Self.regionText(otherID, regions: OracleTimeZoneRegionFixtures.paris) == "2024-01-02 02:04:05.500000+00:00")
+        #expect(Self.regionText(Self.parisInJanuary, regions: .none) == "2024-01-02 02:04:05.500000+00:00")
+        #expect(OracleCellFormatting.timestampWithTimeZoneText(wire: Self.parisInJanuary, fractionDigits: 6) == "2024-01-02 02:04:05.500000+00:00")
+    }
+
+    @Test func testRegionFoundationDoesNotKnowReadsAsUTC() {
+        let unknown = OracleTimeZoneRegions(rows: [
+            OracleTimeZoneRegionFixtures.row("Not/AZone", zone: OracleTimeZoneRegionFixtures.parisZone),
+        ])
+        #expect(Self.regionText(Self.parisInJanuary, regions: unknown) == "2024-01-02 02:04:05.500000+00:00")
+    }
+
+    @Test func testRegionsLeaveAnOffsetValueAlone() {
+        let minusFiveThirty: [UInt8] = [0x78, 0x7c, 0x01, 0x02, 0x09, 0x23, 0x06, 0x07, 0x5b, 0xca, 0x00, 0x0f, 0x1e]
+        #expect(Self.regionText(minusFiveThirty, regions: OracleTimeZoneRegionFixtures.paris) == "2024-01-02 03:04:05.123456-05:30")
     }
 
     /// The bytes are the value in the database's zone; the text is the session's wall clock and the session's
@@ -113,6 +161,7 @@ struct OracleCellFormattingTests {
             "2024-01-02 03:04:05.123456-05:30",
             "2024-01-02 08:04:05.000001+07:00",
             "2024-07-01 14:00:00+02:00",
+            "2024-01-02 02:04:05.500000+00:00",
         ]
         for spelling in spellings {
             let range = NSRange(spelling.startIndex..., in: spelling)

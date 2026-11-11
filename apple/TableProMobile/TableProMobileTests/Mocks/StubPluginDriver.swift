@@ -12,7 +12,10 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var checkRows: [Int] = []
     var onFetchTables: (@Sendable () async -> Void)?
     var currentDb = ""
+    var declaredCapabilities: PluginCapabilities = []
     private(set) var databasesAtExecute: [String] = []
+
+    var capabilities: PluginCapabilities { declaredCapabilities }
 
     private(set) var boundedQueries: [(query: String, rowCap: Int)] = []
     private(set) var plainQueries: [String] = []

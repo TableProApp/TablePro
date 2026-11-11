@@ -44054,6 +44054,10 @@
         }
       }
     },
+    "column %@ first appears in a later chunk" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Column %@ has a type, default, generation expression or check that is not one SQL expression." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -194590,6 +194594,10 @@
         }
       }
     },
+    "The statement was stopped, and the server rolled back the transaction it ran in. Every change since that transaction began is undone." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The statement's placeholders do not match the %d values given." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -198400,6 +198408,10 @@
           }
         }
       }
+    },
+    "This database has no column defaults, so a cell cannot be left to one. Enter a value." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This database has no Create Table form" : {
       "extractionState" : "manual",

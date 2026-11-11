@@ -52,7 +52,10 @@ public enum MemcachedKeyListing {
             guard let equals = part.firstIndex(of: "=") else { continue }
             fields[part[..<equals]] = part[part.index(after: equals)...]
         }
-        guard let encoded = fields["key"], let key = percentDecoded(encoded), !key.isEmpty else { return nil }
+        // A key stored through the binary or meta protocol can hold a space or a line break, which a text command
+        // line cannot carry: sent in a `get`, it would end the line and start a command of its own.
+        guard let encoded = fields["key"], let key = percentDecoded(encoded),
+              MemcachedCommand.isValidKey(Array(key.utf8)) else { return nil }
         let expiry = fields["exp"].flatMap { Int64($0) }
         return MemcachedKeyEntry(
             key: key,

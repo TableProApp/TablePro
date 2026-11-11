@@ -63,7 +63,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     var capabilities: PluginCapabilities {
-        var supported: PluginCapabilities = [.truncateTable, .cancelQuery]
+        var supported: PluginCapabilities = [.truncateTable, .cancelQuery, .columnDefaultMarks]
         if redisConnection?.supportsTransactions ?? true { supported.insert(.transactions) }
         return supported
     }
@@ -657,6 +657,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) throws -> [PluginRowWrite]? {
+        if let refusal = PluginRowWriteRefusal.columnDefaultsUnsupported(in: changes) { throw refusal }
         let partitioned = redisConnection?.partitionsKeyspace == true
         let generator = RedisStatementGenerator(
             namespaceName: table,

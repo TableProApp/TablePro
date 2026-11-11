@@ -40,8 +40,6 @@ nonisolated struct MongoDBStatementGenerator {
     /// connection.
     var capabilities: () -> MongoDBCapabilities = { .unknown }
 
-    private static let defaultMarker = "__DEFAULT__"
-
     /// Where a value written whole comes from. A cell carries only text or bytes, so this is all the
     /// generator knows about the type the value has to keep.
     private enum Provenance {
@@ -133,17 +131,13 @@ nonisolated struct MongoDBStatementGenerator {
         let absent = change.absentColumns ?? []
         let written = cells.filter { cell in
             let serverAssignsIdentity = cell.field == MongoDBCollectionDDL.idField && cell.value.isNull
-            return !serverAssignsIdentity && !isLeftOut(cell.value, isAbsent: absent.contains(cell.column))
+            return !serverAssignsIdentity && !absent.contains(cell.column) && !change.isColumnDefault(cell.column)
         }
         let entries = try written.map { cell in
             let provenance: Provenance = typed[cell.field] == cell.value ? .typedIntoNewDocument : .copiedIntoNewDocument
             return "\(quotedKey(cell.field)): \(try documentValueJson(cell.value, field: cell.field, provenance: provenance))"
         }
         return "\(collectionAccessor).insertOne({\(entries.joined(separator: ", "))})"
-    }
-
-    private func isLeftOut(_ value: PluginCellValue, isAbsent: Bool) -> Bool {
-        isAbsent || value.asText == Self.defaultMarker
     }
 
     /// A value of a whole document the grid writes: a new row, a duplicate or a paste, or a
@@ -187,7 +181,7 @@ nonisolated struct MongoDBStatementGenerator {
                 let idField = MongoDBCollectionDDL.idField
                 var entries = ["\(quotedKey(idField)): \(try Self.identityJson(locator: locator))"]
                 for (index, value) in row.enumerated() where index != idIndex && index < columns.count {
-                    guard !isLeftOut(value, isAbsent: absent.contains(index)) else { continue }
+                    guard !absent.contains(index) else { continue }
                     let field = columns[index]
                     entries.append("\(quotedKey(field)): \(try documentValueJson(value, field: field, provenance: .restored))")
                 }
@@ -226,7 +220,7 @@ nonisolated struct MongoDBStatementGenerator {
         let cellWrites = try change.cellChanges.map {
             try cellWrite(
                 field: $0.columnName, from: $0.oldValue, to: $0.newValue,
-                removesField: removed.contains($0.columnIndex)
+                removesField: removed.contains($0.columnIndex), isDefault: change.isColumnDefault($0.columnIndex)
             )
         }
         let update = try updateDocument(for: cellWrites)
@@ -237,17 +231,18 @@ nonisolated struct MongoDBStatementGenerator {
         field: String,
         from oldValue: PluginCellValue,
         to newValue: PluginCellValue,
-        removesField: Bool
+        removesField: Bool,
+        isDefault: Bool
     ) throws -> CellWrite {
         guard field != MongoDBCollectionDDL.idField else { throw MongoDBWriteRefusal.identityChanged }
         guard !removesField else { return .remove(field: field) }
+        guard !isDefault else { throw MongoDBWriteRefusal.noDefaultValue(field: field) }
         switch newValue {
         case .null:
             return .whole(field: field, json: "null")
         case .bytes(let data):
             return .whole(field: field, json: try binaryJson(data, field: field, provenance: .edit(replacing: oldValue)))
         case .text(let text):
-            guard text != Self.defaultMarker else { throw MongoDBWriteRefusal.noDefaultValue(field: field) }
             if let nested = try nestedEdit(of: field, from: oldValue, to: text) {
                 return nested
             }

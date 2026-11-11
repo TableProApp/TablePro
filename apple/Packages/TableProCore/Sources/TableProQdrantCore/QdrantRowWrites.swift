@@ -147,7 +147,7 @@ public enum QdrantRowWriter {
             let id = try pointID(change.id)
             return [try write("POST", "\(points)/delete?wait=true", ["points": [id]], change)]
         case .insert:
-            let cells = change.cells.filter { $0.text != nil && $0.text != defaultMarker }
+            let cells = change.cells.filter { $0.text != nil }
             let idText = cells.first { $0.column == QdrantSchema.idColumn }?.text.flatMap { $0.isEmpty ? nil : $0 }
             let id = try pointID(idText ?? newID())
             let values = try typedValues(cells, typeName: typeName)
@@ -180,9 +180,6 @@ public enum QdrantRowWriter {
             return writes
         }
     }
-
-    // The host's marker for a cell the server fills; a duplicated row carries it in its key.
-    static let defaultMarker = "__DEFAULT__"
 
     // An upsert updates only existing points this filter matches, and it matches none.
     private static var matchesNoPoint: [String: Any] { ["must": [["has_id": [Any]()]]] }

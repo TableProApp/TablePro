@@ -288,10 +288,10 @@ struct PaginationState: Equatable {
     var hasMoreRows: Bool = false
     var isLoadingMore: Bool = false
     var baseQueryForMore: String?
-    var baseQueryParameterValues: [String?]?
+    var baseQueryParameterValues: [TypedParameterValue?]?
 
     // Set together: stale bindings sent with a placeholder-free query made Fetch All fail on the server.
-    mutating func setBaseQueryForMore(_ sql: String?, parameterValues: [String?]?) {
+    mutating func setBaseQueryForMore(_ sql: String?, parameterValues: [TypedParameterValue?]?) {
         baseQueryForMore = sql
         baseQueryParameterValues = parameterValues
     }

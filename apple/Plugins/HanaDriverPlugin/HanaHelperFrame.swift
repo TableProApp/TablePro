@@ -8,6 +8,9 @@ enum HanaHelperOpcode: UInt8, Sendable {
     case ping = 5
     case cancel = 6
     case close = 7
+    case openCursor = 8
+    case fetch = 9
+    case closeCursor = 10
 }
 
 enum HanaHelperFrameError: Error, Equatable, Sendable {
@@ -135,7 +138,7 @@ struct HanaHelperGreeting: Equatable, Sendable {
 }
 
 enum HanaHelperHandshake {
-    static let protocolVersion = 1
+    static let protocolVersion = 2
     static let frameID: UInt64 = 0
     static let maximumBodyLength = 4_096
     static let acceptedForcedSeverGraceSeconds = 1...3_600

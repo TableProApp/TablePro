@@ -1,4 +1,5 @@
 import Foundation
+import TableProPluginKit
 import TableProTeradataCore
 
 final class TeradataAsyncConnection: @unchecked Sendable {
@@ -30,6 +31,19 @@ final class TeradataAsyncConnection: @unchecked Sendable {
         try await run { try $0.execute(sql) }
     }
 
+    func execute(_ sql: String, rowCap: Int?) async throws -> TeradataCappedResult {
+        try await run { try $0.execute(sql, rowCap: rowCap) }
+    }
+
+    // One queue item for the whole answer: the session holds one request, so no other call may run between its replies.
+    func stream(
+        _ sql: String,
+        onColumns: @escaping @Sendable ([TeradataColumn]) throws -> Void,
+        onRows: @escaping @Sendable ([[TeradataValue]]) throws -> Bool
+    ) async throws {
+        try await run { try $0.stream(sql, onColumns: onColumns, onRows: onRows) }
+    }
+
     func disconnect() {
         queue.sync { connection.disconnect() }
     }
@@ -55,6 +69,9 @@ final class TeradataAsyncConnection: @unchecked Sendable {
                         let value = try body(self.connection)
                         try cancellation.throwIfCancelled()
                         continuation.resume(returning: value)
+                    } catch TeradataWireError.rolledBackByStop {
+                        // Kept past the cancel, so the host can say what the Stop undid.
+                        continuation.resume(throwing: PluginStopRolledBackTransaction(code: TeradataConnection.userAbortCode))
                     } catch {
                         continuation.resume(throwing: cancellation.isCancelled ? CancellationError() : error)
                     }

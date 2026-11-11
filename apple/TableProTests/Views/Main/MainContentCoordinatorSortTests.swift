@@ -528,7 +528,7 @@ struct MainContentCoordinatorSortTests {
         let idx = try #require(tabManager.tabs.firstIndex(where: { $0.id == tabId }))
         let result = ResultSet(label: "audit", tableRows: rows)
         result.baseQuery = "SELECT msg FROM audit WHERE msg = ?"
-        result.baseQueryParameterValues = ["hello"]
+        result.baseQueryParameterValues = [TypedParameterValue(text: "hello", kind: .text)]
         tabManager.mutate(at: idx) { $0.display.replaceUnpinnedResults(with: [result]) }
         coordinator.setActiveTableRows(rows, for: tabId)
 

@@ -106,6 +106,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     static func cellValue(for parameter: Any?) -> PluginCellValue {
         guard let parameter else { return .null }
+        if let typed = parameter as? TypedParameterValue { return .text(typed.text) }
         if let data = parameter as? Data { return .bytes(data) }
         if let f = parameter as? Float {
             guard f.isFinite else { return .null }
@@ -1439,7 +1440,7 @@ extension PluginDriverAdapter {
         let pluginResult = try await pluginDriver.executeParameterized(
             query: query,
             parameters: parameters.map(Self.cellValue(for:)),
-            context: statementContext(query, approvedAs: context)
+            context: statementContext(query, approvedAs: context, parameters: parameters)
         )
         return mapQueryResult(pluginResult)
     }
@@ -1456,14 +1457,15 @@ extension PluginDriverAdapter {
             query: query,
             rowCap: rowCap,
             parameters: parameters?.map(Self.cellValue(for:)),
-            context: statementContext(query, approvedAs: context)
+            context: statementContext(query, approvedAs: context, parameters: parameters)
         )
         return mapQueryResult(pluginResult)
     }
 
-    fileprivate func statementContext(_ query: String, approvedAs caller: PluginStatementContext) -> PluginStatementContext {
+    fileprivate func statementContext(_ query: String, approvedAs caller: PluginStatementContext, parameters: [Any?]? = nil) -> PluginStatementContext {
         var context = PluginStatementContext.statement(query, databaseType: connection.type, approvedAs: caller)
         context.lexicalFeatures = sessionLexicalFeatures
+        context.parameterKinds = TypedParameterValue.kinds(of: parameters) ?? context.parameterKinds
         return context
     }
 

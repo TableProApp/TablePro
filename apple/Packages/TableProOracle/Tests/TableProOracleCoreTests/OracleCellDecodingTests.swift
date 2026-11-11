@@ -15,12 +15,15 @@ struct OracleCellDecodingTests {
         _ bytes: [UInt8]?,
         as type: OracleDataType,
         declared: OracleDataType? = nil,
-        scale: Int = 0
+        scale: Int = 0,
+        regions: OracleTimeZoneRegions = .none
     ) -> (OracleRawCell, Set<String>) {
         let cell = OracleCell(bytes: bytes.map { ByteBuffer(bytes: $0) }, dataType: type, columnName: "C", columnIndex: 0)
         let column = OracleResultColumn(name: "C", dataType: declared ?? type, scale: scale)
         var unsupported: Set<String> = []
-        let value = OracleCellDecoding.decode(cell, column: column, zones: Self.utcPlusSeven) { unsupported.insert($0) }
+        let value = OracleCellDecoding.decode(cell, column: column, zones: Self.utcPlusSeven, regions: regions) {
+            unsupported.insert($0)
+        }
         return (value, unsupported)
     }
 
@@ -71,6 +74,14 @@ struct OracleCellDecodingTests {
         #expect(decode(Self.hex("787c0102040506"), as: .timestamp, scale: 0).0 == .string("2024-01-02 03:04:05"))
         #expect(decode(Self.hex("787c0102092306075bca000f1e"), as: .timestampTZ, scale: 6).0 == .string("2024-01-02 03:04:05.123456-05:30"))
         #expect(decode(Self.hex("787c0102020506000003e8"), as: .timestampLTZ, scale: 6).0 == .string("2024-01-02 08:04:05.000001+07:00"))
+    }
+
+    @Test func testRegionZoneDecodesThroughTheRegionMap() {
+        let paris = Self.hex("787c01020305061dcd650085f8")
+        let (named, unsupported) = decode(paris, as: .timestampTZ, scale: 6, regions: OracleTimeZoneRegionFixtures.paris)
+        #expect(named == .string("2024-01-02 03:04:05.500000 Europe/Paris"))
+        #expect(unsupported.isEmpty)
+        #expect(decode(paris, as: .timestampTZ, scale: 6).0 == .string("2024-01-02 02:04:05.500000+00:00"))
     }
 
     @Test func testUniversalRowIDReadsAsOracleSpellsIt() {

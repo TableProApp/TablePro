@@ -160,7 +160,7 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var capabilities: PluginCapabilities {
         [
             .parameterizedQueries, .transactions, .alterTableDDL, .multiSchema, .schemaCompare, .dataCompare,
-            .rowWrites, .cellExpressions,
+            .rowWrites, .cellExpressions, .columnDefaultMarks,
         ]
     }
 
