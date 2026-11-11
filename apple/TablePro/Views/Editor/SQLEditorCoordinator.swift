@@ -766,6 +766,14 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         vimEngine = nil
     }
 
+    // MARK: - Completion
+
+    /// Ends this editor's completion session, whether its popup is showing or its items are still loading, so
+    /// nothing opens over the results of a run that started meanwhile.
+    func dismissCompletions() {
+        controller?.dismissCompletions()
+    }
+
     // MARK: - Menu Escape Routing
 
     /// Called by `EditorEventRouter.handleEscapeFromMenu()` when the "Clear Selection" menu item is

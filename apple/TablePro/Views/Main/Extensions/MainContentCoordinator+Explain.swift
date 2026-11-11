@@ -22,6 +22,7 @@ extension MainContentCoordinator {
         }
         guard !isShowingSafeModePrompt else { return nil }
         guard let statement = explainStatement(in: tab) else { return nil }
+        endEditorCompletion()
         let anchor = tab.tabType == .table ? nil : StatementAnchor(statement)
         guard let request = ExplainRequest.make(
             variant: variant,

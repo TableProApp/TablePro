@@ -163,6 +163,15 @@ internal final class EditorEventRouter {
         coordinator.runStatementAtCursorAndAdvance()
     }
 
+    /// A run started in `window`, so every editor there ends its completion session. Not only the focused one:
+    /// the run may come from a click on the query bar, which leaves the focus where it was, or from the menu.
+    internal func dismissCompletions(in window: NSWindow?) {
+        guard let window else { return }
+        for ref in editors.values where ref.textView?.window === window {
+            ref.coordinator?.dismissCompletions()
+        }
+    }
+
     /// Called when the Edit menu's "Clear Selection" item is chosen with the pointer.
     ///
     /// Only with the pointer. AppKit never dispatches an unmodified Escape as a key equivalent:

@@ -242,6 +242,12 @@ final class MainContentCoordinator: ObservableObject {
     // For alerts instead of NSApp.keyWindow, which may return a sheet window and leave dialogs stuck.
     weak var contentWindow: NSWindow?
 
+    /// Ends the completion sessions of the editors in a window. Injected so a test can see each run path reach it
+    /// without an editor on screen.
+    var dismissEditorCompletions: @MainActor (NSWindow?) -> Void = { window in
+        EditorEventRouter.shared.dismissCompletions(in: window)
+    }
+
     // Its own workspace's browse history: the window's answer follows the connection and mode on screen.
     var browseUndoManager: UndoManager? {
         let host = contentWindow?.contentViewController as? MainSplitViewController
@@ -972,6 +978,7 @@ final class MainContentCoordinator: ObservableObject {
             return
         }
         commitActiveGridEdit()
+        endEditorCompletion()
 
         if tab.tabType == .table {
             executeTableTabQueryDirectly(trigger: trigger, viewport: viewport)
@@ -986,6 +993,13 @@ final class MainContentCoordinator: ObservableObject {
         )
     }
 
+    /// A run sends the reader to its results, which an open completion popup would cover until Escape. Completion
+    /// items load asynchronously, so a click on Run can land while a request is still out and the popup open after
+    /// it, and Command-Return passes through an open popup to the menu. Every run path ends the session first.
+    func endEditorCompletion() {
+        dismissEditorCompletions(contentWindow)
+    }
+
     // Takes SQL, not a range: the editor text and the tab binding can briefly differ, and a range on the wrong one truncates silently.
     @discardableResult
     func runStatement(_ sql: String, sourceOffset: Int? = nil) -> Bool {
@@ -995,6 +1009,7 @@ final class MainContentCoordinator: ObservableObject {
             return false
         }
         commitActiveGridEdit()
+        endEditorCompletion()
 
         return executeResolvedSQL(sql, tabIndex: index, bypassRowLimit: false, sourceOffset: sourceOffset)
     }
