@@ -162,6 +162,7 @@ private struct SettingsPaneContent: View {
                 tabSettings: $settingsManager.tabs,
                 dataGridSettings: $settingsManager.dataGrid,
                 editorSettings: $settingsManager.editor,
+                appearanceSettings: $settingsManager.appearance,
                 updater: SoftwareUpdater.shared,
                 onResetAll: { settingsManager.resetToDefaults() }
             )

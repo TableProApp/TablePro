@@ -6,6 +6,7 @@ struct GeneralSettingsView: View {
     @Binding var tabSettings: TabSettings
     @Binding var dataGridSettings: DataGridSettings
     @Binding var editorSettings: EditorSettings
+    @Binding var appearanceSettings: AppearanceSettings
     @ObservedObject var updater: SoftwareUpdater
     var onResetAll: () -> Void
 
@@ -83,8 +84,8 @@ struct GeneralSettingsView: View {
                     tree, and makes Tree the default sidebar layout. In table tabs it shows column types in \
                     the header, the sort and a Text mode in the filter panel, opens that panel with each table, \
                     puts the result bar above the grid and names the database and connection in tab titles. \
-                    In query tabs it shows the query bar on two rows. Standard Layout turns them off again. \
-                    Open connections switch layout too.
+                    In query tabs it shows the query bar on two rows, and object icons turn colorful. \
+                    Standard Layout turns them off again. Open connections switch layout too.
                     """))
             }
 
@@ -210,14 +211,16 @@ struct GeneralSettingsView: View {
             NavigatorLayoutPreset.applyDataView(
                 tabs: &tabSettings,
                 dataGrid: &dataGridSettings,
-                editor: &editorSettings
+                editor: &editorSettings,
+                appearance: &appearanceSettings
             )
         } else {
             NavigatorLayoutPreset.restore(to: &settings, defaultLayout: &defaultSidebarLayout)
             NavigatorLayoutPreset.restoreDataView(
                 tabs: &tabSettings,
                 dataGrid: &dataGridSettings,
-                editor: &editorSettings
+                editor: &editorSettings,
+                appearance: &appearanceSettings
             )
         }
         NavigatorLayoutPreset.switchOpenConnections(to: defaultSidebarLayout)
@@ -230,6 +233,7 @@ struct GeneralSettingsView: View {
         tabSettings: .constant(.default),
         dataGridSettings: .constant(.default),
         editorSettings: .constant(.default),
+        appearanceSettings: .constant(.default),
         updater: SoftwareUpdater.shared,
         onResetAll: {}
     )

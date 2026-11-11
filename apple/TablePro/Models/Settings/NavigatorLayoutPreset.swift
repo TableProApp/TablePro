@@ -42,12 +42,14 @@ internal enum NavigatorLayoutPreset {
 
     /// The tabs' half of the layout: types under the column names, the sort and a Text mode in the
     /// filter panel, that panel open with each table, the result bar above the grid, tab titles that
-    /// name the database and connection, and the query bar on two rows. These live in the Data Grid,
-    /// Tab and Editor settings, so the caller passes those bindings beside the General one.
+    /// name the database and connection, the query bar on two rows and colorful object icons. These
+    /// live in the Data Grid, Tab, Editor and Appearance settings, so the caller passes those bindings
+    /// beside the General one.
     internal static func applyDataView(
         tabs: inout TabSettings,
         dataGrid: inout DataGridSettings,
-        editor: inout EditorSettings
+        editor: inout EditorSettings,
+        appearance: inout AppearanceSettings
     ) {
         dataGrid.showsColumnTypesInHeader = true
         dataGrid.showsSortInFilterPanel = true
@@ -55,12 +57,14 @@ internal enum NavigatorLayoutPreset {
         dataGrid.resultBarAtTop = true
         tabs.titleShowsLocation = true
         editor.queryBarTwoRows = true
+        appearance.objectIconStyle = .colorful
     }
 
     internal static func restoreDataView(
         tabs: inout TabSettings,
         dataGrid: inout DataGridSettings,
-        editor: inout EditorSettings
+        editor: inout EditorSettings,
+        appearance: inout AppearanceSettings
     ) {
         let standardGrid = DataGridSettings.default
         dataGrid.showsColumnTypesInHeader = standardGrid.showsColumnTypesInHeader
@@ -69,6 +73,7 @@ internal enum NavigatorLayoutPreset {
         dataGrid.resultBarAtTop = standardGrid.resultBarAtTop
         tabs.titleShowsLocation = TabSettings.default.titleShowsLocation
         editor.queryBarTwoRows = EditorSettings.default.queryBarTwoRows
+        appearance.objectIconStyle = AppearanceSettings.default.objectIconStyle
     }
 
     /// The default layout reaches only connections opened later, so each open one is switched the way
