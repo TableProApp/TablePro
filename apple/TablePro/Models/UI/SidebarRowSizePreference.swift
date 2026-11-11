@@ -63,13 +63,14 @@ internal enum SidebarRowSizeResolver {
         }
     }
 
-    /// The height a `.custom` row takes. AppKit's own sizes start at 24 points, so Compact names
-    /// its height outright: 22 points holds the regular text and a 15 point glyph without clipping.
+    /// The height a `.custom` row takes. Small's rows are as short but shrink the text to fit them, so
+    /// Compact names its height outright: 24 points holds the regular text and a 15 point glyph with
+    /// room around them. At 22 the rows read as crowded.
     internal static func rowHeight(for preference: SidebarRowSizePreference) -> CGFloat? {
         preference == .compact ? compactRowHeight : nil
     }
 
-    internal static let compactRowHeight: CGFloat = 22
+    internal static let compactRowHeight: CGFloat = 24
 }
 
 internal extension SidebarRowSize {

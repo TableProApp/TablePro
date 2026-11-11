@@ -96,14 +96,16 @@ struct SidebarOutlineScaffoldTests {
         #expect(try outline(scrollView).rowSizeStyle == .large)
     }
 
-    @Test("Compact rows are 22 points tall, shorter than AppKit's small rows")
-    func compactRowsAreShorterThanSmall() throws {
+    @Test("Compact rows are 24 points tall: no taller than Small's and shorter than Medium's")
+    func compactRowsAreAsShortAsSmall() throws {
         let compact = try outline(makeScrollView(rowSize: .compact))
         let small = try outline(makeScrollView(rowSize: .small))
+        let medium = try outline(makeScrollView(rowSize: .medium))
 
         #expect(compact.rowSizeStyle == .custom)
-        #expect(compact.rowHeight == SidebarRowSizeResolver.compactRowHeight)
-        #expect(compact.rowHeight < small.rowHeight)
+        #expect(compact.rowHeight == 24)
+        #expect(compact.rowHeight <= small.rowHeight)
+        #expect(compact.rowHeight < medium.rowHeight)
     }
 
     /// AppKit resets `rowHeight` whenever the style changes, so leaving Compact and coming back
