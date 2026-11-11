@@ -26,24 +26,36 @@ class LineFoldModel: NSObject, NSTextStorageDelegate, ObservableObject {
     @Published var foldCache = LineFoldStorage(documentLength: 0)
     private var calculator: LineFoldCalculator
 
+    // StatementRunController's threshold and delay: below it a pass costs less than a keystroke, above it a pass on
+    // every key would keep a core busy while the user types.
+    static let immediateRecalculationLimit = 64_000
+    static let recalculationDelay: Duration = .milliseconds(150)
+
     private var textChangedStream: AsyncStream<Void>
     private var textChangedStreamContinuation: AsyncStream<Void>.Continuation
     private var cacheListenTask: Task<Void, Never>?
+    private let documentVersion: LineFoldDocumentVersion
+    private let clock: any Clock<Duration>
+    private var pendingRecalculation: Task<Void, Never>?
     private var pendingRestoreRanges: Set<Range<Int>>?
     private var placeholderTracker: LineFoldPlaceholderTracker?
 
     weak var controller: TextViewController?
     weak var foldView: NSView?
 
-    init(controller: TextViewController, foldView: NSView) {
+    init(controller: TextViewController, foldView: NSView, clock: any Clock<Duration> = ContinuousClock()) {
         self.controller = controller
         self.foldView = foldView
+        self.clock = clock
         (textChangedStream, textChangedStreamContinuation) = AsyncStream<Void>.makeStream(
             bufferingPolicy: .bufferingNewest(1)
         )
+        let documentVersion = LineFoldDocumentVersion()
+        self.documentVersion = documentVersion
         self.calculator = LineFoldCalculator(
             foldProvider: controller.foldProvider,
             controller: controller,
+            documentVersion: documentVersion,
             textChangedStream: textChangedStream
         )
         super.init()
@@ -51,9 +63,12 @@ class LineFoldModel: NSObject, NSTextStorageDelegate, ObservableObject {
 
         let calculator = self.calculator
         cacheListenTask = Task { @MainActor [weak self, weak foldView] in
-            for await newFolds in await calculator.valueStream {
+            for await pass in await calculator.valueStream {
                 guard let self else { return }
-                self.foldCache = newFolds
+                // An edit after the pass read the text queued another pass; until it lands `storageUpdated` keeps
+                // the current folds in step with the text.
+                guard pass.documentVersion == self.documentVersion.value else { continue }
+                self.foldCache = pass.storage
                 foldView?.needsDisplay = true
                 self.applyPendingRestoreIfPossible()
             }
@@ -78,6 +93,7 @@ class LineFoldModel: NSObject, NSTextStorageDelegate, ObservableObject {
         gutterHover = nil
         placeholderHover = nil
         hoveredFold = nil
+        documentVersion.advance()
         foldCache = LineFoldStorage(documentLength: controller?.textView.documentRange.length ?? 0)
         pendingRestoreRanges = nil
         refresh()
@@ -93,6 +109,8 @@ class LineFoldModel: NSObject, NSTextStorageDelegate, ObservableObject {
         placeholderTracker = nil
         cacheListenTask?.cancel()
         cacheListenTask = nil
+        pendingRecalculation?.cancel()
+        pendingRecalculation = nil
     }
 
     // MARK: - Collapse
@@ -256,9 +274,29 @@ class LineFoldModel: NSObject, NSTextStorageDelegate, ObservableObject {
         )
     }
 
-    /// Recomputes folds for the whole document. Used to catch up after the ribbon has been hidden and is shown again.
     func refresh() {
+        pendingRecalculation?.cancel()
+        pendingRecalculation = nil
         textChangedStreamContinuation.yield()
+    }
+
+    private func scheduleRecalculation(documentLength: Int) {
+        guard documentLength > Self.immediateRecalculationLimit else {
+            refresh()
+            return
+        }
+        pendingRecalculation?.cancel()
+        let clock = clock
+        pendingRecalculation = Task { [weak self] in
+            do {
+                try await clock.sleep(for: Self.recalculationDelay)
+            } catch {
+                return
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.pendingRecalculation = nil
+            self.textChangedStreamContinuation.yield()
+        }
     }
 
     func textStorage(
@@ -270,11 +308,12 @@ class LineFoldModel: NSObject, NSTextStorageDelegate, ObservableObject {
         guard editedMask.contains(.editedCharacters) else {
             return
         }
+        documentVersion.advance()
         foldCache.storageUpdated(editedRange: editedRange, changeInLength: delta)
         // Recalculating folds walks the whole document. Skip it while the ribbon is hidden; `refresh()` rebuilds when
         // it is shown again.
         guard foldView?.isHidden != true else { return }
-        textChangedStreamContinuation.yield()
+        scheduleRecalculation(documentLength: textStorage.length)
     }
 
     /// Finds the deepest cached fold and depth of the fold for a line number.

@@ -266,7 +266,9 @@ final class MainContentCoordinator: ObservableObject {
 
     // MARK: - Published State
 
-    @Published var cursorPositions: [CursorPosition] = []
+    // Not published: the editor writes it on every caret move, and a publish re-rendered every view observing this
+    // coordinator. Readers take it when they need it.
+    var cursorPositions: [CursorPosition] = []
     @Published var activeSheet: ActiveSheet? {
         didSet { releaseImportFileUnlessImporting() }
     }

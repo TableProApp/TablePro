@@ -164,6 +164,7 @@ final class SQLEditorController {
         coordinator.onAIAction = input.onAIAction
         coordinator.onSaveAsFavorite = input.onSaveAsFavorite
         coordinator.schemaProvider = input.schemaProvider
+        coordinator.databaseScope = input.databaseScope
         coordinator.databaseType = input.databaseType
         coordinator.tabID = input.tabID
         coordinator.connectionId = input.connectionId
