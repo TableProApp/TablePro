@@ -33,7 +33,8 @@ internal extension MainWindowToolbar {
                 ?? false,
             isAIEnabled: AppSettingsManager.shared.ai.enabled,
             stagesObjectChanges: tab?.tabType == .objectSource && tab?.display.objectRef?.kind == .userType,
-            showsDebugItems: debugItemsEnabled()
+            showsDebugItems: debugItemsEnabled(),
+            keepsContentCommandsInPlace: labelsEnabled()
         )
     }
 

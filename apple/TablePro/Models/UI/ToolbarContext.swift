@@ -42,6 +42,8 @@ internal struct ToolbarContext: Equatable {
 
     // Whether the Routine Debugger module puts its controls in the toolbar at all.
     internal let showsDebugItems: Bool
+    // A labeled toolbar is a fixed strip of named commands: a content command that cannot act dims in place.
+    internal let keepsContentCommandsInPlace: Bool
     // What the selected debug tab can do now; empty and false everywhere else.
     internal let debugCommands: Set<PluginDebugCommand>
     internal let canStopDebugging: Bool
@@ -67,6 +69,7 @@ internal struct ToolbarContext: Equatable {
         internal let isAIEnabled: Bool
         internal var stagesObjectChanges = false
         internal var showsDebugItems = false
+        internal var keepsContentCommandsInPlace = false
     }
 
     internal var visibilityKey: VisibilityKey {
@@ -80,7 +83,8 @@ internal struct ToolbarContext: Equatable {
             supportsServerDashboard: supportsServerDashboard,
             isAIEnabled: isAIEnabled,
             stagesObjectChanges: stagesObjectChanges,
-            showsDebugItems: showsDebugItems
+            showsDebugItems: showsDebugItems,
+            keepsContentCommandsInPlace: keepsContentCommandsInPlace
         )
     }
 
@@ -106,6 +110,7 @@ internal struct ToolbarContext: Equatable {
         isAIEnabled: Bool = false,
         stagesObjectChanges: Bool = false,
         showsDebugItems: Bool = false,
+        keepsContentCommandsInPlace: Bool = false,
         debugCommands: Set<PluginDebugCommand> = [],
         canStopDebugging: Bool = false,
         isPresentingSheet: Bool = false,
@@ -136,6 +141,7 @@ internal struct ToolbarContext: Equatable {
         self.isAIEnabled = isAIEnabled
         self.stagesObjectChanges = stagesObjectChanges
         self.showsDebugItems = showsDebugItems
+        self.keepsContentCommandsInPlace = keepsContentCommandsInPlace
         self.debugCommands = debugCommands
         self.canStopDebugging = canStopDebugging
         self.isPresentingSheet = isPresentingSheet
@@ -191,6 +197,7 @@ internal struct ToolbarContext: Equatable {
             isAIEnabled: key.isAIEnabled,
             stagesObjectChanges: key.stagesObjectChanges,
             showsDebugItems: key.showsDebugItems,
+            keepsContentCommandsInPlace: key.keepsContentCommandsInPlace,
             debugCommands: debugCommands,
             canStopDebugging: canStopDebugging,
             isPresentingSheet: isPresentingSheet,

@@ -605,10 +605,13 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         }
     }
 
-    // Pushed by the General setting's own write, like the Objects buttons.
+    // Pushed by the General setting's own write, like the Objects buttons. The labels also decide whether a content
+    // command that cannot act hides or dims in place, so the visibility is applied again.
     internal static func applyToolbarLabelsSettingChange() {
         for window in NSApp.windows {
-            (window.toolbar?.delegate as? MainWindowToolbar)?.reconcileDisplayMode()
+            guard let owner = window.toolbar?.delegate as? MainWindowToolbar else { continue }
+            owner.reconcileDisplayMode()
+            owner.refreshContext()
         }
     }
 

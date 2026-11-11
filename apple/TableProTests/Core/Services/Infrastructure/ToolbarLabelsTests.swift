@@ -109,6 +109,18 @@ struct ToolbarLabelsTests {
         #expect(record.isApplied)
     }
 
+    /// The labeled toolbar is the one that keeps a content command in place, so the key the visibility is
+    /// resolved from carries the setting, and a change of it re-resolves the set.
+    @Test("The visibility key follows the labels setting")
+    func visibilityKeyFollowsTheLabels() throws {
+        let storage = try EphemeralDefaults()
+        let labeled = Self.owner(labelsOn: true, record: ToolbarLabelsRecord(defaults: storage.defaults))
+        let plain = Self.owner(labelsOn: false, record: ToolbarLabelsRecord(defaults: storage.defaults))
+
+        #expect(labeled.currentVisibilityKey().keepsContentCommandsInPlace)
+        #expect(!plain.currentVisibilityKey().keepsContentCommandsInPlace)
+    }
+
     @Test("With labels the window title stops drawing, and without them it draws again")
     func labelsHideTheTitle() {
         #expect(MainWindowToolbar.titleVisibility(showsLabels: true) == .hidden)

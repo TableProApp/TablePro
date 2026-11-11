@@ -71,8 +71,10 @@ internal enum ToolbarContextResolver {
         case .objectSource where key.stagesObjectChanges:
             return []
         case .serverDashboard, .insights, .tableHealth, .objectSource, .versionHistory, .tableListing:
-            // None of these can stage a change, so the commit control could only ever be dim.
-            return [MainWindowToolbar.saveChanges]
+            // None of these can stage a change, so the commit control could only ever be dim. A labeled toolbar keeps
+            // it there, dim: each item is wide with its name under it, and taking one out moved Refresh, Actions and
+            // Safe Mode across the titlebar on every switch to one of these tabs.
+            return key.keepsContentCommandsInPlace ? [] : [MainWindowToolbar.saveChanges]
         case .routineDebug, .liveMessages:
             // A debug run or a live subscription has nothing to reload or commit; its own controls take that place.
             return [MainWindowToolbar.refresh, MainWindowToolbar.saveChanges]

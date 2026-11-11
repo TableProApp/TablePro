@@ -296,6 +296,31 @@ struct ToolbarContextResolverTests {
         #expect(hidden.contains(MainWindowToolbar.refresh) == false)
     }
 
+    /// A labeled toolbar draws each item wide with its name under it, so an item taken out moves every
+    /// one after it. There the commit control stays where it is and dims instead.
+    @Test(
+        "A labeled toolbar keeps the commit control in place, dim, where a tab can never stage a change",
+        arguments: [TabType.serverDashboard, .insights, .tableHealth, .objectSource, .versionHistory, .tableListing]
+    )
+    func labeledToolbarKeepsSaveChangesInPlace(tabKind: TabType) {
+        let context = ToolbarContext(
+            tabKind: tabKind,
+            pane: .content,
+            isConnected: true,
+            hasSelectedWorkspace: true,
+            keepsContentCommandsInPlace: true
+        )
+        #expect(context.visibilityKey.keepsContentCommandsInPlace)
+        #expect(Self.hidden(context).contains(MainWindowToolbar.saveChanges) == false)
+        #expect(ToolbarContextResolver.isEnabled(MainWindowToolbar.saveChanges, context: context) == false)
+    }
+
+    @Test("The Objects tab still loses the commit control on a toolbar without labels")
+    func objectsTabHidesSaveChangesWithoutLabels() {
+        let context = ToolbarContext(tabKind: .tableListing, pane: .content, isConnected: true, hasSelectedWorkspace: true)
+        #expect(Self.hidden(context).contains(MainWindowToolbar.saveChanges))
+    }
+
     @Test("A type's tab stages changes, so it keeps the commit control other object tabs lose")
     func typeTabKeepsSaveChanges() {
         let typeTab = ToolbarContext(
