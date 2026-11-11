@@ -21,6 +21,7 @@ struct QueryRunTabActions {
 struct QueryRunTabBar: View {
     let page: ResultsPage
     let results: ResultSetMenuModel
+    var statementTitles: [UUID: String] = [:]
     /// False in Structure mode, which chooses no result, as the result set tab row offers no pull-down there.
     var showsMenu = true
     let actions: QueryRunTabActions
@@ -47,7 +48,12 @@ struct QueryRunTabBar: View {
         HStack(spacing: StatusBarChrome.clusterSpacing) {
             // SwiftUI sets a hosted control's size from its environment, so it is set here and not in the control.
             QueryRunTabs(
-                strip: QueryRunTabStrip(page: page, results: results, listsEachResult: listsEachResult),
+                strip: QueryRunTabStrip(
+                    page: page,
+                    results: results,
+                    listsEachResult: listsEachResult,
+                    statementTitles: statementTitles
+                ),
                 results: results,
                 onChoose: choose
             )
@@ -123,7 +129,7 @@ final class QueryRunTabsControl: NSSegmentedControl {
             segmentCount = strip.segments.count
         }
         for (index, segment) in strip.segments.enumerated() {
-            let title = QueryRunTabStrip.title(of: segment, in: results)
+            let title = strip.title(of: segment, in: results)
             if label(forSegment: index) != title {
                 setLabel(title, forSegment: index)
             }

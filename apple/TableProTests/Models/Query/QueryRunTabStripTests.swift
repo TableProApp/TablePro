@@ -23,7 +23,29 @@ struct QueryRunTabStripTests {
     }
 
     private static func titles(_ strip: QueryRunTabStrip, _ results: ResultSetMenuModel) -> [String] {
-        strip.segments.map { QueryRunTabStrip.title(of: $0, in: results) }
+        strip.segments.map { strip.title(of: $0, in: results) }
+    }
+
+    @Test("A result tab is named by its statement's number, a failed statement's by Error, and others keep their name")
+    func resultTabsCarryTheStatementNumber() {
+        let results = Self.results(["SELECT id, customer_id, status FROM orders", "SELECT status, COUNT(*)", "Error 3", "pinned"])
+        let ids = results.entries.map(\.id)
+        let log = QueryRunLog(startedAt: .now, entries: [
+            QueryRunLogEntry(statement: "SELECT id, customer_id, status FROM orders", outcome: .returnedRows(6), resultSetId: ids[0]),
+            QueryRunLogEntry(statement: "UPDATE orders SET total = 0", outcome: .affectedRows(2)),
+            QueryRunLogEntry(statement: "SELECT status, COUNT(*)", outcome: .returnedRows(4), resultSetId: ids[1]),
+            .failed("SELECT * FROM missing", message: "no such table", resultSetId: ids[2])
+        ])
+        let strip = QueryRunTabStrip(
+            page: .result,
+            results: results,
+            listsEachResult: true,
+            statementTitles: QueryRunTabStrip.statementTitles(in: log)
+        )
+
+        #expect(Self.titles(strip, results) == ["Message", "Summary", "Result 1", "Result 3", "Error 4", "pinned"])
+        #expect(QueryRunTabStrip.toolTip(of: strip.segments[2], in: results) == "SELECT id, customer_id, status FROM orders")
+        #expect(QueryRunTabStrip.statementTitles(in: nil).isEmpty)
     }
 
     @Test("Message and Summary lead the row, then a tab per result, even for one result")

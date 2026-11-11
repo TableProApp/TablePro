@@ -17,10 +17,19 @@ struct QueryRunTabStrip: Equatable {
     let segments: [Segment]
     /// -1 when no tab stands for the page in front, such as a result page with no results left.
     let selectedIndex: Int
+    /// A result's tab named by the statement that made it, "Result 2" or "Error 3", so the tab matches the Message
+    /// and Summary numbering and stays short. The statement itself is the tab's tooltip.
+    let statementTitles: [UUID: String]
 
     /// `listsEachResult` false folds the results into one tab for the active result, and the pull-down at the end of
     /// the row chooses which. The row folds when it is too narrow or the run made more results than tabs.
-    init(page: ResultsPage, results: ResultSetMenuModel, listsEachResult: Bool) {
+    init(
+        page: ResultsPage,
+        results: ResultSetMenuModel,
+        listsEachResult: Bool,
+        statementTitles: [UUID: String] = [:]
+    ) {
+        self.statementTitles = statementTitles
         let shown: [ResultSetMenuEntry]
         if listsEachResult {
             shown = results.entries
@@ -47,15 +56,33 @@ struct QueryRunTabStrip: Equatable {
         results.total <= ResultSetMenuModel.maximumTabCount
     }
 
-    static func title(of segment: Segment, in results: ResultSetMenuModel) -> String {
+    /// A result no statement of the last run made, such as one pinned from an earlier run, keeps its own name.
+    func title(of segment: Segment, in results: ResultSetMenuModel) -> String {
         switch segment {
         case .message:
             return String(localized: "Message")
         case .summary:
             return String(localized: "Summary")
         case .result(let entry):
-            return results.tabTitle(of: entry)
+            return statementTitles[entry.id] ?? results.tabTitle(of: entry)
         }
+    }
+
+    /// Each result of the run, keyed by its id, named after the statement's number in the run.
+    static func statementTitles(in log: QueryRunLog?) -> [UUID: String] {
+        guard let log else { return [:] }
+        var titles: [UUID: String] = [:]
+        for entry in log.entries {
+            guard let id = entry.resultSetId, titles[id] == nil else { continue }
+            let format: String
+            if case .failed = entry.outcome {
+                format = String(localized: "Error %d")
+            } else {
+                format = String(localized: "Result %d")
+            }
+            titles[id] = String(format: format, entry.ordinal)
+        }
+        return titles
     }
 
     static func toolTip(of segment: Segment, in results: ResultSetMenuModel) -> String {

@@ -684,6 +684,7 @@ struct MainEditorContentView: View {
                 QueryRunTabBar(
                     page: presentation.page,
                     results: resultSetEntriesModel(for: tab),
+                    statementTitles: QueryRunTabStrip.statementTitles(in: tab.display.runLog),
                     showsMenu: presentation.resultSetChooser == .tabRow,
                     actions: coordinator.runTabActions(forTab: tab.id)
                 )
