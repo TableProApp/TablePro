@@ -117,6 +117,24 @@ struct SettingsFieldDecodingTests {
         #expect(decoded == chosen)
     }
 
+    @Test("Editor settings saved before the Message and Summary tabs keep them off, and the choice round-trips")
+    func queryResultTabsDefaultOff() throws {
+        let legacy = try decode(EditorSettings.self, #"{"wordWrap":true,"queryBarTwoRows":true}"#)
+        #expect(legacy.queryResultTabs == false)
+        #expect(legacy.queryBarTwoRows == true)
+        #expect(EditorSettings.default.queryResultTabs == false)
+
+        let bad = try decode(EditorSettings.self, #"{"queryResultTabs":"yes","wordWrap":true}"#)
+        #expect(bad.queryResultTabs == false)
+        #expect(bad.wordWrap == true)
+
+        var chosen = EditorSettings.default
+        chosen.queryResultTabs = true
+        let decoded = try decode(EditorSettings.self, String(decoding: try JSONEncoder().encode(chosen), as: UTF8.self))
+        #expect(decoded.queryResultTabs == true)
+        #expect(decoded == chosen)
+    }
+
     @Test("Data Grid settings saved before the result bar could move keep it below the grid")
     func resultBarAtTopDefaultsOff() throws {
         let legacy = try decode(DataGridSettings.self, #"{"showRowNumbers":false}"#)

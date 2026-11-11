@@ -45,7 +45,8 @@ internal enum NavigatorLayoutPreset {
 
     /// The tabs' half of the layout: types under the column names, the sort and a Text mode in the
     /// filter panel, that panel open with each table, the result bar above the grid, tab titles that
-    /// name the database and connection, the query bar on two rows and colorful object icons. These
+    /// name the database and connection, the query bar on two rows, the Message and Summary tabs above
+    /// query results and colorful object icons. These
     /// live in the Data Grid, Tab, Editor and Appearance settings, so the caller passes those bindings
     /// beside the General one.
     internal static func applyDataView(
@@ -60,6 +61,7 @@ internal enum NavigatorLayoutPreset {
         dataGrid.resultBarAtTop = true
         tabs.titleShowsLocation = true
         editor.queryBarTwoRows = true
+        editor.queryResultTabs = true
         appearance.objectIconStyle = .colorful
     }
 
@@ -76,6 +78,7 @@ internal enum NavigatorLayoutPreset {
         dataGrid.resultBarAtTop = standardGrid.resultBarAtTop
         tabs.titleShowsLocation = TabSettings.default.titleShowsLocation
         editor.queryBarTwoRows = EditorSettings.default.queryBarTwoRows
+        editor.queryResultTabs = EditorSettings.default.queryResultTabs
         appearance.objectIconStyle = AppearanceSettings.default.objectIconStyle
     }
 

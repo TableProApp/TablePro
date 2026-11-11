@@ -105,7 +105,7 @@ struct NavigatorLayoutPresetTests {
         #expect(settings == before)
     }
 
-    @Test("Use Navigator Layout turns on the data view, the two-row query bar and colorful icons, and Standard Layout turns them off")
+    @Test("Use Navigator Layout turns on the data view, the two-row query bar, the run tabs and colorful icons, and Standard Layout turns them off")
     func dataViewFollowsTheButtons() {
         var tabs = TabSettings.default
         var grid = DataGridSettings.default
@@ -120,6 +120,7 @@ struct NavigatorLayoutPresetTests {
         #expect(grid.resultBarAtTop)
         #expect(tabs.titleShowsLocation)
         #expect(editor.queryBarTwoRows)
+        #expect(editor.queryResultTabs)
         #expect(appearance.objectIconStyle == .colorful)
 
         NavigatorLayoutPreset.restoreDataView(tabs: &tabs, dataGrid: &grid, editor: &editor, appearance: &appearance)
@@ -128,6 +129,7 @@ struct NavigatorLayoutPresetTests {
         #expect(tabs == TabSettings.default)
         #expect(editor == EditorSettings.default)
         #expect(!editor.queryBarTwoRows)
+        #expect(!editor.queryResultTabs)
         #expect(appearance == AppearanceSettings.default)
     }
 
@@ -153,6 +155,7 @@ struct NavigatorLayoutPresetTests {
         #expect(grid.defaultPageSize == 250)
         var expectedEditor = editorBefore
         expectedEditor.queryBarTwoRows = true
+        expectedEditor.queryResultTabs = true
         #expect(editor == expectedEditor)
         #expect(appearance.objectIconStyle == .colorful)
 

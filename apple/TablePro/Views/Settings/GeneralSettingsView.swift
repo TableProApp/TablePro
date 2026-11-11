@@ -85,7 +85,8 @@ struct GeneralSettingsView: View {
                     sidebar layout. In table tabs it shows column types in \
                     the header, the sort and a Text mode in the filter bar, opens that bar with each table, \
                     puts the result bar above the grid and names the database and connection in tab titles. \
-                    In query tabs it shows the query bar on two rows, and object icons turn colorful. \
+                    In query tabs it shows the query bar on two rows and Message and Summary tabs above the \
+                    results, and object icons turn colorful. \
                     Standard Layout turns them off again. Open connections switch layout too.
                     """))
             }

@@ -90,6 +90,9 @@ struct EditorSettings: Codable, Equatable {
     /// The query bar above the editor on two rows: Save, Query Builder, Format, Snippets and AI above
     /// the connection, the database and the run controls. Off keeps the single row.
     var queryBarTwoRows: Bool
+    /// Message, Summary and a tab per result above a query tab's results: what each statement of the last run did,
+    /// as a log and as a table. Off keeps the result tabs only, and only for two or more results.
+    var queryResultTabs: Bool
 
     static let `default` = EditorSettings(
         showLineNumbers: true,
@@ -104,7 +107,8 @@ struct EditorSettings: Codable, Equatable {
         showStatementRunControls: true,
         showInvisibleCharacters: true,
         jsonViewerPreferredMode: .text,
-        queryBarTwoRows: false
+        queryBarTwoRows: false,
+        queryResultTabs: false
     )
 
     init(
@@ -120,7 +124,8 @@ struct EditorSettings: Codable, Equatable {
         showStatementRunControls: Bool = true,
         showInvisibleCharacters: Bool = true,
         jsonViewerPreferredMode: JSONViewMode = .text,
-        queryBarTwoRows: Bool = false
+        queryBarTwoRows: Bool = false,
+        queryResultTabs: Bool = false
     ) {
         self.showLineNumbers = showLineNumbers
         self.highlightCurrentLine = highlightCurrentLine
@@ -135,6 +140,7 @@ struct EditorSettings: Codable, Equatable {
         self.showInvisibleCharacters = showInvisibleCharacters
         self.jsonViewerPreferredMode = jsonViewerPreferredMode
         self.queryBarTwoRows = queryBarTwoRows
+        self.queryResultTabs = queryResultTabs
     }
 
     init(from decoder: Decoder) throws {
@@ -161,6 +167,7 @@ struct EditorSettings: Codable, Equatable {
             .jsonViewerPreferredMode, default: fallback.jsonViewerPreferredMode
         )
         queryBarTwoRows = container.decodeSetting(.queryBarTwoRows, default: fallback.queryBarTwoRows)
+        queryResultTabs = container.decodeSetting(.queryResultTabs, default: fallback.queryResultTabs)
     }
 
     // Spelled out so `uppercaseKeywords` and `vimModeEnabled` stay on the wire after their properties became
@@ -182,6 +189,7 @@ struct EditorSettings: Codable, Equatable {
         case showInvisibleCharacters
         case jsonViewerPreferredMode
         case queryBarTwoRows
+        case queryResultTabs
     }
 
     private static func decodeKeywordCase(from container: KeyedDecodingContainer<CodingKeys>) -> SQLKeywordCase {
@@ -219,6 +227,7 @@ struct EditorSettings: Codable, Equatable {
         try container.encode(showInvisibleCharacters, forKey: .showInvisibleCharacters)
         try container.encode(jsonViewerPreferredMode, forKey: .jsonViewerPreferredMode)
         try container.encode(queryBarTwoRows, forKey: .queryBarTwoRows)
+        try container.encode(queryResultTabs, forKey: .queryResultTabs)
     }
 
     /// Clamped tab width (1-16)
