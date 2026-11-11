@@ -75556,7 +75556,7 @@
         }
       }
     },
-    "Except NULL and booleans, these colors show in the grid only while Color values by type is on in Settings > Data Grid." : {
+    "Except NULL and booleans, these colors show in the grid only while Color values by type is on in Settings > Data." : {
 
     },
     "exclamation mark" : {

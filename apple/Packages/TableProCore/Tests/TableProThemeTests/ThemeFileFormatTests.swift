@@ -116,24 +116,6 @@ struct ThemeFileFormatTests {
         #expect(try Self.refusal(root) == .unknownKeys(["panel.text"]))
     }
 
-    @Test("A theme restricted to format 3 drops its value colors and encodes as format 3")
-    func restrictedThemeEncodesAsFormatThree() throws {
-        let theme = ThemeDefinition(
-            id: "user.values",
-            name: "Values",
-            author: "",
-            appearance: .dark,
-            overrides: [.gridText: try ThemeColor(validating: "#F8F8F2"), .gridString: try ThemeColor(validating: "#F1FA8C")]
-        )
-
-        let restricted = theme.restricted(toSchema: ThemeSchema.oldestReadable)
-
-        #expect(restricted.overrides.keys.sorted { $0.rawValue < $1.rawValue } == [.gridText])
-        #expect(!restricted.setsSlots(introducedIn: 4))
-        #expect(theme.setsSlots(introducedIn: 4))
-        #expect(try Self.encodedSchema(restricted) == 3)
-    }
-
     @Test("The encoder writes format 3 for a theme with no value color, and format 4 once it has one")
     func encoderWritesTheOldestFormatThatHoldsTheTheme() throws {
         let theme = ThemeDefinition(

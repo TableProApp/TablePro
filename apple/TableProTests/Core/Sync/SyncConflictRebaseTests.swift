@@ -196,13 +196,8 @@ struct SyncConflictRebaseTests {
     }
 
     @Test(
-        "Shortcuts, AI providers and a theme's records both Macs changed go up whole from this Mac, never mixed",
-        arguments: [
-            AppSettingsCategory.keyboard,
-            AppSettingsCategory.ai,
-            ThemeCatalog.syncCategory(for: "ocean"),
-            ThemeCatalog.syncCategory(for: "ocean", schema: 4),
-        ]
+        "Shortcuts, AI providers and a theme both Macs changed go up whole from this Mac, never mixed",
+        arguments: [AppSettingsCategory.keyboard, AppSettingsCategory.ai, ThemeCatalog.syncCategory(for: "ocean")]
     )
     func wholeCategoriesAreNotMixed(category: String) throws {
         let base = SyncRecordMapper.toCKRecord(category: category, settingsData: Data(#"{"a":1,"b":1}"#.utf8), in: Self.zoneID)

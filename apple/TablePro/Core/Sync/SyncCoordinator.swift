@@ -11,6 +11,7 @@ import Foundation
 import os
 import TableProSyncTransport
 
+/// Central coordinator for iCloud sync
 @MainActor
 final class SyncCoordinator: ObservableObject {
     static let shared = SyncCoordinator()
@@ -21,7 +22,7 @@ final class SyncCoordinator: ObservableObject {
 
     let services: AppServices
     private let makeTransport: () -> any SyncTransport
-    // Created on the first run, so no CloudKit container exists while sync stays off.
+    /// Created on the first run, so no CloudKit container exists while sync stays off.
     private lazy var transport: any SyncTransport = makeTransport()
     let changeTracker: SyncChangeTracker
     private var connectionsCleanedOnPull: Set<String> = []
@@ -30,6 +31,7 @@ final class SyncCoordinator: ObservableObject {
     let columnLayouts: () -> FileColumnLayoutPersister
     let themeCatalog: ThemeCatalog
     private let makeNetworkMonitor: () -> SyncNetworkMonitor?
+    /// Why the license keeps sync off, or nil while it allows sync.
     private let licenseGate: @MainActor () -> DisableReason?
     let recordCreationDate: (CKRecord) -> Date?
     private var triggers: SyncTriggers?
@@ -39,19 +41,25 @@ final class SyncCoordinator: ObservableObject {
     private var hasStarted = false
     private var isRunning = false
 
-    // Queued rather than cancelling the run in flight: a cancelled run reported itself as a failure.
+    /// Triggers that arrived while a run was in flight. One more run follows it rather than the
+    /// trigger cancelling it: a cancelled run reported itself as a failure.
     private var pendingTriggers: [SyncTrigger] = []
 
-    // The notice and its button stay up during an automatic check, so a press then waits for the check to end.
+    /// Upload Again pressed while an automatic check was running. The notice stays on screen during
+    /// that check, so the button does too, and the person's answer must not be lost to it.
     private var uploadAgainRequested = false
 
+    /// Failed runs in a row, which sets how far the next attempt is held back.
     private var consecutiveFailures = 0
 
+    /// When the upload that failed may be tried again by a trigger that does not change the situation.
     private var nextAttempt: Date?
 
+    /// The end of the wait CloudKit named on its last throttle. No automatic run starts before it.
     private var throttledUntil: Date?
 
-    // Lets a run suspended across the network tell whether something else decided the status meanwhile.
+    /// Bumped every time something other than a sync run decides the status, so a run that has been
+    /// suspended across the network can tell whether its outcome is still the current answer.
     private var statusGeneration = 0
 
     init(
@@ -95,7 +103,8 @@ final class SyncCoordinator: ObservableObject {
 
     // MARK: - Lifecycle
 
-    // Only the license is observed while sync is off: it decides whether sync can turn on.
+    /// Call from AppDelegate at launch. Only the license is observed while sync is off: it decides
+    /// whether sync can turn on, and the Welcome window shows a license that does not cover it.
     func start() {
         guard !hasStarted else { return }
         hasStarted = true
@@ -106,10 +115,12 @@ final class SyncCoordinator: ObservableObject {
         Task { await sync(.launch) }
     }
 
+    /// Called when the app comes to the foreground
     func syncIfNeeded() {
         requestSync(.activation)
     }
 
+    /// Sync Now: the person asked, so it runs whatever held the last attempt back.
     func syncNow() async {
         await sync(.userRequest)
     }
@@ -119,6 +130,7 @@ final class SyncCoordinator: ObservableObject {
         Task { await sync(trigger) }
     }
 
+    /// Runs as much of a sync as `trigger` is admitted to, given how the last run ended.
     func sync(_ trigger: SyncTrigger) async {
         guard canSync() else {
             Self.logger.info("Sync skipped: not allowed for \(String(describing: trigger), privacy: .public)")
@@ -145,7 +157,9 @@ final class SyncCoordinator: ObservableObject {
 
         let generation = statusGeneration
         isRunning = true
-        // A standing error stays on screen through automatic runs, so the notice does not blink away at every activation.
+        /// A standing condition stays on screen through the automatic runs that check on it, so the
+        /// notice does not blink away at every activation. Only the person's own request shows
+        /// progress over it.
         if previousError == nil || trigger == .userRequest {
             syncStatus = .syncing
         }
@@ -174,13 +188,14 @@ final class SyncCoordinator: ObservableObject {
         case .unavailable(let failure):
             return CycleResult(admission: admission, failure: failure)
         case .ready(let isNewAccount):
-            // A condition the last account was under says nothing about this one.
+            /// A condition the last account was under says nothing about this one.
             if isNewAccount {
                 admission = .full
             }
         }
 
-        // Only an upload creates the zone: a download finding it again is how this Mac learns another device brought the data back.
+        /// Only a run that may upload creates the zone. A download looks for it, and finding it
+        /// again is how this Mac learns another device brought deleted data back.
         if metadataStorage.zoneState.createsZone(in: admission) {
             do {
                 try await transport.ensureZoneExists()
@@ -201,7 +216,8 @@ final class SyncCoordinator: ObservableObject {
             failure = await refined(decisive)
         }
         let nextZone = zone.after(failure: failure, reachedZone: pullFailure == nil)
-        // The removed zone's cached system fields would make every save into a recreated zone fail as an unknown record.
+        /// The old zone's records went with it. Kept, their system fields would make every later
+        /// save into a zone another device recreated fail as an unknown record.
         if nextZone == .removed, zone != .removed {
             recordCache.removeAll()
             metadataStorage.deferredDeletions = []
@@ -211,7 +227,9 @@ final class SyncCoordinator: ObservableObject {
         return CycleResult(admission: admission, failure: failure)
     }
 
-    // Read before any request, so a signed-out or restricted account is reported as itself, not as the first request's failure.
+    /// Reads the account before any request, so a signed-out or restricted account is reported as
+    /// itself rather than as whatever the first request fails with. Adopting its id is what keeps
+    /// another account's token, tombstones and cached records from being used against this one.
     private func confirmAccount() async -> AccountCheck {
         do {
             if let blocker = SyncBlocker(accountStatus: try await transport.accountStatus()) {
@@ -225,6 +243,7 @@ final class SyncCoordinator: ObservableObject {
     }
 
     private enum AccountCheck {
+        /// Whether the account differs from the one this Mac last synced with.
         case ready(isNewAccount: Bool)
         case unavailable(SyncStepFailure)
     }
@@ -243,7 +262,9 @@ final class SyncCoordinator: ObservableObject {
         return true
     }
 
-    // CloudKit answers notAuthenticated for every account state that is not available, so a fresh status read says which one.
+    /// CloudKit fails an operation with `notAuthenticated` for every account state that is not
+    /// available, so a fresh status read says which one it is. Signed in by that read, the account
+    /// is not ready yet rather than signed out.
     private func refined(_ failure: SyncStepFailure) async -> SyncStepFailure {
         guard case .blocked(let blocker) = failure.failure, blocker.isAccountState else { return failure }
         let status = try? await transport.accountStatus()
@@ -251,7 +272,13 @@ final class SyncCoordinator: ObservableObject {
         return SyncStepFailure(failure: .blocked(actual), error: .blocked(actual), retryAfter: failure.retryAfter)
     }
 
-    // A returning run used to overwrite a Sync off or a lost license with "Synced", so a stale run reports nothing.
+    /// Publishes the outcome of a sync run, unless something decided the status while it was in
+    /// flight.
+    ///
+    /// A run reads `canSync()` once on entry and then suspends across the whole CloudKit round
+    /// trip, so turning sync off, or losing the license, used to be overwritten by the returning
+    /// run: the indicator went back to "Synced" for a sync that would now be refused. Whoever
+    /// decided last wins, and a stale run reports nothing.
     private func finish(_ result: CycleResult, previousError: SyncError?, from generation: Int) {
         guard generation == statusGeneration else {
             Self.logger.info("Discarding a sync outcome the status moved on from")
@@ -285,6 +312,8 @@ final class SyncCoordinator: ObservableObject {
             ) ?? 30
             let until = Date().addingTimeInterval(wait)
             throttledUntil = until
+            /// The next attempt comes once the throttle is over, never inside it, and also when
+            /// nothing else was going to try again.
             if nextAttempt.map({ $0 < until }) ?? true {
                 nextAttempt = until
                 scheduleRetry(after: wait)
@@ -323,9 +352,11 @@ final class SyncCoordinator: ObservableObject {
         retryTask = nil
     }
 
+    /// Runs once for whatever arrived during the last run, with the trigger that may do the most.
     private func runPendingTrigger() async {
         guard !pendingTriggers.isEmpty else { return }
         let error = syncStatus.error
+        /// The network coming back mid-run matters only if the run ended unable to reach iCloud.
         let triggers = pendingTriggers.filter { $0 != .networkRestored || error == .offline }
         pendingTriggers = []
         let attempt = nextAttempt
@@ -341,13 +372,14 @@ final class SyncCoordinator: ObservableObject {
         await sync(next)
     }
 
+    /// Called when user enables sync in settings
     func enableSync() {
         Self.logger.info("enableSync() called")
 
         // Clear token to force a full fetch on first sync after enabling
         metadataStorage.saveToken(nil)
         metadataStorage.deferredDeletions = []
-        // Turning sync on is the person's choice to upload, a removed zone included.
+        /// Turning sync on is the person's choice to upload, a removed zone included.
         metadataStorage.zoneState = .unknown
 
         // Mark ALL existing local data as dirty so it gets pushed on first sync
@@ -363,7 +395,8 @@ final class SyncCoordinator: ObservableObject {
         }
     }
 
-    // Only on the person's word: Apple's guidance for a purged zone is never to upload again without asking.
+    /// The person's answer after TablePro's data was removed from iCloud: upload everything on this
+    /// Mac again. Never done without asking, which is Apple's guidance for a purged zone.
     func uploadAgain() async {
         guard syncStatus.error == .blocked(.dataDeletedFromICloud) else { return }
         guard !isRunning else {
@@ -376,14 +409,15 @@ final class SyncCoordinator: ObservableObject {
         recordCache.removeAll()
         markAllLocalDataDirty()
         await markSQLFavoritesDirty()
-        // Sync may have been turned off while the favorites were read.
+        /// Sync may have been turned off while the favorites were read.
         guard syncStatus.error == .blocked(.dataDeletedFromICloud) else { return }
         resetRetryState()
         decide(.idle)
         await sync(.userRequest)
     }
 
-    // Separate from markAllLocalDataDirty because the favorite store is an actor and reads asynchronously.
+    /// Marks existing SQL favorites and folders dirty. Separate from `markAllLocalDataDirty`
+    /// because the favorite store is an actor and must be read asynchronously.
     private func markSQLFavoritesDirty() async {
         let favorites = await services.sqlFavoriteManager.fetchFavorites()
         changeTracker.markDirty(.favorite, ids: favorites.map { $0.id.uuidString })
@@ -392,7 +426,12 @@ final class SyncCoordinator: ObservableObject {
         changeTracker.markDirty(.favoriteFolder, ids: folders.map { $0.id.uuidString })
     }
 
-    // One batch per type: marking record by record posted a notification each and hung the app on a few hundred column layouts.
+    /// Marks every synced record dirty so the first sync after enabling pushes the lot.
+    ///
+    /// Every type is marked as one batch. Marking record by record posted a change notification per
+    /// record, and an account with a few hundred saved column layouts built a chain of hundreds of
+    /// tasks each waiting on its predecessor until the app stopped responding to the switch that
+    /// started it.
     private func markAllLocalDataDirty() {
         let connections = services.connectionStorage.loadConnections()
         changeTracker.markDirty(
@@ -447,6 +486,7 @@ final class SyncCoordinator: ObservableObject {
         Self.logger.info("Marked all local data dirty: \(summary, privacy: .public)")
     }
 
+    /// Called when user disables sync in settings
     func disableSync() {
         decide(.disabled(.userDisabled))
     }
@@ -467,13 +507,18 @@ final class SyncCoordinator: ObservableObject {
             return
         }
 
-        // An error stays until a run clears it: a license or account notification is no evidence that storage was freed.
+        /// Only a move out of disabled is decided here. An error stays until a run clears it: a
+        /// license or account notification is no evidence that storage was freed.
         if case .disabled = syncStatus {
             decide(metadataStorage.zoneState.initialStatus)
         }
     }
 
-    // Retires the run in flight, so a path that decided nothing must not call it or the status sticks on Syncing.
+    /// Settles the status from outside a sync run, and retires whatever run is in flight.
+    ///
+    /// The branch that leaves a running sync alone deliberately does not come through here: it has
+    /// decided nothing, so invalidating the run would leave the status stuck on Syncing with
+    /// nothing left to move it.
     private func decide(_ status: SyncStatus) {
         statusGeneration += 1
         syncStatus = status
@@ -580,7 +625,7 @@ final class SyncCoordinator: ObservableObject {
         let itemFailure = SyncStepFailure(outcome)
         if let interruption {
             Self.logger.error("Push stopped part way: \(interruption.localizedDescription)")
-            // A blocker an earlier batch hit explains the interruption too; anything less does not.
+            /// A blocker an earlier batch hit explains the interruption too; anything less does not.
             let failure = itemFailure.flatMap { $0.failure.stopsUpload ? $0 : nil } ?? SyncStepFailure(interruption)
             return PushReport(echoGuard: echoGuard, failure: failure)
         }
@@ -635,7 +680,8 @@ final class SyncCoordinator: ObservableObject {
         Self.logger.info("Reading record types the last pull skipped: cleared sync token for full fetch")
     }
 
-    // A failed pull is reported, never passed over: the run did not bring this Mac up to date and must not say Synced.
+    /// Reports a failed download instead of passing over it: a run whose pull failed did not bring
+    /// this Mac up to date, and must not say Synced or move Last Synced.
     private func performPull(echoGuard: SyncEchoGuard?) async -> SyncStepFailure? {
         // Applied with the categories recorded here, so one turned off during the download is still read once.
         let settings = services.appSettingsStorage.loadSync()
@@ -706,17 +752,9 @@ final class SyncCoordinator: ObservableObject {
             deletedRecordIDs: result.deletedRecordIDs,
             newToken: result.newToken
         )
-        let themeRecords = pulledThemeRecords(
-            admitted.changedRecords,
-            deletedRecordIDs: deletedRecordIDs,
-            unreadRecordIDs: result.unreadRecordIDs,
-            isFullFetch: isFullFetch,
-            echoGuard: echoGuard
-        )
         let storesPersisted = applyRemoteChanges(
             admitted,
             deletedRecordIDs: deletedRecordIDs,
-            themeRecords: themeRecords,
             settings: settings,
             echoGuard: echoGuard
         )
@@ -725,7 +763,11 @@ final class SyncCoordinator: ObservableObject {
             echoGuard: echoGuard
         )
 
-        // Neither token nor cache is committed over a refused batch: saving the token first lost records the server never sent again.
+        /// The token and the cache are the record of what this device holds, so neither is
+        /// committed over a batch a store refused. Saving the token first acknowledged records that
+        /// were never written and the server never sent them again, and the cached record then
+        /// stood in as the merge base for an edit that had no local base at all. Not saving it
+        /// means the next pull replays the batch, which every apply here is written to survive.
         guard storesPersisted, favoritesOutcome != .failed else {
             Self.logger.error("Pull not acknowledged: a store refused to persist part of the batch")
             return false
@@ -741,9 +783,6 @@ final class SyncCoordinator: ObservableObject {
                 && SyncRecordType(rawValue: record.recordType).map { settings.syncs($0) } == true
         })
         recordCache.remove(result.deletedRecordIDs + deferred.due + missing)
-        if isFullFetch {
-            recordCache.remove(themeRecordsGone(afterFullFetch: result, zoneID: zoneID, pushed: pushed))
-        }
         settleDeferredDeletions(deferred, after: result, settings: settings)
 
         Self.logger.info(
@@ -778,11 +817,11 @@ final class SyncCoordinator: ObservableObject {
     // Performance: storage reads here (loadSync, loadConnections, loadGroups, etc.) run on
     // @MainActor and can block the UI on large sync batches. Consider moving to Task.detached
     // for large payloads.
-    // False when a record was not persisted, so the token is withheld and the batch arrives again.
+    /// Reports whether every record that can say so was persisted. A pull that answers false must
+    /// not commit its token: the batch has to arrive again.
     private func applyRemoteChanges(
         _ result: PullResult,
         deletedRecordIDs: [CKRecord.ID],
-        themeRecords: PulledThemeRecords,
         settings: SyncSettings,
         echoGuard: SyncEchoGuard?
     ) -> Bool {
@@ -792,7 +831,6 @@ final class SyncCoordinator: ObservableObject {
         let effects = applyRemoteRecords(
             result.changedRecords,
             deletedRecordIDs: deletedRecordIDs,
-            themeRecords: themeRecords,
             settings: settings,
             echoGuard: echoGuard
         )
@@ -808,7 +846,6 @@ final class SyncCoordinator: ObservableObject {
     private func applyRemoteRecords(
         _ changedRecords: [CKRecord],
         deletedRecordIDs: [CKRecord.ID],
-        themeRecords: PulledThemeRecords,
         settings: SyncSettings,
         echoGuard: SyncEchoGuard?
     ) -> SyncRemoteDeletionEffects {
@@ -872,7 +909,7 @@ final class SyncCoordinator: ObservableObject {
                     persistenceFailed = true
                 }
             case .settings:
-                if applyRemoteSettings(record, tombstoneIds: settingsTombstoneIds, themeRecords: themeRecords) == .failed {
+                if applyRemoteSettings(record, tombstoneIds: settingsTombstoneIds) == .failed {
                     persistenceFailed = true
                 }
             case .tableFavorite:
@@ -898,9 +935,9 @@ final class SyncCoordinator: ObservableObject {
         groupsOrTagsChanged = groupsOrTagsChanged || effects.groupsOrTagsChanged
         effects.persistenceFailed = persistenceFailed || effects.persistenceFailed
 
-        // After the batch, never per record: a pull carries no dependency order, so a legal
-        // hierarchy change spread over two records passes through a state that reads as a cycle
-        // until both have landed.
+        /// After the batch, never per record: a pull carries no dependency order, so a legal
+        /// hierarchy change spread over two records passes through a state that reads as a cycle
+        /// until both have landed.
         if groupsOrTagsChanged {
             services.groupStorage.repairHierarchy()
         }
@@ -1064,7 +1101,8 @@ final class SyncCoordinator: ObservableObject {
         return name
     }
 
-    // False withholds the pull token, so a profile this Mac failed to save arrives again.
+    /// False when the profile could not be persisted, which withholds the pull token so the record
+    /// arrives again rather than being acknowledged and lost.
     private func applyRemoteCredentialProfile(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
         let remoteProfile: CredentialProfile
         do {
@@ -1079,14 +1117,18 @@ final class SyncCoordinator: ObservableObject {
 
         var profiles = services.credentialProfileStorage.loadProfiles()
         if let index = profiles.firstIndex(where: { $0.id == remoteProfile.id }) {
-            // The password mode's payload never crosses the wire, so a local `.source` is kept over the `prompt` the remote sends instead.
+            /// The password mode's payload never crosses the wire, so a `.source` this Mac already
+            /// holds is kept rather than replaced by the `prompt` the remote had to send instead.
             var merged = remoteProfile
             if case .source = profiles[index].passwordMode, remoteProfile.passwordMode == .prompt {
                 merged.passwordMode = profiles[index].passwordMode
             }
             profiles[index] = merged
         } else {
-            // Pickers offer a profile by name alone, so a same-named profile from another Mac is renamed rather than shown twice.
+            /// Two Macs can hold same-named profiles with different ids, which is what happens when
+            /// someone recreated one by hand before they synced. The editor forbids duplicate names
+            /// and every picker offers a profile by name alone, so the arriving one is renamed
+            /// rather than landing as an indistinguishable second row.
             var arriving = remoteProfile
             if profiles.contains(where: { $0.name.compare(arriving.name, options: .caseInsensitive) == .orderedSame }) {
                 arriving.name = Self.availableProfileName(basedOn: arriving.name, taken: profiles)
@@ -1094,7 +1136,7 @@ final class SyncCoordinator: ObservableObject {
             profiles.append(arriving)
         }
         guard services.credentialProfileStorage.saveProfilesWithoutSync(profiles) else { return false }
-        // The connections linked to it carry a copy of the username, which every raw reader uses.
+        /// The connections linked to it carry a copy of the username, which every raw reader uses.
         services.credentialProfileStorage.writeUsernameThrough(remoteProfile, byUser: false)
         return true
     }
@@ -1117,24 +1159,19 @@ final class SyncCoordinator: ObservableObject {
             profiles.append(remoteProfile)
         }
         guard services.sshProfileStorage.saveProfilesWithoutSync(profiles) else { return false }
-        // Linked connections store a copy of the profile, so without this they keep tunnelling to the old host.
+        /// A linked connection stores the profile's configuration, so an edit that arrives from
+        /// another Mac has to reach those connections too or they keep tunnelling to the old host.
         services.sshProfileStorage.refreshLinkedConnections(with: remoteProfile, byUser: false)
         return true
     }
 
-    private func applyRemoteSettings(
-        _ record: CKRecord,
-        tombstoneIds: Set<String>,
-        themeRecords: PulledThemeRecords
-    ) -> RemoteApplyOutcome {
+    private func applyRemoteSettings(_ record: CKRecord, tombstoneIds: Set<String>) -> RemoteApplyOutcome {
         guard let category = SyncRecordMapper.settingsCategory(from: record),
               !tombstoneIds.contains(category),
               let data = SyncRecordMapper.settingsData(from: record)
         else { return .skipped }
         if ThemeCatalog.themeId(forSyncCategory: category) != nil {
-            return themeCatalog.applyRemote(category: category, data: data, merge: remoteThemeMerge) { newer in
-                tombstoneIds.contains(newer) ? nil : newerThemeRecord(newer, in: themeRecords)
-            }
+            return themeCatalog.applyRemote(category: category, data: data, merge: remoteThemeMerge)
         }
         do {
             try applySettingsData(data, for: category)
@@ -1168,7 +1205,8 @@ final class SyncCoordinator: ObservableObject {
         return entry
     }
 
-    // Upserts: an insert-if-absent apply would keep the local environment tag and drop the remote one.
+    /// Upserts rather than inserts. A database favorite carries a mutable payload, the environment
+    /// tag, so an insert-if-absent apply would keep the local tag and silently drop the remote one.
     private func applyRemoteDatabaseFavorite(_ record: CKRecord, tombstoneIds: Set<String>) {
         let entry: FavoriteDatabaseEntry
         do {
@@ -1186,6 +1224,8 @@ final class SyncCoordinator: ObservableObject {
 
     // MARK: - Observers
 
+    /// Runs on each turn from off to on. `decide` drops the triggers on the turn back, so nothing
+    /// listens while sync is off.
     private func arm() {
         guard triggers == nil else { return }
         triggers = SyncTriggers(
@@ -1194,7 +1234,7 @@ final class SyncCoordinator: ObservableObject {
             networkMonitor: observeNetwork()
         )
 
-        // Empty local storage (a fresh install or a wipe) needs a full fetch: a delta returns nothing.
+        /// Empty local storage (a fresh install or a wipe) needs a full fetch: a delta returns nothing.
         if services.connectionStorage.loadConnections().isEmpty {
             metadataStorage.saveToken(nil)
             Self.logger.info("No local connections: cleared sync token for full fetch")
@@ -1204,7 +1244,8 @@ final class SyncCoordinator: ObservableObject {
         scheduleThemeSeedIfNeeded()
     }
 
-    // Only requests a run: every run reads the account first, so a sign-out or a switch is handled there.
+    /// The run that follows reads the account and adopts its id, so a sign-out, a switch to another
+    /// account, and an account becoming ready are all handled where every other run handles them.
     private func observeAccountChanges() -> any NSObjectProtocol {
         NotificationCenter.default.addObserver(
             forName: .CKAccountChanged,
@@ -1217,7 +1258,8 @@ final class SyncCoordinator: ObservableObject {
         }
     }
 
-    // An elapsed debounce is never cancelled: cancelling a run mid-request reported a failure, so an edit during it queues a run.
+    /// A debounce that has elapsed is never cancelled: an edit made while its run is in flight queues
+    /// one more run instead, because cancelling the run mid-request reported a failure.
     private func observeLocalChanges() -> AnyCancellable {
         services.appEvents.syncChangeTracked
             .receive(on: RunLoop.main)
@@ -1247,7 +1289,9 @@ final class SyncCoordinator: ObservableObject {
             }
     }
 
-    // The monitor reports a return once, possibly before the run in flight reports offline, so it is kept for when the run ends.
+    /// The path can come back while a run is still retrying, before that run reports it could not
+    /// reach iCloud, and the monitor reports the return only once. So a return during a run is kept
+    /// for when it ends.
     private func observeNetwork() -> SyncNetworkMonitor? {
         let monitor = makeNetworkMonitor()
         monitor?.start { [weak self] in
@@ -1295,7 +1339,8 @@ private final class RemoteConnectionBatch {
     }
 }
 
-// Releasing it detaches every observer; the network monitor stops in its own deinit.
+/// What starts a run while sync is on. Releasing it detaches every observer; the network monitor
+/// stops in its own deinit.
 private final class SyncTriggers {
     private let accountObserver: any NSObjectProtocol
     private let localChanges: AnyCancellable
