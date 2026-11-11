@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::rc::Rc;
 
+use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use tablepro_core::Value;
@@ -19,6 +20,14 @@ impl DataGrid {
         self.compile_highlights();
         self.redraw();
         self.emit_by_name::<()>("highlight-rules-changed", &[]);
+    }
+
+    pub fn connect_highlight_rules_changed<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "highlight-rules-changed",
+            false,
+            glib::closure_local!(move |grid: &Self| f(grid)),
+        )
     }
 
     pub fn highlight_rules(&self) -> Vec<HighlightRule> {

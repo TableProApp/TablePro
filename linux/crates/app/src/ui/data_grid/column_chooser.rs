@@ -519,7 +519,7 @@ mod tests {
         let spec = GridSpec {
             layout: Some(LayoutBinding {
                 store: store.clone(),
-                connection_id,
+                state_key: connection_id.into(),
                 schema: Some("public".to_owned()),
                 table: "users".to_owned(),
             }),

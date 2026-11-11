@@ -17,7 +17,6 @@ use crate::services::grid::{
     display_text, empty_placeholder, hex_dump,
 };
 use crate::ui::data_grid::edit::CHOICE_ACTIONS;
-use crate::ui::data_grid::selection::Target;
 use crate::ui::data_grid::{DataGrid, GridRow, PinnedRow};
 use crate::ui::error_text::edit_parse_message;
 use crate::ui::handler_guard::HandlerGuard;
@@ -449,25 +448,6 @@ impl RowDetailPane {
         }
     }
 
-    /// The menu's items are the grid's own cell actions, held on the
-    /// shown row and field until it closes, as the cell menu holds its
-    /// cell, so they act on the field while the grid has no focus.
-    pub(super) fn connect_value_menu(&self, grid: &DataGrid) {
-        let button = self.imp().value_menu_button.get();
-        button.set_create_popup_func(glib::clone!(
-            #[weak(rename_to = pane)]
-            self,
-            move |_| pane.arm_value_menu()
-        ));
-        if let Some(popover) = button.popover() {
-            popover.connect_closed(glib::clone!(
-                #[weak]
-                grid,
-                move |_| grid.release_menu_target_soon()
-            ));
-        }
-    }
-
     /// The labels of the field shown, filled as the menu opens so they act
     /// on that row and field.
     pub(super) fn connect_choices(&self) {
@@ -492,16 +472,6 @@ impl RowDetailPane {
             button.insert_action_group(CHOICE_ACTIONS, Some(&menu.actions));
             model.append_section(None, &menu.section);
         }
-    }
-
-    fn arm_value_menu(&self) {
-        let Some(grid) = self.grid() else {
-            return;
-        };
-        let cell = self.current_pin().zip(self.imp().field.get());
-        let rows = cell.iter().map(|(row, _)| row.clone()).collect();
-        grid.hold_menu_target(Target { cell, rows });
-        grid.refresh_actions();
     }
 
     fn follow_style_scheme(&self, grid: &DataGrid) {

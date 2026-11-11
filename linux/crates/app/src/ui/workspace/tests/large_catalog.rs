@@ -839,7 +839,7 @@ impl Screen {
                         .objects(ObjectScope::AllSchemas)
                         .await
                         .map_err(|error| error.to_string())?;
-                    list_catalog(session, runtime, objects, Arc::from([]))
+                    list_catalog(session, runtime, objects, Arc::from([]), Default::default())
                         .await
                         .map_err(|failure| failure.to_string())
                 });

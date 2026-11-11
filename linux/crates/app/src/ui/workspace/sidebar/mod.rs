@@ -43,6 +43,7 @@ use sidebar_index::SidebarIndex;
 pub(super) use sidebar_view::SidebarView;
 pub(super) use tree_menu::creation_menu;
 
+use super::schema_filter::SchemaFilter;
 use super::table_naming::TableNaming;
 use super::{OpenMode, WorkspaceInput, WorkspaceModel, WorkspaceSender};
 use crate::runtime::DeliverInput;
@@ -122,6 +123,7 @@ pub(super) async fn list_catalog(
     tasks: Tasks,
     objects: Arc<[ObjectInfo]>,
     known: Arc<[SchemaInfo]>,
+    filter: SchemaFilter,
 ) -> Result<SidebarListing, TaskFailure> {
     let schemas = match session.schemas().await {
         Ok(schemas) => Some(schemas),
@@ -134,8 +136,9 @@ pub(super) async fn list_catalog(
     let database = session.database().map(str::to_owned);
     tasks
         .spawn_blocking_task(move || {
-            let listed = schemas.as_deref().unwrap_or(&known);
-            let mut index = SidebarIndex::build(&objects, listed);
+            let (shown, listed) = filter.listed(&objects, schemas.as_deref().unwrap_or(&known));
+            let listed = &*listed;
+            let mut index = SidebarIndex::build(&shown, listed);
             index.withhold_drops(|name| kept(dialect.as_deref(), database.as_deref(), name));
             if dialect
                 .as_deref()
@@ -210,18 +213,20 @@ impl WorkspaceModel {
     /// Read the session's schemas, which place the sidebar's sections and
     /// decide whether tab titles name their schema, then show `objects`
     /// under them. Only the last read asked for is shown.
-    fn read_sidebar(&mut self, objects: Arc<[ObjectInfo]>) {
+    pub(super) fn read_sidebar(&mut self, objects: Arc<[ObjectInfo]>) {
         let Some(session) = self.context.active.get() else {
             return;
         };
         self.sidebar_read += 1;
         let read = self.sidebar_read;
         let input = self.input.clone();
+        self.schema_filter.remember(&objects);
         let listing = list_catalog(
             session,
             self.context.tasks.clone(),
             objects,
             self.catalog_schemas.clone(),
+            self.schema_filter.filter(),
         );
         crate::runtime::spawn_and_deliver(&self.context.tasks, listing, move |listing| {
             match listing.and_then(|listing| listing) {
@@ -241,6 +246,7 @@ impl WorkspaceModel {
             self.catalog_schemas = schemas;
         }
         self.sidebar.show(listing.index);
+        self.show_schema_filter();
         self.on_table_naming(TableNaming::of(&self.catalog_schemas));
     }
 
