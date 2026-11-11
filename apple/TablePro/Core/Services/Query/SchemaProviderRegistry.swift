@@ -105,11 +105,16 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
                     guard type.supportsForeignKeys else { return [] }
                     let keys = try await driver.fetchForeignKeys(table: table, schema: schema)
                     // A key into another schema would pair with a same-named table of this one. On an engine with no
-                    // schema layer a qualifier names a database.
+                    // schema layer a qualifier names a database. With no schema named, the keys come from the
+                    // driver's current one, and a scope with no schema would keep keys into every schema.
                     let slot = await MainActor.run { EngineNamespaceSlot(databaseType: type) }
                     let origin = slot == .database
                         ? DatabaseScope(connectionId: scope.connectionId, database: schema ?? scope.database, schema: nil)
-                        : DatabaseScope(connectionId: scope.connectionId, database: scope.database, schema: schema ?? scope.schema)
+                        : DatabaseScope(
+                            connectionId: scope.connectionId,
+                            database: scope.database,
+                            schema: schema ?? scope.schema ?? driver.currentSchema
+                        )
                     return keys.filter { key in
                         ForeignKeyTargetScope.pointsWithin(
                             origin,
