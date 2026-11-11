@@ -5,9 +5,12 @@ use bson::spec::BinarySubtype;
 use bson::{Binary, Bson, Document, doc};
 use mongodb::{Client, ClientSession};
 use tablepro_core::column::ColumnKind;
+use tablepro_core::document::NUMBER_TYPE;
 use tablepro_core::meta::{IndexInfo, IndexKey, ObjectInfo, ObjectKind, RowCountEstimate, SchemaInfo, TableEstimate};
 use tablepro_core::{ColumnInfo, DriverError, LossPhase};
 
+use crate::call::ReadStop;
+use crate::cursor_rows::Read;
 use crate::endpoint::MongoEndpoint;
 use crate::field_types::{field_column, type_alias};
 use crate::shell_command::Plan;
@@ -20,17 +23,20 @@ const CENSUS_DOCUMENTS: i32 = 1_000;
 /// Databases MongoDB keeps for itself.
 const SYSTEM_DATABASES: [&str; 3] = ["admin", "config", "local"];
 
-/// What one catalogue read needs: the client, the call's own session and
-/// the server's time limit for it.
+/// What one catalogue read needs: the client, the call's own session, the
+/// server's time limit for it and the call's stop, which every command
+/// and `getMore` checks first.
 pub(crate) struct Reader<'a> {
     pub(crate) endpoint: &'a MongoEndpoint,
     pub(crate) client: &'a Client,
     pub(crate) session: &'a mut ClientSession,
     pub(crate) max_time: Option<i64>,
+    pub(crate) stop: &'a ReadStop,
 }
 
 impl Reader<'_> {
     async fn command(&mut self, database: &str, mut command: Document) -> Result<Document, DriverError> {
+        self.stop.before_command().await?;
         if let Some(millis) = self.max_time {
             command.insert("maxTimeMS", Bson::Int64(millis));
         }
@@ -47,6 +53,7 @@ impl Reader<'_> {
     }
 
     async fn documents(&mut self, database: &str, mut command: Document) -> Result<Vec<Document>, DriverError> {
+        self.stop.before_command().await?;
         if let Some(millis) = self.max_time {
             command.insert("maxTimeMS", Bson::Int64(millis));
         }
@@ -56,18 +63,16 @@ impl Reader<'_> {
             .run_cursor_command(command)
             .session(&mut *self.session)
             .await;
-        let mut cursor = match opened {
+        let cursor = match opened {
             Ok(cursor) => cursor,
             Err(error) => return Err(self.endpoint.explain(&error, LossPhase::Statement).await),
         };
+        let mut read = Read::new(self.endpoint, cursor, &mut *self.session, self.stop);
         let mut documents = Vec::new();
-        loop {
-            match cursor.advance(self.session).await {
-                Ok(true) => documents.push(crate::nested_document::current_document(&cursor)?),
-                Ok(false) => return Ok(documents),
-                Err(error) => return Err(self.endpoint.explain(&error, LossPhase::Statement).await),
-            }
+        while let Some(document) = read.next().await? {
+            documents.push(document);
         }
+        Ok(documents)
     }
 
     /// The databases the login may see, `default` among them even
@@ -187,21 +192,39 @@ impl Reader<'_> {
     }
 }
 
-/// Each collection's fields that its columns show as JSON, from the last
-/// census of its fields, so a page or an export of it shows them as
-/// Extended JSON straight from the BSON, which keeps an `int` apart from
-/// a `long`.
+/// Each collection's columns as this connection last read them, so a
+/// page or an export of it shows the JSON ones as Extended JSON straight
+/// from the BSON, which keeps an `int` apart from a `long`, and an export
+/// keeps the tab's column order.
 #[derive(Debug, Default)]
-pub(crate) struct JsonFields(Mutex<BTreeMap<(String, String), BTreeSet<String>>>);
+pub(crate) struct KnownFields(Mutex<BTreeMap<(String, String), Fields>>);
 
-impl JsonFields {
-    /// Keep the fields among a collection's columns that are JSON.
-    pub(crate) fn remember(&self, database: &str, collection: &str, columns: &[ColumnInfo]) -> BTreeSet<String> {
-        let fields: BTreeSet<String> = columns
-            .iter()
-            .filter(|column| matches!(column.column_type.kind, ColumnKind::Json { .. }))
-            .map(|column| column.name.clone())
-            .collect();
+/// A collection's columns, as the last census of its fields found them.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Fields {
+    /// Every column's field, in the columns' order.
+    pub(crate) order: Vec<String>,
+    /// The fields shown as JSON.
+    pub(crate) json: BTreeSet<String>,
+    /// The JSON fields of numbers of more than one type, `NUMBER_TYPE`.
+    pub(crate) numbers: BTreeSet<String>,
+}
+
+impl KnownFields {
+    pub(crate) fn remember(&self, database: &str, collection: &str, columns: &[ColumnInfo]) -> Fields {
+        let fields = Fields {
+            order: columns.iter().map(|column| column.name.clone()).collect(),
+            json: columns
+                .iter()
+                .filter(|column| matches!(column.column_type.kind, ColumnKind::Json { .. }))
+                .map(|column| column.name.clone())
+                .collect(),
+            numbers: columns
+                .iter()
+                .filter(|column| column.column_type.name == NUMBER_TYPE)
+                .map(|column| column.name.clone())
+                .collect(),
+        };
         self.0
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -209,13 +232,13 @@ impl JsonFields {
         fields
     }
 
-    /// The JSON fields of the collection `planned` reads. A connection
-    /// that has not read them, as a new one after a reconnect has not,
-    /// takes the census first in the same call, so it shows the fields the
-    /// columns it was handed show as JSON.
-    pub(crate) async fn of(&self, planned: &Plan, reader: &mut Reader<'_>) -> Result<BTreeSet<String>, DriverError> {
+    /// The columns of the collection `planned` reads. A connection that
+    /// has not read them, as a new one after a reconnect has not, takes the
+    /// census first in the same call, so it shows the fields the columns it
+    /// was handed show as JSON.
+    pub(crate) async fn of(&self, planned: &Plan, reader: &mut Reader<'_>) -> Result<Fields, DriverError> {
         let Some((database, collection)) = planned.collection() else {
-            return Ok(BTreeSet::new());
+            return Ok(Fields::default());
         };
         let known = self
             .0

@@ -11,9 +11,7 @@ use super::document_read::collection;
 use super::shell_params::ShellParams;
 
 /// A new document of the cells set. A cell left to the server is left
-/// out, which for `_id` lets the server make one. A NULL cell is left out
-/// too: a page reads a missing field as NULL, and an explicit `null` is a
-/// field that a sparse or partial index counts.
+/// out, which for `_id` lets the server make one.
 pub(crate) fn insert(
     table: &TableRef,
     columns: &[ColumnInfo],
@@ -28,7 +26,7 @@ pub(crate) fn insert(
     let mut params = ShellParams::new();
     let mut fields = Vec::new();
     for (column, cell) in columns.iter().zip(cells) {
-        if let Some(value) = cell.value().filter(|value| !value.is_null()) {
+        if let Some(value) = cell.value() {
             fields.push((column.name.clone(), params.bind(value.clone(), Some(column))?));
         }
     }
@@ -38,8 +36,7 @@ pub(crate) fn insert(
     Ok(params.statement(&call))
 }
 
-/// Several new documents, all of the same columns, each leaving out its
-/// NULL cells as `insert` does.
+/// Several new documents, all of the same columns.
 pub(crate) fn insert_many(
     table: &TableRef,
     columns: &[&ColumnInfo],
@@ -59,9 +56,7 @@ pub(crate) fn insert_many(
         }
         let mut fields = Vec::with_capacity(columns.len());
         for (&column, value) in columns.iter().zip(row) {
-            if !value.is_null() {
-                fields.push((column.name.clone(), params.bind(value, Some(column))?));
-            }
+            fields.push((column.name.clone(), params.bind(value, Some(column))?));
         }
         documents.push(ShellValue::Object(fields));
     }
@@ -72,9 +67,8 @@ pub(crate) fn insert_many(
 }
 
 /// The fields changed on one document, with `$set`. Only the fields named
-/// change; one the document lacked is added. A field set to NULL is
-/// removed with `$unset`, as a new document leaves it out, so a sparse or
-/// partial index stops counting it. A key keeps `$set`.
+/// change; one the document lacked is added. A field given back to the
+/// server is removed with `$unset`, which a key cannot be.
 pub(crate) fn update(
     table: &TableRef,
     columns: &[ColumnInfo],
@@ -99,18 +93,18 @@ pub(crate) fn update(
                 name: column.name.clone(),
             });
         }
-        let Some(value) = input.value() else {
-            return Err(BuildSqlError::ServerComputedValue {
-                name: column.name.clone(),
-            });
-        };
-        match value {
-            Value::Null if !names.contains(&column.name) => {
-                unset.push((column.name.clone(), ShellValue::string("")));
-            }
-            _ => {
+        match input {
+            CellInput::Value(value) => {
                 let read = read.iter().find(|(at, _)| at == index).map(|(_, value)| value);
                 set.push((column.name.clone(), params.bind_edit(value.clone(), column, read)?));
+            }
+            CellInput::Default if !names.contains(&column.name) => {
+                unset.push((column.name.clone(), ShellValue::string("")));
+            }
+            CellInput::Default | CellInput::Expression(_) => {
+                return Err(BuildSqlError::ServerComputedValue {
+                    name: column.name.clone(),
+                });
             }
         }
     }

@@ -226,7 +226,7 @@ fn constructed(kind: ShellConstructor, args: &[ShellValue]) -> Converted {
         }
         ShellConstructor::MinKey => Bson::MinKey,
         ShellConstructor::MaxKey => Bson::MaxKey,
-        ShellConstructor::RegExp => regex(
+        ShellConstructor::RegExp | ShellConstructor::BsonRegExp => regex(
             text_arg(args, 0).unwrap_or_default(),
             text_arg(args, 1).unwrap_or_default(),
         )?,
@@ -427,6 +427,9 @@ mod tests {
         assert_eq!(shell("NumberLong(7)"), Bson::Int64(7));
         assert_eq!(shell("NumberInt('7')"), Bson::Int32(7));
         assert_eq!(shell("NumberDecimal('1.50')").to_string(), "1.50");
+        assert_eq!(shell("Double(2)"), Bson::Double(2.0));
+        assert!(matches!(shell("Double(-0)"), Bson::Double(zero) if zero == 0.0 && zero.is_sign_negative()));
+        assert!(matches!(shell("{$numberDouble: '-0.0'}"), Bson::Double(zero) if zero.is_sign_negative()));
     }
 
     #[test]
@@ -442,6 +445,11 @@ mod tests {
             shell("/a.b/xi"),
             shell("{$regularExpression: {pattern: 'a.b', options: 'ix'}}")
         );
+        assert_eq!(
+            shell("BSONRegExp('(?i)a++b', 'xsl')"),
+            shell("{$regularExpression: {pattern: '(?i)a++b', options: 'lsx'}}")
+        );
+        assert_eq!(shell("new BSONRegExp('a')"), shell("RegExp('a', '')"));
         assert_eq!(shell("Timestamp(5, 2)"), shell("{$timestamp: {t: 5, i: 2}}"));
         assert_eq!(shell("BinData(0, 'aGk=')"), shell("HexData(0, '6869')"));
         assert!(

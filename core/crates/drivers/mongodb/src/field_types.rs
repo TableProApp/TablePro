@@ -7,6 +7,7 @@ use tablepro_core::column::{
     BoolStorage, ColumnDefault, ColumnKind, ColumnType, FloatWidth, IntegerKind, IntegerWidth, ReadForm, SqlExpression,
     TemporalZone, TextLength,
 };
+use tablepro_core::document::NUMBER_TYPE;
 
 /// The `$type` alias of a value, with a UUID told apart from other
 /// binary data since the grid shows and edits it as a UUID.
@@ -41,7 +42,9 @@ pub(crate) fn type_alias(value: &Bson) -> &'static str {
 /// more than one type, numbers of two BSON types among them, or of
 /// documents, arrays or binary data other than UUIDs, is JSON, which
 /// writes each value as the type it is, so an edit leaves an `int` an
-/// `int` beside a `long`. A null names no type: it fits any.
+/// `int` beside a `long`. Numbers of more than one type are
+/// `NUMBER_TYPE`, which an export writes as numbers. A null names no
+/// type: it fits any.
 pub(crate) fn shared_type(aliases: &BTreeSet<&str>) -> &'static str {
     let typed: BTreeSet<&str> = aliases.iter().copied().filter(|alias| *alias != "null").collect();
     match typed.iter().next() {
@@ -60,6 +63,13 @@ pub(crate) fn shared_type(aliases: &BTreeSet<&str>) -> &'static str {
             "array" => "array",
             _ => "mixed",
         },
+        Some(_)
+            if typed
+                .iter()
+                .all(|alias| ["int", "long", "double", "decimal"].contains(alias)) =>
+        {
+            NUMBER_TYPE
+        }
         _ => "mixed",
     }
 }
@@ -105,7 +115,10 @@ pub(crate) fn column_type(name: &str) -> ColumnType {
 /// A field as a column of the collection's grid. `_id` names the
 /// document: every document has one, and it is unique. A new document
 /// left without one gets an ObjectId, so a new row leaves it out unless
-/// the user types one.
+/// the user types one. Any other field a new row leaves out until a value
+/// or NULL is typed, so its default is `$$REMOVE`, MongoDB's name for a
+/// missing value. An insert leaves a defaulted field out, so neither
+/// text is evaluated.
 pub(crate) fn field_column(name: &str, aliases: &BTreeSet<&str>) -> ColumnInfo {
     let id = name == "_id";
     ColumnInfo {
@@ -116,16 +129,18 @@ pub(crate) fn field_column(name: &str, aliases: &BTreeSet<&str>) -> ColumnInfo {
         is_auto_increment: false,
         is_generated: false,
         partition_scoped: false,
-        default: match id {
-            true => ColumnDefault::Expression(SqlExpression::from_catalog_text("ObjectId()")),
-            false => ColumnDefault::None,
-        },
+        default: ColumnDefault::Expression(SqlExpression::from_catalog_text(match id {
+            true => "ObjectId()",
+            false => "$$REMOVE",
+        })),
         comment: None,
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use tablepro_core::edit::{CellInput, new_draft_cell};
+
     use super::*;
 
     fn shared(aliases: &[&'static str]) -> &'static str {
@@ -136,9 +151,10 @@ mod tests {
     fn a_field_takes_the_type_its_values_share() {
         assert_eq!(shared(&["int"]), "int");
         assert_eq!(shared(&["long", "null"]), "long");
-        assert_eq!(shared(&["int", "long"]), "mixed");
-        assert_eq!(shared(&["int", "double", "null"]), "mixed");
-        assert_eq!(shared(&["decimal", "int"]), "mixed");
+        assert_eq!(shared(&["int", "long"]), NUMBER_TYPE);
+        assert_eq!(shared(&["int", "double", "null"]), NUMBER_TYPE);
+        assert_eq!(shared(&["decimal", "int", "long", "double"]), NUMBER_TYPE);
+        assert_eq!(shared(&["long", "string"]), "mixed");
         assert_eq!(shared(&["uuid", "null"]), "uuid");
         assert_eq!(shared(&["uuid", "binData"]), "mixed");
         assert_eq!(shared(&["string", "null"]), "string");
@@ -146,6 +162,9 @@ mod tests {
         assert_eq!(shared(&["object"]), "object");
         assert_eq!(shared(&["null"]), "mixed");
         assert_eq!(shared(&["timestamp"]), "mixed");
+        let numbers = column_type(NUMBER_TYPE);
+        assert_eq!(numbers.name, NUMBER_TYPE);
+        assert!(matches!(numbers.kind, ColumnKind::Json { .. }));
     }
 
     #[test]
@@ -158,5 +177,22 @@ mod tests {
             field_column("tags", &["array"].into_iter().collect()).column_type.kind,
             ColumnKind::Json { .. }
         ));
+    }
+
+    #[test]
+    fn a_new_row_leaves_every_field_out_until_one_is_typed() {
+        let field = field_column("email", &["string"].into_iter().collect());
+
+        assert!(field.nullable && !field.primary_key);
+        assert!(field.default.needs_server_evaluation(), "an insert leaves it out");
+        assert_eq!(new_draft_cell(&field), CellInput::Default);
+        assert!(
+            !field.is_assigned_on_insert(std::slice::from_ref(&field)),
+            "a copied row keeps the value"
+        );
+        assert_eq!(
+            new_draft_cell(&field_column("_id", &["objectId"].into_iter().collect())),
+            CellInput::Default
+        );
     }
 }

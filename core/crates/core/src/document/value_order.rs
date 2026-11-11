@@ -84,7 +84,7 @@ fn shell_bracket(value: &ShellValue) -> Option<usize> {
             ShellConstructor::Uuid | ShellConstructor::BinData | ShellConstructor::HexData => "binData",
             ShellConstructor::MinKey => "minKey",
             ShellConstructor::MaxKey => "maxKey",
-            ShellConstructor::RegExp => "regex",
+            ShellConstructor::RegExp | ShellConstructor::BsonRegExp => "regex",
             ShellConstructor::Code => return None,
         },
         ShellValue::Object(fields) => match fields.first().map(|(key, _)| key.as_str()) {

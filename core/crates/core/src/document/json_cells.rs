@@ -1,6 +1,13 @@
-use crate::column::{ColumnInfo, ColumnKind};
+use std::borrow::Cow;
+
+use crate::column::{ColumnInfo, ColumnKind, ColumnType};
 use crate::query_result::QueryResult;
-use crate::value::{JsonText, Temporal, Value};
+use crate::sql_syntax::mongo::{ShellValue, parse_value};
+use crate::value::{JsonText, SqlDecimal, Temporal, Value};
+
+/// Longer than any numeric wrapper: a longer cell is a document, read
+/// without parsing it.
+const WRAPPER_LIMIT: usize = 128;
 
 /// A page's cells in a column the grid edits as JSON, written as
 /// extended JSON. A field whose documents hold values of several types is
@@ -25,6 +32,63 @@ pub(crate) fn json_cells(mut result: QueryResult, columns: &[ColumnInfo]) -> Que
         }
     }
     result
+}
+
+/// A cell of a `NUMBER_TYPE` column that holds one number, as the
+/// number: a bare JSON number, or one Extended JSON wrapper of its digits,
+/// `{"$numberLong": "7"}`. A row export writes it as a number column's
+/// cell, which a sheet sums. Any other value, and any other column's,
+/// comes back as it is.
+pub(crate) fn json_number<'a>(value: &'a Value, column: &ColumnType) -> Cow<'a, Value> {
+    let number = match value {
+        Value::Json(json) if holds_numbers(column) => numeric_json(json.as_str().trim()),
+        _ => None,
+    };
+    number.map_or(Cow::Borrowed(value), Cow::Owned)
+}
+
+/// Whether the column is the JSON column of a field of numbers.
+pub(crate) fn holds_numbers(column: &ColumnType) -> bool {
+    column.name == super::NUMBER_TYPE && matches!(column.kind, ColumnKind::Json { .. })
+}
+
+fn numeric_json(text: &str) -> Option<Value> {
+    match text.as_bytes().first()? {
+        b'-' | b'0'..=b'9' => plain_number(text),
+        b'{' if text.len() <= WRAPPER_LIMIT => wrapped_number(text),
+        _ => None,
+    }
+}
+
+/// A number's digits as they read. A double, which relaxed Extended JSON
+/// writes in its shortest round-trip form, stays a double, so a sheet keeps
+/// it a number; other digits stay exact as a decimal.
+fn plain_number(text: &str) -> Option<Value> {
+    if let Ok(integer) = text.parse() {
+        return Some(Value::Int(integer));
+    }
+    let double = text.parse::<f64>().ok().filter(|number| number.is_finite());
+    match double {
+        Some(number) if text.contains(['e', 'E']) || format!("{number:?}") == text => Some(Value::Float64(number)),
+        _ => text.parse().ok().map(Value::Decimal),
+    }
+}
+
+fn wrapped_number(text: &str) -> Option<Value> {
+    let value = parse_value(text).ok()?;
+    let [(key, ShellValue::String(digits))] = value.as_object()? else {
+        return None;
+    };
+    match key.as_str() {
+        "$numberInt" => digits.parse::<i32>().ok().map(|number| Value::Int(number.into())),
+        "$numberLong" => digits.parse().ok().map(Value::Int),
+        "$numberDouble" => match digits.as_str() {
+            "NaN" | "Infinity" | "-Infinity" => digits.parse().ok().map(Value::Float64),
+            _ => plain_number(digits),
+        },
+        "$numberDecimal" => digits.parse::<SqlDecimal>().ok().map(Value::Decimal),
+        _ => None,
+    }
 }
 
 fn as_json(value: Value) -> Value {
@@ -79,8 +143,9 @@ fn double(number: f64) -> String {
     }
 }
 
+const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
 pub(super) fn base64(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
         let triple = chunk
@@ -97,6 +162,22 @@ pub(super) fn base64(bytes: &[u8]) -> String {
         }
     }
     out
+}
+
+/// The bytes of standard base64, `None` for text that is not.
+pub(super) fn base64_bytes(text: &str) -> Option<Vec<u8>> {
+    let mut bytes = Vec::with_capacity(text.len() / 4 * 3);
+    let (mut buffer, mut bits) = (0u32, 0u32);
+    for digit in text.trim_end_matches('=').bytes() {
+        let sextet = ALPHABET.iter().position(|&letter| letter == digit)?;
+        buffer = ((buffer << 6) | sextet as u32) & 0xffff;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            bytes.push((buffer >> bits) as u8);
+        }
+    }
+    Some(bytes)
 }
 
 #[cfg(test)]
@@ -125,6 +206,77 @@ mod tests {
             default: ColumnDefault::None,
             comment: None,
         }
+    }
+
+    #[test]
+    fn a_number_columns_cell_of_one_number_is_that_number_and_any_other_stays() {
+        let numbers_column = column("n", ColumnKind::Json { binary: false }).column_type;
+        let numbers_column = ColumnType {
+            name: crate::document::NUMBER_TYPE.to_owned(),
+            ..numbers_column
+        };
+        let json = |text: &str| Value::Json(JsonText::parse(text.to_owned()).unwrap());
+        let decimal = |text: &str| Value::Decimal(text.parse().unwrap());
+        let numbers = [
+            ("7", Value::Int(7)),
+            ("-7", Value::Int(-7)),
+            ("19.90", decimal("19.90")),
+            ("-0.1", Value::Float64(-0.1)),
+            ("9.99", Value::Float64(9.99)),
+            ("0.30000000000000004", Value::Float64(0.300_000_000_000_000_04)),
+            ("1e3", Value::Float64(1000.0)),
+            ("2.5E-7", Value::Float64(2.5e-7)),
+            ("123456789012345678901234", decimal("123456789012345678901234")),
+            (r#"{"$numberInt": "7"}"#, Value::Int(7)),
+            (r#"{"$numberLong": "3000000000"}"#, Value::Int(3_000_000_000)),
+            (r#" { "$numberDouble": "1.50" } "#, decimal("1.50")),
+            (r#"{"$numberDouble": "1e300"}"#, Value::Float64(1e300)),
+            (r#"{"$numberDouble": "-Infinity"}"#, Value::Float64(f64::NEG_INFINITY)),
+            (r#"{"$numberDecimal": "9.990"}"#, decimal("9.990")),
+        ];
+        for (text, number) in numbers {
+            assert_eq!(json_number(&json(text), &numbers_column).into_owned(), number, "{text}");
+        }
+        assert!(matches!(
+            json_number(&json(r#"{"$numberDouble": "NaN"}"#), &numbers_column).into_owned(),
+            Value::Float64(number) if number.is_nan()
+        ));
+
+        for kept in [
+            json(r#""7""#),
+            json("null"),
+            json("[1]"),
+            json(r#"{"$numberLong": 7}"#),
+            json(r#"{"$numberLong": "x"}"#),
+            json(r#"{"$numberInt": "3000000000"}"#),
+            json(r#"{"$numberLong": "1", "a": 1}"#),
+            json(r#"{"$oid": "5f1d7a0c9b1e8b2a3c4d5e6f"}"#),
+            Value::Text("7".to_owned()),
+        ] {
+            assert!(
+                matches!(json_number(&kept, &numbers_column), Cow::Borrowed(_)),
+                "{kept:?}"
+            );
+        }
+        let jsonb = ColumnType {
+            name: "jsonb".to_owned(),
+            ..numbers_column.clone()
+        };
+        let mixed = column("m", ColumnKind::Json { binary: false }).column_type;
+        let text_named_number = ColumnType {
+            kind: ColumnKind::Text {
+                length: TextLength::Unbounded,
+            },
+            ..numbers_column
+        };
+        for other in [jsonb, mixed, text_named_number] {
+            for cell in [json("19.90"), json(r#"{"$numberLong": "7"}"#)] {
+                assert!(matches!(json_number(&cell, &other), Cow::Borrowed(_)), "{other:?}");
+            }
+        }
+        assert_eq!(base64_bytes("aGkh"), Some(b"hi!".to_vec()));
+        assert_eq!(base64_bytes("aGk="), Some(b"hi".to_vec()));
+        assert_eq!(base64_bytes("a*"), None);
     }
 
     #[test]

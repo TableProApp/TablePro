@@ -64,6 +64,7 @@ fn collapse_line_breaks(text: String, opts: &CsvOptions) -> String {
 }
 
 pub(super) fn csv_cell(value: &Value, column: &ColumnType, opts: &CsvOptions) -> String {
+    let value = &*crate::document::json_number(value, column);
     let Some(text) = value_text(value, column) else {
         return if opts.null_to_empty {
             String::new()
@@ -189,6 +190,24 @@ mod tests {
             sanitize_formulas: true,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn a_number_fields_json_is_written_as_the_number_and_other_json_as_it_is() {
+        let (columns, rows) = super::super::test_columns::mixed_json();
+        let opts = CsvOptions {
+            header_row: false,
+            decimal: CsvDecimal::Comma,
+            delimiter: CsvDelimiter::Semicolon,
+            ..plain()
+        };
+
+        let out = render_csv(&columns, &rows, &opts).unwrap();
+
+        assert_eq!(
+            out,
+            "3000000000;19,90;\"{\"\"$oid\"\": \"\"5f1d7a0c9b1e8b2a3c4d5e6f\"\"}\";19.90;\"{\"\"$numberLong\"\": \"\"7\"\"}\"\n"
+        );
     }
 
     // An importer reads the quote a sanitized field gains as part of the value.
