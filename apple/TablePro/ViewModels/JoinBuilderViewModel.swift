@@ -66,12 +66,32 @@ internal final class JoinBuilderViewModel: ObservableObject {
 
     private var columnTypes: [String: [String: ColumnType]] = [:]
     private var qualifyingSchema: String?
+    /// What each listed name is, from the sidebar's own list of the scope: the catalog read names tables
+    /// and views alike, and a view drawn with the table glyph reads as something it can write to.
+    @Published internal private(set) var relationTypes: [String: TableInfo.TableType] = [:]
     private let services: AppServices
+    private let listedRelations: @MainActor (DatabaseScope) -> [TableInfo]
 
-    internal init(launch: JoinBuilderLaunchRequest, connection: DatabaseConnection, services: AppServices = .live) {
+    internal init(
+        launch: JoinBuilderLaunchRequest,
+        connection: DatabaseConnection,
+        services: AppServices = .live,
+        listedRelations: @escaping @MainActor (DatabaseScope) -> [TableInfo] = { scope in
+            DatabaseTreeMetadataService.shared.tables(
+                connectionId: scope.connectionId, database: scope.database, schema: scope.schema
+            )
+        }
+    ) {
         self.launch = launch
         self.connection = connection
         self.services = services
+        self.listedRelations = listedRelations
+    }
+
+    /// The glyph the table list draws for `table` in `style`: the sidebar's for its kind, a table when the
+    /// sidebar has not listed it.
+    internal func objectIcon(for table: String, style: ObjectIconStyle) -> ObjectIcon {
+        ObjectIconProvider.icon(for: .relation(relationTypes[table] ?? .table), style: style)
     }
 
     internal var scopeDescription: String {
@@ -147,6 +167,10 @@ internal final class JoinBuilderViewModel: ObservableObject {
     internal func adopt(_ catalog: Catalog, scope: DatabaseScope) {
         graph = catalog.graph
         columnTypes = catalog.columnTypes
+        relationTypes = Dictionary(
+            listedRelations(scope).map { ($0.name, $0.type) },
+            uniquingKeysWith: { first, _ in first }
+        )
         // Picking a schema in the sidebar does not move SQL Server's name resolution, so qualify as browsing does.
         qualifyingSchema = SchemaQualifiedName.explicitSchema(scope.schema, databaseType: connection.type)
         var seeded = JoinQueryDraft()
