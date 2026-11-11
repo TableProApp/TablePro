@@ -988,6 +988,10 @@ struct ExecutionGateTests {
             "SELECT id FROM orders WHERE total = offset(1)",
             "SELECT join(id) FROM orders",
             "SELECT id FROM orders WHERE status IN (purge_orders())",
+            "SELECT 10 DIV pivot(1)",
+            "SELECT 10 MOD pivot(1)",
+            "SELECT paid XOR offset(1) FROM orders",
+            "SELECT id FROM orders WHERE /* don't */ offset(1) = 1",
         ]
     )
     func keywordNamedFunctionIsAsked(sql: String) async {
@@ -1019,6 +1023,24 @@ struct ExecutionGateTests {
         let gate = makeReadOnlyGate(policy: Self.writableFunctions, confirm: confirm)
 
         let decision = await gate.authorize(makeRequest(sql: sql, kind: .readQuery, databaseType: .oracle))
+
+        #expect(decision.isAuthorized)
+        #expect(confirm.callCount == 0)
+    }
+
+    @Test(
+        "A word operator before a parenthesis runs without asking",
+        arguments: [
+            "SELECT 10 DIV (2), paid XOR (refunded) FROM orders",
+            "SELECT id FROM orders WHERE name REGEXP ('^a') OR name RLIKE ('b$')",
+            "SELECT id FROM orders WHERE note LIKE 'a!%' ESCAPE ('!')",
+        ]
+    )
+    func wordOperatorsRun(sql: String) async {
+        let confirm = StubConfirming(answer: false)
+        let gate = makeReadOnlyGate(policy: Self.writableFunctions, confirm: confirm)
+
+        let decision = await gate.authorize(makeRequest(sql: sql, kind: .readQuery, databaseType: .mysql))
 
         #expect(decision.isAuthorized)
         #expect(confirm.callCount == 0)

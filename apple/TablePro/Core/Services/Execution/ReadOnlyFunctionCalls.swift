@@ -152,11 +152,20 @@ internal enum ReadOnlyFunctionCalls {
         "MINUS": [.afterOperand],
         "LIMIT": [.afterOperand],
         "OFFSET": [.afterOperand],
+        // Word operators: `10 DIV (2)`, `a XOR (b)`.
+        "DIV": [.afterOperand],
+        "XOR": [.afterOperand],
+        "REGEXP": [.afterOperand],
+        "RLIKE": [.afterOperand],
+        "ILIKE": [.afterOperand],
+        "ESCAPE": [.afterOperand],
     ]
 
-    // After one of these a call can start, so a word that follows it is not standing after an operand.
+    // After one of these a call can start, so a word that follows it is not standing after an operand. Word operators
+    // are among them: `10 DIV pivot(1)` calls `pivot`.
     private static let introducers: Set<String> = reservedWords.union(syntax.keys).union([
         "SET", "INTO", "RETURN", "RETURNING", "PRIOR", "CALL", "DO", "EXECUTE", "FOR", "CONNECT",
+        "MOD", "COLLATE", "BINARY", "UNIQUE", "SOUNDS", "MEMBER", "OF", "SIMILAR", "TO", "ASC", "DESC", "NULLS",
     ])
 
     private static let openParenthesis = UInt16(UnicodeScalar("(").value)
@@ -164,7 +173,6 @@ internal enum ReadOnlyFunctionCalls {
     private static let period = UInt16(UnicodeScalar(".").value)
     private static let colon = UInt16(UnicodeScalar(":").value)
     private static let quoteOpeners: Set<UInt16> = [0x22, 0x60, 0x5B]
-    private static let quoteUnits: Set<UInt16> = [0x22, 0x27, 0x60, 0x5B, 0x5D]
     private static let comparisons: Set<UInt16> = [0x3D, 0x3C, 0x3E, 0x21]
 
     // Under every way the engine could lex the text, as the classifier reads it. A type with a length, such as
@@ -199,6 +207,7 @@ internal enum ReadOnlyFunctionCalls {
         }
         let source = statement as NSString
         let code = SQLCodeProjection.code(of: statement, grammar: grammar) as NSString
+        var quoted: [Range<Int>]?
         return SQLFunctionCallScanner.calls(in: source, code: code).contains { call in
             guard case .named(let name, let start) = call.callee,
                   !quoteOpeners.contains(source.character(at: start))
@@ -214,9 +223,26 @@ internal enum ReadOnlyFunctionCalls {
             }
             if builtins.contains(word) || typeNames.contains(word) || reservedWords.contains(word) { return false }
             guard let rules = syntax[word] else { return true }
-            let site = CallSite(source: source, code: code, nameStart: start, parenthesis: call.parenthesis)
+            let spans = quoted ?? quotedSpans(in: source, grammar: grammar)
+            quoted = spans
+            let site = CallSite(code: code, quotedSpans: spans, nameStart: start, parenthesis: call.parenthesis)
             return !rules.contains { site.matches($0) }
         }
+    }
+
+    // Where a literal or a quoted name sits. The projection blanks comments too, and a comment is not a token.
+    private static func quotedSpans(in source: NSString, grammar: SQLLexicalGrammar) -> [Range<Int>] {
+        var spans: [Range<Int>] = []
+        var index = 0
+        while index < source.length {
+            guard let span = SQLNonCodeSpan.span(at: index, in: source, grammar: grammar) else {
+                index += 1
+                continue
+            }
+            if span.kind == .quoted { spans.append(span.start..<span.end) }
+            index = max(span.end, index + 1)
+        }
+        return spans
     }
 
     private enum Qualifier {
@@ -248,8 +274,8 @@ internal enum ReadOnlyFunctionCalls {
     }
 
     private struct CallSite {
-        let source: NSString
         let code: NSString
+        let quotedSpans: [Range<Int>]
         let nameStart: Int
         let parenthesis: Int
 
@@ -286,7 +312,7 @@ internal enum ReadOnlyFunctionCalls {
         private var before: Neighbor {
             var cursor = nameStart - 1
             while cursor >= 0, SQLFunctionCallScanner.isBlank(code.character(at: cursor)) {
-                if ReadOnlyFunctionCalls.quoteUnits.contains(source.character(at: cursor)) { return .quoted }
+                if quotedSpans.contains(where: { $0.contains(cursor) }) { return .quoted }
                 cursor -= 1
             }
             guard cursor >= 0 else { return .start }
@@ -328,15 +354,16 @@ internal enum ReadOnlyFunctionCalls {
     }
 }
 
-// Export and Transfer To read rows outside the editor, so text the user wrote into them, a row filter or the query an
-// export runs again, meets the gate's Read-Only decision before any row is read.
-internal enum ReadOnlyExportGate {
+// Export, Transfer To, Data Compare and Copy Objects read rows outside the editor, so text the user wrote into them, a
+// row filter or the query an export runs again, meets the gate's Read-Only decision before any row is read.
+internal enum ReadOnlyReadGate {
     @MainActor
     static func authorize(
         _ statements: [String],
         connectionId: UUID,
         databaseType: DatabaseType,
         gate: any ExecutionGate,
+        operationDescription: String = String(localized: "Export"),
         canPrompt: Bool = true,
         manager: DatabaseManager? = nil
     ) async throws {
@@ -349,7 +376,7 @@ internal enum ReadOnlyExportGate {
                 kind: .readQuery,
                 caller: .userInterface,
                 capabilities: canPrompt ? .interactiveUser : CallerCapabilities.interactiveUser.union(.cannotPrompt),
-                operationDescription: String(localized: "Export"),
+                operationDescription: operationDescription,
                 statements: statements
             )
         )
@@ -363,12 +390,25 @@ internal enum ReadOnlyExportGate {
         quote: (String) -> String
     ) -> [String] {
         objects.compactMap { object in
-            let filter = object.rowScope.sanitizedFilter
-            guard !filter.isEmpty else { return nil }
-            let table = SchemaQualifiedName.render(
-                name: object.name, schema: object.databaseName, databaseType: databaseType, quote: quote
+            filterStatement(
+                table: object.name,
+                schema: object.databaseName,
+                filter: object.rowScope.sanitizedFilter,
+                databaseType: databaseType,
+                quote: quote
             )
-            return "SELECT * FROM \(table) WHERE \(filter)"
         }
+    }
+
+    static func filterStatement(
+        table: String,
+        schema: String?,
+        filter: String?,
+        databaseType: DatabaseType,
+        quote: (String) -> String
+    ) -> String? {
+        guard let filter, !filter.isEmpty else { return nil }
+        let name = SchemaQualifiedName.render(name: table, schema: schema, databaseType: databaseType, quote: quote)
+        return "SELECT * FROM \(name) WHERE \(filter)"
     }
 }

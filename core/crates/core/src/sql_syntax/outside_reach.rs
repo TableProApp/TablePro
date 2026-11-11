@@ -245,12 +245,34 @@ fn reaches(code: &[Code<'_>], grammar: SqlGrammar) -> bool {
     code.split(|token| token.kind == Kind::End)
         .filter(|part| !part.is_empty())
         .any(|part| {
-            part.first()
+            part.get(explained_start(part))
                 .is_some_and(|first| first.is_word(FILESYSTEM_OR_CODE_KEYWORDS))
                 || names_filesystem(part)
                 || (0..part.len()).any(|index| calls_outside(part, index, grammar))
                 || (grammar == SqlGrammar::DuckDb && duckdb_reads_a_file_as_a_table(part))
         })
+}
+
+// `EXPLAIN ANALYZE COPY ... TO '/path'` runs the COPY, so the keyword is read past the EXPLAIN.
+fn explained_start(part: &[Code<'_>]) -> usize {
+    let explains = part.first().is_some_and(|first| first.is_word(&["explain"]));
+    let mut index = 0;
+    while let Some(token) = part.get(index) {
+        if token.is_word(&["explain"])
+            || (explains && token.is_word(&["analyze", "analyse", "verbose", "query", "plan"]))
+        {
+            index += 1;
+        } else if explains && token.kind == Kind::Open {
+            let depth = token.depth;
+            let close = part[index + 1..]
+                .iter()
+                .position(|close| close.kind == Kind::Close && close.depth == depth);
+            index += 2 + close.unwrap_or(part.len());
+        } else {
+            break;
+        }
+    }
+    index
 }
 
 fn names_filesystem(part: &[Code<'_>]) -> bool {
@@ -582,6 +604,14 @@ mod tests {
             ("EXPORT DATABASE '/tmp/dump'", SqlGrammar::DuckDb),
             ("DO $$ BEGIN PERFORM 1; END $$", SqlGrammar::PostgreSql),
             ("BULK INSERT t FROM 'C:\\x.csv'", SqlGrammar::MsSql),
+            (
+                "EXPLAIN ANALYZE COPY (SELECT 1) TO '/home/ada/.bashrc' (HEADER false)",
+                SqlGrammar::DuckDb,
+            ),
+            (
+                "EXPLAIN (ANALYZE, FORMAT JSON) COPY t TO '/tmp/x'",
+                SqlGrammar::PostgreSql,
+            ),
         ] {
             assert!(reaches_outside_database(sql, grammar), "{sql} on {grammar:?}");
         }
@@ -596,6 +626,8 @@ mod tests {
             ("SELECT * FROM read_text('x')", SqlGrammar::PostgreSql),
             ("SELECT query FROM history", SqlGrammar::DuckDb),
             ("SELECT * FROM orders", SqlGrammar::MySql),
+            ("EXPLAIN ANALYZE SELECT * FROM orders", SqlGrammar::PostgreSql),
+            ("EXPLAIN (ANALYZE) SELECT copy FROM orders", SqlGrammar::PostgreSql),
         ] {
             assert!(!reaches_outside_database(sql, grammar), "{sql} on {grammar:?}");
         }

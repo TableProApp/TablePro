@@ -27,16 +27,25 @@ extension MainContentCoordinator {
 
     // A raw filter is text the user typed, inside a query no gate reads below the Full levels. At Read-Only one that
     // calls a function goes to the gate before the browse or a count sends it, and the gate asks where the driver cannot
-    // hold the engine to read-only. Once per filter text and tab: its page turns, sorts and counts run what was approved.
+    // hold the engine to read-only. Once per filter text and tab: its page turns, sorts and counts run what was approved,
+    // until a profile or a floor holds the level, after which every run goes to the gate, which refuses.
     func rawFilterNeedsReadOnlyGate(_ filters: [TableFilter], tabId: UUID) -> Bool {
         let expressions = Self.rawFilterExpressions(filters)
-        guard !expressions.isEmpty, runsAtReadOnly, approvedReadOnlyRawFilters[tabId] != Self.rawFilterKey(filters)
-        else { return false }
+        guard !expressions.isEmpty, runsAtReadOnly else { return false }
+        let approved = approvedReadOnlyRawFilters[tabId] == Self.rawFilterKey(filters) && !readOnlyLevelIsHeld
+        guard !approved else { return false }
         return expressions.contains { ReadOnlyFunctionCalls.callsUnlistedFunction($0, databaseType: connection.type) }
     }
 
     func approveReadOnlyRawFilter(_ filters: [TableFilter], tabId: UUID) {
+        guard !readOnlyLevelIsHeld else { return }
         approvedReadOnlyRawFilters[tabId] = Self.rawFilterKey(filters)
+    }
+
+    private var readOnlyLevelIsHeld: Bool {
+        ExecutionGateProvider.readOnlyFunctionPolicy(
+            connectionId: connectionId, databaseType: connection.type, in: services.databaseManager
+        ).levelIsHeld
     }
 
     func rawFilterRequest(sql: String, canPrompt: Bool) -> OperationRequest {

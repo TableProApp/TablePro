@@ -209,8 +209,8 @@ final class ExportService: ObservableObject {
         try throwIfStopped()
 
         let rowObjects = objects.filter { plugin.readsRows(optionValues: $0.optionValues, kind: $0.kind) }
-        try await ReadOnlyExportGate.authorize(
-            ReadOnlyExportGate.rowScopeStatements(rowObjects, databaseType: databaseType) { driver.quoteIdentifier($0) },
+        try await ReadOnlyReadGate.authorize(
+            ReadOnlyReadGate.rowScopeStatements(rowObjects, databaseType: databaseType) { driver.quoteIdentifier($0) },
             connectionId: driver.connection.id,
             databaseType: databaseType,
             gate: executionGate
@@ -444,7 +444,7 @@ final class ExportService: ObservableObject {
             currentProgress = nil
         }
         try throwIfStopped()
-        try await ReadOnlyExportGate.authorize(
+        try await ReadOnlyReadGate.authorize(
             [query], connectionId: driver.connection.id, databaseType: databaseType, gate: executionGate
         )
         try throwIfStopped()

@@ -24342,6 +24342,12 @@
         }
       }
     },
+    "Always Allow on an assistant tool card adds the tool here. Forget makes its next call ask again." : {
+
+    },
+    "Always allowed" : {
+
+    },
     "Always count" : {
       "localizations" : {
         "fr" : {
@@ -32422,6 +32428,9 @@
         }
       }
     },
+    "Bring an open tab to the front, using a tab id from list_recent_tabs. TablePro asks the user about the tab's connection first, as it does for any call that names a connection." : {
+
+    },
     "Broadcast" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -34708,6 +34717,9 @@
           }
         }
       }
+    },
+    "Cannot run this query: it calls a function that can change data, and Safe Mode is held at Read-Only for this connection." : {
+
     },
     "Cannot save changes to '%@'." : {
       "localizations" : {
@@ -85583,6 +85595,9 @@
         }
       }
     },
+    "Forget %@" : {
+
+    },
     "Forget All" : {
       "localizations" : {
         "fr" : {
@@ -105260,6 +105275,9 @@
           }
         }
       }
+    },
+    "List the tabs open in TablePro. With connection_id, TablePro asks the user about that connection first. Without it, the list covers only connections this client may already reach without asking. Each entry carries the tab id that focus_query_tab takes and the window id that open_table_tab returns." : {
+
     },
     "List the triggers attached to one table, with their timing, event, and body." : {
       "localizations" : {
@@ -137182,6 +137200,9 @@
         }
       }
     },
+    "Present and true when the answer's size limit cut plan_text or left the parsed plan or rows out" : {
+
+    },
     "Preserve all values as strings" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -151875,6 +151896,9 @@
         }
       }
     },
+    "Restrict to one connection. Omit for every connection already approved." : {
+
+    },
     "Restrict to one connection. Omit for every readable connection." : {
       "localizations" : {
         "fr" : {
@@ -156705,6 +156729,14 @@
     "Safe Mode is read-only for this connection." : {
 
     },
+    "Safe Mode is set to Read-Only for this connection, and it has a transaction open. Roll it back, then try again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Safe Mode is set to Read-Only for this connection, and the database refused the statement." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Safe mode level" : {
       "localizations" : {
         "fr" : {
@@ -160984,6 +161016,9 @@
           }
         }
       }
+    },
+    "Search the query history TablePro keeps on this Mac. With connection_id, TablePro asks the user about that connection first. Without it, results cover only connections this client may already reach without asking." : {
+
     },
     "Search values" : {
       "localizations" : {
@@ -167516,6 +167551,9 @@
         }
       }
     },
+    "Show the connection this conversation works on, with its status." : {
+
+    },
     "Show the messages that arrived while paused" : {
 
     },
@@ -170953,6 +170991,9 @@
           }
         }
       }
+    },
+    "Some values were longer than 64 KB and were cut there; each one cut ends in a mark with its full length. Read such a value in parts with a narrower query." : {
+
     },
     "Someone in %@ changed this item after TablePro last downloaded the team library. Choose the version the team library keeps." : {
 
@@ -190954,6 +190995,9 @@
         }
       }
     },
+    "The parsed plan did not fit in TablePro's %@ limit for one answer, so it is left out. Read plan_text instead." : {
+
+    },
     "The partial backup file is removed." : {
 
     },
@@ -192319,6 +192363,12 @@
 
     },
     "The rows go in as one transaction. Cancel rolls it back." : {
+
+    },
+    "The rows reached TablePro's %@ limit for one answer, so a result marked truncated holds only the rows that fit. Ask for fewer columns or rows." : {
+
+    },
+    "The rows reached TablePro's %@ limit for one answer, so an export marked truncated holds only the rows that fit, and the exports after it may hold none. Export fewer tables, columns or rows per call." : {
 
     },
     "The rules file is not a regular file." : {
@@ -194707,6 +194757,9 @@
           }
         }
       }
+    },
+    "The statement was still running in the database when it was stopped, and it runs to the end. It may have been applied; check before running it again." : {
+
     },
     "The statement was stopped, and the server rolled back the transaction it ran in. Every change since that transaction began is undone." : {
       "extractionState" : "manual",
@@ -201692,6 +201745,9 @@
           }
         }
       }
+    },
+    "This query calls a function that can change data" : {
+
     },
     "This query language has no formatter." : {
       "localizations" : {
@@ -216767,6 +216823,16 @@
         }
       }
     },
+    "Whether the row limit or the answer's size limit left rows out" : {
+
+    },
+    "Whether the row limit or the answer's size limit left rows out of any export" : {
+
+    },
+    "Whether the row limit or the answer's size limit left rows out of the result" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Whether the session is open" : {
       "localizations" : {
         "fr" : {
@@ -216806,6 +216872,9 @@
           }
         }
       }
+    },
+    "Whether the size limit left out matching entries" : {
+
     },
     "Whether the statement names an object, the database, or either" : {
       "localizations" : {
@@ -217207,6 +217276,13 @@
       }
     },
     "Why fix_sql is left out: running it with the other fixes would do harm" : {
+
+    },
+    "Why rows were left out or values cut, when they were" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Why rows were left out, when the size limit left them out" : {
 
     },
     "Why the check was skipped or failed" : {

@@ -48,6 +48,18 @@ struct MCPToolErrorSurfaceTests {
         #expect(MCPToolTestHarness.errorText(result) == "query_failed: syntax error at or near \"SELEC\"")
     }
 
+    @Test("A long error of URLs with no @ is redacted at once, and a token cut at the scan's end is dropped", .timeLimit(.minutes(1)))
+    func longErrorIsRedactedQuickly() {
+        let urls = String(repeating: "a://", count: 50_000)
+        #expect(MCPErrorRedactor.redact(urls) == MCPErrorRedactor.placeholder)
+
+        let head = String(repeating: "x ", count: MCPErrorRedactor.scannedLength / 2 - 4)
+        let secret = "postgres://ada:hunter2@db.internal.example:5432/app"
+        let redacted = MCPErrorRedactor.redact(head + secret, secrets: [])
+        #expect(!redacted.contains("hunter2"))
+        #expect(!redacted.contains("db.internal"))
+    }
+
     @Test("The assistant's transcript reads a tool failure's own message, not Foundation's generic text")
     func localizedDescriptionCarriesTheMessage() {
         let error: Error = MCPToolExecutionError.queryFailed("relation \"ordrs\" does not exist")

@@ -9,7 +9,7 @@ import Foundation
 // A loopback PostgreSQL server for one plaintext session. It refuses SSL and GSS encryption, accepts any startup
 // without a password, records each simple query and each statement the extended protocol parses, runs `onQuery` before
 // it answers, and reports the transaction status `status` picks from the query and the ones before it. A simple query
-// gets an empty completion; a parsed statement gets what `answer` returns for it, an empty completion for nil. Cancel
+// or a parsed statement gets what `answer` returns for it, an empty completion for nil. Cancel
 // requests arrive on connections of their own: each is counted, and a statement waiting for one then fails as a
 // cancelled statement does.
 final class LibPQScriptedServer: @unchecked Sendable {
@@ -143,7 +143,18 @@ final class LibPQScriptedServer: @unchecked Sendable {
                 let query = Self.cString(body, from: 0).text
                 let earlier = record(query)
                 onQuery(query)
-                reply = Self.message("C", Array("SELECT 0".utf8) + [0]) + Self.message("Z", [status(query, earlier)])
+                var simpleFailed = false
+                if let scripted = answer(query) {
+                    if scripted.failure == nil, !scripted.columns.isEmpty {
+                        guard send(client, Self.rowDescription(scripted.columns)) else { return }
+                    }
+                    guard execute(scripted, on: client, failed: &simpleFailed) else { return }
+                } else {
+                    reply = Self.message("C", Array("SELECT 0".utf8) + [0])
+                }
+                var state = status(query, earlier)
+                if simpleFailed, state == Self.inTransaction { state = Self.failedTransaction }
+                reply += Self.message("Z", [state])
             case UInt8(ascii: "P"):
                 let query = Self.cString(body, from: Self.cString(body, from: 0).next).text
                 let earlier = record(query)

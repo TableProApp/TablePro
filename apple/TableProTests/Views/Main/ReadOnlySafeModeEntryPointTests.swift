@@ -109,6 +109,9 @@ private final class ReadOnlyRecordingDriver: PluginDriverStub, @unchecked Sendab
     }
 
     func sessionTransactionState() async -> PluginSessionTransactionState { .idle }
+
+    // DuckDB switches databases in place, so its session route pins the scope's database before every read.
+    func switchDatabase(to database: String) async throws {}
 }
 
 private final class ReadingExportFormat: ExportFormatPlugin, @unchecked Sendable {
@@ -137,6 +140,28 @@ private final class ReadingExportFormat: ExportFormatPlugin, @unchecked Sendable
         try Data().write(to: destination)
         return ExportFormatResult()
     }
+}
+
+@MainActor
+private final class FixedDriverProvider: ScopedMetadataProviding {
+    private let drivers: [UUID: DatabaseDriver]
+
+    init(_ drivers: [UUID: DatabaseDriver]) {
+        self.drivers = drivers
+    }
+
+    func withMetadataDriver<T: Sendable>(
+        scope: DatabaseScope,
+        workload: MetadataConnectionPool.Workload,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
+    ) async throws -> T {
+        guard let driver = drivers[scope.connectionId] else {
+            throw ObjectCopyError.refused("No driver for \(scope.connectionId)")
+        }
+        return try await body(driver)
+    }
+
+    func browseScope(for connectionId: UUID) -> DatabaseScope? { nil }
 }
 
 @MainActor
@@ -363,8 +388,16 @@ struct ReadOnlySafeModeEntryPointTests {
     }
 
     private func installReadOnlySession(type: DatabaseType = .postgresql) -> (DatabaseConnection, ReadOnlyRecordingDriver, PluginDriverAdapter) {
+        installSession(.readOnly, type: type)
+    }
+
+    private func installSession(
+        _ level: SafeModeLevel,
+        type: DatabaseType = .postgresql,
+        id: UUID = UUID()
+    ) -> (DatabaseConnection, ReadOnlyRecordingDriver, PluginDriverAdapter) {
         let driver = ReadOnlyRecordingDriver()
-        let connection = makeConnection(.readOnly, type: type)
+        let connection = DatabaseConnection(id: id, name: "Shop", database: "app", type: type, safeModeLevel: level)
         let adapter = PluginDriverAdapter(connection: connection, pluginDriver: driver)
         var session = ConnectionSession(connection: connection, driver: adapter)
         session.status = .connected
@@ -540,5 +573,192 @@ struct ReadOnlySafeModeEntryPointTests {
         let call = driver.call(containing: Self.purge)
         #expect(call?.entry == "executeBoundedQuery")
         #expect(call?.context?.enforcesReadOnly == true)
+    }
+
+    // MARK: - Held level
+
+    // A profile or a floor that comes after an approval leaves nothing to approve: the gate refuses every run.
+    @Test("A held Read-Only never runs a raw filter approved before it was held")
+    func heldLevelIgnoresAnEarlierApproval() async throws {
+        let (fixture, driver) = makeFixture(.readOnly)
+        let gate = RequestRecordingGate(allows: false)
+        fixture.coordinator.executionGate = gate
+        defer { fixture.coordinator.cancelAllQueryTasks() }
+        let tab = fixture.addTab(rawFilterTableTab())
+        let filters = MainContentCoordinator.browseFilters(tab.filterState)
+        fixture.coordinator.approveReadOnlyRawFilter(filters, tabId: tab.id)
+        #expect(!fixture.coordinator.rawFilterNeedsReadOnlyGate(filters, tabId: tab.id))
+
+        var held = fixture.connection
+        held.type = .cloudflareR2SQL
+        var session = ConnectionSession(connection: held, driver: PluginDriverAdapter(connection: held, pluginDriver: driver))
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: held.id)
+
+        #expect(fixture.coordinator.rawFilterNeedsReadOnlyGate(filters, tabId: tab.id))
+        let confirmation = fixture.coordinator.executeTableTabQueryDirectly(viewport: .firstRow)
+        #expect(confirmation != nil)
+        await confirmation?.value
+        #expect(await gate.requests.count == 1)
+        #expect(driver.call(containing: Self.purge) == nil)
+    }
+
+    // MARK: - Data Compare
+
+    private func compareEndpoint(_ connection: DatabaseConnection) -> DatabaseEndpoint {
+        DatabaseEndpoint(
+            scope: DatabaseScope(connectionId: connection.id, database: connection.database, schema: nil),
+            connectionName: connection.name,
+            databaseType: connection.type,
+            safeModeLevel: connection.safeModeLevel,
+            color: .blue
+        )
+    }
+
+    private func comparePlan(sourceFilter: String = "") -> DataComparePlan {
+        DataComparePlan(
+            table: "orders",
+            schema: nil,
+            columns: [CompareColumn(name: "id", sourceType: "INTEGER")],
+            scope: DataTableScope(keyColumns: ["id"], sourceFilter: sourceFilter),
+            isEnabled: true
+        )
+    }
+
+    // DuckDB reads both sides on the session drivers this test installs; a pooled engine would open connections of its own.
+    @Test("Data Compare reads the Read-Only side in the read-only mode, and the other side as before")
+    func compareReadsTheReadOnlySideReadOnly() async throws {
+        let (source, sourceDriver, _) = installSession(.readOnly, type: .duckdb)
+        let (target, targetDriver, _) = installSession(.silent, type: .duckdb)
+        defer {
+            DatabaseManager.shared.removeSession(for: source.id)
+            DatabaseManager.shared.removeSession(for: target.id)
+        }
+        let service = CompareRowService(manager: .shared, gate: AlwaysAllowGate())
+
+        _ = try? await service.compare(
+            plan: comparePlan(),
+            source: compareEndpoint(source), sourceConnection: source,
+            target: compareEndpoint(target), targetConnection: target,
+            options: DataCompareOptions()
+        )
+
+        let read = try #require(sourceDriver.call(containing: "orders"))
+        #expect(read.context?.enforcesReadOnly == true)
+        #expect(targetDriver.calls.allSatisfy { $0.context?.enforcesReadOnly != true })
+    }
+
+    @Test("A Data Compare filter on a Read-Only connection asks the gate before either side is read")
+    func compareFilterAsksTheGateFirst() async throws {
+        let (source, sourceDriver, _) = installSession(.readOnly, type: .duckdb)
+        let (target, targetDriver, _) = installSession(.silent, type: .duckdb)
+        defer {
+            DatabaseManager.shared.removeSession(for: source.id)
+            DatabaseManager.shared.removeSession(for: target.id)
+        }
+        let gate = RequestRecordingGate(allows: false)
+        let service = CompareRowService(manager: .shared, gate: gate)
+
+        await #expect(throws: ExecutionGateError.self) {
+            _ = try await service.compare(
+                plan: self.comparePlan(sourceFilter: "purge_orders() IS NULL"),
+                source: self.compareEndpoint(source), sourceConnection: source,
+                target: self.compareEndpoint(target), targetConnection: target,
+                options: DataCompareOptions()
+            )
+        }
+
+        let requests = await gate.requests
+        #expect(requests.count == 1)
+        #expect(requests.first?.connectionId == source.id)
+        #expect(requests.first?.sql?.contains(Self.purge) == true)
+        #expect(sourceDriver.call(containing: "orders") == nil)
+        #expect(targetDriver.call(containing: "orders") == nil)
+    }
+
+    // MARK: - Copy Objects
+
+    private func copyRequest(source: DatabaseConnection, target: DatabaseConnection) -> ObjectCopyRequest {
+        ObjectCopyRequest(
+            source: compareEndpoint(source),
+            destination: .existing(compareEndpoint(target)),
+            objects: [ObjectCopySelection(kind: .table, name: "order_cleanup", schema: nil)],
+            content: .data,
+            existingPolicy: .replace,
+            errorHandling: .stopAndRollback,
+            wrapEachTableInTransaction: true
+        )
+    }
+
+    private func copyPlan(source: DatabaseConnection, target: DatabaseConnection, query: String, filtered: Bool) -> ObjectCopyPlan {
+        let step = ObjectCopyTableStep(
+            selection: ObjectCopySelection(kind: .table, name: "order_cleanup", schema: nil),
+            dropStatements: [],
+            sequenceStatements: [],
+            createStatements: [],
+            truncateStatements: [],
+            columns: ["id"],
+            primaryKeyColumns: ["id"],
+            sourceQuery: query,
+            targetTable: "order_cleanup",
+            targetSchema: nil,
+            estimatedRows: nil,
+            copiesData: true,
+            copiesIdentityColumn: false,
+            hasRowFilter: filtered,
+            note: nil
+        )
+        return ObjectCopyPlan(
+            request: copyRequest(source: source, target: target),
+            createsDatabase: false,
+            tableSteps: [step],
+            definitionSteps: [],
+            keysInside: ObjectCopyKeysInside(created: true, rows: true)
+        )
+    }
+
+    @Test("Copy Objects reads a Read-Only source, a view among them, in the read-only mode")
+    func objectCopyReadsTheSourceReadOnly() async throws {
+        let (source, sourceDriver, sourceAdapter) = installSession(.readOnly)
+        let target = DatabaseConnection(name: "Archive", database: "archive", type: .mysql)
+        let targetAdapter = PluginDriverAdapter(connection: target, pluginDriver: ReadOnlyRecordingDriver())
+        defer { DatabaseManager.shared.removeSession(for: source.id) }
+        let runner = ObjectCopyRunner(
+            manager: FixedDriverProvider([source.id: sourceAdapter, target.id: targetAdapter]),
+            gate: AlwaysAllowGate()
+        )
+
+        _ = try await runner.run(
+            copyPlan(source: source, target: target, query: "SELECT id FROM order_cleanup", filtered: false),
+            progress: ObjectCopyProgress(progress: Progress())
+        )
+
+        let read = try #require(sourceDriver.call(containing: "order_cleanup"))
+        #expect(read.context?.enforcesReadOnly == true)
+    }
+
+    @Test("A Copy Objects row filter on a Read-Only source asks the gate before anything runs")
+    func objectCopyFilterAsksTheGateFirst() async throws {
+        let (source, sourceDriver, sourceAdapter) = installSession(.readOnly)
+        let target = DatabaseConnection(name: "Archive", database: "archive", type: .mysql)
+        let targetAdapter = PluginDriverAdapter(connection: target, pluginDriver: ReadOnlyRecordingDriver())
+        defer { DatabaseManager.shared.removeSession(for: source.id) }
+        let gate = RequestRecordingGate(allows: false)
+        let runner = ObjectCopyRunner(
+            manager: FixedDriverProvider([source.id: sourceAdapter, target.id: targetAdapter]),
+            gate: gate
+        )
+        let query = "SELECT id FROM order_cleanup WHERE purge_orders() IS NULL"
+
+        await #expect(throws: ExecutionGateError.self) {
+            _ = try await runner.run(
+                self.copyPlan(source: source, target: target, query: query, filtered: true),
+                progress: ObjectCopyProgress(progress: Progress())
+            )
+        }
+
+        #expect(await gate.requests.map { $0.sql } == [query])
+        #expect(await gate.requests.first?.connectionId == source.id)
+        #expect(sourceDriver.call(containing: "order_cleanup") == nil)
     }
 }

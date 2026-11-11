@@ -150,8 +150,8 @@ final class TableTransferService: ObservableObject {
         gate: ExecutionGate = ExecutionGateProvider.shared
     ) async throws {
         let sourceSession = manager.driver(for: source.connectionId)
-        try await ReadOnlyExportGate.authorize(
-            ReadOnlyExportGate.rowScopeStatements(request.objects, databaseType: request.sourceType) { name in
+        try await ReadOnlyReadGate.authorize(
+            ReadOnlyReadGate.rowScopeStatements(request.objects, databaseType: request.sourceType) { name in
                 sourceSession?.quoteIdentifier(name) ?? name
             },
             connectionId: source.connectionId,

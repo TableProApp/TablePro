@@ -37,7 +37,9 @@ struct MCPHistoryAnswerBudgetTests {
         #expect(query.utf8.count < statement.utf8.count)
         #expect(query.hasPrefix(String(statement.prefix(1_000))))
         #expect(error.utf8.count < failure.utf8.count)
-        #expect(error.hasPrefix("syntax error near "))
+        // The redactor drops a token too long to read whole, since part of one can hold half a secret.
+        #expect(error.hasPrefix("syntax error near"))
+        #expect(!error.contains("yyy"))
     }
 
     @Test("Short history text passes through whole")

@@ -339,9 +339,16 @@ extension MCPConnectionBridge {
         var spent = budget
         let planText = routed.map { spent.keep(text: $0.rawText) }
         // The tree repeats every node's text, so it goes out only when it fits whole; plan_text already carries it.
-        let encodedPlan = routed?.plan.map(Self.encode(plan:))
-        let plan = encodedPlan.flatMap { spent.keepWhole(bytes: Self.encodedBytes(of: $0)) ? $0 : nil }
-        let planLeftOut = encodedPlan != nil && plan == nil
+        // No `nil` literal near a JsonValue here: it is ExpressibleByNilLiteral, so `nil` can become `.null`.
+        var plan: JsonValue?
+        var planLeftOut = false
+        if let encodedPlan = routed?.plan.map(Self.encode(plan:)) {
+            if spent.keepWhole(bytes: Self.encodedBytes(of: encodedPlan)) {
+                plan = encodedPlan
+            } else {
+                planLeftOut = true
+            }
+        }
         let kept = spent.keep(outcome.result)
         var payload: [String: JsonValue] = [
             "statement": .string(request.statement),
