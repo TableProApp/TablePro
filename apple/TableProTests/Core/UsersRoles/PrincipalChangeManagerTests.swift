@@ -329,6 +329,46 @@ struct PrincipalChangeManagerTests {
         #expect(manager.changeCount == 1)
     }
 
+    @Test("A staged drop runs only the DROP and counts as one change")
+    func dropSupersedesOtherEdits() {
+        let manager = makeManager()
+        manager.stageAlter(PluginPrincipalDefinition(ref: alice, canLogin: false), for: alice)
+        manager.stageSetPassword("s3cret", for: alice)
+        manager.setGranted(true, privilege: "CREATE", scope: app, for: alice)
+        #expect(manager.changeCount == 3)
+
+        manager.stageDrop(alice, options: PluginPrincipalDropOptions())
+
+        let changes = manager.pendingChanges()
+        #expect(changes.count == 1)
+        guard case .drop(let ref, _) = changes.first else {
+            Issue.record("Expected only the DROP, got \(changes)")
+            return
+        }
+        #expect(ref == alice)
+        #expect(manager.changeCount == 1)
+    }
+
+    @Test("Undoing a staged drop brings the principal's other edits back")
+    func unstagingDropRestoresEdits() {
+        let manager = makeManager()
+        manager.stageAlter(PluginPrincipalDefinition(ref: alice, canLogin: false), for: alice)
+        manager.stageSetPassword("s3cret", for: alice)
+        manager.setGranted(true, privilege: "CREATE", scope: app, for: alice)
+        manager.stageDrop(alice, options: PluginPrincipalDropOptions())
+
+        manager.unstageDrop(alice)
+
+        let changes = manager.pendingChanges()
+        let dropsAnything = changes.contains { change in
+            if case .drop = change { return true }
+            return false
+        }
+        #expect(changes.count == 3)
+        #expect(!dropsAnything)
+        #expect(manager.changeCount == 3)
+    }
+
     @Test("Dropping the connected account is reported as self-impact")
     func reportsSelfImpact() {
         let manager = makeManager()

@@ -92,8 +92,8 @@ struct SQLStatementGeneratorBitColumnTests {
         let rowID = RowID.inserted(UUID())
 
         let statements = generator.generateStatements(
-            from: [RowChange(rowID: rowID, type: .insert)],
-            insertedRowData: [rowID: ["__DEFAULT__", "5", "Ann"]],
+            from: [RowChange(rowID: rowID, type: .insert, expressionColumns: [0])],
+            insertedRowData: [rowID: [.columnDefault, "5", "Ann"]],
             deletedRowIDs: [],
             insertedRowIDs: [rowID]
         )

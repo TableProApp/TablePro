@@ -9,6 +9,7 @@ import AppKit
 final class DataGridCellRegistry {
     private(set) var nullDisplayString: String
     private(set) var showsInvisibleCharacters: Bool
+    private(set) var colorsValuesByType: Bool
     private(set) var palette: DataGridCellPalette
     private(set) var scope: ThemeScope
     private var paletteKey: PaletteKey
@@ -19,11 +20,12 @@ final class DataGridCellRegistry {
         let appearance: NSAppearance.Name
     }
 
-    init(scope: ThemeScope = .live) {
+    init(scope: ThemeScope = .live, valueColors: ValueColorSettings = AppSettingsManager.shared.valueColors) {
         self.scope = scope
         let settings = AppSettingsManager.shared.dataGrid
         nullDisplayString = settings.nullDisplay
         showsInvisibleCharacters = settings.showInvisibleCharacters
+        colorsValuesByType = valueColors.colorsValuesByType
         let appearance = NSApp?.effectiveAppearance ?? NSAppearance.currentDrawing()
         paletteKey = Self.paletteKey(for: appearance)
         palette = scope.dataGridCellPalette(in: appearance)
@@ -32,6 +34,10 @@ final class DataGridCellRegistry {
     func reloadSettings(_ settings: DataGridSettings = AppSettingsManager.shared.dataGrid) {
         nullDisplayString = settings.nullDisplay
         showsInvisibleCharacters = settings.showInvisibleCharacters
+    }
+
+    func reloadValueColors(_ settings: ValueColorSettings = AppSettingsManager.shared.valueColors) {
+        colorsValuesByType = settings.colorsValuesByType
     }
 
     // Asked by every row as it draws: the tints resolve in the appearance the row draws in, which only the draw knows.

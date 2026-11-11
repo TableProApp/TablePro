@@ -34,7 +34,7 @@ final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return client.endpoint.isLocal ? "DynamoDB Local" : "DynamoDB \(client.endpoint.signingRegion)"
     }
 
-    var capabilities: PluginCapabilities { [.parameterizedQueries, .cancelQuery] }
+    var capabilities: PluginCapabilities { [.parameterizedQueries, .cancelQuery, .columnDefaultMarks] }
     var supportsTransactions: Bool { false }
     var parameterStyle: ParameterStyle { .questionMark }
 

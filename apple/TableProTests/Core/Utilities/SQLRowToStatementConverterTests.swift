@@ -384,8 +384,9 @@ struct SQLRowToStatementConverterTests {
         #expect(lines.count == 50_000)
     }
 
-    @Test("PostgreSQL: binary cell renders as bytea hex literal in INSERT")
-    func postgresBinaryInsertEmitsByteaLiteral() throws {
+    // `'\x…'::bytea` reads its backslash by `standard_conforming_strings`; `decode` means the same bytes either way.
+    @Test("PostgreSQL: binary cell decodes hex in INSERT")
+    func postgresBinaryInsertDecodesHex() throws {
         let converter = try SQLRowToStatementConverter(
             tableName: "documents",
             columns: ["id", "payload"],
@@ -396,8 +397,26 @@ struct SQLRowToStatementConverterTests {
         )
         let bytes = Data([0xD3, 0x8C, 0xE5, 0x66])
         let result = converter.generateInserts(rows: plain([[.text("1"), .bytes(bytes)]]))
-        #expect(result.contains("'\\xD38CE566'::bytea"))
+        #expect(result.contains("decode('D38CE566', 'hex')"))
         #expect(!result.contains("NULL"))
+    }
+
+    // DuckDB reads `X'…'` as the text `x…` and Oracle has no such literal.
+    @Test("DuckDB and Oracle binary cells use their own hex functions in INSERT", arguments: [
+        (DatabaseType.duckdb, "unhex('CAFE')"), (DatabaseType.oracle, "HEXTORAW('CAFE')"),
+    ])
+    func binaryInsertUsesTheEnginesHexFunction(databaseType: DatabaseType, literal: String) throws {
+        let converter = try SQLRowToStatementConverter(
+            tableName: "documents",
+            columns: ["id", "payload"],
+            primaryKeyColumns: ["id"],
+            databaseType: databaseType,
+            quoteIdentifier: { "\"\($0)\"" },
+            escapeStringLiteral: { $0.replacingOccurrences(of: "'", with: "''") }
+        )
+        let result = converter.generateInserts(rows: plain([[.text("1"), .bytes(Data([0xCA, 0xFE]))]]))
+        #expect(result.contains(literal))
+        #expect(!result.contains("X'CAFE'"))
     }
 
     @Test("MySQL: binary cell renders as X'...' literal in INSERT")
@@ -441,7 +460,7 @@ struct SQLRowToStatementConverterTests {
         )
         let bytes = Data([0xAB, 0xCD])
         let result = converter.generateUpdates(rows: plain([[.text("42"), .bytes(bytes)]]))
-        #expect(result.contains("\"payload\" = '\\xABCD'::bytea"))
+        #expect(result.contains("\"payload\" = decode('ABCD', 'hex')"))
         #expect(result.contains("WHERE \"id\" = '42'"))
     }
 
@@ -656,8 +675,8 @@ struct SQLRowToStatementConverterTests {
             databaseType: .pglite, dialect: Self.postgresDialect
         )
         let rows = plain([[.text("1"), .bytes(Data([0xDE, 0xAD]))]])
-        #expect(converter.generateInserts(rows: rows).contains("'\\xDEAD'::bytea"))
-        #expect(converter.generateUpdates(rows: rows).contains("\"payload\" = '\\xDEAD'::bytea"))
+        #expect(converter.generateInserts(rows: rows).contains("decode('DEAD', 'hex')"))
+        #expect(converter.generateUpdates(rows: rows).contains("\"payload\" = decode('DEAD', 'hex')"))
         #expect(!converter.generateInserts(rows: rows).contains("X'DEAD'"))
     }
 }

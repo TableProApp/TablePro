@@ -20,6 +20,8 @@ internal enum AppSettingsCategory {
     internal static let notifications = "notifications"
     // Not a field of `editor`: an older build re-uploads that blob without it, which would reset it here.
     internal static let formatter = "formatter"
+    // Not a field of `dataGrid`, for the same reason.
+    internal static let valueColors = "valueColors"
     internal static let appearanceMode = "appearanceMode"
 
     // `sync` holds the switch that turns syncing on, `mcp` a port and server setup for one machine,
@@ -27,6 +29,6 @@ internal enum AppSettingsCategory {
     internal static let deviceLocal: Set<String> = ["sync", "mcp", appearanceMode]
 
     internal static let synced: [String] = [
-        general, appearance, editor, dataGrid, history, tabs, keyboard, ai, notifications, formatter
+        general, appearance, editor, dataGrid, history, tabs, keyboard, ai, notifications, formatter, valueColors
     ]
 }

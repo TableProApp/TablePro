@@ -13,16 +13,19 @@ import (
 	"github.com/TableProApp/TablePro/Native/HanaBridge/internal/hana"
 )
 
-const protocolVersion = 1
+const protocolVersion = 2
 
 const (
-	opcodeOpen    byte = 1
-	opcodeConnect byte = 2
-	opcodeExecute byte = 3
-	opcodeExplain byte = 4
-	opcodePing    byte = 5
-	opcodeCancel  byte = 6
-	opcodeClose   byte = 7
+	opcodeOpen        byte = 1
+	opcodeConnect     byte = 2
+	opcodeExecute     byte = 3
+	opcodeExplain     byte = 4
+	opcodePing        byte = 5
+	opcodeCancel      byte = 6
+	opcodeClose       byte = 7
+	opcodeOpenCursor  byte = 8
+	opcodeFetch       byte = 9
+	opcodeCloseCursor byte = 10
 )
 
 const (
@@ -46,6 +49,9 @@ type backend interface {
 	Connect(sessionID uint64, operationID uint64) (result []byte, failure []byte)
 	Execute(sessionID uint64, operationID uint64, requestJSON []byte) (result []byte, failure []byte)
 	Explain(sessionID uint64, operationID uint64, requestJSON []byte) (result []byte, failure []byte)
+	OpenCursor(sessionID uint64, operationID uint64, requestJSON []byte) (result []byte, failure []byte)
+	Fetch(sessionID uint64, operationID uint64) (result []byte, failure []byte)
+	CloseCursor(sessionID uint64, operationID uint64) (result []byte, failure []byte)
 	Ping(sessionID uint64, operationID uint64) (failure []byte)
 	Cancel(sessionID uint64, operationID uint64)
 	Close(sessionID uint64)
@@ -119,6 +125,12 @@ func (s *server) dispatch(request frame.Frame) {
 		s.cancelOperation(request)
 	case opcodeClose:
 		s.closeSession(request)
+	case opcodeOpenCursor:
+		s.start(request, s.openCursor)
+	case opcodeFetch:
+		s.start(request, s.fetch)
+	case opcodeCloseCursor:
+		s.start(request, s.closeCursor)
 	default:
 		s.reply(request.ID, nil, hana.InternalFailure(fmt.Sprintf("unknown opcode %d", request.Code)))
 	}
@@ -155,6 +167,18 @@ func (s *server) execute(body requestBody) ([]byte, []byte) {
 
 func (s *server) explain(body requestBody) ([]byte, []byte) {
 	return s.backend.Explain(body.Session, body.Operation, body.Request)
+}
+
+func (s *server) openCursor(body requestBody) ([]byte, []byte) {
+	return s.backend.OpenCursor(body.Session, body.Operation, body.Request)
+}
+
+func (s *server) fetch(body requestBody) ([]byte, []byte) {
+	return s.backend.Fetch(body.Session, body.Operation)
+}
+
+func (s *server) closeCursor(body requestBody) ([]byte, []byte) {
+	return s.backend.CloseCursor(body.Session, body.Operation)
 }
 
 func (s *server) ping(body requestBody) ([]byte, []byte) {

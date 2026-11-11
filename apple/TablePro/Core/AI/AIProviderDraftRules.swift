@@ -24,6 +24,34 @@ internal enum AIProviderDraftRules {
         return fetched.count == 1 ? fetched.first?.id : nil
     }
 
+    // Without an effort, a model that always reasons runs the server's default, which can be its costliest.
+    internal static func effort(
+        afterPicking current: ReasoningEffort?,
+        reasoning: AIReasoningSupport,
+        curated: CuratedModel?
+    ) -> ReasoningEffort? {
+        let levels = reasoning.effortLevels
+        guard !levels.isEmpty else { return nil }
+        if let current, levels.contains(current) { return current }
+        guard reasoning.isMandatory else { return curated?.defaultEffort }
+        return current.flatMap(reasoning.clampedEffort)
+            ?? curated?.defaultEffort
+            ?? reasoning.defaultEffort
+            ?? levels.first
+    }
+
+    // A typed id is incomplete until the last keystroke; the send path fits the effort to the model anyway.
+    internal static func effort(
+        keeping current: ReasoningEffort?,
+        reasoning: AIReasoningSupport
+    ) -> ReasoningEffort? {
+        guard reasoning.isMandatory, !reasoning.effortLevels.isEmpty else { return current }
+        if let current, reasoning.effortLevels.contains(current) { return current }
+        return current.flatMap(reasoning.clampedEffort)
+            ?? reasoning.defaultEffort
+            ?? reasoning.effortLevels.first
+    }
+
     /// Save waits for a model only while the provider's own list is there to pick one from. With
     /// no list, because the fetch is blocked or failed or the provider has not been signed in to
     /// yet, an empty model is saved as before and can be set later.

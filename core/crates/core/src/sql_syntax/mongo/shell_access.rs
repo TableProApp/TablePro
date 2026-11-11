@@ -118,11 +118,39 @@ const COMMAND_READS: [&str; 34] = [
     "getdefaultrwconcern",
 ];
 
-/// Commands that drop a collection or a database.
-const COMMAND_DROPS: [&str; 2] = ["drop", "dropdatabase"];
+/// Collection methods that drop the collection or its indexes, as SQL's
+/// DROP does.
+const COLLECTION_DROPS: [&str; 4] = ["drop", "dropIndex", "dropIndexes", "dropSearchIndex"];
 
-/// Aggregation stages that write the results to a collection.
-const WRITING_STAGES: [&str; 2] = ["$out", "$merge"];
+/// Database methods that drop the database, a user or a role.
+const DATABASE_DROPS: [&str; 5] = ["dropDatabase", "dropUser", "dropRole", "dropAllUsers", "dropAllRoles"];
+
+/// Commands that drop a collection, a database, an index, a user or a
+/// role. `deleteIndexes` is the server's old name for `dropIndexes`.
+const COMMAND_DROPS: [&str; 9] = [
+    "drop",
+    "dropdatabase",
+    "dropindexes",
+    "deleteindexes",
+    "dropsearchindex",
+    "dropuser",
+    "droprole",
+    "dropallusersfromdatabase",
+    "dropallrolesfromdatabase",
+];
+
+/// `validate` options that write when true: `repair` inserts and removes
+/// index keys and removes invalid documents, `fixMultikey` rewrites index
+/// metadata.
+const VALIDATE_WRITES: [&str; 2] = ["repair", "fixMultikey"];
+
+/// The aggregation stage that replaces its target collection with the
+/// results, as a DROP and a fill would.
+const REPLACING_STAGE: &str = "$out";
+
+/// The aggregation stage that writes the results into a collection,
+/// keeping the documents it does not match.
+const MERGING_STAGE: &str = "$merge";
 
 /// The strictest access of the statements in `text`. A statement that
 /// does not parse is a write, since what it would do is a guess.
@@ -170,19 +198,21 @@ fn call_access(call: &ShellCall) -> StatementAccess {
 
 fn collection_access(method: &str, args: &[ShellValue]) -> StatementAccess {
     match method {
-        "aggregate" if args.first().is_some_and(pipeline_writes) => StatementAccess::Write,
+        "aggregate" => args.first().map_or(StatementAccess::Read, pipeline_access),
         _ if COLLECTION_READS.contains(&method) => StatementAccess::Read,
-        "drop" => StatementAccess::Destructive,
+        _ if COLLECTION_DROPS.contains(&method) => StatementAccess::Destructive,
+        // `dropTarget` drops the collection the rename replaces.
+        "renameCollection" if args.get(1).is_some_and(drops_target) => StatementAccess::Destructive,
         // Every document, as a DELETE or UPDATE with no WHERE.
         "deleteMany" | "remove" | "updateMany" if args.first().is_none_or(matches_every_document) => {
             StatementAccess::Destructive
         }
         "update"
             if args.first().is_none_or(matches_every_document)
-                && matches!(
-                    args.get(2).and_then(|options| options.field("multi")),
-                    Some(ShellValue::Bool(true))
-                ) =>
+                && args
+                    .get(2)
+                    .and_then(|options| options.field("multi"))
+                    .is_some_and(is_true) =>
         {
             StatementAccess::Destructive
         }
@@ -195,12 +225,32 @@ fn matches_every_document(filter: &ShellValue) -> bool {
     filter.is_empty_object() || matches!(filter, ShellValue::Null)
 }
 
+/// `renameCollection`'s second argument, `true` or `{dropTarget: true}`.
+fn drops_target(argument: &ShellValue) -> bool {
+    match argument.as_object() {
+        Some(_) => argument.field("dropTarget").is_some_and(is_true),
+        None => is_true(argument),
+    }
+}
+
+/// Whether the server reads a flag as set, as BSON's `trueValue` does:
+/// anything but `false`, zero and `null`. A bound value or a helper such
+/// as `NumberInt(0)` counts as set, the stricter reading.
+fn is_true(value: &ShellValue) -> bool {
+    match value {
+        ShellValue::Bool(flag) => *flag,
+        ShellValue::Null => false,
+        ShellValue::Number(number) => number.as_f64() != Some(0.0),
+        _ => true,
+    }
+}
+
 fn database_access(method: &str, args: &[ShellValue]) -> StatementAccess {
     match method {
         "runCommand" | "adminCommand" => args.first().map_or(StatementAccess::Write, command_access),
-        "aggregate" if args.first().is_some_and(pipeline_writes) => StatementAccess::Write,
+        "aggregate" => args.first().map_or(StatementAccess::Read, pipeline_access),
         _ if DATABASE_READS.contains(&method) => StatementAccess::Read,
-        "dropDatabase" => StatementAccess::Destructive,
+        _ if DATABASE_DROPS.contains(&method) => StatementAccess::Destructive,
         _ => StatementAccess::Write,
     }
 }
@@ -216,11 +266,25 @@ fn command_access(command: &ShellValue) -> StatementAccess {
         return StatementAccess::Write;
     };
     let name = name.to_ascii_lowercase();
-    let writes = command.field("pipeline").is_some_and(pipeline_writes)
+    let set = |option: &str| command.field(option).is_some_and(is_true);
+    let pipeline = command.field("pipeline").map_or(StatementAccess::Read, pipeline_access);
+    let writes = pipeline > StatementAccess::Read
         || command
             .field("explain")
-            .is_some_and(|inner| command_access(inner) > StatementAccess::Read);
-    if COMMAND_DROPS.contains(&name.as_str()) || reaches_every_document(&name, command) {
+            .is_some_and(|inner| command_access(inner) > StatementAccess::Read)
+        || (name == "validate" && VALIDATE_WRITES.into_iter().any(set));
+    let destructive = pipeline == StatementAccess::Destructive
+        || COMMAND_DROPS.contains(&name.as_str())
+        || match name.as_str() {
+            "renamecollection" => set("dropTarget"),
+            "mapreduce" => command.field("out").is_some_and(replaces_output),
+            // Oplog entries, applied unchecked: any one can drop, empty or overwrite a collection.
+            "applyops" => true,
+            // Rebuilds the collection capped, dropping its other indexes and the oldest documents past the size.
+            "converttocapped" => true,
+            _ => reaches_every_document(&name, command),
+        };
+    if destructive {
         return StatementAccess::Destructive;
     }
     match COMMAND_READS.contains(&name.as_str()) && !writes {
@@ -229,18 +293,22 @@ fn command_access(command: &ShellValue) -> StatementAccess {
     }
 }
 
-/// A raw `delete` or `update` command with an entry that reaches every
-/// document, as `deleteMany({})` and `updateMany({}, ...)` do: an empty
-/// filter, and no limit of one or a `multi` update.
+/// A raw `delete`, `update` or `bulkWrite` command with an entry that
+/// reaches every document, as `deleteMany({})` and `updateMany({}, ...)`
+/// do: no filter, `null` or `{}`, and no limit of one or a `multi`
+/// update. A `bulkWrite` op is a delete or an update by its key, and
+/// `multi` takes either past one document.
 fn reaches_every_document(name: &str, command: &ShellValue) -> bool {
-    let (list, every): (&str, fn(&ShellValue) -> bool) = match name {
-        "delete" => ("deletes", |entry| {
+    let (list, filter, every): (&str, &str, fn(&ShellValue) -> bool) = match name {
+        "delete" => ("deletes", "q", |entry| {
             entry
                 .field("limit")
                 .is_none_or(|limit| !matches!(limit, ShellValue::Number(number) if number.as_f64() == Some(1.0)))
         }),
-        "update" => ("updates", |entry| {
-            matches!(entry.field("multi"), Some(ShellValue::Bool(true)))
+        "update" => ("updates", "q", |entry| entry.field("multi").is_some_and(is_true)),
+        "bulkwrite" => ("ops", "filter", |entry| {
+            (entry.field("delete").is_some() || entry.field("update").is_some())
+                && entry.field("multi").is_some_and(is_true)
         }),
         _ => return false,
     };
@@ -249,13 +317,31 @@ fn reaches_every_document(name: &str, command: &ShellValue) -> bool {
     };
     entries
         .iter()
-        .any(|entry| every(entry) && entry.field("q").is_none_or(ShellValue::is_empty_object))
+        .any(|entry| every(entry) && entry.field(filter).is_none_or(matches_every_document))
 }
 
-/// Whether a pipeline holds a stage that writes, at any depth: a
+/// What a pipeline does, by the stages it holds at any depth: a
 /// `$lookup` or `$facet` holds pipelines of its own.
-fn pipeline_writes(pipeline: &ShellValue) -> bool {
-    pipeline.keys().iter().any(|key| WRITING_STAGES.contains(key))
+fn pipeline_access(pipeline: &ShellValue) -> StatementAccess {
+    let stages = pipeline.keys();
+    if stages.contains(&REPLACING_STAGE) {
+        StatementAccess::Destructive
+    } else if stages.contains(&MERGING_STAGE) {
+        StatementAccess::Write
+    } else {
+        StatementAccess::Read
+    }
+}
+
+/// Whether a `mapReduce` output replaces a collection: a collection's
+/// name or `{replace: ...}`. `{merge: ...}` and `{reduce: ...}` write into
+/// one, and `{inline: 1}` writes nowhere. Anything else but an object
+/// counts as a name, the stricter reading.
+fn replaces_output(out: &ShellValue) -> bool {
+    match out.as_object() {
+        Some(_) => out.field("replace").is_some(),
+        None => true,
+    }
 }
 
 /// Whether running `text` can add, rename or remove a collection or a
@@ -294,8 +380,12 @@ mod tests {
             ("db.killOp(1)", StatementAccess::Write),
             ("db.users.find(", StatementAccess::Write),
             (
-                "db.runCommand({aggregate: 'a', pipeline: [], pipeline: [{$out: 'b'}], cursor: {}})",
+                "db.runCommand({aggregate: 'a', pipeline: [], pipeline: [{$merge: 'b'}], cursor: {}})",
                 StatementAccess::Write,
+            ),
+            (
+                "db.runCommand({aggregate: 'a', pipeline: [], pipeline: [{$out: 'b'}], cursor: {}})",
+                StatementAccess::Destructive,
             ),
             (
                 "db.runCommand({delete: 'users', deletes: [{q: {}, limit: 0}]})",
@@ -330,17 +420,118 @@ mod tests {
     }
 
     #[test]
-    fn an_aggregate_that_writes_its_results_is_a_write() {
+    fn an_aggregate_that_merges_its_results_is_a_write() {
         for text in [
-            "db.a.aggregate([{$match: {}}, {$out: 'b'}])",
             "db.a.aggregate([{$merge: {into: 'b'}}])",
-            "db.a.aggregate([{$facet: {x: [{$out: 'b'}]}}])",
-            "db.runCommand({aggregate: 'a', pipeline: [{$out: 'b'}], cursor: {}})",
+            "db.a.aggregate([{$match: {}}, {$merge: 'b'}])",
+            "db.runCommand({aggregate: 'a', pipeline: [{$merge: 'b'}], cursor: {}})",
             "db.runCommand({explain: {aggregate: 'a', pipeline: [{$merge: 'b'}]}})",
-            "db.aggregate([{$documents: [{}]}, {$out: 'b'}])",
+            "db.aggregate([{$documents: [{}]}, {$merge: 'b'}])",
         ] {
             assert_eq!(script_access(text), StatementAccess::Write, "{text}");
         }
+    }
+
+    #[test]
+    fn an_aggregate_that_replaces_a_collection_is_destructive() {
+        for text in [
+            "db.a.aggregate([{$match: {}}, {$out: 'b'}])",
+            "db.a.aggregate([{$out: {db: 'archive', coll: 'b'}}])",
+            "db.a.aggregate([{$facet: {x: [{$out: 'b'}]}}])",
+            "db.a.aggregate([{$merge: 'b'}, {$out: 'c'}])",
+            "db.getSiblingDB('shop').getCollection('a').aggregate([{$out: 'b'}]).toArray()",
+            "db.runCommand({aggregate: 'a', pipeline: [{$out: 'b'}], cursor: {}})",
+            "db.adminCommand({aggregate: 1, pipeline: [{$documents: [{}]}, {$out: 'b'}], cursor: {}})",
+            "db.aggregate([{$documents: [{}]}, {$out: 'b'}])",
+        ] {
+            assert_eq!(script_access(text), StatementAccess::Destructive, "{text}");
+        }
+    }
+
+    #[test]
+    fn a_map_reduce_that_replaces_its_output_is_destructive() {
+        let map_reduce = |out: &str| {
+            format!(
+                "db.runCommand({{mapReduce: 'orders', map: 'function() {{}}', reduce: 'function() {{}}', out: {out}}})"
+            )
+        };
+        let cases = [
+            (map_reduce("'totals'"), StatementAccess::Destructive),
+            (map_reduce("{replace: 'totals'}"), StatementAccess::Destructive),
+            (
+                map_reduce("{replace: 'totals', db: 'archive'}"),
+                StatementAccess::Destructive,
+            ),
+            (map_reduce("{merge: 'totals'}"), StatementAccess::Write),
+            (map_reduce("{reduce: 'totals'}"), StatementAccess::Write),
+            (map_reduce("{inline: 1}"), StatementAccess::Write),
+            (map_reduce("{inline: 1}, out: 'totals'"), StatementAccess::Destructive),
+            (map_reduce("'totals', out: {inline: 1}"), StatementAccess::Write),
+            (
+                "db.runCommand({mapreduce: 'orders', map: 'm', reduce: 'r', out: 'totals'})".to_owned(),
+                StatementAccess::Destructive,
+            ),
+        ];
+        for (text, expected) in cases {
+            assert_eq!(script_access(&text), expected, "{text}");
+        }
+    }
+
+    #[test]
+    fn a_bulk_write_that_reaches_every_document_is_destructive() {
+        let bulk =
+            |ops: &str| format!("db.adminCommand({{bulkWrite: 1, ops: [{ops}], nsInfo: [{{ns: 'shop.users'}}]}})");
+        let cases = [
+            (
+                bulk("{delete: 0, filter: {}, multi: true}"),
+                StatementAccess::Destructive,
+            ),
+            (
+                bulk("{delete: 0, filter: null, multi: true}"),
+                StatementAccess::Destructive,
+            ),
+            (bulk("{delete: 0, multi: 1}"), StatementAccess::Destructive),
+            (
+                bulk("{update: 0, filter: {}, updateMods: {$set: {a: 1}}, multi: true}"),
+                StatementAccess::Destructive,
+            ),
+            (
+                bulk("{insert: 0, document: {a: 1}}, {delete: 0, filter: {}, multi: true}"),
+                StatementAccess::Destructive,
+            ),
+            (bulk("{delete: 0, filter: {}}"), StatementAccess::Write),
+            (bulk("{delete: 0, filter: {}, multi: false}"), StatementAccess::Write),
+            (bulk("{delete: 0, filter: {a: 1}, multi: true}"), StatementAccess::Write),
+            (
+                bulk("{update: 0, filter: {}, updateMods: {$set: {a: 1}}}"),
+                StatementAccess::Write,
+            ),
+            (
+                bulk("{update: 0, filter: {a: 1}, updateMods: {$set: {a: 1}}, multi: true}"),
+                StatementAccess::Write,
+            ),
+            (bulk("{insert: 0, document: {}}"), StatementAccess::Write),
+        ];
+        for (text, expected) in cases {
+            assert_eq!(script_access(&text), expected, "{text}");
+        }
+    }
+
+    #[test]
+    fn apply_ops_is_destructive_and_multi_is_read_as_the_server_reads_a_flag() {
+        for text in [
+            "db.adminCommand({applyOps: [{op: 'd', ns: 'shop.users', o: {_id: 1}}]})",
+            "db.runCommand({applyOps: []})",
+            "db.users.update({}, {$set: {a: 1}}, {multi: 1})",
+            "db.runCommand({update: 'users', updates: [{q: {}, u: {$set: {a: 1}}, multi: 1}]})",
+            "db.runCommand({delete: 'users', deletes: [{q: null, limit: 0}]})",
+        ] {
+            assert_eq!(script_access(text), StatementAccess::Destructive, "{text}");
+        }
+        assert_eq!(
+            script_access("db.users.update({}, {$set: {a: 1}}, {multi: 0})"),
+            StatementAccess::Write
+        );
     }
 
     #[test]
@@ -359,6 +550,123 @@ mod tests {
         }
         assert_eq!(script_access("db.users.deleteMany({a: 1})"), StatementAccess::Write);
         assert_eq!(script_access(""), StatementAccess::Read);
+    }
+
+    #[test]
+    fn every_drop_is_destructive_as_sql_drop_is() {
+        for text in [
+            "db.users.dropIndex('a_1')",
+            "db.users.dropIndex({a: 1})",
+            "db.users.dropIndexes()",
+            "db.users.dropIndexes(['a_1', 'b_1'])",
+            "db.users.dropSearchIndex('s')",
+            "db.getSiblingDB('shop').getCollection('users').dropIndexes()",
+            "db.dropUser('ann')",
+            "db.dropRole('auditor')",
+            "db.dropAllUsers()",
+            "db.dropAllRoles()",
+            "db.runCommand({dropIndexes: 'users', index: '*'})",
+            "db.runCommand({deleteIndexes: 'users', index: 'a_1'})",
+            "db.runCommand({dropSearchIndex: 'users', name: 's'})",
+            "db.runCommand({dropUser: 'ann'})",
+            "db.runCommand({dropRole: 'auditor'})",
+            "db.runCommand({dropAllUsersFromDatabase: 1})",
+            "db.adminCommand({dropAllRolesFromDatabase: 1})",
+            "db.runCommand({convertToCapped: 'orders', size: 4096})",
+        ] {
+            assert_eq!(script_access(text), StatementAccess::Destructive, "{text}");
+        }
+    }
+
+    #[test]
+    fn a_rename_that_drops_its_target_is_destructive() {
+        let cases = [
+            (
+                "db.orders_new.renameCollection('orders', true)",
+                StatementAccess::Destructive,
+            ),
+            (
+                "db.orders_new.renameCollection('orders', {dropTarget: true})",
+                StatementAccess::Destructive,
+            ),
+            (
+                "db.orders_new.renameCollection('orders', 1)",
+                StatementAccess::Destructive,
+            ),
+            ("db.orders_new.renameCollection('orders')", StatementAccess::Write),
+            (
+                "db.orders_new.renameCollection('orders', false)",
+                StatementAccess::Write,
+            ),
+            (
+                "db.orders_new.renameCollection('orders', {dropTarget: false})",
+                StatementAccess::Write,
+            ),
+            (
+                "db.adminCommand({renameCollection: 'shop.a', to: 'shop.b', dropTarget: true})",
+                StatementAccess::Destructive,
+            ),
+            (
+                "db.adminCommand({renameCollection: 'shop.a', to: 'shop.b', dropTarget: 1})",
+                StatementAccess::Destructive,
+            ),
+            (
+                "db.adminCommand({renameCollection: 'shop.a', to: 'shop.b'})",
+                StatementAccess::Write,
+            ),
+            (
+                "db.adminCommand({renameCollection: 'shop.a', to: 'shop.b', dropTarget: 0})",
+                StatementAccess::Write,
+            ),
+            // A key written twice is sent with its last value.
+            (
+                "db.adminCommand({renameCollection: 'shop.a', to: 'shop.b', dropTarget: false, dropTarget: true})",
+                StatementAccess::Destructive,
+            ),
+            (
+                "db.adminCommand({renameCollection: 'shop.a', to: 'shop.b', dropTarget: true, dropTarget: false})",
+                StatementAccess::Write,
+            ),
+        ];
+        for (text, expected) in cases {
+            assert_eq!(script_access(text), expected, "{text}");
+        }
+    }
+
+    #[test]
+    fn a_validate_that_repairs_is_a_write() {
+        let cases = [
+            ("db.runCommand({validate: 'orders'})", StatementAccess::Read),
+            ("db.runCommand({validate: 'orders', full: true})", StatementAccess::Read),
+            (
+                "db.runCommand({validate: 'orders', repair: false})",
+                StatementAccess::Read,
+            ),
+            (
+                "db.runCommand({validate: 'orders', repair: true})",
+                StatementAccess::Write,
+            ),
+            (
+                "db.runCommand({validate: 'orders', repair: true, fixMultikey: true})",
+                StatementAccess::Write,
+            ),
+            (
+                "db.runCommand({validate: 'orders', fixMultikey: true})",
+                StatementAccess::Write,
+            ),
+            ("db.runCommand({validate: 'orders', repair: 1})", StatementAccess::Write),
+            (
+                "db.runCommand({validate: 'orders', repair: false, repair: true})",
+                StatementAccess::Write,
+            ),
+            (
+                "db.runCommand({validate: 'orders', repair: true, repair: false})",
+                StatementAccess::Read,
+            ),
+        ];
+        for (text, expected) in cases {
+            assert_eq!(script_access(text), expected, "{text}");
+        }
     }
 
     #[test]

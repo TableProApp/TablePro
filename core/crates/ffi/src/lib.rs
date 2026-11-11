@@ -15,6 +15,7 @@ mod host_key;
 mod library;
 mod prompter;
 mod results;
+mod row_edits;
 mod run;
 mod runtime;
 mod safe_mode_gate;
@@ -38,6 +39,10 @@ pub use library::{
 };
 pub use prompter::{HostPrompter, PromptAnswer, PromptFieldInfo, PromptPurposeTag, PromptReasonTag, PromptRequest};
 pub use results::{ResultColumnInfo, ResultSet, ValueKind};
+pub use row_edits::{
+    CellChange, CellEdit, EditColumnInfo, EditLock, EditStart, PlannedStatement, RowEdit, RowSave, RowSaveOutcome,
+    SaveGate, TableEditor,
+};
 pub use run::{QueryRun, RunEvent, RunListener, RunOutcome, TransactionStateTag, TruncationTag};
 pub use safe_mode_gate::RunGate;
 pub use session::{ColumnSort, DatabaseSession, FailureCauseTag, SessionHealthTag, TableQuery};

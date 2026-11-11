@@ -32,6 +32,45 @@ enum LSPTransportError: Error, LocalizedError {
     }
 }
 
+// MARK: - LSPMessageWriter
+
+// Writes on its own queue, so a server that stops reading blocks the queue and never the transport.
+final class LSPMessageWriter: @unchecked Sendable {
+    private let handle: FileHandle
+    private let queue = DispatchQueue(label: "com.TablePro.LSPTransport.writer")
+    private var isClosed = false
+
+    init(_ handle: FileHandle) throws {
+        // Without it, a write to a server that has exited raises SIGPIPE and ends the app.
+        guard fcntl(handle.fileDescriptor, F_SETNOSIGPIPE, 1) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        self.handle = handle
+    }
+
+    func write(_ frame: Data, onFailure: @escaping @Sendable (any Error) -> Void) {
+        queue.async { [self] in
+            guard !isClosed else {
+                onFailure(LSPTransportError.processNotRunning)
+                return
+            }
+            do {
+                try handle.write(contentsOf: frame)
+            } catch {
+                onFailure(error)
+            }
+        }
+    }
+
+    func close() {
+        queue.async { [self] in
+            guard !isClosed else { return }
+            isClosed = true
+            try? handle.close()
+        }
+    }
+}
+
 // MARK: - LSPTransport
 
 actor LSPTransport {
@@ -39,6 +78,7 @@ actor LSPTransport {
 
     private var process: Process?
     private var stdinPipe: Pipe?
+    private var writer: LSPMessageWriter?
     private var stdoutPipe: Pipe?
     private var stderrPipe: Pipe?
     private var stderrReader: PipeReader?
@@ -66,6 +106,7 @@ actor LSPTransport {
         proc.standardOutput = stdout
         proc.standardError = stderr
 
+        self.writer = try LSPMessageWriter(stdin.fileHandleForWriting)
         self.stdinPipe = stdin
         self.stdoutPipe = stdout
         self.stderrPipe = stderr
@@ -105,9 +146,8 @@ actor LSPTransport {
         readerTask?.cancel()
         readerTask = nil
 
-        if let stdinHandle = stdinPipe?.fileHandleForWriting {
-            try? stdinHandle.close()
-        }
+        writer?.close()
+        writer = nil
         if let stdoutHandle = stdoutPipe?.fileHandleForReading {
             try? stdoutHandle.close()
         }
@@ -144,7 +184,7 @@ actor LSPTransport {
         return try await withCheckedThrowingContinuation { continuation in
             pendingRequests[requestID] = continuation
             do {
-                try writeMessage(data)
+                try writeMessage(data, failingRequest: requestID)
             } catch {
                 pendingRequests.removeValue(forKey: requestID)
                 continuation.resume(throwing: error)
@@ -212,19 +252,22 @@ actor LSPTransport {
 
     // MARK: - Private
 
-    private func writeMessage(_ data: Data) throws {
-        guard let stdinPipe else {
+    private func writeMessage(_ data: Data, failingRequest requestID: Int? = nil) throws {
+        guard let writer else {
             throw LSPTransportError.processNotRunning
         }
-
-        let header = "Content-Length: \(data.count)\r\n\r\n"
-        guard let headerData = header.data(using: .utf8) else {
-            throw LSPTransportError.invalidResponse
+        let frame = Data("Content-Length: \(data.count)\r\n\r\n".utf8) + data
+        writer.write(frame) { [weak self] error in
+            Task { [weak self] in
+                await self?.writeFailed(error, requestID: requestID)
+            }
         }
+    }
 
-        let handle = stdinPipe.fileHandleForWriting
-        handle.write(headerData)
-        handle.write(data)
+    private func writeFailed(_ error: any Error, requestID: Int?) {
+        Self.logger.warning("LSP write failed: \(error.localizedDescription)")
+        guard let requestID, let continuation = pendingRequests.removeValue(forKey: requestID) else { return }
+        continuation.resume(throwing: error)
     }
 
     private func runReadLoop(handle: FileHandle) async {
@@ -341,6 +384,9 @@ actor LSPTransport {
 
     private func handleProcessExit(code: Int32) {
         Self.logger.info("LSP process exited with code \(code)")
+        writer?.close()
+        writer = nil
+        stdinPipe = nil
         let pending = pendingRequests
         pendingRequests.removeAll()
         for (_, continuation) in pending {

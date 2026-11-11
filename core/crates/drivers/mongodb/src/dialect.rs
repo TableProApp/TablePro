@@ -1,8 +1,9 @@
-use tablepro_core::column::{ColumnType, SqlExpression};
+use tablepro_core::column::{ColumnInfo, ColumnType, SqlExpression};
 use tablepro_core::dialect::{
     BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection,
     LiteralError, Placeholder, SqlDialect,
 };
+use tablepro_core::filter::FilterOp;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{ExpressionSyntaxError, HistoryRecording, SqlGrammar, TypeSyntaxError};
 use tablepro_core::value::Value;
@@ -59,6 +60,12 @@ impl SqlDialect for MongoDialect {
         text.to_owned()
     }
 
+    /// The operators `tablepro_core::document` builds a rule with, so the
+    /// filter strip offers no rule the filter would refuse.
+    fn filter_operators(&self, column: &ColumnInfo) -> &'static [FilterOp] {
+        tablepro_core::document::filter_operators(column)
+    }
+
     fn row_window(&self, _order_by: Option<&str>, _limit: u64, _offset: u64) -> String {
         String::new()
     }
@@ -101,10 +108,19 @@ impl SqlDialect for MongoDialect {
     fn insert_default_row(&self, _table_sql: &str) -> Option<String> {
         None
     }
+
+    /// A page reads a missing field as NULL, so a NULL cell is a field the
+    /// document leaves out, as `tablepro_core::document` inserts it.
+    fn insert_names_null_cells(&self) -> bool {
+        false
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use tablepro_core::column::ResultColumn;
+    use tablepro_core::export::render_sql_insert;
+    use tablepro_core::meta::TableRef;
     use tablepro_core::sql_syntax::WithholdReason;
     use tablepro_core::statement::ParamType;
 
@@ -113,6 +129,47 @@ mod tests {
     #[test]
     fn an_import_writes_a_document_a_step() {
         assert_eq!(MongoDialect.insert_batch_limits().rows, 1);
+    }
+
+    #[test]
+    fn an_exported_insert_leaves_a_null_field_out() {
+        let columns = ["_id", "name", "email"].map(|name| ResultColumn::new(name, ColumnType::unknown()));
+        let rows = [vec![Value::Int32(1), Value::Text("ann".to_owned()), Value::Null]];
+
+        let sql = render_sql_insert(
+            &MongoDialect,
+            &TableRef::new(Some("shop".to_owned()), "users"),
+            &columns,
+            &[],
+            &[],
+            &rows,
+        );
+
+        assert_eq!(
+            sql,
+            "db.getSiblingDB(\"shop\").getCollection(\"users\").insertOne({\"_id\": 1, \"name\": \"ann\"});\n"
+        );
+    }
+
+    #[test]
+    fn a_field_of_ints_and_doubles_keeps_the_comparisons() {
+        let price = crate::field_types::field_column("price", &["int", "double"].into_iter().collect());
+        let qty = crate::field_types::field_column("qty", &["int"].into_iter().collect());
+
+        let offered = MongoDialect.filter_operators(&price);
+        for op in [
+            FilterOp::Lt,
+            FilterOp::GtEq,
+            FilterOp::Between,
+            FilterOp::Contains,
+            FilterOp::IsNull,
+        ] {
+            assert!(offered.contains(&op), "{op:?} in {offered:?}");
+        }
+        assert_eq!(
+            MongoDialect.filter_operators(&qty),
+            tablepro_core::filter::operators_for(&qty.column_type.kind)
+        );
     }
 
     #[test]

@@ -4,22 +4,29 @@
   "dataGrid": {
     "alternateRow": "#D6D8DF",
     "background": "#E6E7ED",
+    "binary": "#0F4B6E",
     "boolFalse": "#8C4351",
     "boolTrue": "#385F0D",
+    "dateTime": "#2959AA",
     "deleted": "#E8686826",
     "deletedText": "#8C435180",
+    "enum": "#65359D",
     "focusBorder": "#2959AA",
     "gridLine": "#C1C2C7",
     "headerBackground": "#D6D8DF",
     "headerText": "#343B59",
     "inactiveSelection": "#C9CBD6",
     "inserted": "#2D9C9126",
+    "json": "#8F5E15",
     "modified": "#8F5E1526",
     "nullValue": "#888B94",
+    "number": "#965027",
     "rowNumber": "#9DA0AB",
     "selection": "#ACB0BF",
     "selectionText": "#343B59",
-    "text": "#343B59"
+    "string": "#385F0D",
+    "text": "#343B59",
+    "uuid": "#33635C"
   },
   "editor": {
     "background": "#E6E7ED",
@@ -43,7 +50,7 @@
   },
   "id": "tablepro.tokyo-night-light",
   "name": "Tokyo Night Light",
-  "schema": 3,
+  "schema": 4,
   "window": {
     "background": "#E6E7ED"
   }

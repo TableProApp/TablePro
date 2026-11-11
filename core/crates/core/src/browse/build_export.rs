@@ -16,7 +16,8 @@ use super::{BrowseSqlError, ExportRequest};
 /// unchanged table come out the same. A heap address, or a key the
 /// engine would sort the whole table by, orders them only behind the
 /// user's sort: on its own it would hold every row before the first
-/// could be written.
+/// could be written. A table's rows hold only its columns, so SQL reads
+/// the listed columns for either `ExportFields`.
 pub fn build_export(dialect: &dyn SqlDialect, request: &ExportRequest<'_>) -> Result<Statement, BrowseSqlError> {
     if crate::document::speaks_shell(dialect) {
         return crate::document::export(request);

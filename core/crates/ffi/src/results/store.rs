@@ -4,7 +4,7 @@ use tablepro_core::Value;
 use tablepro_core::column::ResultColumn;
 use tablepro_core::value::order::{row_order, sorts_as_text};
 
-use super::column_cells::{Cell, ColumnCells, cell_value};
+use super::column_cells::{Cell, ColumnCells, cell_value, stored_value};
 use super::{ValueKind, cell_text};
 
 // A full chunk is never written again, so an append copies at most one chunk's arrays when they grow.
@@ -132,6 +132,20 @@ impl ResultStore {
         let state = self.read();
         let cell = state.cell(row, column)?;
         Some(cell.kind.map(|kind| cell_text::full(kind, cell.bytes)))
+    }
+}
+
+impl ResultStore {
+    // `None` when the cell is not there or its value cannot be named exactly (`stored_value`).
+    pub(crate) fn stored_value(&self, row: u64, column: usize) -> Option<Value> {
+        let state = self.read();
+        let read = &state.columns.get(column)?.column_type;
+        stored_value(state.cell(row, column)?, read)
+    }
+
+    // The kind of the value in a cell, `None` for null; a dynamically typed column can hold any.
+    pub(crate) fn cell_kind(&self, row: u64, column: usize) -> Option<Option<ValueKind>> {
+        Some(self.read().cell(row, column)?.kind)
     }
 }
 

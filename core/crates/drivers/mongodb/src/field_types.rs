@@ -37,22 +37,19 @@ pub(crate) fn type_alias(value: &Bson) -> &'static str {
     }
 }
 
-/// The type a field's values share, as the grid treats it. Numbers that
-/// differ in width share the widest; a field of several other types, or
-/// of documents, arrays or binary data, is JSON, which writes each value
-/// as the type it is, a UUID's subtype included. A null names no type:
-/// it fits any.
+/// The type a field's values share, as the grid treats it. A field of
+/// more than one type, numbers of two BSON types among them, or of
+/// documents, arrays or binary data other than UUIDs, is JSON, which
+/// writes each value as the type it is, so an edit leaves an `int` an
+/// `int` beside a `long`. A null names no type: it fits any.
 pub(crate) fn shared_type(aliases: &BTreeSet<&str>) -> &'static str {
     let typed: BTreeSet<&str> = aliases.iter().copied().filter(|alias| *alias != "null").collect();
-    let numbers = ["int", "long", "double", "decimal"];
-    if !typed.is_empty() && typed.iter().all(|alias| numbers.contains(alias)) {
-        return ["decimal", "double", "long", "int"]
-            .into_iter()
-            .find(|widest| typed.contains(widest))
-            .unwrap_or("int");
-    }
     match typed.iter().next() {
         Some(&alias) if typed.len() == 1 => match alias {
+            "int" => "int",
+            "long" => "long",
+            "double" => "double",
+            "decimal" => "decimal",
             "string" => "string",
             "bool" => "bool",
             "date" => "date",
@@ -138,9 +135,12 @@ mod tests {
     #[test]
     fn a_field_takes_the_type_its_values_share() {
         assert_eq!(shared(&["int"]), "int");
-        assert_eq!(shared(&["int", "long"]), "long");
-        assert_eq!(shared(&["int", "double", "null"]), "double");
-        assert_eq!(shared(&["decimal", "int"]), "decimal");
+        assert_eq!(shared(&["long", "null"]), "long");
+        assert_eq!(shared(&["int", "long"]), "mixed");
+        assert_eq!(shared(&["int", "double", "null"]), "mixed");
+        assert_eq!(shared(&["decimal", "int"]), "mixed");
+        assert_eq!(shared(&["uuid", "null"]), "uuid");
+        assert_eq!(shared(&["uuid", "binData"]), "mixed");
         assert_eq!(shared(&["string", "null"]), "string");
         assert_eq!(shared(&["string", "int"]), "mixed");
         assert_eq!(shared(&["object"]), "object");

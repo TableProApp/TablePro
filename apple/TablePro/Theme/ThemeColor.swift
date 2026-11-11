@@ -60,7 +60,9 @@ internal extension ThemeSlot {
             return .textColor
 
         case .gridBackground: return .controlBackgroundColor
-        case .gridText, .gridBoolTrue, .gridBoolFalse: return .labelColor
+        case .gridText, .gridBoolTrue, .gridBoolFalse,
+             .gridString, .gridNumber, .gridDateTime, .gridBinary, .gridJSON, .gridUUID, .gridEnum:
+            return .labelColor
         case .gridAlternateRow: return NativeThemeColors.alternateRow
         case .gridHeaderBackground: return .controlBackgroundColor
         case .gridHeaderText: return .headerTextColor

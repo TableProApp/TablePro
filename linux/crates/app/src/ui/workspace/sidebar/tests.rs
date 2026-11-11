@@ -1264,6 +1264,7 @@ fn a_row_tells_a_screen_reader_its_kind() {
     );
     shown.open(&alpha, &view);
     shown.row("public").set_expanded(true);
+    shown.row("Views").set_expanded(true);
 
     let description = |name: &str| {
         let row = shown.row_widget(name);
@@ -1273,8 +1274,52 @@ fn a_row_tells_a_screen_reader_its_kind() {
     assert_eq!(description("orders").as_deref(), Some("Table"));
     assert_eq!(description("totals").as_deref(), Some("View"));
     assert_eq!(description("public").as_deref(), Some("Schema"));
+    assert_eq!(description("Views").as_deref(), Some("1 object"));
     assert_eq!(description("Alpha").as_deref(), Some("Connection, connected"));
     assert_eq!(description("Beta").as_deref(), Some("Connection"));
+
+    let view_named = |name: &str| ObjectInfo {
+        kind: ObjectKind::View,
+        ..object("public", name)
+    };
+    view.show(SidebarIndex::build(
+        &[object("public", "orders"), view_named("totals"), view_named("weekly")],
+        &public(),
+    ));
+    assert_eq!(
+        description("Views").as_deref(),
+        Some("2 objects"),
+        "a new list recounts the group"
+    );
+}
+
+#[gtk4::test]
+fn other_kinds_sit_in_groups_that_open_reveal_their_objects_and_offer_no_menu() {
+    let alpha = connection("Alpha", None);
+    let shown = Shown::new(std::slice::from_ref(&alpha));
+    let totals = ObjectInfo {
+        kind: ObjectKind::View,
+        ..object("public", "totals")
+    };
+    let (view, _) = session(&[object("public", "orders"), totals], every_affordance());
+    let key = shown.open(&alpha, &view);
+    shown.row("Alpha").set_expanded(true);
+    shown.row("public").set_expanded(true);
+    assert_eq!(shown.rows(), ["Alpha", "public", "Views", "orders"]);
+
+    shown.activate("Views");
+    assert_eq!(shown.rows(), ["Alpha", "public", "Views", "totals", "orders"]);
+    shown.menu("Views");
+    assert!(!shown.popover().is_visible(), "a group has a menu");
+    shown.activate("Views");
+    assert_eq!(shown.rows(), ["Alpha", "public", "Views", "orders"]);
+
+    shown.tree.select(Some(&key), Some(&table("totals")));
+    assert_eq!(
+        shown.selected().as_deref(),
+        Some("totals"),
+        "the view's group stayed folded"
+    );
 }
 
 #[gtk4::test]

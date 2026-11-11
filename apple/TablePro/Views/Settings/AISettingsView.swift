@@ -6,6 +6,7 @@
 //  context, and privacy. Modeled after Xcode 26 Intelligence settings.
 //
 
+import Combine
 import SwiftUI
 
 struct AISettingsView: View {
@@ -454,6 +455,7 @@ struct AISettingsView: View {
         if isNew, settings.activeProviderID == nil {
             settings.activeProviderID = provider.id
         }
+        AppEvents.shared.aiProviderSaved.send(provider.id)
     }
 
     private func removeProvider(_ id: UUID) {

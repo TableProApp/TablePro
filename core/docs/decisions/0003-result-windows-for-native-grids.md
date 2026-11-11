@@ -1,6 +1,6 @@
 # 0003: The core owns the result set, and a native grid pulls windows of text
 
-- **Status**: Accepted; amended by 0007; the row limit as the bound on memory superseded by 0019
+- **Status**: Accepted; amended by 0007; the row limit as the bound on memory superseded by 0020
 - **Date**: 2026-11-02
 
 ## Context

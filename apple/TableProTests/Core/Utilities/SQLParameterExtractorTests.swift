@@ -132,8 +132,16 @@ struct SQLParameterExtractorTests {
         )
         #expect(result.sql == "WHERE id = ? AND name = ?")
         #expect(result.values.count == 2)
-        #expect((result.values[0] as? String) == "42")
-        #expect((result.values[1] as? String) == "Alice")
+        #expect((result.values[0] as? TypedParameterValue) == TypedParameterValue(text: "42", kind: .integer))
+        #expect((result.values[1] as? TypedParameterValue) == TypedParameterValue(text: "Alice", kind: .text))
+    }
+
+    @Test("A String parameter holding a plain number keeps the reading by shape; any other text is text", arguments: [
+        ("42", PluginColumnKind?.none), ("-3.5", nil), ("00123", nil), ("1E5", .text), ("12e3", .text), ("1.", .text),
+        (".5", nil), ("abc", .text), ("", .text), ("-", .text),
+    ])
+    func stringKindFollowsTheValue(value: String, kind: PluginColumnKind?) {
+        #expect(QueryParameterType.string.pluginKind(for: value) == kind)
     }
 
     @Test
@@ -161,8 +169,8 @@ struct SQLParameterExtractorTests {
         )
         #expect(result.sql == "WHERE ? = ?")
         #expect(result.values.count == 2)
-        #expect((result.values[0] as? String) == "42")
-        #expect((result.values[1] as? String) == "42")
+        #expect((result.values[0] as? TypedParameterValue)?.text == "42")
+        #expect((result.values[1] as? TypedParameterValue)?.text == "42")
     }
 
     @Test

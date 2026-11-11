@@ -62,6 +62,7 @@ private final class StubConnectionProtocol: URLProtocol, @unchecked Sendable {
 struct OpenAICompatibleProviderConnectionTests {
     private func makeProvider(
         endpoint: String,
+        model: String = "glm-4.6",
         treatsForbiddenAsAuthFailure: Bool = false
     ) -> OpenAICompatibleProvider {
         let config = URLSessionConfiguration.ephemeral
@@ -70,7 +71,7 @@ struct OpenAICompatibleProviderConnectionTests {
             endpoint: endpoint,
             apiKey: "key",
             providerType: .custom,
-            model: "glm-4.6",
+            model: model,
             treatsForbiddenAsAuthFailure: treatsForbiddenAsAuthFailure,
             session: URLSession(configuration: config)
         )
@@ -236,5 +237,33 @@ struct OpenAICompatibleProviderConnectionTests {
         StubConnectionProtocol.respond(status: 200, body: "{}")
         _ = try await makeProvider(endpoint: "https://api.z.ai/api/paas/v4").testConnection()
         #expect(StubConnectionProtocol.lastRequestedURL() == "https://api.z.ai/api/paas/v4/chat/completions")
+    }
+
+    private static let unknownModelBody = #"""
+    {"error":{"code":"model_not_found","message":"The model `test` does not exist or is not available","param":"model","type":"invalid_request_error"}}
+    """#
+
+    /// With no model picked yet the probe names a placeholder, and a server that answers "no such
+    /// model" read as a wrong Base URL, failing a setup whose route and key were both right.
+    @Test("With no model picked, a server that says the placeholder model does not exist is reachable")
+    func unknownPlaceholderModelIsAWorkingConnection() async throws {
+        StubConnectionProtocol.respond(status: 404, body: Self.unknownModelBody)
+        #expect(try await makeProvider(endpoint: "https://api.meta.ai", model: "").testConnection())
+    }
+
+    @Test("A model the user picked that the server does not know is still a failure")
+    func unknownChosenModelFails() async {
+        StubConnectionProtocol.respond(status: 404, body: Self.unknownModelBody)
+        await #expect(throws: AIProviderError.self) {
+            _ = try await makeProvider(endpoint: "https://api.meta.ai", model: "muse-spark-9").testConnection()
+        }
+    }
+
+    @Test("With no model picked, any other 404 is still a failure")
+    func otherNotFoundWithoutModelFails() async {
+        StubConnectionProtocol.respond(status: 404, body: #"{"error":{"code":"not_found","message":"no route"}}"#)
+        await #expect(throws: AIProviderError.self) {
+            _ = try await makeProvider(endpoint: "https://host/v1", model: "").testConnection()
+        }
     }
 }

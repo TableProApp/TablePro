@@ -109,7 +109,8 @@ struct StructureListGridAccessibilityTests {
         defer { DataGridAccessibility.isActive = false }
         let parts = [true, false].map { active in
             ClickHousePartInfo(
-                partition: "202601", name: "p", rows: 1, bytesOnDisk: 1, modificationTime: "", active: active
+                partition: "202601", partitionId: "202601", name: "p", rows: 1, bytesOnDisk: 1, modificationTime: "",
+                active: active
             )
         }
         let rows = parts.map { part in

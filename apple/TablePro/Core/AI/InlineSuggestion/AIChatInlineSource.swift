@@ -72,6 +72,12 @@ final class AIChatInlineSource: InlineSuggestionSource {
             options: ChatTransportOptions(
                 model: resolved.model,
                 systemPrompt: systemPrompt,
+                reasoningEffort: AIProviderFactory.reasoningEffort(
+                    resolved.config.reasoningEffort,
+                    config: resolved.config,
+                    model: resolved.model,
+                    onlyWhereRequired: true
+                ),
                 sessionId: sessionId
             )
         )

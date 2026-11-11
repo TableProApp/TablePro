@@ -60,6 +60,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     private readonly UISettings _settings = new();
 
     private IGridData? _data;
+    private EditedGridData? _edited;
     private CellCache? _cache;
     private IndexList _items = new(0);
     private IndexList _columnItems = new(0);
@@ -220,6 +221,8 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         get => _columns.FrozenCount;
         set
         {
+            // The editor sits in its column's pane, which this may change.
+            CommitOrCancel(EditorFocused);
             _columns.FrozenCount = value;
             ColumnsChanged();
         }
@@ -312,8 +315,18 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     // Fonts, colors, widths, the device or the data changed: every drawn row lays out again.
     internal int LayoutVersion => unchecked((_layoutVersion * 397) ^ Painter.Version);
 
-    // Selected cells are drawn in other colors only in high contrast; the row numbers always mark selected rows.
-    internal int InkVersion(bool frozen) => frozen || Painter.Colors.HighContrast ? _selectionVersion : 0;
+    // Selected cells look different only in high contrast and on a wash; row numbers always mark selected rows.
+    internal int InkVersion(bool drawsSelection) => drawsSelection || Painter.Colors.HighContrast ? _selectionVersion : 0;
+
+    // The selection box is drawn for more than the focused cell alone.
+    internal bool SelectionBoxShown
+    {
+        get
+        {
+            var range = SelectionRange;
+            return !range.IsEmpty && !(range.RowCount == 1 && range.ColumnCount == 1 && _selection.Kind == SelectionKind.Cells);
+        }
+    }
 
     public double PaneWidth(bool frozen) => frozen ? _columns.FrozenWidth : _columns.ScrollWidth;
 
@@ -337,11 +350,13 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     // Shows data, or nothing for null. The grid opens its own reader on this thread and disposes it with the data.
     public void SetData(IGridData? data)
     {
+        Cancel(EditorFocused);
         // A copy still reading the old data would read it after the host lets it go, then put it on the clipboard.
         _copy?.Cancel();
         _cache?.Dispose();
         _cache = null;
         _data = data;
+        _edited = data as EditedGridData;
         if (data is not null)
         {
             _cache = new CellCache(data.OpenReader());
@@ -381,6 +396,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         ColumnsChanged();
         _scroller.ChangeView(0, 0, null, true);
         Follow(0, 0);
+        RaiseStatusChanges();
     }
 
     // The data's RowCount grew, as rows of a running query arrived.
@@ -396,7 +412,17 @@ public sealed partial class DataGridView : UserControl, IGridWindow
             return;
         }
         RowCount = count;
-        _cache?.RowsChanged();
+        // New rows follow the data's last row, so they move down as the data grows.
+        if (_edited is { Edits.AddedRows: > 0 })
+        {
+            _cache?.Clear();
+            _layoutVersion++;
+            InvalidateRows();
+        }
+        else
+        {
+            _cache?.RowsChanged();
+        }
         _items.Grow(count);
         UpdateRowNumberWidth();
         UpdateExtent();
@@ -422,7 +448,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     internal string CellName(int row, int column)
     {
         var cell = Cell(row, column);
-        return cell.IsNull ? CellPainter.NullText : cell.Text.ToString();
+        return cell.IsNull ? CellPainter.NullText : cell.IsDefault ? DefaultText : cell.Text.ToString();
     }
 
     internal void OnDeviceLost()
@@ -498,7 +524,10 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         s_device ??= new SurfaceDevice(ElementCompositionPreview.GetElementVisual(this).Compositor, PreferSoftwareRendering);
         _textScale = _settings.TextScaleFactor;
         _rowHeight = Math.Ceiling(BaseRowHeight * _textScale);
-        var painter = new CellPainter(s_device, (float)(BaseFontSize * _textScale), GridColors.Resolve(ActualTheme));
+        var painter = new CellPainter(s_device, (float)(BaseFontSize * _textScale), GridColors.Resolve(ActualTheme))
+        {
+            DefaultText = _defaultText,
+        };
         FontWarmupTask = Task.WhenAll(
             FontWarmup.Start(s_device.DWrite, painter.FamilyName, BaseFontSize, PreferSoftwareRendering),
             painter.WarmAsync((float)(DefaultColumnWidth - (CellPainter.Padding * 2)), (float)_rowHeight));
@@ -527,6 +556,8 @@ public sealed partial class DataGridView : UserControl, IGridWindow
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        // As when the editor loses focus, so text typed into a grid that leaves the window still reaches the host.
+        CommitOrCancel(refocus: false);
         foreach (var rows in new[] { _rowsLayout.Realized.Values, _frozenRowsLayout.Realized.Values, _rowPool.Pooled, _frozenRowPool.Pooled })
         {
             foreach (var row in rows)

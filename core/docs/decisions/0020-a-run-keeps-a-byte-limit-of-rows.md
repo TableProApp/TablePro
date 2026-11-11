@@ -1,4 +1,4 @@
-# 0019: A run keeps a byte limit of rows
+# 0020: A run keeps a byte limit of rows
 
 - **Status**: Accepted
 - **Date**: 2026-11-11

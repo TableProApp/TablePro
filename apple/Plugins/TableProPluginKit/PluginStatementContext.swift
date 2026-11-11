@@ -31,6 +31,10 @@ public struct PluginStatementContext: Sendable, Equatable {
     // that does not say.
     public var lexicalFeatures: SQLLexicalFeatures?
 
+    // The type the user gave each parameter, by position: `.text` and `.other` are written as strings, `.integer` and
+    // `.decimal` as numbers, `.boolean` as TRUE or FALSE. Nil, or a nil entry, where none was given.
+    public var parameterKinds: [PluginColumnKind?]?
+
     public init() {}
 }
 

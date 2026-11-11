@@ -39,13 +39,13 @@ final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
 
     var fieldDetectionSignature: String { settings.detectionSignature }
 
-    var rowImportConfiguration: RowImportRunner.Configuration? { runConfiguration }
+    var rowImportConfiguration: RowImportRunner.Configuration? { Self.runConfiguration(settings) }
 
-    private var runConfiguration: RowImportRunner.Configuration {
+    private static func runConfiguration(_ options: XLSXImportOptions) -> RowImportRunner.Configuration {
         RowImportRunner.Configuration(
-            errorHandling: settings.errorHandling,
-            wrapInTransaction: settings.wrapInTransaction,
-            deleteExistingRows: settings.deleteExistingRows
+            errorHandling: options.errorHandling,
+            wrapInTransaction: options.wrapInTransaction,
+            deleteExistingRows: options.deleteExistingRows
         )
     }
 
@@ -78,11 +78,13 @@ final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
         progress: PluginImportProgress
     ) async throws -> PluginImportResult {
         let started = Date()
+        // One plugin instance serves every window, so a dialog in another window can change `settings` mid-import.
+        let options = settings
         let sheet: XLSXImportSheet
         do {
             sheet = try XLSXImportSheet.read(
                 at: source.fileURL(),
-                hasHeaderRow: settings.hasHeaderRow,
+                hasHeaderRow: options.hasHeaderRow,
                 isCancelled: { progress.isCancelled }
             )
         } catch is TabularCancellation {
@@ -96,7 +98,7 @@ final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
         progress.setEstimatedTotal(max(1, sheet.rowCount))
         var cursor = 0
         let outcome = try await RowImportRunner.run(
-            configuration: runConfiguration,
+            configuration: Self.runConfiguration(options),
             sink: sink,
             progress: progress
         ) {
@@ -108,7 +110,7 @@ final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
             if filled.count < rows.count {
                 progress.incrementStatement(by: rows.count - filled.count)
             }
-            return filled.map { (line: $0.line, row: self.row($0.values, header: header)) }
+            return filled.map { (line: $0.line, row: Self.row($0.values, header: header, options: options)) }
         }
 
         return PluginImportResult(
@@ -121,7 +123,7 @@ final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
 
     // MARK: - Private
 
-    private func row(_ values: [String?], header: [String]) -> [String: PluginCellValue] {
+    private static func row(_ values: [String?], header: [String], options: XLSXImportOptions) -> [String: PluginCellValue] {
         var mapped: [String: PluginCellValue] = [:]
         for (index, column) in header.enumerated() {
             let raw = values[safe: index] ?? nil
@@ -129,10 +131,10 @@ final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
                 mapped[column] = .null
                 continue
             }
-            let trimmed = settings.trimWhitespace
+            let trimmed = options.trimWhitespace
                 ? raw.trimmingCharacters(in: .whitespacesAndNewlines)
                 : raw
-            if settings.emptyAsNull, trimmed.isEmpty {
+            if options.emptyAsNull, trimmed.isEmpty {
                 mapped[column] = .null
             } else {
                 mapped[column] = .text(trimmed)

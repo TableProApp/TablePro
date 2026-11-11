@@ -154,6 +154,16 @@ func (o *operation) stopAfter(timeout time.Duration) {
 	o.deadline = time.AfterFunc(timeout, func() { o.requestStop(stopTimedOut) })
 }
 
+// Unlike settle, the operation stays stoppable: a cursor still answers Stop after its timeout is gone.
+func (o *operation) disarmDeadline() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.deadline != nil {
+		o.deadline.Stop()
+		o.deadline = nil
+	}
+}
+
 func (o *operation) settle() {
 	o.mu.Lock()
 	o.settled = true

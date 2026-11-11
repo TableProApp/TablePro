@@ -31,3 +31,17 @@ public extension PluginDriverError {
         return desc
     }
 }
+
+// A statement Stop ended, after which the server rolled back the transaction it ran in. A driver throws it in place of
+// the cancellation, so the host can say what the Stop undid.
+public struct PluginStopRolledBackTransaction: PluginDriverError {
+    public let pluginErrorCode: Int?
+
+    public init(code: Int? = nil) {
+        pluginErrorCode = code
+    }
+
+    public var pluginErrorMessage: String {
+        String(localized: "The statement was stopped, and the server rolled back the transaction it ran in. Every change since that transaction began is undone.")
+    }
+}

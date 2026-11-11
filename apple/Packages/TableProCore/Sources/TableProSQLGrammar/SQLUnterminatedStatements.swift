@@ -20,16 +20,39 @@ public enum SQLUnterminatedStatements {
     /// Every text a gate has to tier for `statement`: the statement itself, then, when `grammar` needs no terminator,
     /// the text of each statement that begins inside it, less the statements nested in that one, which come on their
     /// own. A grammar that takes a statement in place of a value or a table adds what ``SQLEmbeddedStatements`` finds,
-    /// and one with a pipe operator each statement ``SQLPipeOperatorChain`` finds.
+    /// and one with a pipe operator each statement ``SQLPipeOperatorChain`` finds. A grammar that needs a terminator
+    /// also adds the pieces a `;` inside the statement's parentheses separates, from ``SQLParenthesizedSemicolons``.
     public static func runnable(in statement: String, grammar: SQLLexicalGrammar) -> [String] {
         guard grammar.contains(.unterminatedStatements) else {
             return [statement] + SQLEmbeddedStatements.texts(in: statement, grammar: grammar)
                 + SQLPipeOperatorChain.statements(in: statement, grammar: grammar)
+                + SQLParenthesizedSemicolons.pieces(in: statement, grammar: grammar)
         }
         let text = statement as NSString
         let tokens = TSQLTokens.read(text, grammar: grammar)
         guard !definesRoutine(tokens) else { return [statement] }
         return [statement] + ownTexts(of: statementSpans(in: tokens, length: text.length), in: text)
+    }
+
+    // A scanner statement on T-SQL keeps a `;` outside parentheses only when a block holds it, so anything after one but
+    // the block's `END`, an `ELSE` or another `;` is a second statement the block runs. A stored routine runs nothing.
+    public static func blockHoldsSeveralStatements(_ statement: String, grammar: SQLLexicalGrammar) -> Bool {
+        guard grammar.contains(.unterminatedStatements) else { return false }
+        let tokens = TSQLTokens.read(statement as NSString, grammar: grammar)
+        guard !definesRoutine(tokens) else { return false }
+        return tokens.indices.dropLast().contains { index in
+            guard tokens[index].kind == .terminator, tokens[index].depth == 0 else { return false }
+            let next = tokens[index + 1]
+            guard next.kind != .terminator else { return false }
+            switch next.word {
+            case "ELSE":
+                return false
+            case "END":
+                return tokens.indices.contains(index + 2) && tokens[index + 2].word == "CONVERSATION"
+            default:
+                return true
+            }
+        }
     }
 
     /// The reserved keywords that begin a T-SQL statement. `ELSE` and `FETCH` are left out because they also continue

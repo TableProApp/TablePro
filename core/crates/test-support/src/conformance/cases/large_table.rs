@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use tablepro_core::browse::{ExportRequest, PageRead, PageRequest, PagingMode, build_export, read_page};
-use tablepro_core::export::{CsvEncoder, CsvOptions, RowEncoder};
+use tablepro_core::browse::{ExportFields, ExportRequest, PageRead, PageRequest, PagingMode, build_export, read_page};
+use tablepro_core::export::{CsvEncoder, CsvOptions, CsvQuote, RowEncoder};
 use tablepro_core::meta::{PagePosition, RowIdentity, TableRef};
 use tablepro_core::{
     ColumnInfo, Connection, FilterSet, ReadStatement, ResultEvent, ResultSink, SinkFlow, UserSql, Value, WriteKind,
@@ -169,6 +169,7 @@ async fn export_table(
         filter: &browsed.filter,
         sort: &[],
         identity: &browsed.identity,
+        fields: ExportFields::Every,
     };
     let read = ReadStatement::Generated(
         build_export(&*connection.dialect(), &request)
@@ -539,7 +540,12 @@ impl ResultSink for CsvFileSink {
         match event {
             ResultEvent::ResultSetStarted { columns } => {
                 lock(&self.tally).result_sets += 1;
-                let mut encoder = CsvEncoder::new(columns, CsvOptions::default());
+                // `check_file` reads every field quoted.
+                let options = CsvOptions {
+                    quote: CsvQuote::Always,
+                    ..CsvOptions::default()
+                };
+                let mut encoder = CsvEncoder::new(columns, options);
                 encoder.begin(&mut self.buffer);
                 self.encoder = Some(encoder);
                 SinkFlow::Continue

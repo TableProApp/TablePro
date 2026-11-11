@@ -1,7 +1,7 @@
 //! A Session against a real MongoDB through OpenSSH: the collections it
-//! lists and the statements an editor sends go through the tunnel, to a
-//! replica set member that names itself by an address the app never
-//! reaches.
+//! lists, the pages it reads, the edits it saves and the statements an
+//! editor sends go through the tunnel, to a replica set member that names
+//! itself by an address the app never reaches.
 
 #![expect(
     clippy::expect_used,
@@ -13,11 +13,15 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use secrecy::SecretString;
+use tablepro_core::browse::{PageRead, PageRequest, read_page};
 use tablepro_core::credentials::CredentialInteraction;
-use tablepro_core::meta::{ObjectKind, ObjectScope};
+use tablepro_core::edit::CellInput;
+use tablepro_core::filter::FilterSet;
+use tablepro_core::meta::{ObjectKind, ObjectScope, PagePosition, RowIdentity, TableRef};
+use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
 use tablepro_core::{
-    ConnectEnvironment, Credentials, EditorSessionOptions, LivenessPolicy, NetworkEndpoint, ResultEvent, ResultSink,
-    RunEnd, RunOptions, SinkFlow, TlsConfig, UserSql, WorkspaceSettings,
+    ColumnInfo, ConnectEnvironment, Credentials, EditorSessionOptions, LivenessPolicy, NetworkEndpoint, ResultEvent,
+    ResultSink, RunEnd, RunOptions, SinkFlow, TlsConfig, UserSql, Value, WorkspaceSettings, WriteKind, WriteReport,
 };
 use tablepro_driver_mongodb::MongoDriver;
 use tablepro_session::runtime::Tasks;
@@ -80,6 +84,104 @@ impl ResultSink for Discard {
     }
 }
 
+/// Fewer documents than the collection holds, so a second page is read.
+const PAGE: u64 = 2;
+
+/// A collection as the browse tab holds it: the fields and the key its
+/// pages and saves are built from.
+#[derive(Clone)]
+struct Grid {
+    table: TableRef,
+    columns: Vec<ColumnInfo>,
+    identity: RowIdentity,
+}
+
+impl Grid {
+    async fn open(session: &Session, table: TableRef) -> Self {
+        let read = table.clone();
+        let (columns, identity) = session
+            .run(OperationKind::Metadata, move |lease, options| {
+                let table = read.clone();
+                async move {
+                    let columns = lease.fetch_columns(&table, options.clone()).await?;
+                    let identity = lease.row_identity(&table, options).await?;
+                    Ok((columns, identity))
+                }
+            })
+            .await
+            .expect("the collection's fields and key");
+        Self {
+            table,
+            columns,
+            identity,
+        }
+    }
+
+    fn column(&self, name: &str) -> usize {
+        self.columns
+            .iter()
+            .position(|column| column.name == name)
+            .expect("a column of that name")
+    }
+
+    async fn page(&self, session: &Session, position: &PagePosition) -> PageRead {
+        let (grid, position) = (self.clone(), position.clone());
+        session
+            .run(OperationKind::Page, move |lease, options| {
+                let (grid, position) = (grid.clone(), position.clone());
+                async move {
+                    let filter = FilterSet::default();
+                    let request = PageRequest {
+                        table: &grid.table,
+                        columns: &grid.columns,
+                        filter: &filter,
+                        sort: &[],
+                        identity: &grid.identity,
+                        position: &position,
+                        limit: PAGE,
+                    };
+                    read_page::<OperationError>(&*lease, &request, &options).await
+                }
+            })
+            .await
+            .expect("a page through the tunnel")
+    }
+
+    /// One field of the document whose `_id` is `id` set to `text`, saved
+    /// the way the grid saves an edited cell.
+    async fn edit(&self, session: &Session, id: i64, field: &str, text: &str) -> WriteReport {
+        let changes = ChangeSet {
+            changes: vec![RowChange::Update(RowUpdate {
+                key: vec![Value::Int(id)],
+                assignments: vec![(self.column(field), CellInput::Value(Value::Text(text.to_owned())))],
+                read: Vec::new(),
+            })],
+        };
+        let grid = self.clone();
+        session
+            .run(OperationKind::Save(WriteKind::RowChanges), move |lease, options| {
+                let (grid, changes) = (grid.clone(), changes.clone());
+                async move {
+                    let plan = plan_save(&*lease.dialect(), &grid.table, &grid.columns, &grid.identity, &changes)?;
+                    Ok(lease.write_batch(&plan.batch, options).await?)
+                }
+            })
+            .await
+            .expect("a save through the tunnel")
+    }
+}
+
+fn ids(read: &PageRead) -> Vec<i64> {
+    read.result
+        .rows
+        .iter()
+        .filter_map(|row| match row.first() {
+            Some(Value::Int(id)) => Some(*id),
+            _ => None,
+        })
+        .collect()
+}
+
 /// A connection to the replica set's member by its name on the test
 /// network, which only the SSH server can resolve.
 fn tunnelled_request(mongo: &MongoFixture, sshd: &OpenSshFixture, private_key: PathBuf) -> ConnectRequest {
@@ -124,7 +226,7 @@ fn tunnelled_request(mongo: &MongoFixture, sshd: &OpenSshFixture, private_key: P
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
-async fn collections_list_and_statements_run_through_openssh() {
+async fn collections_list_page_and_save_through_openssh() {
     let network = TestNetwork::new();
     let mongo = MongoFixture::start_in(&network).await.expect("MongoDB");
     let key = SshKeyPair::generate("tablepro-mongodb-test").await.expect("a key pair");
@@ -164,7 +266,10 @@ async fn collections_list_and_statements_run_through_openssh() {
         .expect("an editor session");
     let written = editor
         .run(
-            UserSql::new("db.getCollection('orders').insertOne({_id: 1, status: 'sent'})"),
+            UserSql::new(
+                "db.getCollection('orders').insertMany([{_id: 1, status: 'sent'}, {_id: 2, status: 'packed'}, \
+                 {_id: 3, status: 'packed'}])",
+            ),
             RunOptions::new(CancellationToken::new()).with_deadline(Some(Duration::from_secs(30))),
             Box::new(Discard),
         )
@@ -179,6 +284,13 @@ async fn collections_list_and_statements_run_through_openssh() {
         })
         .await
         .expect("a listing");
+    let grid = Grid::open(&session, TableRef::new(Some("tunnelled".to_owned()), "orders")).await;
+    let first = grid.page(&session, &PagePosition::First).await;
+    let second = grid
+        .page(&session, first.next.as_ref().expect("a page after the first"))
+        .await;
+    let saved = grid.edit(&session, 2, "status", "shipped").await;
+    let reread = grid.page(&session, &PagePosition::First).await;
 
     assert_eq!(written.end, RunEnd::Completed);
     assert!(
@@ -187,11 +299,21 @@ async fn collections_list_and_statements_run_through_openssh() {
             .any(|object| object.name == "orders" && object.kind == ObjectKind::Table),
         "{listed:?}"
     );
+    assert_eq!(ids(&first), [1, 2]);
+    assert_eq!(ids(&second), [3]);
+    assert_eq!(saved.rows_affected, [Some(1)]);
+    let edited = reread
+        .result
+        .rows
+        .iter()
+        .find(|row| row.first() == Some(&Value::Int(2)))
+        .and_then(|row| row.get(grid.column("status")));
+    assert_eq!(edited, Some(&Value::Text("shipped".to_owned())));
     let in_database = mongo
-        .shell("db.getSiblingDB('tunnelled').orders.findOne({_id: 1}).status")
+        .shell("db.getSiblingDB('tunnelled').orders.find().sort({_id: 1}).toArray().map(o => o.status).join(',')")
         .await
         .expect("mongosh ran");
-    assert_eq!(in_database.stdout_text().trim(), "sent");
+    assert_eq!(in_database.stdout_text().trim(), "sent,shipped,packed");
     editor.close().await;
     let report = session.begin_shutdown().await.expect("the close task");
     assert_eq!(report, tablepro_session::CloseReport::Closed);

@@ -2,20 +2,13 @@ using Microsoft.UI.Xaml.Controls;
 using TablePro.App.Model;
 using TablePro.DataGrid;
 using TablePro.Editor;
-using TablePro.Interop;
 
 namespace TablePro.App.Views;
 
-internal interface ITabContent
+// A tab's content in the strip; its run, close and transaction are its model's (QueryTab, TableTab).
+internal interface ITabContent : IWorkspaceTab
 {
     event EventHandler? StateChanged;
-
-    string Title { get; }
-
-    bool IsRunning { get; }
-
-    // The transaction the tab's own connection holds; the workspace names a held one over the other tabs.
-    TransactionState Transaction { get; }
 
     SqlEditor? Editor { get; }
 
@@ -32,8 +25,4 @@ internal interface ITabContent
     void Stop();
 
     void FocusContent();
-
-    SessionTab Snapshot();
-
-    Task CloseAsync();
 }

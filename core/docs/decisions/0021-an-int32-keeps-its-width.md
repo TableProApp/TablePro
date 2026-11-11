@@ -1,11 +1,11 @@
-# 0020: An int32 keeps its width, and an edited number keeps its type
+# 0021: An int32 keeps its width, and an edited number keeps its type
 
 - **Status**: Accepted
 - **Date**: 2026-11-11
 
 ## Context
 
-[Linux ADR 0014](../../../linux/docs/decisions/0014-lossless-values-and-dialects.md) gives `Value` one signed integer, `Int(i64)`, and leaves an integer's width to its column. That holds where the column declares a type. A MongoDB column is a census instead: the field's type over the first 1,000 documents, widened across `int`, `long`, `double` and `decimal` ([drivers/mongodb.md](../../../linux/docs/drivers/mongodb.md#catalogue)). The driver read an int32 and a long as the same `Int`, and an edit was parsed by the column's kind and bound by its type name. So an edit rewrote the cell's BSON type: an int32 in a `long` field became a long, an int32 or long in a `double` field a double, any number in a `decimal` field a Decimal128. A long past 2^53 in a `double` field lost digits, and a long past the census in an `int` field was refused. Copy as mongosh and Extended JSON wrote a long that fits 32 bits as an int.
+[Linux ADR 0014](../../../linux/docs/decisions/0014-lossless-values-and-dialects.md) gives `Value` one signed integer, `Int(i64)`, and leaves an integer's width to its column. That holds where the column declares a type. A MongoDB column is a census instead: the field's type over the first 1,000 documents ([drivers/mongodb.md](../../../linux/docs/drivers/mongodb.md#catalogue)). A field the census finds with numbers of two BSON types is a JSON column, which keeps each value's type. A document past the census can still hold an `int` in a field the census typed `long` or `double`. The driver read an int32 and a long as the same `Int`, and an edit was parsed by the column's kind and bound by its type name, so that edit rewrote the value's BSON type: an `int` became a `long` or a `double`. A long past 2^53 lost digits in a `double` field, and a long past the census in an `int` field was refused. Extended JSON and Copy as mongosh wrote a long that fits 32 bits as an int.
 
 ## Decision
 
@@ -29,6 +29,6 @@
 
 ## Alternatives considered
 
-- **Any mix of numbers is a JSON column.** No `Value` change, but numeric fields lose number display and editing, and values past the census are still rewritten.
+- **Only the census decides.** It makes a field of mixed numbers JSON, but it cannot see a value past its first 1,000 documents.
 - **Read the document at save time.** A race between the read and the write, and the statement no longer shows what is sent, which the write confirmation compares.
 - **A per-row type vector beside the rows.** Every layer that carries a cell would carry it too: the page, the grid, the tracker and the FFI store.

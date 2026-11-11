@@ -71,6 +71,7 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
             .cellExpressions,
             .uuidCellText,
             .rowWrites,
+            .columnDefaultMarks,
         ]
     }
 

@@ -34,7 +34,8 @@ enum RowWriteOperationBuilder {
         writesThroughView: Bool = false,
         rowLocators: [RowID: String] = [:]
     ) -> [RowWriteOperation] {
-        changes.compactMap { change in
+        // A rewind undoes them newest first, and `changes` stops being in edit order once a change is cancelled.
+        changes.sorted { $0.sequence < $1.sequence }.compactMap { change in
             switch change.type {
             case .update:
                 var operation = update(
@@ -111,7 +112,7 @@ enum RowWriteOperationBuilder {
     ) -> RewindRefusal? {
         if containsTableOperation { return .destructiveTableOperation }
         if primaryKeyColumns.isEmpty || preImage == nil { return .noPrimaryKey }
-        if change.cellChanges.contains(where: { $0.newIsExpression || $0.newValue.isDefaultMarker }) {
+        if change.cellChanges.contains(where: \.newIsExpression) {
             return .serverComputedValue
         }
         if change.cellChanges.contains(where: { generatedColumns.contains($0.columnName) }) {
@@ -172,11 +173,11 @@ enum RowWriteOperationBuilder {
                     return .serverAssignedKey
                 }
                 let value = values[index]
-                if value.isNull || value.isDefaultMarker || change.expressionColumns.contains(index) {
+                if value.isNull || change.expressionColumns.contains(index) {
                     return .serverAssignedKey
                 }
             }
-            if values.contains(where: \.isDefaultMarker) || !change.expressionColumns.isEmpty {
+            if !change.expressionColumns.isEmpty {
                 return .serverComputedValue
             }
             if values.contains(where: exceedsCapture) { return .valueTooLarge }

@@ -51,7 +51,7 @@ struct RowOperationsManagerPasteTests {
         let values = pasteValues(clipboard, manager: makeManager())
 
         #expect(values.count == 3)
-        #expect(values[0] == .text("__DEFAULT__"))
+        #expect(values[0] == .columnDefault)
         #expect(values[1] == .text("Smith, John"))
         #expect(values[2] == .text("a@test.com"))
     }
@@ -120,7 +120,7 @@ struct RowOperationsManagerPasteTests {
 
         let values = pasteValues(clipboard, manager: makeManager())
 
-        #expect(values[0] == .text("__DEFAULT__"))
+        #expect(values[0] == .columnDefault)
         #expect(values[1] == .text("Jo"))
         #expect(values[2] == .text("e@x.com"))
     }
@@ -136,7 +136,7 @@ struct RowOperationsManagerPasteTests {
         let values = pasteValues(clipboard, manager: makeManager())
 
         #expect(values.count == 3)
-        #expect(values[0] == .text("__DEFAULT__"))
+        #expect(values[0] == .columnDefault)
         #expect(values[1] == .text("Jo"))
         #expect(values[2] == .text("e@x.com"))
     }
@@ -151,7 +151,7 @@ struct RowOperationsManagerPasteTests {
 
         let values = pasteValues(clipboard, manager: makeManager())
 
-        #expect(values[0] == .text("__DEFAULT__"))
+        #expect(values[0] == .columnDefault)
         #expect(values[1] == .text("2"))
         #expect(values[2] == .text("3"))
     }
@@ -170,8 +170,8 @@ struct RowOperationsManagerPasteTests {
         let rows = pasteRows(clipboard, manager: makeManager())
 
         #expect(rows.count == 2)
-        #expect(rows[0] == [.text("__DEFAULT__"), .text("Alice"), .text("a@test.com")])
-        #expect(rows[1] == [.text("__DEFAULT__"), .text("Bob"), .null])
+        #expect(rows[0] == [.columnDefault, .text("Alice"), .text("a@test.com")])
+        #expect(rows[1] == [.columnDefault, .text("Bob"), .null])
     }
 
     @Test("Plain-text TSV with commas inside a value parses as TSV, not CSV")
@@ -182,7 +182,7 @@ struct RowOperationsManagerPasteTests {
         let values = pasteValues(clipboard, manager: makeManager())
 
         #expect(values.count == 3)
-        #expect(values[0] == .text("__DEFAULT__"))
+        #expect(values[0] == .columnDefault)
         #expect(values[1] == .text("Mozilla/5.0 (KHTML, like Gecko) Safari"))
         #expect(values[2] == .text("a@test.com"))
     }
@@ -257,7 +257,7 @@ struct RowOperationsManagerPasteServerOwnedTests {
     func resetsNonKeyIdentity() {
         let values = paste(payload, columnIdentity: ["code": .always])
 
-        #expect(values[1] == .text("__DEFAULT__"))
+        #expect(values[1] == .columnDefault)
         #expect(values[2] == .text("Ada"))
     }
 
@@ -265,7 +265,7 @@ struct RowOperationsManagerPasteServerOwnedTests {
     func resetsGeneratedColumn() {
         let values = paste(payload, generatedColumns: ["code"])
 
-        #expect(values[1] == .text("__DEFAULT__"))
+        #expect(values[1] == .columnDefault)
         #expect(values[2] == .text("Ada"))
     }
 

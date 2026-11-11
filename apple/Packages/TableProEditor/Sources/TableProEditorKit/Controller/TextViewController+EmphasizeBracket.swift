@@ -37,7 +37,7 @@ extension TextViewController {
             pair.0,
             pair.1,
             from: range.location,
-            limit: min((textView.visibleTextRange ?? .zero).max + 4_096, textView.documentRange.max),
+            limit: min(max(range.location, (textView.visibleTextRange ?? .zero).max) + 4_096, textView.documentRange.max),
             reverse: false
         ) {
             emphasizeCharacter(characterIndex)
@@ -52,7 +52,10 @@ extension TextViewController {
             pair.1,
             pair.0,
             from: range.location - 1,
-            limit: max((textView.visibleTextRange?.location ?? 0) - 4_096, textView.documentRange.location),
+            limit: max(
+                min(range.location - 1, textView.visibleTextRange?.location ?? 0) - 4_096,
+                textView.documentRange.location
+            ),
             reverse: true
         ) {
             emphasizeCharacter(characterIndex)
@@ -91,12 +94,16 @@ extension TextViewController {
         if reverse {
             options = options.union(.reverse)
         }
+        // A caret outside the visible range can put the limit on the wrong side of `from`, and NSString raises
+        // an exception nothing can catch for a range past the text.
+        let length = textView.textStorage.length
+        let lower = max(0, min(reverse ? limit : from, length))
+        let upper = max(0, min(reverse ? from : limit, length))
+        guard upper > lower else { return nil }
         var closeCount = 0
         var index: Int?
         textView.textStorage.mutableString.enumerateSubstrings(
-            in: reverse ?
-                NSRange(location: limit, length: from - limit) :
-                NSRange(location: from, length: limit - from),
+            in: NSRange(location: lower, length: upper - lower),
             options: options,
             using: { substring, range, _, stop in
                 if substring == close {

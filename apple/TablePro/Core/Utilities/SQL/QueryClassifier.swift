@@ -102,16 +102,21 @@ enum QueryClassifier {
         isMultiStatement(sql, databaseType: databaseType, readings: databaseType.lexicalReadings)
     }
 
-    /// Whether `sql` runs more than one statement: it holds several, a `GO n` line runs its one statement n times, or it
-    /// ends inside a block it opened, which an engine that reads the opener as a name runs as several statements. A
-    /// caller that sends one statement once cannot honour the count, and dropping it runs the statement once.
+    /// Whether `sql` runs more than one statement: it holds several, a `GO n` line runs its one statement n times, it
+    /// ends inside a block it opened, which an engine that reads the opener as a name runs as several statements, or a
+    /// T-SQL block in it holds several. A caller that sends one statement once cannot honour the count, and dropping it
+    /// runs the statement once.
     static func isMultiStatement(_ sql: String, databaseType: DatabaseType, readings: SQLLexicalReadings) -> Bool {
         let model = QueryStatementModel.forDatabaseType(databaseType)
         guard let lexings = readings.lexings(of: sql) else { return true }
         return lexings.contains { lexing in
             let batches = QueryBatchPlanner.batches(in: lexing.text, model: model, grammar: lexing.grammar)
-            return batches.flatMap(\.statements).count > 1 || batches.contains { $0.repeatCount > 1 }
+            let statements = batches.flatMap(\.statements)
+            return statements.count > 1 || batches.contains { $0.repeatCount > 1 }
                 || SQLStatementScanner.endsInsideOpenBlock(lexing.text, grammar: lexing.grammar)
+                || statements.contains { statement in
+                    SQLUnterminatedStatements.blockHoldsSeveralStatements(statement.sql, grammar: lexing.grammar)
+                }
         }
     }
 

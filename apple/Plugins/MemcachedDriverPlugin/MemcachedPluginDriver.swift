@@ -13,6 +13,7 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// Keys one listing reads before it stops, so a cache holding millions of items cannot exhaust memory.
     static let listingLimit = 1_000_000
     private static let valuesPerRequest = 100
+    private static let rowsPerStreamBatch = 1_000
 
     private let endpoint: MemcachedEndpoint
     private let tunneledServerName: String?
@@ -40,7 +41,10 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     var serverVersion: String? { lock.withLock { _serverVersion } }
     var supportsTransactions: Bool { false }
-    var capabilities: PluginCapabilities { [] }
+    var capabilities: PluginCapabilities { [.columnDefaultMarks] }
+
+    // A stopped request closes the channel, since the text protocol cannot skip its reply; the host then reconnects.
+    var hasLostConnection: Bool { lock.withLock { connection }?.hasClosed ?? false }
 
     func beginTransaction() async throws {}
     func commitTransaction() async throws {}
@@ -208,24 +212,28 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Browsing
 
+    private struct BrowsePage {
+        let entries: [MemcachedKeyEntry]
+        let serverTime: Int64
+        // The listing stopped at `listingLimit`, so the page is drawn from part of the cache.
+        let isCut: Bool
+    }
+
     private func browse(_ spec: MemcachedBrowseSpec, started: Date) async throws -> PluginQueryResult {
         let connection = try liveConnection()
+        let page = try await browsePage(spec, on: connection)
+        let rows = try await rows(of: page.entries, serverTime: page.serverTime, on: connection)
+        return result(
+            columns: MemcachedColumn.allCases.map(\.rawValue),
+            types: MemcachedColumn.allCases.map(\.typeName),
+            rows: rows, started: started
+        )
+    }
+
+    private func browsePage(_ spec: MemcachedBrowseSpec, on connection: MemcachedConnection) async throws -> BrowsePage {
         let serverTime = try await Self.serverTime(on: connection)
-        let listed = try await listKeys().filter { !$0.isExpired(at: serverTime) }
-        let page = try spec.page(of: listed)
-
-        var values: [String: MemcachedValue] = [:]
-        var start = page.startIndex
-        while start < page.endIndex {
-            try Task.checkCancellation()
-            let end = min(start + Self.valuesPerRequest, page.endIndex)
-            let keys = page[start ..< end].map(\.key)
-            if case .values(let read) = try await connection.send(.get(keys: keys, withCAS: false)) {
-                for value in read { values[value.key] = value }
-            }
-            start = end
-        }
-
+        let listing = try await listKeys()
+        let page = try spec.page(of: listing.entries.filter { !$0.isExpired(at: serverTime) })
         lock.withLock {
             serverClockOffset = MemcachedServerClock.offset(
                 serverTime: serverTime, localTime: Int64(Date().timeIntervalSince1970)
@@ -233,8 +241,27 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             if shownExpiries.count + page.count > Self.shownExpiryLimit { shownExpiries.removeAll() }
             for entry in page { shownExpiries[entry.key] = MemcachedKnownExpiry(expiresAt: entry.expiresAt) }
         }
+        return BrowsePage(entries: page, serverTime: serverTime, isCut: listing.isCut)
+    }
 
-        let rows: [PluginRow] = page.compactMap { entry in
+    // A key removed since the listing has no value and no row.
+    private func rows(
+        of entries: some Collection<MemcachedKeyEntry>,
+        serverTime: Int64,
+        on connection: MemcachedConnection
+    ) async throws -> [PluginRow] {
+        var values: [String: MemcachedValue] = [:]
+        let keys = entries.map(\.key)
+        var start = keys.startIndex
+        while start < keys.endIndex {
+            try Task.checkCancellation()
+            let end = min(start + Self.valuesPerRequest, keys.endIndex)
+            if case .values(let read) = try await connection.send(.get(keys: Array(keys[start ..< end]), withCAS: false)) {
+                for value in read { values[value.key] = value }
+            }
+            start = end
+        }
+        return entries.compactMap { entry in
             guard let value = values[entry.key] else { return nil }
             return [
                 .text(entry.key),
@@ -243,20 +270,15 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 .text(String(value.flags)),
             ]
         }
-        return result(
-            columns: MemcachedColumn.allCases.map(\.rawValue),
-            types: MemcachedColumn.allCases.map(\.typeName),
-            rows: rows, started: started
-        )
     }
 
-    private func listKeys() async throws -> [MemcachedKeyEntry] {
+    private func listKeys() async throws -> (entries: [MemcachedKeyEntry], isCut: Bool) {
         if lock.withLock({ keySource }) == .metadump {
             do {
                 return try await withListingConnection { connection in
                     let reply = try await connection.send(.metadump(selector: "all"), lineLimit: Self.listingLimit)
-                    guard case .lines(let lines, _) = reply else { return [] }
-                    return lines.compactMap(MemcachedKeyListing.metadumpEntry)
+                    guard case .lines(let lines, let truncated) = reply else { return ([], false) }
+                    return (lines.compactMap(MemcachedKeyListing.metadumpEntry), truncated)
                 }
             } catch let error as MemcachedServerError where error.kind != .busy && !error.needsAuthentication {
                 Self.logger.info("metadump refused, listing with cachedump")
@@ -266,18 +288,69 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return try await cachedumpKeys()
     }
 
-    private func cachedumpKeys() async throws -> [MemcachedKeyEntry] {
+    private func cachedumpKeys() async throws -> (entries: [MemcachedKeyEntry], isCut: Bool) {
         let connection = try liveConnection()
-        guard case .lines(let itemStats, _) = try await connection.send(.stats(arguments: ["items"])) else { return [] }
+        guard case .lines(let itemStats, _) = try await connection.send(.stats(arguments: ["items"])) else { return ([], false) }
         var entries: [MemcachedKeyEntry] = []
         for slab in MemcachedKeyListing.slabClasses(fromItemStats: itemStats) {
             try Task.checkCancellation()
             let reply = try await connection.send(.stats(arguments: ["cachedump", String(slab), "0"]))
             guard case .lines(let lines, _) = reply else { continue }
             entries += lines.compactMap(MemcachedKeyListing.cachedumpEntry)
-            if entries.count >= Self.listingLimit { break }
+            if entries.count >= Self.listingLimit { return (Array(entries.prefix(Self.listingLimit)), true) }
         }
-        return entries
+        return (entries, false)
+    }
+
+    // MARK: - Streaming
+
+    // An export reads every key, so its values are read and sent a batch at a time on a connection of their own, and
+    // stopping closes that connection, never the session's.
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        let statement = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let spec = MemcachedBrowseSpec.refusalMessage(statement) == nil ? MemcachedBrowseSpec.parse(statement) : nil
+        return PluginRowStream.make { continuation, abort in
+            let task = Task {
+                do {
+                    if let spec {
+                        try await self.streamBrowse(spec, into: continuation)
+                    } else {
+                        let result = try await self.execute(query: query)
+                        var header = PluginStreamHeader(columns: result.columns, columnTypeNames: result.columnTypeNames)
+                        if result.isTruncated { header.rowLimit = result.rows.count }
+                        continuation.yield(.header(header))
+                        if !result.rows.isEmpty { continuation.yield(.rows(result.rows)) }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: MemcachedError.wrap(error))
+                }
+            }
+            abort.onAbort { task.cancel() }
+        }
+    }
+
+    private func streamBrowse(
+        _ spec: MemcachedBrowseSpec,
+        into continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        let page = try await browsePage(spec, on: try liveConnection())
+        var header = PluginStreamHeader(
+            columns: MemcachedColumn.allCases.map(\.rawValue),
+            columnTypeNames: MemcachedColumn.allCases.map(\.typeName)
+        )
+        if page.isCut { header.rowLimit = page.entries.count }
+        continuation.yield(.header(header))
+        try await withListingConnection { connection in
+            var start = page.entries.startIndex
+            while start < page.entries.endIndex {
+                try Task.checkCancellation()
+                let end = min(start + Self.rowsPerStreamBatch, page.entries.endIndex)
+                let rows = try await self.rows(of: page.entries[start ..< end], serverTime: page.serverTime, on: connection)
+                if !rows.isEmpty { continuation.yield(.rows(rows)) }
+                start = end
+            }
+        }
     }
 
     /// Opens a connection for one listing and closes it after, even when the listing stopped early with the rest
@@ -431,6 +504,7 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) throws -> [PluginRowWrite]? {
+        if let refusal = PluginRowWriteRefusal.columnDefaultsUnsupported(in: changes) { throw refusal }
         let offset = lock.withLock { serverClockOffset }
         let expiries = lock.withLock { shownExpiries }
         let generator = MemcachedStatementGenerator(

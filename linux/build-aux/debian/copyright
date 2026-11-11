@@ -17640,7 +17640,7 @@ License: Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 
-Files: vendor/rustix-1.1.4/*
+Files: vendor/rustix-1.1.6/*
 Copyright: Dan Gohman <dev@sunfishcode.online>
  Jakub Konka <kubkon@jakubkonka.com>
 License: Apache-2.0 or Apache-2.0 with LLVM exception or Expat

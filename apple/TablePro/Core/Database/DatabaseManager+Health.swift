@@ -149,10 +149,17 @@ extension DatabaseManager {
                 result.driver.disconnect()
                 return .abort
             }
+            let warning = openingWarning(
+                driver: result.driver,
+                startupFailures: result.startupFailures,
+                restoreWarning: result.restoreWarning,
+                for: connectionId
+            )
             updateSession(connectionId) { session in
                 session.driver = result.driver
                 session.effectiveConnection = result.effectiveConnection
                 session.status = .connected
+                session.connectionWarning = warning
                 if let schemaDriver = result.driver as? SchemaSwitchable {
                     session.browseSchema = schemaDriver.currentSchema
                 }
@@ -240,6 +247,8 @@ extension DatabaseManager {
         let driver: DatabaseDriver
         let effectiveConnection: DatabaseConnection
         let cachedPassword: String?
+        let startupFailures: [StartupCommandFailure]
+        let restoreWarning: String?
     }
 
     // Rebuilds the tunnel for a tunneled session before connecting the new driver. Tunnels are keyed by
@@ -292,13 +301,13 @@ extension DatabaseManager {
             throw CancellationError()
         }
 
-        await applyTimeoutAndStartupCommands(
+        let startupFailures = await applyTimeoutAndStartupCommands(
             on: driver,
             queryTimeoutSeconds: session.effectiveQueryTimeoutSeconds,
             startupCommands: session.connection.startupCommands,
             connectionName: session.connection.name
         )
-        await restoreSchemaAndDatabase(
+        let restoreWarning = await restoreSchemaAndDatabase(
             on: driver,
             savedSchema: session.browseSchema,
             savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : session.browseDatabase
@@ -307,7 +316,9 @@ extension DatabaseManager {
         return ReconnectResult(
             driver: driver,
             effectiveConnection: connectionForDriver,
-            cachedPassword: connectResult.cachedPassword
+            cachedPassword: connectResult.cachedPassword,
+            startupFailures: startupFailures,
+            restoreWarning: restoreWarning
         )
     }
 
@@ -316,7 +327,7 @@ extension DatabaseManager {
         queryTimeoutSeconds: Int,
         startupCommands: String?,
         connectionName: String
-    ) async {
+    ) async -> [StartupCommandFailure] {
         do {
             try await driver.applyQueryTimeout(queryTimeoutSeconds)
         } catch {
@@ -325,7 +336,7 @@ extension DatabaseManager {
             )
         }
 
-        await executeStartupCommands(startupCommands, on: driver, connectionName: connectionName)
+        return await executeStartupCommands(startupCommands, on: driver, connectionName: connectionName)
     }
 
     private func databaseSwitchRequiresReconnect(_ connection: DatabaseConnection) -> Bool {
@@ -333,17 +344,23 @@ extension DatabaseManager {
             .capabilities.requiresReconnectForDatabaseSwitch ?? false
     }
 
+    // The reconnected session stays on the server's default when a restore fails, which the window would not show.
     func restoreSchemaAndDatabase(
         on driver: DatabaseDriver,
         savedSchema: String?,
         savedDatabase: String?
-    ) async {
+    ) async -> String? {
+        var warnings: [String?] = []
         // The schema lives inside the database, and a database switch can leave the driver on none.
         if let savedDatabase, let adapter = driver as? PluginDriverAdapter {
             do {
                 try await adapter.switchDatabase(to: savedDatabase)
             } catch {
                 Self.logger.warning("Failed to restore database '\(savedDatabase)' on reconnect: \(error.localizedDescription)")
+                warnings.append(String(
+                    format: String(localized: "Reconnecting could not reopen the database %1$@: %2$@"),
+                    savedDatabase, error.localizedDescription
+                ))
             }
         }
 
@@ -352,8 +369,13 @@ extension DatabaseManager {
                 try await schemaDriver.switchSchema(to: savedSchema)
             } catch {
                 Self.logger.warning("Failed to restore schema '\(savedSchema)' on reconnect: \(error.localizedDescription)")
+                warnings.append(String(
+                    format: String(localized: "Reconnecting could not reopen the schema %1$@: %2$@"),
+                    savedSchema, error.localizedDescription
+                ))
             }
         }
+        return Self.joinedWarning(warnings)
     }
 
     internal func stopHealthMonitor(for connectionId: UUID) async {
@@ -468,13 +490,13 @@ extension DatabaseManager {
             }
             let driver = connectResult.driver
 
-            await applyTimeoutAndStartupCommands(
+            let startupFailures = await applyTimeoutAndStartupCommands(
                 on: driver,
                 queryTimeoutSeconds: session.effectiveQueryTimeoutSeconds,
                 startupCommands: session.connection.startupCommands,
                 connectionName: session.connection.name
             )
-            await restoreSchemaAndDatabase(
+            let restoreWarning = await restoreSchemaAndDatabase(
                 on: driver,
                 savedSchema: activeSessions[sessionId]?.browseSchema,
                 savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : activeSessions[sessionId]?.browseDatabase
@@ -484,10 +506,14 @@ extension DatabaseManager {
                 throw CancellationError()
             }
 
+            let warning = openingWarning(
+                driver: driver, startupFailures: startupFailures, restoreWarning: restoreWarning, for: sessionId
+            )
             updateSession(sessionId) { session in
                 session.driver = driver
                 session.status = .connected
                 session.effectiveConnection = effectiveConnection
+                session.connectionWarning = warning
                 if let schemaDriver = driver as? SchemaSwitchable {
                     session.browseSchema = schemaDriver.currentSchema
                 }
