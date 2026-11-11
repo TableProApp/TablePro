@@ -24,10 +24,17 @@ struct AppSettingsCategoryParityTests {
         #expect(AppSettingsCategory.synced.contains(AppSettingsCategory.notifications))
     }
 
-    @Test("Value colors sync as their own category, apart from the Data Grid blob an older build rewrites")
-    func valueColorsSyncAsTheirOwnCategory() {
+    @MainActor
+    @Test("Value colors sync as their own category, and a rewrite of the Data Grid blob keeps them")
+    func valueColorsSyncAsTheirOwnCategory() throws {
         #expect(AppSettingsCategory.synced.contains(AppSettingsCategory.valueColors))
-        #expect(AppSettingsCategory.valueColors != AppSettingsCategory.dataGrid)
+        let pool = EphemeralDefaultsPool()
+        let storage = AppSettingsStorage(userDefaults: try pool.make().defaults)
+        storage.saveValueColors(ValueColorSettings(colorsValuesByType: true))
+
+        storage.saveDataGrid(.default)
+
+        #expect(storage.loadValueColors().colorsValuesByType)
     }
 
     @MainActor

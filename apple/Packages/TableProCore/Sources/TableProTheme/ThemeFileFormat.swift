@@ -110,8 +110,7 @@ public enum ThemeFileFormat {
         )
     }
 
-    // The oldest format holding every key the theme sets, so an older TablePro still reads a theme
-    // that uses none of the newer keys.
+    // The oldest format holding the theme's keys, so an older build still reads a theme that sets no newer key.
     private static func schema(of theme: ThemeDefinition) -> Int {
         theme.overrides.keys.reduce(ThemeSchema.oldestReadable) { max($0, $1.introducedInSchema) }
     }

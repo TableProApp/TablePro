@@ -2,9 +2,6 @@
 //  CellDisplayFormatter.swift
 //  TablePro
 //
-//  Pure formatter that transforms raw cell values into display-ready strings.
-//  Used by the data grid coordinator's display cache to compute values once per cell.
-//
 
 import Foundation
 import TableProPluginKit
@@ -19,15 +16,25 @@ enum CellDisplayFormatter {
         displayFormat: ValueDisplayFormat? = nil,
         databaseType: DatabaseType? = nil
     ) -> String? {
-        display(rawValue, columnType: columnType, displayFormat: displayFormat, databaseType: databaseType).text
+        resolve(rawValue, columnType: columnType, displayFormat: displayFormat, databaseType: databaseType, checksRendering: false).text
     }
 
-    // `isFormatted` is false wherever the cell falls back to how its column reads without the display format.
     static func display(
         _ rawValue: PluginCellValue,
         columnType: ColumnType?,
         displayFormat: ValueDisplayFormat?,
         databaseType: DatabaseType?
+    ) -> (text: String?, isFormatted: Bool) {
+        resolve(rawValue, columnType: columnType, displayFormat: displayFormat, databaseType: databaseType, checksRendering: true)
+    }
+
+    // Find, the value filter and the display order discard the flag, and the JSON and PHP checks read the whole value.
+    private static func resolve(
+        _ rawValue: PluginCellValue,
+        columnType: ColumnType?,
+        displayFormat: ValueDisplayFormat?,
+        databaseType: DatabaseType?,
+        checksRendering: Bool
     ) -> (text: String?, isFormatted: Bool) {
         switch rawValue {
         case .null:
@@ -44,7 +51,7 @@ enum CellDisplayFormatter {
             if let displayFormat, displayFormat != .raw,
                displayFormat.isApplicable(to: columnType, databaseType: databaseType),
                let formatted = ValueDisplayFormatter.apply(value, format: displayFormat, columnType: columnType) {
-                return (fitToCell(formatted), rendered(formatted, from: value, by: displayFormat))
+                return (fitToCell(formatted), checksRendering && rendered(formatted, from: value, by: displayFormat))
             }
             var displayValue = value
             if let columnType {
