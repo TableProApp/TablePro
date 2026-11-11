@@ -548,9 +548,9 @@ final class QueryTabManager: ObservableObject {
         selectedTabId = newTab.id
     }
 
-    // A container holds at most one kept listing and one preview, the way a table preview sits beside kept table tabs.
-    // Asking again lands on one of them and another kind retargets it, rather than opening a third. A new preview takes
-    // the strip slot of the preview it replaces, so browsing the sidebar does not grow the strip.
+    // A container holds one listing, kept or a preview. Asking again lands on it and another kind retargets it, rather
+    // than opening a second. A new preview takes the strip slot of the preview it replaces, so browsing the sidebar does
+    // not grow the strip.
     @discardableResult
     func addTableListingTab(
         title: String,
@@ -596,9 +596,11 @@ final class QueryTabManager: ObservableObject {
     }
 
     /// Where a request for a container's objects lands among the listings open for it, nil for a new
-    /// tab. A preview never changes a kept listing, so its kind, filter and sort survive browsing: it
-    /// returns to one showing the kind, else it takes the container's preview. A request to keep takes
-    /// the kept listing, else the preview, and the preview beside a kept listing goes.
+    /// tab. One container has one Objects tab: a preview returns to a kept listing showing the kind, as
+    /// it is, else it takes the container's preview, else the kept listing, which then shows the kind
+    /// asked for. Opening a second tab beside a kept one put two "Objects" tabs of one database on the
+    /// strip with nothing to tell them apart. A request to keep takes the kept listing, else the preview,
+    /// and a preview left beside a kept listing, which only a restored session can hold, goes.
     func tableListingLanding(
         databaseName: String,
         schemaName: String?,
@@ -619,7 +621,10 @@ final class QueryTabManager: ObservableObject {
             if let keptShowingKind {
                 return TableListingLanding(tabId: keptShowingKind.id, retargets: false, closesPreviewId: nil)
             }
-            return preview.map { TableListingLanding(tabId: $0.id, retargets: true, closesPreviewId: nil) }
+            if let preview {
+                return TableListingLanding(tabId: preview.id, retargets: true, closesPreviewId: nil)
+            }
+            return kept.first.map { TableListingLanding(tabId: $0.id, retargets: true, closesPreviewId: nil) }
         }
         if let keptTab = keptShowingKind ?? kept.first {
             return TableListingLanding(tabId: keptTab.id, retargets: true, closesPreviewId: preview?.id)

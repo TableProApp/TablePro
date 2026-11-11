@@ -183,21 +183,22 @@ struct CoordinatorTableListingTests {
         #expect(tabManager.tabs.count == 2)
     }
 
-    @Test("A selection of another kind in a kept listing's container previews it beside the kept tab")
-    func selectionBesideAKeptListingLeavesItAlone() throws {
+    /// Clicking the database row after the Views button had kept its Objects tab put a second "Objects"
+    /// tab of the same database on the strip.
+    @Test("A selection of another kind in a kept listing's container shows it in that tab, never a second")
+    func selectionReusesTheKeptListing() throws {
         let (coordinator, tabManager, _) = makeCoordinator()
         defer { coordinator.teardown() }
-        coordinator.showObjects(group("shop"), asPreview: false)
+        coordinator.showObjects(group("shop", .view), asPreview: false)
         let kept = try #require(tabManager.selectedTabId)
+        tabManager.addTab(initialQuery: "SELECT 1", databaseName: "shop")
 
-        coordinator.showObjects(group("shop", .view), asPreview: true)
+        coordinator.showObjects(group("shop"), asPreview: true)
 
-        let preview = try #require(tabManager.selectedTab)
         let keptTab = try #require(tabManager.tabs.first { $0.id == kept })
-        #expect(tabManager.tabs.map(\.id) == [kept, preview.id])
-        #expect(preview.isPreview)
-        #expect(preview.display.listingKind == .view)
-        #expect(keptTab.display.listingKind == nil)
+        #expect(tabManager.selectedTabId == kept)
+        #expect(tabManager.tabs.filter { $0.tabType == .tableListing }.map(\.id) == [kept])
+        #expect(keptTab.display.listingKind == nil, "The tab shows the Tables the selection asked for")
         #expect(keptTab.title == String(localized: "Objects"))
         #expect(!keptTab.isPreview)
     }
@@ -217,13 +218,19 @@ struct CoordinatorTableListingTests {
         #expect(tabManager.selectedTab?.isPreview == false)
     }
 
-    @Test("Show Objects retargets the kept listing, closes the preview beside it and refreshes the kept one")
+    @Test("Show Objects retargets the kept listing, closes a preview left beside it and refreshes the kept one")
     func showObjectsTakesTheKeptListing() throws {
         let (coordinator, tabManager, _) = makeCoordinator()
         defer { coordinator.teardown() }
         coordinator.showObjects(group("shop"), asPreview: false)
         let kept = try #require(tabManager.selectedTabId)
-        coordinator.showObjects(group("shop", .view), asPreview: true)
+        // Only a session restored from before one container had one Objects tab holds a preview beside a kept one.
+        var leftover = QueryTab(title: String(localized: "Objects"), tabType: .tableListing)
+        leftover.tableContext.databaseName = "shop"
+        leftover.display.listingKind = .view
+        leftover.isPreview = true
+        tabManager.tabs.append(leftover)
+        tabManager.selectedTabId = leftover.id
         var refreshed: [UUID] = []
         let subscription = AppEvents.shared.tabRefreshRequested.sink { refreshed.append($0) }
         defer { subscription.cancel() }
