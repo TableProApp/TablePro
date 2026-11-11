@@ -268,7 +268,17 @@ public sealed partial class SqlEditor
         var deferral = e.GetDeferral();
         try
         {
-            var text = await e.DataView.GetTextAsync();
+            string text;
+            try
+            {
+                text = await e.DataView.GetTextAsync();
+            }
+            catch (System.Runtime.InteropServices.COMException)
+            {
+                // The program the text was dragged from no longer answers, so nothing is dropped.
+                return;
+            }
+
             var target = OffsetAt(e.GetPosition(_panel));
             var move = _draggingTextOut && e.AcceptedOperation == DataPackageOperation.Move;
             Edit(() => _model.DropText(text, target, move));

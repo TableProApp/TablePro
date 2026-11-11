@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use sqlx::mysql::{MySqlConnection, MySqlRow};
+use sqlx::mysql::{MySqlColumn, MySqlConnection};
 use sqlx::{AssertSqlSafe, Column as _, Executor as _, Row as _};
 use tablepro_core::ResultEvent;
 use tablepro_core::column::{ColumnOrigin, ResultColumn};
@@ -22,9 +22,13 @@ pub(crate) struct TracedSet {
 }
 
 impl TracedSet {
-    pub(crate) fn new(set_index: usize, columns: Arc<[ResultColumn]>, row: &MySqlRow, statement: SourceTable) -> Self {
-        let wire = row
-            .columns()
+    pub(crate) fn new(
+        set_index: usize,
+        columns: Arc<[ResultColumn]>,
+        wire_columns: &[MySqlColumn],
+        statement: SourceTable,
+    ) -> Self {
+        let wire = wire_columns
             .iter()
             .map(|column| {
                 column

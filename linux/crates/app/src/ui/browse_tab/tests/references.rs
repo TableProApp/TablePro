@@ -73,8 +73,8 @@ fn text_columns() -> Vec<ColumnInfo> {
 fn remembered(harness: &Harness) -> FilterSet {
     let model = harness.tab().imp().model.borrow();
     let model = model.as_ref().expect("the tab is open");
-    let connection_id = model.connection_id.expect("a saved connection");
-    model.filter_settings.filters(connection_id, None, &model.table)
+    let state_key = model.state_key.as_ref().expect("a saved connection");
+    model.filter_settings.filters(state_key, None, &model.table)
 }
 
 #[gtk4::test]

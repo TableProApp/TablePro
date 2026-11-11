@@ -1,10 +1,6 @@
-//
-//  TableLoadTracerSinkTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 private final class RecordingSink: TableLoadSummarySink, @unchecked Sendable {
@@ -151,5 +147,24 @@ struct TableLoadTracerSinkTests {
         let stranger = TableLoadTraceToken(sequence: 999, tabId: UUID(), table: "users")
         tracer.finish(token: stranger, outcome: .completed)
         #expect(sink.records.isEmpty)
+    }
+
+    @Test("The shared tracer keeps a finished load in the history file, under a test host as in the app")
+    func sharedTracerRecordsToTheHistoryFile() async throws {
+        let marker = "TracerProbe-\(UUID().uuidString)"
+        let tracer = TableLoadTracer.shared
+        let token = tracer.begin(
+            tabId: UUID(),
+            table: "users",
+            origin: .sidebar,
+            environment: TableLoadEnvironment(databaseTypeId: marker, usesSSH: false, openTabCount: 1)
+        )
+        tracer.finish(token: token, outcome: .completed)
+
+        let fileURL = TableLoadHistoryStore.defaultFileURL()
+        try await waitUntil {
+            let data = (try? Data(contentsOf: fileURL)) ?? Data()
+            return String(decoding: data, as: UTF8.self).contains(marker)
+        }
     }
 }

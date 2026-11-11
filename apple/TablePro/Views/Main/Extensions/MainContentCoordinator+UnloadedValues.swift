@@ -208,7 +208,7 @@ extension MainContentCoordinator {
 
     // The server holds the row under its key as last read, not as a pending edit has it.
     private func storedValue(of row: Row, column: Int) -> PluginCellValue {
-        let pendingUpdate = changeManager.rowChanges.first { $0.rowID == row.id && $0.type == .update }
+        let pendingUpdate = changeManager.pendingUpdate(forRow: row.id)
         if let change = pendingUpdate?.cellChanges.first(where: { $0.columnIndex == column }) {
             return change.oldValue
         }

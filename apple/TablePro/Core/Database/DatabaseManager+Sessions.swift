@@ -49,24 +49,11 @@ extension DatabaseManager {
         let effectiveQueryTimeoutSeconds = prepareConnectingSession(for: connection)
         lastActiveSessionId = connection.id
 
-        let resolvedConnection: DatabaseConnection
-        do {
-            // Before anything signs in: the host resolves some credentials below, and a plugin the rest in `connect()`.
-            try await localCredentialConsent.check(connection, trigger: trigger)
-            resolvedConnection = try await envVarReferenceConsent.resolve(connection, trigger: trigger)
-            try await preConnectScriptConsent.authorize(connection, trigger: trigger)
-            // The answer can take a minute, long enough for the person to cancel the attempt.
-            guard !isAttemptCancelled(attempt, for: connection.id) else { throw CancellationError() }
-            try await runPreConnectScriptIfNeeded(connection, resolvedConnection: resolvedConnection, attempt: attempt)
-        } catch {
-            finalizeConnectionFailure(
-                for: connection.id,
-                cancelled: isAttemptCancelled(attempt, for: connection.id),
-                error: error,
-                attempt: attempt
-            )
-            throw error
-        }
+        let (resolvedConnection, dialledConnection) = try await authorizeConnect(
+            connection,
+            trigger: trigger,
+            attempt: attempt
+        )
 
         let (passwordOverride, promptsForPassword, promptCacheKey) = try await resolvePasswordOverride(
             for: connection,
@@ -87,7 +74,7 @@ extension DatabaseManager {
                 reportStage(.resolvingTunnel, attempt: attempt, for: connection.id)
             }
             effectiveConnection = try await buildEffectiveConnectionReportingStages(
-                for: resolvedConnection,
+                for: dialledConnection,
                 sshPasswordOverride: sshPasswordOverride,
                 deadline: deadline,
                 attempt: (attempt, connection.id)
@@ -1081,6 +1068,37 @@ extension DatabaseManager {
     /// behind would seed the next window that opens on this connection with a stale one.
     internal func clearConnectionStage(for connectionId: UUID) {
         connectionStages.removeValue(forKey: connectionId)
+    }
+
+    // What a connect settles before it dials, in order: approvals for this Mac's credentials, `${VAR}` references
+    // and the pre-connect script, the script itself, then the RDS endpoint a CNAME stands for, which can ask again.
+    // All of it runs before the connect's deadline starts, since each step can wait on a person.
+    private func authorizeConnect(
+        _ connection: DatabaseConnection,
+        trigger: ConnectTrigger,
+        attempt: Int
+    ) async throws -> (resolved: DatabaseConnection, dialled: DatabaseConnection) {
+        do {
+            // Before anything signs in: the host resolves some credentials below, and a plugin the rest in `connect()`.
+            try await localCredentialConsent.check(connection, trigger: trigger)
+            let resolved = try await envVarReferenceConsent.resolve(connection, trigger: trigger)
+            try await preConnectScriptConsent.authorize(connection, trigger: trigger)
+            // The answer can take a minute, long enough for the person to cancel the attempt.
+            guard !isAttemptCancelled(attempt, for: connection.id) else { throw CancellationError() }
+            try await runPreConnectScriptIfNeeded(connection, resolvedConnection: resolved, attempt: attempt)
+            // After the script, which can be what makes the name resolve, such as a VPN it brings up.
+            let dialled = try await resolvingRDSEndpointAlias(of: resolved, trigger: trigger)
+            guard !isAttemptCancelled(attempt, for: connection.id) else { throw CancellationError() }
+            return (resolved, dialled)
+        } catch {
+            finalizeConnectionFailure(
+                for: connection.id,
+                cancelled: isAttemptCancelled(attempt, for: connection.id),
+                error: error,
+                attempt: attempt
+            )
+            throw error
+        }
     }
 
     // The proxy reports its download as a stage of this attempt.

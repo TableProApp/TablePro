@@ -8,7 +8,7 @@ use sqlx::{AssertSqlSafe, Connection as _, Executor as _};
 use tablepro_core::sql_syntax::{SqlGrammar, may_change_database};
 use tablepro_core::{
     CallOptions, DriverError, EditorSession, EditorSessionId, EditorSessionOptions, EditorSessionState, LivenessPolicy,
-    LossPhase, ResultSink, RowLimit, RunEnd, RunOptions, RunSummary, TimeoutPhase, TransactionState, UserSql, Value,
+    LossPhase, ResultSink, RunEnd, RunOptions, RunSummary, TimeoutPhase, TransactionState, UserSql, Value,
 };
 use tokio::sync::OwnedMutexGuard;
 use tokio::time::Instant;
@@ -18,20 +18,14 @@ use crate::cancel::ControlLink;
 use crate::column_origins::{TracedSet, resolved_columns};
 use crate::decode::decode_row;
 use crate::dialect::quote;
-use crate::editor_run::{RunOutcome, run_script};
+use crate::editor_run::{EditorLink, RunOutcome, run_script};
 use crate::errors::map_error;
 use crate::flavour::MySqlFlavour;
 use crate::mysql_timestamp_mode::MySqlTimestampMode;
 use crate::mysql_wire_format::MySqlWireFormat;
 use crate::physical::{MysqlEndpoint, SessionKind};
-use crate::session_statements::{SessionLimits, select_limit};
+use crate::session_statements::SessionLimits;
 use crate::transaction_probe::TransactionProbe;
-
-/// The tab's own connection and the row limit last set on it.
-struct Held {
-    connection: MySqlConnection,
-    select_limit: Option<u64>,
-}
 
 /// One editor tab's own connection to the server.
 ///
@@ -48,7 +42,7 @@ pub(crate) struct MysqlEditorSession {
 /// and settles the session, rather than a statement left running for
 /// nobody.
 struct Shared {
-    held: Arc<tokio::sync::Mutex<Option<Held>>>,
+    held: Arc<tokio::sync::Mutex<Option<EditorLink>>>,
     connection_id: u64,
     flavour: MySqlFlavour,
     control: ControlLink,
@@ -85,10 +79,7 @@ impl MysqlEditorSession {
         Ok(Arc::new(Self {
             id: EditorSessionId::new(),
             shared: Arc::new(Shared {
-                held: Arc::new(tokio::sync::Mutex::new(Some(Held {
-                    connection: physical.connection,
-                    select_limit: None,
-                }))),
+                held: Arc::new(tokio::sync::Mutex::new(Some(EditorLink::new(physical.connection)))),
                 connection_id: physical.connection_id,
                 flavour: physical.flavour,
                 control: ControlLink::new(endpoint),
@@ -117,7 +108,7 @@ impl Shared {
     // The connection `guard` holds is given up when it cannot take another run.
     async fn run_held(
         &self,
-        mut guard: OwnedMutexGuard<Option<Held>>,
+        mut guard: OwnedMutexGuard<Option<EditorLink>>,
         sql: UserSql,
         options: RunOptions,
         mut sink: Box<dyn ResultSink>,
@@ -196,7 +187,7 @@ impl Shared {
     // A stop is KILL QUERY on a connection of the session's own; the statement then has the cancel grace to end, and nothing after it is sent.
     async fn supervise(
         &self,
-        held: &mut Held,
+        held: &mut EditorLink,
         sql: &UserSql,
         options: &RunOptions,
         sink: &mut dyn ResultSink,
@@ -208,11 +199,7 @@ impl Shared {
         // Read synchronously before each statement goes out, since the
         // select below sees a stop only once the run waits.
         let halt = || self.stop_due(options, deadline).is_some();
-        let flavour = self.flavour;
-        let running = async {
-            set_select_limit(held, flavour, limit).await?;
-            run_script(&mut held.connection, flavour, sql.as_str(), limit, sink, &stopped, halt).await
-        };
+        let running = run_script(held, self.flavour, sql.as_str(), limit, sink, &stopped, halt);
         let mut running = std::pin::pin!(running);
         let stop = tokio::select! {
             outcome = &mut running => {
@@ -315,18 +302,6 @@ fn confirms_stop(error: &DriverError) -> bool {
                 server_cancelled: true,
             }
     )
-}
-
-async fn set_select_limit(held: &mut Held, flavour: MySqlFlavour, limit: RowLimit) -> Result<(), DriverError> {
-    if held.select_limit == Some(limit.get()) {
-        return Ok(());
-    }
-    held.connection
-        .execute(AssertSqlSafe(select_limit(limit.get())))
-        .await
-        .map_err(|error| map_error(&error, flavour))?;
-    held.select_limit = Some(limit.get());
-    Ok(())
 }
 
 fn finished(outcome: Result<RunOutcome, DriverError>) -> Result<RunEnd, DriverError> {

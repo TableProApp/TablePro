@@ -246,4 +246,15 @@ struct KeychainItemScopeTests {
 
         #expect(keychain.readStringResult(forKey: key) == .notFound)
     }
+
+    @Test("A device-only delete removes this Mac's item and leaves the one iCloud Keychain holds", arguments: [true, false])
+    func deviceOnlyDeleteKeepsTheSyncedItem(passwordSync: Bool) {
+        store.seed("local", account: key, synchronizable: false)
+        store.seed("synced", account: key, synchronizable: true)
+
+        helper(passwordSync: passwordSync).delete(forKey: key, deviceOnly: true)
+
+        #expect(store.value(account: key, synchronizable: false) == nil)
+        #expect(store.value(account: key, synchronizable: true) == "synced")
+    }
 }

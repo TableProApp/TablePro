@@ -3,7 +3,9 @@ import Foundation
 import TableProPluginKit
 
 final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, QueryPlanSnapshotReading, Sendable {
-    static let shared = QueryHistoryManager()
+    static let shared = QueryHistoryManager(
+        storage: QueryHistoryStorage(onSetAside: { DamagedStoreNotice.queryHistorySetAside($0) })
+    )
 
     // Not private: QueryHistoryManager+Rewind reaches it from another file.
     internal let storage: QueryHistoryStorage

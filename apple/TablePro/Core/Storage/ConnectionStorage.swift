@@ -29,6 +29,8 @@ final class ConnectionStorage {
     private var cachedConnections: [DatabaseConnection]?
 
     private(set) var lastLoadFailed = false
+    private(set) var fileReadCount = 0
+    private(set) var fileWriteCount = 0
 
     /// Whether the file on disk is the one TablePro last wrote. False once it has been edited by
     /// something else, which is the signal to refuse to run a connection's password source.
@@ -91,6 +93,7 @@ final class ConnectionStorage {
     func loadConnections() -> [DatabaseConnection] {
         if let cached = cachedConnections { return cached }
 
+        fileReadCount += 1
         guard let storedConnections = file.load() else {
             lastLoadFailed = true
             return []
@@ -139,6 +142,7 @@ final class ConnectionStorage {
     @discardableResult
     private func persist(_ connections: [DatabaseConnection], byUser: Bool = true) -> Bool {
         guard file.save(connections.map { StoredConnection(from: $0) }, byUser: byUser) else { return false }
+        fileWriteCount += 1
         cachedConnections = nil
         return true
     }
@@ -440,22 +444,11 @@ final class ConnectionStorage {
         if connection.participatesInSync {
             syncTracker.markDeleted(.connection, id: connection.id.uuidString)
         }
-        deletePassword(for: connection.id)
-        deleteSSHPassword(for: connection.id)
-        deleteKeyPassphrase(for: connection.id)
-        deleteSSLClientKeyPassphrase(for: connection.id)
-        deleteTOTPSecret(for: connection.id)
-        deleteCloudflareTokenId(for: connection.id)
-        deleteCloudflareTokenSecret(for: connection.id)
-        deleteCloudSQLProxyServiceAccountKey(for: connection.id)
-        deleteSOCKSProxyPassword(for: connection.id)
-
-        let secureFieldIds = Self.secureFieldIds(for: connection.type)
-        deleteAllPluginSecureFields(for: connection.id, fieldIds: secureFieldIds)
-
+        let origin: ConnectionLocalState.Origin = connection.participatesInSync ? .local : .localOnly
+        deleteSecrets(of: [connection], origin: origin)
         ConnectionLocalState.purge(
             connectionIds: [connection.id],
-            origin: connection.participatesInSync ? .local : .localOnly,
+            origin: origin,
             appSettings: appSettingsProvider(),
             syncTracker: syncTracker
         )
@@ -474,20 +467,9 @@ final class ConnectionStorage {
         for conn in connectionsToDelete where conn.participatesInSync {
             syncTracker.markDeleted(.connection, id: conn.id.uuidString)
         }
-        for conn in connectionsToDelete {
-            deletePassword(for: conn.id)
-            deleteSSHPassword(for: conn.id)
-            deleteKeyPassphrase(for: conn.id)
-            deleteSSLClientKeyPassphrase(for: conn.id)
-            deleteTOTPSecret(for: conn.id)
-            deleteCloudflareTokenId(for: conn.id)
-            deleteCloudflareTokenSecret(for: conn.id)
-            deleteCloudSQLProxyServiceAccountKey(for: conn.id)
-            deleteSOCKSProxyPassword(for: conn.id)
-            let fields = Self.secureFieldIds(for: conn.type)
-            deleteAllPluginSecureFields(for: conn.id, fieldIds: fields)
-        }
         let syncedIds = Set(connectionsToDelete.filter(\.participatesInSync).map(\.id))
+        deleteSecrets(of: connectionsToDelete.filter { syncedIds.contains($0.id) }, origin: .local)
+        deleteSecrets(of: connectionsToDelete.filter { !syncedIds.contains($0.id) }, origin: .localOnly)
         ConnectionLocalState.purge(
             connectionIds: syncedIds,
             origin: .local,
@@ -818,6 +800,21 @@ final class ConnectionStorage {
             + fieldIds.map { "com.TablePro.plugin.\($0).\(id)" }
     }
 
+    // Removing an iCloud Keychain item removes it from every device, so only a delete the other devices follow does.
+    // One from another device leaves it to that device. A Local only delete cannot tell whether another device still
+    // syncs the row, so it keeps it.
+    func deleteSecrets(of connections: [DatabaseConnection], origin: ConnectionLocalState.Origin) {
+        for connection in connections {
+            for key in secretKeys(for: connection) {
+                if origin.leavesTombstones {
+                    deleteSecret(forKey: key, connectionId: connection.id)
+                } else {
+                    keychain.delete(forKey: key, deviceOnly: true)
+                }
+            }
+        }
+    }
+
     private func keepsSecretsOnDevice(_ connectionId: UUID) -> Bool {
         loadConnection(id: connectionId).map { !$0.participatesInSync } ?? false
     }
@@ -896,8 +893,7 @@ final class ConnectionStorage {
         guard !lastLoadFailed else { return }
         var complete = true
         for connection in connections where !connection.participatesInSync {
-            // A plugin that is not registered yet has secure fields this pass cannot name.
-            let knowsFields = PluginMetadataRegistry.shared.snapshot(for: connection.type) != nil
+            let knowsFields = Self.knowsSecureFields(of: connection.type)
             if !rewriteSecrets(of: connection, readingOwnItemFirst: true, deviceOnly: true) || !knowsFields {
                 complete = false
             }
@@ -1043,29 +1039,63 @@ final class ConnectionStorage {
         PluginManager.shared.secureConnectionFieldIds(for: databaseType)
     }
 
+    // A plugin that is not registered yet has secure fields nothing here can name.
+    private static func knowsSecureFields(of databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType) != nil
+    }
+
+    // Not the key older builds read: they set it on every exit, including runs that moved nothing.
+    private static let pluginSecureFieldsMovedKey = "com.TablePro.pluginSecureFieldsMovedToKeychain"
+
+    // Done only once every connection's secure fields could be named and each value reached the Keychain. A field
+    // leaves the record only after its own write, and a file edited outside TablePro moves nothing.
     func migratePluginSecureFieldsIfNeeded() {
-        let migrationKey = "com.TablePro.pluginSecureFieldsMigrated"
-        guard !defaults.bool(forKey: migrationKey) else { return }
-        defer { defaults.set(true, forKey: migrationKey) }
-
+        guard !defaults.bool(forKey: Self.pluginSecureFieldsMovedKey) else { return }
         var connections = loadConnections()
-        var changed = false
+        guard !lastLoadFailed, storeIsTrusted else {
+            Self.logger.notice("Plugin secure fields not moved: connections.json is unreadable or changed outside TablePro; retrying next launch")
+            return
+        }
 
+        var complete = true
+        var changed = false
         for index in connections.indices {
-            let secureFieldIds = Self.secureFieldIds(for: connections[index].type)
-            for fieldId in secureFieldIds {
-                if let value = connections[index].additionalFields[fieldId], !value.isEmpty {
-                    savePluginSecureField(value, fieldId: fieldId, for: connections[index].id)
-                    connections[index].additionalFields.removeValue(forKey: fieldId)
-                    changed = true
+            let connection = connections[index]
+            if !Self.knowsSecureFields(of: connection.type) {
+                complete = false
+            }
+            for fieldId in Self.secureFieldIds(for: connection.type) {
+                guard let value = connection.additionalFields[fieldId], !value.isEmpty else { continue }
+                guard holdPluginSecureFieldInKeychain(value, fieldId: fieldId, for: connection.id) else {
+                    complete = false
+                    continue
                 }
+                connections[index].additionalFields.removeValue(forKey: fieldId)
+                changed = true
             }
         }
 
-        if changed {
-            if !saveConnections(connections) {
-                Self.logger.error("Failed to persist plugin secure field migration; will retry on next launch")
-            }
+        if changed, !saveConnections(connections, byUser: false) {
+            complete = false
+        }
+        if complete {
+            defaults.set(true, forKey: Self.pluginSecureFieldsMovedKey)
+        } else {
+            Self.logger.notice("Not every plugin secure field has moved to the Keychain yet; retrying next launch")
+        }
+    }
+
+    // A stored item wins: with password sync on it can be a newer value another device saved, which the plain-text
+    // copy here would overwrite everywhere. The plain-text value is written only where no item exists.
+    private func holdPluginSecureFieldInKeychain(_ value: String, fieldId: String, for connectionId: UUID) -> Bool {
+        let key = "com.TablePro.plugin.\(fieldId).\(connectionId.uuidString)"
+        switch readSecret(forKey: key, connectionId: connectionId) {
+        case .found(let stored) where !stored.isEmpty:
+            return true
+        case .found, .notFound:
+            return savePluginSecureField(value, fieldId: fieldId, for: connectionId)
+        case .locked, .userCancelled, .authFailed, .error:
+            return false
         }
     }
 

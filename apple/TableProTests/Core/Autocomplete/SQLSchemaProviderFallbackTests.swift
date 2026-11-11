@@ -536,4 +536,62 @@ struct SQLSchemaProviderFallbackTests {
         // Documentation should reference the canonical table name "Users"
         #expect(items[0].documentation?.contains("Users") == true)
     }
+
+    // MARK: - Built once per cache
+
+    // Every keystroke before a FROM asks again; at 300 tables of 40 columns each request rebuilt 12,000 items.
+    @Test("Completions before a FROM reuse the column items while the cache and table list stand")
+    func columnItemsAreBuiltOncePerCache() async {
+        let driver = MockFallbackDriver()
+        var tables: [TableInfo] = []
+        for table in 0..<30 {
+            let name = "table_\(table)"
+            tables.append(TestFixtures.makeTableInfo(name: name))
+            driver.columnsPerTable[name] = (0..<10).map {
+                TestFixtures.makeColumnInfo(name: "col_\(table)_\($0)", isPrimaryKey: false)
+            }
+        }
+        driver.tablesToReturn = tables
+
+        let provider = SQLSchemaProvider()
+        await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
+        await populateCache(provider: provider, driver: driver)
+
+        let first = await provider.allColumnsFromCachedTables().map(\.label)
+        for _ in 0..<50 {
+            let again = await provider.allColumnsFromCachedTables().map(\.label)
+            #expect(again == first)
+        }
+        #expect(first.count == 300)
+        #expect(await provider.tableColumnItemsBuildCount == 1)
+    }
+
+    @Test("A newly cached table, a new table list and a cleared cache each reach the column items")
+    func columnItemsFollowTheCacheAndTableList() async {
+        let driver = MockFallbackDriver()
+        driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "users"), TestFixtures.makeTableInfo(name: "orders")]
+        driver.columnsPerTable = [
+            "users": [TestFixtures.makeColumnInfo(name: "id")],
+            "orders": [TestFixtures.makeColumnInfo(name: "total", dataType: "DECIMAL", isPrimaryKey: false)]
+        ]
+        let provider = SQLSchemaProvider()
+        await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
+        _ = await provider.getColumns(for: "users")
+        let usersOnly = await provider.allColumnsFromCachedTables().map(\.label)
+        #expect(usersOnly == ["id"])
+
+        _ = await provider.getColumns(for: "orders")
+        let both = Set(await provider.allColumnsFromCachedTables().map(\.label))
+        #expect(both == ["id", "total"])
+
+        await provider.updateTables([TestFixtures.makeTableInfo(name: "Users"), TestFixtures.makeTableInfo(name: "orders")])
+        let renamed = await provider.allColumnsFromCachedTables()
+        let idDocumentation = renamed.first { $0.label == "id" }?.documentation
+        #expect(idDocumentation?.contains("Users") == true)
+
+        await provider.clearColumnCache()
+        let cleared = await provider.allColumnsFromCachedTables()
+        #expect(cleared.isEmpty)
+        #expect(await provider.tableColumnItemsBuildCount == 3)
+    }
 }

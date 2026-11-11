@@ -6,6 +6,7 @@ namespace TablePro.App.Services;
 internal sealed class Workbench : IDisposable
 {
     private readonly SettingsStore _settings;
+    private bool _settingsUnsaved;
 
     public Workbench(TableProCore core, string folder)
     {
@@ -52,8 +53,30 @@ internal sealed class Workbench : IDisposable
         }
 
         Settings = next;
-        _settings.Save(next);
+        SaveSettings();
         SettingsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void SaveUnsavedSettings()
+    {
+        if (_settingsUnsaved)
+        {
+            SaveSettings();
+        }
+    }
+
+    // A file another program holds, as a virus scan can, keeps the change for this run until a later save lands.
+    private void SaveSettings()
+    {
+        try
+        {
+            _settings.Save(Settings);
+            _settingsUnsaved = false;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _settingsUnsaved = true;
+        }
     }
 
     public void NotifyLibraryChanged() => LibraryChanged?.Invoke(this, EventArgs.Empty);

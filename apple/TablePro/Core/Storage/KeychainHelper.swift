@@ -35,11 +35,17 @@ protocol KeychainStoring: Sendable {
     // deviceOnly reads this Mac's own item before one iCloud Keychain delivered.
     func readStringResult(forKey key: String, deviceOnly: Bool) -> KeychainStringResult
     func delete(forKey key: String)
+    // deviceOnly removes this Mac's own item and leaves the one iCloud Keychain holds, which every device shares.
+    func delete(forKey key: String, deviceOnly: Bool)
 }
 
 extension KeychainStoring {
     func readStringResult(forKey key: String, deviceOnly: Bool) -> KeychainStringResult {
         readStringResult(forKey: key)
+    }
+
+    func delete(forKey key: String, deviceOnly: Bool) {
+        delete(forKey: key)
     }
 
     @discardableResult
@@ -230,8 +236,14 @@ final class KeychainHelper: KeychainStoring {
     }
 
     func delete(forKey key: String) {
+        delete(forKey: key, deviceOnly: false)
+    }
+
+    func delete(forKey key: String, deviceOnly: Bool) {
         var query = baseQuery(forKey: key)
-        query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
+        if !deviceOnly {
+            query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
+        }
 
         let status = items.delete(query)
         if status != errSecSuccess, status != errSecItemNotFound {

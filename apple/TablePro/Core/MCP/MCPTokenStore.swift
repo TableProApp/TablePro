@@ -321,6 +321,17 @@ actor MCPTokenStore {
         remove(tokenId: tokenId, withdrawsApprovals: false)
     }
 
+    // A rotation revokes nothing, so no observer hears of it; any other token goes through delete.
+    func dropSupersededBridgeCredential(tokenId: UUID) {
+        guard let index = tokens.firstIndex(where: { $0.id == tokenId }), tokens[index].isBridgeCredential else {
+            delete(tokenId: tokenId)
+            return
+        }
+        tokens.remove(at: index)
+        save()
+        Self.logger.info("Dropped the superseded bridge credential")
+    }
+
     private func remove(tokenId: UUID, withdrawsApprovals: Bool) {
         guard let index = tokens.firstIndex(where: { $0.id == tokenId }) else {
             Self.logger.warning("Attempted to delete non-existent token \(tokenId.uuidString, privacy: .public)")

@@ -4,7 +4,7 @@ use tablepro_core::credentials::SecretVault;
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::{ConnectionStore, StoragePaths};
 
-use crate::persistence::{ColumnLayoutStore, FilterSettingsStore};
+use crate::persistence::{ColumnLayoutStore, FilterSettingsStore, HighlightRulesStore};
 use crate::workspace::WorkspaceStore;
 
 /// Everything the app persists, resolved once at startup and handed to
@@ -17,6 +17,7 @@ pub struct AppStorage {
     secrets: std::sync::Arc<dyn SecretVault>,
     column_layouts: ColumnLayoutStore,
     filter_settings: FilterSettingsStore,
+    highlight_rules: HighlightRulesStore,
     workspaces: WorkspaceStore,
 }
 
@@ -27,6 +28,7 @@ impl AppStorage {
         let connections = ConnectionStore::new(&paths);
         let column_layouts = ColumnLayoutStore::load(paths.column_layouts_file(), tasks);
         let filter_settings = FilterSettingsStore::load(paths.filter_settings_file(), tasks);
+        let highlight_rules = HighlightRulesStore::load(paths.highlight_rules_file(), tasks);
         let workspaces = WorkspaceStore::start(
             paths.workspaces_dir(),
             tablepro_storage::DraftStore::new(paths.drafts_dir()),
@@ -38,6 +40,7 @@ impl AppStorage {
             secrets,
             column_layouts,
             filter_settings,
+            highlight_rules,
             workspaces,
         }
     }
@@ -60,6 +63,10 @@ impl AppStorage {
 
     pub fn filter_settings(&self) -> &FilterSettingsStore {
         &self.filter_settings
+    }
+
+    pub fn highlight_rules(&self) -> &HighlightRulesStore {
+        &self.highlight_rules
     }
 
     pub fn workspaces(&self) -> &WorkspaceStore {

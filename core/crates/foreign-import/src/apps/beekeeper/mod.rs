@@ -1,7 +1,6 @@
 mod encryptor;
 mod locations;
 mod saved_queries;
-mod sqlite;
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -9,8 +8,8 @@ use std::path::PathBuf;
 use secrecy::{ExposeSecret, SecretString};
 use tokio_util::sync::CancellationToken;
 
-use self::sqlite::{Database, Row};
 use crate::app::{AppReader, check_cancel};
+use crate::apps::sqlite::{Database, Row};
 use crate::collect::assemble;
 use crate::{
     CollectedImport, ForeignApp, ForeignAppDirs, ForeignColor, ForeignConnection, ForeignConnectionRecord,

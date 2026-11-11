@@ -18,8 +18,7 @@ actor SSHTunnelManager: TunnelManaging {
 
     private var tunnels: [UUID: LibSSH2Tunnel] = [:]
     private var creations = TunnelCreationGenerations()
-    private let portRangeStart = 60_000
-    private let portRangeEnd = 65_000
+    private let localPortCandidates: @Sendable () -> [Int]
 
     /// Static registry for synchronous termination during app shutdown
     private static let tunnelRegistry = OSAllocatedUnfairLock(initialState: [UUID: LibSSH2Tunnel]())
@@ -28,7 +27,9 @@ actor SSHTunnelManager: TunnelManaging {
     /// Held as long as at least one tunnel exists; released when the last tunnel closes.
     private var appNapActivity: NSObjectProtocol?
 
-    private init() {}
+    init(localPortCandidates: @escaping @Sendable () -> [Int] = { Array(60_000...65_000).shuffled() }) {
+        self.localPortCandidates = localPortCandidates
+    }
 
     func createTunnel(
         connectionId: UUID,
@@ -79,64 +80,51 @@ actor SSHTunnelManager: TunnelManaging {
             keyboardInteractivePromptProvider: nil
         )
 
-        // Try ports until one works
-        for localPort in localPortCandidates() {
+        try deadline.check(endpoint: timeoutEndpoint)
+        let listener = try LibSSH2TunnelFactory.bindLocalListener(candidates: localPortCandidates())
+        let creationTask = Task.detached {
+            try await LibSSH2TunnelFactory.createTunnel(
+                connectionId: connectionId,
+                config: config,
+                credentials: credentials,
+                destination: destination,
+                listener: listener,
+                deadline: deadline
+            )
+        }
+        let tunnel = try await withTaskCancellationHandler {
+            try await creationTask.value
+        } onCancel: {
+            creationTask.cancel()
+        }
+
+        do {
             try deadline.check(endpoint: timeoutEndpoint)
-            do {
-                let creationTask = Task.detached {
-                    try await LibSSH2TunnelFactory.createTunnel(
-                        connectionId: connectionId,
-                        config: config,
-                        credentials: credentials,
-                        destination: destination,
-                        localPort: localPort,
-                        deadline: deadline
-                    )
-                }
-                let tunnel = try await withTaskCancellationHandler {
-                    try await creationTask.value
-                } onCancel: {
-                    creationTask.cancel()
-                }
+        } catch {
+            tunnel.close()
+            throw error
+        }
+        // A newer createTunnel or a close for this connection came while this one dialed, so it must not adopt.
+        guard creations.isNewest(generation, for: connectionId) else {
+            tunnel.close()
+            throw CancellationError()
+        }
 
-                do {
-                    try deadline.check(endpoint: timeoutEndpoint)
-                } catch {
-                    tunnel.close()
-                    throw error
-                }
-                // A newer createTunnel or a close for this connection came while this one dialed, so it must not adopt.
-                guard creations.isNewest(generation, for: connectionId) else {
-                    tunnel.close()
-                    throw CancellationError()
-                }
-
-                tunnel.onDeath = { [weak self] id in
-                    Task { [weak self] in
-                        await self?.handleTunnelDeath(connectionId: id)
-                    }
-                }
-
-                tunnels[connectionId] = tunnel
-                Self.tunnelRegistry.withLock { $0[connectionId] = tunnel }
-
-                tunnel.startForwarding(destination: destination)
-                tunnel.startKeepAlive()
-
-                updateAppNapState()
-                Self.logger.info("Tunnel created for \(connectionId) on local port \(localPort)")
-                return localPort
-            } catch let error as SSHTunnelError {
-                if case .tunnelCreationFailed(let msg) = error,
-                   msg.contains("already in use") {
-                    Self.logger.notice("Port \(localPort) in use, trying another")
-                    continue
-                }
-                throw error
+        tunnel.onDeath = { [weak self] id in
+            Task { [weak self] in
+                await self?.handleTunnelDeath(connectionId: id)
             }
         }
 
-        throw SSHTunnelError.noAvailablePort
+        tunnels[connectionId] = tunnel
+        Self.tunnelRegistry.withLock { $0[connectionId] = tunnel }
+
+        tunnel.startForwarding(destination: destination)
+        tunnel.startKeepAlive()
+
+        updateAppNapState()
+        Self.logger.info("Tunnel created for \(connectionId) on local port \(listener.port)")
+        return listener.port
     }
 
     // Also ends a creation still dialing, so nothing it builds is adopted after the close returned.
@@ -222,16 +210,7 @@ actor SSHTunnelManager: TunnelManaging {
         tunnels[connectionId]?.consumeLastForwardFailure()
     }
 
-    /// Check if an error message indicates a local port bind failure
-    static func isLocalPortBindFailure(_ errorMessage: String) -> Bool {
-        errorMessage.lowercased().contains("already in use")
-    }
-
     // MARK: - Private
-
-    private func localPortCandidates() -> [Int] {
-        Array(portRangeStart...portRangeEnd).shuffled()
-    }
 
     private func handleTunnelDeath(connectionId: UUID) async {
         guard tunnels.removeValue(forKey: connectionId) != nil else { return }

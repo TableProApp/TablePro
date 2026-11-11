@@ -9,6 +9,8 @@ import AppKit
 final class DataGridMenuState {
     let loader = DataGridValueLoader()
     var valueFilterPopover: NSPopover?
+    // The value list sorting before its popover opens.
+    var valueFilterListing: Task<Void, Never>?
 }
 
 extension DataGridViewController {

@@ -46,6 +46,10 @@ impl StoragePaths {
         self.config.join("filter_settings.json")
     }
 
+    pub fn highlight_rules_file(&self) -> PathBuf {
+        self.config.join("highlight_rules.json")
+    }
+
     pub fn drafts_dir(&self) -> PathBuf {
         self.data.join("drafts")
     }
@@ -85,6 +89,10 @@ mod tests {
         assert_eq!(paths.runtime, root.join("runtime/app/app.tablepro.TablePro"));
         assert_eq!(paths.history_database(), root.join("state/tablepro/history.db"));
         assert_eq!(paths.connections_file(), root.join("config/tablepro/connections.json"));
+        assert_eq!(
+            paths.highlight_rules_file(),
+            root.join("config/tablepro/highlight_rules.json")
+        );
         assert_eq!(paths.snippets_dir(), root.join("data/tablepro/snippets"));
         assert_eq!(paths.account_file(), root.join("state/tablepro/account.json"));
         assert_eq!(paths.telemetry_file(), root.join("state/tablepro/telemetry.json"));

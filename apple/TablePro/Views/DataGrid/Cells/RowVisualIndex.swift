@@ -43,7 +43,7 @@ final class RowVisualIndex {
         }
         let isInserted = changeManager.insertedRowIDs.contains(rowID)
 
-        if let rowChange = changeManager.rowChanges.first(where: { $0.rowID == rowID }) {
+        if let rowChange = changeManager.pendingChange(forRow: rowID) {
             states[rowID] = Self.makeState(for: rowChange, inserted: isInserted)
             return
         }
