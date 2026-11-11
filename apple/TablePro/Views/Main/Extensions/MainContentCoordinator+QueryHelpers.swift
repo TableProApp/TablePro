@@ -54,9 +54,14 @@ extension MainContentCoordinator {
         isAutoLoad: Bool,
         trigger: TableLoadTrigger,
         traceToken: TableLoadTraceToken?,
-        serverOutput: PluginServerOutput = .none
+        serverOutput: PluginServerOutput = .none,
+        recordsRun: Bool = false
     ) {
         guard tabExecution.settle(claim) else {
+            // Stop ends the claim before the statement unwinds, so a stopped run reports itself here.
+            if recordsRun {
+                queryExecutionCoordinator.recordStatementCancelled(sql, tabId: tabId, startedAt: claim.startedAt)
+            }
             traceStaleResultDropped(traceToken)
             return
         }
@@ -73,6 +78,9 @@ extension MainContentCoordinator {
             reportEndedExecutions([
                 EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
             ])
+            if recordsRun {
+                queryExecutionCoordinator.recordStatementCancelled(sql, tabId: tabId, startedAt: claim.startedAt)
+            }
             return
         }
         if isAutoLoad, services.databaseManager.driver(for: connectionId)?.status != .connected {
@@ -80,6 +88,9 @@ extension MainContentCoordinator {
             return
         }
         handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn, serverOutput: serverOutput)
+        if recordsRun {
+            queryExecutionCoordinator.recordStatementFailure(sql, error: error, tabId: tabId, startedAt: claim.startedAt)
+        }
         reportQueryOperation(
             claim: claim, trigger: trigger, outcome: .failed(reason: error.localizedDescription)
         )

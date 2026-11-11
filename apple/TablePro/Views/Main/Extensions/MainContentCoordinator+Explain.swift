@@ -199,6 +199,7 @@ extension MainContentCoordinator {
                     }
                     seedBufferFromActiveResult(tabId: tabId)
                     toolbarState.isResultsCollapsed = false
+                    queryExecutionCoordinator.recordStatementRun(request.sql, tabId: tabId, startedAt: claim.startedAt)
 
                     recordHistory(
                         QueryHistoryRecordRequest(
@@ -252,6 +253,7 @@ extension MainContentCoordinator {
                         toolbarState.isResultsCollapsed = false
                         announceQueryError(error.localizedDescription)
                     }
+                    queryExecutionCoordinator.recordStatementFailure(request.sql, error: error, tabId: tabId, startedAt: claim.startedAt)
 
                     recordHistory(
                         QueryHistoryRecordRequest(

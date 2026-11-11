@@ -1240,6 +1240,7 @@ final class MainContentCoordinator: ObservableObject {
             return
         }
         let isTableTab = tab.tabType == .table
+        let recordsRun = source == .newSource && tab.tabType == .query && !isAutoLoad
         let readsView = tab.tableContext.knowsView(named: tableName)
         let (grammar, lengthColumns) = (lexicalGrammar, unloadedValueLengthColumns(for: tab))
 
@@ -1333,6 +1334,10 @@ final class MainContentCoordinator: ObservableObject {
                         absentCells: fetchResult.absentCells,
                         unloadedCells: fetchResult.unloadedCells
                     )
+                    // A re-read (a sort, a reload after a write) is not a run, so the log keeps describing the last one.
+                    if recordsRun {
+                        queryExecutionCoordinator.recordStatementRun(sql, tabId: tabId, startedAt: claim.startedAt)
+                    }
 
                     scheduleTraceCompletion(traceToken, outcome: .completed)
                     reportFetchedQuery(claim: claim, trigger: trigger, result: fetchResult)
@@ -1369,7 +1374,8 @@ final class MainContentCoordinator: ObservableObject {
                     isAutoLoad: isAutoLoad,
                     trigger: trigger,
                     traceToken: traceToken,
-                    serverOutput: failureOutput.output
+                    serverOutput: failureOutput.output,
+                    recordsRun: recordsRun
                 )
             }
         }

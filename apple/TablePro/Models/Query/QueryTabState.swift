@@ -683,6 +683,10 @@ struct TabDisplayState: Equatable {
     var resultSets: [ResultSet] = []
     var activeResultSetId: UUID?
     var highlightRulesPresentationRequest: Int = 0
+    // What the last run did, statement by statement, for the Message and Summary tabs. Never saved.
+    var runLog: QueryRunLog?
+    // The page in front while those tabs are on. Off, the pane always shows the active result.
+    var resultsPage: ResultsPage = .result
 
     var activeResultSet: ResultSet? {
         guard let id = activeResultSetId else { return resultSets.last }
@@ -708,7 +712,19 @@ struct TabDisplayState: Equatable {
         result.isPinned = resultSets[index].isPinned
         resultSets[index] = result
         activeResultSetId = result.id
+        runLog = runLog?.replacingResult(outgoingId, with: result.id)
         leaveOutputModeWithoutOutput()
+    }
+
+    // A run that ends after a later one started has nothing to say about what is on screen now.
+    func admitsRunLog(_ log: QueryRunLog) -> Bool {
+        runLog.map { $0.startedAt <= log.startedAt } ?? true
+    }
+
+    mutating func installRunLog(_ log: QueryRunLog) {
+        guard admitsRunLog(log) else { return }
+        runLog = log
+        resultsPage = log.opensOnMessage ? .message : .result
     }
 
     @MainActor
@@ -758,5 +774,7 @@ struct TabDisplayState: Equatable {
             && lhs.resultSets.map(\.id) == rhs.resultSets.map(\.id)
             && lhs.activeResultSetId == rhs.activeResultSetId
             && lhs.highlightRulesPresentationRequest == rhs.highlightRulesPresentationRequest
+            && lhs.runLog == rhs.runLog
+            && lhs.resultsPage == rhs.resultsPage
     }
 }

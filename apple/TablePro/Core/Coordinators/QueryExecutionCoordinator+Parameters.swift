@@ -195,6 +195,7 @@ extension QueryExecutionCoordinator {
         )
 
         let readsView = tab.tableContext.knowsView(named: tableName)
+        let loggedStatement = install.source == .newSource ? originalSQL ?? sql : nil
         let boundValues = BoundParameterValues(values: parameters)
         let failureOutput = ServerOutputBox()
         let grammar = parent.lexicalGrammar
@@ -282,7 +283,12 @@ extension QueryExecutionCoordinator {
                 )
                 await MainActor.run { [weak self] in
                     guard let self else { return }
-                    guard parent.tabExecution.settle(claim) else { return }
+                    guard parent.tabExecution.settle(claim) else {
+                        if let loggedStatement {
+                            recordStatementCancelled(loggedStatement, tabId: tabId, startedAt: claim.startedAt)
+                        }
+                        return
+                    }
                     parent.tabManager.mutate(tabId: tabId) { tab in
                         tab.pagination.isLoadingMore = false
                     }
@@ -291,6 +297,9 @@ extension QueryExecutionCoordinator {
                         parent.reportEndedExecutions([
                             EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
                         ])
+                        if let loggedStatement {
+                            recordStatementCancelled(loggedStatement, tabId: tabId, startedAt: claim.startedAt)
+                        }
                         return
                     }
                     handleQueryExecutionError(
@@ -300,6 +309,9 @@ extension QueryExecutionCoordinator {
                         connection: conn,
                         serverOutput: failureOutput.output
                     )
+                    if let loggedStatement {
+                        recordStatementFailure(loggedStatement, error: error, tabId: tabId, startedAt: claim.startedAt)
+                    }
                     reportOperation(kind: .query, claim: claim, outcome: .failed(reason: error.localizedDescription))
                 }
             }
@@ -425,13 +437,17 @@ extension QueryExecutionCoordinator {
 
             switch outcome {
             case .cancelled(let results):
-                guard parent.tabExecution.settle(claim) else { return }
+                guard parent.tabExecution.settle(claim) else {
+                    recordStoppedStatements(sent, results: results, claim: claim)
+                    return
+                }
                 parent.retireQueryTask(.claim(claim))
                 keepStoppedStatements(
                     history: ExecutedStatementHistory(
                         prepared: sent, results: results, parameters: parameters, connection: conn
                     ),
                     tabId: tabId,
+                    claim: claim,
                     sessionNotice: sessionNotice
                 )
                 parent.reportEndedExecutions([
@@ -611,17 +627,48 @@ extension QueryExecutionCoordinator {
     private func keepStoppedStatements(
         history: ExecutedStatementHistory,
         tabId: UUID,
+        claim: TabExecutionClaim,
         sessionNotice: String?
     ) {
-        guard !history.results.isEmpty else { return }
+        guard !history.results.isEmpty else {
+            recordStoppedStatements(history.prepared, results: [], claim: claim)
+            return
+        }
         recordExecutedStatements(history, tabId: tabId, commitOutcomeIsUnknown: false)
+        let resultSets = statementResultSets(history, tabId: tabId)
+        let finished = Self.runLogEntries(history.prepared, resultSets: resultSets)
         presentMultiStatementResults(
             tabId: tabId,
             timing: PluginQueryTiming.batch(of: history.results),
             totalRowsAffected: history.results.reduce(0) { $0 + $1.rowsAffected },
-            newResultSets: statementResultSets(history, tabId: tabId),
+            newResultSets: resultSets,
             sessionNotice: sessionNotice
         )
+        recordRunLog(
+            QueryRunLog.entries(statements: history.prepared.map(\.originalSQL), finished: finished, ending: .stopped),
+            tabId: tabId,
+            startedAt: claim.startedAt,
+            notice: sessionNotice
+        )
+    }
+
+    /// A stopped run installs none of its results, so its entries point at none.
+    private func recordStoppedStatements(_ sent: [PreparedStatement], results: [QueryResult], claim: TabExecutionClaim) {
+        let finished = zip(sent, results).map { statement, result in
+            QueryRunLogEntry(statement: statement.originalSQL, result: result)
+        }
+        recordRunLog(
+            QueryRunLog.entries(statements: sent.map(\.originalSQL), finished: finished, ending: .stopped),
+            tabId: claim.tabId,
+            startedAt: claim.startedAt
+        )
+    }
+
+    // Read before the run's notice is added to each result, so the log carries the notice once rather than per statement.
+    private static func runLogEntries(_ prepared: [PreparedStatement], resultSets: [ResultSet]) -> [QueryRunLogEntry] {
+        zip(prepared, resultSets).map { statement, resultSet in
+            QueryRunLogEntry(statement: statement.originalSQL, resultSet: resultSet)
+        }
     }
 
     /// Settles first, then writes. Everything below the gate belongs to a batch that still owns its
@@ -645,13 +692,16 @@ extension QueryExecutionCoordinator {
             )
         )
         recordExecutedStatements(history, tabId: tabId, commitOutcomeIsUnknown: false)
+        let resultSets = statementResultSets(history, tabId: tabId)
+        let finished = Self.runLogEntries(history.prepared, resultSets: resultSets)
         presentMultiStatementResults(
             tabId: tabId,
             timing: PluginQueryTiming.batch(of: history.results),
             totalRowsAffected: totalRowsAffected,
-            newResultSets: statementResultSets(history, tabId: tabId),
+            newResultSets: resultSets,
             sessionNotice: sessionNotice
         )
+        recordRunLog(finished, tabId: tabId, startedAt: claim.startedAt, notice: sessionNotice)
     }
 
     private func statementResultSets(_ history: ExecutedStatementHistory, tabId: UUID) -> [ResultSet] {
@@ -761,6 +811,10 @@ extension QueryExecutionCoordinator {
                 absentCells: fetchResult.absentCells
             )
 
+            if install.source == .newSource {
+                recordStatementRun(originalSQL ?? sql, tabId: tabId, startedAt: claim.startedAt)
+            }
+
             let parameterValues = nativeParameters.map { $0 as? String }
             let statement = originalSQL.map { NamedParameterStatement(sql: $0, parameters: originalParameters) }
             parent.tabManager.mutate(tabId: tabId) {
@@ -794,7 +848,11 @@ extension QueryExecutionCoordinator {
             .flatMap { anchors.indices.contains($0) ? anchors[$0] : nil }
 
         let failedStatementSQL = report.failedSQL
-        guard parent.tabExecution.settle(claim) else { return }
+        guard parent.tabExecution.settle(claim) else {
+            // A Stop during a statement surfaces as that statement failing, after the claim has already ended.
+            recordStoppedStatements(history.prepared, results: history.results, claim: claim)
+            return
+        }
         parent.retireQueryTask(.claim(claim))
 
         /// Below the settle gate for the same reason the success arm is: a superseded batch
@@ -808,6 +866,7 @@ extension QueryExecutionCoordinator {
         )
 
         parent.flushBufferToActiveResult(tabId: tabId, pinnedOnly: true)
+        let resultSets = statementResultSets(history, tabId: tabId)
         parent.tabManager.mutate(tabId: tabId) { tab in
             // The Error result carries the failure, so the banner stays on it rather than over every other result.
             tab.execution.errorMessage = nil
@@ -815,7 +874,7 @@ extension QueryExecutionCoordinator {
             tab.execution.executionTime = cumulativeTime
             tab.execution.lastExecutedAt = Date()
 
-            tab.display.replaceUnpinnedResults(with: statementResultSets(history, tabId: tabId) + [errorRS])
+            tab.display.replaceUnpinnedResults(with: resultSets + [errorRS])
             if tab.display.isResultsCollapsed {
                 tab.display.isResultsCollapsed = false
             }
@@ -826,6 +885,21 @@ extension QueryExecutionCoordinator {
             parent.toolbarState.recordQueryTiming(timing, for: tabId)
             parent.announceQueryError(report.message)
         }
+        recordRunLog(
+            QueryRunLog.entries(
+                statements: history.prepared.map(\.originalSQL),
+                finished: Self.runLogEntries(history.prepared, resultSets: resultSets),
+                ending: .failed(
+                    statement: report.failedStatementIndex
+                        .flatMap { history.prepared.indices.contains($0) ? history.prepared[$0].originalSQL : nil }
+                        ?? report.failedSQL,
+                    message: contextMsg,
+                    resultSetId: errorRS.id
+                )
+            ),
+            tabId: tabId,
+            startedAt: claim.startedAt
+        )
 
         guard let rawSQL = failedStatementSQL else { return }
         let recordSQL = rawSQL.hasSuffix(";") ? rawSQL : rawSQL + ";"
