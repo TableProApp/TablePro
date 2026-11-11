@@ -43,9 +43,11 @@ internal enum SidebarOutlineScaffold {
         outlineView.style = configuration.style
         /// `.sourceList` already supplies the row height and the indent per level, and `.default`
         /// is how a table says "the size the user picked in Appearance".
-        outlineView.rowSizeStyle = configuration.style == .sourceList
-            ? SidebarRowSizeResolver.rowSizeStyle(for: configuration.rowSizePreference)
-            : .custom
+        if configuration.style == .sourceList {
+            applyRowSize(configuration.rowSizePreference, to: outlineView)
+        } else {
+            outlineView.rowSizeStyle = .custom
+        }
         outlineView.allowsMultipleSelection = configuration.allowsMultipleSelection
         outlineView.allowsEmptySelection = true
         outlineView.floatsGroupRows = false
@@ -68,8 +70,18 @@ internal enum SidebarOutlineScaffold {
     ) {
         guard let outlineView = scrollView.documentView as? NSOutlineView,
               outlineView.style == .sourceList else { return }
+        applyRowSize(preference, to: outlineView)
+    }
+
+    /// A style change makes AppKit reset `rowHeight` to that style's height, so a custom height is
+    /// set after the style, every time.
+    private static func applyRowSize(_ preference: SidebarRowSizePreference, to outlineView: NSOutlineView) {
         let style = SidebarRowSizeResolver.rowSizeStyle(for: preference)
-        guard outlineView.rowSizeStyle != style else { return }
-        outlineView.rowSizeStyle = style
+        if outlineView.rowSizeStyle != style {
+            outlineView.rowSizeStyle = style
+        }
+        if let height = SidebarRowSizeResolver.rowHeight(for: preference), outlineView.rowHeight != height {
+            outlineView.rowHeight = height
+        }
     }
 }

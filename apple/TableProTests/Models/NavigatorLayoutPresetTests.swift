@@ -21,6 +21,7 @@ struct NavigatorLayoutPresetTests {
         expected.showsToolbarLocationItems = false
         expected.showsConnectionsInTree = true
         expected.showsConnectionNavigator = false
+        expected.sidebarRowSize = .compact
         return expected
     }
 
@@ -38,6 +39,7 @@ struct NavigatorLayoutPresetTests {
         #expect(settings.showsToolbarLabels)
         #expect(!settings.showsToolbarLocationItems, "The tree, the query bar and the tab titles name both")
         #expect(settings.showsConnectionsInTree)
+        #expect(settings.sidebarRowSize == .compact, "A long tree of tables fits without smaller text")
         #expect(layout == .tree)
     }
 
@@ -71,6 +73,7 @@ struct NavigatorLayoutPresetTests {
         #expect(settings.showsToolbarLocationItems, "Standard Layout puts the connection and database back")
         #expect(settings.showsConnectionsInTree == GeneralSettings.default.showsConnectionsInTree)
         #expect(settings.showsConnectionNavigator == GeneralSettings.default.showsConnectionNavigator)
+        #expect(settings.sidebarRowSize == .matchSystem)
         #expect(settings == GeneralSettings.default)
         #expect(layout == .flat)
     }

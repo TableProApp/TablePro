@@ -81,8 +81,8 @@ struct GeneralSettingsView: View {
                 Text(String(localized: """
                     Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects \
                     tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the \
-                    tree, takes the connection and database out of the toolbar, and makes Tree the default \
-                    sidebar layout. In table tabs it shows column types in \
+                    tree, takes the connection and database out of the toolbar, makes Tree the default \
+                    sidebar layout and uses compact sidebar rows. In table tabs it shows column types in \
                     the header, the sort and a Text mode in the filter bar, opens that bar with each table, \
                     puts the result bar above the grid and names the database and connection in tab titles. \
                     In query tabs it shows the query bar on two rows and Message and Summary tabs above the \
@@ -149,7 +149,8 @@ struct GeneralSettingsView: View {
                 }
                 .help(String(localized: """
                     Match System follows Sidebar icon size in System Settings > Appearance. \
-                    Choose a size to fit more objects on screen than the rest of the system shows.
+                    Choose a size to fit more objects on screen than the rest of the system shows. \
+                    Compact keeps the regular text size with less space between rows.
                     """))
 
                 Picker("Default layout for new connections:", selection: $defaultSidebarLayout) {

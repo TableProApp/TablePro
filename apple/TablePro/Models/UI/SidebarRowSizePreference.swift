@@ -11,9 +11,11 @@ import SwiftUI
 /// macOS already has this setting, in System Settings > Appearance > Sidebar icon size, and it
 /// applies to every app. Following it is the default, so TablePro's sidebar matches Finder, Mail and
 /// Notes out of the box. The explicit sizes are an override for a database with hundreds of objects,
-/// where density is worth more than matching the rest of the system.
+/// where density is worth more than matching the rest of the system. Compact is the densest: the
+/// regular text size with the space around it trimmed, so a long tree fits without smaller text.
 internal enum SidebarRowSizePreference: String, CaseIterable, Codable, Sendable {
     case matchSystem
+    case compact
     case small
     case medium
     case large
@@ -21,6 +23,7 @@ internal enum SidebarRowSizePreference: String, CaseIterable, Codable, Sendable 
     internal var title: String {
         switch self {
         case .matchSystem: return String(localized: "Match System")
+        case .compact: return String(localized: "Compact")
         case .small: return String(localized: "Small")
         case .medium: return String(localized: "Medium")
         case .large: return String(localized: "Large")
@@ -41,6 +44,7 @@ internal enum SidebarRowSizeResolver {
     ) -> SidebarRowSize {
         switch preference {
         case .matchSystem: return system
+        case .compact: return .medium
         case .small: return .small
         case .medium: return .medium
         case .large: return .large
@@ -52,11 +56,20 @@ internal enum SidebarRowSizeResolver {
     internal static func rowSizeStyle(for preference: SidebarRowSizePreference) -> NSTableView.RowSizeStyle {
         switch preference {
         case .matchSystem: return .default
+        case .compact: return .custom
         case .small: return .small
         case .medium: return .medium
         case .large: return .large
         }
     }
+
+    /// The height a `.custom` row takes. AppKit's own sizes start at 24 points, so Compact names
+    /// its height outright: 22 points holds the regular text and a 15 point glyph without clipping.
+    internal static func rowHeight(for preference: SidebarRowSizePreference) -> CGFloat? {
+        preference == .compact ? compactRowHeight : nil
+    }
+
+    internal static let compactRowHeight: CGFloat = 22
 }
 
 internal extension SidebarRowSize {
