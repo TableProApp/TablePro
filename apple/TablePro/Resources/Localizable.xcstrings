@@ -44081,6 +44081,9 @@
     "Colorful gives each kind of object its own filled, colored icon in the sidebar, the tabs and the object lists." : {
 
     },
+    "Colorful gives each kind of object its own filled, colored icon in the sidebar, the tabs, the toolbar and the object lists." : {
+
+    },
     "Colors" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -126150,6 +126153,9 @@
           }
         }
       }
+    },
+    "Object icon style:" : {
+
     },
     "Object Icons" : {
 
