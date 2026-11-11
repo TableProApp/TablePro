@@ -122,6 +122,14 @@ impl CoreError {
             Self::Failed { info } => &info.code,
         }
     }
+
+    // As a record, a cancel included, for an outcome that reports the error instead of failing the call.
+    pub(crate) fn into_info(self) -> BoxedErrorInfo {
+        match self {
+            Self::Failed { info } => info,
+            Self::Cancelled => Box::new(ErrorInfo::plain(&["cancelled"], "cancelled".to_owned())),
+        }
+    }
 }
 
 impl ErrorInfo {

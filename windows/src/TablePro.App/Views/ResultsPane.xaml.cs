@@ -9,12 +9,13 @@ using TablePro.Interop;
 namespace TablePro.App.Views;
 
 // A sort of the rows held shows a sorted copy, so the run's own sets keep arrival order for the next sort.
-public sealed partial class ResultsPane : UserControl
+public sealed partial class ResultsPane : UserControl, IResultsView
 {
     private readonly RunMessages _messages = new(Strings.Get("MessagesCutShort"));
     private List<HeldSet> _held = [];
     private HeldSet? _picked;
     private ResultSet? _sorted;
+    private ResultSet? _shown;
     private long? _milliseconds;
     private bool _picking;
     private ResultsView _view;
@@ -39,6 +40,8 @@ public sealed partial class ResultsPane : UserControl
     // The grid shows another set of the run, unsorted.
     public event EventHandler? ResultPicked;
 
+    public event EventHandler? ShownSetChanged;
+
     public DataGridView GridView => ResultGrid;
 
     public TextBox MessagesBox => MessagesText;
@@ -54,6 +57,9 @@ public sealed partial class ResultsPane : UserControl
     // A table tab words its own page of rows from the count, the milliseconds and whether the limit cut it.
     internal Func<long, long, bool, string>? RowsStatus { get; set; }
 
+    // A table tab lays its edits over each set, so the grid gets them without being given its data again.
+    internal bool ShowsEdits { get; set; }
+
     public TransactionState Transaction { get; private set; } = TransactionState.Idle;
 
     public GridSort Sort
@@ -62,10 +68,11 @@ public sealed partial class ResultsPane : UserControl
         set => ResultGrid.Sort = value;
     }
 
-    public long ShownRows => (_sorted ?? _picked?.Set)?.RowCount ?? 0;
+    public ResultSet? ShownSet => _sorted ?? _picked?.Set;
 
-    // False when no set is shown, or a run or a pick replaced it while the rows were being sorted.
-    internal async Task<bool> SortHeldRowsAsync(GridSort sort)
+    public long ShownRowCount => ShownSet?.RowCount ?? 0;
+
+    public async Task<bool> SortHeldRowsAsync(GridSort sort)
     {
         var picked = _picked;
         if (picked is null || sort.Column < 0 || sort.Column >= Columns.Count)
@@ -83,11 +90,14 @@ public sealed partial class ResultsPane : UserControl
 
         var previous = _sorted;
         _sorted = sorted;
-        ResultGrid.SetData(new ResultSetData(sorted, Columns));
+        ResultGrid.SetData(GridData(sorted, Columns));
         ResultGrid.Sort = sort;
         previous?.Dispose();
+        ShownMayHaveChanged();
         return true;
     }
+
+    public void ShowError(CoreError failure) => ShowError(Strings.Error(failure));
 
     public void ShowError(string message)
     {
@@ -108,11 +118,7 @@ public sealed partial class ResultsPane : UserControl
     }
 
     // The sets shown stay until the new run's first set has rows or ends, so a sort or a refresh never blanks the grid.
-    internal async Task ShowRunAsync(
-        QueryRun run,
-        GridSort sort,
-        int visibleColumns = int.MaxValue,
-        CancellationToken cancellationToken = default)
+    public async Task ShowRunAsync(ITabRun run, GridSort sort, int visibleColumns, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(run);
         ErrorBar.IsOpen = false;
@@ -229,13 +235,14 @@ public sealed partial class ResultsPane : UserControl
         _picked = first;
         _sorted = null;
         Columns = first.Result.Columns;
-        ResultGrid.SetData(new ResultSetData(first.Set, first.Result.Columns));
+        ResultGrid.SetData(GridData(first.Set, first.Result.Columns));
         ResultGrid.Sort = sort;
         ResultGrid.Visibility = Visibility.Visible;
         Placeholder.Visibility = Visibility.Collapsed;
         // The grid disposed the old set's cursor in SetData.
         DisposeSets(held, sorted);
         ListAllInPicker();
+        ShownMayHaveChanged();
     }
 
     private void Pick(HeldSet held)
@@ -244,9 +251,10 @@ public sealed partial class ResultsPane : UserControl
         _picked = held;
         _sorted = null;
         Columns = held.Result.Columns;
-        ResultGrid.SetData(new ResultSetData(held.Set, held.Result.Columns));
+        ResultGrid.SetData(GridData(held.Set, held.Result.Columns));
         ResultGrid.Sort = GridSort.None;
         sorted?.Dispose();
+        ShownMayHaveChanged();
         if (_milliseconds is { } milliseconds)
         {
             Status(RowsText(held.Result, milliseconds));
@@ -267,6 +275,28 @@ public sealed partial class ResultsPane : UserControl
         Columns = [];
         DisposeSets(held, sorted);
         ListAllInPicker();
+        ShownMayHaveChanged();
+    }
+
+    // Said once per new set and after the grid shows it, so a table tab's edits follow the rows they were made on.
+    private void ShownMayHaveChanged()
+    {
+        if (!ReferenceEquals(_shown, ShownSet))
+        {
+            _shown = ShownSet;
+            ShownSetChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private IGridData GridData(ResultSet set, IReadOnlyList<ResultColumn> columns)
+    {
+        var data = new ResultSetData(set, columns);
+        if (ShowsEdits)
+        {
+            return new EditedGridData(data, GridEdits.None);
+        }
+
+        return data;
     }
 
     private static void DisposeSets(List<HeldSet> held, ResultSet? sorted)

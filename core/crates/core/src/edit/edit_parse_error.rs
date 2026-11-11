@@ -67,3 +67,65 @@ pub enum ReadOnlyReason {
     Composite,
     Variant,
 }
+
+impl EditParseError {
+    // Stable across releases, for an app outside Rust that words the error itself.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Required => "edit.required",
+            Self::InvalidInteger => "edit.invalid_integer",
+            Self::IntegerOutOfRange { .. } => "edit.integer_out_of_range",
+            Self::InvalidFloat => "edit.invalid_float",
+            Self::InvalidDecimal(_) => "edit.invalid_decimal",
+            Self::PrecisionExceeded { .. } => "edit.precision_exceeded",
+            Self::ScaleExceeded { .. } => "edit.scale_exceeded",
+            Self::InvalidBoolean => "edit.invalid_boolean",
+            Self::InvalidUuid => "edit.invalid_uuid",
+            Self::InvalidJson(_) => "edit.invalid_json",
+            Self::InvalidDate => "edit.invalid_date",
+            Self::InvalidTime => "edit.invalid_time",
+            Self::TimeOutOfRange => "edit.time_out_of_range",
+            Self::InvalidTimestamp => "edit.invalid_timestamp",
+            Self::OffsetRequired => "edit.offset_required",
+            Self::InvalidInterval => "edit.invalid_interval",
+            Self::InvalidBits => "edit.invalid_bits",
+            Self::InvalidBytes => "edit.invalid_bytes",
+            Self::BitLengthMismatch { .. } => "edit.bit_length_mismatch",
+            Self::UnknownEnumLabel => "edit.unknown_enum_label",
+            Self::NotEditable(_) => "edit.not_editable",
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_code_names_its_variant_under_edit() {
+        let codes = [
+            EditParseError::Required.code(),
+            EditParseError::InvalidInteger.code(),
+            EditParseError::IntegerOutOfRange {
+                kind: IntegerKind {
+                    width: crate::column::IntegerWidth::W32,
+                    signed: true,
+                },
+            }
+            .code(),
+            EditParseError::UnknownEnumLabel.code(),
+            EditParseError::NotEditable(ReadOnlyReason::Bytes).code(),
+        ];
+
+        assert_eq!(
+            codes,
+            [
+                "edit.required",
+                "edit.invalid_integer",
+                "edit.integer_out_of_range",
+                "edit.unknown_enum_label",
+                "edit.not_editable"
+            ]
+        );
+    }
+}

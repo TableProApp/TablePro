@@ -46,6 +46,14 @@
             <AppBarSeparator />
             <AppBarButton x:Uid="RefreshTableButton" x:Name="RefreshButton" AutomationProperties.AutomationId="RefreshTableButton" Icon="Refresh" Click="OnRefresh" />
             <AppBarButton x:Uid="StopButton" x:Name="StopButton" AutomationProperties.AutomationId="StopTableButton" Icon="Stop" IsEnabled="False" Click="OnStop" />
+            <!-- Last, so a narrow bar moves them to the overflow first and keeps the pager; the keys are the menus'. -->
+            <AppBarSeparator />
+            <AppBarButton x:Uid="AddRowButton" x:Name="AddRowButton" AutomationProperties.AutomationId="AddRowButton" Icon="Add" IsEnabled="False" Click="OnAddRow" />
+            <AppBarButton x:Uid="DuplicateRowButton" x:Name="DuplicateRowButton" AutomationProperties.AutomationId="DuplicateRowButton" Icon="Copy" IsEnabled="False" Click="OnDuplicateRow" />
+            <AppBarButton x:Uid="DeleteRowsButton" x:Name="DeleteRowsButton" AutomationProperties.AutomationId="DeleteRowsButton" Icon="Delete" IsEnabled="False" Click="OnDeleteRows" />
+            <AppBarButton x:Uid="SaveChangesButton" x:Name="SaveChangesButton" AutomationProperties.AutomationId="SaveChangesButton" Icon="Save" IsEnabled="False" Click="OnSaveChanges" />
+            <AppBarButton x:Uid="DiscardChangesButton" x:Name="DiscardChangesButton" AutomationProperties.AutomationId="DiscardChangesButton" Icon="Undo" IsEnabled="False" Click="OnDiscardChanges" />
+            <AppBarButton x:Uid="PreviewSqlButton" x:Name="PreviewSqlButton" AutomationProperties.AutomationId="PreviewSqlButton" Icon="Preview" IsEnabled="False" Click="OnPreviewSql" />
         </CommandBar>
 
         <local:ResultsPane x:Name="Results" Grid.Row="1" />

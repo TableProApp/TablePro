@@ -146,6 +146,20 @@ public sealed class DatabaseSession : IAsyncDisposable
     // new connection can do; the session keeps its level until then.
     public bool SetSafeMode(SafeMode level) => _session.SetSafeMode(Mapping.Level(level));
 
+    // A table's rows as a save sees them. Refresh reads the catalog again, as a tab's Refresh does.
+    public async Task<TableEditor> OpenTableEditorAsync(
+        TableName table,
+        bool refresh,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(table);
+        var editor = await CoreCall.RunAsync(
+                token => _session.TableEditor(Mapping.Table(table), refresh, token),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return new TableEditor(editor);
+    }
+
     // An editor tab's own connection, which keeps its transaction from one run to the next.
     public async Task<QueryEditor> OpenEditorAsync(CancellationToken cancellationToken = default)
     {

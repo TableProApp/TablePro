@@ -39,6 +39,8 @@ public sealed class CellCache : IDisposable
         return block.Get(row, column);
     }
 
+    public string? ReadWhole(int row, int column) => _reader.ReadWhole(row, column);
+
     public void Clear()
     {
         _blocks.Clear();
