@@ -396,6 +396,14 @@ impl WorkspaceShell {
                 ),
             )
             .bind(&imp.sidebar_add_button.get(), "visible", Some(self)),
+            of_front("schema-filter-label").bind(&imp.schema_filter_button.get(), "label", Some(self)),
+            gtk::ClosureExpression::new::<bool>(
+                [of_front("schema-filter-label")],
+                glib::closure!(
+                    |_: Option<glib::Object>, label: Option<String>| label.is_some_and(|label| !label.is_empty())
+                ),
+            )
+            .bind(&imp.schema_filter_button.get(), "visible", Some(self)),
         ];
         if let Some(window) = imp.window.upgrade() {
             watches.push(of_front("window-title").bind(&window, "title", Some(self)));
@@ -728,19 +736,33 @@ impl WorkspaceShell {
     }
 
     fn connect_sidebar_bar(&self) {
-        self.imp().sidebar_add_button.connect_visible_notify(glib::clone!(
+        let imp = self.imp();
+        for button in [imp.sidebar_add_button.get(), imp.schema_filter_button.get()] {
+            button.connect_visible_notify(glib::clone!(
+                #[weak(rename_to = shell)]
+                self,
+                move |_| shell.show_sidebar_bar()
+            ));
+        }
+        imp.schema_filter_button.set_create_popup_func(glib::clone!(
             #[weak(rename_to = shell)]
             self,
-            move |_| shell.show_sidebar_bar()
+            move |button: &gtk::MenuButton| {
+                let chooser = shell.front().and_then(|front| {
+                    let input = front.sender()?;
+                    Some(super::schema_chooser::popover(front.schema_choices()?, input))
+                });
+                button.set_popover(chooser.as_ref());
+            }
         ));
     }
 
-    // Its commands make objects in the tree, which the Favorites scope does not list.
+    // Its controls act on the tree, which the Favorites scope does not list.
     fn show_sidebar_bar(&self) {
         let imp = self.imp();
         let tables = imp.scope_toggle.active_name().as_deref() != Some(FAVORITES);
-        imp.sidebar_bar
-            .set_revealed(tables && imp.sidebar_add_button.is_visible());
+        let used = imp.sidebar_add_button.is_visible() || imp.schema_filter_button.is_visible();
+        imp.sidebar_bar.set_revealed(tables && used);
     }
 
     fn follow_favorites(&self) {

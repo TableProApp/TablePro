@@ -22,6 +22,8 @@ mod import_ledger;
 mod recent_tabs;
 mod references;
 mod saves;
+mod schema_chooser;
+mod schema_filter;
 mod session_watches;
 mod sidebar;
 mod status_pages;
@@ -134,6 +136,7 @@ pub(crate) struct WorkspaceModel {
     /// The last schema read the sidebar asked for; an older one landing
     /// late is not shown.
     sidebar_read: u64,
+    schema_filter: schema_chooser::SidebarFilter,
     definition_reads: u64,
     /// The Show Definition read in flight, which a newer one supersedes.
     definition_read: Option<definitions::DefinitionRead>,
@@ -520,6 +523,11 @@ pub(crate) enum WorkspaceInput {
         read: u64,
         listing: sidebar::SidebarListing,
     },
+    ShowSchema {
+        name: String,
+        shown: bool,
+    },
+    ShowAllSchemas,
     /// List a key-value engine's keys again, as the search now asks.
     ListKeys,
     /// The keys a listing found, indexed for the sidebar, or why they
@@ -868,6 +876,7 @@ impl Workspace {
             sidebar,
             catalog_schemas: Arc::from([]),
             sidebar_read: 0,
+            schema_filter: schema_chooser::SidebarFilter::new(&workspace),
             definition_reads: 0,
             definition_read: None,
             all_schemas_listed: false,
@@ -947,6 +956,18 @@ impl Workspace {
     fn show_creation_menu(&self, menu: gio::MenuModel) {
         self.imp().creation_menu.replace(Some(menu));
         self.notify_creation_menu();
+    }
+
+    fn show_schema_filter_label(&self, label: String) {
+        if *self.imp().schema_filter_label.borrow() != label {
+            self.imp().schema_filter_label.replace(label);
+            self.notify_schema_filter_label();
+        }
+    }
+
+    // None while the workspace is handling input.
+    pub(super) fn schema_choices(&self) -> Option<schema_chooser::SchemaChoices> {
+        self.read(WorkspaceModel::schema_choices)
     }
 
     /// The key the session is open under.
@@ -1182,6 +1203,7 @@ impl WorkspaceModel {
     fn open(&mut self) {
         self.reconnect_banner.set_revealed(false);
         tracing::info!(driver = %self.driver_id, "workspace ready");
+        self.load_schema_filter();
         self.open_sidebar();
         self.refresh_title();
         self.restore_workspace_tabs(self.key.clone());
@@ -1358,6 +1380,8 @@ impl WorkspaceModel {
             WorkspaceInput::RefreshCatalog => self.refresh_catalog(),
             WorkspaceInput::DefaultListCommitted(snapshot) => self.on_default_list_committed(snapshot),
             WorkspaceInput::SidebarRead { read, listing } => self.on_sidebar_read(read, listing),
+            WorkspaceInput::ShowSchema { name, shown } => self.on_schema_shown(&name, shown),
+            WorkspaceInput::ShowAllSchemas => self.on_all_schemas_shown(),
             WorkspaceInput::ListKeys => self.list_keys(),
             WorkspaceInput::KeysListed(listed) => self.on_keys_listed(listed),
             WorkspaceInput::LinkChanged => self.on_link_changed(),

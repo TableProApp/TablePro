@@ -136,7 +136,7 @@ nothing reaches outside it.
 |---|---|
 | `connections_file()` | `$XDG_CONFIG_HOME/<dir>/connections.json` |
 | `column_layouts_file()` | `$XDG_CONFIG_HOME/<dir>/column_layouts.json`: each table's column layout (order, hidden columns, widths the user set) |
-| `filter_settings_file()` | `$XDG_CONFIG_HOME/<dir>/filter_settings.json` |
+| `filter_settings_file()` | `$XDG_CONFIG_HOME/<dir>/filter_settings.json`, version 2: each table's filter, and the schemas each connection's sidebar lists, per database. Version 1 had no sidebar filters |
 | `highlight_rules_file()` | `$XDG_CONFIG_HOME/<dir>/highlight_rules.json`: ordered rules for each table |
 | `history_database()` | `$XDG_STATE_HOME/<dir>/history.db` |
 | `workspaces_dir()` | `$XDG_STATE_HOME/<dir>/workspaces`: one file per session, and `open-sessions.json`: the sessions open at the last quit as `windows`, one list of keys per window, windows in the order of their first recorded session and keys in the order each window adopted them |

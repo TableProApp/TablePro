@@ -41,6 +41,12 @@
   <object class="GtkBox" id="list_banners">
     <property name="orientation">vertical</property>
     <child>
+      <object class="AdwBanner" id="schema_filter_banner">
+        <property name="use-markup">false</property>
+        <property name="button-label" translatable="yes">Show All</property>
+      </object>
+    </child>
+    <child>
       <!-- The list stays as it was when a read fails, so
            the banner says it may be out of date. -->
       <object class="AdwBanner" id="catalog_banner">
