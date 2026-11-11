@@ -260,10 +260,14 @@ final class FilterCoordinator: ObservableObject {
     /// `executedFilters`, which is the record of what the rows on screen were fetched with. That
     /// tab has no rows. Its first selection runs the first load, which rebuilds the query properly.
     func restoreFilters(forTabAt index: Int) {
-        // Saved filters are keyed by name, which a temporary table shares with the permanent table it hides.
         guard index < parent.tabManager.tabs.count,
-              !parent.tabManager.tabs[index].tableContext.isTemporary,
               let tableName = parent.tabManager.tabs[index].tableContext.tableName else { return }
+        // Saved filters are keyed by name, which a temporary table shares with the permanent table it hides, so a
+        // temporary table restores none of them and takes only the panel every table opens with.
+        guard !parent.tabManager.tabs[index].tableContext.isTemporary else {
+            openPanelForOpeningTable(at: index)
+            return
+        }
         restoreLastFilters(for: tableName, at: index)
         restoreBrowseSearch(for: tableName, at: index)
         guard parent.tabManager.selectedTabIndex == index else { return }
@@ -598,6 +602,13 @@ final class FilterCoordinator: ObservableObject {
             databaseName: tab.tableContext.databaseName,
             schemaName: tab.tableContext.schemaName
         )
+    }
+
+    /// `DataGridSettings.opensFilterPanelForTables` for a table with nothing to restore. Like the restore, this runs
+    /// only as a table opens, so a panel the reader closed stays closed across tab switches.
+    private func openPanelForOpeningTable(at index: Int) {
+        guard AppSettingsManager.shared.dataGrid.opensFilterPanelForTables else { return }
+        mutateFilterState(at: index) { $0.isVisible = true }
     }
 
     private func restoreLastFilters(for tableName: String, at index: Int) {
