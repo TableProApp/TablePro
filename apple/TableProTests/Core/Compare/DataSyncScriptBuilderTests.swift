@@ -795,7 +795,7 @@ final class DataSyncScriptBuilderColumnTests: XCTestCase {
 
         XCTAssertEqual(
             statements.map(\.sql),
-            [#"INSERT INTO "public"."files" ("id", "blob") VALUES (1, '\x8950'::bytea)"#]
+            [#"INSERT INTO "public"."files" ("id", "blob") VALUES (1, decode('8950', 'hex'))"#]
         )
     }
 

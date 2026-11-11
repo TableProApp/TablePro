@@ -176,7 +176,7 @@ struct SetSequenceValueSheet: View {
             try await SequenceEditing.setNextValue(nextValue, of: details, target: target, connection: connection)
             dismiss()
         } catch {
-            saveError = error.localizedDescription
+            saveError = GatedOperationFailure(error).message
             phase = .editing(details)
         }
     }

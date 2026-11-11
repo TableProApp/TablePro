@@ -41,6 +41,11 @@ internal struct CopyObjectsResultView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     }
+                    ForEach(Array(result.warnings.enumerated()), id: \.offset) { _, warning in
+                        NoticeLabel(warning, severity: .warning)
+                            .font(.callout)
+                            .textSelection(.enabled)
+                    }
                     outcomes(result)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

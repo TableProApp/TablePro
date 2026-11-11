@@ -118,8 +118,8 @@ struct RowOperationsManagerTests {
         let result = manager.addNewRow(tableRows: &tableRows)
 
         #expect(result != nil)
-        #expect(result?.values[0] == "__DEFAULT__")
-        #expect(result?.values[2] == "__DEFAULT__")
+        #expect(result?.values[0] == .columnDefault)
+        #expect(result?.values[2] == .columnDefault)
     }
 
     // PostgreSQL leaves `column_default` null for an identity column, so a new row sent an explicit NULL it refuses.
@@ -133,7 +133,7 @@ struct RowOperationsManagerTests {
 
         let result = manager.addNewRow(tableRows: &tableRows)
 
-        #expect(result?.values[0] == "__DEFAULT__")
+        #expect(result?.values[0] == .columnDefault)
         #expect(result?.values[1] == .null)
     }
 
@@ -146,7 +146,7 @@ struct RowOperationsManagerTests {
 
         let result = manager.addNewRow(tableRows: &tableRows)
 
-        #expect(result?.values[2] == "__DEFAULT__")
+        #expect(result?.values[2] == .columnDefault)
         #expect(result?.values[1] == .null)
     }
 
@@ -159,7 +159,7 @@ struct RowOperationsManagerTests {
         let result = manager.addNewRow(tableRows: &tableRows)
 
         #expect(result?.values[1] == .null)
-        #expect(result?.values[2] == "__DEFAULT__")
+        #expect(result?.values[2] == .columnDefault)
         #expect(tableRows.serverAssignsValue(forColumn: "name") == false)
     }
 
@@ -246,7 +246,7 @@ struct RowOperationsManagerTests {
         )
 
         #expect(result != nil)
-        #expect(result?.values[0] == "__DEFAULT__")
+        #expect(result?.values[0] == .columnDefault)
         if case .rowsInserted(let indices) = result?.delta {
             #expect(indices == IndexSet(integer: 3))
         } else {
@@ -263,8 +263,38 @@ struct RowOperationsManagerTests {
 
         let result = manager.duplicateRow(sourceRowIndex: 1, tableRows: &tableRows)
 
-        #expect(result?.values[2] == "__DEFAULT__")
+        #expect(result?.values[2] == .columnDefault)
         #expect(result?.values[1] == sourceValues[1])
+    }
+
+    @Test("The change manager names the cells a new row leaves to their default, for the JSON view and Copy as JSON")
+    func defaultedCellsOfANewRow() throws {
+        let (manager, changeManager) = makeManager()
+        var tableRows = emptyTableRows(columnDefaults: ["id": "auto_increment", "email": "'x'"])
+
+        let added = manager.addNewRow(tableRows: &tableRows)
+        let result = try #require(added)
+
+        #expect(changeManager.defaultedCells(in: tableRows) == [result.rowID: [0, 2]])
+    }
+
+    @Test("A duplicate writes stored text that reads like the default as text, and leaves only its key to the server")
+    func duplicateRowKeepsDefaultLookingText() throws {
+        let (manager, changeManager) = makeManager()
+        var tableRows = TableRows.from(
+            queryRows: [["7", "__DEFAULT__", "DEFAULT"]],
+            columns: Self.testColumns,
+            columnTypes: Self.testColumnTypes
+        )
+
+        let duplicated = manager.duplicateRow(sourceRowIndex: 0, tableRows: &tableRows)
+        let result = try #require(duplicated)
+
+        #expect(changeManager.expressionColumns(forRow: result.rowID) == [0])
+        let statements = try changeManager.generateSQL()
+        #expect(statements.count == 1)
+        #expect(statements.first?.sql.contains("`id`") == false)
+        #expect(statements.first?.parameters.compactMap { $0 as? String } == ["__DEFAULT__", "DEFAULT"])
     }
 
     @Test("duplicateRow returns nil for invalid source index")

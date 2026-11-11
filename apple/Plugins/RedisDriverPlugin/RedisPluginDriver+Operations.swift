@@ -141,8 +141,9 @@ extension RedisPluginDriver {
                 if opts.xx { args.append("XX".redisArgument) }
                 if opts.keepTTL { args.append("KEEPTTL".redisArgument) }
             }
-            try await conn.run(args)
-            return buildStatusResult("OK", startTime: startTime)
+            // NX or XX that stops the write answers nil, not an error.
+            let reply = try await conn.run(args)
+            return buildStatusResult(reply.displayText, startTime: startTime)
 
         case .del(let keys):
             let args = ["DEL"] + keys

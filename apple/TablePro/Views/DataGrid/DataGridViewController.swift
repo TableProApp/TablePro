@@ -399,8 +399,7 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
             dataColumnsByDisplayPosition: model.columns.columns.map(\.dataIndex),
             policy: policy,
             deletedRowIDs: changeState?.deletedRowIDs ?? [],
-            insertedRowIDs: changeState?.insertedRowIDs ?? [],
-            modifiedCells: changeState?.modifiedCells ?? [:]
+            defaultedCells: changeState?.defaultedCells(in: rows) ?? [:]
         )
     }
 }

@@ -460,11 +460,13 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                         }
                         return try executeSQLite(query: query, parameters: [])
                     }
-                    continuation.yield(.header(PluginStreamHeader(
+                    var header = PluginStreamHeader(
                         columns: result.columns,
                         columnTypeNames: result.columnTypeNames,
                         estimatedRowCount: result.rows.count
-                    )))
+                    )
+                    if result.isTruncated { header.rowLimit = result.rows.count }
+                    continuation.yield(.header(header))
                     continuation.yield(.rows(result.rows))
                     continuation.finish()
                 } catch {

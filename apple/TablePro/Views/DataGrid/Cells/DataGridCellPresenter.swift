@@ -286,6 +286,7 @@ final class DataGridCellPresenter {
                 placeholder: DataGridCellContent.placeholder(
                     for: rawValue,
                     isAbsent: row.isAbsent(dataIndex),
+                    isExpression: visualState.isExpression(columnIndex: dataIndex),
                     unloadedByteCount: row.unloadedByteCount(dataIndex),
                     marksEmptyText: pass.marksEmptyText
                 )
@@ -334,6 +335,7 @@ final class DataGridCellPresenter {
         switch DataGridCellContent.placeholder(
             for: rawValue,
             isAbsent: row.isAbsent(dataIndex),
+            isExpression: model.changeState?.isExpression(rowID: row.id, columnIndex: dataIndex) ?? false,
             unloadedByteCount: row.unloadedByteCount(dataIndex),
             marksEmptyText: model.configuration.marksEmptyText
         ) {

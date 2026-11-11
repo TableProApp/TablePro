@@ -392,19 +392,16 @@ struct JsonRowConverterTests {
 
     // MARK: - Default-value marker
 
-    // A pending insert carries the default marker for server-filled columns; the grid draws a placeholder, so JSON must not print the token.
-    @Test("The default-value marker renders as null, not as literal text")
-    func defaultMarkerRendersAsNull() {
+    // The default is marked beside the value, so text a table holds that spells the old marker is a value.
+    @Test("Stored text that spells the old default marker renders as that text")
+    func oldMarkerTextIsAValue() {
         let converter = makeConverter(
-            columns: ["id", "name"],
-            columnTypes: [.integer(rawType: nil), .text(rawType: nil)]
+            columns: ["status", "name"],
+            columnTypes: [.text(rawType: nil), .text(rawType: nil)]
         )
-        let result = converter.generateJson(
-            rows: [[.text(PluginCellValue.defaultMarkerText), .text("Ada")]]
-        )
+        let result = converter.generateJson(rows: [[.text("__DEFAULT__"), .text("Ada")]])
 
-        #expect(!result.contains(PluginCellValue.defaultMarkerText))
-        #expect(result.contains("\"id\": null"))
+        #expect(result.contains("\"status\": \"__DEFAULT__\""))
         #expect(result.contains("\"Ada\""))
     }
 

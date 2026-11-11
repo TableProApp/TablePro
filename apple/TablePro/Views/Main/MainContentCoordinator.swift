@@ -371,7 +371,12 @@ final class MainContentCoordinator: ObservableObject {
     // Guards re-entrant confirm dialogs (nested run loop during runModal).
     internal var isShowingConfirmAlert = false
 
-    internal var isShowingSafeModePrompt = false
+    // Lowered by whichever run raised it, so a table load it turned away is retried whatever path asked.
+    internal var isShowingSafeModePrompt = false {
+        didSet { safeModePromptDidChange(wasShowing: oldValue) }
+    }
+
+    var tableLoadTurnedAwayByPrompt: ParkedTableLoad?
 
     @Published internal var rewindPlan: RewindPlan?
 
@@ -1110,7 +1115,7 @@ final class MainContentCoordinator: ObservableObject {
            tab.execution.lastExecutedAt == nil
         {
             guard !isShowingSafeModePrompt else {
-                traceNavigationAbandoned(tabId: tab.id, outcome: .safeModePromptAlreadyOpen)
+                turnAwayTableLoad(tabId: tab.id, trigger: trigger)
                 return nil
             }
             isShowingSafeModePrompt = true

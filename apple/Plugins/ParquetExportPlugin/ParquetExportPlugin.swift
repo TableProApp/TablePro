@@ -59,10 +59,12 @@ final class ParquetExportPlugin: ObservableObject, ExportFormatPlugin, SettableP
         progress: PluginExportProgress
     ) async throws -> ExportFormatResult {
         guard !tables.isEmpty else { return ExportFormatResult() }
+        // One plugin instance serves every window, so a dialog in another window can change `settings` mid-export.
+        let options = settings
         var warnings: [String] = []
 
         try await ParquetTableFiles.write(tables, destination: destination, progress: progress) { table, fileURL in
-            warnings += try await writeTable(table, dataSource: dataSource, to: fileURL, progress: progress)
+            warnings += try await writeTable(table, options: options, dataSource: dataSource, to: fileURL, progress: progress)
         }
 
         if tables.count > 1 {
@@ -76,6 +78,7 @@ final class ParquetExportPlugin: ObservableObject, ExportFormatPlugin, SettableP
 
     private func writeTable(
         _ table: PluginExportTable,
+        options: ParquetExportOptions,
         dataSource: any PluginExportDataSource,
         to fileURL: URL,
         progress: PluginExportProgress
@@ -123,8 +126,8 @@ final class ParquetExportPlugin: ObservableObject, ExportFormatPlugin, SettableP
         }
         let fallbacks = try staging.copyToParquet(
             fileURL: fileURL,
-            compression: settings.compression.duckDBValue,
-            rowGroupSize: settings.rowGroupSize
+            compression: options.compression.duckDBValue,
+            rowGroupSize: options.rowGroupSize
         )
         return fallbacks.map { fallback in
             String(

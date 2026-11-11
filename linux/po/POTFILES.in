@@ -654,6 +654,8 @@ crates/app/src/ui/workspace/mod.rs
 crates/app/src/ui/workspace/recent_tabs.rs
 crates/app/src/ui/workspace/references.rs
 crates/app/src/ui/workspace/saves.rs
+crates/app/src/ui/workspace/schema_chooser.rs
+crates/app/src/ui/workspace/schema_filter.rs
 crates/app/src/ui/workspace/session_watches.rs
 crates/app/src/ui/workspace/sidebar/catalog_watch.rs
 crates/app/src/ui/workspace/sidebar/connection_tree.rs
@@ -679,6 +681,7 @@ crates/app/src/ui/workspace/sidebar/tests.rs
 crates/app/src/ui/workspace/sidebar/tree_menu.rs
 crates/app/src/ui/workspace/sidebar/tree_node.rs
 crates/app/src/ui/workspace/sidebar/tree_row.rs
+crates/app/src/ui/workspace/sidebar_width.rs
 crates/app/src/ui/workspace/status_pages.rs
 crates/app/src/ui/workspace/structure.rs
 crates/app/src/ui/workspace/structure_target.rs

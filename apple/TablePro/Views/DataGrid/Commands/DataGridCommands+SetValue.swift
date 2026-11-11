@@ -78,7 +78,7 @@ extension DataGridCommands {
     private static func sampleText(ofColumn dataIndex: Int, in rows: TableRows) -> String? {
         for row in rows.rows where dataIndex < row.values.count {
             guard let text = row.values[dataIndex].asText,
-                  !text.isEmpty, text != PluginCellValue.defaultMarkerText else { continue }
+                  !text.isEmpty, row.values[dataIndex] != .columnDefault else { continue }
             return text
         }
         return nil
@@ -91,7 +91,7 @@ extension DataGridCommands {
         case .null:
             return (value: .null, isExpression: false)
         case .defaultValue:
-            return (value: .text(PluginCellValue.defaultMarkerText), isExpression: false)
+            return (value: .columnDefault, isExpression: true)
         case .expression(let expression):
             return (value: .text(expression.sql), isExpression: true)
         case .uuid(let version):

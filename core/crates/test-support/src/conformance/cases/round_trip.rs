@@ -47,7 +47,7 @@ const IMPORT_DEADLINE: Duration = Duration::from_secs(120);
 /// that hangs.
 const EXPORT_DEADLINE: Duration = Duration::from_secs(120);
 
-/// Under the export defaults these rows of 200-character labels make a
+/// With every field quoted these rows of 200-character labels make a
 /// file just under `MAX_CSV_FILE_BYTES`. 200 characters is the widest
 /// label every engine's scratch table takes.
 const NEAR_LIMIT_ROWS: u64 = 315_000;
@@ -428,7 +428,11 @@ pub async fn csv_export_near_the_import_limit_imports_back<E: LargeTableEngine>(
         FILL_DEADLINE,
     )
     .await?;
-    let file = export_file(connection.as_ref(), &source, csv_encoder(CsvOptions::default())).await?;
+    let quoted = CsvOptions {
+        quote: CsvQuote::Always,
+        ..CsvOptions::default()
+    };
+    let file = export_file(connection.as_ref(), &source, csv_encoder(quoted)).await?;
     let size = file.len();
     expect(
         NEAR_LIMIT_CASE,

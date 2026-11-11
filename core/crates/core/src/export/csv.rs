@@ -184,11 +184,30 @@ mod tests {
         }
     }
 
+    fn sanitized() -> CsvOptions {
+        CsvOptions {
+            sanitize_formulas: true,
+            ..Default::default()
+        }
+    }
+
+    // An importer reads the quote a sanitized field gains as part of the value.
     #[test]
-    fn csv_defaults_quote_every_field_when_sanitising() {
+    fn csv_defaults_write_values_as_they_are() {
+        let columns = cols(&["id", "handle"]);
+        let rows = vec![
+            vec![Value::Int(1), Value::Text("@handle".into())],
+            vec![Value::Int(2), Value::Text("-pending".into())],
+        ];
+        let out = render_csv(&columns, &rows, &CsvOptions::default()).unwrap();
+        assert_eq!(out, "id,handle\n1,@handle\n2,-pending\n");
+    }
+
+    #[test]
+    fn csv_sanitising_quotes_every_field() {
         let columns = cols(&["id", "name"]);
         let rows = vec![vec![Value::Int(1), Value::Text("Alice".into())]];
-        let out = render_csv(&columns, &rows, &CsvOptions::default()).unwrap();
+        let out = render_csv(&columns, &rows, &sanitized()).unwrap();
         assert_eq!(out, "\"id\",\"name\"\n\"1\",\"Alice\"\n");
     }
 
@@ -266,7 +285,7 @@ mod tests {
         let rows = vec![vec![Value::Text("=cmd".into())]];
         let opts = CsvOptions {
             quote: CsvQuote::Never,
-            ..Default::default()
+            ..sanitized()
         };
         let out = render_csv(&columns, &rows, &opts).unwrap();
         assert_eq!(out, "\"a\"\n\"'=cmd\"\n");
@@ -277,7 +296,7 @@ mod tests {
         let columns = cols(&["a"]);
         for ch in ['=', '+', '-', '@'] {
             let rows = vec![vec![Value::Text(format!("{ch}cmd"))]];
-            let out = render_csv(&columns, &rows, &CsvOptions::default()).unwrap();
+            let out = render_csv(&columns, &rows, &sanitized()).unwrap();
             assert_eq!(out, format!("\"a\"\n\"'{ch}cmd\"\n"), "prefix {ch} should be sanitized");
         }
     }
@@ -287,7 +306,7 @@ mod tests {
         let columns = cols(&["a"]);
         for lead in ['\t', '\r', '\n'] {
             let rows = vec![vec![Value::Text(format!("{lead}=cmd|'/C calc'!A0"))]];
-            let out = render_csv(&columns, &rows, &CsvOptions::default()).unwrap();
+            let out = render_csv(&columns, &rows, &sanitized()).unwrap();
             let expected = format!("\"a\"\n\"'{lead}=cmd|'/C calc'!A0\"\n");
             assert_eq!(out, expected, "lead {lead:?} should be sanitized and quoted");
         }
@@ -298,7 +317,7 @@ mod tests {
         let columns = cols(&["a"]);
         for lead in ['\u{FF1D}', '\u{FF0B}', '\u{FF0D}', '\u{FF20}'] {
             let rows = vec![vec![Value::Text(format!("{lead}SUM(A1)"))]];
-            let out = render_csv(&columns, &rows, &CsvOptions::default()).unwrap();
+            let out = render_csv(&columns, &rows, &sanitized()).unwrap();
             assert_eq!(
                 out,
                 format!("\"a\"\n\"'{lead}SUM(A1)\"\n"),
@@ -319,7 +338,7 @@ mod tests {
     fn csv_does_not_sanitize_non_formula_prefixes() {
         let columns = cols(&["a"]);
         let rows = vec![vec![Value::Text("plain text".into())]];
-        let out = render_csv(&columns, &rows, &CsvOptions::default()).unwrap();
+        let out = render_csv(&columns, &rows, &sanitized()).unwrap();
         assert_eq!(out, "\"a\"\n\"plain text\"\n");
     }
 
@@ -347,7 +366,7 @@ mod tests {
     #[test]
     fn csv_keeps_negative_int() {
         let columns = cols(&["a"]);
-        let out = render_csv(&columns, &[vec![Value::Int(-5)]], &CsvOptions::default()).unwrap();
+        let out = render_csv(&columns, &[vec![Value::Int(-5)]], &sanitized()).unwrap();
         assert_eq!(out, "\"a\"\n\"-5\"\n");
     }
 
@@ -355,14 +374,14 @@ mod tests {
     fn csv_keeps_negative_decimal() {
         let columns = cols(&["a"]);
         let rows = vec![vec![Value::Decimal("-12.30".parse().expect("a decimal"))]];
-        let out = render_csv(&columns, &rows, &CsvOptions::default()).unwrap();
+        let out = render_csv(&columns, &rows, &sanitized()).unwrap();
         assert_eq!(out, "\"a\"\n\"-12.30\"\n");
     }
 
     #[test]
     fn csv_keeps_negative_float() {
         let columns = cols(&["a"]);
-        let out = render_csv(&columns, &[vec![Value::Float64(-1.5)]], &CsvOptions::default()).unwrap();
+        let out = render_csv(&columns, &[vec![Value::Float64(-1.5)]], &sanitized()).unwrap();
         assert_eq!(out, "\"a\"\n\"-1.5\"\n");
     }
 
@@ -371,7 +390,7 @@ mod tests {
         let columns = cols(&["a"]);
         for text in ["-12", "+1.5e3", "-.5", "1.", "-7E-3"] {
             let rows = vec![vec![Value::Text(text.into())]];
-            let out = render_csv(&columns, &rows, &CsvOptions::default()).unwrap();
+            let out = render_csv(&columns, &rows, &sanitized()).unwrap();
             assert_eq!(out, format!("\"a\"\n\"{text}\"\n"), "{text} is a number, not a formula");
         }
     }
@@ -381,7 +400,7 @@ mod tests {
         let columns = cols(&["a"]);
         for text in ["-cmd", "=SUM(A1)", "+1+cmd", "-", "-.", "-1e"] {
             let rows = vec![vec![Value::Text(text.into())]];
-            let out = render_csv(&columns, &rows, &CsvOptions::default()).unwrap();
+            let out = render_csv(&columns, &rows, &sanitized()).unwrap();
             assert_eq!(out, format!("\"a\"\n\"'{text}\"\n"), "{text} must be neutralised");
         }
     }
@@ -401,7 +420,7 @@ mod tests {
             other("-2+cmd"),
         ];
         for value in neutralised {
-            let out = render_csv(&columns, &[vec![value.clone()]], &CsvOptions::default()).unwrap();
+            let out = render_csv(&columns, &[vec![value.clone()]], &sanitized()).unwrap();
             assert!(out.contains("\"'"), "{value:?} reached the sheet as a formula: {out}");
         }
         let kept = [
@@ -412,7 +431,7 @@ mod tests {
             (other("+1.5e3"), "+1.5e3"),
         ];
         for (value, text) in kept {
-            let out = render_csv(&columns, &[vec![value]], &CsvOptions::default()).unwrap();
+            let out = render_csv(&columns, &[vec![value]], &sanitized()).unwrap();
             assert_eq!(out, format!("\"a\"\n\"{text}\"\n"), "{text} is data, not a formula");
         }
     }
@@ -420,14 +439,14 @@ mod tests {
     #[test]
     fn csv_neutralises_formula_header() {
         let columns = cols(&["=HYPERLINK(\"x\")"]);
-        let out = render_csv(&columns, &[], &CsvOptions::default()).unwrap();
+        let out = render_csv(&columns, &[], &sanitized()).unwrap();
         assert_eq!(out, "\"'=HYPERLINK(\"\"x\"\")\"\n");
     }
 
     #[test]
     fn text_csv_treats_every_field_as_free_text() {
         let records = vec![vec!["-cmd".to_string(), "12".to_string(), String::new()]];
-        let out = render_text_csv(&["q", "n", "e"], &records, &CsvOptions::default()).unwrap();
+        let out = render_text_csv(&["q", "n", "e"], &records, &sanitized()).unwrap();
         assert_eq!(out, "\"q\",\"n\",\"e\"\n\"'-cmd\",\"12\",\"\"\n");
     }
 
@@ -449,11 +468,11 @@ mod tests {
     fn csv_null_modes() {
         let columns = cols(&["a"]);
         let rows = vec![vec![Value::Null]];
-        let out_empty = render_csv(&columns, &rows, &CsvOptions::default()).unwrap();
+        let out_empty = render_csv(&columns, &rows, &sanitized()).unwrap();
         assert_eq!(out_empty, "\"a\"\n\"\"\n");
         let opts = CsvOptions {
             null_to_empty: false,
-            ..Default::default()
+            ..sanitized()
         };
         let out_null = render_csv(&columns, &rows, &opts).unwrap();
         assert_eq!(out_null, "\"a\"\n\"NULL\"\n");

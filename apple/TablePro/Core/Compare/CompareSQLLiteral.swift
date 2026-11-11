@@ -77,21 +77,37 @@ internal enum CompareSQLLiteral {
         return SQLStringLiteralPrefix.forDatabaseType(databaseType) + literal
     }
 
+    // Shared by Compare & Sync and Copy as SQL. `SQLExportBinaryLiteral` in the SQL export plugin holds the
+    // measurements behind each spelling; the plugin cannot link app code, so it keeps its own copy.
     internal static func binaryLiteral(for data: Data, databaseType: DatabaseType) -> String? {
-        let hex = data.map { String(format: "%02X", $0) }.joined()
+        let hex = data.uppercaseHex()
         switch binaryStyle(for: databaseType) {
         case .bitString:
             return "X'\(hex)'"
         case .postgresBytea:
-            return "'\\x\(hex.lowercased())'::bytea"
+            return postgresFamilyBinaryLiteral(hex: hex, databaseType: databaseType)
         case .zeroX:
             return "0x\(hex)"
         case .hexToRaw:
-            return "HEXTORAW('\(hex)')"
+            // `HEXTORAW('')` stores NULL, which a `BLOB NOT NULL` refuses.
+            return data.isEmpty ? "EMPTY_BLOB()" : "HEXTORAW('\(hex)')"
         case .unhexFunction:
             return "unhex('\(hex)')"
         case .unknown:
             return nil
+        }
+    }
+
+    // `'\x…'::bytea` follows `standard_conforming_strings`: with it off the server stores the text's bytes. KingbaseES
+    // documents `decode` only as Oracle's DECODE, so it keeps the bytea literal; Redshift has no bytea and reads VARBYTE.
+    private static func postgresFamilyBinaryLiteral(hex: String, databaseType: DatabaseType) -> String {
+        switch databaseType {
+        case .kingbasees:
+            return "'\\x\(hex)'::bytea"
+        case .redshift:
+            return "from_hex('\(hex)')"
+        default:
+            return "decode('\(hex)', 'hex')"
         }
     }
 
