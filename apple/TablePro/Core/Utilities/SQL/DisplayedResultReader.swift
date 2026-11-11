@@ -15,12 +15,14 @@ internal enum DisplayedResultReader {
         internal let skippedDeletedCount: Int
     }
 
-    // Empty selectedDisplayIndices means every displayed row.
+    // Empty selectedDisplayIndices means every displayed row. A cell in defaultedCells has no value until the server
+    // gives it one, so it reads as NULL.
     internal static func read(
         tableRows: TableRows,
         displayIDs: [RowID]?,
         selectedDisplayIndices: Set<Int>,
         deletedRowIDs: Set<RowID> = [],
+        defaultedCells: [RowID: Set<Int>] = [:],
         columns projection: VisibleColumnProjection
     ) -> Output {
         let positions: [Int]
@@ -38,7 +40,7 @@ internal enum DisplayedResultReader {
                 skippedDeleted += 1
                 return nil
             }
-            return projection.values(Self.values(of: row))
+            return projection.values(Self.values(of: row, defaulted: defaultedCells[row.id] ?? []))
         }
 
         return Output(
@@ -50,11 +52,14 @@ internal enum DisplayedResultReader {
     }
 
     // A value the page left on the server says so, rather than reading as NULL.
-    private static func values(of row: Row) -> [PluginCellValue] {
-        guard row.hasUnloadedValues else { return Array(row.values) }
+    private static func values(of row: Row, defaulted: Set<Int>) -> [PluginCellValue] {
+        guard row.hasUnloadedValues || !defaulted.isEmpty else { return Array(row.values) }
         var values = Array(row.values)
         for (column, byteCount) in row.unloadedColumns where values.indices.contains(column) {
             values[column] = .text(UnloadedValueText.notLoaded(byteCount: byteCount))
+        }
+        for column in defaulted where values.indices.contains(column) {
+            values[column] = .null
         }
         return values
     }

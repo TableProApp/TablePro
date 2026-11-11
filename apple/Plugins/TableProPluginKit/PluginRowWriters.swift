@@ -18,9 +18,7 @@ public struct PluginCsvWriteOptions: Sendable, Equatable {
     public let lineEnding: String
     public let nullAsEmpty: Bool
 
-    /// Prefixes a value opening with `=`, `+`, `-` or `@` with a quote. A spreadsheet treats a cell
-    /// starting with one of those as a formula, and the values in an export come from the database
-    /// rather than from the person opening the file.
+    // The quote stays in the value for any reader but a spreadsheet, so it suits files meant for one.
     public let sanitizesFormulas: Bool
 
     /// Replaces a line break inside a value with a space. Off means the value keeps its break and is
@@ -73,9 +71,7 @@ public enum PluginRowWriters {
                 .replacingOccurrences(of: "\r", with: " ", options: .literal)
         }
         var wasNeutralised = false
-        // Scalars, not Characters: `\r\n` is one Character, so a Character test misses a Windows line break.
-        if options.sanitizesFormulas, let first = processed.unicodeScalars.first,
-           isFormulaLead(Character(first)), !isPlainNumber(processed) {
+        if options.sanitizesFormulas, isFormulaLike(processed) {
             processed = "'" + processed
             wasNeutralised = true
         }
@@ -95,11 +91,18 @@ public enum PluginRowWriters {
 
     private static let quotedScalars: Set<Unicode.Scalar> = ["\"", "\n", "\r", "\t"]
 
-    /// A leading tab or carriage return is treated as a formula lead too: Excel strips it before
-    /// parsing the cell, so `\t=1+1` reaches the formula engine exactly as `=1+1` would.
-    private static func isFormulaLead(_ character: Character) -> Bool {
-        formulaPrefixes.contains(character) || character == "\t" || character == "\r"
+    // Public so a format plugin can count the values sanitizing changes.
+    public static func isFormulaLike(_ value: String) -> Bool {
+        // Scalars, not Characters: `\r\n` is one Character, so a Character test misses a Windows line break.
+        guard let first = value.unicodeScalars.first, formulaLeads.contains(first) else { return false }
+        return !isPlainNumber(value)
     }
+
+    // OWASP's list: the four operators, the whitespace Excel strips before parsing (so `\t=1+1` runs as `=1+1`),
+    // and the full-width operators a Japanese locale reads as formulas. The same set as the shared core's `FORMULA_LEADS`.
+    private static let formulaLeads: Set<Unicode.Scalar> = [
+        "=", "+", "-", "@", "\t", "\r", "\n", "\u{FF1D}", "\u{FF0B}", "\u{FF0D}", "\u{FF20}"
+    ]
 
     // A number is never a formula, and `'-5` is text to every reader, a spreadsheet included.
     // The same rule as the Linux app's `is_plain_number`.

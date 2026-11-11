@@ -13,6 +13,7 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 
 internal struct RowReadContext: Sendable {
@@ -55,6 +56,7 @@ internal final class StreamingRowProvider: DataRowProviding {
     private var deliveredCount = 0
     private var isFinished = false
     private var sawRowPastTheLimit = false
+    private let rowCut: OSAllocatedUnfairLock<Int?>
 
     internal init(
         stream: AsyncThrowingStream<PluginStreamElement, Error>,
@@ -62,17 +64,25 @@ internal final class StreamingRowProvider: DataRowProviding {
         rowLimit: Int? = nil,
         context: RowReadContext? = nil
     ) {
-        self.iterator = stream.makeAsyncIterator()
+        let rowCut = OSAllocatedUnfairLock<Int?>(initialState: nil)
+        self.rowCut = rowCut
+        self.iterator = ExportRowCut<PluginStreamElement>.reporting(stream, engineCeiling: nil) { limit in
+            rowCut.withLock { $0 = limit }
+        }.makeAsyncIterator()
         self.columns = columns
         self.rowLimit = rowLimit
         self.context = context
     }
 
-    /// The read asks for one row more than the limit and never hands that row out, so this is the
-    /// server's own answer to whether anything was left rather than a guess from the row count: a
-    /// table holding exactly the limit is not a truncated read.
+    // The read asks for one row past the limit, so a table holding exactly the limit is not a cut read. A stream the
+    // driver stopped at a limit it declares ends here too: a key only the other side holds was never read on this one.
     internal var endedAtRowLimit: Bool {
-        sawRowPastTheLimit
+        sawRowPastTheLimit || driverRowCut != nil
+    }
+
+    internal var driverRowCut: Int? {
+        guard isFinished else { return nil }
+        return rowCut.withLock { $0 }
     }
 
     internal func nextRow() async throws -> DataRow? {

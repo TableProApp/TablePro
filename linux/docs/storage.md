@@ -379,7 +379,7 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `csv-null-to-empty` | `b` | `true` | |
 | `csv-line-break-to-space` | `b` | `false` | |
 | `csv-header-row` | `b` | `true` | |
-| `csv-sanitize-formulas` | `b` | `true` | |
+| `csv-sanitize-formulas` | `b` | `false` | |
 | `csv-delimiter` | enum | `comma` | comma, semicolon, tab, pipe |
 | `csv-quote` | enum | `if-needed` | always, if-needed, never |
 | `csv-line-break` | enum | `lf` | lf, crlf, cr |

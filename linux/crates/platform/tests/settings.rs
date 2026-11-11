@@ -213,7 +213,7 @@ async fn csv_options_round_trip() -> TestResult {
         null_to_empty: false,
         line_break_to_space: true,
         header_row: false,
-        sanitize_formulas: false,
+        sanitize_formulas: true,
         delimiter: CsvDelimiter::Pipe,
         quote: CsvQuote::Always,
         line_break: CsvLineBreak::CrLf,

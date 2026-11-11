@@ -8,6 +8,56 @@ import SwiftUI
 import TableProPluginKit
 import TableProSQLGrammar
 
+internal struct ClickHousePartsAlert: Equatable {
+    let title: String
+    let message: String
+}
+
+// A failed or refused action never replaces the list it acted on; only a load with nothing shown does.
+internal struct ClickHousePartsPaneState {
+    internal enum Display: Equatable {
+        case loading
+        case loadFailed(String)
+        case empty
+        case parts
+    }
+
+    private(set) var parts: [ClickHousePartInfo] = []
+    private(set) var isLoading = true
+    private(set) var loadError: String?
+    var alert: ClickHousePartsAlert?
+
+    var display: Display {
+        guard parts.isEmpty else { return .parts }
+        if let loadError { return .loadFailed(loadError) }
+        return isLoading ? .loading : .empty
+    }
+
+    mutating func beginLoad() {
+        isLoading = true
+        loadError = nil
+    }
+
+    mutating func finishLoad(_ parts: [ClickHousePartInfo]) {
+        self.parts = parts
+        isLoading = false
+    }
+
+    mutating func failLoad(_ message: String) {
+        isLoading = false
+        guard parts.isEmpty else {
+            alert = ClickHousePartsAlert(title: String(localized: "Couldn't Read the Parts"), message: message)
+            return
+        }
+        loadError = message
+    }
+
+    mutating func actionEnded(_ failure: GatedOperationFailure, title: String) {
+        guard let message = failure.message else { return }
+        alert = ClickHousePartsAlert(title: title, message: message)
+    }
+}
+
 struct ClickHousePartsView: View {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ClickHousePartsView")
 
@@ -17,31 +67,31 @@ struct ClickHousePartsView: View {
     let connection: DatabaseConnection
     let reloadToken: Int
 
-    @State private var parts: [ClickHousePartInfo] = []
-    @State private var isLoading = true
-    @State private var errorMessage: String?
+    @State private var pane = ClickHousePartsPaneState()
     @State private var loadedToken: Int?
     @StateObject private var grid = StructureListGridModel<UUID>(accessibilityLabel: StructurePane.parts.displayName)
     @StateObject private var selection = StructureListSelection<UUID>()
 
     var body: some View {
         VStack(spacing: 0) {
-            if isLoading {
+            switch pane.display {
+            case .loading:
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .gridStandInBackground()
-            } else if let error = errorMessage {
-                VStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.largeTitle)
-                        .foregroundStyle(.orange)
-                        .accessibilityHidden(true)
-                    RevealedTextView(error)
-                        .foregroundStyle(.secondary)
+            case .loadFailed(let message):
+                UnavailableStateView {
+                    Label(String(localized: "Couldn't Read the Parts"), systemImage: "exclamationmark.triangle")
+                } description: {
+                    RevealedTextView(message)
+                } actions: {
+                    Button(String(localized: "Try Again")) {
+                        Task { await loadParts() }
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .gridStandInBackground()
-            } else if parts.isEmpty {
+            case .empty:
                 VStack(spacing: 8) {
                     Image(systemName: "tray")
                         .font(.largeTitle)
@@ -52,10 +102,19 @@ struct ClickHousePartsView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .gridStandInBackground()
-            } else {
+            case .parts:
                 partsToolbar
                 partsTable
             }
+        }
+        .alert(
+            pane.alert?.title ?? "",
+            isPresented: Binding(get: { pane.alert != nil }, set: { if !$0 { pane.alert = nil } }),
+            presenting: pane.alert
+        ) { _ in
+            Button(String(localized: "OK"), role: .cancel) {}
+        } message: { alert in
+            Text(verbatim: RevealedText(alert.message).plainText)
         }
         .task(id: reloadToken) { await loadPartsIfNeeded() }
     }
@@ -92,7 +151,7 @@ struct ClickHousePartsView: View {
             columns: Self.columnTitles,
             defaultWidths: Self.columnWidths,
             minimumWidths: Self.columnMinimumWidths,
-            rows: parts.map(Self.gridRow(for:)),
+            rows: pane.parts.map(Self.gridRow(for:)),
             databaseType: connection.type,
             selectedIDs: selection.ids,
             select: { selection.ids = $0 },
@@ -130,6 +189,20 @@ struct ClickHousePartsView: View {
         )
     }
 
+    // Column order is ClickHousePartStatements.parts.
+    internal static func part(from row: [PluginCellValue]) -> ClickHousePartInfo? {
+        guard let name = row[safe: 2]?.asText else { return nil }
+        return ClickHousePartInfo(
+            partition: row[safe: 0]?.asText ?? "",
+            partitionId: row[safe: 1]?.asText ?? "",
+            name: name,
+            rows: row[safe: 3]?.asText.flatMap { UInt64($0) } ?? 0,
+            bytesOnDisk: row[safe: 4]?.asText.flatMap { UInt64($0) } ?? 0,
+            modificationTime: row[safe: 5]?.asText ?? "",
+            active: row[safe: 6]?.asText == "1"
+        )
+    }
+
     // MARK: - Actions
 
     private func optimizeTable() {
@@ -140,19 +213,20 @@ struct ClickHousePartsView: View {
                     database: scope.database, table: tableName, quote: driver.quoteIdentifier
                 ),
                 description: String(localized: "Optimize Table"),
+                failureTitle: String(localized: "Couldn't Optimize Table"),
                 kind: .maintenance
             )
         }
     }
 
     private func dropSelectedPartition() {
-        guard let partitionValue = selectedPartitionValue() else { return }
+        guard let part = selectedPart() else { return }
         Task { @MainActor in
             let confirmed = await AlertHelper.confirmDestructive(
                 title: String(localized: "Drop Partition?"),
                 message: String(
                     format: String(localized: "This will permanently delete all data in partition '%@'."),
-                    partitionValue
+                    part.partition
                 ),
                 confirmButton: String(localized: "Drop"),
                 cancelButton: String(localized: "Cancel")
@@ -160,27 +234,31 @@ struct ClickHousePartsView: View {
             guard confirmed else { return }
 
             guard let driver = DatabaseManager.shared.driver(for: scope.connectionId) else { return }
-            let sql = ClickHousePartStatements.dropPartition(
+            let failureTitle = String(localized: "Couldn't Drop Partition")
+            guard let sql = ClickHousePartStatements.dropPartition(
                 database: scope.database,
                 table: tableName,
-                partition: partitionValue,
-                quote: driver.quoteIdentifier,
-                escape: driver.escapeStringLiteral
-            )
-            guard await run(sql, description: String(localized: "Drop Partition"), kind: .destructiveQuery)
-            else { return }
+                partitionId: part.partitionId,
+                quote: driver.quoteIdentifier
+            ) else {
+                pane.alert = ClickHousePartsAlert(title: failureTitle, message: Self.unusablePartitionIdMessage)
+                return
+            }
+            guard await run(
+                sql, description: String(localized: "Drop Partition"), failureTitle: failureTitle, kind: .destructiveQuery
+            ) else { return }
             selection.ids.removeAll()
         }
     }
 
     private func detachSelectedPartition() {
-        guard let partitionValue = selectedPartitionValue() else { return }
+        guard let part = selectedPart() else { return }
         Task { @MainActor in
             let confirmed = await AlertHelper.confirmDestructive(
                 title: String(localized: "Detach Partition?"),
                 message: String(
                     format: String(localized: "This will detach partition '%@'. Data will be preserved but inaccessible until re-attached."),
-                    partitionValue
+                    part.partition
                 ),
                 confirmButton: String(localized: "Detach"),
                 cancelButton: String(localized: "Cancel")
@@ -188,22 +266,30 @@ struct ClickHousePartsView: View {
             guard confirmed else { return }
 
             guard let driver = DatabaseManager.shared.driver(for: scope.connectionId) else { return }
-            let sql = ClickHousePartStatements.detachPartition(
+            let failureTitle = String(localized: "Couldn't Detach Partition")
+            guard let sql = ClickHousePartStatements.detachPartition(
                 database: scope.database,
                 table: tableName,
-                partition: partitionValue,
-                quote: driver.quoteIdentifier,
-                escape: driver.escapeStringLiteral
-            )
-            guard await run(sql, description: String(localized: "Detach Partition"), kind: .destructiveQuery)
-            else { return }
+                partitionId: part.partitionId,
+                quote: driver.quoteIdentifier
+            ) else {
+                pane.alert = ClickHousePartsAlert(title: failureTitle, message: Self.unusablePartitionIdMessage)
+                return
+            }
+            guard await run(
+                sql, description: String(localized: "Detach Partition"), failureTitle: failureTitle, kind: .destructiveQuery
+            ) else { return }
             selection.ids.removeAll()
         }
     }
 
+    private static var unusablePartitionIdMessage: String {
+        String(localized: "The server reported a partition ID that cannot be used in a statement, so nothing was run.")
+    }
+
     @MainActor
     @discardableResult
-    private func run(_ sql: String, description: String, kind: OperationKind) async -> Bool {
+    private func run(_ sql: String, description: String, failureTitle: String, kind: OperationKind) async -> Bool {
         let scope = scope
         do {
             let decision = await ExecutionGateProvider.shared.authorize(
@@ -217,10 +303,7 @@ struct ClickHousePartsView: View {
                     operationDescription: description
                 )
             )
-            guard case .authorized = decision else {
-                errorMessage = decision.deniedReason
-                return false
-            }
+            if let denial = decision.denialError { throw denial }
             _ = try await DatabaseManager.shared.withScopedDriver(
                 scope: scope,
                 route: DatabaseManager.shared.schemaChangeRoute(for: scope),
@@ -228,30 +311,30 @@ struct ClickHousePartsView: View {
             ) { driver in
                 try await driver.execute(query: sql)
             }
-            if kind != .maintenance {
-                CatalogChangeService.post(
-                    .changed(CatalogChange(connectionId: scope.connectionId, database: scope.database, kinds: .tables))
-                )
-            }
-            await loadParts()
-            return true
         } catch {
-            Self.logger.error("\(description, privacy: .public) failed: \(error.publicLogShape, privacy: .public)")
-            errorMessage = error.localizedDescription
+            let failure = GatedOperationFailure(error)
+            if failure.reportsFailure {
+                Self.logger.error("\(description, privacy: .public) failed: \(error.publicLogShape, privacy: .public)")
+            }
+            pane.actionEnded(failure, title: failureTitle)
             return false
         }
+        if kind != .maintenance {
+            CatalogChangeService.post(
+                .changed(CatalogChange(connectionId: scope.connectionId, database: scope.database, kinds: .tables))
+            )
+        }
+        await loadParts()
+        return true
     }
 
-    private func selectedPartitionValue() -> String? {
-        Self.partition(of: selection.ids, in: parts)
+    private func selectedPart() -> ClickHousePartInfo? {
+        Self.selectedPart(of: selection.ids, in: pane.parts)
     }
 
-    internal static func partition(of selectedIDs: Set<UUID>, in parts: [ClickHousePartInfo]) -> String? {
-        guard selectedIDs.count == 1,
-              let selectedId = selectedIDs.first,
-              let part = parts.first(where: { $0.id == selectedId })
-        else { return nil }
-        return part.partition
+    internal static func selectedPart(of selectedIDs: Set<UUID>, in parts: [ClickHousePartInfo]) -> ClickHousePartInfo? {
+        guard selectedIDs.count == 1, let selectedId = selectedIDs.first else { return nil }
+        return parts.first { $0.id == selectedId }
     }
 
     // MARK: - Data Loading
@@ -263,8 +346,7 @@ struct ClickHousePartsView: View {
 
     private func loadParts() async {
         let token = reloadToken
-        isLoading = true
-        errorMessage = nil
+        pane.beginLoad()
 
         let scope = scope
         let tableName = tableName
@@ -276,29 +358,12 @@ struct ClickHousePartsView: View {
             }
             guard !Task.isCancelled else { return }
             selection.ids = []
-            parts = result.rows.compactMap { row -> ClickHousePartInfo? in
-                guard let name = row[safe: 1]?.asText else { return nil }
-                let partition = row[safe: 0]?.asText ?? ""
-                let rows = row[safe: 2]?.asText.flatMap { UInt64($0) } ?? 0
-                let bytesOnDisk = row[safe: 3]?.asText.flatMap { UInt64($0) } ?? 0
-                let modTime = row[safe: 4]?.asText ?? ""
-                let active = row[safe: 5]?.asText == "1"
-                return ClickHousePartInfo(
-                    partition: partition,
-                    name: name,
-                    rows: rows,
-                    bytesOnDisk: bytesOnDisk,
-                    modificationTime: modTime,
-                    active: active
-                )
-            }
+            pane.finishLoad(result.rows.compactMap(Self.part(from:)))
             loadedToken = token
         } catch {
             guard !Task.isCancelled else { return }
             Self.logger.error("Failed to load parts: \(error.publicLogShape, privacy: .public)")
-            errorMessage = error.localizedDescription
+            pane.failLoad(error.localizedDescription)
         }
-
-        isLoading = false
     }
 }

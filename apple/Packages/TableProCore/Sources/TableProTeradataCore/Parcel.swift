@@ -4,6 +4,8 @@ import TableProWireIO
 enum ParcelFlavor: UInt16 {
     case request = 1
     case response = 4
+    case abort = 6
+    case cancel = 7
     case success = 8
     case failure = 9
     case record = 10

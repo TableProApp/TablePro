@@ -25,8 +25,7 @@ struct SelectionSummaryCalculatorTests {
         dataColumns: [Int]? = nil,
         policy: SelectionSummaryColumnPolicy? = nil,
         deleted: Set<RowID> = [],
-        inserted: Set<RowID> = [],
-        modified: [RowID: Set<Int>] = [:]
+        defaulted: [RowID: Set<Int>] = [:]
     ) -> SelectionSummaryInput {
         SelectionSummaryInput(
             selection: selection(rects),
@@ -39,8 +38,7 @@ struct SelectionSummaryCalculatorTests {
                 columnCount: tableRows.columns.count
             ),
             deletedRowIDs: deleted,
-            insertedRowIDs: inserted,
-            modifiedCells: modified
+            defaultedCells: defaulted
         )
     }
 
@@ -113,25 +111,24 @@ struct SelectionSummaryCalculatorTests {
         #expect(summary.numbers?.sum.decimal == 1)
     }
 
-    @Test("NULL is empty, empty text is a value, and the default marker is empty only where an edit put it")
+    @Test("NULL is empty, empty text is a value, and DEFAULT is empty only where an edit marked it")
     func emptyCellRules() async throws {
         let insertedID = RowID.inserted(UUID())
         var table = Self.tableRows(
             [
                 [.null, .text("")],
-                [.text(PluginCellValue.defaultMarkerText), .text(PluginCellValue.defaultMarkerText)],
-                [.text("7"), .text(PluginCellValue.defaultMarkerText)]
+                [.text("DEFAULT"), .text("DEFAULT")],
+                [.text("7"), .columnDefault]
             ],
             types: [Self.integer, Self.untyped]
         )
-        table.appendInsertedRow(id: insertedID, values: [.text(PluginCellValue.defaultMarkerText), .text("5")])
+        table.appendInsertedRow(id: insertedID, values: [.columnDefault, .text("5")])
 
         let summary = try await Self.summarize(
             Self.input(
                 table,
                 selecting: [GridRect(rows: 0...3, columns: 0...1)],
-                inserted: [insertedID],
-                modified: [.existing(2): [1]]
+                defaulted: [.existing(2): [1], insertedID: [0]]
             )
         )
 

@@ -155,14 +155,10 @@ final class DataTabSQLExporter: DataGridSQLExporting {
         )
     }
 
-    // Every marker in a row not saved yet, and in a saved row the cells a pending edit set to Default.
+    // The cells a pending insert or edit marked as the default.
     private func stagedDefaults(of row: Row, target: Target) -> Set<Int> {
-        let marker = PluginCellValue.text("__DEFAULT__")
-        if target.changeManager.insertedRowIDs.contains(row.id) {
-            return Set(row.values.indices.filter { row.values[$0] == marker })
-        }
-        let pendingUpdate = target.changeManager.pendingUpdate(forRow: row.id)
-        return Set(pendingUpdate?.cellChanges.filter { $0.newValue == marker }.map(\.columnIndex) ?? [])
+        let marked = target.changeManager.expressionColumns(forRow: row.id)
+        return Set(marked.filter { row.values.indices.contains($0) && row.values[$0] == .columnDefault })
     }
 
     private func nonEmpty(_ statements: String) -> String? {

@@ -36,6 +36,7 @@ internal enum ResultJsonSerializer {
         displayIDs: [RowID]?,
         selectedDisplayIndices: Set<Int>,
         deletedRowIDs: Set<RowID> = [],
+        defaultedCells: [RowID: Set<Int>] = [:],
         columns projection: VisibleColumnProjection
     ) -> Output {
         let read = DisplayedResultReader.read(
@@ -43,6 +44,7 @@ internal enum ResultJsonSerializer {
             displayIDs: displayIDs,
             selectedDisplayIndices: selectedDisplayIndices,
             deletedRowIDs: deletedRowIDs,
+            defaultedCells: defaultedCells,
             columns: projection
         )
 

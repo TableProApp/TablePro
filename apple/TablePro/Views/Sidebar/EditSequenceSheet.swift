@@ -188,7 +188,7 @@ struct EditSequenceSheet: View {
             try await SequenceEditing.alter(details, to: settings, target: target, connection: connection)
             dismiss()
         } catch {
-            saveError = error.localizedDescription
+            saveError = GatedOperationFailure(error).message
             phase = .editing(details)
         }
     }

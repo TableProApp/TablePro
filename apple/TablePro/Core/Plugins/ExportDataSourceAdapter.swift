@@ -61,13 +61,7 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
 
     // One line per table whose rows stopped at a ceiling, so a partial copy is never reported as the whole table.
     var cappedTableWarnings: [String] {
-        cappedTables.withLock { $0 }.map { capped in
-            String(
-                format: String(localized: "%1$@: only the first %2$lld rows were read, the most this database returns from one query."),
-                capped.table,
-                capped.limit
-            )
-        }
+        cappedTables.withLock { $0 }.map { StreamRowCutWarning.text(table: $0.table, limit: $0.limit) }
     }
 
     func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {

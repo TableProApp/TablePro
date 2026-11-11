@@ -158,7 +158,15 @@ fn render(
     rows: &[Vec<Value>],
 ) -> Result<String, ToolError> {
     let encoded = match format {
-        ExportFormat::Csv => render_csv(columns, rows, &CsvOptions::default()),
+        // A tool result has no option to turn it on, so it keeps the neutralising the macOS tool result has.
+        ExportFormat::Csv => render_csv(
+            columns,
+            rows,
+            &CsvOptions {
+                sanitize_formulas: true,
+                ..CsvOptions::default()
+            },
+        ),
         ExportFormat::Json => render_json(columns, rows),
         ExportFormat::Sql => {
             let dialect = session
