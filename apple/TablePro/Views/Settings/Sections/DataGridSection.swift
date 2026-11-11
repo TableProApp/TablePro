@@ -60,11 +60,11 @@ struct DataGridSection: View {
         }
 
         Section {
-            Toggle("Show sort criteria in the filter panel", isOn: $settings.showsSortInFilterPanel)
+            Toggle("Show sort criteria in the filter bar", isOn: $settings.showsSortInFilterPanel)
                 .help(String(localized: "Edit the filters and the sort together, write the filter as text, and apply both at once"))
-            Toggle("Open the filter panel with each table", isOn: $settings.opensFilterPanelForTables)
+            Toggle("Open the filter bar with each table", isOn: $settings.opensFilterPanelForTables)
         } header: {
-            Text("Filter Panel")
+            Text("Filter Bar")
         }
 
         Section {

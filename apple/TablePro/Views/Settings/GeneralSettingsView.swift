@@ -83,7 +83,7 @@ struct GeneralSettingsView: View {
                     tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the \
                     tree, takes the connection and database out of the toolbar, and makes Tree the default \
                     sidebar layout. In table tabs it shows column types in \
-                    the header, the sort and a Text mode in the filter panel, opens that panel with each table, \
+                    the header, the sort and a Text mode in the filter bar, opens that bar with each table, \
                     puts the result bar above the grid and names the database and connection in tab titles. \
                     In query tabs it shows the query bar on two rows, and object icons turn colorful. \
                     Standard Layout turns them off again. Open connections switch layout too.
