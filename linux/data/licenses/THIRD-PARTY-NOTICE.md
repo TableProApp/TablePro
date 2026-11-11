@@ -10195,7 +10195,7 @@ Used by:
 - quote 1.0.47
 - ref-cast-impl 1.0.27
 - ref-cast 1.0.27
-- rustix 1.1.4
+- rustix 1.1.6
 - rustversion 1.0.23
 - semver 1.0.28
 - serde 1.0.229
