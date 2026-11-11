@@ -113,7 +113,7 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
                         : DatabaseScope(
                             connectionId: scope.connectionId,
                             database: scope.database,
-                            schema: schema ?? scope.schema ?? driver.currentSchema
+                            schema: schema ?? scope.schema ?? (driver as? SchemaSwitchable)?.currentSchema
                         )
                     return keys.filter { key in
                         ForeignKeyTargetScope.pointsWithin(
