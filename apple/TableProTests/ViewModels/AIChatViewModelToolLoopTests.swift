@@ -46,6 +46,32 @@ struct AIChatViewModelToolLoopTests {
         }
     }
 
+    private final class ExecutionCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+
+        var value: Int {
+            lock.withLock { count }
+        }
+
+        func increment() {
+            lock.withLock { count += 1 }
+        }
+    }
+
+    private struct CountingTool: ChatTool {
+        let name = "counting"
+        let description = ""
+        let inputSchema: JsonValue = .object(["type": .string("object")])
+        let mode: ChatToolMode = .readOnly
+        let counter: ExecutionCounter
+
+        func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
+            counter.increment()
+            return ChatToolResult(content: "ran", isError: false)
+        }
+    }
+
     private static func toolRound(id: String) -> [ChatStreamEvent] {
         [
             .toolUseStart(id: id, name: "noop", providerMetadata: nil),
@@ -81,10 +107,13 @@ struct AIChatViewModelToolLoopTests {
     private func runLoop(
         viewModel: AIChatViewModel,
         transport: ChatTransport,
-        settings: AISettings
+        settings: AISettings,
+        tools: [any ChatTool] = [NoopTool()]
     ) async {
         let registry = ChatToolRegistry()
-        registry.register(NoopTool())
+        for tool in tools {
+            registry.register(tool)
+        }
         let assistant = ChatTurn(role: .assistant, blocks: [], modelId: "test-model", providerId: nil)
         viewModel.messages.append(assistant)
         viewModel.streamingState = .streaming(assistantID: assistant.id)
@@ -216,6 +245,44 @@ struct AIChatViewModelToolLoopTests {
         #expect(viewModel.isPausedAtToolLimit == false)
         #expect(viewModel.messages.count > pausedMessageCount)
         #expect(viewModel.messages.last?.plainText.contains("finished") == true)
+    }
+
+    @Test("A call whose arguments were cut off never runs, and the model gets an error saying why")
+    func truncatedToolCallNeverRuns() async {
+        let counter = ExecutionCounter()
+        let transport = ScriptedTransport(rounds: [
+            [
+                .toolUseStart(id: "cut", name: "counting", providerMetadata: nil),
+                .toolUseDelta(id: "cut", inputJSONDelta: #"{"query":"SELECT * FROM orders WH"#),
+                .toolUseEnd(id: "cut")
+            ],
+            [.textDelta("retrying")]
+        ])
+        let viewModel = AIChatViewModel()
+
+        await runLoop(
+            viewModel: viewModel,
+            transport: transport,
+            settings: Self.makeSettings(limit: Self.testLimit, enabled: true),
+            tools: [CountingTool(counter: counter)]
+        )
+
+        #expect(counter.value == 0)
+        let denial = AIChatViewModel.unparsableToolArgumentsContent
+        let calls = viewModel.messages.flatMap { $0.blocks }.compactMap { block -> ToolUseBlock? in
+            guard case .toolUse(let call) = block.kind else { return nil }
+            return call
+        }
+        let callIds = calls.map { $0.id }
+        #expect(callIds == ["cut"])
+        #expect(calls.first?.approvalState == .denied(reason: denial))
+        let results = viewModel.messages.flatMap { $0.blocks }.compactMap { block -> ToolResultBlock? in
+            guard case .toolResult(let result) = block.kind else { return nil }
+            return result
+        }
+        #expect(results == [ToolResultBlock(toolUseId: "cut", content: denial, isError: true)])
+        #expect(transport.roundsRequested == 2)
+        #expect(viewModel.messages.last?.plainText.contains("retrying") == true)
     }
 
     @Test("continueToolLoop only acts while paused")

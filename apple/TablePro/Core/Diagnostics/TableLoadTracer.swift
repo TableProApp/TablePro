@@ -1,8 +1,3 @@
-//
-//  TableLoadTracer.swift
-//  TablePro
-//
-
 import Foundation
 import os
 
@@ -18,7 +13,7 @@ import os
 /// keeps a bounded local history an intermittent slowdown can be looked at in after the fact.
 @MainActor
 internal final class TableLoadTracer {
-    internal static let shared = TableLoadTracer(sink: TableLoadTracer.defaultSink())
+    internal static let shared = TableLoadTracer(sink: TableLoadHistoryStore.shared)
 
     private struct Interval {
         let id: OSSignpostID
@@ -38,15 +33,6 @@ internal final class TableLoadTracer {
 
     internal init(sink: any TableLoadSummarySink) {
         self.sink = sink
-    }
-
-    /// A unit test that drives a coordinator opens real table tabs and so begins real traces, and
-    /// `AppStorageEnvironment` resolves to the production directory under a unit-test host. Choosing
-    /// the sink here keeps those traces off the developer's own history without the store having to
-    /// know it is being tested.
-    private static func defaultSink() -> any TableLoadSummarySink {
-        guard NSClassFromString("XCTestCase") == nil else { return DiscardingTableLoadSummarySink() }
-        return TableLoadHistoryStore.shared
     }
 
     /// A sidebar click that opens a new native window tab finishes in a different coordinator, so the

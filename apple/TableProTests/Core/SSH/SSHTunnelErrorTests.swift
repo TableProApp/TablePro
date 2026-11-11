@@ -7,26 +7,6 @@ import TableProTestSupport
 import Testing
 
 struct SSHTunnelErrorTests {
-    // MARK: - Port Bind Failure Classification
-
-    @Test("isLocalPortBindFailure detects 'already in use' pattern")
-    func bindFailureAlreadyInUse() {
-        #expect(SSHTunnelManager.isLocalPortBindFailure("Address already in use"))
-    }
-
-    @Test("isLocalPortBindFailure is case-insensitive")
-    func bindFailureCaseInsensitive() {
-        #expect(SSHTunnelManager.isLocalPortBindFailure("ADDRESS ALREADY IN USE"))
-    }
-
-    @Test("isLocalPortBindFailure returns false for unrelated SSH errors")
-    func nonBindFailures() {
-        #expect(!SSHTunnelManager.isLocalPortBindFailure("Permission denied"))
-        #expect(!SSHTunnelManager.isLocalPortBindFailure("Connection refused"))
-        #expect(!SSHTunnelManager.isLocalPortBindFailure("Host key verification failed"))
-        #expect(!SSHTunnelManager.isLocalPortBindFailure(""))
-    }
-
     // MARK: - Error Descriptions
 
     @Test("SSHTunnelError.noAvailablePort has a localized description")

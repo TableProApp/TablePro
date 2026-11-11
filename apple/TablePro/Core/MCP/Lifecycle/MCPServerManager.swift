@@ -64,6 +64,8 @@ internal final class MCPServerManager: ObservableObject {
 
     @Published private var composition: MCPServerComposition?
     @Published private var bridgeCredential: BridgeCredential?
+    private var supersededBridgeCredentials: [BridgeCredential] = []
+    private var bridgeDisconnects = 0
     @Published private var instanceId = ""
     @Published private var generation = 0
     @Published private var revocationObserverId: UUID?
@@ -168,13 +170,40 @@ internal final class MCPServerManager: ObservableObject {
             return true
         }
 
-        var withdrawn: MCPGrantSubject? = .token(tokenId)
-        if let ended = await tokenStore?.token(id: tokenId) {
-            withdrawn = ended.subjectWithdrawnWhenEnded
-        }
-        let persisted = await revokeToken(id: tokenId)
-        if let withdrawn {
-            await composition.authPolicy.clearApprovals(subject: withdrawn)
+        let stored = await tokenStore?.token(id: tokenId)
+        // Read after the await: a rotation that ran meanwhile may have moved this token to the superseded list.
+        let endsTheBridge = stored?.isBridgeCredential == true
+            || bridgeCredential?.tokenId == tokenId
+            || supersededBridgeCredentials.contains { $0.tokenId == tokenId }
+
+        let persisted: Bool
+        if endsTheBridge {
+            // Every bridge credential is the same client, so the live one is revoked and all their requests end now.
+            bridgeDisconnects += 1
+            var revoked = [tokenId]
+            if let live = bridgeCredential?.tokenId, live != tokenId {
+                revoked.append(live)
+            }
+            let ended = Set(revoked + supersededBridgeCredentials.map { $0.tokenId })
+            var allPersisted = true
+            for id in revoked {
+                let saved = await revokeToken(id: id)
+                allPersisted = allPersisted && saved
+            }
+            for id in ended {
+                await composition.dispatcher.cancelInflight(matchingTokenId: id)
+                await composition.activityLedger.forget(tokenId: id)
+            }
+            persisted = allPersisted
+        } else {
+            var withdrawn: MCPGrantSubject? = .token(tokenId)
+            if let stored {
+                withdrawn = stored.subjectWithdrawnWhenEnded
+            }
+            persisted = await revokeToken(id: tokenId)
+            if let withdrawn {
+                await composition.authPolicy.clearApprovals(subject: withdrawn)
+            }
         }
         await composition.activityLedger.forget(tokenId: tokenId)
         await refreshClients()
@@ -296,6 +325,7 @@ internal final class MCPServerManager: ObservableObject {
         clientRefreshTask = nil
         tokenRenewalTask?.cancel()
         tokenRenewalTask = nil
+        supersededBridgeCredentials = []
 
         handshake.removeIfWrittenByThisProcess(instanceId: instanceId)
         MCPServerInstanceIdentity.shared.end()
@@ -358,22 +388,30 @@ internal final class MCPServerManager: ObservableObject {
     private func renewBridgeCredential(generation: Int) async {
         guard self.generation == generation,
               let store = tokenStore,
-              let socketPath = composition?.socketPath,
+              let composition,
               case .running = state else { return }
 
         let previous = bridgeCredential
+        let disconnects = bridgeDisconnects
         guard let credential = await mintBridgeCredential(store: store) else { return }
 
-        guard self.generation == generation else {
+        // A bridge disconnect during the mint keeps the bridge off until the next rotation.
+        guard self.generation == generation, bridgeDisconnects == disconnects else {
             await store.delete(tokenId: credential.tokenId)
             return
         }
 
         bridgeCredential = credential
-        writeHandshake(socketPath: socketPath, credential: credential)
+        writeHandshake(socketPath: composition.socketPath, credential: credential)
 
         if let previous {
-            await store.delete(tokenId: previous.tokenId)
+            // Listed before the await, so a disconnect from here on ends its requests too.
+            let now = Date()
+            supersededBridgeCredentials = supersededBridgeCredentials.filter { $0.expiresAt > now } + [previous]
+            // Not a revocation: the old credential opens nothing new, but what it started may finish until it expires.
+            await store.dropSupersededBridgeCredential(tokenId: previous.tokenId)
+            guard self.generation == generation else { return }
+            await composition.dispatcher.cancelInflight(matchingTokenId: previous.tokenId, at: previous.expiresAt)
         }
         Self.logger.info("Rotated the MCP bridge credential")
     }

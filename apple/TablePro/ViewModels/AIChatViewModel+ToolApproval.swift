@@ -44,7 +44,12 @@ extension AIChatViewModel {
         let initialBlocks = await MainActor.run { [weak self] () -> [ToolUseBlock] in
             guard let self else { return assembledBlocks }
             let initial = assembledBlocks.map { block -> ToolUseBlock in
-                let state = self.computeInitialApprovalState(for: block.name, registry: registry)
+                let state: ToolApprovalState
+                if case .denied = block.approvalState {
+                    state = block.approvalState
+                } else {
+                    state = self.computeInitialApprovalState(for: block.name, registry: registry)
+                }
                 return ToolUseBlock(
                     id: block.id,
                     name: block.name,

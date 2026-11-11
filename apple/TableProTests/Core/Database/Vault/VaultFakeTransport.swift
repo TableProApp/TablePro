@@ -69,12 +69,20 @@ final class VaultFakeCallbackReceiver: VaultOIDCCallbackReceiving, @unchecked Se
     private let parameters: [String: String]
     private let lock = NSLock()
     private var stopped = false
+    private var states: [String] = []
 
     init(parameters: [String: String]) {
         self.parameters = parameters
     }
 
     var wasStopped: Bool { lock.withLock { stopped } }
+
+    var expectedStates: [String] { lock.withLock { states } }
+
+    func expect(state: String) -> VaultFakeCallbackReceiver {
+        lock.withLock { states.append(state) }
+        return self
+    }
 
     func start() async throws {}
 
@@ -118,7 +126,7 @@ enum VaultFixtures {
             readFile: { path in files.first { path.hasSuffix($0.key) }?.value },
             now: now,
             openURL: { opened.append($0) },
-            makeCallbackReceiver: { receiver }
+            makeCallbackReceiver: { receiver.expect(state: $0) }
         )
     }
 

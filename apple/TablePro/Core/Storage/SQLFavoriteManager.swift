@@ -11,7 +11,9 @@ import TableProSyncTransport
 import TableProUtilities
 
 internal final class SQLFavoriteManager: @unchecked Sendable {
-    static let shared = SQLFavoriteManager()
+    static let shared = SQLFavoriteManager(
+        storage: SQLFavoriteStorage(onSetAside: { DamagedStoreNotice.savedQueriesSetAside($0) })
+    )
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLFavoriteManager")
 
     private let storage: SQLFavoriteStorage
@@ -146,11 +148,19 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     }
 
     func favoritesForSync() async -> [SQLFavorite]? {
-        await storage.readAllFavorites()
+        await storage.readAllFavoritesForSync()
     }
 
     func foldersForSync() async -> [SQLFavoriteFolder]? {
-        await storage.readAllFolders()
+        await storage.readAllFoldersForSync()
+    }
+
+    func isAwaitingSyncRefill() async -> Bool {
+        await storage.isAwaitingSyncRefill()
+    }
+
+    func finishSyncRefill() async {
+        await storage.finishSyncRefill()
     }
 
     func ledgerEntries() async -> [SavedQueryLedger.Entry]? {
@@ -271,7 +281,8 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     ) async -> RemoteApplyOutcome {
         guard !batch.isEmpty else { return .skipped }
         return await operations.run { [self] in
-            let admitted = admitting(batch, echoGuard: echoGuard)
+            let refilling = await storage.isAwaitingSyncRefill()
+            let admitted = admitting(batch, echoGuard: echoGuard, refilling: refilling)
             guard !admitted.isEmpty else { return .skipped }
             guard await applyRemoteFavoriteDeletions(admitted.deletedFavoriteIds),
                   await applyRemoteFolders(admitted.folders),
@@ -285,9 +296,13 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     }
 
     @MainActor
-    private func admitting(_ batch: RemoteSQLFavoriteBatch, echoGuard: SyncEchoGuard?) -> RemoteSQLFavoriteBatch {
-        let deletedFavoriteIds = syncTracker.tombstonedIds(for: .favorite)
-        let deletedFolderIds = syncTracker.tombstonedIds(for: .favoriteFolder)
+    private func admitting(
+        _ batch: RemoteSQLFavoriteBatch,
+        echoGuard: SyncEchoGuard?,
+        refilling: Bool
+    ) -> RemoteSQLFavoriteBatch {
+        let deletedFavoriteIds = locallyDeletedIds(.favorite, refilling: refilling)
+        let deletedFolderIds = locallyDeletedIds(.favoriteFolder, refilling: refilling)
         var admitted = batch
         admitted.favorites = batch.favorites.filter { favorite in
             let id = favorite.id.uuidString
@@ -300,6 +315,14 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
             return echoGuard?.withholds(.favoriteFolder, id: id, tracker: syncTracker) != true
         }
         return admitted
+    }
+
+    // While a replaced store refills, a record deleted and then edited again here comes back:
+    // the edit is the later intent, and pushing the deletion would remove it on every device.
+    @MainActor
+    private func locallyDeletedIds(_ type: SyncRecordType, refilling: Bool) -> Set<String> {
+        let tombstoned = syncTracker.tombstonedIds(for: type)
+        return refilling ? tombstoned.subtracting(syncTracker.dirtyRecords(for: type)) : tombstoned
     }
 
     @MainActor

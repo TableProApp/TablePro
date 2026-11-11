@@ -37,8 +37,9 @@ extension SyncCoordinator {
         pushed: Set<CKRecord.ID>
     ) async -> [CKRecord.ID] {
         let fetchedCreations = result.changedRecords.compactMap(recordCreationDate)
-        guard result.unreadRecordIDs.isEmpty, !fetchedCreations.isEmpty else { return [] }
-        let fetchedNames = Set(result.changedRecords.map(\.recordID.recordName))
+        guard !fetchedCreations.isEmpty else { return [] }
+        // A record the fetch listed but could not read is still in the zone, so it counts as listed.
+        let fetchedNames = Set((result.changedRecords.map(\.recordID) + result.unreadRecordIDs).map(\.recordName))
         let boundary = syncBoundary(settings: settings)
         var candidates: [SyncFullFetchDeletions.Candidate] = []
         for (type, ids) in await localRecordIds()
