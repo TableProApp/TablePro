@@ -523,6 +523,99 @@ struct ConnectionCoordinatorReconnectTests {
         #expect(tableNames(following) == ["archive_facts"])
     }
 
+    @Test("A follow held back for a window that has since pinned an edit reports to the window that freed the model")
+    func heldBackFollowSkipsAPinnedRequester() async throws {
+        let first = driver(tables: ["facts"], state: .explicitTransaction)
+        first.currentSchema = "public"
+        let (switching, editing) = try await warehouseCoordinators(on: first)
+        let fetch = TestGate()
+        first.beforeFetchTables = { await fetch.enter() }
+        let switched = Task { await switching.switchSchema(to: "staging") }
+        await fetch.waitUntilEntered()
+
+        let replacement = driver(tables: ["archive_facts"])
+        replacement.currentSchema = "public"
+        factory.queue(replacement)
+        var archive = editing.connection
+        archive.database = "archive"
+        _ = try await appState.connectionManager.connect(archive)
+        await ObservedCondition.wait { monitor.hold(for: archive.id) == nil }
+        await editing.followLiveSession()
+        editing.isHeldByEditor = true
+        first.beforeFetchTables = nil
+        await fetch.open()
+        await switched.value
+
+        #expect(switching.session?.driver === replacement)
+        #expect(
+            switching.failureAlertMessage
+                == ConnectionCoordinator.lostTransactionMessage(.whileIdle, connectionName: "Warehouse")
+        )
+        #expect(!editing.showFailureAlert)
+        #expect(editing.session?.driver === first)
+    }
+
+    @Test("A database change posted during a PostgreSQL switch reloads the list once the switch lands")
+    func catalogPostDuringAPostgreSQLSwitchReloadsAfterIt() async throws {
+        let first = driver(tables: ["facts"])
+        first.currentSchema = "public"
+        first.scriptedDatabases = ["analytics", "staging"]
+        let (posting, switching) = try await warehouseCoordinators(on: first)
+        let staging = driver(tables: ["staging_facts"])
+        staging.currentSchema = "public"
+        staging.scriptedDatabases = ["analytics", "staging", "reporting"]
+        let dialing = TestGate()
+        staging.beforeConnect = { await dialing.enter() }
+        factory.queue(staging)
+        let switched = Task { await switching.switchDatabase(to: "staging") }
+        await dialing.waitUntilEntered()
+
+        posting.noteCatalogChanged(.databases)
+        await posting.reloadChangedCatalog()
+        let whileSwitching = posting.databases
+        await dialing.open()
+        await switched.value
+
+        #expect(whileSwitching == ["analytics", "staging"])
+        #expect(posting.databases == ["analytics", "staging", "reporting"])
+    }
+
+    @Test("A table created while a SQL Server schema restore reads its list shows in both windows once the restore ends")
+    func catalogPostDuringASchemaRestoreReloadsAfterIt() async throws {
+        let first = driver(tables: ["orders"])
+        first.currentSchema = "dbo"
+        first.scriptedSchemas = ["dbo", "sales"]
+        let ledger = DatabaseConnection(name: "Ledger", type: .mssql, host: "sql.example.com", port: 1_433, database: "app")
+        factory.queue(first)
+        _ = try await appState.connectionManager.connect(ledger)
+        let switching = ConnectionCoordinator(connection: ledger, appState: appState)
+        await switching.connect()
+        let creating = ConnectionCoordinator(connection: ledger, appState: appState)
+        await creating.connect()
+        await switching.switchSchema(to: "sales")
+        // The session lands on the new database's default schema, so the USE puts it back on sales.
+        first.currentSchema = "dbo"
+        let restoring = TestGate()
+        first.beforeFetchTables = { [weak first] in
+            if first?.currentSchema == "sales" { await restoring.enter() }
+        }
+        factory.opensCatalogs = true
+        factory.queue(driver(tables: ["orders", "invoices"]))
+
+        let switched = Task { await switching.switchDatabase(to: "history") }
+        await restoring.waitUntilEntered()
+        creating.noteCatalogChanged(.tables)
+        await creating.reloadChangedCatalog()
+        let whileRestoring = tableNames(creating)
+        await restoring.open()
+        await switched.value
+
+        #expect(whileRestoring == ["orders"])
+        #expect(switching.activeSchema == "sales")
+        #expect(tableNames(switching) == ["orders", "invoices"])
+        #expect(tableNames(creating) == ["orders", "invoices"])
+    }
+
     @Test("A window closed while its database switch waits on another window's dial leaves that dial's session alone")
     func closedWindowSwitchDoesNotTearDownTheSharedSession() async throws {
         let first = driver(tables: ["facts"])

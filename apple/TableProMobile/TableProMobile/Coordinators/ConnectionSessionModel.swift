@@ -361,7 +361,7 @@ final class ConnectionSessionModel {
     // The open landed where the session is; this puts it back where the connection was, through the asking window.
     @discardableResult
     private func finishOpen(_ attempt: ConnectionAttempt, restoring wanted: Placement) async -> Bool {
-        await loadDatabases(restoring: wanted.database, from: lead(of: attempt))
+        await loadDatabases(restoring: wanted.database, from: lead(of: attempt), inside: attempt)
         await loadSchemas(restoring: wanted.schema, from: lead(of: attempt))
         await refreshTransaction()
         // A database restore that failed both ways left the open lost, and it stays lost.
@@ -628,14 +628,21 @@ final class ConnectionSessionModel {
         defer { isFollowing = false }
         repeat {
             followRequested = false
-            await followOnce(from: followRequester ?? scene)
+            await followOnce(from: followLead(or: scene))
         } while followRequested && canFollow
+    }
+
+    // The window that asked hears the follow's outcome only while it still shows the live session; a retired one cannot
+    // answer its questions, and a pinned one's alert would describe a session it does not show.
+    private func followLead(or scene: ConnectionCoordinator) -> ConnectionCoordinator {
+        guard let followRequester, followRequester.showsLiveSession else { return scene }
+        return followRequester
     }
 
     // What a busy model held back: a follow, and a catalog reload that would have read a placement in motion.
     func runHeldBackWork(from scene: ConnectionCoordinator) async {
         if followRequested, canFollow, !isFollowing {
-            await follow(from: followRequester ?? scene)
+            await follow(from: followLead(or: scene))
         }
         if catalogReloadHeldBack, switchesInFlight == 0 {
             catalogReloadHeldBack = false
@@ -702,10 +709,14 @@ final class ConnectionSessionModel {
         return placementEpoch
     }
 
-    func switchDatabase(to name: String, from scene: ConnectionCoordinator) async -> ConnectionFailure? {
+    func switchDatabase(
+        to name: String,
+        from scene: ConnectionCoordinator,
+        inside open: ConnectionAttempt?
+    ) async -> ConnectionFailure? {
         let failure: ConnectionFailure?
         if redialsToSwitchDatabase {
-            await reconnectWithDatabase(name, from: scene)
+            await reconnectWithDatabase(name, from: scene, inside: open)
             failure = nil
         } else {
             failure = await useDatabase(name)
@@ -741,9 +752,9 @@ final class ConnectionSessionModel {
         return ConnectionFailure(error: refusal, title: ConnectionCoordinator.refreshTablesFailedTitle, redialRepeats: true)
     }
 
-    // Inside an open the switch is the open's step; otherwise it is an attempt of its own, which no older step outlives.
-    private func beginDatabaseSwitch(from scene: ConnectionCoordinator) -> ConnectionAttempt? {
-        if case .connecting(let open, _) = state {
+    // Inside its open the switch is the open's step; otherwise it is an attempt of its own, which no older step outlives.
+    private func beginDatabaseSwitch(from scene: ConnectionCoordinator, inside open: ConnectionAttempt?) -> ConnectionAttempt? {
+        if let open {
             return enter(.teardown(open)) ? open : nil
         }
         let attempt = ConnectionAttempt(.switchDatabase)
@@ -759,16 +770,21 @@ final class ConnectionSessionModel {
 
     // A dial, a session check or another window's switch in flight lands first: the teardown would cancel the dial,
     // and the check's lost-transaction notice or the other switch would never land. The newest switch then wins.
-    private func reconnectWithDatabase(_ database: String, from scene: ConnectionCoordinator) async {
+    // `open` is the open this switch is a step of: it is the one attempt the switch never waits for.
+    private func reconnectWithDatabase(
+        _ database: String,
+        from scene: ConnectionCoordinator,
+        inside open: ConnectionAttempt?
+    ) async {
         while true {
             await appState.sessionRedialer.settled(connectionId)
-            guard let running = state.attempt, running.purpose != .open, let task = running.task else { break }
+            guard let running = state.attempt, running !== open, let task = running.task else { break }
             _ = await task.value
             if state.attempt === running { break }
         }
         // A window closed during that wait must not tear down the session the other windows now use.
         guard scene.isAttached, activeDatabase != database,
-              let switching = beginDatabaseSwitch(from: scene) else { return }
+              let switching = beginDatabaseSwitch(from: scene, inside: open) else { return }
         guard switching.purpose == .switchDatabase else {
             await runDatabaseSwitch(to: database, as: switching, from: scene)
             return
@@ -1014,12 +1030,14 @@ final class ConnectionSessionModel {
     private func reloadChangedCatalogOnce() async {
         let board = appState.catalogChanges
         let generation = board.generation(for: connectionId)
-        guard generation != seenCatalogGeneration, let session else { return }
-        // A placement in motion would make this read the wrong one's; the switch's end runs it again.
-        guard switchesInFlight == 0 else {
+        guard generation != seenCatalogGeneration else { return }
+        // A placement in motion would make this read the wrong one's, and a PostgreSQL switch leaves no session to
+        // read; the switch's end runs it again.
+        guard switchesInFlight == 0, !isSwitchingDatabase else {
             catalogReloadHeldBack = true
             return
         }
+        guard let session else { return }
         var wanted = board.kinds(for: connectionId, since: seenCatalogGeneration)
         if !supportsSchemas { wanted.remove(.schemas) }
         if !supportsDatabaseSwitching { wanted.remove(.databases) }
@@ -1114,8 +1132,13 @@ final class ConnectionSessionModel {
 
     // MARK: - Lists
 
-    // `wanted` is where the connection was; the session may have opened elsewhere, and the asking window switches back.
-    private func loadDatabases(restoring wanted: String, from scene: ConnectionCoordinator?) async {
+    // `wanted` is where the connection was; the session may have opened elsewhere, and the asking window switches back,
+    // as a step of `open` when an open asks.
+    private func loadDatabases(
+        restoring wanted: String,
+        from scene: ConnectionCoordinator?,
+        inside open: ConnectionAttempt? = nil
+    ) async {
         guard let session, supportsDatabaseSwitching else { return }
         do {
             let listed = try await session.driver.fetchDatabases()
@@ -1124,14 +1147,14 @@ final class ConnectionSessionModel {
             if !wanted.isEmpty, listed.contains(wanted) {
                 catalog.placement.database = sessionDB
                 if wanted != sessionDB {
-                    await scene?.switchDatabase(to: wanted)
+                    await scene?.switchDatabase(to: wanted, inside: open)
                 }
             } else {
                 catalog.placement.database = sessionDB
                 // A database the connection names by its id is listed by its name, which the driver reports.
                 if !listed.contains(activeDatabase), let reported = session.driver.currentDatabase,
                    listed.contains(reported) {
-                    await scene?.switchDatabase(to: reported)
+                    await scene?.switchDatabase(to: reported, inside: open)
                 }
             }
         } catch {
@@ -1147,12 +1170,33 @@ final class ConnectionSessionModel {
             let currentSchema = session.driver.currentSchema ?? "public"
             if listed.contains(wanted), wanted != currentSchema {
                 catalog.placement.schema = currentSchema
-                await scene?.switchSchema(to: wanted)
+                // A switch in flight lands its own schema, which the restore never moves back.
+                if switchesInFlight == 0 {
+                    await restoreSchema(wanted, on: session, reportingTo: scene)
+                }
             } else if !listed.contains(activeSchema) {
                 catalog.placement.schema = currentSchema
             }
         } catch {
             Self.logger.warning("Failed to load schemas: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
+        }
+    }
+
+    // On the model's own session, as a switch every window waits for: a window that asked may be pinned on another
+    // session. Its failure is that window's to hear only while it shows the live session.
+    private func restoreSchema(_ name: String, on session: ConnectionSession, reportingTo scene: ConnectionCoordinator?) async {
+        beginSwitch()
+        let failure = await switchSchema(to: name, on: session)
+        endSwitch()
+        if let failure, let scene, scene.showsLiveSession {
+            await scene.report(failure, operation: "switchSchema")
+        }
+        // What the restore held back goes now, as it does after a window's own switch.
+        if let lead = scene ?? followRequester {
+            await runHeldBackWork(from: lead)
+        } else if catalogReloadHeldBack, switchesInFlight == 0 {
+            catalogReloadHeldBack = false
+            await reloadChangedCatalog()
         }
     }
 }

@@ -236,6 +236,11 @@ final class ConnectionCoordinator {
         selectedTable = TableSelectionResolver.keeping(selectedTable, in: model.catalog.tables)
     }
 
+    // It shows the model's session and no edit holds it, so it can hear what the model does for every window.
+    var showsLiveSession: Bool {
+        isAttached && pin == nil && !isHeldByEditor
+    }
+
     // The manager's session moved, or another party replaced it.
     func followLiveSession() async {
         guard isAttached, pin == nil else { return }
@@ -415,13 +420,18 @@ final class ConnectionCoordinator {
     }
 
     func switchDatabase(to name: String) async {
+        await switchDatabase(to: name, inside: nil)
+    }
+
+    // `open` is the open this switch puts back where the connection was; the switch runs as a step of it.
+    func switchDatabase(to name: String, inside open: ConnectionAttempt?) async {
         guard isAttached, session != nil || model.isSwitchingDatabase, name != activeDatabase, !isSwitching else { return }
         guard !anotherWindowHoldsEditor else {
             presentFailure(title: Self.switchDatabaseFailedTitle, message: Self.editorHeldElsewhereMessage)
             return
         }
         let failure = await whileSwitching(to: name) {
-            await model.switchDatabase(to: name, from: self)
+            await model.switchDatabase(to: name, from: self, inside: open)
         }
         await model.loadSchemasAfterSwitch(to: name, from: self)
         guard let failure else { return }
@@ -454,7 +464,7 @@ final class ConnectionCoordinator {
 
     // A failure on a dead session redials first. The alert then says why, unless the session is lost, which its own
     // screen says.
-    private func report(_ failure: ConnectionFailure, operation: String) async {
+    func report(_ failure: ConnectionFailure, operation: String) async {
         let failedOn = session?.driver
         if await restoreSession(after: .whileIdle) { return }
         guard !isLost, !failure.redialRepeats || session?.driver === failedOn else { return }
