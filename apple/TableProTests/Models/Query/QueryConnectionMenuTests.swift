@@ -32,39 +32,66 @@ struct QueryConnectionMenuTests {
         ])
     }
 
-    @Test("Choosing another connection moves the tab there through the move it was handed")
-    func choosingMovesTheTab() {
-        let current = UUID()
-        let target = UUID()
+    /// What a pick asked and what it moved, so a case reads both.
+    private final class PickLog {
+        var asked: [UUID] = []
         var moves: [UUID] = []
-        let model = QueryConnectionPickerModel(
-            connectionId: current,
-            name: "Shop",
-            color: .none,
-            canMove: true,
-            move: { moves.append($0) }
-        )
-
-        model.choose(target)
-        model.choose(current)
-
-        #expect(moves == [target], "The connection the tab is on is no move")
     }
 
-    @Test("A tab that cannot move stays put, and the picker says why")
-    func busyTabStaysPut() {
-        var moves: [UUID] = []
-        let model = QueryConnectionPickerModel(
-            connectionId: UUID(),
+    private static func picker(
+        connectionId: UUID = UUID(),
+        canMove: Bool = true,
+        answer: Bool,
+        log: PickLog
+    ) -> QueryConnectionPickerModel {
+        QueryConnectionPickerModel(
+            connectionId: connectionId,
             name: "Shop",
             color: .none,
-            canMove: false,
-            move: { moves.append($0) }
+            canMove: canMove,
+            confirm: { target in
+                log.asked.append(target)
+                return answer
+            },
+            move: { log.moves.append($0) }
         )
+    }
 
-        model.choose(UUID())
+    @Test("Choosing another connection asks first, and a yes moves the tab through the move it was handed")
+    func confirmedPickMovesTheTab() async {
+        let current = UUID()
+        let target = UUID()
+        let log = PickLog()
+        let model = Self.picker(connectionId: current, answer: true, log: log)
 
-        #expect(moves.isEmpty)
+        await model.choose(target)
+        await model.choose(current)
+
+        #expect(log.asked == [target], "The connection the tab is on is no move, so nothing is asked")
+        #expect(log.moves == [target])
+    }
+
+    @Test("Cancelling the question leaves the tab where it is")
+    func cancelledPickMovesNothing() async {
+        let target = UUID()
+        let log = PickLog()
+        let model = Self.picker(answer: false, log: log)
+
+        await model.choose(target)
+
+        #expect(log.asked == [target])
+        #expect(log.moves.isEmpty)
+    }
+
+    @Test("A tab that cannot move stays put without a question, and the picker says why")
+    func busyTabStaysPut() async {
+        let log = PickLog()
+        let model = Self.picker(canMove: false, answer: true, log: log)
+
+        await model.choose(UUID())
+
+        #expect(log.asked.isEmpty)
+        #expect(log.moves.isEmpty)
         #expect(model.hint.contains("cannot move"))
     }
 

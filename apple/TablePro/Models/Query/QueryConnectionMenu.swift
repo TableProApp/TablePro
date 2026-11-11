@@ -54,9 +54,10 @@ internal enum QueryConnectionMenu {
 
 /// The connection a query tab runs on, and what picking another one in the bar does.
 ///
-/// A pick moves the tab, the way Database > Move Tab to Connection does, through the `move` the bar
-/// is handed: `MainContentCoordinator.moveQueryTab(_:toConnection:)`, which ends in
-/// `WindowManager.moveQueryTab`, the only route a tab takes between connections.
+/// A pick asks first, through the `confirm` the bar is handed: the menu sits a click from the editor,
+/// and the move sends the tab's next run elsewhere. A yes moves the tab, the way Database > Move Tab
+/// to Connection does, through `move`: `MainContentCoordinator.moveQueryTab(_:toConnection:)`, which
+/// ends in `WindowManager.moveQueryTab`, the only route a tab takes between connections.
 internal struct QueryConnectionPickerModel {
     internal let connectionId: UUID
     internal let name: String
@@ -64,6 +65,8 @@ internal struct QueryConnectionPickerModel {
     /// `canMoveTabToConnection`: a running tab, or one whose grid edits would stay behind, keeps its
     /// connection until that is settled.
     internal let canMove: Bool
+    /// `MainContentCoordinator.confirmQueryTabMove(_:to:)`: true once the reader agreed to the move.
+    internal let confirm: @MainActor (UUID) async -> Bool
     internal let move: @MainActor (UUID) -> Void
 
     internal var hint: String {
@@ -74,8 +77,9 @@ internal struct QueryConnectionPickerModel {
     }
 
     @MainActor
-    internal func choose(_ id: UUID) {
+    internal func choose(_ id: UUID) async {
         guard canMove, id != connectionId else { return }
+        guard await confirm(id) else { return }
         move(id)
     }
 }

@@ -74,6 +74,7 @@ enum QueryEditorPaneFixture {
                 name: "Shop Demo",
                 color: .blue,
                 canMove: true,
+                confirm: { _ in false },
                 move: { _ in }
             ),
             savedQueries: ConnectionDataCache.shared(for: connectionId),

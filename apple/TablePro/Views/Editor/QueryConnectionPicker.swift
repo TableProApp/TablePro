@@ -63,7 +63,7 @@ struct QueryConnectionPicker: View {
                 Menu(name) { menuContent(children) }
             case .connection(let id, let name, let color):
                 Button {
-                    model.choose(id)
+                    Task { await model.choose(id) }
                 } label: {
                     if id == model.connectionId {
                         Label(name, systemImage: "checkmark")

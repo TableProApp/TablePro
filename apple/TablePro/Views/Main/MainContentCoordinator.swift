@@ -312,6 +312,11 @@ final class MainContentCoordinator: ObservableObject {
         AlertHelper.showErrorSheet(title: title, message: message, window: window)
     }
 
+    // Injectable for the same reason: the two-row query bar's question before a pick moves a tab.
+    var askToMoveQueryTab: QueryTabMoveConfirming = { confirmation, window in
+        await QueryTabMoveConfirmation.present(confirmation, in: window)
+    }
+
     // MARK: - Internal State
 
     // Published on purpose: busy state is derived from membership here, and every claim, settle and invalidate is a write.
