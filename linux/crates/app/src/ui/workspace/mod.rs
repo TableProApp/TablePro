@@ -919,6 +919,7 @@ impl Workspace {
     /// which titles its row and the header bars from these.
     fn hold(&self, model: WorkspaceModel, blockers: [Rc<dyn CloseBlocker>; 2]) {
         model.refresh_title();
+        model.show_affordances();
         model.refresh_assistant();
         self.imp().model.replace(Some(model));
         for blocker in blockers {
@@ -941,6 +942,11 @@ impl Workspace {
     /// workspace's signals.
     pub(crate) fn start(&self) {
         self.with_model(WorkspaceModel::open);
+    }
+
+    fn show_creation_menu(&self, menu: gio::MenuModel) {
+        self.imp().creation_menu.replace(Some(menu));
+        self.notify_creation_menu();
     }
 
     /// The key the session is open under.

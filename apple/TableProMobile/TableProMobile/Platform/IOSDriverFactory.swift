@@ -170,7 +170,8 @@ nonisolated final class IOSDriverFactory: DriverFactory {
                 password: password ?? "",
                 database: connection.database,
                 ssl: try ssl(for: connection, serverName: preTunnelHost),
-                databaseType: connection.type
+                databaseType: connection.type,
+                queryTimeoutSeconds: connection.queryTimeoutSeconds
             )
         case .redis:
             let dbIndex = RedisDatabaseIndex.resolve(

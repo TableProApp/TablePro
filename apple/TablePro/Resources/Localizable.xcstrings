@@ -193966,6 +193966,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The SSH host keys saved in %@ could not be read, so this server's key could not be checked." : {
+
+    },
     "the SSH host, user or port of “%@” is not one TablePro allows" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,

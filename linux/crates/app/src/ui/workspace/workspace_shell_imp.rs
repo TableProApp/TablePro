@@ -57,6 +57,10 @@ pub struct WorkspaceShell {
     #[template_child]
     pub refresh_tables_button: TemplateChild<gtk::Button>,
     #[template_child]
+    pub sidebar_bar: TemplateChild<gtk::ActionBar>,
+    #[template_child]
+    pub sidebar_add_button: TemplateChild<gtk::MenuButton>,
+    #[template_child]
     pub table_search_bar: TemplateChild<gtk::SearchBar>,
     #[template_child]
     pub table_search: TemplateChild<gtk::SearchEntry>,

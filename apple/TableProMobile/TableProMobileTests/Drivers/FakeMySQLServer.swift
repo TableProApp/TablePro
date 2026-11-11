@@ -11,7 +11,9 @@ import TableProTLSTestFixtures
 // it answers the SSL request with bytes that are not TLS. A query starting with `holdsQueriesStarting` waits
 // up to `holdSeconds` for `KILL QUERY <its session id>` from another session, then fails with 1317 as a killed
 // statement does, or with `killedQueriesComplete` succeeds as one that finished before the kill landed. Unkilled,
-// or after `release`, it succeeds. A cleartext password passed to `refuse` is answered with 1045, as an expired token is.
+// or after `release`, it succeeds. A query starting with `streamsRowsStarting` returns `streamedRows` one-column rows,
+// cut by a kill for its session with 1317. A cleartext password passed to `refuse` is answered with 1045, as an expired
+// token is.
 final class FakeMySQLServer: @unchecked Sendable {
     struct SetupFailure: Error {}
 
@@ -34,6 +36,8 @@ final class FakeMySQLServer: @unchecked Sendable {
         var queries: [String] = []
         var quit = false
         var connectionId: UInt32 = 0
+        var streamedRowsSent = 0
+        var streamWasKilled = false
 
         func sawInPlaintext(_ secret: String) -> Bool {
             let needle = Array(secret.utf8)
@@ -74,6 +78,13 @@ final class FakeMySQLServer: @unchecked Sendable {
     // ER_ACCESS_DENIED_ERROR (1045), SQLSTATE 28000.
     private static let accessDeniedPacket: [UInt8] = [0xFF, 0x15, 0x04] + Array("#28000".utf8)
         + Array("Access denied for user (using password: YES)".utf8)
+    // No warnings, SERVER_STATUS_AUTOCOMMIT.
+    private static let eofPacket: [UInt8] = [0xFE, 0x00, 0x00, 0x02, 0x00]
+    // A utf8mb4 VARCHAR(255) named `n`: catalog, schema, table, org_table, name and org_name, then charset 45, length
+    // 1020, type 0xFD, no flags or decimals.
+    private static let textColumnDefinition: [UInt8] = ["def", "", "", "", "n", ""]
+        .flatMap { FakeMySQLServer.lengthEncoded($0) }
+        + [0x0C, 45, 0x00, 0xFC, 0x03, 0x00, 0x00, 0xFD, 0x00, 0x00, 0x00, 0x00, 0x00]
 
     let port: Int
     private let listener: Int32
@@ -83,6 +94,8 @@ final class FakeMySQLServer: @unchecked Sendable {
     private let heldPrefix: String?
     private let holdSeconds: TimeInterval
     private let killedQueriesComplete: Bool
+    private let streamedPrefix: String?
+    private let streamedRows: Int
     private let fixtures: URL?
     private let kills = KillBoard()
     private let refusedPasswords = OSAllocatedUnfairLock<Set<String>>(initialState: [])
@@ -107,7 +120,9 @@ final class FakeMySQLServer: @unchecked Sendable {
         breaksHandshake: Bool = false,
         holdsQueriesStarting heldPrefix: String? = nil,
         holdSeconds: TimeInterval = 10,
-        killedQueriesComplete: Bool = false
+        killedQueriesComplete: Bool = false,
+        streamsRowsStarting streamedPrefix: String? = nil,
+        streamedRows: Int = 0
     ) throws {
         self.asksForCleartext = asksForCleartext
         self.asksForFullSHA2Auth = asksForFullSHA2Auth
@@ -115,6 +130,8 @@ final class FakeMySQLServer: @unchecked Sendable {
         self.heldPrefix = heldPrefix
         self.holdSeconds = holdSeconds
         self.killedQueriesComplete = killedQueriesComplete
+        self.streamedPrefix = streamedPrefix
+        self.streamedRows = streamedRows
         if let identity {
             let directory = FileManager.default.temporaryDirectory
                 .appendingPathComponent("FakeMySQLServer-\(UUID().uuidString)", isDirectory: true)
@@ -271,6 +288,10 @@ final class FakeMySQLServer: @unchecked Sendable {
             if command.payload.first == Self.comQuery {
                 let query = String(decoding: command.payload.dropFirst(), as: UTF8.self)
                 session.queries.append(query)
+                if let streamedPrefix, query.hasPrefix(streamedPrefix) {
+                    guard streamRows(on: channel, after: command.sequence, into: &session) else { return }
+                    continue
+                }
                 if let killed = Self.killedSession(in: query) {
                     kills.kill(killed)
                 } else if let heldPrefix, query.hasPrefix(heldPrefix),
@@ -280,6 +301,31 @@ final class FakeMySQLServer: @unchecked Sendable {
             }
             guard channel.send(reply, sequence: command.sequence &+ 1) else { return }
         }
+    }
+
+    // A text result set without CLIENT_DEPRECATE_EOF, which the handshake does not offer: the column count, the column,
+    // an EOF, the rows and a closing EOF, or 1317 in place of the rest once a kill for the session arrives.
+    private func streamRows(on channel: ServerChannel, after sequence: UInt8, into session: inout Session) -> Bool {
+        var next = sequence
+        func send(_ payload: [UInt8]) -> Bool {
+            next &+= 1
+            return channel.send(payload, sequence: next)
+        }
+        guard send([1]), send(Self.textColumnDefinition), send(Self.eofPacket) else { return false }
+        for index in 0..<streamedRows {
+            if kills.takeKill(session.connectionId) {
+                session.streamWasKilled = true
+                return send(Self.interruptedPacket)
+            }
+            guard send(Self.lengthEncoded("row \(index)")) else { return false }
+            session.streamedRowsSent += 1
+        }
+        return send(Self.eofPacket)
+    }
+
+    private static func lengthEncoded(_ text: String) -> [UInt8] {
+        let bytes = Array(text.utf8)
+        return [UInt8(bytes.count)] + bytes
     }
 
     private static func killedSession(in query: String) -> UInt32? {
@@ -344,6 +390,15 @@ final class FakeMySQLServer: @unchecked Sendable {
 
         func release(_ connectionId: UInt32) {
             end(connectionId, as: .released)
+        }
+
+        // Without waiting: a session sending rows looks for a kill between them.
+        func takeKill(_ connectionId: UInt32) -> Bool {
+            condition.lock()
+            defer { condition.unlock() }
+            guard ends[connectionId] == .killed else { return false }
+            ends[connectionId] = nil
+            return true
         }
 
         func hold(_ connectionId: UInt32, seconds: TimeInterval) -> HoldEnd {

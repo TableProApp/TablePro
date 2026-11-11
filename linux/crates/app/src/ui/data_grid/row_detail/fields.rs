@@ -143,22 +143,30 @@ fn field_row() -> gtk::Box {
         .build();
     content.append(&top);
     content.append(&value);
-    // A suffix of the row, as on a libadwaita property row.
-    let copy = gtk::Button::builder()
-        .icon_name(icons::EDIT_COPY)
-        .valign(gtk::Align::Center)
-        .build();
+    let copy = gtk::Button::from_icon_name(icons::EDIT_COPY);
     copy.add_css_class("flat");
     crate::ui::a11y::describe_icon_button(&copy, &gettext("Copy Value"), None);
+    // The value editor's pickers, while this is the picked field.
+    let tools = gtk::Box::builder().visible(false).build();
+    // Suffixes of the row, as on a libadwaita property row.
+    let suffix = gtk::Box::builder().valign(gtk::Align::Center).build();
+    suffix.append(&tools);
+    suffix.append(&copy);
+    let line = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    line.append(&content);
+    line.append(&suffix);
+    // The value editor, in place of the value, while this is the picked field.
+    let slot = gtk::Box::builder().visible(false).build();
     let row = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
         .spacing(6)
         .margin_top(6)
         .margin_bottom(6)
         .margin_start(12)
         .margin_end(12)
         .build();
-    row.append(&content);
-    row.append(&copy);
+    row.append(&line);
+    row.append(&slot);
     row
 }
 
@@ -168,24 +176,43 @@ struct FieldParts {
     edited: gtk::Image,
     kind: gtk::Label,
     value: gtk::Inscription,
+    tools: gtk::Box,
     copy: gtk::Button,
+    slot: gtk::Box,
 }
 
 fn field_parts(row: &gtk::Widget) -> Option<FieldParts> {
-    let content = row.first_child()?;
+    let line = row.first_child()?;
+    let content = line.first_child()?;
     let top = content.first_child()?;
     let key = top.first_child()?;
     let name = key.next_sibling()?;
     let edited = name.next_sibling()?;
     let kind = edited.next_sibling()?.last_child()?;
+    let tools = content.next_sibling()?.first_child()?;
+    let copy = tools.next_sibling()?;
     Some(FieldParts {
         key: key.downcast().ok()?,
         name: name.downcast().ok()?,
         edited: edited.downcast().ok()?,
         kind: kind.downcast().ok()?,
         value: top.next_sibling()?.downcast().ok()?,
-        copy: content.next_sibling()?.downcast().ok()?,
+        tools: tools.downcast().ok()?,
+        copy: copy.downcast().ok()?,
+        slot: line.next_sibling()?.downcast().ok()?,
     })
+}
+
+/// Move `widget` into `home`, unless it is there already: taking it out
+/// would drop the keyboard it holds.
+fn move_into(widget: &gtk::Box, home: &gtk::Box) {
+    if widget.parent().as_ref() == Some(home.upcast_ref()) {
+        return;
+    }
+    if let Some(parent) = widget.parent().and_downcast::<gtk::Box>() {
+        parent.remove(widget);
+    }
+    home.append(widget);
 }
 
 fn set_class(widget: &impl IsA<gtk::Widget>, class: &str, on: bool) {
@@ -318,17 +345,20 @@ impl RowDetailPane {
                 if let Some(item) = item.downcast_ref::<gtk::ListItem>() {
                     pane.imp().bound.borrow_mut().push(item.clone());
                     pane.draw_field(item);
+                    pane.place_editor();
                 }
             }
         ));
         factory.connect_unbind(glib::clone!(
             #[weak(rename_to = pane)]
             self,
-            move |_, item| pane
-                .imp()
-                .bound
-                .borrow_mut()
-                .retain(|bound| bound.upcast_ref::<glib::Object>() != item)
+            move |_, item| {
+                pane.imp()
+                    .bound
+                    .borrow_mut()
+                    .retain(|bound| bound.upcast_ref::<glib::Object>() != item);
+                pane.place_editor();
+            }
         ));
         factory
     }
@@ -343,6 +373,7 @@ impl RowDetailPane {
 
     pub(super) fn refilter_fields(&self) {
         let imp = self.imp();
+        let editor_had_keyboard = self.editor_holds_focus();
         let has_edits = self.grid().zip(self.current_row()).is_some_and(|(grid, row)| {
             grid.grid_columns().iter().any(|column| {
                 let mark = grid.tracked().mark(&row, column.index);
@@ -360,6 +391,8 @@ impl RowDetailPane {
             0 => "empty",
             _ => "fields",
         });
+        self.place_editor();
+        self.keep_keyboard(editor_had_keyboard);
     }
 
     fn field_shown(&self, column: Option<usize>) -> bool {
@@ -477,6 +510,7 @@ impl RowDetailPane {
             return;
         };
         self.take_field(column);
+        self.place_editor();
         self.load_value();
         self.move_grid_focus(column);
     }
@@ -484,8 +518,21 @@ impl RowDetailPane {
     /// Show `column`'s field, selected in the list, as the grid asks.
     pub(super) fn set_field(&self, column: usize) {
         self.take_field(column);
+        self.list_field(column);
         self.select_in_list(Some(column));
+        self.place_editor();
         self.load_value();
+    }
+
+    // The editor sits only in a listed field's row.
+    fn list_field(&self, column: usize) {
+        let imp = self.imp();
+        if self.current_row().is_none() || self.field_shown(Some(column)) {
+            return;
+        }
+        imp.field_search.set_text("");
+        imp.edited_toggle.set_active(false);
+        self.refilter_fields();
     }
 
     /// Make `column` the selected field. What was typed in another field
@@ -510,9 +557,60 @@ impl RowDetailPane {
         let syncing = imp.syncing.replace(true);
         imp.selection.set_selected(position);
         imp.syncing.set(syncing);
+        self.place_editor();
         if position != gtk::INVALID_LIST_POSITION {
             imp.field_list.scroll_to(position, gtk::ListScrollFlags::NONE, None);
         }
+    }
+
+    /// Lay the value editor into the picked field's row, in place of its
+    /// value, and its pickers beside that row's copy button. The list
+    /// recycles rows as it scrolls and filters, so every bind and unbind
+    /// lays them again, and with no row for them they go back to the dock.
+    fn place_editor(&self) {
+        let imp = self.imp();
+        let picked = imp.field.get();
+        let bound: Vec<gtk::ListItem> = imp.bound.borrow().clone();
+        let mut seat = None;
+        for item in &bound {
+            let Some(parts) = item.child().as_ref().and_then(field_parts) else {
+                continue;
+            };
+            let holds = picked.is_some() && item.is_selected() && field_of(item.item()) == picked;
+            parts.value.set_visible(!holds);
+            parts.tools.set_visible(holds);
+            parts.slot.set_visible(holds);
+            if holds {
+                seat = Some((parts.tools, parts.slot));
+            }
+        }
+        let dock = imp.editor_dock.get();
+        let (tools_home, editor_home) = seat.unwrap_or_else(|| (dock.clone(), dock));
+        move_into(&imp.editor_tools.get(), &tools_home);
+        move_into(&imp.editor_box.get(), &editor_home);
+    }
+
+    fn editor_holds_focus(&self) -> bool {
+        let imp = self.imp();
+        crate::ui::a11y::holds_focus(&imp.editor_box.get()) || crate::ui::a11y::holds_focus(&imp.editor_tools.get())
+    }
+
+    /// A filter or a new column set can take away the row that held the
+    /// editor and the keyboard with it, which GTK would hand to the
+    /// window's first control.
+    fn keep_keyboard(&self, editor_had_it: bool) {
+        let imp = self.imp();
+        let list = imp.field_list.get();
+        if !editor_had_it || self.current_row().is_none() || imp.editor_box.is_ancestor(&list) {
+            return;
+        }
+        if imp.filtered.n_items() == 0 {
+            imp.field_search.grab_focus();
+            return;
+        }
+        // The list's focused row was the one taken away.
+        list.scroll_to(0, gtk::ListScrollFlags::FOCUS, None);
+        list.grab_focus();
     }
 
     /// Move the grid's focused cell to `column` of the shown row. The
@@ -580,6 +678,7 @@ impl RowDetailPane {
             return;
         }
         let items: Vec<glib::BoxedAnyObject> = wanted.into_iter().map(glib::BoxedAnyObject::new).collect();
+        let editor_had_keyboard = self.editor_holds_focus();
         imp.syncing.set(true);
         store.splice(0, store.n_items(), &items);
         imp.syncing.set(false);
@@ -588,6 +687,8 @@ impl RowDetailPane {
             imp.field.set(None);
         }
         self.select_in_list(imp.field.get());
+        self.place_editor();
+        self.keep_keyboard(editor_had_keyboard);
     }
 
     fn watch_column_visibility(&self) {
