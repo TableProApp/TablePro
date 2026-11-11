@@ -1,5 +1,5 @@
 use crate::browse::{
-    BrowseSqlError, ExportRequest, PageLayout, PageRequest, PageSpec, PagingMode, RowKeyLayout, SortKey,
+    BrowseSqlError, ExportFields, ExportRequest, PageLayout, PageRequest, PageSpec, PagingMode, RowKeyLayout, SortKey,
 };
 use crate::column::ColumnInfo;
 use crate::dialect::TablePaging;
@@ -100,6 +100,8 @@ pub(crate) fn count(table: &TableRef, columns: &[ColumnInfo], filter: &FilterSet
 }
 
 /// Every document the filter matches, in the page's order, for an export.
+/// `ExportFields::Every` writes no `$project`, so the server sends each
+/// whole document and the driver finds the columns in them.
 pub(crate) fn export(request: &ExportRequest<'_>) -> Result<Statement, BrowseSqlError> {
     let key = key_column(request.identity, request.columns)?;
     let mut params = ShellParams::new();
@@ -114,7 +116,9 @@ pub(crate) fn export(request: &ExportRequest<'_>) -> Result<Statement, BrowseSql
     if !sort.is_empty() {
         stages.push(field("$sort", sort_document(sort)));
     }
-    stages.push(field("$project", projection(request.columns)));
+    if request.fields == ExportFields::Listed {
+        stages.push(field("$project", projection(request.columns)));
+    }
     Ok(params.statement(&aggregate(request.table, stages)))
 }
 

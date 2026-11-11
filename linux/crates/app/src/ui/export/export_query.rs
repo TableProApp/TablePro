@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use tablepro_core::browse::{ExportRequest, SortKey};
+use tablepro_core::browse::{ExportFields, ExportRequest, SortKey};
 use tablepro_core::meta::{RowIdentity, TableRef};
 use tablepro_core::{ColumnInfo, FilterSet, UserSql};
 
@@ -32,6 +32,7 @@ impl TableExport {
             filter: &self.filter,
             sort: &self.sort,
             identity: &self.identity,
+            fields: ExportFields::Every,
         }
     }
 }

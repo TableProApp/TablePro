@@ -78,7 +78,7 @@ impl MongoEndpoint {
         let service = target.transport.service_endpoint().clone();
         let database = target.database.clone().filter(|name| !name.trim().is_empty());
         let mut template = match (target.options.dns_seed_list, target.transport.route()) {
-            (true, TransportRoute::Tcp(_)) => seed_list(&service).await?,
+            (true, TransportRoute::Tcp(_)) => seed_list(&service, &target.credentials).await?,
             (true, TransportRoute::UnixSocket(_) | TransportRoute::InProcess) => {
                 return Err(ConfigError::SeedListOverSsh.into());
             }
@@ -337,11 +337,22 @@ fn replica_set(first: &NetworkEndpoint, options: &NetworkOptions) -> Result<Clie
 
 /// The servers the host's SRV records name, with the options its TXT
 /// record sets, such as the replica set and the authentication database.
-async fn seed_list(service: &NetworkEndpoint) -> Result<ClientOptions, DriverError> {
-    let uri = format!("mongodb+srv://{}/", percent_encoded(service.host()));
+async fn seed_list(service: &NetworkEndpoint, credentials: &Credentials) -> Result<ClientOptions, DriverError> {
+    let uri = seed_list_uri(service.host(), credentials);
     ClientOptions::parse(uri.as_str())
         .await
         .map_err(|error| map_error(&error, service, LossPhase::Connect))
+}
+
+// The crate puts a TXT record's authSource only on a login the string names, so the user goes in, never the password.
+fn seed_list_uri(host: &str, credentials: &Credentials) -> String {
+    let user = match credentials {
+        Credentials::Password { username, .. } if !username.trim().is_empty() => {
+            format!("{}@", percent_encoded(username.trim()))
+        }
+        _ => String::new(),
+    };
+    format!("mongodb+srv://{user}{}/", percent_encoded(host))
 }
 
 /// The login, checked in the database the user is defined in: the one
@@ -399,8 +410,8 @@ pub(crate) fn setup_error(error: TlsSetupError) -> DriverError {
     }
 }
 
-/// A host as it goes into a connection string, every byte outside the
-/// unreserved set escaped.
+/// A host or a user name as it goes into a connection string, every
+/// byte outside the unreserved set escaped.
 fn percent_encoded(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for byte in text.bytes() {
@@ -545,6 +556,29 @@ mod tests {
             credential(&target("  ", Some("shop"), NetworkOptions::default()))
                 .expect("no login")
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn a_seed_list_names_the_user_and_never_the_password() {
+        let login = |username: &str| Credentials::Password {
+            username: username.to_owned(),
+            password: SecretString::from("p@ss:word"),
+        };
+        let host = "cluster0.example.net";
+
+        let named = seed_list_uri(host, &login(" a@b:c "));
+
+        assert_eq!(named, "mongodb+srv://a%40b%3Ac@cluster0.example.net/");
+        assert!(!named.contains("p%40ss") && !named.contains("p@ss"), "{named}");
+        let parsed = mongodb::options::ConnectionString::parse(&named).expect("a connection string");
+        let credential = parsed.credential.expect("a login");
+        assert_eq!(credential.username.as_deref(), Some("a@b:c"));
+        assert!(credential.password.is_none());
+        assert_eq!(seed_list_uri(host, &login("  ")), "mongodb+srv://cluster0.example.net/");
+        assert_eq!(
+            seed_list_uri(host, &Credentials::Integrated),
+            "mongodb+srv://cluster0.example.net/"
         );
     }
 
