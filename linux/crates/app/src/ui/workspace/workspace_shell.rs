@@ -52,6 +52,7 @@ glib::wrapper! {
 pub(super) fn describe_buttons(shell: &WorkspaceShell) {
     let imp = shell.imp();
     describe_icon_button(&imp.table_search_toggle.get(), &gettext("Search"), None);
+    describe_icon_button(&imp.sidebar_add_button.get(), &gettext("Add"), None);
     describe_icon_button(&imp.safe_mode_button.get(), &gettext("Safe Mode"), None);
     describe_icon_button(
         &imp.refresh_tables_button.get(),
@@ -144,6 +145,7 @@ impl WorkspaceShell {
             shell,
             move |_| shell.on_scope_changed()
         ));
+        shell.connect_sidebar_bar();
         tree.follow_search(&imp.table_search);
         let _ = imp.tree.set(tree);
         crate::ui::picker::install_picker_actions(&shell, services.saved_connections.clone(), sender.clone());
@@ -386,6 +388,14 @@ impl WorkspaceShell {
             of_front("icon-name").bind(&icon, "icon-name", Some(self)),
             shows_icon.bind(&icon, "visible", Some(self)),
             of_front("assistant-available").bind(&imp.assistant_toggle.get(), "visible", Some(self)),
+            of_front("creation-menu").bind(&imp.sidebar_add_button.get(), "menu-model", Some(self)),
+            gtk::ClosureExpression::new::<bool>(
+                [of_front("creation-menu")],
+                glib::closure!(
+                    |_: Option<glib::Object>, menu: Option<gio::MenuModel>| menu.is_some_and(|menu| menu.n_items() > 0)
+                ),
+            )
+            .bind(&imp.sidebar_add_button.get(), "visible", Some(self)),
         ];
         if let Some(window) = imp.window.upgrade() {
             watches.push(of_front("window-title").bind(&window, "title", Some(self)));
@@ -713,7 +723,24 @@ impl WorkspaceShell {
         } else {
             imp.table_search_bar.set_key_capture_widget(Some(&*imp.sidebar_root));
         }
+        self.show_sidebar_bar();
         self.reload_favorites();
+    }
+
+    fn connect_sidebar_bar(&self) {
+        self.imp().sidebar_add_button.connect_visible_notify(glib::clone!(
+            #[weak(rename_to = shell)]
+            self,
+            move |_| shell.show_sidebar_bar()
+        ));
+    }
+
+    // Its commands make objects in the tree, which the Favorites scope does not list.
+    fn show_sidebar_bar(&self) {
+        let imp = self.imp();
+        let tables = imp.scope_toggle.active_name().as_deref() != Some(FAVORITES);
+        imp.sidebar_bar
+            .set_revealed(tables && imp.sidebar_add_button.is_visible());
     }
 
     fn follow_favorites(&self) {

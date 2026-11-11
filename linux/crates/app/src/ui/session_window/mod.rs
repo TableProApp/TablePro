@@ -463,21 +463,11 @@ impl SessionWindow {
             SessionWindowInput::DialogClosed => drop(self.imp().dialog.take()),
             SessionWindowInput::CancelConnect => self.on_cancel_connect(),
             SessionWindowInput::StopConnecting(key) => self.stop_connecting(&key),
-            SessionWindowInput::RetryConnect => {
-                if let Some(key) = self.failed_key() {
-                    self.on_retry_connect(&key);
-                }
-            }
+            SessionWindowInput::RetryConnect => self.on_failed(|key| self.on_retry_connect(key)),
             SessionWindowInput::RetryWithNewSecret(kind) => {
-                if let Some(key) = self.failed_key() {
-                    self.on_retry_with_new_secret(&key, kind);
-                }
+                self.on_failed(|key| self.on_retry_with_new_secret(key, kind));
             }
-            SessionWindowInput::EditConnection => {
-                if let Some(key) = self.failed_key() {
-                    self.on_edit_connection(&key);
-                }
-            }
+            SessionWindowInput::EditConnection => self.on_failed(|key| self.on_edit_connection(key)),
             SessionWindowInput::Remedy { key, remedy } => self.on_remedy(key, remedy),
             SessionWindowInput::ShowConnectFailure(key) => self.on_show_connect_failure(key),
             SessionWindowInput::ForgetConnectFailure(key) => self.forget_failure(&key),
@@ -486,6 +476,7 @@ impl SessionWindow {
             SessionWindowInput::Disconnect => self.on_disconnect_front(),
             SessionWindowInput::DisconnectSession(key) => self.on_disconnect(key),
             SessionWindowInput::ChooseDatabaseIn(key) => self.choose_database_in(key),
+            SessionWindowInput::NewTableIn(key) => self.deliver_to(&key, WorkspaceInput::NewTableTab { schema: None }),
             SessionWindowInput::NewDatabaseIn(key) => self.deliver_to(&key, WorkspaceInput::NewDatabasePrompt),
             SessionWindowInput::NewSchemaIn(key) => self.deliver_to(&key, WorkspaceInput::NewSchemaPrompt),
             SessionWindowInput::DropDatabaseIn(key) => self.drop_database_in(key),
@@ -1600,7 +1591,13 @@ impl SessionWindow {
         self.connects_changed();
     }
 
-    /// The key the failed page is about.
+    // The failure page's buttons act on the connect that failed.
+    fn on_failed(&self, act: impl FnOnce(&SessionKey)) {
+        if let Some(key) = self.failed_key() {
+            act(&key);
+        }
+    }
+
     fn failed_key(&self) -> Option<SessionKey> {
         self.imp()
             .failed
