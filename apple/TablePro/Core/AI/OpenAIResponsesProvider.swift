@@ -66,11 +66,68 @@ final class OpenAIResponsesProvider: ChatTransport {
     }
 
     func fetchAvailableModels() async throws -> [AIModelInfo] {
-        try await fetchModelIDs().map { AIModelInfo(id: $0) }
+        if dialect == .xai, let languageModels = await fetchXAILanguageModels() {
+            return languageModels
+        }
+        let host = resolvedEndpoint?.apiBase.host
+        return try await fetchModelEntries(resource: AIEndpointStyle.responses.modelsResource, key: "data")
+            .filter { Self.listsChatModel($0, dialect: dialect, host: host) }
+            .compactMap { $0["id"] as? String }
+            .sorted()
+            .map { AIModelInfo(id: $0) }
     }
 
-    private func fetchModelIDs() async throws -> [String] {
-        let url = try requestURL(AIEndpointStyle.responses.modelsResource)
+    // `/v1/models` carries no modality; a gateway in xAI's place may not serve `language-models`.
+    private func fetchXAILanguageModels() async -> [AIModelInfo]? {
+        guard let entries = try? await fetchModelEntries(resource: "language-models", key: "models") else {
+            return nil
+        }
+        let models = entries.compactMap(Self.decodeXAILanguageModel(_:)).sorted { $0.id < $1.id }
+        return models.isEmpty ? nil : models
+    }
+
+    static func decodeXAILanguageModel(_ json: [String: Any]) -> AIModelInfo? {
+        guard let id = json["id"] as? String, !id.isEmpty,
+              let outputs = json["output_modalities"] as? [String], outputs.contains("text")
+        else { return nil }
+        let inputs = json["input_modalities"] as? [String] ?? []
+        return AIModelInfo(id: id, modalities: inputs.contains("image") ? [.text, .image] : [.text])
+    }
+
+    static func listsChatModel(_ json: [String: Any], dialect: ResponsesDialect, host: String?) -> Bool {
+        guard let id = json["id"] as? String, !id.isEmpty else { return false }
+        switch dialect {
+        case .xai:
+            if json["image_price"] != nil { return false }
+            return !["imagine", "-image", "voice"].contains(where: { id.contains($0) })
+        case .openAI:
+            guard let host, isOpenAIHost(host) else { return true }
+            return isOpenAIChatModel(id)
+        }
+    }
+
+    // Only OpenAI's own hosts are known to list its non-chat models; a gateway lists what it routes.
+    private static func isOpenAIHost(_ host: String) -> Bool {
+        let host = host.lowercased()
+        return host == "api.openai.com" || host.hasSuffix(".api.openai.com")
+    }
+
+    // Checked against the Responses column of every live model on platform.openai.com/docs/models.
+    // A fine-tune is `ft:<base>:<org>:<suffix>:<id>`; only its base model says what it is.
+    static func isOpenAIChatModel(_ id: String) -> Bool {
+        let base = id.hasPrefix("ft:") ? String(id.dropFirst(3).prefix { $0 != ":" }) : id
+        let families = ["gpt-", "chatgpt-", "chat-latest", "codex-"]
+        let isOSeries = base.first == "o" && base.dropFirst().first?.isNumber == true
+        guard isOSeries || families.contains(where: { base.hasPrefix($0) }) else { return false }
+        let nonChat = [
+            "image", "audio", "realtime", "transcribe", "tts", "whisper", "-live", "search",
+            "embedding", "moderation", "instruct", "deep-research", "computer-use"
+        ]
+        return !nonChat.contains(where: { base.contains($0) })
+    }
+
+    private func fetchModelEntries(resource: String, key: String) async throws -> [[String: Any]] {
+        let url = try requestURL(resource)
         var request = URLRequest(url: url)
         request.timeoutInterval = AIProvider.modelListTimeout
         if let apiKey, !apiKey.isEmpty {
@@ -87,11 +144,11 @@ final class OpenAIResponsesProvider: ChatTransport {
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200,
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let modelsArray = json["data"] as? [[String: Any]]
+              let entries = json[key] as? [[String: Any]]
         else {
             throw AIProviderError.networkError("Failed to fetch models")
         }
-        return modelsArray.compactMap { $0["id"] as? String }.sorted()
+        return entries
     }
 
     func testConnection() async throws -> Bool {

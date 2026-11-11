@@ -40,6 +40,8 @@ final class AppEvents {
     let currentSchemaChanged = PassthroughSubject<UUID, Never>()
 
     let aiSettingsChanged = PassthroughSubject<Void, Never>()
+    // A new API key lives in the Keychain, so the save that brings it can leave `AISettings` unchanged.
+    let aiProviderSaved = PassthroughSubject<UUID, Never>()
 
     // MARK: - Connections
 
