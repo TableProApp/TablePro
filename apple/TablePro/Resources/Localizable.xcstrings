@@ -69660,6 +69660,10 @@
         }
       }
     },
+    "Each array element must be a JSON object" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Each Browse filter needs an Attribute and an Operator" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -74485,6 +74489,10 @@
           }
         }
       }
+    },
+    "etcd compacted the revision this export started from, so it stopped part way. Run it again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "etcd has no %@ column." : {
       "extractionState" : "manual",
@@ -189446,6 +189454,14 @@
     "The JSON array must contain only objects." : {
 
     },
+    "The JSON file ends before its last value is complete." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The JSON file is not valid at byte %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The JSON is nested more deeply than DynamoDB allows" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -196074,6 +196090,10 @@
     },
     "The wait/io/table/sql/handler instrument is disabled, so the server records no index reads." : {
 
+    },
+    "The workbook has more sheets than an XLSX file can hold." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The workbook has no worksheet to read." : {
       "extractionState" : "manual",
@@ -218196,6 +218216,10 @@
           }
         }
       }
+    },
+    "XLSX file exceeds 4 GB ZIP limit" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" : {
       "extractionState" : "stale",

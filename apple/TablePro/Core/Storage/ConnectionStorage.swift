@@ -29,6 +29,8 @@ final class ConnectionStorage {
     private var cachedConnections: [DatabaseConnection]?
 
     private(set) var lastLoadFailed = false
+    private(set) var fileReadCount = 0
+    private(set) var fileWriteCount = 0
 
     /// Whether the file on disk is the one TablePro last wrote. False once it has been edited by
     /// something else, which is the signal to refuse to run a connection's password source.
@@ -91,6 +93,7 @@ final class ConnectionStorage {
     func loadConnections() -> [DatabaseConnection] {
         if let cached = cachedConnections { return cached }
 
+        fileReadCount += 1
         guard let storedConnections = file.load() else {
             lastLoadFailed = true
             return []
@@ -139,6 +142,7 @@ final class ConnectionStorage {
     @discardableResult
     private func persist(_ connections: [DatabaseConnection], byUser: Bool = true) -> Bool {
         guard file.save(connections.map { StoredConnection(from: $0) }, byUser: byUser) else { return false }
+        fileWriteCount += 1
         cachedConnections = nil
         return true
     }

@@ -67,6 +67,12 @@ private struct PrintedBatchAnswer: CarriesServerOutput {
     var serverOutput: PluginServerOutput = .none
 }
 
+// Which query each batch's result sets belong to (nil: they are numbered), and their rows built off the main actor.
+private struct BatchResultPlan {
+    let queries: [[SQLStatementScanner.ExecutableStatement]?]
+    let built: StatementRowsBuild
+}
+
 private struct BatchRun {
     let outcome: BatchStatementOutcome<BatchOutput>
     let plan: BatchTransactionPlan
@@ -146,20 +152,23 @@ extension QueryExecutionCoordinator {
             guard let self else { return }
             let run = await runBatches(prepared, scope: scope, mode: mode, claim: claim, lease: lease)
             postRanStatements(of: prepared, run: run, scope: scope, connection: conn)
+            let plan = await batchResultPlan(prepared, outputs: Self.outputs(of: run.outcome), tabId: tabId)
 
             let sessionNotice = Self.runNotice(outcome: run.outcome, sessionState: run.sessionState)
             switch run.outcome {
             case .cancelled(let outputs):
                 guard parent.tabExecution.settle(claim) else { return }
                 parent.retireQueryTask(.claim(claim))
-                keepStoppedBatches(prepared, outputs: outputs, parameters: parameters, tabId: tabId, sessionNotice: sessionNotice)
+                keepStoppedBatches(
+                    prepared, outputs: outputs, parameters: parameters, tabId: tabId, sessionNotice: sessionNotice, plan: plan
+                )
                 parent.reportEndedExecutions([
                     EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
                 ])
             case .completed(let outputs):
                 applyCompletedBatches(
                     prepared, outputs: outputs, parameters: parameters,
-                    tabId: tabId, claim: claim, sessionNotice: sessionNotice
+                    tabId: tabId, claim: claim, sessionNotice: sessionNotice, plan: plan
                 )
             case .failed(let outputs, let failure, let errorDescription):
                 handleBatchFailure(
@@ -177,7 +186,8 @@ extension QueryExecutionCoordinator {
                     parameters: parameters,
                     tabId: tabId,
                     claim: claim,
-                    failureOutput: run.failureOutput
+                    failureOutput: run.failureOutput,
+                    plan: plan
                 )
             }
         }
@@ -367,7 +377,8 @@ extension QueryExecutionCoordinator {
         parameters: [QueryParameter],
         tabId: UUID,
         claim: TabExecutionClaim,
-        sessionNotice: String?
+        sessionNotice: String?,
+        plan: BatchResultPlan
     ) {
         guard parent.tabExecution.settle(claim) else { return }
         parent.retireQueryTask(.claim(claim))
@@ -383,7 +394,7 @@ extension QueryExecutionCoordinator {
             tabId: tabId,
             timing: PluginQueryTiming(total: outputs.reduce(0) { $0 + $1.executionTime }),
             totalRowsAffected: totalRowsAffected,
-            newResultSets: batchResultSets(prepared, outputs: outputs, tabId: tabId),
+            newResultSets: batchResultSets(prepared, outputs: outputs, tabId: tabId, plan: plan),
             sessionNotice: sessionNotice
         )
     }
@@ -393,7 +404,8 @@ extension QueryExecutionCoordinator {
         outputs: [BatchOutput],
         parameters: [QueryParameter],
         tabId: UUID,
-        sessionNotice: String?
+        sessionNotice: String?,
+        plan: BatchResultPlan
     ) {
         guard !outputs.isEmpty else { return }
         recordBatchHistory(prepared, outputs: outputs, parameters: parameters, tabId: tabId, failedIndex: nil)
@@ -401,7 +413,7 @@ extension QueryExecutionCoordinator {
             tabId: tabId,
             timing: PluginQueryTiming(total: outputs.reduce(0) { $0 + $1.executionTime }),
             totalRowsAffected: outputs.reduce(0) { $0 + $1.rowsAffected },
-            newResultSets: batchResultSets(prepared, outputs: outputs, tabId: tabId),
+            newResultSets: batchResultSets(prepared, outputs: outputs, tabId: tabId, plan: plan),
             sessionNotice: sessionNotice
         )
     }
@@ -413,7 +425,8 @@ extension QueryExecutionCoordinator {
         parameters: [QueryParameter],
         tabId: UUID,
         claim: TabExecutionClaim,
-        failureOutput: PluginServerOutput
+        failureOutput: PluginServerOutput,
+        plan: BatchResultPlan
     ) {
         let report = context.report()
         let printed: PluginServerOutput
@@ -451,7 +464,7 @@ extension QueryExecutionCoordinator {
             tab.execution.executionTime = timing.total
             tab.execution.lastExecutedAt = Date()
             tab.display.replaceUnpinnedResults(
-                with: batchResultSets(prepared, outputs: outputs, tabId: tabId) + [errorResult]
+                with: batchResultSets(prepared, outputs: outputs, tabId: tabId, plan: plan) + [errorResult]
             )
             if tab.display.isResultsCollapsed {
                 tab.display.isResultsCollapsed = false
@@ -503,25 +516,22 @@ extension QueryExecutionCoordinator {
     private func batchResultSets(
         _ prepared: [PreparedBatch],
         outputs: [BatchOutput],
-        tabId: UUID
+        tabId: UUID,
+        plan: BatchResultPlan
     ) -> [ResultSet] {
-        let databaseType = parent.connection.type
         let grammar = parent.lexicalGrammar
         let firstNumber = parent.tabManager.tabs.first { $0.id == tabId }?.display.pinnedResultCount ?? 0
+        let reading = parent.tableNameReading
+        var builtIndex = 0
+        // Taken in the order `batchResultPlan` built them: batch by batch, each batch's result sets in order.
+        func nextBuilt() -> StatementRows? {
+            defer { builtIndex += 1 }
+            return plan.built.statement(at: builtIndex, readBy: reading)
+        }
         var resultSets: [ResultSet] = []
-        for (entry, output) in zip(prepared, outputs) {
-            let isPlainQuery = { (sql: String) in
-                QueryExecutor.qualifiesForRowCap(sql: sql, tabType: .query, databaseType: databaseType)
-            }
+        for ((entry, output), queries) in zip(zip(prepared, outputs), plan.queries) {
             let produced: [ResultSet]
-            if BatchResultMapping.mapsToStatements(
-                entry.batch,
-                resultSetCount: output.resultSets.count,
-                hasErrors: !output.errors.isEmpty,
-                grammar: grammar,
-                isPlainQuery: isPlainQuery
-            ) {
-                let queries = entry.batch.statements.filter { isPlainQuery($0.sql) }
+            if let queries {
                 produced = zip(queries, output.resultSets).map { statement, result in
                     let replayable = entry.parameterValues == nil
                         && !BatchResultMapping.referencesLocalVariable(statement.sql, grammar: grammar)
@@ -531,7 +541,8 @@ extension QueryExecutionCoordinator {
                         index: firstNumber + resultSets.count,
                         baseQuery: replayable ? statement.sql : nil,
                         tabId: tabId,
-                        anchor: StatementAnchor(statement)
+                        anchor: StatementAnchor(statement),
+                        built: nextBuilt()
                     )
                 }
             } else if output.resultSets.isEmpty {
@@ -541,7 +552,11 @@ extension QueryExecutionCoordinator {
             } else {
                 produced = output.resultSets.enumerated().map { offset, result in
                     numberedResultSet(
-                        result, anchor: entry.batch.anchor, index: firstNumber + resultSets.count + offset, tabId: tabId
+                        result,
+                        anchor: entry.batch.anchor,
+                        index: firstNumber + resultSets.count + offset,
+                        tabId: tabId,
+                        built: nextBuilt()
                     )
                 }
             }
@@ -551,36 +566,67 @@ extension QueryExecutionCoordinator {
         return resultSets
     }
 
+    // Decided once, before the settle: the mapping costs a classification per statement and the rows a pass each.
+    private func batchResultPlan(_ prepared: [PreparedBatch], outputs: [BatchOutput], tabId: UUID) async -> BatchResultPlan {
+        let databaseType = parent.connection.type
+        let grammar = parent.lexicalGrammar
+        let queries = zip(prepared, outputs).map { entry, output in
+            Self.mappedQueries(of: entry, output: output, databaseType: databaseType, grammar: grammar)
+        }
+        let sources = zip(queries, outputs).flatMap { mapped, output -> [(sql: String?, result: QueryResult)] in
+            guard let mapped else { return output.resultSets.map { (sql: nil, result: $0) } }
+            return zip(mapped, output.resultSets).map { (sql: $0.sql as String?, result: $1) }
+        }
+        return BatchResultPlan(queries: queries, built: await buildStatementRows(sources, tabId: tabId))
+    }
+
+    // The query each of a batch's result sets belongs to, or nil when the batch's shape does not pin them.
+    private static func mappedQueries(
+        of entry: PreparedBatch,
+        output: BatchOutput,
+        databaseType: DatabaseType,
+        grammar: SQLLexicalGrammar
+    ) -> [SQLStatementScanner.ExecutableStatement]? {
+        let isPlainQuery = { (sql: String) in
+            QueryExecutor.qualifiesForRowCap(sql: sql, tabType: .query, databaseType: databaseType)
+        }
+        guard BatchResultMapping.mapsToStatements(
+            entry.batch,
+            resultSetCount: output.resultSets.count,
+            hasErrors: !output.errors.isEmpty,
+            grammar: grammar,
+            isPlainQuery: isPlainQuery
+        ) else { return nil }
+        return entry.batch.statements.filter { isPlainQuery($0.sql) }
+    }
+
+    private static func outputs(of outcome: BatchStatementOutcome<BatchOutput>) -> [BatchOutput] {
+        switch outcome {
+        case .completed(let results), .cancelled(let results), .failed(let results, _, _):
+            return results
+        }
+    }
+
     private static func runNotice(
         outcome: BatchStatementOutcome<BatchOutput>,
         sessionState: PluginSessionTransactionState
     ) -> String? {
-        let outputs: [BatchOutput]
-        switch outcome {
-        case .completed(let results), .cancelled(let results), .failed(let results, _, _):
-            outputs = results
-        }
-        return BatchRunNotice.text(
-            discardedResultSetCount: outputs.reduce(0) { $0 + $1.discardedResultSetCount },
+        BatchRunNotice.text(
+            discardedResultSetCount: outputs(of: outcome).reduce(0) { $0 + $1.discardedResultSetCount },
             sessionState: sessionState
         )
     }
 
-    private func numberedResultSet(_ result: QueryResult, anchor: StatementAnchor?, index: Int, tabId: UUID) -> ResultSet {
-        let columns = result.columns.map { String($0) }
+    private func numberedResultSet(
+        _ result: QueryResult,
+        anchor: StatementAnchor?,
+        index: Int,
+        tabId: UUID,
+        built: StatementRows?
+    ) -> ResultSet {
         let resultSet = ResultSet(
             label: ResultSet.label(tableName: nil, anchor: nil, index: index),
-            tableRows: TableRows.from(
-                queryRows: result.rows,
-                columns: columns,
-                columnTypes: result.columnTypes,
-                exportDocuments: result.exportDocuments,
-                absentCells: result.absentCells,
-                masks: parent.columnMasks(forTabId: tabId, table: nil, columns: columns, columnTypes: result.columnTypes),
-                exportPolicy: parent.exportMaskingPolicy(forTabId: tabId),
-                exportTable: nil,
-                columnOrigins: result.columnOrigins
-            )
+            tableRows: statementTableRows(result, tableName: nil, tabId: tabId, built: built?.prepared)
         )
         resultSet.statementAnchor = anchor
         resultSet.executionTime = result.executionTime

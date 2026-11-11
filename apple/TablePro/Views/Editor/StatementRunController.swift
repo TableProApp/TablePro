@@ -15,17 +15,10 @@ enum StatementNavigationDirection {
     case next
 }
 
-/// Keeps the editor's per-statement decorations in step with the document.
-///
-/// Two things are drawn from one scanner: the run control the gutter puts beside each statement, and the band behind
-/// the statement the caret is in. Both come from ``SQLStatementScanner``, which is also what decides the SQL that
-/// actually runs, so a control cannot offer to run something different from what it is drawn beside.
-///
-/// The two are refreshed differently because they cost differently. The band resolves one statement through
-/// ``SQLStatementScanner/locatedStatementAtCursor(in:cursorPosition:grammar:)``, which stops at the caret, so it is
-/// the same call the execution path makes and it can run on every keystroke. The controls need every statement in the
-/// document, which is a full pass: measured at 31ms on a document at the size limit, well past a frame, so that one is
-/// debounced. Nothing is lost by the delay, since the controls only show while the pointer is over the gutter.
+// The gutter's run controls and the caret's statement band both come from the scanner execution uses, so a control
+// never offers to run something other than what it is drawn beside. The band runs on every caret move, so a SQL
+// document resolves it through `SQLStatementCursorIndex`, which rescans only from the last boundary before the caret.
+// The controls need every statement, a full pass of 31ms at the size limit, so that refresh is debounced.
 @MainActor
 final class StatementRunController {
     /// The largest document decorations are computed for, in UTF-16 units.
@@ -44,11 +37,24 @@ final class StatementRunController {
     static let synchronousRefreshLimit = 64_000
 
     var sizeLimit = StatementRunController.defaultSizeLimit
-    var grammar: SQLLexicalGrammar = .ansi
+    var grammar: SQLLexicalGrammar = .ansi {
+        didSet { if grammar != oldValue { caretIndex = nil } }
+    }
 
     /// How the document divides into statements. JavaScript engines do not end a statement at every
     /// semicolon, so the gutter controls and the caret band have to ask the same splitter execution does.
-    var statementModel: QueryStatementModel = .sql
+    var statementModel: QueryStatementModel = .sql {
+        didSet { if statementModel != oldValue { caretIndex = nil } }
+    }
+
+    // The band asks on every caret move, so a SQL document keeps its statement boundaries between edits.
+    private var caretIndex: SQLStatementCursorIndex?
+    private weak var caretIndexStorage: NSTextStorage?
+    private var caretIndexEdits: StorageEditObservation?
+
+    var caretIndexUnitsScanned: Int {
+        caretIndex?.unitsScanned ?? 0
+    }
 
     /// Called with the SQL the pressed control stands for, read from the document at the moment of the press, and
     /// where that SQL starts in the document.
@@ -206,6 +212,8 @@ final class StatementRunController {
     func clear(in controller: TextViewController?) {
         pendingRefresh?.cancel()
         pendingRefresh = nil
+        caretIndex = nil
+        caretIndexEdits = nil
         controller?.runnableStatements = []
         controller?.highlightedStatementRange = nil
         controller?.onRunStatement = nil
@@ -246,11 +254,7 @@ final class StatementRunController {
         )
     }
 
-    /// The span the band covers, or `nil` when there is nothing to mark.
-    ///
-    /// A non-empty selection runs verbatim rather than being widened to its statement, so the band steps aside and
-    /// lets the selection speak for itself. Multiple carets resolve through the first one, which is the caret the
-    /// execution path reads too.
+    // A selection runs verbatim, so the band steps aside for it. Several carets resolve through the first, as execution does.
     private func highlightRange(in controller: TextViewController) -> NSRange? {
         guard isHighlightEnabled,
               let textView = controller.textView,
@@ -262,13 +266,65 @@ final class StatementRunController {
         let text = textView.string
         guard (text as NSString).length <= sizeLimit else { return nil }
 
-        let statement = QueryStatementScanner.locatedStatementAtCursor(
-            in: text,
-            cursorPosition: selection.range.location,
-            model: statementModel,
-            grammar: grammar
-        )
+        let statement: SQLStatementScanner.LocatedStatement
+        if statementModel == .sql, let storage = textView.textStorage {
+            statement = indexedStatement(at: selection.range.location, in: text, storage: storage)
+        } else {
+            statement = QueryStatementScanner.locatedStatementAtCursor(
+                in: text,
+                cursorPosition: selection.range.location,
+                model: statementModel,
+                grammar: grammar
+            )
+        }
         guard statement.hasContent, statement.contentRange.length > 0 else { return nil }
         return statement.contentRange
+    }
+
+    private func indexedStatement(
+        at cursor: Int,
+        in text: String,
+        storage: NSTextStorage
+    ) -> SQLStatementScanner.LocatedStatement {
+        if caretIndex == nil || caretIndexStorage !== storage {
+            startCaretIndex(on: storage)
+        }
+        // Inside an editing batch the text has changed but the storage has not posted its notification yet.
+        if storage.editedMask.contains(.editedCharacters) {
+            caretIndex?.textDidChange(at: storage.editedRange.location)
+        }
+        return caretIndex?.statementAtCursor(cursor, in: text)
+            ?? SQLStatementScanner.locatedStatementAtCursor(in: text, cursorPosition: cursor, grammar: grammar)
+    }
+
+    private func startCaretIndex(on storage: NSTextStorage) {
+        caretIndex = SQLStatementCursorIndex(grammar: grammar)
+        caretIndexStorage = storage
+        // Every way the text changes passes through the storage, including the ones that skip the editor's delegate.
+        let token = NotificationCenter.default.addObserver(
+            forName: NSTextStorage.didProcessEditingNotification,
+            object: storage,
+            queue: nil
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.caretIndexStorageDidProcessEditing() }
+        }
+        caretIndexEdits = StorageEditObservation(token)
+    }
+
+    private func caretIndexStorageDidProcessEditing() {
+        guard let storage = caretIndexStorage, storage.editedMask.contains(.editedCharacters) else { return }
+        caretIndex?.textDidChange(at: storage.editedRange.location)
+    }
+}
+
+private final class StorageEditObservation {
+    private let token: any NSObjectProtocol
+
+    init(_ token: any NSObjectProtocol) {
+        self.token = token
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(token)
     }
 }

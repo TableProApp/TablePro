@@ -79,6 +79,16 @@ struct PendingChanges: Equatable {
         return changes[idx]
     }
 
+    // The row's change that comes first in `changes`, which is what a scan for its id would find.
+    func firstChange(forRow rowID: RowID) -> RowChange? {
+        var first: Int?
+        for type in [ChangeType.insert, .update, .delete] {
+            guard let idx = changeIndex[RowChangeKey(rowID: rowID, type: type)] else { continue }
+            first = min(first ?? idx, idx)
+        }
+        return first.map { changes[$0] }
+    }
+
     /// The row's cells that hold a SQL expression now: a new row's from its insert, a saved row's from its edits.
     func expressionColumns(forRow rowID: RowID) -> Set<Int> {
         if let insert = change(forRow: rowID, type: .insert) {

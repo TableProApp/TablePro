@@ -123,7 +123,10 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
                 let coreStream = AsyncThrowingStream<OracleStreamElement, Error> { coreContinuation in
                     let coreTask = Task {
                         do {
-                            try await core.streamQuery(query, continuation: coreContinuation)
+                            // The result buffer shows rows as they arrive, so none waits on a batch to fill.
+                            try await core.streamQuery(
+                                query, batching: OracleRowBatcher(rowsPerBatch: 1), continuation: coreContinuation
+                            )
                         } catch {
                             coreContinuation.finish(throwing: error)
                         }

@@ -15,6 +15,7 @@ protocol ChangeManaging: AnyObject {
     var supportsFieldRemoval: Bool { get }
     var cellWriterSupport: CellWriterSupport { get }
     func isRowDeleted(_ rowID: RowID) -> Bool
+    func pendingChange(forRow rowID: RowID) -> RowChange?
     func isExpression(rowID: RowID, columnIndex: Int) -> Bool
     func expressionColumns(forRow rowID: RowID) -> Set<Int>
     func recordCellChange(
@@ -47,8 +48,7 @@ protocol ChangeManaging: AnyObject {
     func undoRowDeletion(rowID: RowID)
 }
 
-/// Only the data grid tracks server-computed columns; the structure and
-/// inspector grids edit schema definitions, where the concept does not apply.
+// Only the data grid tracks server-computed columns; the structure and inspector grids edit schema definitions.
 extension ChangeManaging {
     var generatedColumns: Set<String> { [] }
 
@@ -60,11 +60,15 @@ extension ChangeManaging {
 
     var cellWriterSupport: CellWriterSupport { .none }
 
+    func pendingChange(forRow rowID: RowID) -> RowChange? {
+        rowChanges.first { $0.rowID == rowID }
+    }
+
     func isExpression(rowID: RowID, columnIndex: Int) -> Bool { false }
 
     func expressionColumns(forRow rowID: RowID) -> Set<Int> { [] }
 
-    /// Only the data grid can show a row without a field; every other grid records the value.
+    // Only the data grid can show a row without a field; every other grid records the value.
     func recordCellChange(
         rowID: RowID,
         columnIndex: Int,
@@ -84,7 +88,7 @@ extension ChangeManaging {
         )
     }
 
-    /// Only the data grid writes SQL expressions; `cellWriterSupport` keeps every other grid from offering one.
+    // Only the data grid writes SQL expressions; `cellWriterSupport` keeps every other grid from offering one.
     func recordCellChange(
         rowID: RowID,
         columnIndex: Int,
@@ -124,6 +128,10 @@ final class AnyChangeManager: ObservableObject {
 
     func isRowDeleted(_ rowID: RowID) -> Bool {
         wrapped.isRowDeleted(rowID)
+    }
+
+    func pendingChange(forRow rowID: RowID) -> RowChange? {
+        wrapped.pendingChange(forRow: rowID)
     }
 
     func isExpression(rowID: RowID, columnIndex: Int) -> Bool {

@@ -928,6 +928,14 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         pending.isRowInserted(rowID)
     }
 
+    func pendingChange(forRow rowID: RowID) -> RowChange? {
+        pending.firstChange(forRow: rowID)
+    }
+
+    func pendingUpdate(forRow rowID: RowID) -> RowChange? {
+        pending.change(forRow: rowID, type: .update)
+    }
+
     func isCellModified(rowID: RowID, columnIndex: Int) -> Bool {
         pending.isCellModified(rowID: rowID, columnIndex: columnIndex)
     }

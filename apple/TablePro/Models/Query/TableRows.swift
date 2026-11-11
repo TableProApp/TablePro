@@ -395,29 +395,15 @@ struct TableRows: Sendable {
         absentCells: [Int: Set<Int>] = [:],
         unloadedCells: [Int: [Int: Int]] = [:]
     ) -> Delta {
-        var rebuilt = ContiguousArray<Row>()
-        rebuilt.reserveCapacity(replacementRows.count)
-        var rebuiltIndex = [RowID: Int]()
-        rebuiltIndex.reserveCapacity(replacementRows.count)
-        for (idx, values) in replacementRows.enumerated() {
-            let normalized = Self.normalize(values: masks.row(values), toCount: columns.count)
-            let row = Row(
-                id: .existing(offset + idx),
-                values: normalized,
-                absentColumns: Self.clamp(absentCells[idx] ?? [], toCount: columns.count),
-                unloadedColumns: Self.clamp(unloadedCells[idx] ?? [:], toCount: columns.count),
-                exportSnapshot: Self.exportSnapshot(
-                    documents: exportDocuments, index: idx, count: replacementRows.count,
-                    columns: columns, values: normalized, rawValues: values, absent: absentCells[idx] ?? [], masks: masks,
-                    policy: exportPolicy, table: exportTable
-                )
-            )
-            rebuilt.append(row)
-            rebuiltIndex[row.id] = idx
-        }
-        rows = rebuilt
-        indexByID = rebuiltIndex
-        rowLocators = Self.locators(replacementLocators, rowCount: replacementRows.count, offset: offset)
+        adopt(Self.prepare(
+            replacementRows,
+            offset: offset,
+            rowLocators: replacementLocators,
+            exportDocuments: exportDocuments,
+            absentCells: absentCells,
+            unloadedCells: unloadedCells,
+            shape: rowShape
+        ))
         return .fullReplace
     }
 
@@ -510,25 +496,50 @@ struct TableRows: Sendable {
         exportTable: String? = nil,
         columnOrigins: [PluginColumnOrigin?]? = nil
     ) -> TableRows {
-        var rows = ContiguousArray<Row>()
-        rows.reserveCapacity(queryRows.count)
-        for (index, values) in queryRows.enumerated() {
-            let normalized = normalize(values: masks.row(values), toCount: columns.count)
-            rows.append(Row(
-                id: .existing(index),
-                values: normalized,
-                absentColumns: clamp(absentCells[index] ?? [], toCount: columns.count),
-                unloadedColumns: clamp(unloadedCells[index] ?? [:], toCount: columns.count),
-                exportSnapshot: exportSnapshot(
-                    documents: exportDocuments, index: index, count: queryRows.count,
-                    columns: columns, values: normalized, rawValues: values, absent: absentCells[index] ?? [], masks: masks,
-                    policy: exportPolicy, table: exportTable
-                )
-            ))
-        }
+        from(
+            prepared: prepare(
+                queryRows,
+                rowLocators: rowLocators,
+                exportDocuments: exportDocuments,
+                absentCells: absentCells,
+                unloadedCells: unloadedCells,
+                shape: RowShape(columns: columns, masks: masks, exportPolicy: exportPolicy, exportTable: exportTable)
+            ),
+            columnTypes: columnTypes,
+            columnDefaults: columnDefaults,
+            columnForeignKeys: columnForeignKeys,
+            columnEnumValues: columnEnumValues,
+            columnNullable: columnNullable,
+            columnComments: columnComments,
+            columnIdentity: columnIdentity,
+            columnDeclaredTypes: columnDeclaredTypes,
+            generatedColumns: generatedColumns,
+            rowMatchPolicy: rowMatchPolicy,
+            hasAuthoritativeSchema: hasAuthoritativeSchema,
+            foreignKeysFetched: foreignKeysFetched,
+            columnOrigins: columnOrigins
+        )
+    }
+
+    static func from(
+        prepared: PreparedRows,
+        columnTypes: [ColumnType],
+        columnDefaults: [String: String?] = [:],
+        columnForeignKeys: [String: ForeignKeyInfo] = [:],
+        columnEnumValues: [String: [String]] = [:],
+        columnNullable: [String: Bool] = [:],
+        columnComments: [String: String] = [:],
+        columnIdentity: [String: IdentityKind] = [:],
+        columnDeclaredTypes: [String: String] = [:],
+        generatedColumns: Set<String> = [],
+        rowMatchPolicy: RowMatchPolicy = .none,
+        hasAuthoritativeSchema: Bool = false,
+        foreignKeysFetched: Bool = false,
+        columnOrigins: [PluginColumnOrigin?]? = nil
+    ) -> TableRows {
+        let shape = prepared.shape
         var tableRows = TableRows(
-            rows: rows,
-            columns: columns,
+            columns: shape.columns,
             columnTypes: columnTypes,
             columnDefaults: columnDefaults,
             columnForeignKeys: columnForeignKeys,
@@ -542,12 +553,123 @@ struct TableRows: Sendable {
             hasAuthoritativeSchema: hasAuthoritativeSchema,
             foreignKeysFetched: foreignKeysFetched
         )
-        tableRows.rowLocators = locators(rowLocators, rowCount: queryRows.count, offset: 0)
-        tableRows.masks = masks
-        tableRows.exportPolicy = exportPolicy
-        tableRows.exportTable = exportTable
-        tableRows.reportedOrigins = columnOrigins.map { (columns: columns, origins: $0) }
+        tableRows.adopt(prepared)
+        tableRows.masks = shape.masks
+        tableRows.exportPolicy = shape.exportPolicy
+        tableRows.exportTable = shape.exportTable
+        tableRows.reportedOrigins = columnOrigins.map { (columns: shape.columns, origins: $0) }
         return tableRows
+    }
+
+    var rowShape: RowShape {
+        RowShape(columns: columns, masks: masks, exportPolicy: exportPolicy, exportTable: exportTable)
+    }
+
+    // Nil when the rows were built for other columns or masks, as after a masking rule saved while they were built.
+    mutating func install(_ prepared: PreparedRows) -> Delta? {
+        guard prepared.fits(rowShape) else { return nil }
+        adopt(prepared)
+        return .fullReplace
+    }
+
+    private mutating func adopt(_ prepared: PreparedRows) {
+        rows = prepared.rows
+        indexByID = prepared.indexByID
+        rowLocators = prepared.rowLocators
+    }
+
+    static let cancellationCheckInterval = 4_096
+
+    // A Fetch All or a first page past the row cap is millions of rows, too many to build on the main actor.
+    // A Stop ends the build within one interval of rows; the result is then incomplete and never installs.
+    @concurrent
+    static func preparing<Source: RandomAccessCollection & Sendable>(
+        _ queryRows: Source,
+        offset: Int = 0,
+        rowLocators: [String?]? = nil,
+        exportDocuments: [PluginExportDocument]? = nil,
+        absentCells: [Int: Set<Int>] = [:],
+        unloadedCells: [Int: [Int: Int]] = [:],
+        shape: RowShape
+    ) async -> PreparedRows where Source.Element == [PluginCellValue] {
+        build(
+            queryRows,
+            offset: offset,
+            rowLocators: rowLocators,
+            exportDocuments: exportDocuments,
+            absentCells: absentCells,
+            unloadedCells: unloadedCells,
+            shape: shape,
+            stopsOnCancel: true
+        )
+    }
+
+    // Never stops early: it is also the fallback that has to land every row, inside a task a Stop may have cancelled.
+    static func prepare<Source: RandomAccessCollection>(
+        _ queryRows: Source,
+        offset: Int = 0,
+        rowLocators: [String?]? = nil,
+        exportDocuments: [PluginExportDocument]? = nil,
+        absentCells: [Int: Set<Int>] = [:],
+        unloadedCells: [Int: [Int: Int]] = [:],
+        shape: RowShape
+    ) -> PreparedRows where Source.Element == [PluginCellValue] {
+        build(
+            queryRows,
+            offset: offset,
+            rowLocators: rowLocators,
+            exportDocuments: exportDocuments,
+            absentCells: absentCells,
+            unloadedCells: unloadedCells,
+            shape: shape,
+            stopsOnCancel: false
+        )
+    }
+
+    private static func build<Source: RandomAccessCollection>(
+        _ queryRows: Source,
+        offset: Int,
+        rowLocators: [String?]?,
+        exportDocuments: [PluginExportDocument]?,
+        absentCells: [Int: Set<Int>],
+        unloadedCells: [Int: [Int: Int]],
+        shape: RowShape,
+        stopsOnCancel: Bool
+    ) -> PreparedRows where Source.Element == [PluginCellValue] {
+        let count = queryRows.count
+        let columnCount = shape.columns.count
+        var rows = ContiguousArray<Row>()
+        rows.reserveCapacity(count)
+        var index = [RowID: Int]()
+        index.reserveCapacity(count)
+        for (position, rowIndex) in zip(0..., queryRows.indices) {
+            if stopsOnCancel, position.isMultiple(of: cancellationCheckInterval), Task.isCancelled {
+                return PreparedRows(shape: shape, rows: [], indexByID: [:], rowLocators: [:], isComplete: false)
+            }
+            let values = queryRows[rowIndex]
+            let normalized = normalize(values: shape.masks.row(values), toCount: columnCount)
+            let absent = absentCells[position] ?? []
+            let row = Row(
+                id: .existing(offset + position),
+                values: normalized,
+                absentColumns: clamp(absent, toCount: columnCount),
+                unloadedColumns: clamp(unloadedCells[position] ?? [:], toCount: columnCount),
+                exportSnapshot: exportSnapshot(
+                    documents: exportDocuments, index: position, count: count,
+                    columns: shape.columns, values: normalized, rawValues: values, absent: absent, masks: shape.masks,
+                    policy: shape.exportPolicy, table: shape.exportTable
+                )
+            )
+            rows.append(row)
+            index[row.id] = position
+        }
+        return PreparedRows(
+            shape: shape,
+            rows: rows,
+            indexByID: index,
+            rowLocators: locators(rowLocators, rowCount: count, offset: offset),
+            isComplete: true
+        )
     }
 
     private static func exportSnapshot(
@@ -644,5 +766,29 @@ extension TableRows {
     var filterPickerValues: [String: [String]] {
         let setColumns = Set(zip(columns, columnTypes).compactMap { name, type in type.isSetType ? name : nil })
         return columnEnumValues.filter { !setColumns.contains($0.key) }
+    }
+}
+
+extension TableRows {
+    // What building a row reads from the rows it joins: the masks, and the column names export documents match.
+    struct RowShape: Equatable, Sendable {
+        let columns: [String]
+        let masks: ColumnMasks
+        let exportPolicy: MaskingPolicy
+        let exportTable: String?
+    }
+
+    // Rows built from one result with their index, which install by assignment while the shape still holds.
+    struct PreparedRows: Sendable {
+        let shape: RowShape
+        let rows: ContiguousArray<Row>
+        fileprivate let indexByID: [RowID: Int]
+        fileprivate let rowLocators: [RowID: String]
+        // False when a Stop ended the build early: the rows are not the result.
+        let isComplete: Bool
+
+        func fits(_ target: RowShape) -> Bool {
+            isComplete && shape == target
+        }
     }
 }

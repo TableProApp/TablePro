@@ -142,7 +142,7 @@ final class DataTabSQLExporter: DataGridSQLExporting {
 
     private func sourceRow(_ row: Row, target: Target) -> SQLRowToStatementConverter.SourceRow {
         var stored = Array(row.values)
-        let pendingUpdate = target.changeManager.rowChanges.first { $0.rowID == row.id && $0.type == .update }
+        let pendingUpdate = target.changeManager.pendingUpdate(forRow: row.id)
         for cellChange in pendingUpdate?.cellChanges ?? [] where stored.indices.contains(cellChange.columnIndex) {
             stored[cellChange.columnIndex] = cellChange.oldValue
         }
@@ -161,7 +161,7 @@ final class DataTabSQLExporter: DataGridSQLExporting {
         if target.changeManager.insertedRowIDs.contains(row.id) {
             return Set(row.values.indices.filter { row.values[$0] == marker })
         }
-        let pendingUpdate = target.changeManager.rowChanges.first { $0.rowID == row.id && $0.type == .update }
+        let pendingUpdate = target.changeManager.pendingUpdate(forRow: row.id)
         return Set(pendingUpdate?.cellChanges.filter { $0.newValue == marker }.map(\.columnIndex) ?? [])
     }
 

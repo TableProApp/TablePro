@@ -6,6 +6,22 @@
 import Foundation
 import TableProPluginKit
 
+// The lease a task's work runs under. That work keeps the lease until a lease it asks for returns, so such a
+// request never waits for room; a task started inside keeps the exemption only while the lease is open.
+@MainActor
+private final class PooledLease {
+    let connectionId: UUID
+    var isOpen = true
+
+    init(connectionId: UUID) {
+        self.connectionId = connectionId
+    }
+}
+
+private enum PooledLeaseContext {
+    @TaskLocal static var open: [PooledLease] = []
+}
+
 @MainActor
 final class MetadataConnectionPool {
     static let shared = MetadataConnectionPool()
@@ -39,6 +55,7 @@ final class MetadataConnectionPool {
         /// cancelling the caller has to be forwarded explicitly or a stopped query
         /// would keep running with nobody waiting on it.
         func runSerially<T: Sendable>(
+            connectionId: UUID,
             _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
         ) async throws -> T {
             let previous = tail
@@ -46,7 +63,11 @@ final class MetadataConnectionPool {
             let work = Task { @MainActor () async throws -> T in
                 await previous.value
                 try Task.checkCancellation()
-                return try await body(driver)
+                let lease = PooledLease(connectionId: connectionId)
+                defer { lease.isOpen = false }
+                return try await PooledLeaseContext.$open.withValue(PooledLeaseContext.open + [lease]) {
+                    try await body(driver)
+                }
             }
             tail = Task { @MainActor in _ = try? await work.value }
             return try await withTaskCancellationHandler(
@@ -87,10 +108,22 @@ final class MetadataConnectionPool {
         let continuation: CheckedContinuation<Void, Error>
     }
 
+    @MainActor
+    private final class RoomTicket {
+        let key: Key
+        var continuation: CheckedContinuation<Void, Error>?
+        var isWithdrawn = false
+
+        init(key: Key) {
+            self.key = key
+        }
+    }
+
     private var entries: [Key: Entry] = [:]
     private var pending: [Key: PendingOpen] = [:]
     private var transportReplacements: [UUID: Int] = [:]
     private var transportWaiters: [UUID: [TransportWaiter]] = [:]
+    private var roomQueues: [UUID: [RoomTicket]] = [:]
     private let openDriver: DriverOpener
     static let maxPerConnection = 6
     private var sweeper: Task<Void, Never>?
@@ -127,7 +160,7 @@ final class MetadataConnectionPool {
         entry.inFlightCount += 1
         entry.lastUsed = Date()
         defer { releaseEntry(entry, connectionId: scope.connectionId) }
-        return try await entry.runSerially(body)
+        return try await entry.runSerially(connectionId: scope.connectionId, body)
     }
 
     /// Closes only the leases attached to one database, which is what a rename of that database
@@ -219,6 +252,10 @@ final class MetadataConnectionPool {
     internal func transportWaiterCount(for connectionId: UUID) -> Int {
         transportWaiters[connectionId]?.count ?? 0
     }
+
+    internal func roomWaiterCount(for connectionId: UUID) -> Int {
+        roomQueues[connectionId]?.filter { $0.continuation != nil }.count ?? 0
+    }
     #endif
 
     /// Whether the connection's transport is being rebuilt, which ends every connection dialed
@@ -235,6 +272,7 @@ final class MetadataConnectionPool {
             return
         }
         trimIdleEntries(for: connectionId)
+        handRoom(on: connectionId)
     }
 
     private func closeOrDeferEntry(forKey key: Key) {
@@ -244,22 +282,29 @@ final class MetadataConnectionPool {
         } else {
             entry.closeWhenIdle = true
         }
+        handRoom(on: key.scope.connectionId)
     }
 
     private func closeEntries(
         withdrawingOpensAs withdrawal: Withdrawal,
         where matches: (DatabaseScope) -> Bool
     ) {
+        var withdrawnFrom: Set<UUID> = []
         for key in pending.keys where matches(key.scope) {
             guard let open = pending.removeValue(forKey: key) else { continue }
             open.withdrawal = withdrawal
             open.task.cancel()
+            withdrawnFrom.insert(key.scope.connectionId)
         }
         if withdrawal == .closed {
             failTransportWaiters(where: matches)
+            withdrawRoomTickets(where: matches)
         }
         for key in entries.keys where matches(key.scope) {
             closeOrDeferEntry(forKey: key)
+        }
+        for connectionId in withdrawnFrom {
+            handRoom(on: connectionId)
         }
         stopSweeperIfEmpty()
     }
@@ -285,6 +330,13 @@ final class MetadataConnectionPool {
             try await waitForTransport(for: scope)
             if let entry = reusableEntry(forKey: key) {
                 return entry
+            }
+            if pending[key] == nil {
+                try await waitForRoom(forKey: key)
+                // A wait can outlast its reason: the key opened meanwhile, or the transport is being rebuilt.
+                if pending[key] != nil || entries[key] != nil || isReplacingTransport(for: scope.connectionId) {
+                    continue
+                }
             }
             let open = try pending[key] ?? startOpen(forKey: key)
             let failure = await completion(of: open, forKey: key)
@@ -313,6 +365,7 @@ final class MetadataConnectionPool {
     private func forgetSpentOpen(_ open: PendingOpen, forKey key: Key) {
         guard pending[key] === open else { return }
         pending.removeValue(forKey: key)
+        handRoom(on: key.scope.connectionId)
     }
 
     /// A cached entry is only worth reusing while it is both connected and recent. The
@@ -356,6 +409,8 @@ final class MetadataConnectionPool {
             open.waiterCount -= 1
             if open.waiterCount == 0, pending[key] === open {
                 pending.removeValue(forKey: key)
+                // A failed open frees its place, and a taken one leaves an entry that is now evictable once idle.
+                handRoom(on: key.scope.connectionId)
             }
         }
         do {
@@ -406,6 +461,88 @@ final class MetadataConnectionPool {
         let waiter = waiters.remove(at: index)
         transportWaiters[connectionId] = waiters.isEmpty ? nil : waiters
         waiter.continuation.resume(throwing: CancellationError())
+    }
+
+    // First come first served, interactive ahead of bulk; a caller arriving while others wait goes behind them.
+    private func waitForRoom(forKey key: Key) async throws {
+        let connectionId = key.scope.connectionId
+        guard !PooledLeaseContext.open.contains(where: { $0.isOpen && $0.connectionId == connectionId }) else { return }
+        let ticket = RoomTicket(key: key)
+        roomQueues[connectionId, default: []].append(ticket)
+        defer { leaveRoomQueue(ticket) }
+        while !mayOpen(ticket) {
+            try await parkForRoom(ticket)
+            try Task.checkCancellation()
+            if ticket.isWithdrawn { throw CancellationError() }
+        }
+    }
+
+    private func mayOpen(_ ticket: RoomTicket) -> Bool {
+        let key = ticket.key
+        let connectionId = key.scope.connectionId
+        if pending[key] != nil || entries[key] != nil || isReplacingTransport(for: connectionId) { return true }
+        return nextInLine(on: connectionId) === ticket && hasRoom(for: key.workload, on: connectionId)
+    }
+
+    private func nextInLine(on connectionId: UUID) -> RoomTicket? {
+        let line = roomQueues[connectionId] ?? []
+        return line.first { $0.key.workload == .interactive } ?? line.first
+    }
+
+    // Wakes only the caller next in line, so a freed place goes to it rather than to whoever resumes first.
+    private func handRoom(on connectionId: UUID) {
+        guard let next = nextInLine(on: connectionId),
+              let continuation = next.continuation,
+              mayOpen(next)
+        else { return }
+        next.continuation = nil
+        continuation.resume()
+    }
+
+    private func leaveRoomQueue(_ ticket: RoomTicket) {
+        let connectionId = ticket.key.scope.connectionId
+        roomQueues[connectionId]?.removeAll { $0 === ticket }
+        if roomQueues[connectionId]?.isEmpty == true {
+            roomQueues.removeValue(forKey: connectionId)
+        }
+        handRoom(on: connectionId)
+    }
+
+    private func parkForRoom(_ ticket: RoomTicket) async throws {
+        try await withTaskCancellationHandler(
+            operation: { try await parkUntilHanded(ticket) },
+            onCancel: { [weak self] in
+                Task { @MainActor in
+                    self?.failRoomTicket(ticket)
+                }
+            }
+        )
+    }
+
+    private func parkUntilHanded(_ ticket: RoomTicket) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            guard !Task.isCancelled, !ticket.isWithdrawn else {
+                continuation.resume(throwing: CancellationError())
+                return
+            }
+            ticket.continuation = continuation
+        }
+    }
+
+    private func failRoomTicket(_ ticket: RoomTicket) {
+        guard let continuation = ticket.continuation else { return }
+        ticket.continuation = nil
+        continuation.resume(throwing: CancellationError())
+    }
+
+    // Same reason as `failTransportWaiters`: a parked caller would otherwise open what was just closed.
+    private func withdrawRoomTickets(where matches: (DatabaseScope) -> Bool) {
+        for line in roomQueues.values {
+            for ticket in line where matches(ticket.key.scope) {
+                ticket.isWithdrawn = true
+                failRoomTicket(ticket)
+            }
+        }
     }
 
     /// Opens a second connection to the session's server, on `scope`'s database, through the
@@ -607,19 +744,38 @@ final class MetadataConnectionPool {
     /// left alone whatever its age: `lastUsed` is stamped when the work starts, so a long export
     /// would otherwise have its own connection closed underneath it.
     internal func sweepIdleEntries(now: Date = Date()) {
+        var sweptFrom: Set<UUID> = []
         for (key, entry) in entries where entry.inFlightCount == 0 && Self.isStale(entry.lastUsed, now: now) {
             entries.removeValue(forKey: key)
             entry.driver.disconnect()
+            sweptFrom.insert(key.scope.connectionId)
+        }
+        for connectionId in sweptFrom {
+            handRoom(on: connectionId)
         }
         stopSweeperIfEmpty()
     }
 
-    /// Makes room for one more before an open. The caller never waits for room, so a burst of opens
-    /// can still run past the limit while its work is in flight; `trimIdleEntries` hands the extra
-    /// back as that work ends.
+    // A caller with no room waits in `waitForRoom`, so only a lease taken inside another one's work opens past the limit.
     private func evictIdleIfNeeded(for connectionId: UUID) {
         guard heldCount(for: connectionId) >= Self.maxPerConnection else { return }
         evictLeastRecentlyUsedIdleEntry(for: connectionId)
+    }
+
+    // Bulk never takes the last place, so a completion read or a sidebar expand never waits behind a burst of bulk work.
+    private func hasRoom(for workload: Workload, on connectionId: UUID) -> Bool {
+        let placeIsFree = heldCount(for: connectionId) < Self.maxPerConnection
+            || leastRecentlyUsedIdleKey(for: connectionId) != nil
+        guard workload == .bulk else { return placeIsFree }
+        return placeIsFree && busyCount(for: connectionId) < Self.maxPerConnection - 1
+    }
+
+    private func busyCount(for connectionId: UUID) -> Int {
+        var keys = Set(pending.keys.filter { $0.scope.connectionId == connectionId })
+        for (key, entry) in entries where key.scope.connectionId == connectionId && entry.inFlightCount > 0 {
+            keys.insert(key)
+        }
+        return keys.count
     }
 
     /// Keeps a connection at the limit once its work ends. Closing only one idle entry per open, as
@@ -640,16 +796,21 @@ final class MetadataConnectionPool {
         return keys.count
     }
 
-    /// An entry whose open is still listed has callers that have not taken it yet, so it is not idle
-    /// however it looks.
     @discardableResult
     private func evictLeastRecentlyUsedIdleEntry(for connectionId: UUID) -> Bool {
+        guard let key = leastRecentlyUsedIdleKey(for: connectionId),
+              let entry = entries.removeValue(forKey: key)
+        else { return false }
+        entry.driver.disconnect()
+        return true
+    }
+
+    /// An entry whose open is still listed has callers that have not taken it yet, so it is not idle
+    /// however it looks.
+    private func leastRecentlyUsedIdleKey(for connectionId: UUID) -> Key? {
         let idle = entries.filter { key, entry in
             key.scope.connectionId == connectionId && entry.inFlightCount == 0 && pending[key] == nil
         }
-        guard let oldest = idle.min(by: { $0.value.lastUsed < $1.value.lastUsed }) else { return false }
-        entries.removeValue(forKey: oldest.key)
-        oldest.value.driver.disconnect()
-        return true
+        return idle.min(by: { $0.value.lastUsed < $1.value.lastUsed })?.key
     }
 }

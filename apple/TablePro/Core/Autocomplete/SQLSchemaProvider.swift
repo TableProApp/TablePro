@@ -35,7 +35,9 @@ actor SQLSchemaProvider {
     }
 
     private var tables: [TableInfo] = []
-    private var columnCache: [ColumnCacheKey: [ColumnInfo]] = [:]
+    private var columnCache: [ColumnCacheKey: [ColumnInfo]] = [:] {
+        didSet { cachedTableColumnItems = nil }
+    }
     private var columnAccessOrder: [ColumnCacheKey] = []
     private var columnTasks: [ColumnCacheKey: Task<[ColumnInfo]?, Never>] = [:]
     private var loadTask: Task<Void, Never>?
@@ -89,6 +91,16 @@ actor SQLSchemaProvider {
 
     // Every table-slot request reads all of them, so they are built once per table list, not per keystroke.
     private var unqualifiedTableItems: (defaultSchema: String?, items: [SQLCompletionItem])?
+
+    private struct TableColumnItems {
+        let defaultSchema: String?
+        let eagerLoadSchema: String?
+        let items: [SQLCompletionItem]
+    }
+
+    // Every column request before a FROM reads all of them, so they are built once per column cache and table list.
+    private var cachedTableColumnItems: TableColumnItems?
+    private(set) var tableColumnItemsBuildCount = 0
 
     private weak var cachedDriver: (any DatabaseDriver)?
     private let metadataSource: ColumnMetadataSource?
@@ -354,6 +366,7 @@ actor SQLSchemaProvider {
     private func noteTableListWritten() {
         tableListGeneration &+= 1
         unqualifiedTableItems = nil
+        cachedTableColumnItems = nil
         switch columnPreload {
         case .awaitingTables:
             startColumnPreloadIfStale(retryingFailure: true)
@@ -710,12 +723,29 @@ actor SQLSchemaProvider {
         }
     }
 
-    /// Only the bulk cache can answer a statement that names no table, so once an editor has asked, a
-    /// stale cache starts a read here. This call answers from what is cached and never waits.
+    // Only the bulk cache can answer a statement that names no table, so once an editor has asked, a stale cache
+    // starts a read here. This call answers from what is cached and never waits.
     func allColumnsFromCachedTables() async -> [SQLCompletionItem] {
         if hasEditorDemand { startColumnPreloadIfStale(retryingFailure: false) }
         guard !columnCache.isEmpty else { return [] }
 
+        let defaultSchema = getDefaultSchema()
+        if let cached = cachedTableColumnItems,
+           cached.defaultSchema == defaultSchema,
+           cached.eagerLoadSchema == eagerLoadSchema {
+            return cached.items
+        }
+        let items = buildTableColumnItems()
+        tableColumnItemsBuildCount += 1
+        cachedTableColumnItems = TableColumnItems(
+            defaultSchema: defaultSchema,
+            eagerLoadSchema: eagerLoadSchema,
+            items: items
+        )
+        return items
+    }
+
+    private func buildTableColumnItems() -> [SQLCompletionItem] {
         let canonicalNames = Dictionary(
             tables.map { ($0.name.lowercased(), $0.name) },
             uniquingKeysWith: { first, _ in first }
