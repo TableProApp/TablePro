@@ -24,6 +24,7 @@ struct AIProviderDetailSheet: View {
     @State private var isFetchingModels = false
     @State private var modelFetchError: String?
     @State private var modelFetchTask: Task<Void, Never>?
+    @State private var choseOtherModel = false
 
     @State private var isTesting = false
     @State private var testResult: TestResult?
@@ -94,6 +95,9 @@ struct AIProviderDetailSheet: View {
                 }
             }
             .onAppear {
+                // Before any fetch, so a provider whose list cannot load yet still starts on its curated default.
+                selectInitialModel()
+                selectModel(draft.model, picked: false)
                 if draft.type == .copilot {
                     Task {
                         await ensureCopilotRunning()
@@ -531,18 +535,27 @@ struct AIProviderDetailSheet: View {
     }
 
     private var curatedModels: [CuratedModel] {
-        descriptor?.curatedModels ?? []
+        descriptor?.curatedModels(for: draft.preset) ?? []
     }
 
     private var fetchedModels: [String] {
         fetched.map(\.id)
     }
 
+    private func reasoning(forModelID id: String) -> AIReasoningSupport {
+        descriptor?.reasoning(
+            forModelID: id,
+            fetched: fetched.first(where: { $0.id == id }),
+            preset: draft.preset
+        ) ?? .unsupported
+    }
+
+    private var reasoningForCurrentModel: AIReasoningSupport {
+        reasoning(forModelID: draft.model)
+    }
+
     private var effortLevelsForCurrentModel: [ReasoningEffort] {
-        descriptor?.supportedEffortLevels(
-            forModelID: draft.model,
-            fetched: fetched.first(where: { $0.id == draft.model })
-        ) ?? []
+        reasoningForCurrentModel.effortLevels
     }
 
     private var showsReasoningPicker: Bool {
@@ -559,7 +572,7 @@ struct AIProviderDetailSheet: View {
         Section {
             modelPicker
             if isCustomModel {
-                TextField(String(localized: "Model ID"), text: $draft.model)
+                TextField(String(localized: "Model ID"), text: typedModelBinding)
                     .textFieldStyle(.roundedBorder)
             }
             if showsReasoningPicker {
@@ -614,34 +627,48 @@ struct AIProviderDetailSheet: View {
             },
             set: { newValue in
                 switch newValue {
-                case .curated(let id):
-                    draft.model = id
-                    if let curated = curatedModels.first(where: { $0.id == id }) {
-                        if let defaultEffort = curated.defaultEffort, draft.reasoningEffort == nil {
-                            draft.reasoningEffort = defaultEffort
-                        }
-                        let supported = Set(curated.supportedEffortLevels)
-                        if let currentEffort = draft.reasoningEffort, !supported.contains(currentEffort) {
-                            draft.reasoningEffort = curated.defaultEffort
-                        }
-                    }
-                case .fetched(let id):
-                    draft.model = id
-                    if let effort = draft.reasoningEffort, !effortLevelsForCurrentModel.contains(effort) {
-                        draft.reasoningEffort = nil
-                    }
+                case .curated(let id), .fetched(let id):
+                    choseOtherModel = false
+                    selectModel(id, picked: true)
                 case .custom:
+                    choseOtherModel = true
                     if curatedModels.contains(where: { $0.id == draft.model }) || fetchedModels.contains(draft.model) {
-                        draft.model = ""
+                        selectModel("", picked: false)
                     }
                 }
             }
         )
     }
 
+    private var typedModelBinding: Binding<String> {
+        Binding(
+            get: { draft.model },
+            set: { typed in
+                choseOtherModel = true
+                selectModel(typed, picked: false)
+            }
+        )
+    }
+
+    // The model and the effort it allows change together, in one write.
+    private func selectModel(_ id: String, picked: Bool) {
+        var next = draft
+        next.model = id
+        next.reasoningEffort = picked
+            ? AIProviderDraftRules.effort(
+                afterPicking: draft.reasoningEffort,
+                reasoning: reasoning(forModelID: id),
+                curated: curatedModels.first(where: { $0.id == id })
+            )
+            : AIProviderDraftRules.effort(keeping: draft.reasoningEffort, reasoning: reasoning(forModelID: id))
+        draft = next
+    }
+
     private var reasoningPicker: some View {
         Picker(String(localized: "Reasoning"), selection: $draft.reasoningEffort) {
-            Text(String(localized: "Off")).tag(ReasoningEffort?.none)
+            if !reasoningForCurrentModel.isMandatory {
+                Text(String(localized: "Off")).tag(ReasoningEffort?.none)
+            }
             ForEach(effortLevelsForCurrentModel) { effort in
                 Text(effort.displayName).tag(Optional(effort))
             }
@@ -852,10 +879,10 @@ struct AIProviderDetailSheet: View {
     }
 
     private func selectInitialModel() {
-        guard draft.model.isEmpty,
+        guard draft.model.isEmpty, !choseOtherModel,
               let initial = AIProviderDraftRules.initialModel(curated: curatedModels, fetched: fetched)
         else { return }
-        draft.model = initial
+        selectModel(initial, picked: false)
     }
 
     func testProvider() {

@@ -313,4 +313,53 @@ struct OpenAICompatibleProviderParserTests {
         let ollamaEmpty = OpenAICompatibleProvider.decodeStreamLine("", providerType: .ollama)
         #expect(ollamaEmpty == nil)
     }
+
+    /// Recorded from Meta's Chat Completions endpoint for `muse-spark-1.3`: text, then a tool call
+    /// whose id and name come first with empty arguments, and usage on the `finish_reason` chunk.
+    @Test("A Meta tool-call stream decodes to text, one tool call and its usage")
+    func metaToolCallStream() throws {
+        let lines = [
+            #"data: {"id":"c1","choices":[{"delta":{"content":"I'll look up the weather.","role":"assistant"},"finish_reason":null,"index":0}],"model":"muse-spark-1.3","object":"chat.completion.chunk"}"#,
+            #"data: {"id":"c1","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_01a0","type":"function","function":{"name":"lookup_weather","arguments":""}}]},"finish_reason":null,"index":0}],"model":"muse-spark-1.3","object":"chat.completion.chunk"}"#,
+            #"data: {"id":"c1","choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"city\":\"Paris\"}"}}]},"finish_reason":null,"index":0}],"model":"muse-spark-1.3","object":"chat.completion.chunk"}"#,
+            #"data: {"id":"c1","choices":[{"delta":{},"finish_reason":"tool_calls","index":0}],"model":"muse-spark-1.3","object":"chat.completion.chunk","usage":{"completion_tokens":139,"prompt_tokens":570,"total_tokens":709,"completion_tokens_details":{"reasoning_tokens":70}}}"#,
+            "data: [DONE]"
+        ]
+        var state = OpenAIStreamState()
+        var events: [ChatStreamEvent] = []
+        for line in lines {
+            guard let json = OpenAICompatibleProvider.decodeStreamLine(line, providerType: .custom) else { continue }
+            events += try OpenAICompatibleProvider.streamEvents(from: json, state: &state)
+        }
+        events += try OpenAICompatibleProvider.finalStreamEvents(state)
+
+        guard events.count == 5 else {
+            Issue.record("expected 5 events; got \(events)")
+            return
+        }
+        if case .textDelta(let text) = events[0] { #expect(text == "I'll look up the weather.") } else {
+            Issue.record("expected textDelta; got \(events[0])")
+        }
+        if case .toolUseStart(let id, let name, _) = events[1] {
+            #expect(id == "call_01a0")
+            #expect(name == "lookup_weather")
+        } else {
+            Issue.record("expected toolUseStart; got \(events[1])")
+        }
+        if case .toolUseDelta(let id, let delta) = events[2] {
+            #expect(id == "call_01a0")
+            #expect(delta == #"{"city":"Paris"}"#)
+        } else {
+            Issue.record("expected toolUseDelta; got \(events[2])")
+        }
+        if case .toolUseEnd(let id) = events[3] { #expect(id == "call_01a0") } else {
+            Issue.record("expected toolUseEnd; got \(events[3])")
+        }
+        if case .usage(let usage) = events[4] {
+            #expect(usage.inputTokens == 570)
+            #expect(usage.outputTokens == 139)
+        } else {
+            Issue.record("expected usage; got \(events[4])")
+        }
+    }
 }

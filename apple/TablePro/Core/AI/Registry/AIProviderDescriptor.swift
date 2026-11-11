@@ -53,24 +53,60 @@ struct AIProviderDescriptor: Sendable {
     var allowsMaxOutputTokens: Bool { capabilities.contains(.maxOutputTokens) }
     var fetchesModelList: Bool { capabilities.contains(.modelListFetchable) }
 
-    func curatedModel(forID id: String) -> CuratedModel? {
-        curatedModels.first(where: { $0.id == id })
+    func curatedModels(for preset: AIProviderPreset?) -> [CuratedModel] {
+        guard let preset, !preset.curatedModels.isEmpty else { return curatedModels }
+        return preset.curatedModels
     }
 
-    /// `fetched` is what the provider's own model list said about the model, when it has been
-    /// loaded. It wins over the offline tables, and its silence leaves the provider's envelope open.
-    func supportedEffortLevels(forModelID id: String, fetched: AIModelInfo? = nil) -> [ReasoningEffort] {
-        guard supportsReasoning else { return [] }
-        if let reasoning = fetched?.reasoning ?? AIModelOverlay.reasoning(providerTypeID: typeID, modelID: id) {
-            return reasoning.effortLevels
+    func curatedModel(forID id: String, preset: AIProviderPreset? = nil) -> CuratedModel? {
+        curatedModels(for: preset).first(where: { $0.id == id })
+    }
+
+    // The provider's own list wins over the offline tables; its silence leaves the envelope open.
+    func reasoning(
+        forModelID id: String,
+        fetched: AIModelInfo? = nil,
+        preset: AIProviderPreset? = nil
+    ) -> AIReasoningSupport {
+        guard supportsReasoning else { return .unsupported }
+        if let known = fetched?.reasoning
+            ?? preset?.reasoning(forModelID: id)
+            ?? AIModelOverlay.reasoning(providerTypeID: typeID, modelID: id) {
+            return known
         }
         if let effortLevelResolver {
-            return effortLevelResolver(id)
+            return AIReasoningSupport(mode: .effortOnly, effortLevels: effortLevelResolver(id))
         }
-        if let curated = curatedModel(forID: id), !curated.supportedEffortLevels.isEmpty {
-            return curated.supportedEffortLevels
+        if let curated = curatedModel(forID: id, preset: preset), !curated.supportedEffortLevels.isEmpty {
+            return AIReasoningSupport(
+                mode: .effortOnly,
+                effortLevels: curated.supportedEffortLevels,
+                defaultEffort: curated.defaultEffort
+            )
         }
-        return [.low, .medium, .high]
+        return AIReasoningSupport(mode: .effortOnly, effortLevels: [.low, .medium, .high])
+    }
+
+    func supportedEffortLevels(
+        forModelID id: String,
+        fetched: AIModelInfo? = nil,
+        preset: AIProviderPreset? = nil
+    ) -> [ReasoningEffort] {
+        reasoning(forModelID: id, fetched: fetched, preset: preset).effortLevels
+    }
+
+    // The saved effort belongs to the saved model, and the chat panel can send another one.
+    func effort(
+        _ requested: ReasoningEffort?,
+        forModelID id: String,
+        fetched: AIModelInfo? = nil,
+        preset: AIProviderPreset? = nil
+    ) -> ReasoningEffort? {
+        let reasoning = reasoning(forModelID: id, fetched: fetched, preset: preset)
+        guard let requested else {
+            return reasoning.isMandatory ? reasoning.defaultEffort ?? reasoning.effortLevels.first : nil
+        }
+        return reasoning.clampedEffort(requested)
     }
 
     func supportsImages(fetched: AIModelInfo?) -> Bool {
