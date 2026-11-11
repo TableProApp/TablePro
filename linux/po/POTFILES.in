@@ -208,6 +208,7 @@ crates/app/src/ui/browse_tab/fetch.rs
 crates/app/src/ui/browse_tab/grid_handlers.rs
 crates/app/src/ui/browse_tab/grid_input.rs
 crates/app/src/ui/browse_tab/imp.rs
+crates/app/src/ui/browse_tab/json_view.rs
 crates/app/src/ui/browse_tab/layout.rs
 crates/app/src/ui/browse_tab/mod.rs
 crates/app/src/ui/browse_tab/page_label.rs
@@ -223,6 +224,7 @@ crates/app/src/ui/browse_tab/save_handlers.rs
 crates/app/src/ui/browse_tab/save_input.rs
 crates/app/src/ui/browse_tab/table_filter.rs
 crates/app/src/ui/browse_tab/tests/default_sort.rs
+crates/app/src/ui/browse_tab/tests/json.rs
 crates/app/src/ui/browse_tab/tests/load.rs
 crates/app/src/ui/browse_tab/tests/mod.rs
 crates/app/src/ui/browse_tab/tests/references.rs
@@ -262,6 +264,7 @@ crates/app/src/ui/data_grid/cell_font.rs
 crates/app/src/ui/data_grid/client_sorter.rs
 crates/app/src/ui/data_grid/column_chooser.rs
 crates/app/src/ui/data_grid/columns.rs
+crates/app/src/ui/data_grid/copy/json_preview.rs
 crates/app/src/ui/data_grid/copy/mod.rs
 crates/app/src/ui/data_grid/copy/tests.rs
 crates/app/src/ui/data_grid/display_settings.rs

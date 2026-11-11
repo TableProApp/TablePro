@@ -35,6 +35,12 @@ pub(super) struct LayoutInit<'a> {
 /// its input. Gives back the widgets the handlers drive.
 pub(super) fn build(tab: &BrowseTab, init: &LayoutInit<'_>) -> BrowseTabWidgets {
     let imp = tab.imp();
+    let weak = tab.downgrade();
+    imp.view_stack.connect_visible_child_name_notify(move |_| {
+        if let Some(tab) = weak.upgrade() {
+            tab.follow_selected_view();
+        }
+    });
     imp.loading_page
         .set_description(Some(&loading_description(init.table_label)));
     imp.inner_stack.set_visible_child_name("loading");
@@ -42,6 +48,7 @@ pub(super) fn build(tab: &BrowseTab, init: &LayoutInit<'_>) -> BrowseTabWidgets 
     let page_sizes = page_size_choices(&imp.page_size_dropdown, init.page_size);
     imp.overflow_button.set_menu_model(Some(&overflow_menu(&page_sizes)));
     imp.more_button.set_menu_model(Some(&more_menu(&page_sizes)));
+    imp.json_more.set_menu_model(Some(&json_menu(&page_sizes)));
     connect_controls(tab, page_sizes.clone());
     BrowseTabWidgets {
         inner_stack: imp.inner_stack.get(),
@@ -89,6 +96,17 @@ fn overflow_menu(page_sizes: &[u64]) -> gio::Menu {
     let actions = gio::Menu::new();
     actions.append(Some(&gettext("Col_umns…")), Some("grid.columns"));
     actions.append_item(&export_item());
+    let menu = gio::Menu::new();
+    menu.append_section(None, &actions);
+    menu.append_section(Some(&gettext("Rows per Page")), &page_size_menu(page_sizes));
+    menu
+}
+
+fn json_menu(page_sizes: &[u64]) -> gio::Menu {
+    let actions = gio::Menu::new();
+    actions.append(Some(&gettext("_Filter Rows…")), Some("browse.filter"));
+    actions.append(Some(&gettext("_Export Rows…")), Some("browse.export"));
+    actions.append(Some(&gettext("_Count Rows")), Some("browse.count-rows"));
     let menu = gio::Menu::new();
     menu.append_section(None, &actions);
     menu.append_section(Some(&gettext("Rows per Page")), &page_size_menu(page_sizes));

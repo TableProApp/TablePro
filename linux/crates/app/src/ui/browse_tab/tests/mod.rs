@@ -1,4 +1,5 @@
 mod default_sort;
+mod json;
 mod load;
 mod references;
 mod rows;
@@ -1701,7 +1702,7 @@ fn the_bottom_bar_switches_between_data_and_structure() {
         .into_iter()
         .filter(|widget| widget.accessible_role() == gtk4::AccessibleRole::Tab)
         .collect();
-    assert_eq!(tabs.len(), 2);
+    assert_eq!(tabs.len(), 3);
     assert!(tabs[1].activate());
     wait_until(WAIT, || tab.shows_structure()).expect("keyboard activation selects Structure");
     assert_eq!(asked.get(), 1);
@@ -2048,7 +2049,7 @@ fn the_view_switch_keeps_its_names_in_a_1200_px_window() {
         .iter()
         .map(|label| label.label().to_string())
         .collect();
-    assert_eq!(names, ["Data", "Structure"]);
+    assert_eq!(names, ["Data", "Structure", "JSON"]);
     assert!(
         wait_until(WAIT, || bar_shortfall(tab).is_none()).is_ok(),
         "{:?}",
@@ -2067,6 +2068,10 @@ fn the_view_switch_keeps_its_names_in_a_1200_px_window() {
         wait_until(WAIT, || bar_shortfall(tab).is_none()).is_ok(),
         "{:?}",
         bar_shortfall(tab)
+    );
+    assert_eq!(
+        imp.view_toggle.display_mode(),
+        libadwaita::InlineViewSwitcherDisplayMode::Labels
     );
     assert!(!columns.is_visible() && !imp.export_button.is_visible() && !imp.page_size_dropdown.is_mapped());
     assert!(!imp.more_button.is_visible());

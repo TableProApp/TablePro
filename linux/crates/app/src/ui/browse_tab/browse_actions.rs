@@ -81,6 +81,31 @@ pub(super) fn install_browse_actions(tab: &BrowseTab, page_size: u64) -> BrowseA
     }
     tab.imp().pending_bar.announce_save_keys("table", &actions.save);
     tab.insert_action_group(ACTION_GROUP, Some(&group));
+    let json_group = gio::SimpleActionGroup::new();
+    for name in [
+        "refresh",
+        "previous-page",
+        "next-page",
+        "first-page",
+        "last-page",
+        "page-size",
+        "count-rows",
+        "export",
+    ] {
+        if let Some(action) = group.lookup_action(name) {
+            json_group.add_action(&action);
+        }
+    }
+    let filter = gio::SimpleAction::new("filter", None);
+    let weak = tab.downgrade();
+    filter.connect_activate(move |_, _| {
+        if let Some(tab) = weak.upgrade() {
+            tab.imp().view_stack.set_visible_child_name("data");
+            tab.send(PagingInput::ShowFilterStrip);
+        }
+    });
+    json_group.add_action(&filter);
+    let _ = tab.imp().json_browse_actions.set(json_group);
     let _ = tab.imp().browse_actions.set(group);
     install_view_actions(tab);
     tab.add_controller(local_shortcut_controller(ShortcutOwner::BrowseTab));

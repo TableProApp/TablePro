@@ -141,7 +141,7 @@ impl BrowseModel {
     /// on screen: rows behind the loading or the error page are not what
     /// the table holds under the tab's filter.
     pub(super) fn show_grid_actions(&mut self) {
-        let shown = self.load.has_content() && self.this.upgrade().is_some_and(|tab| !tab.shows_structure());
+        let shown = self.load.has_content() && self.this.upgrade().is_some_and(|tab| tab.shows_data());
         if self.grid_actions_shown == shown {
             return;
         }
