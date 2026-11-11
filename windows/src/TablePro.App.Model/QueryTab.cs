@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using TablePro.DataGrid.Model;
 using TablePro.Interop;
 
@@ -14,6 +15,11 @@ public interface IQueryTabView
     string DocumentText { get; }
 
     int Caret { get; }
+
+    // The history keeps a run's failure in the words the results pane showed for it.
+    string TimedOutMessage { get; }
+
+    string WordError(CoreError failure);
 
     void SelectStatement(int start, int length);
 
@@ -45,6 +51,7 @@ public sealed class QueryTab : IWorkspaceTab
     private readonly IResultsView _results;
     private readonly DataModel _dataModel;
     private readonly Func<AppSettings> _settings;
+    private readonly IHistoryRecorder? _history;
     private readonly TabWork _work = new();
     private ITabEditor? _editor;
     private Task? _closing;
@@ -60,7 +67,9 @@ public sealed class QueryTab : IWorkspaceTab
         IQueryTabView view,
         IResultsView results,
         DataModel dataModel,
-        Func<AppSettings> settings)
+        Func<AppSettings> settings,
+        IHistoryRecorder? history = null,
+        string? database = null)
     {
         ArgumentNullException.ThrowIfNull(title);
         ArgumentNullException.ThrowIfNull(session);
@@ -73,6 +82,8 @@ public sealed class QueryTab : IWorkspaceTab
         _results = results;
         _dataModel = dataModel;
         _settings = settings;
+        _history = history;
+        Database = string.IsNullOrEmpty(database) ? null : database;
     }
 
     public event EventHandler? StateChanged;
@@ -80,6 +91,9 @@ public sealed class QueryTab : IWorkspaceTab
     public string Title { get; }
 
     public TabKind Kind => TabKind.Query;
+
+    // Each editor connection the tab opens moves here before its first run.
+    public string? Database { get; }
 
     public bool IsRunning { get; private set; }
 
@@ -90,7 +104,8 @@ public sealed class QueryTab : IWorkspaceTab
     // A query tab's text is kept in the session, so closing loses nothing to ask about.
     public Task<bool> ConfirmCloseAsync(bool offerSave) => Task.FromResult(true);
 
-    public SessionTab Snapshot() => new() { Kind = TabKind.Query, Title = Title, Sql = _view.WholeText };
+    public SessionTab Snapshot() =>
+        new() { Kind = TabKind.Query, Title = Title, Sql = _view.WholeText, Database = Database };
 
     public async Task RunAsync()
     {
@@ -161,7 +176,7 @@ public sealed class QueryTab : IWorkspaceTab
         }
 
         _sort = sort;
-        await RunSqlAsync(sorted).ConfigureAwait(true);
+        await RunSqlAsync(sorted, record: false).ConfigureAwait(true);
     }
 
     // The grid shows another set of the run, unsorted.
@@ -202,7 +217,7 @@ public sealed class QueryTab : IWorkspaceTab
 
         _statement = sql;
         _sort = GridSort.None;
-        await RunSqlAsync(sql).ConfigureAwait(true);
+        await RunSqlAsync(sql, record: true).ConfigureAwait(true);
     }
 
     // Typed SQL only: Commit and Roll back end a transaction at every level, and a sort runs again only a read.
@@ -231,10 +246,13 @@ public sealed class QueryTab : IWorkspaceTab
         }
     }
 
-    private Task<bool> RunSqlAsync(string sql) => _work.RunAsync(token => RunOnEditorAsync(sql, token));
+    // Record: a run the user typed, which the history keeps; a sort and Commit or Roll back are not.
+    private Task<bool> RunSqlAsync(string sql, bool record) =>
+        _work.RunAsync(token => RunOnEditorAsync(sql, record, token));
 
-    private async Task RunOnEditorAsync(string sql, CancellationToken cancellationToken)
+    private async Task RunOnEditorAsync(string sql, bool record, CancellationToken cancellationToken)
     {
+        HistoryRun? ran = null;
         SetRunning(true);
         try
         {
@@ -245,17 +263,43 @@ public sealed class QueryTab : IWorkspaceTab
             }
 
             // An editor that opens as the tab closes stays in _editor, which the close disposes.
-            _editor ??= await _session.OpenEditorAsync(cancellationToken).ConfigureAwait(true);
+            if (_editor is null)
+            {
+                var opened = await _session.OpenEditorAsync(cancellationToken).ConfigureAwait(true);
+                _editor = opened;
+                if (Database is { } database && !_work.IsClosed)
+                {
+                    try
+                    {
+                        await opened.UseDatabaseAsync(database, cancellationToken).ConfigureAwait(true);
+                    }
+                    catch (TableProException)
+                    {
+                        // Run elsewhere, the text would make its object in the wrong database, so the editor goes.
+                        _editor = null;
+                        await opened.DisposeAsync().ConfigureAwait(true);
+                        throw;
+                    }
+                }
+            }
+
             if (_work.IsClosed)
             {
                 return;
             }
 
             _run?.Dispose();
+            var startedAt = DateTimeOffset.Now;
+            var started = Stopwatch.GetTimestamp();
             _run = _editor.Run(sql, RunOptions(_settings()), cancellationToken);
             await _results.ShowRunAsync(_run, _sort, int.MaxValue, cancellationToken).ConfigureAwait(true);
             if (!_work.IsClosed)
             {
+                if (record)
+                {
+                    ran = Ran(sql, startedAt, Stopwatch.GetElapsedTime(started));
+                }
+
                 await AfterRunAsync().ConfigureAwait(true);
             }
         }
@@ -270,6 +314,46 @@ public sealed class QueryTab : IWorkspaceTab
         {
             SetRunning(false);
         }
+
+        // After the tab is idle, and inside its work, so a close waits for the write before the session goes.
+        if (ran is not null && _history is { } history && !_work.IsClosed)
+        {
+            try
+            {
+                await history.RecordAsync(ran).ConfigureAwait(true);
+            }
+            catch (TableProException)
+            {
+                // The run's result stands whether or not the history kept it.
+            }
+        }
+    }
+
+    // As the Linux app keeps a run: a timeout is a failure, and a run with no end is not kept.
+    private HistoryRun? Ran(string sql, DateTimeOffset startedAt, TimeSpan waited)
+    {
+        if (_history is null)
+        {
+            return null;
+        }
+
+        var outcome = _results.Outcome;
+        HistoryOutcome? kept = outcome switch
+        {
+            QueryOutcome.Completed => HistoryOutcome.Succeeded.Instance,
+            QueryOutcome.Failed failed => new HistoryOutcome.Failed(_view.WordError(failed.Error)),
+            QueryOutcome.TimedOut => new HistoryOutcome.Failed(_view.TimedOutMessage),
+            QueryOutcome.Cancelled => HistoryOutcome.Cancelled.Instance,
+            _ => null,
+        };
+        if (kept is null)
+        {
+            return null;
+        }
+
+        // The time the results pane showed, where the core gave one.
+        var duration = outcome is QueryOutcome.Completed completed ? completed.Elapsed : waited;
+        return new HistoryRun(sql, startedAt, duration, _results.RowsAffected, kept);
     }
 
     private static QueryOptions RunOptions(AppSettings settings) => new(
@@ -325,7 +409,7 @@ public sealed class QueryTab : IWorkspaceTab
         }
 
         _statement = null;
-        await RunSqlAsync(WorkspaceNotices.EndTransaction(_dataModel, commit)).ConfigureAwait(true);
+        await RunSqlAsync(WorkspaceNotices.EndTransaction(_dataModel, commit), record: false).ConfigureAwait(true);
     }
 
     private void SetRunning(bool running)

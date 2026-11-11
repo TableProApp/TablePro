@@ -1,9 +1,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use tablepro_core::{ByteLimit, EditorSession, EditorSessionState, RowLimit, RunOptions, UserSql};
+use tablepro_core::{ByteLimit, CallOptions, EditorSession, EditorSessionState, RowLimit, RunOptions, UserSql};
 use tablepro_session::runtime::{Tasks, catch_panic};
 
+use crate::cancel_token::{CancelToken, token};
 use crate::error::CoreError;
 use crate::run::{QueryRun, RunListener, RunOutcome, RunSink, RunState, TransactionStateTag};
 use crate::runtime::on_runtime;
@@ -68,6 +69,16 @@ impl QueryEditor {
     /// tab opens a new editor.
     pub fn is_lost(&self) -> bool {
         self.editor.state() == EditorSessionState::Lost
+    }
+
+    // Where a definition names no database of its own, its text has to run in the one it was read from.
+    pub async fn use_database(&self, database: String, cancel: Option<Arc<CancelToken>>) -> Result<(), CoreError> {
+        let editor = self.editor.clone();
+        let cancel = token(cancel);
+        on_runtime(&self.tasks, async move {
+            Ok(editor.use_database(&database, CallOptions::new(None, cancel)).await?)
+        })
+        .await
     }
 
     /// Closes the editor's connection, ending its transaction.

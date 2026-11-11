@@ -1,6 +1,6 @@
 # 0004: The app shell: one window, a rail of connections, a page per surface
 
-- **Status**: Accepted; packaging amended by [0005](0005-distribution.md)
+- **Status**: Accepted; packaging amended by [0005](0005-distribution.md), table reads by [0007](0007-browsing-a-connection.md)
 - **Date**: 2026-11-02
 
 ## Context
@@ -110,8 +110,8 @@ On 2026-11-05 the maintainer had the app show what the server prints, PostgreSQL
 
 - The object tree is a `TreeView` in ItemsSource mode with lazy children (`HasUnrealizedChildren`, `Expanding`) ([Tree view](https://learn.microsoft.com/en-us/windows/apps/develop/ui/controls/tree-view)). Schemas show only when there is more than one that is not a system schema. Objects go into a folder per kind with their count.
 - TreeView is not virtualized, so a folder realizes its first 500 objects, then "Show all N", which opens the whole folder in the virtualized `ListView`, and "Type in the filter box to find the rest". Typing in the filter switches to the same list of matches across schemas, names that start with the text first.
-- Invoking a table or view opens its table tab, or brings the open one forward. The core writes the statement (`DatabaseSession.GetTableQueryAsync`, over the core's `build_page`), quoted, ordered and limited as the engine writes it.
-- A query tab is the SQL editor over the run's results; a table tab is the results alone. Each opens its own editor connection on first use.
+- Invoking a table or view opens its table tab, or brings the open one forward. The core reads the page (`DatabaseSession.ReadTablePageAsync`, over the core's `read_page`), quoted, ordered, filtered and limited as the engine writes it, on one of the session's pooled connections (amended by 0007).
+- A query tab is the SQL editor over the run's results, on its own editor connection opened on first use; a table tab is the results alone, read on the session's pooled connections (0007).
 - Run statement (Query menu, Ctrl+Shift+Enter, as on Linux): the core picks the statement the cursor is in, or the last one before it, with the session's own grammar (`DatabaseSession.statement_at`, over `ScriptPlan::statement_at`, in UTF-16 offsets). The editor selects it, so the tab shows which statement ran, and Safe Mode judges that text alone.
 - Results: the run's first result set in `DataGridView` (ADR 0003), given to the grid once it has its first rows, or once it ends empty, and grown on each `RowsAppended`. The rows shown stay until then, so a sort or a refresh never shows an empty grid between the two results. A run with more than one set shows a `ComboBox` over the grid, "Result 1 (3)", "Result 2 (50)", as the Linux app labels them, with the count the engine gave or a plus when the row limit cut a set short; picking one shows its rows in arrival order and its count in the status. The pane holds every set of the run until the next run's first set replaces them. Columns are sized to their content, and a sort or a refresh keeps their widths. Copy and Select All in the Edit menu reach the grid when it had focus last.
 - Messages: a run the server printed something in gets a `SelectorBar`, Results | Messages, over its results. Messages is a read-only monospace `TextBox` with one line per notice, `{severity}: {message}`, as the Linux app prints the same core's notices, set once per batch of events rather than per notice. A run with no rows opens on Messages, one with rows on Results unless Messages was picked while it ran. Past the 10,000 notices the core keeps per run (`NoticeLimitReached`), the text ends with "The output was cut short."

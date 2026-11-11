@@ -166,24 +166,53 @@ public sealed class TableTabTests
     }
 
     [Fact]
-    public async Task ATableTabClosedWhileItsEditorOpensLetsItsSessionGoOnceAndShowsNothing()
+    public async Task APageIsReadThroughTheSessionWithNoConnectionOfTheTabsOwn()
+    {
+        await _tab.RunAsync();
+
+        Assert.Empty(_session.Editors);
+        Assert.Single(_session.Pages);
+        var (sort, limit, offset) = Assert.Single(_session.Queries);
+        Assert.Null(sort);
+        Assert.Equal(1_000, limit);
+        Assert.Equal(0, offset);
+    }
+
+    [Fact]
+    public async Task APageTheCoreSaysHasMoreRowsShowsAsCutEvenWhenFull()
+    {
+        await _tab.RunAsync();
+
+        // An engine that pages on the server reads only the first page, and says when more rows follow it.
+        _tab.PageRead(1_000, 12, truncated: true);
+
+        Assert.True(_tab.Finished?.Truncated);
+
+        _tab.PageRead(1_000, 12, truncated: false);
+
+        Assert.False(_tab.Finished?.Truncated);
+        Assert.True(_tab.Page.HasNext);
+    }
+
+    [Fact]
+    public async Task ATableTabClosedWhileItsTableEditorOpensLetsItsSessionGoOnceAndShowsNothing()
     {
         var opening = new Gate();
-        _session.Opening = opening;
+        _session.OpeningTableEditor = opening;
 
         var loading = _tab.RunAsync();
         await opening.Reached;
         await _tab.CloseAsync();
         await loading;
 
-        Assert.Empty(_session.Editors);
         Assert.Empty(_session.Queries);
+        Assert.Equal(0, _session.TableEditor.Disposals);
         Assert.Equal(1, _session.Releases);
         Assert.Equal<string>(["clear"], _results.Shown);
     }
 
     [Fact]
-    public async Task ATableTabClosedWhileItsPageIsWrittenDisposesItsEditorOnceAndRunsNothing()
+    public async Task ATableTabClosedAsItsPageReadStartsStopsThatReadAndShowsNothing()
     {
         var querying = new Gate(honorsCancel: false);
         _session.Querying = querying;
@@ -197,9 +226,9 @@ public sealed class TableTabTests
         await loading;
 
         Assert.True(waited);
-        var editor = Assert.Single(_session.Editors);
-        Assert.Equal(1, editor.Disposals);
-        Assert.Empty(editor.Runs);
+        var run = Assert.Single(_session.Pages);
+        Assert.Equal(1, run.Cancels);
+        Assert.Equal(1, run.Disposals);
         Assert.Equal(1, _session.TableEditor.Disposals);
         Assert.Equal(1, _session.Releases);
         Assert.Equal<string>(["clear"], _results.Shown);
@@ -216,11 +245,9 @@ public sealed class TableTabTests
         await _tab.CloseAsync();
         await loading;
 
-        var editor = Assert.Single(_session.Editors);
-        var run = Assert.Single(editor.Started);
+        var run = Assert.Single(_session.Pages);
         Assert.Equal(1, run.Cancels);
         Assert.Equal(1, run.Disposals);
-        Assert.Equal(1, editor.Disposals);
         Assert.Equal(1, _session.Releases);
         Assert.Equal(0, _session.Counts);
         Assert.Equal<string>(["run", "clear"], _results.Shown);
@@ -237,7 +264,7 @@ public sealed class TableTabTests
 
         await _tab.CloseAsync();
 
-        Assert.Equal(1, Assert.Single(_session.Editors).Disposals);
+        Assert.Equal(1, Assert.Single(_session.Pages).Disposals);
         Assert.Equal(1, _session.Releases);
         Assert.Null(_tab.Page.Total);
         Assert.Equal(pagers, _view.Pagers.Count);
@@ -260,7 +287,7 @@ public sealed class TableTabTests
         Assert.Null(_tab.Page.Total);
         Assert.Equal(pagers, _view.Pagers.Count);
         Assert.Equal(1, _session.Releases);
-        Assert.Equal(1, Assert.Single(_session.Editors).Disposals);
+        Assert.Equal(1, Assert.Single(_session.Pages).Disposals);
     }
 
     [Fact]
@@ -280,7 +307,14 @@ public sealed class TableTabTests
 
     private TableTab New(SessionTab? restore = null)
     {
-        var tab = new TableTab(_session, _view, _results, new TableName(null, "Artist"), () => _settings, restore);
+        var tab = new TableTab(
+            _session,
+            _view,
+            _results,
+            new TableName(null, "Artist"),
+            ObjectKind.Table,
+            () => _settings,
+            restore);
         _view.Tab = tab;
         return tab;
     }
