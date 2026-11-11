@@ -1,12 +1,3 @@
-//
-//  MCPAuditChainTests.swift
-//  TableProTests
-//
-//  Every row hashes its own fields, its sequence number and the hash before it, so the log is only
-//  evidence while that chain holds. Editing a row, reordering two rows and deleting one all break
-//  it, and `verify()` names the sequence where the break starts.
-//
-
 import Foundation
 import SQLite3
 import TableProPluginKit
@@ -15,6 +6,13 @@ import Testing
 @testable import TablePro
 
 struct MCPAuditChainTests {
+    private static func makeStorage() -> (storage: MCPAuditLogStorage, path: String) {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MCPAuditChainTests-\(UUID().uuidString)", isDirectory: true)
+        let path = directory.appendingPathComponent(MCPAuditLogStorage.databaseFileName).path
+        return (MCPAuditLogStorage(directory: directory), path)
+    }
+
     private func entry(action: String, details: String? = nil) -> AuditEntry {
         AuditEntry(
             timestamp: Date(timeIntervalSince1970: 1_700_000_000),
@@ -30,7 +28,7 @@ struct MCPAuditChainTests {
 
     @Test("An appended log verifies intact")
     func chainVerifiesIntact() async {
-        let storage = MCPAuditLogStorage(isolatedForTesting: true)
+        let storage = Self.makeStorage().storage
         for index in 0..<5 {
             await storage.addEntry(entry(action: "tool.run\(index)"))
         }
@@ -39,7 +37,7 @@ struct MCPAuditChainTests {
 
     @Test("An empty log verifies intact")
     func emptyChainVerifiesIntact() async {
-        let storage = MCPAuditLogStorage(isolatedForTesting: true)
+        let storage = Self.makeStorage().storage
         #expect(await storage.verify() == .intact(count: 0))
     }
 
@@ -87,7 +85,7 @@ struct MCPAuditChainTests {
 
     @Test("Clearing the log restarts the chain at genesis")
     func deleteAllResetsTheChain() async {
-        let storage = MCPAuditLogStorage(isolatedForTesting: true)
+        let storage = Self.makeStorage().storage
         await storage.addEntry(entry(action: "tool.first"))
         #expect(await storage.deleteAll() == true)
         await storage.addEntry(entry(action: "tool.second"))
@@ -107,11 +105,10 @@ struct MCPAuditChainTests {
     @Test("A row edited behind the app's back is detected")
     func editedRowIsDetected() async throws {
         let marker = "tool.edited.\(UUID().uuidString)"
-        let storage = MCPAuditLogStorage(isolatedForTesting: true)
+        let (storage, path) = Self.makeStorage()
         for index in 0..<3 {
             await storage.addEntry(entry(action: index == 1 ? marker : "tool.run\(index)"))
         }
-        let path = try #require(Self.databasePath(containing: marker))
 
         #expect(
             Self.execute(
@@ -126,11 +123,10 @@ struct MCPAuditChainTests {
     @Test("A row removed behind the app's back is detected")
     func removedRowIsDetected() async throws {
         let marker = "tool.removed.\(UUID().uuidString)"
-        let storage = MCPAuditLogStorage(isolatedForTesting: true)
+        let (storage, path) = Self.makeStorage()
         for index in 0..<3 {
             await storage.addEntry(entry(action: index == 1 ? marker : "tool.gone\(index)"))
         }
-        let path = try #require(Self.databasePath(containing: marker))
 
         #expect(Self.execute("DELETE FROM audit_entries WHERE action = '\(marker)';", at: path))
 
@@ -140,39 +136,13 @@ struct MCPAuditChainTests {
     @Test("A row reordered behind the app's back is detected")
     func reorderedRowIsDetected() async throws {
         let marker = "tool.reordered.\(UUID().uuidString)"
-        let storage = MCPAuditLogStorage(isolatedForTesting: true)
+        let (storage, path) = Self.makeStorage()
         await storage.addEntry(entry(action: marker))
         await storage.addEntry(entry(action: "tool.second"))
-        let path = try #require(Self.databasePath(containing: marker))
 
         #expect(Self.execute("UPDATE audit_entries SET sequence = 9 WHERE sequence = 1;", at: path))
 
         #expect(await storage.verify() == .broken(atSequence: 9))
-    }
-
-    private static func databasePath(containing action: String) -> String? {
-        let directory = AppStorageEnvironment.shared.applicationSupportRoot.appendingPathComponent("TablePro")
-        let prefix = "mcp-audit-test_\(ProcessInfo.processInfo.processIdentifier)"
-        let names = ((try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? [])
-            .filter { $0.hasPrefix(prefix) && $0.hasSuffix(".db") }
-        return names
-            .map { directory.appendingPathComponent($0).path }
-            .first { contains(action: action, at: $0) }
-    }
-
-    private static func contains(action: String, at path: String) -> Bool {
-        var db: OpaquePointer?
-        guard sqlite3_open(path, &db) == SQLITE_OK else { return false }
-        defer { sqlite3_close(db) }
-
-        var statement: OpaquePointer?
-        let sql = "SELECT COUNT(*) FROM audit_entries WHERE action = ?;"
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return false }
-        defer { sqlite3_finalize(statement) }
-
-        sqlite3_bind_text(statement, 1, action, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
-        guard sqlite3_step(statement) == SQLITE_ROW else { return false }
-        return sqlite3_column_int(statement, 0) > 0
     }
 
     private static func execute(_ sql: String, at path: String) -> Bool {

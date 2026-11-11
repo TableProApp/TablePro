@@ -226,14 +226,12 @@ pub(super) fn popup_menu(canvas: &DiagramCanvas, at: gdk::Rectangle) {
         .popover
         .borrow_mut()
         .get_or_insert_with(|| {
-            let popover = gtk::PopoverMenu::from_model(Some(&table_menu()));
-            popover.set_has_arrow(true);
+            let popover = crate::ui::context_menu::context_menu(Some(&table_menu()));
             popover.set_parent(canvas);
             popover
         })
         .clone();
-    popover.set_pointing_to(Some(&at));
-    popover.popup();
+    crate::ui::context_menu::popup_at(&popover, Some(at));
 }
 
 fn table_menu() -> gio::Menu {

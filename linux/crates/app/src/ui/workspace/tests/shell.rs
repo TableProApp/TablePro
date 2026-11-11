@@ -174,23 +174,36 @@ fn show_tabs_opens_and_closes_the_overview_while_a_tab_is_open() {
 }
 
 #[gtk4::test]
-fn sidebar_toggle_visible_only_when_collapsed_or_hidden() {
+fn the_sidebar_toggle_is_always_in_the_header() {
     let test = TestWindow::connected("SidebarToggle");
     let workspace = test.workspace();
     let shell = shell_of(&workspace);
     let imp = shell.imp();
     let (split, toggle) = (imp.split_view.get(), imp.sidebar_toggle.get());
-    split.set_collapsed(false);
-    split.set_show_sidebar(true);
-    assert!(!toggle.is_visible(), "shown beside a sidebar in view");
-
-    split.set_show_sidebar(false);
-    assert!(toggle.is_visible(), "hidden with the sidebar hidden");
-
-    split.set_show_sidebar(true);
-    split.set_collapsed(true);
-    assert!(toggle.is_visible(), "hidden with the sidebar collapsed");
+    crate::test_support::assert_labelled(&toggle).expect("the sidebar toggle is named");
+    assert_eq!(toggle.tooltip_text().as_deref(), Some("Show Sidebar"));
     assert_eq!(toggle.action_name().as_deref(), Some("win.show-sidebar"));
+
+    for collapsed in [false, true] {
+        split.set_collapsed(collapsed);
+        split.set_show_sidebar(true);
+        assert!(toggle.is_visible());
+        assert!(toggle.is_active());
+
+        toggle.emit_clicked();
+        assert!(!split.shows_sidebar());
+        assert!(!toggle.is_active());
+        assert!(toggle.is_visible());
+
+        toggle.emit_clicked();
+        assert!(split.shows_sidebar());
+        assert!(toggle.is_active());
+
+        WidgetExt::activate_action(&test.window, "win.show-sidebar", None).expect("win.show-sidebar");
+        assert!(!split.shows_sidebar());
+        assert!(!toggle.is_active());
+        assert!(toggle.is_visible());
+    }
 }
 
 #[gtk4::test]
@@ -207,7 +220,41 @@ fn narrow_window_swaps_tab_bar_for_tab_button() {
 
     assert!(!imp.tab_bar.is_visible(), "the tab bar stayed");
     assert!(imp.tab_button.is_visible(), "no tab button took its place");
+    assert!(
+        !imp.new_tab_button.is_visible(),
+        "New Query stayed beside the tab button"
+    );
+    assert!(imp.tab_overview.property::<bool>("enable-new-tab"));
     assert!(imp.split_view.is_collapsed());
+    let button = session_menu_button(&test);
+    wait_until(WAIT, || button.is_mapped()).expect("Session Menu at the window floor");
+    assert!(imp.content_header.measure(gtk::Orientation::Horizontal, -1).0 <= 360);
+    button.popup();
+    wait_until(WAIT, || button.popover().is_some_and(|menu| menu.is_mapped())).expect("the narrow menu opens");
+}
+
+#[gtk4::test]
+fn the_safe_mode_lock_leaves_the_narrow_header_to_the_session_menu() {
+    for (name, width, height, shown) in [("NarrowLock", 360, 294, false), ("WideLock", 1200, 760, true)] {
+        let test = sized(name, width, height);
+        let workspace = test.workspace();
+        let shell = shell_of(&workspace);
+        let imp = shell.imp();
+        let narrow = (!shown).then(|| imp.narrow_breakpoint.get());
+        wait_until(Duration::from_secs(2), || {
+            imp.breakpoint_bin.width() > 0 && imp.breakpoint_bin.current_breakpoint() == narrow
+        })
+        .expect("the breakpoint for the width");
+        // is_visible also reads the slot, which the narrow breakpoint hides.
+        wait_until(WAIT, || imp.safe_mode_button.get_visible()).expect("the connection's level");
+        assert_eq!(imp.safe_mode_button.is_visible(), shown, "{name}");
+        shell.show_safe_mode(Some(tablepro_core::SafeModeLevel::ReadOnly));
+        assert_eq!(
+            imp.safe_mode_button.is_visible(),
+            shown,
+            "a level change kept the {name} layout"
+        );
+    }
 }
 
 #[gtk4::test]
@@ -225,6 +272,22 @@ fn wide_window_shows_tab_bar() {
     assert!(imp.tab_bar.is_visible());
     assert!(!imp.tab_button.is_visible());
     assert!(!imp.split_view.is_collapsed());
+}
+
+#[gtk4::test]
+fn save_changes_leaves_the_narrow_header() {
+    for (name, width, height, shown) in [("NarrowSave", 360, 294, false), ("WideSave", 1200, 760, true)] {
+        let test = sized(name, width, height);
+        let workspace = test.workspace();
+        let shell = shell_of(&workspace);
+        let imp = shell.imp();
+        let narrow = (!shown).then(|| imp.narrow_breakpoint.get());
+        wait_until(Duration::from_secs(2), || {
+            imp.breakpoint_bin.width() > 0 && imp.breakpoint_bin.current_breakpoint() == narrow
+        })
+        .expect("the breakpoint for the width");
+        assert_eq!(imp.save_changes_button.is_visible(), shown, "{name}");
+    }
 }
 
 fn fits_the_floor(root: &gtk::Widget) {
@@ -276,16 +339,28 @@ fn every_page_fits_the_window_floor() {
     fits_the_floor(&content());
 }
 
-/// The floor measured on the tab's own content, with its widest
-/// bars up: the pager's longest label, pending changes and the
-/// filter strip.
 #[gtk4::test]
 fn an_open_table_tab_fits_the_window_floor() {
+    table_tab_fits_the_window_floor(false);
+}
+
+#[gtk4::test]
+fn a_table_tab_with_structure_switch_fits_the_window_floor() {
+    table_tab_fits_the_window_floor(true);
+}
+
+fn table_tab_fits_the_window_floor(with_structure: bool) {
     use crate::ui::browse_tab::{BrowseTab, PagingInput};
+    let mut connection = served_table();
+    if with_structure {
+        connection.dialect = Arc::new(tablepro_driver_postgres::PgDialect::new(
+            &tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0),
+        ));
+    }
     let test = TestWindow::with_script(
         "TableFloor",
         Script {
-            connection: served_table(),
+            connection,
             window_size: Some((360, 294)),
             ..Script::default()
         },
@@ -392,6 +467,106 @@ fn primary_menu_has_no_quit() {
         test.app.menu_by_id("tab_overview_menu").is_some(),
         "the overview's menu is missing"
     );
+}
+
+#[gtk4::test]
+fn application_and_session_commands_have_separate_native_menus() {
+    let test = TestWindow::connected("NativeMenus");
+    assert!(
+        test.app.menubar().is_none(),
+        "AdwApplicationWindow does not support a menu bar"
+    );
+    let primary = test.app.menu_by_id("primary_menu").expect("the primary menu");
+    let mut app_actions = Vec::new();
+    collect_actions(primary.upcast_ref(), &mut app_actions);
+    assert_eq!(app_actions.len(), 10);
+    let button = session_menu_button(&test);
+    assert!(!button.is_primary(), "F10 belongs to Main Menu");
+    crate::test_support::assert_labelled(&button).expect("the menu's accessible name");
+    let mut session_actions = Vec::new();
+    collect_actions(&button.menu_model().expect("the session menu"), &mut session_actions);
+    for expected in [
+        "win.safe-mode",
+        "win.show-history",
+        "win.show-saved-queries",
+        "win.export-database",
+        "win.import-sql-file",
+        "win.disconnect",
+    ] {
+        assert!(
+            session_actions.iter().any(|action| action == expected),
+            "{expected} is missing"
+        );
+        assert!(
+            !app_actions.iter().any(|action| action == expected),
+            "{expected} is duplicated"
+        );
+    }
+    for action in &app_actions {
+        assert!(!session_actions.contains(action), "{action} belongs to Main Menu");
+    }
+}
+
+fn session_menu_button(test: &TestWindow) -> gtk::MenuButton {
+    let shell = test.window.shell().expect("the workspace shell");
+    descendants(&shell.imp().content_header.get())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::MenuButton>().ok())
+        .find(|button| button.tooltip_text().as_deref() == Some("Session Menu"))
+        .expect("Session Menu in the content header")
+}
+
+fn click_menu_item(menu: &gtk::Popover, label: &str) {
+    let mut found = None;
+    wait_until(WAIT, || {
+        found = descendants(menu).into_iter().find(|widget| {
+            widget.type_().name() == "GtkModelButton"
+                && widget.property::<Option<String>>("text").as_deref() == Some(label)
+                && widget.is_mapped()
+                && widget.is_sensitive()
+        });
+        found.is_some()
+    })
+    .unwrap_or_else(|_| panic!("no enabled menu item {label}"));
+    found.expect("the item").emit_by_name::<()>("clicked", &[]);
+}
+
+#[gtk4::test]
+fn the_session_menu_changes_safe_mode_through_its_radio_item() {
+    let test = TestWindow::connected("SessionMenuSafeMode");
+    let button = session_menu_button(&test);
+    button.popup();
+    let menu = button.popover().expect("the session menu");
+    click_menu_item(&menu, "Safe Mode");
+    click_menu_item(&menu, "Confirm Writes");
+    wait_until(WAIT, || {
+        test.window
+            .front_session()
+            .is_some_and(|(_, session)| session.safe_mode() == tablepro_core::SafeModeLevel::ConfirmWrites)
+    })
+    .expect("the selected level to reach the session");
+    assert_eq!(
+        test.window
+            .lookup_action("safe-mode")
+            .and_then(|action| action.state())
+            .and_then(|state| state.get::<String>()),
+        Some("confirm-writes".to_owned())
+    );
+}
+
+#[gtk4::test]
+fn the_session_menu_disconnects_the_session_in_front() {
+    let test = TestWindow::connected("SessionMenuDisconnect");
+    let button = session_menu_button(&test);
+    button.popup();
+    click_menu_item(&button.popover().expect("the menu"), "Disconnect");
+    test.wait_for_page("picker");
+    assert!(test.window.front_session().is_none());
+    assert!(!descendants(&test.window).iter().any(|widget| {
+        widget
+            .downcast_ref::<gtk::MenuButton>()
+            .is_some_and(|button| button.tooltip_text().as_deref() == Some("Session Menu"))
+    }));
 }
 
 #[gtk4::test]
@@ -562,4 +737,158 @@ fn the_main_menu_adds_a_connection_with_none_open() {
     );
 
     choose_new_connection(&test, &test.window.content().expect("the picker"));
+}
+
+fn collect_actions(menu: &gio::MenuModel, actions: &mut Vec<String>) {
+    for item in 0..menu.n_items() {
+        if let Some(action) = menu
+            .item_attribute_value(item, "action", None)
+            .and_then(|value| value.get::<String>())
+        {
+            actions.push(action);
+        }
+        for link in ["section", "submenu"] {
+            if let Some(inner) = menu.item_link(item, link) {
+                collect_actions(&inner, actions);
+            }
+        }
+    }
+}
+
+#[gtk4::test]
+fn open_quickly_closes_when_another_session_comes_forward() {
+    let sessions = super::two_sessions("QuickOpenFollowsFront", "Other");
+    super::open_editor(&sessions.first);
+    let dialog = sessions
+        .first
+        .with_model(|model| {
+            model.on_show_quick_open();
+            model.quick_open_dialog.clone().expect("quick open")
+        })
+        .expect("workspace");
+    wait_until(WAIT, || dialog.parent().is_some()).expect("shown");
+    super::open_editor(&sessions.second);
+    wait_until(WAIT, || dialog.parent().is_none()).expect("old session dialog closed");
+    assert_eq!(sessions.shell.front().as_ref(), Some(&sessions.second));
+}
+
+#[gtk4::test]
+fn a_queued_quick_open_pick_does_not_reopen_a_background_session() {
+    let sessions = super::two_sessions("QuickOpenQueuedPick", "Other");
+    super::open_editor(&sessions.second);
+    let before = sessions.shell.tab_view().n_pages();
+    sessions.first.with_model(|model| {
+        model.on_quick_open_chosen(crate::ui::quick_open::Pick::Table {
+            table: tablepro_core::meta::TableRef::new(None, "orders"),
+            structure: false,
+        })
+    });
+    assert_eq!(sessions.shell.front().as_ref(), Some(&sessions.second));
+    assert_eq!(sessions.shell.tab_view().n_pages(), before);
+}
+
+#[gtk4::test]
+fn the_header_refresh_follows_the_selected_tabs_capability() {
+    use super::super::structure_target::StructureTarget;
+    use super::super::tab_spec::{TabSpec, TablePage};
+    use crate::ui::browse_tab::TableFilter;
+    use tablepro_core::meta::TableRef;
+
+    let test = TestWindow::connected("HeaderRefresh");
+    let workspace = test.workspace();
+    let shell = shell_of(&workspace);
+    let button = shell.imp().refresh_page_button.get();
+    assert_eq!(button.action_name().as_deref(), Some("win.refresh-page"));
+    crate::test_support::assert_labelled(&button).expect("the refresh button is named");
+    assert!(gtk::test_accessible_has_property(
+        &button,
+        gtk::AccessibleProperty::KeyShortcuts
+    ));
+    assert!(!button.is_sensitive(), "there is no tab to refresh");
+
+    let table = workspace
+        .with_model(|model| {
+            model.open_tab(TabSpec::Table {
+                table: TableRef::unqualified("customers"),
+                page: TablePage::first(100),
+                filter: TableFilter::Remembered,
+            })
+        })
+        .flatten()
+        .expect("a table");
+    wait_until(WAIT, || button.is_sensitive()).expect("table refresh");
+    super::open_editor(&workspace);
+    wait_until(WAIT, || !button.is_sensitive()).expect("no editor rerun");
+    workspace
+        .with_model(|model| {
+            model.open_tab(TabSpec::Structure {
+                target: StructureTarget::Existing(TableRef::unqualified("customers")),
+            })
+        })
+        .flatten()
+        .expect("a structure draft");
+    wait_until(WAIT, || !button.is_sensitive()).expect("no draft to reload");
+    workspace.with_model(|model| model.tab_view.set_selected_page(&table));
+    wait_until(WAIT, || button.is_sensitive()).expect("refresh after selection inside the model");
+
+    for page in (0..shell.tab_view().n_pages())
+        .map(|i| shell.tab_view().nth_page(i))
+        .collect::<Vec<_>>()
+    {
+        shell.tab_view().close_page(&page);
+    }
+    wait_until(WAIT, || shell.tab_view().n_pages() == 0).expect("all clean tabs close");
+    wait_until(WAIT, || !button.is_sensitive()).expect("no refresh after the last tab closes");
+}
+
+fn postgres(script: &mut tablepro_test_support::ConnectionScript) {
+    script.dialect = Arc::new(tablepro_driver_postgres::PgDialect::new(
+        &tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0),
+    ));
+}
+
+#[gtk4::test]
+fn the_sidebar_add_menu_makes_objects_in_the_session_in_front() {
+    let test = TestWindow::connected_with("SidebarAdd", postgres);
+    let shell = shell_of(&test.workspace());
+    let imp = shell.imp();
+    let (bar, button) = (imp.sidebar_bar.get(), imp.sidebar_add_button.get());
+    wait_until(WAIT, || bar.is_revealed()).expect("the bar under the tree");
+    crate::test_support::assert_labelled(&button).expect("the Add button is named");
+    let target = crate::ui::session_target::to_variant(&test.key());
+    let offered = button
+        .menu_model()
+        .map(|menu| crate::ui::workspace::sidebar::tests::menu_items(&menu))
+        .unwrap_or_default();
+    assert_eq!(
+        offered,
+        [
+            ("win.new-table-in".to_owned(), Some(target.clone())),
+            ("win.new-schema-in".to_owned(), Some(target.clone())),
+            ("win.new-database-in".to_owned(), Some(target.clone())),
+        ]
+    );
+
+    imp.scope_toggle.set_active_name(Some("favorites"));
+    assert!(!bar.is_revealed(), "the bar makes tables under Favorites");
+    imp.scope_toggle.set_active_name(Some("tables"));
+    assert!(bar.is_revealed());
+
+    WidgetExt::activate_action(&button, "win.new-table-in", Some(&target)).expect("the window's action");
+    wait_until(WAIT, || shell.tab_view().n_pages() == 1).expect("a new table's tab");
+}
+
+#[gtk4::test]
+fn a_read_only_connection_has_no_add_menu() {
+    let test = TestWindow::connected_with("SidebarAddReadOnly", |script| {
+        postgres(script);
+        script.read_only = true;
+    });
+    let shell = shell_of(&test.workspace());
+    let imp = shell.imp();
+    wait_until(WAIT, || test.workspace().creation_menu().is_some()).expect("the session's Add menu");
+
+    assert_eq!(test.workspace().creation_menu().map(|menu| menu.n_items()), Some(0));
+    assert!(!imp.sidebar_add_button.is_visible());
+    assert!(!imp.sidebar_bar.is_revealed());
 }

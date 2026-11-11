@@ -17,6 +17,7 @@ core/crates/
 ├── ai/                            the AI assistant's providers, prompts and replies
 ├── account/                       the TablePro account: sign-in, device, entitlement and the feature gate
 ├── mcp/                           the MCP server: transport, token and tools
+├── cli/                           the tablepro command line: parsing, the MCP client and the output formats
 ├── ffi/                           the library C# and Swift load: one UniFFI API and the grid's C ABI
 ├── bindgen/                       uniffi-bindgen-swift, which writes the Swift bindings from a built ffi
 ├── test-fixtures/                 dev-only container fixtures with a generated PKI
@@ -45,6 +46,7 @@ core/crates/
 | `drivers/sqlite`, `drivers/duckdb` | `core` |
 | `session` | `core`, `net`, `ssh`, `storage` |
 | `mcp` | `core`, `session`, `storage` |
+| `cli` | no workspace crate |
 | `ai` | `core`, `net` |
 | `account` | `core`, `storage` |
 | `ffi` | `core`, `session`, `ssh`, `storage`, and every driver behind its default `engines` feature |
@@ -58,6 +60,7 @@ Rules, enforced by review:
 - Each `drivers/<engine>` crate depends on `core`, and on `net` when it speaks TLS or dials TCP. **Drivers never depend on each other, on `session` or on `ssh`.**
 - `session` depends on `core`, `net`, `ssh` and `storage`, and on no driver outside its tests: it reaches drivers through `DriverRegistry`, and SSH through the `SshTunnels` the app passes in. Its Docker tests take `tablepro-driver-postgres`, `tablepro-driver-redis` and `tablepro-driver-mongodb` as dev-dependencies.
 - `mcp` depends on `core`, `session` and `storage`, and on no driver outside its tests. It reaches the windows and the user through the `McpHost` trait the app implements.
+- `cli` depends on no workspace crate: it speaks to the app's MCP server over HTTP and reaches the port, the token and the app's state through the `Host` trait the app implements ([0018](docs/decisions/0018-command-line.md)).
 - `ai` depends on `core` and `net`. It speaks the providers' protocols and builds the prompts from what the app hands it; the app decides what a prompt may carry.
 - `account` depends on `core` and `storage`. It reaches the browser, the keyring and the machine ID through what the app passes in ([0016](docs/decisions/0016-tablepro-accounts.md)).
 - `ffi` stands in for an app outside Rust: it names every driver and passes the host's services in. No other core crate depends on it.
@@ -82,6 +85,7 @@ A value or a trait the app passes in:
 | `SshTunnels` | `tablepro_ssh::SshServices`, the system OpenSSH client | `tablepro_ssh::InProcessSsh`, behind `tablepro-session`'s `in-process-ssh` feature ([ADR 0009](docs/decisions/0009-in-process-ssh-on-windows.md)) |
 | `ProcessHold` | `gio::Application::hold` | none |
 | `RefreshTokenVault`, `BrowserLauncher`, `MachineId` and `AppClient` (`tablepro-account`) | the keyring through `SecretStore`, `gtk::UriLauncher`, `MachineId::derive` of what `tablepro_linux_platform::read_machine_id` reads, `AppClient::LINUX` | none yet |
+| `Host` (`tablepro-cli`) | `LinuxHost` in the app crate: the port and switch from GSettings, the token read from the keyring, `NameHasOwner` for a running app, each connection's peer checked by `Host::verify_peer` through `tablepro_net::loopback_peer_is_ours` | none yet |
 | `ForeignAppDirs` and `ForeignHost` (`tablepro-foreign-import`) | `tablepro_linux_platform::foreign_app_dirs`, the host's XDG directories inside a Flatpak, and `PlainHost`: no other app's keychain | none yet |
 
 A `cfg` split inside a crate:
@@ -107,7 +111,7 @@ Each boundary error has a stable `code()`, such as `driver.timeout` or `ssh.host
 
 `ffi` is the library an app outside Rust loads: the Windows app as a DLL, the Apple apps as a static library in an XCFramework, built without the `engines` feature by `apple/scripts/build-core.sh`. Core ADRs 0002, on the bindings, 0003, on result windows, and 0009, on the macOS slices, hold the reasons.
 
-- One UniFFI API. `Core` lists the engines with the family each is listed under, opens a file, connects a saved connection or tests one from a form, and parses a connection URL with `tablepro_core::connection_url`, refusing one that needs a setting its record has no field for. Its `ConnectionLibrary` reads and changes the saved connections, groups, favourites and tags in `connections.json` and stores their secrets, and gives the Apple apps the library's CloudKit records and merges a pull into it (`tablepro_storage::cloudkit`). A `DatabaseSession` reads the catalog one level at a time, writes a table's sorted page at an offset and counts the table, writes a query re-run with a sort (`docs/decisions/0007-sorting-a-result.md`), reports and waits on the session's health, and opens a `QueryEditor`. `QueryEditor::run` returns a `QueryRun` at once; the app drains its events after a `RunListener` call, which comes only when no earlier one is waiting to be drained, and the last says which transaction the editor is left in. Each result set is a `ResultSet`, whose `sorted` gives the rows it holds in a column's order.
+- One UniFFI API. `Core` lists the engines with the family each is listed under, opens a file, connects a saved connection or tests one from a form, and parses a connection URL with `tablepro_core::connection_url`, refusing one that needs a setting its record has no field for. Its `ConnectionLibrary` reads and changes the saved connections, groups, favourites and tags in `connections.json` and stores their secrets, and gives the Apple apps the library's CloudKit records and merges a pull into it (`tablepro_storage::cloudkit`). A `DatabaseSession` reads the catalog one level at a time, writes a table's sorted page at an offset and counts the table, writes a query re-run with a sort (`docs/decisions/0007-sorting-a-result.md`), picks the statement at a caret with the session's grammar (`statement_at`), says what Safe Mode lets an editor run do at the session's level and takes a level saved while it is open (`gate_run`, over `SafeModeLevel::gate`, and `set_safe_mode`), reports and waits on the session's health, and opens a `QueryEditor`. `QueryEditor::run` returns a `QueryRun` at once; the app drains its events after a `RunListener` call, which comes only when no earlier one is waiting to be drained, and the last says which transaction the editor is left in. Each result set is a `ResultSet`, whose `sorted` gives the rows it holds in a column's order.
 - The grid reads a `ResultSet` through the C ABI in `src/window_abi.rs`: `tablepro_cursor_fetch` packs the display text of one visible range, and `tablepro_cursor_free` ends the cursor.
 - The library owns one tokio runtime. Each async export runs on it and is aborted when the foreign side drops the call; a `CancelToken` stops it sooner, since UniFFI cannot cancel.
 - A result set takes rows as the driver reads them. Each column keeps a kind byte, a raw `i64` and the exact text `tablepro_core::export::value_text` writes, or a binary value's bytes, in chunks of 65,536 rows. A window only cuts and copies.
@@ -174,7 +178,7 @@ The cancel token is checked between stages, and a stage that finishes after a ca
 
 | | `DirectTcpTransport` (`tablepro-net`) | `SshForwardTransport` (`tablepro-ssh`) | `InProcessForward` (`tablepro-ssh`, `in-process`) |
 |---|---|---|---|
-| `open` | Resolves the name, then tries each address in turn under the connect timeout | Connects to the forward's Unix socket under the connect timeout | Opens a `direct-tcpip` channel under the channel open timeout |
+| `open` | Resolves the name and races its addresses as Happy Eyeballs does (RFC 8305): families alternate, each attempt starts 250 ms after the last or as soon as one fails, and the lookup and every attempt share one connect timeout | Connects to the forward's Unix socket under the connect timeout | Opens a `direct-tcpip` channel under the channel open timeout |
 | Socket options | `TCP_NODELAY`; keepalive after 30 s idle, every 10 s, 3 probes; `TCP_USER_TIMEOUT` 45 s | OpenSSH's own: `ServerAliveInterval=15`, `ServerAliveCountMax=3` | The first hop's dial is a `DirectTcpTransport`'s; SSH keepalives every 15 s, 3 unanswered end the session |
 | `reroute` | A new direct transport | A new forward on the same master | A forward on the same session |
 | `explain_closed_stream` | Nothing to add | The master's exit, or the "open failed" line ssh printed | Why the session ended |
@@ -224,7 +228,7 @@ Where each platform's system store comes from: `linux/ARCHITECTURE.md`, Trust.
 
 | Bound | Value |
 |---|---|
-| TCP connect, per address | 10 s |
+| TCP connect, the name lookup and every address together | 10 s |
 | Login, including TLS | 15 s |
 | TCP keepalive | after 30 s idle, every 10 s, 3 probes |
 | `TCP_USER_TIMEOUT` | 45 s |

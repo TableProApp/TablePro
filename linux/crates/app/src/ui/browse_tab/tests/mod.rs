@@ -1,3 +1,5 @@
+mod default_sort;
+mod json;
 mod load;
 mod references;
 mod rows;
@@ -16,7 +18,9 @@ use tablepro_session::Session;
 use tablepro_session::fakes::FakeEstablish;
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeConnection, FakeReply};
 
-use super::{BrowseTab, BrowseTabInit, DataInput, GridInput, PagingInput, RowTotal, SaveInput, TableFilter};
+use super::{
+    BrowseTab, BrowseTabInit, DataInput, GridInput, InitialSort, PagingInput, RowTotal, SaveInput, TableFilter,
+};
 use crate::services::change_tracker::RowKey;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::TrackerDelta;
@@ -162,24 +166,50 @@ impl Harness {
         filter: TableFilter,
         read_only: bool,
     ) -> Self {
+        Self::open_configured(
+            script,
+            reconnects,
+            Opening {
+                saved,
+                filter,
+                read_only,
+                ..Opening::users()
+            },
+            TabStores::new(),
+        )
+    }
+
+    fn open_with_sort(script: ConnectionScript, initial_sort: InitialSort, choice: &str, direction: &str) -> Self {
+        let stores = TabStores::new();
+        stores.settings.get().set_default_sort(choice).expect("default sort");
+        stores
+            .settings
+            .get()
+            .set_default_sort_direction(direction)
+            .expect("default direction");
+        Self::open_configured(
+            script,
+            [],
+            Opening {
+                initial_sort,
+                ..Opening::users()
+            },
+            stores,
+        )
+    }
+
+    fn open_configured(
+        script: ConnectionScript,
+        reconnects: impl IntoIterator<Item = FakeEstablish>,
+        opening: Opening,
+        stores: TabStores,
+    ) -> Self {
         libadwaita::init().expect("libadwaita initialises under the test backend");
         crate::register_test_resources();
         let runtime = crate::test_support::test_runtime();
         let fake = FakeSession::start(script, reconnects, runtime.tasks());
-        let stores = TabStores::new();
-        let tracker = TabTrackerHandle::default();
-        let tab = table_tab(
-            &fake.session,
-            &runtime,
-            &stores,
-            Opening {
-                saved,
-                filter,
-                tracker: tracker.clone(),
-                read_only,
-                ..Opening::users()
-            },
-        );
+        let tracker = opening.tracker.clone();
+        let tab = table_tab(&fake.session, &runtime, &stores, opening);
         Self {
             tab: Some(tab),
             tracker,
@@ -215,6 +245,18 @@ impl Harness {
             .iter()
             .filter_map(|row| row.cells()?.get(1).cloned())
             .collect()
+    }
+
+    pub(super) fn elapsed(&self) -> Duration {
+        use gtk4::subclass::prelude::ObjectSubclassIsExt;
+        self.tab()
+            .imp()
+            .model
+            .borrow()
+            .as_ref()
+            .and_then(|model| model.page.as_ref())
+            .expect("a loaded page")
+            .elapsed
     }
 
     /// The saved rows the grid holds for the page on screen.
@@ -310,6 +352,12 @@ impl Drop for Shown {
     }
 }
 
+// A window's size request also covers its frame, which leaves the content 10 px short under xvfb.
+pub(super) fn hold_size(window: &impl IsA<gtk4::Window>, tab: &BrowseTab, width: i32, height: i32) {
+    tab.set_size_request(width, height);
+    window.upcast_ref::<gtk4::Window>().set_default_size(width, height);
+}
+
 /// The files and preferences a test tab reads.
 pub(super) struct TabStores {
     root: tempfile::TempDir,
@@ -337,6 +385,7 @@ pub(super) struct Opening {
     pub(super) filter: TableFilter,
     pub(super) tracker: TabTrackerHandle,
     pub(super) read_only: bool,
+    pub(super) initial_sort: InitialSort,
 }
 
 impl Opening {
@@ -347,6 +396,7 @@ impl Opening {
             filter: TableFilter::Remembered,
             tracker: TabTrackerHandle::default(),
             read_only: false,
+            initial_sort: InitialSort::Default,
         }
     }
 }
@@ -363,6 +413,7 @@ pub(super) fn table_tab(
         filter,
         tracker,
         read_only,
+        initial_sort,
     } = opening;
     let tasks = runtime.tasks();
     let connection_id = uuid::Uuid::new_v4();
@@ -373,14 +424,15 @@ pub(super) fn table_tab(
         tracker,
         schema: None,
         table: table.to_owned(),
-        connection_id: Some(connection_id),
+        state_key: Some(connection_id.into()),
         read_only,
         page_size: 100,
         initial_offset: 0,
-        initial_sort: None,
+        initial_sort,
         filter,
         column_layouts: crate::persistence::ColumnLayoutStore::load(root.join("column_layouts.json"), &tasks),
         filter_settings,
+        highlight_rules: crate::persistence::HighlightRulesStore::load(root.join("highlight_rules.json"), &tasks),
         session: session.clone(),
         tasks,
         deadlines: Arc::new(tablepro_session::operation::DefaultDeadlines::new(
@@ -579,10 +631,16 @@ fn stale_page_reply_ignored() {
 
     harness.tab().send(PagingInput::FilterApplied(not_null_name()));
     wait_until(WAIT, || harness.shown() == text(&["filtered"])).expect("the filtered page");
+    let elapsed = harness.elapsed();
     std::thread::sleep(Duration::from_millis(500));
     drain_main_context();
 
     assert_eq!(CallCounters::get(&counters.query_bound), 2);
+    assert_eq!(
+        harness.elapsed(),
+        elapsed,
+        "a stale reply changed the displayed page's time"
+    );
     assert_eq!(
         harness.shown(),
         text(&["filtered"]),
@@ -1185,7 +1243,7 @@ fn refresh_asks_the_window_and_filter_opens_the_strip() {
 
     harness
         .tab()
-        .activate_action("browse.refresh", None)
+        .activate_action("table.refresh", None)
         .expect("the browse group");
     harness
         .tab()
@@ -1241,6 +1299,72 @@ fn a_read_only_tab_refuses_insert_row() {
     drain_main_context();
 
     assert_eq!(harness.tracker.pending_count(), 0, "a read-only table took a new row");
+}
+
+#[gtk4::test]
+fn the_compact_menu_reaches_row_commands_only_in_data() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    let tab = harness.tab();
+    tab.offer_structure();
+    let shown = Shown::new(tab);
+    let imp = tab.imp();
+    wait_until(WAIT, || harness.shown().len() == 1 && imp.more_button.is_mapped()).expect("the compact Data bar");
+    assert!(!imp.insert_button.is_mapped());
+    assert!(!imp.delete_button.is_mapped());
+    assert!(!imp.details_toggle.is_mapped());
+    assert!(!imp.pager_bar.imp().first_button.is_visible());
+    assert!(!imp.pager_bar.imp().last_button.is_visible());
+    let menu = imp.more_button.menu_model().expect("the overflow menu");
+    let actions: Vec<String> = (0..menu.n_items())
+        .filter_map(|index| menu.item_link(index, "section"))
+        .flat_map(|section| {
+            (0..section.n_items())
+                .filter_map(|index| {
+                    section
+                        .item_attribute_value(index, "action", None)
+                        .and_then(|value| value.get::<String>())
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    for action in [
+        "grid.insert-row",
+        "grid.delete-rows",
+        "grid.show-details",
+        "browse.first-page",
+        "browse.last-page",
+    ] {
+        assert!(actions.iter().any(|found| found == action), "missing {action}");
+    }
+    imp.more_button.activate_action("grid.insert-row", None).unwrap();
+    drain_main_context();
+    assert_eq!(harness.tracker.pending_count(), 1);
+    imp.more_button.activate_action("grid.show-details", None).unwrap();
+    assert_eq!(
+        harness
+            .grid()
+            .actions()
+            .action_state("show-details")
+            .and_then(|state| state.get::<bool>()),
+        Some(true)
+    );
+
+    imp.view_stack.set_visible_child_name("structure");
+    assert!(imp.more_button.activate_action("grid.insert-row", None).is_err());
+    assert!(imp.more_button.activate_action("browse.last-page", None).is_err());
+    assert_eq!(harness.tracker.pending_count(), 1);
+
+    imp.view_stack.set_visible_child_name("data");
+    shown.0.set_size_request(1_000, 400);
+    wait_until(WAIT, || imp.insert_button.is_mapped() && !imp.more_button.is_mapped())
+        .expect("the wide Data bar restores its controls");
+    assert!(imp.details_toggle.is_mapped());
+    assert!(imp.pager_bar.imp().first_button.is_visible());
+    assert!(imp.pager_bar.imp().last_button.is_visible());
+    assert!(imp.view_toggle.is_mapped());
 }
 
 #[gtk4::test]
@@ -1535,4 +1659,447 @@ fn a_dotted_field_of_a_document_neither_sorts_nor_takes_an_edit() {
     assert_eq!(cell.lock(), Some(crate::services::grid::CellLock::Unaddressable));
     assert!(!grid.edit().edit_cell(&cell), "the dotted field opened for editing");
     assert_eq!(harness.tracker.pending_count(), 0);
+}
+
+#[gtk4::test]
+fn a_new_tab_opens_sorted_by_the_default_sort() {
+    let mut script = serving_table();
+    script.count_rows.always(FakeReply::ok(1_000));
+    script.query_bound.always(FakeReply::ok(full_page(0)));
+    let mut harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
+    assert_eq!(harness.tab().current_sort(), None, "no default sort until asked");
+
+    let settings = harness.stores.settings.get().clone();
+    settings.set_default_sort("primary-key").expect("store the sort");
+    settings
+        .set_default_sort_direction("descending")
+        .expect("store the direction");
+    let another = harness.open_another();
+    wait_until(WAIT, || another.current_sort().is_some()).expect("the default sort");
+
+    assert_eq!(another.current_sort(), Some((0, false)));
+}
+
+#[gtk4::test]
+fn the_bottom_bar_switches_between_data_and_structure() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+    let harness = Harness::open(serving_table(), []);
+    let tab = harness.tab();
+    let shown = Shown::new(tab);
+    let asked = std::rc::Rc::new(std::cell::Cell::new(0));
+    let counted = asked.clone();
+    tab.connect_structure_requested(move |_| counted.set(counted.get() + 1));
+    tab.offer_structure();
+    let imp = tab.imp();
+    wait_until(WAIT, || shown.0.is_mapped()).expect("the window is mapped");
+    tab.send(PagingInput::ShowFilterStrip);
+    assert!(imp.view_toggle.is_visible());
+    assert!(imp.view_toggle.child_focus(gtk4::DirectionType::TabForward));
+    assert!(crate::ui::a11y::holds_focus(&imp.view_toggle.get()));
+    let tabs: Vec<_> = crate::test_support::descendants(&imp.view_toggle.get())
+        .into_iter()
+        .filter(|widget| widget.accessible_role() == gtk4::AccessibleRole::Tab)
+        .collect();
+    assert_eq!(tabs.len(), 3);
+    assert!(tabs[1].activate());
+    wait_until(WAIT, || tab.shows_structure()).expect("keyboard activation selects Structure");
+    assert_eq!(asked.get(), 1);
+    assert!(!imp.data_start.is_visible());
+    wait_until(WAIT, || !imp.toolbar.is_mapped()).expect("the Data toolbar is hidden");
+    assert!(tab.activate_action("browse.filter", None).is_err());
+    imp.view_stack.set_visible_child_name("data");
+    imp.view_stack.set_visible_child_name("structure");
+    assert_eq!(asked.get(), 1, "lazy construction was requested twice before delivery");
+    imp.view_stack.set_visible_child_name("data");
+    wait_until(WAIT, || imp.toolbar.is_mapped()).expect("the Data toolbar returns");
+    assert!(imp.data_start.is_visible());
+    assert!(tab.read(|model| model.filter_strip.revealed()).unwrap());
+    drop(shown);
+}
+
+#[gtk4::test]
+fn table_commands_follow_the_selected_view_from_the_switch_and_controls() {
+    use crate::ui::structure_tab::{ColumnsInput, StructureMode, StructureTab, StructureTabInit};
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+    let mut script = serving_table();
+    script.dialect = Arc::new(tablepro_driver_postgres::PgDialect::new(
+        &tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0),
+    ));
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    let tab = harness.tab();
+    let shown = Shown::new(tab);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the rows");
+    let delta = harness.tracker.apply(rename(0, "Ada", "Edited"));
+    harness.grid().apply_delta(&delta);
+    tab.send(GridInput::EditingChanged);
+    tab.offer_structure();
+    let structure = StructureTab::new(StructureTabInit {
+        tracker: crate::services::structure_tracker_handle::StructureTrackerHandle::default(),
+        schema: None,
+        table: "new_table".into(),
+        mode: StructureMode::New,
+        session: harness.session.clone(),
+        tasks: harness.runtime.as_ref().unwrap().tasks(),
+        first_load: crate::ui::tab_load::FirstLoad::Now,
+    });
+    structure.send(ColumnsInput::AddColumn);
+    tab.set_structure(&structure);
+    let row_saves = crate::test_support::SignalLog::connect(tab, "save-requested", |_| ());
+    let schema_saves = crate::test_support::SignalLog::connect(&structure, "save-requested", |_| ());
+    let row_refreshes = crate::test_support::SignalLog::connect(tab, "refresh-requested", |_| ());
+    tab.imp().view_stack.set_visible_child_name("structure");
+    assert!(tab.imp().view_toggle.child_focus(gtk4::DirectionType::TabForward));
+    tab.imp().view_toggle.activate_action("table.save", None).unwrap();
+    assert_eq!(schema_saves.count(), 1);
+    assert_eq!(row_saves.count(), 0);
+    let save = structure.imp().save_button.get();
+    assert_eq!(save.parent(), Some(tab.imp().structure_primary.get().upcast()));
+    assert!(!structure.imp().action_bar.is_visible());
+    wait_until(WAIT, || save.is_mapped()).expect("the docked Save control");
+    assert!(save.grab_focus());
+    assert!(crate::ui::a11y::holds_focus(&save));
+    use crate::application::ShortcutOwner;
+    use crate::test_support::shortcut_keys::{keystroke, owner_controller, shortcuts, trigger_keys};
+    let ctrl_s = shortcuts(&owner_controller(tab, ShortcutOwner::BrowseTab).expect("the table's keys"))
+        .into_iter()
+        .find(|shortcut| {
+            shortcut
+                .trigger()
+                .is_some_and(|trigger| trigger_keys(&trigger).contains(&keystroke("<Primary>s")))
+        })
+        .and_then(|shortcut| shortcut.action())
+        .expect("Ctrl+S is bound");
+    assert!(ctrl_s.activate(gtk4::ShortcutActionFlags::empty(), &save, None));
+    assert_eq!(schema_saves.count(), 2);
+    assert_eq!(row_saves.count(), 0);
+    assert!(tab.activate_action("grid.insert-row", None).is_err());
+    tab.imp().view_toggle.activate_action("table.refresh", None).unwrap();
+    assert_eq!(row_refreshes.count(), 0);
+    assert_eq!(harness.tracker.pending_count(), 1);
+    tab.imp().view_stack.set_visible_child_name("data");
+    tab.activate_action("table.save", None).unwrap();
+    assert_eq!(row_saves.count(), 1);
+    assert_eq!(schema_saves.count(), 2);
+    assert!(tab.activate_action("structure.save", None).is_err());
+    structure.shutdown();
+    drop(shown);
+}
+
+#[gtk4::test]
+fn the_compact_structure_bar_fits_while_dirty_and_saving() {
+    use crate::ui::structure_tab::{
+        ColumnsInput, SaveInput as StructureSave, StructureMode, StructureTab, StructureTabInit,
+    };
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    use libadwaita::prelude::{AdwDialogExt, AdwWindowExt};
+
+    let mut script = serving_table();
+    script.dialect = Arc::new(tablepro_driver_postgres::PgDialect::new(
+        &tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0),
+    ));
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    let tab = harness.tab();
+    let window = crate::test_support::OwnedWindow::presented(
+        libadwaita::Window::builder()
+            .default_width(360)
+            .default_height(400)
+            .content(tab)
+            .build(),
+    );
+    tab.offer_structure();
+    let tracker = crate::services::structure_tracker_handle::StructureTrackerHandle::default();
+    let structure = StructureTab::new(StructureTabInit {
+        tracker: tracker.clone(),
+        schema: None,
+        table: "new_table".into(),
+        mode: StructureMode::New,
+        session: harness.session.clone(),
+        tasks: harness.runtime.as_ref().unwrap().tasks(),
+        first_load: crate::ui::tab_load::FirstLoad::Now,
+    });
+    structure.send(ColumnsInput::AddColumn);
+    tab.set_structure(&structure);
+    let imp = tab.imp();
+    imp.view_stack.set_visible_child_name("structure");
+    wait_until(WAIT, || imp.structure_more.is_mapped()).expect("the compact Structure bar");
+    let actions = structure.command_actions().expect("Structure commands");
+    assert!(actions.is_action_enabled("save") && actions.is_action_enabled("discard"));
+    assert!(!actions.is_action_enabled("drop") && !actions.is_action_enabled("stop"));
+    assert!(!imp.structure_details.is_visible() && !imp.structure_secondary.is_visible());
+    assert!(structure.imp().save_button.is_mapped());
+    let (dirty_width, ..) = imp.action_bar.measure(gtk4::Orientation::Horizontal, -1);
+    assert!(dirty_width <= 360, "the dirty bar needs {dirty_width}px");
+    let stops = crate::test_support::SignalLog::connect(&structure, "stop-save-requested", |_| ());
+    structure.send(StructureSave::SaveStarted);
+    crate::test_support::after_next_frame(&*window);
+    assert!(!actions.is_action_enabled("save") && !actions.is_action_enabled("discard"));
+    assert!(actions.is_action_enabled("stop"));
+    assert!(structure.imp().saving_spinner.is_mapped());
+    let (saving_width, ..) = imp.action_bar.measure(gtk4::Orientation::Horizontal, -1);
+    assert!(saving_width <= 360, "the saving bar needs {saving_width}px");
+    imp.structure_more.activate_action("structure.stop", None).unwrap();
+    assert_eq!(stops.count(), 1);
+    structure.send(StructureSave::SaveFailed("rolled back".into()));
+    assert!(actions.is_action_enabled("save") && actions.is_action_enabled("discard"));
+    assert!(!actions.is_action_enabled("stop"));
+    imp.structure_more.activate_action("structure.discard", None).unwrap();
+    wait_until(WAIT, || window.visible_dialog().is_some()).expect("Discard asks first");
+    let dialog = window
+        .visible_dialog()
+        .unwrap()
+        .downcast::<libadwaita::AlertDialog>()
+        .unwrap();
+    assert!(tracker.has_pending());
+    dialog.emit_by_name::<()>("response", &[&"discard"]);
+    dialog.force_close();
+    wait_until(WAIT, || !tracker.has_pending()).expect("Discard clears the Structure draft");
+    assert!(!actions.is_action_enabled("save") && !actions.is_action_enabled("discard"));
+    window.set_size_request(1_000, 400);
+    wait_until(WAIT, || {
+        imp.structure_secondary.is_mapped() && !imp.structure_more.is_mapped()
+    })
+    .expect("the wide Structure controls return");
+    assert!(imp.structure_details.is_mapped());
+    assert!(structure.imp().discard_button.is_mapped());
+    imp.view_stack.set_visible_child_name("data");
+    assert!(imp.structure_more.activate_action("structure.discard", None).is_err());
+    structure.shutdown();
+}
+
+#[gtk4::test]
+fn the_paginator_says_how_long_the_page_took() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::Late {
+        after: Duration::from_millis(20),
+        outcome: Ok(rows(&["Ada", "Grace"])),
+    });
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown() == text(&["Ada", "Grace"])).expect("the page");
+    let label = harness.tab().imp().pager_bar.imp().paginator_label.get();
+
+    assert!(harness.elapsed() >= Duration::from_millis(20));
+    let text = label.label();
+    let (_, elapsed) = text.split_once(" · ").expect("the paginator includes a duration");
+    assert!(!elapsed.is_empty());
+}
+
+#[gtk4::test]
+fn an_empty_page_also_shows_its_fetch_time() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&[])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.visible_page().as_deref() == Some("grid")).expect("the empty page");
+
+    let label = harness.tab().imp().pager_bar.imp().paginator_label.label();
+    assert!(label.starts_with("No rows · "), "{label}");
+}
+
+#[gtk4::test]
+fn the_bottom_bar_offers_the_column_chooser() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    use libadwaita::prelude::*;
+
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    let tab = harness.tab();
+    let window = libadwaita::Window::builder().content(tab).build();
+    hold_size(&window, tab, 1_200, 500);
+    let window = crate::test_support::OwnedWindow::presented(window);
+    let button = crate::test_support::find_by_action_name(tab, "grid.columns")
+        .and_downcast::<gtk4::Button>()
+        .expect("a Columns button");
+    // A pending initial surface configure can otherwise overwrite the later resize.
+    wait_until(WAIT, || {
+        window.is_mapped() && tab.width() >= 1_200 && !harness.shown().is_empty()
+    })
+    .expect("the wide window is allocated");
+    assert!(tab.current_breakpoint().is_none());
+    assert!(button.is_visible(), "the wide bar shows Columns");
+    assert_eq!(button.label().as_deref(), Some("Columns"));
+    assert!(button.is_focusable());
+    button.emit_clicked();
+    wait_until(WAIT, || window.visible_dialog().is_some()).expect("Columns opens a dialog");
+    let chooser = window.visible_dialog().expect("the chooser");
+    assert!(chooser.is::<crate::ui::data_grid::ColumnChooser>());
+    chooser.close();
+    wait_until(WAIT, || window.visible_dialog().is_none() && chooser.parent().is_none()).expect("the chooser closes");
+
+    hold_size(&*window, tab, 600, 500);
+    assert!(
+        wait_until(WAIT, || tab.width() > 0 && tab.width() <= 600).is_ok(),
+        "the tab did not resize: window width {}, tab width {}",
+        window.width(),
+        tab.width(),
+    );
+    assert!(!button.is_visible(), "the narrow bar hides Columns");
+    assert!(tab.imp().more_button.is_visible(), "the narrow bar offers More");
+    let menu = tab.imp().more_button.menu_model().expect("More menu");
+    let actions = menu
+        .item_link(0, gtk4::gio::MENU_LINK_SECTION)
+        .expect("actions section");
+    assert!((0..actions.n_items()).any(|index| {
+        actions
+            .item_attribute_value(index, gtk4::gio::MENU_ATTRIBUTE_ACTION, None)
+            .and_then(|value| value.get::<String>())
+            .as_deref()
+            == Some("grid.columns")
+    }));
+    tab.activate_action("grid.columns", None)
+        .expect("More reaches the grid");
+    wait_until(WAIT, || window.visible_dialog().is_some()).expect("More opens Columns");
+    window.visible_dialog().expect("the chooser").close();
+}
+
+#[gtk4::test]
+fn a_renamed_table_keeps_its_highlight_rules_under_the_new_name() {
+    use crate::services::grid::HighlightRule;
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown() == text(&["Ada"])).expect("the page");
+    let saved = |table: &str| {
+        let model = harness.tab().imp().model.borrow();
+        let model = model.as_ref().expect("the tab is open");
+        let state_key = model.state_key.as_ref().expect("a saved connection");
+        model.highlight_rules.rules(state_key, None, table)
+    };
+    let rule = HighlightRule::new("name");
+    harness.grid().set_highlight_rules(vec![rule.clone()]);
+
+    harness.tab().rename_table("people");
+
+    assert_eq!(saved("people"), [rule]);
+    harness.grid().set_highlight_rules(Vec::new());
+    assert!(
+        saved("people").is_empty(),
+        "a change after the rename was kept under the old name"
+    );
+}
+
+fn switch_labels(tab: &BrowseTab) -> Vec<gtk4::Label> {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    crate::test_support::descendants(&tab.imp().view_toggle.get())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk4::Label>().ok())
+        .filter(|label| !label.label().is_empty())
+        .collect()
+}
+
+fn bar_shortfall(tab: &BrowseTab) -> Option<String> {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    let cut: Vec<String> = switch_labels(tab)
+        .iter()
+        .filter(|label| label.layout().is_ellipsized() || label.layout().pixel_size().0 > label.width())
+        .map(|label| label.label().to_string())
+        .collect();
+    let (needs, ..) = tab.imp().action_bar.measure(gtk4::Orientation::Horizontal, -1);
+    (!cut.is_empty() || needs > tab.width())
+        .then(|| format!("cut {cut:?}, the bar needs {needs} px of {}", tab.width()))
+}
+
+fn menu_actions(menu: &gtk4::gio::MenuModel) -> Vec<String> {
+    (0..menu.n_items())
+        .filter_map(|index| menu.item_link(index, gtk4::gio::MENU_LINK_SECTION))
+        .flat_map(|section| {
+            (0..section.n_items())
+                .filter_map(|index| {
+                    section
+                        .item_attribute_value(index, gtk4::gio::MENU_ATTRIBUTE_ACTION, None)
+                        .and_then(|value| value.get::<String>())
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+#[gtk4::test]
+fn the_view_switch_keeps_its_names_in_a_1200_px_window() {
+    use crate::ui::structure_tab::{ColumnsInput, StructureMode, StructureTab, StructureTabInit};
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    let tab = harness.tab();
+    tab.offer_structure();
+    let window = libadwaita::Window::builder().content(tab).build();
+    hold_size(&window, tab, 1_200, 400);
+    let window = crate::test_support::OwnedWindow::presented(window);
+    let imp = tab.imp();
+    let columns = crate::test_support::find_by_action_name(tab, "grid.columns")
+        .and_downcast::<gtk4::Button>()
+        .expect("a Columns button");
+    wait_until(WAIT, || {
+        window.is_mapped() && tab.width() >= 1_200 && harness.shown().len() == 1
+    })
+    .expect("the tab fills the window");
+    let names: Vec<String> = switch_labels(tab)
+        .iter()
+        .map(|label| label.label().to_string())
+        .collect();
+    assert_eq!(names, ["Data", "Structure", "JSON"]);
+    assert!(
+        wait_until(WAIT, || bar_shortfall(tab).is_none()).is_ok(),
+        "{:?}",
+        bar_shortfall(tab)
+    );
+    assert!(columns.is_visible() && imp.export_button.is_visible() && imp.page_size_dropdown.is_mapped());
+    assert!(!imp.overflow_button.is_visible());
+
+    // What a 1200 px window leaves the tab beside the sidebar at its widest.
+    hold_size(&*window, tab, 920, 400);
+    wait_until(WAIT, || {
+        tab.width() > 0 && tab.width() <= 920 && imp.overflow_button.is_mapped()
+    })
+    .expect("the tab beside the sidebar");
+    assert!(
+        wait_until(WAIT, || bar_shortfall(tab).is_none()).is_ok(),
+        "{:?}",
+        bar_shortfall(tab)
+    );
+    assert_eq!(
+        imp.view_toggle.display_mode(),
+        libadwaita::InlineViewSwitcherDisplayMode::Labels
+    );
+    assert!(!columns.is_visible() && !imp.export_button.is_visible() && !imp.page_size_dropdown.is_mapped());
+    assert!(!imp.more_button.is_visible());
+    let moved = menu_actions(&imp.overflow_button.menu_model().expect("the overflow menu"));
+    for action in ["grid.columns", "browse.export", "browse.page-size"] {
+        assert!(
+            moved.iter().any(|found| found == action),
+            "the overflow menu lacks {action}"
+        );
+    }
+
+    let structure = StructureTab::new(StructureTabInit {
+        tracker: crate::services::structure_tracker_handle::StructureTrackerHandle::default(),
+        schema: None,
+        table: "new_table".into(),
+        mode: StructureMode::New,
+        session: harness.session.clone(),
+        tasks: harness.runtime.as_ref().unwrap().tasks(),
+        first_load: crate::ui::tab_load::FirstLoad::Now,
+    });
+    structure.send(ColumnsInput::AddColumn);
+    tab.set_structure(&structure);
+    imp.view_stack.set_visible_child_name("structure");
+    wait_until(WAIT, || structure.imp().save_button.is_mapped()).expect("the one Structure bar");
+    assert!(
+        wait_until(WAIT, || bar_shortfall(tab).is_none()).is_ok(),
+        "{:?}",
+        bar_shortfall(tab)
+    );
+    structure.shutdown();
 }

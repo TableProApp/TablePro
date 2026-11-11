@@ -279,6 +279,17 @@ public enum MCPHandshakeTrust {
         }
     }
 
+    static func verifyConnectedPeer(descriptor: Int32, expectedPID: Int32) throws {
+        var peerPID: Int32 = 0
+        var size = socklen_t(MemoryLayout<Int32>.size)
+        guard expectedPID > 0,
+              getsockopt(descriptor, SOL_LOCAL, LOCAL_PEERPID, &peerPID, &size) == 0,
+              size == MemoryLayout<Int32>.size, peerPID == expectedPID else {
+            throw MCPSocketHttpError.peerChanged
+        }
+        try verifyHostExecutable(pid: peerPID)
+    }
+
     private static func verifyHostExecutable(pid: Int32) throws {
         guard let hostPath = executablePath(forPid: pid) else {
             throw MCPHandshakeTrustFailure.hostIsNotTablePro(path: "unknown")

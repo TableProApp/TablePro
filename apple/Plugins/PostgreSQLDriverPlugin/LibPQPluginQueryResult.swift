@@ -18,4 +18,6 @@ struct LibPQPluginQueryResult {
     /// Send to first row, when the read went through single-row mode and could see one. The
     /// buffered `PQexec` path has no such boundary and leaves it nil.
     var firstRowTime: TimeInterval?
+
+    var columnSources: [PostgreSQLColumnOrigins.Source?] = []
 }

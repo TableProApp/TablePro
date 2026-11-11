@@ -32,6 +32,8 @@ struct MenuValidationContext: Equatable {
     var canPresentHighlightRules = false
     var isQueryTab = false
     var hasResultRows = false
+    // Export Results reaches a Table Health tab's findings, which no result set holds.
+    var hasTableHealthFindings = false
     var canExportDataDictionary = false
     var canInsertRows = false
     var canDeleteRows = false
@@ -125,6 +127,7 @@ struct MenuValidationContext: Equatable {
     var supportsServerDashboard = false
     var supportsUserManagement = false
     var supportsTableHealth = false
+    var hasDatabase = false
     var supportsSchemaSwitching = false
     // Same rule as the editor bar, so the menu cannot run a statement the bar's button refuses.
     var supportsExplain = false
@@ -196,7 +199,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(saveDocumentAs(_:)):
             return context.isConnected && context.isQueryTab
         case #selector(exportQueryResults(_:)):
-            return context.isConnected && context.hasResultRows
+            return context.isConnected && (context.hasResultRows || context.hasTableHealthFindings)
 
         case #selector(exportDataDictionary(_:)):
             return context.isConnected && context.canExportDataDictionary
@@ -302,7 +305,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(showQueryInsights(_:)):
             return context.isConnected
         case #selector(showTableHealth(_:)):
-            return context.isConnected && context.supportsTableHealth
+            return context.isConnected && context.supportsTableHealth && context.hasDatabase
         case #selector(openLiveMessages(_:)):
             return context.isConnected && !context.isAgentMode && context.canOpenLiveMessages
 
@@ -673,6 +676,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             canPresentHighlightRules: actions.canPresentHighlightRules,
             isQueryTab: actions.isQueryTab,
             hasResultRows: actions.hasResultRows,
+            hasTableHealthFindings: actions.hasTableHealthFindings,
             canExportDataDictionary: actions.canExportDataDictionary,
             canInsertRows: actions.currentTabAllows(.insert),
             canDeleteRows: actions.currentTabAllows(.delete),
@@ -748,6 +752,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             supportsServerDashboard: actions.supportsServerDashboard,
             supportsUserManagement: actions.supportsUserManagement,
             supportsTableHealth: actions.supportsTableHealth,
+            hasDatabase: actions.hasDatabase,
             supportsSchemaSwitching: actions.supportsSchemaSwitching,
             supportsExplain: actions.supportsExplain,
             supportsFormatting: actions.supportsFormatting,

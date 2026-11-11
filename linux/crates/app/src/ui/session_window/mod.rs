@@ -31,6 +31,7 @@ mod session_restore;
 mod session_teardown;
 mod session_window_command;
 mod session_window_input;
+mod state_file_status;
 #[cfg(test)]
 pub(crate) mod tests;
 mod window_actions;
@@ -71,6 +72,7 @@ use self::session_window_command::{AttemptError, ConnectFailure, Connected, Sess
 pub(crate) use self::session_window_input::{LibraryEdit, MovedTab, ScriptInput, SessionWindowInput};
 use crate::application::{AppServices, WindowHost, WindowLaunch};
 use crate::runtime::{DeliverInput, InputSender};
+use crate::services::connection_link::without_password;
 use crate::services::secret_save_report::{ReportingCredentials, SecretSaveOutcome};
 use crate::services::session_context::SessionContext;
 use crate::ui::connect_dialog::{ConnectDialogMode, ConnectSubmission};
@@ -190,6 +192,7 @@ impl SessionWindow {
 
         self.render();
         self.show_connection_list_banner();
+        self.watch_state_files();
         input.deliver(SessionWindowInput::LoadConnections);
         self.open_launch(launch, &input);
     }
@@ -229,6 +232,11 @@ impl SessionWindow {
     }
 
     #[cfg(test)]
+    pub(crate) fn connect_dialog(&self) -> Option<crate::ui::connect_dialog::ConnectDialog> {
+        self.imp().dialog.borrow().clone()
+    }
+
+    #[cfg(test)]
     pub(crate) fn manage_tags(&self) -> Option<std::rc::Rc<crate::ui::tags::ManageTagsDialog>> {
         self.imp().manage_tags.borrow().clone()
     }
@@ -240,6 +248,10 @@ impl SessionWindow {
 
     pub(crate) fn send(&self, message: SessionWindowInput) {
         if let Some(input) = self.imp().input.get() {
+            // Routing must see the reservation before the input queue runs.
+            if matches!(&message, SessionWindowInput::ConnectFromLink(_)) {
+                self.imp().link_queued.set(true);
+            }
             input.deliver(message);
         }
     }
@@ -251,6 +263,7 @@ impl SessionWindow {
         self.page() == SessionPage::Picker
             && !imp.opening_file.get()
             && !imp.dialog_opening.get()
+            && !imp.link_queued.get()
             && imp.dialog.try_borrow().is_ok_and(|dialog| dialog.is_none())
     }
 
@@ -300,6 +313,7 @@ impl SessionWindow {
         if let Some(presenter) = imp.prompt_presenter.take() {
             presenter.abort();
         }
+        self.stop_state_file_watches();
         self.release_session();
         drop(imp.dialog.take());
         if let Some(welcome) = imp.welcome.take() {
@@ -446,28 +460,17 @@ impl SessionWindow {
             SessionWindowInput::Restore(key) => self.on_restore(key),
             SessionWindowInput::RestoreSaved { id, saved } => self.on_restore_saved(id, saved.map(|saved| *saved)),
             SessionWindowInput::RestoreUnread(key) => self.end_restore(&key),
-            SessionWindowInput::OpenConnectDialog => {
-                self.present_connect_dialog(ConnectDialogMode::Create, None, None);
-            }
+            SessionWindowInput::OpenConnectDialog => self.present_connect_dialog(ConnectDialogMode::Create, None, None),
+            SessionWindowInput::ConnectFromLink(url) => self.on_connect_from_link(url),
             SessionWindowInput::ConnectFromDialog(submission) => self.on_connect_from_dialog(*submission),
             SessionWindowInput::DialogClosed => drop(self.imp().dialog.take()),
             SessionWindowInput::CancelConnect => self.on_cancel_connect(),
             SessionWindowInput::StopConnecting(key) => self.stop_connecting(&key),
-            SessionWindowInput::RetryConnect => {
-                if let Some(key) = self.failed_key() {
-                    self.on_retry_connect(&key);
-                }
-            }
+            SessionWindowInput::RetryConnect => self.on_failed(|key| self.on_retry_connect(key)),
             SessionWindowInput::RetryWithNewSecret(kind) => {
-                if let Some(key) = self.failed_key() {
-                    self.on_retry_with_new_secret(&key, kind);
-                }
+                self.on_failed(|key| self.on_retry_with_new_secret(key, kind));
             }
-            SessionWindowInput::EditConnection => {
-                if let Some(key) = self.failed_key() {
-                    self.on_edit_connection(&key);
-                }
-            }
+            SessionWindowInput::EditConnection => self.on_failed(|key| self.on_edit_connection(key)),
             SessionWindowInput::Remedy { key, remedy } => self.on_remedy(key, remedy),
             SessionWindowInput::ShowConnectFailure(key) => self.on_show_connect_failure(key),
             SessionWindowInput::ForgetConnectFailure(key) => self.forget_failure(&key),
@@ -476,6 +479,7 @@ impl SessionWindow {
             SessionWindowInput::Disconnect => self.on_disconnect_front(),
             SessionWindowInput::DisconnectSession(key) => self.on_disconnect(key),
             SessionWindowInput::ChooseDatabaseIn(key) => self.choose_database_in(key),
+            SessionWindowInput::NewTableIn(key) => self.deliver_to(&key, WorkspaceInput::NewTableTab { schema: None }),
             SessionWindowInput::NewDatabaseIn(key) => self.deliver_to(&key, WorkspaceInput::NewDatabasePrompt),
             SessionWindowInput::NewSchemaIn(key) => self.deliver_to(&key, WorkspaceInput::NewSchemaPrompt),
             SessionWindowInput::DropDatabaseIn(key) => self.drop_database_in(key),
@@ -499,14 +503,7 @@ impl SessionWindow {
             SessionWindowInput::CloseCurrent => self.on_close_current(),
             SessionWindowInput::Reconnect => self.on_reconnect(),
             SessionWindowInput::ResetWorkspaceLayout => self.on_reset_workspace_layout(),
-            SessionWindowInput::CloseRequested(CloseReason::Quit(reply)) => {
-                if let Some(guards) = self.close_guards() {
-                    guards.request_window_close(self, move |decision: CloseDecision| {
-                        // A quit that went away no longer needs the answer.
-                        let _ = reply.send(decision);
-                    });
-                }
-            }
+            SessionWindowInput::CloseRequested(reason) => self.on_close_requested(reason),
             SessionWindowInput::DirtyChanged | SessionWindowInput::SavesInFlightChanged => self.refresh_dirty(),
             SessionWindowInput::WorkCompleted(work) => self.on_work_completed(work),
             SessionWindowInput::TabsChanged => self.on_tabs_changed(),
@@ -536,6 +533,8 @@ impl SessionWindow {
             SessionWindowInput::ConnectionsFileRead { path, bytes } => self.on_connections_file_read(path, bytes),
             SessionWindowInput::ImportPreviewed(preview) => self.on_import_previewed(*preview),
             SessionWindowInput::ImportFromApp => self.on_import_from_app(),
+            SessionWindowInput::StateFileStatus(kind) => self.show_state_file_status(kind),
+            SessionWindowInput::RetryStateFile(kind) => self.retry_state_file(kind),
             SessionWindowInput::ShowToast(message) => self.show_toast(&message),
             SessionWindowInput::SecretSave(outcome) => self.on_secret_save(outcome),
         }
@@ -545,6 +544,16 @@ impl SessionWindow {
     fn on_reconnect(&self) {
         if let Some((_, session)) = self.front_session() {
             session.signal(MonitorSignal::RetryNow);
+        }
+    }
+
+    fn on_close_requested(&self, reason: CloseReason) {
+        let CloseReason::Quit(reply) = reason;
+        if let Some(guards) = self.close_guards() {
+            guards.request_window_close(self, move |decision: CloseDecision| {
+                // A quit that went away no longer needs the answer.
+                let _ = reply.send(decision);
+            });
         }
     }
 
@@ -1163,7 +1172,7 @@ impl SessionWindow {
                 self.on_open_script(gio::File::for_uri(&uri));
             }
             Err(error) => {
-                tracing::warn!(%error, %uri, "could not open the file");
+                tracing::warn!(%error, uri = %without_password(&uri), "could not open the file");
                 self.forget_unclaimed(&arrived);
                 let message = file_failure_message(&uri, &error);
                 if !matches!(self.page(), SessionPage::Picker | SessionPage::Failed) {
@@ -1590,7 +1599,13 @@ impl SessionWindow {
         self.connects_changed();
     }
 
-    /// The key the failed page is about.
+    // The failure page's buttons act on the connect that failed.
+    fn on_failed(&self, act: impl FnOnce(&SessionKey)) {
+        if let Some(key) = self.failed_key() {
+            act(&key);
+        }
+    }
+
     fn failed_key(&self) -> Option<SessionKey> {
         self.imp()
             .failed
@@ -1789,11 +1804,23 @@ impl SessionWindow {
         }
     }
 
-    /// The window closes through one pass of the close prompts over every
-    /// session: one Save Changes for all of them, and Cancel keeps them
-    /// all.
     fn close_guards_for_window(&self) -> Rc<CloseGuards> {
         let guards = CloseGuards::new();
+        let window = self.downgrade();
+        guards.set_window_preflight(move || {
+            let window = window.clone();
+            let discarded = Rc::new(std::cell::Cell::new(None));
+            Rc::new(move |_| {
+                let window = window.upgrade();
+                let discarded = discarded.clone();
+                Box::pin(async move {
+                    match window {
+                        Some(window) => window.confirm_state_files_before_close(&discarded).await,
+                        None => CloseDecision::Approved,
+                    }
+                })
+            })
+        });
         let window = self.downgrade();
         guards.connect_window(
             self,
@@ -2118,7 +2145,7 @@ enum ShownPage {
 }
 
 fn file_failure_message(uri: &str, error: &FileResolveError) -> String {
-    let name = gio::File::for_uri(uri).parse_name().to_string();
+    let name = without_password(&gio::File::for_uri(uri).parse_name());
     match error {
         FileResolveError::NotLocal => crate::i18n::gettext_f(
             "{file} is not on this computer. Copy it to a local folder to open it.",

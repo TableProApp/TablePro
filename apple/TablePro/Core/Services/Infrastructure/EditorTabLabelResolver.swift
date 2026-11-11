@@ -20,33 +20,17 @@ internal enum EditorTabTitleStyle: Equatable {
     }
 }
 
-/// What the editor tab strip draws on each tab, and what it says about that tab on hover and to
-/// VoiceOver.
-///
-/// A tab's title names the object it shows, and two databases of one connection routinely hold the
-/// same object name, so browsing both leaves two tabs reading `role_ability` with nothing to tell
-/// them apart. The container qualifies the label when, and only when, another open tab would draw
-/// the same one. That is what DataGrip does across schemas and VS Code across folders: a name that
-/// is already unique stays short, because a bar of qualified names is harder to read, not easier.
-///
-/// Only a tab that names an object is ever qualified. `container.name` reads as a path to that
-/// object, which a Server Dashboard or a Users & Roles tab is not: those are server work that
-/// happens to have been opened from a database, and `mydb.Server Dashboard` names nothing.
-///
-/// The tooltip carries the container either way, since hovering has no width budget. The
-/// accessibility label stays on the drawn text, so what VoiceOver reads is what is on screen; when
-/// two tabs really do collide the drawn text is already qualified, and both channels say so.
-///
-/// Resolved for rendering rather than written into `QueryTab.title`, because qualification is a
-/// function of what else is open: baked into the tab it would outlive the sibling that caused it,
-/// follow the tab into persistence, and come back out of Recently Closed long after it meant
-/// anything. A located title is resolved here too: it is a preference, so turning it off has to
-/// bring every open tab back to its name at once, and a saved tab must never carry it.
+// Two databases often hold the same object name, so a tab is qualified with its container only when another
+// open tab would draw the same label: a bar of qualified names is harder to read. Only a tab naming an object
+// is qualified, since `mydb.Server Dashboard` names nothing. Resolved per render, never written into the title,
+// because it depends on what else is open and would otherwise outlive that sibling in persistence. A located
+// title is resolved here too: it is a preference, so turning it off brings every open tab back to its name at
+// once, and a saved tab never carries it.
 internal enum EditorTabLabelResolver {
     internal struct Label: Equatable {
-        /// What the strip draws, and what VoiceOver reads.
+        // Drawn on the strip and read by VoiceOver.
         internal let text: String
-        /// What hovering says.
+        // The tooltip, which has room for the container whether or not the text needed it.
         internal let description: String
         /// The object's glyph, drawn before the text. In the standard icon style only a located
         /// title carries one: it is long and mostly the same from tab to tab, so the glyph is what
@@ -60,12 +44,21 @@ internal enum EditorTabLabelResolver {
         internal let shortForm: ShortForm?
 
         internal var symbolName: String? { icon?.symbolName }
+        // The container the text leaves out, for a line beside it such as the Control-Tab detail.
+        internal let container: String?
 
-        internal init(text: String, description: String, icon: ObjectIcon? = nil, shortForm: ShortForm? = nil) {
+        internal init(
+            text: String,
+            description: String,
+            icon: ObjectIcon? = nil,
+            shortForm: ShortForm? = nil,
+            container: String? = nil
+        ) {
             self.text = text
             self.description = description
             self.icon = icon
             self.shortForm = shortForm
+            self.container = container
         }
     }
 
@@ -95,16 +88,27 @@ internal enum EditorTabLabelResolver {
         }
 
         return tabs.reduce(into: [:]) { result, tab in
+            if let database = checkedDatabase(of: tab) {
+                result[tab.id] = Label(
+                    text: tab.title,
+                    description: String(format: String(localized: "%@: %@"), tab.title, database),
+                    icon: icon(of: tab, style: style, iconStyle: iconStyle),
+                    container: database
+                )
+                return
+            }
             let title = titles[tab.id] ?? tab.title
-            /// More than one container behind one title is the whole test. Two tabs sharing a title
-            /// inside one container are not told apart by naming that container, so they stay bare.
+            let container = containers[tab.id] ?? ""
+            // Two tabs sharing a title inside one container are not told apart by naming it.
             let isAmbiguous = (containersByTitle[title]?.count ?? 0) > 1
-            let qualified = qualify(title, with: containers[tab.id])
+            let qualified = qualify(title, with: container)
+            let text = isAmbiguous ? qualified : title
             result[tab.id] = Label(
-                text: isAmbiguous ? qualified : title,
+                text: text,
                 description: qualified,
                 icon: icon(of: tab, style: style, iconStyle: iconStyle),
-                shortForm: shortForm(of: tab, style: style, container: isAmbiguous ? containers[tab.id] : nil)
+                shortForm: shortForm(of: tab, style: style, container: isAmbiguous ? container : nil),
+                container: container.isEmpty || text.hasPrefix("\(container).") ? nil : container
             )
         }
     }
@@ -170,8 +174,13 @@ internal enum EditorTabLabelResolver {
         tab.tabType == .table && tab.tableContext.tableName != nil
     }
 
-    /// On an engine whose containers are schemas, a table tab outside the default schema is already
-    /// titled `reporting.orders`, so prefixing the container again would read `reporting.reporting.orders`.
+    // Every Table Health tab carries the same title, one per database, so the database is said beside it.
+    private static func checkedDatabase(of tab: QueryTab) -> String? {
+        guard tab.tabType == .tableHealth, !tab.tableContext.databaseName.isEmpty else { return nil }
+        return tab.tableContext.databaseName
+    }
+
+    // A schema engine already titles a table outside the default schema `reporting.orders`.
     private static func qualify(_ title: String, with container: String?) -> String {
         guard let container, !container.isEmpty, !title.hasPrefix("\(container).") else { return title }
         return "\(container).\(title)"

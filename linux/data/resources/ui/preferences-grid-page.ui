@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProGridPage" parent="AdwPreferencesPage">
+    <property name="title" translatable="yes">Data Grid</property>
+    <property name="icon-name">view-grid-symbolic</property>
+    <child>
+      <object class="TableProDataBrowserGroup" id="data_browser_group"/>
+    </child>
+  </template>
+</interface>

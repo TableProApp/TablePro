@@ -31,6 +31,9 @@ Such a change stops the release until a fix lands on `main`.
 - `release/X.Y` is cut from `main` at beta.1 and closes when X.(Y+1).0 ships. A later security or data-loss fix for its users ships as a critical patch on the current line.
 - Every fix lands on `main` first. A pick is one fix per PR, never a `feat` or a PluginKit bump. A patch takes only a regression from the previous stable, a crash, a plugin that fails to load, a security fix or data loss.
 - `release/0.82` predates the move into `apple/` and follows the `RELEASING.md` on that branch: paths at the root, no `ci.yml`, and a `verify` that waits up to 240 min for green macOS Tests, iOS and Package Tests and Release Build push runs covering the tag. A pick from `main` relies on rename detection.
+- A line push runs the suites whose paths changed since the line's last green CI push run; the first push of a line runs them all. A release PR's merge changes only the changelog, so it runs Lint only.
+- `version.py check` accepts a test job the tag's run left out when the job passed at an ancestor on the line and its suite has not changed since.
+- `release/0.86` and older lines run every suite on every push, so a tag had its own test runs (#3584). That re-ran 77 to 114 min of tests after each release PR, so later lines filter like `main`.
 
 ```bash
 git fetch origin && git switch -c backport/<PR>-X.Y origin/release/X.Y
@@ -48,21 +51,18 @@ gh pr merge --auto --squash
 
 ## Tagging
 
-A tag goes on a line commit once that commit's CI push run is green. Tags never move, so check the tag before it leaves the machine: `version.py check` runs the same gate as `verify`.
+A tag goes on a line commit once that commit's CI push run is green. Tags never move, so the tag is checked before it leaves the machine: `version.py check` runs the same gate as `verify`.
 
 ```bash
-git fetch origin --tags
-gh run list --workflow ci.yml --branch release/X.Y --event push --commit <commit>
-gh run watch <run id> --exit-status
-git tag -s <tag> -m <tag> <commit>
-python3 apple/scripts/release/version.py check <tag> && git push origin <tag>
+apple/scripts/release/tag.sh <tag> <commit>
 ```
 
-On an error, `git tag -d <tag>`, fix the cause and tag again.
+- It waits for the line's CI push run on the commit, signs the tag, runs `version.py check`, pushes the tag and watches its Release run. A failed check deletes the local tag: fix the cause and run it again.
+- Release jobs get no priority on hosted runners: they queue behind every macOS job already waiting. Run it when no other CI run is in flight (`gh run list --workflow ci.yml --status in_progress`, then `--status queued`). Merge nothing and push to no pull request until the tag's App and Plugins jobs have started.
 
 ## Cutting a beta
 
-1. beta.1 only: `main` has the last stable's forward-port. Cut the line at the newest `main` commit with a green CI push run, after the storage check up to it:
+1. beta.1 only: `main` has the last stable's forward-port, which needs its release PR merged, not published (Forward-port). Cut the line at the newest `main` commit with a green CI push run, after the storage check up to it:
 
    ```bash
    git fetch origin
@@ -98,6 +98,7 @@ A beta gets no `CHANGELOG.md` section: its notes are a towncrier draft of the fr
    ```
 
 5. Tag its merge commit, `gh pr view <PR> --json mergeCommit -q .mergeCommit.oid`, as `vX.Y.Z` (Tagging).
+6. Forward-port it (Forward-port).
 
 ### Notes
 
@@ -106,18 +107,18 @@ A beta gets no `CHANGELOG.md` section: its notes are a towncrier draft of the fr
 
 ## Forward-port
 
-Once a stable or patch publishes, cherry-pick its release commit to `main`, and to a newer open line when one exists. The next tag refuses to build without its heading.
+Once the release PR of a stable or patch merges and its tag's App and Plugins jobs have started, cherry-pick its release commit to `main`, and to a newer open line when one exists. It does not wait for the release to publish. The next tag refuses to build without its heading.
 
 ```bash
 git fetch origin && git switch -c forward/vX.Y.Z origin/main
 git cherry-pick -x <release commit> && git push -u origin HEAD
 gh pr create --base main --title "chore(release): vX.Y.Z" --body "Forward-port of #<PR>."
-gh pr merge --auto
+gh pr merge --auto --squash
 ```
 
 - A newer open line gets the same PR from `origin/release/<line>`, with `--base release/<line>`.
 - A conflict on a fragment: `git rm` it. On `CHANGELOG.md`: keep both sections, in version order.
-- Then `python3 apple/scripts/release/notes.py docs X.Y.Z --ref vX.Y.Z --mdx ../tablepro-docs/changelog.mdx` goes into a `docs(changelog): vX.Y.Z` PR in TableProApp/docs, merged by hand once green.
+- Once the release publishes, `python3 apple/scripts/release/notes.py docs X.Y.Z --ref vX.Y.Z --mdx ../tablepro-docs/changelog.mdx` goes into a `docs(changelog): vX.Y.Z` PR in TableProApp/docs, merged by hand once green.
 
 ## When a run fails
 
@@ -126,7 +127,7 @@ Nothing reaches users before the `github-release` job of `release.yml`.
 - Tags never move, with no bypass. A burned number stays burned; the fix ships as the next number.
 - `verify` names the broken rule, or the CI run that is still going, red or missing. Once that run is green: `gh run rerun <release run> --failed`.
 - An infrastructure failure (runner, network, notary service) is the same re-run, before or after publishing: each step skips what is done. A code failure is fixed on `main`, picked, and ships as the next number.
-- A stable that never published: the next release PR runs `git revert <its release commit>` before `assemble`, and `gh release delete vX.Y.Z --yes` removes a leftover draft.
+- A stable that never published: the next release PR runs `git revert <its release commit>` before `assemble`, and its forward-port takes the revert to `main` and the newer line with the new section. `gh release delete vX.Y.Z --yes` removes a leftover draft.
 - A stable builds only on a GA Xcode (`setup-xcode` `require-release`). With none on the runner image, `app` and `plugins` fail, and a PR points `.github/actions/setup-xcode` at an image that has one. Betas still ship.
 - `feed` fails with "no signature vouches for the published plugins/v3.json" on the first release that signs the manifest, or after a release line without signing published it. Check `plugins/v3.json` on `gh-pages`, run `gh variable set PLUGIN_MANIFEST_RESIGN --body true`, then `gh run rerun <release run> --failed`, then `gh variable delete PLUGIN_MANIFEST_RESIGN`.
 

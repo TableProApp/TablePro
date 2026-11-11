@@ -7,6 +7,7 @@ pub const APPLICATIONS_ENGINEERING: &str = "applications-engineering-symbolic";
 pub const APPLICATIONS_SCIENCE: &str = "applications-science-symbolic";
 /// Bundled: a speech bubble, for the AI assistant.
 pub const ASSISTANT: &str = "assistant-symbolic";
+pub const CHANGES_ALLOW: &str = "changes-allow-symbolic";
 pub const CHANGES_PREVENT: &str = "changes-prevent-symbolic";
 pub const COMPUTER: &str = "computer-symbolic";
 pub const DIALOG_ERROR: &str = "dialog-error-symbolic";
@@ -40,6 +41,8 @@ pub const PACKAGE: &str = "package-x-generic-symbolic";
 pub const PAN_DOWN: &str = "pan-down-symbolic";
 pub const PREFERENCES_SYSTEM: &str = "preferences-system-symbolic";
 pub const PREFERENCES_SYSTEM_TIME: &str = "preferences-system-time-symbolic";
+// Adwaita's only key glyph.
+pub const PRIMARY_KEY: &str = "dialog-password-symbolic";
 pub const PROCESS_STOP: &str = "process-stop-symbolic";
 pub const SECURITY_HIGH: &str = "security-high-symbolic";
 pub const STARRED: &str = "starred-symbolic";
@@ -88,6 +91,7 @@ pub const ALL: &[&str] = &[
     APPLICATIONS_ENGINEERING,
     APPLICATIONS_SCIENCE,
     ASSISTANT,
+    CHANGES_ALLOW,
     CHANGES_PREVENT,
     COMPUTER,
     DIALOG_ERROR,
@@ -120,6 +124,7 @@ pub const ALL: &[&str] = &[
     PAN_DOWN,
     PREFERENCES_SYSTEM,
     PREFERENCES_SYSTEM_TIME,
+    PRIMARY_KEY,
     PROCESS_STOP,
     SECURITY_HIGH,
     SIDEBAR_SHOW,

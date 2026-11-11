@@ -21,6 +21,13 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     let databaseType: DatabaseType
     private let connectionEncoding: MySQLConnectionEncoding
     let signsInWithToken: Bool
+    let queryTimeoutSeconds: Int?
+    // None without a query timeout: Connector/C reports its own read timeout as a lost connection while the server
+    // runs the statement to the end, so it only backs up a limit the server enforces. The keepalive fails a dead path.
+    let socketTimeoutSeconds: UInt32
+    // A kill signs in anew, which an IAM token minted more than 15 minutes ago cannot, as on the Mac.
+    private let refreshPassword: (@Sendable () async throws -> String?)?
+    private let clock: any Clock<Duration>
 
     var supportsSchemas: Bool { false }
     var currentSchema: String? { nil }
@@ -56,7 +63,10 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
         ssl: DriverSSLConfiguration = .disabled,
         databaseType: DatabaseType = .mysql,
         connectionEncoding: MySQLConnectionEncoding = .utf8,
-        signsInWithToken: Bool = false
+        signsInWithToken: Bool = false,
+        queryTimeoutSeconds: Int? = nil,
+        refreshPassword: (@Sendable () async throws -> String?)? = nil,
+        clock: any Clock<Duration> = ContinuousClock()
     ) {
         self.host = host
         self.port = port
@@ -67,13 +77,25 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
         self.databaseType = databaseType
         self.connectionEncoding = connectionEncoding
         self.signsInWithToken = signsInWithToken
+        self.queryTimeoutSeconds = queryTimeoutSeconds
+        self.socketTimeoutSeconds = mysqlSocketTimeoutSeconds(forQueryTimeout: queryTimeoutSeconds ?? 0)
+        self.refreshPassword = refreshPassword
+        self.clock = clock
     }
 
     // MARK: - Connection
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MySQLDriver")
 
-    static func sessionSetupStatements(for databaseType: DatabaseType) -> [String] {
+    // OceanBase stops a statement after 10 s by default, so a session without a query timeout lifts that limit.
+    static func sessionSetupStatements(
+        for databaseType: DatabaseType,
+        banner: String? = nil,
+        queryTimeoutSeconds: Int? = nil
+    ) -> [String] {
+        if let queryTimeoutSeconds, queryTimeoutSeconds > 0 {
+            return serverFlavor(for: databaseType, banner: banner).queryTimeoutStatements(seconds: queryTimeoutSeconds)
+        }
         guard databaseType == .oceanbase else { return [] }
         return MySQLServerFlavor.oceanbase(version: nil).queryTimeoutStatements(seconds: 0)
     }
@@ -115,10 +137,15 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
         try await actor.connect(
             host: host, port: port, user: user, password: password, database: database,
             ssl: ssl, encoding: connectionEncoding, databaseType: databaseType,
-            signsInWithToken: signsInWithToken
+            signsInWithToken: signsInWithToken,
+            signIn: MySQLKillSignIn(password: password, refresh: refreshPassword, clock: clock)
         )
         serverVersion = await actor.serverVersion()
-        for statement in Self.sessionSetupStatements(for: databaseType) {
+        let setup = Self.sessionSetupStatements(
+            for: databaseType, banner: serverVersion, queryTimeoutSeconds: queryTimeoutSeconds
+        )
+        // A server that refuses the limit still runs queries, as on the Mac.
+        for statement in setup {
             do {
                 _ = try await actor.execute(statement)
             } catch {
@@ -128,6 +155,7 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
                 break
             }
         }
+        try await actor.completeConnect(socketTimeoutSeconds: socketTimeoutSeconds)
         await settleLexicalFacts()
     }
 
@@ -165,18 +193,25 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
         )
     }
 
+    // Runs without the actor, which stays blocked in Connector/C for as long as the statement runs. The editor's Stop
+    // leaves its stream first, so this stops only a statement whose reader is gone.
     func cancelCurrentQuery() async throws {
-        // MySQL C API does not support async cancel without a second connection.
-        // No-op for mobile.
+        actor.killer.stop()
     }
 
+    // The statement is reserved before the producer starts, so a reader that leaves names this stream's statement and
+    // never another surface's.
     func executeStreaming(query: String, options: StreamOptions) -> AsyncThrowingStream<StreamElement, Error> {
         let actor = self.actor
+        let killer = actor.killer
+        let statement = killer.reserve()
+        let databaseType = self.databaseType
+        let session = settledLexicalFacts
         return AsyncThrowingStream { continuation in
             let task = Task {
                 var openStream: MySQLStreamID?
                 do {
-                    switch try await actor.beginStream(query: query) {
+                    switch try await actor.beginStream(query: query, statement: statement) {
                     case .noResult(let affectedRows):
                         if affectedRows != 0 {
                             continuation.yield(.rowsAffected(affectedRows))
@@ -185,10 +220,16 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
                         openStream = stream
                         continuation.yield(.columns(columns))
                         var emitted = 0
-                        while !Task.isCancelled, emitted < options.maxRows {
+                        // A row after the cap tells a result that only fills it from one with rows still to stop.
+                        var rowsLeft = false
+                        while !Task.isCancelled {
                             guard let cells = try await actor.fetchNextRow(
                                 stream, options: options, columns: columns
                             ) else {
+                                break
+                            }
+                            guard emitted < options.maxRows else {
+                                rowsLeft = true
                                 break
                             }
                             continuation.yield(.row(Row(cells: cells)))
@@ -196,11 +237,16 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
                         }
                         if Task.isCancelled {
                             continuation.yield(.truncated(reason: .cancelled))
-                        } else if emitted >= options.maxRows {
+                        } else if rowsLeft {
                             continuation.yield(.truncated(reason: .rowCap(options.maxRows)))
                         }
                         openStream = nil
-                        try await actor.endStream(stream)
+                        // Classified here, off the caller's thread and only for a statement that passed the cap.
+                        if rowsLeft, CappedRead.qualifies(query, databaseType: databaseType, session: session) {
+                            try await actor.endStreamAtRowCap(stream)
+                        } else {
+                            try await actor.endStream(stream)
+                        }
                     }
                     await self.settleLexicalFacts()
                     continuation.finish()
@@ -214,7 +260,12 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { _ in task.cancel() }
+            continuation.onTermination = { reason in
+                task.cancel()
+                if case .cancelled = reason {
+                    killer.readerLeft(statement)
+                }
+            }
         }
     }
 
@@ -449,6 +500,46 @@ nonisolated enum MySQLTLSPolicy: Equatable, Sendable {
     }
 }
 
+// What every connection to the server is opened with, so the one that sends a kill signs in the way the session did.
+nonisolated enum MySQLDialOptions {
+    static func apply(
+        to handle: UnsafeMutablePointer<MYSQL>,
+        policy: MySQLTLSPolicy,
+        ssl: DriverSSLConfiguration,
+        serverName: MySQLTLSServerName?,
+        signsInWithToken: Bool,
+        connectSeconds: UInt32,
+        socketSeconds: UInt32
+    ) {
+        mysql_options(handle, MYSQL_SET_CHARSET_NAME, MySQLConnectionEncoding.sessionCharacterSetName)
+
+        var connectTimeout = connectSeconds
+        mysql_options(handle, MYSQL_OPT_CONNECT_TIMEOUT, &connectTimeout)
+        var readTimeout = socketSeconds
+        mysql_options(handle, MYSQL_OPT_READ_TIMEOUT, &readTimeout)
+        var writeTimeout = socketSeconds
+        mysql_options(handle, MYSQL_OPT_WRITE_TIMEOUT, &writeTimeout)
+
+        var reconnect: my_bool = 0
+        mysql_options(handle, MYSQL_OPT_RECONNECT, &reconnect)
+
+        var allowLocalInfile: UInt32 = 0
+        mysql_options(handle, MYSQL_OPT_LOCAL_INFILE, &allowLocalInfile)
+
+        policy.apply(to: handle, ssl: ssl, serverName: serverName)
+        if policy == .disabled || policy == .preferred {
+            _ = MySQLPlaintextPassword.methodsWithoutTLS.withCString {
+                mysql_options(handle, MARIADB_OPT_RESTRICTED_AUTH, $0)
+            }
+        }
+        if signsInWithToken {
+            // A no-op in Connector/C 3.4, which answers a cleartext request anyway; set to match the Mac.
+            var enableCleartext: my_bool = 1
+            mysql_options(handle, MYSQL_ENABLE_CLEARTEXT_PLUGIN, &enableCleartext)
+        }
+    }
+}
+
 // The name a tunneled connection's certificate must carry, as a C string the TLS callback reads
 // during the handshake.
 nonisolated final class MySQLTLSServerName: @unchecked Sendable {
@@ -566,14 +657,23 @@ nonisolated enum MySQLSessionTransaction {
 // MARK: - MySQL Actor (thread-safe C API access)
 
 private actor MySQLActor {
+    nonisolated let killer = MySQLStatementKiller()
     private var mysql: UnsafeMutablePointer<MYSQL>?
 
     private static let connectSeconds = 15
+    // Bounds the sign-in and the setup statements after it; `completeConnect` gives the session its own.
+    private static let signInSocketSeconds: UInt32 = 30
+    private static let connectionLossCodes: Set<UInt32> = [
+        UInt32(CR_SERVER_GONE_ERROR), UInt32(CR_SERVER_LOST), UInt32(CR_SERVER_LOST_EXTENDED)
+    ]
 
     private var encoding: MySQLConnectionEncoding = .utf8
     private var errorLanguage: String.Encoding?
     private var showTextIsBinary = false
     private var tlsServerName: MySQLTLSServerName?
+    private var flavor: MySQLServerFlavor = .mysql
+    // The read timeout the socket has now: the sign-in's until `completeConnect`.
+    private var socketTimeoutSeconds: UInt32 = 0
 
     private struct AttemptFailure: Error {
         let code: UInt32
@@ -584,12 +684,13 @@ private actor MySQLActor {
     func connect(
         host: String, port: Int, user: String, password: String, database: String,
         ssl: DriverSSLConfiguration, encoding: MySQLConnectionEncoding, databaseType: DatabaseType,
-        signsInWithToken: Bool
+        signsInWithToken: Bool, signIn: MySQLKillSignIn
     ) async throws {
         self.encoding = encoding
         errorLanguage = nil
         showTextIsBinary = false
         close()
+        socketTimeoutSeconds = Self.signInSocketSeconds
 
         guard let portU32 = UInt32(exactly: port), (1...65_535).contains(port) else {
             throw MySQLError.connectionFailed(
@@ -608,12 +709,14 @@ private actor MySQLActor {
         // authentication with the typed password, so Preferred asks for TLS outright and falls back without it.
         let firstPolicy: MySQLTLSPolicy = policy == .preferred ? .required : policy
         let handle: UnsafeMutablePointer<MYSQL>
+        var dialedPolicy = firstPolicy
         do {
             do {
                 handle = try await open(endpoint, ssl: ssl, policy: firstPolicy, serverName: serverName, deadline: deadline)
             } catch let failure as AttemptFailure
                 where policy == .preferred && MariaDBSSLClassifier.sslOnlyErrorCodes.contains(failure.code) {
                 // Preferred retries in plaintext after a failed handshake, as the Mac does.
+                dialedPolicy = .disabled
                 handle = try await open(endpoint, ssl: ssl, policy: .disabled, serverName: nil, deadline: deadline)
             }
         } catch let failure as AttemptFailure where MySQLPlaintextPassword.isRefusal(code: failure.code) {
@@ -637,10 +740,52 @@ private actor MySQLActor {
         }
 
         let banner = mysql_get_server_info(handle).map { String(cString: $0) }
+        let sessionFlavor = MySQLDriver.serverFlavor(for: databaseType, banner: banner)
+        // TiDB's handshake carries only the low 32 bits of its connection id.
+        let tidbConnectionId = sessionFlavor.isTiDB ? connectionIdentifier(on: handle) : nil
+
         showTextIsBinary = MySQLDriver.labelsShowTextAsBinary(for: databaseType, banner: banner)
         errorLanguage = MariaDBCharacterSet.errorLanguage(on: handle)
         tlsServerName = serverName
+        flavor = sessionFlavor
         self.mysql = handle
+
+        let dial = MySQLKillDial(
+            host: endpoint.host, port: endpoint.port, user: endpoint.user, signIn: signIn,
+            ssl: ssl, policy: dialedPolicy, serverName: dialedPolicy == .disabled ? nil : serverName,
+            signsInWithToken: signsInWithToken
+        )
+        killer.attach(MySQLKillStatement.text(
+            flavor: sessionFlavor, banner: banner, threadId: mysql_thread_id(handle), tidbConnectionId: tidbConnectionId
+        ).map { statement in
+            MySQLSessionKill(
+                statement: statement,
+                absorbsLatchedKill: MySQLKillStatement.absorbsLatchedKill(flavor: sessionFlavor),
+                killsWhenReaderLeaves: !sessionFlavor.dropsIdleSessionOnKillQuery,
+                dial: dial
+            )
+        })
+    }
+
+    // Last, as the Mac's completeConnect: the sign-in's reads and the setup statements after it keep its bound, so a
+    // server that stops answering right after the sign-in still fails the connect.
+    func completeConnect(socketTimeoutSeconds sessionTimeout: UInt32) throws {
+        guard let mysql else { throw MySQLError.notConnected }
+        guard tablepro_mysql_set_io_timeout(mysql, sessionTimeout) == 0,
+              SessionSocketKeepalive.enable(on: mysql_get_socket(mysql)) else {
+            close()
+            throw MySQLError.connectionFailed(String(localized: "Failed to configure the connection timeout"))
+        }
+        socketTimeoutSeconds = sessionTimeout
+    }
+
+    private func connectionIdentifier(on handle: UnsafeMutablePointer<MYSQL>) -> UInt64? {
+        let probe = MySQLFlavorResolution.connectionIdentifierProbe
+        guard mysql_real_query(handle, probe, UInt(probe.utf8.count)) == 0,
+              let result = mysql_store_result(handle) else { return nil }
+        defer { mysql_free_result(result) }
+        guard let row = mysql_fetch_row(result), let value = row[0] else { return nil }
+        return UInt64(String(cString: value))
     }
 
     private struct Endpoint: Sendable {
@@ -667,32 +812,15 @@ private actor MySQLActor {
             throw MySQLError.connectionFailed("Failed to initialize MySQL client")
         }
 
-        mysql_options(handle, MYSQL_SET_CHARSET_NAME, MySQLConnectionEncoding.sessionCharacterSetName)
-
-        var timeout: UInt32 = 10
-        mysql_options(handle, MYSQL_OPT_CONNECT_TIMEOUT, &timeout)
-        var readTimeout: UInt32 = 30
-        mysql_options(handle, MYSQL_OPT_READ_TIMEOUT, &readTimeout)
-        var writeTimeout: UInt32 = 30
-        mysql_options(handle, MYSQL_OPT_WRITE_TIMEOUT, &writeTimeout)
-
-        var reconnect: my_bool = 0
-        mysql_options(handle, MYSQL_OPT_RECONNECT, &reconnect)
-
-        var allowLocalInfile: UInt32 = 0
-        mysql_options(handle, MYSQL_OPT_LOCAL_INFILE, &allowLocalInfile)
-
-        policy.apply(to: handle, ssl: ssl, serverName: serverName)
-        if policy == .disabled || policy == .preferred {
-            _ = MySQLPlaintextPassword.methodsWithoutTLS.withCString {
-                mysql_options(handle, MARIADB_OPT_RESTRICTED_AUTH, $0)
-            }
-        }
-        if endpoint.signsInWithToken {
-            // A no-op in Connector/C 3.4, which answers a cleartext request anyway; set to match the Mac.
-            var enableCleartext: my_bool = 1
-            mysql_options(handle, MYSQL_ENABLE_CLEARTEXT_PLUGIN, &enableCleartext)
-        }
+        MySQLDialOptions.apply(
+            to: handle,
+            policy: policy,
+            ssl: ssl,
+            serverName: serverName,
+            signsInWithToken: endpoint.signsInWithToken,
+            connectSeconds: 10,
+            socketSeconds: Self.signInSocketSeconds
+        )
 
         // A late call closes the handle it was still using, rather than the caller closing it.
         nonisolated(unsafe) let unsafeHandle = handle
@@ -732,6 +860,7 @@ private actor MySQLActor {
     }
 
     func close() {
+        killer.detach()
         guard let mysql else { return }
         if let result = streamingResult {
             // An open result points at the handle `mysql_close` frees, so it goes first; shutting the socket
@@ -814,6 +943,8 @@ private actor MySQLActor {
     func execute(_ query: String) throws -> RawMySQLResult {
         guard let mysql else { throw MySQLError.notConnected }
         endLeftoverStream(of: mysql)
+        let sent = send(killer.reserve(), on: mysql)
+        defer { finish(sent, on: mysql) }
 
         let start = Date()
 
@@ -882,18 +1013,28 @@ private actor MySQLActor {
     private var streamGeneration: UInt64 = 0
     private var streamingColumns: [ColumnInfo] = []
     private var streamingDecoding = MySQLResultColumns()
+    private var streamingStatement: SentStatement?
 
-    func beginStream(query: String) throws -> MySQLBeginStreamResult {
+    func beginStream(query: String, statement: UInt64) throws -> MySQLBeginStreamResult {
         guard let mysql else { throw MySQLError.notConnected }
         endLeftoverStream(of: mysql)
         streamGeneration &+= 1
         let stream = MySQLStreamID(generation: streamGeneration)
+        let sent = send(statement, on: mysql)
+        // A reader that left while this waited for the session stops it here; one that leaves later finds it in
+        // flight and kills it.
+        guard !Task.isCancelled else {
+            finish(sent, on: mysql)
+            throw CancellationError()
+        }
 
         guard mysql_real_query(mysql, query, UInt(query.utf8.count)) == 0 else {
+            finish(sent, on: mysql)
             throw MySQLError.queryFailed(message(from: mysql))
         }
 
         guard let result = mysql_use_result(mysql) else {
+            defer { finish(sent, on: mysql) }
             if mysql_field_count(mysql) != 0 {
                 throw MySQLError.queryFailed(message(from: mysql))
             }
@@ -904,6 +1045,7 @@ private actor MySQLActor {
         }
 
         streamingResult = result
+        streamingStatement = sent
 
         let described = MariaDBCharacterSet.describeColumns(
             of: mysql_fetch_fields(result), count: Int(mysql_num_fields(result)), encoding: encoding,
@@ -969,6 +1111,20 @@ private actor MySQLActor {
         try releaseStream(of: mysql)
     }
 
+    // Only for a `CappedRead`: its rows past the cap would only be read and dropped, so it is stopped on the server
+    // first, as on the Mac, and the kill's 1317 is the cut the reader was already told of.
+    func endStreamAtRowCap(_ stream: MySQLStreamID) throws {
+        guard let mysql, stream.generation == streamGeneration else { return }
+        if let sent = streamingStatement {
+            killer.rowCapReached(sent.id)
+        }
+        do {
+            try releaseStream(of: mysql)
+        } catch {
+            guard flavor.isInterruptedByKill(errno: mysql_errno(mysql), message: message(from: mysql)) else { throw error }
+        }
+    }
+
     /// The producer of a superseded stream only learns that its rows were cut off, so an error in the rest of
     /// its statement has no one to reach and is logged.
     private func endLeftoverStream(of mysql: UnsafeMutablePointer<MYSQL>) {
@@ -983,15 +1139,55 @@ private actor MySQLActor {
 
     private func releaseStream(of mysql: UnsafeMutablePointer<MYSQL>) throws {
         guard let result = streamingResult else { return }
+        let sent = streamingStatement
         clearStream()
+        defer { if let sent { finish(sent, on: mysql) } }
         try drain(result, of: mysql)
         try consumeTrailingResults(of: mysql)
     }
 
     private func clearStream() {
         streamingResult = nil
+        streamingStatement = nil
         streamingColumns = []
         streamingDecoding = MySQLResultColumns()
+    }
+
+    // MARK: - Stopping a statement
+
+    nonisolated private struct SentStatement: Sendable {
+        let id: UInt64
+        let sentAt: ContinuousClock.Instant
+    }
+
+    private func send(_ statement: UInt64, on mysql: UnsafeMutablePointer<MYSQL>) -> SentStatement {
+        if killer.collectLatchedKill() {
+            absorbLatchedKill(on: mysql)
+        }
+        killer.sent(statement)
+        return SentStatement(id: statement, sentAt: .now)
+    }
+
+    // A throwaway statement collects the flag, failing with 1317 where the server kept it, so the user's runs as sent.
+    // It costs the session its ROW_COUNT() and FOUND_ROWS(), as on the Mac.
+    private func absorbLatchedKill(on mysql: UnsafeMutablePointer<MYSQL>) {
+        let probe = "SELECT 1"
+        guard mysql_real_query(mysql, probe, UInt(probe.utf8.count)) == 0 else { return }
+        if let result = mysql_store_result(mysql) {
+            mysql_free_result(result)
+        }
+    }
+
+    // Connector/C reports its own read timeout as the same lost connection a server drop gives, and only that one
+    // leaves the statement running, so only a wait that long kills it.
+    private func finish(_ sent: SentStatement, on mysql: UnsafeMutablePointer<MYSQL>) {
+        let code = mysql_errno(mysql)
+        let interrupted = code != 0 && flavor.isInterruptedByKill(errno: code, message: message(from: mysql))
+        killer.finished(sent.id, interrupted: interrupted)
+        guard Self.connectionLossCodes.contains(code),
+              mysqlWaitCouldOutlastSocketTimeout(sent.sentAt.duration(to: .now), socketTimeoutSeconds: socketTimeoutSeconds)
+        else { return }
+        killer.killOrphan()
     }
 
     /// The first result set is the statement's answer, as before. A later one, such as a `CALL` that selects

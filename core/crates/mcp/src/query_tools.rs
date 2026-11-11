@@ -5,7 +5,7 @@ use serde::Serialize;
 use tablepro_core::browse::{DeclaredPrecisionSink, ExportRequest, build_count, build_export};
 use tablepro_core::meta::{ObjectScope, RowIdentity};
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan};
-use tablepro_core::sql_syntax::{SqlGrammar, changes_catalog, statement_access};
+use tablepro_core::sql_syntax::{SqlGrammar, StatementAccess, changes_catalog, statement_access};
 use tablepro_core::{
     CallOptions, ColumnInfo, EditorSessionOptions, ExternalGate, ExternalRefusal, ReadStatement, ResultSink, RowLimit,
     RunEnd, RunOptions, TableRef, TransactionState, UserSql,
@@ -16,12 +16,12 @@ use tablepro_storage::query_history::{NewEntry, Outcome};
 use tokio_util::sync::CancellationToken;
 
 use crate::browse_request::{filter_set, sort_keys};
-use crate::collected_results::{CollectedResults, ResultCollector};
+use crate::collected_results::{CollectedResults, Keep, ResultCollector};
 use crate::connection_tools::to_json;
 use crate::mcp_host::WriteApproval;
 use crate::schema_tools::no_such_table;
 use crate::tool_args::{BrowseArgs, CountArgs, QueryArgs};
-use crate::tool_context::ToolContext;
+use crate::tool_context::{HeldSession, ToolContext};
 use crate::tool_error::ToolError;
 
 pub const DEFAULT_ROWS: u32 = 100;
@@ -47,13 +47,21 @@ pub async fn execute_query(
             args.query.len()
         )));
     }
-    let session = context.session(&connection).await?;
+    let HeldSession { session, database } = context
+        .held_session(&connection, args.database.as_deref(), &cancel)
+        .await?;
     let dialect = session
         .current_dialect()
         .ok_or_else(|| ToolError::NotConnected(format!("“{}” has no connection right now", connection.name)))?;
     let grammar = dialect.grammar();
     let text = single_batch(&args.query, grammar)?;
     let access = statement_access(&text, grammar);
+    // Before the gate, so a client that asked for a read never puts a write to the user.
+    if args.read_only && access != StatementAccess::Read {
+        return Err(ToolError::Denied(
+            "the call set read_only, and the statement can change the database".to_owned(),
+        ));
+    }
     let (ran, executed_at, elapsed) = match connection.external_access.gate(session.safe_mode(), access) {
         ExternalGate::Refuse(reason) => return Err(refusal(&connection, reason)),
         ExternalGate::Run => {
@@ -65,6 +73,7 @@ pub async fn execute_query(
             let approval = WriteApproval {
                 connection_id: connection.id,
                 connection_name: connection.name.clone(),
+                database,
                 sql: text.clone(),
                 destructive,
                 cancel: cancel.clone(),
@@ -175,7 +184,10 @@ type Ran = Result<(CollectedResults, Vec<&'static str>), ToolError>;
 /// read-only, so a write the statement gate did not see still fails.
 async fn run_read(session: &Session, text: &str, limit: usize, timeout: Duration, cancel: &CancellationToken) -> Ran {
     let read = ReadStatement::User(UserSql::new(text));
-    let collected = stream(session, limit, timeout, cancel, None, move |_| Ok(read.clone())).await?;
+    let collected = stream(session, Keep::results(limit), timeout, cancel, None, move |_| {
+        Ok(read.clone())
+    })
+    .await?;
     Ok((collected, Vec::new()))
 }
 
@@ -191,7 +203,7 @@ async fn run_write(session: &Session, text: &str, limit: usize, timeout: Duratio
         .await
         .map_err(|error| ToolError::from_operation(&error))?;
     let state = Arc::new(Mutex::new(CollectedResults::default()));
-    let sink = ResultCollector::new(state.clone(), limit, false);
+    let sink = ResultCollector::new(state.clone(), Keep::results(limit), false);
     let stop = cancel.child_token();
     // What the user approved runs to its end. A driver stops fetching at
     // the limit, and with it a statement's side effects; the answer keeps
@@ -231,13 +243,10 @@ async fn run_write(session: &Session, text: &str, limit: usize, timeout: Duratio
     }
 }
 
-/// Stream the read `build` makes from the lease that runs it, keeping
-/// `limit` rows of each result set and stopping at the row past them.
-/// A table's rows pass through `precision`, so a decimal keeps the scale
-/// its column declares, as in an export.
-async fn stream<F>(
+// A table's rows pass through `precision`, so a decimal keeps the scale its column declares, as in an export.
+pub(crate) async fn stream<F>(
     session: &Session,
-    limit: usize,
+    keep: Keep,
     timeout: Duration,
     cancel: &CancellationToken,
     precision: Option<Arc<[ColumnInfo]>>,
@@ -256,7 +265,7 @@ where
             async move {
                 *state.lock().unwrap_or_else(PoisonError::into_inner) = CollectedResults::default();
                 let read = build(&lease)?;
-                let collector: Box<dyn ResultSink> = Box::new(ResultCollector::new(state, limit, true));
+                let collector: Box<dyn ResultSink> = Box::new(ResultCollector::new(state, keep, true));
                 let sink: Box<dyn ResultSink> = match precision {
                     Some(catalog) => Box::new(DeclaredPrecisionSink::new(collector, catalog)),
                     None => collector,
@@ -287,13 +296,13 @@ pub async fn browse_table(
     let filter = filter_set(&args.filters, args.logic)?;
     let session = context.session(&connection).await?;
     let table = TableRef::new(args.schema, args.table);
-    let (columns, identity) = table_shape(&session, &table).await?;
+    let (columns, identity) = table_shape(&session, &table, &cancel).await?;
     let sort = sort_keys(&args.sort, &columns)?;
     let catalog: Arc<[ColumnInfo]> = columns.into();
     let started = Instant::now();
     let collected = stream(
         &session,
-        limit,
+        Keep::results(limit),
         Duration::from_secs(u64::from(DEFAULT_TIMEOUT_SECONDS)),
         &cancel,
         Some(catalog.clone()),
@@ -313,9 +322,13 @@ pub async fn browse_table(
 }
 
 /// The table's columns and how its rows are told apart, read together.
-async fn table_shape(session: &Session, table: &TableRef) -> Result<(Vec<ColumnInfo>, RowIdentity), ToolError> {
+pub(crate) async fn table_shape(
+    session: &Session,
+    table: &TableRef,
+    cancel: &CancellationToken,
+) -> Result<(Vec<ColumnInfo>, RowIdentity), ToolError> {
     let read = session
-        .run(OperationKind::Metadata, |lease, call| {
+        .run_cancellable(OperationKind::Metadata, cancel, |lease, call| {
             let table = table.clone();
             async move {
                 let columns = lease.fetch_columns(&table, call.clone()).await?;
@@ -340,14 +353,18 @@ struct RowCount {
     row_count: u64,
 }
 
-pub async fn count_rows(context: &ToolContext, args: CountArgs) -> Result<String, ToolError> {
+pub async fn count_rows(
+    context: &ToolContext,
+    args: CountArgs,
+    cancel: CancellationToken,
+) -> Result<String, ToolError> {
     let connection = context.connection(&args.connection_id)?;
     let filter = filter_set(&args.filters, args.logic)?;
     let session = context.session(&connection).await?;
     let table = TableRef::new(args.schema, args.table);
-    let (columns, _) = table_shape(&session, &table).await?;
+    let (columns, _) = table_shape(&session, &table, &cancel).await?;
     let count = session
-        .run(OperationKind::Count, |lease, call| {
+        .run_cancellable(OperationKind::Count, &cancel, |lease, call| {
             let (table, columns, filter) = (&table, &columns, &filter);
             async move {
                 let statement = build_count(&*lease.dialect(), table, columns, filter)?;
@@ -362,7 +379,7 @@ pub async fn count_rows(context: &ToolContext, args: CountArgs) -> Result<String
     })
 }
 
-fn row_limit(asked: Option<u32>, name: &str) -> Result<usize, ToolError> {
+pub(crate) fn row_limit(asked: Option<u32>, name: &str) -> Result<usize, ToolError> {
     match asked.unwrap_or(DEFAULT_ROWS) {
         rows @ 1..=MAX_ROWS => Ok(rows as usize),
         rows => Err(ToolError::InvalidArgument(format!(

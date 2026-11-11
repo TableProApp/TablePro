@@ -30,6 +30,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         /// Read from the driver when its connect is adopted, so it outlives the `disconnect()` Test Connection
         /// makes before anyone asks for it.
         var connectionWarning: String?
+        // Only a yes is kept, so the driver's own code is not asked again on every read.
+        var buildsBrowseQueries = false
     }
 
     let connection: DatabaseConnection
@@ -60,15 +62,18 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     var schemaPluginDriver: any PluginDatabaseDriver { pluginDriver }
 
     var queryBuildingPluginDriver: (any PluginDatabaseDriver)? {
-        // Expose plugin driver for query building dispatch if it implements the hooks.
-        // SQL drivers without custom pagination (MySQL, PostgreSQL, etc.) return nil
-        // from buildBrowseQuery and use standard SQL query rewriting instead.
-        guard pluginDriver.buildBrowseQuery(
-            table: "_probe", sortColumns: [], columns: [], limit: 1, offset: 0
-        ) != nil else {
-            return nil
-        }
+        if state.withLock({ $0.buildsBrowseQueries }) { return pluginDriver }
+        guard Self.buildsBrowseQueries(pluginDriver) else { return nil }
+        state.withLock { $0.buildsBrowseQueries = true }
         return pluginDriver
+    }
+
+    // Asks the schema-aware overload: its default forwards to the older one, so it answers for a driver
+    // that implements either. A driver that leaves browsing to the app returns nil from both.
+    static func buildsBrowseQueries(_ driver: any PluginDatabaseDriver) -> Bool {
+        driver.buildBrowseQuery(
+            table: "_probe", schema: nil, sortColumns: [], columns: [], limit: 1, offset: 0
+        ) != nil
     }
 
     var rowWritingPluginDriver: (any PluginDatabaseDriver)? {
@@ -1335,6 +1340,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             ResultColumnMeta(isPrimaryKey: $0.isPrimaryKey, isNullable: $0.isNullable, isAutoIncrement: $0.isIdentity)
         }
         result.rowLocators = pluginResult.rowLocators
+        result.columnOrigins = pluginResult.columnOrigins
         result.exportDocuments = pluginResult.exportDocuments
         result.absentCells = pluginResult.absentCells ?? [:]
         return result

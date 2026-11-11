@@ -62,8 +62,6 @@ mod imp {
         pub count_spinner: TemplateChild<adw::Spinner>,
         #[template_child]
         pub count_label: TemplateChild<gtk::Label>,
-        /// Below the tab's breakpoint, Count Rows is in the tab's More
-        /// menu instead.
         #[property(get, set = Self::set_compact)]
         compact: Cell<bool>,
         count_offered: Cell<bool>,
@@ -72,6 +70,8 @@ mod imp {
     impl PagerBar {
         fn set_compact(&self, compact: bool) {
             self.compact.set(compact);
+            self.first_button.set_visible(!compact);
+            self.last_button.set_visible(!compact);
             self.show_count_button();
         }
 
@@ -202,6 +202,10 @@ impl PagerBar {
         ]
     }
 
+    pub(super) fn set_count_enabled(&self, enabled: bool) {
+        self.turn(&[(self.imp().count_button.get(), enabled)]);
+    }
+
     /// The rows on the page, Count Rows and Last, which only an exact
     /// total enables.
     pub(super) fn show_total(&self, pager: &BrowsePager, shown: Option<&PageState>, total: &RowTotal) {
@@ -254,12 +258,21 @@ impl PagerBar {
         }
     }
 
-    /// The keys for Previous and Next turn a page only where the button
-    /// would, so the tab's actions follow the buttons, and the buttons
-    /// announce the actions' keys.
-    pub(super) fn follow_page_actions(&self, group: &str, previous: &gio::SimpleAction, next: &gio::SimpleAction) {
+    pub(super) fn follow_page_actions(
+        &self,
+        group: &str,
+        first: &gio::SimpleAction,
+        previous: &gio::SimpleAction,
+        next: &gio::SimpleAction,
+        last: &gio::SimpleAction,
+    ) {
         let imp = self.imp();
-        for (button, action) in [(&imp.prev_button, previous), (&imp.next_button, next)] {
+        for (button, action) in [
+            (&imp.first_button, first),
+            (&imp.prev_button, previous),
+            (&imp.next_button, next),
+            (&imp.last_button, last),
+        ] {
             button
                 .bind_property("sensitive", action, "enabled")
                 .sync_create()
@@ -314,6 +327,7 @@ mod tests {
 
     fn page(start_ordinal: u64, row_count: usize) -> PageState {
         PageState {
+            elapsed: std::time::Duration::from_millis(5),
             row_count,
             start_ordinal,
             filtered: false,
@@ -342,18 +356,22 @@ mod tests {
     fn page_actions_follow_the_buttons_and_announce_their_keys() {
         let bar = bar();
         let imp = bar.imp();
+        let first = gio::SimpleAction::new("first-page", None);
         let previous = gio::SimpleAction::new("previous-page", None);
         let next = gio::SimpleAction::new("next-page", None);
+        let last = gio::SimpleAction::new("last-page", None);
         assert!(!gtk::test_accessible_has_property(
             &imp.next_button.get(),
             AccessibleProperty::KeyShortcuts
         ));
 
-        bar.follow_page_actions("browse", &previous, &next);
+        bar.follow_page_actions("browse", &first, &previous, &next, &last);
         bar.show_position(&BrowsePager::new(100, 0), 100);
 
+        assert!(!first.is_enabled(), "First turned a page before the first");
         assert!(!previous.is_enabled(), "Previous turned a page before the first");
         assert!(next.is_enabled());
+        assert!(!last.is_enabled(), "Last needs an exact total");
         for button in [imp.prev_button.get(), imp.next_button.get()] {
             assert!(
                 gtk::test_accessible_has_property(&button, AccessibleProperty::KeyShortcuts),
@@ -364,8 +382,12 @@ mod tests {
 
         bar.show_position(&BrowsePager::new(100, 200), 40);
 
+        assert!(first.is_enabled());
         assert!(previous.is_enabled());
         assert!(!next.is_enabled(), "Next turned past the last page");
+        bar.set_compact(true);
+        bar.show_total(&BrowsePager::new(100, 0), Some(&page(0, 100)), &RowTotal::Exact(240));
+        assert!(last.is_enabled(), "the menu's Last lost the hidden button's state");
     }
 
     #[gtk4::test]
@@ -500,17 +522,23 @@ mod tests {
     }
 
     #[gtk4::test]
-    fn a_compact_bar_leaves_count_rows_to_the_menu() {
+    fn a_compact_bar_leaves_first_last_and_count_rows_to_the_menu() {
         let bar = bar();
         let count = bar.imp().count_button.get();
         bar.show_total(&BrowsePager::new(100, 0), Some(&page(0, 100)), &RowTotal::Unknown);
 
         bar.set_compact(true);
+        assert!(!bar.imp().first_button.is_visible());
+        assert!(!bar.imp().last_button.is_visible());
+        assert!(bar.imp().prev_button.is_visible());
+        assert!(bar.imp().next_button.is_visible());
         assert!(!count.is_visible());
         bar.show_total(&BrowsePager::new(100, 0), Some(&page(0, 100)), &RowTotal::Unknown);
         assert!(!count.is_visible(), "a new total put Count Rows back on a compact bar");
 
         bar.set_compact(false);
+        assert!(bar.imp().first_button.is_visible());
+        assert!(bar.imp().last_button.is_visible());
         assert!(count.is_visible());
     }
 
@@ -526,11 +554,11 @@ mod tests {
 
         bar.show_total(&pager, Some(&page(0, 5)), &RowTotal::Exact(5));
 
-        assert_eq!(bar.imp().paginator_label.label(), "Rows 1 – 5 of 5");
+        assert_eq!(bar.imp().paginator_label.label(), "Rows 1 – 5 of 5 · 5 ms");
         assert_eq!(
             crate::ui::a11y::announced_in(&bar),
             [(
-                "Rows 1 – 5 of 5".to_owned(),
+                "Rows 1 – 5 of 5 · 5 ms".to_owned(),
                 gtk::AccessibleAnnouncementPriority::Medium
             )],
             "a page turn is said once"

@@ -29,6 +29,8 @@ final class ConnectionStorage {
     private var cachedConnections: [DatabaseConnection]?
 
     private(set) var lastLoadFailed = false
+    private(set) var fileReadCount = 0
+    private(set) var fileWriteCount = 0
 
     /// Whether the file on disk is the one TablePro last wrote. False once it has been edited by
     /// something else, which is the signal to refuse to run a connection's password source.
@@ -91,6 +93,7 @@ final class ConnectionStorage {
     func loadConnections() -> [DatabaseConnection] {
         if let cached = cachedConnections { return cached }
 
+        fileReadCount += 1
         guard let storedConnections = file.load() else {
             lastLoadFailed = true
             return []
@@ -126,17 +129,20 @@ final class ConnectionStorage {
     /// app makes on its own (a sync pull, a route a connect recorded) is not the user re-saving it.
     @discardableResult
     func saveConnections(_ connections: [DatabaseConnection], byUser: Bool = true) -> Bool {
-        _ = loadConnections()
+        let previous = loadConnections()
         guard !lastLoadFailed else {
             Self.logger.error("Refused to save over connections.json: it could not be read")
             return false
         }
-        return persist(connections, byUser: byUser)
+        guard persist(connections, byUser: byUser) else { return false }
+        moveSecretsWhoseScopeChanged(from: previous, to: connections)
+        return true
     }
 
     @discardableResult
     private func persist(_ connections: [DatabaseConnection], byUser: Bool = true) -> Bool {
         guard file.save(connections.map { StoredConnection(from: $0) }, byUser: byUser) else { return false }
+        fileWriteCount += 1
         cachedConnections = nil
         return true
     }
@@ -438,22 +444,11 @@ final class ConnectionStorage {
         if connection.participatesInSync {
             syncTracker.markDeleted(.connection, id: connection.id.uuidString)
         }
-        deletePassword(for: connection.id)
-        deleteSSHPassword(for: connection.id)
-        deleteKeyPassphrase(for: connection.id)
-        deleteSSLClientKeyPassphrase(for: connection.id)
-        deleteTOTPSecret(for: connection.id)
-        deleteCloudflareTokenId(for: connection.id)
-        deleteCloudflareTokenSecret(for: connection.id)
-        deleteCloudSQLProxyServiceAccountKey(for: connection.id)
-        deleteSOCKSProxyPassword(for: connection.id)
-
-        let secureFieldIds = Self.secureFieldIds(for: connection.type)
-        deleteAllPluginSecureFields(for: connection.id, fieldIds: secureFieldIds)
-
+        let origin: ConnectionLocalState.Origin = connection.participatesInSync ? .local : .localOnly
+        deleteSecrets(of: [connection], origin: origin)
         ConnectionLocalState.purge(
             connectionIds: [connection.id],
-            origin: connection.participatesInSync ? .local : .localOnly,
+            origin: origin,
             appSettings: appSettingsProvider(),
             syncTracker: syncTracker
         )
@@ -472,20 +467,9 @@ final class ConnectionStorage {
         for conn in connectionsToDelete where conn.participatesInSync {
             syncTracker.markDeleted(.connection, id: conn.id.uuidString)
         }
-        for conn in connectionsToDelete {
-            deletePassword(for: conn.id)
-            deleteSSHPassword(for: conn.id)
-            deleteKeyPassphrase(for: conn.id)
-            deleteSSLClientKeyPassphrase(for: conn.id)
-            deleteTOTPSecret(for: conn.id)
-            deleteCloudflareTokenId(for: conn.id)
-            deleteCloudflareTokenSecret(for: conn.id)
-            deleteCloudSQLProxyServiceAccountKey(for: conn.id)
-            deleteSOCKSProxyPassword(for: conn.id)
-            let fields = Self.secureFieldIds(for: conn.type)
-            deleteAllPluginSecureFields(for: conn.id, fieldIds: fields)
-        }
         let syncedIds = Set(connectionsToDelete.filter(\.participatesInSync).map(\.id))
+        deleteSecrets(of: connectionsToDelete.filter { syncedIds.contains($0.id) }, origin: .local)
+        deleteSecrets(of: connectionsToDelete.filter { !syncedIds.contains($0.id) }, origin: .localOnly)
         ConnectionLocalState.purge(
             connectionIds: syncedIds,
             origin: .local,
@@ -623,7 +607,7 @@ final class ConnectionStorage {
     @discardableResult
     func savePassword(_ password: String, for connectionId: UUID) -> Bool {
         let key = "com.TablePro.password.\(connectionId.uuidString)"
-        return keychain.writeString(password, forKey: key)
+        return writeSecret(password, forKey: key, connectionId: connectionId)
     }
 
     func loadPassword(for connectionId: UUID) -> String? {
@@ -633,7 +617,7 @@ final class ConnectionStorage {
 
     func deletePassword(for connectionId: UUID) {
         let key = "com.TablePro.password.\(connectionId.uuidString)"
-        keychain.delete(forKey: key)
+        deleteSecret(forKey: key, connectionId: connectionId)
     }
 
     // MARK: - SSH Password Storage
@@ -641,7 +625,7 @@ final class ConnectionStorage {
     @discardableResult
     func saveSSHPassword(_ password: String, for connectionId: UUID) -> Bool {
         let key = "com.TablePro.sshpassword.\(connectionId.uuidString)"
-        return keychain.writeString(password, forKey: key)
+        return writeSecret(password, forKey: key, connectionId: connectionId)
     }
 
     func loadSSHPassword(for connectionId: UUID) -> String? {
@@ -651,7 +635,7 @@ final class ConnectionStorage {
 
     func deleteSSHPassword(for connectionId: UUID) {
         let key = "com.TablePro.sshpassword.\(connectionId.uuidString)"
-        keychain.delete(forKey: key)
+        deleteSecret(forKey: key, connectionId: connectionId)
     }
 
     // MARK: - Key Passphrase Storage
@@ -659,7 +643,7 @@ final class ConnectionStorage {
     @discardableResult
     func saveKeyPassphrase(_ passphrase: String, for connectionId: UUID) -> Bool {
         let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
-        return keychain.writeString(passphrase, forKey: key)
+        return writeSecret(passphrase, forKey: key, connectionId: connectionId)
     }
 
     func loadKeyPassphrase(for connectionId: UUID) -> String? {
@@ -669,7 +653,7 @@ final class ConnectionStorage {
 
     func deleteKeyPassphrase(for connectionId: UUID) {
         let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
-        keychain.delete(forKey: key)
+        deleteSecret(forKey: key, connectionId: connectionId)
     }
 
     // MARK: - SSL Client Key Passphrase Storage
@@ -677,7 +661,7 @@ final class ConnectionStorage {
     @discardableResult
     func saveSSLClientKeyPassphrase(_ passphrase: String, for connectionId: UUID) -> Bool {
         let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
-        return keychain.writeString(passphrase, forKey: key)
+        return writeSecret(passphrase, forKey: key, connectionId: connectionId)
     }
 
     func loadSSLClientKeyPassphrase(for connectionId: UUID) -> String? {
@@ -687,7 +671,7 @@ final class ConnectionStorage {
 
     func deleteSSLClientKeyPassphrase(for connectionId: UUID) {
         let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
-        keychain.delete(forKey: key)
+        deleteSecret(forKey: key, connectionId: connectionId)
     }
 
     // MARK: - Plugin Secure Field Storage
@@ -695,7 +679,7 @@ final class ConnectionStorage {
     @discardableResult
     func savePluginSecureField(_ value: String, fieldId: String, for connectionId: UUID) -> Bool {
         let key = "com.TablePro.plugin.\(fieldId).\(connectionId.uuidString)"
-        return keychain.writeString(value, forKey: key)
+        return writeSecret(value, forKey: key, connectionId: connectionId)
     }
 
     func loadPluginSecureField(fieldId: String, for connectionId: UUID) -> String? {
@@ -705,7 +689,7 @@ final class ConnectionStorage {
 
     func deletePluginSecureField(fieldId: String, for connectionId: UUID) {
         let key = "com.TablePro.plugin.\(fieldId).\(connectionId.uuidString)"
-        keychain.delete(forKey: key)
+        deleteSecret(forKey: key, connectionId: connectionId)
     }
 
     func deleteAllPluginSecureFields(for connectionId: UUID, fieldIds: [String]) {
@@ -719,7 +703,7 @@ final class ConnectionStorage {
     @discardableResult
     func saveTOTPSecret(_ secret: String, for connectionId: UUID) -> Bool {
         let key = "com.TablePro.totpsecret.\(connectionId.uuidString)"
-        return keychain.writeString(secret, forKey: key)
+        return writeSecret(secret, forKey: key, connectionId: connectionId)
     }
 
     func loadTOTPSecret(for connectionId: UUID) -> String? {
@@ -729,14 +713,14 @@ final class ConnectionStorage {
 
     func deleteTOTPSecret(for connectionId: UUID) {
         let key = "com.TablePro.totpsecret.\(connectionId.uuidString)"
-        keychain.delete(forKey: key)
+        deleteSecret(forKey: key, connectionId: connectionId)
     }
 
     // MARK: - Cloudflare Service Token Storage
 
     func saveCloudflareTokenId(_ tokenId: String, for connectionId: UUID) {
         let key = "com.TablePro.cloudflaretokenid.\(connectionId.uuidString)"
-        keychain.writeString(tokenId, forKey: key)
+        writeSecret(tokenId, forKey: key, connectionId: connectionId)
     }
 
     func loadCloudflareTokenId(for connectionId: UUID) -> String? {
@@ -746,12 +730,12 @@ final class ConnectionStorage {
 
     func deleteCloudflareTokenId(for connectionId: UUID) {
         let key = "com.TablePro.cloudflaretokenid.\(connectionId.uuidString)"
-        keychain.delete(forKey: key)
+        deleteSecret(forKey: key, connectionId: connectionId)
     }
 
     func saveCloudflareTokenSecret(_ tokenSecret: String, for connectionId: UUID) {
         let key = "com.TablePro.cloudflaretokensecret.\(connectionId.uuidString)"
-        keychain.writeString(tokenSecret, forKey: key)
+        writeSecret(tokenSecret, forKey: key, connectionId: connectionId)
     }
 
     func loadCloudflareTokenSecret(for connectionId: UUID) -> String? {
@@ -761,14 +745,14 @@ final class ConnectionStorage {
 
     func deleteCloudflareTokenSecret(for connectionId: UUID) {
         let key = "com.TablePro.cloudflaretokensecret.\(connectionId.uuidString)"
-        keychain.delete(forKey: key)
+        deleteSecret(forKey: key, connectionId: connectionId)
     }
 
     // MARK: - Cloud SQL Auth Proxy Credential Storage
 
     func saveCloudSQLProxyServiceAccountKey(_ key: String, for connectionId: UUID) {
         let storageKey = "com.TablePro.cloudsqlproxyserviceaccountkey.\(connectionId.uuidString)"
-        keychain.writeString(key, forKey: storageKey)
+        writeSecret(key, forKey: storageKey, connectionId: connectionId)
     }
 
     func loadCloudSQLProxyServiceAccountKey(for connectionId: UUID) -> String? {
@@ -778,14 +762,14 @@ final class ConnectionStorage {
 
     func deleteCloudSQLProxyServiceAccountKey(for connectionId: UUID) {
         let storageKey = "com.TablePro.cloudsqlproxyserviceaccountkey.\(connectionId.uuidString)"
-        keychain.delete(forKey: storageKey)
+        deleteSecret(forKey: storageKey, connectionId: connectionId)
     }
 
     // MARK: - SOCKS Proxy Password Storage
 
     func saveSOCKSProxyPassword(_ password: String, for connectionId: UUID) {
         let key = "com.TablePro.socksproxypassword.\(connectionId.uuidString)"
-        keychain.writeString(password, forKey: key)
+        writeSecret(password, forKey: key, connectionId: connectionId)
     }
 
     func loadSOCKSProxyPassword(for connectionId: UUID) -> String? {
@@ -795,7 +779,198 @@ final class ConnectionStorage {
 
     func deleteSOCKSProxyPassword(for connectionId: UUID) {
         let key = "com.TablePro.socksproxypassword.\(connectionId.uuidString)"
-        keychain.delete(forKey: key)
+        deleteSecret(forKey: key, connectionId: connectionId)
+    }
+
+    // MARK: - Secret Scope
+
+    private static let secretKinds = [
+        "password", "sshpassword", "keypassphrase", "sslkeypassphrase", "totpsecret",
+        "cloudflaretokenid", "cloudflaretokensecret", "cloudsqlproxyserviceaccountkey", "socksproxypassword"
+    ]
+    private static let localOnlySecretsMigratedKey = "com.TablePro.localOnlySecretsKeptOnDevice"
+
+    private func secretKeys(for connection: DatabaseConnection) -> [String] {
+        let id = connection.id.uuidString
+        var fieldIds = Self.secureFieldIds(for: connection.type)
+        if !fieldIds.contains(ConnectionSecretOptions.mongoSessionTokenFieldId) {
+            fieldIds.append(ConnectionSecretOptions.mongoSessionTokenFieldId)
+        }
+        return Self.secretKinds.map { "com.TablePro.\($0).\(id)" }
+            + fieldIds.map { "com.TablePro.plugin.\($0).\(id)" }
+    }
+
+    // Removing an iCloud Keychain item removes it from every device, so only a delete the other devices follow does.
+    // One from another device leaves it to that device. A Local only delete cannot tell whether another device still
+    // syncs the row, so it keeps it.
+    func deleteSecrets(of connections: [DatabaseConnection], origin: ConnectionLocalState.Origin) {
+        for connection in connections {
+            for key in secretKeys(for: connection) {
+                if origin.leavesTombstones {
+                    deleteSecret(forKey: key, connectionId: connection.id)
+                } else {
+                    keychain.delete(forKey: key, deviceOnly: true)
+                }
+            }
+        }
+    }
+
+    private func keepsSecretsOnDevice(_ connectionId: UUID) -> Bool {
+        loadConnection(id: connectionId).map { !$0.participatesInSync } ?? false
+    }
+
+    private func readsOwnItemFirst(_ connectionId: UUID) -> Bool {
+        if let staging, staging.connectionId == connectionId {
+            return staging.deviceOnly
+        }
+        return keepsSecretsOnDevice(connectionId)
+    }
+
+    @discardableResult
+    private func writeSecret(_ value: String, forKey key: String, connectionId: UUID) -> Bool {
+        let staged = staging?.connectionId == connectionId
+        // Writing it again would date the item as a new save, and a newer copy on another device would lose to it.
+        if staged, staging?.loaded[key] == value {
+            staging?.edits.deletedKeys.removeAll { $0 == key }
+            return true
+        }
+        let deviceOnly = staged ? staging?.deviceOnly ?? false : keepsSecretsOnDevice(connectionId)
+        let written = keychain.writeString(value, forKey: key, deviceOnly: deviceOnly)
+        if staged {
+            staging?.edits.deletedKeys.removeAll { $0 == key }
+            if !written {
+                staging?.edits.writeFailed = true
+            }
+        }
+        return written
+    }
+
+    private func deleteSecret(forKey key: String, connectionId: UUID) {
+        guard let current = staging, current.connectionId == connectionId else {
+            keychain.delete(forKey: key)
+            return
+        }
+        guard !current.keptKeys.contains(key), !current.edits.deletedKeys.contains(key) else { return }
+        staging?.edits.deletedKeys.append(key)
+    }
+
+    // Rewrites each stored secret into the scope the connection now has. Going device-only keeps the copy iCloud
+    // Keychain holds: removing it would remove it from every device. False when a secret could not be read or written.
+    @discardableResult
+    private func rewriteSecrets(of connection: DatabaseConnection, readingOwnItemFirst: Bool, deviceOnly: Bool) -> Bool {
+        var complete = true
+        for key in secretKeys(for: connection) {
+            switch keychain.readStringResult(forKey: key, deviceOnly: readingOwnItemFirst) {
+            case .found(let value):
+                if !keychain.writeString(value, forKey: key, deviceOnly: deviceOnly) {
+                    complete = false
+                }
+            case .notFound:
+                break
+            case .locked, .userCancelled, .authFailed, .error:
+                complete = false
+            }
+        }
+        return complete
+    }
+
+    // Each direction reads the value the connection was using, so the toggle never changes a secret.
+    private func moveSecretsWhoseScopeChanged(from previous: [DatabaseConnection], to current: [DatabaseConnection]) {
+        let wasSynced = Dictionary(
+            previous.map { ($0.id, $0.participatesInSync) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        for connection in current {
+            guard let synced = wasSynced[connection.id], synced != connection.participatesInSync else { continue }
+            rewriteSecrets(of: connection, readingOwnItemFirst: !synced, deviceOnly: synced)
+        }
+    }
+
+    // Builds before this one wrote a Local only connection's secrets wherever the password sync setting pointed.
+    func keepLocalOnlySecretsOnDeviceIfNeeded() {
+        guard !defaults.bool(forKey: Self.localOnlySecretsMigratedKey) else { return }
+        let connections = loadConnections()
+        guard !lastLoadFailed else { return }
+        var complete = true
+        for connection in connections where !connection.participatesInSync {
+            let knowsFields = Self.knowsSecureFields(of: connection.type)
+            if !rewriteSecrets(of: connection, readingOwnItemFirst: true, deviceOnly: true) || !knowsFields {
+                complete = false
+            }
+        }
+        if complete {
+            defaults.set(true, forKey: Self.localOnlySecretsMigratedKey)
+        } else {
+            Self.logger.notice("Not every Local only secret has a copy on this Mac yet; retrying next launch")
+        }
+    }
+
+    // MARK: - Staged Secret Edits
+
+    struct StagedSecretEdits {
+        fileprivate(set) var deletedKeys: [String] = []
+        fileprivate(set) var writeFailed = false
+    }
+
+    private struct SecretStaging {
+        let connectionId: UUID
+        let deviceOnly: Bool
+        let keptKeys: Set<String>
+        let loaded: [String: String]
+        var edits = StagedSecretEdits()
+    }
+
+    private var staging: SecretStaging?
+
+    private var unreadableSecretsSeen: Set<String>?
+    private var loadedSecretsSeen: [String: String]?
+
+    struct SecretReads {
+        var unreadable: Set<String> = []
+        var loaded: [String: String] = [:]
+    }
+
+    // The keys a read inside `body` could not read. A form runs its prefill here, so the field left empty and the
+    // key it must not clear come from one read.
+    func recordingUnreadableSecrets(_ body: () -> Void) -> Set<String> {
+        recordingSecretReads(body).unreadable
+    }
+
+    // Also the values the reads found, so a save can leave alone what the form loaded and did not change.
+    func recordingSecretReads(_ body: () -> Void) -> SecretReads {
+        let outerUnreadable = unreadableSecretsSeen
+        let outerLoaded = loadedSecretsSeen
+        unreadableSecretsSeen = []
+        loadedSecretsSeen = [:]
+        body()
+        let reads = SecretReads(unreadable: unreadableSecretsSeen ?? [], loaded: loadedSecretsSeen ?? [:])
+        unreadableSecretsSeen = outerUnreadable.map { $0.union(reads.unreadable) }
+        loadedSecretsSeen = outerLoaded.map { $0.merging(reads.loaded) { _, inner in inner } }
+        return reads
+    }
+
+    // Inside `body`, this connection's secret writes take `deviceOnly` and report a failure, and its deletes wait
+    // for `applyStagedDeletions`, which the caller runs once the record is on disk. A key in `keeping` is never deleted,
+    // and a write of the value `unchanged` holds for its key is skipped.
+    func stagingSecretEdits(
+        for connectionId: UUID,
+        deviceOnly: Bool,
+        keeping keptKeys: Set<String> = [],
+        unchanged loaded: [String: String] = [:],
+        _ body: () -> Void
+    ) -> StagedSecretEdits {
+        let outer = staging
+        staging = SecretStaging(connectionId: connectionId, deviceOnly: deviceOnly, keptKeys: keptKeys, loaded: loaded)
+        body()
+        let edits = staging?.edits ?? StagedSecretEdits()
+        staging = outer
+        return edits
+    }
+
+    func applyStagedDeletions(_ edits: StagedSecretEdits) {
+        for key in edits.deletedKeys {
+            keychain.delete(forKey: key)
+        }
     }
 
     // MARK: - Stored Secret State
@@ -813,19 +988,19 @@ final class ConnectionStorage {
     }
 
     func passwordState(for connectionId: UUID) -> StoredSecretState {
-        secretState(forKey: "com.TablePro.password.\(connectionId.uuidString)")
+        secretState(forKey: "com.TablePro.password.\(connectionId.uuidString)", connectionId: connectionId)
     }
 
     func sshPasswordState(for connectionId: UUID) -> StoredSecretState {
-        secretState(forKey: "com.TablePro.sshpassword.\(connectionId.uuidString)")
+        secretState(forKey: "com.TablePro.sshpassword.\(connectionId.uuidString)", connectionId: connectionId)
     }
 
     func keyPassphraseState(for connectionId: UUID) -> StoredSecretState {
-        secretState(forKey: "com.TablePro.keypassphrase.\(connectionId.uuidString)")
+        secretState(forKey: "com.TablePro.keypassphrase.\(connectionId.uuidString)", connectionId: connectionId)
     }
 
-    private func secretState(forKey key: String) -> StoredSecretState {
-        switch keychain.readStringResult(forKey: key) {
+    private func secretState(forKey key: String, connectionId: UUID) -> StoredSecretState {
+        switch readSecret(forKey: key, connectionId: connectionId) {
         case .found(let value):
             return value.isEmpty ? .absent : .stored
         case .notFound:
@@ -835,13 +1010,26 @@ final class ConnectionStorage {
         }
     }
 
+    private func readSecret(forKey key: String, connectionId: UUID) -> KeychainStringResult {
+        let result = keychain.readStringResult(forKey: key, deviceOnly: readsOwnItemFirst(connectionId))
+        switch result {
+        case .found(let value):
+            loadedSecretsSeen?[key] = value
+        case .notFound:
+            break
+        case .locked, .userCancelled, .authFailed, .error:
+            unreadableSecretsSeen?.insert(key)
+        }
+        return result
+    }
+
     private struct SecretContext {
         let label: String
         let connectionId: UUID
     }
 
     private func resolveString(_ context: SecretContext, forKey key: String) -> String? {
-        keychain.readStringResult(forKey: key)
+        readSecret(forKey: key, connectionId: context.connectionId)
             .value(label: "\(context.label) (connId=\(context.connectionId.uuidString))", logger: Self.logger)
     }
 
@@ -851,29 +1039,63 @@ final class ConnectionStorage {
         PluginManager.shared.secureConnectionFieldIds(for: databaseType)
     }
 
+    // A plugin that is not registered yet has secure fields nothing here can name.
+    private static func knowsSecureFields(of databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType) != nil
+    }
+
+    // Not the key older builds read: they set it on every exit, including runs that moved nothing.
+    private static let pluginSecureFieldsMovedKey = "com.TablePro.pluginSecureFieldsMovedToKeychain"
+
+    // Done only once every connection's secure fields could be named and each value reached the Keychain. A field
+    // leaves the record only after its own write, and a file edited outside TablePro moves nothing.
     func migratePluginSecureFieldsIfNeeded() {
-        let migrationKey = "com.TablePro.pluginSecureFieldsMigrated"
-        guard !defaults.bool(forKey: migrationKey) else { return }
-        defer { defaults.set(true, forKey: migrationKey) }
-
+        guard !defaults.bool(forKey: Self.pluginSecureFieldsMovedKey) else { return }
         var connections = loadConnections()
-        var changed = false
+        guard !lastLoadFailed, storeIsTrusted else {
+            Self.logger.notice("Plugin secure fields not moved: connections.json is unreadable or changed outside TablePro; retrying next launch")
+            return
+        }
 
+        var complete = true
+        var changed = false
         for index in connections.indices {
-            let secureFieldIds = Self.secureFieldIds(for: connections[index].type)
-            for fieldId in secureFieldIds {
-                if let value = connections[index].additionalFields[fieldId], !value.isEmpty {
-                    savePluginSecureField(value, fieldId: fieldId, for: connections[index].id)
-                    connections[index].additionalFields.removeValue(forKey: fieldId)
-                    changed = true
+            let connection = connections[index]
+            if !Self.knowsSecureFields(of: connection.type) {
+                complete = false
+            }
+            for fieldId in Self.secureFieldIds(for: connection.type) {
+                guard let value = connection.additionalFields[fieldId], !value.isEmpty else { continue }
+                guard holdPluginSecureFieldInKeychain(value, fieldId: fieldId, for: connection.id) else {
+                    complete = false
+                    continue
                 }
+                connections[index].additionalFields.removeValue(forKey: fieldId)
+                changed = true
             }
         }
 
-        if changed {
-            if !saveConnections(connections) {
-                Self.logger.error("Failed to persist plugin secure field migration; will retry on next launch")
-            }
+        if changed, !saveConnections(connections, byUser: false) {
+            complete = false
+        }
+        if complete {
+            defaults.set(true, forKey: Self.pluginSecureFieldsMovedKey)
+        } else {
+            Self.logger.notice("Not every plugin secure field has moved to the Keychain yet; retrying next launch")
+        }
+    }
+
+    // A stored item wins: with password sync on it can be a newer value another device saved, which the plain-text
+    // copy here would overwrite everywhere. The plain-text value is written only where no item exists.
+    private func holdPluginSecureFieldInKeychain(_ value: String, fieldId: String, for connectionId: UUID) -> Bool {
+        let key = "com.TablePro.plugin.\(fieldId).\(connectionId.uuidString)"
+        switch readSecret(forKey: key, connectionId: connectionId) {
+        case .found(let stored) where !stored.isEmpty:
+            return true
+        case .found, .notFound:
+            return savePluginSecureField(value, fieldId: fieldId, for: connectionId)
+        case .locked, .userCancelled, .authFailed, .error:
+            return false
         }
     }
 

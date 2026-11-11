@@ -95,6 +95,20 @@ struct ResultSetMenuModelTests {
         #expect(model.entries.map(model.displayLabel(of:)) == ["users", "orders", "users (2)", "users (3)"])
     }
 
+    // A 10,000-statement run counted each entry's earlier uses per entry, about 10^8 comparisons to open the chooser.
+    @Test("Every name of a long run is counted the way one name alone is")
+    func longRunNamesMatchSingleNameCounting() {
+        let labels = (0 ..< 3_000).map { index in ["users", "orders", "Result \(index)"][index % 3] }
+        let model = Self.make(labels: labels, activeIndex: 0)
+        let expected = labels.indices.map { ResultSetMenuModel.displayLabel(at: $0, in: labels) }
+
+        #expect(model.entries.map { model.displayLabel(of: $0) } == expected)
+        #expect(ResultSetMenuModel.displayLabels(for: labels) == expected)
+        #expect(Array(expected.prefix(6)) == ["users", "orders", "Result 2", "users (2)", "orders (2)", "Result 5"])
+        #expect(expected.last == "Result 2999")
+        #expect(model.tabTitle(of: model.entries[2_997]) == "users (1000)")
+    }
+
     @Test("A long name is cut on a whole character, never inside an emoji")
     func truncationKeepsWholeCharacters() {
         let label = "Monthly revenue per region 📈 for Q3"

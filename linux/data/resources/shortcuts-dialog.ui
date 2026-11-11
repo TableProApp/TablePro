@@ -28,6 +28,12 @@
           </object>
         </child>
         <child>
+          <object class="AdwShortcutsItem" id="win-quick-open">
+            <property name="title" translatable="yes">Open Quickly</property>
+            <property name="action-name">win.quick-open</property>
+          </object>
+        </child>
+        <child>
           <object class="AdwShortcutsItem" id="win-show-history">
             <property name="title" translatable="yes">Query History</property>
             <property name="action-name">win.show-history</property>
@@ -74,6 +80,12 @@
     <child>
       <object class="AdwShortcutsSection" id="section-tabs">
         <property name="title" translatable="yes">Tabs</property>
+        <child>
+          <object class="AdwShortcutsItem" id="win-refresh-page">
+            <property name="title" translatable="yes">Refresh Tab</property>
+            <property name="accelerator">F5 &lt;Primary&gt;r</property>
+          </object>
+        </child>
         <child>
           <object class="AdwShortcutsItem" id="win-new-editor-tab">
             <property name="title" translatable="yes">New SQL Editor Tab</property>
@@ -141,13 +153,13 @@
           </object>
         </child>
         <child>
-          <object class="AdwShortcutsItem" id="browse-refresh">
+          <object class="AdwShortcutsItem" id="table-refresh">
             <property name="title" translatable="yes">Read the Table Again</property>
             <property name="accelerator">F5 &lt;Primary&gt;r</property>
           </object>
         </child>
         <child>
-          <object class="AdwShortcutsItem" id="browse-save">
+          <object class="AdwShortcutsItem" id="table-save">
             <property name="title" translatable="yes">Save Pending Changes</property>
             <property name="accelerator">&lt;Primary&gt;s</property>
           </object>

@@ -13,7 +13,7 @@ struct ClaudeAgentToolGrant: Sendable, Equatable {
 }
 
 protocol ClaudeAgentMCPBridging: Sendable {
-    func makeGrant() async -> ClaudeAgentToolGrant?
+    func makeGrant(connectionId: UUID?) async -> ClaudeAgentToolGrant?
     func release(_ grant: ClaudeAgentToolGrant?) async
 }
 
@@ -23,14 +23,21 @@ struct ClaudeAgentMCPBridge: ClaudeAgentMCPBridging {
     private static let tokenLifetime: TimeInterval = 15 * 60
 
     private let permissions: TokenPermissions
-    private let connectionAccess: ConnectionAccess
 
-    init(permissions: TokenPermissions = .readOnly, connectionAccess: ConnectionAccess = .all) {
+    init(permissions: TokenPermissions = .readOnly) {
         self.permissions = permissions
-        self.connectionAccess = connectionAccess
     }
 
-    func makeGrant() async -> ClaudeAgentToolGrant? {
+    static func connectionAccess(for connectionId: UUID?) -> ConnectionAccess? {
+        guard let connectionId else { return nil }
+        return .limited([connectionId])
+    }
+
+    func makeGrant(connectionId: UUID?) async -> ClaudeAgentToolGrant? {
+        guard let connectionAccess = Self.connectionAccess(for: connectionId) else {
+            Self.logger.info("No connection attached; Claude Agent runs without database tools")
+            return nil
+        }
         guard let endpoint = await Self.resolveEndpoint() else { return nil }
         guard let tokenStore = await MCPServerManager.shared.tokenStore else { return nil }
 
@@ -40,11 +47,12 @@ struct ClaudeAgentMCPBridge: ClaudeAgentMCPBridging {
             connectionAccess: connectionAccess,
             expiresAt: Date.now.addingTimeInterval(Self.tokenLifetime),
             isBridgeCredential: false,
+            isClaudeAgentCredential: true,
             extraScopes: []
         ) else { return nil }
 
         guard let configPath = Self.writeConfig(endpoint: endpoint, token: generated.plaintext) else {
-            await tokenStore.delete(tokenId: generated.token.id)
+            await tokenStore.retire(tokenId: generated.token.id)
             return nil
         }
 
@@ -56,7 +64,7 @@ struct ClaudeAgentMCPBridge: ClaudeAgentMCPBridging {
         guard let grant else { return }
         try? FileManager.default.removeItem(atPath: grant.configPath)
         guard let tokenStore = await MCPServerManager.shared.tokenStore else { return }
-        await tokenStore.delete(tokenId: grant.tokenId)
+        await tokenStore.retire(tokenId: grant.tokenId)
         Self.logger.debug("Released Claude Agent MCP grant")
     }
 

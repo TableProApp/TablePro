@@ -8,8 +8,8 @@ use AcceleratorScope::{Application, Component, Local, Stock};
 use ShortcutListing::{Listed, Unlisted};
 use ShortcutOwner::{
     AssistantComposer, BrowseTab, CellEditor, ConnectionTree, DiagramCanvas, DiagramTab, EditorResults, FilterStrip,
-    Grid, GridCell, HistoryRow, InlineSuggestion, PickerPage, PickerRow, SqlEditor, SqlEditorCursors, SqlEditorTab,
-    StructureTab,
+    Grid, GridCell, HistoryRow, InlineSuggestion, PickerPage, PickerRow, QuickOpen, SqlEditor, SqlEditorCursors,
+    SqlEditorTab, StructureTab, WorkspaceShell,
 };
 use ShortcutSection::{BrowseTable, DataGrid, ErDiagram, General, TableStructure, Tabs};
 
@@ -73,6 +73,11 @@ pub const ACCELERATORS: &[Accelerator] = &[
     application("app.new-window", &["<Primary><Shift>n"], General),
     application("app.preferences", &["<Primary>comma"], General),
     application("win.show-history", &["<Primary><Shift>h"], General),
+    // Matches Open Quickly in the macOS app.
+    application("win.quick-open", &["<Primary><Shift>o"], General),
+    component(QuickOpen, "quick-open.next", &["Down"], Unlisted),
+    component(QuickOpen, "quick-open.previous", &["Up"], Unlisted),
+    component(QuickOpen, "quick-open.structure", &["<Primary>Return"], Unlisted),
     // As in GIMP and Inkscape.
     application("win.export-results", &["<Primary><Shift>e"], General),
     // As in GNOME Files.
@@ -88,8 +93,7 @@ pub const ACCELERATORS: &[Accelerator] = &[
     application("win.reopen-closed-tab", &["<Primary><Shift>t"], Tabs),
     // Ctrl+Tab stays the tab view's next tab, as across GNOME.
     application("win.switch-recent-tab", &["<Primary>e"], Tabs),
-    // As in GNOME Web and Console.
-    application("win.show-tabs", &["<Primary><Shift>o"], Tabs),
+    application("win.show-tabs", &["<Primary><Alt>o"], Tabs),
     // AdwTabView's own controller, which runs in the capture phase. The
     // workspace removes its Ctrl+Home and Ctrl+End pairs, so the lists
     // and the editor inside the tabs keep those keys.
@@ -113,16 +117,23 @@ pub const ACCELERATORS: &[Accelerator] = &[
         Unlisted,
     ),
     stock("tab-view.select-tenth", &["<Alt>0"], Unlisted),
+    local(
+        WorkspaceShell,
+        BUBBLE,
+        "win.refresh-page",
+        &["F5", "<Primary>r"],
+        Listed(Tabs),
+    ),
     local(BrowseTab, BUBBLE, "browse.filter", &["<Primary>f"], Listed(BrowseTable)),
     // F5 as in GNOME Files, and Ctrl+R as the GNOME HIG names Reload.
     local(
         BrowseTab,
         BUBBLE,
-        "browse.refresh",
+        "table.refresh",
         &["F5", "<Primary>r"],
         Listed(BrowseTable),
     ),
-    local(BrowseTab, BUBBLE, "browse.save", &["<Primary>s"], Listed(BrowseTable)),
+    local(BrowseTab, BUBBLE, "table.save", &["<Primary>s"], Listed(BrowseTable)),
     local(BrowseTab, BUBBLE, "browse.undo", &["<Primary>z"], Listed(BrowseTable)),
     local(
         BrowseTab,
@@ -556,6 +567,8 @@ pub fn local_shortcut_controller(owner: ShortcutOwner) -> gtk::ShortcutControlle
 /// The name `local_shortcut_controller` gives the owner's controller.
 pub const fn controller_name(owner: ShortcutOwner) -> &'static str {
     match owner {
+        QuickOpen => "tablepro-quick-open-shortcuts",
+        WorkspaceShell => "tablepro-workspace-shell-shortcuts",
         BrowseTab => "tablepro-browse-tab-shortcuts",
         GridCell => "tablepro-grid-cell-shortcuts",
         Grid => "tablepro-grid-shortcuts",

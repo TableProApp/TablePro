@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using TablePro.App.Model;
 using TablePro.App.Services;
 using TablePro.DataGrid;
@@ -16,12 +17,14 @@ public sealed partial class QueryTabView : UserControl, ITabContent
     private readonly Workbench _workbench;
     private readonly SessionShare _share;
     private readonly DatabaseSession _session;
+    private readonly TabWork _work = new();
     private QueryEditor? _editor;
     private Task? _closing;
     private QueryRun? _run;
     private string? _statement;
     private GridSort _sort = GridSort.None;
     private bool _sorting;
+    private bool _confirming;
     private EditTarget _target;
 
     internal QueryTabView(Workbench workbench, SessionShare share, string title, string? sql)
@@ -37,6 +40,7 @@ public sealed partial class QueryTabView : UserControl, ITabContent
         AutomationProperties.SetName(SqlText, Strings.Format("EditorName", title));
         Results.StatusChanged += (_, status) => StatusText.Text = status;
         Results.SortRequested += OnSortRequested;
+        Results.ResultPicked += (_, _) => _sort = GridSort.None;
         SqlText.GotFocus += (_, _) => _target = EditTarget.Editor;
         Results.GridView.GotFocus += (_, _) => _target = EditTarget.Grid;
         Results.MessagesBox.GotFocus += (_, _) => _target = EditTarget.Messages;
@@ -61,6 +65,8 @@ public sealed partial class QueryTabView : UserControl, ITabContent
 
     public async void Run() => await RunAsync().ConfigureAwait(true);
 
+    public async void RunStatement() => await RunStatementAsync().ConfigureAwait(true);
+
     public void Stop() => _run?.Cancel();
 
     public void FocusContent() => SqlText.Focus(FocusState.Programmatic);
@@ -70,8 +76,11 @@ public sealed partial class QueryTabView : UserControl, ITabContent
     // Once only, however often it is asked for: the tab lets go of its session exactly once.
     public Task CloseAsync() => _closing ??= CloseOnceAsync();
 
+    // The run in flight stops and ends before the run, the editor and the session it uses are let go.
     private async Task CloseOnceAsync()
     {
+        _run?.Cancel();
+        await _work.CloseAsync().ConfigureAwait(true);
         _run?.Dispose();
         _run = null;
         Results.Clear();
@@ -87,7 +96,7 @@ public sealed partial class QueryTabView : UserControl, ITabContent
 
     private async Task RunAsync()
     {
-        if (IsRunning)
+        if (IsRunning || _confirming || _work.IsClosed)
         {
             return;
         }
@@ -98,7 +107,39 @@ public sealed partial class QueryTabView : UserControl, ITabContent
             sql = SqlText.Text;
         }
 
+        await RunTypedAsync(sql).ConfigureAwait(true);
+    }
+
+    // The statement is selected first so the tab shows which of its statements ran, as the Linux app does.
+    private async Task RunStatementAsync()
+    {
+        if (IsRunning || _confirming || _work.IsClosed)
+        {
+            return;
+        }
+
+        var text = SqlText.Document.Snapshot();
+        if (_session.StatementAt(text, SqlText.Model.Primary.Active) is not { } statement)
+        {
+            StatusText.Text = Strings.Get("StatusNoStatement");
+            return;
+        }
+
+        var (start, length) = statement.GetOffsetAndLength(text.Length);
+        SqlText.Model.SetSelection(start + length, start);
+        SqlText.EnsureCaretVisible();
+        await RunTypedAsync(text[statement]).ConfigureAwait(true);
+    }
+
+    // Safe Mode judges the text that is sent, whichever part of the editor it is.
+    private async Task RunTypedAsync(string sql)
+    {
         if (string.IsNullOrWhiteSpace(sql))
+        {
+            return;
+        }
+
+        if (!await SafeModeAllowsAsync(sql).ConfigureAwait(true) || IsRunning || _work.IsClosed)
         {
             return;
         }
@@ -108,31 +149,103 @@ public sealed partial class QueryTabView : UserControl, ITabContent
         await RunSqlAsync(sql).ConfigureAwait(true);
     }
 
-    private async Task RunSqlAsync(string sql)
+    // Typed SQL only: Commit and Roll back end a transaction at every level, and a sort runs again only a read.
+    private async Task<bool> SafeModeAllowsAsync(string sql)
+    {
+        var gate = _session.GateRun(sql);
+        if (gate.Refused)
+        {
+            Results.ShowError(Strings.Get("Error_driver_read_only"));
+            return false;
+        }
+
+        if (gate.Confirm.Count == 0)
+        {
+            return true;
+        }
+
+        _confirming = true;
+        try
+        {
+            return await ConfirmWritesAsync(gate).ConfigureAwait(true);
+        }
+        finally
+        {
+            _confirming = false;
+        }
+    }
+
+    // Cancel is the answer Enter gives, and every statement shows in full, as the Linux app asks.
+    private async Task<bool> ConfirmWritesAsync(RunGate gate)
+    {
+        var count = gate.Confirm.Count;
+        var message = gate.Destructive
+            ? Strings.Format(count == 1 ? "ConfirmRunDestructiveOne" : "ConfirmRunDestructiveMany", _session.Name)
+            : Strings.Format(count == 1 ? "ConfirmRunWriteOne" : "ConfirmRunWriteMany", _session.Name);
+        var content = new StackPanel { Spacing = 12 };
+        content.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap });
+        var statements = new TextBlock
+        {
+            Text = string.Join("\n\n", gate.Confirm),
+            FontFamily = new FontFamily("Cascadia Mono, Consolas, Courier New"),
+            TextWrapping = TextWrapping.Wrap,
+            IsTextSelectionEnabled = true,
+        };
+        AutomationProperties.SetAutomationId(statements, "ConfirmRunStatements");
+        content.Children.Add(statements);
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            RequestedTheme = ActualTheme,
+            Title = count == 1 ? Strings.Get("ConfirmRunTitleOne") : Strings.Format("ConfirmRunTitleMany", count),
+            Content = new ScrollViewer { Content = content, MaxHeight = 480 },
+            PrimaryButtonText = Strings.Get("ConfirmRunButton"),
+            CloseButtonText = Strings.Get("Cancel"),
+            DefaultButton = ContentDialogButton.Close,
+        };
+        return await WindowDialogs.ShowAsync(dialog, this) == ContentDialogResult.Primary;
+    }
+
+    private Task<bool> RunSqlAsync(string sql) => _work.RunAsync(token => RunOnEditorAsync(sql, token));
+
+    private async Task RunOnEditorAsync(string sql, CancellationToken cancellationToken)
     {
         SetRunning(true);
         try
         {
             var held = WorkspaceNotices.Holds(Transaction);
-            if (await ReleaseLostEditorAsync().ConfigureAwait(true) && held)
+            if ((await ReleaseLostEditorAsync().ConfigureAwait(true) && held) || _work.IsClosed)
             {
                 return;
             }
 
-            _editor ??= await _session.OpenEditorAsync().ConfigureAwait(true);
+            // An editor that opens as the tab closes stays in _editor, which the close disposes.
+            _editor ??= await _session.OpenEditorAsync(cancellationToken).ConfigureAwait(true);
+            if (_work.IsClosed)
+            {
+                return;
+            }
+
             _run?.Dispose();
             var settings = _workbench.Settings;
             _run = _editor.Run(
                 sql,
                 new QueryOptions(
                     settings.RowLimit,
-                    settings.QueryTimeoutSeconds > 0 ? TimeSpan.FromSeconds(settings.QueryTimeoutSeconds) : null));
-            await Results.ShowRunAsync(_run, _sort).ConfigureAwait(true);
-            await AfterRunAsync().ConfigureAwait(true);
+                    settings.QueryTimeoutSeconds > 0 ? TimeSpan.FromSeconds(settings.QueryTimeoutSeconds) : null),
+                cancellationToken);
+            await Results.ShowRunAsync(_run, _sort, cancellationToken: cancellationToken).ConfigureAwait(true);
+            if (!_work.IsClosed)
+            {
+                await AfterRunAsync().ConfigureAwait(true);
+            }
         }
         catch (TableProException exception)
         {
-            Results.ShowError(Strings.Error(exception.Error));
+            if (!_work.IsClosed)
+            {
+                Results.ShowError(Strings.Error(exception.Error));
+            }
         }
         finally
         {
@@ -249,7 +362,8 @@ public sealed partial class QueryTabView : UserControl, ITabContent
             : SortedQuery(_statement, columns, sort.Column, sort.Direction == SortDirection.Ascending);
         if (sorted is null)
         {
-            await SortHeldRowsAsync(sort).ConfigureAwait(true);
+            // The close waits for it, since it clears the sets the sort reads.
+            await _work.RunAsync(_ => SortHeldRowsAsync(sort)).ConfigureAwait(true);
             return;
         }
 

@@ -146,7 +146,9 @@ extension MainContentCoordinator {
         rowLocators: [String?]? = nil,
         exportDocuments: [PluginExportDocument]? = nil,
         absentCells: [Int: Set<Int>] = [:],
-        unloadedCells: [Int: [Int: Int]] = [:]
+        unloadedCells: [Int: [Int: Int]] = [:],
+        columnOrigins: [PluginColumnOrigin?]? = nil,
+        prepared: TableRows.PreparedRows? = nil
     ) {
         queryExecutionCoordinator.applyPhase1Result(
             tabId: tabId,
@@ -173,7 +175,43 @@ extension MainContentCoordinator {
             rowLocators: rowLocators,
             exportDocuments: exportDocuments,
             absentCells: absentCells,
-            unloadedCells: unloadedCells
+            unloadedCells: unloadedCells,
+            columnOrigins: columnOrigins,
+            prepared: prepared
+        )
+    }
+
+    func phase1RowShape(tabId: UUID, tableName: String?, columns: [String], columnTypes: [ColumnType]) -> TableRows.RowShape {
+        queryExecutionCoordinator.phase1RowShape(tabId: tabId, tableName: tableName, columns: columns, columnTypes: columnTypes)
+    }
+
+    func preparedPhase1Rows(
+        _ fetchResult: QueryFetchResult,
+        tabId: UUID,
+        tableName: String?,
+        isTableTab: Bool
+    ) async -> TableRows.PreparedRows {
+        await TableRows.preparing(
+            fetchResult.rows,
+            rowLocators: isTableTab ? fetchResult.rowLocators : nil,
+            exportDocuments: fetchResult.exportDocuments,
+            absentCells: fetchResult.absentCells,
+            unloadedCells: fetchResult.unloadedCells,
+            shape: phase1RowShape(
+                tabId: tabId, tableName: tableName, columns: fetchResult.columns, columnTypes: fetchResult.columnTypes
+            )
+        )
+    }
+
+    func extractTableName(from sql: String) -> String? {
+        tableNameReading.tableName(in: sql)
+    }
+
+    var tableNameReading: TableNameReading {
+        TableNameReading(
+            dialect: sqlDialect,
+            readings: connection.type.lexicalReadings,
+            browseSchema: services.databaseManager.session(for: connectionId)?.browseSchema
         )
     }
 

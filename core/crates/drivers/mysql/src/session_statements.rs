@@ -75,6 +75,22 @@ pub(crate) fn select_limit(rows: u64) -> String {
     format!("SET SESSION sql_select_limit = {}", rows.saturating_add(1))
 }
 
+// What an editor session's sql_select_limit holds. A new session has the server's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SelectLimit {
+    Server,
+    Editor(u64),
+}
+
+impl SelectLimit {
+    pub(crate) fn statement(self) -> String {
+        match self {
+            Self::Server => "SET SESSION sql_select_limit = DEFAULT".to_owned(),
+            Self::Editor(rows) => select_limit(rows),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -136,6 +152,14 @@ mod tests {
         assert_eq!(
             select_limit(u64::MAX),
             "SET SESSION sql_select_limit = 18446744073709551615"
+        );
+        assert_eq!(
+            SelectLimit::Editor(100).statement(),
+            "SET SESSION sql_select_limit = 101"
+        );
+        assert_eq!(
+            SelectLimit::Server.statement(),
+            "SET SESSION sql_select_limit = DEFAULT"
         );
     }
 }

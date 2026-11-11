@@ -34,9 +34,17 @@ enum StructureRebuildPlanRunner {
         case schemaChanged
         case verificationFailed(String)
         case executionFailed(String)
+        case sessionTransactionOpen
 
         var errorDescription: String? {
             switch self {
+            case .sessionTransactionOpen:
+                return String(
+                    localized: """
+                        A transaction is open on this connection, and this change cannot run inside it. \
+                        Nothing was run. Commit or roll back the transaction, then try again.
+                        """
+                )
             case .schemaChanged:
                 return String(
                     localized: """
@@ -138,10 +146,6 @@ enum StructureRebuildPlanRunner {
                 throw RunError.schemaChanged
             }
 
-            for sql in plan.prologue {
-                _ = try? await driver.execute(query: sql)
-            }
-
             /// Only the transaction this plan opened is ever rolled back, and none is opened over a
             /// transaction the session already holds: on the same shared session an app-owned
             /// `COMMIT` commits the user's pending work, and MySQL's `START TRANSACTION` commits it
@@ -151,6 +155,15 @@ enum StructureRebuildPlanRunner {
                 supportsTransactions: driver.supportsTransactions,
                 sessionState: await driver.heldSessionTransactionState()
             )
+            // Inside a transaction SQLite ignores `PRAGMA foreign_keys = off`, so the rebuild's DROP TABLE cascades.
+            if !plan.prologue.isEmpty, plan.isTransactional, owner == .session {
+                throw RunError.sessionTransactionOpen
+            }
+
+            for sql in plan.prologue {
+                _ = try? await driver.execute(query: sql)
+            }
+
             let usesTransaction = plan.isTransactional && owner.opensTransaction
             if usesTransaction {
                 try await driver.beginTransaction(mode: .readWrite)
@@ -168,6 +181,7 @@ enum StructureRebuildPlanRunner {
                     try await driver.commitTransaction()
                 }
             } catch {
+                var leftover: Leftover?
                 if usesTransaction {
                     do {
                         try await driver.rollbackTransaction()
@@ -175,16 +189,17 @@ enum StructureRebuildPlanRunner {
                         logger.error("Rollback failed: \(error.publicLogShape, privacy: .public)")
                     }
                 } else if completed > 0 {
-                    /// An engine whose DDL commits statement by statement has nothing to roll back,
-                    /// so it supplies statements that put back what already ran.
-                    for sql in plan.compensation {
-                        _ = try? await driver.execute(query: sql)
-                    }
+                    leftover = await undo(
+                        plan,
+                        completed: completed,
+                        insideOpenTransaction: plan.isTransactional && owner == .session,
+                        driver: driver
+                    )
                 }
                 for sql in plan.epilogue {
                     _ = try? await driver.execute(query: sql)
                 }
-                throw runFailure(from: error)
+                throw runFailure(from: error, leftover: leftover)
             }
 
             for sql in plan.epilogue {
@@ -211,12 +226,69 @@ enum StructureRebuildPlanRunner {
         }
     }
 
+    // What a failed plan left on the server that nothing took back, so the user can see the table moved.
+    enum Leftover: Equatable {
+        case ran([String])
+        case pendingInOpenTransaction([String])
+        case unrestored([String])
+
+        var note: String {
+            switch self {
+            case .ran(let statements):
+                return ([String(localized: "These statements ran before the failure and were not rolled back:")] + statements)
+                    .joined(separator: "\n")
+            case .pendingInOpenTransaction(let statements):
+                let heading = String(
+                    localized: "These statements ran inside the transaction already open on this connection, so rolling it back undoes them:"
+                )
+                return ([heading] + statements).joined(separator: "\n")
+            case .unrestored(let statements):
+                let heading = String(
+                    localized: "Undoing what had already run also failed, so the table may be left part way. Run these statements to restore it:"
+                )
+                return ([heading] + statements).joined(separator: "\n")
+            }
+        }
+    }
+
+    // An engine whose DDL commits statement by statement has nothing to roll back, so the plan carries statements that put back what ran.
+    nonisolated private static func undo(
+        _ plan: PluginColumnReorderPlan,
+        completed: Int,
+        insideOpenTransaction: Bool,
+        driver: any DatabaseDriver
+    ) async -> Leftover? {
+        // The user's transaction holds them, and only the user may end it.
+        guard !insideOpenTransaction else {
+            return .pendingInOpenTransaction(Array(plan.statements.prefix(completed)))
+        }
+        guard !plan.compensation.isEmpty else {
+            return .ran(Array(plan.statements.prefix(completed)))
+        }
+        var failed: [String] = []
+        for sql in plan.compensation {
+            do {
+                _ = try await driver.execute(query: sql)
+            } catch {
+                logger.error("Compensation failed: \(error.publicLogShape, privacy: .public)")
+                failed.append(sql)
+            }
+        }
+        return failed.isEmpty ? nil : .unrestored(failed)
+    }
+
     /// A refusal this runner raised keeps its own wording; anything from the driver is wrapped so
     /// the message says which step failed.
-    nonisolated private static func runFailure(from error: any Error) -> any Error {
-        if let runError = error as? RunError { return runError }
-        return RunError.executionFailed(
-            String(format: String(localized: "The change could not be applied: %@"), error.localizedDescription)
-        )
+    nonisolated private static func runFailure(from error: any Error, leftover: Leftover?) -> any Error {
+        let failure: RunError
+        if let runError = error as? RunError {
+            failure = runError
+        } else {
+            failure = .executionFailed(
+                String(format: String(localized: "The change could not be applied: %@"), error.localizedDescription)
+            )
+        }
+        guard let leftover else { return failure }
+        return RunError.executionFailed(failure.localizedDescription + "\n\n" + leftover.note)
     }
 }

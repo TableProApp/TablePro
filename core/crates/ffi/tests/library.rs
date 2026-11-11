@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use russh::keys::HashAlg;
@@ -66,7 +67,87 @@ impl HostSecrets for MemorySecrets {
     }
 }
 
-fn core(dir: &Path, secrets: MemorySecrets) -> Arc<Core> {
+// Refuses a store of the kinds listed, and every delete while deletes are refused, as a locked keychain does.
+#[derive(Default, Clone)]
+struct RefusingSecrets {
+    memory: MemorySecrets,
+    refused_kinds: Arc<Mutex<Vec<SecretKindTag>>>,
+    refuse_deletes: Arc<AtomicBool>,
+    // A refused store that wrote before it failed, as a call that times out can.
+    write_refused: Arc<AtomicBool>,
+}
+
+impl RefusingSecrets {
+    fn refuse(&self, kinds: &[SecretKindTag], deletes: bool) {
+        *self.refused_kinds.lock().unwrap() = kinds.to_vec();
+        self.refuse_deletes.store(deletes, Ordering::SeqCst);
+    }
+
+    fn held(&self) -> Vec<(String, SecretKindTag)> {
+        self.memory.0.lock().unwrap().keys().cloned().collect()
+    }
+
+    fn value(&self, id: &str, kind: SecretKindTag) -> Option<String> {
+        self.memory.0.lock().unwrap().get(&(id.to_owned(), kind)).cloned()
+    }
+
+    fn deleting(&self) -> Result<(), HostSecretError> {
+        match self.refuse_deletes.load(Ordering::SeqCst) {
+            true => Err(HostSecretError::Locked),
+            false => Ok(()),
+        }
+    }
+}
+
+impl HostSecrets for RefusingSecrets {
+    fn load(&self, connection_id: String, kind: SecretKindTag) -> Result<Option<String>, HostSecretError> {
+        self.memory.load(connection_id, kind)
+    }
+
+    fn store(
+        &self,
+        connection_id: String,
+        kind: SecretKindTag,
+        secret: String,
+        label: String,
+    ) -> Result<(), HostSecretError> {
+        if self.refused_kinds.lock().unwrap().contains(&kind) {
+            if self.write_refused.load(Ordering::SeqCst) {
+                self.memory.store(connection_id, kind, secret, label)?;
+            }
+            return Err(HostSecretError::Locked);
+        }
+        self.memory.store(connection_id, kind, secret, label)
+    }
+
+    fn relabel(&self, connection_id: String, kind: SecretKindTag, label: String) -> Result<(), HostSecretError> {
+        self.memory.relabel(connection_id, kind, label)
+    }
+
+    fn delete(&self, connection_id: String, kind: SecretKindTag) -> Result<(), HostSecretError> {
+        self.deleting()?;
+        self.memory.delete(connection_id, kind)
+    }
+
+    fn delete_connection(&self, connection_id: String) -> Result<(), HostSecretError> {
+        self.deleting()?;
+        self.memory.delete_connection(connection_id)
+    }
+
+    fn load_item(&self, item: SecretItemTag) -> Result<Option<String>, HostSecretError> {
+        self.memory.load_item(item)
+    }
+
+    fn store_item(&self, item: SecretItemTag, secret: String) -> Result<(), HostSecretError> {
+        self.memory.store_item(item, secret)
+    }
+
+    fn delete_item(&self, item: SecretItemTag) -> Result<(), HostSecretError> {
+        self.memory.delete_item(item)
+    }
+}
+
+fn core(dir: &Path, secrets: impl HostSecrets + 'static) -> Arc<Core> {
     Core::new(
         HostConfig {
             client_version: "test".to_owned(),
@@ -207,6 +288,215 @@ async fn a_saved_password_goes_to_the_secret_store_and_leaves_with_the_connectio
 
     assert_eq!(kept.as_deref(), Some("hunter2"));
     assert!(secrets.0.lock().unwrap().is_empty());
+    assert!(library.snapshot().await.unwrap().connections.is_empty());
+}
+
+fn with_password(password: &str) -> ConnectionSecrets {
+    ConnectionSecrets {
+        database_password: Some(password.to_owned()),
+        ..ConnectionSecrets::default()
+    }
+}
+
+#[tokio::test]
+async fn a_delete_the_secret_store_refuses_keeps_the_connection_and_its_password() {
+    let dir = tempfile::tempdir().unwrap();
+    let secrets = RefusingSecrets::default();
+    let core = core(dir.path(), secrets.clone());
+    let library = core.library().unwrap();
+    let saved = library
+        .save(record("shop", "mysql", "shop"), with_password("hunter2"))
+        .await
+        .unwrap();
+
+    secrets.refuse(&[], true);
+    let refused = library.delete(saved.id.clone()).await.unwrap_err();
+
+    assert_eq!(refused.code(), "secret.locked");
+    assert_eq!(library.snapshot().await.unwrap().connections.len(), 1);
+    assert_eq!(secrets.held(), [(saved.id.clone(), SecretKindTag::DatabasePassword)]);
+
+    secrets.refuse(&[], false);
+    library.delete(saved.id).await.unwrap();
+
+    assert!(library.snapshot().await.unwrap().connections.is_empty());
+    assert!(secrets.held().is_empty());
+}
+
+#[tokio::test]
+async fn a_new_connection_whose_password_is_refused_is_not_saved_so_a_retry_adds_it_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let secrets = RefusingSecrets::default();
+    let core = core(dir.path(), secrets.clone());
+    let library = core.library().unwrap();
+
+    secrets.refuse(&[SecretKindTag::DatabasePassword], true);
+    let refused = library
+        .save(record("shop", "mysql", "shop"), with_password("hunter2"))
+        .await
+        .unwrap_err();
+
+    assert_eq!(refused.code(), "secret.locked");
+    assert!(library.snapshot().await.unwrap().connections.is_empty());
+
+    secrets.refuse(&[], false);
+    let saved = library
+        .save(record("shop", "mysql", "shop"), with_password("hunter2"))
+        .await
+        .unwrap();
+
+    assert_eq!(library.snapshot().await.unwrap().connections.len(), 1);
+    assert_eq!(secrets.held(), [(saved.id, SecretKindTag::DatabasePassword)]);
+}
+
+#[tokio::test]
+async fn a_refused_ssh_password_takes_back_the_new_connection_and_its_database_password() {
+    let dir = tempfile::tempdir().unwrap();
+    let secrets = RefusingSecrets::default();
+    let core = core(dir.path(), secrets.clone());
+    let library = core.library().unwrap();
+    let both = ConnectionSecrets {
+        ssh_password: Some("tunnel".to_owned()),
+        ..with_password("hunter2")
+    };
+
+    secrets.refuse(&[SecretKindTag::SshPassword], false);
+    let refused = library.save(through_ssh(22), both.clone()).await.unwrap_err();
+
+    assert_eq!(refused.code(), "secret.locked");
+    assert!(library.snapshot().await.unwrap().connections.is_empty());
+    assert!(secrets.held().is_empty());
+
+    // With the database password in and no way to take it out, the entry stays to name it.
+    secrets.refuse(&[SecretKindTag::SshPassword], true);
+    let kept = library.save(through_ssh(22), both).await.unwrap_err();
+    let snapshot = library.snapshot().await.unwrap();
+
+    assert_eq!(kept.code(), "secret.locked");
+    assert_eq!(snapshot.connections.len(), 1);
+    assert_eq!(
+        secrets.held(),
+        [(snapshot.connections[0].id.clone(), SecretKindTag::DatabasePassword)]
+    );
+}
+
+#[tokio::test]
+async fn a_refused_store_that_wrote_anyway_leaves_no_secret_behind_a_new_connection() {
+    let dir = tempfile::tempdir().unwrap();
+    let secrets = RefusingSecrets::default();
+    let core = core(dir.path(), secrets.clone());
+    let library = core.library().unwrap();
+
+    secrets.refuse(&[SecretKindTag::DatabasePassword], false);
+    secrets.write_refused.store(true, Ordering::SeqCst);
+    let refused = library
+        .save(record("shop", "mysql", "shop"), with_password("hunter2"))
+        .await
+        .unwrap_err();
+
+    assert_eq!(refused.code(), "secret.locked");
+    assert!(library.snapshot().await.unwrap().connections.is_empty());
+    assert!(secrets.held().is_empty());
+}
+
+#[tokio::test]
+async fn an_edit_whose_password_is_refused_keeps_the_old_host_and_the_old_password() {
+    let dir = tempfile::tempdir().unwrap();
+    let secrets = RefusingSecrets::default();
+    let core = core(dir.path(), secrets.clone());
+    let library = core.library().unwrap();
+    let mut prod = record("shop", "mysql", "shop");
+    prod.host = "prod-db.internal".to_owned();
+    prod.port = 3306;
+    let saved = library.save(prod, with_password("prod-secret")).await.unwrap();
+    let mut staging = saved.clone();
+    staging.host = "staging-db.internal".to_owned();
+
+    secrets.refuse(&[SecretKindTag::DatabasePassword], false);
+    secrets.write_refused.store(true, Ordering::SeqCst);
+    let refused = library
+        .save(staging, with_password("staging-secret"))
+        .await
+        .unwrap_err();
+    let snapshot = library.snapshot().await.unwrap();
+
+    assert_eq!(refused.code(), "secret.locked");
+    assert_eq!(snapshot.connections[0].host, "prod-db.internal");
+    assert_eq!(
+        secrets.value(&saved.id, SecretKindTag::DatabasePassword).as_deref(),
+        Some("prod-secret")
+    );
+}
+
+#[tokio::test]
+async fn an_edit_refused_at_its_second_secret_takes_back_the_first() {
+    let dir = tempfile::tempdir().unwrap();
+    let secrets = RefusingSecrets::default();
+    let core = core(dir.path(), secrets.clone());
+    let library = core.library().unwrap();
+    let saved = library
+        .save(
+            through_ssh(22),
+            ConnectionSecrets {
+                ssh_password: Some("old-tunnel".to_owned()),
+                ..ConnectionSecrets::default()
+            },
+        )
+        .await
+        .unwrap();
+    let mut moved = saved.clone();
+    moved.host = "10.0.0.9".to_owned();
+
+    secrets.refuse(&[SecretKindTag::SshPassword], false);
+    let refused = library
+        .save(
+            moved,
+            ConnectionSecrets {
+                ssh_password: Some("new-tunnel".to_owned()),
+                ..with_password("new-db")
+            },
+        )
+        .await
+        .unwrap_err();
+    let snapshot = library.snapshot().await.unwrap();
+
+    assert_eq!(refused.code(), "secret.locked");
+    assert_eq!(snapshot.connections[0].host, saved.host);
+    // The database password had none before the edit, so the one the edit wrote is gone again.
+    assert_eq!(secrets.value(&saved.id, SecretKindTag::DatabasePassword), None);
+    assert_eq!(
+        secrets.value(&saved.id, SecretKindTag::SshPassword).as_deref(),
+        Some("old-tunnel")
+    );
+}
+
+#[tokio::test]
+async fn half_a_client_certificate_is_refused_by_save_and_by_test() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core(dir.path(), MemorySecrets::default());
+    let library = core.library().unwrap();
+    let mut certificate_only = record("shop", "postgres", "shop");
+    certificate_only.host = "127.0.0.1".to_owned();
+    certificate_only.port = 1;
+    certificate_only.tls.mode = TlsModeTag::Require;
+    certificate_only.tls.client_certificate = Some("/certs/client.pem".to_owned());
+    let mut key_only = certificate_only.clone();
+    key_only.tls.client_certificate = None;
+    key_only.tls.client_key = Some("/certs/client.key".to_owned());
+
+    for half in [certificate_only, key_only] {
+        let saved = library
+            .save(half.clone(), ConnectionSecrets::default())
+            .await
+            .unwrap_err();
+        let tested = core
+            .test_connection(half, with_password("typed"), None, None)
+            .await
+            .unwrap_err();
+
+        assert_eq!(saved.code(), "config.client_identity_incomplete");
+        assert_eq!(tested.code(), "config.client_identity_incomplete");
+    }
     assert!(library.snapshot().await.unwrap().connections.is_empty());
 }
 

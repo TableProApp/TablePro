@@ -229,10 +229,11 @@ extension DatabaseTreeOutlineCoordinator {
     }
 
     /// A command that opens or edits an object has to reach the database that object lives in
-    /// first, which is what a click on the row would have done.
-    private func activateThen(_ ref: DatabaseTreeTableRef, _ body: @escaping @MainActor () -> Void) {
+    /// first, which is what a click on the row would have done. A failed or cancelled switch runs
+    /// nothing: the command would act on a same-named object where the session still is.
+    internal func activateThen(_ ref: DatabaseTreeTableRef, _ body: @escaping @MainActor () -> Void) {
         Task { @MainActor in
-            await activate(ref)
+            guard await activate(ref) else { return }
             body()
         }
     }

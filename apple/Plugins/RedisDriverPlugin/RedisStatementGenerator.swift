@@ -24,6 +24,15 @@ struct RedisStatementGenerator {
     let namespaceName: String
     let columns: [String]
     var deleteBatching: RedisDeleteBatching = .singleCommand
+    // `SET ... KEEPTTL` needs Redis 6.0. An older server gets the expiry put back from the grid.
+    var keepsTTLOnSet = true
+    var partitionsKeyspace = false
+    var stagingToken: @Sendable () -> String = { UUID().uuidString.lowercased() }
+
+    static func serverKeepsTTLOnSet(version: String?) -> Bool {
+        guard let major = version?.split(separator: ".").first.flatMap({ Int($0) }) else { return true }
+        return major >= 6
+    }
 
     /// Index of the "Key" column (used as primary identifier, like MongoDB's "_id")
     var keyColumnIndex: Int? {
@@ -139,13 +148,7 @@ struct RedisStatementGenerator {
 
         let typeName = type?.lowercased() ?? "string"
         guard typeName.isEmpty || Self.insertableTypes.contains(typeName) else {
-            throw PluginRowWriteRefusal(
-                rowIndex: change.rowIndex,
-                reason: String(
-                    format: String(localized: "A %@ key cannot be added from the grid. Add it with a command in the query editor."),
-                    typeName
-                )
-            )
+            throw Self.notAddable(typeName, rowIndex: change.rowIndex)
         }
 
         var ttl: Int?
@@ -156,15 +159,45 @@ struct RedisStatementGenerator {
             ttl = seconds
         }
 
-        var commands = [generateInsertCommand(key: k, encodedValue: value ?? RedisArgumentCodec.quote(""), type: typeName)]
-        if let ttlSeconds = ttl, ttlSeconds > 0 {
-            commands.append("EXPIRE \(RedisArgumentCodec.quote(k)) \(ttlSeconds)")
+        let encodedValue = value ?? RedisArgumentCodec.quote("")
+        let expiry = ttl.flatMap { $0 > 0 ? $0 : nil }
+        guard Self.collectionTypes.contains(typeName) else {
+            let expiryOption = expiry.map { " EX \($0)" } ?? ""
+            let set = "SET \(RedisArgumentCodec.quote(k)) \(encodedValue)\(expiryOption) NX"
+            return [RedisConditionalWrite.statement(set)]
         }
+        guard let staging = RedisConditionalWrite.stagingKey(
+                  for: k, token: stagingToken(), partitioned: partitionsKeyspace
+              ),
+              let collectionCommand = collectionInsertCommand(key: staging, encodedValue: encodedValue, type: typeName)
+        else {
+            throw Self.notAddable(typeName, rowIndex: change.rowIndex)
+        }
+        // RENAMENX carries the staging key's TTL over. In a block the DEL drops a staging key the rename
+        // refused; run a statement at a time, the driver drops it before it fails the save.
+        let quotedStaging = RedisArgumentCodec.quote(staging)
+        var commands = [collectionCommand]
+        if let expiry {
+            commands.append("EXPIRE \(quotedStaging) \(expiry)")
+        }
+        commands.append(RedisConditionalWrite.statement("RENAMENX \(quotedStaging) \(RedisArgumentCodec.quote(k))"))
+        commands.append("DEL \(quotedStaging)")
         return commands
     }
 
-    /// Generate the appropriate Redis command based on the data type
-    private func generateInsertCommand(key: String, encodedValue: String, type: String) -> String {
+    private static let collectionTypes: Set<String> = ["hash", "list", "set", "zset"]
+
+    private static func notAddable(_ typeName: String, rowIndex: Int) -> PluginRowWriteRefusal {
+        PluginRowWriteRefusal(
+            rowIndex: rowIndex,
+            reason: String(
+                format: String(localized: "A %@ key cannot be added from the grid. Add it with a command in the query editor."),
+                typeName
+            )
+        )
+    }
+
+    private func collectionInsertCommand(key: String, encodedValue: String, type: String) -> String? {
         let quotedKey = RedisArgumentCodec.quote(key)
         switch type {
         case "hash":
@@ -181,7 +214,7 @@ struct RedisStatementGenerator {
         case "zset":
             return "ZADD \(quotedKey) 0 \(encodedValue)"
         default:
-            return "SET \(quotedKey) \(encodedValue)"
+            return nil
         }
     }
 
@@ -215,8 +248,9 @@ struct RedisStatementGenerator {
             throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.unaddressableKeyReason)
         }
 
-        var commands: [String] = []
-        var effectiveKey = key
+        var valueCommands: [String] = []
+        var ttlCommands: [String] = []
+        var rename: String?
 
         if let keyChange = change.cellChanges.first(where: { $0.columnName == "Key" }) {
             guard let newKey = keyChange.newValue.asText else {
@@ -225,19 +259,23 @@ struct RedisStatementGenerator {
                 )
             }
             if newKey != key {
-                commands.append("RENAME \(RedisArgumentCodec.quote(key)) \(RedisArgumentCodec.quote(newKey))")
+                rename = RedisConditionalWrite.statement(
+                    "RENAMENX \(RedisArgumentCodec.quote(key)) \(RedisArgumentCodec.quote(newKey))"
+                )
             }
-            effectiveKey = newKey
         }
 
+        let changesTTL = change.cellChanges.contains { $0.columnName == "TTL" }
         for cellChange in change.cellChanges {
             switch cellChange.columnName {
             case "Key":
                 continue
             case "Value":
-                commands.append(try valueCommand(setting: cellChange.newValue, of: change, key: effectiveKey))
+                valueCommands += try self.valueCommands(
+                    setting: cellChange.newValue, of: change, key: key, restoringTTL: !changesTTL
+                )
             case "TTL":
-                commands.append(try ttlCommand(setting: cellChange.newValue, of: change, key: effectiveKey))
+                ttlCommands.append(try ttlCommand(setting: cellChange.newValue, of: change, key: key))
             default:
                 throw PluginRowWriteRefusal(
                     rowIndex: change.rowIndex,
@@ -246,12 +284,19 @@ struct RedisStatementGenerator {
             }
         }
 
-        return commands
+        // The rename goes last and names the key the row was read from. A refused rename then leaves
+        // every earlier command on that key, never on the key that was already at the new name.
+        return valueCommands + ttlCommands + (rename.map { [$0] } ?? [])
     }
 
     /// Only a string's value is the whole of what the grid shows. A collection shows a preview,
     /// and a `SET` over it would replace the structure with that text.
-    private func valueCommand(setting newValue: PluginCellValue, of change: PluginRowChange, key: String) throws -> String {
+    private func valueCommands(
+        setting newValue: PluginCellValue,
+        of change: PluginRowChange,
+        key: String,
+        restoringTTL: Bool
+    ) throws -> [String] {
         guard let encodedValue = Self.encodedArgument(newValue) else {
             throw PluginRowWriteRefusal(
                 rowIndex: change.rowIndex,
@@ -273,7 +318,17 @@ struct RedisStatementGenerator {
                 )
             )
         }
-        return "SET \(RedisArgumentCodec.quote(key)) \(encodedValue)"
+        let set = "SET \(RedisArgumentCodec.quote(key)) \(encodedValue)"
+        guard !keepsTTLOnSet else { return ["\(set) KEEPTTL"] }
+        guard restoringTTL, let seconds = originalTTL(of: change), seconds > 0 else { return [set] }
+        return [set, "EXPIRE \(RedisArgumentCodec.quote(key)) \(seconds)"]
+    }
+
+    private func originalTTL(of change: PluginRowChange) -> Int? {
+        guard let ttlIndex = ttlColumnIndex, let originalRow = change.originalRow, ttlIndex < originalRow.count else {
+            return nil
+        }
+        return originalRow[ttlIndex].asText.flatMap { Int($0) }
     }
 
     private func ttlCommand(setting newValue: PluginCellValue, of change: PluginRowChange, key: String) throws -> String {

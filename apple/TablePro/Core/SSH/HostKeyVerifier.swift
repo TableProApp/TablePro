@@ -1,27 +1,12 @@
-//
-//  HostKeyVerifier.swift
-//  TablePro
-//
-//  Handles SSH host key verification with UI prompts.
-//  Called during SSH tunnel establishment, after handshake but before auth.
-//
-
 import AppKit
 import Foundation
 import os
 import TableProSSHTransport
 
-/// Handles host key verification with UI prompts
+// Runs after the handshake and before authentication, so no credential reaches a server the user has not trusted.
 internal enum HostKeyVerifier {
     private static let logger = Logger(subsystem: "com.TablePro", category: "HostKeyVerifier")
 
-    /// Verify the host key, prompting the user if needed.
-    /// - Parameters:
-    ///   - keyData: The raw host key bytes from the SSH session
-    ///   - keyType: The key type string (e.g. "ssh-rsa", "ssh-ed25519")
-    ///   - hostname: The remote hostname
-    ///   - port: The remote port
-    /// - Throws: `SSHTunnelError.hostKeyVerificationFailed` if the user rejects the key
     static func verify(
         keyData: Data,
         keyType: String,
@@ -45,6 +30,14 @@ internal enum HostKeyVerifier {
 
         case .invalidHost(let problem):
             throw SSHTunnelError.tunnelCreationFailed(problem.explanation)
+
+        // Asking would offer a server whose key changed as a new one.
+        case .unreadable:
+            logger.error("Saved host keys unreadable, refusing [\(hostname)]:\(port)")
+            throw SSHTunnelError.tunnelCreationFailed(String(
+                format: String(localized: "The SSH host keys saved in %@ could not be read, so this server's key could not be checked."),
+                (HostKeyStore.shared.filePath as NSString).abbreviatingWithTildeInPath
+            ))
 
         case .unknown(let fingerprint, let keyType):
             logger.info("Unknown host key for [\(hostname)]:\(port), prompting user")
@@ -89,8 +82,6 @@ internal enum HostKeyVerifier {
             )
         }
     }
-
-    // MARK: - UI Prompts
 
     @MainActor
     private static func promptUnknownHost(

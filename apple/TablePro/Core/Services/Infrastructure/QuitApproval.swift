@@ -23,6 +23,8 @@ internal enum QuitApproval {
         action: RunningWorkAction,
         stopsWork: Bool = true
     ) -> Bool {
+        // A large document's last keys reach its tab on a delay; without them a dirty file reads as clean.
+        EditorEventRouter.shared.flushAllPendingText()
         let work = registry.items(in: .app)
         let hasUnsavedTabs = MainContentCoordinator.hasAnyUnsavedChanges()
         let losses = hasUnsavedTabs ? [String(localized: "Unsaved edits in open tabs")] : []

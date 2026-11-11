@@ -8,6 +8,18 @@
 #undef MARIADB_TLS
 #include <ma_tls.h>
 
+// MYSQL_OPT_READ_TIMEOUT is read once at connect, so a live session's socket timeout is set on its pvio. 0 is none.
+static inline my_bool tablepro_mysql_set_io_timeout(MYSQL *mysql, unsigned int seconds) {
+    if (mysql == NULL || mysql->net.pvio == NULL) {
+        return 1;
+    }
+    mysql->options.read_timeout = seconds;
+    mysql->options.write_timeout = seconds;
+    my_bool read_result = ma_pvio_set_timeout(mysql->net.pvio, PVIO_READ_TIMEOUT, (int)seconds);
+    my_bool write_result = ma_pvio_set_timeout(mysql->net.pvio, PVIO_WRITE_TIMEOUT, (int)seconds);
+    return read_result || write_result;
+}
+
 // The server name a tunneled connection's certificate is checked against, kept as handle user data.
 static const char *const tablepro_mysql_server_name_key = "com.TablePro.tls.serverName";
 

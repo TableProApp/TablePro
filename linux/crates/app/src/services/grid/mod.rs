@@ -9,6 +9,7 @@ mod cell_preset;
 mod column_layout;
 mod column_width;
 mod copy_scope;
+mod date_display;
 mod delete_availability;
 pub mod display_text;
 mod edit_navigation;
@@ -18,10 +19,12 @@ mod find_matches;
 mod grid_column;
 mod grid_row_id;
 mod hex_dump;
+mod highlight;
 mod result_refusal;
 mod row_key_builder;
 mod row_snapshot;
 mod selection_summary;
+pub mod special_characters;
 #[cfg(test)]
 mod test_columns;
 
@@ -46,6 +49,7 @@ pub use self::find_matches::{FindMatch, find_matches};
 pub use self::grid_column::{CellDisplay, GridColumn, grid_columns};
 pub use self::grid_row_id::GridRowId;
 pub use self::hex_dump::hex_dump;
+pub use self::highlight::{HighlightColor, HighlightRule, HighlightRules, HighlightTarget, HighlightValue};
 pub use self::result_refusal::ResultRefusal;
 pub use self::row_key_builder::RowKeyBuilder;
 pub use self::row_snapshot::RowSnapshot;

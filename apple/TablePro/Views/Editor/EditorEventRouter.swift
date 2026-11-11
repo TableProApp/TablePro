@@ -7,6 +7,7 @@
 //
 
 @preconcurrency import AppKit
+import TableProEditorKit
 import TableProTextEngine
 
 @MainActor
@@ -169,6 +170,21 @@ internal final class EditorEventRouter {
         guard let window else { return }
         for ref in editors.values where ref.textView?.window === window {
             ref.coordinator?.dismissCompletions()
+        }
+    }
+
+    // A large document writes its text to the tab on a delay; a run, save, close or quit reads the tab.
+    internal func flushPendingText(forTab tabId: UUID, connectionId: UUID) {
+        for ref in editors.values {
+            guard let coordinator = ref.coordinator,
+                  coordinator.tabID == tabId, coordinator.connectionId == connectionId else { continue }
+            coordinator.controller?.flushPendingTextWriteback()
+        }
+    }
+
+    internal func flushAllPendingText() {
+        for ref in editors.values {
+            ref.coordinator?.controller?.flushPendingTextWriteback()
         }
     }
 

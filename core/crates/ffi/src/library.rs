@@ -3,8 +3,10 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use secrecy::SecretString;
-use tablepro_core::credentials::{SecretKind, SecretVault};
-use tablepro_core::{AuthMode, ClientIdentity, NetworkOptions, SafeModeLevel, TlsConfig, TlsMode};
+use tablepro_core::credentials::{SecretKind, SecretLookup, SecretVault};
+use tablepro_core::{
+    AuthMode, ClientIdentity, ConfigError, DriverError, NetworkOptions, SafeModeLevel, TlsConfig, TlsMode,
+};
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::{
     ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionStore, ConnectionTag, ConnectionTagName,
@@ -53,6 +55,16 @@ pub enum SafeModeTag {
     Off,
     ConfirmWrites,
     ReadOnly,
+}
+
+impl From<SafeModeTag> for SafeModeLevel {
+    fn from(tag: SafeModeTag) -> Self {
+        match tag {
+            SafeModeTag::Off => Self::Off,
+            SafeModeTag::ConfirmWrites => Self::ConfirmWrites,
+            SafeModeTag::ReadOnly => Self::ReadOnly,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -106,7 +118,7 @@ pub struct ConnectionRecord {
 }
 
 // Each secret as the form holds it: None keeps what is stored, an empty string is stored as one.
-#[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Record)]
+#[derive(Clone, Default, PartialEq, Eq, uniffi::Record)]
 pub struct ConnectionSecrets {
     pub database_password: Option<String>,
     pub ssh_password: Option<String>,
@@ -114,15 +126,35 @@ pub struct ConnectionSecrets {
 }
 
 impl ConnectionSecrets {
-    pub(crate) fn typed(&self) -> Vec<(SecretKind, SecretString)> {
+    // Moves each string into a SecretString, which wipes it on drop, instead of leaving a plain copy behind.
+    pub(crate) fn into_typed(self) -> Vec<(SecretKind, SecretString)> {
         [
-            (SecretKind::DatabasePassword, &self.database_password),
-            (SecretKind::SshPassword, &self.ssh_password),
-            (SecretKind::SshPassphrase, &self.ssh_passphrase),
+            (SecretKind::DatabasePassword, self.database_password),
+            (SecretKind::SshPassword, self.ssh_password),
+            (SecretKind::SshPassphrase, self.ssh_passphrase),
         ]
         .into_iter()
-        .filter_map(|(kind, secret)| secret.as_ref().map(|secret| (kind, SecretString::from(secret.clone()))))
+        .filter_map(|(kind, secret)| secret.map(|secret| (kind, SecretString::from(secret))))
         .collect()
+    }
+}
+
+impl std::fmt::Debug for ConnectionSecrets {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConnectionSecrets")
+            .field("database_password", &self.database_password.as_ref().map(|_| Redacted))
+            .field("ssh_password", &self.ssh_password.as_ref().map(|_| Redacted))
+            .field("ssh_passphrase", &self.ssh_passphrase.as_ref().map(|_| Redacted))
+            .finish()
+    }
+}
+
+// Stands in for a secret in Debug output, so a log line or a panic message never carries one.
+pub(crate) struct Redacted;
+
+impl std::fmt::Debug for Redacted {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("[REDACTED]")
     }
 }
 
@@ -161,6 +193,9 @@ pub struct ImportSummary {
 
 const RECENT_LIMIT: usize = 8;
 
+// A kind as the vault held it before a save, None for no value or one that could not be read.
+type HeldValue = (SecretKind, Option<SecretString>);
+
 #[derive(uniffi::Object)]
 pub struct ConnectionLibrary {
     store: ConnectionStore,
@@ -182,6 +217,101 @@ impl ConnectionLibrary {
             Ok(())
         })
         .await
+    }
+
+    // A value that cannot be read counts as none, so putting it back removes the new one rather than keep it.
+    async fn held_values(&self, id: Uuid, kinds: Vec<SecretKind>) -> Result<Vec<HeldValue>, CoreError> {
+        let vault = self.secrets.clone();
+        on_runtime(&self.tasks, async move {
+            let mut held = Vec::new();
+            for kind in kinds {
+                held.push((kind, vault.load(id, kind).await.ok().and_then(SecretLookup::found)));
+            }
+            Ok(held)
+        })
+        .await
+    }
+
+    // Stops at the first refusal. The kinds tried end with the refused one, which a failed call may still have written.
+    async fn store_secrets(
+        &self,
+        saved: &SavedConnection,
+        typed: Vec<(SecretKind, SecretString)>,
+    ) -> Result<Option<(CoreError, Vec<SecretKind>)>, CoreError> {
+        let vault = self.secrets.clone();
+        let stored = saved.clone();
+        on_runtime(&self.tasks, async move {
+            let mut tried = Vec::new();
+            for (kind, secret) in typed {
+                tried.push(kind);
+                let label = english_secret_label(kind, &stored.secret_target(kind));
+                if let Err(error) = vault.store(stored.id, kind, &secret, &label).await {
+                    return Ok(Some((secret_error(error), tried)));
+                }
+            }
+            Ok(None)
+        })
+        .await
+    }
+
+    // So a second Save does not add the connection twice; it stays only to name a secret known to be held.
+    async fn take_back(&self, id: Uuid, wrote_one: bool) {
+        if let Err(error) = self.delete_secrets(vec![id]).await {
+            tracing::warn!(
+                code = error.code(),
+                "could not remove the secrets of a new connection whose save was refused"
+            );
+            if wrote_one {
+                return;
+            }
+        }
+        if let Err(error) = self.blocking(move |store| Ok(store.remove_blocking(id)?)).await {
+            tracing::warn!(
+                code = error.code(),
+                "could not remove a new connection whose secrets were refused"
+            );
+        }
+    }
+
+    // Secrets are filed by id alone, so an edit left half done would send one host's password to another.
+    async fn put_back(&self, before: SavedConnection, previous: Vec<HeldValue>, tried: Vec<SecretKind>) {
+        let vault = self.secrets.clone();
+        let entry = before.clone();
+        let restored = on_runtime(&self.tasks, async move {
+            for (kind, value) in previous.into_iter().filter(|(kind, _)| tried.contains(kind)) {
+                let put = match value {
+                    Some(value) => {
+                        let label = english_secret_label(kind, &entry.secret_target(kind));
+                        vault.store(entry.id, kind, &value, &label).await
+                    }
+                    None => vault.delete_kind(entry.id, kind).await,
+                };
+                if let Err(error) = put {
+                    tracing::warn!(
+                        code = error.code(),
+                        "could not put back a secret of a connection whose edit was refused"
+                    );
+                }
+            }
+            Ok(())
+        })
+        .await;
+        if let Err(error) = restored {
+            tracing::warn!(
+                code = error.code(),
+                "could not put back the secrets of a connection whose edit was refused"
+            );
+        }
+        let id = before.id;
+        if let Err(error) = self
+            .blocking(move |store| Ok(store.update_blocking(id, |saved| *saved = before)?))
+            .await
+        {
+            tracing::warn!(
+                code = error.code(),
+                "could not put back a connection whose edit was refused"
+            );
+        }
     }
 
     pub(crate) async fn blocking<T, F>(&self, work: F) -> Result<T, CoreError>
@@ -253,50 +383,59 @@ impl ConnectionLibrary {
             "" => None,
             id => Some(parse_id(id)?),
         };
-        let saved = self
+        let tls = tls_config(&record.tls)?;
+        let typed = secrets.into_typed();
+        let kinds = typed.iter().map(|(kind, _)| *kind).collect();
+        // Read before anything is written, for a refused secret to put back.
+        let previous = match id {
+            Some(id) => self.held_values(id, kinds).await?,
+            None => Vec::new(),
+        };
+        let (saved, before) = self
             .blocking(move |store| {
-                if let Some(id) = id
-                    && let Some(updated) =
-                        store.update_blocking(id, |saved| apply(&record, name.clone(), group_id, saved))?
-                {
-                    return Ok(updated);
+                if let Some(id) = id {
+                    let mut before = None;
+                    let updated = store.update_blocking(id, |saved| {
+                        before = Some(saved.clone());
+                        apply(&record, &tls, name.clone(), group_id, saved);
+                    })?;
+                    if let Some(updated) = updated {
+                        return Ok((updated, before));
+                    }
                 }
                 let mut created = blank(id.unwrap_or_else(Uuid::new_v4));
-                apply(&record, name, group_id, &mut created);
+                apply(&record, &tls, name, group_id, &mut created);
                 store.upsert_blocking(created.clone())?;
-                Ok(store
+                let listed = store
                     .list_blocking()?
                     .connections
                     .iter()
                     .find(|saved| saved.id == created.id)
                     .cloned()
-                    .unwrap_or(created))
+                    .unwrap_or(created);
+                Ok((listed, None))
             })
             .await?;
-        let vault = self.secrets.clone();
-        let stored = saved.clone();
-        on_runtime(&self.tasks, async move {
-            for (kind, secret) in secrets.typed() {
-                let label = english_secret_label(kind, &stored.secret_target(kind));
-                vault
-                    .store(stored.id, kind, &secret, &label)
-                    .await
-                    .map_err(secret_error)?;
+        if let Some((error, tried)) = self.store_secrets(&saved, typed).await? {
+            match before {
+                Some(before) => self.put_back(before, previous, tried).await,
+                // Every kind before the refused one went in.
+                None => self.take_back(saved.id, tried.len() > 1).await,
             }
-            Ok(())
-        })
-        .await?;
+            return Err(error);
+        }
         Ok(ConnectionRecord::from(&saved))
     }
 
+    // Secrets go first, so a refused store leaves the connection listed to delete again, never a secret no entry names.
     pub async fn delete(&self, id: String) -> Result<(), CoreError> {
         let id = parse_id(&id)?;
+        self.delete_secrets(vec![id]).await?;
         self.blocking(move |store| {
             store.remove_blocking(id)?;
             Ok(())
         })
-        .await?;
-        self.delete_secrets(vec![id]).await
+        .await
     }
 
     pub async fn set_favorite(&self, id: String, favorite: bool) -> Result<(), CoreError> {
@@ -530,7 +669,14 @@ pub(crate) fn blank(id: Uuid) -> SavedConnection {
     }
 }
 
-pub(crate) fn apply(record: &ConnectionRecord, name: String, group_id: Option<Uuid>, saved: &mut SavedConnection) {
+// `tls` is `tls_config` of the record's settings, read before any write so a refused pair writes nothing.
+pub(crate) fn apply(
+    record: &ConnectionRecord,
+    tls: &TlsConfig,
+    name: String,
+    group_id: Option<Uuid>,
+    saved: &mut SavedConnection,
+) {
     saved.name = name;
     saved.driver_id.clone_from(&record.driver_id);
     saved.host = record.host.trim().to_owned();
@@ -541,13 +687,9 @@ pub(crate) fn apply(record: &ConnectionRecord, name: String, group_id: Option<Uu
         true => AuthMode::Kerberos,
         false => AuthMode::Password,
     };
-    saved.tls = tls_config(&record.tls);
-    saved.ssh = record.ssh.as_ref().map(ssh_config);
-    saved.safe_mode = match record.safe_mode {
-        SafeModeTag::Off => SafeModeLevel::Off,
-        SafeModeTag::ConfirmWrites => SafeModeLevel::ConfirmWrites,
-        SafeModeTag::ReadOnly => SafeModeLevel::ReadOnly,
-    };
+    saved.tls = tls.clone();
+    saved.ssh = record.ssh.as_ref().map(saved_ssh);
+    saved.safe_mode = record.safe_mode.into();
     saved.query_timeout_secs = record.query_timeout_secs;
     saved.color = record.color.as_deref().and_then(ConnectionColor::from_id);
     saved.group_id = group_id;
@@ -559,7 +701,8 @@ fn path(text: Option<&String>) -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
-fn tls_config(settings: &TlsSettings) -> TlsConfig {
+// Half a client identity is refused: dropped, it would save as none and fail later as the server's own refusal.
+pub(crate) fn tls_config(settings: &TlsSettings) -> Result<TlsConfig, CoreError> {
     let mut config = TlsConfig::disabled();
     config.mode = settings.mode.into();
     config.ca_file = path(settings.ca_file.as_ref());
@@ -568,17 +711,18 @@ fn tls_config(settings: &TlsSettings) -> TlsConfig {
         path(settings.client_key.as_ref()),
     ) {
         (Some(certificate), Some(key)) => Some(ClientIdentity { certificate, key }),
-        _ => None,
+        (None, None) => None,
+        _ => return Err(DriverError::from(ConfigError::ClientIdentityIncomplete).into()),
     };
     config.server_name = settings
         .server_name
         .as_ref()
         .map(|name| name.trim().to_owned())
         .filter(|name| !name.is_empty());
-    config
+    Ok(config)
 }
 
-fn ssh_config(settings: &SshSettings) -> SavedSshConfig {
+pub(crate) fn saved_ssh(settings: &SshSettings) -> SavedSshConfig {
     SavedSshConfig {
         host: settings.host.trim().to_owned(),
         port: settings.port,
@@ -682,5 +826,38 @@ impl From<&ConnectionTag> for TagRecord {
             name: tag.name.as_str().to_owned(),
             color: tag.color.id().to_owned(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use secrecy::ExposeSecret;
+
+    use super::*;
+
+    #[test]
+    fn debug_output_says_which_secrets_are_held_but_not_what_they_are() {
+        let secrets = ConnectionSecrets {
+            database_password: Some("hunter2".to_owned()),
+            ssh_password: None,
+            ssh_passphrase: Some(String::new()),
+        };
+
+        assert_eq!(
+            format!("{secrets:?}"),
+            "ConnectionSecrets { database_password: Some([REDACTED]), ssh_password: None, \
+             ssh_passphrase: Some([REDACTED]) }"
+        );
+        let typed = secrets.into_typed();
+        assert_eq!(
+            typed
+                .iter()
+                .map(|(kind, secret)| (*kind, secret.expose_secret()))
+                .collect::<Vec<_>>(),
+            [
+                (SecretKind::DatabasePassword, "hunter2"),
+                (SecretKind::SshPassphrase, "")
+            ]
+        );
     }
 }

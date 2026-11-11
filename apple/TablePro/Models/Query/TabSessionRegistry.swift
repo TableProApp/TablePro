@@ -45,10 +45,13 @@ final class TabSessionRegistry {
         session.rowSetRevision &+= 1
     }
 
+    // `mutate` must not read this tab's rows back from the registry: they are out of the session while it runs.
     @discardableResult
     func updateTableRows(for tabId: UUID, _ mutate: (inout TableRows) -> Delta) -> Delta {
         let session = ensureSession(for: tabId)
         var rows = session.tableRows
+        // A buffer the session still held would be copied whole by the first write, once per edit.
+        session.tableRows = TableRows()
         let delta = mutate(&rows)
         session.tableRows = rows
         session.dataRevision &+= 1

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Runtime.InteropServices;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -6,6 +7,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using TablePro.App.Model;
 using TablePro.App.Services;
+using TablePro.Editor.Model;
 using TablePro.Interop;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
@@ -28,6 +30,9 @@ public sealed partial class WorkspaceView : UserControl
     // Schemas a refresh reads again, the next time each one opens.
     private readonly HashSet<string> _stale = [];
     private readonly ClosedTabs _closed = new();
+
+    // What each query tab's text read at its document's version, since the session is written every few seconds.
+    private readonly Dictionary<ITabContent, (long Version, LineEnding Ending, SessionTab Tab)> _snapshots = [];
     private readonly HashSet<TabViewItem> _closingTabs = [];
     private CancellationTokenSource? _watching;
     private Windows.Foundation.Point _stripOrigin;
@@ -68,6 +73,9 @@ public sealed partial class WorkspaceView : UserControl
 
     // The user closed the last tab; a window a tab was moved into closes with it.
     public event EventHandler? Emptied;
+
+    // Something session.json keeps changed: a tab, its text, its page, the one selected or the pane's width.
+    public event EventHandler? SessionChanged;
 
     internal IWorkspaceHost? Host { get; set; }
 
@@ -212,13 +220,51 @@ public sealed partial class WorkspaceView : UserControl
         var tabs = Tabs.TabItems.OfType<TabViewItem>()
             .Select(item => item.Content)
             .OfType<ITabContent>()
-            .Select(content => content.Snapshot())
+            .Select(SnapshotOf)
             .ToList();
         return origin with { Tabs = tabs, SelectedTab = Math.Max(0, Tabs.SelectedIndex) };
     }
 
+    // A query tab's snapshot is its fixed title and its text, so the text is copied out again only once it changed.
+    private SessionTab SnapshotOf(ITabContent content)
+    {
+        if (content.Editor?.Document is not { } document)
+        {
+            return content.Snapshot();
+        }
+
+        if (_snapshots.TryGetValue(content, out var kept)
+            && kept.Version == document.Version
+            && kept.Ending == document.LineEnding)
+        {
+            return kept.Tab;
+        }
+
+        var tab = content.Snapshot();
+        _snapshots[content] = (document.Version, document.LineEnding, tab);
+        return tab;
+    }
+
     internal bool HasUnconfirmedTransactions(ISet<ITabContent> confirmed) => Tabs.TabItems.OfType<TabViewItem>()
         .Any(item => item.Content is ITabContent content && WorkspaceNotices.Holds(content.Transaction) && !confirmed.Contains(content));
+
+    // A table tab loading a page is not work the user started, so only a query tab's run is asked about.
+    internal List<ITabContent> RunningQueries() => [.. Tabs.TabItems.OfType<TabViewItem>()
+        .Select(item => item.Content)
+        .OfType<QueryTabView>()
+        .Where(view => view.IsRunning)];
+
+    // The tabs of a window that closed, so Reopen closed tab brings them back here in their order.
+    internal void KeepClosed(IReadOnlyList<SessionTab> tabs)
+    {
+        ArgumentNullException.ThrowIfNull(tabs);
+        for (var index = tabs.Count - 1; index >= 0; index--)
+        {
+            _closed.Push(tabs[index], int.MaxValue);
+        }
+
+        CommandsChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     internal async Task<bool> ConfirmCloseAsync(ISet<ITabContent> confirmed)
     {
@@ -239,7 +285,8 @@ public sealed partial class WorkspaceView : UserControl
         return true;
     }
 
-    public async Task CloseTabsAsync()
+    // A reconnect keeps the closed tabs, which hold only their text or table, to reopen on the next session.
+    public async Task CloseTabsAsync(bool keepClosed = false)
     {
         CancelRecovery();
         _hostKeyFailure = null;
@@ -251,18 +298,25 @@ public sealed partial class WorkspaceView : UserControl
         _watching = null;
         HealthBar.IsOpen = false;
         ElsewhereBar.IsOpen = false;
-        _closed.Clear();
+        HideChangesOnConnect();
+        if (!keepClosed)
+        {
+            _closed.Clear();
+        }
+
         foreach (var content in Tabs.TabItems.OfType<TabViewItem>().Select(item => item.Content).OfType<ITabContent>().ToList())
         {
             await content.CloseAsync().ConfigureAwait(true);
         }
 
         Tabs.TabItems.Clear();
+        _snapshots.Clear();
         Objects.Clear();
         ObjectList.ItemsSource = null;
         _everyObject = null;
         WorkspaceGrid.Visibility = Visibility.Collapsed;
         CommandsChanged?.Invoke(this, EventArgs.Empty);
+        SessionChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void NewQueryTab(string? sql = null, string? title = null)
@@ -421,6 +475,10 @@ public sealed partial class WorkspaceView : UserControl
         if (item.Content is ITabContent content)
         {
             content.StateChanged += OnTabStateChanged;
+            if (content.Editor is { } editor)
+            {
+                editor.TextChanged += OnEditorTextChanged;
+            }
         }
 
         if (index is { } at && at >= 0 && at <= Tabs.TabItems.Count)
@@ -435,6 +493,7 @@ public sealed partial class WorkspaceView : UserControl
         Tabs.SelectedItem = item;
         UpdateElsewhereBar();
         CommandsChanged?.Invoke(this, EventArgs.Empty);
+        SessionChanged?.Invoke(this, EventArgs.Empty);
     }
 
     // The tab keeps its content, its connection and its run; only this workspace lets go of it.
@@ -444,6 +503,12 @@ public sealed partial class WorkspaceView : UserControl
         if (item.Content is ITabContent content)
         {
             content.StateChanged -= OnTabStateChanged;
+            if (content.Editor is { } editor)
+            {
+                editor.TextChanged -= OnEditorTextChanged;
+            }
+
+            _snapshots.Remove(content);
         }
 
         Tabs.TabItems.Remove(item);
@@ -455,6 +520,7 @@ public sealed partial class WorkspaceView : UserControl
 
         UpdateElsewhereBar();
         CommandsChanged?.Invoke(this, EventArgs.Empty);
+        SessionChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void MoveActiveTabToNewWindow()
@@ -500,7 +566,10 @@ public sealed partial class WorkspaceView : UserControl
     {
         UpdateElsewhereBar();
         CommandsChanged?.Invoke(this, EventArgs.Empty);
+        SessionChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    private void OnEditorTextChanged(object? sender, EventArgs e) => SessionChanged?.Invoke(this, EventArgs.Empty);
 
     // Built when asked for, since a menu keeps the window it first opened in and a tab can move to another.
     private void OnTabContextRequested(UIElement sender, ContextRequestedEventArgs args)
@@ -648,6 +717,24 @@ public sealed partial class WorkspaceView : UserControl
             DefaultButton = ContentDialogButton.Close,
         };
         return await WindowDialogs.ShowAsync(dialog, this) == ContentDialogResult.Primary;
+    }
+
+    // A saved change only a new connection takes, kept back because a held transaction would go with this one.
+    internal void ShowChangesOnConnect(bool asksBeforeWrites)
+    {
+        ChangesBar.Title = Strings.Get("ChangesOnConnectTitle");
+        ChangesBar.Message = asksBeforeWrites ? Strings.Get("ChangesOnConnectAsks") : string.Empty;
+        // A closed InfoBar keeps its margin, so the bar is collapsed while it is closed.
+        ChangesBar.Visibility = Visibility.Visible;
+        // Narrator reads an InfoBar when it opens, not when its text changes.
+        ChangesBar.IsOpen = false;
+        ChangesBar.IsOpen = true;
+    }
+
+    internal void HideChangesOnConnect()
+    {
+        ChangesBar.IsOpen = false;
+        ChangesBar.Visibility = Visibility.Collapsed;
     }
 
     // The tab shown names its own transaction; this bar names one another tab holds.
@@ -816,6 +903,7 @@ public sealed partial class WorkspaceView : UserControl
         if (ObjectsVisible && e.NewSize.Width > 0)
         {
             _workbench.ObjectPaneWidth = ObjectPane.Clamp(e.NewSize.Width);
+            SessionChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -1122,6 +1210,7 @@ public sealed partial class WorkspaceView : UserControl
         ActiveTab?.FocusContent();
         UpdateElsewhereBar();
         CommandsChanged?.Invoke(this, EventArgs.Empty);
+        SessionChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void OnCancelConnect(object sender, RoutedEventArgs e) => _connection.CancelConnect();
@@ -1134,6 +1223,14 @@ public sealed partial class WorkspaceView : UserControl
     {
         var package = new DataPackage();
         package.SetText(_failureDetails);
-        Clipboard.SetContent(package);
+        try
+        {
+            Clipboard.SetContent(package);
+            Clipboard.Flush();
+        }
+        catch (COMException)
+        {
+            // Another program holds the clipboard open; pressing the button again copies once it lets go.
+        }
     }
 }

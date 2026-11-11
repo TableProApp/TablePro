@@ -31,12 +31,12 @@ extension MainContentCommandActions {
 
     // Asks before closing unsaved work (HIG); like NSDocument, the tab stays open when the save leaves work unsaved.
     func closeTabAwaiting(id: UUID) async {
-        guard let coordinator,
-              let tab = coordinator.tabManager.tabs.first(where: { $0.id == id }) else { return }
-        // An open cell editor is unsaved work too, so it lands before the question is asked.
+        guard let coordinator else { return }
+        // An open cell editor or the editor's pending text is unsaved work too, so it lands before the tab is read.
         if coordinator.tabManager.selectedTabId == id {
             coordinator.commitActiveGridEdit()
         }
+        guard let tab = coordinator.tabManager.tabs.first(where: { $0.id == id }) else { return }
         let work = runningWork(.tabs([id]))
         guard !work.isEmpty || coordinator.hasUnsavedWork(in: tab) else {
             coordinator.closeTabsByUser(ids: [id])

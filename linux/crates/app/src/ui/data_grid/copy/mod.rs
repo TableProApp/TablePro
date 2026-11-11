@@ -5,6 +5,7 @@ use gtk4::{self as gtk, glib};
 use tablepro_core::column::{ColumnInfo, ResultColumn};
 use tablepro_core::edit::CellInput;
 use tablepro_core::{FilterRule, Value};
+use tablepro_linux_platform::settings::RowCopyFormat;
 
 use super::grid_actions::{add, add_for_column, enable};
 use super::selection::Resolved;
@@ -14,6 +15,10 @@ use crate::services::grid::{CopyScope, GridColumn, GridRowId, RowSnapshot, cell_
 use crate::ui::clipboard::{CopyKind, CopyRequest, InClauseRows, InsertCopy, InsertRow};
 use crate::ui::export::ExportSource;
 use crate::ui::filter_strip::FilterVocabulary;
+
+mod json_preview;
+
+pub(crate) use json_preview::{JsonPreview, JsonPreviewRequest, json_preview};
 
 #[cfg(test)]
 mod tests;
@@ -165,7 +170,6 @@ impl ShownColumns {
     }
 }
 
-/// Copy: the target cell's value when one row is in play, else the rows.
 fn copy(grid: &DataGrid) {
     let Some(target) = grid.target() else {
         return;
@@ -173,7 +177,22 @@ fn copy(grid: &DataGrid) {
     let column = target.cell.as_ref().map(|(_, column)| *column);
     match (copy_scope(target.rows.len(), column), &target.cell) {
         (CopyScope::Value(column), Some((row, _))) => copy_value(grid, row, column),
-        _ => copy_rows(grid, &target.rows, CopyKind::Rows),
+        _ => copy_rows(grid, &target.rows, preferred_format(grid)),
+    }
+}
+
+fn preferred_format(grid: &DataGrid) -> CopyKind {
+    match grid
+        .config()
+        .map(|config| config.settings.row_copy_format())
+        .unwrap_or_default()
+    {
+        RowCopyFormat::Rows => CopyKind::Rows,
+        RowCopyFormat::RowsWithHeaders => CopyKind::RowsWithHeaders,
+        RowCopyFormat::Json => CopyKind::Json,
+        RowCopyFormat::Csv => CopyKind::Csv,
+        RowCopyFormat::CsvWithHeaders => CopyKind::CsvWithHeaders,
+        RowCopyFormat::Markdown => CopyKind::Markdown,
     }
 }
 

@@ -89,12 +89,27 @@ final class OpenAICompatibleProvider: ChatTransport {
             buildRequest: { [self] in try buildChatCompletionRequest(turns: turns, options: options) },
             decodeLine: { Self.decodeStreamLine($0, providerType: providerType) },
             makeState: { OpenAIStreamState() },
-            parse: { Self.parseChunk($0, state: &$1).events },
-            finalEvents: { state in
-                var state = state
-                return [state.flushReasoningEnd(), state.finalUsageEvent()].compactMap { $0 }
-            }
+            parse: { try Self.streamEvents(from: $0, state: &$1) },
+            finalEvents: { try Self.finalStreamEvents($0) }
         )
+    }
+
+    static func streamEvents(
+        from json: [String: Any],
+        state: inout OpenAIStreamState
+    ) throws -> [ChatStreamEvent] {
+        if let error = AIProviderError.streamError(in: json) { throw error }
+        return parseChunk(json, state: &state).events
+    }
+
+    static func finalStreamEvents(_ state: OpenAIStreamState) throws -> [ChatStreamEvent] {
+        guard state.receivedOutput else {
+            throw AIProviderError.streamingFailed(
+                String(localized: "The provider ended the response without sending any content.")
+            )
+        }
+        var state = state
+        return [state.flushReasoningEnd(), state.finalUsageEvent()].compactMap { $0 }
     }
 
     static func decodeStreamLine(_ line: String, providerType: AIProviderType) -> [String: Any]? {
@@ -103,9 +118,7 @@ final class OpenAICompatibleProvider: ChatTransport {
             guard !line.isEmpty else { return nil }
             jsonString = line
         } else {
-            guard line.hasPrefix("data: ") else { return nil }
-            let payload = String(line.dropFirst(6))
-            guard payload != "[DONE]" else { return nil }
+            guard let payload = SSEEventStream.dataPayload(line), payload != "[DONE]" else { return nil }
             jsonString = payload
         }
         guard let data = jsonString.data(using: .utf8),
@@ -175,6 +188,10 @@ final class OpenAICompatibleProvider: ChatTransport {
         let shouldBreak = (json["done"] as? Bool) == true
         if shouldBreak, !state.toolCallIndexToId.isEmpty {
             events.append(contentsOf: state.flushToolUseEnds())
+        }
+        let finished = (firstChoice?["finish_reason"] as? String)?.isEmpty == false
+        if !events.isEmpty || finished || shouldBreak {
+            state.receivedOutput = true
         }
         return (events, shouldBreak)
     }
@@ -634,6 +651,7 @@ struct OpenAIStreamState {
     var toolCallIndexToId: [Int: String] = [:]
     var toolCallOrder: [Int] = []
     var reasoningBlockID: String?
+    var receivedOutput = false
 
     mutating func flushReasoningEnd() -> ChatStreamEvent? {
         guard let id = reasoningBlockID else { return nil }

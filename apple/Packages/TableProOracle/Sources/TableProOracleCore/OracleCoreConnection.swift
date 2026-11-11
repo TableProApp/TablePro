@@ -418,6 +418,10 @@ public final class OracleCoreConnection: @unchecked Sendable {
         }
     }
 
+    public var queryTimeoutSeconds: Int {
+        state.withLock { $0.queryTimeoutSeconds }
+    }
+
     // A debug session's statement is a routine that waits at a breakpoint for a person: no query timeout, no
     // staleness limit on the health check, and no silent redial, since a new session would not be the one debugged.
     public func reserveForDebugging() {
@@ -989,6 +993,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
 
     public func streamQuery(
         _ query: String,
+        batching: OracleRowBatcher,
         continuation: AsyncThrowingStream<OracleStreamElement, Error>.Continuation
     ) async throws {
         let role = OracleTransactionRole(of: query)
@@ -1000,7 +1005,14 @@ public final class OracleCoreConnection: @unchecked Sendable {
             let admitted = try admit(role)
             try await withQueryDeadline { [self] in
                 let zones = await sessionZones(on: connection)
-                try await streamRows(query, options: admitted.options, zones: zones, on: connection, continuation: continuation)
+                try await streamRows(
+                    query,
+                    options: admitted.options,
+                    zones: zones,
+                    batching: batching,
+                    on: connection,
+                    continuation: continuation
+                )
             }
             await recordSuccess(of: role, on: admitted.session)
             forgetSessionZonesIfChanged(by: query)
@@ -1019,6 +1031,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
         _ query: String,
         options: StatementOptions,
         zones: OracleSessionTimeZones,
+        batching: OracleRowBatcher,
         on connection: OracleNIO.OracleConnection,
         continuation: AsyncThrowingStream<OracleStreamElement, Error>.Continuation
     ) async throws {
@@ -1029,10 +1042,20 @@ public final class OracleCoreConnection: @unchecked Sendable {
         var decoder = CellDecoder(columns: columns, zones: zones)
         continuation.yield(.header(columns: columns.map(\.descriptor)))
 
-        for try await row in stream {
-            try Task.checkCancellation()
-            continuation.yield(.rows([decoder.decode(row)]))
+        var batcher = batching
+        do {
+            for try await row in stream {
+                try Task.checkCancellation()
+                if let batch = batcher.append(decoder.decode(row)) {
+                    continuation.yield(.rows(batch))
+                }
+            }
+        } catch {
+            // The rows read before a failure still reach the reader ahead of the error, as they did one by one.
+            if let batch = batcher.remainder() { continuation.yield(.rows(batch)) }
+            throw error
         }
+        if let batch = batcher.remainder() { continuation.yield(.rows(batch)) }
         await warnOnce(about: decoder.unsupportedTypeNames)
 
         guard columns.isEmpty else { return }

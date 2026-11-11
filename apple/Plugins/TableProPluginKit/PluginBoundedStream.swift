@@ -27,6 +27,7 @@ public enum PluginBoundedStream {
         let cap = max(rowCap, 1)
         var columns: [String] = []
         var columnTypeNames: [String] = []
+        var columnOrigins: [PluginColumnOrigin?]?
         var rows: [PluginRow] = []
         rows.reserveCapacity(min(cap, 10_000))
         var truncated = false
@@ -39,6 +40,7 @@ public enum PluginBoundedStream {
             case .header(let header):
                 columns = header.columns
                 columnTypeNames = header.columnTypeNames
+                columnOrigins = header.columnOrigins
             case .rows(let batch):
                 if firstRowTime == nil, !batch.isEmpty {
                     firstRowTime = Date().timeIntervalSince(startedAt)
@@ -54,7 +56,7 @@ public enum PluginBoundedStream {
             if truncated { break }
         }
 
-        return PluginQueryResult(
+        var result = PluginQueryResult(
             columns: columns,
             columnTypeNames: columnTypeNames,
             rows: rows,
@@ -66,5 +68,7 @@ public enum PluginBoundedStream {
             ),
             isTruncated: truncated
         )
+        result.columnOrigins = columnOrigins
+        return result
     }
 }

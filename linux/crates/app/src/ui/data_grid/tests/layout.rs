@@ -338,3 +338,19 @@ mod real_keys {
         wait_until(WAIT, || grid.grid.shown_columns() == [0, 1, 2]).expect("the column to move back");
     }
 }
+
+#[gtk4::test]
+fn resetting_the_column_layout_keeps_row_numbers_hidden() {
+    let grid = Grid::open(two_text_columns(), two_text_values());
+    let settings = grid.grid.config().expect("configured grid").settings.clone();
+    settings.set_show_row_numbers(false).expect("hide row numbers");
+    assert!(!grid.grid.row_numbers_column().expect("row numbers").is_visible());
+
+    grid.grid.reset_layout();
+
+    let numbers = grid.grid.row_numbers_column().expect("rebuilt row numbers");
+    assert!(!numbers.is_visible());
+    assert!(!settings.show_row_numbers());
+    settings.set_show_row_numbers(true).expect("show row numbers");
+    assert!(numbers.is_visible());
+}

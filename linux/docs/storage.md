@@ -10,9 +10,9 @@ The app's data goes to the store its shape calls for. The core's `storage` crate
 | The account's device ID and last entitlement, or an imported offline file | JSON file | `tablepro-account` ([core ADR 0016](../../core/docs/decisions/0016-tablepro-accounts.md), [ADR 0038](decisions/0038-account-page-and-license-ask.md)) |
 | The usage data's anonymous ID and what it sent once | JSON file | `Telemetry` in the app crate ([ADR 0039](decisions/0039-usage-data.md)) |
 | Preferences and window geometry | `gio::Settings` | `AppSettings` |
-| Query history and saved queries | SQLite, one database | `QueryHistory`, `SavedQueries` |
+| Query history, saved queries with their folders and keywords, and favourite tables and databases | SQLite, one database ([core ADR 0017](../../core/docs/decisions/0017-favourites.md)) | `QueryHistory`, `SavedQueries`, `SavedQueryFolders`, `Favourites` |
 | Editor tab text | one file per tab | `DraftStore` |
-| Open tabs, open sessions, column layouts, filters | JSON files the app crate writes | `WorkspaceStore`, `OpenSessions`, `crates/app/src/persistence/` |
+| Open tabs, open sessions, column layouts, filters, highlight rules | JSON files the app crate writes | `WorkspaceStore`, `OpenSessions`, `crates/app/src/persistence/` |
 
 [Where files go](#where-files-go) has the paths.
 
@@ -20,11 +20,11 @@ The app's data goes to the store its shape calls for. The core's `storage` crate
 
 `ConnectionStore` holds the saved-connection list, one store per storage root:
 
-- `load_blocking`, `list_blocking`, `upsert_blocking`, `insert_after_blocking`, `update_blocking`, `remove_blocking`, `touch_last_opened_blocking`, the group and favourite operations below, `preview_import_blocking`, `apply_import_blocking` and `export_blocking` run off the GTK thread. A change holds the store's lock across read, change and write, so two writers never lose an entry. `update_blocking` changes one entry as the list holds it at the write, so a last-opened stamp from another window in between is kept.
+- `load_blocking`, `list_blocking`, `upsert_blocking`, `insert_after_blocking`, `update_blocking`, `remove_blocking`, `touch_last_opened_blocking`, the group and favourite operations below, `preview_import_blocking`, `apply_import_blocking` and `export_blocking` run off the GTK thread. A change holds the store's lock and an exclusive lock on `connections.json.lock` beside the list across read, change and write, and reads the file again first, so neither another thread nor another process on the same root (a second app, a hand edit, a sync tool) loses an entry to a stale copy. A lock file that cannot be made or locked (NFS without lockd, SMB) is logged and the write goes ahead on the re-read alone. A read also reads the file again, keeps the list it has when the file cannot be read, and publishes a list it finds changed. `update_blocking` changes one entry as the list holds it at the write, so a last-opened stamp from another window in between is kept.
 - A write goes through `write_document_blocking` first and the cached list changes only once it landed, so a failed write leaves both as they were. The first write over a file an older build wrote keeps a copy of it first ([Copies before a format upgrade](#copies-before-a-format-upgrade)).
 - A file that another version wrote in a newer format is refused; one in the same format is read and written whichever build wrote it.
 - `subscribe` hands out a watch of `ConnectionListSnapshot`, so every picker sees every writer's change.
-- A file that cannot be read, or that holds a format newer than this build's, leaves the store `Unavailable`, and it refuses every write until the user picks Reset (`reset_unreadable_blocking`), which moves the file aside.
+- A file that cannot be read, or that holds a format newer than this build's, leaves the store `Unavailable`, and it refuses every write until the user picks Reset (`reset_unreadable_blocking`), which moves the file aside. A file broken after the list was read is found by the next change, which refuses it the same way; a file that cannot be read at all then fails the change with `Io` and leaves the list shown. Reset reads the file first and refuses when another process already reset or rewrote it.
 - A `SavedConnection` does **not** carry a password. Secrets live in the keyring, keyed by the connection's UUID, so a rename or a new host keeps them.
 - `safe_mode` is the connection's Safe Mode level: `off`, `confirm_writes` or `read_only`. It has no default, since guessing Off would drop a guard.
 - `external_access` is what MCP clients may do on the connection: `blocked`, `read_only` or `read_write` ([ADR 0022](decisions/0022-ai-assistant-and-mcp-server.md)). A new connection starts at `read_only`. It has no default either.
@@ -108,7 +108,7 @@ leaves nothing unreachable behind when a step fails:
    entry stays: an entry with no secrets only asks for them again, while a
    secret with no entry is orphaned in the keyring.
 2. The entry in `connections.json`.
-3. Everything kept for it: column layouts, filters, the saved tabs with any
+3. Everything kept for it: column layouts, filters, highlight rules, the saved tabs with any
    copy Reset moved aside or an upgrade kept, the editor drafts
    (`WorkspaceStore::purge`), the saved queries, and the query history when
    the user turned that on. A
@@ -137,6 +137,7 @@ nothing reaches outside it.
 | `connections_file()` | `$XDG_CONFIG_HOME/<dir>/connections.json` |
 | `column_layouts_file()` | `$XDG_CONFIG_HOME/<dir>/column_layouts.json`: each table's column layout (order, hidden columns, widths the user set) |
 | `filter_settings_file()` | `$XDG_CONFIG_HOME/<dir>/filter_settings.json` |
+| `highlight_rules_file()` | `$XDG_CONFIG_HOME/<dir>/highlight_rules.json`: ordered rules for each table |
 | `history_database()` | `$XDG_STATE_HOME/<dir>/history.db` |
 | `workspaces_dir()` | `$XDG_STATE_HOME/<dir>/workspaces`: one file per session, and `open-sessions.json`: the sessions open at the last quit as `windows`, one list of keys per window, windows in the order of their first recorded session and keys in the order each window adopted them |
 | `drafts_dir()` | `$XDG_DATA_HOME/<dir>/drafts` |
@@ -192,7 +193,8 @@ at compile time with `sqlx::migrate!` and run by `QueryHistory::open`.
 `20260914000000_create_history.sql` creates the `history` table with
 `query_folded`, the trigram index `history_search` over it,
 `history_page_idx` on `(pinned DESC, executed_at DESC, id DESC)` for
-paging, and the `saved_queries` table.
+paging, and the `saved_queries` table. Favorites metadata, ordering, coherent reads
+and mutation notifications follow [core ADR 0017](../../core/docs/decisions/0017-favourites.md).
 
 **An applied migration is never edited.** Each change is a new timestamped
 file with its own fixture test. Editing one in place changes its checksum,
@@ -266,6 +268,26 @@ can tell whether a re-pinned entry falls in the pages already read.
 - `connections_with_history` lists each connection the history holds
   under the name of its latest run, so a renamed connection shows once.
 
+### Following the saved queries
+
+The Favorites sidebar and Saved Queries dialog follow the shared revision
+feed from one `QueryHistory` ([core ADR 0017](../../core/docs/decisions/0017-favourites.md)).
+A write from any window, an import or a deleted connection refreshes every list.
+The sidebar reads queries and folders as one snapshot. Each list rejects replies
+from an older read. Selection and folder expansion stay with their record IDs
+during a refresh and clear when the front connection changes. Confirmed saves,
+renames, moves and deletions hold the process until the write finishes.
+
+The editor first inserts without replacement and asks for confirmation if the
+name is taken. Confirmed replacement updates the same row id. The existence check
+and write share a transaction, so simultaneous saves report which one
+replaced the query. Renames update only the stored name and modification
+time, leaving newer SQL and the connection identity intact.
+
+Unsaved database files use a UUID derived from their canonical URI, so queries
+stay in the same scope after reopening the file. Queries saved by older builds
+with a temporary file identity remain available in the Saved Queries dialog.
+
 ### What goes into the history
 
 `HistoryService::record` is the one way in, for editor runs, saves and
@@ -319,6 +341,18 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `window-height` | `i` | `760` | 294 to 32767 |
 | `is-maximized` | `b` | `false` | |
 | `default-page-size` | `u` | `1000` | 100 to 100000 |
+| `show-alternate-rows` | `b` | `true` | |
+| `show-row-numbers` | `b` | `true` | |
+| `grid-use-system-font` | `b` | `true` | |
+| `grid-font` | `s` | `Monospace 10` | |
+| `show-invisible-characters` | `b` | `true` | |
+| `auto-show-inspector` | `b` | `false` | |
+| `row-copy-format` | `s` | `rows` | rows, rows-headers, json, csv, csv-headers, markdown |
+| `default-sort` | `s` | `none` | `none`, `primary-key`, `first-column` |
+| `default-sort-direction` | `s` | `ascending` | `ascending`, `descending` |
+| `date-format` | `s` | `iso` | iso, iso-date, us-long, us-short, eu-long, eu-short; display only, copy and export retain original values |
+| `grid-row-height` | `s` | `normal` | compact, normal, comfortable, spacious |
+| `null-display` | `s` | `NULL` | Displayed as at most 20 characters, without control characters; blank uses NULL |
 | `confirm-bulk-delete` | `b` | `true` | |
 | `restore-session` | `b` | `true` | |
 | `last-seen-version` | `s` | empty | |
@@ -351,7 +385,7 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `csv-line-break` | enum | `lf` | lf, crlf, cr |
 | `csv-decimal` | enum | `period` | period, comma |
 
-`tablepro_storage::AppSettings` wraps it in typed accessors:
+`tablepro_linux_platform::AppSettings` wraps it in typed accessors:
 
 ```rust
 pub fn open(schema_id: &str) -> Result<Self, SettingsError>;
@@ -371,7 +405,15 @@ Three points worth knowing:
 
 Preference rows bind straight to the schema with `settings.gio().bind(key, &row, prop)`, so a change reaches every open view through `changed::<key>` without a save step.
 
-High-churn keyed data stays in files: column layouts, per-table filters and workspace tabs are unbounded maps, which is not what GSettings is for.
+High-churn keyed data stays in files: column layouts, per-table filters, highlight rules and workspace tabs are unbounded maps, which is not what GSettings is for.
+
+## Table state
+
+Column layouts, filters and highlight rules use the session identity from `WorkspaceFileName`: a saved connection UUID, that UUID plus a digest of the sibling database name, or a digest of the canonical file URI. Existing saved UUID keys keep their spelling. A schema and table name complete the key. Opening a file again uses the same key; tables with the same name in different databases stay separate. Deleting a saved connection also removes its sibling database keys.
+
+`StateFile` holds these small versioned documents in memory and writes the latest snapshot through the core's `LatestWinsWriter` and `write_document_blocking`. `flush` waits for a write attempt and returns its failure. A failed write keeps the latest state in memory. Each window shows a notice with Retry, which writes that latest state again. A successful write dismisses the notice. Closing the last window waits until every pending settings edit is saved. It checks again after workspace prompts, so concurrent window closes cannot skip the check. If local changes cannot be saved, it offers Retry, Keep Open or Close Without Saving. Consent to close without saving applies only to the settings revision shown. Newer or unreadable files stay protected and offer no write retry. An untouched protected file does not prevent closing.
+
+Highlight rules are restored before the table grid starts reporting edits. A query result has no table identity, so its rules live only until the next run. The grid behavior is in `../ARCHITECTURE.md`, Highlight rules.
 
 ## Errors
 
@@ -419,8 +461,8 @@ that replaces it with a newer format ([core ADR 0012](../../core/docs/decisions/
 - Every write of the connection list first takes the connections it no longer
   has out of each copy of `connections.json`, and deletes a copy it cannot
   read that way; a failed trim fails the write, so the next one tries again. Deleting
-  a connection deletes the copies of the column layout and filter files, which
-  name its tables and filter values.
+  a connection deletes the copies of the column layout, filter and highlight rule files, which
+  name its tables and values.
 - A copy that cannot be made fails the write or the open, and the file is
   left as it was. The error names the copy's path.
 - Reading never makes a copy. Nothing restores one on its own:

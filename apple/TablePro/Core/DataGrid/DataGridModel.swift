@@ -144,7 +144,7 @@ final class DataGridModel: ObservableObject {
             restoreSelection(in: current)
             displayRevision &+= 1
             mountedView?.apply(change)
-            refreshFind()
+            refreshFind(after: delta, in: current, previousOrder: previous)
             return
         }
         let change = DataGridChange.from(delta, order: order, rows: current, columns: columns)
@@ -158,7 +158,37 @@ final class DataGridModel: ObservableObject {
         }
         // An edited row stays where the filter put it until the filter or the row set changes (#2667).
         mountedView?.apply(change)
-        refreshFind()
+        refreshFind(after: delta, in: current)
+    }
+
+    // An open find bar reads again only the cells the delta wrote and the rows that now show and did not before;
+    // one that left drops its matches.
+    private func refreshFind(after delta: Delta, in current: TableRows, previousOrder: DataGridRowOrder? = nil) {
+        guard find.isVisible else { return }
+        var written: [RowID: IndexSet] = [:]
+        var added: [RowID] = []
+        switch delta {
+        case .cellChanged(let row, let column):
+            if current.rows.indices.contains(row) {
+                written[current.rows[row].id] = IndexSet(integer: column)
+            }
+        case .cellsChanged(let positions):
+            for position in positions where current.rows.indices.contains(position.row) {
+                written[current.rows[position.row].id, default: []].insert(position.column)
+            }
+        case .rowsInserted(let inserted):
+            added = inserted.compactMap { current.rows.indices.contains($0) ? current.rows[$0].id : nil }
+        case .rowsRemoved:
+            break
+        case .columnsReplaced, .fullReplace:
+            refreshFind()
+            return
+        }
+        // A filtered order resolved again can bring back a row hidden since an edit, which no refresh read then.
+        if let previousOrder, let shown = order.filteredIDs {
+            added += shown.filter { previousOrder.displayIndex(of: $0, in: current) == nil }
+        }
+        refreshFind(writtenCells: written, addedRows: added)
     }
 
     private func resolveOrder(in rows: TableRows) -> DataGridRowOrder {

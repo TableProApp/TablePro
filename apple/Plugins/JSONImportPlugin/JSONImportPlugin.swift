@@ -47,9 +47,9 @@ final class JSONImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
     }
 
     private static let batchSize = 500
-    /// One budget shared with the rows the runner itself recorded, so the two lists together stay
-    /// inside the cap the import dialog documents. The skip *count* is deliberately uncapped: a
-    /// truncated list must not also under-report how much of the file was left out.
+    // One budget shared with the rows the runner itself recorded, so the two lists together stay
+    // inside the cap the import dialog documents. The skip count is uncapped: a truncated list must
+    // not also under-report how much of the file was left out.
     private static let maxRecordedErrors = 1_000
 
     private let lineDelimitedFields = JSONFieldDetectionCache()
@@ -83,22 +83,24 @@ final class JSONImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
             unreadableLines = batches.unreadableLines
             unreadableLineCount = batches.unreadableLineCount
         } else {
-            let rawRows = try JSONImportParsing.parseRows(at: url, targetTable: sink.targetTable)
-            progress.setEstimatedTotal(rawRows.count)
-            var cursor = 0
+            let document = try JSONImportParsing.rowElements(
+                at: url, targetTable: sink.targetTable, checkCancellation: progress.checkCancellation
+            )
+            progress.setEstimatedTotal(document.count)
+            var batches = JSONElementBatches(
+                elements: document.elements,
+                elementsPerBatch: Self.batchSize,
+                skipsUnreadableElements: settings.errorHandling == .skipAndContinue,
+                maxRecordedErrors: Self.maxRecordedErrors
+            )
+            defer { batches.close() }
             outcome = try await RowImportRunner.run(
                 configuration: configuration, sink: sink, progress: progress
             ) {
-                guard cursor < rawRows.count else { return nil }
-                let end = min(cursor + Self.batchSize, rawRows.count)
-                let batch = (cursor..<end).compactMap { index -> RowImportRunner.Entry? in
-                    let row = JSONImportParsing.convertRow(rawRows[index])
-                    guard !row.isEmpty else { return nil }
-                    return (index + 1, row)
-                }
-                cursor = end
-                return batch
+                try batches.next()
             }
+            unreadableLines = batches.unreadableElements
+            unreadableLineCount = batches.unreadableElementCount
         }
 
         return PluginImportResult(

@@ -22,9 +22,7 @@ use crate::ui::data_grid::{DataGrid, GridRow, PinnedRow};
 use crate::ui::error_text::edit_parse_message;
 use crate::ui::handler_guard::HandlerGuard;
 
-/// The scheme a grid without settings paints with, as the multi-line
-/// editor did. The resolver follows it to its dark variant.
-const FALLBACK_SCHEME: &str = "Adwaita";
+const FALLBACK_SCHEME: &str = "";
 
 /// The value editor's own key handler, named so it can be told from the
 /// view's.
@@ -249,12 +247,13 @@ impl RowDetailPane {
         }
     }
 
-    fn is_editing_value(&self) -> bool {
+    pub(super) fn is_editing_value(&self) -> bool {
         self.imp().edit.borrow().is_some()
     }
 
     fn text_changed(&self) {
         self.update_placeholder();
+        self.mark_special_characters();
         if !self.imp().loading.get() {
             self.begin_edit();
         }
@@ -350,7 +349,12 @@ impl RowDetailPane {
         }
         let tracked = grid.tracked();
         let input = tracked.edit_input(&row, column.index);
-        let content = value_content(&column, &row.id(), tracked.lock(&column, &row), &input);
+        let mut content = value_content(&column, &row.id(), tracked.lock(&column, &row), &input);
+        if matches!(input, CellInput::Value(Value::Null))
+            && let Some(config) = grid.config()
+        {
+            content.open_placeholder = Some(config.settings.grid_preferences().snapshot().null_display.clone());
+        }
         self.show_value(&column.name, &content);
         self.show_picture(match input {
             CellInput::Value(Value::Bytes(bytes)) => Some(bytes),
@@ -398,7 +402,6 @@ impl RowDetailPane {
         buffer.place_cursor(&buffer.start_iter());
         let view = imp.value_view.get();
         view.set_editable(content.message.is_none());
-        imp.field_label.set_label(name);
         view.update_property(&[gtk::accessible::Property::Label(name)]);
         self.show_message(content.message.as_deref(), false);
         imp.calendar_button.set_visible(content.calendar);
@@ -501,12 +504,12 @@ impl RowDetailPane {
         grid.refresh_actions();
     }
 
-    /// The SQL editor's scheme where the grid has the settings, in the
-    /// variant for the current style, following a switch of either.
     fn follow_style_scheme(&self, grid: &DataGrid) {
         let settings = grid.config().map(|config| config.settings.clone());
         let paint = {
             let buffer = self.imp().value_buffer.get().downgrade();
+            let placeholder = self.imp().placeholder_label.get().downgrade();
+            let placeholder_attributes = self.imp().placeholder_label.attributes();
             let settings = settings.as_ref().map(Rc::downgrade);
             Rc::new(move || {
                 let Some(buffer) = buffer.upgrade() else {
@@ -516,7 +519,30 @@ impl RowDetailPane {
                     .as_ref()
                     .and_then(Weak::upgrade)
                     .map_or_else(|| FALLBACK_SCHEME.to_owned(), |settings| settings.style_scheme());
-                buffer.set_style_scheme(crate::ui::style_scheme_resolver::scheme(&preferred).as_ref());
+                let scheme = crate::ui::style_scheme_resolver::scheme(&preferred);
+                buffer.set_style_scheme(scheme.as_ref());
+                if let Some(placeholder) = placeholder.upgrade() {
+                    // The placeholder sits over the source view's background, so
+                    // its text must use that scheme too, even without a value.
+                    let attributes = placeholder_attributes
+                        .as_ref()
+                        .and_then(gtk::pango::AttrList::copy)
+                        .unwrap_or_default();
+                    let tag = gtk::TextTag::new(None);
+                    if let Some(text) = scheme.and_then(|scheme| scheme.style("text")) {
+                        text.apply(&tag);
+                    }
+                    if let Some(rgba) = tag.foreground_rgba().filter(|_| tag.is_foreground_set()) {
+                        let channel = |value: f32| (value.clamp(0.0, 1.0) * 65535.0).round() as u16;
+                        attributes.insert(gtk::pango::AttrColor::new_foreground(
+                            channel(rgba.red()),
+                            channel(rgba.green()),
+                            channel(rgba.blue()),
+                        ));
+                        attributes.insert(gtk::pango::AttrInt::new_foreground_alpha(channel(rgba.alpha())));
+                    }
+                    placeholder.set_attributes(Some(&attributes));
+                }
             })
         };
         paint();

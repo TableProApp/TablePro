@@ -342,14 +342,32 @@ internal actor DatabaseAccessBridge {
         internal let executionTimeMs: Double
     }
 
-    // Runs the one approved statement as it was approved. `maskingTable` names the table the rows come from when
-    // the caller built the query for one, so a `table.column` rule matches by table.
+    // Runs the one approved statement as it was approved, its rows masked as `masking` says.
     internal func runStatement(
         _ operation: ApprovedOperation,
         maxRows: Int,
         timeoutSeconds: Int,
         cancellation: (any StatementCancellationSignal)?,
-        maskingTable: String? = nil
+        masking: ExternalRowMasking = .byOrigin
+    ) async throws -> StatementOutcome {
+        let reach = DriverReach()
+        do {
+            return try await runApprovedStatement(
+                operation, maxRows: maxRows, timeoutSeconds: timeoutSeconds, cancellation: cancellation, masking: masking,
+                reach: reach
+            )
+        } catch {
+            throw await externalError(error, on: operation.scope.connectionId, reach: reach)
+        }
+    }
+
+    private func runApprovedStatement(
+        _ operation: ApprovedOperation,
+        maxRows: Int,
+        timeoutSeconds: Int,
+        cancellation: (any StatementCancellationSignal)?,
+        masking: ExternalRowMasking,
+        reach: DriverReach
     ) async throws -> StatementOutcome {
         guard operation.unit == .statement, operation.statements.count == 1, let statement = operation.statements.first
         else { throw Self.notApproved }
@@ -393,8 +411,10 @@ internal actor DatabaseAccessBridge {
                 route: route,
                 policy: policy,
                 owner: owner,
-                timeoutSeconds: timeoutSeconds
+                timeoutSeconds: timeoutSeconds,
+                onLateCompletion: { CatalogChangeService.post(statementRan) }
             ) { driver in
+                reach.mark()
                 let answer = try await driver.executeUserQuery(
                     query: sql,
                     rowCap: fetchCap,
@@ -418,16 +438,46 @@ internal actor DatabaseAccessBridge {
             CatalogChangeService.post(.statementsSucceeded(tableEdits))
         }
         let executionTimeMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1_000
-        let masking = await maskingPolicy(for: connectionId)
-        return StatementOutcome(result: result.masked(by: masking, table: maskingTable), executionTimeMs: executionTimeMs)
+        let rules = await maskingPolicy(for: connectionId)
+        let applied = await MainActor.run { masking.resolved(in: scope, databaseType: databaseType) }
+        return StatementOutcome(result: applied.apply(rules, to: result), executionTimeMs: executionTimeMs)
     }
 
-    // A plan the driver builds for the approved statement.
+    // A plan the driver builds for the approved statement, masked as `masking` says.
     internal func runExplainPlan(
         _ operation: ApprovedOperation,
         step: ExplainRequest.DriverStep,
         timeoutSeconds: Int,
-        cancellation: (any StatementCancellationSignal)?
+        cancellation: (any StatementCancellationSignal)?,
+        masking: ExternalRowMasking = .byOrigin
+    ) async throws -> StatementOutcome {
+        let reach = DriverReach()
+        do {
+            let outcome = try await runDriverPlan(
+                operation, step: step, timeoutSeconds: timeoutSeconds, cancellation: cancellation, reach: reach
+            )
+            let rules = await maskingPolicy(for: operation.scope.connectionId)
+            return StatementOutcome(result: masking.apply(rules, to: outcome.result), executionTimeMs: outcome.executionTimeMs)
+        } catch {
+            throw await externalError(error, on: operation.scope.connectionId, reach: reach)
+        }
+    }
+
+    // A server's message can repeat a value the statement read, as PostgreSQL's `invalid input syntax for type
+    // integer: "..."` does, so on a connection with masking rules an external caller gets the error's code only.
+    // What failed before a driver took the statement, a connect, a route or a pin, is the app's own and keeps its words.
+    internal func externalError(_ error: Error, on connectionId: UUID, reach: DriverReach) async -> Error {
+        guard reach.isReached, ServerErrorText.mayRepeatAValue(error) else { return error }
+        guard await !maskingPolicy(for: connectionId).isEmpty else { return error }
+        return ServerErrorText.withholding(error)
+    }
+
+    private func runDriverPlan(
+        _ operation: ApprovedOperation,
+        step: ExplainRequest.DriverStep,
+        timeoutSeconds: Int,
+        cancellation: (any StatementCancellationSignal)?,
+        reach: DriverReach
     ) async throws -> StatementOutcome {
         guard operation.unit == .statement, operation.statements.count == 1, let approved = operation.statements.first
         else { throw Self.notApproved }
@@ -457,9 +507,11 @@ internal actor DatabaseAccessBridge {
                 route: route,
                 policy: policy,
                 owner: owner,
-                timeoutSeconds: timeoutSeconds
+                timeoutSeconds: timeoutSeconds,
+                onLateCompletion: { CatalogChangeService.post(statementRan) }
             ) { driver in
-                try await driver.explainPlan(statement: statement, variantId: variantId)
+                reach.mark()
+                return try await driver.explainPlan(statement: statement, variantId: variantId)
             }
         } catch {
             if writes {
@@ -475,6 +527,15 @@ internal actor DatabaseAccessBridge {
 
     // One approved INSERT per row, on one write lease, each with the values it was approved with.
     internal func runInserts(_ operation: ApprovedOperation) async throws -> Int {
+        let reach = DriverReach()
+        do {
+            return try await runApprovedInserts(operation, reach: reach)
+        } catch {
+            throw await externalError(error, on: operation.scope.connectionId, reach: reach)
+        }
+    }
+
+    private func runApprovedInserts(_ operation: ApprovedOperation, reach: DriverReach) async throws -> Int {
         guard operation.kind == .writeQuery, operation.unit == .statement, !operation.statements.isEmpty
         else { throw Self.notApproved }
         let scope = operation.scope
@@ -490,6 +551,7 @@ internal actor DatabaseAccessBridge {
             route: route,
             cancellation: .protectedWrite
         ) { driver -> Int in
+            reach.mark()
             var affected = 0
             for statement in statements {
                 let result = try await driver.executeParameterized(
@@ -511,11 +573,30 @@ internal actor DatabaseAccessBridge {
         logicMode: FilterLogicMode,
         exact: Bool
     ) async throws -> (count: Int?, isApproximate: Bool) {
+        let reach = DriverReach()
+        do {
+            return try await countApprovedRows(
+                operation, table: table, filters: filters, logicMode: logicMode, exact: exact, reach: reach
+            )
+        } catch {
+            throw await externalError(error, on: operation.scope.connectionId, reach: reach)
+        }
+    }
+
+    private func countApprovedRows(
+        _ operation: ApprovedOperation,
+        table: String,
+        filters: [TableFilter],
+        logicMode: FilterLogicMode,
+        exact: Bool,
+        reach: DriverReach
+    ) async throws -> (count: Int?, isApproximate: Bool) {
         guard operation.kind == .readQuery, operation.statements.isEmpty else { throw Self.notApproved }
         let scope = operation.scope
         try await ensureConnected(scope.connectionId)
         let manager = await databaseManager
         return try await manager.withMetadataDriver(scope: scope) { driver -> (count: Int?, isApproximate: Bool) in
+            reach.mark()
             if exact {
                 let value = try await driver.fetchExactRowCount(table: table, filters: filters, logicMode: logicMode)
                 return (value, false)
@@ -528,7 +609,17 @@ internal actor DatabaseAccessBridge {
         }
     }
 
+    // A deferred constraint fails at COMMIT, naming the key values it checked.
     internal func transactionControl(_ operation: ApprovedOperation, action: String) async throws {
+        let reach = DriverReach()
+        do {
+            try await runTransactionControl(operation, action: action, reach: reach)
+        } catch {
+            throw await externalError(error, on: operation.scope.connectionId, reach: reach)
+        }
+    }
+
+    private func runTransactionControl(_ operation: ApprovedOperation, action: String, reach: DriverReach) async throws {
         guard operation.kind == .writeQuery, operation.statements.isEmpty else { throw Self.notApproved }
         let scope = operation.scope
         try await ensureConnected(scope.connectionId)
@@ -544,6 +635,7 @@ internal actor DatabaseAccessBridge {
             route: .sessionDriver,
             cancellation: .protectedWrite
         ) { driver in
+            reach.mark()
             switch action {
             case "begin": try await driver.beginTransaction(mode: .readWrite)
             case "commit": try await driver.commitTransaction()
@@ -601,10 +693,25 @@ internal actor DatabaseAccessBridge {
     }
 
     // A grid save's plan, run only when it is the plan that was approved.
+    // An UPDATE that breaks a NOT NULL or CHECK constraint fails listing the row's other values.
     internal func runRowWrites(
         _ operation: ApprovedOperation,
         plan: DataWritePlan,
         before: @Sendable @escaping (DatabaseDriver, _ ownsConnection: Bool) async throws -> Void
+    ) async throws -> DataWriteRun {
+        let reach = DriverReach()
+        do {
+            return try await runApprovedRowWrites(operation, plan: plan, before: before, reach: reach)
+        } catch {
+            throw await externalError(error, on: operation.scope.connectionId, reach: reach)
+        }
+    }
+
+    private func runApprovedRowWrites(
+        _ operation: ApprovedOperation,
+        plan: DataWritePlan,
+        before: @Sendable @escaping (DatabaseDriver, _ ownsConnection: Bool) async throws -> Void,
+        reach: DriverReach
     ) async throws -> DataWriteRun {
         guard operation.kind == .writeQuery,
               operation.scope == plan.scope,
@@ -620,6 +727,7 @@ internal actor DatabaseAccessBridge {
             route: route,
             cancellation: .protectedWrite
         ) { driver in
+            reach.mark()
             try await before(driver, ownsConnection)
             return try await DataWriteExecutor.run(plan, on: driver, context: context)
         }
@@ -647,10 +755,23 @@ internal actor DatabaseAccessBridge {
         policy: DriverCancellationPolicy,
         owner: DriverLeaseOwner,
         timeoutSeconds: Int,
+        onLateCompletion: (@Sendable () -> Void)? = nil,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> Output
     ) async throws -> Output {
         let connectionId = scope.connectionId
         let manager = await databaseManager
+        if policy == .protectedWrite {
+            return try await Self.awaitProtectedWrite(
+                timeout: .seconds(timeoutSeconds),
+                timeoutSeconds: timeoutSeconds,
+                onLateCompletion: onLateCompletion
+            ) { enterDriver in
+                try await manager.withScopedDriver(scope: scope, route: route, cancellation: policy) { driver in
+                    try enterDriver()
+                    return try await body(driver)
+                }
+            }
+        }
         return try await withThrowingTaskGroup(of: Output.self) { group in
             group.addTask {
                 try await manager.withScopedDriver(
@@ -667,18 +788,101 @@ internal actor DatabaseAccessBridge {
                         owner: owner, on: connectionId, delivery: .immediate
                     )
                 }
-                throw DatabaseAccessError.timeout(
-                    String(
-                        format: String(localized: "Query timed out after %d seconds"),
-                        timeoutSeconds
-                    )
-                )
+                throw Self.plainTimeout(seconds: timeoutSeconds)
             }
             guard let first = try await group.next() else {
                 throw DatabaseAccessError.dataSourceError("No result from query execution")
             }
             group.cancelAll()
             return first
+        }
+    }
+
+    private static func plainTimeout(seconds: Int) -> DatabaseAccessError {
+        .timeout(String(format: String(localized: "Query timed out after %d seconds"), seconds))
+    }
+
+    private enum ProtectedWritePhase: Sendable {
+        case queued
+        case inDriver
+        case abandoned
+    }
+
+    // A protected write is never aborted once the driver has it. Past the deadline, or after the
+    // caller cancels, such a write runs on and the caller is told the outcome is unknown: a plain
+    // timeout would read as "nothing happened" and invite a retry that applies it twice. A write
+    // still waiting for its turn is refused instead, so nothing runs after the caller was told no.
+    // `work` calls `enterDriver` as the first thing inside its driver turn.
+    internal static func awaitProtectedWrite<Output: Sendable>(
+        timeout: Duration,
+        timeoutSeconds: Int,
+        onLateCompletion: (@Sendable () -> Void)? = nil,
+        _ work: @Sendable @escaping (_ enterDriver: @escaping @Sendable () throws -> Void) async throws -> Output
+    ) async throws -> Output {
+        let phase = OSAllocatedUnfairLock(initialState: ProtectedWritePhase.queued)
+        let abandonIfQueued: @Sendable () -> Bool = {
+            phase.withLock { current -> Bool in
+                guard current == .queued else { return current == .abandoned }
+                current = .abandoned
+                return true
+            }
+        }
+        let (outcomes, continuation) = AsyncThrowingStream<Output?, any Error>.makeStream()
+        let deadline = Task<Bool, Never> {
+            do {
+                try await Task.sleep(for: timeout)
+            } catch {
+                return false
+            }
+            continuation.yield(nil)
+            return true
+        }
+        let workTask = Task {
+            do {
+                let output = try await work {
+                    let entered = phase.withLock { current -> Bool in
+                        guard current == .queued else { return false }
+                        current = .inDriver
+                        return true
+                    }
+                    guard entered else { throw CancellationError() }
+                }
+                continuation.yield(output)
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+            deadline.cancel()
+            let ranInDriver = phase.withLock { $0 == .inDriver }
+            if await deadline.value, ranInDriver {
+                onLateCompletion?()
+            }
+        }
+        return try await withTaskCancellationHandler {
+            for try await outcome in outcomes {
+                if let outcome { return outcome }
+                if abandonIfQueued() {
+                    workTask.cancel()
+                    throw plainTimeout(seconds: timeoutSeconds)
+                }
+                throw DatabaseAccessError.timeout(
+                    String(
+                        format: String(localized: """
+                            The statement did not finish within %d seconds and is still running. \
+                            It may have been applied; check before running it again.
+                            """),
+                        timeoutSeconds
+                    ),
+                    context: ["outcome": "unknown"]
+                )
+            }
+            try Task.checkCancellation()
+            throw DatabaseAccessError.dataSourceError("No result from query execution")
+        } onCancel: {
+            if abandonIfQueued() {
+                workTask.cancel()
+            }
+            deadline.cancel()
         }
     }
 
@@ -701,6 +905,128 @@ internal actor DatabaseAccessBridge {
             model: QueryStatementModel.forDatabaseType(databaseType),
             grammar: grammar ?? databaseType.lexicalGrammar
         )
+    }
+}
+
+// How the rows an external caller reads meet the connection's masking rules.
+internal enum ExternalRowMasking: Sendable, Equatable {
+    // The caller's own statement, which can rename or compute any column: matched by what each column reads.
+    case byOrigin
+    // A statement the app wrote that selects this table's own columns by name.
+    case table(String)
+    // A plan measured to hold only the statement's own literals, or an answer to a server call the app wrote:
+    // matched by column name.
+    case byName
+
+    func apply(_ policy: MaskingPolicy, to result: QueryResult) -> QueryResult {
+        switch self {
+        case .byOrigin: return result.maskedForExternalCaller(by: policy)
+        case .table(let table): return result.maskedForExternalCaller(by: policy, table: table)
+        case .byName: return result.masked(by: policy)
+        }
+    }
+
+    // Measured: PostgreSQL 17 plans, with ANALYZE and VERBOSE too, and SQLite 3.54 plans and bytecode hold only the
+    // statement's own literals. MariaDB writes the values it read from const tables into its plan, so a format nobody
+    // measured is masked as rows are, which masks a plan whole.
+    static func plan(in format: ExplainPlanFormat?) -> ExternalRowMasking {
+        guard let format, valueFreePlanFormats.contains(format) else { return .byOrigin }
+        return .byName
+    }
+
+    private static let valueFreePlanFormats: Set<ExplainPlanFormat> = [.postgresJson, .sqliteQueryPlan]
+
+    // The app's projection of a table proves by name only for a user table. A system one, ClickHouse's
+    // `system.query_log` or `pg_stat_activity`, repeats other tables' values and what sessions sent, so it is masked
+    // as a result with no origins is. The system names are the ones the engine's plugin declares.
+    @MainActor
+    func resolved(in scope: DatabaseScope, databaseType: DatabaseType) -> ExternalRowMasking {
+        guard case .table(let table) = self else { return self }
+        let databases = PluginManager.shared.systemContainerNames(for: databaseType, target: .database)
+        let schemas = PluginManager.shared.systemContainerNames(for: databaseType, target: .schema)
+        let containers = [scope.database] + [scope.schema].compactMap { $0 } + table.split(separator: ".").dropLast().map(String.init)
+        guard !containers.contains(where: { databases.contains($0) || schemas.contains($0) }) else { return .byOrigin }
+        return self
+    }
+}
+
+// Set as a driver takes the statement.
+internal final class DriverReach: Sendable {
+    private let reached = OSAllocatedUnfairLock(initialState: false)
+
+    func mark() {
+        reached.withLock { $0 = true }
+    }
+
+    var isReached: Bool {
+        reached.withLock { $0 }
+    }
+}
+
+// What an external caller learns of a failed statement on a connection with masking rules.
+internal enum ServerErrorText {
+    // The app's own refusals, timeouts and cancels name no value; whatever a driver or a server wrote might.
+    static func mayRepeatAValue(_ error: Error) -> Bool {
+        switch error {
+        case is CancellationError, is DatabaseAccessError, is ExternalStatementGateError, is ShortcutsActionError:
+            return false
+        case let failure as DatabaseError:
+            if case .queryFailed = failure { return true }
+            return false
+        case let refusal as DataWriteError:
+            // Only this case quotes the driver; the rest are the app's own counts and names.
+            if case .changeRefused = refusal { return true }
+            return false
+        default:
+            return true
+        }
+    }
+
+    static func withholding(_ error: Error) -> Error {
+        guard mayRepeatAValue(error) else { return error }
+        guard let partial = error as? DataWritePartialCommitError else {
+            return DatabaseAccessError.dataSourceError(withheld(for: error))
+        }
+        // What was already written is the app's own account, and what the caller must do next depends on it.
+        return DataWritePartialCommitError(
+            committed: partial.committed,
+            totalStatements: partial.totalStatements,
+            engine: partial.engine,
+            disposition: partial.disposition,
+            underlying: withholding(partial.underlying)
+        )
+    }
+
+    static var withheldMessage: String {
+        String(
+            localized: "The statement failed. Its message is withheld because this connection has masking rules, and the message can repeat a masked value."
+        )
+    }
+
+    static var withheldStatementText: String {
+        String(localized: "The statement text is withheld because this connection has masking rules, and it can repeat a masked value.")
+    }
+
+    static func withheld(for error: Error) -> String {
+        let labels = (error as? any PluginDriverError).map { Self.codes(of: $0) } ?? []
+        guard !labels.isEmpty else { return withheldMessage }
+        return String(
+            format: String(
+                localized: "The statement failed with %@. Its message is withheld because this connection has masking rules, and the message can repeat a masked value."
+            ),
+            labels.joined(separator: ", ")
+        )
+    }
+
+    private static func codes(of error: any PluginDriverError) -> [String] {
+        var codes: [String] = []
+        if let code = error.pluginErrorCode, code != 0 {
+            codes.append("error \(code)")
+        }
+        if let state = error.pluginSqlState, !state.isEmpty {
+            codes.append("SQLSTATE \(state)")
+        }
+        return codes
     }
 }
 

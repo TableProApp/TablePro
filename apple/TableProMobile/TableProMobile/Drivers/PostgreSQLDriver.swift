@@ -20,6 +20,7 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     private let database: String
     private let ssl: DriverSSLConfiguration
     let databaseType: DatabaseType
+    let queryTimeoutSeconds: Int?
 
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
@@ -54,7 +55,8 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
         password: String,
         database: String,
         ssl: DriverSSLConfiguration = .disabled,
-        databaseType: DatabaseType = .postgresql
+        databaseType: DatabaseType = .postgresql,
+        queryTimeoutSeconds: Int? = nil
     ) {
         self.host = host
         self.port = port
@@ -63,14 +65,31 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
         self.database = database
         self.ssl = ssl
         self.databaseType = databaseType
+        self.queryTimeoutSeconds = queryTimeoutSeconds
     }
 
     // MARK: - Connection
+
+    // None, or 0, keeps the limit the server or the role sets.
+    static func sessionSetupStatements(queryTimeoutSeconds: Int?) -> [String] {
+        guard let queryTimeoutSeconds, queryTimeoutSeconds > 0 else { return [] }
+        return ["SET statement_timeout = \(PluginQueryTimeout.milliseconds(queryTimeoutSeconds))"]
+    }
 
     func connect() async throws {
         try await LocalNetworkPermission.shared.ensureAccess(for: host)
         try await actor.connect(host: host, port: port, user: user, password: password, database: database, ssl: ssl)
         _ = try? await actor.execute("SET standard_conforming_strings = on")
+        // A server that refuses the limit still runs queries, as on the Mac.
+        for statement in Self.sessionSetupStatements(queryTimeoutSeconds: queryTimeoutSeconds) {
+            do {
+                _ = try await actor.execute(statement)
+            } catch {
+                Self.logger.warning(
+                    "Session setup failed with \(statement, privacy: .private): \(error.localizedDescription, privacy: .private)"
+                )
+            }
+        }
         serverVersion = await actor.serverVersion()
         serverVersionNumber = await actor.serverVersionNumber()
         catalogPresence = await probeCatalogPresence()
@@ -382,6 +401,10 @@ private actor PostgreSQLActor {
         }
 
         try await pollUntilConnected(connection)
+        // This libpq is built without `__darwin__`, so it takes keepalives_idle and never sets it on the socket.
+        guard SessionSocketKeepalive.enable(on: PQsocket(connection)) else {
+            throw PostgreSQLError.connectionFailed(String(localized: "Failed to configure the connection timeout"))
+        }
 
         self.conn = connection
         adopted = true

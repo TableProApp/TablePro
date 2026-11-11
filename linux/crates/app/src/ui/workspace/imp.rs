@@ -4,9 +4,9 @@ use std::sync::OnceLock;
 
 use glib::subclass::Signal;
 use gtk4 as gtk;
-use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
+use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
 use tablepro_core::DataModel;
@@ -54,8 +54,14 @@ pub struct Workspace {
     /// A provider is chosen, so the assistant's column and toggle show.
     #[property(get)]
     pub(super) assistant_available: Cell<bool>,
+    #[property(get)]
+    pub(super) can_refresh: Cell<bool>,
+    #[property(get)]
+    pub(super) creation_menu: RefCell<Option<gio::MenuModel>>,
 
     pub(super) key: OnceCell<SessionKey>,
+    // File sessions and saved connections must use the editor save's identity.
+    pub(super) connection_id: OnceCell<uuid::Uuid>,
     pub(super) data_model: OnceCell<DataModel>,
     /// Which tab each of the session's pages shows, shared with the
     /// model, so the shell can tell whose a page is while the model is

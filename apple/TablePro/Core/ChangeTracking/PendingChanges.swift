@@ -24,6 +24,9 @@ struct PendingChanges: Equatable {
     private(set) var modifiedCells: [RowID: Set<Int>] = [:]
     private(set) var insertedRowData: [RowID: [PluginCellValue]] = [:]
 
+    // A deleted row's edits, parked so the delete keys on the row as read and undoing it brings them back.
+    private(set) var supersededUpdates: [RowID: RowChange] = [:]
+
     private var changeIndex: [RowChangeKey: Int] = [:]
 
     var isEmpty: Bool { changes.isEmpty }
@@ -51,9 +54,39 @@ struct PendingChanges: Equatable {
         RowChange.adoptLoadedValues(values, into: &changes)
     }
 
+    // `current` is the row as the grid holds it, pending edits included.
+    func imageAsRead(
+        ofRow rowID: RowID,
+        current: [PluginCellValue],
+        absentColumns: Set<Int>
+    ) -> (row: [PluginCellValue], absentColumns: Set<Int>) {
+        guard let update = change(forRow: rowID, type: .update) else { return (current, absentColumns) }
+        var row = current
+        var absent = absentColumns
+        for cellChange in update.cellChanges where row.indices.contains(cellChange.columnIndex) {
+            row[cellChange.columnIndex] = cellChange.oldValue
+            if cellChange.oldIsAbsent {
+                absent.insert(cellChange.columnIndex)
+            } else {
+                absent.remove(cellChange.columnIndex)
+            }
+        }
+        return (row, absent)
+    }
+
     func change(forRow rowID: RowID, type: ChangeType) -> RowChange? {
         guard let idx = changeIndex[RowChangeKey(rowID: rowID, type: type)] else { return nil }
         return changes[idx]
+    }
+
+    // The row's change that comes first in `changes`, which is what a scan for its id would find.
+    func firstChange(forRow rowID: RowID) -> RowChange? {
+        var first: Int?
+        for type in [ChangeType.insert, .update, .delete] {
+            guard let idx = changeIndex[RowChangeKey(rowID: rowID, type: type)] else { continue }
+            first = min(first ?? idx, idx)
+        }
+        return first.map { changes[$0] }
     }
 
     /// The row's cells that hold a SQL expression now: a new row's from its insert, a saved row's from its edits.
@@ -118,17 +151,14 @@ struct PendingChanges: Equatable {
             return true
         }
 
-        let updateKey = RowChangeKey(rowID: rowID, type: .update)
-        if let updateIdx = changeIndex[updateKey] {
+        if let updateIdx = changeIndex[RowChangeKey(rowID: rowID, type: .update)] {
             mergeUpdateCell(at: updateIdx, cellChange: cellChange)
         } else {
-            let row = RowChange(
+            appendChange(RowChange(
                 rowID: rowID, type: .update,
                 cellChanges: [cellChange], originalRow: originalRow,
                 absentColumns: absence.originalRow
-            )
-            changes.append(row)
-            changeIndex[updateKey] = changes.count - 1
+            ))
             modifiedCells[rowID, default: []].insert(columnIndex)
         }
         return true
@@ -136,9 +166,13 @@ struct PendingChanges: Equatable {
 
     mutating func recordRowDeletion(rowID: RowID, originalRow: [PluginCellValue], absentColumns: Set<Int> = []) {
         guard !deletedRowIDs.contains(rowID) else { return }
-        removeChange(rowID: rowID, type: .update)
+        let image = imageAsRead(ofRow: rowID, current: originalRow, absentColumns: absentColumns)
+        if let updateIdx = changeIndex[RowChangeKey(rowID: rowID, type: .update)] {
+            supersededUpdates[rowID] = changes[updateIdx]
+            removeChangeAt(updateIdx)
+        }
         modifiedCells.removeValue(forKey: rowID)
-        appendChange(RowChange(rowID: rowID, type: .delete, originalRow: originalRow, absentColumns: absentColumns))
+        appendChange(RowChange(rowID: rowID, type: .delete, originalRow: image.row, absentColumns: image.absentColumns))
         deletedRowIDs.insert(rowID)
     }
 
@@ -170,6 +204,13 @@ struct PendingChanges: Equatable {
         guard deletedRowIDs.contains(rowID) else { return false }
         removeChange(rowID: rowID, type: .delete)
         deletedRowIDs.remove(rowID)
+        let updateKey = RowChangeKey(rowID: rowID, type: .update)
+        if let update = supersededUpdates.removeValue(forKey: rowID), changeIndex[updateKey] == nil {
+            // Appended as it was, so it keeps the place in the save order its first edit had.
+            changes.append(update)
+            changeIndex[updateKey] = changes.count - 1
+            modifiedCells[rowID] = Set(update.cellChanges.map(\.columnIndex))
+        }
         return true
     }
 
@@ -237,17 +278,14 @@ struct PendingChanges: Equatable {
             return
         }
 
-        let updateKey = RowChangeKey(rowID: rowID, type: .update)
-        if let updateIdx = changeIndex[updateKey] {
+        if let updateIdx = changeIndex[RowChangeKey(rowID: rowID, type: .update)] {
             mergeUpdateCell(at: updateIdx, cellChange: cellChange)
         } else {
-            let row = RowChange(
+            appendChange(RowChange(
                 rowID: rowID, type: .update,
                 cellChanges: [cellChange], originalRow: originalRow,
                 absentColumns: absence.originalRow
-            )
-            changes.append(row)
-            changeIndex[updateKey] = changes.count - 1
+            ))
             modifiedCells[rowID, default: []].insert(columnIndex)
         }
     }
@@ -382,6 +420,7 @@ struct PendingChanges: Equatable {
         insertedRowIDs.removeAll()
         modifiedCells.removeAll()
         insertedRowData.removeAll()
+        supersededUpdates.removeAll()
     }
 
     mutating func restore(from snapshot: TabChangeSnapshot) {
@@ -390,7 +429,9 @@ struct PendingChanges: Equatable {
         insertedRowIDs = snapshot.insertedRowIDs
         modifiedCells = snapshot.modifiedCells
         insertedRowData = snapshot.insertedRowData
-        nextSequence = (changes.map(\.sequence).max() ?? -1) + 1
+        supersededUpdates = snapshot.supersededUpdates
+        let sequences = changes.map(\.sequence) + supersededUpdates.values.map(\.sequence)
+        nextSequence = (sequences.max() ?? -1) + 1
         rebuildChangeIndex()
     }
 
@@ -401,6 +442,7 @@ struct PendingChanges: Equatable {
         snap.insertedRowIDs = insertedRowIDs
         snap.modifiedCells = modifiedCells
         snap.insertedRowData = insertedRowData
+        snap.supersededUpdates = supersededUpdates
         snap.primaryKeyColumns = primaryKeyColumns
         snap.columns = columns
         return snap

@@ -20,13 +20,24 @@ struct ElasticsearchColumn: Equatable {
     /// element at every level.
     let nestedPaths: [String]
 
+    // The mapping's own keys down to this field. A key can hold a dot (`subobjects: false`), so
+    // the name does not say where one object ends and the next begins.
+    let pathKeys: [String]
+
     var nestedPath: String? { nestedPaths.last }
 
-    init(name: String, type: String, hasKeywordSubfield: Bool, nestedPaths: [String] = []) {
+    init(
+        name: String,
+        type: String,
+        hasKeywordSubfield: Bool,
+        nestedPaths: [String] = [],
+        pathKeys: [String]? = nil
+    ) {
         self.name = name
         self.type = type
         self.hasKeywordSubfield = hasKeywordSubfield
         self.nestedPaths = nestedPaths
+        self.pathKeys = pathKeys ?? name.split(separator: ".").map(String.init)
     }
 }
 
@@ -60,13 +71,14 @@ enum ElasticsearchMappingFlattener {
 
     static func flattenMapping(properties: [String: Any]) -> [ElasticsearchColumn] {
         var columns: [ElasticsearchColumn] = []
-        collect(properties: properties, prefix: "", nestedPaths: [], into: &columns)
+        collect(properties: properties, prefix: "", pathKeys: [], nestedPaths: [], into: &columns)
         return columns.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     private static func collect(
         properties: [String: Any],
         prefix: String,
+        pathKeys: [String],
         nestedPaths: [String],
         into columns: inout [ElasticsearchColumn]
     ) {
@@ -84,7 +96,8 @@ enum ElasticsearchMappingFlattener {
                     name: path,
                     type: type ?? "object",
                     hasKeywordSubfield: hasKeyword,
-                    nestedPaths: nestedPaths
+                    nestedPaths: nestedPaths,
+                    pathKeys: pathKeys + [key]
                 ))
                 continue
             }
@@ -94,12 +107,14 @@ enum ElasticsearchMappingFlattener {
                     name: path,
                     type: nestedTypeName,
                     hasKeywordSubfield: false,
-                    nestedPaths: nestedPaths
+                    nestedPaths: nestedPaths,
+                    pathKeys: pathKeys + [key]
                 ))
             }
             collect(
                 properties: children,
                 prefix: path,
+                pathKeys: pathKeys + [key],
                 nestedPaths: isNested ? nestedPaths + [path] : nestedPaths,
                 into: &columns
             )

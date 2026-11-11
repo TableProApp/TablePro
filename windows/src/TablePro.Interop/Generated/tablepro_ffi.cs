@@ -1017,6 +1017,12 @@ static class _UniFFILib {
     
     
     
+    
+    
+    
+    
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -1706,6 +1712,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     RustBuffer uniffi_tablepro_ffi_fn_method_databasesession_gate_run(ulong @ptr,RustBuffer @sql,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      RustBuffer uniffi_tablepro_ffi_fn_method_databasesession_health(ulong @ptr,ref UniffiRustCallStatus _uniffi_out_err
     );
 
@@ -1816,7 +1833,29 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     sbyte uniffi_tablepro_ffi_fn_method_databasesession_set_safe_mode(ulong @ptr,RustBuffer @level,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      RustBuffer uniffi_tablepro_ffi_fn_method_databasesession_sorted_query(ulong @ptr,RustBuffer @sql,RustBuffer @columns,uint @column,sbyte @ascending,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_method_databasesession_statement_at(ulong @ptr,RustBuffer @sql,uint @caret,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     #if NET8_0_OR_GREATER
@@ -2960,6 +2999,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_databasesession_gate_run(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_databasesession_health(
     );
 
@@ -3070,7 +3120,29 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_databasesession_set_safe_mode(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_databasesession_sorted_query(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_databasesession_statement_at(
     );
 
     #if NET8_0_OR_GREATER
@@ -3529,6 +3601,12 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_databasesession_gate_run();
+            if (checksum != 5582) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_databasesession_gate_run` checksum `5582`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_databasesession_health();
             if (checksum != 16691) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_databasesession_health` checksum `16691`, library returned `{checksum}`");
@@ -3589,9 +3667,21 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_databasesession_set_safe_mode();
+            if (checksum != 16374) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_databasesession_set_safe_mode` checksum `16374`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_databasesession_sorted_query();
             if (checksum != 35269) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_databasesession_sorted_query` checksum `35269`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_databasesession_statement_at();
+            if (checksum != 63657) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_databasesession_statement_at` checksum `63657`, library returned `{checksum}`");
             }
         }
         {
@@ -4822,6 +4912,7 @@ internal interface IDatabaseSession {
     /// <exception cref="CoreException"></exception>
     Task<ColumnEntry[]> Columns(TableName @table, CancelToken? @cancel);
     string DriverId();
+    RunGate GateRun(string @sql);
     SessionHealthTag Health();
     /// <exception cref="CoreException"></exception>
     Task<SessionHealthTag> HealthChange(SessionHealthTag @seen, CancelToken? @cancel);
@@ -4837,8 +4928,10 @@ internal interface IDatabaseSession {
     Task<ObjectEntry[]> RefreshObjects(ObjectScopeArg @scope, CancelToken? @cancel);
     /// <exception cref="CoreException"></exception>
     Task<SchemaEntry[]> Schemas(CancelToken? @cancel);
+    bool SetSafeMode(SafeModeTag @level);
     /// <exception cref="CoreException"></exception>
     string? SortedQuery(string @sql, string[] @columns, uint @column, bool @ascending);
+    StatementSpan? StatementAt(string @sql, uint @caret);
     /// <exception cref="CoreException"></exception>
     Task<TableQuery> TableQuery(TableName @table, ColumnSort? @sort, ulong @limit, ulong @offset, CancelToken? @cancel);
     /// <exception cref="CoreException"></exception>
@@ -4977,6 +5070,14 @@ internal class DatabaseSession : IDatabaseSession, IDisposable {
         return CallWithPointer(thisPtr => FfiConverterString.INSTANCE.Lift(
     _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_tablepro_ffi_fn_method_databasesession_driver_id(thisPtr,  ref _status)
+)));
+    }
+    
+    
+    public RunGate GateRun(string @sql) {
+        return CallWithPointer(thisPtr => FfiConverterTypeRunGate.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_databasesession_gate_run(thisPtr, FfiConverterString.INSTANCE.Lower(@sql), ref _status)
 )));
     }
     
@@ -5132,11 +5233,27 @@ internal class DatabaseSession : IDatabaseSession, IDisposable {
     );
     }
     
+    public bool SetSafeMode(SafeModeTag @level) {
+        return CallWithPointer(thisPtr => FfiConverterBoolean.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_databasesession_set_safe_mode(thisPtr, FfiConverterTypeSafeModeTag.INSTANCE.Lower(@level), ref _status)
+)));
+    }
+    
+    
     /// <exception cref="CoreException"></exception>
     public string? SortedQuery(string @sql, string[] @columns, uint @column, bool @ascending) {
         return CallWithPointer(thisPtr => FfiConverterOptionalString.INSTANCE.Lift(
     _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_tablepro_ffi_fn_method_databasesession_sorted_query(thisPtr, FfiConverterString.INSTANCE.Lower(@sql), FfiConverterSequenceString.INSTANCE.Lower(@columns), FfiConverterUInt32.INSTANCE.Lower(@column), FfiConverterBoolean.INSTANCE.Lower(@ascending), ref _status)
+)));
+    }
+    
+    
+    public StatementSpan? StatementAt(string @sql, uint @caret) {
+        return CallWithPointer(thisPtr => FfiConverterOptionalTypeStatementSpan.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_databasesession_statement_at(thisPtr, FfiConverterString.INSTANCE.Lower(@sql), FfiConverterUInt32.INSTANCE.Lower(@caret), ref _status)
 )));
     }
     
@@ -6795,6 +6912,40 @@ class FfiConverterTypeResultColumnInfo: FfiConverterRustBuffer<ResultColumnInfo>
 
 
 
+internal record RunGate (
+    bool Refused, 
+    string[] Confirm, 
+    bool Destructive
+) {
+}
+
+class FfiConverterTypeRunGate: FfiConverterRustBuffer<RunGate> {
+    public static FfiConverterTypeRunGate INSTANCE = new FfiConverterTypeRunGate();
+
+    public override RunGate Read(BigEndianStream stream) {
+        return new RunGate(
+            Refused: FfiConverterBoolean.INSTANCE.Read(stream),
+            Confirm: FfiConverterSequenceString.INSTANCE.Read(stream),
+            Destructive: FfiConverterBoolean.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(RunGate value) {
+        return 0
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Refused)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.Confirm)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Destructive);
+    }
+
+    public override void Write(RunGate value, BigEndianStream stream) {
+            FfiConverterBoolean.INSTANCE.Write(value.Refused, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.Confirm, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.Destructive, stream);
+    }
+}
+
+
+
 /// <summary>
 /// What one run may do. `None` takes the editor's defaults: 10,000 rows
 /// and no deadline beyond the connection's.
@@ -6946,6 +7097,36 @@ class FfiConverterTypeSshSettings: FfiConverterRustBuffer<SshSettings> {
             FfiConverterOptionalString.INSTANCE.Write(value.Username, stream);
             FfiConverterSequenceString.INSTANCE.Write(value.JumpHosts, stream);
             FfiConverterTypeSshAuthTag.INSTANCE.Write(value.Auth, stream);
+    }
+}
+
+
+
+internal record StatementSpan (
+    uint Start, 
+    uint End
+) {
+}
+
+class FfiConverterTypeStatementSpan: FfiConverterRustBuffer<StatementSpan> {
+    public static FfiConverterTypeStatementSpan INSTANCE = new FfiConverterTypeStatementSpan();
+
+    public override StatementSpan Read(BigEndianStream stream) {
+        return new StatementSpan(
+            Start: FfiConverterUInt32.INSTANCE.Read(stream),
+            End: FfiConverterUInt32.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(StatementSpan value) {
+        return 0
+            + FfiConverterUInt32.INSTANCE.AllocationSize(value.Start)
+            + FfiConverterUInt32.INSTANCE.AllocationSize(value.End);
+    }
+
+    public override void Write(StatementSpan value, BigEndianStream stream) {
+            FfiConverterUInt32.INSTANCE.Write(value.Start, stream);
+            FfiConverterUInt32.INSTANCE.Write(value.End, stream);
     }
 }
 
@@ -9915,6 +10096,37 @@ class FfiConverterOptionalTypeSshSettings: FfiConverterRustBuffer<SshSettings?> 
         } else {
             stream.WriteByte(1);
             FfiConverterTypeSshSettings.INSTANCE.Write((SshSettings)value, stream);
+        }
+    }
+}
+
+
+
+
+class FfiConverterOptionalTypeStatementSpan: FfiConverterRustBuffer<StatementSpan?> {
+    public static FfiConverterOptionalTypeStatementSpan INSTANCE = new FfiConverterOptionalTypeStatementSpan();
+
+    public override StatementSpan? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeStatementSpan.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(StatementSpan? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeStatementSpan.INSTANCE.AllocationSize((StatementSpan)value);
+        }
+    }
+
+    public override void Write(StatementSpan? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeStatementSpan.INSTANCE.Write((StatementSpan)value, stream);
         }
     }
 }

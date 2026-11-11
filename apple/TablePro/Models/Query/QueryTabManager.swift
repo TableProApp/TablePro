@@ -503,7 +503,7 @@ final class QueryTabManager: ObservableObject {
         selectedTabId = newTab.id
     }
 
-    // Server Dashboard, Users & Roles, Query Insights and Table Health: one per connection.
+    // Server Dashboard, Users & Roles and Query Insights: one per connection.
     func addSingletonTab(_ tabType: TabType) {
         if let existing = tabs.first(where: { $0.tabType == tabType }) {
             selectedTabId = existing.id
@@ -646,6 +646,25 @@ final class QueryTabManager: ObservableObject {
     // Nil stands for Tables, so a tab saved before kinds existed reads as one.
     private static func storedListingKind(_ kind: SidebarObjectKind) -> SidebarObjectKind? {
         kind == .table ? nil : kind
+    }
+
+    // One per database. No database opens nothing: the report never falls back to the browse cursor, which moves.
+    @discardableResult
+    func addTableHealthTab(databaseName: String) -> UUID? {
+        guard !databaseName.isEmpty else { return nil }
+        if let existing = tabs.first(where: {
+            $0.tabType == .tableHealth && $0.tableContext.databaseName == databaseName
+        }) {
+            selectedTabId = existing.id
+            return existing.id
+        }
+        var newTab = QueryTab(title: WindowTitleResolver.title(for: .tableHealth), tabType: .tableHealth)
+        newTab.tableContext.isEditable = false
+        newTab.tableContext.databaseName = databaseName
+        newTab.hasUserInteraction = true
+        tabs.append(newTab)
+        selectedTabId = newTab.id
+        return newTab.id
     }
 
     // One tab per run: debugging the same routine again starts a second session rather than taking over a live one.
@@ -896,10 +915,10 @@ extension QueryTabManager {
     // Server-wide tabs answer for the whole connection, so they belong to every entry.
     private static func bindsToContainer(_ type: TabType) -> Bool {
         switch type {
-        case .query, .table, .createTable, .erDiagram, .objectSource, .tableListing:
+        case .query, .table, .createTable, .erDiagram, .objectSource, .tableListing, .tableHealth:
             return true
         // A paused debug target holds locks, so its tab stays in sight whichever entry the sidebar shows.
-        case .serverDashboard, .usersRoles, .insights, .tableHealth, .versionHistory, .routineDebug, .liveMessages:
+        case .serverDashboard, .usersRoles, .insights, .versionHistory, .routineDebug, .liveMessages:
             return false
         }
     }

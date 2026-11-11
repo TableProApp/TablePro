@@ -316,7 +316,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: "1.98"
-      - name: Build and install both executables
+      - name: Build and install both executables and the completions
         run: |
           cd "source tree/linux"
           meson setup "build dir" -Dprofile=development
@@ -324,6 +324,9 @@ jobs:
           DESTDIR="$PWD/install root" meson install -C "build dir" --no-rebuild
           test -x "install root/usr/local/bin/tablepro"
           test -x "install root/usr/local/libexec/tablepro-askpass"
+          test -s "install root/usr/local/share/bash-completion/completions/tablepro"
+          test -s "install root/usr/local/share/zsh/site-functions/_tablepro"
+          test -s "install root/usr/local/share/fish/vendor_completions.d/tablepro.fish"
 
   supply-chain:
     name: Supply chain
@@ -475,7 +478,7 @@ jobs:
           cache-key: flatpak-devel-${{ matrix.arch }}-${{ hashFiles('Cargo.lock') }}
       # The image is built on the linter's own. Only the findings in
       # lint-exceptions.json may remain. The repository is not linted: its
-      # screenshot checks need images mirrored from the release tag.
+      # screenshot checks need the mirror only Flathub's build makes.
       - name: Lint the manifest
         if: ${{ !cancelled() && matrix.arch == 'x86_64' }}
         run: |

@@ -44,8 +44,13 @@ export DEB_CXXFLAGS_MAINT_APPEND = -g1
 	dh $@ --buildsystem=meson --sourcedirectory=linux --builddirectory=$(builddir)
 
 # Tests change Cargo's LTO profile; install the package binaries already built before them.
+# Debian's zsh reads completions from vendor-completions, where its own packages put them, and
+# has no site-functions under /usr/share.
 override_dh_auto_install:
 	meson install -C $(builddir) --no-rebuild --destdir "$(CURDIR)/debian/tablepro"
+	mkdir -p debian/tablepro/usr/share/zsh/vendor-completions
+	mv debian/tablepro/usr/share/zsh/site-functions/_tablepro debian/tablepro/usr/share/zsh/vendor-completions/
+	rmdir debian/tablepro/usr/share/zsh/site-functions
 
 # The upstream changelog is the Linux app's, not a file at the top.
 override_dh_installchangelogs:

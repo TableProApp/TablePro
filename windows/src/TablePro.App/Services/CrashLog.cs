@@ -20,7 +20,7 @@ internal static class CrashLog
             var stamp = DateTimeOffset.Now.ToString("O", CultureInfo.InvariantCulture);
             File.AppendAllText(Path, $"{stamp} {AppStorage.Version}{Environment.NewLine}{exception}{Environment.NewLine}");
         }
-        catch (IOException)
+        catch (Exception logged) when (logged is IOException or UnauthorizedAccessException)
         {
             // Nothing is left to tell when the log itself cannot be written.
         }

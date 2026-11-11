@@ -867,6 +867,52 @@ struct DataBrowserViewModelTests {
         #expect(vm.canGoToNextPage == false)
     }
 
+    private func numberedPage(from first: Int, count: Int) -> QueryResult {
+        let rows: [[String?]] = (first ..< first + count).map { [String($0), "user\($0)"] }
+        return QueryResult(columns: makeColumns(), rows: rows, rowsAffected: 0, executionTime: 0)
+    }
+
+    @Test("A page trimmed under memory pressure labels the rows it kept, not the ones it dropped")
+    func trimmedPageLabelsTheRowsItKept() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = makeColumns()
+        let vm = DataBrowserViewModel()
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
+        driver.scriptedExecuteResults = [
+            .success(numberedPage(from: 1, count: 500)),
+            .success(QueryResult(columns: [], rows: [["3503"]], rowsAffected: 0, executionTime: 0))
+        ]
+        await vm.changePageSize(500)
+        driver.scriptedExecuteResults = [.success(numberedPage(from: 501, count: 500))]
+        await vm.goToNextPage()
+        #expect(vm.paginationLabel == DataBrowserViewModel.pageRangeLabel(start: 501, end: 1_000, total: 3_503))
+
+        await vm.handlePressure(.warning)
+
+        #expect(vm.legacyRows.count == 100)
+        #expect(vm.legacyRows.first?.first == "901")
+        #expect(vm.paginationLabel == DataBrowserViewModel.pageRangeLabel(start: 901, end: 1_000, total: 3_503))
+    }
+
+    @Test("A memory notice from a trimmed page does not cover the result of a later load")
+    func memoryNoticeEndsWithItsPage() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = makeColumns()
+        let vm = DataBrowserViewModel()
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
+        driver.scriptedExecuteResults = [.success(numberedPage(from: 1, count: 2))]
+        await vm.load(isInitial: true)
+        await vm.handlePressure(.warning)
+        #expect(vm.memoryWarning != nil)
+
+        vm.filters = [TableFilter(columnName: "name", value: "nobody")]
+        driver.scriptedExecuteResults = [emptyResult()]
+        await vm.applyFilters()
+
+        #expect(vm.legacyRows.isEmpty)
+        #expect(vm.memoryWarning == nil)
+    }
+
     private func keyPage(from start: Int, count: Int, total: Int) -> KeyContentsPage {
         let columns = [
             ColumnInfo(name: "index", typeName: "integer", ordinalPosition: 0),

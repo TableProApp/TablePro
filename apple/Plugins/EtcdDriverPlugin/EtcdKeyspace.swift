@@ -40,11 +40,14 @@ internal struct EtcdKeyspace: Equatable, Sendable {
         return name
     }
 
-    func tables(forKeys keys: [Data]) -> [Table] {
-        var keyCounts: [String: Int] = [:]
+    func count(_ keys: [Data], into keyCounts: inout [String: Int]) {
         for key in keys {
             keyCounts[tableName(forKey: key), default: 0] += 1
         }
+    }
+
+    func tables(fromKeyCounts counts: [String: Int]) -> [Table] {
+        var keyCounts = counts
         let rootKeyCount = keyCounts.removeValue(forKey: Self.rootTableName)
         let prefixTables = keyCounts
             .sorted { $0.key < $1.key }

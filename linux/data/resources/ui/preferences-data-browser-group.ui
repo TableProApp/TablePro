@@ -24,6 +24,134 @@
       </object>
     </child>
     <child>
+      <object class="AdwSwitchRow" id="row_numbers_row">
+        <property name="title" translatable="yes">Show Row Numbers</property>
+      </object>
+    </child>
+    <child>
+      <object class="AdwComboRow" id="row_height_row">
+        <property name="title" translatable="yes">Row Height</property>
+        <property name="model">
+          <object class="GtkStringList">
+            <items>
+              <item translatable="yes">Compact</item>
+              <item translatable="yes">Normal</item>
+              <item translatable="yes">Comfortable</item>
+              <item translatable="yes">Spacious</item>
+            </items>
+          </object>
+        </property>
+      </object>
+    </child>
+    <child>
+      <object class="AdwSwitchRow" id="auto_inspector_row">
+        <property name="title" translatable="yes">Open Row Details on Selection</property>
+        <property name="subtitle" translatable="yes">Selecting a row opens its details pane</property>
+      </object>
+    </child>
+    <child>
+      <object class="AdwSwitchRow" id="invisibles_row">
+        <property name="title" translatable="yes">Show Invisible Characters</property>
+        <property name="subtitle" translatable="yes">Mark zero-width, control and special space characters in cells and value fields</property>
+      </object>
+    </child>
+    <child>
+      <object class="AdwComboRow" id="date_format_row">
+        <property name="title" translatable="yes">Date Format</property>
+        <!-- No subtitle: its width would squeeze the chosen example. -->
+        <property name="tooltip-text" translatable="yes">How cells show dates and timestamps. Copy and export use the original values.</property>
+        <property name="model">
+          <object class="GtkStringList">
+            <items>
+              <!-- Examples rather than names, which the combo would cut
+                   at the width of the page. Not translated. -->
+              <item translatable="no">2024-12-31 23:59:59</item>
+              <item translatable="no">2024-12-31</item>
+              <item translatable="no">12/31/2024 11:59:59 PM</item>
+              <item translatable="no">12/31/2024</item>
+              <item translatable="no">31/12/2024 23:59:59</item>
+              <item translatable="no">31/12/2024</item>
+            </items>
+          </object>
+        </property>
+      </object>
+    </child>
+    <child>
+      <object class="AdwComboRow" id="default_sort_row">
+        <property name="title" translatable="yes">Default Sort</property>
+        <property name="subtitle" translatable="yes">How a table is ordered when it opens</property>
+        <property name="model">
+          <object class="GtkStringList">
+            <items>
+              <item translatable="yes">No sorting (server order)</item>
+              <item translatable="yes">Primary key</item>
+              <item translatable="yes">First column</item>
+            </items>
+          </object>
+        </property>
+      </object>
+    </child>
+    <child>
+      <object class="AdwComboRow" id="default_sort_direction_row">
+        <property name="title" translatable="yes">Default Sort Direction</property>
+        <property name="model">
+          <object class="GtkStringList">
+            <items>
+              <item translatable="yes">Ascending</item>
+              <item translatable="yes">Descending</item>
+            </items>
+          </object>
+        </property>
+      </object>
+    </child>
+    <child>
+      <object class="AdwComboRow" id="row_copy_format_row">
+        <property name="title" translatable="yes">Copy Rows As</property>
+        <property name="subtitle" translatable="yes">The format Copy writes when several rows are selected</property>
+        <property name="model">
+          <object class="GtkStringList">
+            <items>
+              <item translatable="yes">TSV</item>
+              <item translatable="yes">TSV with Headers</item>
+              <item translatable="yes">JSON</item>
+              <item translatable="yes">CSV</item>
+              <item translatable="yes">CSV with Headers</item>
+              <item translatable="yes">Markdown</item>
+            </items>
+          </object>
+        </property>
+      </object>
+    </child>
+    <child>
+      <object class="AdwEntryRow" id="null_display_row">
+        <property name="title" translatable="yes">Text for NULL</property>
+        <property name="max-length">20</property>
+        <property name="tooltip-text" translatable="yes">Up to 20 characters. Empty text uses NULL.</property>
+      </object>
+    </child>
+    <child>
+      <object class="AdwSwitchRow" id="grid_system_font_row">
+        <property name="title" translatable="yes">Use the System Monospace Font for Cells</property>
+      </object>
+    </child>
+    <child>
+      <object class="AdwActionRow" id="grid_font_row">
+        <property name="title" translatable="yes">Cell Font</property>
+        <property name="activatable-widget">grid_font_button</property>
+        <child type="suffix">
+          <object class="GtkFontDialogButton" id="grid_font_button">
+            <accessibility>
+              <property name="label" translatable="yes">Cell Font</property>
+            </accessibility>
+            <property name="valign">center</property>
+            <property name="dialog">
+              <object class="GtkFontDialog"/>
+            </property>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
       <object class="AdwSwitchRow" id="confirm_row">
         <property name="title" translatable="yes">Confirm Before Deleting Rows</property>
       </object>

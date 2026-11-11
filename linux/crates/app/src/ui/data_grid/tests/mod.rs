@@ -319,7 +319,7 @@ impl Layouts {
     fn binding(&self, table: &str) -> LayoutBinding {
         LayoutBinding {
             store: self.store.clone(),
-            connection_id: self.connection_id,
+            state_key: self.connection_id.into(),
             schema: Some("public".to_owned()),
             table: table.to_owned(),
         }

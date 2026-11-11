@@ -7,11 +7,12 @@ use gtk4::{self as gtk, glib, pango};
 use tablepro_core::Value;
 
 use super::columns::ColumnPaint;
+use super::special_marks::show_value;
 use super::tracked_values::cell_description;
 use super::{DataGrid, GridRow, ServerValue};
 use crate::services::change_tracker::CellState;
-use crate::services::grid::display_text::{DisplayText, auto_filled_sentinel, display_text, editable_null_sentinel};
-use crate::services::grid::{CellLock, GridColumn};
+use crate::services::grid::display_text::{DisplayText, auto_filled_sentinel, display_text_formatted, null_text};
+use crate::services::grid::{CellLock, GridColumn, HighlightColor};
 
 /// Enough for any number, date or short text.
 const SCRATCH_KEPT_BYTES: usize = 256;
@@ -36,8 +37,6 @@ pub struct TextAttributes {
     deleted: pango::AttrList,
     deleted_placeholder: pango::AttrList,
     placeholder: pango::AttrList,
-    /// The stand-in texts, translated once rather than on every bind.
-    editable_null: String,
     auto_filled: String,
 }
 
@@ -61,7 +60,6 @@ impl TextAttributes {
             deleted: list(TextMark::Deleted, false),
             deleted_placeholder: list(TextMark::Deleted, true),
             placeholder: list(TextMark::Plain, true),
-            editable_null: editable_null_sentinel(),
             auto_filled: auto_filled_sentinel(),
         }
     }
@@ -107,7 +105,6 @@ mod imp {
         type ParentType = gtk::Widget;
 
         fn class_init(klass: &mut Self::Class) {
-            klass.set_layout_manager_type::<gtk::BinLayout>();
             klass.set_css_name("tp-grid-cell");
         }
     }
@@ -125,6 +122,42 @@ mod imp {
     }
 
     impl WidgetImpl for GridCell {
+        fn measure(&self, orientation: gtk::Orientation, for_size: i32) -> (i32, i32, i32, i32) {
+            let mut size = (0, 0, -1, -1);
+            let mut child = self.obj().first_child();
+            while let Some(widget) = child {
+                if widget.should_layout() {
+                    let measured = widget.measure(orientation, for_size);
+                    size = (
+                        size.0.max(measured.0),
+                        size.1.max(measured.1),
+                        size.2.max(measured.2),
+                        size.3.max(measured.3),
+                    );
+                }
+                child = widget.next_sibling();
+            }
+            size
+        }
+
+        fn size_allocate(&self, width: i32, height: i32, baseline: i32) {
+            let cell = self.obj();
+            let mut child = cell.first_child();
+            while let Some(widget) = child {
+                if widget.should_layout() {
+                    let (offset, available) = if self.editor.borrow().as_ref() == Some(&widget) {
+                        cell.editor_space(width)
+                    } else {
+                        (0, width)
+                    };
+                    let transform =
+                        gtk::gsk::Transform::new().translate(&gtk::graphene::Point::new(offset as f32, 0.0));
+                    widget.allocate(available, height, baseline, Some(transform));
+                }
+                child = widget.next_sibling();
+            }
+        }
+
         fn unroot(&self) {
             let cell = self.obj();
             if let Some(grid) = cell.grid() {
@@ -147,6 +180,7 @@ glib::wrapper! {
 impl GridCell {
     pub fn new(paint: Rc<ColumnPaint>) -> Self {
         let cell: Self = glib::Object::new();
+        cell.set_overflow(gtk::Overflow::Hidden);
         let display = gtk::Inscription::new(None);
         display.set_hexpand(true);
         // An ellipsized Inscription draws from its top edge, so it is kept
@@ -160,6 +194,27 @@ impl GridCell {
         let _ = cell.imp().display.set(display);
         let _ = cell.imp().paint.set(paint);
         cell
+    }
+
+    fn editor_space(&self, width: i32) -> (i32, i32) {
+        let Some(grid) = self.grid() else {
+            return (0, width);
+        };
+        let Some(edge) = super::pinned_numbers::covered_edge(&grid) else {
+            return (0, width);
+        };
+        let Some(origin) = self.compute_point(&grid.column_view(), &gtk::graphene::Point::new(0.0, 0.0)) else {
+            return (0, width);
+        };
+        // GTK picks descendants before their parent's contains method. Allocate
+        // the editor in the uncovered part so its native gestures cannot reach the gutter.
+        match grid.column_view().direction() {
+            gtk::TextDirection::Rtl => (0, ((edge - origin.x()).floor() as i32).clamp(0, width)),
+            _ => {
+                let offset = ((edge - origin.x()).ceil() as i32).clamp(0, width);
+                (offset, width - offset)
+            }
+        }
     }
 
     pub fn attach(&self, list_item: &gtk::ColumnViewCell) {
@@ -258,11 +313,16 @@ impl GridCell {
             (false, CellState::Modified) => TextMark::Modified,
             (false, _) => TextMark::Plain,
         };
+        let marks = paint.preferences.snapshot().show_invisible_characters;
         let null = paint.tracked.with_value(&row, column, |value, computed| {
             let mut scratch = self.imp().scratch.borrow_mut();
             let shown = shown_text(&paint, value, computed, lock.is_none(), &mut scratch);
-            display.set_text(Some(shown.text));
-            display.set_attributes(paint.attributes.for_text(text_mark, shown.placeholder));
+            show_value(
+                display,
+                shown.text,
+                paint.attributes.for_text(text_mark, shown.placeholder),
+                marks && !shown.placeholder,
+            );
             set_class(
                 display,
                 "dimmed",
@@ -273,21 +333,36 @@ impl GridCell {
         if self.imp().scratch.borrow().capacity() > SCRATCH_KEPT_BYTES {
             self.imp().scratch.replace(String::new());
         }
+        // GTK binds a new row before attaching it to the grid widget tree.
+        let colour = paint.grid.upgrade().and_then(|grid| grid.highlight_of(&row, column));
+        for each in HighlightColor::ALL {
+            set_class(self, each.css_class(), colour == Some(each));
+        }
         let numbers = paint.numbers.get();
         display.set_xalign(if numbers { 1.0 } else { 0.0 });
         set_class(display, "numeric", numbers);
-        // Adwaita's own warning colour, beside the bold, so a changed value
-        // reads apart from the rest without a tint of the app's own.
-        set_class(display, "warning", text_mark == TextMark::Modified);
+        // Tinted backgrounds need full-opacity text; italic, bold and strikeout keep their meaning.
+        if colour.is_some() {
+            display.remove_css_class("dimmed");
+        }
+        // Warning text loses contrast over some highlights; bold still marks the edit.
+        set_class(display, "warning", text_mark == TextMark::Modified && colour.is_none());
         // On the cell, since GtkColumnViewCell passes on no accessible
         // property of its own.
-        match cell_description(mark.state, null) {
+        let description = match (cell_description(mark.state, null), colour) {
+            (Some(state), Some(colour)) => Some(crate::i18n::gettext_f(
+                "{state}. {highlight}",
+                &[("state", &state), ("highlight", &highlight_description(colour))],
+            )),
+            (None, Some(colour)) => Some(highlight_description(colour)),
+            (state, None) => state,
+        };
+        match description {
             Some(description) => self.update_property(&[gtk::accessible::Property::Description(&description)]),
             None => self.reset_property(gtk::AccessibleProperty::Description),
         }
     }
 
-    /// Lay `editor` over the cell's text until `close_editor`.
     pub(crate) fn open_editor(&self, editor: &impl IsA<gtk::Widget>) {
         self.close_editor();
         if let Some(closed) = self.imp().closed.take() {
@@ -296,14 +371,17 @@ impl GridCell {
         if let Some(display) = self.display() {
             display.set_visible(false);
         }
-        editor.as_ref().set_parent(self);
-        self.imp().editor.replace(Some(editor.as_ref().clone()));
+        // A viewport clips a fully covered editor without allocating GtkText
+        // below its minimum size or changing its text and cursor state.
+        let viewport = gtk::Viewport::new(None::<&gtk::Adjustment>, None::<&gtk::Adjustment>);
+        viewport.set_child(Some(editor));
+        viewport.set_scroll_to_focus(true);
+        viewport.set_parent(self);
+        self.imp().editor.replace(Some(viewport.upcast()));
     }
 
-    /// The editor goes and the text shows again. GTK 4.22 loops forever
-    /// ending a focus change from a widget that lost its parent, so an
-    /// editor that still holds the focus is only hidden until the next
-    /// edit.
+    // GTK 4.22 loops when focus leaves a widget that lost its parent.
+    // Keep an editor that holds focus parented until the next edit.
     pub(crate) fn close_editor(&self) {
         if let Some(editor) = self.imp().editor.take() {
             match holds_window_focus(&editor) {
@@ -344,8 +422,16 @@ fn shown_text<'a>(
         }
         (Some(ServerValue::Default), _) => DisplayText::placeholder("DEFAULT"),
         (Some(ServerValue::Expression(expression)), _) => DisplayText::placeholder(expression.sql),
-        (None, Value::Null) if editable => DisplayText::placeholder(&paint.attributes.editable_null),
-        (None, value) => display_text(value, &paint.column.column_type, scratch),
+        (None, Value::Null) => {
+            *scratch = null_text(&paint.preferences.snapshot().null_display, editable);
+            DisplayText::placeholder(scratch)
+        }
+        (None, value) => display_text_formatted(
+            value,
+            &paint.column.column_type,
+            paint.preferences.snapshot().date_format,
+            scratch,
+        ),
     }
 }
 
@@ -362,4 +448,17 @@ pub(crate) fn holds_window_focus(widget: &gtk::Widget) -> bool {
         .and_downcast::<gtk::Window>()
         .and_then(|window| gtk::prelude::GtkWindowExt::focus(&window))
         .is_some_and(|focus| focus == *widget || focus.is_ancestor(widget))
+}
+
+fn highlight_description(colour: HighlightColor) -> String {
+    use crate::i18n::gettext;
+    match colour {
+        HighlightColor::Red => gettext("Highlighted red"),
+        HighlightColor::Orange => gettext("Highlighted orange"),
+        HighlightColor::Yellow => gettext("Highlighted yellow"),
+        HighlightColor::Green => gettext("Highlighted green"),
+        HighlightColor::Blue => gettext("Highlighted blue"),
+        HighlightColor::Purple => gettext("Highlighted purple"),
+        HighlightColor::Gray => gettext("Highlighted gray"),
+    }
 }

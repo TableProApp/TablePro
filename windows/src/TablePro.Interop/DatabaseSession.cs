@@ -124,6 +124,28 @@ public sealed class DatabaseSession : IAsyncDisposable
         return CoreCall.Run(() => _session.SortedQuery(sql, [.. columns], checked((uint)column), ascending));
     }
 
+    // At the session's Safe Mode level now, read with the engine's own statement split.
+    public RunGate GateRun(string sql)
+    {
+        ArgumentNullException.ThrowIfNull(sql);
+        var gate = _session.GateRun(sql);
+        return new RunGate(gate.Refused, [.. gate.Confirm], gate.Destructive);
+    }
+
+    // The statement the caret is in, or the last one before it, split as GateRun and the driver split the text.
+    public Range? StatementAt(string sql, int caret)
+    {
+        ArgumentNullException.ThrowIfNull(sql);
+        ArgumentOutOfRangeException.ThrowIfNegative(caret);
+        return _session.StatementAt(sql, checked((uint)caret)) is { } span
+            ? new Range(checked((int)span.Start), checked((int)span.End))
+            : null;
+    }
+
+    // A level saved while the session is open applies to it at once. False when it crosses Read only, which only a
+    // new connection can do; the session keeps its level until then.
+    public bool SetSafeMode(SafeMode level) => _session.SetSafeMode(Mapping.Level(level));
+
     // An editor tab's own connection, which keeps its transaction from one run to the next.
     public async Task<QueryEditor> OpenEditorAsync(CancellationToken cancellationToken = default)
     {

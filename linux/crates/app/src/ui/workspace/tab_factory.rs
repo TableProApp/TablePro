@@ -7,7 +7,6 @@ use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::meta::TableRef;
-use tablepro_session::SessionKey;
 use tablepro_storage::{DraftId, DraftScope};
 use uuid::Uuid;
 
@@ -19,8 +18,8 @@ use super::tab_title::{ConnectionLabel, apply_tab_title, resolve_tab_title};
 use super::table_naming::TableNaming;
 use super::workspace_persistence::WorkspaceTabs;
 use super::{
-    DiagramTabSlot, EditorTabSlot, KeyTabSlot, OpenMode, StructureTabSlot, TableTabSlot, WorkspaceInput,
-    WorkspaceSender, WorkspaceShell, WorkspaceTab,
+    DiagramTabSlot, EditorInput, EditorTabSlot, KeyTabSlot, OpenMode, SaveRequest, StructureTabSlot, TableTabSlot,
+    WorkspaceInput, WorkspaceSender, WorkspaceShell, WorkspaceTab,
 };
 use crate::runtime::DeliverInput;
 use crate::services::change_tracker_registry::ChangeTrackerRegistry;
@@ -194,7 +193,9 @@ impl TabFactory {
         // It moved before the workspace heard it, which follows it once
         // the tab is in.
         if moved {
-            parts.input.deliver(WorkspaceInput::EditorTabDatabaseChanged(id));
+            parts
+                .input
+                .deliver(WorkspaceInput::Editor(EditorInput::DatabaseChanged(id)));
         }
         editor.attach_assistant(parts.assistant.clone());
         // After the signals are connected, so the workspace marks a tab
@@ -228,6 +229,7 @@ impl TabFactory {
     fn table(&self, id: Uuid, opening: TableOpening<'_>) -> Option<WorkspaceTab> {
         let parts = &self.parts;
         let session = parts.context.active.get()?;
+        let session_has_ddl = session.current_dialect().is_some_and(|dialect| dialect.ddl().is_some());
         let TableOpening {
             table: TableRef { schema, name },
             page,
@@ -239,14 +241,7 @@ impl TabFactory {
             tracker: parts.change_trackers.register(id),
             schema: schema.clone(),
             table: name.clone(),
-            // Column widths and filters are kept per connection and table;
-            // another database's table of the same name is not that one.
-            connection_id: match parts.label.key() {
-                SessionKey::SavedIn { .. } => None,
-                SessionKey::Saved(_) | SessionKey::File(_) => {
-                    parts.context.active.metadata().map(|metadata| metadata.id)
-                }
-            },
+            state_key: Some(crate::persistence::TableStateKey::for_session(parts.label.key())),
             read_only: parts.read_only,
             page_size: page.page_size,
             initial_offset: page.offset,
@@ -254,6 +249,7 @@ impl TabFactory {
             filter,
             column_layouts: parts.storage.column_layouts().clone(),
             filter_settings: parts.storage.filter_settings().clone(),
+            highlight_rules: parts.storage.highlight_rules().clone(),
             session,
             tasks: parts.context.tasks.clone(),
             deadlines: parts.context.deadlines.clone(),
@@ -261,15 +257,21 @@ impl TabFactory {
             first_load,
         });
         connect_browse(&browse, id, &parts.input);
+        if session_has_ddl {
+            browse.offer_structure();
+        }
         let tab_page = self.append(&browse, id, parent);
         let follow = follow_loading(&tab_page, browse.is_loading());
-        browse.connect_loading_changed(move |_, loading| follow(loading));
+        browse.connect_loading_changed(move |browse, loading| {
+            follow(loading || browse.structure_tab().is_some_and(|structure| structure.is_loading()));
+        });
         Some(WorkspaceTab::Table(TableTabSlot {
             id,
             page: tab_page,
             schema,
             table: name,
             browse,
+            structure: None,
         }))
     }
 
@@ -289,7 +291,7 @@ impl TabFactory {
             tasks: parts.context.tasks.clone(),
             first_load,
         });
-        connect_structure(&structure, id, &parts.input);
+        connect_structure(&structure, id, &parts.input, SaveRequest::Tab);
         let page = self.append(&structure, id, None);
         let follow = follow_loading(&page, structure.is_loading());
         structure.connect_loading_changed(move |_, loading| follow(loading));
@@ -301,6 +303,29 @@ impl TabFactory {
             table,
             mode,
         }))
+    }
+
+    pub(super) fn table_structure(&self, id: Uuid, schema: Option<String>, table: String) -> Option<StructureTab> {
+        let parts = &self.parts;
+        let session = parts.context.active.get()?;
+        let structure = StructureTab::new(StructureTabInit {
+            tracker: parts.structure_trackers.register(id),
+            schema,
+            table,
+            mode: StructureMode::Edit,
+            session,
+            tasks: parts.context.tasks.clone(),
+            first_load: FirstLoad::Now,
+        });
+        connect_structure(&structure, id, &parts.input, SaveRequest::Structure);
+        if let Some(WorkspaceTab::Table(slot)) = parts.tabs.borrow().get(&id) {
+            let follow = follow_loading(&slot.page, structure.is_loading() || slot.browse.is_loading());
+            let browse = slot.browse.downgrade();
+            structure.connect_loading_changed(move |_, loading| {
+                follow(loading || browse.upgrade().is_some_and(|browse| browse.is_loading()));
+            });
+        }
+        Some(structure)
     }
 
     fn diagram(&self, id: Uuid, opening: DiagramOpening) -> Option<WorkspaceTab> {
@@ -405,14 +430,18 @@ impl EditorPreview {
     }
 }
 
-/// The structure tab's signals, as the workspace's inputs for the tab.
-fn connect_structure(structure: &StructureTab, tab_id: Uuid, input: &WorkspaceSender) {
+fn connect_structure(
+    structure: &StructureTab,
+    tab_id: Uuid,
+    input: &WorkspaceSender,
+    save_request: fn(Uuid) -> SaveRequest,
+) {
     let dirty = input.clone();
     structure.connect_dirty_changed(move |_, _| dirty.deliver(WorkspaceInput::TabDirtyChanged));
     let save = input.clone();
-    structure.connect_save_requested(move |_| save.deliver(WorkspaceInput::SaveTab(tab_id)));
+    structure.connect_save_requested(move |_| save.deliver(WorkspaceInput::Save(save_request(tab_id))));
     let stop = input.clone();
-    structure.connect_stop_save_requested(move |_| stop.deliver(WorkspaceInput::StopSaving(tab_id)));
+    structure.connect_stop_save_requested(move |_| stop.deliver(WorkspaceInput::Save(SaveRequest::Stop(tab_id))));
     let drop_table = input.clone();
     structure.connect_drop_table_requested(move |_, schema, table| {
         drop_table.deliver(WorkspaceInput::DropTablePrompt { schema, table });
@@ -479,9 +508,11 @@ fn connect_browse(browse: &BrowseTab, tab_id: Uuid, input: &WorkspaceSender) {
     let dirty = input.clone();
     browse.connect_dirty_changed(move |_, _| dirty.deliver(WorkspaceInput::TabDirtyChanged));
     let save = input.clone();
-    browse.connect_save_requested(move |_| save.deliver(WorkspaceInput::SaveTab(tab_id)));
+    browse.connect_save_requested(move |_| save.deliver(WorkspaceInput::Save(SaveRequest::Rows(tab_id))));
+    let structure = input.clone();
+    browse.connect_structure_requested(move |_| structure.deliver(WorkspaceInput::ShowTableStructure(tab_id)));
     let stop = input.clone();
-    browse.connect_stop_save_requested(move |_| stop.deliver(WorkspaceInput::StopSaving(tab_id)));
+    browse.connect_stop_save_requested(move |_| stop.deliver(WorkspaceInput::Save(SaveRequest::Stop(tab_id))));
     let refresh = input.clone();
     browse.connect_refresh_requested(move |_| refresh.deliver(WorkspaceInput::RefreshTab(tab_id)));
     let follow = input.clone();
@@ -504,26 +535,31 @@ pub(super) fn connect_editor(
 ) {
     let run_state = input.clone();
     editor.connect_run_state_changed(move |_, running| {
-        run_state.deliver(WorkspaceInput::EditorTabRunStateChanged(tab_id, running));
+        run_state.deliver(WorkspaceInput::Editor(EditorInput::RunStateChanged(tab_id, running)));
     });
     let finished = input.clone();
     editor.connect_run_finished(move |_, outcome| {
-        finished.deliver(WorkspaceInput::EditorTabRunFinished(tab_id, outcome))
+        finished.deliver(WorkspaceInput::Editor(EditorInput::RunFinished(tab_id, outcome)))
     });
     let content = input.clone();
-    editor.connect_content_changed(move |_| content.deliver(WorkspaceInput::EditorTabContentChanged(tab_id)));
+    editor
+        .connect_content_changed(move |_| content.deliver(WorkspaceInput::Editor(EditorInput::ContentChanged(tab_id))));
     let file = input.clone();
-    editor.connect_file_changed(move |_| file.deliver(WorkspaceInput::EditorTabFileChanged(tab_id)));
+    editor.connect_file_changed(move |_| file.deliver(WorkspaceInput::Editor(EditorInput::FileChanged(tab_id))));
     let database = input.clone();
-    editor.connect_database_changed(move |_| database.deliver(WorkspaceInput::EditorTabDatabaseChanged(tab_id)));
+    editor.connect_database_changed(move |_| {
+        database.deliver(WorkspaceInput::Editor(EditorInput::DatabaseChanged(tab_id)))
+    });
     let transaction = input.clone();
-    editor.connect_transaction_changed(move |_, _| transaction.deliver(WorkspaceInput::EditorTransactionChanged));
+    editor.connect_transaction_changed(move |_, _| {
+        transaction.deliver(WorkspaceInput::Editor(EditorInput::TransactionChanged))
+    });
     let toast = input.clone();
     editor.connect_toast(move |_, text| toast.deliver(WorkspaceInput::ShowToast(text)));
     let save = input.clone();
-    editor.connect_save_rows(move |_| save.deliver(WorkspaceInput::SaveRows(tab_id)));
+    editor.connect_save_rows(move |_| save.deliver(WorkspaceInput::Save(SaveRequest::Rows(tab_id))));
     let stop = input.clone();
-    editor.connect_stop_saving_rows(move |_| stop.deliver(WorkspaceInput::StopSaving(tab_id)));
+    editor.connect_stop_saving_rows(move |_| stop.deliver(WorkspaceInput::Save(SaveRequest::Stop(tab_id))));
     let dirty = input.clone();
     editor.connect_rows_dirty_changed(move |_| dirty.deliver(WorkspaceInput::TabDirtyChanged));
     let close = input.clone();

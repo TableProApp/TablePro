@@ -22,7 +22,7 @@ use crate::cancel_token::{CancelToken, token};
 use crate::drivers::{self, DriverInfo};
 use crate::error::CoreError;
 use crate::host::{HostConfig, HostSecretStore, HostSecrets};
-use crate::library::{ConnectionLibrary, ConnectionRecord, ConnectionSecrets, apply, blank, parse_id};
+use crate::library::{ConnectionLibrary, ConnectionRecord, ConnectionSecrets, apply, blank, parse_id, tls_config};
 use crate::prompter::{HostPrompter, HostPrompterBridge};
 use crate::runtime::{self, on_runtime};
 use crate::session::DatabaseSession;
@@ -172,7 +172,7 @@ impl Core {
                 .find(|saved| saved.id == id)
                 .cloned()
                 .ok_or_else(|| CoreError::failed("storage.connection_not_found", format!("no connection {id}")))?;
-            let credentials = Arc::new(Prefilled::new(&saved, vault, &secrets));
+            let credentials = Arc::new(Prefilled::new(&saved, vault, secrets));
             let refreshed = resolve_saved(
                 &saved,
                 &registry,
@@ -221,19 +221,33 @@ impl Core {
         cancel: Option<Arc<CancelToken>>,
     ) -> Result<(), CoreError> {
         let id = match record.id.trim() {
-            "" => Uuid::new_v4(),
-            id => parse_id(id)?,
+            "" => None,
+            id => Some(parse_id(id)?),
         };
-        let mut saved = blank(id);
+        let tls = tls_config(&record.tls)?;
         let name = record.name.trim().to_owned();
-        apply(&record, name, None, &mut saved);
+        let store = self.store.clone();
         let registry = self.registry.clone();
         let connector = self.connector.clone();
         let vault = self.vault.clone();
+        let tasks = self.tasks.clone();
         let prompter = self.prompter(prompter);
         let cancel = token(cancel);
         on_runtime(&self.tasks, async move {
-            let credentials = Prefilled::new(&saved, vault, &secrets);
+            // Over the saved entry, as a save is, so settings the form does not show are tested as Connect uses them.
+            let stored = match (id, store) {
+                (Some(id), Some(store)) => tasks
+                    .spawn_blocking_task(move || store.load_blocking())
+                    .await
+                    .map_err(|failure| CoreError::failed("ffi.panicked", failure.to_string()))??
+                    .iter()
+                    .find(|saved| saved.id == id)
+                    .cloned(),
+                _ => None,
+            };
+            let mut saved = stored.unwrap_or_else(|| blank(id.unwrap_or_else(Uuid::new_v4)));
+            apply(&record, &tls, name, saved.group_id, &mut saved);
+            let credentials = Prefilled::new(&saved, vault, secrets);
             let refreshed = resolve_saved(
                 &saved,
                 &registry,
@@ -341,8 +355,8 @@ struct Prefilled {
 }
 
 impl Prefilled {
-    fn new(saved: &SavedConnection, vault: Arc<dyn SecretVault>, secrets: &ConnectionSecrets) -> Self {
-        let typed = secrets.typed();
+    fn new(saved: &SavedConnection, vault: Arc<dyn SecretVault>, secrets: ConnectionSecrets) -> Self {
+        let typed = secrets.into_typed();
         Self {
             typed: Arc::new(Mutex::new(typed)),
             keyring: KeyringCredentials::for_saved(vault, saved),
@@ -479,7 +493,7 @@ mod tests {
 
     use async_trait::async_trait;
     use tablepro_core::credentials::{
-        CredentialPrompt, PromptPurpose, PromptReason, PromptReply, SecretError, SecretLookup,
+        CredentialPrompt, PromptPurpose, PromptReason, PromptReply, SecretError, SecretItem, SecretLookup,
     };
     use tablepro_storage::{SavedSshAuth, SavedSshConfig};
 
@@ -518,6 +532,64 @@ mod tests {
             self.0.lock().unwrap().retain(|(connection, _), _| *connection != id);
             Ok(())
         }
+    }
+
+    struct NoItems;
+
+    #[async_trait]
+    impl SecretItems for NoItems {
+        async fn load_item(&self, _: SecretItem) -> Result<Option<SecretString>, SecretError> {
+            Ok(None)
+        }
+
+        async fn store_item(&self, _: SecretItem, _: &SecretString) -> Result<(), SecretError> {
+            Ok(())
+        }
+
+        async fn delete_item(&self, _: SecretItem) -> Result<(), SecretError> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn a_test_of_a_saved_connection_uses_the_settings_the_form_does_not_show() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = Core::build(
+            HostConfig {
+                client_version: "test".to_owned(),
+                storage_dir: Some(dir.path().display().to_string()),
+            },
+            Arc::new(Vault::default()),
+            Arc::new(NoItems),
+            runtime::tasks().unwrap(),
+        );
+        let mut stored = blank(Uuid::new_v4());
+        stored.name = "shop".to_owned();
+        stored.driver_id = "postgres".to_owned();
+        stored.host = "127.0.0.1".to_owned();
+        stored.port = 1;
+        stored.database = "shop".to_owned();
+        stored.username = "app".to_owned();
+        stored.tls = tablepro_core::TlsConfig::disabled();
+        // An imported file can carry an option the form has no field for; this one PostgreSQL refuses before dialling.
+        stored.options.dns_seed_list = true;
+        core.store.as_ref().unwrap().upsert_blocking(stored.clone()).unwrap();
+        let typed = || ConnectionSecrets {
+            database_password: Some("typed".to_owned()),
+            ..ConnectionSecrets::default()
+        };
+
+        let connect = core
+            .connect_saved(stored.id.to_string(), typed(), None, None)
+            .await
+            .unwrap_err();
+        let test = core
+            .test_connection(ConnectionRecord::from(&stored), typed(), None, None)
+            .await
+            .unwrap_err();
+
+        assert_eq!(connect.code(), "config.network_option_unsupported");
+        assert_eq!(test.code(), connect.code());
     }
 
     struct Answer {
@@ -601,7 +673,7 @@ mod tests {
                 .store(saved.id, kind, &SecretString::from("stored before"), "saved")
                 .await
                 .unwrap();
-            let credentials = Prefilled::new(&saved, vault, &secrets(""));
+            let credentials = Prefilled::new(&saved, vault, secrets(""));
             let first = resolve_saved(
                 &saved,
                 &drivers::registry(),
@@ -630,7 +702,7 @@ mod tests {
         for kind in SecretKind::ALL {
             for replacement in ["corrected", ""] {
                 let saved = saved(kind);
-                let credentials = Prefilled::new(&saved, Arc::new(Vault::default()), &secrets("original"));
+                let credentials = Prefilled::new(&saved, Arc::new(Vault::default()), secrets("original"));
                 let first = resolve_saved(
                     &saved,
                     &drivers::registry(),

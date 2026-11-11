@@ -52,7 +52,13 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
         self.ssl = ssl
         fallbackSchema = connection.username.uppercased()
         currentSchema = fallbackSchema
+        // The core closes the channel on a statement that runs past it, as on the Mac, and keeps it across the redial.
+        if let seconds = connection.queryTimeoutSeconds, seconds > 0 {
+            core.applyQueryTimeout(seconds)
+        }
     }
+
+    var queryTimeoutSeconds: Int { core.queryTimeoutSeconds }
 
     // MARK: - Connection
 
@@ -123,7 +129,10 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
                 let coreStream = AsyncThrowingStream<OracleStreamElement, Error> { coreContinuation in
                     let coreTask = Task {
                         do {
-                            try await core.streamQuery(query, continuation: coreContinuation)
+                            // The result buffer shows rows as they arrive, so none waits on a batch to fill.
+                            try await core.streamQuery(
+                                query, batching: OracleRowBatcher(rowsPerBatch: 1), continuation: coreContinuation
+                            )
                         } catch {
                             coreContinuation.finish(throwing: error)
                         }
@@ -132,6 +141,7 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
                 }
                 var emitted = 0
                 var headerColumns: [ColumnInfo] = []
+                var rowKey: LazyCellKey?
                 do {
                     for try await element in coreStream {
                         if Task.isCancelled {
@@ -144,6 +154,7 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
                             headerColumns = columns.enumerated().map { index, column in
                                 ColumnInfo(name: column.name, typeName: column.typeName, ordinalPosition: index)
                             }
+                            rowKey = LazyCellKey(options.lazyContext, columnNames: headerColumns.map(\.name))
                             continuation.yield(.columns(headerColumns))
                         case .rows(let batch):
                             for row in batch {
@@ -152,8 +163,17 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
                                     continuation.finish()
                                     return
                                 }
+                                let primaryKey = rowKey?.primaryKey { index in
+                                    guard row.indices.contains(index), case .string(let value) = row[index] else { return nil }
+                                    return value
+                                }
                                 let cells = zip(headerColumns, row).map { columnInfo, rawCell in
-                                    cell(from: rawCell, columnTypeName: columnInfo.typeName, options: options)
+                                    cell(
+                                        from: rawCell,
+                                        columnTypeName: columnInfo.typeName,
+                                        options: options,
+                                        ref: rowKey?.ref(column: columnInfo.name, primaryKey: primaryKey)
+                                    )
                                 }
                                 continuation.yield(.row(Row(cells: cells)))
                                 emitted += 1
@@ -177,12 +197,13 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
         }
     }
 
-    private func cell(from raw: OracleRawCell, columnTypeName: String, options: StreamOptions) -> Cell {
+    // A binary value reads back through `execute` as text, not its bytes, so it offers no full value to load.
+    private func cell(from raw: OracleRawCell, columnTypeName: String, options: StreamOptions, ref: CellRef?) -> Cell {
         switch raw {
         case .null:
             return .null
         case .string(let value):
-            return Cell.from(legacyValue: value, columnTypeName: columnTypeName, options: options)
+            return Cell.from(legacyValue: value, columnTypeName: columnTypeName, options: options, ref: ref)
         case .bytes(let data):
             return .binary(byteCount: data.count, ref: nil)
         }

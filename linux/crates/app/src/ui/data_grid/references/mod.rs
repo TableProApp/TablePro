@@ -90,10 +90,9 @@ pub fn refresh_actions(grid: &DataGrid, target: Option<&Resolved>) {
 }
 
 impl DataGrid {
-    /// The table's foreign keys were read: Ctrl+J follows what they
-    /// offer now.
     pub(crate) fn keys_changed(&self) {
         self.refresh_actions();
+        self.imp().detail_pane.redraw_fields();
     }
 
     /// Fill the cell menu's key items for `cell` as the menu opens; a row
@@ -201,13 +200,24 @@ fn add_choice(grid: &DataGrid, name: &str, act: impl Fn(&DataGrid, usize) + 'sta
     grid.actions().add_action(&action);
 }
 
+impl DataGrid {
+    pub(crate) fn is_foreign_key_column(&self, name: &str) -> bool {
+        self.config()
+            .and_then(|config| config.references.as_ref().map(KeysHandle::get))
+            .is_some_and(|keys| {
+                keys.outbound
+                    .iter()
+                    .any(|outbound| outbound.key.columns.iter().any(|column| column == name))
+            })
+    }
+}
+
 /// What `row` offers from `column`, under the keys read so far. A grid
 /// that was given no keys offers nothing.
 fn offers(grid: &DataGrid, row: &GridRow, column: usize) -> Offers {
     let Some(keys) = grid
         .config()
-        .and_then(|config| config.references.as_ref())
-        .map(KeysHandle::get)
+        .and_then(|config| config.references.as_ref().map(KeysHandle::get))
     else {
         return Offers::default();
     };

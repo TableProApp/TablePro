@@ -16,6 +16,15 @@ pub(crate) fn tag_version(release: &str) -> String {
     release.replacen('~', "-", 1)
 }
 
+// git archive writes the commit into build-aux/source-commit (export-subst), and a release
+// is built before its tag exists; a git checkout keeps the `$Format:%H$` placeholder.
+pub(crate) fn screenshots_ref(source_commit: &str, release: &str) -> String {
+    match source_commit.trim() {
+        placeholder if placeholder.starts_with('$') => format!("linux-v{}", tag_version(release)),
+        commit => commit.to_owned(),
+    }
+}
+
 fn attribute<'a>(attributes: &'a str, name: &str) -> Option<&'a str> {
     let mut rest = attributes;
     loop {
@@ -65,6 +74,13 @@ mod tests {
     fn a_beta_release_is_tagged_with_a_hyphen() {
         assert_eq!(tag_version("0.1.0~beta.1"), "0.1.0-beta.1");
         assert_eq!(tag_version("0.1.0"), "0.1.0");
+    }
+
+    #[test]
+    fn screenshots_name_the_archived_commit_or_the_tag() {
+        let commit = "3723a6c4cd9e17e1c8c641127b4d37c4f759e625";
+        assert_eq!(screenshots_ref(&format!("{commit}\n"), "0.1.0~beta.3"), commit);
+        assert_eq!(screenshots_ref("$Format:%H$\n", "0.1.0~beta.3"), "linux-v0.1.0-beta.3");
     }
 
     #[test]

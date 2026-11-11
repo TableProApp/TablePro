@@ -233,6 +233,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The SSH host keys saved on this device could not be read, so this server's key could not be checked." : {
+
+    },
     "The SSH port %lld is not between 1 and 65535." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -1780,6 +1783,9 @@
 
     },
     "A cursor has no .%@() modifier." : {
+
+    },
+    "A damaged history file from every connection was kept on this device. Clear All History deletes it." : {
 
     },
     "A database name must be shorter than %ld bytes." : {
@@ -4826,6 +4832,9 @@
     "Check the host name, or set SSL Mode to Verify CA to skip the name check." : {
 
     },
+    "Check the network connection and try again." : {
+
+    },
     "Check the server's TLS settings and this connection's SSL Mode." : {
 
     },
@@ -5423,6 +5432,9 @@
           }
         }
       }
+    },
+    "Clear the RDS Endpoint in this connection's Authentication section." : {
+
     },
     "ClickHouse ended the result partway through a row, so the rows that arrived are incomplete." : {
 
@@ -7481,6 +7493,9 @@
     "Crown" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "DNS Lookup Failed" : {
+
     },
     "Data & Analytics" : {
       "extractionState" : "manual",
@@ -9873,6 +9888,9 @@
           }
         }
       }
+    },
+    "Failed to configure the connection timeout" : {
+
     },
     "Failed to decode the SSO portal response for profile \"%@\"." : {
       "extractionState" : "manual",
@@ -18454,6 +18472,9 @@
     "RDS Endpoint (optional)" : {
 
     },
+    "RDS Endpoint Does Not Match" : {
+
+    },
     "RDS Endpoint Invalid" : {
 
     },
@@ -18634,6 +18655,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在重新連線…"
+          }
+        }
+      }
+    },
+    "Record %lld of the CSV data has %lld fields, but the header has %lld." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Record %1$lld of the CSV data has %2$lld fields, but the header has %3$lld."
           }
         }
       }
@@ -23224,6 +23255,16 @@
     "TablePro cannot upload changes until there is space in iCloud. Changes on this device are kept here and upload once you free up space or add storage." : {
 
     },
+    "TablePro closed %@ when it went to the background while a statement was running, so its open transaction may have been committed or rolled back. It has been reopened; check which of its changes were saved before running them again." : {
+
+    },
+    "TablePro closed %@ when it went to the background, which rolled back its open transaction. It has been reopened; run the statements again, and commit before you leave the app." : {
+
+    },
+    "TablePro could not look up \"%@\" in DNS to find the AWS endpoint it points to. Check the network and try again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "TablePro could not read that file." : {
       "localizations" : {
         "ko" : {
@@ -26294,6 +26335,10 @@
     },
     "The socket path must start with /." : {
 
+    },
+    "The RDS Endpoint \"%1$@\" is not the database at \"%2$@\", where the connection goes. Clear the RDS Endpoint unless you connect through a port forward." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The SQLite extensions for this connection could not be loaded." : {
       "extractionState" : "manual",

@@ -180,6 +180,9 @@ struct TabChangeSnapshot: Equatable {
     var insertedRowIDs: Set<RowID>
     var modifiedCells: [RowID: Set<Int>]
     var insertedRowData: [RowID: [PluginCellValue]]
+    var supersededUpdates: [RowID: RowChange] = [:]
+    // The result these edits were made on. They name its rows, so they are void on any other.
+    var resultSetId: UUID?
     var primaryKeyColumns: [String]
     var columns: [String]
 

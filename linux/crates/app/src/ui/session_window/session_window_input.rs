@@ -1,6 +1,7 @@
 use gtk4::glib;
 use libadwaita as adw;
 use tablepro_core::SafeModeLevel;
+use tablepro_core::connection_url::ConnectionUrl;
 use tablepro_core::credentials::SecretKind;
 use tablepro_core::ddl::DropDatabaseOptions;
 use tablepro_session::SessionKey;
@@ -21,6 +22,8 @@ use crate::workspace::{CloseReason, CompletedWork};
 
 #[derive(Debug)]
 pub(crate) enum SessionWindowInput {
+    StateFileStatus(super::state_file_status::StateFileKind),
+    RetryStateFile(super::state_file_status::StateFileKind),
     /// Open a saved connection, beside the sessions the window holds.
     OpenSaved(Box<SavedConnection>),
     /// Open a database file, as the file manager or the command line
@@ -42,6 +45,8 @@ pub(crate) enum SessionWindowInput {
         saved: Option<Box<SavedConnection>>,
     },
     OpenConnectDialog,
+    /// A connection link no saved connection matches, for the connect dialog to show.
+    ConnectFromLink(Box<ConnectionUrl>),
     /// The connect dialog's Connect: connect, then save the entry.
     ConnectFromDialog(Box<ConnectSubmission>),
     DialogClosed,
@@ -79,6 +84,7 @@ pub(crate) enum SessionWindowInput {
     /// Open Database… on a connection's row: pick another of its server's
     /// databases to open beside it.
     ChooseDatabaseIn(SessionKey),
+    NewTableIn(SessionKey),
     /// New Database… on a connection's row.
     NewDatabaseIn(SessionKey),
     /// New Schema… on a connection's row.

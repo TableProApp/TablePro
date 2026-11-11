@@ -35,12 +35,20 @@ pub(super) struct LayoutInit<'a> {
 /// its input. Gives back the widgets the handlers drive.
 pub(super) fn build(tab: &BrowseTab, init: &LayoutInit<'_>) -> BrowseTabWidgets {
     let imp = tab.imp();
+    let weak = tab.downgrade();
+    imp.view_stack.connect_visible_child_name_notify(move |_| {
+        if let Some(tab) = weak.upgrade() {
+            tab.follow_selected_view();
+        }
+    });
     imp.loading_page
         .set_description(Some(&loading_description(init.table_label)));
     imp.inner_stack.set_visible_child_name("loading");
     imp.read_only_banner.set_revealed(init.read_only);
     let page_sizes = page_size_choices(&imp.page_size_dropdown, init.page_size);
+    imp.overflow_button.set_menu_model(Some(&overflow_menu(&page_sizes)));
     imp.more_button.set_menu_model(Some(&more_menu(&page_sizes)));
+    imp.json_more.set_menu_model(Some(&json_menu(&page_sizes)));
     connect_controls(tab, page_sizes.clone());
     BrowseTabWidgets {
         inner_stack: imp.inner_stack.get(),
@@ -61,28 +69,67 @@ pub(super) fn build(tab: &BrowseTab, init: &LayoutInit<'_>) -> BrowseTabWidgets 
     }
 }
 
-/// What the bottom bar holds past the tab's breakpoint, where it has no
-/// room for it.
 fn more_menu(page_sizes: &[u64]) -> gio::Menu {
+    let actions = gio::Menu::new();
+    actions.append(Some(&gettext("_Filter Rows")), Some("browse.filter"));
+    actions.append(Some(&gettext("Col_umns…")), Some("grid.columns"));
+    actions.append_item(&export_item());
+    actions.append(Some(&gettext("_Count Rows")), Some("browse.count-rows"));
+    actions.append(Some(&gettext("_Highlight Rules…")), Some("grid.highlight-rules"));
+    let rows = gio::Menu::new();
+    rows.append(Some(&gettext("_Insert Row")), Some("grid.insert-row"));
+    rows.append(Some(&gettext("_Delete Selected Rows")), Some("grid.delete-rows"));
+    rows.append(Some(&gettext("_Row Details")), Some("grid.show-details"));
+    let pages = gio::Menu::new();
+    pages.append(Some(&gettext("First _Page")), Some("browse.first-page"));
+    pages.append(Some(&gettext("_Last Page")), Some("browse.last-page"));
+    let menu = gio::Menu::new();
+    menu.append_section(None, &actions);
+    menu.append_section(None, &rows);
+    menu.append_section(None, &pages);
+    menu.append_section(Some(&gettext("Rows per Page")), &page_size_menu(page_sizes));
+    menu
+}
+
+// Holds only what the medium breakpoint takes off the bar.
+fn overflow_menu(page_sizes: &[u64]) -> gio::Menu {
+    let actions = gio::Menu::new();
+    actions.append(Some(&gettext("Col_umns…")), Some("grid.columns"));
+    actions.append_item(&export_item());
+    let menu = gio::Menu::new();
+    menu.append_section(None, &actions);
+    menu.append_section(Some(&gettext("Rows per Page")), &page_size_menu(page_sizes));
+    menu
+}
+
+fn json_menu(page_sizes: &[u64]) -> gio::Menu {
+    let actions = gio::Menu::new();
+    actions.append(Some(&gettext("_Filter Rows…")), Some("browse.filter"));
+    actions.append(Some(&gettext("_Export Rows…")), Some("browse.export"));
+    actions.append(Some(&gettext("_Count Rows")), Some("browse.count-rows"));
+    let menu = gio::Menu::new();
+    menu.append_section(None, &actions);
+    menu.append_section(Some(&gettext("Rows per Page")), &page_size_menu(page_sizes));
+    menu
+}
+
+fn export_item() -> gio::MenuItem {
     let export = gio::MenuItem::new(Some(&gettext("_Export Rows…")), Some("browse.export"));
     // The window's Export Results key reaches this tab's Export.
     if let Some(key) = crate::application::triggers_for("win.export-results").first() {
         export.set_attribute_value("accel", Some(&key.to_variant()));
     }
-    let actions = gio::Menu::new();
-    actions.append(Some(&gettext("_Filter Rows")), Some("browse.filter"));
-    actions.append_item(&export);
-    actions.append(Some(&gettext("_Count Rows")), Some("browse.count-rows"));
+    export
+}
+
+fn page_size_menu(page_sizes: &[u64]) -> gio::Menu {
     let sizes = gio::Menu::new();
     for size in page_sizes {
         let item = gio::MenuItem::new(Some(&format_thousands(*size)), None);
         item.set_action_and_target_value(Some("browse.page-size"), Some(&size.to_variant()));
         sizes.append_item(&item);
     }
-    let menu = gio::Menu::new();
-    menu.append_section(None, &actions);
-    menu.append_section(Some(&gettext("Rows per Page")), &sizes);
-    menu
+    sizes
 }
 
 /// An inline editor that slides down above the grid. It lives in the
@@ -113,7 +160,7 @@ pub(super) fn filter_strip(tab: &BrowseTab, initial: &FilterSet, dialect: Option
 pub(super) struct GridInit {
     pub(super) table: TableRef,
     pub(super) label: String,
-    pub(super) connection_id: Option<uuid::Uuid>,
+    pub(super) state_key: Option<crate::persistence::TableStateKey>,
     pub(super) sorting: GridSorting,
     pub(super) tracker: TabTrackerHandle,
     pub(super) settings: Rc<AppSettings>,
@@ -131,9 +178,9 @@ pub(super) struct GridInit {
 pub(super) fn grid(tab: &BrowseTab, init: GridInit) -> DataGrid {
     let session = init.session;
     let dialect: DialectSource = Rc::new(move || session.upgrade()?.current_dialect());
-    let layout = init.connection_id.map(|connection_id| LayoutBinding {
+    let layout = init.state_key.map(|state_key| LayoutBinding {
         store: init.layouts,
-        connection_id,
+        state_key,
         schema: init.table.schema.clone(),
         table: init.table.name.clone(),
     });
@@ -158,7 +205,7 @@ pub(super) fn grid(tab: &BrowseTab, init: GridInit) -> DataGrid {
     grid.set_hexpand(true);
     let imp = tab.imp();
     imp.grid_holder.append(&grid);
-    imp.action_bar.pack_start(&grid.selection_summary());
+    imp.data_start.append(&grid.selection_summary());
     let _ = imp.grid.set(grid.clone());
     connect_grid(tab, &grid);
     grid
@@ -294,6 +341,7 @@ mod tests {
     fn every_action_in_the_more_menu_has_an_access_key_of_its_own() {
         // A page size is a number, which takes no key.
         crate::test_support::assert_access_keys(&more_menu(&[]));
+        crate::test_support::assert_access_keys(&overflow_menu(&[]));
     }
 
     #[test]
@@ -309,6 +357,18 @@ mod tests {
             .expect("Export Rows in the More menu");
 
         assert_eq!(read(export, "accel").as_deref(), Some("<Primary><Shift>e"));
+    }
+
+    #[test]
+    fn the_narrow_menu_keeps_highlight_rules_available() {
+        let actions = more_menu(&[]).item_link(0, "section").expect("actions");
+        assert!((0..actions.n_items()).any(|item| {
+            actions
+                .item_attribute_value(item, "action", None)
+                .and_then(|value| value.get::<String>())
+                .as_deref()
+                == Some("grid.highlight-rules")
+        }));
     }
 
     #[gtk4::test]

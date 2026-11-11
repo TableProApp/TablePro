@@ -13,7 +13,7 @@ import Testing
 struct RedisStatementGeneratorTests {
     // MARK: - INSERT
 
-    @Test("Basic insert generates SET command")
+    @Test("Basic insert generates a SET that refuses an existing key")
     func basicInsert() throws {
         let gen = RedisStatementGenerator(
             namespaceName: "cache:",
@@ -39,10 +39,10 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement == "SET cache:mykey hello")
+        #expect(results[0].statement == "MUSTAPPLY SET cache:mykey hello NX")
     }
 
-    @Test("Insert with TTL generates SET and EXPIRE")
+    @Test("Insert with TTL sets the expiry in the same SET, so a refused insert never touches the existing key's TTL")
     func insertWithTtl() throws {
         let gen = RedisStatementGenerator(
             namespaceName: "",
@@ -67,9 +67,8 @@ struct RedisStatementGeneratorTests {
             insertedRowIndices: [0]
         )
 
-        #expect(results.count == 2)
-        #expect(results[0].statement == "SET session:abc data")
-        #expect(results[1].statement == "EXPIRE session:abc 3600")
+        #expect(results.count == 1)
+        #expect(results[0].statement == "MUSTAPPLY SET session:abc data EX 3600 NX")
     }
 
     @Test("Insert with TTL=0 generates SET only")
@@ -98,7 +97,7 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement == "SET mykey value")
+        #expect(results[0].statement == "MUSTAPPLY SET mykey value NX")
     }
 
     @Test("Insert with a negative TTL other than -1 is refused, not written without its expiry")
@@ -134,7 +133,7 @@ struct RedisStatementGeneratorTests {
             insertedRowIndices: [0]
         )
 
-        #expect(results.map(\.statement) == ["SET mykey value"])
+        #expect(results.map(\.statement) == ["MUSTAPPLY SET mykey value NX"])
     }
 
     @Test("Insert without key is refused")
@@ -219,7 +218,7 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement == "SET mykey \"\"")
+        #expect(results[0].statement == "MUSTAPPLY SET mykey \"\" NX")
     }
 
     @Test("Insert uses cellChanges as fallback")
@@ -247,7 +246,7 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement == "SET newkey newval")
+        #expect(results[0].statement == "MUSTAPPLY SET newkey newval NX")
     }
 
     @Test("Insert not in insertedRowIndices is skipped")
@@ -276,7 +275,7 @@ struct RedisStatementGeneratorTests {
 
     // MARK: - UPDATE
 
-    @Test("Update value generates SET with new value")
+    @Test("Update value generates a SET that keeps the key's TTL")
     func updateValue() throws {
         let gen = RedisStatementGenerator(
             namespaceName: "",
@@ -300,10 +299,10 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement == "SET mykey new")
+        #expect(results[0].statement == "SET mykey new KEEPTTL")
     }
 
-    @Test("Update key generates RENAME then SET")
+    @Test("Update key writes the value to the old key, then renames only onto a free name")
     func updateKey() throws {
         let gen = RedisStatementGenerator(
             namespaceName: "",
@@ -328,11 +327,11 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 2)
-        #expect(results[0].statement == "RENAME oldkey newkey")
-        #expect(results[1].statement == "SET newkey val2")
+        #expect(results[0].statement == "SET oldkey val2 KEEPTTL")
+        #expect(results[1].statement == "MUSTAPPLY RENAMENX oldkey newkey")
     }
 
-    @Test("Update key only (no value change) generates just RENAME")
+    @Test("Update key only (no value change) generates just the guarded rename")
     func updateKeyOnly() throws {
         let gen = RedisStatementGenerator(
             namespaceName: "",
@@ -356,7 +355,7 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement == "RENAME oldkey newkey")
+        #expect(results[0].statement == "MUSTAPPLY RENAMENX oldkey newkey")
     }
 
     @Test("Update TTL generates EXPIRE")
@@ -686,7 +685,7 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement == "SET \"my key\" \"hello world\"")
+        #expect(results[0].statement == "MUSTAPPLY SET \"my key\" \"hello world\" NX")
     }
 
     @Test("Values with quotes are escaped")
@@ -715,7 +714,7 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement == "SET key \"say \\\"hello\\\"\"")
+        #expect(results[0].statement == "MUSTAPPLY SET key \"say \\\"hello\\\"\" NX")
     }
 
     // MARK: - Mixed Operations
@@ -762,8 +761,8 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 3)
-        #expect(results[0].statement == "SET newkey newval")
-        #expect(results[1].statement == "SET existingkey new")
+        #expect(results[0].statement == "MUSTAPPLY SET newkey newval NX")
+        #expect(results[1].statement == "SET existingkey new KEEPTTL")
         #expect(results[2].statement == "DEL delkey")
     }
 
@@ -792,7 +791,7 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 2)
-        #expect(results[0].statement == "SET mykey new")
+        #expect(results[0].statement == "SET mykey new KEEPTTL")
         #expect(results[1].statement == "EXPIRE mykey 300")
     }
 
@@ -822,9 +821,9 @@ struct RedisStatementGeneratorTests {
         )
 
         #expect(results.count == 3)
-        #expect(results[0].statement == "RENAME oldkey newkey")
-        #expect(results[1].statement == "SET newkey new")
-        #expect(results[2].statement == "EXPIRE newkey 600")
+        #expect(results[0].statement == "SET oldkey new KEEPTTL")
+        #expect(results[1].statement == "EXPIRE oldkey 600")
+        #expect(results[2].statement == "MUSTAPPLY RENAMENX oldkey newkey")
     }
 }
 
@@ -852,7 +851,7 @@ struct RedisStatementGeneratorBrowseColumnTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement == "SET mykey new")
+        #expect(results[0].statement == "SET mykey new KEEPTTL")
     }
 
     @Test("A whole string value is written back, however long it is")
@@ -877,7 +876,7 @@ struct RedisStatementGeneratorBrowseColumnTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement == "SET mykey \(long)")
+        #expect(results[0].statement == "SET mykey \(long) KEEPTTL")
     }
 
     @Test("A collection value update is refused so the structure survives")
@@ -974,14 +973,14 @@ struct RedisStatementGeneratorBrowseColumnTests {
             insertedRowIndices: [0]
         )
 
-        #expect(results.count == 2)
-        #expect(results[0].statement == "SET mykey hello")
-        #expect(results[1].statement == "EXPIRE mykey 600")
+        #expect(results.count == 1)
+        #expect(results[0].statement == "MUSTAPPLY SET mykey hello EX 600 NX")
     }
 
     @Test("A new hash stores each JSON field value as the text it was written as")
     func hashInsertKeepsJSONValues() throws {
-        let gen = RedisStatementGenerator(namespaceName: "", columns: Self.browseColumns)
+        var gen = RedisStatementGenerator(namespaceName: "", columns: Self.browseColumns)
+        gen.stagingToken = { "t" }
         let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
         let value = #"{"s": "t", "n": 2, "on": true, "none": null, "nested": {"x": 1}, "list": [1, 2]}"#
         let results = try gen.generateRowWrites(
@@ -991,7 +990,114 @@ struct RedisStatementGeneratorBrowseColumnTests {
             insertedRowIndices: [0]
         )
         #expect(results.first?.statement
-            == #"HSET h list [1,2] n 2 nested "{\"x\":1}" none null on true s t"#)
+            == #"HSET h:tablepro-staging:t list [1,2] n 2 nested "{\"x\":1}" none null on true s t"#)
+    }
+}
+
+// HSET, RPUSH, SADD and ZADD write into a key that already exists, so a new collection row is
+// built under a staging key and moved onto its name only when the name is free.
+struct RedisCollectionInsertTests {
+    private static let browseColumns = ["Key", "Type", "TTL", "Length", "Value"]
+
+    private func statements(key: String, type: String, ttl: PluginCellValue = nil, value: PluginCellValue) throws -> [String] {
+        var gen = RedisStatementGenerator(namespaceName: "", columns: Self.browseColumns)
+        gen.stagingToken = { "t" }
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        return try gen.generateRowWrites(
+            from: [change],
+            insertedRowData: [0: [.text(key), .text(type), ttl, nil, value]],
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        ).map { $0.statement }
+    }
+
+    @Test("Each collection type is built under a staging key and renamed only onto a free name", arguments: [
+        ("list", "RPUSH queue:tablepro-staging:t job"),
+        ("set", "SADD queue:tablepro-staging:t job"),
+        ("zset", "ZADD queue:tablepro-staging:t 0 job"),
+        ("hash", "HSET queue:tablepro-staging:t value job")
+    ])
+    func collectionInsertIsStaged(type: String, write: String) throws {
+        #expect(try statements(key: "queue", type: type, value: "job") == [
+            write,
+            "MUSTAPPLY RENAMENX queue:tablepro-staging:t queue",
+            "DEL queue:tablepro-staging:t"
+        ])
+    }
+
+    @Test("The expiry is set on the staging key, which the rename carries over")
+    func stagedInsertCarriesItsTTL() throws {
+        #expect(try statements(key: "queue", type: "list", ttl: "60", value: "job") == [
+            "RPUSH queue:tablepro-staging:t job",
+            "EXPIRE queue:tablepro-staging:t 60",
+            "MUSTAPPLY RENAMENX queue:tablepro-staging:t queue",
+            "DEL queue:tablepro-staging:t"
+        ])
+    }
+
+    @Test("A string insert keeps its single SET NX")
+    func stringInsertIsNotStaged() throws {
+        #expect(try statements(key: "queue", type: "string", value: "job") == ["MUSTAPPLY SET queue job NX"])
+    }
+
+    @Test("Every statement of a staged insert names the row it writes")
+    func stagedStatementsNameTheRow() throws {
+        var gen = RedisStatementGenerator(namespaceName: "", columns: Self.browseColumns)
+        gen.stagingToken = { "t" }
+        let change = PluginRowChange(rowIndex: 3, type: .insert, cellChanges: [], originalRow: nil)
+        let writes = try gen.generateRowWrites(
+            from: [change],
+            insertedRowData: [3: ["queue", "list", nil, nil, "job"]],
+            deletedRowIndices: [],
+            insertedRowIndices: [3]
+        )
+        #expect(writes.count == 3)
+        #expect(writes.allSatisfy { $0.rowIndices == [3] })
+    }
+
+    // An ACL key pattern such as `~app:*` admits the staging key only when it starts with the key.
+    @Test("On a cluster a staging key starts with its key and hashes to the key's slot", arguments: [
+        "queue", "app:1", "user:{42}:profile", "{tenant}", "a}b", "{}x}", "x{", "}{", "user:{}{7}"
+    ])
+    func clusterStagingKeySharesTheSlot(key: String) throws {
+        let staging = try #require(RedisConditionalWrite.stagingKey(for: key, token: "t", partitioned: true))
+        #expect(staging.hasPrefix(key + RedisConditionalWrite.stagingMarker + "t"))
+        #expect(RedisKeySlot.slot(for: staging) == RedisKeySlot.slot(for: key))
+        #expect(RedisConditionalWrite.stagingToken(in: staging) == "t")
+    }
+
+    @Test("A tagged key keeps its tag, so its staging key needs no counter")
+    func taggedKeyNeedsNoCounter() {
+        #expect(RedisConditionalWrite.stagingKey(for: "user:{42}:profile", token: "t", partitioned: true)
+            == "user:{42}:profile:tablepro-staging:t")
+    }
+
+    @Test("Without a cluster the staging key is the key and the marker, with no braces")
+    func standaloneStagingKeyIsTheKeyWithASuffix() {
+        #expect(RedisConditionalWrite.stagingKey(for: "app:1", token: "t", partitioned: false) == "app:1:tablepro-staging:t")
+    }
+
+    @Test("The grid on a cluster stages a key in its own slot")
+    func clusterGridInsertIsStagedInTheKeysSlot() throws {
+        var gen = RedisStatementGenerator(namespaceName: "", columns: Self.browseColumns, partitionsKeyspace: true)
+        gen.stagingToken = { "t" }
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        let statements = try gen.generateRowWrites(
+            from: [change],
+            insertedRowData: [0: ["app:1", "list", nil, nil, "job"]],
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        ).map { $0.statement }
+        let staging = try #require(statements.first?.split(separator: " ").dropFirst().first.map(String.init))
+        #expect(staging.hasPrefix("app:1:tablepro-staging:t"))
+        #expect(RedisKeySlot.slot(for: staging) == RedisKeySlot.slot(for: "app:1"))
+        #expect(statements.last == "DEL \(staging)")
+    }
+
+    @Test("The staging token is read past the last marker, without the slot counter")
+    func stagingTokenIsReadPastTheLastMarker() {
+        #expect(RedisConditionalWrite.stagingToken(in: "a:tablepro-staging:old:tablepro-staging:t.42") == "t")
+        #expect(RedisConditionalWrite.stagingToken(in: "queue") == nil)
     }
 }
 

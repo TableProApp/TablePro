@@ -5,9 +5,8 @@
 
 import AppKit
 
-/// Control-Tab across every connection this window hosts. The order is derived from each
-/// connection's own record of when its tabs were selected, so nothing here has to follow a tab
-/// that closes, moves to another window or arrives from a restore.
+// Control-Tab across the window's connections, ordered from each one's selection record, so nothing here follows a
+// tab that closes, moves or is restored.
 internal extension MainSplitViewController {
     @objc func switchToRecentTab(_ sender: Any?) {
         switchRecentTab(.forward, sender: sender)
@@ -17,8 +16,7 @@ internal extension MainSplitViewController {
         switchRecentTab(.backward, sender: sender)
     }
 
-    /// Control-Tab is the chord AppKit gives window tabs, so where there is no editor tab to switch
-    /// to it still switches the window's tabs rather than doing nothing.
+    // Control-Tab is AppKit's window-tab chord, so with no editor tab to switch to it still switches window tabs.
     private func switchRecentTab(_ direction: RecentTabSwitchDirection, sender: Any?) {
         guard canSwitchToRecentTab else {
             switch direction {
@@ -40,8 +38,7 @@ internal extension MainSplitViewController {
         (view.window?.tabbedWindows?.count ?? 0) > 1
     }
 
-    /// A tab other than the one on screen, which a connection with no tab open of its own can still
-    /// switch to in another connection.
+    // A connection with no tab of its own can still switch to another connection's.
     var hasRecentTabToSwitchTo: Bool {
         let tabCount = recentTabSources().reduce(0) { $0 + $1.tabIds.count }
         let showsOneOfThem = currentRecentTab.map(hostsOpenTab) ?? false
@@ -62,8 +59,7 @@ internal extension MainSplitViewController {
         )
     }
 
-    /// Only a connection that is on and browsing contributes. A tab behind a connecting or failed
-    /// pane, or behind Agent mode, is a tab the user could not see after switching to it.
+    // A tab behind a connecting or failed pane, or behind Agent mode, could not be seen after switching to it.
     private var recentTabWorkspaces: [ConnectionWorkspace] {
         workspaces.workspaces.filter(showsTabs)
     }
@@ -75,10 +71,8 @@ internal extension MainSplitViewController {
             && workspace.resolvedContentMode == .browse
     }
 
-    /// Settles which connection's tabs count as seen: the one on screen, while the window is key and
-    /// its tabs are showing, and no other. Decided here from the window's own state rather than
-    /// cached per coordinator, because a window hosting several connections has exactly one answer
-    /// and every connection has to hear it, including one that just left the screen.
+    // Decided from the window, not cached per coordinator: a window has one answer and every connection must hear it,
+    // including one that just left the screen.
     func syncFrontmostTabManager() {
         let frontmost = Self.frontmostConnectionId(
             selectedConnectionId: workspaces.selectedConnectionId,
@@ -93,7 +87,6 @@ internal extension MainSplitViewController {
         }
     }
 
-    /// At most one connection per window, and none while the window is not key.
     static func frontmostConnectionId(
         selectedConnectionId: UUID?,
         windowIsKey: Bool,
@@ -120,8 +113,7 @@ internal extension MainSplitViewController {
         return RecentTabReference(connectionId: workspace.connectionId, tabId: tabId)
     }
 
-    /// A row names its connection only when the window hosts more than one, where two connections
-    /// can hold tabs with the same title.
+    // Two connections can hold tabs with the same title, so a row names its connection once the window hosts several.
     func recentTabCandidates() -> [RecentTabCandidate] {
         let hosted = recentTabWorkspaces
         let namesConnection = hosted.count > 1
@@ -135,15 +127,12 @@ internal extension MainSplitViewController {
             let connectionName = namesConnection ? workspace.connection?.name : nil
             for tab in tabs {
                 let reference = RecentTabReference(connectionId: workspace.connectionId, tabId: tab.id)
-                let title = labels[tab.id]?.text ?? tab.title
+                let label = labels[tab.id]
                 let icon = Self.recentTabIcon(for: tab, style: iconStyle)
                 rows[reference] = RecentTabCandidate(
                     reference: reference,
-                    title: title,
-                    detail: Self.recentTabDetail(
-                        container: Self.recentTabContainer(of: tab, title: title, target: target),
-                        connectionName: connectionName
-                    ),
+                    title: label?.text ?? tab.title,
+                    detail: Self.recentTabDetail(container: label?.container, connectionName: connectionName),
                     symbolName: icon.symbolName,
                     symbolTint: icon.tint
                 )
@@ -182,14 +171,6 @@ internal extension MainSplitViewController {
         return manager.tabs.contains { $0.id == reference.tabId }
     }
 
-    /// The database or schema a table tab reads, unless the title already carries it.
-    private static func recentTabContainer(of tab: QueryTab, title: String, target: ContainerSwitchTarget?) -> String? {
-        guard tab.tableContext.tableName != nil,
-              let container = WorkspaceAnchoring.containerName(of: tab, target: target),
-              !container.isEmpty, !title.hasPrefix("\(container).") else { return nil }
-        return container
-    }
-
     private static func recentTabDetail(container: String?, connectionName: String?) -> String {
         [container, connectionName].compactMap { $0 }.joined(separator: ", ")
     }
@@ -213,7 +194,7 @@ internal extension MainSplitViewController {
         case .erDiagram:
             return "point.3.connected.trianglepath.dotted"
         case .serverDashboard:
-            return "gauge.with.dots.needle.33percent"
+            return "speedometer"
         case .usersRoles:
             return "person.2"
         case .insights:

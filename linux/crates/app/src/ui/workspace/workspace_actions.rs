@@ -23,7 +23,7 @@ type ActionInput = fn() -> WorkspaceInput;
 /// they are not left greyed out with no reason.
 const HISTORY_ACTIONS: [&str; 2] = ["show-history", "show-saved-queries"];
 
-const ENTRIES: [(&str, ActionInput); 9] = [
+const ENTRIES: [(&str, ActionInput); 10] = [
     ("new-editor-tab", || WorkspaceInput::NewEditorTab),
     (EXPORT_DATABASE, || {
         WorkspaceInput::Transfer(TransferInput::ExportDatabase)
@@ -36,8 +36,11 @@ const ENTRIES: [(&str, ActionInput); 9] = [
     ("export-results", || {
         WorkspaceInput::ActiveTab(ActiveTabCommand::ExportResults)
     }),
-    ("show-history", || WorkspaceInput::ShowHistory),
-    ("show-saved-queries", || WorkspaceInput::ShowSavedQueries),
+    ("show-history", || WorkspaceInput::Search(super::SearchInput::History)),
+    ("show-saved-queries", || {
+        WorkspaceInput::Search(super::SearchInput::SavedQueries)
+    }),
+    ("quick-open", || WorkspaceInput::Search(super::SearchInput::QuickOpen)),
     (super::health_banner::REVIEW_HOST_KEY, || WorkspaceInput::ReviewHostKey),
 ];
 
@@ -47,6 +50,7 @@ const REOPEN_CLOSED_TAB: &str = "reopen-closed-tab";
 const CLOSE_ALL_TABS: &str = "close-all-tabs";
 const SWITCH_RECENT_TAB: &str = "switch-recent-tab";
 const SHOW_TABS: &str = "show-tabs";
+const SAVE_CHANGES: &str = "save-changes";
 
 /// Add the actions to the window's own action map, which GTK exports as
 /// `win`. Each sends its input to the session in front when activated;
@@ -67,6 +71,19 @@ pub(super) fn install(window: &adw::ApplicationWindow, shell: &WorkspaceShell) {
             .build()
     });
     window.add_action_entries(actions);
+    let refreshing = shell.downgrade();
+    window.add_action_entries([gio::ActionEntry::<adw::ApplicationWindow>::builder("refresh-page")
+        .activate(move |_, _, _| {
+            if let Some(shell) = refreshing.upgrade()
+                && let Some(page) = shell.tab_view().selected_page()
+                && let Some((owner, id)) = shell.owner_of(&page)
+                && let Some(input) = owner.sender()
+            {
+                input.deliver(WorkspaceInput::RefreshPage(Some(id)));
+            }
+        })
+        .build()]);
+    set_enabled(window, "refresh-page", false);
     let reopening = shell.downgrade();
     window.add_action_entries([gio::ActionEntry::<adw::ApplicationWindow>::builder(REOPEN_CLOSED_TAB)
         .activate(move |_, _, _| {
@@ -83,6 +100,17 @@ pub(super) fn install(window: &adw::ApplicationWindow, shell: &WorkspaceShell) {
             }
         })
         .build()]);
+    let saving = shell.downgrade();
+    window.add_action_entries([gio::ActionEntry::<adw::ApplicationWindow>::builder(SAVE_CHANGES)
+        .activate(move |_, _, _| {
+            if let Some(shell) = saving.upgrade() {
+                shell.save_changes();
+            }
+        })
+        .build()]);
+    if let Some(action) = window.lookup_action(SAVE_CHANGES).and_downcast::<gio::SimpleAction>() {
+        action.set_enabled(false);
+    }
     let switching = shell.downgrade();
     window.add_action_entries([gio::ActionEntry::<adw::ApplicationWindow>::builder(SWITCH_RECENT_TAB)
         .activate(move |_, _, _| {
@@ -126,6 +154,8 @@ pub(super) fn remove(window: &adw::ApplicationWindow) {
     window.remove_action(CLOSE_ALL_TABS);
     window.remove_action(SWITCH_RECENT_TAB);
     window.remove_action(SHOW_TABS);
+    window.remove_action(SAVE_CHANGES);
+    window.remove_action("refresh-page");
 }
 
 /// Offer Export Database and Import SQL File where the session in front

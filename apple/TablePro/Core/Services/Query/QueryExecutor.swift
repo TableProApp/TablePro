@@ -1,6 +1,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 private let queryExecutorLog = Logger(subsystem: "com.TablePro", category: "QueryExecutor")
 
@@ -26,6 +27,8 @@ struct QueryFetchResult {
     var exportDocuments: [PluginExportDocument]?
     var absentCells: [Int: Set<Int>] = [:]
     var unloadedCells: [Int: [Int: Int]] = [:]
+    // See `PluginQueryResult.columnOrigins`.
+    var columnOrigins: [PluginColumnOrigin?]?
 
     var resolvedTiming: PluginQueryTiming {
         timing ?? PluginQueryTiming(total: executionTime)
@@ -170,7 +173,8 @@ final class QueryExecutor {
             timing: result.timing,
             rowLocators: result.rowLocators,
             exportDocuments: result.exportDocuments,
-            absentCells: result.absentCells
+            absentCells: result.absentCells,
+            columnOrigins: result.columnOrigins
         )
     }
 
@@ -218,7 +222,8 @@ final class QueryExecutor {
             timing: result.timing,
             rowLocators: result.rowLocators,
             exportDocuments: result.exportDocuments,
-            absentCells: result.absentCells
+            absentCells: result.absentCells,
+            columnOrigins: result.columnOrigins
         )
     }
 
@@ -245,7 +250,8 @@ final class QueryExecutor {
             timing: result.timing,
             rowLocators: result.rowLocators,
             exportDocuments: result.exportDocuments,
-            absentCells: result.absentCells
+            absentCells: result.absentCells,
+            columnOrigins: result.columnOrigins
         )
     }
 
@@ -472,9 +478,10 @@ final class QueryExecutor {
 
     static func detectAndReconcileParameters(
         sql: String,
-        existing: [QueryParameter]
+        existing: [QueryParameter],
+        grammar: SQLLexicalGrammar = SQLParameterExtractor.unspecifiedGrammar
     ) -> [QueryParameter] {
-        let detectedNames = SQLParameterExtractor.extractParameters(from: sql)
+        let detectedNames = SQLParameterExtractor.extractParameters(from: sql, grammar: grammar)
         guard !detectedNames.isEmpty else { return [] }
 
         let existingByName = Dictionary(
