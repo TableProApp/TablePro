@@ -33,6 +33,7 @@ pub struct TestDialect {
     insert_limits: InsertBatchLimits,
     insert_conflict: InsertConflict,
     update_default: bool,
+    missing_reads_null: bool,
     binds: Mutex<Vec<RecordedBind>>,
 }
 
@@ -74,6 +75,7 @@ impl Default for TestDialect {
             insert_limits: InsertBatchLimits::DEFAULT,
             insert_conflict: InsertConflict::Refused,
             update_default: true,
+            missing_reads_null: false,
             binds: Mutex::new(Vec::new()),
         }
     }
@@ -139,6 +141,13 @@ impl TestDialect {
         }
     }
 
+    pub fn reading_missing_as_null(self) -> Self {
+        Self {
+            missing_reads_null: true,
+            ..self
+        }
+    }
+
     pub fn targets(&self) -> Vec<RecordedTarget> {
         self.recorded().into_iter().map(|bind| bind.target).collect()
     }
@@ -192,6 +201,10 @@ impl SqlDialect for TestDialect {
         self.update_default
     }
 
+    fn reads_missing_as_null(&self) -> bool {
+        self.missing_reads_null
+    }
+
     fn quote_identifier(&self, name: &str) -> String {
         format!("\"{}\"", name.replace('"', "\"\""))
     }
@@ -224,6 +237,7 @@ impl SqlDialect for TestDialect {
         match value {
             Value::Null => Ok("NULL".to_owned()),
             Value::Bool(flag) => Ok(flag.to_string()),
+            Value::Int32(number) => Ok(number.to_string()),
             Value::Int(number) => Ok(number.to_string()),
             Value::UInt(number) => Ok(number.to_string()),
             Value::Text(text) => Ok(format!("'{}'", text.replace('\'', "''"))),

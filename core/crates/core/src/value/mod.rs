@@ -29,6 +29,8 @@ pub use wide_integer::{WideInteger, WideIntegerParseError};
 pub enum Value {
     Null,
     Bool(bool),
+    // MongoDB's int32, read apart from a long so an edit writes it back as one; other engines read Int.
+    Int32(i32),
     Int(i64),
     UInt(u64),
     WideInt(WideInteger),
@@ -60,7 +62,8 @@ impl Value {
     /// type holding only such values lines up as numbers do.
     pub fn is_number(&self) -> bool {
         match self {
-            Self::Int(_)
+            Self::Int32(_)
+            | Self::Int(_)
             | Self::UInt(_)
             | Self::WideInt(_)
             | Self::Float32(_)
@@ -76,6 +79,7 @@ impl Value {
         match self {
             Self::Null => "Null",
             Self::Bool(_) => "Bool",
+            Self::Int32(_) => "Int32",
             Self::Int(_) => "Int",
             Self::UInt(_) => "UInt",
             Self::WideInt(_) => "WideInt",
@@ -101,6 +105,7 @@ impl Value {
 
     pub fn as_exact_u64(&self) -> Option<u64> {
         match self {
+            Self::Int32(value) => u64::try_from(*value).ok(),
             Self::Int(value) => u64::try_from(*value).ok(),
             Self::UInt(value) => Some(*value),
             Self::Decimal(decimal) => match decimal.to_scaled_i128() {
@@ -125,6 +130,7 @@ mod tests {
     fn as_exact_u64_accepts_only_exact_non_negative_integers() {
         assert_eq!(Value::Int(7).as_exact_u64(), Some(7));
         assert_eq!(Value::Int(-1).as_exact_u64(), None);
+        assert_eq!(Value::Int32(7).as_exact_u64(), Some(7));
         assert_eq!(Value::UInt(u64::MAX).as_exact_u64(), Some(u64::MAX));
         assert_eq!(Value::Decimal("42".parse().unwrap()).as_exact_u64(), Some(42));
         assert_eq!(Value::Decimal("42.0".parse().unwrap()).as_exact_u64(), None);

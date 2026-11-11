@@ -108,7 +108,7 @@ fn ids(read: &PageRead) -> Vec<i64> {
         .rows
         .iter()
         .filter_map(|row| match row.first() {
-            Some(Value::Int(id)) => Some(*id),
+            Some(Value::Int32(id)) => Some(i64::from(*id)),
             _ => None,
         })
         .collect()
@@ -294,7 +294,7 @@ async fn label_of(
     case: &'static str,
     connection: &dyn Connection,
     table: &TableRef,
-    id: i64,
+    id: i32,
 ) -> Result<Option<Value>, ConformanceFailure> {
     let read = page(
         case,
@@ -309,7 +309,7 @@ async fn label_of(
         .result
         .rows
         .iter()
-        .find(|row| row.first() == Some(&Value::Int(id)))
+        .find(|row| row.first() == Some(&Value::Int32(id)))
         .and_then(|row| row.get(1).cloned()))
 }
 
@@ -324,8 +324,9 @@ pub async fn a_field_edit_saves_and_reads_back<E: DocumentEngine>(engine: E) -> 
         connection.as_ref(),
         &table,
         vec![RowChange::Update(RowUpdate {
-            key: vec![Value::Int(7)],
+            key: vec![Value::Int32(7)],
             assignments: vec![(1, CellInput::Value(Value::Text("renamed".to_owned())))],
+            read: Vec::new(),
         })],
     )
     .await??;
@@ -354,7 +355,7 @@ pub async fn a_save_on_a_document_that_is_gone_changes_nothing<E: DocumentEngine
         connection.as_ref(),
         &table,
         vec![RowChange::Delete {
-            key: vec![Value::Int(2)],
+            key: vec![Value::Int32(2)],
         }],
     )
     .await??;
@@ -363,8 +364,9 @@ pub async fn a_save_on_a_document_that_is_gone_changes_nothing<E: DocumentEngine
         connection.as_ref(),
         &table,
         vec![RowChange::Update(RowUpdate {
-            key: vec![Value::Int(2)],
+            key: vec![Value::Int32(2)],
             assignments: vec![(1, CellInput::Value(Value::Text("ghost".to_owned())))],
+            read: Vec::new(),
         })],
     )
     .await?;
@@ -402,7 +404,7 @@ pub async fn an_insert_and_a_delete_land<E: DocumentEngine>(engine: E) -> Result
                 ],
             },
             RowChange::Delete {
-                key: vec![Value::Int(1)],
+                key: vec![Value::Int32(1)],
             },
         ],
     )
@@ -477,6 +479,7 @@ pub async fn a_save_that_fails_at_its_second_step_keeps_the_first<E: DocumentEng
         RowChange::Update(RowUpdate {
             key: vec![Value::Int(id)],
             assignments: vec![(1, CellInput::Value(Value::Text(label.to_owned())))],
+            read: Vec::new(),
         })
     };
 
@@ -556,7 +559,7 @@ pub async fn a_read_only_connection_refuses_writes_before_sending<E: DocumentEng
         read_only.as_ref(),
         &table,
         vec![RowChange::Delete {
-            key: vec![Value::Int(1)],
+            key: vec![Value::Int32(1)],
         }],
     )
     .await?;

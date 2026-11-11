@@ -725,6 +725,7 @@ struct CompareRowGridModelTests {
                 placeholderText: .secondaryLabelColor,
                 booleanTrueText: .labelColor,
                 booleanFalseText: .labelColor,
+                valueColors: DataGridValueColors(all: .labelColor),
                 rowNumberText: .secondaryLabelColor,
                 deletedRowText: .systemRed,
                 modifiedColumnTint: .systemYellow,

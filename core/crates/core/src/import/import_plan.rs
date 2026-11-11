@@ -3,7 +3,7 @@ use std::ops::Range;
 use crate::column::ColumnInfo;
 use crate::dialect::{InsertConflict, SqlDialect};
 use crate::dml::{BuildSqlError, build_insert, build_multi_row_insert};
-use crate::edit::CellInput;
+use crate::edit::{CellInput, read_cell};
 use crate::meta::TableRef;
 use crate::save::insert_step;
 use crate::value::Value;
@@ -31,7 +31,7 @@ pub struct ImportPlan {
 /// have missed, and SQL Server counts trigger rows in its own, so only
 /// an engine that skips a taken key checks the count. An engine that
 /// replaces a taken key writes a row per step, each after a probe for
-/// its key.
+/// its key. A NULL the file held is one the import read (`read_cell`).
 pub fn plan_import(
     dialect: &dyn SqlDialect,
     table: &TableRef,
@@ -46,7 +46,11 @@ pub fn plan_import(
     let infos: Vec<ColumnInfo> = columns.iter().map(|column| column.info.clone()).collect();
     let mut steps = Vec::new();
     let mut step_rows = Vec::new();
-    let mut rows = rows.into_iter().enumerate().peekable();
+    let mut rows = rows
+        .into_iter()
+        .map(|cells| read_cells(cells, &infos, dialect))
+        .enumerate()
+        .peekable();
     while let Some((first, cells)) = rows.next() {
         let shape = written_columns(&infos, &cells);
         let width = shape.iter().filter(|written| **written).count();
@@ -101,6 +105,17 @@ pub fn plan_import(
         batch: WriteBatch::new(WriteKind::RowChanges, table.clone(), steps, ForeignKeyMode::Enforced),
         step_rows,
     })
+}
+
+fn read_cells(cells: Vec<CellInput>, columns: &[ColumnInfo], dialect: &dyn SqlDialect) -> Vec<CellInput> {
+    cells
+        .into_iter()
+        .enumerate()
+        .map(|(index, cell)| match (cell, columns.get(index)) {
+            (CellInput::Value(value), Some(column)) => read_cell(value, column, dialect),
+            (cell, _) => cell,
+        })
+        .collect()
 }
 
 /// Which columns a row writes: every one it has a value for that the
@@ -328,6 +343,29 @@ mod tests {
             plan.batch.steps[0].statement.sql(),
             r#"INSERT INTO "public"."people" DEFAULT VALUES"#
         );
+    }
+
+    #[test]
+    fn a_null_the_file_held_is_left_to_a_default_where_a_missing_value_reads_as_null() {
+        let mut columns = columns();
+        columns[1].info.default =
+            ColumnDefault::Expression(crate::column::SqlExpression::from_catalog_text("$$REMOVE"));
+        let null_name = || vec![CellInput::Value(Value::Int(1)), CellInput::Value(Value::Null)];
+        let plan =
+            |dialect: &TestDialect| plan_import(dialect, &table(), &columns, vec![null_name()]).expect("the plan");
+
+        let documents = plan(&TestDialect::default().reading_missing_as_null());
+        let rows = plan(&TestDialect::default());
+
+        assert_eq!(
+            documents.batch.steps[0].statement.sql(),
+            r#"INSERT INTO "public"."people" ("id") VALUES ($1)"#
+        );
+        assert_eq!(
+            rows.batch.steps[0].statement.sql(),
+            r#"INSERT INTO "public"."people" ("id", "name") VALUES ($1, $2)"#
+        );
+        assert_eq!(rows.batch.steps[0].statement.params()[1].value(), &Value::Null);
     }
 
     #[test]

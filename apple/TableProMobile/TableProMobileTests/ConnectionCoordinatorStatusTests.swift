@@ -181,6 +181,45 @@ struct ConnectionCoordinatorStatusTests {
         #expect(isConnected(coordinator))
     }
 
+    // The lost screen's Reconnect calls this too, so neither reopens the saved database and switches back.
+    @Test("Reconnect on a lost PostgreSQL window redials the database and schema it was on, in one dial")
+    func reconnectRedialsWhereTheWindowWas() async {
+        let warehouse = DatabaseConnection(
+            name: "Warehouse",
+            type: .postgresql,
+            host: "pg.example.com",
+            port: 5_432,
+            database: "analytics"
+        )
+        let first = driver(tables: ["facts"])
+        first.currentSchema = "public"
+        factory.queue(first)
+        let coordinator = ConnectionCoordinator(connection: warehouse, appState: appState)
+        await coordinator.connect()
+        let staging = driver(tables: ["staging_facts"])
+        staging.currentSchema = "public"
+        factory.queue(staging)
+        await coordinator.switchDatabase(to: "staging")
+        await coordinator.switchSchema(to: "sales")
+        staging.pingError = MockDatabaseDriver.MockError.scripted
+        factory.queue(refusingDriver())
+        await coordinator.reconnectIfNeeded()
+        #expect(coordinator.displayStatus == .lost(cause: ScriptedFailure.unreachable.localizedDescription))
+        let dialsBefore = factory.dialed.count
+
+        let recovered = driver(tables: ["sales_facts"])
+        recovered.currentSchema = "public"
+        factory.queue(recovered)
+        await coordinator.reconnect()
+
+        #expect(factory.dialed.count == dialsBefore + 1)
+        #expect(factory.dialed.last?.database == "staging")
+        #expect(recovered.currentSchema == "sales")
+        #expect(coordinator.session?.driver === recovered)
+        #expect(coordinator.activeDatabase == "staging")
+        #expect(coordinator.activeSchema == "sales")
+    }
+
     @Test("Tracked work that fails on a lost session dials again")
     func failedWorkOnALostSessionRedials() async throws {
         let coordinator = try await lostCoordinator(on: driver(tables: ["orders"]))
@@ -206,6 +245,25 @@ struct ConnectionCoordinatorStatusTests {
         #expect(coordinator.showFailureAlert)
         #expect(coordinator.failureAlertMessage == ConnectionCoordinator.lostTransactionMessage(.whileIdle, connectionName: "Prod"))
         #expect(appState.sessionTransactions.rollBackCount(for: connection.id) == 1)
+    }
+
+    @Test("Cancel in a window opening a lost connection leaves another window on its lost screen")
+    func cancelledOpenKeepsAnotherWindowLost() async throws {
+        let lost = try await lostCoordinator(on: driver(tables: ["orders"]))
+        let opening = ConnectionCoordinator(connection: connection, appState: appState)
+        let dialed = driver(tables: ["orders"])
+        let connecting = TestGate()
+        dialed.beforeConnect = { await connecting.enter() }
+        factory.queue(dialed)
+        let open = Task { await opening.connect() }
+        await connecting.waitUntilEntered()
+
+        opening.cancelConnect()
+        await connecting.open()
+        await open.value
+
+        #expect(opening.displayStatus == .notConnected)
+        #expect(lost.displayStatus == .lost(cause: ScriptedFailure.unreachable.localizedDescription))
     }
 
     @Test("A window whose redial failed takes the session another window dialed")
@@ -416,9 +474,11 @@ struct ConnectionCoordinatorStatusTests {
         let saved = await viewModel.saveChanges()
 
         #expect(coordinator.session == nil)
+        #expect(coordinator.displayStatus == .lost(cause: ScriptedFailure.unreachable.localizedDescription))
         #expect(coordinator.activeDatabase == "app_staging")
         #expect(coordinator.tables.map { $0.name } == ["staging_orders"])
         #expect(!saved)
+        #expect(viewModel.operationError?.title == ConnectionStatusPresentation(.lost(cause: nil)).title)
         #expect(!ranUpdate(second))
 
         coordinator.isHeldByEditor = false
@@ -430,23 +490,33 @@ struct ConnectionCoordinatorStatusTests {
         #expect(isConnected(coordinator))
     }
 
+    // The other window's open reads the saved database's tables once, for both windows.
     @Test("An unsaved edit that starts while a lost window loads another database's tables keeps the window where it was")
     func editArrivingDuringTheFetchPinsTheWindow() async throws {
         let coordinator = try await lostOnStaging()
-        let second = await reconnectAnotherWindow()
+        let second = driver(tables: ["orders"])
         let loading = TestGate()
         second.beforeFetchTables = { await loading.enter() }
+        factory.queue(second)
+        let other = ConnectionCoordinator(connection: connection, appState: appState)
 
-        let check = Task { await coordinator.reconnectIfNeeded() }
+        let opening = Task { await other.connect() }
         await loading.waitUntilEntered()
         coordinator.isHeldByEditor = true
         second.beforeFetchTables = nil
         await loading.open()
-        await check.value
+        await opening.value
+        #expect(appState.connectionManager.session(for: connection.id)?.activeDatabase == "app_prod")
 
         #expect(coordinator.session == nil)
+        #expect(coordinator.displayStatus == .lost(cause: ScriptedFailure.unreachable.localizedDescription))
         #expect(coordinator.activeDatabase == "app_staging")
         #expect(coordinator.tables.map { $0.name } == ["staging_orders"])
+        guard case .failure(let refusal) = coordinator.writableSession else {
+            Issue.record("Expected the pinned window to refuse a write")
+            return
+        }
+        #expect(refusal.title == ConnectionStatusPresentation(.lost(cause: nil)).title)
 
         coordinator.isHeldByEditor = false
         await coordinator.resumedFollow?.value

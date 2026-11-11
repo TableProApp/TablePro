@@ -542,12 +542,8 @@ private actor SQLiteActor {
             default:
                 if let str = Self.text(of: stmt, column: columnIndex) {
                     let ref = makeCellRef(column: columns[i].name, columns: columns, statement: stmt, options: options)
-                    cells.append(Cell.from(
-                        legacyValue: str,
-                        columnTypeName: columns[i].typeName,
-                        options: options,
-                        ref: ref
-                    ))
+                    // The storage class, not the declared type: a BLOB column can hold text.
+                    cells.append(Cell.from(text: str, options: options, ref: ref))
                 } else {
                     cells.append(.null)
                 }

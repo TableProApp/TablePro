@@ -222,6 +222,7 @@ struct StructureListGridToneTests {
         placeholderText: .systemBrown,
         booleanTrueText: .labelColor,
         booleanFalseText: .labelColor,
+        valueColors: DataGridValueColors(all: .systemPurple),
         rowNumberText: .secondaryLabelColor,
         deletedRowText: .systemPink,
         modifiedColumnTint: .systemYellow,

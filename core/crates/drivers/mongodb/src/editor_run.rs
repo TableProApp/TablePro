@@ -15,6 +15,7 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::call::{SessionKill, release, remaining_millis, session};
+use crate::cursor_rows::EditorLimits;
 use crate::endpoint::MongoEndpoint;
 use crate::errors::{stopped_by_kill, syntax_error};
 use crate::execute::{Source, start};
@@ -155,7 +156,13 @@ impl EditorRun {
                             *self.database.lock().unwrap_or_else(PoisonError::into_inner) = next.clone();
                             (Source::Used(next), None)
                         }
-                        source => (source, Some(options.row_limit)),
+                        source => (
+                            source,
+                            Some(EditorLimits {
+                                rows: options.row_limit,
+                                bytes: options.byte_limit,
+                            }),
+                        ),
                     };
                     emit(
                         &self.endpoint,

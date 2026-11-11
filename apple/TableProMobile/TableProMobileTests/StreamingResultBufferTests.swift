@@ -36,6 +36,23 @@ struct StreamingResultBufferTests {
         #expect(buffer.window.count == 4)
     }
 
+    @Test("the grid gets a preview of a long value the row keeps whole")
+    func gridTextOfKeptValueIsCapped() throws {
+        let buffer = StreamingResultBuffer(capacity: 10)
+        let long = String(repeating: "界", count: 5_000)
+        buffer.apply(.row(Row(cells: [.text(long)])))
+        buffer.flush()
+
+        let shown = try #require(buffer.legacyRows.first?.first ?? nil)
+        #expect(shown.utf8.count <= Cell.previewByteLimit)
+        #expect(long.hasPrefix(shown))
+        guard case .text(let kept)? = buffer.window.rows.first?.cells.first else {
+            Issue.record("the row should keep the whole value")
+            return
+        }
+        #expect(kept == long)
+    }
+
     @Test("reset clears all state")
     func resetClears() {
         let buffer = StreamingResultBuffer(capacity: 100)

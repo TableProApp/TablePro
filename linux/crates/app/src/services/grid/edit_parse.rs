@@ -64,7 +64,7 @@ pub fn commit_edit(
     if matches!(&opened_with, EditText::Editable(text) if text == input) {
         return CommitResult::Unchanged;
     }
-    match parse_cell_text(input, catalog, &start.row, dialect) {
+    match parse_cell_text(input, catalog, &start.row, &start.read, dialect) {
         Ok(parsed) => commit_input(column, start, parsed),
         Err(error) => {
             tracing::debug!(%error, column = %catalog.name, "refused an edit");
@@ -79,11 +79,12 @@ pub fn parse_cell_text(
     text: &str,
     column: &ColumnInfo,
     row: &GridRowId,
+    read: &Value,
     dialect: Option<&dyn SqlDialect>,
 ) -> Result<CellInput, EditParseError> {
     match dialect.and_then(|dialect| typed_cell_expression(dialect, &column.column_type, text)) {
         Some(expression) => Ok(CellInput::Expression(expression)),
-        None => parse_edit_text(text, column, edit_context(row)),
+        None => parse_edit_text(text, column, edit_context(row), Some(read)),
     }
 }
 
@@ -129,13 +130,13 @@ pub fn empty_placeholder(column: &GridColumn, row: &GridRowId) -> Option<String>
 
 #[cfg(test)]
 mod tests {
-    use tablepro_core::column::{ColumnDefault, ColumnKind};
+    use tablepro_core::column::{ColumnDefault, ColumnKind, FloatWidth};
     use tablepro_core::edit::{CellInput, EditParseError};
     use tablepro_core::{ColumnInfo, Value};
 
     use super::{CommitResult, EditStart, commit_edit, empty_placeholder};
     use crate::services::change_tracker::RowKey;
-    use crate::services::grid::test_columns::{grid, info, persisted, result_only};
+    use crate::services::grid::test_columns::{grid, info, info_of_kind, persisted, result_only};
     use crate::services::grid::{GridColumn, GridRowId};
     use crate::services::tracker_edit::TrackerEdit;
 
@@ -247,6 +248,28 @@ mod tests {
             })
         );
         assert_eq!(commit_edit(&text, &start, "old", None), CommitResult::Unchanged);
+    }
+
+    #[test]
+    fn a_number_a_sampled_column_does_not_type_keeps_the_type_it_was_read_as() {
+        let mut catalog = info_of_kind("c", ColumnKind::Float(FloatWidth::F64));
+        catalog.column_type.dynamic_storage = false;
+        let mut double = grid(catalog);
+        double.index = 1;
+
+        assert_eq!(
+            value_of(commit_edit(&double, &saved(Value::Int32(3)), "4", None)),
+            Some(CellInput::Value(Value::Int32(4)))
+        );
+        assert_eq!(
+            value_of(commit_edit(&double, &saved(Value::Int32(3)), "4.5", None)),
+            Some(CellInput::Value(Value::Float64(4.5)))
+        );
+        assert_eq!(
+            value_of(commit_edit(&double, &saved(Value::Float64(2.5)), "4", None)),
+            Some(CellInput::Value(Value::Float64(4.0))),
+            "a double the column types parsed as the read's type"
+        );
     }
 
     #[test]

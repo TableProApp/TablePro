@@ -6,6 +6,7 @@ use std::sync::Arc;
 use bson::Document;
 use mongodb::{Client, ClientSession};
 use tablepro_core::column::ColumnKind;
+use tablepro_core::document::NUMBER_TYPE;
 use tablepro_core::sql_syntax::StatementAccess;
 use tablepro_core::sql_syntax::mongo::{ShellStatement, access_of, parse_statement, statement_ranges};
 use tablepro_core::{
@@ -13,7 +14,7 @@ use tablepro_core::{
 };
 
 use crate::call::{ReadStop, SessionKill, generated, session};
-use crate::catalog::{JsonFields, Reader, census_stages, columns_from};
+use crate::catalog::{KnownFields, Reader, census_stages, columns_from};
 use crate::cursor_rows::Read;
 use crate::endpoint::{ClientUse, MongoEndpoint};
 use crate::errors::syntax_error;
@@ -22,11 +23,11 @@ use crate::rows::emit;
 use crate::shell_command::{NamedColumn, Plan, plan};
 
 /// Where an export reads: the connection's database, and the
-/// collections' JSON fields with the server's time limit for a census of
-/// them.
+/// collections' columns as it last read them, with the server's time
+/// limit for a census of them.
 pub(crate) struct ExportScope<'a> {
     pub(crate) database: &'a str,
-    pub(crate) json_fields: &'a JsonFields,
+    pub(crate) known_fields: &'a KnownFields,
     pub(crate) max_time: Option<i64>,
 }
 
@@ -85,39 +86,40 @@ async fn stream_in(
     let mut sets = 0;
     let mut current = scope.database.to_owned();
     for planned in plans {
-        let (mut planned, from_tab) = match planned {
-            Planned::Ready(planned) => (planned, true),
-            Planned::Typed(statement) => (plan(&statement, &current, &[])?, false),
-        };
-        if planned.discovers_columns() {
-            let mut columns = census(endpoint, client, session, &planned, stop).await?;
-            if columns.is_empty()
-                && from_tab
-                && let Some((database, collection)) = planned.collection()
-            {
-                // No document matched: the collection's columns still head the export.
+        let (mut planned, known) = match planned {
+            Planned::Ready(planned) => {
                 let mut reader = Reader {
                     endpoint,
                     client,
                     session: &mut *session,
                     max_time: scope.max_time,
+                    stop,
                 };
-                columns = reader.fields(database, collection).await?.iter().map(named).collect();
+                let known = scope.known_fields.of(&planned, &mut reader).await?;
+                (planned, Some(known))
             }
-            planned.name_columns(columns);
+            Planned::Typed(statement) => (plan(&statement, &current, &[])?, None),
+        };
+        if planned.discovers_columns() {
+            let (mut columns, tallied) = census(endpoint, client, session, &planned, stop).await?;
+            if let Some(known) = &known {
+                columns = match columns.is_empty() {
+                    // No document matched: the collection's columns still head the export.
+                    true => known.order.iter().map(NamedColumn::field).collect(),
+                    false => in_tab_order(columns, &known.order),
+                };
+            }
+            match tallied {
+                true => planned.project_columns(columns),
+                false => planned.name_columns(columns),
+            }
         }
         // A column the tab shows as JSON stays JSON where the documents
         // the export matches hold one type.
-        if from_tab {
-            let mut reader = Reader {
-                endpoint,
-                client,
-                session: &mut *session,
-                max_time: scope.max_time,
-            };
-            let shown = scope.json_fields.of(&planned, &mut reader).await?;
-            planned.show_as_json(&shown);
+        if let Some(known) = &known {
+            planned.show_as_json(known);
         }
+        stop.before_command().await?;
         let source = match start(endpoint, client, session, planned).await? {
             Source::Used(next) => {
                 current = next;
@@ -135,22 +137,23 @@ async fn stream_in(
 }
 
 /// The columns of what `planned` reads, found before its first row, as
-/// an export writes its columns first. The server tallies an aggregate's
-/// documents with the census a collection's columns come from, over every
-/// document, so a field a late document brings is a column and a field
-/// of mixed values is JSON. A `find` has no pipeline to tally in, so its
-/// documents are read here, for the fields in the order they first show.
+/// an export writes its columns first, and whether the server tallied
+/// them. The server tallies an aggregate's documents with the census a
+/// collection's columns come from, over every document, so a field a late
+/// document brings is a column and a field of mixed values is JSON. A
+/// `find` has no pipeline to tally in, so its documents are read here, for
+/// the fields in the order they first show.
 async fn census(
     endpoint: &MongoEndpoint,
     client: &Client,
     session: &mut ClientSession,
     planned: &Plan,
     stop: &ReadStop,
-) -> Result<Vec<NamedColumn>, DriverError> {
-    if let Some(tally) = planned.followed_by(census_stages()) {
+) -> Result<(Vec<NamedColumn>, bool), DriverError> {
+    if let Some(tally) = planned.tallied_by(census_stages()) {
         let mut tallies = Vec::new();
         each(endpoint, client, session, tally, stop, |tally| tallies.push(tally)).await?;
-        return Ok(columns_from(&tallies).iter().map(named).collect());
+        return Ok((columns_from(&tallies).iter().map(named).collect(), true));
     }
     let mut fields = Vec::new();
     let mut seen = BTreeSet::new();
@@ -162,7 +165,20 @@ async fn census(
         }
     })
     .await?;
-    Ok(fields)
+    Ok((fields, false))
+}
+
+/// The census's columns in the order the connection last read the
+/// collection's, then the ones it did not read in the census's order, so
+/// another client's documents do not move a column the tab shows.
+fn in_tab_order(mut columns: Vec<NamedColumn>, order: &[String]) -> Vec<NamedColumn> {
+    columns.sort_by_key(|column| {
+        order
+            .iter()
+            .position(|name| *name == column.name)
+            .unwrap_or(order.len())
+    });
+    columns
 }
 
 /// Hand each document a plan's cursor returns to `take`.
@@ -174,6 +190,7 @@ async fn each(
     stop: &ReadStop,
     mut take: impl FnMut(Document) + Send,
 ) -> Result<(), DriverError> {
+    stop.before_command().await?;
     let Source::Cursor { cursor, .. } = start(endpoint, client, session, planned).await? else {
         return Ok(());
     };
@@ -188,6 +205,7 @@ async fn each(
 fn named(column: &ColumnInfo) -> NamedColumn {
     NamedColumn {
         json: matches!(column.column_type.kind, ColumnKind::Json { .. }),
+        numbers: column.column_type.name == NUMBER_TYPE,
         ..NamedColumn::field(column.name.clone())
     }
 }
@@ -223,5 +241,23 @@ fn plans(read: &ReadStatement, database: &str) -> Result<Vec<Planned>, DriverErr
             }
             Ok(statements)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_export_keeps_the_tabs_column_order_with_other_fields_after_it() {
+        let census = ["_id", "x", "a", "late", "z", "b"].map(NamedColumn::field).to_vec();
+        let tab = ["_id", "z", "a", "gone", "b"].map(str::to_owned);
+
+        let names: Vec<String> = in_tab_order(census, &tab)
+            .into_iter()
+            .map(|column| column.name)
+            .collect();
+
+        assert_eq!(names, ["_id", "z", "a", "b", "x", "late"]);
     }
 }

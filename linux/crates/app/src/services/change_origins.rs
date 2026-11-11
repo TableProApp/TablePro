@@ -36,6 +36,7 @@ mod tests {
                 RowChange::Update(RowUpdate {
                     key: vec![Value::Int(1)],
                     assignments: Vec::new(),
+                    read: Vec::new(),
                 }),
                 RowChange::Delete {
                     key: vec![Value::Int(2)],

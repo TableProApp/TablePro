@@ -24,7 +24,10 @@ struct MaskingPolicy: Equatable, Sendable {
         for rule in rules where Self.matches(rule, table: table, column: column, typeName: typeName) {
             return rule.style
         }
-        return nil
+        // Only after no rule matched as written, so a later column rule keeps beating a type rule that names no width.
+        guard let typeName else { return nil }
+        let base = Self.baseTypeName(typeName)
+        return rules.first { $0.target == .type && MaskingGlob.matches($0.trimmedPattern, base) }?.style
     }
 
     func columnMasks(table: String?, columns: [String], typeNames: [String?]) -> ColumnMasks {
@@ -110,6 +113,12 @@ struct MaskingPolicy: Equatable, Sendable {
             guard let bareStart = table.lastIndex(of: ".") else { return false }
             return MaskingGlob.matches(tablePattern, String(table[table.index(after: bareStart)...]))
         }
+    }
+
+    // A result names `TINYINT(1)`, `BIT(8)` or `Nullable(String)` where the rule says `tinyint`, `bit` or `string`.
+    private static func baseTypeName(_ typeName: String) -> String {
+        let unwrapped = ColumnType.unwrappedTypeName(typeName) ?? typeName
+        return unwrapped.prefix { $0 != "(" }.trimmingCharacters(in: .whitespaces)
     }
 }
 

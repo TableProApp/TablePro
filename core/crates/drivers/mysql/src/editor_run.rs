@@ -7,7 +7,7 @@ use sqlx::{AssertSqlSafe, Either, Executor as _, Row as _, SqlSafeStr as _, Stat
 use tablepro_core::column::ResultColumn;
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptTokenKind};
 use tablepro_core::sql_syntax::{SourceTable, SqlGrammar, StatementAccess, source_table, statement_access};
-use tablepro_core::{DriverError, ErrorCategory, ResultEvent, ResultSink, RowLimit, SinkFlow, Truncation, Value};
+use tablepro_core::{DriverError, ErrorCategory, ResultEvent, ResultSink, RowBatch, RowLimit, SinkFlow, Truncation};
 use tokio_util::sync::CancellationToken;
 
 use crate::catalog::result_column;
@@ -19,8 +19,6 @@ use crate::mysql_timestamp_mode::MySqlTimestampMode;
 use crate::mysql_wire_format::MySqlWireFormat;
 use crate::script_split;
 use crate::session_statements::SelectLimit;
-
-const ROWS_PER_EVENT: usize = 256;
 
 const SELECT_OPENERS: [&str; 4] = ["SELECT", "WITH", "TABLE", "VALUES"];
 
@@ -217,7 +215,7 @@ async fn described(
 }
 
 struct OpenSet {
-    batch: Vec<Vec<Value>>,
+    batch: RowBatch,
     retained: u64,
     seen: u64,
 }
@@ -268,7 +266,7 @@ impl Emitter<'_> {
             self.release().await;
             self.open_set(row.columns()).await;
             self.open = Some(OpenSet {
-                batch: Vec::new(),
+                batch: RowBatch::new(),
                 retained: 0,
                 seen: 0,
             });
@@ -281,11 +279,12 @@ impl Emitter<'_> {
         if set.retained >= limit {
             return;
         }
-        set.batch
+        let full = set
+            .batch
             .push(decode_row(row, MySqlWireFormat::Text, MySqlTimestampMode::SessionLocal));
         set.retained += 1;
-        if set.batch.len() >= ROWS_PER_EVENT {
-            let rows = std::mem::take(&mut set.batch);
+        if full {
+            let rows = set.batch.take();
             self.send(ResultEvent::Rows(rows)).await;
         }
     }
@@ -294,7 +293,7 @@ impl Emitter<'_> {
         if self.gone {
             return;
         }
-        let Some(set) = self.open.take() else {
+        let Some(mut set) = self.open.take() else {
             if may_be_an_empty_set {
                 self.held_back = Some(rows_affected);
                 return;
@@ -307,7 +306,7 @@ impl Emitter<'_> {
             return;
         };
         if !set.batch.is_empty() {
-            self.send(ResultEvent::Rows(set.batch)).await;
+            self.send(ResultEvent::Rows(set.batch.take())).await;
         }
         let (truncation, total_rows) = truncation(set.seen, self.limit);
         if truncation != Truncation::Complete {

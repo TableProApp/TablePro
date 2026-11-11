@@ -96,6 +96,7 @@ fn update(index: usize, input: CellInput) -> RowChange {
     RowChange::Update(RowUpdate {
         key: vec![Value::Int(1)],
         assignments: vec![(index, input)],
+        read: Vec::new(),
     })
 }
 

@@ -40,6 +40,7 @@ final class AppState {
     let backgroundRelease: BackgroundReleaseCoordinator
     let queryActivities = QueryActivityController()
     let catalogChanges = CatalogChangeBoard()
+    let sessionModels = ConnectionSessionModels()
     let syncCoordinator: IOSSyncCoordinator
 
     @ObservationIgnored private var automaticPresentationOwner: UUID?
@@ -186,6 +187,7 @@ final class AppState {
 
     private func sessionEnded(_ connectionId: UUID, driver: any DatabaseDriver) {
         sessionTransactions.sessionEnded(connectionId, driver: driver)
+        sessionModels.existing(connectionId)?.sessionEnded(driver)
         bumpSessionRevision(connectionId)
     }
 
@@ -225,6 +227,7 @@ final class AppState {
         let removedIds = Set(connections.map(\.id)).subtracting(merged.map(\.id))
         guard persist(connections: merged, onlyIfSaved: true) else { return false }
         localState.purge(removedIds)
+        sessionModels.purge(removedIds)
         savedQueries.removeRecords(ofConnections: removedIds, tombstoning: false)
         publishLibrary()
         return true
@@ -441,6 +444,7 @@ final class AppState {
         guard !removed.isEmpty else { return }
         persist(connections: connections.filter { !ids.contains($0.id) })
         localState.purge(Set(removed.map(\.id)))
+        sessionModels.purge(Set(removed.map(\.id)))
         let syncedIds = Set(removed.filter(\.participatesInSync).map(\.id))
         savedQueries.removeRecords(ofConnections: syncedIds, tombstoning: true)
         savedQueries.removeRecords(ofConnections: Set(removed.map(\.id)).subtracting(syncedIds), tombstoning: false)

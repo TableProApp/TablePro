@@ -5,7 +5,9 @@ use super::encoder::{EncodeError, MarkdownEncoder, encode_rows};
 use super::value_text::value_text;
 
 pub(super) fn markdown_cell(value: &Value, column: &ColumnType) -> String {
-    markdown_text(&value_text(value, column).unwrap_or_else(|| "NULL".to_string()))
+    markdown_text(
+        &value_text(&crate::document::json_number(value, column), column).unwrap_or_else(|| "NULL".to_string()),
+    )
 }
 
 /// A pipe or a line break, in a cell or a column name alike, would end
@@ -33,6 +35,20 @@ mod tests {
         let out = render_markdown(&columns, &rows).expect("the table");
 
         assert_eq!(out, "| a |\n| --- |\n| has\\|pipe<br>and newline |");
+    }
+
+    #[test]
+    fn a_number_fields_json_is_written_as_the_number_and_other_json_as_it_is() {
+        let (columns, rows) = super::super::test_columns::mixed_json();
+
+        let out = render_markdown(&columns, &rows).expect("the table");
+
+        assert!(
+            out.ends_with(
+                r#"| 3000000000 | 19.90 | {"$oid": "5f1d7a0c9b1e8b2a3c4d5e6f"} | 19.90 | {"$numberLong": "7"} |"#
+            ),
+            "{out}"
+        );
     }
 
     #[test]
