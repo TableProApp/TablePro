@@ -181206,6 +181206,9 @@
     "TablePro cannot tell which Redshift cluster or workgroup \"%@\" is. Set Host to the endpoint AWS issued, such as my-cluster.abc123.us-east-1.redshift.amazonaws.com, or enter that endpoint as the Redshift Endpoint when you connect through a port forward." : {
 
     },
+    "TablePro cannot tell which Redshift cluster or workgroup \"%@\" is. Set Host to the endpoint AWS issued, such as my-cluster.abc123.us-east-1.redshift.amazonaws.com, or to a custom domain name that points to it, or enter that endpoint as the Redshift Endpoint." : {
+
+    },
     "TablePro cannot upload changes until there is space in iCloud. Changes from this Mac are kept here and upload once you free up space or add storage. To manage storage, open System Settings, click your name, then click iCloud." : {
 
     },
@@ -181346,6 +181349,10 @@
           }
         }
       }
+    },
+    "TablePro could not look up \"%@\" in DNS to find the AWS endpoint it points to. Check the network and try again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro could not open its query history database, so nothing is being recorded and nothing can be shown. Your existing history is still on disk." : {
       "comment" : "A description of the error that occurs when the query history database cannot be opened.",
@@ -191819,6 +191826,10 @@
         }
       }
     },
+    "The RDS Endpoint \"%1$@\" is not the database at \"%2$@\", where the connection goes. Clear the RDS Endpoint unless you connect through a port forward." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The Realtime Database cannot filter with %@. It supports =, <, <=, >, >=, BETWEEN, STARTS WITH and IS NULL." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -191876,6 +191887,9 @@
       }
     },
     "The Redshift Endpoint applies only when Host is a local port forward or that same endpoint, and \"%@\" is neither." : {
+
+    },
+    "The Redshift Endpoint applies only when Host is a local port forward, a custom domain name or that same endpoint, and \"%@\" is none of them." : {
 
     },
     "the reference “%@” is inside itself" : {
