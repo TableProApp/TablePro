@@ -145,7 +145,13 @@ extension DataGridViewController {
         guard model.configuration.showsColumnTypes,
               let id = container.pane(kind).columnID(of: tableColumn),
               let column = model.columns.column(id: id) else { return nil }
-        return DataGridHeaderTypeLine(column.type)
+        return headerTypeLine(for: column)
+    }
+
+    // A table's data tab names the type as the table defines it; any other grid, or a column the definition lacks,
+    // names the result's type.
+    func headerTypeLine(for column: DataGridColumn) -> DataGridHeaderTypeLine? {
+        DataGridHeaderTypeLine(column.type, declaredType: model.declaredType(of: column))
     }
 
     // Titles, the value-filter funnel, tooltips and sort accessibility for every column of both panes.
@@ -282,7 +288,7 @@ extension DataGridViewController {
     // The type line is read out while it shows, so VoiceOver hears what the header draws.
     private func headerAccessibilityLabel(for column: DataGridColumn, showsComment: Bool, showsType: Bool, isMasked: Bool) -> String {
         var label = String(format: String(localized: "Column: %@"), column.name)
-        if showsType, let typeName = DataGridHeaderTypeLine.typeName(of: column.type) {
+        if showsType, let typeName = headerTypeLine(for: column)?.text {
             label += ", " + typeName
         }
         if isMasked {

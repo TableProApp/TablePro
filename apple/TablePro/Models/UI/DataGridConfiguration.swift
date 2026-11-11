@@ -16,6 +16,11 @@ struct DataGridConfiguration: Equatable {
     // A second header line under each column name with the column's type; the data tabs follow the Data Grid setting.
     var showsColumnTypes = false
 
+    // The type line names the table's own column definition (`int unsigned`, `decimal(12,2)`), which a result set can
+    // cut short (MySQL reports `INT`, `DECIMAL`). Only a table's data tab reads that table; a query's columns can be
+    // aliases or expressions that only share a name with one.
+    var namesDeclaredColumnTypes = false
+
     // Keyed by index: the column is the grid's own and has no name a table column could share.
     var checkboxColumns: Set<Int> = []
 

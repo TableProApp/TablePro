@@ -38,10 +38,11 @@ extension DataGridViewController {
                 width = saved
                 nextSaved.insert(column.id)
             } else if let known = knownWidths[column.id], !savedWidthIDs.contains(column.id) {
-                // Metadata that reveals an accessory arrives after the rows; an auto width only grows to fit it.
+                // Metadata that reveals an accessory, or the table's own spelling of a type, arrives after the rows; an
+                // auto width only grows to fit it.
                 width = changedPresentations.contains(column.dataIndex)
                     ? max(known, calculator.automaticWidth(widthInput(for: column)))
-                    : known
+                    : max(known, typeLineWidth(of: column))
             } else {
                 width = calculator.automaticWidth(widthInput(for: column))
             }
@@ -231,8 +232,14 @@ extension DataGridViewController {
         DataGridColumnWidthCalculator.Input(
             column: column,
             accessory: presenter.presentation(forDataIndex: column.dataIndex).accessory,
-            displayFormat: model.displayFormat(for: column)
+            displayFormat: model.displayFormat(for: column),
+            declaredType: model.declaredType(of: column)
         )
+    }
+
+    private func typeLineWidth(of column: DataGridColumn) -> CGFloat {
+        guard model.configuration.showsColumnTypes else { return 0 }
+        return headerTypeLine(for: column)?.width ?? 0
     }
 
     private var visibleGridWidth: CGFloat {

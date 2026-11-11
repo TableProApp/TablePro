@@ -25,6 +25,8 @@ struct DataGridColumnWidthCalculator {
         let column: DataGridColumn
         let accessory: DataGridCellAccessory
         let displayFormat: ValueDisplayFormat?
+        // The table's own spelling of the type, which the type line names in place of the result's.
+        var declaredType: String?
     }
 
     private struct Budget {
@@ -70,7 +72,7 @@ struct DataGridColumnWidthCalculator {
         let dataIndex = input.column.dataIndex
         let headerCharCount = (input.column.name as NSString).length
         var maxWidth = CGFloat(headerCharCount) * charWidth * Self.headerCharWidthRatio + Self.headerPadding
-        if showsTypeLine, let typeLine = DataGridHeaderTypeLine(input.column.type) {
+        if showsTypeLine, let typeLine = DataGridHeaderTypeLine(input.column.type, declaredType: input.declaredType) {
             maxWidth = max(maxWidth, typeLine.width)
         }
 

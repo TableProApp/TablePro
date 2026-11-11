@@ -12,14 +12,24 @@ struct DataGridHeaderTypeLine {
     let text: String
     let category: ColumnTypeCategory
 
-    init?(_ type: ColumnType?) {
-        guard let type, let text = Self.typeName(of: type) else { return nil }
+    // The category comes from the result's type, which the grid reads its values as, and from the definition only when
+    // the result named no type.
+    init?(_ type: ColumnType?, declaredType: String? = nil) {
+        guard let text = Self.typeName(of: type, declaredType: declaredType) else { return nil }
         self.text = text
-        category = ColumnTypeCategory(type)
+        if let type {
+            category = ColumnTypeCategory(type)
+        } else {
+            category = ColumnTypeCategory(ColumnTypeClassifier().classify(rawTypeName: text))
+        }
     }
 
-    // The engine's spelling (`varchar(255)`), else the app's name for the type.
-    static func typeName(of type: ColumnType?) -> String? {
+    // The table's definition in its own casing (`int unsigned`, `decimal(12,2)`), else the engine's spelling of the
+    // result's type (`varchar(255)`), else the app's name for the type.
+    static func typeName(of type: ColumnType?, declaredType: String? = nil) -> String? {
+        if let declared = declaredType?.trimmingCharacters(in: .whitespacesAndNewlines), !declared.isEmpty {
+            return declared
+        }
         guard let type else { return nil }
         if let raw = type.rawType?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
             return raw

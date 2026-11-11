@@ -542,6 +542,13 @@ final class DataGridModel: ObservableObject {
         return column.dataIndex < formats.count ? formats[column.dataIndex] : nil
     }
 
+    // The table's own spelling of the column's type, where the owner says the columns are that table's. Read at use, so
+    // a definition that lands after the rows reaches the header with the metadata delta that carried it.
+    func declaredType(of column: DataGridColumn) -> String? {
+        guard configuration.namesDeclaredColumnTypes else { return nil }
+        return rows.declaredType(at: column.dataIndex)
+    }
+
     // MARK: - Editing
 
     func isColumnWritable(_ column: DataGridColumn) -> Bool {

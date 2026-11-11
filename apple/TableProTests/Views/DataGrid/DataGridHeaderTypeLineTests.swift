@@ -178,6 +178,84 @@ struct DataGridHeaderTypeLineTests {
         #expect(column.headerCell.accessibilityLabel() == String(format: String(localized: "Column: %@"), "id") + ", bigint(20)")
     }
 
+    // MARK: - The table's own type
+
+    // MySQL's result set reports `INT` and `DECIMAL`; the table defines `int unsigned` and `decimal(12,2)`. `note` is a
+    // column the definition does not name.
+    private static func definedRows(declaredTypes: [String: String] = ["id": "int unsigned", "total": "decimal(12,2)"]) -> TableRows {
+        TableRows.from(
+            queryRows: (0..<5).map { [.text("\($0)"), .text("1.5"), .text("x")] },
+            columns: ["id", "total", "note"],
+            columnTypes: [.integer(rawType: "INT"), .decimal(rawType: "DECIMAL"), .text(rawType: "VARCHAR")],
+            columnDeclaredTypes: declaredTypes
+        )
+    }
+
+    private func definedGrid(namesDeclaredTypes: Bool, rows: TableRows = definedRows()) -> HostedDataGrid {
+        var configuration = Self.configuration(showsColumnTypes: true)
+        configuration.namesDeclaredColumnTypes = namesDeclaredTypes
+        return HostedDataGrid(rows: rows, configuration: configuration)
+    }
+
+    private func typeLine(_ name: String, in grid: HostedDataGrid) throws -> DataGridHeaderTypeLine? {
+        grid.controller.headerTypeLine(for: try #require(grid.tableColumn(named: name)), in: .main)
+    }
+
+    @Test("A table's data tab names each type as the table defines it, in its casing, and the result's type where it is not defined")
+    func typeLineNamesTheTablesDefinition() throws {
+        let grid = definedGrid(namesDeclaredTypes: true)
+        defer { grid.close() }
+
+        let id = try #require(try typeLine("id", in: grid))
+        #expect(id.text == "int unsigned")
+        #expect(id.category == .number)
+        let total = try #require(try typeLine("total", in: grid))
+        #expect(total.text == "decimal(12,2)")
+        #expect(total.category == .number)
+        #expect(try typeLine("note", in: grid)?.text == "VARCHAR")
+
+        let column = try #require(grid.tableColumn(named: "total"))
+        #expect(column.headerCell.accessibilityLabel() == String(format: String(localized: "Column: %@"), "total") + ", decimal(12,2)")
+        #expect(column.headerToolTip == "total (DECIMAL)", "the tooltip is unchanged")
+    }
+
+    @Test("A grid whose owner does not name the table's types shows the result's type")
+    func otherGridsNameTheResultsType() throws {
+        let grid = definedGrid(namesDeclaredTypes: false)
+        defer { grid.close() }
+
+        #expect(try typeLine("id", in: grid)?.text == "INT")
+        #expect(try typeLine("total", in: grid)?.text == "DECIMAL")
+    }
+
+    @Test("A definition takes the place of the result's type, and an empty one does not")
+    func declaredTypeNameFallsBack() throws {
+        #expect(DataGridHeaderTypeLine.typeName(of: .integer(rawType: "INT"), declaredType: "int unsigned") == "int unsigned")
+        #expect(DataGridHeaderTypeLine.typeName(of: .integer(rawType: "INT"), declaredType: "  ") == "INT")
+        #expect(DataGridHeaderTypeLine.typeName(of: nil, declaredType: nil) == nil)
+        let untyped = try #require(DataGridHeaderTypeLine(nil, declaredType: "decimal(12,2)"))
+        #expect(untyped.text == "decimal(12,2)")
+        #expect(untyped.category == .number)
+    }
+
+    @Test("A definition that lands after the rows renames the type line and widens an automatic width to hold it")
+    func lateDefinitionWidensTheColumn() throws {
+        let grid = definedGrid(namesDeclaredTypes: true, rows: Self.definedRows(declaredTypes: [:]))
+        defer { grid.close() }
+        let column = try #require(grid.tableColumn(named: "total"))
+        #expect(try typeLine("total", in: grid)?.text == "DECIMAL")
+        let before = column.width
+
+        grid.owner.tableRows.updateDisplayMetadata(columnDeclaredTypes: ["total": "decimal(12,2) unsigned zerofill"])
+        grid.model.apply(.columnsReplaced)
+        grid.layout()
+
+        let line = try #require(try typeLine("total", in: grid))
+        #expect(line.text == "decimal(12,2) unsigned zerofill")
+        #expect(before < line.width)
+        #expect(column.width >= line.width)
+    }
+
     // MARK: - Width
 
     @Test("An automatic width makes room for a type line wider than the name and the values")

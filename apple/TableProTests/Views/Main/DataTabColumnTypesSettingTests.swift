@@ -31,6 +31,17 @@ extension GlobalStateSuites {
         @Test("A grid no setting reaches keeps one header line")
         func plainGridHasNoTypes() {
             #expect(!DataGridConfiguration().showsColumnTypes)
+            #expect(!DataGridConfiguration().namesDeclaredColumnTypes)
+        }
+
+        @Test("A table's data tab names the table's own column types, and a query tab its result's")
+        func onlyTableTabsNameDeclaredTypes() {
+            let fixture = CoordinatorFixture()
+            let table = fixture.addTab(QueryTab(title: "orders", query: "SELECT * FROM orders", tabType: .table, tableName: "orders"))
+            let query = fixture.addTab(QueryTab(title: "Query 1", query: "SELECT id FROM orders", tabType: .query))
+
+            #expect(fixture.coordinator.gridConfiguration(for: table).namesDeclaredColumnTypes)
+            #expect(!fixture.coordinator.gridConfiguration(for: query).namesDeclaredColumnTypes)
         }
     }
 }
