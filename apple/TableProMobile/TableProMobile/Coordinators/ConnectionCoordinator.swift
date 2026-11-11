@@ -462,12 +462,16 @@ final class ConnectionCoordinator {
                 model.endSwitch()
                 await model.loadSchemasAfterSwitch(to: used, from: self)
                 await model.runHeldBackWork(from: self)
-                // MySQL names the database in every Tables tab write; SQL Server saves only once the session is back.
+                // MySQL names the database in every Tables tab write, and a plugin driver runs the app's requests in the
+                // menu's database; SQL Server saves only once the session is back.
                 presentFailure(
                     title: Self.switchDatabaseFailedTitle,
-                    message: model.qualifiesTablesWithDatabase
+                    message: model.qualifiesTablesWithDatabase || driver.reportsDatabaseWithoutStatement
                         ? String(format: String(localized: "The query moved the session to “%@” and it could not go back to “%@”. Unsaved changes still save to “%@”."), used, back, back)
-                        : String(format: String(localized: "The query moved the session to “%@” and it could not go back to “%@”. To save the unsaved changes, run USE %@ in the Query tab of the window that holds them."), used, back, back)
+                        : String(
+                            format: String(localized: "The query moved the session to “%@” and it could not go back to “%@”. To save the unsaved changes, run USE %@ in the Query tab of the window that holds them."),
+                            used, back, SQLBuilder.quoteIdentifier(back, for: connection.type)
+                        )
                 )
                 return
             }
