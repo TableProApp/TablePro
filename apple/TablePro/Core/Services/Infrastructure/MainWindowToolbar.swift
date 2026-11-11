@@ -108,6 +108,13 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 
     internal var labelsRecord = ToolbarLabelsRecord()
 
+    // Whether Settings keeps the connection and database capsules in the toolbar; they leave it while this is off.
+    internal var locationItemsEnabled: @MainActor () -> Bool = {
+        AppSettingsManager.shared.general.showsToolbarLocationItems
+    }
+
+    internal var locationItemsRecord = ToolbarLocationItemsRecord()
+
     /// `NSMenu.delegate` is weak, and the safe-mode control's menu is built here rather than by the
     /// menu bar, so this toolbar is what keeps its delegate alive.
     internal let safeModeMenuDelegate = SafeModeMenuDelegate()
@@ -466,6 +473,9 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     nonisolated static let objectKindItemIdentifiers: [NSToolbarItem.Identifier] = [
         objectTables, objectViews, objectFunctions, objectUsers, objectQuery, objectBackup,
     ]
+    // The centred pair a General setting can take out. Still vended and still allowed while it is off: toolbars sharing
+    // the identifier replay a removal and an insertion by index, and one that refused either would fault on the next.
+    nonisolated static let locationItemIdentifiers: [NSToolbarItem.Identifier] = [connection, database]
     // The buttons that name what the front tab shows. Query and Backup start something new, so neither stays selected.
     nonisolated static let selectableObjectKindItemIdentifiers: [NSToolbarItem.Identifier] = [
         objectTables, objectViews, objectFunctions, objectUsers,
@@ -554,14 +564,21 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     ]
 
     // Ahead of the Actions pull-down, in the content run Refresh and the commit control leave empty on a debug tab.
-    nonisolated internal static func defaultItems(includingDebugItems: Bool) -> [NSToolbarItem.Identifier] {
-        let items = defaultItemIdentifiers
+    // Without the connection and database, the two flexible spaces that centred them stay and split the room evenly.
+    nonisolated internal static func defaultItems(
+        includingDebugItems: Bool,
+        includingLocationItems: Bool = true
+    ) -> [NSToolbarItem.Identifier] {
+        var items = defaultItemIdentifiers
+        if !includingLocationItems {
+            items.removeAll { locationItemIdentifiers.contains($0) }
+        }
         guard includingDebugItems, let index = items.firstIndex(of: actions) else { return items }
         return Array(items[..<index]) + debugDefaultItemIdentifiers + Array(items[index...])
     }
 
     internal func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        Self.defaultItems(includingDebugItems: debugItemsEnabled())
+        Self.defaultItems(includingDebugItems: debugItemsEnabled(), includingLocationItems: locationItemsEnabled())
     }
 
     internal func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -602,6 +619,17 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             // an inserted item at the next layout and a pass validates only placed items, so the window lays out first.
             window.layoutIfNeeded()
             owner.managedToolbar.validateVisibleItems()
+        }
+    }
+
+    // Pushed by the General setting's own write, like the Objects buttons. A window whose context hid the database
+    // capsule gets it back hidden, so the context is applied again once the pair is in.
+    internal static func applyLocationItemsSettingChange() {
+        for window in NSApp.windows {
+            guard let owner = window.toolbar?.delegate as? MainWindowToolbar else { continue }
+            owner.reconcileLocationItems()
+            window.layoutIfNeeded()
+            owner.refreshContext(forcing: true)
         }
     }
 
@@ -708,6 +736,49 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         }
     }
 
+    // The Objects buttons' rule for the connection and database: written once per change of the setting, so a pair the
+    // user took out or put back with Customize Toolbar stays as they left it. Each identifier is looked up afresh before
+    // it is removed or inserted, since AppKit throws on a second item with one the toolbar holds and every toolbar sharing
+    // the identifier replays the edit at the same index. They come back beside each other, after the flexible space that
+    // centres them, which is the first one past the sidebar's strip.
+    internal func reconcileLocationItems() {
+        guard windowController?.view.window != nil || isInWindow() else { return }
+        let hidden = !locationItemsEnabled()
+        guard locationItemsRecord.isApplied != hidden else { return }
+        locationItemsRecord.record(hidden)
+        if hidden {
+            let items = managedToolbar.items.map(\.itemIdentifier)
+            for index in items.indices.reversed() where Self.locationItemIdentifiers.contains(items[index]) {
+                managedToolbar.removeItem(at: index)
+            }
+            return
+        }
+        for identifier in Self.locationItemIdentifiers {
+            let items = managedToolbar.items.map(\.itemIdentifier)
+            guard !items.contains(identifier) else { continue }
+            managedToolbar.insertItem(withItemIdentifier: identifier, at: Self.locationInsertionIndex(for: identifier, in: items))
+        }
+    }
+
+    // Beside its partner when the partner is there, else after the first flexible space past the sidebar's strip, else
+    // ahead of Refresh, else at the end.
+    nonisolated internal static func locationInsertionIndex(
+        for identifier: NSToolbarItem.Identifier,
+        in items: [NSToolbarItem.Identifier]
+    ) -> Int {
+        if identifier == connection, let partner = items.firstIndex(of: database) {
+            return partner
+        }
+        if identifier == database, let partner = items.firstIndex(of: connection) {
+            return partner + 1
+        }
+        let start = items.firstIndex(of: .sidebarTrackingSeparator).map { $0 + 1 } ?? 0
+        if let space = items[start...].firstIndex(of: .flexibleSpace) {
+            return space + 1
+        }
+        return items.firstIndex(of: refresh) ?? items.count
+    }
+
     // AppKit draws the toolbar's selected item on a rounded highlight and reports it to VoiceOver as the toolbar's
     // selected child. AppKit also selects a selectable button when it is clicked, so the front tab decides here, and a
     // click whose tab did not follow is put right on the next pass. Written only when it moves.
@@ -746,6 +817,26 @@ internal struct ToolbarDebugItemsRecord {
 // takes the buttons once.
 internal struct ToolbarObjectKindsRecord {
     static let key = "com.TablePro.main.toolbar.v4.objectKindItems"
+
+    let defaults: UserDefaults
+
+    init(defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
+        self.defaults = defaults
+    }
+
+    var isApplied: Bool {
+        defaults.bool(forKey: Self.key)
+    }
+
+    func record(_ applied: Bool) {
+        defaults.set(applied, forKey: Self.key)
+    }
+}
+
+// Whether the connection and database were last taken out of the shared arrangement, kept for the same reasons as the
+// debug items' record. Missing reads as not taken out, which is what every arrangement saved before the setting holds.
+internal struct ToolbarLocationItemsRecord {
+    static let key = "com.TablePro.main.toolbar.v4.locationItemsHidden"
 
     let defaults: UserDefaults
 

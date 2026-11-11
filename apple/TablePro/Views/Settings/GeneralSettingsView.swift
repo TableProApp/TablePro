@@ -81,7 +81,8 @@ struct GeneralSettingsView: View {
                 Text(String(localized: """
                     Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects \
                     tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the \
-                    tree, and makes Tree the default sidebar layout. In table tabs it shows column types in \
+                    tree, takes the connection and database out of the toolbar, and makes Tree the default \
+                    sidebar layout. In table tabs it shows column types in \
                     the header, the sort and a Text mode in the filter panel, opens that panel with each table, \
                     puts the result bar above the grid and names the database and connection in tab titles. \
                     In query tabs it shows the query bar on two rows, and object icons turn colorful. \
@@ -113,6 +114,12 @@ struct GeneralSettingsView: View {
 
                 Toggle("Show object buttons in the toolbar", isOn: $settings.showsObjectToolbar)
                     .help("Adds Tables, Views, Functions, Users, Query and Backup buttons to the connection window's toolbar. Customize Toolbar can move or remove them.")
+
+                Toggle("Show connection and database in the toolbar", isOn: $settings.showsToolbarLocationItems)
+                    .help(String(localized: """
+                        Shows the connection and the database in the middle of the toolbar. Off, the sidebar, the \
+                        query bar and the tab titles still name them, and the Database menu still switches them.
+                        """))
 
                 Toggle("Show object icons", isOn: $settings.showObjectIcons)
                     .help("Shows a type icon before each object name in the sidebar. Turn it off for a plain list of names.")

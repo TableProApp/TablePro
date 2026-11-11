@@ -66,6 +66,9 @@ struct GeneralSettings: Codable, Equatable {
     var showsObjectToolbar: Bool
     // Written only by the Layout buttons. The toolbar's own menu is where a person picks labels, so there is no toggle.
     var showsToolbarLabels: Bool
+    // The connection and database capsules centred in the toolbar. Off where the tree, the query bar and the tab
+    // titles already name both.
+    var showsToolbarLocationItems: Bool
     var showObjectComments: Bool
     var showObjectIcons: Bool
     var showSystemContainers: Bool
@@ -87,6 +90,7 @@ struct GeneralSettings: Codable, Equatable {
         showsObjectsOnSelection: false,
         showsObjectToolbar: false,
         showsToolbarLabels: false,
+        showsToolbarLocationItems: true,
         showObjectComments: true,
         showObjectIcons: true,
         showSystemContainers: false,
@@ -109,6 +113,7 @@ struct GeneralSettings: Codable, Equatable {
         showsObjectsOnSelection: Bool = false,
         showsObjectToolbar: Bool = false,
         showsToolbarLabels: Bool = false,
+        showsToolbarLocationItems: Bool = true,
         showObjectComments: Bool = true,
         showObjectIcons: Bool = true,
         showSystemContainers: Bool = false,
@@ -129,6 +134,7 @@ struct GeneralSettings: Codable, Equatable {
         self.showsObjectsOnSelection = showsObjectsOnSelection
         self.showsObjectToolbar = showsObjectToolbar
         self.showsToolbarLabels = showsToolbarLabels
+        self.showsToolbarLocationItems = showsToolbarLocationItems
         self.showObjectComments = showObjectComments
         self.showObjectIcons = showObjectIcons
         self.showSystemContainers = showSystemContainers
@@ -155,6 +161,9 @@ struct GeneralSettings: Codable, Equatable {
         )
         showsObjectToolbar = container.decodeSetting(.showsObjectToolbar, default: fallback.showsObjectToolbar)
         showsToolbarLabels = container.decodeSetting(.showsToolbarLabels, default: fallback.showsToolbarLabels)
+        showsToolbarLocationItems = container.decodeSetting(
+            .showsToolbarLocationItems, default: fallback.showsToolbarLocationItems
+        )
         showObjectComments = container.decodeSetting(.showObjectComments, default: fallback.showObjectComments)
         showObjectIcons = container.decodeSetting(.showObjectIcons, default: fallback.showObjectIcons)
         showSystemContainers = container.decodeSetting(.showSystemContainers, default: fallback.showSystemContainers)

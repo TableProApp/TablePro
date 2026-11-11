@@ -18,12 +18,13 @@ struct NavigatorLayoutPresetTests {
         expected.showsObjectsOnSelection = true
         expected.showsObjectToolbar = true
         expected.showsToolbarLabels = true
+        expected.showsToolbarLocationItems = false
         expected.showsConnectionsInTree = true
         expected.showsConnectionNavigator = false
         return expected
     }
 
-    @Test("Use Navigator Layout turns on all six features and makes Tree the default layout")
+    @Test("Use Navigator Layout turns on all six features, takes the location out of the toolbar and makes Tree the default layout")
     func applyTurnsEverythingOn() {
         var settings = GeneralSettings.default
         var layout = SidebarLayout.flat
@@ -35,6 +36,7 @@ struct NavigatorLayoutPresetTests {
         #expect(settings.showsObjectsOnSelection)
         #expect(settings.showsObjectToolbar)
         #expect(settings.showsToolbarLabels)
+        #expect(!settings.showsToolbarLocationItems, "The tree, the query bar and the tab titles name both")
         #expect(settings.showsConnectionsInTree)
         #expect(layout == .tree)
     }
@@ -66,6 +68,7 @@ struct NavigatorLayoutPresetTests {
         #expect(settings.showsObjectsOnSelection == GeneralSettings.default.showsObjectsOnSelection)
         #expect(settings.showsObjectToolbar == GeneralSettings.default.showsObjectToolbar)
         #expect(!settings.showsToolbarLabels, "Standard Layout is icons only")
+        #expect(settings.showsToolbarLocationItems, "Standard Layout puts the connection and database back")
         #expect(settings.showsConnectionsInTree == GeneralSettings.default.showsConnectionsInTree)
         #expect(settings.showsConnectionNavigator == GeneralSettings.default.showsConnectionNavigator)
         #expect(settings == GeneralSettings.default)
@@ -203,6 +206,7 @@ extension GlobalStateSuites {
                 $0.general.showsObjectsOnSelection = false
                 $0.general.showsObjectToolbar = false
                 $0.general.showsToolbarLabels = false
+                $0.general.showsToolbarLocationItems = true
                 $0.general.showsConnectionNavigator = false
                 $0.general.showsConnectionsInTree = false
             }
@@ -213,7 +217,11 @@ extension GlobalStateSuites {
             let storage = try EphemeralDefaults()
             fixture.toolbarOwner.objectKindsRecord = ToolbarObjectKindsRecord(defaults: storage.defaults)
             fixture.toolbarOwner.labelsRecord = ToolbarLabelsRecord(defaults: storage.defaults)
+            fixture.toolbarOwner.locationItemsRecord = ToolbarLocationItemsRecord(defaults: storage.defaults)
             let toolbar = try #require(fixture.window.toolbar)
+            let location = Set(MainWindowToolbar.locationItemIdentifiers)
+            let hasLocation = { toolbar.items.contains { location.contains($0.itemIdentifier) } }
+            #expect(hasLocation())
             #expect(toolbar.displayMode == .iconOnly)
             let objectKinds = Set(MainWindowToolbar.objectKindItemIdentifiers)
             let hasButtons = { toolbar.items.contains { objectKinds.contains($0.itemIdentifier) } }
@@ -226,12 +234,14 @@ extension GlobalStateSuites {
 
             #expect(hasButtons(), "The Objects buttons reach the open window")
             #expect(toolbar.displayMode == .iconAndLabel, "Labels go under the toolbar's icons")
+            #expect(!hasLocation(), "The connection and database leave the open window's toolbar")
             #expect(railChanges == 1, "The connections column is told the tree now lists the connections")
 
             NavigatorLayoutPreset.restore(to: &AppSettingsManager.shared.general, defaultLayout: &layout)
 
             #expect(!hasButtons(), "The Objects buttons leave the open window")
             #expect(toolbar.displayMode == .iconOnly, "Standard Layout puts the icons back alone")
+            #expect(hasLocation(), "Standard Layout puts the connection and database back")
             #expect(railChanges == 2, "The connections column is told the tree stops listing them")
         }
     }

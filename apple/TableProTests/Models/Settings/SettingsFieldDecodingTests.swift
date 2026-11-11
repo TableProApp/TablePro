@@ -31,6 +31,22 @@ struct SettingsFieldDecodingTests {
         #expect(settings.queryTimeoutSeconds == 120)
     }
 
+    @Test("General settings saved before the toolbar's location setting keep the connection and database in it")
+    func toolbarLocationItemsDefaultOn() throws {
+        let legacy = try decode(GeneralSettings.self, #"{"showsObjectToolbar":true,"showsToolbarLabels":true}"#)
+        #expect(legacy.showsToolbarLocationItems == true)
+        #expect(legacy.showsObjectToolbar == true)
+        #expect(GeneralSettings.default.showsToolbarLocationItems == true)
+
+        let bad = try decode(GeneralSettings.self, #"{"showsToolbarLocationItems":"no","showsToolbarLabels":true}"#)
+        #expect(bad.showsToolbarLocationItems == true)
+        #expect(bad.showsToolbarLabels == true)
+
+        let chosen = GeneralSettings(showsToolbarLocationItems: false)
+        let decoded = try decode(GeneralSettings.self, String(decoding: try JSONEncoder().encode(chosen), as: UTF8.self))
+        #expect(decoded.showsToolbarLocationItems == false)
+    }
+
     @Test("A bad Editor value falls back alone")
     func editorKeepsOtherFields() throws {
         let settings = try decode(

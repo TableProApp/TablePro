@@ -7,7 +7,8 @@ import Foundation
 
 /// The Layout buttons in Settings > General: table details, favorite tables at the top of the tree,
 /// the Objects tab on selection, the Objects toolbar buttons, labels under the toolbar's icons, the
-/// saved connections in the tree and Tree as the default sidebar layout, on or off in one step. The
+/// toolbar without its connection and database capsules, the saved connections in the tree and Tree
+/// as the default sidebar layout, on or off in one step. The
 /// same buttons switch the table tab's data view and the query bar (`applyDataView`).
 ///
 /// The tree lists the saved connections itself, so the layout keeps the separate connections column
@@ -23,6 +24,7 @@ internal enum NavigatorLayoutPreset {
         settings.showsObjectsOnSelection = true
         settings.showsObjectToolbar = true
         settings.showsToolbarLabels = true
+        settings.showsToolbarLocationItems = false
         settings.showsConnectionsInTree = true
         settings.showsConnectionNavigator = false
         defaultLayout = .tree
@@ -35,6 +37,7 @@ internal enum NavigatorLayoutPreset {
         settings.showsObjectsOnSelection = standard.showsObjectsOnSelection
         settings.showsObjectToolbar = standard.showsObjectToolbar
         settings.showsToolbarLabels = standard.showsToolbarLabels
+        settings.showsToolbarLocationItems = standard.showsToolbarLocationItems
         settings.showsConnectionsInTree = standard.showsConnectionsInTree
         settings.showsConnectionNavigator = standard.showsConnectionNavigator
         defaultLayout = .flat
