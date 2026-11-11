@@ -84,6 +84,8 @@ extension ConnectionFormViewModel {
     func persistCertificates(for connectionId: UUID) -> Bool {
         for role in removedCertificates where pendingCertificates[role] == nil {
             certificateStore.delete(role: role, for: connectionId)
+            // A connect wrote it to a file the drivers read, and no connect may follow to clear it.
+            CertificateMaterializer(store: certificateStore).release(role, for: connectionId)
             storedCertificateRoles.remove(role)
         }
         removedCertificates.removeAll()

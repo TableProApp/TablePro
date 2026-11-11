@@ -241,7 +241,7 @@ struct ConnectionCoordinatorCatalogTests {
 
         let stopped = Task { @MainActor in
             withUnsafeCurrentTask { $0?.cancel() }
-            await coordinator.followSessionDatabase()
+            await coordinator.followSessionPlacement(after: .init())
         }
         await stopped.value
 
@@ -267,7 +267,7 @@ struct ConnectionCoordinatorCatalogTests {
 
         let stopped = Task { try await session.fetchTables(schema: nil) }
         for await _ in entered { break }
-        let follow = Task { await coordinator.followSessionDatabase() }
+        let follow = Task { await coordinator.followSessionPlacement(after: .init()) }
         release.yield()
         _ = try await stopped.value
         await follow.value
@@ -285,7 +285,7 @@ struct ConnectionCoordinatorCatalogTests {
         appState.setEditorHold(true, by: otherWindow, on: connection.id)
         session.used = "archive"
 
-        await coordinator.followSessionDatabase()
+        await coordinator.followSessionPlacement(after: .init())
 
         #expect(coordinator.activeDatabase == "app_prod")
         #expect(session.used == "app_prod")
@@ -320,6 +320,173 @@ struct ConnectionCoordinatorCatalogTests {
 
         #expect(coordinator.activeDatabase == "app_prod")
         #expect(session.switchedDatabases.isEmpty)
+    }
+
+    @Test("A USE run in the Query tab moves the picker, the lists and the redial to the session's database")
+    func useMovesThePickerToTheSessionsDatabase() async {
+        let session = driver(tables: ["orders"])
+        session.scriptedDatabases = ["app_prod", "app_staging"]
+        let coordinator = await connected(session)
+        session.scriptedSessionDatabase = "app_staging"
+        session.scriptedTables = [TableInfo(name: "orders"), TableInfo(name: "staging_only")]
+        #expect(coordinator.tableQualifier == "app_prod")
+
+        await coordinator.followSessionPlacement(after: .init(database: true))
+
+        #expect(coordinator.activeDatabase == "app_staging")
+        #expect(names(coordinator) == ["orders", "staging_only"])
+        #expect(appState.connectionManager.session(for: connection.id)?.activeDatabase == "app_staging")
+        #expect(coordinator.tablePlacement.database == "app_staging")
+        #expect(coordinator.tableQualifier == "app_staging")
+        #expect(!coordinator.showFailureAlert)
+    }
+
+    @Test("A run that cannot have moved the session sends it no statement")
+    func runWithoutUseLeavesTheSessionAlone() async {
+        let session = driver(tables: ["orders"])
+        let coordinator = await connected(session)
+        session.scriptedSessionDatabase = "app_staging"
+
+        await coordinator.followSessionPlacement(after: .init())
+
+        #expect(session.sessionDatabaseReads == 0)
+        #expect(coordinator.activeDatabase == "app_prod")
+    }
+
+    @Test("While this window holds an unsaved edit, a USE is undone so the edit saves where it was made")
+    func ownHeldEditUndoesTheUse() async {
+        let session = driver(tables: ["orders"])
+        let coordinator = await connected(session)
+        coordinator.isHeldByEditor = true
+        session.scriptedSessionDatabase = "app_staging"
+
+        await coordinator.followSessionPlacement(after: .init(database: true))
+
+        #expect(coordinator.activeDatabase == "app_prod")
+        #expect(session.switchedDatabases.last == "app_prod")
+        #expect(coordinator.failureAlertMessage == ConnectionCoordinator.editorHeldHereMessage)
+        coordinator.isHeldByEditor = false
+    }
+
+    @Test("When the session cannot go back under another window's unsaved edit, the lists follow it and the edit keeps its database")
+    func failedMoveBackFollowsTheSession() async {
+        let session = driver(tables: ["orders"])
+        let coordinator = await connected(session)
+        let editing = ConnectionCoordinator(connection: connection, appState: appState)
+        editing.isHeldByEditor = true
+        session.scriptedSessionDatabase = "app_staging"
+        session.refusedDatabases = ["app_prod"]
+
+        await coordinator.followSessionPlacement(after: .init(database: true))
+
+        #expect(coordinator.activeDatabase == "app_staging")
+        #expect(coordinator.showFailureAlert)
+        #expect(editing.activeDatabase == "app_prod")
+        #expect(editing.tableQualifier == "app_prod")
+        editing.isHeldByEditor = false
+    }
+
+    @Test("While a run with a USE is in flight, SQL Server writes in every window are refused and no window runs")
+    func useRunRefusesSQLServerWrites() async {
+        var mssql = connection
+        mssql.type = .mssql
+        factory.queue(driver(tables: ["orders"]))
+        let coordinator = ConnectionCoordinator(connection: mssql, appState: appState)
+        await coordinator.connect()
+        let otherWindow = ConnectionCoordinator(connection: mssql, appState: appState)
+        await otherWindow.connect()
+
+        #expect(!coordinator.beginDatabaseMove(ifRunning: "SELECT * FROM orders"))
+        #expect(otherWindow.databaseMoveRefusal == nil)
+
+        #expect(coordinator.beginDatabaseMove(ifRunning: "USE archive\nDELETE FROM orders"))
+        #expect(otherWindow.isDatabaseMoving)
+        #expect(otherWindow.databaseMoveRefusal != nil)
+
+        coordinator.endDatabaseMove()
+        #expect(!otherWindow.isDatabaseMoving)
+        #expect(otherWindow.databaseMoveRefusal == nil)
+    }
+
+    @Test("MySQL writes name their database, so a run with a USE holds only the Run button")
+    func useRunLeavesMySQLWritesAlone() async {
+        let coordinator = await connected(driver(tables: ["orders"]))
+
+        #expect(coordinator.beginDatabaseMove(ifRunning: "USE app_staging"))
+
+        #expect(coordinator.isDatabaseMoving)
+        #expect(coordinator.databaseMoveRefusal == nil)
+        coordinator.endDatabaseMove()
+    }
+
+    @Test("A SQL Server session left in another database refuses writes made for the one the window shows")
+    func sqlServerSessionElsewhereRefusesWrites() async {
+        var mssql = connection
+        mssql.type = .mssql
+        let session = driver(tables: ["orders"])
+        factory.queue(session)
+        let coordinator = ConnectionCoordinator(connection: mssql, appState: appState)
+        await coordinator.connect()
+        session.scriptedCurrentDatabase = "APP_PROD"
+        #expect(coordinator.databaseMoveRefusal == nil)
+
+        session.scriptedCurrentDatabase = "archive"
+
+        #expect(coordinator.databaseMoveRefusal != nil)
+    }
+
+    @Test("A COMMIT that ends a SET LOCAL search_path moves the schema picker back")
+    func commitMovesTheSchemaPickerBack() async {
+        let session = driver(tables: ["orders"])
+        session.scriptedSchemas = ["archive", "public"]
+        var postgres = connection
+        postgres.type = .postgresql
+        factory.queue(session)
+        let coordinator = ConnectionCoordinator(connection: postgres, appState: appState)
+        await coordinator.connect()
+        session.scriptedSessionSchema = "archive"
+        await coordinator.followSessionPlacement(after: .init(schema: true))
+        #expect(coordinator.activeSchema == "archive")
+
+        session.scriptedSessionSchema = "public"
+        await coordinator.followSessionPlacement(after: .init(schema: true))
+
+        #expect(coordinator.activeSchema == "public")
+    }
+
+    @Test("A typed SET search_path moves the schema picker to where the session reads")
+    func setSearchPathMovesTheSchemaPicker() async {
+        let session = driver(tables: ["orders"])
+        session.scriptedSchemas = ["archive", "public"]
+        var postgres = connection
+        postgres.type = .postgresql
+        factory.queue(session)
+        let coordinator = ConnectionCoordinator(connection: postgres, appState: appState)
+        await coordinator.connect()
+        #expect(coordinator.activeSchema == "public")
+        session.scriptedSessionSchema = "archive"
+
+        await coordinator.followSessionPlacement(after: .init(schema: true))
+
+        #expect(coordinator.activeSchema == "archive")
+    }
+
+    @Test("A Roll Back that undoes the picker's schema switch moves the picker back")
+    func rollBackMovesTheSchemaPickerBack() async {
+        let session = driver(tables: ["orders"])
+        session.scriptedSchemas = ["archive", "public"]
+        var postgres = connection
+        postgres.type = .postgresql
+        factory.queue(session)
+        let coordinator = ConnectionCoordinator(connection: postgres, appState: appState)
+        await coordinator.connect()
+        await coordinator.switchSchema(to: "archive")
+        #expect(coordinator.activeSchema == "archive")
+        session.scriptedSessionSchema = "public"
+
+        await coordinator.reloadAfterRollBack()
+
+        #expect(coordinator.activeSchema == "public")
     }
 
     private func usedDatabaseDriver(_ plugin: StubPluginDriver) -> UsedDatabaseDriver {

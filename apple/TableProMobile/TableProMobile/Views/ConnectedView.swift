@@ -86,11 +86,11 @@ struct ConnectedView: View {
             guard !Task.isCancelled else { return }
             switch resolved.phase {
             case .connected:
-                resolved.loadHistory()
+                await resolved.loadHistory()
                 hapticSuccess.toggle()
             case .lost:
                 // A lost open comes back to the tabs through Reconnect, which never runs this task.
-                resolved.loadHistory()
+                await resolved.loadHistory()
                 hapticError.toggle()
             case .failed:
                 hapticError.toggle()

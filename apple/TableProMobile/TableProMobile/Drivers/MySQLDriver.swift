@@ -10,7 +10,7 @@ import TableProPluginKit
 import TableProSQLGrammar
 import TableProSQLQuoting
 
-nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
+nonisolated final class MySQLDriver: DatabaseDriver, SessionDatabaseReporting, @unchecked Sendable {
     private let actor = MySQLActor()
     private let host: String
     private let port: Int
@@ -32,6 +32,7 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     var supportsSchemas: Bool { false }
     var currentSchema: String? { nil }
     var supportsTransactions: Bool { true }
+    var reportsDatabaseWithoutStatement: Bool { false }
 
     private let settledFacts = OSAllocatedUnfairLock<SQLSessionLexicalFacts?>(initialState: nil)
 
@@ -374,6 +375,11 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
 
     func switchSchema(to name: String) async throws {
         throw MySQLError.unsupported("MySQL does not support schemas")
+    }
+
+    // NULL once no database is selected, as after a DROP DATABASE of the one the session was in.
+    func sessionDatabase() async throws -> String? {
+        try await actor.execute("SELECT DATABASE()").rows.first?.first ?? nil
     }
 
     func fetchSchemas() async throws -> [String] { [] }

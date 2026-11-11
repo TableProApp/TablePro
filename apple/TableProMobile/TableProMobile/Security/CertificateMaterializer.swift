@@ -17,15 +17,26 @@ nonisolated final class CertificateMaterializer: @unchecked Sendable {
 
     private let store: any CertificateMaterialStoring
     private let fileManager: FileManager
+    private let root: URL?
 
-    init(store: any CertificateMaterialStoring = CertificateMaterialStore(), fileManager: FileManager = .default) {
+    // `root` is the folder that holds one folder per connection; nil is Application Support's.
+    init(
+        store: any CertificateMaterialStoring = CertificateMaterialStore(),
+        fileManager: FileManager = .default,
+        root: URL? = nil
+    ) {
         self.store = store
         self.fileManager = fileManager
+        self.root = root
     }
 
+    // A role the store no longer holds loses its file, so a certificate removed in the form leaves no key behind.
     func materialize(for connectionId: UUID) throws -> MaterializedCertificates {
         let paths = try CertificateRole.allCases.reduce(into: [CertificateRole: String]()) { result, role in
-            guard let pem = store.pem(role: role, for: connectionId) else { return }
+            guard let pem = store.pem(role: role, for: connectionId) else {
+                release(role, for: connectionId)
+                return
+            }
             result[role] = try write(pem, role: role, for: connectionId)
         }
 
@@ -39,7 +50,31 @@ nonisolated final class CertificateMaterializer: @unchecked Sendable {
     func release(for connectionId: UUID) {
         let directory = directory(for: connectionId)
         guard fileManager.fileExists(atPath: directory.path) else { return }
-        try? fileManager.removeItem(at: directory)
+        do {
+            try fileManager.removeItem(at: directory)
+        } catch {
+            Self.logger.error("Client certificate files were not removed: \(error.localizedDescription, privacy: .private)")
+        }
+    }
+
+    // Deletes before this release left the files of connections that are gone. Only a loaded library may ask.
+    func releaseAll(except kept: Set<UUID>) {
+        guard let root = try? rootDirectory(),
+              let names = try? fileManager.contentsOfDirectory(atPath: root.path) else { return }
+        for name in names {
+            guard let connectionId = UUID(uuidString: name), !kept.contains(connectionId) else { continue }
+            release(for: connectionId)
+        }
+    }
+
+    func release(_ role: CertificateRole, for connectionId: UUID) {
+        let file = directory(for: connectionId).appendingPathComponent("\(role.rawValue).pem")
+        guard fileManager.fileExists(atPath: file.path) else { return }
+        do {
+            try fileManager.removeItem(at: file)
+        } catch {
+            Self.logger.error("A stale client certificate file was not removed: \(error.localizedDescription, privacy: .private)")
+        }
     }
 
     private func write(_ pem: String, role: CertificateRole, for connectionId: UUID) throws -> String {
@@ -72,6 +107,7 @@ nonisolated final class CertificateMaterializer: @unchecked Sendable {
     }
 
     private func rootDirectory() throws -> URL {
+        if let root { return root }
         let support = try fileManager.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
