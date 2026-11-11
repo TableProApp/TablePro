@@ -176,7 +176,9 @@ enum TriggerEditing {
             try await withSchemaChangeDriver(scope: scope, route: route) { driver in
                 switch plan.strategy {
                 case let .transactional(dropFirst):
-                    let wraps = await DatabaseManager.wrapsSchemaChange(on: driver, isPooled: isPooled)
+                    let wraps = await DatabaseManager.wrapsSchemaChange(
+                        on: driver, isPooled: isPooled, checksTransactionalDDL: false
+                    )
                     try await runInTransaction(
                         driver: driver, dropSQL: dropFirst ? plan.dropSQL : nil, sql: sql, wraps: wraps
                     )

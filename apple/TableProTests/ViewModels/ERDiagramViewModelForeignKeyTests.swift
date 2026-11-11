@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import CoreGraphics
 import Foundation
 @testable import TablePro
 import Testing

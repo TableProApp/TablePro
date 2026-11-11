@@ -32,8 +32,13 @@ extension DatabaseManager {
     }
 
     // A BEGIN on the session driver joins what a tab left open and its COMMIT ends that, so the DDL joins it instead.
-    nonisolated static func wrapsSchemaChange(on driver: DatabaseDriver, isPooled: Bool) async -> Bool {
-        guard wrapsDDLInTransaction(driver) else { return false }
+    // A trigger plan already chose its transactional strategy, so it skips the DDL check.
+    nonisolated static func wrapsSchemaChange(
+        on driver: DatabaseDriver,
+        isPooled: Bool,
+        checksTransactionalDDL: Bool = true
+    ) async -> Bool {
+        if checksTransactionalDDL, !wrapsDDLInTransaction(driver) { return false }
         guard !isPooled else { return true }
         return await driver.heldSessionTransactionState().permitsAppTransaction
     }

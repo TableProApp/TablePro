@@ -292,7 +292,7 @@ struct ResultStatusBar: View {
             if model.controls.showsHighlightRules {
                 highlightButton
             }
-            if model.controls.showsAutoRefresh {
+            if model.controls.showsAutoRefresh, presentation.showsAutoRefresh {
                 autoRefreshMenu(presentation)
             }
             if model.controls.showsFilters {
