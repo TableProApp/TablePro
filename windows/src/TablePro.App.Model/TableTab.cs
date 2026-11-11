@@ -111,6 +111,9 @@ public interface ITableTabView
 // A sort is an ORDER BY in the page's statement, so it orders the whole table, not the rows already read.
 public sealed class TableTab : IWorkspaceTab
 {
+    // A page is bounded by its size, and the pager reads a short page as the last, so no byte limit cuts one.
+    private const long PageByteLimit = long.MaxValue;
+
     // The refusals the core makes before it sends anything, so a save after one cannot write twice.
     private static readonly HashSet<string> NothingSent = new(StringComparer.Ordinal)
     {
@@ -662,7 +665,7 @@ public sealed class TableTab : IWorkspaceTab
             _run?.Dispose();
             _page = page with { CanSeek = query.CanSeek };
             // The statement holds the page; a run limit one past it keeps a full page from reading as cut short.
-            _run = _editor.Run(query.Sql, new QueryOptions(page.Size + 1), cancellationToken);
+            _run = _editor.Run(query.Sql, new QueryOptions(page.Size + 1, ByteLimit: PageByteLimit), cancellationToken);
             await _results.ShowRunAsync(_run, _sort, query.VisibleColumns, cancellationToken).ConfigureAwait(true);
             if (_work.IsClosed)
             {

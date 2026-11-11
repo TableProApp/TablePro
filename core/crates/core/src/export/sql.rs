@@ -128,9 +128,7 @@ impl InsertWriter {
                 Some((column, written.as_ref()?, cell))
             })
             .collect();
-        // A document of no field is `{}`, while a SQL row needs a column.
-        let leaves_out_nulls =
-            !dialect.insert_names_null_cells() && (self.document || cells.iter().any(|(_, _, cell)| !is_null(*cell)));
+        let leaves_out_nulls = !dialect.insert_names_null_cells() && cells.iter().any(|(_, _, cell)| !is_null(*cell));
         let cells: Vec<(&ResultColumn, &WrittenColumn, Option<&Value>)> = cells
             .into_iter()
             .filter(|(_, _, cell)| !(leaves_out_nulls && is_null(*cell)))
@@ -291,7 +289,6 @@ fn document_fields(
     for (index, column) in columns.iter().enumerate() {
         let value = match cells.get(index) {
             Some(CellInput::Default | CellInput::Expression(_)) | None => continue,
-            Some(CellInput::Value(Value::Null)) if !dialect.insert_names_null_cells() => continue,
             Some(CellInput::Value(value)) => dialect.literal(value, &column.column_type)?,
         };
         fields.push((column.name.clone(), value));
@@ -803,41 +800,6 @@ mod tests {
              INSERT INTO \"t\" (\"id\", \"name\") OVERRIDING SYSTEM VALUE VALUES (1, 'a');\n\
              SET IDENTITY_INSERT \"t\" OFF;\n\
              INSERT INTO \"t\" (\"name\") VALUES ('b');\n"
-        );
-    }
-
-    #[test]
-    fn a_document_of_only_nulls_is_empty_and_a_row_of_only_nulls_names_them() {
-        let rows = [vec![Value::Int(1), Value::Null], vec![Value::Null, Value::Null]];
-        let render = |dialect: &dyn SqlDialect| {
-            render_sql_insert(
-                dialect,
-                &TableRef::unqualified("t"),
-                &cols(&["a", "b"]),
-                &[],
-                &[],
-                &rows,
-            )
-        };
-        let documents = Numbering {
-            inner: TestDialect::default().parsing_as(SqlGrammar::Mongo),
-            null_cells_left_out: true,
-            ..Numbering::default()
-        };
-        let rows_of_sql = Numbering {
-            null_cells_left_out: true,
-            ..Numbering::default()
-        };
-
-        assert_eq!(
-            render(&documents),
-            "db.getCollection(\"t\").insertOne({\"a\": 1});\n\
-             db.getCollection(\"t\").insertOne({});\n"
-        );
-        assert_eq!(
-            render(&rows_of_sql),
-            "INSERT INTO \"t\" (\"a\") VALUES (1);\n\
-             INSERT INTO \"t\" (\"a\", \"b\") VALUES (NULL, NULL);\n"
         );
     }
 

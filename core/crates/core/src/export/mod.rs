@@ -130,4 +130,28 @@ mod test_columns {
     pub fn cols(names: &[&str]) -> Vec<ResultColumn> {
         names.iter().map(|name| col(name)).collect()
     }
+
+    /// A MongoDB field of numbers of several types holding a long and a
+    /// fraction, one of mixed values holding a document, and two SQL JSON
+    /// columns holding a number and a wrapper, each a JSON cell.
+    pub fn mixed_json() -> (Vec<ResultColumn>, Vec<Vec<crate::value::Value>>) {
+        let json =
+            |text: &str| crate::value::Value::Json(crate::value::JsonText::parse(text.to_owned()).expect("JSON"));
+        let json_kind = || ColumnKind::Json { binary: false };
+        let columns = vec![
+            typed("long", crate::document::NUMBER_TYPE, json_kind()),
+            typed("price", crate::document::NUMBER_TYPE, json_kind()),
+            typed("doc", "mixed", json_kind()),
+            typed("pg_price", "jsonb", json_kind()),
+            typed("pg_long", "jsonb", json_kind()),
+        ];
+        let rows = vec![vec![
+            json(r#"{"$numberLong": "3000000000"}"#),
+            json("19.90"),
+            json(r#"{"$oid": "5f1d7a0c9b1e8b2a3c4d5e6f"}"#),
+            json("19.90"),
+            json(r#"{"$numberLong": "7"}"#),
+        ]];
+        (columns, rows)
+    }
 }

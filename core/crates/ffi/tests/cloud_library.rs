@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use secrecy::{ExposeSecret, SecretString};
 use tablepro_ffi::{
     CloudConnectionFields, CloudGroupFields, CloudLibraryPull, CloudLibraryRecords, ConnectionLibrary,
     ConnectionRecord, ConnectionSecrets, Core, HostConfig, HostSecretError, HostSecrets, SafeModeTag, SecretItemTag,
@@ -13,13 +14,13 @@ use tablepro_ffi::{
 };
 use tempfile::TempDir;
 
-type Stored = Arc<Mutex<HashMap<(String, SecretKindTag), String>>>;
+type Stored = Arc<Mutex<HashMap<(String, SecretKindTag), SecretString>>>;
 
 #[derive(Default, Clone)]
 struct MemorySecrets(Stored);
 
 impl HostSecrets for MemorySecrets {
-    fn load(&self, connection_id: String, kind: SecretKindTag) -> Result<Option<String>, HostSecretError> {
+    fn load(&self, connection_id: String, kind: SecretKindTag) -> Result<Option<SecretString>, HostSecretError> {
         Ok(self.0.lock().unwrap().get(&(connection_id, kind)).cloned())
     }
 
@@ -27,7 +28,7 @@ impl HostSecrets for MemorySecrets {
         &self,
         connection_id: String,
         kind: SecretKindTag,
-        secret: String,
+        secret: SecretString,
         _: String,
     ) -> Result<(), HostSecretError> {
         self.0.lock().unwrap().insert((connection_id, kind), secret);
@@ -48,11 +49,11 @@ impl HostSecrets for MemorySecrets {
         Ok(())
     }
 
-    fn load_item(&self, _: SecretItemTag) -> Result<Option<String>, HostSecretError> {
+    fn load_item(&self, _: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {
         Ok(None)
     }
 
-    fn store_item(&self, _: SecretItemTag, _: String) -> Result<(), HostSecretError> {
+    fn store_item(&self, _: SecretItemTag, _: SecretString) -> Result<(), HostSecretError> {
         Ok(())
     }
 
@@ -201,7 +202,7 @@ async fn cloud_deletions_remove_secrets_only_after_storage_succeeds() {
         .store(
             id.clone(),
             SecretKindTag::DatabasePassword,
-            "password".to_owned(),
+            SecretString::from("password"),
             "test".to_owned(),
         )
         .unwrap();
@@ -218,12 +219,13 @@ async fn cloud_deletions_remove_secrets_only_after_storage_succeeds() {
         secrets
             .load(id.clone(), SecretKindTag::DatabasePassword)
             .unwrap()
-            .as_deref(),
+            .as_ref()
+            .map(ExposeSecret::expose_secret),
         Some("password")
     );
     std::fs::remove_dir(&file).unwrap();
     std::fs::write(&file, contents).unwrap();
     library.apply_cloud_pull(pull).await.unwrap();
     assert!(library.snapshot().await.unwrap().connections.is_empty());
-    assert_eq!(secrets.load(id, SecretKindTag::DatabasePassword).unwrap(), None);
+    assert!(secrets.load(id, SecretKindTag::DatabasePassword).unwrap().is_none());
 }

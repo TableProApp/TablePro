@@ -28,6 +28,12 @@ macro_rules! document_conformance_suite {
             document_close_is_idempotent,
             a_lost_transport_reports_connection_lost_to_a_read,
         }
+        $crate::__conformance_case! {
+            true,
+            $engine as DocumentEngine,
+            a_document_read_stops_at_the_byte_limit,
+            $crate::conformance::cases::byte_limit::a_document_read_stops_at_the_byte_limit::<$engine>
+        }
 
         #[::tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn document_suite_matches_driver_capabilities()

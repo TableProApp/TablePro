@@ -1,6 +1,6 @@
 # 0016: Driver contract v2
 
-- **Status**: Accepted; the no-fork rule for tiberius superseded by core 0005 (`core/docs/decisions/0005-sql-server-transport.md`), a database change outside a transaction amended by core 0013 (`core/docs/decisions/0013-catalog-operations.md`)
+- **Status**: Accepted; the no-fork rule for tiberius superseded by core 0005 (`core/docs/decisions/0005-sql-server-transport.md`), a database change outside a transaction amended by core 0013 (`core/docs/decisions/0013-catalog-operations.md`), a run's byte limit beside its row limit amended by core 0020 (`core/docs/decisions/0020-a-run-keeps-a-byte-limit-of-rows.md`)
 - **Date**: 2026-10-13
 
 ## Context

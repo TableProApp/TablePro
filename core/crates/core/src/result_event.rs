@@ -21,12 +21,15 @@ pub struct ServerNotice {
 pub enum Truncation {
     /// Every row the statement produced is here.
     Complete,
-    /// The statement itself was stopped at the row limit, so it never
-    /// ran for the rows past it: a function it calls per row ran for the
-    /// rows kept and no others.
+    /// The server stopped the statement at the row limit, one row past
+    /// the rows kept, so work it does per row may have run for only part
+    /// of the rows. A set the byte limit also cut keeps this, since it
+    /// says more.
     ServerStopped,
     /// The run hit its row limit and there were more rows behind it.
     ReadPastLimit,
+    // Rows past the cut were not kept, though the engine may still have read them up to the row limit.
+    ByteLimit,
 }
 
 /// One step of a run, as it happens.
@@ -47,6 +50,10 @@ pub enum ResultEvent {
     },
     Rows(Vec<Vec<Value>>),
     RowLimitReached {
+        retained: u64,
+    },
+    // Once per set, at the cut: `retained` rows of the set came before it.
+    ByteLimitReached {
         retained: u64,
     },
     ResultSetFinished {

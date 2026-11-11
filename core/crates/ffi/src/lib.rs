@@ -48,4 +48,13 @@ pub use safe_mode_gate::RunGate;
 pub use session::{ColumnSort, DatabaseSession, FailureCauseTag, SessionHealthTag, TableQuery};
 pub use statement_at::StatementSpan;
 
+use secrecy::{ExposeSecret, SecretString};
+
 uniffi::setup_scaffolding!();
+
+// The app sees a String; here a lifted secret is wiped on drop. core/ARCHITECTURE.md, Bindings, lists what is not.
+uniffi::custom_type!(SecretString, String, {
+    remote,
+    lower: |secret| secret.expose_secret().to_owned(),
+    try_lift: |text| Ok(SecretString::from(text)),
+});

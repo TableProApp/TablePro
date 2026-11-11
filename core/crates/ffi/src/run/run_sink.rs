@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tablepro_core::{ResultEvent, ResultSink, SinkFlow};
+use tablepro_core::{ByteLimit, ResultEvent, ResultSink, SinkFlow};
 
 use super::{RunEvent, RunState};
 use crate::results::{ResultColumnInfo, ResultStore};
@@ -10,11 +10,16 @@ use crate::results::{ResultColumnInfo, ResultStore};
 pub(crate) struct RunSink {
     state: Arc<RunState>,
     current: Option<(u32, Arc<ResultStore>)>,
+    limit_bytes: u64,
 }
 
 impl RunSink {
-    pub(crate) fn new(state: Arc<RunState>) -> Self {
-        Self { state, current: None }
+    pub(crate) fn new(state: Arc<RunState>, byte_limit: ByteLimit) -> Self {
+        Self {
+            state,
+            current: None,
+            limit_bytes: byte_limit.get(),
+        }
     }
 }
 
@@ -56,6 +61,11 @@ impl ResultSink for RunSink {
                 set_index: self.current_index(),
                 retained,
             },
+            ResultEvent::ByteLimitReached { retained } => RunEvent::ByteLimitReached {
+                set_index: self.current_index(),
+                retained,
+                limit_bytes: self.limit_bytes,
+            },
             ResultEvent::ResultSetFinished {
                 total_rows, truncation, ..
             } => {
@@ -90,10 +100,11 @@ impl RunSink {
 
 #[cfg(test)]
 mod tests {
-    use tablepro_core::ServerNotice;
+    use tablepro_core::column::{ColumnType, ResultColumn};
+    use tablepro_core::{ServerNotice, Truncation, Value};
 
     use super::*;
-    use crate::run::RunListener;
+    use crate::run::{RunListener, TruncationTag};
 
     struct Quiet;
 
@@ -102,9 +113,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_set_cut_for_bytes_reaches_the_app_with_the_runs_limit() {
+        let state = Arc::new(RunState::new(Box::new(Quiet)));
+        let limit = ByteLimit::new(4_096).unwrap();
+        let mut sink = RunSink::new(state.clone(), limit);
+        let columns: Arc<[ResultColumn]> = vec![ResultColumn::new("blob", ColumnType::untyped_text(""))].into();
+
+        sink.accept(ResultEvent::ResultSetStarted { columns }).await;
+        sink.accept(ResultEvent::Rows(vec![vec![Value::Text("a".repeat(5_000))]]))
+            .await;
+        sink.accept(ResultEvent::ByteLimitReached { retained: 1 }).await;
+        sink.accept(ResultEvent::ResultSetFinished {
+            retained: 1,
+            total_rows: Some(3),
+            truncation: Truncation::ByteLimit,
+        })
+        .await;
+
+        let events = state.drain();
+        assert_eq!(
+            events[2],
+            RunEvent::ByteLimitReached {
+                set_index: 0,
+                retained: 1,
+                limit_bytes: 4_096,
+            }
+        );
+        assert_eq!(
+            events[3],
+            RunEvent::ResultSetFinished {
+                set_index: 0,
+                row_count: 1,
+                total_rows: Some(3),
+                truncation: TruncationTag::ByteLimit,
+            }
+        );
+    }
+
+    #[tokio::test]
     async fn the_notice_limit_reaches_the_app_after_the_notices_kept() {
         let state = Arc::new(RunState::new(Box::new(Quiet)));
-        let mut sink = RunSink::new(state.clone());
+        let mut sink = RunSink::new(state.clone(), ByteLimit::EDITOR_DEFAULT);
 
         sink.accept(ResultEvent::Notice(ServerNotice {
             severity: "NOTICE".to_owned(),

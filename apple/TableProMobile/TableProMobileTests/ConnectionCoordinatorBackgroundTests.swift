@@ -112,6 +112,29 @@ struct ConnectionCoordinatorBackgroundTests {
         )
     }
 
+    // iPad: the transaction ran in one window, and the user comes back to the app in another.
+    @Test("A transaction lost in the background is reported once, in the window that reopens the file")
+    func reopenInAnotherWindowReportsOnce() async throws {
+        let left = try await connectedCoordinator(on: fileDriver(.explicitTransaction))
+        #expect(left.transactionHold == .open)
+
+        await releaseForTheBackground()
+        let reopened = fileDriver(.idle)
+        factory.queue(reopened)
+        let right = ConnectionCoordinator(connection: connection, appState: appState)
+        await right.connect()
+        await left.followLiveSession()
+
+        #expect(right.session?.driver === reopened)
+        #expect(left.session?.driver === reopened)
+        #expect(
+            right.failureAlertMessage
+                == ConnectionCoordinator.lostTransactionMessage(.inBackground, connectionName: "Ledger")
+        )
+        #expect(!left.showFailureAlert)
+        #expect(monitor.rollBackCount(for: connection.id) == 1)
+    }
+
     @Test("A reopen that fails keeps the loss and reports it when a later reopen lands")
     func failedReopenReportsLater() async throws {
         let coordinator = try await connectedCoordinator(on: fileDriver(.explicitTransaction))

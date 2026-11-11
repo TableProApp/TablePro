@@ -513,6 +513,7 @@ impl ResultSink for RowsSink {
                 }
             }
             ResultEvent::RowLimitReached { .. }
+            | ResultEvent::ByteLimitReached { .. }
             | ResultEvent::CommandCompleted { .. }
             | ResultEvent::Notice(_)
             | ResultEvent::NoticeLimitReached { .. } => SinkFlow::Continue,

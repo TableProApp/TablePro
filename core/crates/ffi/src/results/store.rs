@@ -118,8 +118,13 @@ impl ResultStore {
         state.rows
     }
 
+    // A set the last chunk holds would otherwise keep the slack its arrays grew by.
     pub(crate) fn finish(&self) {
-        self.state.write().unwrap_or_else(PoisonError::into_inner).finished = true;
+        let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
+        state.finished = true;
+        if let Some(chunk) = state.chunks.last_mut() {
+            chunk.columns.iter_mut().for_each(ColumnCells::shrink);
+        }
     }
 
     // `Some(None)` for null, and every byte of a binary value as hex.
@@ -152,7 +157,7 @@ impl ResultStore {
         let mut values = Vec::with_capacity(usize::try_from(state.rows).unwrap_or(0));
         for chunk in &state.chunks {
             let cells = chunk.columns.get(column)?;
-            values.extend((0..chunk.rows).map(|row| cell_value(cells.cell(row))));
+            values.extend((0..chunk.rows).map(|row| cell_value(sort_head(cells.cell(row)))));
         }
         drop(state);
         Some(
@@ -180,6 +185,38 @@ impl StoreState {
     fn cell(&self, row: u64, column: usize) -> Option<Cell<'_>> {
         let (chunk, local) = self.locate(row)?;
         Some(chunk.columns.get(column)?.cell(local))
+    }
+}
+
+// The core orders text by its first 4,096 characters (`value::order`), which fit in four bytes each.
+const SORT_HEAD_BYTES: usize = 4 * 4_096;
+
+// A cell that reads back as text keeps only what its order reads, so a sort does not copy a whole long column.
+fn sort_head(cell: Cell<'_>) -> Cell<'_> {
+    match cell.kind {
+        Some(
+            ValueKind::Text
+            | ValueKind::Json
+            | ValueKind::Xml
+            | ValueKind::Array
+            | ValueKind::Network
+            | ValueKind::Spatial
+            | ValueKind::Other,
+        ) => Cell {
+            bytes: text_head(cell.bytes),
+            ..cell
+        },
+        _ => cell,
+    }
+}
+
+fn text_head(bytes: &[u8]) -> &[u8] {
+    let Some(head) = bytes.get(..SORT_HEAD_BYTES) else {
+        return bytes;
+    };
+    match std::str::from_utf8(head) {
+        Err(error) if error.error_len().is_none() => head.get(..error.valid_up_to()).unwrap_or(head),
+        _ => head,
     }
 }
 
@@ -257,6 +294,41 @@ mod tests {
         assert_eq!(store.row_order(1, true), Some(vec![2, 3, 1, 0]));
         assert_eq!(store.row_order(1, false), Some(vec![0, 1, 3, 2]));
         assert_eq!(store.row_order(2, true), None);
+    }
+
+    #[test]
+    fn long_texts_sort_by_the_head_the_core_orders_by() {
+        let store = store(1);
+        let wide = "😀".repeat(4_095);
+        let tail = "z".repeat(100_000);
+        store.append(&[
+            vec![Value::Text(format!("{wide}b{tail}"))],
+            vec![Value::Text(format!("{wide}a{tail}"))],
+            vec![Value::Text("short".to_owned())],
+        ]);
+
+        assert_eq!(store.row_order(0, true), Some(vec![2, 1, 0]));
+        assert_eq!(
+            text_head(format!("{wide}b{tail}").as_bytes()).len(),
+            SORT_HEAD_BYTES,
+            "the head ends on a whole character"
+        );
+        assert_eq!(text_head("é".repeat(9_000).as_bytes()).len(), SORT_HEAD_BYTES);
+        assert_eq!(
+            text_head(&[0xe4_u8, 0xb8, 0xad].repeat(6_000)).len(),
+            SORT_HEAD_BYTES - 1
+        );
+    }
+
+    #[test]
+    fn a_finished_set_reads_back_every_row() {
+        let store = store(2);
+        store.append(&rows(0..3));
+
+        store.finish();
+
+        assert!(store.is_finished());
+        assert_eq!(store.full_text(2, 1), Some(Some("row 2".to_owned())));
     }
 
     #[test]

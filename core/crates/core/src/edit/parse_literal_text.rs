@@ -21,6 +21,50 @@ pub fn parse_literal_text(input: &str, column: &ColumnType) -> Result<Value, Edi
     parse(input, column, Purpose::Store)
 }
 
+// A column typed from a sample, as MongoDB's, holds numbers its kind does not; a declared column never reads one.
+pub(super) fn parse_as_read(input: &str, read: &Value, column: &ColumnType) -> Option<Value> {
+    let census = matches!(
+        column.kind,
+        ColumnKind::Integer(_)
+            | ColumnKind::Float(_)
+            | ColumnKind::Decimal { .. }
+            | ColumnKind::Money { .. }
+            | ColumnKind::Json { .. }
+    );
+    if column.dynamic_storage || !census || kind_holds(&column.kind, read) {
+        return None;
+    }
+    let trimmed = input.trim();
+    match read {
+        Value::Int32(_) => trimmed.parse::<i32>().ok().map(Value::Int32),
+        Value::Int(_) => trimmed.parse::<i64>().ok().map(Value::Int),
+        Value::Float64(_) => exact_double(trimmed).map(Value::Float64),
+        Value::Decimal(_) => trimmed.parse::<SqlDecimal>().ok().map(Value::Decimal),
+        _ => None,
+    }
+}
+
+fn kind_holds(kind: &ColumnKind, read: &Value) -> bool {
+    match (kind, read) {
+        (ColumnKind::Integer(kind), Value::Int(number)) => WideInteger::from_i128(i128::from(*number)).fits(*kind),
+        (ColumnKind::Float(_), Value::Float64(_)) => true,
+        (ColumnKind::Decimal { .. } | ColumnKind::Money { .. }, Value::Decimal(_)) => true,
+        _ => false,
+    }
+}
+
+// `0.1` is a double by its shortest form, and `9007199254740993` is not one.
+fn exact_double(input: &str) -> Option<f64> {
+    if let Some(value) = non_finite(input) {
+        return Some(value);
+    }
+    let decimal = input.parse::<SqlDecimal>().ok()?;
+    let double = input.parse::<f64>().ok()?;
+    let read_back = Value::Float64(double);
+    let shortest = crate::value::order::decimal_of(&read_back)?;
+    (shortest.cmp_numeric(&decimal) == std::cmp::Ordering::Equal).then_some(double)
+}
+
 /// What the parsed value is for, which decides whether the column's
 /// declared precision applies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

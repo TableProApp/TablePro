@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex};
 use russh::keys::HashAlg;
 use russh::keys::ssh_key::PrivateKey;
 use russh::keys::ssh_key::private::Ed25519Keypair;
+use secrecy::{ExposeSecret, SecretString};
 use tablepro_ffi::{
     ConnectionRecord, ConnectionSecrets, Core, CoreError, FileOpenRequest, HostConfig, HostPrompter, HostSecretError,
     HostSecrets, ObjectScopeArg, PromptAnswer, PromptPurposeTag, PromptRequest, RunOutcome, RunSettings, SafeModeTag,
@@ -19,13 +20,13 @@ use tablepro_ffi::{
 };
 use tokio::net::TcpListener;
 
-type Stored = Arc<Mutex<HashMap<(String, SecretKindTag), String>>>;
+type Stored = Arc<Mutex<HashMap<(String, SecretKindTag), SecretString>>>;
 
 #[derive(Default, Clone)]
 struct MemorySecrets(Stored);
 
 impl HostSecrets for MemorySecrets {
-    fn load(&self, connection_id: String, kind: SecretKindTag) -> Result<Option<String>, HostSecretError> {
+    fn load(&self, connection_id: String, kind: SecretKindTag) -> Result<Option<SecretString>, HostSecretError> {
         Ok(self.0.lock().unwrap().get(&(connection_id, kind)).cloned())
     }
 
@@ -33,7 +34,7 @@ impl HostSecrets for MemorySecrets {
         &self,
         connection_id: String,
         kind: SecretKindTag,
-        secret: String,
+        secret: SecretString,
         _: String,
     ) -> Result<(), HostSecretError> {
         self.0.lock().unwrap().insert((connection_id, kind), secret);
@@ -54,11 +55,11 @@ impl HostSecrets for MemorySecrets {
         Ok(())
     }
 
-    fn load_item(&self, _: SecretItemTag) -> Result<Option<String>, HostSecretError> {
+    fn load_item(&self, _: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {
         Ok(None)
     }
 
-    fn store_item(&self, _: SecretItemTag, _: String) -> Result<(), HostSecretError> {
+    fn store_item(&self, _: SecretItemTag, _: SecretString) -> Result<(), HostSecretError> {
         Ok(())
     }
 
@@ -88,7 +89,12 @@ impl RefusingSecrets {
     }
 
     fn value(&self, id: &str, kind: SecretKindTag) -> Option<String> {
-        self.memory.0.lock().unwrap().get(&(id.to_owned(), kind)).cloned()
+        self.memory
+            .0
+            .lock()
+            .unwrap()
+            .get(&(id.to_owned(), kind))
+            .map(|secret| secret.expose_secret().to_owned())
     }
 
     fn deleting(&self) -> Result<(), HostSecretError> {
@@ -100,7 +106,7 @@ impl RefusingSecrets {
 }
 
 impl HostSecrets for RefusingSecrets {
-    fn load(&self, connection_id: String, kind: SecretKindTag) -> Result<Option<String>, HostSecretError> {
+    fn load(&self, connection_id: String, kind: SecretKindTag) -> Result<Option<SecretString>, HostSecretError> {
         self.memory.load(connection_id, kind)
     }
 
@@ -108,7 +114,7 @@ impl HostSecrets for RefusingSecrets {
         &self,
         connection_id: String,
         kind: SecretKindTag,
-        secret: String,
+        secret: SecretString,
         label: String,
     ) -> Result<(), HostSecretError> {
         if self.refused_kinds.lock().unwrap().contains(&kind) {
@@ -134,11 +140,11 @@ impl HostSecrets for RefusingSecrets {
         self.memory.delete_connection(connection_id)
     }
 
-    fn load_item(&self, item: SecretItemTag) -> Result<Option<String>, HostSecretError> {
+    fn load_item(&self, item: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {
         self.memory.load_item(item)
     }
 
-    fn store_item(&self, item: SecretItemTag, secret: String) -> Result<(), HostSecretError> {
+    fn store_item(&self, item: SecretItemTag, secret: SecretString) -> Result<(), HostSecretError> {
         self.memory.store_item(item, secret)
     }
 
@@ -272,7 +278,7 @@ async fn a_saved_password_goes_to_the_secret_store_and_leaves_with_the_connectio
         .save(
             record("shop", "mysql", "shop"),
             ConnectionSecrets {
-                database_password: Some("hunter2".to_owned()),
+                database_password: Some(SecretString::from("hunter2")),
                 ..ConnectionSecrets::default()
             },
         )
@@ -286,16 +292,37 @@ async fn a_saved_password_goes_to_the_secret_store_and_leaves_with_the_connectio
         .cloned();
     library.delete(saved.id.clone()).await.unwrap();
 
-    assert_eq!(kept.as_deref(), Some("hunter2"));
+    assert_eq!(kept.as_ref().map(ExposeSecret::expose_secret), Some("hunter2"));
     assert!(secrets.0.lock().unwrap().is_empty());
     assert!(library.snapshot().await.unwrap().connections.is_empty());
 }
 
 fn with_password(password: &str) -> ConnectionSecrets {
     ConnectionSecrets {
-        database_password: Some(password.to_owned()),
+        database_password: Some(SecretString::from(password)),
         ..ConnectionSecrets::default()
     }
+}
+
+#[tokio::test]
+async fn a_save_refused_before_any_write_stores_none_of_its_secrets() {
+    let dir = tempfile::tempdir().unwrap();
+    let secrets = MemorySecrets::default();
+    let core = core(dir.path(), secrets.clone());
+    let library = core.library().unwrap();
+    let mut bad_id = record("shop", "mysql", "shop");
+    bad_id.id = "not-an-id".to_owned();
+
+    let unnamed = library
+        .save(record("  ", "mysql", "shop"), with_password("hunter2"))
+        .await
+        .unwrap_err();
+    let invalid = library.save(bad_id, with_password("hunter2")).await.unwrap_err();
+
+    assert_eq!(unnamed.code(), "library.name_required");
+    assert_eq!(invalid.code(), "library.invalid_id");
+    assert!(secrets.0.lock().unwrap().is_empty());
+    assert!(library.snapshot().await.unwrap().connections.is_empty());
 }
 
 #[tokio::test]
@@ -356,7 +383,7 @@ async fn a_refused_ssh_password_takes_back_the_new_connection_and_its_database_p
     let core = core(dir.path(), secrets.clone());
     let library = core.library().unwrap();
     let both = ConnectionSecrets {
-        ssh_password: Some("tunnel".to_owned()),
+        ssh_password: Some(SecretString::from("tunnel")),
         ..with_password("hunter2")
     };
 
@@ -438,7 +465,7 @@ async fn an_edit_refused_at_its_second_secret_takes_back_the_first() {
         .save(
             through_ssh(22),
             ConnectionSecrets {
-                ssh_password: Some("old-tunnel".to_owned()),
+                ssh_password: Some(SecretString::from("old-tunnel")),
                 ..ConnectionSecrets::default()
             },
         )
@@ -452,7 +479,7 @@ async fn an_edit_refused_at_its_second_secret_takes_back_the_first() {
         .save(
             moved,
             ConnectionSecrets {
-                ssh_password: Some("new-tunnel".to_owned()),
+                ssh_password: Some(SecretString::from("new-tunnel")),
                 ..with_password("new-db")
             },
         )
@@ -608,7 +635,7 @@ async fn a_password_typed_at_connect_is_used_when_none_is_saved() {
         .connect_saved(
             saved.id,
             ConnectionSecrets {
-                database_password: Some("typed".to_owned()),
+                database_password: Some(SecretString::from("typed")),
                 ..ConnectionSecrets::default()
             },
             None,
@@ -680,8 +707,8 @@ async fn an_ssh_login_asks_the_app_about_a_host_key_it_does_not_know() {
     let fingerprint = key.public_key().fingerprint(HashAlg::Sha256).to_string();
     let prompter = Declining::default();
     let secrets = ConnectionSecrets {
-        database_password: Some(String::new()),
-        ssh_password: Some("typed".to_owned()),
+        database_password: Some(SecretString::from("")),
+        ssh_password: Some(SecretString::from("typed")),
         ssh_passphrase: None,
     };
 
@@ -729,7 +756,7 @@ async fn an_empty_database_password_survives_a_separately_stored_ssh_password() 
             .save(
                 through_ssh(port),
                 ConnectionSecrets {
-                    ssh_password: Some("saved ssh password".to_owned()),
+                    ssh_password: Some(SecretString::from("saved ssh password")),
                     ..ConnectionSecrets::default()
                 },
             )
@@ -739,7 +766,7 @@ async fn an_empty_database_password_survives_a_separately_stored_ssh_password() 
             .connect_saved(
                 saved.id,
                 ConnectionSecrets {
-                    database_password: Some(String::new()),
+                    database_password: Some(SecretString::from("")),
                     ..ConnectionSecrets::default()
                 },
                 None,
@@ -758,7 +785,7 @@ async fn an_empty_database_password_survives_a_separately_stored_ssh_password() 
             .test_connection(
                 with_key,
                 ConnectionSecrets {
-                    database_password: Some(String::new()),
+                    database_password: Some(SecretString::from("")),
                     ..ConnectionSecrets::default()
                 },
                 None,
