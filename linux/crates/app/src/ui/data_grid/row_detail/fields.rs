@@ -146,12 +146,16 @@ fn field_row() -> gtk::Box {
     let copy = gtk::Button::from_icon_name(icons::EDIT_COPY);
     copy.add_css_class("flat");
     crate::ui::a11y::describe_icon_button(&copy, &gettext("Copy Value"), None);
+    let menu = gtk::MenuButton::builder().icon_name(icons::VIEW_MORE).build();
+    menu.add_css_class("flat");
+    crate::ui::a11y::describe_icon_button(&menu, &gettext("More Actions"), None);
     // The value editor's pickers, while this is the picked field.
     let tools = gtk::Box::builder().visible(false).build();
     // Suffixes of the row, as on a libadwaita property row.
     let suffix = gtk::Box::builder().valign(gtk::Align::Center).build();
     suffix.append(&tools);
     suffix.append(&copy);
+    suffix.append(&menu);
     let line = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     line.append(&content);
     line.append(&suffix);
@@ -178,6 +182,7 @@ struct FieldParts {
     value: gtk::Inscription,
     tools: gtk::Box,
     copy: gtk::Button,
+    menu: gtk::MenuButton,
     slot: gtk::Box,
 }
 
@@ -198,6 +203,7 @@ fn field_parts(row: &gtk::Widget) -> Option<FieldParts> {
         kind: kind.downcast().ok()?,
         value: top.next_sibling()?.downcast().ok()?,
         tools: tools.downcast().ok()?,
+        menu: copy.next_sibling()?.downcast().ok()?,
         copy: copy.downcast().ok()?,
         slot: line.next_sibling()?.downcast().ok()?,
     })
@@ -334,6 +340,7 @@ impl RowDetailPane {
                             }
                         }
                     ));
+                    pane.connect_field_menu(&parts.menu, item);
                 }
                 item.set_child(Some(&row));
             }
@@ -631,19 +638,52 @@ impl RowDetailPane {
             .scroll_to(position, Some(&view_column), gtk::ListScrollFlags::FOCUS, None);
     }
 
-    /// Run the grid's `action` on the shown row's `column`, whichever
-    /// field the editor holds, as a cell menu runs it on its cell.
-    fn act_on_field(&self, column: usize, action: &str) {
-        let (Some(grid), Some(row)) = (self.grid(), self.current_pin()) else {
-            return;
-        };
+    /// Hold the shown row's `column` as the target of the grid's actions,
+    /// whichever field the editor holds, as a cell menu holds its cell.
+    fn hold_field(&self, column: usize) -> Option<DataGrid> {
+        let (grid, row) = (self.grid()?, self.current_pin()?);
         grid.hold_menu_target(crate::ui::data_grid::selection::Target {
             cell: Some((row.clone(), column)),
             rows: vec![row],
         });
         grid.refresh_actions();
-        grid.actions().activate_action(action, None);
-        grid.release_menu_target_soon();
+        Some(grid)
+    }
+
+    fn act_on_field(&self, column: usize, action: &str) {
+        if let Some(grid) = self.hold_field(column) {
+            grid.actions().activate_action(action, None);
+            grid.release_menu_target_soon();
+        }
+    }
+
+    /// The menu's items are the grid's own cell actions, held on the
+    /// row's field until it closes, so they act on that field while the
+    /// grid has no focus and the editor stays on its own.
+    fn connect_field_menu(&self, menu: &gtk::MenuButton, item: &gtk::ListItem) {
+        menu.set_menu_model(Some(&*self.imp().value_menu));
+        menu.set_create_popup_func(glib::clone!(
+            #[weak(rename_to = pane)]
+            self,
+            #[weak]
+            item,
+            move |_| {
+                if let Some(column) = field_of(item.item()) {
+                    pane.hold_field(column);
+                }
+            }
+        ));
+        if let Some(popover) = menu.popover() {
+            popover.connect_closed(glib::clone!(
+                #[weak(rename_to = pane)]
+                self,
+                move |_| {
+                    if let Some(grid) = pane.grid() {
+                        grid.release_menu_target_soon();
+                    }
+                }
+            ));
+        }
     }
 
     /// A header drag, a hidden column or a new column set reorders the
