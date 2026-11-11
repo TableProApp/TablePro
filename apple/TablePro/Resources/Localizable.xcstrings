@@ -765,6 +765,16 @@
     "“%@” changed since you last synced" : {
 
     },
+    "“%@” has its Safe Mode level set to %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "“%1$@” has its Safe Mode level set to %2$@."
+          }
+        }
+      }
+    },
     "“%@” holds no file to import." : {
 
     },
@@ -1065,6 +1075,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "« %@ » est toujours utilisé"
+          }
+        }
+      }
+    },
+    "“%@” is tagged %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "“%1$@” is tagged %2$@."
           }
         }
       }
@@ -82544,6 +82564,9 @@
         }
       }
     },
+    "Filter Bar" : {
+
+    },
     "Filter by name" : {
       "localizations" : {
         "fr" : {
@@ -111744,6 +111767,19 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Move" : {
+
+    },
+    "Move “%@” to “%@”?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Move “%1$@” to “%2$@”?"
+          }
+        }
+      }
+    },
     "Move “%@” to Connection" : {
 
     },
@@ -113803,6 +113839,9 @@
 
     },
     "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the tree, and makes Tree the default sidebar layout. Standard Layout turns them off again. Open connections switch layout too." : {
+
+    },
+    "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the tree, takes the connection and database out of the toolbar, and makes Tree the default sidebar layout. In table tabs it shows column types in the header, the sort and a Text mode in the filter bar, opens that bar with each table, puts the result bar above the grid and names the database and connection in tab titles. In query tabs it shows the query bar on two rows, and object icons turn colorful. Standard Layout turns them off again. Open connections switch layout too." : {
 
     },
     "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the tree, takes the connection and database out of the toolbar, and makes Tree the default sidebar layout. In table tabs it shows column types in the header, the sort and a Text mode in the filter panel, opens that panel with each table, puts the result bar above the grid and names the database and connection in tab titles. In query tabs it shows the query bar on two rows, and object icons turn colorful. Standard Layout turns them off again. Open connections switch layout too." : {
@@ -129284,6 +129323,9 @@
           }
         }
       }
+    },
+    "Open the filter bar with each table" : {
+
     },
     "Open the filter panel with each table" : {
 
@@ -167019,6 +167061,9 @@
         }
       }
     },
+    "Show sort criteria in the filter bar" : {
+
+    },
     "Show sort criteria in the filter panel" : {
 
     },
@@ -194268,6 +194313,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "L’instruction SurrealDB a échoué."
+          }
+        }
+      }
+    },
+    "The tab leaves “%@”, and its next run goes to “%@”." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The tab leaves “%1$@”, and its next run goes to “%2$@”."
           }
         }
       }
