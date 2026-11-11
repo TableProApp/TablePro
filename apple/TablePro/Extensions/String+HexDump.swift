@@ -118,28 +118,10 @@ extension String {
         return hex
     }
 
-    /// Returns a compact single-line hex representation for data grid cells.
-    ///
-    /// Format: `0x48656C6C6F` for short values, truncated with `…` for longer ones.
-    /// - Parameter maxBytes: Maximum bytes to show before truncating (default 64).
     func formattedAsCompactHex(maxBytes: Int = 64) -> String? {
         let bytes = storedBytes
-
-        let totalCount = bytes.count
-        guard totalCount > 0 else { return nil }
-
-        let displayCount = min(totalCount, maxBytes)
-        let bytesArray = [UInt8](bytes.prefix(displayCount))
-
-        var hex = "0x"
-        for byte in bytesArray {
-            hex += String(format: "%02X", byte)
-        }
-
-        if totalCount > maxBytes {
-            hex += "…"
-        }
-
-        return hex
+        guard !bytes.isEmpty else { return nil }
+        let hex = "0x" + bytes.uppercaseHex(maxBytes: maxBytes)
+        return bytes.count > maxBytes ? hex + "…" : hex
     }
 }

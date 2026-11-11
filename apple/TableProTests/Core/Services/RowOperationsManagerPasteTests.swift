@@ -85,6 +85,45 @@ struct RowOperationsManagerPasteTests {
         #expect(rows.first?[2] == .null)
     }
 
+    @Test("A binary column takes back the bytes a copy wrote as hex, from the grid's cells and from text")
+    func copiedHexPastesAsBytes() {
+        var types: [ColumnType] = Array(repeating: .text(rawType: nil), count: Self.columns.count)
+        types[2] = .blob(rawType: "varbinary(16)")
+        let manager = makeManager()
+
+        let cells = RecordingClipboard()
+        cells.writeCells(GridCellsClipboardPayload(text: "7\tAnn\t0x4142", fields: [["7", "Ann", "0x4142"]]))
+        var rows = TableRows.from(queryRows: [], columns: Self.columns, columnTypes: types)
+        let fromCells = manager.pasteRowsFromClipboard(
+            columns: Self.columns, primaryKeyColumns: ["id"], tableRows: &rows, clipboard: cells
+        )
+        #expect(fromCells.pastedRows.first?.values[2] == .bytes(Data([0x41, 0x42])))
+
+        let text = RecordingClipboard()
+        text.text = "7\t0x41\t0x00FF\n8\tBo\t0x"
+        let fromText = manager.pasteRowsFromClipboard(
+            columns: Self.columns, primaryKeyColumns: ["id"], tableRows: &rows, clipboard: text
+        )
+        #expect(fromText.pastedRows.map { $0.values[1] } == [.text("0x41"), .text("Bo")])
+        #expect(fromText.pastedRows.map { $0.values[2] } == [.bytes(Data([0x00, 0xFF])), .bytes(Data())])
+    }
+
+    @Test("A binary field that starts with 0x but is not hex, such as a copy cut short, pastes nothing")
+    func brokenHexRefusesThePaste() {
+        var types: [ColumnType] = Array(repeating: .text(rawType: nil), count: Self.columns.count)
+        types[2] = .blob(rawType: "varbinary(16)")
+        var rows = TableRows.from(queryRows: [], columns: Self.columns, columnTypes: types)
+        let clipboard = RecordingClipboard()
+        clipboard.text = "7\tAnn\t0x4142\n8\tBo\t0x41…"
+
+        let result = makeManager().pasteRowsFromClipboard(
+            columns: Self.columns, primaryKeyColumns: ["id"], tableRows: &rows, clipboard: clipboard
+        )
+
+        #expect(result.pastedRows.isEmpty)
+        #expect(rows.count == 0)
+    }
+
     @Test("Copied cells stale against the clipboard's text are not used")
     func staleCopiedCellsAreIgnored() {
         let clipboard = RecordingClipboard()

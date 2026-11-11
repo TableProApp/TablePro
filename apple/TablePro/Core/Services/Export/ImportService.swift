@@ -501,6 +501,7 @@ final class ImportService: ObservableObject {
             targetTable: file.targetTable,
             columnMapping: file.columnMapping,
             sourceFields: file.sourceFields,
+            binaryText: ImportBinaryText(formatId: file.formatId),
             joinsTransaction: true,
             importRun: run,
             fileIndex: index,
@@ -644,6 +645,7 @@ final class ImportService: ObservableObject {
         let sink = ImportDataSinkAdapter(
             driver: driver, databaseType: connection.type, targetTable: targetTable,
             columnMapping: columnMapping, sourceFields: sourceFields, rowWriting: rowWriting,
+            binaryText: ImportBinaryText(formatId: type(of: plugin).formatId),
             importRun: run, isCancelled: { progress.isCancelled }
         )
         defer {

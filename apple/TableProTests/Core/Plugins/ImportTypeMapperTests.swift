@@ -53,6 +53,7 @@ struct ImportTypeMapperTests {
         #expect(ImportTypeMapper.sqlType(for: .integer, databaseType: .sqlite) == "INTEGER")
         #expect(ImportTypeMapper.sqlType(for: .real, databaseType: .sqlite) == "REAL")
         #expect(ImportTypeMapper.sqlType(for: .json, databaseType: .sqlite) == "TEXT")
+        #expect(ImportTypeMapper.sqlType(for: .boolean, databaseType: .sqlite) == "BOOLEAN")
     }
 
     @Test("Oracle gets types it has, never TEXT")
