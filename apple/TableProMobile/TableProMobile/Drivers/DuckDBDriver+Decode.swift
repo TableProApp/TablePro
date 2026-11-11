@@ -3,6 +3,25 @@ import Foundation
 import TableProModels
 
 extension DuckDBActor {
+    // A streamed BLOB is its bytes, as on every other engine. `decodeCell` keeps the base64 text `execute` returns.
+    static func streamedCell(
+        vector: duckdb_vector,
+        row: idx_t,
+        column: DuckDBStreamColumn,
+        options: StreamOptions,
+        ref: CellRef?
+    ) -> Cell {
+        guard !column.castToText, column.type == DUCKDB_TYPE_BLOB else {
+            return decodeCell(vector: vector, row: row, column: column, options: options, ref: ref)
+        }
+        if let validity = duckdb_vector_get_validity(vector), !duckdb_validity_row_is_valid(validity, row) {
+            return .null
+        }
+        guard let data = duckdb_vector_get_data(vector) else { return .null }
+        let value = data.assumingMemoryBound(to: duckdb_string_t.self)[Int(row)]
+        return .binary(byteCount: Int(duckdb_string_t_length(value)), ref: ref)
+    }
+
     static func decodeCell(
         vector: duckdb_vector,
         row: idx_t,
@@ -83,11 +102,7 @@ extension DuckDBActor {
         let length = Int(duckdb_string_t_length(value))
         guard length > 0, let pointer = duckdb_string_t_data(&value) else { return .text("") }
         let text = String(bytes: UnsafeRawBufferPointer(start: pointer, count: length), encoding: .utf8) ?? ""
-        if length > options.textTruncationBytes {
-            let prefix = String(text.prefix(options.textTruncationBytes))
-            return .truncatedText(prefix: prefix, totalBytes: length, ref: ref)
-        }
-        return .text(text)
+        return Cell.from(text: text, options: options, ref: ref)
     }
 
     private static func decodeBlob(_ data: UnsafeMutableRawPointer, row: idx_t) -> Cell {

@@ -33,6 +33,7 @@ extension PluginMetadataRegistry {
                     supportsModifyPrimaryKey: false,
                     supportsOpportunisticTLS: false,
                     verifiesServerWithSystemTrust: true,
+                    requestedTLSVerifiesIdentity: true,
                     columnsAreSampled: true,
                     supportsPrincipalConnectionLimit: false
                 ),

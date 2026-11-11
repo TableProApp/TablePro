@@ -154,6 +154,7 @@ impl Grid {
             changes: vec![RowChange::Update(RowUpdate {
                 key: vec![Value::Int(id)],
                 assignments: vec![(self.column(field), CellInput::Value(Value::Text(text.to_owned())))],
+                read: Vec::new(),
             })],
         };
         let grid = self.clone();
@@ -175,6 +176,7 @@ fn ids(read: &PageRead) -> Vec<i64> {
         .rows
         .iter()
         .filter_map(|row| match row.first() {
+            Some(Value::Int32(id)) => Some(i64::from(*id)),
             Some(Value::Int(id)) => Some(*id),
             _ => None,
         })
@@ -305,7 +307,7 @@ async fn collections_list_page_and_save_through_openssh() {
         .result
         .rows
         .iter()
-        .find(|row| row.first() == Some(&Value::Int(2)))
+        .find(|row| row.first() == Some(&Value::Int32(2)))
         .and_then(|row| row.get(grid.column("status")));
     assert_eq!(edited, Some(&Value::Text("shipped".to_owned())));
     let in_database = mongo

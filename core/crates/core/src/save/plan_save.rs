@@ -50,7 +50,15 @@ pub fn plan_save(
                 )?
             }
             RowChange::Update(update) => {
-                let statement = build_update(dialect, table, columns, identity, &update.key, &update.assignments)?;
+                let statement = build_update(
+                    dialect,
+                    table,
+                    columns,
+                    identity,
+                    &update.key,
+                    &update.assignments,
+                    &update.read,
+                )?;
                 match sets_partition_only(columns, &update.assignments) {
                     // Its count says how many partitions it reached, not
                     // whether the row is there.
@@ -234,6 +242,7 @@ mod tests {
         RowChange::Update(RowUpdate {
             key: vec![key],
             assignments: vec![(1, CellInput::Value(Value::Text(name.to_owned())))],
+            read: Vec::new(),
         })
     }
 

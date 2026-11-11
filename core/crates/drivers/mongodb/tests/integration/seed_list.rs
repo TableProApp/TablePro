@@ -52,7 +52,7 @@ async fn a_seed_list_logs_in_where_its_txt_record_says_then_pages_and_saves() {
     let table = TableRef::new(Some(MongoFixture::THIS_DB.to_owned()), collection.clone());
     let read = first_page(connection.as_ref(), &table).await;
     let ids: Vec<&Value> = read.result.rows.iter().filter_map(|row| row.first()).collect();
-    assert_eq!(ids, [&Value::Int(1), &Value::Int(2), &Value::Int(3)]);
+    assert_eq!(ids, [&Value::Int32(1), &Value::Int32(2), &Value::Int32(3)]);
 
     let report = save_field(
         connection.as_ref(),
@@ -65,7 +65,11 @@ async fn a_seed_list_logs_in_where_its_txt_record_says_then_pages_and_saves() {
 
     assert_eq!(report.rows_affected, [Some(1)]);
     let read = first_page(connection.as_ref(), &table).await;
-    let edited = read.result.rows.iter().find(|row| row.first() == Some(&Value::Int(2)));
+    let edited = read
+        .result
+        .rows
+        .iter()
+        .find(|row| row.first() == Some(&Value::Int32(2)));
     assert_eq!(
         edited.and_then(|row| row.get(1)),
         Some(&Value::Text("renamed".to_owned()))

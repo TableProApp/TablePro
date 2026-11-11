@@ -158,6 +158,22 @@ private final class MockTrinoPlugin: NSObject, TableProPlugin, DriverPlugin {
     }
 }
 
+private final class MockPostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
+    static let pluginName = "Mock PostgreSQL"
+    static let pluginVersion = "1.0.0"
+    static let pluginDescription = "Stands in for the bundled PostgreSQL plugin"
+    static let capabilities: [PluginCapability] = [.databaseDriver]
+
+    static let databaseTypeId = "PostgreSQL"
+    static let databaseDisplayName = "PostgreSQL"
+    static let iconName = "postgresql-icon"
+    static let defaultPort = 5_432
+
+    func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
+        fatalError("Not used in tests")
+    }
+}
+
 private final class MockClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "Mock ClickHouse"
     static let pluginVersion = "1.0.0"
@@ -369,8 +385,8 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(snapshot.capabilities.supportsRawFilter)
     }
 
-    /// None of these has a `DriverPlugin` static, so a plugin that registers would reset them to the struct
-    /// defaults: counts on every open that read every partition, a header sort CQL refuses, and Match Any.
+    // None of these has a `DriverPlugin` static, so a plugin that registers would reset them to the struct
+    // defaults: counts on every open that read every partition, a header sort CQL refuses, and Match Any.
     @Test("Cassandra keeps its count, sort and filter limits when its plugin registers")
     func cassandraKeepsItsCuratedQueryLimits() {
         let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockCassandraPlugin.self)
@@ -433,8 +449,8 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         }
     }
 
-    /// Measured: `ADD … NOT NULL` and `COMMENT ON COLUMN` are syntax errors, `ALTER … TYPE` is refused, and only a
-    /// primary key column can be renamed, so the Structure tab offers adding and dropping a column and nothing else.
+    // Measured: `ADD … NOT NULL` and `COMMENT ON COLUMN` are syntax errors, `ALTER … TYPE` is refused, and only a
+    // primary key column can be renamed, so the Structure tab offers adding and dropping a column and nothing else.
     @Test("Cassandra and ScyllaDB offer only the column edits CQL can run", arguments: ["Cassandra", "ScyllaDB"])
     func cassandraStructureEdits(typeId: String) throws {
         let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId))
@@ -480,8 +496,8 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.connection.defaultLocalSocketPath == MySQLLocalSocket.defaultPath)
     }
 
-    /// A MySQL-protocol session opened with no database has none at all, so it lists nothing until
-    /// one is chosen. Databend's session falls back to its `default` database instead.
+    // A MySQL-protocol session opened with no database has none at all, so it lists nothing until
+    // one is chosen. Databend's session falls back to its `default` database instead.
     @Test("Only the MySQL engines with no default database require a selected database to browse")
     func browsingRequiresSelectedDatabasePerEngine() {
         let registry = PluginMetadataRegistry.shared
@@ -591,6 +607,49 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.capabilities.verifiesServerWithSystemTrust == true)
     }
 
+    @Test("PostgreSQL keeps system trust, and TLS asked for without a mode stays Required, when its plugin registers")
+    func postgreSQLKeepsItsTLSCapabilities() {
+        let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockPostgreSQLPlugin.self)
+
+        #expect(built.capabilities.verifiesServerWithSystemTrust == true)
+        #expect(built.capabilities.requestedTLSVerifiesIdentity == false)
+    }
+
+    @Test("Trino and ClickHouse keep Verify Identity for TLS asked for without a mode when their plugins register")
+    func requestedTLSSurvivesRegistration() {
+        let registry = PluginMetadataRegistry.shared
+
+        #expect(registry.buildMetadataSnapshot(from: MockTrinoPlugin.self).capabilities.requestedTLSVerifiesIdentity)
+        #expect(registry.buildMetadataSnapshot(from: MockClickHousePlugin.self).capabilities.requestedTLSVerifiesIdentity)
+        #expect(registry.buildMetadataSnapshot(from: MockHanaPlugin.self).capabilities.requestedTLSVerifiesIdentity)
+    }
+
+    @Test(
+        "The libpq engines check the system trust store, while TLS asked for without a mode stays Required",
+        arguments: ["PostgreSQL", "Redshift", "CockroachDB", "KingbaseES"]
+    )
+    func libpqEnginesSplitTheTwoTLSFlags(typeId: String) throws {
+        let curated = try #require(
+            PluginMetadataRegistry.shared.builtInDefaults().first { $0.typeId == typeId }?.snapshot
+        )
+
+        #expect(curated.capabilities.verifiesServerWithSystemTrust == true)
+        #expect(curated.capabilities.requestedTLSVerifiesIdentity == false)
+    }
+
+    @Test(
+        "The engines that already verified the system trust store keep both TLS flags",
+        arguments: ["SAP HANA", "Kafka", "Trino", "Presto", "Qdrant", "DuckDB", "ClickHouse"]
+    )
+    func systemTrustEnginesKeepBothTLSFlags(typeId: String) throws {
+        let curated = try #require(
+            PluginMetadataRegistry.shared.builtInDefaults().first { $0.typeId == typeId }?.snapshot
+        )
+
+        #expect(curated.capabilities.verifiesServerWithSystemTrust == true)
+        #expect(curated.capabilities.requestedTLSVerifiesIdentity == true)
+    }
+
     @Test("etcd offers no generic SSL Mode, since its driver reads only its own TLS Mode field")
     @MainActor
     func etcdDeclaresNoGenericSSL() {
@@ -624,6 +683,7 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.capabilities.filtersTypedByReadRows == false)
         #expect(built.capabilities.tlsImpliedPorts.isEmpty)
         #expect(built.capabilities.verifiesServerWithSystemTrust == false)
+        #expect(built.capabilities.requestedTLSVerifiesIdentity == false)
         #expect(built.capabilities.supportsPerConnectionCertificatePaths == true)
         #expect(built.capabilities.newDatabaseFileExtensions.isEmpty)
         #expect(built.schema.implicitSchemaName == nil)

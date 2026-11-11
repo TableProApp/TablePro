@@ -11,7 +11,7 @@ use crate::extended_json::extended_json;
 pub(crate) fn cell(value: &Bson) -> Value {
     match value {
         Bson::Double(number) => Value::Float64(*number),
-        Bson::Int32(number) => Value::Int(i64::from(*number)),
+        Bson::Int32(number) => Value::Int32(*number),
         Bson::Int64(number) => Value::Int(*number),
         Bson::Decimal128(number) => match number.to_string().parse::<SqlDecimal>() {
             Ok(decimal) if decimal.is_finite() => Value::Decimal(decimal),
@@ -55,7 +55,8 @@ mod tests {
     #[test]
     fn plain_values_show_plainly_and_the_rest_as_extended_json() {
         let id = ObjectId::parse_str("5f1d7a0c9b1e8b2a3c4d5e6f").expect("an id");
-        assert_eq!(cell(&Bson::Int32(3)), Value::Int(3));
+        assert_eq!(cell(&Bson::Int32(3)), Value::Int32(3));
+        assert_eq!(cell(&Bson::Int64(3)), Value::Int(3));
         assert_eq!(cell(&Bson::String("a".to_owned())), Value::Text("a".to_owned()));
         assert_eq!(
             cell(&Bson::ObjectId(id)),

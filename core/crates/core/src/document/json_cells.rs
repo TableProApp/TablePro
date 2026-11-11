@@ -96,7 +96,8 @@ fn as_json(value: Value) -> Value {
         Value::Null | Value::Json(_) | Value::Undecodable(_) => return value,
         Value::Text(text) => quoted(text),
         Value::Bool(flag) => flag.to_string(),
-        Value::Int(number) => number.to_string(),
+        Value::Int32(number) => number.to_string(),
+        Value::Int(number) => wrapped("$numberLong", &quoted(&number.to_string())),
         Value::UInt(number) => number.to_string(),
         Value::WideInt(number) => wrapped("$numberDecimal", &quoted(&number.to_string())),
         Value::Float64(number) => double(*number),
@@ -295,6 +296,7 @@ mod tests {
         }));
         let rows = vec![
             vec![Value::Text("a\"b".to_owned()), Value::Text("plain".to_owned())],
+            vec![Value::Int32(5), Value::Null],
             vec![Value::Int(5), Value::Null],
             vec![Value::Float64(2.0), Value::Null],
             vec![id, Value::Null],
@@ -324,6 +326,7 @@ mod tests {
             [
                 r#""a\"b""#,
                 "5",
+                r#"{"$numberLong": "5"}"#,
                 "2.0",
                 r#"{"$oid": "5f1d7a0c9b1e8b2a3c4d5e6f"}"#,
                 r#"{"$binary": {"base64": "aGkh", "subType": "00"}}"#,

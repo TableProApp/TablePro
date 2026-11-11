@@ -144,10 +144,14 @@ impl EditController {
             return;
         };
         let dialect = grid.sql_dialect();
+        let read = row
+            .cells()
+            .and_then(|cells| cells.get(column).cloned())
+            .unwrap_or(Value::Null);
         let input = match text {
             None if cell_presets(&grid_column, &row.id(), dialect.as_deref()).null => Ok(CellInput::Value(Value::Null)),
             None => Err(EditParseError::Required),
-            Some(text) => parse_cell_text(text, catalog, &row.id(), dialect.as_deref()),
+            Some(text) => parse_cell_text(text, catalog, &row.id(), &read, dialect.as_deref()),
         };
         match input {
             Ok(input) => {

@@ -48,15 +48,19 @@ extension DatabaseManager {
         }
     }
 
-    // The lane reopens on its next use, signing in with a new lease. A transaction it held is reported as lost.
+    // The lane reopens on its next use, signing in with a new lease. A transaction or session state it held is
+    // reported as lost.
     private func closeLane(_ database: String, for ending: CredentialLeaseEnding) async {
         let connectionId = ending.connectionId
         guard let driver = sessionLanes.parkedDriver(for: connectionId, database: database) else { return }
         let held = await driver.heldSessionTransactionState()
         guard credentialLeaseAction(for: ending) == .closeLane(database: database) else { return }
-        if !held.permitsAppTransaction {
-            sessionLanes.markTransactionLost(database: database, for: connectionId)
-        }
+        sessionLanes.markLost(
+            database: database,
+            transaction: !held.permitsAppTransaction,
+            state: sessionStateLedger.state(heldBy: driver, for: connectionId),
+            for: connectionId
+        )
         Self.logger.info("Closing a lane whose Vault lease is ending for \(connectionId, privacy: .public)")
         sessionLanes.close(database: database, for: connectionId, supersedingOpens: false)
     }
@@ -73,11 +77,13 @@ extension DatabaseManager {
         guard credentialLeaseAction(for: ending) == .reconnectSession else { return }
         try? await sessionDriverGate.withExclusiveAccess(browsedGateKey(for: connectionId)) {
             guard credentialLeaseAction(for: ending) == .reconnectSession else { return }
-            if holdsTransaction(connectionId, driver: ending.driver) {
-                // Reported to the next statement on this database, as a lane's lost transaction is.
-                let database = activeSessions[connectionId]?.resolvedBrowseDatabase ?? ""
-                sessionLanes.markTransactionLost(database: database, for: connectionId)
-            }
+            // Reported to the next statement on this database, as a lane's lost transaction is. What the session set up
+            // is noted by the reconnect, just before it closes this driver.
+            sessionLanes.markLost(
+                database: activeSessions[connectionId]?.resolvedBrowseDatabase ?? "",
+                transaction: holdsTransaction(connectionId, driver: ending.driver),
+                for: connectionId
+            )
             Self.logger.info("Vault lease ending, reconnecting \(connectionId, privacy: .public) with a new one")
             let outcome = await performHealthMonitorReconnect(connectionId: connectionId, failedDriver: ending.driver)
             guard case .retry = outcome, credentialLeaseAction(for: ending) == .reconnectSession else { return }

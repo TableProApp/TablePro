@@ -41,6 +41,7 @@ impl SqlDialect for FakeDialect {
         match value {
             Value::Null => Ok("NULL".to_owned()),
             Value::Bool(flag) => Ok(flag.to_string()),
+            Value::Int32(number) => Ok(number.to_string()),
             Value::Int(number) => Ok(number.to_string()),
             Value::UInt(number) => Ok(number.to_string()),
             Value::Text(text) => Ok(format!("'{}'", text.replace('\'', "''"))),
@@ -116,6 +117,7 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
 fn param_type_of(value: &Value) -> ParamType {
     match value {
         Value::Bool(_) => ParamType::Bool,
+        Value::Int32(_) => ParamType::Int32,
         Value::Int(_) => ParamType::Int64,
         Value::UInt(_) => ParamType::UInt64,
         Value::Float32(_) => ParamType::Float32,

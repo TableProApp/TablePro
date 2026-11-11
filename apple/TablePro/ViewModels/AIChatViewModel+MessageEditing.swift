@@ -51,7 +51,8 @@ extension AIChatViewModel {
             timestamp: snapshot.timestamp,
             usage: snapshot.usage,
             modelId: snapshot.modelId,
-            providerId: snapshot.providerId
+            providerId: snapshot.providerId,
+            outputLimit: snapshot.outputLimit
         )
     }
 

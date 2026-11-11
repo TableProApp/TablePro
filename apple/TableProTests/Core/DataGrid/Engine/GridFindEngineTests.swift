@@ -294,6 +294,125 @@ struct GridFindEngineTests {
         #expect(search("8950", in: source).matches.isEmpty)
     }
 
+    // MARK: - Off the main actor
+
+    private static let shownValues = TableRows(
+        rows: [
+            Row(id: .existing(0), values: [
+                .text("2024-03-15 09:30:00.123456"),
+                .text("2024-12-31 23:59:59+07"),
+                .text("2024-03-15"),
+                .bytes(Data("signup".utf8)),
+                .bytes(Data((0..<16).map { UInt8($0) })),
+                .text("1700000000"),
+                .text("1700000000000"),
+                .text("a\rb")
+            ]),
+            Row(id: .existing(1), values: [
+                .text("2023-11-14 22:13:20"),
+                .null,
+                .text("1999-01-01"),
+                .bytes(Data([0x89, 0x50, 0x4E, 0x47])),
+                .bytes(Data(repeating: 0xAB, count: 16)),
+                .text("1700003600"),
+                .text("1700003600000"),
+                .text("plain")
+            ])
+        ],
+        columns: ["created", "updated", "born", "payload", "token", "stamp", "stampMillis", "note"],
+        columnTypes: [
+            .datetime(rawType: "DATETIME(6)"),
+            .timestamp(rawType: "TIMESTAMPTZ"),
+            .date(rawType: "DATE"),
+            .blob(rawType: "VARBINARY(255)"),
+            .blob(rawType: "BINARY(16)"),
+            .integer(rawType: "BIGINT"),
+            .integer(rawType: "BIGINT"),
+            .text(rawType: "TEXT")
+        ]
+    )
+
+    private static let shownFormats: [ValueDisplayFormat?] = [nil, nil, nil, .text, .uuid, .unixTimestamp, .unixTimestampMillis, nil]
+
+    private static let shownTerms = [
+        "2024", "2023", "09:30:00.123456", "+07", "/", "PM", "signup", "00010203-0405", "abab", "a b", "b", "11"
+    ]
+
+    // Both sides use the same renderer code, so this pins the same cells on and off the main actor, not the shown text.
+    @Test("The same search finds the same cells on and off the main actor, under every date format")
+    func searchOffTheMainActorMatchesTheMainActor() async {
+        for revealsInvisibleCharacters in [false, true] {
+            let source = self.source(Self.shownValues, formats: Self.shownFormats, revealsInvisibleCharacters: revealsInvisibleCharacters)
+            for format in DateFormatOption.allCases {
+                for term in Self.shownTerms {
+                    let onMain = GridFindEngine.search(
+                        term,
+                        options: GridFindState.Options(),
+                        in: source,
+                        dates: DateDisplayRenderer(format: format),
+                        isCancelled: { false }
+                    )
+                    let offMain = await GridFindEngine.searchOffTheMainActor(
+                        term,
+                        options: GridFindState.Options(),
+                        in: source,
+                        dateFormat: format
+                    )
+                    #expect(offMain == onMain, "same cells on and off the main actor: \(format) \(term) reveals: \(revealsInvisibleCharacters)")
+                }
+            }
+            for term in Self.shownTerms {
+                let shared = await GridFindEngine.searchOffTheMainActor(
+                    term,
+                    options: GridFindState.Options(),
+                    in: source,
+                    dateFormat: DateFormattingService.shared.currentFormat
+                )
+                #expect(shared == search(term, in: source), "\(term)")
+            }
+        }
+    }
+
+    @Test("The off-main search renders dates, bytes and timestamps the way the cells show them")
+    func searchOffTheMainActorReadsTheShownText() async {
+        let source = self.source(Self.shownValues, formats: Self.shownFormats)
+        func column(_ name: String) -> DataGridColumnID { DataGridColumnID(name: name, occurrence: 0) }
+        func found(_ term: String, _ format: DateFormatOption = .iso8601) async -> [GridFindState.Match]? {
+            await GridFindEngine.searchOffTheMainActor(term, options: GridFindState.Options(), in: source, dateFormat: format)?.matches
+        }
+
+        #expect(await found("15/03/2024", .euLong) == [match(0, column("created")), match(0, column("born"))])
+        #expect(await found("09:30:00.123456 AM", .usLong) == [match(0, column("created"))])
+        #expect(await found("23:59:59+07") == [match(0, column("updated"))])
+        #expect(await found("signup") == [match(0, column("payload"))])
+        #expect(await found("00010203-0405-0607-0809-0a0b0c0d0e0f") == [match(0, column("token"))])
+        #expect(await found("a b") == [match(0, column("note"))])
+        #expect(await found("8950")?.isEmpty == true)
+    }
+
+    @Test("A search asks whether to stop every 4,096 cells and gives up when told to")
+    func searchChecksForCancellation() {
+        let rows = TableRows.from(
+            queryRows: (0..<10_000).map { [PluginCellValue.text("row \($0)")] },
+            columns: ["v"],
+            columnTypes: [.text(rawType: "TEXT")]
+        )
+        let dates = DateDisplayRenderer(format: .iso8601)
+        var checks = 0
+
+        let finished = GridFindEngine.search("row", options: GridFindState.Options(), in: source(rows), dates: dates) {
+            checks += 1
+            return false
+        }
+        let stopped = GridFindEngine.search(
+            "row", options: GridFindState.Options(), in: source(rows), dates: dates, isCancelled: { true }
+        )
+
+        #expect(finished?.matches.count == 10_000)
+        #expect(checks == 3)
+        #expect(stopped == nil)
+    }
+
     // MARK: - Replacing
 
     private static let contacts = TableRows.from(
@@ -474,18 +593,19 @@ struct DataGridModelFindTests {
         GridSelectionReducer.single(GridCoord(row: row, displayColumn: column))
     }
 
-    private func search(_ model: DataGridModel, _ term: String) {
+    private func search(_ model: DataGridModel, _ term: String) async {
         model.showFind()
         model.find.term = term
         model.findQueryDidChange()
+        await model.findSearchSettled()
     }
 
     @Test("A match becomes the active cell, column included")
-    func matchSetsActiveCell() {
+    func matchSetsActiveCell() async {
         let (model, owner) = mount()
         model.setSelection(cell(2, 0))
 
-        search(model, "acme")
+        await search(model, "acme")
 
         #expect(model.find.matches.count == 4)
         #expect(model.find.currentIndex == 1)
@@ -495,9 +615,9 @@ struct DataGridModelFindTests {
     }
 
     @Test("Find Next walks the matches and wraps")
-    func findNextWraps() {
+    func findNextWraps() async {
         let (model, owner) = mount()
-        search(model, "acme")
+        await search(model, "acme")
         #expect(model.selection.activeCell == GridCoord(row: 1, displayColumn: 2))
 
         model.findNext()
@@ -512,9 +632,9 @@ struct DataGridModelFindTests {
     }
 
     @Test("Find Previous starts from where the user moved the cursor")
-    func findPreviousFromCursor() {
+    func findPreviousFromCursor() async {
         let (model, owner) = mount()
-        search(model, "acme")
+        await search(model, "acme")
         model.setSelection(cell(3, 0))
 
         model.findPrevious()
@@ -524,14 +644,15 @@ struct DataGridModelFindTests {
     }
 
     @Test("A refresh keeps the current match by identity and leaves the selection alone")
-    func refreshKeepsCurrentMatch() {
+    func refreshKeepsCurrentMatch() async {
         let (model, owner) = mount()
         model.setSelection(cell(2, 0))
-        search(model, "acme")
+        await search(model, "acme")
 
         owner.tableRows.rows[0].values[2] = .text("Acme Town")
         model.reloadRows()
         model.refreshFind()
+        await model.findSearchSettled()
 
         #expect(model.find.matches.count == 5)
         #expect(model.find.currentMatch == GridFindState.Match(rowID: .existing(2), columnID: Self.company))
@@ -540,9 +661,9 @@ struct DataGridModelFindTests {
     }
 
     @Test("Replace commits the current match as one edit and moves to the next match")
-    func replaceCurrent() {
+    func replaceCurrent() async {
         let (model, owner) = mount { $0.isEditable = true }
-        search(model, "acme")
+        await search(model, "acme")
         model.find.replacement = "Umbrella"
 
         model.replaceCurrentMatch()
@@ -556,12 +677,12 @@ struct DataGridModelFindTests {
     }
 
     @Test("Replace All is one commit and leaves a column it may not write")
-    func replaceAllOneCommit() throws {
+    func replaceAllOneCommit() async throws {
         let (model, owner) = mount {
             $0.isEditable = true
             $0.lockedColumns = ["city"]
         }
-        search(model, "acme")
+        await search(model, "acme")
         model.find.replacement = "Umbrella"
 
         let outcome = try #require(model.replaceAllMatches())
@@ -588,11 +709,12 @@ struct DataGridModelFindTests {
     }
 
     @Test("Hiding the bar clears the term, the matches, the scope and the replace row")
-    func hideClears() {
+    func hideClears() async {
         let (model, owner) = mount { $0.isEditable = true }
         model.findInColumn(Self.company, replace: true)
         model.find.term = "acme"
         model.findQueryDidChange()
+        await model.findSearchSettled()
         #expect(model.find.matches.count == 2)
 
         model.hideFind()
@@ -606,24 +728,24 @@ struct DataGridModelFindTests {
     }
 
     @Test("Search All Rows hands the trimmed term to the owner only where the grid offers it")
-    func searchAllRows() {
+    func searchAllRows() async {
         let (plain, plainOwner) = mount()
-        search(plain, "  zzz ")
+        await search(plain, "  zzz ")
         plain.searchAllRows()
         #expect(plainOwner.searchedTerms.isEmpty)
         #expect(plain.find.isVisible)
 
         let (offered, owner) = mount { $0.commands = [.searchAllRows] }
-        search(offered, "  zzz ")
+        await search(offered, "  zzz ")
         offered.searchAllRows()
         #expect(owner.searchedTerms == ["zzz"])
         #expect(offered.find.isVisible == false)
     }
 
     @Test("Search All Rows waits for plain options, since the server matches the term as typed in any column")
-    func searchAllRowsNeedsPlainOptions() {
+    func searchAllRowsNeedsPlainOptions() async {
         let (model, owner) = mount { $0.commands = [.searchAllRows] }
-        search(model, "^zzz$")
+        await search(model, "^zzz$")
         model.find.options.usesRegularExpression = true
 
         model.searchAllRows()
@@ -636,9 +758,9 @@ struct DataGridModelFindTests {
     }
 
     @Test("New rows under an open bar are searched again")
-    func reloadSearchesTheNewRows() {
+    func reloadSearchesTheNewRows() async {
         let (model, owner) = mount()
-        search(model, "acme")
+        await search(model, "acme")
         #expect(model.find.matches.count == 4)
 
         owner.tableRows = TableRows.from(
@@ -647,6 +769,7 @@ struct DataGridModelFindTests {
             columnTypes: [.integer(rawType: "INT"), .text(rawType: "TEXT"), .text(rawType: "TEXT")]
         )
         model.reloadRows()
+        await model.findSearchSettled()
 
         #expect(model.find.matches.count == 1)
     }
@@ -657,9 +780,9 @@ struct DataGridModelFindTests {
     }
 
     @Test("Edits under an open bar keep the matches a full search finds")
-    func editsKeepTheMatchesInStep() {
+    func editsKeepTheMatchesInStep() async {
         let (model, owner) = mount()
-        search(model, "acme")
+        await search(model, "acme")
 
         owner.tableRows.rows[2].values[1] = .text("Umbrella")
         model.apply(.cellChanged(row: 2, column: 1))
@@ -672,9 +795,9 @@ struct DataGridModelFindTests {
     }
 
     @Test("Rows added or removed under an open bar keep the matches a full search finds")
-    func insertsAndRemovalsKeepTheMatchesInStep() {
+    func insertsAndRemovalsKeepTheMatchesInStep() async {
         let (model, owner) = mount()
-        search(model, "acme")
+        await search(model, "acme")
 
         let inserted = owner.tableRows.appendInsertedRow(values: [.text("5"), .text("Acme East"), .text("Oslo")])
         model.apply(inserted)
@@ -696,7 +819,7 @@ struct DataGridModelFindTests {
 
     // An edit keeps its row on screen (#2667); an insert hides it, and once undone and inserted again it shows again.
     @Test("A row a value filter shows again after an insert is searched again")
-    func rowBackInTheFilteredOrderIsSearched() {
+    func rowBackInTheFilteredOrderIsSearched() async {
         let (model, owner) = mount()
         var filter = GridValueFilterState()
         filter.set(
@@ -705,7 +828,7 @@ struct DataGridModelFindTests {
             forColumn: 2
         )
         model.setValueFilter(filter)
-        search(model, "acme")
+        await search(model, "acme")
         #expect(model.find.matches == [match(1, Self.city), match(2, Self.company), match(3, Self.company), match(3, Self.city)])
 
         owner.tableRows.rows[2].values[2] = .text("Lyon")
@@ -726,13 +849,14 @@ struct DataGridModelFindTests {
     }
 
     @Test("A term typed but not yet searched makes the next refresh search every row")
-    func changedTermSearchesEveryRow() {
+    func changedTermSearchesEveryRow() async {
         let (model, owner) = mount()
-        search(model, "acme")
+        await search(model, "acme")
 
         model.find.term = "paris"
         owner.tableRows.rows[0].values[2] = .text("Paris")
         model.apply(.cellChanged(row: 3, column: 1))
+        await model.findSearchSettled()
 
         #expect(model.find.matches == [match(0, Self.city), match(2, Self.city)])
     }
@@ -748,16 +872,218 @@ struct DataGridModelFindTests {
     }
 
     @Test("Use Selection for Find takes the cell's text, escaped for a regular expression")
-    func useSelectionForFind() {
+    func useSelectionForFind() async {
         let (model, owner) = mount()
         model.setSelection(cell(0, 2))
         model.find.options.usesRegularExpression = true
 
         model.useSelectionForFind()
+        await model.findSearchSettled()
 
         #expect(model.find.isVisible)
         #expect(model.find.term == NSRegularExpression.escapedPattern(for: "St. Louis"))
         #expect(model.find.matches == [GridFindState.Match(rowID: .existing(0), columnID: DataGridColumnID(name: "city", occurrence: 0))])
+        #expect(owner.commits.isEmpty)
+    }
+
+    // MARK: - A search off the main actor
+
+    // Each test ends on `owner`: the model holds its data source weakly, and without it the grid has no rows.
+
+    @Test("A typed term drops the old term's matches at once, and a refresh keeps its matches until its search lands")
+    func typedTermDropsTheOldMatches() async {
+        let (model, owner) = mount()
+        await search(model, "paris")
+
+        model.find.term = "acme"
+        model.findQueryDidChange()
+
+        #expect(model.find.loadedRowsSearch != nil)
+        #expect(model.find.isSearching == false)
+        #expect(model.find.matches.isEmpty)
+        #expect(model.find.currentIndex == nil)
+
+        await model.findSearchSettled()
+
+        #expect(model.find.loadedRowsSearch == nil)
+        #expect(model.find.matches.count == 4)
+        #expect(model.selection.activeCell == GridCoord(row: 3, displayColumn: 1))
+
+        model.refreshFind()
+
+        #expect(model.find.loadedRowsSearch != nil)
+        #expect(model.find.matches.count == 4)
+        #expect(model.find.currentIndex == 2)
+
+        await model.findSearchSettled()
+        #expect(model.find.currentIndex == 2)
+        #expect(owner.commits.isEmpty)
+    }
+
+    @Test("A typed term drops the old term's invalid-pattern message at once")
+    func typedTermDropsTheOldProblem() async {
+        let (model, owner) = mount()
+        model.showFind()
+        model.find.options.usesRegularExpression = true
+        model.find.term = "["
+        model.findQueryDidChange()
+        #expect(model.find.problem != nil)
+
+        model.find.term = "acme"
+        model.findQueryDidChange()
+
+        #expect(model.find.loadedRowsSearch != nil)
+        #expect(model.find.problem == nil)
+
+        await model.findSearchSettled()
+        #expect(model.find.problem == nil)
+        #expect(owner.commits.isEmpty)
+    }
+
+    @Test("Of two terms typed in quick succession only the second one's matches land")
+    func onlyTheLastTermLands() async throws {
+        let (model, owner) = mount()
+        model.showFind()
+        model.find.term = "acme"
+        model.findQueryDidChange()
+        let first = try #require(model.find.loadedRowsSearch)
+
+        model.find.term = "paris"
+        model.findQueryDidChange()
+        await model.findSearchSettled()
+
+        #expect(first.isCancelled)
+        #expect(model.find.matches == [match(2, Self.city)])
+        #expect(model.selection.activeCell == GridCoord(row: 2, displayColumn: 2))
+        #expect(owner.commits.isEmpty)
+    }
+
+    @Test("A row added while a search runs is among the matches that land")
+    func rowAddedDuringASearchIsFound() async throws {
+        let (model, owner) = mount()
+        model.showFind()
+        model.find.term = "acme"
+        model.findQueryDidChange()
+        let running = try #require(model.find.loadedRowsSearch)
+
+        model.apply(owner.tableRows.appendInsertedRow(values: [.text("5"), .text("Acme East"), .text("Oslo")]))
+        await model.findSearchSettled()
+
+        let insertedID = owner.tableRows.rows[4].id
+        #expect(running.isCancelled)
+        #expect(model.find.matches.last == GridFindState.Match(rowID: insertedID, columnID: Self.company))
+        #expect(model.find.matches == fullSearch(model, owner))
+        #expect(model.selection.activeCell == GridCoord(row: 1, displayColumn: 2), "the typed term still lands on its first match")
+    }
+
+    @Test("A typed term's matches land without moving a cursor the user moved during the search")
+    func landingKeepsAMovedCursor() async {
+        let (model, owner) = mount()
+        model.showFind()
+        model.find.term = "acme"
+        model.findQueryDidChange()
+
+        model.setSelection(cell(0, 0))
+        await model.findSearchSettled()
+
+        #expect(model.find.matches.count == 4)
+        #expect(model.find.currentIndex == 0)
+        #expect(model.selection.activeCell == GridCoord(row: 0, displayColumn: 0))
+        #expect(owner.commits.isEmpty)
+    }
+
+    @Test("Find Next pressed while a search runs steps once its matches land")
+    func findNextWaitsForTheSearch() async {
+        let (model, owner) = mount()
+        model.showFind()
+        model.find.term = "acme"
+        model.findQueryDidChange()
+
+        model.findNext()
+        #expect(model.selection.activeCell == nil)
+
+        await model.findSearchSettled()
+
+        #expect(model.find.currentIndex == 1)
+        #expect(model.selection.activeCell == GridCoord(row: 2, displayColumn: 1))
+        #expect(owner.commits.isEmpty)
+    }
+
+    @Test("Every Find Next and Find Previous pressed while a search runs counts once its matches land")
+    func deferredStepsAreCounted() async {
+        let (model, owner) = mount()
+        model.showFind()
+        model.find.term = "acme"
+        model.findQueryDidChange()
+
+        model.findNext()
+        model.findNext()
+        model.findNext()
+        model.findPrevious()
+        await model.findSearchSettled()
+
+        #expect(model.find.currentIndex == 2)
+        #expect(model.selection.activeCell == GridCoord(row: 3, displayColumn: 1))
+        #expect(owner.commits.isEmpty)
+    }
+
+    @Test("Replace pressed while a search runs replaces the match that search lands on")
+    func replaceWaitsForTheRunningSearch() async {
+        let (model, owner) = mount { $0.isEditable = true }
+        await search(model, "paris")
+        model.find.term = "acme"
+        model.findQueryDidChange()
+        model.find.replacement = "Umbrella"
+
+        model.replaceCurrentMatch()
+
+        #expect(model.find.loadedRowsSearch == nil)
+        #expect(owner.commits.first?.edits.map { $0.rowID } == [.existing(3)])
+        #expect(owner.commits.first?.edits.map { $0.newValue } == [.text("Umbrella Corp")])
+    }
+
+    @Test("The bar says No matches and offers Search All Rows only once the search lands")
+    func noMatchesWaitsForTheSearch() async {
+        let (model, owner) = mount { $0.commands = [.searchAllRows] }
+        model.showFind()
+        model.find.term = "zzz"
+        model.findQueryDidChange()
+
+        #expect(model.find.isAwaitingLoadedRows)
+        #expect(DataGridFindBar.counterText(status: nil, model: model).isEmpty)
+        #expect(!DataGridFindBar.showsSearchAllRows(offered: model.offersSearchAllRows, model: model))
+
+        await model.findSearchSettled()
+
+        #expect(!model.find.isAwaitingLoadedRows)
+        #expect(DataGridFindBar.counterText(status: nil, model: model) == String(localized: "No matches"))
+        #expect(DataGridFindBar.showsSearchAllRows(offered: model.offersSearchAllRows, model: model))
+
+        model.find.term = ""
+        model.findQueryDidChange()
+
+        #expect(!model.find.isAwaitingLoadedRows, "an empty term is answered without a search")
+        #expect(model.find.loadedRowsSearch == nil)
+        #expect(owner.commits.isEmpty)
+    }
+
+    @Test("A grid that goes away cancels the search still running")
+    func releasedModelCancelsTheSearch() throws {
+        let owner: FindGridOwner
+        let running: Task<Void, Never>
+        weak var released: DataGridModel?
+        do {
+            let (model, mounted) = mount()
+            owner = mounted
+            model.showFind()
+            model.find.term = "acme"
+            model.findQueryDidChange()
+            running = try #require(model.find.loadedRowsSearch)
+            released = model
+        }
+
+        #expect(released == nil)
+        #expect(running.isCancelled)
         #expect(owner.commits.isEmpty)
     }
 }

@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
+use secrecy::SecretString;
 use tablepro_ffi::window_abi::{TpCursor, TpWindow, tablepro_cursor_fetch, tablepro_cursor_free};
 use tablepro_ffi::{
     ColumnSort, Core, CoreError, DatabaseSession, EndpointInfo, FileOpenRequest, HostConfig, HostSecretError,
@@ -20,11 +21,11 @@ use tablepro_ffi::{
 struct NoSecrets;
 
 impl HostSecrets for NoSecrets {
-    fn load(&self, _: String, _: SecretKindTag) -> Result<Option<String>, HostSecretError> {
+    fn load(&self, _: String, _: SecretKindTag) -> Result<Option<SecretString>, HostSecretError> {
         Ok(None)
     }
 
-    fn store(&self, _: String, _: SecretKindTag, _: String, _: String) -> Result<(), HostSecretError> {
+    fn store(&self, _: String, _: SecretKindTag, _: SecretString, _: String) -> Result<(), HostSecretError> {
         Ok(())
     }
 
@@ -40,11 +41,11 @@ impl HostSecrets for NoSecrets {
         Ok(())
     }
 
-    fn load_item(&self, _: SecretItemTag) -> Result<Option<String>, HostSecretError> {
+    fn load_item(&self, _: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {
         Ok(None)
     }
 
-    fn store_item(&self, _: SecretItemTag, _: String) -> Result<(), HostSecretError> {
+    fn store_item(&self, _: SecretItemTag, _: SecretString) -> Result<(), HostSecretError> {
         Ok(())
     }
 
@@ -316,6 +317,7 @@ async fn a_million_rows_stream_in_and_any_window_reads_back() {
         RunSettings {
             row_limit: Some(1_000_000),
             timeout_ms: None,
+            byte_limit: None,
         },
         Box::new(wakes.clone()),
     );

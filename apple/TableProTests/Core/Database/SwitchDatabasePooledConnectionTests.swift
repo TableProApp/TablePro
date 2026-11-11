@@ -110,7 +110,7 @@ struct SwitchDatabasePooledConnectionTests {
 
         #expect(driver.disconnectCallCount == 0)
         #expect(manager.sessionTransactions.holdsTransaction(connectionId: connection.id, container: "app"))
-        #expect(!manager.sessionLanes.hasTransactionLoss(database: "app", for: connection.id))
+        #expect(!manager.sessionLanes.hasLoss(database: "app", for: connection.id))
         #expect(manager.session(for: connection.id)?.resolvedBrowseDatabase == "app")
         #expect(manager.session(for: connection.id)?.status == .connected)
     }
@@ -145,7 +145,7 @@ struct SwitchDatabasePooledConnectionTests {
         try? await manager.switchDatabase(to: "unreachable", for: connection.id, persist: false)
 
         #expect(driver.disconnectCallCount >= 1)
-        #expect(manager.sessionLanes.hasTransactionLoss(database: "app", for: connection.id))
+        #expect(manager.sessionLanes.hasLoss(database: "app", for: connection.id))
     }
 
     @Test("A switch that reconnects a connection that stopped answering closes its pooled connections")

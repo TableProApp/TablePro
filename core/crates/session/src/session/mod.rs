@@ -1,6 +1,7 @@
 //! One window's session: its connection link, the operation chokepoint,
 //! the health monitor, the schema catalog, and an ordered shutdown.
 
+mod byte_limited_editor;
 mod editor_session_shutdown;
 mod object_list_snapshot;
 mod schema_catalog;

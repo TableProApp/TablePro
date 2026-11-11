@@ -55,7 +55,7 @@ async fn a_replica_set_is_found_from_its_seeds_and_read_through_its_primary() {
     )
     .await;
     let ids: Vec<&Value> = read.result.rows.iter().filter_map(|row| row.first()).collect();
-    assert_eq!(ids, [&Value::Int(1), &Value::Int(2)]);
+    assert_eq!(ids, [&Value::Int32(1), &Value::Int32(2)]);
     session.close().await;
     connection.close().await.expect("a clean close");
 }

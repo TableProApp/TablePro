@@ -433,6 +433,7 @@ fn scalar_literal(value: &Value) -> Result<String, LiteralError> {
     Ok(match value {
         Value::Null => "null".to_owned(),
         Value::Bool(flag) => flag.to_string(),
+        Value::Int32(number) => number.to_string(),
         Value::Int(number) => number.to_string(),
         Value::UInt(number) => number.to_string(),
         Value::WideInt(number) => number.to_string(),

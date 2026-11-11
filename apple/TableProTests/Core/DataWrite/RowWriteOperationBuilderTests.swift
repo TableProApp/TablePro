@@ -209,6 +209,37 @@ struct RowWriteOperationBuilderTests {
         #expect(result.map { $0.kind } == [.delete, .insert])
     }
 
+    @Test("A row edited around another change is one operation with its net images and both steps")
+    func aRowEditedInTwoRunsIsOneOperationWithBothSteps() throws {
+        var pending = PendingChanges()
+        pending.recordCellChange(
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
+            oldValue: "Ada", newValue: "Grace", originalRow: ["7", "Ada", "2026-01-01"]
+        )
+        pending.recordRowDeletion(rowID: .existing(1), originalRow: ["8", "Bo", "2026-01-01"])
+        pending.recordCellChange(
+            rowID: .existing(0), columnIndex: 2, columnName: "updated_at",
+            oldValue: "2026-01-01", newValue: "2026-02-02", originalRow: ["7", "Grace", "2026-01-01"]
+        )
+
+        let result = operations(
+            changes: pending.changes,
+            deletedRowIDs: pending.deletedRowIDs
+        )
+
+        #expect(result.map { $0.kind } == [.update, .delete])
+        let update = try #require(result.first)
+        #expect(update.preImage == ["7", "Ada", "2026-01-01"])
+        #expect(update.postImage == ["7", "Grace", "2026-02-02"])
+        #expect(update.order == 0)
+        let steps = try #require(update.steps)
+        #expect(steps.map { $0.order } == [0, 2])
+        #expect(steps.map { $0.columns } == [[1], [2]])
+        #expect(steps.map { $0.after } == [["Grace"], ["2026-02-02"]])
+        #expect(result.last?.order == 1)
+        #expect(result.last?.steps == nil)
+    }
+
     @Test("An insert carrying its own key is reversible")
     func userSuppliedKeyIsReversible() {
         let result = operations(

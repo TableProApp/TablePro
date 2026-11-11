@@ -4,7 +4,7 @@ use std::sync::atomic::Ordering;
 use futures_util::StreamExt;
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptToken};
 use tablepro_core::sql_syntax::{SourceTable, SqlGrammar};
-use tablepro_core::{DriverError, ResultEvent, ResultSink, RowLimit, RunEnd, SinkFlow, Truncation, Value};
+use tablepro_core::{DriverError, ResultEvent, ResultSink, RowBatch, RowLimit, RunEnd, SinkFlow, Truncation, Value};
 use tokio_postgres::SimpleQueryMessage;
 use tracing::debug;
 
@@ -20,10 +20,6 @@ use super::transaction_tracker::{KnownState, Next, PROBE_RELEASE, PROBE_SAVEPOIN
 use crate::cancel::acknowledges_stop;
 use crate::catalog::text_column;
 use crate::errors::{map_error, read_only_refusal, sqlstate};
-
-/// Rows per `ResultEvent::Rows`. The sink is awaited per batch, so a slow
-/// grid slows the read instead of growing a queue.
-const BATCH_ROWS: usize = 256;
 
 /// What a message is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,7 +55,7 @@ struct ResultSet {
     open: bool,
     retained: u64,
     total: u64,
-    batch: Vec<Vec<Value>>,
+    batch: RowBatch,
     limit_reported: bool,
 }
 
@@ -397,9 +393,9 @@ impl<'a> Run<'a> {
                             None => Value::Null,
                         })
                         .collect();
-                    set.batch.push(values);
+                    let full = set.batch.push(values);
                     set.retained += 1;
-                    if set.batch.len() >= BATCH_ROWS {
+                    if full {
                         self.flush(set).await;
                     }
                 } else if !set.limit_reported {
@@ -436,7 +432,7 @@ impl<'a> Run<'a> {
         if set.batch.is_empty() {
             return;
         }
-        let rows = std::mem::take(&mut set.batch);
+        let rows = set.batch.take();
         self.send(ResultEvent::Rows(rows)).await;
     }
 

@@ -178,7 +178,7 @@ async fn a_field_another_client_adds_while_a_table_export_reads_is_left_out() {
     assert_eq!(column_names(&events), ["_id", "a", "pad"]);
     let written = rows(&events);
     assert_eq!(written.len(), 401, "the export read the late document");
-    assert_eq!(written[400], [Value::Int(400), Value::Int(400), Value::Null]);
+    assert_eq!(written[400], [Value::Int32(400), Value::Int32(400), Value::Null]);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -204,7 +204,7 @@ async fn a_table_export_keeps_the_tabs_column_order() {
     assert_eq!(column_names(&events), ["_id", "b", "a", "c"]);
     assert_eq!(
         rows(&events)[1000],
-        [Value::Int(1000), Value::Null, Value::Int(1000), Value::Int(1)]
+        [Value::Int32(1000), Value::Null, Value::Int32(1000), Value::Int32(1)]
     );
 }
 

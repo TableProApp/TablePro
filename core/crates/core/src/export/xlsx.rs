@@ -212,6 +212,7 @@ fn sheet_number(columns: &[ResultColumn], column: u16, value: &Value) -> Option<
     match value {
         Value::Float32(number) => Some(real_number(*number)),
         Value::Float64(number) => Some(*number),
+        Value::Int32(number) => Some(f64::from(*number)),
         Value::Int(_) | Value::UInt(_) | Value::Decimal(_) | Value::WideInt(_) => exact_number(columns, column, value),
         _ => None,
     }
@@ -384,6 +385,10 @@ mod tests {
         let columns = cols(&["id"]);
 
         assert_eq!(sheet_number(&columns, 0, &Value::Int(42)), Some(42.0));
+        assert_eq!(
+            sheet_number(&columns, 0, &Value::Int32(i32::MIN)),
+            Some(f64::from(i32::MIN))
+        );
         assert_eq!(
             sheet_number(&columns, 0, &Value::Int(-999_999_999_999_999)),
             Some(-999_999_999_999_999.0)

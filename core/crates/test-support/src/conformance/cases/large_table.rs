@@ -423,6 +423,7 @@ fn check_rows(read: &PageRead, before: u64, order: Order, seen: &mut Seen) -> Re
 
 fn id_of(value: &Value) -> Option<u64> {
     match value {
+        Value::Int32(id) => u64::try_from(*id).ok(),
         Value::Int(id) => u64::try_from(*id).ok(),
         Value::UInt(id) => Some(*id),
         _ => None,

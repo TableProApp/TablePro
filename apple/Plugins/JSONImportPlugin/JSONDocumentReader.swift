@@ -8,6 +8,7 @@ import Foundation
 enum JSONDocumentError: LocalizedError, Equatable {
     case endsEarly
     case unexpectedCharacter(byteOffset: Int)
+    case invalidText
 
     var errorDescription: String? {
         switch self {
@@ -15,13 +16,17 @@ enum JSONDocumentError: LocalizedError, Equatable {
             return String(localized: "The JSON file ends before its last value is complete.")
         case .unexpectedCharacter(let byteOffset):
             return String(format: String(localized: "The JSON file is not valid at byte %@."), (byteOffset + 1).formatted())
+        case .invalidText:
+            return String(localized: "The JSON file has text that is not valid in its encoding.")
         }
     }
 }
 
-// Walks a UTF-8 JSON file one chunk at a time. It finds where each value starts and ends without
+// Walks a JSON file one chunk at a time. It finds where each value starts and ends without
 // building it, so the file is held one chunk and one value at a time. `JSONSerialization` parses
 // each value a caller asks for, so every value reads exactly as it would in a whole-file parse.
+// UTF-16 and UTF-32 text is turned into UTF-8 as it is read, so `offset` counts UTF-8 bytes and
+// `fileOffset` the file's own.
 struct JSONDocumentReader {
     static let defaultChunkSize = 1 << 20
 
@@ -42,6 +47,11 @@ struct JSONDocumentReader {
     private var bufferStart = 0
     private var valueStart: Int?
     private var reachedEnd = false
+    private var decoder: JSONTextDecoder?
+    // Where the text starts in the file, past any byte order mark, and how many of its code units
+    // the buffer has already dropped. Only a decoded file uses them.
+    private var textStart = 0
+    private var droppedUnits = 0
 
     init(
         url: URL,
@@ -55,34 +65,54 @@ struct JSONDocumentReader {
 
     var offset: Int { bufferStart + position }
 
+    var fileOffset: Int { fileOffset(atBufferIndex: position) }
+
     var heldByteCount: Int { buffer.count }
 
     func close() {
         try? handle.close()
     }
 
-    // Steps over a UTF-8 byte order mark. False for UTF-16 or UTF-32 text, which `JSONSerialization`
-    // also reads: it has a byte order mark of its own or a zero byte in its first two.
-    mutating func startDocument() throws -> Bool {
+    // Steps over a byte order mark and, for UTF-16 or UTF-32 text, decodes what was read so far.
+    mutating func startDocument() throws {
         while buffer.count - position < 4, try refill() {}
-        let head = buffer[position...].prefix(4)
-        if head.starts(with: [0xEF, 0xBB, 0xBF]) {
-            position += 3
-            return true
+        let detected = JSONTextEncoding.detect(buffer[position...])
+        guard detected.encoding != .utf8 else {
+            position += detected.markLength
+            return
         }
-        if head.starts(with: [0xFE, 0xFF]) || head.starts(with: [0xFF, 0xFE]) {
-            return false
-        }
-        return !head.prefix(2).contains(0)
+        var decoder = JSONTextDecoder(encoding: detected.encoding)
+        textStart = bufferStart + position + detected.markLength
+        let raw = Data(buffer[(position + detected.markLength)...])
+        buffer = try decoder.utf8(from: raw)
+        if reachedEnd { try decoder.finish() }
+        self.decoder = decoder
+        bufferStart = 0
+        position = 0
+        droppedUnits = 0
     }
 
+    // `offset` is one `self.offset` gave. Decoded text has no file position for it, so the text is
+    // decoded again from its start up to there.
     mutating func seek(to offset: Int) throws {
-        try handle.seek(toOffset: UInt64(offset))
         buffer.removeAll(keepingCapacity: true)
-        bufferStart = offset
         position = 0
         valueStart = nil
         reachedEnd = false
+        guard decoder != nil else {
+            try handle.seek(toOffset: UInt64(offset))
+            bufferStart = offset
+            return
+        }
+        try handle.seek(toOffset: UInt64(textStart))
+        decoder?.reset()
+        bufferStart = 0
+        droppedUnits = 0
+        while bufferStart + buffer.count < offset {
+            position = buffer.count
+            guard try refill() else { throw JSONDocumentError.endsEarly }
+        }
+        position = offset - bufferStart
     }
 
     // The next byte that is not JSON whitespace, left unread, or nil at the end of the file.
@@ -120,11 +150,10 @@ struct JSONDocumentReader {
 
     mutating func memberName() throws -> String {
         guard let byte = try nextSignificantByte() else { throw JSONDocumentError.endsEarly }
-        guard byte == Self.quote else { throw JSONDocumentError.unexpectedCharacter(byteOffset: offset) }
-        let start = offset
+        guard byte == Self.quote else { throw JSONDocumentError.unexpectedCharacter(byteOffset: fileOffset) }
         let name = try readValue()
         guard let decoded = try JSONSerialization.jsonObject(with: name, options: .fragmentsAllowed) as? String else {
-            throw JSONDocumentError.unexpectedCharacter(byteOffset: start)
+            throw JSONDocumentError.unexpectedCharacter(byteOffset: fileOffset(atBufferIndex: position - name.count))
         }
         try consume(Self.colon)
         return decoded
@@ -132,7 +161,7 @@ struct JSONDocumentReader {
 
     mutating func expectEnd() throws {
         guard try nextSignificantByte() == nil else {
-            throw JSONDocumentError.unexpectedCharacter(byteOffset: offset)
+            throw JSONDocumentError.unexpectedCharacter(byteOffset: fileOffset)
         }
     }
 
@@ -150,7 +179,7 @@ struct JSONDocumentReader {
     private mutating func continueAfterValue(closing: UInt8) throws -> Bool {
         guard let byte = try nextSignificantByte() else { throw JSONDocumentError.endsEarly }
         guard byte == Self.comma || byte == closing else {
-            throw JSONDocumentError.unexpectedCharacter(byteOffset: offset)
+            throw JSONDocumentError.unexpectedCharacter(byteOffset: fileOffset)
         }
         position += 1
         if byte == closing { return false }
@@ -161,7 +190,7 @@ struct JSONDocumentReader {
 
     private mutating func consume(_ expected: UInt8) throws {
         guard let byte = try nextSignificantByte() else { throw JSONDocumentError.endsEarly }
-        guard byte == expected else { throw JSONDocumentError.unexpectedCharacter(byteOffset: offset) }
+        guard byte == expected else { throw JSONDocumentError.unexpectedCharacter(byteOffset: fileOffset) }
         position += 1
     }
 
@@ -191,7 +220,7 @@ struct JSONDocumentReader {
         case 0x2D, 0x30...0x39, 0x66, 0x6E, 0x74:
             try passLiteral()
         default:
-            throw JSONDocumentError.unexpectedCharacter(byteOffset: offset)
+            throw JSONDocumentError.unexpectedCharacter(byteOffset: fileOffset)
         }
     }
 
@@ -262,7 +291,7 @@ struct JSONDocumentReader {
                 return false
             }
             position = index
-            if mismatched { throw JSONDocumentError.unexpectedCharacter(byteOffset: offset - 1) }
+            if mismatched { throw JSONDocumentError.unexpectedCharacter(byteOffset: fileOffset(atBufferIndex: position - 1)) }
             if closed { return }
             guard try refill() else { throw JSONDocumentError.endsEarly }
         }
@@ -292,17 +321,47 @@ struct JSONDocumentReader {
         try checkCancellation()
         let keep = valueStart ?? position
         if keep > 0 {
+            if decoder != nil {
+                droppedUnits += codeUnits(in: buffer[0..<keep])
+            }
             buffer.removeSubrange(0..<keep)
             bufferStart += keep
             position -= keep
             valueStart = valueStart.map { $0 - keep }
         }
-        let chunk = try autoreleasepool { try handle.read(upToCount: chunkSize) } ?? Data()
-        guard !chunk.isEmpty else {
-            reachedEnd = true
-            return false
+        while true {
+            let chunk = try autoreleasepool { try handle.read(upToCount: chunkSize) } ?? Data()
+            guard !chunk.isEmpty else {
+                reachedEnd = true
+                try decoder?.finish()
+                return false
+            }
+            guard decoder != nil else {
+                buffer.append(contentsOf: chunk)
+                return true
+            }
+            let decoded = try decoder?.utf8(from: chunk) ?? []
+            // A chunk that ends inside a character can decode to nothing yet.
+            guard !decoded.isEmpty else { continue }
+            buffer.append(contentsOf: decoded)
+            return true
         }
-        buffer.append(contentsOf: chunk)
-        return true
+    }
+
+    private func fileOffset(atBufferIndex index: Int) -> Int {
+        guard let decoder else { return bufferStart + index }
+        let units = droppedUnits + codeUnits(in: buffer[0..<max(0, min(index, buffer.count))])
+        return textStart + units * decoder.encoding.unitWidth
+    }
+
+    // How many code units of the file's encoding these UTF-8 bytes were: one per character, and two
+    // in UTF-16 for one outside the Basic Multilingual Plane, whose UTF-8 form takes four bytes.
+    private func codeUnits(in bytes: ArraySlice<UInt8>) -> Int {
+        let countsPairs = decoder?.encoding.unitWidth == 2
+        var units = 0
+        for byte in bytes where byte & 0xC0 != 0x80 {
+            units += countsPairs && byte >= 0xF0 ? 2 : 1
+        }
+        return units
     }
 }

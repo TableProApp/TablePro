@@ -10,7 +10,7 @@ use tablepro_core::{DriverError, QueryResult, ResultEvent, ResultSink, RowLimit,
 
 use crate::call::ReadStop;
 use crate::cells::cell;
-use crate::cursor_rows::Read;
+use crate::cursor_rows::{EditorLimits, Read};
 use crate::endpoint::MongoEndpoint;
 use crate::execute::Source;
 use crate::field_types::{column_type, shared_type, type_alias};
@@ -168,10 +168,12 @@ pub(crate) async fn emit(
     source: Source,
     session: &mut ClientSession,
     sink: &mut dyn ResultSink,
-    limit: Option<RowLimit>,
+    limit: Option<EditorLimits>,
     sets: &mut usize,
     stop: &ReadStop,
 ) -> Result<(SinkFlow, u64), DriverError> {
+    // A reply's documents are already held, and one reply is at most 16 MiB, so only a cursor stops at the byte limit.
+    let row_limit = limit.map(|limit| limit.rows);
     let set_index = *sets;
     if !matches!(
         source,
@@ -203,7 +205,7 @@ pub(crate) async fn emit(
             ..
         } => Err(error),
         Source::Write { affected, summary, .. } => {
-            let (flow, rows) = emit_documents(sink, vec![summary], &Columns::Discovered, limit).await;
+            let (flow, rows) = emit_documents(sink, vec![summary], &Columns::Discovered, row_limit).await;
             if flow == SinkFlow::ConsumerGone {
                 return Ok((flow, rows));
             }
@@ -216,9 +218,9 @@ pub(crate) async fn emit(
         }
         Source::Count(count) => {
             let counted = bson::doc! { "count": Bson::Int64(i64::try_from(count).unwrap_or(i64::MAX)) };
-            Ok(emit_documents(sink, vec![counted], &Columns::Discovered, limit).await)
+            Ok(emit_documents(sink, vec![counted], &Columns::Discovered, row_limit).await)
         }
-        Source::Documents { documents, columns } => Ok(emit_documents(sink, documents, &columns, limit).await),
+        Source::Documents { documents, columns } => Ok(emit_documents(sink, documents, &columns, row_limit).await),
         Source::Cursor { cursor, columns } => {
             let read = Read::new(endpoint, *cursor, session, stop);
             crate::cursor_rows::stream(read, columns, sink, limit, set_index).await
@@ -297,7 +299,7 @@ mod tests {
 
         assert_eq!(
             layout.row(&doc! { "b": false, "_id": 4_i32 }),
-            [Value::Int(4), Value::Null, Value::Bool(false)]
+            [Value::Int32(4), Value::Null, Value::Bool(false)]
         );
         let names: Vec<String> = layout.columns().iter().map(|column| column.name.clone()).collect();
         assert_eq!(names, ["_id", "a", "b"]);
@@ -332,8 +334,8 @@ mod tests {
             layout.row(&doc! { "a": 1_i32, "__field_2": 3_i32, "n": 4_i64 }),
             [
                 Value::Null,
-                Value::Int(1),
-                Value::Int(3),
+                Value::Int32(1),
+                Value::Int32(3),
                 Value::Json(tablepro_core::value::JsonText::parse(r#"{"$numberLong": "4"}"#.to_owned()).expect("JSON")),
                 Value::Null,
             ]

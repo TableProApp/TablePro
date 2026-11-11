@@ -75,6 +75,7 @@ pub(crate) fn update(
     identity: &RowIdentity,
     key: &[Value],
     assignments: &[(usize, CellInput)],
+    read: &[(usize, Value)],
 ) -> Result<Statement, BuildSqlError> {
     if assignments.is_empty() {
         return Err(BuildSqlError::NothingToUpdate);
@@ -93,7 +94,10 @@ pub(crate) fn update(
             });
         }
         match input {
-            CellInput::Value(value) => set.push((column.name.clone(), params.bind(value.clone(), Some(column))?)),
+            CellInput::Value(value) => {
+                let read = read.iter().find(|(at, _)| at == index).map(|(_, value)| value);
+                set.push((column.name.clone(), params.bind_edit(value.clone(), column, read)?));
+            }
             CellInput::Default if !names.contains(&column.name) => {
                 unset.push((column.name.clone(), ShellValue::string("")));
             }

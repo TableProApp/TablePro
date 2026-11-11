@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use tablepro_core::column::ResultColumn;
 use tablepro_core::{
-    DriverError, ErrorCategory, LossPhase, ResultEvent, ResultSink, RowLimit, RunEnd, RunOptions, RunSummary, SinkFlow,
-    TimeoutPhase, TransactionState, Truncation, UserSql, Value,
+    DriverError, ErrorCategory, LossPhase, ResultEvent, ResultSink, RowBatch, RowLimit, RunEnd, RunOptions, RunSummary,
+    SinkFlow, TimeoutPhase, TransactionState, Truncation, UserSql, Value,
 };
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -17,10 +17,6 @@ use crate::errors::{code, server_code};
 use crate::lingering_query::LingeringQuery;
 use crate::result_origin::{TracedTable, source, traced_table, with_origins};
 use crate::result_reader::{ReadEvent, ResultReader};
-
-/// Rows per `ResultEvent::Rows`. The sink is awaited per batch, so a slow
-/// grid slows the read instead of growing a queue.
-const BATCH_ROWS: usize = 256;
 
 /// Why a run stopped before its statement did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -355,7 +351,7 @@ impl Stop {
 struct Emitter {
     sink: Box<dyn ResultSink>,
     limit: RowLimit,
-    batch: Vec<Vec<Value>>,
+    batch: RowBatch,
     retained: u64,
     consumer_gone: bool,
 }
@@ -365,7 +361,7 @@ impl Emitter {
         Self {
             sink,
             limit,
-            batch: Vec::new(),
+            batch: RowBatch::new(),
             retained: 0,
             consumer_gone: false,
         }
@@ -381,9 +377,9 @@ impl Emitter {
         if self.retained >= self.limit.get() {
             return true;
         }
-        self.batch.push(row);
+        let full = self.batch.push(row);
         self.retained += 1;
-        if self.batch.len() >= BATCH_ROWS {
+        if full {
             self.flush().await;
         }
         false
@@ -424,7 +420,7 @@ impl Emitter {
         if self.batch.is_empty() {
             return;
         }
-        let rows = std::mem::take(&mut self.batch);
+        let rows = self.batch.take();
         self.send(ResultEvent::Rows(rows)).await;
     }
 
