@@ -1,3 +1,4 @@
+pub const SIDEBAR_WIDTH: &str = "sidebar-width";
 pub const DEFAULT_PAGE_SIZE: &str = "default-page-size";
 pub const CONFIRM_BULK_DELETE: &str = "confirm-bulk-delete";
 pub const SHOW_ALTERNATE_ROWS: &str = "show-alternate-rows";

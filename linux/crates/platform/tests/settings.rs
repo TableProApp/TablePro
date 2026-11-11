@@ -63,6 +63,21 @@ async fn defaults_match_schema() -> TestResult {
 }
 
 #[glib::async_test]
+async fn the_sidebar_width_stays_between_its_floor_and_its_cap() -> TestResult {
+    use gio::prelude::SettingsExt;
+
+    let fixture = Fixture::new()?;
+    let settings = fixture.settings.gio();
+
+    assert!((settings.double(keys::SIDEBAR_WIDTH) - 280.0).abs() < f64::EPSILON);
+    assert!(settings.set_double(keys::SIDEBAR_WIDTH, 219.0).is_err());
+    assert!(settings.set_double(keys::SIDEBAR_WIDTH, 1201.0).is_err());
+    settings.set_double(keys::SIDEBAR_WIDTH, 440.0)?;
+    assert!((settings.double(keys::SIDEBAR_WIDTH) - 440.0).abs() < f64::EPSILON);
+    Ok(())
+}
+
+#[glib::async_test]
 async fn usage_data_turns_off_and_on_again() -> TestResult {
     let fixture = Fixture::new()?;
 

@@ -51,9 +51,9 @@ impl BrowseModel {
             return;
         }
         self.current_filter = set.clone();
-        if let Some(conn_id) = self.connection_id {
+        if let Some(state_key) = self.state_key.as_ref() {
             self.filter_settings
-                .set_filters(conn_id, self.schema.as_deref(), &self.table, set.clone());
+                .set_filters(state_key, self.schema.as_deref(), &self.table, set.clone());
         }
         // Filtered counts shift, so back to page 1.
         self.pager.restart();

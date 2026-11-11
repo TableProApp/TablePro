@@ -16,6 +16,10 @@ use crate::ui::clipboard::{CopyKind, CopyRequest, InClauseRows, InsertCopy, Inse
 use crate::ui::export::ExportSource;
 use crate::ui::filter_strip::FilterVocabulary;
 
+mod json_preview;
+
+pub(crate) use json_preview::{JsonPreview, JsonPreviewRequest, json_preview};
+
 #[cfg(test)]
 mod tests;
 

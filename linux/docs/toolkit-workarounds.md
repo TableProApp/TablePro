@@ -10,6 +10,14 @@ The places the app steps around a GTK, libadwaita, GtkSourceView, IBus or gtk-rs
 - **Test.** `a_tab_dropped_outside_every_window_stays_where_it_was` in `crates/app/src/ui/session_window/tests/sessions.rs`.
 - **Remove when** the floor's libadwaita offers a way to decline a detach, or tab groups: use it, and drop the position restore for this case.
 
+## A sidebar the user can widen
+
+- **What libadwaita does.** `AdwOverlaySplitView` sizes its sidebar as a fraction of its own width between `min-sidebar-width` and `max-sidebar-width`, and has no divider to drag. `GtkPaned` has one, but has no collapsed overlay, no breakpoints and no header bar integration. This is the documented design, not a defect.
+- **Seen in.** libadwaita 1.9 (the floor) and 1.10.
+- **Workaround.** A focusable handle with the separator role lies over the sidebar's trailing edge (`data/resources/ui/workspace-shell.ui`, `crates/app/src/ui/workspace/sidebar_width.rs`). A drag or the arrow keys set `max-sidebar-width` through the `sidebar-width` setting, which every window follows; `sidebar-width-fraction` of 0.5 keeps half the window for the content, and the handle hides while the sidebar is collapsed. The handle covers the edge of the tree's scrollbar.
+- **Test.** `the_sidebar_takes_the_width_kept_in_settings_and_has_a_handle_to_set_it` in `crates/app/src/ui/workspace/tests/shell.rs`, `the_sidebar_width_stays_between_its_floor_and_its_cap` in `crates/platform/tests/settings.rs`.
+- **Remove when** the floor's libadwaita offers a resizable split view: use it.
+
 ## IBus keeps every text view
 
 - **Defect.** From GTK 4.24 a `GtkTextView` or `GtkText` makes itself its input method's client widget at construction and clears it only in its own dispose (GTK commit 3df992599b). ibus-gtk4 holds the client with a strong reference (`ibus_im_context_set_client_widget`), so the view is never disposed, nor anything it holds. [ibus/ibus#2968](https://github.com/ibus/ibus/issues/2968), open.
