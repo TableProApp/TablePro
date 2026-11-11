@@ -134,8 +134,9 @@ struct RewindExecutor {
         )
     }
 
+    // In the order the restore ran them, since undoing the restore runs its record backwards.
     static func inverseOperations(of plan: RewindPlan) -> [RowWriteOperation] {
-        plan.rows.filter { $0.outcome.restores }.map { row -> RowWriteOperation in
+        plan.rows.filter { $0.outcome.restores }.reversed().map { row -> RowWriteOperation in
             let source = row.operation
             let kind = source.kind.inverted
             // The same stored refusal a save through a view writes, so a build without the view flag refuses too.

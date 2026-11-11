@@ -7,16 +7,15 @@ import Foundation
 import TableProPluginKit
 
 internal extension PluginCellValue {
-    /// The sentinel a pending inserted row carries for a column the server fills in, written by
-    /// `RowOperationsManager` and stripped again by `SQLStatementGenerator`.
-    ///
-    /// It is an internal marker, never a value, so every view that renders a cell has to recognise
-    /// it. The grid shows it as a placeholder; anything that renders the same rows some other way
-    /// has to agree, or the marker leaks out as literal text.
-    static let defaultMarkerText = "__DEFAULT__"
+    // A cell left to the column's default is the SQL keyword, marked as SQL beside the value like any expression. The
+    // mark decides, never the text: a stored or typed value can read the same.
+    static let columnDefaultKeyword = "DEFAULT"
+    static let columnDefault = PluginCellValue.text(columnDefaultKeyword)
 
-    var isDefaultMarker: Bool {
-        guard case .text(let value) = self else { return false }
-        return value == Self.defaultMarkerText
+    // The spelling driver plugins read as the default in the rows the host hands them.
+    static let pluginDefaultMarker = PluginCellValue.text("__DEFAULT__")
+
+    func isColumnDefault(isExpression: Bool) -> Bool {
+        isExpression && self == Self.columnDefault
     }
 }

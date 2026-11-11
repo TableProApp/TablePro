@@ -437,3 +437,89 @@ struct TriggerEditSafetyTests {
         #expect(requests.isEmpty)
     }
 }
+
+// A Cancel in the gate's confirmation reached the trigger editor as an error row under the SQL.
+@MainActor
+struct TriggerGateDenialTests {
+    private func install() async throws -> (connection: DatabaseConnection, scope: DatabaseScope, stub: StubTriggerDriver) {
+        let connection = TestFixtures.makeConnection(database: "app", type: .postgresql)
+        let stub = StubTriggerDriver()
+        stub.dropToReturn = "DROP TRIGGER t"
+        let adapter = PluginDriverAdapter(connection: connection, pluginDriver: stub)
+        try await adapter.connect()
+        DatabaseManager.shared.injectSession(ConnectionSession(connection: connection, driver: adapter), for: connection.id)
+        let scope = DatabaseScope(connectionId: connection.id, database: "app", schema: nil)
+        MetadataConnectionPool.shared.injectEntry(adapter, scope: scope)
+        return (connection, scope, stub)
+    }
+
+    private func uninstall(_ connection: DatabaseConnection) {
+        MetadataConnectionPool.shared.closeAll(connectionId: connection.id)
+        DatabaseManager.shared.removeSession(for: connection.id)
+    }
+
+    private func failure(of body: () async throws -> Void) async -> GatedOperationFailure? {
+        do {
+            try await body()
+            return nil
+        } catch {
+            return GatedOperationFailure(error)
+        }
+    }
+
+    @Test("A Cancel at the gate ends a trigger save and a trigger drop quietly, with nothing run")
+    func cancelIsQuiet() async throws {
+        let installed = try await install()
+        defer { uninstall(installed.connection) }
+
+        let save = await failure {
+            try await TriggerEditing.apply(
+                scope: installed.scope,
+                connection: installed.connection,
+                tableName: "orders",
+                sql: "CREATE TRIGGER t",
+                isEdit: false,
+                originalName: nil,
+                originalDefinition: nil,
+                gate: AlwaysDenyGate.cancelling
+            )
+        }
+        let drop = await failure {
+            try await TriggerEditing.drop(
+                scope: installed.scope,
+                connection: installed.connection,
+                tableName: "orders",
+                name: "t",
+                gate: AlwaysDenyGate.cancelling
+            )
+        }
+
+        #expect(save == .cancelledByUser)
+        #expect(drop == .cancelledByUser)
+        #expect(save?.message == nil)
+        #expect(installed.stub.executedQueries.isEmpty)
+    }
+
+    @Test("A refused trigger save says why and is not a failed statement")
+    func refusalExplainsItself() async throws {
+        let installed = try await install()
+        defer { uninstall(installed.connection) }
+
+        let save = await failure {
+            try await TriggerEditing.apply(
+                scope: installed.scope,
+                connection: installed.connection,
+                tableName: "orders",
+                sql: "CREATE TRIGGER t",
+                isEdit: false,
+                originalName: nil,
+                originalDefinition: nil,
+                gate: AlwaysDenyGate(reason: "Safe Mode is read-only")
+            )
+        }
+
+        #expect(save == .refused("Safe Mode is read-only"))
+        #expect(save?.reportsFailure == false)
+        #expect(installed.stub.executedQueries.isEmpty)
+    }
+}

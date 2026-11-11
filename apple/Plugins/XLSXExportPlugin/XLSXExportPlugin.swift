@@ -43,6 +43,8 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
         destination: URL,
         progress: PluginExportProgress
     ) async throws -> ExportFormatResult {
+        // One plugin instance serves every window, so a dialog in another window can change `settings` mid-export.
+        let options = settings
         let writer = XLSXWriter(databaseTypeId: dataSource.databaseTypeId)
         var didSplitSheets = false
 
@@ -56,7 +58,7 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
             var currentSheetRowCount = 0
             var columns: [String] = []
             var columnTypeNames: [String] = []
-            let headerRowCount = settings.includeHeaderRow ? 1 : 0
+            let headerRowCount = options.includeHeaderRow ? 1 : 0
 
             let stream = dataSource.streamRows(for: table)
             for try await element in stream {
@@ -70,8 +72,8 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
                         name: table.name,
                         columns: columns,
                         columnTypeNames: columnTypeNames,
-                        includeHeader: settings.includeHeaderRow,
-                        convertNullToEmpty: settings.convertNullToEmpty
+                        includeHeader: options.includeHeaderRow,
+                        convertNullToEmpty: options.convertNullToEmpty
                     )
                     currentSheetRowCount = headerRowCount
                     isFirstBatch = false
@@ -83,7 +85,7 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
                         let remaining = Self.maxRowsPerSheet - currentSheetRowCount
                         if rowBatch.count <= remaining {
                             try autoreleasepool {
-                                try writer.addRows(rowBatch, convertNullToEmpty: settings.convertNullToEmpty)
+                                try writer.addRows(rowBatch, convertNullToEmpty: options.convertNullToEmpty)
                             }
                             currentSheetRowCount += rowBatch.count
                         } else {
@@ -91,7 +93,7 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
                             let overflow = Array(rowBatch.dropFirst(remaining))
                             if !fitting.isEmpty {
                                 try autoreleasepool {
-                                    try writer.addRows(fitting, convertNullToEmpty: settings.convertNullToEmpty)
+                                    try writer.addRows(fitting, convertNullToEmpty: options.convertNullToEmpty)
                                 }
                                 currentSheetRowCount += fitting.count
                             }
@@ -99,14 +101,14 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
                                 baseName: table.name,
                                 columns: columns,
                                 columnTypeNames: columnTypeNames,
-                                includeHeader: settings.includeHeaderRow,
-                                convertNullToEmpty: settings.convertNullToEmpty
+                                includeHeader: options.includeHeaderRow,
+                                convertNullToEmpty: options.convertNullToEmpty
                             )
                             didSplitSheets = true
                             currentSheetRowCount = headerRowCount
                             if !overflow.isEmpty {
                                 try autoreleasepool {
-                                    try writer.addRows(overflow, convertNullToEmpty: settings.convertNullToEmpty)
+                                    try writer.addRows(overflow, convertNullToEmpty: options.convertNullToEmpty)
                                 }
                                 currentSheetRowCount += overflow.count
                             }
@@ -124,7 +126,7 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
                 let remaining = Self.maxRowsPerSheet - currentSheetRowCount
                 if rowBatch.count <= remaining {
                     try autoreleasepool {
-                        try writer.addRows(rowBatch, convertNullToEmpty: settings.convertNullToEmpty)
+                        try writer.addRows(rowBatch, convertNullToEmpty: options.convertNullToEmpty)
                     }
                     currentSheetRowCount += rowBatch.count
                 } else {
@@ -132,21 +134,21 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
                     let overflow = Array(rowBatch.dropFirst(remaining))
                     if !fitting.isEmpty {
                         try autoreleasepool {
-                            try writer.addRows(fitting, convertNullToEmpty: settings.convertNullToEmpty)
+                            try writer.addRows(fitting, convertNullToEmpty: options.convertNullToEmpty)
                         }
                     }
                     try writer.continueSheet(
                         baseName: table.name,
                         columns: columns,
                         columnTypeNames: columnTypeNames,
-                        includeHeader: settings.includeHeaderRow,
-                        convertNullToEmpty: settings.convertNullToEmpty
+                        includeHeader: options.includeHeaderRow,
+                        convertNullToEmpty: options.convertNullToEmpty
                     )
                     didSplitSheets = true
                     currentSheetRowCount = headerRowCount
                     if !overflow.isEmpty {
                         try autoreleasepool {
-                            try writer.addRows(overflow, convertNullToEmpty: settings.convertNullToEmpty)
+                            try writer.addRows(overflow, convertNullToEmpty: options.convertNullToEmpty)
                         }
                         currentSheetRowCount += overflow.count
                     }
@@ -163,7 +165,7 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
                     name: table.name,
                     columns: [],
                     includeHeader: false,
-                    convertNullToEmpty: settings.convertNullToEmpty
+                    convertNullToEmpty: options.convertNullToEmpty
                 )
                 try writer.finishSheet()
             }

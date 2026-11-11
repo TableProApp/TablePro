@@ -99,12 +99,25 @@ struct CompareSQLLiteralTests {
         #expect(CompareSQLLiteral.prefixed("0x89504E47", databaseType: .mssql) == "0x89504E47")
     }
 
+    // `'\x…'::bytea` reads its backslash by `standard_conforming_strings`, and with that off a sync stored other bytes.
     @Test
-    func postgresFamilyUsesAByteaCast() throws {
-        for type in [DatabaseType.postgresql, .cockroachdb, .redshift, .pglite, .kingbasees] {
+    func postgresFamilyDecodesHex() throws {
+        for type in [DatabaseType.postgresql, .cockroachdb, .pglite] {
             let literal = try #require(CompareSQLLiteral.binaryLiteral(for: png, databaseType: type))
-            #expect(literal == "'\\x89504e47'::bytea", "\(type.rawValue) uses a bytea literal")
+            #expect(literal == "decode('89504E47', 'hex')", "\(type.rawValue) decodes hex")
         }
+    }
+
+    // KingbaseES documents `decode` only as Oracle's DECODE; its bytea decoder is not the PostgreSQL one.
+    @Test
+    func kingbaseKeepsTheByteaLiteral() {
+        #expect(CompareSQLLiteral.binaryLiteral(for: png, databaseType: .kingbasees) == "'\\x89504E47'::bytea")
+    }
+
+    // Redshift has no bytea, and its DECODE is the CASE-like one; a binary column there is VARBYTE.
+    @Test
+    func redshiftReadsHexIntoVarbyte() {
+        #expect(CompareSQLLiteral.binaryLiteral(for: png, databaseType: .redshift) == "from_hex('89504E47')")
     }
 
     @Test
@@ -121,6 +134,12 @@ struct CompareSQLLiteralTests {
         #expect(literal == "HEXTORAW('89504E47')")
     }
 
+    // `HEXTORAW('')` stores NULL, and a `BLOB NOT NULL` refuses it.
+    @Test
+    func oracleWritesAnEmptyValueAsAnEmptyBlob() {
+        #expect(CompareSQLLiteral.binaryLiteral(for: Data(), databaseType: .oracle) == "EMPTY_BLOB()")
+    }
+
     /// An engine this build does not name falls back to the driver's own spelling rather than
     /// guessing at one, which is why the helper returns nil instead of a default.
     @Test
@@ -132,6 +151,6 @@ struct CompareSQLLiteralTests {
     func emptyDataStillProducesAValidLiteral() throws {
         let literal = try #require(CompareSQLLiteral.binaryLiteral(for: Data(), databaseType: .postgresql))
 
-        #expect(literal == "'\\x'::bytea")
+        #expect(literal == "decode('', 'hex')")
     }
 }

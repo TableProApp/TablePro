@@ -432,14 +432,20 @@ final class PrincipalChangeManager: ObservableObject {
 
     // MARK: - Output
 
+    // A staged drop keeps the principal's other edits so undoing the drop brings them back, but only the DROP runs.
     func pendingChanges() -> [PrincipalChange] {
         var changes: [PrincipalChange] = pendingCreates.map { .create($0) }
 
         changes += pendingAlters.compactMap { ref, definition in
-            guard let original = principals.first(where: { $0.ref == ref }) else { return nil }
+            guard pendingDrops[ref] == nil,
+                  let original = principals.first(where: { $0.ref == ref })
+            else { return nil }
             return .alter(old: Self.definition(from: original), new: definition)
         }
-        changes += pendingPasswords.map { .setPassword(ref: $0.key, password: $0.value) }
+        changes += pendingPasswords.compactMap { ref, password in
+            guard pendingDrops[ref] == nil else { return nil }
+            return .setPassword(ref: ref, password: password)
+        }
         changes += grantChangeSets().map { .modifyGrants($0) }
         changes += pendingDrops.map { .drop(ref: $0.key, options: $0.value) }
         return changes
@@ -531,11 +537,12 @@ final class PrincipalChangeManager: ObservableObject {
     }
 
     private func recomputeChangeCount() {
-        let grantChanges = grantDeltas.values.reduce(0) { $0 + $1.count }
+        let isLive = { (ref: PluginPrincipalRef) in self.pendingDrops[ref] == nil }
+        let grantChanges = grantDeltas.reduce(0) { isLive($1.key) ? $0 + $1.value.count : $0 }
         changeCount = pendingCreates.count
             + pendingDrops.count
-            + pendingPasswords.count
-            + pendingAlters.count
+            + pendingPasswords.keys.count(where: isLive)
+            + pendingAlters.keys.count(where: isLive)
             + grantChanges
     }
 

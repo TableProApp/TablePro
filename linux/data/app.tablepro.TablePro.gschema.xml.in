@@ -331,7 +331,7 @@
     </key>
 
     <key name="csv-sanitize-formulas" type="b">
-      <default>true</default>
+      <default>false</default>
       <summary>Neutralise spreadsheet formulas</summary>
       <description>Whether a CSV export prefixes values starting with =, +, - or @ so a spreadsheet does not run them.</description>
     </key>

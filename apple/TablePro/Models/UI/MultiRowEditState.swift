@@ -70,7 +70,7 @@ struct FieldEditState: Identifiable {
 
     var effectiveValue: String? {
         if isPendingDefault {
-            return "__DEFAULT__"
+            return PluginCellValue.columnDefaultKeyword
         } else if isPendingNull {
             return nil
         } else {
@@ -244,6 +244,8 @@ final class MultiRowEditState: ObservableObject {
                     hasCommittedEdit = true
                 } else if originalValue == nil {
                     isPendingNull = true
+                } else if expression.first == true, originalValue == PluginCellValue.columnDefaultKeyword {
+                    isPendingDefault = true
                 } else {
                     pendingValue = originalValue
                     isPendingExpression = expression.first == true
@@ -508,7 +510,7 @@ final class MultiRowEditState: ObservableObject {
         guard index < fields.count else { return }
         resetPending(at: index)
         fields[index].isPendingDefault = true
-        onFieldChanged?(index, .text("__DEFAULT__"), .discrete)
+        onFieldExpressionChanged?(index, PluginCellValue.columnDefaultKeyword, .discrete)
     }
 
     func setFieldToExpression(at index: Int, expression: CellExpression) {
@@ -619,7 +621,7 @@ final class MultiRowEditState: ObservableObject {
                 columnName: field.columnName,
                 newValue: field.effectiveValue,
                 removesField: field.isPendingRemoval,
-                isExpression: field.isPendingExpression
+                isExpression: field.isPendingExpression || field.isPendingDefault
             )
         }
     }

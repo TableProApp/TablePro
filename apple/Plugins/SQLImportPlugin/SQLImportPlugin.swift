@@ -51,15 +51,17 @@ final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
         var errors: [PluginImportResult.ImportStatementError] = []
         let maxErrors = 1_000
 
-        let errorMode = settings.errorHandling
-        let useTransaction = settings.wrapInTransaction && errorMode != .skipAndContinue
+        // One plugin instance serves every window: a checkbox unticked elsewhere mid-import left the checks off.
+        let options = settings
+        let errorMode = options.errorHandling
+        let useTransaction = options.wrapInTransaction && errorMode != .skipAndContinue
 
         let fileSizeBytes = source.fileSizeBytes()
         let estimatedTotal = max(1, Int(fileSizeBytes / 500))
         progress.setEstimatedTotal(estimatedTotal)
 
         do {
-            if settings.disableForeignKeyChecks {
+            if options.disableForeignKeyChecks {
                 try await sink.disableForeignKeyChecks()
             }
 
@@ -99,7 +101,7 @@ final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
                                 Self.logger.warning("Failed to commit partial import")
                             }
                         }
-                        if settings.disableForeignKeyChecks {
+                        if options.disableForeignKeyChecks {
                             do {
                                 try await sink.enableForeignKeyChecks()
                             } catch {
@@ -134,7 +136,7 @@ final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
                 didCommit = true
             }
 
-            if settings.disableForeignKeyChecks {
+            if options.disableForeignKeyChecks {
                 do {
                     try await sink.enableForeignKeyChecks()
                 } catch {
@@ -156,7 +158,7 @@ final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
                 }
             }
 
-            if settings.disableForeignKeyChecks {
+            if options.disableForeignKeyChecks {
                 do {
                     try await sink.enableForeignKeyChecks()
                 } catch {

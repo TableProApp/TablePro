@@ -346,19 +346,6 @@
                                 </property>
                               </object>
                             </child>
-                            <child>
-                              <object class="GtkMenuButton" id="value_menu_button">
-                                <property name="icon-name">view-more-symbolic</property>
-                                <property name="menu-model">value_menu</property>
-                                <property name="tooltip-text" translatable="yes">More Actions</property>
-                                <accessibility>
-                                  <property name="label" translatable="yes">More Actions</property>
-                                </accessibility>
-                                <style>
-                                  <class name="flat"/>
-                                </style>
-                              </object>
-                            </child>
                           </object>
                         </child>
                         <child>

@@ -29,7 +29,12 @@ struct TriggerEditorView: View {
     @State private var isApplying = false
     @State private var errorMessage: String?
     @State private var droppedDefinition: String?
-    @AppStorage("structureCodeFontSize", store: AppStorageEnvironment.shared.defaults) private var fontSize: Double = 13
+    @AppStorage(TriggerEditorView.fontSizeKey, store: AppStorageEnvironment.shared.defaults)
+    private var fontSize = TriggerEditorView.defaultFontSize
+
+    // The Structure tab's DDL pane writes its zoom here too.
+    static let fontSizeKey = "structureCodeFontSize"
+    static let defaultFontSize = 13.0
 
     init(
         scope: DatabaseScope,
@@ -45,7 +50,14 @@ struct TriggerEditorView: View {
         self.mode = mode
         self.onClose = onClose
         self._sql = State(wrappedValue: initialSQL)
-        self._editorConfiguration = State(wrappedValue: Self.makeConfiguration(fontSize: 13))
+        self._editorConfiguration = State(wrappedValue: Self.initialConfiguration())
+    }
+
+    // The State is seeded once, here, so it reads the store; `fontSize` only follows later zooms.
+    static func initialConfiguration(
+        in defaults: UserDefaults = AppStorageEnvironment.shared.defaults
+    ) -> SourceEditorConfiguration {
+        makeConfiguration(fontSize: defaults.object(forKey: fontSizeKey) as? Double ?? defaultFontSize)
     }
 
     var body: some View {
@@ -145,7 +157,7 @@ struct TriggerEditorView: View {
                 if let dropped = (error as? TriggerEditingError)?.droppedDefinition {
                     droppedDefinition = dropped
                 }
-                errorMessage = error.localizedDescription
+                errorMessage = GatedOperationFailure(error).message
             }
         }
     }

@@ -277,7 +277,7 @@ struct TriggerDetailView: View {
                     name: trigger.name
                 )
             } catch {
-                actionError = error.localizedDescription
+                actionError = GatedOperationFailure(error).message
             }
         }
     }

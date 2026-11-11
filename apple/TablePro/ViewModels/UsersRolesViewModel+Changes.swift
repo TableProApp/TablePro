@@ -290,7 +290,7 @@ extension UsersRolesViewModel {
                 .joined(separator: "\n")
             await load(forceReload: true)
         } catch {
-            applyFailure = error.localizedDescription
+            applyFailure = GatedOperationFailure(error).message
         }
     }
 

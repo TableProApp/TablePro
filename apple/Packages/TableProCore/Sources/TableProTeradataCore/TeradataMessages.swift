@@ -119,6 +119,14 @@ enum TeradataMessages {
         Parcel(.logoff)
     }
 
+    static func abortParcel() -> Parcel {
+        Parcel(.abort)
+    }
+
+    static func cancelParcel() -> Parcel {
+        Parcel(.cancel)
+    }
+
     static func charsetCode(fromConfigResponse body: [UInt8], name: String) -> UInt8? {
         let needle = Array(name.utf8)
         guard !needle.isEmpty else { return nil }

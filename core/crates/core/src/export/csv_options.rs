@@ -68,7 +68,9 @@ impl Default for CsvOptions {
             null_to_empty: true,
             line_break_to_space: false,
             header_row: true,
-            sanitize_formulas: true,
+            // RFC 4180 carries a field as written, and OWASP scopes the quote prefix to files meant
+            // for a spreadsheet: an importer keeps the quote as part of the value.
+            sanitize_formulas: false,
             delimiter: CsvDelimiter::Comma,
             quote: CsvQuote::IfNeeded,
             line_break: CsvLineBreak::Lf,

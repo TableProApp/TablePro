@@ -31,51 +31,12 @@ internal enum StructureSaveOutcome: Equatable {
     }
 }
 
-/// How a save that did not apply ends, read from the error alone so it can be tested without
-/// presenting anything.
-///
-/// The gate's sheet is the one confirmation a save gets, so Cancel there is the ordinary way to
-/// back out, and it ends quietly the way closing any confirmation does. Answering it with an
-/// "Error Applying Changes" sheet put a second dialog in front of the user for the choice they had
-/// just made.
-internal enum StructureApplyFailure: Equatable {
-    case cancelledByUser
-    case refused(String)
-    case failed(String)
-
-    internal init(_ error: any Error) {
-        guard let gateError = error as? ExecutionGateError else {
-            self = .failed(error.localizedDescription)
-            return
-        }
-        switch gateError {
-        case .cancelledByUser:
-            self = .cancelledByUser
-        case .denied(let reason):
-            self = .refused(reason)
-        }
-    }
-
-    internal var outcome: StructureSaveOutcome {
+internal extension GatedOperationFailure {
+    var outcome: StructureSaveOutcome {
         switch self {
         case .cancelledByUser, .refused: .refused
         case .failed(let message): .failed(message)
         }
-    }
-
-    /// What the error sheet says. Nil for a Cancel, which shows nothing.
-    internal var message: String? {
-        switch self {
-        case .cancelledByUser: nil
-        case .refused(let reason), .failed(let reason): reason
-        }
-    }
-
-    /// A refusal and a Cancel both stop at the gate, before the first statement, so neither is a
-    /// failed operation to report or a reason to reload the catalog.
-    internal var reportsFailure: Bool {
-        if case .failed = self { return true }
-        return false
     }
 }
 
@@ -159,7 +120,7 @@ internal extension StructureEditingSession {
 
     // A failed save that may have written; its error waits for the table to be read again.
     private struct AlterFailure {
-        let failure: StructureApplyFailure
+        let failure: GatedOperationFailure
         let startedAt: ContinuousClock.Instant
     }
 
@@ -240,7 +201,7 @@ internal extension StructureEditingSession {
             report(.succeeded(OperationSummary()), startedAt: operationStart, coordinator: coordinator)
             return (.applied, nil)
         } catch {
-            let failure = StructureApplyFailure(error)
+            let failure = GatedOperationFailure(error)
             // A gate refusal and a driver's refusal both stop before the first statement.
             guard failure.reportsFailure, !(error is SchemaOperationRefusedError) else {
                 present(failure, startedAt: operationStart, coordinator: coordinator)
@@ -251,7 +212,7 @@ internal extension StructureEditingSession {
     }
 
     private func present(
-        _ failure: StructureApplyFailure,
+        _ failure: GatedOperationFailure,
         note: String? = nil,
         startedAt: ContinuousClock.Instant,
         coordinator: MainContentCoordinator?
@@ -340,7 +301,7 @@ internal extension StructureEditingSession {
         } catch {
             changeManager.releaseHold(hold, written: false)
             isApplying = false
-            let failure = StructureApplyFailure(error)
+            let failure = GatedOperationFailure(error)
             if failure.reportsFailure {
                 CatalogChangeService.post(
                     .changed(CatalogChange(connectionId: connection.id, database: prepared.scope.database, kinds: .tables))

@@ -59,6 +59,7 @@ final class CSVExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
         let lineBreak = options.lineBreak.value
         let encoding = options.encoding
         var report = CSVEncodingReport()
+        var neutralisedCount = 0
 
         if options.writesByteOrderMark, !encoding.byteOrderMark.isEmpty {
             try fileHandle.write(contentsOf: Data(encoding.byteOrderMark))
@@ -80,7 +81,7 @@ final class CSVExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
             }
 
             var isFirstBatch = true
-            var columns: [String] = []
+            var columnNumbers: [PluginColumnNumbers] = []
 
             let stream = dataSource.streamRows(for: table)
             for try await element in stream {
@@ -88,17 +89,27 @@ final class CSVExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
 
                 switch element {
                 case .header(let header):
-                    columns = header.columns
+                    columnNumbers = header.columnTypeNames.map { PluginColumnNumbers(typeName: $0) }
                     if isFirstBatch && options.includeFieldNames {
-                        let headerLine = columns
-                            .map { escapeCSVField($0, options: options) }
+                        if options.sanitizeFormulas {
+                            neutralisedCount += header.columns.filter(PluginRowWriters.isFormulaLike).count
+                        }
+                        let headerLine = header.columns
+                            .map { escapeCSVField($0, options: options, sanitizes: options.sanitizeFormulas) }
                             .joined(separator: options.delimiter.actualValue)
                         try write(headerLine + lineBreak, to: fileHandle, encoding: encoding, report: &report)
                     }
                     isFirstBatch = false
                 case .rows(let rows):
                     for row in rows {
-                        try writeCSVRow(row, options: options, to: fileHandle, report: &report)
+                        try writeCSVRow(
+                            row,
+                            columnNumbers: columnNumbers,
+                            options: options,
+                            to: fileHandle,
+                            report: &report,
+                            neutralisedCount: &neutralisedCount
+                        )
                         progress.incrementRow()
                     }
                 }
@@ -114,7 +125,22 @@ final class CSVExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
         try PluginExportUtilities.commitAtomicWrite(from: tempURL, to: destination)
         committed = true
         progress.finalizeTable()
-        return ExportFormatResult(warnings: report.warnings(for: encoding))
+        return ExportFormatResult(warnings: report.warnings(for: encoding) + Self.neutralisedWarnings(neutralisedCount))
+    }
+
+    // The quote is part of the value for anything that imports the file, so the export says how many it changed.
+    static func neutralisedWarnings(_ count: Int) -> [String] {
+        guard count > 0 else { return [] }
+        return [String(
+            format: String(
+                localized: """
+                    Values a spreadsheet would read as formulas, written with a leading single quote: %lld. \
+                    Turn off Sanitize formula-like values to export them unchanged.
+                    """,
+                bundle: .main
+            ),
+            Int64(count)
+        )]
     }
 
     // MARK: - Private
@@ -143,26 +169,31 @@ final class CSVExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
         try fileHandle.write(contentsOf: encoded.data)
     }
 
+    // A text column holding "1.10" is a version or a code; a column with no usable type keeps the decimal comma.
     private func writeCSVRow(
         _ row: [PluginCellValue],
+        columnNumbers: [PluginColumnNumbers],
         options: CSVExportOptions,
         to fileHandle: FileHandle,
-        report: inout CSVEncodingReport
+        report: inout CSVEncodingReport,
+        neutralisedCount: inout Int
     ) throws {
-        let delimiter = options.delimiter.actualValue
-        let lineBreak = options.lineBreak.value
+        var fields: [String] = []
+        fields.reserveCapacity(row.count)
 
-        let rowLine = row.map { cell -> String in
+        for (index, cell) in row.enumerated() {
             let val: String
             switch cell {
             case .null:
-                return options.convertNullToEmpty ? "" : "NULL"
+                fields.append(options.convertNullToEmpty ? "" : "NULL")
+                continue
             case .text(let s):
                 val = s
             case .bytes(let d):
                 val = "0x" + d.map { String(format: "%02X", $0) }.joined()
             }
 
+            let takesDecimalComma = index >= columnNumbers.count || columnNumbers[index] != .text
             var processed = val
             // `\r\n` is one Character, so only a scalar test sees a Windows line break.
             let hadLineBreaks = val.unicodeScalars.contains { $0 == "\n" || $0 == "\r" }
@@ -174,40 +205,54 @@ final class CSVExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                     .replacingOccurrences(of: "\n", with: " ", options: .literal)
             }
 
-            if options.decimalFormat == .comma {
+            var isCommaDecimal = false
+            if options.decimalFormat == .comma, takesDecimalComma {
                 let range = NSRange(processed.startIndex..., in: processed)
                 if Self.decimalFormatRegex.firstMatch(in: processed, range: range) != nil {
                     processed = processed.replacingOccurrences(of: ".", with: ",")
+                    isCommaDecimal = true
                 }
             }
 
-            return escapeCSVField(processed, options: options, originalHadLineBreaks: hadLineBreaks)
-        }.joined(separator: delimiter)
+            // `-1,5` is still a number, and the quote would turn it into text.
+            let sanitizes = options.sanitizeFormulas && !isCommaDecimal
+            if sanitizes, PluginRowWriters.isFormulaLike(processed) {
+                neutralisedCount += 1
+            }
+            fields.append(escapeCSVField(
+                processed, options: options, sanitizes: sanitizes, originalHadLineBreaks: hadLineBreaks
+            ))
+        }
 
-        try write(rowLine + lineBreak, to: fileHandle, encoding: options.encoding, report: &report)
+        try write(
+            fields.joined(separator: options.delimiter.actualValue) + options.lineBreak.value,
+            to: fileHandle,
+            encoding: options.encoding,
+            report: &report
+        )
     }
 
-    /// Escaping and quoting live in `PluginRowWriters`, so this format, the other export formats
-    /// and the MCP tool spell a value the same way. Only the option mapping is this plugin's own.
-    ///
-    /// `originalHadLineBreaks` says the value's breaks were already replaced with spaces upstream,
-    /// and it still forces quoting: the source text spanned lines, and a reader that splits on the
-    /// delimiter has no way to know the space it now sees was one.
-    private func escapeCSVField(_ field: String, options: CSVExportOptions, originalHadLineBreaks: Bool = false) -> String {
-        let escaped = PluginRowWriters.csvField(field, options: writeOptions(options))
+    // `originalHadLineBreaks` still forces quoting after the breaks became spaces: the source text spanned lines.
+    private func escapeCSVField(
+        _ field: String,
+        options: CSVExportOptions,
+        sanitizes: Bool,
+        originalHadLineBreaks: Bool = false
+    ) -> String {
+        let escaped = PluginRowWriters.csvField(field, options: writeOptions(options, sanitizes: sanitizes))
         guard originalHadLineBreaks, options.quoteHandling == .asNeeded, escaped.unicodeScalars.first != "\"" else {
             return escaped
         }
         return "\"\(escaped.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
     }
 
-    private func writeOptions(_ options: CSVExportOptions) -> PluginCsvWriteOptions {
+    private func writeOptions(_ options: CSVExportOptions, sanitizes: Bool) -> PluginCsvWriteOptions {
         PluginCsvWriteOptions(
             delimiter: options.delimiter.actualValue,
             quoteHandling: quoteHandling(options.quoteHandling),
             lineEnding: options.lineBreak.value,
             nullAsEmpty: true,
-            sanitizesFormulas: options.sanitizeFormulas,
+            sanitizesFormulas: sanitizes,
             flattensLineBreaks: false
         )
     }

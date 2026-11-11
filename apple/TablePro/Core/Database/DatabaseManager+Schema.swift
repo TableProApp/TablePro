@@ -226,13 +226,7 @@ extension DatabaseManager {
         }
     }
 
-    /// Run a Create Table draft's statements, on the same isolated route and in the same shape as
-    /// `executeSchemaChanges`.
-    ///
-    /// The route is what matters. The view used to reach for `driver(for:)`, which is the session
-    /// driver, so a `BEGIN` opened here joined whatever transaction a query tab had left open and
-    /// the matching `COMMIT` took that tab's uncommitted work with it. `schemaChangeRoute` exists
-    /// for exactly that, and the app's own DDL has no business on the user's connection.
+    // On the schema change route: a BEGIN on the session driver would join a query tab's open transaction.
     func executeCreateTable(
         statements: [String],
         databaseType: DatabaseType,
@@ -254,11 +248,7 @@ extension DatabaseManager {
                 operationDescription: String(localized: "Create Table")
             )
         )
-        guard case .authorized = authorization else {
-            throw DatabaseError.queryFailed(
-                authorization.deniedReason ?? String(localized: "Operation not permitted")
-            )
-        }
+        if let denial = authorization.denialError { throw denial }
 
         let executionTimes: [TimeInterval]
         do {

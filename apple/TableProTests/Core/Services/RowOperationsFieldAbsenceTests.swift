@@ -82,7 +82,7 @@ extension GlobalStateSuites {
             #expect(tableRows.row(withID: nullKept.rowID)?.absentColumns.isEmpty == true)
             #expect(tableRows.row(withID: missingKept.rowID)?.absentColumns == [2])
             #expect(changes.pending.insertedAbsentColumns(forRow: missingKept.rowID) == [2])
-            #expect(missingKept.values[0] == .text("__DEFAULT__"))
+            #expect(missingKept.values[0] == .columnDefault)
         }
 
         @Test("Copying rows records which fields each lacked, in the copied column order")
@@ -123,7 +123,7 @@ extension GlobalStateSuites {
 
             let (tableRows, result) = paste(clipboard, into: manager)
 
-            #expect(result.pastedRows.first?.values == [.text("__DEFAULT__"), "Ada", .null])
+            #expect(result.pastedRows.first?.values == [.columnDefault, "Ada", .null])
             #expect(tableRows.rows[0].absentColumns.isEmpty)
         }
 

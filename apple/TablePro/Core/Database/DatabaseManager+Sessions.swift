@@ -123,7 +123,7 @@ extension DatabaseManager {
                 attempt: attempt,
                 for: connection.id
             )
-            await applyTimeoutAndStartupCommands(
+            let startupFailures = await applyTimeoutAndStartupCommands(
                 on: driver,
                 queryTimeoutSeconds: effectiveQueryTimeoutSeconds,
                 startupCommands: resolvedConnection.startupCommands,
@@ -154,7 +154,7 @@ extension DatabaseManager {
                 session.driver = driver
                 session.status = driver.status
                 session.effectiveConnection = effectiveConnection
-                session.connectionWarning = driver.connectionWarning
+                session.connectionWarning = openingWarning(driver: driver, startupFailures: startupFailures, for: connection.id)
                 // A connect answers whatever went wrong before it, including a reconnect that gave up on this entry.
                 session.liveness = .live
                 session.recovery = nil
@@ -1190,6 +1190,7 @@ extension DatabaseManager {
         monitorPingedDrivers.removeValue(forKey: connectionId)
         sessionDriverGate.drain(connectionId: connectionId)
         connectionStatusVersions.removeValue(forKey: connectionId)
+        reportedStartupFailures.removeValue(forKey: connectionId)
         forgetVerification(for: connectionId)
         aiAccessApprovals.revoke(connectionId)
         AppEvents.shared.connectionStatusChanged.send(

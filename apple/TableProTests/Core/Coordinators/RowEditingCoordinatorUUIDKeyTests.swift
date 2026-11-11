@@ -71,7 +71,7 @@ struct RowEditingCoordinatorUUIDKeyTests {
 
         coordinator.addNewRow()
 
-        #expect(try #require(lastRow(of: coordinator)).values[0] == .text("__DEFAULT__"))
+        #expect(try #require(lastRow(of: coordinator)).values[0] == .columnDefault)
     }
 
     @Test("Add Row on an integer key leaves it as before")

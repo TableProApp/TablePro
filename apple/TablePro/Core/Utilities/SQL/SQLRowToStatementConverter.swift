@@ -228,18 +228,6 @@ internal struct SQLRowToStatementConverter {
     }
 
     private func formatBinaryLiteral(_ data: Data) -> String {
-        var hex = ""
-        hex.reserveCapacity(data.count * 2)
-        for byte in data {
-            hex += String(format: "%02X", byte)
-        }
-        switch databaseType {
-        case .postgresql, .redshift, .cockroachdb, .pglite, .kingbasees:
-            return "'\\x\(hex)'::bytea"
-        case .mssql:
-            return "0x\(hex)"
-        default:
-            return "X'\(hex)'"
-        }
+        CompareSQLLiteral.binaryLiteral(for: data, databaseType: databaseType) ?? "X'\(data.uppercaseHex())'"
     }
 }

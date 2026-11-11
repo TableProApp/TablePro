@@ -21,22 +21,39 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
         let columns: [ColumnInfo]
     }
 
-    private var tables: [TableInfo]
+    private var tables: [TableInfo] {
+        didSet {
+            cachedTableItems = nil
+            cachedTableColumnItems = nil
+        }
+    }
+    // Every table-slot request reads all of them, so they are built once per table list.
+    private var cachedTableItems: [SQLCompletionItem]?
     private let databaseType: DatabaseType
     private let schema: String?
     private let readColumns: QueryColumnReader
     private let readCatalogColumns: QueryColumnReader?
     private var columnReadsAllowed = true
     private var columnGeneration = 0
-    private var columns: [ColumnKey: CachedColumns] = [:]
+    private var columns: [ColumnKey: CachedColumns] = [:] {
+        didSet { cachedTableColumnItems = nil }
+    }
+    // Every column request before a FROM reads all of them, so they are built once per column cache, table list and
+    // namespace list.
+    private var cachedTableColumnItems: [SQLCompletionItem]?
+    private(set) var tableColumnItemsBuildCount = 0
     private var reads: [ColumnKey: Task<[ColumnInfo]?, any Error>] = [:]
     private var sessionReads: [ColumnKey: Task<[ColumnInfo]?, any Error>] = [:]
     private let readSchemaTables: QuerySchemaTableReader?
     private let readCatalogSchemaTables: QuerySchemaTableReader?
     private var sessionSchemaReads: [String: Task<[TableInfo]?, any Error>] = [:]
     private var sessionLocalTables: Set<String> = []
-    private var schemas: [String]
-    private var databases: [String]
+    private var schemas: [String] {
+        didSet { cachedTableColumnItems = nil }
+    }
+    private var databases: [String] {
+        didSet { cachedTableColumnItems = nil }
+    }
     private var schemaTables: [String: (generation: Int, tables: [TableInfo])] = [:]
     private var schemaTableReads: [String: Task<[TableInfo]?, any Error>] = [:]
 
@@ -123,19 +140,21 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
     }
 
     func tableCompletionItems() -> [SQLCompletionItem] {
-        tables.map { table in
-            let isView = table.type == .view || table.type == .materializedView
-            return SQLCompletionItem(label: table.name, kind: isView ? .view : .table, insertText: quoted(table.name))
-        }
+        if let cachedTableItems { return cachedTableItems }
+        let items = tables.map { tableItem($0) }
+        cachedTableItems = items
+        return items
+    }
+
+    private func tableItem(_ table: TableInfo) -> SQLCompletionItem {
+        let isView = table.type == .view || table.type == .materializedView
+        return SQLCompletionItem(label: table.name, kind: isView ? .view : .table, insertText: quoted(table.name))
     }
 
     func tableCompletionItems(inSchema schema: String) async -> [SQLCompletionItem] {
         guard isKnownSchema(schema) else { return [] }
         guard !isActiveSchema(schema) else { return tableCompletionItems() }
-        return await tables(inSchema: schema).map { table in
-            let isView = table.type == .view || table.type == .materializedView
-            return SQLCompletionItem(label: table.name, kind: isView ? .view : .table, insertText: quoted(table.name))
-        }
+        return await tables(inSchema: schema).map { tableItem($0) }
     }
 
     func schemaCompletionItems() -> [SQLCompletionItem] {
@@ -317,6 +336,14 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
     }
 
     func allColumnsFromCachedTables() -> [SQLCompletionItem] {
+        if let cachedTableColumnItems { return cachedTableColumnItems }
+        let items = buildTableColumnItems()
+        tableColumnItemsBuildCount += 1
+        cachedTableColumnItems = items
+        return items
+    }
+
+    private func buildTableColumnItems() -> [SQLCompletionItem] {
         // Sorted, because the ranker keeps emission order between equal scores and a dictionary's order is per process.
         let cached = columns.sorted { lhs, rhs in
             (lhs.key.schema ?? "", lhs.key.table) < (rhs.key.schema ?? "", rhs.key.table)

@@ -37,13 +37,17 @@ private func fittedRow(
         blankColumns.insert(values.count)
         values.append(nil)
     }
-    if let pkIndex = schema.primaryKeyIndex, pkIndex < values.count {
-        values[pkIndex] = "__DEFAULT__"
+    var cells = values.map(PluginCellValue.fromOptional)
+    var defaultColumns: Set<Int> = []
+    if let pkIndex = schema.primaryKeyIndex, pkIndex < cells.count {
+        cells[pkIndex] = .columnDefault
+        defaultColumns.insert(pkIndex)
         blankColumns.remove(pkIndex)
     }
     return ParsedRow(
-        values: values.map(PluginCellValue.fromOptional),
+        values: cells,
         sourceLineNumber: lineNumber,
+        expressionColumns: defaultColumns,
         blankColumns: blankColumns
     )
 }

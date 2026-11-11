@@ -400,6 +400,35 @@ struct QueryCompletionCatalogTests {
         #expect(await source.reads == ["orders", "customers"])
     }
 
+    @Test("cached column suggestions are built once, and again only after a read, a table list or a namespace list")
+    func cachedColumnsAreBuiltOnce() async {
+        let source = CatalogColumnSource(["orders": [column("id")], "customers": [column("name")]])
+        let catalog = catalog(source, tables: [table("orders"), table("customers")])
+        _ = await catalog.columnCompletionItems(for: "orders", schema: nil)
+
+        let first = await catalog.allColumnsFromCachedTables()
+        let second = await catalog.allColumnsFromCachedTables()
+        #expect(labels(second) == labels(first))
+        #expect(await catalog.tableColumnItemsBuildCount == 1)
+
+        _ = await catalog.columnCompletionItems(for: "customers", schema: nil)
+        let afterRead = await catalog.allColumnsFromCachedTables()
+        #expect(labels(afterRead) == ["name", "id"])
+        #expect(await catalog.tableColumnItemsBuildCount == 2)
+
+        let listedBefore = await catalog.tableCompletionItems()
+        #expect(labels(listedBefore) == ["orders", "customers"])
+        await catalog.replaceTables([table("orders"), table("customers"), table("refunds")])
+        _ = await catalog.allColumnsFromCachedTables()
+        #expect(await catalog.tableColumnItemsBuildCount == 3)
+        let listedAfter = await catalog.tableCompletionItems()
+        #expect(labels(listedAfter) == ["orders", "customers", "refunds"])
+
+        await catalog.replaceNamespaces(schemas: ["main"], databases: [])
+        _ = await catalog.allColumnsFromCachedTables()
+        #expect(await catalog.tableColumnItemsBuildCount == 4)
+    }
+
     @Test("the catalog connection reads first and is not closed by a run; the session reads only without one")
     func catalogConnectionFirst() async {
         let catalogSource = CatalogColumnSource(["orders": [column("id")]])
