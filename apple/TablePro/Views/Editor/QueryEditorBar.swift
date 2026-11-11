@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import AppKit
 import SwiftUI
 import TableProPluginKit
 
@@ -26,8 +27,17 @@ import TableProPluginKit
 ///
 /// Settings > Editor can put it on two rows (`EditorSettings.queryBarTwoRows`), which adds Save, the
 /// Query Builder, Snippets and the tab's connection. `QueryEditorBarLayout` decides which control sits
-/// on which row; off, it is the single row above.
+/// on which row; off, it is the single row above. The first of the two rows is a run of borderless
+/// glyphs at the toolbar's size rather than small bezels, because it sits right under the toolbar and
+/// small grey bezels there read as disabled even when they are not.
 struct QueryEditorBar: View {
+    /// The glyph size of the first row's tools, the regular size the window's toolbar draws at.
+    static let toolGlyphSize: CGFloat = 15
+    /// Each tool's target, wider than its glyph so the run is easy to hit and reads as separate tools.
+    static let toolTargetSize = CGSize(width: 26, height: 22)
+    /// The first row holds glyphs with no bezel, so they need more air between them than the second.
+    static let toolSpacing: CGFloat = 10
+
     let scope: QueryScopeBarModel
     let commands: QueryCommandAvailability
     let isExecuting: Bool
@@ -72,7 +82,7 @@ struct QueryEditorBar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                HStack(spacing: 8) {
+                HStack(spacing: row.leading.contains(.save) ? Self.toolSpacing : 8) {
                     ForEach(row.leading, id: \.self) { control($0) }
 
                     Spacer(minLength: 8)
@@ -107,31 +117,40 @@ struct QueryEditorBar: View {
         case .editingCommands:
             editingCommands
         case .ai:
-            aiControl
+            if twoRow != nil {
+                aiTool
+            } else {
+                aiControl
+            }
         case .explain:
             explainControl
         case .run:
             runControl
         case .save:
             if let twoRow {
-                commandButton(String(localized: "Save"), systemImage: "square.and.arrow.down", action: twoRow.onSave)
+                toolButton(.save, title: String(localized: "Save"), systemImage: "square.and.arrow.down", action: twoRow.onSave)
                     .disabled(!commands.canSave)
                     .help(commands.saveHint)
                     .accessibilityIdentifier("query-save")
             }
         case .separator:
             Divider()
-                .frame(height: 16)
+                .frame(height: 18)
                 .accessibilityHidden(true)
         case .queryBuilder:
             if let twoRow {
-                commandButton(String(localized: "Query Builder"), systemImage: "hammer", action: twoRow.onOpenQueryBuilder)
-                    .disabled(!commands.canOpenQueryBuilder)
-                    .help(commands.queryBuilderHint)
-                    .accessibilityIdentifier("query-builder")
+                toolButton(
+                    .queryBuilder,
+                    title: String(localized: "Query Builder"),
+                    systemImage: "hammer",
+                    action: twoRow.onOpenQueryBuilder
+                )
+                .disabled(!commands.canOpenQueryBuilder)
+                .help(commands.queryBuilderHint)
+                .accessibilityIdentifier("query-builder")
             }
         case .format:
-            commandButton(String(localized: "Format"), systemImage: "wand.and.stars", action: onFormat)
+            toolButton(.format, title: String(localized: "Format"), systemImage: "wand.and.stars", action: onFormat)
                 .disabled(!commands.canFormat)
                 .help(commands.beautifyHint)
                 .accessibilityIdentifier("query-format")
@@ -152,12 +171,56 @@ struct QueryEditorBar: View {
     }
 
     /// The two-row bar's editing tools stand alone rather than in a `ControlGroup`, because a separator
-    /// sits between them and Save. Each is `.bordered` `.small`, the size of every other control here.
-    private func commandButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
-        Button(title, systemImage: systemImage, action: action)
-            .labelStyle(.iconOnly)
-            .buttonStyle(.bordered)
-            .controlSize(.small)
+    /// sits between them and Save. Borderless at the toolbar's size, so the row reads as the toolbar's
+    /// continuation. The name is set on the button itself: the glyph is all that draws, and an image
+    /// carries no name of its own to VoiceOver.
+    private func toolButton(
+        _ control: QueryEditorBarControl,
+        title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label {
+                Text(title)
+            } icon: {
+                QueryBarToolGlyph(control: control, systemImage: systemImage, title: title)
+            }
+        }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.borderless)
+        .controlSize(.regular)
+        .accessibilityLabel(title)
+    }
+
+    /// The single row's AI control as a first-row tool: Review on a click, the other actions in its menu.
+    /// One control rather than a group, because a group draws a bezel and both halves share one state.
+    /// `.accessibilityLabel` names a `Menu` only beside `.accessibilityElement(children: .contain)`.
+    private var aiTool: some View {
+        Menu {
+            ForEach(AIQueryAction.editorActions, id: \.self) { action in
+                Button(action.menuTitle, systemImage: action.systemImage) { onAIAction(action) }
+            }
+        } label: {
+            Label {
+                Text(AIQueryAction.review.menuTitle)
+            } icon: {
+                QueryBarToolGlyph(control: .ai, systemImage: "sparkles", title: AIQueryAction.review.menuTitle)
+            }
+        } primaryAction: {
+            onAIAction(.review)
+        }
+        .labelStyle(.iconOnly)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
+        .menuIndicator(.visible)
+        .controlSize(.regular)
+        .fixedSize()
+        .disabled(!commands.aiActions.isEnabled)
+        .help(commands.aiReviewHint)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(AIQueryAction.review.menuTitle)
+        .accessibilityIdentifier("query-ai-review")
     }
 
     /// The two that change the query without running it, in one `ControlGroup` because adjacent
@@ -294,5 +357,52 @@ struct QueryEditorBar: View {
             .controlSize(.small)
             .fixedSize()
         }
+    }
+}
+
+/// A first-row tool's glyph. In the colorful icon style it wears its tool's hue while the tool can act,
+/// drawn as the toolbar draws its Objects buttons: a hierarchical symbol baked into a non-template image,
+/// because a menu's button draws a template symbol in its text color. Disabled, it is the plain template
+/// glyph, which the control dims the way the system dims any other, so it never reads as available.
+struct QueryBarToolGlyph: View {
+    let control: QueryEditorBarControl
+    let systemImage: String
+    let title: String
+
+    /// Observed so the hue follows the icon style while the bar is on screen.
+    @ObservedObject private var settings = AppSettingsManager.shared
+    @Environment(\.isEnabled) private var isEnabled
+
+    init(control: QueryEditorBarControl, systemImage: String, title: String) {
+        self.control = control
+        self.systemImage = systemImage
+        self.title = title
+    }
+
+    var body: some View {
+        glyph
+            .frame(width: QueryEditorBar.toolTargetSize.width, height: QueryEditorBar.toolTargetSize.height)
+            .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private var glyph: some View {
+        if isEnabled,
+           let tint = QueryEditorBarToolTint.tint(for: control, style: settings.appearance.objectIconStyle),
+           let image = Self.tintedImage(systemImage, tint: tint.nsColor, title: title) {
+            Image(nsImage: image)
+        } else {
+            Image(systemName: systemImage)
+                .font(.system(size: QueryEditorBar.toolGlyphSize))
+        }
+    }
+
+    static func tintedImage(_ symbol: String, tint: NSColor, title: String) -> NSImage? {
+        let configuration = NSImage.SymbolConfiguration(pointSize: QueryEditorBar.toolGlyphSize, weight: .regular)
+            .applying(NSImage.SymbolConfiguration(hierarchicalColor: tint))
+        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)?
+            .withSymbolConfiguration(configuration)
+        image?.isTemplate = false
+        return image
     }
 }

@@ -65,3 +65,20 @@ internal enum QueryEditorBarLayout {
         ]
     }
 }
+
+/// The hue each editing tool of the two-row bar wears in the colorful icon style, the way the toolbar's
+/// Objects buttons each wear one, so the run reads at a glance. The standard style and every control of
+/// the second row stay monochrome.
+internal enum QueryEditorBarToolTint {
+    internal static func tint(for control: QueryEditorBarControl, style: ObjectIconStyle) -> ObjectIconTint? {
+        guard style == .colorful else { return nil }
+        switch control {
+        case .save: return .blue
+        case .queryBuilder: return .orange
+        case .format: return .purple
+        case .snippets: return .teal
+        case .ai: return .pink
+        case .database, .vimMode, .editingCommands, .explain, .run, .separator, .connection: return nil
+        }
+    }
+}

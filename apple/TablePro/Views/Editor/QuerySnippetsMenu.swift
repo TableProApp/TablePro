@@ -20,15 +20,22 @@ struct QuerySnippetsMenu: View {
         Menu {
             menuContent(QuerySnippetMenu.entries(folders: savedQueries.folders, favorites: savedQueries.favorites))
         } label: {
-            Label(String(localized: "Snippets"), systemImage: "parentheses")
+            Label {
+                Text(String(localized: "Snippets"))
+            } icon: {
+                QueryBarToolGlyph(control: .snippets, systemImage: "parentheses", title: String(localized: "Snippets"))
+            }
         }
         .labelStyle(.iconOnly)
         .menuStyle(.button)
-        .buttonStyle(.bordered)
+        .buttonStyle(.borderless)
         .menuIndicator(.visible)
-        .controlSize(.small)
+        .controlSize(.regular)
         .fixedSize()
         .help(String(localized: "Insert a saved query at the cursor"))
+        // `.accessibilityLabel` names a `Menu` only beside `.contain`; on its own it replaces the name with nothing.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(String(localized: "Snippets"))
         .accessibilityIdentifier("query-snippets")
         .onAppear { savedQueries.ensureLoaded() }
     }

@@ -40,6 +40,9 @@ struct QueryConnectionPicker: View {
         .fixedSize()
         .disabled(!model.canMove)
         .help(model.hint)
+        // The label's own name reaches VoiceOver only through the menu, which names it only beside `.contain`.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(String(format: String(localized: "Connection: %@"), model.name))
         .accessibilityIdentifier("query-connection")
         .onAppear(perform: reload)
         .onReceive(AppEvents.shared.connectionUpdated) { _ in reload() }

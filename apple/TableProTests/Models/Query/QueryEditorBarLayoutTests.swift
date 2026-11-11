@@ -69,4 +69,28 @@ struct QueryEditorBarLayoutTests {
         #expect(double.first?.leading == [.save, .separator, .queryBuilder, .format, .snippets])
         #expect(double.last == QueryEditorBarRow(leading: [.connection, .database, .vimMode], trailing: [.explain, .run]))
     }
+
+    // MARK: - Tool hues
+
+    private static let tools: [QueryEditorBarControl] = [.save, .queryBuilder, .format, .snippets, .ai]
+
+    @Test("In the colorful style each first-row tool wears a hue of its own")
+    func colorfulToolsEachHaveAHue() {
+        let tints = Self.tools.compactMap { QueryEditorBarToolTint.tint(for: $0, style: .colorful) }
+        #expect(tints.count == Self.tools.count)
+        #expect(Set(tints).count == tints.count)
+    }
+
+    @Test("The standard style and the second row stay monochrome")
+    func standardStyleAndSecondRowStayPlain() {
+        let every: [QueryEditorBarControl] = Self.tools + [
+            .database, .vimMode, .editingCommands, .explain, .run, .separator, .connection,
+        ]
+        for control in every {
+            #expect(QueryEditorBarToolTint.tint(for: control, style: .standard) == nil)
+        }
+        for control in [QueryEditorBarControl.database, .vimMode, .editingCommands, .explain, .run, .separator, .connection] {
+            #expect(QueryEditorBarToolTint.tint(for: control, style: .colorful) == nil)
+        }
+    }
 }
