@@ -195,4 +195,339 @@ struct ExecutionAuditLogTests {
         #expect(url.deletingLastPathComponent() == AppStorageEnvironment.shared.supportDirectory)
         #expect(url.path.hasPrefix(AppStorageEnvironment.shared.applicationSupportRoot.path))
     }
+
+    private func temporaryURL() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("audit-\(UUID().uuidString).json")
+    }
+
+    private func storedChain(_ count: Int, startingAt first: Int = 0, after previous: String? = nil) -> [ExecutionAuditRecord] {
+        var records: [ExecutionAuditRecord] = []
+        for index in first ..< first + count {
+            records.append(ExecutionAuditRecord(
+                sequence: index,
+                recordedAt: Date(timeIntervalSince1970: 1_700_000_000 + Double(index)),
+                connectionId: UUID(),
+                kind: "readQuery",
+                caller: "userInterface",
+                outcome: .authorized,
+                effectiveWrite: false,
+                statementDigest: ExecutionAuditRecord.sha256("select \(index)"),
+                previousHash: records.last?.hash ?? previous ?? ExecutionAuditRecord.genesisHash
+            ))
+        }
+        return records
+    }
+
+    private func decodedArray(at url: URL) throws -> [ExecutionAuditRecord] {
+        try JSONDecoder().decode([ExecutionAuditRecord].self, from: Data(contentsOf: url))
+    }
+
+    @Test("a log an earlier build wrote as one array goes on from its last record")
+    func continuesAnEarlierBuildsArray() async throws {
+        let url = temporaryURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let earlier = storedChain(3)
+        try JSONEncoder().encode(earlier).write(to: url)
+
+        let log = ExecutionAuditLog(fileURL: url)
+        await log.record(request: request(write: false), decision: .denied(reason: "x"))
+
+        let entries = await log.entries()
+        #expect(entries.count == 4)
+        #expect(entries[3].sequence == 3)
+        #expect(entries[3].previousHash == earlier[2].hash)
+        #expect(await log.verify() == .intact(count: 4))
+    }
+
+    @Test("after appends the file is still the array an earlier build decodes and rewrites")
+    func fileStaysAnArray() async throws {
+        let url = temporaryURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let log = ExecutionAuditLog(fileURL: url)
+        for _ in 0 ..< 3 {
+            await log.record(request: request(write: false), decision: .denied(reason: "x"))
+        }
+
+        let decoded = try decodedArray(at: url)
+        #expect(decoded.count == 3)
+        #expect(ExecutionAuditRecord.firstBrokenSequence(in: decoded) == nil)
+    }
+
+    @Test("a log longer than the tail that is read on launch still chains from its last record")
+    func longLogChainsFromItsTail() async throws {
+        let url = temporaryURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let earlier = storedChain(400)
+        let data = try JSONEncoder().encode(earlier)
+        #expect(data.count > 65_536)
+        try data.write(to: url)
+
+        let log = ExecutionAuditLog(fileURL: url)
+        await log.record(request: request(write: true), decision: .denied(reason: "x"))
+
+        let decoded = try decodedArray(at: url)
+        #expect(decoded.count == 401)
+        #expect(decoded[400].previousHash == earlier[399].hash)
+        #expect(await log.verify() == .intact(count: 401))
+    }
+
+    @Test("an empty array, padded with whitespace, takes its first record")
+    func paddedEmptyArrayStartsTheChain() async throws {
+        let url = temporaryURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data("[ ]\n".utf8).write(to: url)
+
+        let log = ExecutionAuditLog(fileURL: url)
+        await log.record(request: request(write: false), decision: .denied(reason: "x"))
+        await log.record(request: request(write: false), decision: .denied(reason: "x"))
+
+        #expect(try decodedArray(at: url).count == 2)
+        #expect(await log.verify() == .intact(count: 2))
+    }
+
+    @Test("a file changed by someone else is read again before the next record goes on")
+    func externalChangeIsReadBeforeAppending() async throws {
+        let url = temporaryURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let log = ExecutionAuditLog(fileURL: url)
+        await log.record(request: request(write: false), decision: .denied(reason: "x"))
+
+        let replaced = storedChain(5)
+        try JSONEncoder().encode(replaced).write(to: url, options: .atomic)
+        await log.record(request: request(write: false), decision: .denied(reason: "x"))
+
+        let entries = await log.entries()
+        #expect(entries.count == 6)
+        #expect(entries[5].sequence == 5)
+        #expect(entries[5].previousHash == replaced[4].hash)
+    }
+
+    @Test("an unreadable log is set aside with its bytes intact and a new chain starts")
+    func unreadableLogIsSetAsideNotOverwritten() async throws {
+        let url = temporaryURL()
+        let directory = url.deletingLastPathComponent()
+        let stem = url.deletingPathExtension().lastPathComponent
+        defer {
+            try? FileManager.default.removeItem(at: url)
+            for name in (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+            where name.hasPrefix("\(stem).damaged-") {
+                try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
+            }
+        }
+        let damaged = Data(#"[{"sequence":0,"recordedAt":1,"#.utf8)
+        try damaged.write(to: url)
+
+        let log = ExecutionAuditLog(fileURL: url)
+        await log.record(request: request(write: false), decision: .denied(reason: "x"))
+
+        let setAside = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+            .filter { $0.hasPrefix("\(stem).damaged-") }
+        #expect(setAside.count == 1)
+        let kept = try Data(contentsOf: directory.appendingPathComponent(try #require(setAside.first)))
+        #expect(kept == damaged)
+        #expect(await log.verify() == .intact(count: 1))
+    }
+
+    @Test("a log cut short mid-record keeps its whole records, goes on from them, and keeps the cut file aside")
+    func tornTailIsRepaired() async throws {
+        let url = temporaryURL()
+        let directory = url.deletingLastPathComponent()
+        let stem = url.deletingPathExtension().lastPathComponent
+        defer {
+            try? FileManager.default.removeItem(at: url)
+            for name in (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+            where name.hasPrefix("\(stem).damaged-") {
+                try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
+            }
+        }
+        let earlier = storedChain(3)
+        var torn = try JSONEncoder().encode(earlier)
+        torn.removeLast()
+        torn.append(Data(#",{"sequence":3,"recordedAt":17000"#.utf8))
+        try torn.write(to: url)
+
+        let log = ExecutionAuditLog(fileURL: url)
+        await log.record(request: request(write: false), decision: .denied(reason: "x"))
+
+        let decoded = try decodedArray(at: url)
+        #expect(decoded.count == 4)
+        #expect(decoded[3].sequence == 3)
+        #expect(decoded[3].previousHash == earlier[2].hash)
+        let kept = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+            .filter { $0.hasPrefix("\(stem).damaged-") }
+        #expect(kept.count == 1)
+        #expect(try Data(contentsOf: directory.appendingPathComponent(try #require(kept.first))) == torn)
+    }
+
+    @Test("a file replaced by another of the same size is read again rather than written into")
+    func sameSizeReplacementIsReadAgain() async throws {
+        let url = temporaryURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let log = ExecutionAuditLog(fileURL: url)
+        await log.record(request: request(write: false), decision: .denied(reason: "x"))
+        await log.record(request: request(write: false), decision: .denied(reason: "x"))
+        let written = try Data(contentsOf: url)
+
+        let first = try decodedArray(at: url)[0]
+        var replaced = Data("[".utf8) + (try JSONEncoder().encode(first)) + Data("]".utf8)
+        replaced.append(Data(repeating: UInt8(ascii: " "), count: written.count - replaced.count))
+        #expect(replaced.count == written.count)
+        try replaced.write(to: url)
+
+        await log.record(request: request(write: false), decision: .denied(reason: "x"))
+
+        let decoded = try decodedArray(at: url)
+        #expect(decoded.count == 2)
+        #expect(decoded[1].previousHash == first.hash)
+        #expect(await log.verify() == .intact(count: 2))
+    }
+
+    @Test("a record that cannot be written is held and written ahead of the next one")
+    func unwrittenRecordIsHeldNotLost() async throws {
+        let url = temporaryURL()
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+            try? FileManager.default.removeItem(at: url)
+        }
+        let log = ExecutionAuditLog(fileURL: url, retryInterval: .zero)
+        await log.record(request: request(write: false), decision: .denied(reason: "x"))
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: url.path)
+        await log.record(request: request(write: true), decision: .denied(reason: "x"))
+        #expect(try decodedArray(at: url).count == 1)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+        await log.record(request: request(write: false), decision: .denied(reason: "x"))
+
+        let decoded = try decodedArray(at: url)
+        #expect(decoded.map(\.sequence) == [0, 1, 2])
+        #expect(decoded[1].kind == "writeQuery")
+        #expect(await log.verify() == .intact(count: 3))
+    }
+
+    @Test("a record held on its first try after launch goes on from the log's last record once written")
+    func heldRecordLinksToTheHeadAtWriteTime() async throws {
+        let url = temporaryURL()
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+            try? FileManager.default.removeItem(at: url)
+        }
+        let earlier = storedChain(3)
+        try JSONEncoder().encode(earlier).write(to: url)
+        try FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: url.path)
+
+        let log = ExecutionAuditLog(fileURL: url, retryInterval: .zero)
+        await log.record(request: request(write: true), decision: .denied(reason: "x"))
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+        await log.record(request: request(write: false), decision: .denied(reason: "x"))
+
+        let decoded = try decodedArray(at: url)
+        #expect(decoded.map(\.sequence) == [0, 1, 2, 3, 4])
+        #expect(decoded[3].previousHash == earlier[2].hash)
+        #expect(decoded[3].kind == "writeQuery")
+        #expect(await log.verify() == .intact(count: 5))
+    }
+
+    @Test("after a failed write the log waits before trying again, holding what was decided meanwhile")
+    func failedWriteBacksOff() async throws {
+        let url = temporaryURL()
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+            try? FileManager.default.removeItem(at: url)
+        }
+        let log = ExecutionAuditLog(fileURL: url, retryInterval: .seconds(3_600))
+        await log.record(request: request(write: false), decision: .denied(reason: "x"))
+        try FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: url.path)
+        await log.record(request: request(write: false), decision: .denied(reason: "x"))
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+
+        await log.record(request: request(write: false), decision: .denied(reason: "x"))
+
+        #expect(try decodedArray(at: url).count == 1)
+    }
+
+    @Test("a log replaced by another chain of the same size links to the replacement's last record")
+    func sameSizeChainReplacementIsReadAgain() async throws {
+        let url = temporaryURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let log = ExecutionAuditLog(fileURL: url)
+        await log.record(request: request(write: false), decision: .denied(reason: "x"))
+        await log.record(request: request(write: false), decision: .denied(reason: "x"))
+        let written = try decodedArray(at: url)
+
+        var replacement: [ExecutionAuditRecord] = []
+        for record in written {
+            replacement.append(ExecutionAuditRecord(
+                sequence: record.sequence,
+                recordedAt: record.recordedAt,
+                connectionId: UUID(),
+                kind: record.kind,
+                caller: record.caller,
+                outcome: record.outcome,
+                effectiveWrite: record.effectiveWrite,
+                statementDigest: record.statementDigest,
+                previousHash: replacement.last?.hash ?? ExecutionAuditRecord.genesisHash
+            ))
+        }
+        let replaced = try JSONEncoder().encode(replacement)
+        #expect(replaced.count == (try Data(contentsOf: url)).count)
+        try replaced.write(to: url, options: .atomic)
+
+        await log.record(request: request(write: false), decision: .denied(reason: "x"))
+
+        let decoded = try decodedArray(at: url)
+        #expect(decoded[2].previousHash == replacement[1].hash)
+        #expect(await log.verify() == .intact(count: 3))
+    }
+
+    @Test("an unreadable log that cannot be moved aside is left untouched until it can be")
+    func unreadableLogThatCannotMoveIsKept() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("audit-dir-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.path)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let url = directory.appendingPathComponent("ExecutionAudit.json")
+        let damaged = Data("not an array".utf8)
+        try damaged.write(to: url)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: directory.path)
+
+        let log = ExecutionAuditLog(fileURL: url, retryInterval: .zero)
+        await log.record(request: request(write: false), decision: .denied(reason: "x"))
+        #expect(try Data(contentsOf: url) == damaged)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.path)
+        await log.record(request: request(write: false), decision: .denied(reason: "x"))
+
+        #expect(try decodedArray(at: url).map(\.sequence) == [0, 1])
+        let setAside = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+            .filter { $0.hasPrefix("ExecutionAudit.damaged-") }
+        #expect(setAside.count == 1)
+    }
+
+    @Test("a damaged log reads as broken, not as an empty intact chain")
+    func damagedLogVerifiesAsBroken() async throws {
+        let url = temporaryURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data("not json".utf8).write(to: url)
+
+        let log = ExecutionAuditLog(fileURL: url)
+
+        #expect(await log.verify() == .broken(atSequence: 0))
+    }
+
+    @Test("the tail reader takes the last record whose opening brace follows a separator")
+    func tailReaderFindsTheLastRecord() throws {
+        let records = storedChain(2)
+        let data = try JSONEncoder().encode(records)
+
+        let head = try #require(ExecutionAuditLog.chainHead(inTail: data, startingAt: 0, fileSize: UInt64(data.count)))
+
+        #expect(head.nextSequence == 2)
+        #expect(head.lastHash == records[1].hash)
+        #expect(head.closingBracketOffset == UInt64(data.count - 1))
+        #expect(ExecutionAuditLog.chainHead(inTail: Data("[{}".utf8), startingAt: 0, fileSize: 3) == nil)
+        #expect(ExecutionAuditLog.chainHead(inTail: Data("x[]".utf8), startingAt: 0, fileSize: 3) == nil)
+    }
 }
