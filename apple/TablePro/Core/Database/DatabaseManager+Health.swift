@@ -204,7 +204,8 @@ extension DatabaseManager {
             return ConnectionFailureClassifier.reconnectVerdict(for: tlsError)
         }
         // A refusal that needs a person gets the same answer on every retry.
-        if error is EnvVarReferenceConsentError || error is PreConnectScriptConsentError {
+        if error is EnvVarReferenceConsentError || error is PreConnectScriptConsentError
+            || error is LocalCredentialConsentError {
             return .stop(ConnectionFailureClassifier.info(for: error))
         }
         guard isAuthenticationFailure(error) else { return .retry(nil) }
@@ -236,6 +237,12 @@ extension DatabaseManager {
         message: String(localized: "The connection was closed and reconnecting was cancelled.")
     )
 
+    // A direct dial reaches another host when the CNAME of an AWS IAM connection now leads to another RDS endpoint.
+    internal func movesEndpoint(of session: ConnectionSession, to rebuilt: DatabaseConnection) -> Bool {
+        let previous = session.effectiveConnection ?? session.connection
+        return rebuilt.host.caseInsensitiveCompare(previous.host) != .orderedSame
+    }
+
     internal struct ReconnectResult {
         let driver: DatabaseDriver
         let effectiveConnection: DatabaseConnection
@@ -255,23 +262,26 @@ extension DatabaseManager {
         noteTransactionLost(with: session.driver, for: connectionId)
         session.driver?.disconnect()
         // Resolved as the connect resolved it; a reference that lost its approval needs a person.
-        let connection = try await envVarReferenceConsent.resolve(session.connection, trigger: .background)
-        let preparedConfiguration = try await DatabaseDriverFactory.prepareConfiguration(for: connection)
+        let resolved = try await envVarReferenceConsent.resolve(session.connection, trigger: .background)
+        // Followed again, for a direct dial too: the CNAME may lead to another RDS endpoint than at the connect.
+        let connection = try await resolvingRDSEndpointAlias(of: resolved, trigger: .background)
+        let preparedConfiguration = try await DatabaseDriverFactory.prepareConfiguration(for: resolved)
         let deadline = ConnectionDeadline(configuredSeconds: connection.connectTimeoutSeconds)
         try requireCurrentAttempt(generation, for: connectionId)
 
-        let connectionForDriver: DatabaseConnection
-        if connection.activeTunnelKind != nil {
+        let tunneled = connection.activeTunnelKind != nil
+        if tunneled {
             // A rebuilt tunnel moves to a new local port, stranding every other database's connection.
             await closeTransportLanes(for: connectionId) { self.isCurrentAttempt(generation, for: connectionId) }
-            connectionForDriver = try await buildEffectiveConnection(
-                for: connection,
-                deadline: deadline,
-                ownsAttempt: { self.isCurrentAttempt(generation, for: connectionId) }
-            )
-            try requireCurrentAttempt(generation, for: connectionId)
-        } else {
-            connectionForDriver = session.effectiveConnection ?? session.connection
+        }
+        let connectionForDriver = try await buildEffectiveConnection(
+            for: connection,
+            deadline: deadline,
+            ownsAttempt: { self.isCurrentAttempt(generation, for: connectionId) }
+        )
+        try requireCurrentAttempt(generation, for: connectionId)
+        if !tunneled, movesEndpoint(of: session, to: connectionForDriver) {
+            await closeTransportLanes(for: connectionId) { self.isCurrentAttempt(generation, for: connectionId) }
         }
 
         guard let connectResult = try await connectReconnectDriver(
@@ -439,14 +449,32 @@ extension DatabaseManager {
             }
             try requireCurrentAttempt(generation, for: sessionId)
 
-            let preparedConfiguration = try await DatabaseDriverFactory.prepareConfiguration(for: session.connection)
-            let deadline = ConnectionDeadline(configuredSeconds: session.connection.connectTimeoutSeconds)
+            // Resolved as the connect resolved it: the session keeps the row as saved, `${VAR}` references included.
+            let resolved = try await envVarReferenceConsent.resolve(session.connection, trigger: .request)
+            try requireCurrentAttempt(generation, for: sessionId)
+            let connection = try await resolvingRDSEndpointAlias(of: resolved, trigger: .request)
+            try requireCurrentAttempt(generation, for: sessionId)
+            let preparedConfiguration = try await DatabaseDriverFactory.prepareConfiguration(for: resolved)
+            let deadline = ConnectionDeadline(configuredSeconds: connection.connectTimeoutSeconds)
             let effectiveConnection = try await buildEffectiveConnection(
-                for: session.connection,
+                for: connection,
                 deadline: deadline,
                 ownsAttempt: { self.isCurrentAttempt(generation, for: sessionId) }
             )
             try requireCurrentAttempt(generation, for: sessionId)
+            // Pooled and parked connections stand on the old endpoint, so they go the way a rebuilt tunnel's do.
+            let movesPooledEndpoint = !replacesPooledTransport && movesEndpoint(of: session, to: effectiveConnection)
+            if movesPooledEndpoint {
+                await RoutineDebugSessions.shared.stopAll(connectionId: sessionId)
+                MetadataConnectionPool.shared.beginTransportReplacement(connectionId: sessionId)
+                await closeTransportLanes(for: sessionId) { self.isCurrentAttempt(generation, for: sessionId) }
+            }
+            defer {
+                if movesPooledEndpoint {
+                    MetadataConnectionPool.shared.endTransportReplacement(connectionId: sessionId)
+                    RoutineDebugSessions.shared.reopenAdmission(for: sessionId)
+                }
+            }
 
             // Nil means the user declined the re-prompt after an auth failure: a cancellation, not a refusal.
             guard let connectResult = try await connectReconnectDriver(

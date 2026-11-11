@@ -3,6 +3,7 @@ import Foundation
 import TableProMCP
 import TableProMCPTestSupport
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 struct MCPProtocolDispatcherTests {
@@ -556,6 +557,41 @@ struct MCPProtocolDispatcherTests {
         let tokenId = try #require(alice.tokenId)
         let cancelled = await dispatcher.cancelInflight(matchingTokenId: tokenId)
         #expect(cancelled == 1)
+
+        await sink.waitForCompletion()
+        let errorValue = try await sink.errorEnvelope()
+        let error = try #require(errorValue)
+        #expect(error.code == JsonRpcErrorCode.requestCancelled)
+        _ = await run
+    }
+
+    @Test
+    func aSupersededTokenKeepsItsInFlightRequestsUntilItsExpiry() async throws {
+        let clock = MCPTestClock()
+        let handler = StubTestHandler(behavior: .waitForCancellation)
+        let dispatcher = MCPProtocolTestSupport.makeDispatcher(
+            handlers: [handler],
+            clock: clock,
+            handlerTimeout: .seconds(86_400)
+        )
+        let request = MCPProtocolTestSupport.makeModernRequest(id: .number(12), method: StubTestHandler.method)
+        let (exchange, sink) = MCPProtocolTestSupport.makeExchange(message: request, principal: alice)
+
+        async let run: Void = dispatcher.dispatch(exchange)
+        _ = await waitForInflight(dispatcher, count: 1)
+
+        let tokenId = try #require(alice.tokenId)
+        let expiry = await clock.now().addingTimeInterval(900)
+        await dispatcher.cancelInflight(matchingTokenId: tokenId, at: expiry)
+
+        #expect(await dispatcher.inflightCount() == 1)
+        #expect(await sink.jsonWrites.isEmpty)
+
+        try await waitUntil {
+            await clock.advance(by: .seconds(60))
+            return await dispatcher.inflightCount() == 0
+        }
+        #expect(await clock.now() >= expiry)
 
         await sink.waitForCompletion()
         let errorValue = try await sink.errorEnvelope()

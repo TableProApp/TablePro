@@ -37,16 +37,13 @@ struct MCPAuditChainLink: Sendable, Equatable {
 }
 
 actor MCPAuditLogStorage {
-    static let shared = MCPAuditLogStorage()
+    static let shared = MCPAuditLogStorage(directory: AppStorageEnvironment.shared.supportDirectory)
+    static let databaseFileName = "mcp-audit.db"
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPAuditLogStorage")
 
     private static let retentionDays: Int = 90
 
     private static let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-
-    private static var isRunningTests: Bool {
-        NSClassFromString("XCTestCase") != nil
-    }
 
     private struct DatabaseHandle: @unchecked Sendable {
         var pointer: OpaquePointer?
@@ -57,60 +54,38 @@ actor MCPAuditLogStorage {
     private var db: OpaquePointer? {
         if !isPrepared {
             isPrepared = true
-            setupDatabase()
+            let setAside = setupDatabase()
             prune(olderThan: Self.retentionDays)
             loadChainHead()
+            if let setAside {
+                recordSetAside(setAside)
+            }
         }
         return dbHandle.pointer
     }
     private var dbPath: String?
-    private let testDatabaseSuffix: String?
+    private let directory: URL
     private var nextSequence: Int = 0
     private var lastHash: String = MCPAuditChainLink.genesisHash
     private var isPrepared = false
 
-    init() {
-        self.testDatabaseSuffix = nil
+    init(directory: URL) {
+        self.directory = directory
     }
-
-    #if DEBUG
-    init(isolatedForTesting: Bool) {
-        self.testDatabaseSuffix = isolatedForTesting ? "_\(UUID().uuidString)" : nil
-    }
-
-    var databaseFilePaths: [String] {
-        guard db != nil, let dbPath else { return [] }
-        return [dbPath, dbPath + "-wal", dbPath + "-shm"]
-    }
-    #endif
 
     deinit {
         if let pointer = dbHandle.pointer {
             sqlite3_close(pointer)
         }
-        if Self.isRunningTests, let dbPath {
-            try? FileManager.default.removeItem(atPath: dbPath)
-            for suffix in ["-wal", "-shm"] {
-                try? FileManager.default.removeItem(atPath: dbPath + suffix)
-            }
-        }
     }
 
-    private func setupDatabase() {
+    private func setupDatabase() -> SetAsideDamagedStore? {
         let fileManager = FileManager.default
-        let directory = AppStorageEnvironment.shared.applicationSupportRoot.appendingPathComponent("TablePro")
         try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         Self.restrict(path: directory.path, to: 0o700)
 
-        if Self.isRunningTests {
-            Self.purgeAbandonedTestDatabases(in: directory, fileManager: fileManager)
-        }
-
-        let suffix = testDatabaseSuffix ?? ""
-        let fileName = Self.isRunningTests
-            ? "mcp-audit-test_\(ProcessInfo.processInfo.processIdentifier)\(suffix).db"
-            : "mcp-audit.db"
-        let path = directory.appendingPathComponent(fileName).path(percentEncoded: false)
+        let url = directory.appendingPathComponent(Self.databaseFileName)
+        let path = url.path(percentEncoded: false)
         self.dbPath = path
 
         if !fileManager.fileExists(atPath: path) {
@@ -122,9 +97,16 @@ actor MCPAuditLogStorage {
         }
         Self.restrict(path: path, to: 0o600)
 
-        if sqlite3_open(path, &dbHandle.pointer) != SQLITE_OK {
+        // The damaged log is evidence, so it is set aside for review, never deleted.
+        guard case .opened(let pointer, let setAside) = LocalSQLiteStoreOpener.open(at: url) else {
             Self.logger.error("Error opening MCP audit database")
-            return
+            return nil
+        }
+        dbHandle.pointer = pointer
+        if setAside != nil {
+            Self.logger.fault("The MCP audit log was damaged and set aside; a new chain starts")
+            // SQLite created the fresh file with the default mode; its -wal and -shm copy this one.
+            Self.restrict(path: path, to: 0o600)
         }
 
         execute("PRAGMA journal_mode=WAL;")
@@ -133,6 +115,16 @@ actor MCPAuditLogStorage {
         createTables()
         backfillChainIfNeeded()
         restrictDatabaseFiles()
+        return setAside
+    }
+
+    private func recordSetAside(_ setAside: SetAsideDamagedStore) {
+        addEntry(AuditEntry(
+            category: .admin,
+            action: "auditLog.setAside",
+            outcome: AuditOutcome.error,
+            details: "setAside=\(setAside.setAsideURL.lastPathComponent)"
+        ))
     }
 
     private func restrictDatabaseFiles() {
@@ -140,14 +132,6 @@ actor MCPAuditLogStorage {
         Self.restrict(path: dbPath, to: 0o600)
         for suffix in ["-wal", "-shm"] {
             Self.restrict(path: dbPath + suffix, to: 0o600)
-        }
-    }
-
-    private static func purgeAbandonedTestDatabases(in directory: URL, fileManager: FileManager) {
-        let ownMarker = "mcp-audit-test_\(ProcessInfo.processInfo.processIdentifier)"
-        guard let names = try? fileManager.contentsOfDirectory(atPath: directory.path) else { return }
-        for name in names where name.hasPrefix("mcp-audit-test_") && !name.hasPrefix(ownMarker) {
-            try? fileManager.removeItem(atPath: directory.appendingPathComponent(name).path)
         }
     }
 
@@ -287,6 +271,8 @@ actor MCPAuditLogStorage {
 
     @discardableResult
     func addEntry(_ entry: AuditEntry) -> Bool {
+        // Opening the log loads the chain head, so it has to happen before the head is read.
+        let handle = db
         let sequence = nextSequence
         let previousHash = lastHash
         let hash = MCPAuditChainLink.digest(entry: entry, sequence: sequence, previousHash: previousHash)
@@ -299,7 +285,7 @@ actor MCPAuditLogStorage {
             """
 
         var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+        guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {
             Self.logger.warning("Failed to prepare audit insert statement")
             return false
         }

@@ -59,13 +59,19 @@ extension DatabaseManager {
             }
         }
 
+        let dialled: DatabaseConnection
+        do {
+            dialled = try await resolvingRDSEndpointAlias(of: connection, trigger: .request)
+        } catch {
+            throw await diagnosedConnectFailure(error, for: connection)
+        }
         let preparedConfiguration = try await DatabaseDriverFactory.prepareConfiguration(for: connection)
         let deadline = ConnectionDeadline(configuredSeconds: connection.connectTimeoutSeconds)
 
         let testConnection: DatabaseConnection
         do {
             testConnection = try await buildEffectiveConnection(
-                for: connection,
+                for: dialled,
                 sshPasswordOverride: sshPassword,
                 deadline: deadline
             )

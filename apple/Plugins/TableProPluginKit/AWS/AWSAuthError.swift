@@ -12,6 +12,8 @@ public enum AWSAuthError: Error, LocalizedError, Equatable {
     case regionUnknown(host: String)
     case rdsEndpointUnresolved(host: String)
     case rdsEndpointInvalid(String)
+    case rdsEndpointNotDialed(endpoint: String, host: String)
+    case endpointLookupFailed(host: String)
     case credentialProcessInvalid(String)
     case credentialProcessLaunchFailed(profile: String, underlying: String)
     case credentialProcessFailed(profile: String, status: Int, message: String)
@@ -46,6 +48,17 @@ public enum AWSAuthError: Error, LocalizedError, Equatable {
             return String(
                 // swiftlint:disable:next line_length
                 format: String(localized: "TablePro cannot sign an RDS token for \"%@\". Enter the RDS Endpoint (for example mydb.abc123.us-east-1.rds.amazonaws.com:5432) when you connect through a port forward or bastion."),
+                host
+            )
+        case .rdsEndpointNotDialed(let endpoint, let host):
+            return String(
+                // swiftlint:disable:next line_length
+                format: String(localized: "The RDS Endpoint \"%1$@\" is not the database at \"%2$@\", where the connection goes. Clear the RDS Endpoint unless you connect through a port forward."),
+                endpoint, host
+            )
+        case .endpointLookupFailed(let host):
+            return String(
+                format: String(localized: "TablePro could not look up \"%@\" in DNS to find the AWS endpoint it points to. Check the network and try again."),
                 host
             )
         case .rdsEndpointInvalid(let value):

@@ -25,6 +25,7 @@ final class DatabaseManager: ObservableObject {
     internal let localCredentialConsent: LocalCredentialConsent
     internal let postDisconnectScripts: PostDisconnectScripts
     internal let localNetworkProbe: any LocalNetworkAccessProbing
+    internal let cnameResolver: any CNAMEResolving
     internal var historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared
 
     // Keyed by the credential profile, or by the connection and where it dials: a linked-folder row keeps its id
@@ -195,6 +196,7 @@ final class DatabaseManager: ObservableObject {
         localCredentialConsent: LocalCredentialConsent = LocalCredentialConsent(),
         postDisconnectScripts: PostDisconnectScripts = PostDisconnectScripts(),
         localNetworkProbe: any LocalNetworkAccessProbing = NetworkFrameworkLocalNetworkProbe(),
+        cnameResolver: any CNAMEResolving = SystemCNAMEResolver(),
         recoveryClock: any Clock<Duration> = ContinuousClock()
     ) {
         self.connectionStorage = connectionStorage
@@ -206,6 +208,7 @@ final class DatabaseManager: ObservableObject {
         self.localCredentialConsent = localCredentialConsent
         self.postDisconnectScripts = postDisconnectScripts
         self.localNetworkProbe = localNetworkProbe
+        self.cnameResolver = cnameResolver
         self.recoveryClock = recoveryClock
         sessionLanes.onClose = { [weak self] connectionId in
             self?.sessionTransactions.prune(connectionId)

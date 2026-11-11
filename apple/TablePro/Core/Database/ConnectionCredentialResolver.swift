@@ -171,6 +171,12 @@ enum ConnectionCredentialResolver {
         )
     }
 
+    // The connections `iamPasswordMinter` gives an RDS token, which names the host it is signed for.
+    nonisolated static func signsRDSToken(for connection: DatabaseConnection) -> Bool {
+        guard case .aws = connection.iamSignIn else { return false }
+        return connection.type != .redshift && connection.type != .redis && !connection.resolvesAWSIAMInDriver
+    }
+
     // The AWS token is signed for the resolved username: `connection.username` can lag behind its profile.
     static func iamPasswordMinter(
         for connection: DatabaseConnection,
