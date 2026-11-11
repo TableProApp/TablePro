@@ -443,6 +443,44 @@ struct SessionTransactionTrackerTests {
         #expect(Self.states(connection.id) == [.open])
     }
 
+    @Test("An insert_rows of several rows joining an open SQLite transaction is taken back whole when a row fails")
+    func mcpInsertRowsJoiningATransactionIsOneUnit() async throws {
+        let (connection, driver) = Self.seed(type: .sqlite, commitMode: .manual)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        try await Self.run("BEGIN", on: connection.id)
+        let rows = ["INSERT INTO t VALUES (1)", "INSERT INTO t VALUES (2)"]
+        driver.failingStatement = rows[1]
+        let operation = try await ApprovedOperationFixture.approve(
+            rows.map { OperationStatement(sql: $0) }, scope: Self.scope(connection.id), databaseType: .sqlite,
+            kind: .writeQuery
+        )
+
+        await #expect(throws: (any Error).self) {
+            _ = try await DatabaseAccessBridge().runInserts(operation)
+        }
+
+        #expect(driver.statements.suffix(4) == [
+            AgentTransactionGuard.savepointStatement, rows[0], rows[1], AgentTransactionGuard.rollbackStatement,
+        ])
+        #expect(!driver.statements.contains("COMMIT"))
+    }
+
+    @Test("An insert_rows joining an open SQL Server transaction takes SAVE TRANSACTION, which has no release")
+    func mcpInsertRowsOnSQLServerTakesItsSavepoint() async throws {
+        let (connection, driver) = Self.seed(type: .mssql)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        try await Self.run("BEGIN", on: connection.id)
+        let rows = ["INSERT INTO t VALUES (1)", "INSERT INTO t VALUES (2)"]
+        let operation = try await ApprovedOperationFixture.approve(
+            rows.map { OperationStatement(sql: $0) }, scope: Self.scope(connection.id), databaseType: .mssql,
+            kind: .writeQuery
+        )
+
+        _ = try await DatabaseAccessBridge().runInserts(operation)
+
+        #expect(driver.statements.suffix(3) == ["SAVE TRANSACTION tablepro_agent", rows[0], rows[1]])
+    }
+
     @Test("An agent's COMMIT, ROLLBACK or BEGIN in Manual Commit is refused and sends nothing", arguments: ["COMMIT", "ROLLBACK", "BEGIN"])
     func mcpTransactionStatementRefusedInManualCommit(sql: String) async throws {
         let (connection, driver) = Self.seed(type: .postgresql, commitMode: .manual)

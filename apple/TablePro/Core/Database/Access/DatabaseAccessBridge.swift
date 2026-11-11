@@ -574,7 +574,9 @@ internal actor DatabaseAccessBridge {
         ) { driver -> Int in
             reach.mark()
             // The hold and savepoint execute_query gets, so a Manual Commit insert waits for Commit too.
-            let ran = try await agentGuard.running(statements.map(\.sql), writes: true, on: driver) { _ in
+            let ran = try await agentGuard.running(
+                statements.map(\.sql), writes: true, asOneUnit: statements.count > 1, on: driver
+            ) { _ in
                 var affected = 0
                 for statement in statements {
                     let result = try await driver.executeParameterized(

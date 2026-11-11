@@ -152,6 +152,25 @@ struct ManualCommitTests {
         #expect(AgentTransactionGuard.protection(family: .postgres, sessionState: .inTransaction, controlsTransaction: true) == .none)
     }
 
+    @Test("A call of several writes joining an open transaction takes the engine's savepoint, and nothing else does")
+    func oneUnitSavepointFollowsTheFamily() {
+        func savepoint(_ family: TransactionEngineFamily, _ state: PluginSessionTransactionState, unit: Bool)
+            -> AgentTransactionGuard.Savepoint? {
+            let protection = AgentTransactionGuard.protection(family: family, sessionState: state, controlsTransaction: false)
+            return AgentTransactionGuard.savepoint(family: family, protection: protection, sessionState: state, asOneUnit: unit)
+        }
+        #expect(savepoint(.sqlite, .inTransaction, unit: true) == .standard)
+        #expect(savepoint(.mysql, .inTransaction, unit: true) == .standard)
+        #expect(savepoint(.sqlServer, .inTransaction, unit: true)?.open == "SAVE TRANSACTION tablepro_agent")
+        #expect(savepoint(.sqlServer, .inTransaction, unit: true)?.release == nil)
+        #expect(savepoint(.oracle, .inTransaction, unit: true)?.release == nil)
+        #expect(savepoint(.sqlite, .inTransaction, unit: false) == nil)
+        #expect(savepoint(.sqlite, .idle, unit: true) == nil)
+        #expect(savepoint(.other, .inTransaction, unit: true) == nil)
+        #expect(savepoint(.postgres, .inTransaction, unit: false) == .standard)
+        #expect(savepoint(.duckdb, .inTransaction, unit: true) == nil)
+    }
+
     @Test("Unseen transaction control: a T-SQL COMMIT inside a batch, an IF, a procedure call")
     func unseenTransactionControlIsRecognised() {
         let mssql = DatabaseType.mssql
