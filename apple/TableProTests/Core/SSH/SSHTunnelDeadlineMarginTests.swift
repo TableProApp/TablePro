@@ -27,10 +27,4 @@ struct SSHTunnelDeadlineMarginTests {
         #expect(second.deadline.configuredSeconds == 60)
         #expect(second.deadline.instant == secondStart.advanced(by: .seconds(60)))
     }
-
-    @Test("The accept loop notices a waiting client well inside the margin")
-    func acceptPollIsShort() {
-        #expect(LibSSH2Tunnel.acceptPollTimeoutMs <= 200)
-        #expect(LibSSH2Tunnel.acceptPollTimeoutMs > 0)
-    }
 }

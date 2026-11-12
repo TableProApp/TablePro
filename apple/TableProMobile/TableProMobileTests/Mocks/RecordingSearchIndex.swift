@@ -9,9 +9,13 @@ final class RecordingSearchIndex: ConnectionSearchIndexing {
 
     private(set) var replacements: [[SearchableConnection]] = []
     private(set) var contents: [SearchableConnection] = []
+    // Kept by the index across launches, as CoreSpotlight keeps a client state.
+    private(set) var state: Data?
+    private(set) var stateReads = 0
     private(set) var maxConcurrent = 0
     private var inFlight = 0
     private var failuresRemaining = 0
+    private var stateReadFailures = 0
     private var holdsNext = false
     private var held: CheckedContinuation<Void, Never>?
     private var heldWaiter: CheckedContinuation<Void, Never>?
@@ -22,6 +26,10 @@ final class RecordingSearchIndex: ConnectionSearchIndexing {
 
     func failNext() {
         failuresRemaining += 1
+    }
+
+    func failNextStateRead() {
+        stateReadFailures += 1
     }
 
     func holdNextReplace() {
@@ -39,7 +47,17 @@ final class RecordingSearchIndex: ConnectionSearchIndexing {
     }
 
     @MainActor
-    func replaceConnections(with connections: [SearchableConnection]) async throws {
+    func storedState() async throws -> Data? {
+        stateReads += 1
+        if stateReadFailures > 0 {
+            stateReadFailures -= 1
+            throw Failure.scripted
+        }
+        return state
+    }
+
+    @MainActor
+    func replaceConnections(with connections: [SearchableConnection], state: Data) async throws {
         inFlight += 1
         maxConcurrent = max(maxConcurrent, inFlight)
         defer { inFlight -= 1 }
@@ -57,5 +75,6 @@ final class RecordingSearchIndex: ConnectionSearchIndexing {
             throw Failure.scripted
         }
         contents = connections
+        self.state = state
     }
 }

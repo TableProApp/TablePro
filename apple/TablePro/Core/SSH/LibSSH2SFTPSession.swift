@@ -143,21 +143,28 @@ internal final class SFTPSerialSessionGate: @unchecked Sendable {
     }
 }
 
-/// An authenticated SSH session carrying the SFTP subsystem and nothing else.
-///
-/// A sibling of `LibSSH2Tunnel` rather than a mode of it: a tunnel owns a listening socket and an
-/// accept loop, both meaningless here. Both types build their session through
-/// `LibSSH2TunnelFactory.buildAuthenticatedChain`, so SFTP inherits password, public key, agent,
-/// keyboard-interactive, jump hosts, TOTP and `~/.ssh/config` resolution without restating any of
-/// it, and tears down through the same `cleanupChain`.
-///
-/// libssh2 is not thread-safe per session, so every call runs on one serial queue.
+// An authenticated SSH session carrying the SFTP subsystem and nothing else.
+//
+// A sibling of `LibSSH2Tunnel` rather than a mode of it: a tunnel owns a listening socket and its
+// acceptor, both meaningless here. Both types build their session through
+// `LibSSH2TunnelFactory.buildAuthenticatedChain`, so SFTP inherits password, public key, agent,
+// keyboard-interactive, jump hosts, TOTP and `~/.ssh/config` resolution without restating any of
+// it, and tears down through the same `cleanupChain`.
+//
+// libssh2 is not thread-safe per session, so every call runs on one serial queue.
 final class LibSSH2SFTPSession: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SFTP")
 
-    /// Measured against OpenSSH 10.3: 32 KiB requests give ~94 MiB/s up and ~320 MiB/s down on
-    /// loopback while keeping each `libssh2_sftp_read` inside one SFTP packet.
-    private static let chunkSize = 32 * 1_024
+    // libssh2_sftp_read keeps up to four times its buffer in flight (`max_read_ahead` in sftp.c,
+    // itself capped at 8 MiB) and returns once some bytes are in, so the buffer sets how much one
+    // round trip carries, not how long a read waits. 2 MiB reaches libssh2's cap; 32 KiB is a floor
+    // so a tiny or empty file still reads in a normal buffer.
+    private static let minimumChunkSize = 32 * 1_024
+    private static let maximumChunkSize = 2 * 1_024 * 1_024
+
+    static func chunkSize(forFileSize fileSize: UInt64) -> Int {
+        Int(min(max(fileSize, UInt64(minimumChunkSize)), UInt64(maximumChunkSize)))
+    }
 
     private let chain: LibSSH2TunnelFactory.AuthenticatedChain
     private let sftp: OpaquePointer
@@ -479,7 +486,7 @@ final class LibSSH2SFTPSession: @unchecked Sendable {
             }
 
             var hasher = SHA256()
-            var buffer = [UInt8](repeating: 0, count: Self.chunkSize)
+            var buffer = [UInt8](repeating: 0, count: Self.chunkSize(forFileSize: expected.size))
             var received: UInt64 = 0
 
             while true {

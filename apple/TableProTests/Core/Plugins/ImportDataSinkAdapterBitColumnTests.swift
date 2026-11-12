@@ -101,7 +101,7 @@ struct ImportDataSinkAdapterBitColumnTests {
         #expect(sql.last == "UPDATE `devices` SET `name` = ? WHERE `flags` = CAST(? AS UNSIGNED)")
     }
 
-    // The file's rows still read the table's types once, for its binary and boolean columns.
+    // Every engine is asked once, for the types its driver writes each value by and its binary and boolean columns.
     @Test
     func anEngineThatReadsBitsAsDigitsGetsNoCast() async throws {
         let driver = BitTableDriver()

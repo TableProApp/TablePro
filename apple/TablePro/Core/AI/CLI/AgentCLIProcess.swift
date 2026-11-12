@@ -6,7 +6,6 @@
 import Foundation
 import os
 import TableProProcess
-import TableProUtilities
 
 enum AgentCLIError: Error, LocalizedError {
     case notInstalled(String)

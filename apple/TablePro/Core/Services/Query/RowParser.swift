@@ -19,8 +19,7 @@ protocol RowDataParser {
     func parse(_ text: String, schema: TableSchema) -> Result<[ParsedRow], RowParseError>
 }
 
-// One line's fields fitted to the table: a short line's missing fields are blank cells, extra fields are dropped,
-// and the key is left to the server.
+// One line's fields fitted to the table: a short line's missing fields are blank cells, extra fields are dropped.
 private func fittedRow(
     _ fields: [String],
     lineNumber: Int,
@@ -37,17 +36,9 @@ private func fittedRow(
         blankColumns.insert(values.count)
         values.append(nil)
     }
-    var cells = values.map(PluginCellValue.fromOptional)
-    var defaultColumns: Set<Int> = []
-    if let pkIndex = schema.primaryKeyIndex, pkIndex < cells.count {
-        cells[pkIndex] = .columnDefault
-        defaultColumns.insert(pkIndex)
-        blankColumns.remove(pkIndex)
-    }
     return ParsedRow(
-        values: cells,
+        values: values.map(PluginCellValue.fromOptional),
         sourceLineNumber: lineNumber,
-        expressionColumns: defaultColumns,
         blankColumns: blankColumns
     )
 }
@@ -237,11 +228,12 @@ struct CSVRowParser: RowDataParser {
         return matchCount > schema.columnCount / 2
     }
 
+    // RFC 4180: spaces are part of a field. Only a blank or NULL field reads as no value.
     private func normalizeValue(_ rawValue: String) -> String? {
         let trimmed = rawValue.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty || trimmed.uppercased() == "NULL" {
             return nil
         }
-        return trimmed
+        return rawValue
     }
 }

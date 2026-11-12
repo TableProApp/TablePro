@@ -129,6 +129,9 @@ public sealed class TableTab : IWorkspaceTab
         "ffi.not_connected",
     };
 
+    // From this estimate on the server counts only when asked, as macOS's default threshold.
+    private const long CountsBelow = 100_000;
+
     private readonly ITabSession _session;
     private readonly ITableTabView _view;
     private readonly IResultsView _results;
@@ -150,6 +153,15 @@ public sealed class TableTab : IWorkspaceTab
     // The size this tab was given, as macOS keeps one per table tab; without one, Settings decides.
     private int? _chosenSize;
     private CancellationTokenSource? _counting;
+
+    // Count rows started the count in flight, which then shows as running rather than hides.
+    private bool _countAsked;
+
+    // The estimate held the count back for the filter shown; only a read that counts again asks it again.
+    private bool _countHeldBack;
+
+    // A restored tab reads nothing until it first shows; any read before that counts as its first show.
+    private bool _shown;
 
     // The set the edits name rows of, which the core reads each key and stored value from.
     private ResultSet? _editsRows;
@@ -228,6 +240,13 @@ public sealed class TableTab : IWorkspaceTab
 
     // Null until a run has read the page; a count that arrives later adds the total, as on macOS.
     public PageRun? Finished { get; private set; }
+
+    public bool IsCounting => _counting is not null;
+
+    // Only an exact total pages to the end; a count the tab runs by itself is on its way, so Count rows waits for it.
+    public bool OffersCount => _page.Total is null && _page.IsPaged && (_counting is null || _countAsked);
+
+    public bool CanCountRows => OffersCount && !IsCounting && !IsRunning && !IsSaving && !_work.IsClosed;
 
     // The rows of the page shown, which are what an edit of the page changes.
     public ResultSet? ShownRows => _results.ShownSet;
@@ -327,12 +346,24 @@ public sealed class TableTab : IWorkspaceTab
         }
     }
 
+    // The first time only, with nothing held yet to ask about; later shows keep what the tab read.
+    public Task ShowAsync() => _shown ? Task.CompletedTask : LoadAsync(_page.Offset);
+
+    // The exact count the estimate held back, or one that failed; a read that counts again takes its place.
+    public async Task CountRowsAsync()
+    {
+        if (CanCountRows)
+        {
+            await _work.RunAsync(token => CountAsync(asked: true, token)).ConfigureAwait(true);
+        }
+    }
+
     // A refresh counts the table again and reads its columns again; its structure and filter choices go stale.
     public async Task RefreshAsync()
     {
         if (await MayReloadNowAsync(ReloadReason.Refresh).ConfigureAwait(true))
         {
-            _page = _page with { Total = null };
+            _page = _page with { Total = null, Estimate = null };
             _reopenTableEditor = true;
             _structure.MarkStale();
             _choices.MarkStale();
@@ -672,6 +703,7 @@ public sealed class TableTab : IWorkspaceTab
     // Recount after a filter, a refresh or a save, which can change the total; it is counted once the page is read.
     private async Task LoadAsync(long offset, bool recount = false)
     {
+        _shown = true;
         if (!IsRunning)
         {
             await _work.RunAsync(token => LoadPageAsync(offset, recount, token)).ConfigureAwait(true);
@@ -714,12 +746,18 @@ public sealed class TableTab : IWorkspaceTab
                 // A count of what was read before would land as this page's total.
                 _counting?.Cancel();
                 _counting = null;
+                _countHeldBack = false;
             }
 
             _run?.Dispose();
             _run = read.Run;
             var shownPage = _page;
-            _page = page with { CanSeek = read.CanSeek, Total = recount ? null : _page.Total };
+            _page = page with
+            {
+                CanSeek = read.CanSeek,
+                Total = recount ? null : _page.Total,
+                Estimate = recount ? null : _page.Estimate,
+            };
             await _results.ShowRunAsync(_run, _sort, read.VisibleColumns, cancellationToken).ConfigureAwait(true);
             if (_work.IsClosed)
             {
@@ -1057,7 +1095,7 @@ public sealed class TableTab : IWorkspaceTab
                 if (reload)
                 {
                     // Rows came and went, so the page is read again and the table counted again, without asking.
-                    _page = _page with { Total = null };
+                    _page = _page with { Total = null, Estimate = null };
                     await LoadAsync(_page.Offset, recount: true).ConfigureAwait(true);
                 }
 
@@ -1097,39 +1135,49 @@ public sealed class TableTab : IWorkspaceTab
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private async void CountIfNeeded() => await _work.RunAsync(CountAsync).ConfigureAwait(true);
+    private async void CountIfNeeded() =>
+        await _work.RunAsync(token => CountAsync(asked: false, token)).ConfigureAwait(true);
 
-    // A first page that is not full holds the whole table; otherwise the server counts it, in the background.
-    private async Task CountAsync(CancellationToken closing)
+    // A first page that is not full holds the whole table; otherwise the estimate decides, then the server counts.
+    private async Task CountAsync(bool asked, CancellationToken closing)
     {
-        if (_page.Total is not null || !_page.CanSeek)
+        // A page turn, sort or resize leaves a count the user asked for to finish.
+        if (!asked && (_page.Total is not null || !_page.CanSeek || _countHeldBack || (_counting is not null && _countAsked)))
         {
             _view.UpdatePager();
             return;
         }
 
-        if (_page.Offset == 0 && _page.Rows < _page.Size)
+        if (!asked && _page.Offset == 0 && _page.Rows < _page.Size)
         {
             _page = _page with { Total = _page.Rows };
             _view.UpdatePager();
             return;
         }
 
-        _view.UpdatePager();
         _counting?.Cancel();
         using var counting = CancellationTokenSource.CreateLinkedTokenSource(closing);
         _counting = counting;
+        _countAsked = asked;
+        _view.UpdatePager();
+        var filter = _shownFilter;
         try
         {
-            var total = await _session.CountRowsAsync(Table, _shownFilter, counting.Token).ConfigureAwait(true);
-            // A count that lands as the tab closes, or once a read that counts again took its place, is not shown.
-            if (_work.IsClosed || !ReferenceEquals(_counting, counting))
+            if (!asked)
             {
-                return;
+                if (!await CountsAfterEstimateAsync(filter, counting).ConfigureAwait(true))
+                {
+                    return;
+                }
+
+                _view.UpdatePager();
             }
 
-            _page = _page with { Total = total };
-            _view.UpdatePager();
+            var total = await _session.CountRowsAsync(Table, filter, counting.Token).ConfigureAwait(true);
+            if (Owns(counting))
+            {
+                _page = _page with { Total = total };
+            }
         }
         catch (Exception exception) when (exception is TableProException or OperationCanceledException)
         {
@@ -1140,9 +1188,55 @@ public sealed class TableTab : IWorkspaceTab
             if (ReferenceEquals(_counting, counting))
             {
                 _counting = null;
+                if (!_work.IsClosed)
+                {
+                    _view.UpdatePager();
+                }
             }
         }
     }
+
+    // As macOS decides; under a filter the whole table's estimate is no total, so it only decides whether to count.
+    private async Task<bool> CountsAfterEstimateAsync(TableFilter? filter, CancellationTokenSource counting)
+    {
+        RowEstimate? estimate;
+        try
+        {
+            estimate = await _session.EstimateRowsAsync(Table, counting.Token).ConfigureAwait(true);
+        }
+        catch (TableProException)
+        {
+            // Without an estimate the server counts, as it did before there was one.
+            estimate = null;
+        }
+
+        if (!Owns(counting))
+        {
+            return false;
+        }
+
+        if (estimate is { } known && filter is null)
+        {
+            if (known.IsExact)
+            {
+                _page = _page with { Total = known.Rows };
+                return false;
+            }
+
+            _page = _page with { Estimate = known.Rows };
+        }
+
+        if (estimate is { Rows: >= CountsBelow })
+        {
+            _countHeldBack = true;
+            return false;
+        }
+
+        return true;
+    }
+
+    // A count or estimate that lands as the tab closes, or once a read that counts again took its place, is not shown.
+    private bool Owns(CancellationTokenSource counting) => !_work.IsClosed && ReferenceEquals(_counting, counting);
 
     private void SetRunning(bool running)
     {

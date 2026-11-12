@@ -67,6 +67,7 @@
                     <AppBarButton.Icon><FontIcon Glyph="&#xE76C;" /></AppBarButton.Icon>
                 </AppBarButton>
                 <AppBarButton x:Uid="LastPageButton" x:Name="LastPageButton" AutomationProperties.AutomationId="LastPageButton" Icon="Next" Click="OnLastPage" Visibility="Collapsed" />
+                <AppBarButton x:Uid="CountRowsButton" x:Name="CountRowsButton" AutomationProperties.AutomationId="CountRowsButton" Icon="Calculator" Click="OnCountRows" Visibility="Collapsed" />
                 <AppBarSeparator />
                 <AppBarButton x:Uid="RefreshTableButton" x:Name="RefreshButton" AutomationProperties.AutomationId="RefreshTableButton" Icon="Refresh" Click="OnRefresh" />
                 <AppBarButton x:Uid="StopButton" x:Name="StopButton" AutomationProperties.AutomationId="StopTableButton" Icon="Stop" IsEnabled="False" Click="OnStop" />

@@ -43,8 +43,8 @@ Pass `--platform windows`, which a Windows shell (Git Bash, MSYS2, Cygwin) picks
 | `app` | Windows only: anything under `windows/src/TablePro.App` changed, before `ui`; the Native AOT publish CI tests |
 | `ui [filter]` | Windows only: the change is visible in the app, or a flow the UI tests cover changed |
 
-- Pick tests by what you changed: `src/<Name>` has its tests in `tests/<Name>.Tests` where that folder exists. `TablePro.Graphics` is reached through `TablePro.DataGrid.Tests`, and `TablePro.Editor` and `TablePro.App` through the UI tests. A core crate has its tests in its own folder.
-- On macOS or Linux, `build`, `test`, `core` and `bindings` run. `app`, `ui` and `TablePro.DataGrid.Tests` report INCONCLUSIVE there: the pull request's `windows / Windows (x64)` and `windows / Windows (Arm64)` jobs run them.
+- Pick tests by what you changed: `src/<Name>` has its tests in `tests/<Name>.Tests` where that folder exists. `TablePro.Graphics` is reached through `TablePro.DataGrid.Tests` and `TablePro.Editor.Tests`, `TablePro.Editor` through `TablePro.Editor.Tests` and the UI tests, and `TablePro.App` through the UI tests. A core crate has its tests in its own folder.
+- On macOS or Linux, `build`, `test`, `core` and `bindings` run. `app`, `ui`, `TablePro.DataGrid.Tests` and `TablePro.Editor.Tests` report INCONCLUSIVE there: the pull request's `windows / Windows (x64)` and `windows / Windows (Arm64)` jobs run them.
 - There is no lint step: `windows.yml` runs none. `build` is the lint, since `windows/Directory.Build.props` turns on the latest recommended analyzers and the `.editorconfig` style with warnings as errors.
 - Extra review pass: none beyond the security pass.
 - Traps and remedies: `references/verification-windows.md`.

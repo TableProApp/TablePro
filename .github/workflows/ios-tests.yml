@@ -79,9 +79,13 @@ jobs:
           key: ${{ steps.spm.outputs.cache-primary-key }}
 
       # Only Xcode adds a new string to the catalog. A command-line build extracts it and moves on.
-      - name: Check the app's strings reach its catalog
+      # The widget extension has its own catalog.
+      - name: Check the app's strings reach its catalogs
         if: ${{ !cancelled() }}
-        run: python3 scripts/localization.py extracted --target ios
+        run: |
+          set -euo pipefail
+          python3 scripts/localization.py extracted --target ios
+          python3 scripts/localization.py extracted --target widget
 
       # --parallel is what makes swift test write the XCTest xunit file. Without it only the Swift
       # Testing one appears, and TableProOracle's cases are all XCTest.

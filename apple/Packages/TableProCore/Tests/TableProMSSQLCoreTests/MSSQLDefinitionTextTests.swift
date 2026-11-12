@@ -105,6 +105,21 @@ struct MSSQLDefinitionTextTests {
         #expect(!MSSQLDefinitionText.isCollationName(""))
     }
 
+    @Test("A character type is char, varchar, nchar or nvarchar, or an ISO synonym of one", arguments: [
+        "varchar(40)", "NVARCHAR(MAX)", "char", "nchar(10)", "nvarchar (50)", "[nvarchar](50)", "character varying(255)",
+        "char varying(10)", "national character varying(max)", "national char(10)", "character",
+    ])
+    func characterTypeIsRecognised(type: String) {
+        #expect(MSSQLDefinitionText.isCharacterType(type))
+    }
+
+    @Test("Any other type is not a character type", arguments: [
+        "text", "ntext", "national text", "int", "varbinary(20)", "dbo.Code", "[dbo].[varchar]", "xml", "sysname", "",
+    ])
+    func otherTypeIsNotACharacterType(type: String) {
+        #expect(!MSSQLDefinitionText.isCharacterType(type))
+    }
+
     @Test("Only the four referential actions are written")
     func referentialActions() {
         #expect(MSSQLDefinitionText.referentialAction("CASCADE") == "CASCADE")

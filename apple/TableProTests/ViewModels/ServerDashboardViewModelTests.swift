@@ -257,6 +257,41 @@ struct ServerDashboardViewModelTests {
         #expect(vm.sessionSelection.ids == ["10"])
     }
 
+    @Test("A hidden, minimized or covered window stops the polling, and showing it again resumes")
+    func hiddenWindowStopsPolling() {
+        let vm = makeViewModel(databaseType: .mysql)
+        vm.startAutoRefresh()
+        #expect(vm.isPolling)
+        #expect(vm.tileBoard.isActive)
+
+        vm.windowVisibilityChanged(false)
+        #expect(!vm.isPolling)
+        #expect(!vm.tileBoard.isActive)
+
+        vm.windowVisibilityChanged(true)
+        #expect(vm.isPolling)
+        #expect(vm.tileBoard.isActive)
+        vm.stopAutoRefresh()
+        #expect(!vm.isPolling)
+    }
+
+    @Test("A window hidden before the dashboard appears keeps it from polling")
+    func hiddenBeforeAppearStaysIdle() {
+        let vm = makeViewModel(databaseType: .mysql)
+        vm.windowVisibilityChanged(false)
+        vm.startAutoRefresh()
+        #expect(!vm.isPolling)
+        #expect(!vm.tileBoard.isActive)
+        vm.stopAutoRefresh()
+    }
+
+    @Test("Changing the interval while the dashboard is off screen starts no polling")
+    func intervalChangeOffScreenStaysIdle() {
+        let vm = makeViewModel(databaseType: .mysql)
+        vm.refreshInterval = .tenSeconds
+        #expect(!vm.isPolling)
+    }
+
     @Test("stopAutoRefresh clears the refreshing flag")
     func stopAutoRefreshClearsRefreshingFlag() {
         let vm = makeViewModel(databaseType: .mysql)

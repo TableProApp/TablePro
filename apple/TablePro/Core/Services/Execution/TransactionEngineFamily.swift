@@ -27,6 +27,7 @@ internal enum TransactionEngineFamily: String, Hashable, Sendable, CaseIterable 
     case sqlServer
     case oracle
     case redis
+    case teradata
     case other
 
     internal static func of(_ type: DatabaseType) -> TransactionEngineFamily {
@@ -98,6 +99,7 @@ internal enum TransactionEngineFamily: String, Hashable, Sendable, CaseIterable 
         "DuckDB": .duckdb,
         "SQL Server": .sqlServer,
         "Oracle": .oracle,
-        "Redis": .redis
+        "Redis": .redis,
+        "Teradata": .teradata
     ]
 }

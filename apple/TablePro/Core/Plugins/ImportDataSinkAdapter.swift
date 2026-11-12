@@ -135,11 +135,10 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         )
     }
 
-    // MySQL stores text bound to a BIT column as its bytes, so a 5 lands as 53 unless the INSERT knows the column is BIT.
+    // The driver gets each parameter's column type: Oracle stored `00123` bound to a VARCHAR2 as 123 without it, and
+    // MySQL stores text bound to a BIT column as its bytes, so a 5 lands as 53.
     private func writingGenerator() async throws -> SQLStatementGenerator? {
-        guard let rowGenerator, let targetTable, SQLTypeFamily.of(databaseType).readsBitsAsDecimal else {
-            return rowGenerator
-        }
+        guard let rowGenerator, let targetTable else { return rowGenerator }
         if let typed = typedRowGenerator.withLockUnchecked({ $0 }) { return typed }
         let typed = Self.makeRowGenerator(
             table: targetTable, schema: targetSchema, databaseType: databaseType, driver: driver,
@@ -149,17 +148,30 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         return typed
     }
 
-    // Read once per import, for the BIT binding above and for what a file's text means in each column.
+    // Read once per import, for the typed binding above and for what a file's text means in each column.
     private func targetColumnValues() async throws -> ImportTargetValues {
         if let known = targetValues.withLock({ $0 }) { return known }
         guard let targetTable else {
             throw PluginImportError.importFailed("No target table configured for row import")
         }
-        let columns = try await importedData {
-            try await self.driver.fetchColumns(table: targetTable, schema: self.targetSchema)
+        // A BIT family and Oracle write wrong values without the types; elsewhere the import goes on as it did before
+        // the types were read, and the error stays out of the run's list.
+        let family = SQLTypeFamily.of(databaseType)
+        let needsTypes = family.readsBitsAsDecimal || family == .oracle
+        let read: [ColumnInfo]? = try await importedData {
+            do {
+                return try await self.driver.fetchColumns(table: targetTable, schema: self.targetSchema)
+            } catch where !needsTypes && !(error is CancellationError) {
+                Self.logger.warning(
+                    "Import writes untyped values: the target's columns could not be read: \(error.localizedDescription, privacy: .private)"
+                )
+                return nil
+            }
         }
         let values = ImportTargetValues(
-            columns: columns.map { (name: $0.name, typeName: $0.typeNameForClassification, isGenerated: $0.isGenerated) },
+            columns: (read ?? []).map {
+                (name: $0.name, typeName: $0.typeNameForClassification, isGenerated: $0.isGenerated)
+            },
             databaseType: databaseType,
             binaryText: binaryText
         )
@@ -265,7 +277,9 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         }
 
         try await importedData(rows: 1, writes: true) {
-            _ = try await self.driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
+            _ = try await self.driver.executeParameterized(
+                query: statement.sql, parameters: statement.parameters, context: statement.context
+            )
             self.tally.withLock { $0.inserted += 1 }
         }
     }
@@ -336,7 +350,9 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         for _ in 0..<count {
             guard !isCancelled() else { throw PluginImportCancellationError() }
             try await importedData(rows: 1, writes: true) {
-                _ = try await self.driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
+                _ = try await self.driver.executeParameterized(
+                    query: statement.sql, parameters: statement.parameters, context: statement.context
+                )
                 self.tally.withLock { $0.inserted += 1 }
             }
         }
@@ -387,7 +403,9 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             )
         }
         try await importedData(rows: batch.count, writes: true) {
-            _ = try await self.driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
+            _ = try await self.driver.executeParameterized(
+                query: statement.sql, parameters: statement.parameters, context: statement.context
+            )
             self.tally.withLock { $0.inserted += batch.count }
         }
     }
@@ -500,7 +518,9 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             throw PluginImportError.importFailed(String(localized: "Could not build an UPDATE for the mapped columns"))
         }
         try await importedData(rows: 1, writes: true) {
-            _ = try await self.driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
+            _ = try await self.driver.executeParameterized(
+                query: statement.sql, parameters: statement.parameters, context: statement.context
+            )
             self.tally.withLock { $0.updated += 1 }
         }
     }
@@ -530,7 +550,9 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
                 throw PluginImportError.importFailed(String(localized: "Could not build the query that matches rows"))
             }
             let result = try await importedData {
-                try await self.driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
+                try await self.driver.executeParameterized(
+                    query: statement.sql, parameters: statement.parameters, context: statement.context
+                )
             }
             counts += try Self.counts(in: result, expected: chunk.count)
             start += chunk.count

@@ -138,6 +138,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         _pickedView = null;
         var results = new RunResults(Strings.Get("ResultSetItem"), Strings.Get("ResultSetItemMore"));
         var incoming = new List<HeldSet>();
+        var heldBy = new Dictionary<RunResult, HeldSet>();
         var adopted = false;
         long? affected = null;
         // Only the counts a statement reported, so a run where none did keeps none.
@@ -169,7 +170,9 @@ public sealed partial class ResultsPane : UserControl, IResultsView
                         {
                             var result = results.Add(started.SetIndex, started.Columns.Take(visibleColumns).ToList());
                             var item = new ComboBoxItem { Content = results.Label(result) };
-                            incoming.Add(new HeldSet(result, set, item));
+                            var held = new HeldSet(result, set, item);
+                            incoming.Add(held);
+                            heldBy.Add(result, held);
                             if (ReferenceEquals(_held, incoming))
                             {
                                 ListInPicker(item);
@@ -182,7 +185,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
                         or QueryEvent.ByteLimitReached
                         or QueryEvent.ResultSetFinished:
                         if (results.Apply(queryEvent) is { } changed
-                            && incoming.Find(entry => ReferenceEquals(entry.Result, changed)) is { } grown)
+                            && heldBy.GetValueOrDefault(changed) is { } grown)
                         {
                             grown.Item.Content = results.Label(changed);
                             if (queryEvent is QueryEvent.RowsAppended or QueryEvent.ResultSetFinished)

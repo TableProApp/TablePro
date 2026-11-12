@@ -12,6 +12,8 @@ actor RecordingSyncTransport: IOSSyncTransport {
     private(set) var pushedRecords: [CKRecord] = []
     private(set) var pushedDeletions: [CKRecord.ID] = []
     private(set) var pullCount = 0
+    private var beforeAccountRead: (@Sendable () async -> Void)?
+    private var beforePull: (@Sendable () async -> Void)?
 
     init(
         remoteRecords: [CKRecord] = [],
@@ -28,18 +30,30 @@ actor RecordingSyncTransport: IOSSyncTransport {
         remoteDeletions = deletions
     }
 
+    // Runs inside every account read, before any download starts.
+    func holdAccountChecks(_ hold: @escaping @Sendable () async -> Void) {
+        beforeAccountRead = hold
+    }
+
+    // Runs inside every pull, once it is counted.
+    func holdPulls(_ hold: @escaping @Sendable () async -> Void) {
+        beforePull = hold
+    }
+
     func accountStatus() async throws -> CKAccountStatus {
         .available
     }
 
     func currentAccountId() async throws -> String {
-        "recording-account"
+        await beforeAccountRead?()
+        return "recording-account"
     }
 
     func ensureZoneExists() async throws {}
 
     func pull(since token: CKServerChangeToken?) async throws -> PullResult {
         pullCount += 1
+        await beforePull?()
         return PullResult(changedRecords: remoteRecords, deletedRecordIDs: remoteDeletions, newToken: newToken)
     }
 

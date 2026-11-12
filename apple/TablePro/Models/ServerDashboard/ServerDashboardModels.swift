@@ -35,7 +35,7 @@ enum DashboardRefreshInterval: Double, CaseIterable, Identifiable {
 
 // MARK: - Dashboard Session
 
-struct DashboardSession: Identifiable {
+struct DashboardSession: Identifiable, Equatable {
     let id: String
     let user: String
     let database: String
@@ -49,7 +49,7 @@ struct DashboardSession: Identifiable {
 
 // MARK: - Dashboard Metric
 
-struct DashboardMetric: Identifiable {
+struct DashboardMetric: Identifiable, Equatable {
     let id: String
     let label: String
     let value: String
@@ -65,4 +65,8 @@ struct DashboardSlowQuery: Identifiable {
     let query: String
     let user: String
     let database: String
+
+    func hasSameContent(as other: DashboardSlowQuery) -> Bool {
+        duration == other.duration && query == other.query && user == other.user && database == other.database
+    }
 }

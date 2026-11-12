@@ -157,7 +157,7 @@ internal struct MultiStatementFailureContext: Equatable, Sendable {
     private func appliedWorkNote(position: Int) -> String? {
         switch unit {
         case .statement:
-            return appliedStatementsNote()
+            return sessionState.openTransactionNotice ?? appliedStatementsNote()
         case .batch:
             return sessionState.openTransactionNotice ?? appliedBatchesNote(position: position)
         }

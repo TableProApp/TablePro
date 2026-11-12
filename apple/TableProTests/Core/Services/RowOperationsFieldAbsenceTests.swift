@@ -123,7 +123,7 @@ extension GlobalStateSuites {
 
             let (tableRows, result) = paste(clipboard, into: manager)
 
-            #expect(result.pastedRows.first?.values == [.columnDefault, "Ada", .null])
+            #expect(result.pastedRows.first?.values == ["1", "Ada", .null])
             #expect(tableRows.rows[0].absentColumns.isEmpty)
         }
 

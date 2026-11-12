@@ -91,6 +91,37 @@ public sealed class RunResultsTests
         Assert.Equal(0, only.Rows);
     }
 
+    // A script of one statement per sequence returns a set per statement, and each event finds its own.
+    [Fact]
+    public void TenThousandSetsEachTakeTheirOwnRowsAndPlace()
+    {
+        var results = New();
+        var sets = Enumerable.Range(0, 10_000).Select(index => results.Add(index * 2, Columns)).ToList();
+
+        foreach (var index in Enumerable.Range(0, sets.Count).Reverse())
+        {
+            results.Apply(new QueryEvent.RowsAppended(index * 2, index));
+            results.Apply(new QueryEvent.ResultSetFinished(index * 2, index + 1, null, Truncation.Complete));
+        }
+
+        Assert.Null(results.Apply(new QueryEvent.RowsAppended(1, 5)));
+        Assert.Equal(Enumerable.Range(1, sets.Count).Select(rows => (long)rows), sets.Select(set => set.Rows));
+        Assert.Equal("Result 1 (1)", results.Label(sets[0]));
+        Assert.Equal("Result 10000 (10000)", results.Label(sets[^1]));
+    }
+
+    [Fact]
+    public void TwoSetsWithOneIndexLeaveTheEventsToTheFirst()
+    {
+        var results = New();
+        var first = results.Add(3, Columns);
+        var second = results.Add(3, Columns);
+
+        Assert.Same(first, results.Apply(new QueryEvent.RowsAppended(3, 8)));
+        Assert.Equal(0, second.Rows);
+        Assert.Equal("Result 2 (0)", results.Label(second));
+    }
+
     // No number format, so the labels read the same under every culture.
     private static RunResults New() => new("Result {0} ({1})", "Result {0} ({1}+)");
 }

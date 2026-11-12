@@ -176,8 +176,8 @@ struct RowOperationsManagerUUIDKeyTests {
         #expect(key != "0b1e7c9a-58f4-4b8e-9c55-1f1c86f0a001")
     }
 
-    @Test("Pasted rows on a key that is not a UUID key still hand it to the server")
-    func pasteWithoutUUIDKeysKeepsDefault() {
+    @Test("A pasted key that is neither a UUID key nor filled by the server keeps its value")
+    func pasteWithoutUUIDKeysKeepsTheKey() {
         let (manager, _) = makeManager()
         var rows = makeRows()
         let clipboard = RecordingClipboard()
@@ -190,7 +190,7 @@ struct RowOperationsManagerUUIDKeyTests {
             clipboard: clipboard
         )
 
-        #expect(result.pastedRows.first?.values[0] == .columnDefault)
+        #expect(result.pastedRows.first?.values[0] == .text("k1"))
     }
 }
 
@@ -212,11 +212,13 @@ extension GlobalStateSuites {
             return (RowOperationsManager(changeManager: changeManager), changeManager)
         }
 
+        // `id` is an identity, so a pasted row hands it back to the server.
         private func makeRows(_ queryRows: [[PluginCellValue]] = []) -> TableRows {
             TableRows.from(
                 queryRows: queryRows,
                 columns: Self.columns,
                 columnTypes: [.text(rawType: "text"), .text(rawType: "text"), .timestamp(rawType: "timestamptz")],
+                columnIdentity: ["id": .byDefault],
                 hasAuthoritativeSchema: true
             )
         }

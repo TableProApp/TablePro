@@ -87,6 +87,7 @@ struct DataWriteExecutorTests {
         epilogue: [String] = [],
         matchesRowsWithoutKey: Bool = false,
         refusesSharedKey: Bool = false,
+        rowKind: RowWriteKind? = nil,
         databaseType: DatabaseType = .sqlite
     ) -> DataWritePlan {
         DataWritePlan(
@@ -99,7 +100,8 @@ struct DataWriteExecutorTests {
                     expectedRowCount: expectedRowCount,
                     tableName: "t",
                     matchesRowsWithoutKey: matchesRowsWithoutKey,
-                    refusesSharedKey: refusesSharedKey
+                    refusesSharedKey: refusesSharedKey,
+                    rowKind: rowKind
                 )
             },
             prologue: prologue,
@@ -141,14 +143,72 @@ struct DataWriteExecutorTests {
         #expect(counting.didRollBack == false)
     }
 
-    @Test("Fewer rows than expected is an ordinary save, because MySQL reports zero for an unchanged value")
+    @Test("A keyed UPDATE short of its rows is an ordinary save on MySQL, which reports zero for an unchanged value")
     func fewerRowsIsNotAFailure() async throws {
         let counting = CountingDriver(affectedRows: 0)
-        let results = try await DataWriteExecutor.run(plan(expectedRowCount: 1), commitMode: .automatic, on: driver(counting)).results
+        let results = try await DataWriteExecutor.run(
+            plan(expectedRowCount: 1, rowKind: .update, databaseType: .mysql),
+            commitMode: .automatic, on: driver(counting)
+        ).results
 
         #expect(results.first?.rowsAffected == 0)
         #expect(counting.didCommit)
         #expect(counting.didRollBack == false)
+    }
+
+    @Test("A keyed UPDATE that matched no row fails where the count is the rows matched")
+    func keyedUpdateThatMatchedNothingFails() async throws {
+        for databaseType in [DatabaseType.postgresql, .sqlite, .duckdb] {
+            let counting = CountingDriver(affectedRows: 0)
+            await #expect(throws: DataWriteError.self) {
+                try await DataWriteExecutor.run(
+                    plan(expectedRowCount: 1, rowKind: .update, databaseType: databaseType),
+                    commitMode: .automatic, on: driver(counting)
+                )
+            }
+            #expect(counting.didRollBack)
+            #expect(counting.didCommit == false)
+        }
+    }
+
+    @Test("A keyed UPDATE through a view keeps the lenient rule: its count comes from the view's trigger")
+    func keyedUpdateThroughAViewStaysLenient() async throws {
+        let counting = CountingDriver(affectedRows: 0)
+        var viewPlan = plan(expectedRowCount: 1, rowKind: .update, databaseType: .postgresql)
+        viewPlan.viewTarget = TestFixtures.viewTarget(keys: ["id"])
+
+        _ = try await DataWriteExecutor.run(viewPlan, commitMode: .automatic, on: driver(counting))
+
+        #expect(counting.didCommit)
+    }
+
+    @Test("An UPDATE after a DELETE in the same save may find its row gone to the cascade, which is no failure")
+    func updateAfterADeleteStaysLenient() async throws {
+        let counting = CountingDriver(affectedRows: 0)
+        let update = plan(expectedRowCount: 1, rowKind: .update, databaseType: .postgresql)
+        let delete = DataWriteStep(
+            kind: .rowWrite,
+            statement: ParameterizedStatement(sql: "DELETE FROM \"t\" WHERE \"id\" = 1", parameters: []),
+            expectedRowCount: 1,
+            tableName: "t",
+            rowKind: .delete
+        )
+        let cascading = DataWritePlan(scope: update.scope, databaseType: .postgresql, steps: [delete] + update.steps)
+
+        _ = try await DataWriteExecutor.run(cascading, commitMode: .automatic, on: driver(counting))
+
+        #expect(counting.didCommit)
+    }
+
+    @Test("A keyed DELETE that found its row already gone stays an ordinary save")
+    func keyedDeleteOfAGoneRowIsNotAFailure() async throws {
+        let counting = CountingDriver(affectedRows: 0)
+        _ = try await DataWriteExecutor.run(
+            plan(expectedRowCount: 1, rowKind: .delete, databaseType: .postgresql),
+            commitMode: .automatic, on: driver(counting)
+        )
+
+        #expect(counting.didCommit)
     }
 
     @Test("A keyless write that found no row is rolled back rather than reported as a save")

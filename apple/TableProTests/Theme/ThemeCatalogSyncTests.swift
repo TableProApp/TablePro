@@ -7,7 +7,6 @@
 //  anything, after treating it as untrusted input.
 //
 
-import AppKit
 import Foundation
 import os
 @testable import TablePro
@@ -20,7 +19,6 @@ struct ThemeCatalogSyncTests {
     @MainActor
     private final class Harness {
         let root: URL
-        let center = NotificationCenter()
         let suite: EphemeralDefaults
         let tracker: SyncChangeTracker
         let fileTrash: ThemeFileTrash
@@ -47,7 +45,6 @@ struct ThemeCatalogSyncTests {
             catalog = ThemeCatalog(
                 userDirectory: userDirectory ?? folders[0],
                 bundleDirectory: nil,
-                notificationCenter: center,
                 fileTrash: self.fileTrash,
                 syncTracker: tracker
             )
@@ -64,7 +61,6 @@ struct ThemeCatalogSyncTests {
             catalog = ThemeCatalog(
                 userDirectory: themes,
                 bundleDirectory: nil,
-                notificationCenter: center,
                 fileTrash: fileTrash,
                 syncTracker: tracker
             )
@@ -136,14 +132,13 @@ struct ThemeCatalogSyncTests {
         #expect(harness.tombstoned.isEmpty)
     }
 
-    @Test("Loading the folder and reloading on activation mark nothing")
+    @Test("Loading the folder and reloading it mark nothing")
     func loadsMarkNothing() throws {
         let harness = try Harness()
         defer { harness.remove() }
         try harness.write(try Self.theme("user.existing"))
 
         harness.reopen()
-        harness.center.post(name: NSApplication.didBecomeActiveNotification, object: nil)
         harness.catalog.reloadSynchronously()
 
         #expect(harness.catalog.theme(id: "user.existing") != nil)
@@ -646,7 +641,6 @@ struct ThemeCatalogSyncTests {
         let catalog = ThemeCatalog(
             userDirectory: folder,
             bundleDirectory: nil,
-            notificationCenter: NotificationCenter(),
             syncTracker: SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: suite.defaults))
         )
 

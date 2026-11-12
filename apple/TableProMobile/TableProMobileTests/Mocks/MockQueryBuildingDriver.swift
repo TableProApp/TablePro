@@ -8,6 +8,7 @@ final class MockQueryBuildingDriver: DriverQueryBuilding, @unchecked Sendable {
     var scriptedRows: [[String?]] = []
     var scriptedCount: Int? = 0
     var scriptedValues: [Result<String?, Error>] = []
+    var beforeCount: (@Sendable () async -> Void)?
 
     private(set) var pageRequests: [(request: TableReadRequest, limit: Int, offset: Int)] = []
     private(set) var countRequests: [TableReadRequest] = []
@@ -25,6 +26,7 @@ final class MockQueryBuildingDriver: DriverQueryBuilding, @unchecked Sendable {
 
     func rowCount(_ request: TableReadRequest) async throws -> Int? {
         countRequests.append(request)
+        await beforeCount?()
         return scriptedCount
     }
 

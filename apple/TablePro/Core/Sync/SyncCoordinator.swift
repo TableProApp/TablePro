@@ -62,6 +62,13 @@ final class SyncCoordinator: ObservableObject {
     /// suspended across the network can tell whether its outcome is still the current answer.
     private var statusGeneration = 0
 
+    // An activation asks only for what other Macs sent, so one download per interval answers every activation in it.
+    nonisolated static let activationInterval: Duration = .seconds(60)
+    private let activationClock: any Clock<Duration>
+    private var activationCooldown: Task<Void, Never>?
+    private var activationHeldForCooldown = false
+    private var downloadIsAheadInRun = false
+
     init(
         services: AppServices = .live,
         recordCache: SyncRecordCache = SyncCoordinator.makeRecordCache(),
@@ -70,9 +77,11 @@ final class SyncCoordinator: ObservableObject {
         columnLayouts: @escaping @autoclosure () -> FileColumnLayoutPersister = .shared,
         themeCatalog: ThemeCatalog = .shared,
         licenseGate: (@MainActor () -> DisableReason?)? = nil,
-        recordCreationDate: @escaping (CKRecord) -> Date? = { $0.creationDate }
+        recordCreationDate: @escaping (CKRecord) -> Date? = { $0.creationDate },
+        activationClock: any Clock<Duration> = ContinuousClock()
     ) {
         self.services = services
+        self.activationClock = activationClock
         self.makeTransport = transport
         self.makeNetworkMonitor = makeNetworkMonitor
         self.recordCreationDate = recordCreationDate
@@ -99,6 +108,7 @@ final class SyncCoordinator: ObservableObject {
     deinit {
         debounceTask?.cancel()
         retryTask?.cancel()
+        activationCooldown?.cancel()
     }
 
     // MARK: - Lifecycle
@@ -134,6 +144,9 @@ final class SyncCoordinator: ObservableObject {
     func sync(_ trigger: SyncTrigger) async {
         guard canSync() else {
             Self.logger.info("Sync skipped: not allowed for \(String(describing: trigger), privacy: .public)")
+            return
+        }
+        if trigger == .activation, holdsActivationBack() {
             return
         }
         guard !isRunning else {
@@ -173,6 +186,40 @@ final class SyncCoordinator: ObservableObject {
         await runPendingTrigger()
     }
 
+    // A run whose download has not started brings what the activation asks for. After a download, activations
+    // wait for the interval to end and then run once, so a change made on another Mac still arrives.
+    private func holdsActivationBack() -> Bool {
+        if isRunning {
+            return downloadIsAheadInRun
+        }
+        guard activationCooldown != nil else { return false }
+        activationHeldForCooldown = true
+        return true
+    }
+
+    var isHoldingActivations: Bool {
+        activationCooldown != nil
+    }
+
+    private func startActivationCooldown() {
+        activationCooldown?.cancel()
+        activationHeldForCooldown = false
+        let clock = activationClock
+        activationCooldown = Task { [weak self] in
+            do {
+                try await clock.sleep(for: Self.activationInterval)
+            } catch {
+                return
+            }
+            // A newer download may have replaced this hold after the sleep ended.
+            guard !Task.isCancelled, let self else { return }
+            activationCooldown = nil
+            guard activationHeldForCooldown else { return }
+            activationHeldForCooldown = false
+            await sync(.activation)
+        }
+    }
+
     internal func runSyncCycle(_ admission: SyncAdmission = .full) async -> SyncError? {
         await accountThenPushThenPull(admission).failure?.error
     }
@@ -184,6 +231,8 @@ final class SyncCoordinator: ObservableObject {
 
     private func accountThenPushThenPull(_ requested: SyncAdmission) async -> CycleResult {
         var admission = requested
+        downloadIsAheadInRun = true
+        defer { downloadIsAheadInRun = false }
         switch await confirmAccount() {
         case .unavailable(let failure):
             return CycleResult(admission: admission, failure: failure)
@@ -208,6 +257,9 @@ final class SyncCoordinator: ObservableObject {
 
         let push = admission == .full ? await performPush() : PushReport()
         let pullFailure = await performPull(echoGuard: push.echoGuard)
+        if pullFailure == nil {
+            startActivationCooldown()
+        }
 
         let zone = metadataStorage.zoneState
         let download = zone.reconciled(downloadFailure: pullFailure)
@@ -357,8 +409,13 @@ final class SyncCoordinator: ObservableObject {
         guard !pendingTriggers.isEmpty else { return }
         let error = syncStatus.error
         /// The network coming back mid-run matters only if the run ended unable to reach iCloud.
-        let triggers = pendingTriggers.filter { $0 != .networkRestored || error == .offline }
+        var triggers = pendingTriggers.filter { $0 != .networkRestored || error == .offline }
         pendingTriggers = []
+        // Taken out before the pick, so a held activation never stands in for an edit queued behind it.
+        if activationCooldown != nil, triggers.contains(.activation) {
+            triggers.removeAll { $0 == .activation }
+            activationHeldForCooldown = true
+        }
         let attempt = nextAttempt
         let throttle = throttledUntil
         let reach: (SyncTrigger) -> Int = { trigger in
@@ -531,6 +588,9 @@ final class SyncCoordinator: ObservableObject {
         pendingTriggers = []
         debounceTask?.cancel()
         debounceTask = nil
+        activationCooldown?.cancel()
+        activationCooldown = nil
+        activationHeldForCooldown = false
     }
 
     // Exhaustive, so a paying customer the app could not reach the server about is never told to buy.
@@ -690,6 +750,7 @@ final class SyncCoordinator: ObservableObject {
         let token = metadataStorage.loadToken()
         let tokenStatus = token == nil ? "nil (full fetch)" : "present (delta)"
         Self.logger.info("Pull starting, token: \(tokenStatus)")
+        downloadIsAheadInRun = false
 
         do {
             let result = try await transport.pull(since: token)

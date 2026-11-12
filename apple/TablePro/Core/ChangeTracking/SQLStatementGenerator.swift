@@ -11,10 +11,18 @@ import os
 import TableProPluginKit
 import TableProSQLGrammar
 
-/// A parameterized SQL statement with placeholders and bound values
 struct ParameterizedStatement: @unchecked Sendable {
     let sql: String
     let parameters: [Any?]
+    // By position, the type of the column each parameter is written to or compared with. Nil when none is known.
+    var parameterTypeNames: [String?]?
+
+    // What a driver needs to write each value for its column; everything else stays the host's default.
+    var context: PluginStatementContext {
+        var context = PluginStatementContext()
+        context.parameterTypeNames = parameterTypeNames
+        return context
+    }
 }
 
 // The rows it should touch hold the server to a count; the changes it writes tell a written change from a dropped one.
@@ -49,6 +57,7 @@ struct SQLStatementGenerator {
     /// Set only by a restore that writes a row back with the identity it had: PostgreSQL refuses an explicit value
     /// for a `GENERATED ALWAYS` column unless the INSERT says so.
     let insertOverridesSystemValue: Bool
+    private let columnTypeNames: [String: String]
     // BIT columns of a family that reads them as a number. Text bound to one is stored and compared as its bytes.
     private let numberBitColumns: Set<String>
     private let quoteIdentifierFn: (String) -> String
@@ -82,6 +91,7 @@ struct SQLStatementGenerator {
         self.databaseType = databaseType
         self.parameterStyle = parameterStyle ?? Self.defaultParameterStyle(for: databaseType)
         self.insertOverridesSystemValue = insertOverridesSystemValue
+        self.columnTypeNames = columnTypeNames
         self.numberBitColumns = Self.numberBitColumns(in: columnTypeNames, databaseType: databaseType)
         if let quoteIdentifier {
             self.quoteIdentifierFn = quoteIdentifier
@@ -191,18 +201,43 @@ struct SQLStatementGenerator {
         return Set(bitColumns.keys)
     }
 
+    private struct Bindings {
+        var values: [Any?] = []
+        var typeNames: [String?] = []
+
+        var count: Int { values.count }
+
+        mutating func append(_ value: Any?, typeName: String?) {
+            values.append(value)
+            typeNames.append(typeName)
+        }
+    }
+
+    private func statement(_ sql: String, _ bindings: Bindings) -> ParameterizedStatement {
+        ParameterizedStatement(
+            sql: sql,
+            parameters: bindings.values,
+            parameterTypeNames: bindings.typeNames.contains { $0 != nil } ? bindings.typeNames : nil
+        )
+    }
+
+    private func typeName(of column: String?) -> String? {
+        column.flatMap { columnTypeNames[$0] }
+    }
+
     // Blank text goes as '', which the server stores as 0: cast, strict mode refuses it as a truncated integer, and a
     // space bound as it is would be its byte, 32.
-    private func bind(_ value: PluginCellValue, toColumn column: String?, into parameters: inout [Any?]) -> String {
+    private func bind(_ value: PluginCellValue, toColumn column: String?, into parameters: inout Bindings) -> String {
         guard let column, numberBitColumns.contains(column), case .text(let text) = value else {
-            parameters.append(value.asAny)
+            parameters.append(value.asAny, typeName: typeName(of: column))
             return placeholder(at: parameters.count - 1)
         }
         guard !text.trimmingCharacters(in: .whitespaces).isEmpty else {
-            parameters.append("")
+            parameters.append("", typeName: typeName(of: column))
             return placeholder(at: parameters.count - 1)
         }
-        parameters.append(Self.decimalBitText(text))
+        // The value is the CAST's operand, not the column's.
+        parameters.append(Self.decimalBitText(text), typeName: nil)
         return "CAST(\(placeholder(at: parameters.count - 1)) AS UNSIGNED)"
     }
 
@@ -249,7 +284,7 @@ struct SQLStatementGenerator {
     {
         var nonDefaultColumns: [String] = []
         var placeholderParts: [String] = []
-        var bindParameters: [Any?] = []
+        var bindParameters = Bindings()
 
         for (index, value) in values.enumerated() {
             // Left out rather than written as DEFAULT, which SQLite does not take in VALUES.
@@ -278,7 +313,7 @@ struct SQLStatementGenerator {
         let sql =
             "INSERT INTO \(qualifiedTableName) (\(columnList))\(override) VALUES (\(placeholders))"
 
-        return ParameterizedStatement(sql: sql, parameters: bindParameters)
+        return statement(sql, bindParameters)
     }
 
     private func allDefaultsInsertStatement() -> ParameterizedStatement? {
@@ -297,7 +332,7 @@ struct SQLStatementGenerator {
     {
         guard !insertColumns.isEmpty, insertColumns.count == values.count else { return nil }
 
-        var bindParameters: [Any?] = []
+        var bindParameters = Bindings()
         let columnList = insertColumns.map(quoteIdentifierFn).joined(separator: ", ")
         let placeholders = zip(insertColumns, values).map { column, value in
             bind(value, toColumn: column, into: &bindParameters)
@@ -306,7 +341,7 @@ struct SQLStatementGenerator {
         let sql =
             "INSERT INTO \(qualifiedTableName) (\(columnList)) VALUES (\(placeholders))"
 
-        return ParameterizedStatement(sql: sql, parameters: bindParameters)
+        return statement(sql, bindParameters)
     }
 
     func insertStatement(columns insertColumns: [String], rows: [[PluginCellValue]])
@@ -315,7 +350,7 @@ struct SQLStatementGenerator {
         guard !insertColumns.isEmpty, !rows.isEmpty,
               rows.allSatisfy({ $0.count == insertColumns.count }) else { return nil }
 
-        var bindParameters: [Any?] = []
+        var bindParameters = Bindings()
         let columnList = insertColumns.map(quoteIdentifierFn).joined(separator: ", ")
         let rowTuples = rows.map { values -> String in
             let placeholders = zip(insertColumns, values).map { column, value in
@@ -327,14 +362,14 @@ struct SQLStatementGenerator {
         let sql =
             "INSERT INTO \(qualifiedTableName) (\(columnList)) VALUES \(rowTuples)"
 
-        return ParameterizedStatement(sql: sql, parameters: bindParameters)
+        return statement(sql, bindParameters)
     }
 
     // The server compares, so its casting and collation decide a match, as they do for the UPDATE that follows.
     func keyMatchCountStatement(keyColumns: [String], keys: [[PluginCellValue]]) -> ParameterizedStatement? {
         guard !keyColumns.isEmpty, !keys.isEmpty, keys.allSatisfy({ $0.count == keyColumns.count }) else { return nil }
 
-        var bindParameters: [Any?] = []
+        var bindParameters = Bindings()
         let selects = keys.enumerated().map { position, values -> String in
             let conditions = zip(keyColumns, values).map { column, value -> String in
                 "\(quoteIdentifierFn(column)) = \(bind(value, toColumn: column, into: &bindParameters))"
@@ -342,7 +377,7 @@ struct SQLStatementGenerator {
             return "SELECT \(position), COUNT(*) FROM \(qualifiedTableName) WHERE \(conditions)"
         }
 
-        return ParameterizedStatement(sql: selects.joined(separator: " UNION ALL "), parameters: bindParameters)
+        return statement(selects.joined(separator: " UNION ALL "), bindParameters)
     }
 
     func keyedUpdateStatement(
@@ -354,7 +389,7 @@ struct SQLStatementGenerator {
         guard !setColumns.isEmpty, setColumns.count == values.count,
               !keyColumns.isEmpty, keyColumns.count == keyValues.count else { return nil }
 
-        var bindParameters: [Any?] = []
+        var bindParameters = Bindings()
         func bound(_ column: String, _ value: PluginCellValue) -> String {
             "\(quoteIdentifierFn(column)) = \(bind(value, toColumn: column, into: &bindParameters))"
         }
@@ -363,13 +398,14 @@ struct SQLStatementGenerator {
         let sql = rowUpdateFn?(qualifiedTableName, assignments, conditions)
             ?? "UPDATE \(qualifiedTableName) SET \(assignments) WHERE \(conditions)"
 
-        return ParameterizedStatement(sql: sql, parameters: bindParameters)
+        return statement(sql, bindParameters)
     }
 
     var maxBindParameters: Int {
         switch databaseType {
-        case .sqlite: 32_766
+        case .sqlite, .libsql, .turso: 32_766
         case .mssql: 2_100
+        case .cloudflareD1: 100
         default: 65_535
         }
     }
@@ -392,7 +428,7 @@ struct SQLStatementGenerator {
             quoteIdentifierFn($0.columnName)
         }.joined(separator: ", ")
 
-        var parameters: [Any?] = []
+        var parameters = Bindings()
         let placeholders = nonDefaultChanges.map { cellChange -> String in
             switch cellChange.newValue {
             case .text(let expression) where cellChange.newIsExpression:
@@ -405,7 +441,7 @@ struct SQLStatementGenerator {
         let sql =
             "INSERT INTO \(qualifiedTableName) (\(columnNames)) VALUES (\(placeholders))"
 
-        return ParameterizedStatement(sql: sql, parameters: parameters)
+        return statement(sql, parameters)
     }
 
     // MARK: - UPDATE Generation
@@ -416,7 +452,7 @@ struct SQLStatementGenerator {
         let writableChanges = change.cellChanges.filter { !generatedColumns.contains($0.columnName) }
         guard !writableChanges.isEmpty else { return nil }
 
-        var parameters: [Any?] = []
+        var parameters = Bindings()
         let setClauses = writableChanges.map { cellChange -> String in
             switch cellChange.newValue {
             case .text(let expression) where cellChange.newIsExpression:
@@ -455,7 +491,7 @@ struct SQLStatementGenerator {
             let whereClause = rowCondition(terms, parameters: &parameters)
             let sql =
                 "UPDATE \(qualifiedTableName) SET \(setClauses) WHERE \(whereClause)"
-            return ParameterizedStatement(sql: sql, parameters: parameters)
+            return statement(sql, parameters)
         } else {
             guard let originalRow = change.originalRow else {
                 Self.logger.warning(
@@ -486,7 +522,7 @@ struct SQLStatementGenerator {
             let sql =
                 "UPDATE \(qualifiedTableName) SET \(setClauses) WHERE \(whereClause)"
 
-            return ParameterizedStatement(sql: sql, parameters: parameters)
+            return statement(sql, parameters)
         }
     }
 
@@ -505,22 +541,23 @@ struct SQLStatementGenerator {
     /// affinity, and the grid read either one as `5`, so a number the grid read matches both, held by CAST to the
     /// text SQLite reads it back as so a REAL 5.0 is not matched too; a typed column converts either literal to its
     /// own type, so the form is exact there too. When both rows exist the statement itself refuses them.
-    private func rowCondition(_ terms: [RowMatchTerm], parameters: inout [Any?]) -> String {
+    private func rowCondition(_ terms: [RowMatchTerm], parameters: inout Bindings) -> String {
         let clause = conditions(terms, parameters: &parameters)
         guard terms.contains(where: { matchesEitherWay($0.value) }) else { return clause }
         let again = conditions(terms, parameters: &parameters)
         return "\(clause) AND (SELECT COUNT(*) FROM \(qualifiedTableName) WHERE \(again)) = 1"
     }
 
-    private func conditions(_ terms: [RowMatchTerm], parameters: inout [Any?]) -> String {
+    private func conditions(_ terms: [RowMatchTerm], parameters: inout Bindings) -> String {
         terms.map { term in
             guard let value = term.value else { return "\(term.matched) IS NULL" }
             guard matchesEitherWay(value), case .text(let text) = value else {
                 return "\(term.matched) = \(bind(value, toColumn: term.column, into: &parameters))"
             }
-            parameters.append(value.asAny)
+            parameters.append(value.asAny, typeName: typeName(of: term.column))
             let bound = placeholder(at: parameters.count - 1)
-            parameters.append(value.asAny)
+            // Compared with the column's text, not the column.
+            parameters.append(value.asAny, typeName: nil)
             let read = placeholder(at: parameters.count - 1)
             return "(\(term.matched) IN (\(text), \(bound)) AND CAST(\(term.matched) AS TEXT) = \(read))"
         }.joined(separator: " AND ")
@@ -626,7 +663,7 @@ struct SQLStatementGenerator {
     }
 
     private func deleteStatement(for rows: [[DeleteColumnMatch]]) -> ParameterizedStatement {
-        var parameters: [Any?] = []
+        var parameters = Bindings()
         let rowClauses = rows.map { matches -> String in
             let terms = matches.map { match in
                 RowMatchTerm(
@@ -647,6 +684,6 @@ struct SQLStatementGenerator {
 
         let whereClause = rowClauses.joined(separator: " OR ")
         let sql = "DELETE FROM \(qualifiedTableName) WHERE \(whereClause)"
-        return ParameterizedStatement(sql: sql, parameters: parameters)
+        return statement(sql, parameters)
     }
 }

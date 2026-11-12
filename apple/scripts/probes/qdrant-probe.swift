@@ -1,7 +1,8 @@
 import Foundation
+import TableProQdrantClient
 import TableProQdrantCore
 
-// Measures, against a live node, the Qdrant behavior TableProQdrantCore hard-codes.
+// Measures, against a live node, the Qdrant behavior TableProQdrantCore and TableProQdrantClient hard-code.
 // Run through check-qdrant.sh, which builds it against this checkout's TableProCore.
 
 var failures = 0

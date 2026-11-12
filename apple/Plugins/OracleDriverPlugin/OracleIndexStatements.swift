@@ -4,24 +4,32 @@
 //
 
 import Foundation
+import TableProOracleCore
 import TableProSQLQuoting
 
-/// The indexes an Oracle dump has to recreate, and the `CREATE INDEX` that recreates them.
-///
-/// Every index is taken, constraint-backed ones included, because this driver's `fetchTableDDL`
-/// writes column definitions and nothing else: no primary key, no unique constraint. Excluding
-/// them would have left an Oracle dump with no uniqueness anywhere, so a restore would accept
-/// duplicate rows the source rejected.
+// The indexes an Oracle dump recreates after the rows, and the `CREATE INDEX` that recreates each. An index an enabled
+// PRIMARY KEY or UNIQUE constraint owns is left out: `fetchTableDDL` writes the constraint, which makes its own index,
+// and a second index on the same columns fails with ORA-01408. A disabled or NOVALIDATE constraint is written disabled
+// and makes none, so an index it kept is written, and a NOVALIDATE one is enabled on it after the rows.
 internal enum OracleIndexStatements {
-    // NORMAL and BITMAP only: a function-based index keeps its key in a LONG column OracleNIO cannot decode.
+    // NORMAL and BITMAP only: a function-based index keeps its key in a LONG column OracleNIO cannot decode. A
+    // constraint row with no `INDEX_OWNER` is read as naming an index of its own schema.
     internal static func query(schema: String, table: String) -> String {
         """
             SELECT i.INDEX_NAME, i.UNIQUENESS, i.INDEX_TYPE, ic.COLUMN_NAME, ic.DESCEND
-            FROM SYS.ALL_INDEXES i
-            JOIN SYS.ALL_IND_COLUMNS ic ON i.INDEX_NAME = ic.INDEX_NAME AND i.OWNER = ic.INDEX_OWNER
+            FROM \(OracleDictionary.allIndexes) i
+            JOIN \(OracleDictionary.allIndColumns) ic ON i.INDEX_NAME = ic.INDEX_NAME AND i.OWNER = ic.INDEX_OWNER
             WHERE i.TABLE_NAME = \(SQLQuoting.stringLiteral(table))
               AND i.OWNER = \(SQLQuoting.stringLiteral(schema))
               AND i.INDEX_TYPE IN ('NORMAL', 'BITMAP')
+              AND NOT EXISTS (
+                  SELECT 1 FROM \(OracleDictionary.allConstraints) c
+                  WHERE c.CONSTRAINT_TYPE IN ('P', 'U')
+                    AND c.STATUS = 'ENABLED'
+                    AND c.VALIDATED = 'VALIDATED'
+                    AND c.INDEX_NAME = i.INDEX_NAME
+                    AND NVL(c.INDEX_OWNER, c.OWNER) = i.OWNER
+              )
             ORDER BY i.INDEX_NAME, ic.COLUMN_POSITION
             """
     }
