@@ -21,6 +21,10 @@ enum DiagramExporter {
     }
 
     static func pngData(_ image: NSImage?) -> Data? {
+        // A bitmap the image already holds encodes as it is, without a TIFF copy and a second decode.
+        if let rep = image?.representations.first(where: { $0 is NSBitmapImageRep }) as? NSBitmapImageRep {
+            return rep.representation(using: .png, properties: [:])
+        }
         guard let tiffData = image?.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiffData)
         else { return nil }

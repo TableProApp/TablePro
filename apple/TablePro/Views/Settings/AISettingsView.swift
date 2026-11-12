@@ -48,8 +48,9 @@ struct AISettingsView: View {
                     saveProvider(saved, apiKey: apiKey, isNew: false)
                     editingProviderID = nil
                 },
+                // The sheet already asked; the parent alert is for the context menu only.
                 onDelete: {
-                    pendingDeleteID = provider.id
+                    removeProvider(provider.id)
                     editingProviderID = nil
                 },
                 onCancel: {

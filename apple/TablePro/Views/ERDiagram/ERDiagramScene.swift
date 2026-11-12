@@ -114,10 +114,33 @@ enum ERDiagramSceneRenderer {
         }
     }
 
+    // A copy or a PNG renders on the main actor, so a bigger bitmap costs seconds and gigabytes; PDF and SVG keep full size.
+    static let maxBitmapSide: CGFloat = 16_384
+    static let maxBitmapPixels: CGFloat = 33_554_432
+
+    static func bitmapScale(for size: CGSize, requested scale: CGFloat) -> CGFloat {
+        guard size.width > 0, size.height > 0 else { return scale }
+        let bySide = maxBitmapSide / max(size.width, size.height)
+        let byArea = (maxBitmapPixels / (size.width * size.height)).squareRoot()
+        return min(scale, bySide, byArea)
+    }
+
     static func image(_ scene: ERDiagramScene, appearance: NSAppearance, scale: CGFloat) -> NSImage? {
+        guard let rep = bitmap(scene, appearance: appearance, scale: scale) else { return nil }
+        let image = NSImage(size: rep.size)
+        image.addRepresentation(rep)
+        return image
+    }
+
+    static func pngData(_ scene: ERDiagramScene, appearance: NSAppearance, scale: CGFloat) -> Data? {
+        bitmap(scene, appearance: appearance, scale: scale)?.representation(using: .png, properties: [:])
+    }
+
+    private static func bitmap(_ scene: ERDiagramScene, appearance: NSAppearance, scale requested: CGFloat) -> NSBitmapImageRep? {
         let frame = exportFrame(of: scene)
-        let pixelsWide = Int((frame.size.width * scale).rounded())
-        let pixelsHigh = Int((frame.size.height * scale).rounded())
+        let scale = bitmapScale(for: frame.size, requested: requested)
+        let pixelsWide = Int((frame.size.width * scale).rounded(.down))
+        let pixelsHigh = Int((frame.size.height * scale).rounded(.down))
         guard pixelsWide > 0, pixelsHigh > 0 else { return nil }
 
         guard let rep = NSBitmapImageRep(
@@ -136,10 +159,7 @@ enum ERDiagramSceneRenderer {
 
         guard let base = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
         renderExport(scene, frame: frame, appearance: appearance, into: base.cgContext)
-
-        let image = NSImage(size: frame.size)
-        image.addRepresentation(rep)
-        return image
+        return rep
     }
 
     static func pdfData(_ scene: ERDiagramScene, appearance: NSAppearance, title: String) -> Data? {

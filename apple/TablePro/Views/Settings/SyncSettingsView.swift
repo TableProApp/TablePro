@@ -89,7 +89,7 @@ private struct SyncNoticeSection: View {
                 Task { await SyncCoordinator.shared.uploadAgain() }
             }
         case .turnOffSync:
-            // Through the setting, so the switch's own change handler also settles password sync.
+            // Through the setting, which also turns password sync off and stops the coordinator.
             Button(action.title) {
                 AppSettingsManager.shared.sync.enabled = false
             }

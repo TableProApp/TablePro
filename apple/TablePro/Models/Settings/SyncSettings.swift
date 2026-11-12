@@ -77,6 +77,11 @@ struct SyncSettings: Codable, Equatable {
         syncSQLFavorites: true,
         syncTableFolders: true
     )
+
+    // Whether a secret saved now goes to iCloud Keychain.
+    var syncsPasswords: Bool {
+        enabled && syncConnections && syncPasswords
+    }
 }
 
 internal extension SyncSettings {

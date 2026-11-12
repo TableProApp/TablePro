@@ -23,7 +23,7 @@ struct ConnectionDestinationTests {
         #expect(saved.digest != crafted.digest)
     }
 
-    @Test("Engine, TLS, SSH server, jump host, SSH profile and any plugin field each change the digest")
+    @Test("Engine, TLS, SSH server, jump host and any plugin field each change the digest")
     func everyRoutingInputChangesTheDigest() {
         let jumpless = ConnectionDestination.Tunnel.ssh(
             server: .init(host: "bastion.prod", port: 22), jumps: []
@@ -46,7 +46,6 @@ struct ConnectionDestinationTests {
                     jumps: [.init(host: "hop.attacker.example", port: 22)]
                 )
             ),
-            Self.production(transport: .verifyIdentity, tunnel: .profile(UUID())),
             Self.production(transport: .verifyIdentity, tunnel: jumpless, fields: ["esSkipTLSVerify": "true"]),
             Self.production(transport: .verifyIdentity, tunnel: jumpless, fields: ["someFutureField": "x"]),
         ]

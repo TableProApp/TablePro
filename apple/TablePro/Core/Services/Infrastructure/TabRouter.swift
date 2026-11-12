@@ -165,7 +165,7 @@ internal final class TabRouter {
             /// installed for the whole of a connect, so asking the driver restarted one in flight.
             if let host = existing.contentViewController as? MainSplitViewController {
                 if host.workspaces.contains(id) {
-                    host.reconnectWorkspaceIfIdle(id)
+                    host.reconnectWorkspaceIfIdle(id, adoptsSSHProfileEdits: false)
                 } else {
                     // Dialed by a workspace of its own, so a failure lands inline in its pane, not as an alert.
                     if transientConnection != nil {
@@ -176,7 +176,7 @@ internal final class TabRouter {
                         autoConnect: false
                     )
                     if adopted?.phase != .connected {
-                        host.reconnectWorkspace(id)
+                        host.reconnectWorkspace(id, adoptsSSHProfileEdits: false)
                     }
                 }
                 return
@@ -368,7 +368,7 @@ internal final class TabRouter {
         }
 
         guard await externalConnectionGate.authorize(
-            connection, scopeName: parsed.connectionName, filter: filter
+            connection, isSaved: !isTransient, scopeName: parsed.connectionName, filter: filter
         ) else {
             throw TabRouterError.userCancelled
         }

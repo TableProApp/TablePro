@@ -11,12 +11,10 @@ extension DatabaseManager {
         _ connection: DatabaseConnection,
         passwordOverride: String? = nil,
         sshPasswordOverride: String? = nil,
-        trigger: ConnectTrigger = .request
+        trigger: ConnectTrigger = .request,
+        adoptsSSHProfileEdits: Bool = false
     ) async throws {
-        /// An installed driver is only a reason to skip while it still answers. A reconnect that
-        /// gave up leaves one behind, and returning here made Reconnect a button that did nothing
-        /// on the one connection that needed it. A driver nobody has heard from in a while is the
-        /// same problem one step earlier, which is what the check answers.
+        // A driver is a reason to skip only while it answers: one a reconnect gave up on made Reconnect do nothing.
         await verifyBeforeUse(connection.id)
         if let session = activeSessions[connection.id], session.driver != nil, session.liveness == .live {
             return
@@ -26,7 +24,8 @@ extension DatabaseManager {
                 connection,
                 passwordOverride: passwordOverride,
                 sshPasswordOverride: sshPasswordOverride,
-                trigger: trigger
+                trigger: trigger,
+                adoptsSSHProfileEdits: adoptsSSHProfileEdits
             )
         }
     }

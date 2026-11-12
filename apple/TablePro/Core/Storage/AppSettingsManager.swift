@@ -159,9 +159,14 @@ final class AppSettingsManager: ObservableObject {
         }
     }
 
+    // Every writer, a reset from another pane included, has to reach the Keychain flag and the coordinator.
     @Published var sync: SyncSettings {
         didSet {
             storage.saveSync(sync)
+            passwordSyncDefaults.set(sync.syncsPasswords, forKey: KeychainHelper.passwordSyncEnabledKey)
+            if oldValue.enabled != sync.enabled {
+                switchSync(sync.enabled)
+            }
         }
     }
 
@@ -200,6 +205,8 @@ final class AppSettingsManager: ObservableObject {
     private let mcpServerManager: MCPServerManager
     private let copilotService: CopilotService
     private let connectionListPreferences: ConnectionListPreferences
+    private let passwordSyncDefaults: UserDefaults
+    private let switchSync: @MainActor (Bool) -> Void
     private var isValidating = false
 
     init(
@@ -211,7 +218,16 @@ final class AppSettingsManager: ObservableObject {
         queryHistoryManager: QueryHistoryManager = .shared,
         mcpServerManager: MCPServerManager = .shared,
         copilotService: CopilotService = .shared,
-        connectionListPreferences: ConnectionListPreferences = .shared
+        connectionListPreferences: ConnectionListPreferences = .shared,
+        passwordSyncDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
+        switchSync: @escaping @MainActor (Bool) -> Void = { enabled in
+            // Read at call time, so building the shared settings never builds the coordinator.
+            if enabled {
+                SyncCoordinator.shared.enableSync()
+            } else {
+                SyncCoordinator.shared.disableSync()
+            }
+        }
     ) {
         self.storage = storage
         self.themeEngine = themeEngine
@@ -222,6 +238,8 @@ final class AppSettingsManager: ObservableObject {
         self.mcpServerManager = mcpServerManager
         self.copilotService = copilotService
         self.connectionListPreferences = connectionListPreferences
+        self.passwordSyncDefaults = passwordSyncDefaults
+        self.switchSync = switchSync
 
         self.general = storage.loadGeneral()
         self.appearance = storage.loadAppearance()
@@ -279,7 +297,7 @@ final class AppSettingsManager: ObservableObject {
         history = .default
         tabs = .default
         keyboard = .default
-        ai = .default
+        ai = ai.resetKeepingProviders
         sync = .default
         mcp = .default
         typography = .default
