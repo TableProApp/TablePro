@@ -3710,6 +3710,9 @@
         }
       }
     },
+    "%@ is a binary column, and this value is not 0x followed by hex digits." : {
+
+    },
     "%@ is a boolean field, so it matches only true or false, not %@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -201796,6 +201799,9 @@
 
     },
     "This row has no value for this field." : {
+
+    },
+    "This row has no values, and %@ has no way to insert a row of only defaults." : {
 
     },
     "This row's _id is binary data whose subtype is not known, so TablePro cannot tell which document it names." : {
