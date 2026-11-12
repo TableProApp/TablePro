@@ -843,62 +843,20 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
         census: MongoFieldCensus.Request?
     ) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
         #if canImport(CLibMongoc)
-        let queue = self.queue
-        let streamState = MongoStreamState()
-
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
-            continuation.onTermination = { @Sendable _ in
-                streamState.lock.withLock { streamState.cancelled = true }
-                queue.async {
-                    streamState.lock.lock()
-                    let cur = streamState.cursor
-                    let col = streamState.collection
-                    let alreadyDrained = streamState.drained
-                    streamState.drained = true
-                    streamState.cursor = nil
-                    streamState.collection = nil
-                    streamState.lock.unlock()
-                    guard !alreadyDrained else { return }
-                    if let cur { mongoc_cursor_destroy(cur) }
-                    if let col { mongoc_collection_destroy(col) }
-                }
+        cursorStream(database: database, collection: collection, isFind: true, census: census) { col, session in
+            guard let filterBson = self.jsonToBson(filter) else {
+                throw MongoDBError(code: 0, message: "Invalid JSON filter: \(filter)")
             }
-
-            queue.async { [self] in
-                guard !isShuttingDown, let client = self.client else {
-                    continuation.finish(throwing: MongoDBError.notConnected)
-                    return
-                }
-
-                do {
-                    guard let filterBson = jsonToBson(filter) else {
-                        throw MongoDBError(code: 0, message: "Invalid JSON filter: \(filter)")
-                    }
-                    defer { bson_destroy(filterBson) }
-
-                    let optsBson = jsonToBson(optionsJson)
-                    defer { if let opts = optsBson { bson_destroy(opts) } }
-
-                    let col = try getCollection(client, database: database, collection: collection)
-                    guard let cursor = mongoc_collection_find_with_opts(col, filterBson, optsBson, nil) else {
-                        mongoc_collection_destroy(col)
-                        throw MongoDBError(code: 0, message: "Failed to create find cursor")
-                    }
-
-                    streamState.lock.lock()
-                    streamState.cursor = cursor
-                    streamState.collection = col
-                    streamState.lock.unlock()
-
-                    iterateCursorStreaming(
-                        cursor: cursor, continuation: continuation, streamState: streamState
-                    ) {
-                        try self.fieldCensus(census, client: client, database: database, collection: collection)
-                    }
-                } catch {
-                    continuation.finish(throwing: error)
-                }
+            defer { bson_destroy(filterBson) }
+            guard let optsBson = self.jsonToBson(optionsJson) ?? bson_new() else {
+                throw MongoDBError(code: 0, message: "Failed to build query options")
             }
+            defer { bson_destroy(optsBson) }
+            try session?.append(to: optsBson)
+            guard let cursor = mongoc_collection_find_with_opts(col, filterBson, optsBson, nil) else {
+                throw MongoDBError(code: 0, message: "Failed to create find cursor")
+            }
+            return cursor
         }
         #else
         return AsyncThrowingStream { $0.finish(throwing: MongoDBError.libmongocUnavailable) }
@@ -913,66 +871,75 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
         census: MongoFieldCensus.Request?
     ) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
         #if canImport(CLibMongoc)
+        cursorStream(database: database, collection: collection, isFind: false, census: census) { col, session in
+            guard let pipelineBson = self.jsonToBson(pipeline) else {
+                throw MongoDBError(code: 0, message: "Invalid JSON pipeline: \(pipeline)")
+            }
+            defer { bson_destroy(pipelineBson) }
+            var optsBson: OpaquePointer?
+            if let optionsJson {
+                optsBson = self.jsonToBson(optionsJson)
+            } else {
+                let timeoutMS = self.queryTimeoutMS
+                if timeoutMS > 0 {
+                    optsBson = self.jsonToBson("{\"maxTimeMS\": \(timeoutMS)}")
+                }
+            }
+            if session != nil, optsBson == nil {
+                optsBson = bson_new()
+            }
+            defer { if let opts = optsBson { bson_destroy(opts) } }
+            if let optsBson {
+                try session?.append(to: optsBson)
+            }
+            guard let cursor = mongoc_collection_aggregate(col, MONGOC_QUERY_NONE, pipelineBson, optsBson, nil) else {
+                throw MongoDBError(code: 0, message: "Failed to create aggregation cursor")
+            }
+            return cursor
+        }
+        #else
+        return AsyncThrowingStream { $0.finish(throwing: MongoDBError.libmongocUnavailable) }
+        #endif
+    }
+
+    #if canImport(CLibMongoc)
+    // The cursor, its collection and the stream's session live and end inside one block on the connection's queue, so
+    // none of them can outlast the client that `disconnect` destroys behind it. A paced stream holds that queue while
+    // its reader waits, as every blocking driver does.
+    private func cursorStream(
+        database: String,
+        collection: String,
+        isFind: Bool,
+        census: MongoFieldCensus.Request?,
+        open: @escaping @Sendable (_ collection: OpaquePointer, _ session: MongoStreamSession?) throws -> OpaquePointer
+    ) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
         let queue = self.queue
         let streamState = MongoStreamState()
-
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(PluginRowStream.boundedBufferBatches)) { continuation in
             continuation.onTermination = { @Sendable _ in
                 streamState.lock.withLock { streamState.cancelled = true }
-                queue.async {
-                    streamState.lock.lock()
-                    let cur = streamState.cursor
-                    let col = streamState.collection
-                    let alreadyDrained = streamState.drained
-                    streamState.drained = true
-                    streamState.cursor = nil
-                    streamState.collection = nil
-                    streamState.lock.unlock()
-                    guard !alreadyDrained else { return }
-                    if let cur { mongoc_cursor_destroy(cur) }
-                    if let col { mongoc_collection_destroy(col) }
-                }
+                queue.async { self.cleanup(streamState) }
             }
 
             queue.async { [self] in
+                defer { cleanup(streamState) }
                 guard !isShuttingDown, let client = self.client else {
                     continuation.finish(throwing: MongoDBError.notConnected)
                     return
                 }
-
                 do {
-                    guard let pipelineBson = jsonToBson(pipeline) else {
-                        throw MongoDBError(code: 0, message: "Invalid JSON pipeline: \(pipeline)")
-                    }
-                    defer { bson_destroy(pipelineBson) }
-
+                    let session = startStreamSession(isFind: isFind)
+                    streamState.lock.withLock { streamState.session = session }
                     let col = try getCollection(client, database: database, collection: collection)
-
-                    var optsBson: OpaquePointer?
-                    if let optionsJson {
-                        optsBson = jsonToBson(optionsJson)
-                    } else {
-                        let timeoutMS = queryTimeoutMS
-                        if timeoutMS > 0 {
-                            optsBson = jsonToBson("{\"maxTimeMS\": \(timeoutMS)}")
-                        }
-                    }
-                    defer { if let opts = optsBson { bson_destroy(opts) } }
-
-                    guard let cursor = mongoc_collection_aggregate(
-                        col, MONGOC_QUERY_NONE, pipelineBson, optsBson, nil
-                    ) else {
-                        mongoc_collection_destroy(col)
-                        throw MongoDBError(code: 0, message: "Failed to create aggregation cursor")
-                    }
-
-                    streamState.lock.lock()
-                    streamState.cursor = cursor
-                    streamState.collection = col
-                    streamState.lock.unlock()
+                    streamState.lock.withLock { streamState.collection = col }
+                    let cursor = try open(col, session)
+                    streamState.lock.withLock { streamState.cursor = cursor }
 
                     iterateCursorStreaming(
-                        cursor: cursor, continuation: continuation, streamState: streamState
+                        cursor: cursor,
+                        delivery: MongoStreamDelivery(
+                            continuation: continuation, state: streamState, session: session, client: client
+                        )
                     ) {
                         try self.fieldCensus(census, client: client, database: database, collection: collection)
                     }
@@ -981,19 +948,24 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
                 }
             }
         }
-        #else
-        return AsyncThrowingStream { $0.finish(throwing: MongoDBError.libmongocUnavailable) }
-        #endif
     }
+    #endif
 }
 
 
 nonisolated final class MongoStreamState: @unchecked Sendable {
     var cursor: OpaquePointer?
     var collection: OpaquePointer?
+    #if canImport(CLibMongoc)
+    var session: MongoStreamSession?
+    #endif
     var drained = false
     var cancelled = false
     let lock = NSLock()
+
+    var isCancelled: Bool {
+        lock.withLock { cancelled }
+    }
 }
 
 // MARK: - BSON Helpers
